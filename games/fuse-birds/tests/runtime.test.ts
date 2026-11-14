@@ -262,3 +262,37 @@ test("real runtime scopes a Scatter launch, repairs reordered input, and recover
     for (const runtime of mesh.runtimes.values()) runtime.stop();
   }
 });
+
+test("a lobby seat is a choice: a seated bird moves to any free seat, and a taken one is refused", () => {
+  const mesh = new BirdsMesh("a");
+  const a = mesh.join("a"),
+    b = mesh.join("b");
+  const slots = (runtime: TestBirdsRuntime) =>
+    Object.fromEntries(
+      [...runtime.roomState()!.seats.values()].map((seat) => [
+        seat.id,
+        seat.slot,
+      ]),
+    );
+  try {
+    mesh.run(300);
+    a.command({ type: "join", name: "Alpha" });
+    b.command({ type: "join", name: "Beta", slot: 3 });
+    mesh.run(3000);
+    assert.deepEqual(slots(a), { a: 0, b: 3 });
+    assert.ok(b.command({ type: "join", name: "Beta", slot: 1 }));
+    mesh.run(3000);
+    assert.ok(a.command({ type: "join", name: "Alpha", slot: 4 }));
+    mesh.run(800);
+    assert.deepEqual(slots(a), { a: 4, b: 1 });
+    assert.deepEqual(slots(b), slots(a));
+    b.command({ type: "join", name: "Beta", slot: 4 });
+    mesh.run(3000);
+    assert.deepEqual(slots(a), { a: 4, b: 1 });
+    assert.ok(a.command({ type: "action", action: "start" }));
+    mesh.run(300);
+    assert.notEqual(b.roomState()!.stage, "lobby", "the moved seats play");
+  } finally {
+    for (const runtime of mesh.runtimes.values()) runtime.stop();
+  }
+});

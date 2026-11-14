@@ -392,7 +392,20 @@ function room(code: string, display: boolean, practice = false): void {
     sharedScreen,
     document.createTextNode("Shared TV + phone controllers"),
   );
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
+    // Seated already: any open seat is a move, and the bird's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat)
+        runtime.command({
+          type: "join",
+          slot,
+          name: ownSeat.name,
+          avatarId: "owl",
+        });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -642,6 +655,7 @@ function room(code: string, display: boolean, practice = false): void {
             roomScope: metricsScope,
           }),
       );
+      ownSeat = frame.seats.find((s) => s.id === me && !s.watcher);
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
       nameEntry.form.hidden = display || seated || !inLobby;
