@@ -1133,7 +1133,8 @@ function room(solo: boolean): void {
       (coarse || next.layout === "controller")
     );
     // Result.
-    const result = next.result;
+    // A lesson ends on its own bar under the arena (the time, the next lesson): the screen would cover it.
+    const result = lesson ? undefined : next.result;
     if (!result) {
       if (results.open) results.hide();
       shownResult = "";
