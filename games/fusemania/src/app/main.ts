@@ -1237,6 +1237,8 @@ function enterRoom(
     element: lobby,
     ...(inviteCard ? { invite: inviteCard } : {}),
     roster,
+    // ADD FRIEND on a player's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: CAPACITY,
     join: nameEntry.form,
     // Seated already: any open seat is a move, and the lane's colour follows the seat.
