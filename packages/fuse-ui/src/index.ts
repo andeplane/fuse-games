@@ -8,6 +8,21 @@ export {
   type PartClasses,
 } from "./dom.js";
 export {
+  backOnEscape,
+  createBackButton,
+  createBackLink,
+  createPageHeader,
+  createPageMessage,
+  createSubPage,
+  type BackButtonOptions,
+  type BackOnEscapeOptions,
+  type PageHeader,
+  type PageHeaderOptions,
+  type SubPage,
+  type SubPageOptions,
+} from "./back.js";
+export { menuKeys, type MenuKeysOptions } from "./menu-keys.js";
+export {
   closeOnBackdrop,
   createDialog,
   type DialogOptions,
@@ -40,6 +55,7 @@ export {
   type LobbyState,
   type Roster,
   type RosterMember,
+  type RosterFriends,
   type RosterOptions,
   type RosterPart,
 } from "./lobby.js";
@@ -162,5 +178,22 @@ export {
   requestedRoomSlot,
   createRoomAppearance,
   roomLayoutMarkup,
+  type RoomFriends,
   type RoomLayoutOptions,
 } from "./room-layout.js";
+export {
+  createResultsScreen,
+  renderResults,
+  type ResultsAction,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
+  type ResultsRow,
+  type ResultsScreen,
+  type ResultsScreenOptions,
+} from "./results.js";
+export {
+  createSharedTvOption,
+  type SharedTvOption,
+  type SharedTvOptionOptions,
+} from "./shared-tv.js";

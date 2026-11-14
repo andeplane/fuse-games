@@ -129,18 +129,32 @@ for (const { name, kind } of BOTH_ENGINES) {
             false,
             "a phone is never the TV: no TV VIEW in the phone lobby",
           );
-          // #142: the yellow hint clears the lobby card, the head grid stays behind AVATAR, no truncated URL, and ⛶ only where fullscreen exists.
-          const hintBox = (await phone
-              .locator(".online-notice")
-              .boundingBox())!,
-            lobbyBox = (await phone
-              .locator(".phone-lobby>.room-lobby")
-              .boundingBox())!;
+          // #142: the yellow hint is a line of its own in the room (it never paints over the QR card, the seats or the
+          // rider's own buttons, and its text stays inside it), the head grid stays behind AVATAR, no truncated URL,
+          // and ⛶ only where fullscreen exists.
+          const hint = phone.locator(".room-lobby .online-notice"),
+            hintBox = (await hint.boundingBox())!;
           assert.ok(
             hintBox.height >= 12 &&
-              hintBox.y + hintBox.height <= lobbyBox.y + 1,
-            `lobby hint must sit above the lobby card: ${JSON.stringify({ hintBox, lobbyBox })}`,
+              (await hint.evaluate(
+                (node) => node.scrollWidth <= node.clientWidth + 1,
+              )),
+            `lobby hint is a readable line: ${JSON.stringify(hintBox)}`,
           );
+          for (const part of [
+            ".room-qr-card",
+            ".fui-room-open-slots",
+            ".room-lobby-footer",
+          ]) {
+            const box = (await phone
+              .locator(`.room-lobby ${part}`)
+              .boundingBox())!;
+            assert.ok(
+              hintBox.y + hintBox.height <= box.y + 1 ||
+                box.y + box.height <= hintBox.y + 1,
+              `lobby hint must not sit over ${part}: ${JSON.stringify({ hintBox, box })}`,
+            );
+          }
           assert.equal(
             await phone
               .getByRole("dialog", { name: "Avatar", exact: true })
@@ -170,7 +184,7 @@ for (const { name, kind } of BOTH_ENGINES) {
             "fullscreen button only where fullscreen exists",
           );
           await phone
-            .getByRole("button", { name: "CLOSE", exact: true })
+            .getByRole("button", { name: "Back", exact: true })
             .click();
           await phone.screenshot({
             path: `artifacts/shared-phone-host-${name}-${viewport.width}x${viewport.height}.png`,

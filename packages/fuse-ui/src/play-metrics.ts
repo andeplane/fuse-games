@@ -2,29 +2,72 @@ import { createBrowserAnalytics, type Analytics } from "./analytics.js";
 import { isEmbeddedPage } from "./embedded.js";
 
 export interface PlayFrame {
-  /** Scope only; never sent to Mixpanel. */
+  /** Scope only; never transmitted. */
   matchId: string;
   active: boolean;
   ended: boolean;
   /** Omit only for games with a single continuous match. */
   round?: number;
+  /** Actual active gameplay, excluding countdowns. Omitted means no round integration. */
+  roundActive?: boolean;
+  /** Decided completion of the current semantic round. */
+  roundEnded?: boolean;
+  /** Separate from `round`, which some existing match-start adapters use synthetically. */
+  roundKey?: number;
   playerCount: number;
   botCount: number;
   seated: boolean;
   mode: string;
 }
 
+export interface ConfirmedRoundObservation {
+  /** A final snapshot mapped independently, so a late completion keeps its own match and round. */
+  frame: PlayFrame | undefined;
+}
+
+export type PlayObserver = (
+  frame: PlayFrame,
+  confirmedRound?: ConfirmedRoundObservation,
+) => void;
+
+/** Starts describe current participation; irreversible completion comes only from final history. */
+export function observeConfirmedPlay<View>(
+  observe: PlayObserver,
+  current: View,
+  confirmed: () => View | undefined,
+  playFrame: (view: View) => PlayFrame,
+): void {
+  const final = confirmed();
+  let frame: PlayFrame | undefined;
+  if (final !== undefined) {
+    // The confirmed view only changes every few ticks while this runs every
+    // frame, and mapping it can be as costly as presenting the whole game.
+    const last = confirmedFrames.get(observe);
+    if (last && last.view === final) frame = last.frame;
+    else {
+      frame = playFrame(final);
+      confirmedFrames.set(observe, { view: final, frame });
+    }
+  }
+  observe(playFrame(current), { frame });
+}
+const confirmedFrames = new WeakMap<
+  PlayObserver,
+  { view: unknown; frame: PlayFrame }
+>();
+
 /** Per-device observations, just like Riders' funnel; never a second simulation or a per-tick event stream. */
 export function createPlayMetrics(
   track: Analytics["track"],
   now: () => number,
-): (frame: PlayFrame) => void {
+): PlayObserver {
+  const observeRound = createRoundMetrics(track);
   let match = "",
     started = false,
     ended = false,
     seated = false;
   let startedAt: number | undefined;
-  return (frame) => {
+  return (frame, confirmedRound) => {
     if (!frame.matchId) return;
     if (frame.matchId !== match) {
       match = frame.matchId;
@@ -38,6 +81,11 @@ export function createPlayMetrics(
       played: frame.seated,
       mode: frame.mode,
     };
+    if (confirmedRound) {
+      observeRound({ ...frame, roundEnded: false });
+      if (confirmedRound.frame)
+        observeRound({ ...confirmedRound.frame, roundActive: false });
+    } else observeRound(frame);
     if (frame.seated && !seated) {
       seated = true;
       track("Seat Taken", properties);
@@ -67,6 +115,52 @@ export function createPlayMetrics(
               ),
             }),
       });
+    }
+  };
+}
+
+/** Round participation is independent of per-device match observation and first-round start detection. */
+export function createRoundMetrics(
+  track: Analytics["track"],
+): (frame: PlayFrame) => void {
+  const starts = new Set<string>(),
+    ends = new Set<string>();
+  let lastMatch: string | undefined,
+    lastRound: string | number | undefined,
+    lastKey = "";
+  return (frame) => {
+    if (!frame.matchId || !frame.seated) return;
+    // Games call this every frame: do nothing between rounds, and build the
+    // key and properties only for a frame that can report something.
+    if (!frame.roundActive && !frame.roundEnded) return;
+    const round = frame.roundKey ?? frame.round ?? 1;
+    if (frame.matchId !== lastMatch || round !== lastRound) {
+      lastMatch = frame.matchId;
+      lastRound = round;
+      lastKey = JSON.stringify([frame.matchId, round]);
+    }
+    const key = lastKey;
+    if (
+      (!frame.roundActive || starts.has(key)) &&
+      (!frame.roundEnded || ends.has(key))
+    )
+      return;
+    const properties = {
+      playerCount: frame.playerCount,
+      botCount: frame.botCount,
+      humanCount: frame.playerCount - frame.botCount,
+      played: true,
+      mode: frame.mode,
+    };
+    if (frame.roundActive && !starts.has(key)) {
+      track("Round Started", properties, { key });
+      starts.add(key);
+      if (starts.size > 512) starts.delete(starts.values().next().value!);
+    }
+    if (frame.roundEnded && !ends.has(key)) {
+      track("Round Ended", properties, { key, requires: "Round Started" });
+      ends.add(key);
+      if (ends.size > 512) ends.delete(ends.values().next().value!);
     }
   };
 }

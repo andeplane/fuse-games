@@ -117,7 +117,8 @@ test("lobby: who is ready, what the host may do, and what a guest waits for", ()
     rematchBlocked: undefined,
     ready: { hidden: false, pressed: false, label: "READY" },
     start: { label: "START RACE", disabled: false },
-    reset: { disabled: true, hidden: false },
+    // BACK TO LOBBY means nothing in the lobby, so the lobby does not show it.
+    reset: { disabled: true, hidden: true },
     shareHidden: false,
     addAIDisabled: false,
   });
@@ -133,6 +134,17 @@ test("lobby: who is ready, what the host may do, and what a guest waits for", ()
   const unseated = present(lobby, { playerId: "new", manages: false });
   assert.equal(unseated.joined, false);
   assert.equal(unseated.notice, "Join your friends, then start the race");
+  // A solo run has no friends to wait for and nobody to tell who runs the room.
+  const solo = present(lobby, { solo: true });
+  assert.equal(solo.notice, "Choose your rivals, then start the race");
+  assert.equal(
+    solo.lobby.riders.some((rider) => rider.host),
+    false,
+  );
+  assert.equal(
+    host.lobby.riders.some((rider) => rider.host),
+    true,
+  );
   assert.equal(unseated.avatarHidden, true);
   assert.equal(unseated.joinPanelHidden, false);
   assert.equal(unseated.controlsHidden, true);
@@ -174,6 +186,7 @@ test("the phone lobby drops BACK TO LOBBY and TV VIEW, solo has no TV VIEW, and 
       ...five.players,
       { ...five.players[2]!, id: "bot:2" },
       { ...five.players[2]!, id: "bot:3" },
+      { ...five.players[2]!, id: "bot:4" },
     ],
   };
   assert.equal(full.players.length, MAX_RIDERS);
@@ -196,6 +209,11 @@ test("countdown: the seconds to go, and the power chip", () => {
   assert.equal(view.power.text.startsWith("◆"), true);
   assert.equal(view.actions.start.disabled, true);
   assert.equal(view.actions.reset.disabled, false);
+  assert.equal(
+    view.actions.reset.hidden,
+    false,
+    "the way back, once a race is on",
+  );
   assert.equal(present(frame({ phase: "countdown" })).notice, "READY · 0");
 });
 
@@ -839,7 +857,7 @@ test("changing sides is one button about this device, beside READY, and says why
     frame({
       phase: "lobby",
       tick: 0,
-      players: [0, 1, 2, 3, 4].map((slot) => ({
+      players: [0, 1, 2, 3, 4, 5].map((slot) => ({
         ...frame().players[0]!,
         id: `p${slot}`,
         slot,
@@ -847,9 +865,9 @@ test("changing sides is one button about this device, beside READY, and says why
     }),
     { spectators: watchers, playerId: "w1" },
   );
-  assert.equal(fullRoom.actions.switchSide.title, "Room is full (5 players)");
+  assert.equal(fullRoom.actions.switchSide.title, "Room is full (6 players)");
 
-  // Solo is one device and four AI, and a display is not a member: neither has a side to change.
+  // Solo is one device and five AI, and a display is not a member: neither has a side to change.
   assert.equal(present(lobby, { solo: true }).actions.switchSide.hidden, true);
   assert.equal(
     present(lobby, { displayOnly: true }).actions.switchSide.hidden,

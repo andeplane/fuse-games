@@ -247,12 +247,12 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           .locator(".online-roster")
           .getByText("You", { exact: false })
           .waitFor({ state: "attached" });
-        assert.equal(await page.locator(".online-roster>span").count(), 5);
+        assert.equal(await page.locator(".online-roster>span").count(), 6);
         assert.equal(
           await page
             .getByRole("button", { name: /Remove AI/, includeHidden: true })
             .count(),
-          4,
+          5,
         );
         await page.locator(".online-controls").waitFor({ state: "visible" });
         await ready(page);
@@ -308,11 +308,11 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             await power.fill("42");
             await inside(
               page,
-              page.getByRole("button", { name: "CLOSE", exact: true }),
+              page.getByRole("button", { name: "Back", exact: true }),
             );
             await page
               .getByRole("button", {
-                name: "← BACK TO ROOM SETTINGS",
+                name: "Room settings",
                 exact: true,
               })
               .click();
@@ -332,7 +332,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             assert.equal(await power.inputValue(), "42");
             await page
               .getByRole("button", {
-                name: "← BACK TO ROOM SETTINGS",
+                name: "Room settings",
                 exact: true,
               })
               .click();
@@ -374,7 +374,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .click();
             await page
               .getByRole("button", {
-                name: "← BACK TO ROOM SETTINGS",
+                name: "Room settings",
                 exact: true,
               })
               .click();
@@ -403,7 +403,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .waitFor({ state: "hidden" });
             assert.equal((await stored()).bombChargeTicks, 24);
             await page
-              .getByRole("button", { name: "CLOSE", exact: true })
+              .getByRole("button", { name: "Back", exact: true })
               .click();
             await dialog.waitFor({ state: "hidden" });
             await page
@@ -424,7 +424,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             assert.equal(await power.inputValue(), "42");
             await page
               .getByRole("button", {
-                name: "← BACK TO ROOM SETTINGS",
+                name: "Room settings",
                 exact: true,
               })
               .click();
@@ -466,20 +466,18 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           });
           await inside(
             page,
-            page.getByRole("button", { name: "CLOSE", exact: true }),
+            page.getByRole("button", { name: "Back", exact: true }),
           );
           await page.screenshot({
             path: `artifacts/menu-${tag}-${name === "SETTINGS" ? "audio" : name.replaceAll(" ", "-")}.png`,
           });
-          await page
-            .getByRole("button", { name: "CLOSE", exact: true })
-            .click();
+          await page.getByRole("button", { name: "Back", exact: true }).click();
           await dialog.waitFor({ state: "hidden" });
         }
         await page.reload();
         await page.locator(".online-controls").waitFor({ state: "visible" });
         await ready(page);
-        assert.equal(await page.locator(".online-roster>span").count(), 5);
+        assert.equal(await page.locator(".online-roster>span").count(), 6);
         const solo = new URL(base);
         solo.search = "?solo=1&display=1";
         await page.goto(solo.href);

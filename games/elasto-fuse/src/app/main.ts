@@ -1,7 +1,15 @@
 import { requestedRoomSlot } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
@@ -26,16 +34,19 @@ import {
 } from "fuse-network-fe";
 import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
+  backOnEscape,
   button,
   createAppPortal,
   createGameMenu,
   createInviteCard,
   createLandingCard,
-  createRoomLayout,
   createNameEntry,
   createNotice,
+  createPageMessage,
+  createRoomLayout,
   createRoster,
   createRoundControls,
+  createSubPage,
   el,
 } from "fuse-ui";
 import { GAS, RESTART } from "../engine/input.js";
@@ -295,7 +306,7 @@ function landing(): void {
   rules.append(picker.element);
   card.solo?.before(rules);
   card.menu.help.append(keyHelp());
-  const back = el("a", "← ALL GAMES", "ef-back");
+  const back = el("a", "All games", "ef-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(GUIDE);
   menu.update({ canLobby: false, canLeave: false, touch: coarse() });
@@ -312,7 +323,10 @@ function surface(node: HTMLElement): PadSurface {
           ? ["pointerdown"]
           : ["pointerup", "pointercancel", "lostpointercapture"];
       for (const type of types)
-        node.addEventListener(type, (event) => listener(event as PointerEvent));
+        node.addEventListener(type, (event) => {
+          if (kind === "down" && playtestInputBlocked(document)) return;
+          listener(event as PointerEvent);
+        });
     },
     capture: (pointerId) => node.setPointerCapture(pointerId),
     show: (held) => node.classList.toggle("held", held),
@@ -324,12 +338,15 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const back = el("a", "← BACK", "ef-back");
-    back.href = withFlags(endpoints.appUrl());
-    app.replaceChildren(
-      header([back]),
-      el("p", "That is not a room code: check it and try again.", "ef-error"),
-    );
+    const page = createSubPage({
+      title: "Join room",
+      backHref: withFlags(endpoints.appUrl()),
+      content: [
+        createPageMessage("That is not a room code: check it and try again."),
+      ],
+    });
+    app.replaceChildren(header(), page.element);
+    backOnEscape(page.back);
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -373,7 +390,9 @@ function room(solo: boolean): void {
       }
     },
   });
-  const modalOpen = () => Boolean(document.querySelector("dialog[open]"));
+  const modalOpen = () =>
+    playtestInputBlocked(document) ||
+    Boolean(document.querySelector("dialog[open]"));
 
   // Lobby: the invitation and the riders on one side, the level and START on the other.
   let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -573,6 +592,8 @@ function room(solo: boolean): void {
   const main = el("main", "", "ef-room");
   main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -585,6 +606,11 @@ function room(solo: boolean): void {
     roster,
     capacity: CAPACITY,
     join: nameEntry.form,
+    // Seated already: any open seat is a move, and what the seat is (a team, a colour) follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     settings: [keyHelp()],
     modes: [mapTitle, seriesOptions, levelPicker.element],
     actions: [lobbyNote, lobbyActions],
@@ -747,6 +773,7 @@ function room(solo: boolean): void {
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
+    ownSeat = next.lobby.members.find((member) => member.you);
     connecting.hidden = true;
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
@@ -872,22 +899,31 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: ElastoFuseCallbacks = {
     state(frame, roomSettings) {
-      const players =
-        frame.stage === "lobby"
-          ? frame.seats.filter((seat) => !seat.watcher)
-          : frame.roster;
       const mode = solo ? "solo" : roomSettings.display ? "shared" : "online";
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.stage === "running" || frame.stage === "between",
-        ended: frame.stage === "over",
-        playerCount: players.length,
-        botCount: 0,
-        seated: players.some((player) => player.id === viewer.me),
-        mode,
-        // A device that opens a tour midway joined a match; it did not start one.
-        round: frame.round + 1,
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => {
+          const players =
+            frame.stage === "lobby"
+              ? frame.seats.filter((seat) => !seat.watcher)
+              : frame.roster;
+          return {
+            matchId: frame.matchId,
+            roundActive: frame.world?.phase === "racing",
+            roundEnded: frame.world?.phase === "over",
+            active: frame.stage === "running" || frame.stage === "between",
+            ended: frame.stage === "over",
+            playerCount: players.length,
+            botCount: 0,
+            seated: players.some((player) => player.id === viewer.me),
+            mode,
+            // A device that opens a tour midway joined a match; it did not start one.
+            round: frame.round + 1,
+          };
+        },
+      );
       for (const finish of finishes(frame, viewer.me))
         analytics.track("Race Finished", { ...finish, mode });
       settings = roomSettings;
@@ -903,7 +939,8 @@ function room(solo: boolean): void {
         );
       }
       const next = present(frame, viewer, bestBefore);
-      if (next.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (next.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
@@ -998,6 +1035,7 @@ function room(solo: boolean): void {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      stopPlaytestInput();
       menu.dispose();
       scene.destroy();
     },
@@ -1038,6 +1076,12 @@ function room(solo: boolean): void {
     }
     // Only a race swallows keys: in the lobby Space and the arrows scroll and press as usual.
     if (!model?.riding) return;
+    // A repeat presses nothing new, but a held game key must stay swallowed
+    // or the page scrolls and a focused button fires under the player.
+    if (event.repeat) {
+      if (captured.has(event.code)) event.preventDefault();
+      return;
+    }
     if (controls.press(event.code)) {
       captured.add(event.code);
       event.preventDefault();
@@ -1046,6 +1090,12 @@ function room(solo: boolean): void {
   document.addEventListener("keyup", (event) => {
     controls.release(event.code);
     if (captured.delete(event.code)) event.preventDefault();
+  });
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: () => {
+      letGoAll();
+      gamepads.letGo();
+    },
   });
   window.addEventListener("blur", () => {
     letGoAll();

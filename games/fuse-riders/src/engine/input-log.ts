@@ -9,7 +9,7 @@ import {
 } from "./bomb-gesture.js";
 import type { InputIntent } from "./state.js";
 import { loggedRiderName } from "./rider-name.js";
-import { RIDER_COLORS } from "./tuning.js";
+import { MAX_PLAYERS, RIDER_COLORS } from "./tuning.js";
 
 /**
  * Entry kinds. Player kinds come from any member's own stream; management kinds only from the creator's.
@@ -100,7 +100,8 @@ export const uint32 = (value: unknown): value is number =>
   value >= 0 &&
   value <= UINT32_MAX &&
   !Object.is(value, -0);
-const slot = (value: unknown): value is number => uint32(value) && value <= 4;
+const slot = (value: unknown): value is number =>
+  uint32(value) && value < MAX_PLAYERS;
 export const memberId = (value: unknown): value is string =>
   typeof value === "string" && /^[\w:.-]{1,64}$/.test(value);
 const matchId = (value: unknown): value is string =>

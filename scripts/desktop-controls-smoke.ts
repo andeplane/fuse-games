@@ -41,7 +41,7 @@ try {
   await page.waitForFunction(
     () =>
       document.querySelector(".online-notice")?.textContent ===
-      "Join your friends, then start the race",
+      "Choose your rivals, then start the race",
   );
   for (const [code, button] of [
     ["ArrowLeft", left],
@@ -64,7 +64,7 @@ try {
   await page.getByLabel("Match length").fill("2");
   await page.keyboard.press("ArrowLeft");
   assert.doesNotMatch((await left.getAttribute("class")) ?? "", /active/);
-  await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.keyboard.down("Space");
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   assert.doesNotMatch((await fire.getAttribute("class")) ?? "", /active/);
@@ -98,7 +98,7 @@ try {
     await shortcuts.getByText(keys, { exact: true }).waitFor();
     await shortcuts.getByText(action, { exact: true }).waitFor();
   }
-  await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   assert.ok(
     await page.evaluate(
       () => document.documentElement.scrollHeight <= innerHeight,
@@ -206,7 +206,7 @@ try {
           };
         }),
       );
-    assert.equal(scores.length, 5);
+    assert.equal(scores.length, 6);
     assert.ok(
       scores.every(
         (score) => score.fits && /\d+ PTS · \+\d+/.test(score.text ?? ""),

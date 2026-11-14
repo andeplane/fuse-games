@@ -69,7 +69,7 @@ export function setupLocalPlayers(
       node("h1", "PLAY LOCAL"),
       node(
         "p",
-        "Connect your controllers, then press a button on each one to detect it. Up to five players share this screen; AI fills the spare seats.",
+        "Connect your controllers, then press a button on each one to detect it. Up to six players share this screen; AI fills the spare seats.",
       ),
     );
     const help = node(
@@ -291,7 +291,7 @@ export function setupLocalPlayers(
           : "") ||
           failure ||
           (count > MAX_PLAYERS
-            ? "Choose at most five players."
+            ? "Choose at most six players."
             : count
               ? `${count} player${count === 1 ? "" : "s"} · ${MAX_PLAYERS - count} AI rivals`
               : "No controllers detected yet. Press a button, or add a keyboard player."),

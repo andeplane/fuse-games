@@ -1,3 +1,7 @@
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import type {
   Action,
   MapDefinition,
@@ -855,6 +859,7 @@ export function mountFuseCraft(
   // A press on the minimap keeps the camera on the pointer until release.
   let minimapDrag: number | null = null;
   function onPointerDown(event: PointerEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
     const minimap = (event.target as Element).closest?.("#nd-minimap");
     if (!minimap || pending || event.button !== 0) return;
     minimapDrag = event.pointerId;
@@ -1314,7 +1319,8 @@ export function mountFuseCraft(
         primaryAction: room.manager
           ? `<button data-action="start-room" class="primary" ${canStart ? "" : "disabled"}>Start match</button>`
           : undefined,
-        mainMenu: '<button data-action="leave-room">Main menu</button>',
+        mainMenu:
+          '<button class="fui-back" data-action="leave-room" aria-label="Back">Back</button>',
         actions: `<p class="room-status" role="status">${escape(room.stage === "connecting" ? "Connecting to the room…" : players.length > capacity ? `Too many players for this map: it seats ${capacity}. Pick a larger map or ask someone to leave.` : room.status)}</p>${!room.manager ? "<span>Waiting for the host to start…</span>" : ""}`,
       })
     );
@@ -1634,6 +1640,7 @@ export function mountFuseCraft(
   }
 
   function onClick(event: MouseEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
     dependencies.audio?.unlock();
     const target = event.target as Element;
     const watchedId = target.closest<HTMLElement>("[data-watch-player]")
@@ -1975,6 +1982,7 @@ export function mountFuseCraft(
   }
 
   function onPointerMove(event: PointerEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
     if (event.pointerId === minimapDrag) {
       const minimap = root.querySelector("#nd-minimap");
       if (minimap && event.buttons)
@@ -2093,12 +2101,14 @@ export function mountFuseCraft(
    * page body, so it listens on the document rather than the app root.
    */
   function onDocumentKeyDown(event: KeyboardEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
     if (!helpOpen || screen !== "game" || event.key !== "Escape") return;
     event.preventDefault();
     closeHelp();
   }
 
   function onKeyDown(event: KeyboardEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
     if (gameMenu.isOpen()) return;
     // How to play is modal: no game shortcut acts behind it.
     if (helpOpen && screen === "game") return;
@@ -2260,6 +2270,13 @@ export function mountFuseCraft(
   root.addEventListener("keydown", onKeyDown);
   root.addEventListener("input", onInput);
   const page = root.ownerDocument;
+  const stopPlaytestInput = registerPlaytestInput(page, {
+    cancel: () => {
+      minimapDrag = null;
+      for (const direction of Object.values(ARROWS))
+        camera?.hold(direction, false);
+    },
+  });
   page.addEventListener("keydown", onDocumentKeyDown);
   if (
     dependencies.initialRoom &&
@@ -2271,6 +2288,7 @@ export function mountFuseCraft(
     dispose() {
       if (disposed) return;
       disposed = true;
+      stopPlaytestInput();
       roomBackground?.stop();
       cancelLoads();
       disposeSession();

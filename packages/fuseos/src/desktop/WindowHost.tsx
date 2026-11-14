@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useRef } from "react";
 
 import { AboutDialog } from "../about/AboutDialog";
+import { DcppWindow } from "../dcpp/DcppWindow";
 import { DefragRunner } from "../defrag/DefragRunner";
 import { DefragWindow } from "../defrag/DefragWindow";
 import { ControlPanelWindow } from "../controlpanel/ControlPanelWindow";
@@ -15,10 +16,13 @@ import {
 } from "../fusegames/FuseGameWindow";
 import { FuseGamesContext } from "../fusegames/registry";
 import { LauncherWindow } from "../launcher/LauncherWindow";
+import { MircWindow } from "../mirc/MircWindow";
+import { NapsterWindow } from "../napster/NapsterWindow";
 import { NotepadPlusPlusWindow } from "../notepadpp/NotepadPlusPlusWindow";
 import { MediaPlayerWindow } from "../mediaplayer/MediaPlayerWindow";
 import { NetworkWindow } from "../network/NetworkWindow";
 import { RoomGameWindow } from "../network/RoomGameWindow";
+import { HallOfFameWindow } from "../halloffame/HallOfFameWindow";
 import { PaintWindow } from "../paint/PaintWindow";
 import { RecycleBinWindow } from "../recyclebin/RecycleBinWindow";
 import { GameWindow } from "../retro/GameWindow";
@@ -26,8 +30,10 @@ import { RetroFolderWindow } from "../retro/RetroFolderWindow";
 import { RunWindow } from "../run/RunWindow";
 import { DialUpWindow } from "../sounds/dialup/DialUpWindow";
 import type { WindowState } from "../state/appState";
+import { TaskManagerWindow } from "../taskmanager/TaskManagerWindow";
 import { WinampPlayer } from "../winamp/WinampPlayer";
 import { MessageBox } from "../windows/MessageBox";
+import { ModalDialogLayer } from "../windows/ModalDialogLayer";
 import { useWindowCommands } from "../windows/useWindowCommands";
 import { WindowChrome } from "../windows/WindowChrome";
 import { WindowManagerContext } from "../windows/windowManagerContext";
@@ -86,13 +92,8 @@ function WindowContent({
     case "about":
       return <AboutDialog windowId={window.id} />;
     case "dialog":
-      return (
-        <MessageBox
-          message={window.message}
-          icon={window.icon}
-          onOk={() => commands.close(window.id)}
-        />
-      );
+      // Drawn by the modal layer in `WindowHost`, never in a window frame.
+      return null;
     case "paint":
       return <PaintWindow windowId={window.id} />;
     case "winamp":
@@ -110,6 +111,8 @@ function WindowContent({
       );
     case "launcher":
       return <LauncherWindow windowId={window.id} active={active} />;
+    case "napster":
+      return <NapsterWindow windowId={window.id} />;
     case "run":
       return <RunWindow windowId={window.id} />;
     case "recyclebin":
@@ -129,8 +132,19 @@ function WindowContent({
       return <FriendsWindow windowId={window.id} />;
     case "defrag":
       return <DefragWindow windowId={window.id} />;
+    case "halloffame":
+      return <HallOfFameWindow windowId={window.id} gameId={window.gameId} />;
+    case "taskmanager":
+      return <TaskManagerWindow windowId={window.id} />;
+    case "mirc":
+      return <MircWindow windowId={window.id} />;
+    case "dcpp":
+      return <DcppWindow windowId={window.id} />;
   }
 }
+
+/** Above the taskbar (40) and the Start menu (50), below the confirm dialog portal (80). */
+const MODAL_Z_INDEX = 60;
 
 export type WindowHostProps = {
   windows: WindowState[];
@@ -167,14 +181,27 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
     [windows, pruneRects],
   );
 
+  // Message boxes are modal: the top-most one has the focus and every window under it looks inactive.
+  const dialogs = windows.filter(
+    (window): window is Extract<WindowState, { kind: "dialog" }> =>
+      window.kind === "dialog",
+  );
+  const modalId = dialogs[dialogs.length - 1]?.id;
+  const focusedId = modalId ?? activeId;
+
   return (
     <>
       {windows.map((window, index) => {
-        if (window.minimized || window.kind === "winamp") return null;
+        if (
+          window.minimized ||
+          window.kind === "winamp" ||
+          window.kind === "dialog"
+        )
+          return null;
         const meta = windowMeta(window, games);
-        const active = window.id === activeId;
+        const active = window.id === focusedId;
         const activate = () => {
-          if (!active) commands.focus(window.id);
+          if (!active && modalId === undefined) commands.focus(window.id);
         };
         // On a phone every resizable window fills the screen; the stored `maximized` flag is left
         // alone so the window floats again where there is room (a rotated tablet, a desktop).
@@ -226,6 +253,23 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
           </WindowFrame>
         );
       })}
+      {dialogs.map((dialog, index) => (
+        <ModalDialogLayer
+          key={dialog.id}
+          title={windowMeta(dialog, games).title}
+          icon={dialog.icon}
+          zIndex={MODAL_Z_INDEX + index}
+          active={dialog.id === modalId}
+          onClose={() => commands.close(dialog.id)}
+        >
+          <MessageBox
+            message={dialog.message}
+            icon={dialog.icon}
+            active={dialog.id === modalId}
+            onOk={() => commands.close(dialog.id)}
+          />
+        </ModalDialogLayer>
+      ))}
       {/* Disk Defragmenter's run outlives its minimized window: the runner is mounted for as long as the window exists. */}
       {windows.map((window) =>
         window.kind === "defrag" ? (

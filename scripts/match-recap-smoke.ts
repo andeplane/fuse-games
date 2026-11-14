@@ -140,7 +140,7 @@ async function assertRecapLayout(page: Page): Promise<{
   await dialog.getByText("MATCH COMPLETE", { exact: true }).waitFor();
   const champions = await page.locator(".recap-standings .is-champion").count();
   assert.ok(champions >= 1 && champions <= 5, `champions: ${champions}`);
-  assert.equal(await page.locator(".recap-standings tbody tr").count(), 5);
+  assert.equal(await page.locator(".recap-standings tbody tr").count(), 6);
   assert.equal(await page.locator(".recap-standings .is-you").count(), 1);
   assert.ok(await page.locator(".recap-victory h2").textContent());
   assert.ok((await page.locator(".recap-feature").count()) >= 1);
@@ -160,7 +160,7 @@ async function assertRecapLayout(page: Page): Promise<{
       .count();
   assert.ok(awards >= 1, "at least one award card");
   assert.equal(totals, 8, "gameplay totals strip");
-  assert.equal(rows, 5, "one comparison row per rider");
+  assert.equal(rows, 6, "one comparison row per rider");
   await page
     .locator(".comparison-header")
     .getByText("PTS", { exact: true })
@@ -298,7 +298,7 @@ try {
           .click();
         assert.equal(await page.getByLabel("Match length").inputValue(), "3");
         await page.getByLabel("Match length").fill("1"); // saves on input
-        await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+        await page.getByRole("button", { name: "Back", exact: true }).click();
         await dialog.waitFor({ state: "hidden" });
         await page
           .getByRole("button", { name: "BACK TO LOBBY", exact: true })
@@ -427,7 +427,7 @@ try {
       await inside(page, page.getByRole("button", { name: /full stats/ }));
       screenshots.push(`artifacts/match-recap-${tag}-scrolled.png`);
       await page.screenshot({ path: screenshots[1]! });
-      await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await page.getByRole("dialog").waitFor({ state: "hidden" });
       // Every menu is its own dialog (#255): none is left open, and the wide results variant is the results dialog's alone.
       await page.waitForFunction(() => {

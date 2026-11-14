@@ -14,14 +14,14 @@ pnpm dev          # builds, then serves every game; open the printed URL plus /f
 `pnpm exec tsx service/dev.ts --port 8890` serves an existing `dist/` and walks to the next free port if that one is taken. Open `/fusemania/?mute` (silent: no sound and no sound preference is stored, and the arrows follow the room's clock) or `/fusemania/` to hear it, and pick one of:
 
 - **Play, Single player**: the song select. Pick a song (or press **RANDOM SONG**), a level and a mode, then **PLAY**. The result shows the grade, the score, every judgment count and this browser's best on that chart. **PLAY YOUR OWN STEPMANIA FILE** takes a simfile and its music from this device; nothing is uploaded.
-- **Play, Host room**: a room with a QR invite, for up to five players. The players and their Join buttons are on top. Under them the host has the song select, the mode and the session; every other player sees the chosen song as one card (cover, tempo, mode, session) and picks only their own level and speed. **+ ADD AI RIVAL** seats a bot. Tick **Shared TV** first to play on one screen: the TV shows every field and each phone becomes four pads.
+- **Play, Host room**: a room with a QR invite, for up to five players. The players and their Join buttons are on top. Under them the host has the song select, the mode and the session; every other player sees the chosen song as one card (cover, tempo, mode, session) and picks only their own level and speed. An open seat's **ADD AI** seats a bot. **OPTIONS**, **SETTINGS** and **START** are across the room's top, as PLAY and OPTIONS are in the single-player song select, and stay there as the page scrolls. In the room, the host ticks **Shared TV** under the invitation to play on one screen: the TV shows every field and each phone becomes four pads. The room's code is on the invitation only, and the connection's state is one line at the lobby's foot. The menu's music plays on into a new room.
 - **Settings**: keys, scroll speed and direction, the three timing offsets (audio, input, visual) and **CALIBRATE**.
 
 **The song select** is a carousel of covers, the selected song in the middle. Left/Right (A/D, J/L), a swipe, a sideways scroll, the arrows at its sides or a click on a cover turn it; Up/Down (W/S, I/K) change the level; PageUp/PageDown or a pack's tab jump to another pack. Songs are grouped in **packs** (`src/app/packs.ts`), shown in pack order with a tab each: FUSEMANIA is the Fuse soundtrack, and DDR JAZZ MIX and ITG JAZZ MIX have their place in the order and appear when their first song is added (see "Adding a song" in `charts/README.md`). Each bundled song has a cover image in `public/music/covers/<id>.jpg`; a song without one, and a player's own simfile, wears a cover drawn from its id.
 
 **The other players' fields.** With more than one player, a device shows every field: its own lit and framed in the player's colour (in the middle of three or five players, on the left of two or four) and the others' smaller beside it, so an attack can be seen landing. Their judgments, combos, attacks and power-ups are shown as they are, but their arrows are not there to be read: every column is drawn in another column's place, the same shuffle for every opponent, changing from match to match (`src/render/scramble.ts`). It is only the picture; the Shared TV and a watcher see every field as it is.
 
-**Your speed.** The song select shows every player's own speed as chips (0.5x, 1x, 1.5x, 2x, 2.5x, 3x, 4x, 5x), and the Settings slider reaches the values between. It is saved on the device and only spreads that player's arrows apart on their own screen: the engine never sees it, so the beat, the judging and every other player are unchanged.
+**Your speed.** **OPTIONS**, beside PLAY in the song select and beside START in a room, holds every player's own speed as chips (0.5x, 1x, 1.5x, 2x, 2.5x, 3x, 4x, 5x), and the Settings slider reaches the values between. The speeds are never a row in the lobby: `src/app/lobby-bar.ts` builds the room's bar and `tests/app-lobby-bar.test.ts` holds it there. It is saved on the device and only spreads that player's arrows apart on their own screen: the engine never sees it, so the beat, the judging and every other player are unchanged.
 
 ## Sessions
 
@@ -45,7 +45,9 @@ In the song select a cover wears a download mark while its song is not on the de
 | Right         | D, L or Right       | **→**    |
 | Throw an item | Space (battle only) | **ITEM** |
 
-**Esc pauses a solo song** (a touch device has a pause button, and leaving the tab or opening a menu pauses too). The pause offers **RESUME**, which counts in 3, 2, 1, **RESTART** and **SONG SELECT**. A solo room keeps this page's time, so the pause is a clock that stands still (`src/app/pause.ts`): nothing is judged while it stands, and the engine knows nothing of it. A room with other riders cannot be paused.
+**Esc pauses a solo song** (a touch device has a pause button, and leaving the tab or opening a menu pauses too). The pause offers **RESUME**, which counts in 3, 2, 1, **RESTART** and **SONG SELECT**. A solo room keeps this page's time, so the pause is a clock that stands still (`src/app/pause.ts`): nothing is judged while it stands, and the engine knows nothing of it. A room with other riders cannot be paused: its song is everybody's, so there **Esc opens the player's own menu over a song that keeps playing** (`src/app/play-menu.ts`). The host's menu has **RESTART FOR EVERYONE** and **SONG SELECT FOR EVERYONE**; every other player's has only what is theirs, their speed and **LEAVE ROOM**, and they are told in a line over the page when the host restarted the song or went back to the song select. Arrow keys and Enter work the menu, and no step is taken while it is open.
+
+**The speed can change in the middle of a song.** **−** and **+** step this device's speed along the chips' values and a line shows the new speed for a moment; the menu over a song has the same two buttons (Left and Right on its speed row). It is the same saved speed as in OPTIONS and Settings, and still only this player's own picture.
 
 ## The result
 
@@ -57,7 +59,7 @@ Every key can be changed in Settings, up to four keys an arrow. WASD and IJKL ar
 
 ## Judging and scoring
 
-A step is judged by how far the press is from the note: Marvelous within 22 ms, Perfect 45, Great 90, Good 135, Boo 180, otherwise a Miss. The combo counts Marvelous to Good. The score is a rating out of 1,000,000: the share of the chart's best possible points, so players on different levels compare. Grades run D to AAAA.
+A step is judged by how far the press is from the note: Marvelous within 22 ms, Perfect 45, Great 90, Good 135, Boo 180, otherwise a Miss. The combo counts Marvelous to Great; a Good or worse breaks it. The combo number blinks in the colour of the worst judgment in it: white while every step was a Marvelous, yellow once a Perfect is in it, green once a Great is (the engine keeps that as `worst` beside the combo, so a device that recovers the match shows the same colour); with reduced motion it holds the colour without blinking. The score is a rating out of 1,000,000: the share of the chart's best possible points, so players on different levels compare. Grades run D to AAAA.
 
 ## Battle mode
 
