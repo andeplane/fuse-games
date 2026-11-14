@@ -95,11 +95,16 @@ export function freezePlaytestPage(
       const canvas = original as HTMLCanvasElement;
       let image = images.get(canvas);
       if (!image) {
-        if (canvas.getContext("webgl") || canvas.getContext("webgl2"))
-          throw new Error(
-            "The game renderer has not supplied a screenshot. Try again after the game loads.",
-          );
-        image = canvas.toDataURL("image/png");
+        // Never probe with getContext: on a canvas that has no context yet it
+        // creates one, and the game's own getContext then fails. A canvas
+        // that cannot be read (tainted, or a renderer that supplied nothing)
+        // leaves an empty box instead of blocking the whole report.
+        try {
+          image = canvas.toDataURL("image/png");
+        } catch {
+          image =
+            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E";
+        }
       }
       const replacement = document.createElement("img");
       replacement.src = image;

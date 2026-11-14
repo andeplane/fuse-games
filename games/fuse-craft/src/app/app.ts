@@ -2108,7 +2108,7 @@ export function mountFuseCraft(
   }
 
   function onKeyDown(event: KeyboardEvent) {
-    if (playtestInputBlocked(root.ownerDocument) || event.repeat) return;
+    if (playtestInputBlocked(root.ownerDocument)) return;
     if (gameMenu.isOpen()) return;
     // How to play is modal: no game shortcut acts behind it.
     if (helpOpen && screen === "game") return;

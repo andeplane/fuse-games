@@ -99,7 +99,14 @@ export function installPlaytestGameFocus(options: PlaytestGameFocusOptions): {
     // Input within an iframe does not bubble to FuseOS. Include keyboard focus
     // and pointer focus, even when a frame was already the browser activeElement.
     doc.addEventListener("pointerdown", announce, true);
-    doc.addEventListener("keydown", announce, true);
+    doc.addEventListener(
+      "keydown",
+      (event) => {
+        // A held key repeats thirty times a second and announces nothing new.
+        if (!event.repeat) announce();
+      },
+      true,
+    );
     win.addEventListener("focus", announce);
   }
   return {

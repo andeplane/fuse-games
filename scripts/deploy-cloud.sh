@@ -182,7 +182,7 @@ gcloud run deploy "$CLOUD_RUN_SERVICE" --project="$PROJECT_ID" --region="$GCP_RE
   --min=0 --max=2 --min-instances=0 --max-instances=2 \
   --cpu=1 --memory=512Mi --concurrency=80 --timeout=3600 \
   --cpu-throttling --no-session-affinity --allow-unauthenticated \
-  --env-vars-file="$env_file" "${telemetry_secret_flags[@]}" --labels="application=fuse-riders,commit=$revision"
+  --env-vars-file="$env_file" ${telemetry_secret_flags[@]+"${telemetry_secret_flags[@]}"} --labels="application=fuse-riders,commit=$revision"
 
 mkdir -p artifacts
 manifest="artifacts/cloud-release-$revision.json"

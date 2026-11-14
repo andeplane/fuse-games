@@ -1366,7 +1366,7 @@ export function createGameScreen(
       running = false;
     },
     keydown(event: KeyboardEvent) {
-      if (playtestInputBlocked(game.ownerDocument) || event.repeat) return;
+      if (playtestInputBlocked(game.ownerDocument)) return;
       if (tour) {
         if (event.key === "Escape") endTour();
         else if (event.key === "ArrowRight" || event.key === "Enter")

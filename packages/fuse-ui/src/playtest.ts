@@ -18,6 +18,7 @@ import {
 import {
   createRecordingUploader,
   indexedDbPlaytestOutbox,
+  PermanentUploadError,
   type StoredRecording,
   type StoredSegment,
   type PlaytestOutbox,
@@ -57,6 +58,7 @@ interface RecordingContext {
 }
 const installed = new WeakMap<Document, BrowserPlaytest>();
 const INTENT = "fuse-playtest-recording-intent";
+const DENIED = "fuse-playtest-access-denied";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function recordingRequested(
@@ -219,15 +221,17 @@ export function installBrowserPlaytest(
             403,
           );
         if (response.status === 413)
-          throw new Error(
+          throw new PlaytestRequestError(
             "This attachment is too large. Capture a smaller screenshot and retry.",
+            413,
           );
         if (response.status === 429)
           throw new Error(
             "The upload limit was reached. Wait a moment, then retry.",
           );
-        throw new Error(
+        throw new PlaytestRequestError(
           `Could not save (${response.status}). Retry when the service is available.`,
+          response.status,
         );
       }
       return response.json();
@@ -271,6 +275,24 @@ export function installBrowserPlaytest(
           win.location.origin,
         );
   }
+  // An ordinary signed-in player is asked once per tab whether they are a
+  // developer, not on every page load and reconnect.
+  let accountName: string | undefined;
+  const deniedName = (): string | null => {
+    try {
+      return win.sessionStorage.getItem(DENIED);
+    } catch {
+      return null;
+    }
+  };
+  const rememberDenied = (name: string | undefined) => {
+    try {
+      if (name) win.sessionStorage.setItem(DENIED, name);
+      else win.sessionStorage.removeItem(DENIED);
+    } catch {
+      /* Without session storage the check simply repeats. */
+    }
+  };
   function revokeAccess(generation: number) {
     if (disposed || generation !== accessGeneration) return;
     accessGeneration++;
@@ -304,8 +326,11 @@ export function installBrowserPlaytest(
         if (
           error instanceof PlaytestRequestError &&
           (error.status === 401 || error.status === 403)
-        )
+        ) {
+          if (error.status === 403 && generation === accessGeneration)
+            rememberDenied(accountName);
           revokeAccess(generation);
+        }
         // Network/server failures retain current approval and retry on online.
       })
       .finally(() => {
@@ -641,6 +666,7 @@ export function installBrowserPlaytest(
   if (ownsMicrophone) {
     // Guests never load the sign-in SDK or make a developer-access request.
     // Every account transition invalidates outstanding checks and any active capture.
+    const explicitIntent = recordingRequested(win.location.search, null);
     identity.watchAccount((user) => {
       const generation = ++accessGeneration;
       signedIn = Boolean(user);
@@ -650,10 +676,17 @@ export function installBrowserPlaytest(
         stoppedReason = "Account changed. Recording stopped.";
         void endRecording?.();
       }
-      if (!user) return;
+      accountName = user?.name;
+      if (!user) {
+        rememberDenied(undefined);
+        return;
+      }
+      if (deniedName() === user.name && !explicitIntent) return;
       void checkAccess(generation);
     });
     win.addEventListener("online", () => {
+      if (accountName && deniedName() === accountName && !explicitIntent)
+        return;
       void checkAccess();
     });
     let stored: string | null = null;
@@ -814,6 +847,19 @@ export function installBrowserPlaytest(
         .filter(Boolean)
         .join(" ");
     };
+    // Sign-in, access, overload and server failures are retried; a request
+    // the service rejects as such will be rejected again.
+    const uploadRequest: typeof request = (...input) =>
+      request(...input).catch((error: unknown) => {
+        if (
+          error instanceof PlaytestRequestError &&
+          [400, 404, 410, 413, 422].includes(error.status)
+        )
+          throw new PermanentUploadError(
+            `The service refused it (${error.status}).`,
+          );
+        throw error;
+      });
     const uploader = createRecordingUploader({
       store,
       ownerUid: () => approvedUid,
@@ -821,7 +867,7 @@ export function installBrowserPlaytest(
       upload: {
         async segment(session, segment) {
           const acknowledgement = object(
-            await request(
+            await uploadRequest(
               `/api/telemetry/recordings/${session.id}/segments/${segment.sequence}`,
               {
                 method: "PUT",
@@ -849,7 +895,7 @@ export function installBrowserPlaytest(
         },
         async finish(session) {
           const acknowledgement = object(
-            await request(
+            await uploadRequest(
               `/api/telemetry/recordings/${session.id}/finish`,
               json({}),
               true,
@@ -999,8 +1045,13 @@ export function installBrowserPlaytest(
       stop.disabled = true;
       publishRecording({ busy: true });
       stopping = (async () => {
-        await capture.stop();
-        microphone = undefined;
+        try {
+          await capture.stop();
+        } finally {
+          // A failed stop still ends this capture: never keep showing
+          // "Recording" or stamping reports with a dead microphone's time.
+          microphone = undefined;
+        }
         await writes;
         if (recording) {
           recording = await store!.updateRecording(
@@ -1041,7 +1092,11 @@ export function installBrowserPlaytest(
     disposed = true;
   });
   win.addEventListener("pageshow", (event) => {
-    if (event.persisted) win.location.reload();
+    if (!event.persisted) return;
+    // Only a mounted recorder tore down state it cannot rebuild; an ordinary
+    // player's page comes back from the back/forward cache as it was.
+    if (recorderMounted) win.location.reload();
+    else disposed = false;
   });
   return api;
 }
@@ -1058,5 +1113,11 @@ export function browserPlaytestFor(
     typeof win.fetch !== "function"
   )
     return undefined;
-  return installBrowserPlaytest({ document, window: win, gameId });
+  try {
+    return installBrowserPlaytest({ document, window: win, gameId });
+  } catch {
+    // Reporting is tooling: a sandboxed frame or a bad API origin must cost
+    // the Report button, never the game's header.
+    return undefined;
+  }
 }

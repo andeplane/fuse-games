@@ -109,6 +109,7 @@ export class World<
   ) {
     this.ticker = game.createTicker();
     this.work = state;
+    this.installedTick = state.tick;
     this.snapshots.set(state.tick, structuredClone(state));
     this.gameTicks.set(state.tick, game.clock(state));
     this.frames = [this.frame(state)];
@@ -474,6 +475,8 @@ export class World<
   }
   /** `confirmedGameTick` as last read while settled. */
   private settledConfirmed = -1;
+  /** Tick of the state this world was given, at construction or by the last install. */
+  private installedTick = -1;
   private confirmedSnapshot: Room | undefined;
   private confirmedSnapshotFrame: Frame<View> | undefined;
   /**
@@ -484,10 +487,13 @@ export class World<
    */
   confirmedFrame(): Frame<View> | undefined {
     const complete = this.work.tick - ROLLBACK_TICKS;
-    const at = Math.max(
-      ...[...this.snapshots.keys()].filter((tick) => tick <= complete),
-      -1,
-    );
+    // Called every frame: no allocation unless the confirmed snapshot moved.
+    let at = -1;
+    for (const tick of this.snapshots.keys())
+      if (tick <= complete && tick > at) at = tick;
+    // An installed snapshot may be the server's speculative state, so it is
+    // never final by itself: only history this replica stepped past it is.
+    if (at <= this.installedTick) return undefined;
     const snapshot = this.snapshots.get(at);
     if (!snapshot) return undefined;
     if (snapshot !== this.confirmedSnapshot) {
@@ -528,6 +534,7 @@ export class World<
   install(state: Room): void {
     this.confirmedSnapshot = undefined;
     this.confirmedSnapshotFrame = undefined;
+    this.installedTick = state.tick;
     this.revision++;
     this.state = this.work = state;
     this.snapshots = new Map([[state.tick, structuredClone(state)]]);

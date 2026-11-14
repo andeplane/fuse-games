@@ -112,6 +112,24 @@ test("confirmed frames exclude gaps and predictions, cache detached views and fo
   assert.ok((gapped.confirmedFrame()?.logTick ?? -1) < 9);
 });
 
+test("a served snapshot is never final by itself: only history stepped past it is", () => {
+  const server = running();
+  server.advance(12);
+  // What a joiner is served may be the server's speculative state.
+  const joiner = running();
+  joiner.install(structuredClone(server.state));
+  joiner.stream("a", 1).through = 100;
+  joiner.stream("b", 1).through = 100;
+  joiner.advance(12 + 43);
+  assert.equal(
+    joiner.confirmedFrame(),
+    undefined,
+    "the installed tick is outside the window but was never replayed here",
+  );
+  joiner.advance(12 + 47);
+  assert.equal(joiner.confirmedFrame()?.logTick, 16);
+});
+
 test("departed members cannot make provisional wins look final while their inputs can still arrive", () => {
   const world = running("a", 5);
   const a = world.streams.get("a")!;

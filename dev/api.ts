@@ -48,7 +48,7 @@ export function createWorkspaceApi(transport: WorkspaceTransport) {
             ? "This Google account does not have developer access."
             : result.status === 400 || result.status === 422
               ? url.pathname === "/api/dev/metrics"
-                ? "This date range cannot be loaded. Choose a shorter range or another period."
+                ? "These metrics cannot be loaded. Check the game id, or choose a shorter range or another period."
                 : "This request could not be accepted. Check the fields and try again."
               : result.status === 404
                 ? "This item is no longer available. It may have expired."

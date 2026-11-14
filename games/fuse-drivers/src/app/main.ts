@@ -158,7 +158,7 @@ function keyboardControls(blocked: () => boolean): {
   const down = new Set<string>();
   const key = (event: KeyboardEvent) => event.key.toLowerCase();
   const onDown = (event: KeyboardEvent) => {
-    if (blocked() || event.repeat) return;
+    if (blocked()) return;
     if (
       event.target instanceof HTMLInputElement ||
       event.target instanceof HTMLButtonElement

@@ -3,7 +3,9 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { FieldPath, type WhereFilterOp } from "@google-cloud/firestore";
 import {
+  debugListQuery,
   queryRecordingReports,
+  type DebugListQuery,
   type DebugReportQuery,
 } from "../src/debug-firestore.js";
 
@@ -33,6 +35,63 @@ class ReportQuery implements DebugReportQuery {
     return { docs: [] };
   }
 }
+
+class ListQuery implements DebugListQuery<string[]> {
+  operations: string[] = [];
+  private cursor = false;
+  where(field: string, operation: WhereFilterOp, value: unknown) {
+    // Mirrors the SDK, which throws here once any cursor has been set.
+    assert.equal(this.cursor, false, "where() after a cursor");
+    this.operations.push(`where ${field} ${operation} ${String(value)}`);
+    return this;
+  }
+  orderBy(field: string | FieldPath) {
+    this.operations.push(`orderBy ${typeof field === "string" ? field : "id"}`);
+    return this;
+  }
+  startAt(value: string) {
+    this.cursor = true;
+    this.operations.push(`startAt ${value}`);
+    return this;
+  }
+  startAfter(value: string) {
+    this.cursor = true;
+    this.operations.push(`startAfter ${value}`);
+    return this;
+  }
+  endAt(value: string) {
+    this.cursor = true;
+    this.operations.push(`endAt ${value}`);
+    return this;
+  }
+  limit(count: number) {
+    return [...this.operations, `limit ${count}`];
+  }
+}
+
+test("Firestore listings filter before setting a cursor", () => {
+  assert.deepEqual(
+    debugListQuery(
+      new ListQuery(),
+      "report:",
+      undefined,
+      "recording-one",
+    ).limit(51),
+    [
+      "where recordingId == recording-one",
+      "orderBy id",
+      "startAt report:",
+      "endAt report:",
+      "limit 51",
+    ],
+  );
+  assert.deepEqual(
+    debugListQuery(new ListQuery(), "report:", "report:abc", undefined).limit(
+      26,
+    ),
+    ["orderBy id", "startAfter report:abc", "endAt report:", "limit 26"],
+  );
+});
 
 test("Firestore report links query only ready/live reports within the chunk, with a matching production index", async () => {
   const query = new ReportQuery();

@@ -305,6 +305,32 @@ test("durable delivery retries extraction without paying to transcribe twice", a
   assert.equal(calls, 1);
   assert.equal(hooks, 2);
 });
+test("action extraction that keeps failing is given up visibly instead of redelivered forever", async () => {
+  const { service, objects, advance } = setup();
+  await service.createRecording("owner", recording);
+  await service.upload("owner", id, 0, 0, wav());
+  let hooks = 0;
+  const worker = new TranscriptionWorker({
+      service,
+      bucket: "test",
+      transcriber: { transcribe: async () => "Fiks denne feilen, please." },
+      afterTranscript: async () => {
+        hooks++;
+        throw new Error("Previous transcript is not ready");
+      },
+    }),
+    event = await eventFor(objects);
+  await assert.rejects(() => worker.process(event), /retry/);
+  advance(60 * 60_000);
+  await assert.rejects(() => worker.process(event), /retry/);
+  advance(61 * 60_000);
+  await worker.process(event);
+  await worker.process(event);
+  assert.equal(hooks, 2, "acknowledged without another attempt");
+  const saved = (await service.detail(id)).segments[0]!;
+  assert.equal(saved.transcript, "Fiks denne feilen, please.");
+  assert.match(saved.error ?? "", /not extracted/);
+});
 test("concurrent durable redelivery is fenced, transient retries and permanent failure visible", async () => {
   const { service, objects } = setup();
   await service.createRecording("owner", recording);

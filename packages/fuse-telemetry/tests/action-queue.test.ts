@@ -69,7 +69,9 @@ function fixture(
   let time = 1000,
     calls = 0;
   const transcripts = new Map<number, TranscriptActionSegment>();
+  const failed = new Set<number>();
   const service = createActionService({
+    readFailed: async (_recording, sequence) => failed.has(sequence),
     database,
     extractor: {
       async extract(value) {
@@ -88,6 +90,7 @@ function fixture(
     database,
     service,
     transcripts,
+    failed,
     time: (value: number) => {
       time = value;
     },
@@ -760,6 +763,57 @@ test("extraction has one fenced owner while duplicate deliveries retry without d
   await f.process(value);
   assert.equal(f.calls(), 1);
   assert.equal((await one(f.service)).status, "proposed");
+});
+
+test("segments that failed transcription for good do not hold up the ones after them", async () => {
+  const f = fixture(async (value) => {
+    const text = value.segments.at(-1)!.text;
+    return [candidate(text, value.currentSequence, { title: text })];
+  });
+  await f.process(segment(0, "Fix the stuck menu."));
+  // 1 and 2 will never have a transcript; 3 arrives before that is known.
+  await assert.rejects(
+    f.process(segment(3, "Add a pause button.")),
+    /Previous transcript/,
+  );
+  f.failed.add(2);
+  await assert.rejects(
+    f.process(segment(3, "Add a pause button.")),
+    /not complete/,
+    "segment 1 is still unaccounted for",
+  );
+  f.failed.add(1);
+  await f.process(segment(3, "Add a pause button."));
+  assert.equal((await f.service.list({}, admin)).actions.length, 2);
+  await f.process(segment(4, "Fix the score display."));
+  assert.equal((await f.service.list({}, admin)).actions.length, 3);
+});
+
+test("a task asked for again after being called off is proposed again", async () => {
+  const f = fixture(async (value) =>
+    value.currentSequence === 0
+      ? [candidate("Fix the stuck menu.")]
+      : value.currentSequence === 1
+        ? [
+            candidate("Cancel the menu task.", 1, {
+              kind: "retract",
+              targetId: value.existing[0]!.id,
+            }),
+          ]
+        : [
+            candidate("OK, fix the stuck menu.", 2, {
+              targetId: value.existing[0]!.id,
+            }),
+          ],
+  );
+  await f.process(segment(0, "Fix the stuck menu."));
+  await f.process(segment(1, "Cancel the menu task."));
+  assert.equal((await one(f.service)).status, "retracted");
+  await f.process(segment(2, "OK, fix the stuck menu."));
+  const action = await one(f.service);
+  assert.equal(action.status, "proposed");
+  assert.equal(action.retraction, null);
+  await claim(f.service, action.id);
 });
 
 test("retraction plus an expired lease stays retracted; older duplicate instructions never reopen it", async () => {

@@ -97,6 +97,12 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     database: options.actionDatabase,
     extractor: options.extractor,
     now,
+    async readFailed(recordingId, sequence) {
+      const segment = await options.debugDatabase.read(
+        segmentKey(recordingId, sequence),
+      );
+      return segment?.kind === "segment" && segment.status === "failed";
+    },
     async readNeighbors(recordingId, sequence) {
       const indices = [
         sequence - 2,
@@ -156,6 +162,10 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     createActionHttp(actions, options.developer),
   );
   const admission = new TelemetryAdmission(now);
+  // Screenshot reports and audio chunks buffer megabytes each, and reports
+  // are anonymous. The instance also holds every room's signalling sockets,
+  // so far fewer of these may be in flight than of the small requests.
+  const uploads = new TelemetryAdmission(now, 8, 2);
   const protectedRoutes: HttpExtension = {
     methods: privateRoutes.methods,
     headers: privateRoutes.headers,
@@ -163,7 +173,10 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
       const path = new URL(req.url ?? "/", "http://telemetry").pathname;
       if (!path.startsWith("/api/telemetry/") && !path.startsWith("/api/dev/"))
         return false;
-      return admission.run(address, async () => {
+      const heavy =
+        req.method === "PUT" ||
+        (req.method === "POST" && path === "/api/telemetry/reports");
+      return (heavy ? uploads : admission).run(address, async () => {
         await quota.consume([
           {
             dimension: "private-api",
@@ -236,8 +249,19 @@ export async function createLocalTelemetry(options: {
 }
 
 export const telemetryUnavailable: HttpExtension = {
-  async handle(req) {
+  async handle(req, res) {
     const path = new URL(req.url ?? "/", "http://telemetry").pathname;
+    // Every player's browser posts here. Until insights are configured that
+    // is an expected, quiet "not here" that clients drop, not a logged
+    // failure they retry.
+    if (path === "/api/telemetry/events") {
+      res.writeHead(404, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
+      res.end(JSON.stringify({ error: "Metrics are not configured" }));
+      return true;
+    }
     if (
       path.startsWith("/api/telemetry/") ||
       path.startsWith("/api/dev/") ||

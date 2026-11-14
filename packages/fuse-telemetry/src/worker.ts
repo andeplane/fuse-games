@@ -17,6 +17,8 @@ export interface TranscriptionWorkerOptions {
   afterTranscript?: TranscriptHook;
   leaseMs?: number;
   maxAttempts?: number;
+  /** How long a saved transcript may wait on action extraction before it is given up visibly. */
+  actionWindowMs?: number;
 }
 export class TranscriptionWorker {
   constructor(private options: TranscriptionWorkerOptions) {}
@@ -50,8 +52,38 @@ export class TranscriptionWorker {
       )
         return { result: undefined };
       debugAssert(segment.leaseUntil <= now, 503, "Transcription lease busy");
+      // The transcription phase has an attempt limit; this bounds the action
+      // phase too. Without it a segment whose extraction can never succeed
+      // (an earlier chunk that was never uploaded, a corrupt neighbour) is
+      // redelivered for as long as Pub/Sub retains it.
+      if (
+        segment.transcript !== undefined &&
+        segment.actionsSince !== undefined &&
+        now - segment.actionsSince >
+          (this.options.actionWindowMs ?? 2 * 60 * 60_000)
+      )
+        return {
+          writes: new Map([
+            [
+              key,
+              {
+                ...segment,
+                actionsComplete: true,
+                leaseUntil: 0,
+                status: "complete" as const,
+                error:
+                  "Tasks were not extracted from this segment; read its transcript.",
+              },
+            ],
+          ]),
+          result: undefined,
+        };
       const next: SegmentRecord = {
         ...segment,
+        ...(segment.transcript !== undefined &&
+        segment.actionsSince === undefined
+          ? { actionsSince: now }
+          : {}),
         generation: event.generation,
         lease: segment.lease + 1,
         leaseUntil: now + (this.options.leaseMs ?? 600_000),
@@ -106,6 +138,7 @@ export class TranscriptionWorker {
           ...current,
           transcript: text,
           status: "complete",
+          actionsSince: service.now(),
         }));
         savedTranscript = true;
       }

@@ -1179,7 +1179,13 @@ function room(solo: boolean): void {
       !model?.riding
     )
       return;
-    if (!event.repeat && controls.press(event.code)) {
+    // A repeat presses nothing new, but a held game key must stay swallowed
+    // or the page scrolls and a focused button fires under the player.
+    if (event.repeat) {
+      if (captured.has(event.code)) event.preventDefault();
+      return;
+    }
+    if (controls.press(event.code)) {
       captured.add(event.code);
       event.preventDefault();
     }

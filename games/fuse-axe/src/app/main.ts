@@ -991,7 +991,10 @@ function room(solo: boolean): void {
     target instanceof HTMLTextAreaElement ||
     (target instanceof HTMLButtonElement && !model?.playing);
   document.addEventListener("keydown", (event) => {
-    if (event.repeat) return;
+    if (event.repeat) {
+      if (controls.holds(event.code)) event.preventDefault();
+      return;
+    }
     if (
       controls.down(event, menu.isOpen() || modalOpen() || typing(event.target))
     )

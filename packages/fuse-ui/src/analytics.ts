@@ -117,7 +117,9 @@ export function createAnalytics(
     });
     environment.onFlush?.(() => delivery.flush());
     environment.onActivity?.(() => {
-      if (started && status() === "on") delivery.touch();
+      // Runs on every key and pointer press: `touch` throttles first and
+      // checks consent itself, so the status is not read per keystroke.
+      if (started) delivery.touch();
     });
   } catch {
     /* unavailable browser surfaces do not break startup */
@@ -192,6 +194,16 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         body: JSON.stringify({ events }),
         keepalive: true,
       });
+      // A batch the service refuses outright will be refused again: retrying
+      // it would hold every later event, from every game on this origin,
+      // behind it. Let it go; only overload and server failures are retried.
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 408 &&
+        response.status !== 429
+      )
+        return events.map((event) => event.id);
       if (!response.ok) throw new Error("Metrics unavailable");
       const body: unknown = await response.json();
       if (

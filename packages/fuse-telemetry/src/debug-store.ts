@@ -33,6 +33,8 @@ export interface SegmentRecord extends SegmentView {
   expiresAt: number;
   mediaExpiresAt: number;
   actionsComplete?: boolean;
+  /** When action extraction was first attempted on the saved transcript. */
+  actionsSince?: number;
 }
 export interface LimitRecord {
   kind: "limit";
@@ -141,7 +143,8 @@ export function storedDebugRecord(value: unknown): DebugRecord | undefined {
       (record.generation !== undefined && !text(record.generation, 128)) ||
       (record.gameId !== undefined && !text(record.gameId, 80)) ||
       (record.actionsComplete !== undefined &&
-        typeof record.actionsComplete !== "boolean"))
+        typeof record.actionsComplete !== "boolean") ||
+      (record.actionsSince !== undefined && !integer(record.actionsSince)))
   )
     throw new Error("Invalid segment metadata");
   if (

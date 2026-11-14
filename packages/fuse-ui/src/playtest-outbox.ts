@@ -152,6 +152,8 @@ export function indexedDbPlaytestOutbox(factory: IDBFactory): PlaytestOutbox {
   };
 }
 
+/** The service refused this upload for good; retrying cannot succeed. */
+export class PermanentUploadError extends Error {}
 export interface RecordingUpload {
   segment(recording: StoredRecording, segment: StoredSegment): Promise<void>;
   finish(recording: StoredRecording): Promise<void>;
@@ -194,51 +196,92 @@ export function createRecordingUploader(deps: UploadDependencies) {
     );
   }
   async function drain() {
-    let items = await ownedItems();
+    // A segment whose recording row is gone can never upload, yet would count
+    // toward the storage cap forever.
+    const everything = await deps.store.list();
+    const known = new Set(
+      everything.flatMap((item) =>
+        item.kind === "recording" ? [item.id] : [],
+      ),
+    );
+    for (const item of everything)
+      if (item.kind === "segment" && !known.has(item.recordingId))
+        await deps.store.remove(item.key);
+    const items = await ownedItems();
     let pending = items.filter((item) => item.kind === "segment").length;
     let savedMs = items.reduce(
       (saved, item) =>
         item.kind === "recording" ? Math.max(saved, item.savedMs) : saved,
       0,
     );
+    let discarded: string | undefined;
     deps.changed({ pending, savedMs });
+    const segmentsOf = async (id: string) =>
+      (await deps.store.list())
+        .filter(
+          (value): value is StoredSegment =>
+            value.kind === "segment" && value.recordingId === id,
+        )
+        .sort((a, b) => a.sequence - b.sequence);
     for (const item of items) {
       if (item.kind !== "recording") continue;
       let recording = item;
-      const segments = items
-        .filter(
-          (value): value is StoredSegment =>
-            value.kind === "segment" && value.recordingId === item.id,
-        )
-        .sort((a, b) => a.sequence - b.sequence);
-      for (const segment of segments) {
-        if (cancelled || recording.ownerUid !== deps.ownerUid()) return;
-        await deps.upload.segment(recording, segment);
-        // First persist acknowledgement; a crash before removal simply retries an immutable upload.
-        recording = await deps.store.updateRecording(
-          recording.key,
-          (current) => ({
-            ...current,
-            savedMs: Math.max(current.savedMs, segment.endMs),
-          }),
-        );
-        await deps.store.remove(segment.key);
-        pending--;
-        savedMs = recording.savedMs;
-        deps.changed({ pending, savedMs });
-      }
-      if (
-        recording.finished &&
-        !cancelled &&
-        recording.ownerUid === deps.ownerUid()
-      ) {
-        await deps.upload.finish(recording);
+      try {
+        for (;;) {
+          // Listed afresh each pass: the final segment of a recording is
+          // often stored while an earlier one is still uploading, and
+          // finishing from a stale list would drop it.
+          const segments = await segmentsOf(item.id);
+          for (const segment of segments) {
+            if (cancelled || recording.ownerUid !== deps.ownerUid()) return;
+            await deps.upload.segment(recording, segment);
+            // First persist acknowledgement; a crash before removal simply retries an immutable upload.
+            recording = await deps.store.updateRecording(
+              recording.key,
+              (current) => ({
+                ...current,
+                savedMs: Math.max(current.savedMs, segment.endMs),
+              }),
+            );
+            await deps.store.remove(segment.key);
+            pending = Math.max(0, pending - 1);
+            savedMs = recording.savedMs;
+            deps.changed({ pending, savedMs });
+          }
+          if (cancelled || recording.ownerUid !== deps.ownerUid()) return;
+          // `finished` and the segment list are read together, after every
+          // upload above: nothing stored before the stop can be missed.
+          recording = await deps.store.updateRecording(
+            recording.key,
+            (current) => current,
+          );
+          if ((await segmentsOf(item.id)).length) continue;
+          if (recording.finished) {
+            await deps.upload.finish(recording);
+            await deps.store.remove(recording.key);
+          }
+          break;
+        }
+      } catch (error) {
+        if (!(error instanceof PermanentUploadError)) throw error;
+        // The service will never take this recording: keeping it would block
+        // every later one and fill the storage cap.
+        for (const segment of await segmentsOf(item.id))
+          await deps.store.remove(segment.key);
         await deps.store.remove(recording.key);
+        discarded = `A recording could not be saved and was discarded. ${error.message}`;
+        pending = (await ownedItems()).filter(
+          (value) => value.kind === "segment",
+        ).length;
+        deps.changed({ pending, savedMs, error: discarded });
       }
     }
-    // New segments may have arrived while a request was pending.
-    items = await ownedItems();
-    if (items.some((item) => item.kind === "segment")) await drain();
+    // New recordings may have arrived while a request was pending.
+    if (
+      (await ownedItems()).some((item) => item.kind === "segment") &&
+      !cancelled
+    )
+      again = true;
     retry = 0;
   }
   function kick(): Promise<void> {

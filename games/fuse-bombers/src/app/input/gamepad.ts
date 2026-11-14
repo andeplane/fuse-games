@@ -129,6 +129,11 @@ export function attachGamepads(
           state.since = undefined;
           state.held = false;
           hold(device, 0);
+          // Keep the menu buttons current without acting on them, so one let
+          // go while latched does not swallow its next press.
+          for (const [button] of MENU_BUTTONS)
+            if (isDown(pad.buttons[button])) state.menu.add(button);
+            else state.menu.delete(button);
           continue;
         }
         hold(device, bits);

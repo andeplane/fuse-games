@@ -38,8 +38,23 @@ export function observeConfirmedPlay<View>(
   playFrame: (view: View) => PlayFrame,
 ): void {
   const final = confirmed();
-  observe(playFrame(current), { frame: final && playFrame(final) });
+  let frame: PlayFrame | undefined;
+  if (final !== undefined) {
+    // The confirmed view only changes every few ticks while this runs every
+    // frame, and mapping it can be as costly as presenting the whole game.
+    const last = confirmedFrames.get(observe);
+    if (last && last.view === final) frame = last.frame;
+    else {
+      frame = playFrame(final);
+      confirmedFrames.set(observe, { view: final, frame });
+    }
+  }
+  observe(playFrame(current), { frame });
 }
+const confirmedFrames = new WeakMap<
+  PlayObserver,
+  { view: unknown; frame: PlayFrame }
+>();
 
 /** Per-device observations, just like Riders' funnel; never a second simulation or a per-tick event stream. */
 export function createPlayMetrics(
@@ -110,12 +125,26 @@ export function createRoundMetrics(
 ): (frame: PlayFrame) => void {
   const starts = new Set<string>(),
     ends = new Set<string>();
+  let lastMatch: string | undefined,
+    lastRound: string | number | undefined,
+    lastKey = "";
   return (frame) => {
     if (!frame.matchId || !frame.seated) return;
-    const key = JSON.stringify([
-      frame.matchId,
-      frame.roundKey ?? frame.round ?? 1,
-    ]);
+    // Games call this every frame: do nothing between rounds, and build the
+    // key and properties only for a frame that can report something.
+    if (!frame.roundActive && !frame.roundEnded) return;
+    const round = frame.roundKey ?? frame.round ?? 1;
+    if (frame.matchId !== lastMatch || round !== lastRound) {
+      lastMatch = frame.matchId;
+      lastRound = round;
+      lastKey = JSON.stringify([frame.matchId, round]);
+    }
+    const key = lastKey;
+    if (
+      (!frame.roundActive || starts.has(key)) &&
+      (!frame.roundEnded || ends.has(key))
+    )
+      return;
     const properties = {
       playerCount: frame.playerCount,
       botCount: frame.botCount,

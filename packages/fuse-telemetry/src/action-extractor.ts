@@ -67,7 +67,10 @@ const bounded = (value: unknown, max: number): value is string =>
   typeof value === "string" &&
   value.length > 0 &&
   value.length <= max &&
-  !/[\u0000-\u0008]/.test(value);
+  // Titles and details are read by agents and terminals: no control
+  // characters at all, so nothing can restyle or reflow what is shown.
+  // Line breaks and tabs occur in real transcripts and stay.
+  !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(value);
 /** Defense in depth: fail closed when an output's claimed evidence is not a direct instruction. */
 export function explicitActionIntent(
   text: string,

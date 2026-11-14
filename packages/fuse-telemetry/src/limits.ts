@@ -87,13 +87,21 @@ export class TelemetryAdmission {
   private budget: AddressBudget;
   private pending = 0;
   private addresses = new Map<string, number>();
-  constructor(now: () => number = Date.now) {
+  constructor(
+    now: () => number = Date.now,
+    private maxPending = 64,
+    private maxPerAddress = 4,
+  ) {
     this.budget = new AddressBudget(now, 60, 2, 5000);
   }
   async run<T>(address: string, operation: () => Promise<T>): Promise<T> {
     const key = rateLimitAddress(address),
       active = this.addresses.get(key) ?? 0;
-    if (this.pending >= 64 || active >= 4 || !this.budget.take(key))
+    if (
+      this.pending >= this.maxPending ||
+      active >= this.maxPerAddress ||
+      !this.budget.take(key)
+    )
       throw new RoomError(429, "Telemetry busy; retry later");
     this.pending++;
     this.addresses.set(key, active + 1);

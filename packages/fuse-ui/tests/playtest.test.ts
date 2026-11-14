@@ -12,6 +12,7 @@ import {
   type UploadState,
   indexedDbPlaytestOutbox,
   MAX_OUTBOX_BYTES,
+  PermanentUploadError,
 } from "../src/playtest-outbox.js";
 import {
   isEditableReportTarget,
@@ -277,6 +278,82 @@ test("stopping while an upload is in flight preserves finished and acknowledged 
   await work;
   assert.equal(finished, 1);
   assert.equal((await store.list()).length, 0);
+});
+
+test("a final chunk stored while an earlier one uploads is sent before the recording is finished", async () => {
+  const store = memoryStore([{ ...session }, segment(0)]);
+  let release = () => {},
+    entered = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const order: string[] = [];
+  const uploader = createRecordingUploader({
+    store,
+    ownerUid: () => "admin",
+    changed() {},
+    schedule: () => () => {},
+    upload: {
+      async segment(_session, chunk) {
+        if (chunk.sequence === 0) {
+          entered();
+          await pending;
+        }
+        order.push(`segment ${chunk.sequence}`);
+      },
+      async finish() {
+        order.push("finish");
+      },
+    },
+  });
+  const work = uploader.kick();
+  await started;
+  // The stop: the tail is stored, then the recording is marked finished.
+  await store.put(segment(1));
+  await store.updateRecording(session.key, (current) => ({
+    ...current,
+    finished: true,
+  }));
+  release();
+  await work;
+  assert.deepEqual(order, ["segment 0", "segment 1", "finish"]);
+  assert.equal((await store.list()).length, 0);
+});
+
+test("a recording the service refuses for good is discarded, and orphaned audio is cleared", async () => {
+  const other = { ...session, key: "recording:other", id: "other" };
+  const store = memoryStore([
+    { ...session, finished: true },
+    segment(0),
+    { ...other, finished: true },
+    { ...segment(0), key: "segment:other:0", recordingId: "other" },
+    { ...segment(0), key: "segment:gone:0", recordingId: "gone" },
+  ]);
+  const finished: string[] = [],
+    errors: (string | undefined)[] = [];
+  const uploader = createRecordingUploader({
+    store,
+    ownerUid: () => "admin",
+    changed: (state) => errors.push(state.error),
+    schedule: () => () => {},
+    upload: {
+      async segment(recording) {
+        if (recording.id === session.id)
+          throw new PermanentUploadError("The service refused it (404).");
+      },
+      async finish(recording) {
+        finished.push(recording.id);
+      },
+    },
+  });
+  await uploader.kick();
+  assert.deepEqual(finished, ["other"], "later recordings are not blocked");
+  assert.equal((await store.list()).length, 0);
+  assert.ok(errors.some((error) => error?.includes("discarded")));
+  uploader.dispose();
 });
 
 test("committed audio survives a new browser-storage client and is removed only on request", async () => {

@@ -43,9 +43,13 @@ export interface ActionServiceOptions {
     recordingId: string,
     sequence: number,
   ) => Promise<TranscriptActionSegment[]>;
+  /** True when this segment's transcription failed for good, so no transcript will ever arrive. */
+  readFailed?: (recordingId: string, sequence: number) => Promise<boolean>;
   now?: () => number;
   randomId?: () => string;
 }
+/** Stands in `processed` for a segment that will never be transcribed. */
+const SKIPPED = "0".repeat(64);
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 const textKey = (text: string) =>
@@ -165,13 +169,25 @@ export function createActionService(options: ActionServiceOptions) {
           segment.sequence === input.sequence + 1,
       )) {
         const gameId = current.gameId ?? input.gameId;
+        // Segments just before this one that failed transcription for good.
+        // They carry no directives, so they must not hold up every later one.
+        const skipped: number[] = [];
         if (
           current.sequence > 0 &&
           !segments.some((segment) => segment.sequence === current.sequence - 1)
-        )
-          throw new Error(
-            "Previous transcript is not ready; retry action extraction",
-          );
+        ) {
+          for (
+            let earlier = current.sequence - 1;
+            earlier >= 0 &&
+            (await options.readFailed?.(input.recordingId, earlier)) === true;
+            earlier--
+          )
+            skipped.push(earlier);
+          if (!skipped.length)
+            throw new Error(
+              "Previous transcript is not ready; retry action extraction",
+            );
+        }
         const previous = segments.find(
           (segment) =>
             segment.sequence === current.sequence - 1 &&
@@ -200,6 +216,15 @@ export function createActionService(options: ActionServiceOptions) {
           };
           if (state.expiresAt <= startedAt)
             throw new Error("Action recording expired");
+          const earliest = skipped.at(-1);
+          if (earliest !== undefined) {
+            if (earliest > 0 && !state.processed[String(earliest - 1)])
+              throw new Error(
+                "Previous action extraction is not complete; retry delivery",
+              );
+            for (const sequence of skipped)
+              state.processed[String(sequence)] ??= SKIPPED;
+          }
           const predecessor = state.processed[String(current.sequence - 1)];
           // Saved text is not enough: a later cancellation/correction must see
           // the actions committed by every earlier extraction, even empty ones.
@@ -268,6 +293,7 @@ export function createActionService(options: ActionServiceOptions) {
               const quoted = textKey(
                 proofs.map((proof) => proof.quote).join(" "),
               );
+              const actionId = `${input.recordingId}_${hash(`${gameId}:${quoted}`).slice(0, 16)}`;
               let item = candidate.targetId
                 ? stored.items.find(
                     (item) =>
@@ -281,12 +307,15 @@ export function createActionService(options: ActionServiceOptions) {
                           (proof) => textKey(proof.quote) === quoted,
                         )),
                   );
+              // A directive quoted in two pieces never equals one stored
+              // quote, so the id it would be given is the last word on
+              // whether it already exists: ids must stay unique.
+              if (!candidate.targetId)
+                item ??= stored.items.find((item) => item.id === actionId);
               if (!item && candidate.kind === "propose") {
-                if (stored.items.length >= ACTION_LIMITS.perRecording)
-                  throw new Error(
-                    "Action proposal capacity reached; review recording manually",
-                  );
-                const actionId = `${input.recordingId}_${hash(`${gameId}:${quoted}`).slice(0, 16)}`;
+                // A full queue drops further proposals rather than failing the
+                // segment, which would stall every later segment behind it.
+                if (stored.items.length >= ACTION_LIMITS.perRecording) continue;
                 item = {
                   id: actionId,
                   recordingId: input.recordingId,
@@ -318,6 +347,24 @@ export function createActionService(options: ActionServiceOptions) {
                 current.sequence < latestSequence
               )
                 continue;
+              if (
+                candidate.kind === "propose" &&
+                item.status === "retracted" &&
+                item.retraction &&
+                current.sequence >= item.retraction.sequence &&
+                proofs.some(
+                  (proof) =>
+                    !item.evidence.some(
+                      (existing) =>
+                        existing.sequence === proof.sequence &&
+                        existing.quote === proof.quote,
+                    ),
+                )
+              ) {
+                // Asked for again after being called off: it is wanted.
+                item.retraction = null;
+                item.status = "proposed";
+              }
               if (candidate.kind === "retract") {
                 item.retraction = proofs.at(-1)!;
                 if (item.status === "proposed" || item.status === "dismissed")

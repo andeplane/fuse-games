@@ -31,7 +31,9 @@ mountWorkspace(root, {
     failure: signInFailure,
   },
   transport: {
-    request: fetch,
+    // A bare `fetch` reference would be called with the transport as `this`,
+    // which browsers reject with "Illegal invocation".
+    request: (input, init) => fetch(input, init),
     token: signedInToken,
     origin: new URL(endpoints.apiUrl("/api/dev/me")).origin,
   },
