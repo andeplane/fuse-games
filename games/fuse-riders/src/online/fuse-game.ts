@@ -333,7 +333,8 @@ export const fuseGame: RollbackGame<
     solo: { name: "You", bots: MAX_PLAYERS - 1 },
   },
   text: {
-    solo: "Solo · you and five AI riders",
+    // No number: the room lets a solo rider drop and add rivals.
+    solo: "Solo · you against the AI riders",
     connected: "Connected · direct game link",
     preparing: "Connected · preparing the room",
     waitingForGame: "Connected · waiting for the game",

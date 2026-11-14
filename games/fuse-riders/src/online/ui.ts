@@ -1308,7 +1308,7 @@ export async function startOnline(): Promise<void> {
       }
       id = peerId;
       isHost = host;
-      // A display has no account and solo has no room; a rider tells friends where it is, and can invite them.
+      // A display has no account and a solo run is not an online room; a rider tells friends where it is, and can invite them.
       if (!displayOnly && !solo)
         roomFriends.setRoom({ code, memberId: peerId, gameId: GAME_ID, token });
       joinForm.ready();
@@ -2129,7 +2129,9 @@ export async function startOnline(): Promise<void> {
     actions: [lobbyFooter],
     // Back, the heading, Settings and READY across the room's top, as in every game's room.
     actionsInHeader: true,
-    heading: "Room",
+    heading: solo ? "Solo game" : "Room",
+    // A solo run is a room on one device: one column, no invitation.
+    compact: solo,
     // The connection's state is the line at the room's foot; `placeElements` lends it to the game bar in a match.
     status,
     // ADD FRIEND on each rider's row and INVITE FRIENDS under Copy link are the shared room's.

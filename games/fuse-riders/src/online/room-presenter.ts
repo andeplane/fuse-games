@@ -209,14 +209,17 @@ function notice(
   manages: boolean,
   ready: boolean,
   watching: boolean,
+  solo: boolean,
 ): string {
   const player = state.players.find((p) => p.id === playerId);
   if (state.phase === "lobby")
-    return watching
-      ? "Watching · waiting for the race to start"
-      : joined && !manages
-        ? "Waiting for the host to start"
-        : "Join your friends, then start the race";
+    return solo
+      ? "Choose your rivals, then start the race"
+      : watching
+        ? "Watching · waiting for the race to start"
+        : joined && !manages
+          ? "Waiting for the host to start"
+          : "Join your friends, then start the race";
   if (state.phase === "countdown")
     return `READY · ${Math.max(0, Math.ceil(((state.phaseEndsAtTick ?? state.tick) - state.tick) / TICKS_PER_SECOND))}`;
   if (showsRoundResult(state))
@@ -451,7 +454,7 @@ export function presentRoom(input: RoomPresenterInput): RoomView {
     notice:
       !solo && joined && state.phase === "lobby"
         ? "Ready up — the race starts when everyone is ready"
-        : notice(state, playerId, joined, manages, ready, watching),
+        : notice(state, playerId, joined, manages, ready, watching, solo),
     lobby: {
       // The watchers go beside the riders, before the call for more: "1 rider · 1 watching · Waiting for at least 2 riders".
       count: [
@@ -477,7 +480,8 @@ export function presentRoom(input: RoomPresenterInput): RoomView {
               input.readyPlayers?.includes(p.id)
             ? "READY"
             : "NOT READY",
-        host: p.id === managerId,
+        // A solo run has nobody to tell who runs the room.
+        host: !solo && p.id === managerId,
       })),
       watchers: input.spectators.map((seat) => ({
         id: seat.id,
@@ -544,7 +548,7 @@ export function presentRoom(input: RoomPresenterInput): RoomView {
         disabled: state.phase === "lobby",
         hidden: input.phoneLobby || state.phase === "lobby",
       },
-      // A phone is never the TV; solo has no room to show.
+      // A phone is never the TV; a solo run has no online room to show on one.
       shareHidden: solo || input.phoneLobby,
       addAIDisabled: state.players.length >= MAX_RIDERS,
     },

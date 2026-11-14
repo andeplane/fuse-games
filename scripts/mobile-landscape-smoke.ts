@@ -438,7 +438,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page.waitForFunction(() =>
       document
         .querySelector(".online-notice")
-        ?.textContent?.startsWith("Join your friends"),
+        ?.textContent?.startsWith("Choose your rivals"),
     );
     await page.locator(".phone-lobby").waitFor();
     assert.equal(
