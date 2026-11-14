@@ -61,6 +61,10 @@ export class HeldControls {
     this.captured.add(event.code);
     return true;
   }
+  /** True while a key this page swallowed is still down, so its repeats stay swallowed. */
+  holds(code: string): boolean {
+    return this.captured.has(code);
+  }
   /** A keyup, from anywhere. True if its keydown was ours, so the page cancels it too. */
   up(code: string): boolean {
     this.release(code);

@@ -1,4 +1,8 @@
 import { friendRoomUrl } from "fuse-ui/social";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { PORTAL_GAMES } from "fuse-ui/portal";
 import "fuse-ui/social.css";
 import { legendSrc } from "../client/legend-src.js";
@@ -1413,6 +1417,7 @@ export async function startOnline(): Promise<void> {
         playerId: id,
         host: isHost,
         confirmedTick: runtime.confirmedTick(),
+        confirmedRoundFrame: runtime.confirmedFrame(),
         rules,
       });
       const roundReport =
@@ -2153,6 +2158,7 @@ export async function startOnline(): Promise<void> {
     )
       return;
     if (
+      playtestInputBlocked(document) ||
       dialogs.current() !== undefined ||
       roomAccount.dialog.open ||
       topBarDialog.open ||
@@ -2221,11 +2227,13 @@ export async function startOnline(): Promise<void> {
           target === button || Boolean(target && button.contains(target)),
       );
     },
+    () => !playtestInputBlocked(document),
   );
   const keyboard = new ControllerKeyboardBindings(
     inputState,
     () =>
       joined &&
+      !playtestInputBlocked(document) &&
       !localPlayers &&
       !roomEnded &&
       !mobileLayout.blocked() &&
@@ -2270,6 +2278,7 @@ export async function startOnline(): Promise<void> {
         state,
         () =>
           joined &&
+          !playtestInputBlocked(document) &&
           !roomEnded &&
           !mobileLayout.blocked() &&
           dialogs.current() === undefined &&
@@ -2309,6 +2318,9 @@ export async function startOnline(): Promise<void> {
     ];
   });
   const gamepadStatus = node("p", "", "local-gamepads-status");
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: clearControls,
+  });
   gamepadStatus.setAttribute("role", "status");
   gamepadStatus.hidden = true;
   if (localPlayers) app.append(gamepadStatus);
@@ -2456,6 +2468,7 @@ export async function startOnline(): Promise<void> {
     if (gamepads.length) {
       const { pads, error } = readGamepads(navigator);
       const allowed =
+        !playtestInputBlocked(document) &&
         gamepadFocused &&
         !document.hidden &&
         !roomEnded &&
@@ -2551,7 +2564,10 @@ export async function startOnline(): Promise<void> {
   requestAnimationFrame(frame);
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => presentation.destroy(),
+    destroy: () => {
+      stopPlaytestInput();
+      presentation.destroy();
+    },
     reload: () => location.reload(),
   });
 }
