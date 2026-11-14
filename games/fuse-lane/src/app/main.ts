@@ -527,6 +527,7 @@ function room(): void {
     extra: [tvLink],
     actions: {
       playerName: () => social.playerName(undefined) ?? undefined,
+      move: (name, slot) => runtime.command({ type: "join", name, slot }),
       addBot: (slot) => runtime.command({ type: "bot", action: "add", slot }),
       removeBot: (id) => runtime.command({ type: "bot", action: "remove", id }),
       start: () => runtime.command({ type: "action", action: "start" }),
