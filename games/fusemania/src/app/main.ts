@@ -999,6 +999,9 @@ function enterRoom(
   // The result: the shared results screen, with this device's own run (judgments, timing graph) as a section of it.
   const results = createResultsScreen({
     document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => leave(),
+    backText: "Leave",
     onAction: (id) => {
       if (id === "menu") leave();
       else if (id === "primary") resultPrimary();

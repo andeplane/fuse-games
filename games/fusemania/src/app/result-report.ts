@@ -272,6 +272,8 @@ function songTable(
 export function resultBar(result: Result): ResultsBar {
   return {
     ...(result.waiting ? { status: result.waiting } : {}),
+    // Alone, MENU in the bar is the way out.
+    back: !result.solo,
     actions: result.host
       ? [
           ...(result.solo ? [{ id: "menu", label: "Menu" }] : []),

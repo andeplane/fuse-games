@@ -259,3 +259,29 @@ test("an action that is gone loses its button, and hidden and disabled reach the
   assert.equal(screen.open, true);
   assert.equal(screen.body.querySelector("h2")!.textContent, "BO WINS");
 });
+
+test("Back can be hidden for a frame, and Escape then does nothing", () => {
+  const { document, window } = page();
+  let backs = 0;
+  const screen = createResultsScreen({
+    document,
+    onAction: () => {},
+    onBack: () => backs++,
+    backText: "Leave",
+  });
+  const back =
+    screen.element.querySelector<HTMLButtonElement>(".fui-results-back")!;
+  assert.equal(back.textContent, "Leave");
+  const escape = () => {
+    const event = new window.Event("keydown", { bubbles: true });
+    Object.defineProperty(event, "key", { value: "Escape" });
+    screen.element.dispatchEvent(event);
+  };
+  screen.update({ actions: [] });
+  escape();
+  assert.equal(backs, 1);
+  screen.update({ actions: [], back: false });
+  assert.equal(back.hidden, true);
+  escape();
+  assert.equal(backs, 1);
+});

@@ -259,6 +259,8 @@ export interface ResultsBar {
   status?: string;
   /** Secondary actions first, the primary one last. */
   actions: readonly ResultsAction[];
+  /** false hides Back on this frame (a solo run whose bar already leads out). Default: shown where the game gave `onBack`. */
+  back?: boolean;
 }
 
 export interface ResultsScreenOptions {
@@ -321,7 +323,7 @@ export function createResultsScreen(
     else body.scrollTop = 0;
   };
   element.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !options.onBack) return;
+    if (event.key !== "Escape" || !options.onBack || back.hidden) return;
     event.preventDefault();
     options.onBack();
   });
@@ -348,6 +350,8 @@ export function createResultsScreen(
       body.scrollTop = 0;
     },
     update(next) {
+      const noBack = !options.onBack || next.back === false;
+      if (back.hidden !== noBack) back.hidden = noBack;
       const text = next.status ?? "";
       if (status.textContent !== text) status.textContent = text;
       if (status.hidden !== !text) status.hidden = !text;
