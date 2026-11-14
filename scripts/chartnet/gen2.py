@@ -37,7 +37,7 @@ METERS = {"Easy": 3, "Medium": 6, "Hard": 9, "Challenge": 13}
 # 24th bursts on Challenge: "learned" lets the placement model put steps on the 24th grid (kept only as runs),
 # "rule" is the onset test in bursts.py, "both" and "off" as they say.
 BURSTS = os.environ.get("CHARTNET_BURSTS", "both")
-WEIGHTS = (os.environ.get("CHARTNET_ONSET", "onset_v3"), os.environ.get("CHARTNET_ARROWS", "arrows_v3"))
+WEIGHTS = (os.environ.get("CHARTNET_ONSET", "onset_v3"), os.environ.get("CHARTNET_ARROWS", "arrows_c1"))
 
 
 def window_variety(toks: list[str], win: int = 64) -> float:
@@ -298,6 +298,12 @@ def fuse():
 if __name__ == "__main__":
     if sys.argv[1] == "eval":
         eval_packs(sys.argv[2].split(",") if len(sys.argv) > 2 else None)
+    elif sys.argv[1] == "arrow-eval":  # the arrow model's loss on held-out charts
+        from arrows import held_out_loss
+        stats_, _, am = models()
+        for keys in ("test_keys.json", "test2_keys.json"):
+            te, _ = load("cache", stats_, only=set(json.loads((ROOT / keys).read_text())))
+            print(WEIGHTS[1], keys, round(held_out_loss(am, te), 3))
     elif sys.argv[1] == "place-eval":
         place_eval(sys.argv[2] if len(sys.argv) > 2 else "test_keys.json")
     elif sys.argv[1] == "eval2":  # the held-out community songs (stream and stamina packs)

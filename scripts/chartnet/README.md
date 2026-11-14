@@ -142,7 +142,7 @@ v3 is v2's two small models retrained on much more data, with sampling tuned aga
 - **Training** runs on a rented GPU: all songs at once need about 18 GB of memory per run. `extract.py` (with
   `OMP_NUM_THREADS=1`: one thread per worker is 15 times faster than letting every worker thread), then
   `onset.py --phase 1 --density 1 --wide 1 --len 1000 --steps 12000 --name onset_v3` and
-  `arrows.py --steps 24000 --name arrows_v3`. Scoring and generation run on the Mac and load only the songs they need.
+  `arrows.py --steps 24000 --name arrows_c1`. Scoring and generation run on the Mac and load only the songs they need.
 - **Features.** `data.band_rhythm` adds the onset strength in 8 bands, bass to high melody, and each band's share of
   the onset energy over 4 seconds; `--wide 1` lets placement look about 5 seconds each way.
 - **Sampling** (`arrows.generate`, `gen.place`): six candidate continuations per 16 rows, keeping the one the model
@@ -159,29 +159,39 @@ What was measured, on the 48 held-out DDR/ITG songs (`gen2.py eval`, `gen2.py pl
 | Challenge: step timing F1   |       | 0.69  | 0.71  |
 | Challenge: steps in streams | 0.25  | 0.12  | 0.25  |
 | Challenge: longest 16th run | 28.7  | 4.9   | 11.9  |
-| Challenge: jumps            | 0.074 | 0.137 | 0.087 |
-| Challenge: freezes          | 0.065 | 0.052 | 0.079 |
-| Challenge: jacks            | 0.034 | 0.025 | 0.028 |
+| Challenge: jumps            | 0.074 | 0.137 | 0.113 |
+| Challenge: freezes          | 0.065 | 0.052 | 0.035 |
+| Challenge: jacks            | 0.034 | 0.025 | 0.033 |
 | Hard: step timing F1        |       | 0.75  | 0.75  |
-| Hard: jumps                 | 0.080 | 0.125 | 0.097 |
+| Hard: jumps                 | 0.080 | 0.125 | 0.084 |
 | Hard: freezes               | 0.022 | 0.018 | 0.022 |
-| Hard: jacks                 | 0.042 | 0.015 | 0.034 |
+| Hard: jacks                 | 0.042 | 0.015 | 0.026 |
 
 Placement alone, told each human chart's step count: 0.737 overall for v2 and 0.742 for v3 (Challenge 0.691 and
 0.729; the stream preference then trades 0.02 of that for the stream share). On the held-out community songs 0.750 and
 0.765 (Challenge 0.794 and 0.823). What did not help: the band features (0.738 without, 0.742 with), the wider context
 alone (0.740 without, 0.738 with), and a bigger arrow model (8 layers, d=384: best validation loss 1.06 against 1.04
-for the small one, then it overfits). Data did: the arrow model's best validation loss is 1.19 on a quarter of the
-songs, 1.10 on half and 1.04 on all of them.
+for the small one, then it overfits).
+
+Data did, for the arrows. Loss per row on the same held-out charts (`gen2.py arrow-eval`), by training songs:
+
+| Training songs       | 480 (v2) | 735  | 1,470 | 2,944 | 5,923 |
+| -------------------- | -------- | ---- | ----- | ----- | ----- |
+| DDR/ITG test songs   | 1.53     | 1.43 | 1.35  | 1.30  | 1.26  |
+| Community test songs | 1.28     | 1.05 | 0.99  | 0.94  | 0.91  |
+
+The last column adds a second batch of 88 packs (`packs.py chunk 1`, 6,444 songs in all). The game's arrows come from
+that model (`arrows_c1`). Placement did not gain from the second batch (0.738 on the DDR/ITG songs, 0.765 on the
+community songs), so it stays the model trained on the first (`onset_v3`).
 
 Over the game's 36 songs (`gen2.py fuse`; a cover's Challenge aims at its original's density):
 
 | Difficulty | Steps/s | 16th-stream share | 24th share | Longest 16th run | 4-gram variety | Jacks | Jumps | Freezes |
 | ---------- | ------- | ----------------- | ---------- | ---------------- | -------------- | ----- | ----- | ------- |
-| Easy       | 1.63    | 0                 | 0          | 1                | 0.62           | 0     | 0.034 | 0.037   |
-| Medium     | 2.51    | 0                 | 0          | 1                | 0.58           | 0.003 | 0.073 | 0.040   |
-| Hard       | 3.75    | 0.15              | 0.009      | 5.1              | 0.56           | 0.057 | 0.061 | 0.048   |
-| Challenge  | 5.62    | 0.54              | 0.096      | 38.1             | 0.42           | 0.040 | 0.051 | 0.034   |
+| Easy       | 1.63    | 0                 | 0          | 1                | 0.61           | 0     | 0.035 | 0.024   |
+| Medium     | 2.51    | 0                 | 0          | 1                | 0.53           | 0.002 | 0.070 | 0.021   |
+| Hard       | 3.75    | 0.15              | 0.009      | 5.6              | 0.56           | 0.044 | 0.073 | 0.035   |
+| Challenge  | 5.62    | 0.54              | 0.096      | 38.1             | 0.45           | 0.049 | 0.067 | 0.035   |
 
 Human Challenge charts at 5.5 to 7.5 steps a second: 0.53 in 16th streams, 0.05 in 24ths, variety 0.42, jumps 0.05,
 freezes 0.07. v2's Challenge charts for the same songs had variety 0.33.

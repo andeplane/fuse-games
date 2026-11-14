@@ -154,7 +154,7 @@ PENALTY = {
     "Beginner": {"crossover": 9, "jack": 9, "double": 4, "hand": 99, "held_hit": 99, "candle": 9},
     "Easy": {"crossover": 9, "jack": 6, "double": 3, "hand": 99, "held_hit": 99, "candle": 6},
     "Medium": {"crossover": 4, "jack": 2, "double": 2, "hand": 99, "held_hit": 99, "candle": 2},
-    "Hard": {"crossover": 2.0, "jack": 0.4, "double": 1.5, "hand": 8, "held_hit": 99, "candle": 0.3},
+    "Hard": {"crossover": 2.0, "jack": 0.6, "double": 1.5, "hand": 8, "held_hit": 99, "candle": 0.3},
     "Challenge": {"crossover": 2.0, "jack": 0.6, "double": 1.5, "hand": 5, "held_hit": 99, "candle": 0.3},
 }
 # Jumps: the model writes more of them than human charts do on Hard and Challenge; this cost brings them level.
@@ -170,10 +170,10 @@ REPEAT_WINDOW = int(os.environ.get("CHARTNET_REPEAT_WINDOW", "64"))
 # is kept. CANDIDATES=1 is plain sampling.
 CANDIDATES = int(os.environ.get("CHARTNET_CANDIDATES", "6"))
 PHRASE = int(os.environ.get("CHARTNET_PHRASE", "16"))
-VARIETY = float(os.environ.get("CHARTNET_VARIETY", "1.0"))
+VARIETY = float(os.environ.get("CHARTNET_VARIETY", "1.3"))
 # Freezes: a log-probability bonus for a freeze head where the next row leaves room for it (at least half a beat),
 # or, negative, a cost on every freeze. Trained on the community packs the model holds more than DDR/ITG charts do.
-FREEZE_BONUS = {"Beginner": 0.0, "Easy": -1.2, "Medium": -1.0, "Hard": -0.45, "Challenge": -0.45}
+FREEZE_BONUS = {"Beginner": 0.0, "Easy": -1.2, "Medium": -1.0, "Hard": -0.25, "Challenge": -0.3}
 if os.environ.get("CHARTNET_FREEZE"):
     FREEZE_BONUS["Hard"], FREEZE_BONUS["Challenge"] = (float(x) for x in os.environ["CHARTNET_FREEZE"].split(","))
 
@@ -354,3 +354,27 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+@torch.no_grad()
+def held_out_loss(model: ArrowNet, songs) -> float:
+    """Mean cross-entropy per row over every chart of `songs` (unmirrored), in consecutive windows of WIN rows."""
+    model.eval()
+    total, count = 0.0, 0
+    for si, s in enumerate(songs):
+        for c in s.meta["charts"]:
+            rows = chart_rows(c["rows"])
+            if len(rows) <= 16:
+                continue
+            tok, cond, ff, fr, d, dens = encode(rows, len(s.feats), diff_index(c["difficulty"]))
+            for st in range(0, len(tok), WIN):
+                sl = slice(st, st + WIN)
+                t = tok[sl]
+                prev = np.r_[START if st == 0 else tok[st - 1], t[:-1]]
+                f = lambda x, dt=torch.long: torch.tensor(np.asarray(x)[None], dtype=dt).to(DEV)  # noqa: E731
+                logits = model(f(prev), f(cond[sl]), f(ff[sl], torch.float32),
+                               f(s.feats[fr[sl]].astype(np.float32), torch.float32),
+                               torch.tensor([d]).to(DEV), torch.tensor([dens], dtype=torch.float32).to(DEV))
+                total += nn.functional.cross_entropy(logits[0], f(t)[0], reduction="sum").item()
+                count += len(t)
+    return total / max(count, 1)
