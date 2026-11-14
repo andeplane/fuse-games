@@ -273,3 +273,78 @@
     padding-inline: var(--fui-space-2);
   }
 }
+
+/* SORT sits beside RANDOM SONG: the word, then what the carousel is ordered by. */
+.fm-picker.fm-picker .fm-picker-sort {
+  --fm-option: var(--fui-cyan, #53def7);
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 2.25rem;
+  margin: 0;
+  padding: var(--fui-space-2) var(--fui-space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fui-space-2);
+  color: var(--fm-option);
+  border-color: color-mix(in srgb, var(--fm-option) 60%, transparent);
+  font: 0.6875rem/1 var(--fui-font-pixel);
+  white-space: nowrap;
+}
+.fm-picker-sort[hidden] {
+  display: none;
+}
+.fm-picker-sort-label {
+  opacity: 0.85;
+}
+@media (max-width: 640px) {
+  /* A phone's row keeps the arrow and the key, not the word. */
+  .fm-picker-sort-word {
+    display: none;
+  }
+}
+/* The sort modal: seven choices in one column, then the direction. */
+.fm-sort-dialog {
+  width: min(24rem, calc(100vw - 1.5rem));
+}
+.fm-sort-dialog .fui-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fui-space-3);
+  padding: var(--fui-space-3);
+}
+.fm-sort-options,
+.fm-sort-directions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fui-space-1);
+}
+.fm-sort-directions {
+  flex-direction: row;
+  padding-top: var(--fui-space-3);
+  border-top: 0.0625rem solid #334965;
+}
+.fm-sort-dialog button {
+  flex: 1 1 0;
+  min-height: 2.75rem;
+  padding: var(--fui-space-2) var(--fui-space-3);
+  text-align: left;
+  color: var(--fui-text);
+  background: transparent;
+  border: 0.0625rem solid #334965;
+  border-radius: var(--fui-radius-control, 0.5rem);
+  font: inherit;
+  cursor: pointer;
+}
+.fm-sort-dialog .fm-sort-options button {
+  flex: 0 0 auto;
+}
+.fui-app dialog.fm-sort-dialog button.fm-sort-option[aria-checked="true"],
+.fui-app dialog.fm-sort-dialog button.fm-sort-direction[aria-pressed="true"] {
+  color: var(--fui-cyan, #53def7);
+  border-color: var(--fui-cyan, #53def7);
+  background: color-mix(in srgb, var(--fui-cyan, #53def7) 14%, transparent);
+}
+.fm-sort-dialog button:focus-visible {
+  outline: 0.125rem solid var(--fui-yellow, #ffd84a);
+  outline-offset: 0.125rem;
+}
