@@ -50,7 +50,7 @@ test("a match's result: the winner in their colour, each pilot's crowns, escapes
   assert.equal(report.game, "FUSE CHOPPERS");
   assert.equal(report.context, "4 rounds · 3 pilots");
   assert.equal(report.headline, "BO RULES THE CAVE!");
-  assert.equal(report.summary, "3 crowns · 2 escapes");
+  assert.equal(report.summary, "3 crowns in 4 rounds");
   assert.equal(report.accent, COLORS[1]);
   assert.deepEqual(report.standings!.columns, [
     "CROWNS",

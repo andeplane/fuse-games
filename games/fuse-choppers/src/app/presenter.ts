@@ -119,6 +119,8 @@ export function present(view: View, viewer: Viewer): Model {
   const slotOf = (id: string) =>
     view.seats.find((seat) => seat.id === id)?.slot ??
     world?.choppers.find((c) => c.id === id)?.slot ??
+    // A pilot who left keeps the seat they flew in.
+    view.results.flatMap((r) => r.placings).find((p) => p.id === id)?.slot ??
     0;
 
   const cards: Card[] = seats.map((seat) => {

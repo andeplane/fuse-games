@@ -310,6 +310,22 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
     ],
   );
   assert.equal(model.result!.rounds, 2);
+  // A pilot who left before the end keeps the seat they flew in.
+  const gone = present(
+    room("over", {
+      winner: "b",
+      wins: { b: 1, z: 1 },
+      results: [
+        {
+          round: 1,
+          winner: "z",
+          placings: [{ ...placing("z", "escaped", 60), name: "Zed", slot: 4 }],
+        },
+      ],
+    }),
+    host,
+  ).result!.rows.find((row) => row.id === "z")!;
+  assert.deepEqual([gone.name, gone.slot, gone.escapes], ["Zed", 4, 1]);
   assert.equal(model.result!.winnerSlot, 1);
   assert.equal(model.result!.host, true);
   assert.match(present(over, guest).result!.waiting, /host/);

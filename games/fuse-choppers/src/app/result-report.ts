@@ -87,7 +87,7 @@ export function resultReport(
     headline: result.title,
     ...(winner && result.winnerSlot >= 0
       ? {
-          summary: `${count(winner.crowns, "crown")} · ${count(winner.escapes, "escape")}`,
+          summary: `${count(winner.crowns, "crown")} in ${count(result.rounds, "round")}`,
           accent: parts.color(result.winnerSlot),
         }
       : {}),
