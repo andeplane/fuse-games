@@ -16,6 +16,7 @@ import type {
   MatchPlayerStats,
 } from "./engine/match-stats.js";
 import { validRiderName } from "./engine/rider-name.js";
+import { MAX_PLAYERS } from "./engine/tuning.js";
 import { GAME_ID } from "./shared/game-id.js";
 import {
   LEGACY_GAME_ID,
@@ -87,7 +88,7 @@ const PER_ROUND: ReadonlySet<string> = new Set([
   "roundsDrawn",
 ]);
 const LIMITS: Partial<Record<string, number>> = {
-  slot: 4,
+  slot: MAX_PLAYERS - 1,
   matchPlacement: MAX_MATCH_PARTICIPANTS,
   matchScoreUnits: MAX_SCORE,
   survivalTicks: MAX_TICKS,

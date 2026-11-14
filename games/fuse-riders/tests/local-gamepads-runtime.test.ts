@@ -44,14 +44,14 @@ const input = (
 });
 
 test("local humans replace bots, have unique identities, and their streams never stall", () => {
-  for (let count = 1; count <= 5; count++) {
+  for (let count = 1; count <= 6; count++) {
     const f = local(Array.from({ length: count }, (_, i) => `Player ${i + 1}`));
-    assert.equal(f.frame().players.length, 5);
+    assert.equal(f.frame().players.length, 6);
     assert.equal(
       f.frame().players.filter((p) => !p.id.startsWith("bot:")).length,
       count,
     );
-    assert.equal(new Set(f.frame().players.map((p) => p.color)).size, 5);
+    assert.equal(new Set(f.frame().players.map((p) => p.color)).size, 6);
     assert.equal(f.frame().phase, "countdown");
     f.net.step(10_000);
     assert.ok(
@@ -141,7 +141,7 @@ test("local log replay is repeatable and roster survives lobby and rematch", () 
   );
 });
 test("invalid local rosters fail before startup", () => {
-  for (const names of [[], [""], Array.from({ length: 6 }, () => "Rider")])
+  for (const names of [[], [""], Array.from({ length: 7 }, () => "Rider")])
     assert.throws(() => local(names), /Local players/);
   assert.throws(
     () =>

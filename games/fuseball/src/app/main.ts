@@ -15,6 +15,7 @@ import {
 } from "fuse-ui/game-audio";
 import "fuse-ui/game-audio.css";
 import { safeStorage } from "fuse-ui/safe-storage";
+import "fuse-ui/results.css";
 import "./fuseball.css";
 import QRCode from "qrcode";
 import {
@@ -30,6 +31,7 @@ import {
   ticksAhead,
   uuid,
 } from "fuse-netcode";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   backOnEscape,
   button,
@@ -42,6 +44,7 @@ import {
   createPageMessage,
   createRoomLayout,
   createRoster,
+  createResultsScreen,
   createRoundControls,
   createSubPage,
   el,
@@ -826,20 +829,22 @@ function room(solo: boolean): void {
     canvas = el("canvas", "", "fb-canvas"),
     note = el("p", "", "fb-note");
   sidesRow.append(sideNodes[0]!, arenaName, sideNodes[1]!);
-  const result = el("section", "", "fb-result"),
-    resultTitle = el("h2"),
-    resultLines = el("ol"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "fb-actions"),
-    rematch = button("REMATCH", "fui-button-primary fb-rematch"),
-    toLobby = button("LOBBY", "fb-to-lobby");
-  resultActions.append(toLobby, rematch);
-  result.append(resultTitle, resultLines, resultWaiting, resultActions);
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  screen.append(canvas, result, roundControls.element);
+  const rematch = () => runtime.command({ type: "action", action: "rematch" }),
+    toLobby = () => runtime.command({ type: "action", action: "lobby" });
+  // The result: the shared results screen over the arena.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) => (id === "rematch" ? rematch() : toLobby()),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  screen.append(canvas, roundControls.element);
 
   // One stick and one button, twice: small over a phone's own arena, and filling the phone for a shared screen.
   const pads = (className: string) => {
@@ -878,8 +883,8 @@ function room(solo: boolean): void {
   const controllerResult = el("div", "", "fb-actions fb-controller-result"),
     controllerRematch = button("REMATCH", "fui-button-primary"),
     controllerLobby = button("LOBBY");
-  controllerRematch.onclick = rematch.onclick;
-  controllerLobby.onclick = toLobby.onclick;
+  controllerRematch.onclick = rematch;
+  controllerLobby.onclick = toLobby;
   controllerResult.append(controllerLobby, controllerRematch);
   // A rider who is not the host is told who starts the next match, as on the arena's result card.
   const controllerWaiting = el("p", "", "fb-controller-waiting");
@@ -921,6 +926,7 @@ function room(solo: boolean): void {
     lobby,
     stage,
     controller,
+    results.element,
   );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
@@ -1148,19 +1154,36 @@ function room(solo: boolean): void {
     setText(controllerWaiting, next.result?.waiting ?? "");
     controllerWaiting.hidden = !next.result?.waiting;
     // Result.
-    result.hidden = !next.result || next.screen === "controller";
-    if (next.result) {
-      setText(resultTitle, next.result.title);
-      const lines = next.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...next.result.lines.map((line) => el("li", line)),
+    const result = next.result;
+    if (!result || next.screen === "controller") {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: teamColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      setText(resultWaiting, next.result.waiting);
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 
