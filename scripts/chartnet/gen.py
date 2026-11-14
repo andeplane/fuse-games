@@ -34,7 +34,7 @@ def timing(meta) -> Timing:
     return Timing(meta["offset"], [tuple(x) for x in meta["bpms"]], [tuple(x) for x in meta.get("stops", [])])
 
 
-BUSY_POWER = float(os.environ.get("CHARTNET_BUSY_POWER", "0.5"))
+BUSY_POWER = float(os.environ.get("CHARTNET_BUSY_POWER", "1"))
 BUSY_HOP = 0.5  # seconds between frames of the busy-ness profile
 RUN_BONUS = float(os.environ.get("CHARTNET_RUN_BONUS", "1"))
 RUN_SHARE = {"Challenge": float(os.environ.get("CHARTNET_RUN_SHARE", "0.05"))}
@@ -59,25 +59,29 @@ def keep_24th_runs(beats: list[float], need: int = 5) -> list[float]:
     return out
 
 
-def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None = None, swing: bool = False,
-          snap24: bool = False, forced: list[float] | None = None, busy: np.ndarray | None = None):
-    """Peaks of the step probability → snapped beats (respecting the difficulty's grid and minimum gap).
-    `snap24` lets steps land on the 24th grid too; isolated ones are dropped again (`keep_24th_runs`).
-    `forced` beats (review notes, `guidance.py`) go in first; the model fills the chart around them."""
+QUOTA_SECONDS = 2.0  # the window the busy-ness profile and the tapped counts are spent in
+
+
+def _select(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None, swing: bool, snap24: bool,
+            forced: list[float] | None, quota: np.ndarray | None) -> list[float]:
+    """Peaks of the step probability, strongest first, snapped to the difficulty's grid and kept apart by its
+    minimum gap. With `quota` (steps allowed per QUOTA_SECONDS window) a full window takes no more."""
     cand = peaks(prob, thr if n_target is None else 0.0)
-    if busy is not None and n_target is not None and BUSY_POWER > 0:
-        # where the chart should be busy (`density.py`: local density over the chart's average, every half second):
-        # a peak in a busy stretch outranks an equally likely one in a calm stretch
-        at = np.interp(np.arange(len(prob)) / FPS, np.arange(len(busy)) * BUSY_HOP, busy)
-        prob = prob * np.clip(at, 0.05, 4.0) ** BUSY_POWER
     cand = cand[np.argsort(-prob[cand])]
     chosen: dict[float, float] = {}
     times: list[float] = []
+    used: dict[int, int] = {}
+
+    def add(best: float, t: float) -> None:
+        chosen[best] = 1.0
+        times.append(t)
+        w = max(int(t // QUOTA_SECONDS), 0)
+        used[w] = used.get(w, 0) + 1
+
     for b in forced or []:
         t = tm.beat_to_time(b)
         if b >= 0 and not any(abs(t - u) < MIN_GAP[diff] for u in times):
-            chosen[b] = 1.0
-            times.append(t)
+            add(b, t)
     subs = SNAP[diff] + ([3] if swing and diff in ("Medium", "Hard", "Challenge") else []) + ([6] if snap24 else [])
     snapped: list[tuple[float, float]] = []  # (beat, probability), strongest first
     for f in cand:
@@ -90,10 +94,12 @@ def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | N
         if best in chosen:
             return False
         t = tm.beat_to_time(best)
+        w = max(int(t // QUOTA_SECONDS), 0)
+        if quota is not None and w < len(quota) and used.get(w, 0) >= quota[w]:
+            return False
         if any(abs(t - u) < MIN_GAP[diff] for u in times):
             return False
-        chosen[best] = 1.0
-        times.append(t)
+        add(best, t)
         return True
 
     # Streams: human charts put their sixteenths in runs. The strongest peaks go in first; the last share of the
@@ -117,7 +123,9 @@ def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | N
     # isolated 24ths go again; the steps they took are handed to the strongest peaks left on the ordinary grid
     kept = keep_24th_runs(sorted(chosen))
     for b in set(chosen) - set(kept):
-        times.remove(tm.beat_to_time(b))
+        t = tm.beat_to_time(b)
+        times.remove(t)
+        used[max(int(t // QUOTA_SECONDS), 0)] -= 1
         del chosen[b]
     for best, _ in snapped:
         if n_target is None or len(chosen) >= n_target:
@@ -125,6 +133,43 @@ def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | N
         if not only_24th(best):
             take(best)
     return sorted(chosen)
+
+
+def _whole(shares: np.ndarray, total: int) -> np.ndarray:
+    """`shares` scaled to whole numbers that add up to `total` (largest remainders get the leftovers)."""
+    if shares.sum() <= 0:
+        return np.zeros(len(shares), int)
+    exact = shares * total / shares.sum()
+    out = np.floor(exact).astype(int)
+    for i in np.argsort(-(exact - out))[: total - out.sum()]:
+        out[i] += 1
+    return out
+
+
+def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None = None, swing: bool = False,
+          snap24: bool = False, forced: list[float] | None = None, busy: np.ndarray | None = None):
+    """Peaks of the step probability → snapped beats (respecting the difficulty's grid and minimum gap).
+    `snap24` lets steps land on the 24th grid too; isolated ones are dropped again (`keep_24th_runs`).
+
+    `busy` (`density.py`: local density over the chart's average, every half second) and `forced` beats (review
+    material, `guidance.py`) shape where the steps go without taking any stretch's steps away: the model first
+    spreads the steps its own way, then every QUOTA_SECONDS window's share is scaled by the profile there, and a
+    window with forced beats gets at least those on top."""
+    steer = busy is not None and BUSY_POWER > 0
+    if n_target is None or not (steer or forced):
+        return _select(prob, tm, diff, thr, n_target, swing, snap24, forced, None)
+    own = _select(prob, tm, diff, thr, n_target, swing, snap24, None, None)
+    n_win = int(len(prob) / FPS // QUOTA_SECONDS) + 1
+    window = lambda b: max(0, min(int(tm.beat_to_time(b) // QUOTA_SECONDS), n_win - 1))  # noqa: E731
+    count = np.bincount([window(b) for b in own], minlength=n_win).astype(float)
+    if steer:
+        per = int(round(QUOTA_SECONDS / BUSY_HOP))
+        prof = np.array([busy[w * per:(w + 1) * per].mean() if w * per < len(busy) else 1.0 for w in range(n_win)])
+        count = count * np.clip(prof, 0.05, 4.0) ** BUSY_POWER
+    quota = _whole(count, len(own))
+    if forced:
+        quota = np.maximum(quota, np.bincount([window(b) for b in forced if b >= 0], minlength=n_win))
+    return _select(prob, tm, diff, thr, int(quota.sum()), swing, snap24, forced, quota)
 
 
 @torch.no_grad()
