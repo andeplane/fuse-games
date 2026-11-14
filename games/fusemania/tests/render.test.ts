@@ -29,7 +29,19 @@ import {
   type StepNote,
   type Steps,
 } from "../src/engine/view-kit.js";
-import { SLIDE_MS, createFeedback, rowOf } from "../src/render/feedback.js";
+import {
+  NEAR_GLOW,
+  SLIDE_MS,
+  createFeedback,
+  pressure,
+  rowOf,
+} from "../src/render/feedback.js";
+import {
+  CHASE_GLOW,
+  PLACE_GLOWS,
+  THREAT_GLOW,
+  placeGlow,
+} from "../src/render/field.js";
 import {
   boxX,
   boxY,
@@ -2063,4 +2075,211 @@ test("a rider alone has a race line too, and the shared screen draws every marke
     shared.map((marker) => marker.half),
     [RIVAL_MARKER, RIVAL_MARKER],
   );
+});
+
+// ---- the standing lights ----
+
+test("an overtake shows the nearer it is: by how soon the gap closes, or by how small it is", () => {
+  assert.equal(pressure(100_000, 0), 0, "far apart and level");
+  assert.equal(pressure(100_000, -3000), 0, "falling further behind");
+  assert.equal(pressure(40_000, 2000), 0, "twenty seconds off");
+  assert.equal(pressure(20_000, 2000), 0.5, "ten seconds off");
+  assert.ok(pressure(2000, 2000) > 0.9, "a second off");
+  assert.equal(pressure(0, -500), NEAR_GLOW, "neck and neck, whoever gains");
+  assert.equal(pressure(-10, 0), NEAR_GLOW, "a tie on rating");
+  assert.ok(pressure(10_000, 2000) > pressure(20_000, 2000));
+  assert.ok(pressure(20_000, 4000) > pressure(20_000, 2000));
+});
+
+/** A two-rider match in which rider 1 trails rider 0 by `gap` and gains `gain` rating a second on it. */
+function chasing(gap: number, gain: number, seconds: number, over = false) {
+  const steps = stream(8, 600_000);
+  const feedback = createFeedback();
+  for (let ms = 0; ms <= seconds * 1000; ms += 50) {
+    const lead = 200_000 + ms * 5,
+      trail = lead - gap + (ms * gain) / 1000;
+    feedback.observe(
+      world(
+        [
+          rider(0, { rating: lead, place: lead >= trail ? 1 : 2 }),
+          rider(1, { rating: trail, place: lead >= trail ? 2 : 1 }),
+        ],
+        { phase: over ? "over" : "playing" },
+      ),
+      [steps, steps],
+      ms,
+      1,
+    );
+  }
+  return feedback.riders;
+}
+
+test("the rider gaining on the place ahead gets the chase, the one being caught the threat", () => {
+  const [lead, trail] = chasing(30_000, 2500, 6);
+  assert.ok(trail!.chase > 0.3, `chase ${trail!.chase}`);
+  assert.ok(lead!.threat > 0.3, `threat ${lead!.threat}`);
+  assert.ok(Math.abs(trail!.chase - lead!.threat) < 1e-9, "the same overtake");
+  assert.equal(trail!.threat, 0, "nobody behind the last rider");
+  assert.equal(lead!.chase, 0, "nobody ahead of the leader");
+  // It comes in over about a second, not at once: neck and neck from the first frame, the glow is still on its way
+  // a tenth of a second in and all there three seconds in.
+  const close = pressure(1000, 0);
+  assert.ok(chasing(1000, 0, 0.1)[1]!.chase < close / 2);
+  assert.ok(Math.abs(chasing(1000, 0, 3)[1]!.chase - close) < 0.01);
+
+  // Level pace a long way apart: nothing. Falling behind: nothing.
+  for (const rider of chasing(80_000, 0, 6)) {
+    assert.ok(rider.chase < 0.01);
+    assert.ok(rider.threat < 0.01);
+  }
+  assert.ok(chasing(30_000, -2500, 6)[1]!.chase < 0.01);
+  // And not once the song is over.
+  assert.equal(chasing(30_000, 2500, 6, true)[1]!.chase, 0);
+});
+
+test("no chase or threat at the first notes, where the places change with every arrow", () => {
+  const steps = stream(8, 600_000);
+  const feedback = createFeedback();
+  for (let ms = 0; ms <= 3000; ms += 50)
+    feedback.observe(
+      world([rider(0, { rating: 900 }), rider(1, { rating: 800 })]),
+      [steps, steps],
+      ms,
+      0,
+    );
+  assert.equal(feedback.riders[0]!.threat, 0);
+  assert.equal(feedback.riders[1]!.chase, 0);
+});
+
+const fillsOf = (calls: readonly Call[], color: string): Call[] =>
+  calls.filter((call) => call.op === "fillRect" && call.fill === color);
+
+test("a rider's lanes are lit at the sides in its place's colour, on its own field only", () => {
+  assert.deepEqual([1, 2, 3, 4, 5].map(placeGlow), [
+    PLACE_GLOWS[0],
+    PLACE_GLOWS[1],
+    PLACE_GLOWS[2],
+    PLACE_GLOWS[3],
+    PLACE_GLOWS[3],
+  ]);
+  const steps = stream(8, 600_000);
+  const r = rig();
+  const view = (place: number) =>
+    world([
+      rider(0, { rating: 300_000, place }),
+      rider(1, { rating: 500_000, place: place === 1 ? 2 : 1 }),
+      rider(2, { rating: 100_000, place: 3 }),
+    ]);
+  const layout = layoutFor(1366, 768, 3, 0);
+  const own = fieldOf(layout, 0);
+  let calls = r.frame(view(2), shot(steps, 1000));
+  const silver = fillsOf(calls, placeGlow(2));
+  assert.ok(silver.length > 0, "second place is silver");
+  for (const call of silver) {
+    // Inside the rider's own lanes, hugging one side or the other, and leaving the middle clear.
+    assert.ok(call.x >= own.x && call.x <= own.x + own.col * COLUMNS);
+    assert.ok(call.y >= own.laneTop && call.y <= own.laneBottom);
+    const fromSide = Math.min(
+      call.x - own.x,
+      own.x + own.col * COLUMNS - call.x,
+    );
+    assert.ok(fromSide <= own.col * 0.5, `at the side (${fromSide})`);
+    assert.ok(call.alpha <= 0.5, "soft");
+  }
+  assert.equal(fillsOf(calls, placeGlow(1)).length, 0);
+  assert.equal(fillsOf(calls, placeGlow(3)).length, 0, "not on rival fields");
+
+  // Taking the lead: silver goes out as gold comes in, and then it is gold alone.
+  const strongest = (color: string): number =>
+    Math.max(0, ...fillsOf(calls, color).map((call) => call.alpha));
+  const full = strongest(placeGlow(2));
+  calls = r.frame(view(1), shot(steps, 1050));
+  calls = r.frame(view(1), shot(steps, 1100));
+  assert.ok(strongest(placeGlow(1)) > 0 && strongest(placeGlow(1)) < full);
+  assert.ok(strongest(placeGlow(2)) > 0 && strongest(placeGlow(2)) < full);
+  // Overtaken again part way through: no colour jumps back to full, each goes on from where it was.
+  const gold = strongest(placeGlow(1)),
+    fading = strongest(placeGlow(2));
+  calls = r.frame(view(2), shot(steps, 1150));
+  assert.ok(strongest(placeGlow(1)) < gold);
+  assert.ok(strongest(placeGlow(2)) > fading && strongest(placeGlow(2)) < full);
+  for (let ms = 1200; ms <= 3200; ms += 50)
+    calls = r.frame(view(1), shot(steps, ms));
+  assert.ok(Math.abs(strongest(placeGlow(1)) - full) < 0.01);
+  assert.equal(fillsOf(calls, placeGlow(2)).length, 0);
+});
+
+test("alone there are no standing lights; a shared screen lights every field", () => {
+  const steps = stream(8, 600_000);
+  const solo = rig();
+  const alone = solo.frame(
+    world([rider(0, { rating: 300_000 })]),
+    shot(steps, 1000),
+  );
+  for (const color of [...PLACE_GLOWS, CHASE_GLOW, THREAT_GLOW])
+    assert.equal(fillsOf(alone, color).length, 0);
+
+  const tv = rig(1920, 1080);
+  const calls = tv.frame(
+    world([rider(0, { rating: 300_000 }), rider(1, { rating: 200_000 })]),
+    shot(steps, 1000, { local: -1 }),
+  );
+  const fields = layoutFor(1920, 1080, 2, -1).fields;
+  for (const [i, field] of fields.entries()) {
+    const lit = fillsOf(calls, placeGlow(i + 1)).filter(on(field));
+    assert.ok(lit.length > 0, `field ${i}`);
+  }
+});
+
+test("the chase is a green glow at the top of the lanes and the threat a red one at the bottom", () => {
+  const steps = stream(8, 600_000);
+  const r = rig();
+  const layout = layoutFor(1366, 768, 2, 1);
+  const own = fieldOf(layout, 1);
+  let calls: Call[] = [];
+  // Rider 1 trails by 20,000 and gains 3,000 a second.
+  for (let ms = 0; ms <= 4000; ms += 50) {
+    const lead = 200_000 + ms * 5,
+      trail = lead - 20_000 + ms * 3;
+    calls = r.frame(
+      world([
+        rider(0, { rating: lead, place: 1 }),
+        rider(1, { rating: trail, place: 2 }),
+      ]),
+      shot(steps, ms, { local: 1 }),
+    );
+  }
+  const green = fillsOf(calls, CHASE_GLOW);
+  assert.ok(green.length > 0, "closing in");
+  const middle = (own.laneTop + own.laneBottom) / 2;
+  for (const call of green) {
+    assert.ok(call.y > own.laneTop && call.y < middle, "at the top");
+    assert.ok(call.x >= own.x && call.x <= own.x + own.col * COLUMNS);
+    assert.ok(call.alpha <= 0.5);
+  }
+  assert.equal(fillsOf(calls, THREAT_GLOW).length, 0, "nobody behind");
+
+  // The leader's own device shows the same overtake as a threat, at the bottom.
+  const other = rig();
+  const leads = fieldOf(layoutFor(1366, 768, 2, 0), 0);
+  for (let ms = 0; ms <= 4000; ms += 50) {
+    const lead = 200_000 + ms * 5,
+      trail = lead - 20_000 + ms * 3;
+    calls = other.frame(
+      world([
+        rider(0, { rating: lead, place: 1 }),
+        rider(1, { rating: trail, place: 2 }),
+      ]),
+      shot(steps, ms, { local: 0 }),
+    );
+  }
+  const red = fillsOf(calls, THREAT_GLOW);
+  assert.ok(red.length > 0, "being caught");
+  for (const call of red)
+    assert.ok(
+      call.y > (leads.laneTop + leads.laneBottom) / 2 &&
+        call.y < leads.laneBottom,
+      "at the bottom",
+    );
+  assert.equal(fillsOf(calls, CHASE_GLOW).length, 0);
 });
