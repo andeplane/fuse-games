@@ -24,7 +24,12 @@ import {
   type Steps,
 } from "../engine/view-kit.js";
 import { covered, firstEndingAt, has, quantsOf } from "./chart.js";
-import { LEAD_BANNER, NO_BANNER, type RiderFeedback } from "./feedback.js";
+import {
+  LEAD_BANNER,
+  NO_BANNER,
+  placeLight,
+  type RiderFeedback,
+} from "./feedback.js";
 import {
   blit,
   countText,
@@ -136,9 +141,7 @@ export const PLACE_GLOWS = [
   CHASE_GLOW = "#3dff7a",
   THREAT_GLOW = "#ff3b4f";
 export const placeGlow = (place: number): string =>
-  PLACE_GLOWS[Math.max(1, Math.min(PLACE_GLOWS.length, place)) - 1]!;
-/** How long the sides take to turn from one place's colour to the next's. */
-export const PLACE_FADE_MS = 700;
+  PLACE_GLOWS[placeLight(place)]!;
 /** A glow is this many bands, each fainter than the one outside it; how far in the sides and the ends reach, in columns; and how strong each is at the edge. */
 const GLOW_BANDS = 10,
   SIDE_REACH = 0.5,
@@ -184,14 +187,10 @@ function standing(
   const g = frame.pen;
   const side = Math.min(col * SIDE_REACH, width / 4),
     end = Math.min(col * END_REACH, height / 4);
-  // The sides, in the place's colour; for a moment after an overtake the old colour goes out as the new comes in.
-  const turn = Math.max(
-    0,
-    Math.min(1, (frame.songMs - state.rowAt) / PLACE_FADE_MS),
-  );
-  for (let pass = 0; pass < 2; pass++) {
-    const alpha = SIDE_ALPHA * (pass === 0 ? 1 - turn : turn);
-    const color = placeGlow(pass === 0 ? state.placeWas : state.place);
+  // The sides, in the place's colour; after an overtake the old colour goes out as the new comes in.
+  for (let light = 0; light < PLACE_GLOWS.length; light++) {
+    const alpha = SIDE_ALPHA * (state.lights[light] ?? 0),
+      color = PLACE_GLOWS[light]!;
     glow(g, color, alpha, x, top, side, height, true, true);
     glow(g, color, alpha, x + width - side, top, side, height, true, false);
   }

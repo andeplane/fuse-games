@@ -40,6 +40,12 @@ export const BANNER_GAP_MS = 2000;
 const BANNER_MIN_RATING = 20_000;
 /** How long back a rider's scoring rate looks: the time over which a note's points stop counting toward it. */
 const RATE_MS = 4000;
+/** A place's light: one for each of first, second and third, and one for fourth and below. */
+export const PLACE_LIGHTS = 4;
+export const placeLight = (place: number): number =>
+  Math.max(1, Math.min(PLACE_LIGHTS, Math.trunc(place))) - 1;
+/** How quickly the lights of the place left and the place taken go out and come in: most of the way in half a second. */
+const PLACE_EASE_MS = 220;
 /** How quickly the chase and threat glows follow what they show: about a second to come in or go out. */
 const PRESSURE_EASE_MS = 450;
 /** An overtake this many seconds off at the current rates starts to show; one about to happen shows in full. */
@@ -105,9 +111,8 @@ export interface RiderFeedback {
   /** The newest thing to strike this rider: an attack taking hold (its kind), `HIT_MINE` or `HIT_BLOCKED`. */
   hitAt: number;
   hitKind: number;
-  /** The leaderboard: the place last seen, the one before it, and the slide to its row. */
+  /** The leaderboard: the place last seen and the slide to its row. */
   place: number;
-  placeWas: number;
   rowFrom: number;
   rowTo: number;
   rowAt: number;
@@ -121,6 +126,8 @@ export interface RiderFeedback {
   /** From 0 to 1: how close this rider is to taking the place ahead, and to losing its own to the one behind. */
   chase: number;
   threat: number;
+  /** From 0 to 1, per place light (`placeLight`): how lit it is. The rider's place is on its way to 1, the rest to 0. */
+  lights: number[];
 }
 
 function createRider(): RiderFeedback {
@@ -160,7 +167,6 @@ function createRider(): RiderFeedback {
     hitAt: NEVER,
     hitKind: 0,
     place: 1,
-    placeWas: 1,
     rowFrom: 0,
     rowTo: 0,
     rowAt: NEVER,
@@ -171,6 +177,7 @@ function createRider(): RiderFeedback {
     rate: 0,
     chase: 0,
     threat: 0,
+    lights: Array.from({ length: PLACE_LIGHTS }, () => 0),
   };
 }
 
@@ -386,7 +393,6 @@ export function createFeedback(): Feedback {
       rider.rowAt = songMs;
       if (player.place < rider.place) rider.roseAt = songMs;
       else rider.passedAt = songMs;
-      rider.placeWas = rider.place;
       rider.place = player.place;
     }
     const gap = player.rating - rider.score;
@@ -442,7 +448,10 @@ export function createFeedback(): Feedback {
         view.phase !== "over" &&
         view.players.length > 1 &&
         best >= BANNER_MIN_RATING;
-      const ease = 1 - Math.exp(-passed / PRESSURE_EASE_MS);
+      // On the first frame of a match nothing fades in: the place's light is simply on.
+      const first = lastMs === NEVER;
+      const ease = first ? 0 : 1 - Math.exp(-passed / PRESSURE_EASE_MS),
+        turn = first ? 1 : 1 - Math.exp(-passed / PLACE_EASE_MS);
       for (let slot = 0; slot < view.players.length; slot++) {
         const player = view.players[slot]!,
           rider = riders[slot]!;
@@ -463,6 +472,10 @@ export function createFeedback(): Feedback {
                 theirs.rate - rider.rate,
               );
           }
+        const lit = placeLight(player.place);
+        for (let light = 0; light < PLACE_LIGHTS; light++)
+          rider.lights[light]! +=
+            ((light === lit ? 1 : 0) - rider.lights[light]!) * turn;
         rider.chase += (chase - rider.chase) * ease;
         rider.threat += (threat - rider.threat) * ease;
       }

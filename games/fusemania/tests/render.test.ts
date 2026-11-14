@@ -38,7 +38,6 @@ import {
 } from "../src/render/feedback.js";
 import {
   CHASE_GLOW,
-  PLACE_FADE_MS,
   PLACE_GLOWS,
   THREAT_GLOW,
   placeGlow,
@@ -2122,9 +2121,11 @@ test("the rider gaining on the place ahead gets the chase, the one being caught 
   assert.ok(Math.abs(trail!.chase - lead!.threat) < 1e-9, "the same overtake");
   assert.equal(trail!.threat, 0, "nobody behind the last rider");
   assert.equal(lead!.chase, 0, "nobody ahead of the leader");
-  // It comes in over about a second, not at once.
-  const early = chasing(30_000, 2500, 0.2);
-  assert.ok(early[1]!.chase < trail!.chase / 2);
+  // It comes in over about a second, not at once: neck and neck from the first frame, the glow is still on its way
+  // a tenth of a second in and all there three seconds in.
+  const close = pressure(1000, 0);
+  assert.ok(chasing(1000, 0, 0.1)[1]!.chase < close / 2);
+  assert.ok(Math.abs(chasing(1000, 0, 3)[1]!.chase - close) < 0.01);
 
   // Level pace a long way apart: nothing. Falling behind: nothing.
   for (const rider of chasing(80_000, 0, 6)) {
@@ -2189,12 +2190,22 @@ test("a rider's lanes are lit at the sides in its place's colour, on its own fie
   assert.equal(fillsOf(calls, placeGlow(3)).length, 0, "not on rival fields");
 
   // Taking the lead: silver goes out as gold comes in, and then it is gold alone.
+  const strongest = (color: string): number =>
+    Math.max(0, ...fillsOf(calls, color).map((call) => call.alpha));
+  const full = strongest(placeGlow(2));
+  calls = r.frame(view(1), shot(steps, 1050));
   calls = r.frame(view(1), shot(steps, 1100));
-  calls = r.frame(view(1), shot(steps, 1100 + PLACE_FADE_MS / 2));
-  assert.ok(fillsOf(calls, placeGlow(1)).length > 0);
-  assert.ok(fillsOf(calls, placeGlow(2)).length > 0);
-  calls = r.frame(view(1), shot(steps, 1100 + PLACE_FADE_MS + 50));
-  assert.ok(fillsOf(calls, placeGlow(1)).length > 0);
+  assert.ok(strongest(placeGlow(1)) > 0 && strongest(placeGlow(1)) < full);
+  assert.ok(strongest(placeGlow(2)) > 0 && strongest(placeGlow(2)) < full);
+  // Overtaken again part way through: no colour jumps back to full, each goes on from where it was.
+  const gold = strongest(placeGlow(1)),
+    fading = strongest(placeGlow(2));
+  calls = r.frame(view(2), shot(steps, 1150));
+  assert.ok(strongest(placeGlow(1)) < gold);
+  assert.ok(strongest(placeGlow(2)) > fading && strongest(placeGlow(2)) < full);
+  for (let ms = 1200; ms <= 3200; ms += 50)
+    calls = r.frame(view(1), shot(steps, ms));
+  assert.ok(Math.abs(strongest(placeGlow(1)) - full) < 0.01);
   assert.equal(fillsOf(calls, placeGlow(2)).length, 0);
 });
 
