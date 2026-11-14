@@ -356,42 +356,6 @@ body.fv-display .fv-lobby {
 .fv-screen .fui-round-controls .fui-controls-goal {
   padding-right: 2.5rem;
 }
-.fv-result {
-  position: absolute;
-  left: 50%;
-  bottom: 6%;
-  transform: translateX(-50%);
-  display: grid;
-  gap: var(--fui-space-2);
-  width: min(92%, 30rem);
-  padding: var(--fui-space-3) var(--fui-space-4);
-  background: #050e25ee;
-  border: var(--fui-stroke) solid var(--fui-yellow);
-  border-radius: var(--fui-radius);
-  box-shadow: 0 0 2rem #ffe46b44;
-  text-align: center;
-}
-.fv-result h2 {
-  margin: 0;
-  color: var(--fui-yellow);
-  font: 0.875rem/1.4 var(--fui-font-pixel);
-}
-.fv-result ol {
-  display: grid;
-  gap: var(--fui-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fui-text-muted);
-  font-size: 0.75rem;
-}
-.fv-result li:first-child {
-  color: var(--fui-text-bright);
-  font: 0.625rem/1.6 var(--fui-font-pixel);
-}
-.fv-result .fv-actions {
-  justify-content: center;
-}
 
 /* Touch: a left/right rocker and a jump button */
 .fv-touch,
@@ -627,13 +591,6 @@ body.fv-display .fv-sides {
   }
   .fv-choices {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .fv-result {
-    bottom: 3%;
-    padding: var(--fui-space-2);
-  }
-  .fv-result ol li:not(:first-child) {
-    display: none;
   }
 }
 
