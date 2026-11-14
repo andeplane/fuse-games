@@ -539,8 +539,11 @@ export function presentRoom(input: RoomPresenterInput): RoomView {
           !(state.phase === "lobby" || state.phase === "matchOver") ||
           (state.phase === "matchOver" && !ready),
       },
-      // BACK TO LOBBY means nothing in the lobby, and the phone lobby has no room for dead buttons.
-      reset: { disabled: state.phase === "lobby", hidden: input.phoneLobby },
+      // BACK TO LOBBY means nothing in the lobby: no room there shows a dead button, on a phone or a desktop.
+      reset: {
+        disabled: state.phase === "lobby",
+        hidden: input.phoneLobby || state.phase === "lobby",
+      },
       // A phone is never the TV; solo has no room to show.
       shareHidden: solo || input.phoneLobby,
       addAIDisabled: state.players.length >= MAX_RIDERS,
