@@ -607,3 +607,55 @@ test("a seated viewer is offered every open seat as a move, and a viewer without
     "a move is not an admission: the join form is left alone",
   );
 });
+
+test("a viewer with a name is seated on arriving, once, in whichever seat is free; one without a name is asked", () => {
+  const build = (name: string, autoSeat?: boolean) => {
+    const { document } = page(),
+      root = document.createElement("section"),
+      form = document.createElement("form"),
+      input = document.createElement("input"),
+      submit = document.createElement("button");
+    submit.type = "submit";
+    input.value = name;
+    form.append(input, submit);
+    document.body.append(root, form);
+    const joins: (number | undefined)[] = [];
+    form.requestSubmit = () => {
+      joins.push(requestedRoomSlot(form));
+    };
+    form.hidden = true;
+    root.hidden = true;
+    const layout = createRoomLayout({
+      element: root,
+      roster: createRoster({ document }),
+      capacity: 4,
+      join: form,
+      ...(autoSeat === undefined ? {} : { autoSeat }),
+    });
+    return { root, form, layout, joins };
+  };
+  const named = build("Anders");
+  named.layout.update(0);
+  assert.deepEqual(named.joins, [], "not before the room is on screen");
+  named.root.hidden = false;
+  named.layout.update(0);
+  assert.deepEqual(named.joins, [], "not before the room offers a seat");
+  named.form.hidden = false;
+  named.layout.update(1, 4, [0]);
+  assert.deepEqual(named.joins, [undefined], "the room picks the free seat");
+  named.layout.update(1, 4, [0]);
+  named.layout.update(0, 4, []);
+  assert.equal(named.joins.length, 1, "once: a seat given up is not retaken");
+
+  const nameless = build("");
+  nameless.root.hidden = false;
+  nameless.form.hidden = false;
+  nameless.layout.update(0);
+  assert.deepEqual(nameless.joins, []);
+
+  const optedOut = build("Anders", false);
+  optedOut.root.hidden = false;
+  optedOut.form.hidden = false;
+  optedOut.layout.update(0);
+  assert.deepEqual(optedOut.joins, []);
+});
