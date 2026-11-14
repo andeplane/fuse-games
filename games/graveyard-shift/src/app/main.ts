@@ -458,7 +458,14 @@ function room() {
   result.hidden = true;
   name.form.hidden = true;
   app.append(main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move, and the hunter's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime?.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: ready,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -487,6 +494,7 @@ function room() {
         shared = settings.display;
         runtime?.flush();
         const mine = frame.seats.find((s) => s.id === self && !s.watcher);
+        ownSeat = frame.stage === "lobby" ? mine : undefined;
         observeConfirmedPlay(
           observePlay,
           frame,

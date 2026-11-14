@@ -32,6 +32,8 @@ export function roomModel(
         ? `P${seated.slot + 1} ${seated.name.toUpperCase()}`
         : "WAITING FOR NEXT MATCH",
     slot: seated?.slot,
+    // This device's own seat while the room waits: what a move to another open seat is asked with.
+    own: lobby && seated ? { name: seated.name, slot: seated.slot } : undefined,
     note: lobby
       ? v.players.length < 2
         ? "Invite a friend or add a bot. Two players start a match."

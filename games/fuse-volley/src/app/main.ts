@@ -755,6 +755,8 @@ function room(solo: boolean): void {
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     roster,
+    // ADD FRIEND on a player's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: 2,
     join: nameEntry.form,
     // Seated already: any open seat is a move, and the team follows the seat.
