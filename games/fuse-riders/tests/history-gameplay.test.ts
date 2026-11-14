@@ -238,7 +238,7 @@ test("historical rosters and finisher lists are bounded, and large valid reports
     ["outsider"],
     ["bot:1"],
     [report.result.finishers[0], report.result.finishers[0]],
-    report.result.players.slice(0, 6).map((p) => p.playerId),
+    report.result.players.slice(0, 7).map((p) => p.playerId),
   ]) {
     assert.equal(parseMatchResult({ ...report.result, finishers }), undefined);
   }

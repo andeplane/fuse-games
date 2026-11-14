@@ -19,7 +19,7 @@ export async function startAttract(
     "attract",
   );
   const log = world.stream("attract", 1);
-  for (let slot = 0; slot < 5; slot++)
+  for (let slot = 0; slot < BOT_NAMES.length; slot++)
     log.append(1, [
       BOT,
       "add",

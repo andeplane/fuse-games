@@ -69,10 +69,10 @@ test("a status that tells the player what to do is shown verbatim", () => {
   );
   // The room service's refusal of a sixth guest: terminal for the page, so the player gets the way to try again.
   assert.deepEqual(
-    plainStatus("Room full (five players, five spectators and TV)"),
+    plainStatus("Room full (six players, five spectators and TV)"),
     {
       tone: "bad",
-      text: "Room full (five players, five spectators and TV)",
+      text: "Room full (six players, five spectators and TV)",
       retry: true,
     },
   );

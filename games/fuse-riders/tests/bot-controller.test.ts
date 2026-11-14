@@ -37,6 +37,7 @@ import {
   validRiderName,
 } from "../src/engine/rider-name.js";
 import { classicSettings } from "./fixtures/classic-settings.js";
+import { MAX_PLAYERS } from "../src/engine/tuning.js";
 import { setArmed, setDeadlines, setEffect } from "./fixtures/rider-state.ts";
 import { isArmed } from "../src/engine/weapons.ts";
 function fixture() {
@@ -489,17 +490,17 @@ test("an AI rider swings a held Gun's sight toward a rival off its heading, brie
   );
 });
 
-test("AI riders are logged by the creator, take the five shared slots, and never steer from a stream of their own", () => {
+test("AI riders are logged by the creator, take the six shared slots, and never steer from a stream of their own", () => {
   const { state, tick } = logged();
   tick(["host", [JOIN, "host", "Host", 0, "fox", 1]]);
-  for (let i = 1; i <= 4; i++)
+  for (let i = 1; i < MAX_PLAYERS; i++)
     tick(["host", [BOT, "add", `bot:${i}`, `AI ${i}`, freeSlot(state.game)]]);
-  assert.equal(state.game.players.size, 5);
+  assert.equal(state.game.players.size, MAX_PLAYERS);
   assert.equal(freeSlot(state.game), -1);
-  tick(["host", [BOT, "add", "bot:5", "AI 5", 4]]);
+  tick(["host", [BOT, "add", "bot:6", "AI 6", 4]]);
   assert.equal(
     state.game.players.size,
-    5,
+    MAX_PLAYERS,
     "an occupied slot is rejected without throwing",
   );
   const heading = state.game.players.get("bot:1")!.angle;

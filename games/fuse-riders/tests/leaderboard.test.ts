@@ -71,7 +71,7 @@ test("does not mutate participants and rejects invalid groups", () => {
   assert.throws(() => rankRound([p("a")]));
   assert.throws(() => rankRound([p("a"), p("a")]));
   assert.throws(() =>
-    rankRound([p("a"), p("b"), p("c"), p("d"), p("e"), p("f")]),
+    rankRound([p("a"), p("b"), p("c"), p("d"), p("e"), p("f"), p("g")]),
   );
 });
 
@@ -161,4 +161,26 @@ test("returns copies in score order with deterministic tie break", () => {
   );
   sorted[0]!.name = "changed";
   assert.equal(entries.get("a")!.name, "A");
+});
+
+test("a full room of six is ranked: the sole survivor scores six and the first out scores nothing", () => {
+  const placements = rankRound([
+    p("a"),
+    p("b", 50),
+    p("c", 40),
+    p("d", 30),
+    p("e", 20),
+    p("f", 10),
+  ]);
+  assert.deepEqual(
+    placements.map((x) => [x.playerId, x.place, x.scoreUnits / POINT_UNIT]),
+    [
+      ["a", 1, 6],
+      ["b", 2, 4],
+      ["c", 3, 3],
+      ["d", 4, 2],
+      ["e", 5, 1],
+      ["f", 6, 0],
+    ],
+  );
 });

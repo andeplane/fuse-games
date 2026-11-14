@@ -1,4 +1,5 @@
 import { MAX_RANGE_LEVEL } from "../bomb-launch.js";
+import { MAX_PLAYERS } from "../tuning.js";
 import { parseCombat } from "../combat-stats.js";
 import {
   MAX_TRAIL_SEGMENTS,
@@ -72,7 +73,8 @@ import {
   type MomentKind,
 } from "../moments.js";
 
-export const MAX_CHECKPOINT_BYTES = 2_000_000;
+/** Six riders at the trail cap encode to about 2.2 MB; `MAX_SNAPSHOT_BYTES` in `fuse-netcode` carries this text. */
+export const MAX_CHECKPOINT_BYTES = 2_600_000;
 export const MAX_CHECKPOINT_TRAILS = MAX_TRAIL_SEGMENTS;
 const MAX_HISTORY = 128;
 type Guard = (value: unknown) => boolean;
@@ -165,7 +167,7 @@ const armedWeapons: Guard = (v) =>
 const playerFields = {
   id: text,
   name,
-  slot: count(4),
+  slot: count(MAX_PLAYERS - 1),
   color: isRiderColor,
   avatarId: isAvatarId,
   connected: boolean,
@@ -248,7 +250,7 @@ const statsFields = {
   combat: optional((v) => parseCombat(v) !== undefined),
   playerId: text,
   name,
-  slot: count(4),
+  slot: count(MAX_PLAYERS - 1),
   color: text,
   roundsPlayed: integer,
   roundWins: integer,
@@ -390,7 +392,7 @@ const gameShape = shape({
     typeof v === "string" && (ARENA_MAPS as readonly string[]).includes(v),
   obstacles: array(obstacle, MAX_OBSTACLES),
   tracks: array(track, MAX_TRACKS),
-  players: map(text, player, 5),
+  players: map(text, player, MAX_PLAYERS),
   bombs: map(integer, bomb, 256),
   tracers: array(tracer, 256),
   blasts: array(blast, 256),
@@ -418,19 +420,19 @@ const gameShape = shape({
   roundParticipants: map(
     text,
     shape({ id: text, name, eliminatedAtTick: optional(integer) }),
-    5,
+    MAX_PLAYERS,
   ),
   roundPlacements: array(
     shape({
       playerId: text,
       name,
-      place: (v) => count(5)(v) && v !== 0,
+      place: (v) => count(MAX_PLAYERS)(v) && v !== 0,
       scoreUnits: integer,
     }),
-    5,
+    MAX_PLAYERS,
   ),
   roundScored: boolean,
-  matchFinishers: array(text, 5),
+  matchFinishers: array(text, MAX_PLAYERS),
   matchStats: map(text, stats, MAX_HISTORY),
   moments: array(moment, MAX_MOMENTS),
   shots: array(shotRecord, MAX_ROUND_SHOTS),
@@ -442,17 +444,17 @@ const gameShape = shape({
       shots: array(shotRecord, MAX_ROUND_SHOTS),
       rating: optional(
         shape({
-          finishers: array(text, 5),
+          finishers: array(text, MAX_PLAYERS),
           standings: array(
             shape({
               playerId: text,
               name,
-              slot: count(4),
+              slot: count(MAX_PLAYERS - 1),
               color: text,
-              place: (v) => count(5)(v) && v !== 0,
+              place: (v) => count(MAX_PLAYERS)(v) && v !== 0,
               scoreUnits: integer,
             }),
-            5,
+            MAX_PLAYERS,
           ),
         }),
       ),
@@ -586,7 +588,7 @@ function gameInvariants(game: GameState): boolean {
       id !== entry.playerId ||
       !game.leaderboard.has(id) ||
       entry.matchScoreUnits % POINT_UNIT !== 0 ||
-      entry.matchScoreUnits > entry.roundsPlayed * 5 * POINT_UNIT
+      entry.matchScoreUnits > entry.roundsPlayed * MAX_PLAYERS * POINT_UNIT
     )
       return false;
   for (const [id, entry] of game.roundParticipants)

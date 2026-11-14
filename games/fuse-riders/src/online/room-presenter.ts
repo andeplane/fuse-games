@@ -7,6 +7,7 @@
  */
 import { BOT_ID_PREFIX } from "../engine/bot-controller.js";
 import { isAimingGun } from "../engine/gun.js";
+import { MAX_PLAYERS } from "../engine/tuning.js";
 import type { WorldView } from "../engine/view.js";
 import type { AvatarId } from "../engine/avatar-id.js";
 import { powerLabel } from "../render/power-indicator.js";
@@ -24,7 +25,7 @@ const UNITS = 60;
 /** Ticks per second, for the recharge and countdown seconds the buttons show. */
 const TICKS_PER_SECOND = 20;
 /** A room holds at most this many riders, AI included. */
-export const MAX_RIDERS = 5;
+export const MAX_RIDERS = MAX_PLAYERS;
 
 type RoomPhase = WorldView["phase"];
 

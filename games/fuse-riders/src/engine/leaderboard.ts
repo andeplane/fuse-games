@@ -1,6 +1,7 @@
 export const POINT_UNIT = 60;
 
-const MAX_PARTICIPANTS = 5;
+/** Every seat of a full room (`MAX_PLAYERS` in `tuning.ts`, which imports the state this module's types feed). */
+const MAX_PARTICIPANTS = 6;
 
 export interface SessionLeaderboardEntry {
   id: string;
@@ -30,7 +31,7 @@ export function rankRound(
   participants: readonly RoundParticipant[],
 ): RoundPlacement[] {
   if (participants.length < 2 || participants.length > MAX_PARTICIPANTS) {
-    throw new RangeError("A round has two to five participants");
+    throw new RangeError("A round has two to six participants");
   }
   const ids = new Set<string>();
   for (const participant of participants) {
