@@ -102,7 +102,7 @@ export function applyRoundScores(
       placement.place < 1 ||
       placement.place > MAX_PARTICIPANTS
     ) {
-      throw new RangeError("Round placement must be between one and five");
+      throw new RangeError("Round placement must be between one and six");
     }
     if (
       !Number.isSafeInteger(placement.scoreUnits) ||

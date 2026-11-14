@@ -374,7 +374,7 @@ function switchView(input: {
           : text.watchersFull
         : undefined;
   return {
-    // Solo is one device and four AI, and a display is not a member: neither has a side to change. Nor has a device
+    // Solo is one device and five AI, and a display is not a member: neither has a side to change. Nor has a device
     // the room does not list yet — it is still being seated, and the join card is what offers it the other side.
     hidden: !input.inRoom || input.solo || input.displayOnly,
     disabled: reason !== undefined,

@@ -398,7 +398,7 @@ export async function startOnline(): Promise<void> {
       return sent;
     },
     accountUsername(),
-    // Solo is one rider and four AI on this device: there is no room to watch.
+    // Solo is one rider and five AI on this device: there is no room to watch.
     solo
       ? undefined
       : (playerName) => runtime.command({ type: "spectate", name: playerName }),
@@ -1901,7 +1901,7 @@ export async function startOnline(): Promise<void> {
       }
     },
   };
-  // Solo is the same runtime with no transport: one rider and four AI riders fold the log locally.
+  // Solo is the same runtime with no transport: one rider and five AI riders fold the log locally.
   const runtime = new RoomRuntime(
     code,
     settings,
