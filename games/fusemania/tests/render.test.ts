@@ -36,6 +36,8 @@ import {
   laneOf,
   layoutFor,
   ownPlace,
+  raceBand,
+  type Race,
   type Field,
   type Layout,
 } from "../src/render/layout.js";
@@ -47,11 +49,16 @@ import {
   type LaneGeometry,
 } from "../src/render/mods.js";
 import {
+  COMBO_BLINK_DIM,
+  COMBO_BLINK_MS,
   CYAN,
   GOLD,
+  GREEN,
   JUDGMENT_COLORS,
+  MUTED,
   PINK,
   RED,
+  WHITE,
 } from "../src/render/palette.js";
 import type { Pen, SceneCanvas, SpriteCanvas } from "../src/render/pen.js";
 import {
@@ -335,6 +342,7 @@ function rider(slot: number, over: Partial<PlayerView> = {}): PlayerView {
     rating: 0,
     place: slot + 1,
     combo: 0,
+    worst: -1,
     best: 0,
     counts: Array.from({ length: 9 }, () => 0),
     next: each(0),
@@ -872,7 +880,7 @@ test("the judgment word pops in, holds and fades, with EARLY or LATE for anythin
 test("the combo shows from four, bumps on every step and flashes at each hundred", () => {
   const r = rig();
   const at = (combo: number) =>
-    world([struck(PERFECT, { combo, judgedAt: 0 })]);
+    world([struck(PERFECT, { combo, worst: PERFECT, judgedAt: 0 })]);
   const three = r.frame(at(3), shot(CHORD, 3000));
   assert.ok(!texts(three).includes("COMBO"));
   const four = r.frame(at(4), shot(CHORD, 3010));
@@ -890,12 +898,64 @@ test("the combo shows from four, bumps on every step and flashes at each hundred
   // A hundred.
   r.frame(at(99), shot(CHORD, 4000));
   const hundred = r.frame(at(100), shot(CHORD, 4016));
-  assert.equal(textAt(hundred, "100")?.fill, GOLD);
+  assert.equal(textAt(hundred, "100")?.fill, JUDGMENT_COLORS[PERFECT]);
   assert.ok(images(hundred, "glow:1").some((glow) => glow.lighter));
+  // It blinks faster for that moment.
+  assert.equal(textAt(hundred, "100")?.alpha, 1);
+  assert.equal(
+    textAt(r.frame(at(100), shot(CHORD, 4080)), "100")?.alpha,
+    COMBO_BLINK_DIM,
+  );
   // Lost: the old number falls away in red.
   const broken = r.frame(at(0), shot(CHORD, 5000));
   assert.equal(textAt(broken, "100")?.fill, RED);
   assert.ok(!texts(broken).includes("COMBO"));
+});
+
+test("the combo blinks in the colour of the worst judgment in it: white, yellow, green", () => {
+  const on = Math.ceil(3000 / COMBO_BLINK_MS) * COMBO_BLINK_MS,
+    off = on + COMBO_BLINK_MS / 2;
+  const combo = (worst: number, songMs: number, options = {}) =>
+    textAt(
+      rig(1366, 768, 1, options).frame(
+        world([struck(worst, { combo: 12, worst, judgedAt: 0 })]),
+        shot(CHORD, songMs),
+      ),
+      "12",
+    )!;
+  for (const [worst, color] of [
+    [MARVELOUS, WHITE],
+    [PERFECT, JUDGMENT_COLORS[PERFECT]],
+    [GREAT, JUDGMENT_COLORS[GREAT]],
+  ] as const) {
+    // Full for half a blink, dimmed for the other half, in the same colour.
+    assert.equal(combo(worst, on).fill, color);
+    assert.equal(combo(worst, on).alpha, 1);
+    assert.equal(combo(worst, off).fill, color);
+    assert.equal(combo(worst, off).alpha, COMBO_BLINK_DIM);
+    // With reduced motion it holds the colour.
+    assert.equal(combo(worst, off, { reducedMotion: true }).fill, color);
+    assert.equal(combo(worst, off, { reducedMotion: true }).alpha, 1);
+  }
+  assert.equal(JUDGMENT_COLORS[GREAT], GREEN);
+  // The label under it does not blink.
+  const frame = rig().frame(
+    world([struck(GREAT, { combo: 12, worst: GREAT, judgedAt: 0 })]),
+    shot(CHORD, off),
+  );
+  assert.equal(textAt(frame, "COMBO")?.alpha, 1);
+  // The others' boxes show their combos in the same colours.
+  const boxes = rig().frame(
+    world([
+      rider(0, { place: 1, combo: 12, worst: GREAT }),
+      rider(1, { place: 2, combo: 30, worst: MARVELOUS }),
+      rider(2, { place: 3, combo: 2, worst: PERFECT }),
+    ]),
+    shot(CHORD, on),
+  );
+  assert.equal(textAt(boxes, "x12")?.fill, JUDGMENT_COLORS[GREAT]);
+  assert.equal(textAt(boxes, "x30")?.fill, WHITE);
+  assert.equal(textAt(boxes, "x2")?.fill, MUTED);
 });
 
 test("the targets pulse on the beat, and press in and light up under a held key", () => {
@@ -1921,10 +1981,17 @@ test("the pace is the share of the full score that could be had by now", () => {
 });
 
 /** The markers on the race line of a frame: where each path starts (its tip), its size and its colour. */
-function markers(calls: readonly Call[], top: number) {
+const bandOf = (layout: Layout, local: number, down = false): Race =>
+  raceBand(layout, local, down, { x: 0, y: 0, width: 0, height: 0 })!;
+function markers(calls: readonly Call[], band: Race) {
   const found: { x: number; half: number; fill: string }[] = [];
   for (const [i, call] of calls.entries()) {
-    if (call.op !== "moveTo" || call.y < top) continue;
+    if (
+      call.op !== "moveTo" ||
+      call.y < band.y ||
+      call.y > band.y + band.height
+    )
+      continue;
     const back = calls[i + 1]!;
     const fill = calls.slice(i).find((next) => next.op === "fill")!;
     found.push({ x: call.x, half: call.y - back.y, fill: fill.fill });
@@ -1941,9 +2008,9 @@ test("the race line puts every rider at its share of the full score, the local r
     rider(2, { rating: 0, place: 3 }),
   ]);
   const calls = r.frame(view, shot(steps, 4500, { local: 0 }));
-  const race = layoutFor(1366, 768, 3, 0).race!;
+  const race = bandOf(layoutFor(1366, 768, 3, 0), 0);
   const track = raceTrack(race, 1, { left: 0, width: 0 });
-  const found = markers(calls, race.y);
+  const found = markers(calls, race);
   assert.deepEqual(
     found.map((marker) => marker.fill),
     [CYAN, GOLD, PINK],
@@ -1977,10 +2044,10 @@ test("the race line puts every rider at its share of the full score, the local r
 test("a rider alone has a race line too, and the shared screen draws every marker the same size", () => {
   const steps = stream(8, 1000, 1000);
   const solo = rig();
-  const race = layoutFor(1366, 768, 1, 0).race!;
+  const race = bandOf(layoutFor(1366, 768, 1, 0), 0);
   const alone = markers(
     solo.frame(world([rider(0, { rating: 1_000_000 })]), shot(steps, 9000)),
-    race.y,
+    race,
   );
   assert.equal(alone.length, 1);
   assert.equal(alone[0]!.half, OWN_MARKER);
@@ -1990,7 +2057,7 @@ test("a rider alone has a race line too, and the shared screen draws every marke
   const tv = rig(1920, 1080);
   const shared = markers(
     tv.frame(world([rider(0), rider(1)]), shot(steps, 2000, { local: -1 })),
-    layoutFor(1920, 1080, 2, -1).race!.y,
+    bandOf(layoutFor(1920, 1080, 2, -1), -1),
   );
   assert.deepEqual(
     shared.map((marker) => marker.half),

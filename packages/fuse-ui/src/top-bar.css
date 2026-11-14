@@ -206,7 +206,8 @@ body:has(.fui-top-bar) .fui-main-menu:has(> .fui-attract)::after {
   .fui-top-bar .fui-top-bar-sound {
     width: 44px;
     padding: 8px;
-    font-size: 0;
+    /* Whatever a game's own header rules say: the label must not spill under the button beside it. */
+    font-size: 0 !important;
   }
   .fui-top-bar .fui-top-bar-sound::before {
     content: "🔊";

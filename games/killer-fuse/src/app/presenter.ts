@@ -106,11 +106,29 @@ export interface ResultModel {
   title: string;
   /** The team that took the set. */
   team: number;
+  /** The set's score, such as "CYAN 1 – 2 PINK". */
+  score: string;
   games: string[];
-  players: string[];
+  /** Every player of the set, the winning team first and then by seat. */
+  rows: ResultRow[];
   /** This device may start the rematch or return to the lobby. */
   host: boolean;
   waiting: string;
+}
+/** One player's line in the result. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  team: number;
+  /** The seat played, such as "Cyan Queen". */
+  seat: string;
+  name: string;
+  you: boolean;
+  /** 1 for the team that took the set, 2 for the other. */
+  place: number;
+  kills: number;
+  deaths: number;
+  berries: number;
 }
 export interface PageModel {
   screen: "lobby" | "arena";
@@ -297,16 +315,34 @@ function result(view: View, viewer: Viewer, host: boolean): ResultModel {
         : "YOUR TEAM LOST"
       : `${TEAM_NAMES[team]} WINS THE SET`,
     team,
+    score: `${TEAM_NAMES[0]} ${view.score[0]} – ${view.score[1]} ${TEAM_NAMES[1]}`,
     games: view.results.map(
       (record) =>
         `Game ${record.round}, ${MAPS[record.mapId].name}: ${TEAM_NAMES[record.team]} ${VICTORY_DEEDS[record.kind]} in ${Math.round(record.steps / (STEPS_PER_TICK * TICKS_PER_SECOND))} s`,
     ),
-    players: Object.entries(view.roster)
+    rows: Object.entries(view.roster)
       .map(([id, entry]) => ({ id, ...entry }))
-      .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
+      .sort(
+        (a, b) =>
+          Number(teamOfSlot(a.slot) !== team) -
+            Number(teamOfSlot(b.slot) !== team) ||
+          a.slot - b.slot ||
+          (a.id < b.id ? -1 : 1),
+      )
       .map(({ id, name, slot }) => {
         const stats = view.stats[id];
-        return `${name} (${seatTitle(slot)}): ${count(stats?.kills ?? 0, "kill")}, ${count(stats?.deaths ?? 0, "death")}, ${count(stats?.berries ?? 0, "berry", "berries")}`;
+        return {
+          id,
+          slot,
+          team: teamOfSlot(slot),
+          seat: seatTitle(slot),
+          name,
+          you: played && id === viewer.me,
+          place: teamOfSlot(slot) === team ? 1 : 2,
+          kills: stats?.kills ?? 0,
+          deaths: stats?.deaths ?? 0,
+          berries: stats?.berries ?? 0,
+        };
       }),
     host,
     waiting: host ? "" : "Waiting for the host to start a rematch",

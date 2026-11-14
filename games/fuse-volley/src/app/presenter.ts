@@ -114,10 +114,32 @@ export interface Model {
   note: string;
   result: {
     title: string;
+    /** The final score in words: "A 15 – 11 B", or the three teams' points. */
+    score: string;
+    /** Every player, the winning team first: for the standings. */
+    rows: ResultRow[];
     lines: string[];
     host: boolean;
     waiting: string;
   } | null;
+}
+
+/** One player on the result. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  team: number;
+  /** The team's name, where a team is more than one player: "PINK". */
+  teamName: string;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for the winning team; teammates share a place. */
+  place: number;
+  /** The team's points. */
+  points: number;
+  /** How often this player touched the ball. */
+  touches: number;
 }
 
 /** A side's players as one label: "A", "A & B" or "A, B & C". */
@@ -249,18 +271,42 @@ export function present(view: View, viewer: Viewer): Model {
         (sides.find((side) => side.team === b)?.score ?? 0) -
         (sides.find((side) => side.team === a)?.score ?? 0),
     );
+    const scoreLine = kings
+      ? order
+          .map((each) => `${teamName(each)} ${world.points[each] ?? 0}`)
+          .join(" · ")
+      : `${teamName(0)} ${world.score[0]} – ${world.score[1]} ${teamName(1)}`;
+    const pointsOf = (team: number) =>
+      sides.find((side) => side.team === team)?.score ?? 0;
+    const rows: ResultRow[] = order.flatMap((each) =>
+      sides
+        .filter((side) => side.team === each)
+        .map((side) => ({
+          id: side.id,
+          slot: side.slot,
+          team: side.team,
+          teamName: format === "1v1" ? "" : (TEAM_NAMES[each] ?? ""),
+          name: side.name,
+          you: side.you,
+          bot: side.bot,
+          // Teams level on points share a place.
+          place:
+            1 +
+            order.filter((other) => pointsOf(other) > pointsOf(each)).length,
+          points: side.score,
+          touches: world.blobs[side.slot]?.hits ?? 0,
+        })),
+    );
     result = {
+      score: scoreLine,
+      rows,
       title: !winner
         ? "MATCH OVER"
         : team!.some((side) => side.you)
           ? "YOU WIN!"
           : `${teamName(winner.team).toUpperCase()} ${team!.length > 1 ? "WIN" : "WINS"}`,
       lines: [
-        kings
-          ? order
-              .map((each) => `${teamName(each)} ${world.points[each] ?? 0}`)
-              .join(" · ")
-          : `${teamName(0)} ${world.score[0]} – ${world.score[1]} ${teamName(1)}`,
+        scoreLine,
         ...sides.map(
           (side) =>
             `${side.name}: ${plural(world.blobs[side.slot]?.hits ?? 0, "touch", "touches")}`,

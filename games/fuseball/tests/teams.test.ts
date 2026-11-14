@@ -558,8 +558,18 @@ test("a team result places each side as one, and the service's field check accep
     });
   assert.equal(mine.result?.title, "YOU WIN!");
   assert.equal(theirs.result?.title, "CYAN WINS");
-  assert.equal(mine.result?.lines[0], "Cyan 3 – 0 Magenta");
-  assert.equal(mine.result?.lines.length, 7);
+  assert.equal(mine.result?.score, "Cyan 3 – 0 Magenta");
+  assert.deepEqual(
+    mine.result?.rows.map((row) => [row.teamName, row.place]),
+    [
+      ["Cyan", 1],
+      ["Cyan", 1],
+      ["Cyan", 1],
+      ["Magenta", 2],
+      ["Magenta", 2],
+      ["Magenta", 2],
+    ],
+  );
   assert.equal(mine.names, undefined, "the banner names the colour");
 });
 

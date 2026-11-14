@@ -1,0 +1,175 @@
+import {
+  FieldPath,
+  Timestamp,
+  type Firestore,
+  type WhereFilterOp,
+} from "@google-cloud/firestore";
+import {
+  storedDebugRecord,
+  type DebugDatabase,
+  type DebugMutation,
+  type DebugRecord,
+  type ReportRecord,
+} from "./debug-store.js";
+
+/** Small query capability shared by the SDK and query-shape regression fake. */
+export interface DebugReportQuery {
+  where(
+    field: string,
+    operation: WhereFilterOp,
+    value: unknown,
+  ): DebugReportQuery;
+  orderBy(field: string | FieldPath): DebugReportQuery;
+  limit(count: number): DebugReportQuery;
+  get(): Promise<{ docs: readonly { data(): unknown }[] }>;
+}
+export async function queryRecordingReports(
+  query: DebugReportQuery,
+  recordingId: string,
+  startMs: number,
+  endMs: number,
+  now: number,
+  limit: number,
+): Promise<ReportRecord[]> {
+  const rows = await query
+    .where("recordingId", "==", recordingId)
+    .where("ready", "==", true)
+    .where("offsetMs", ">=", startMs)
+    .where("offsetMs", "<=", endMs)
+    .where("expiresAt", ">", now)
+    .orderBy("offsetMs")
+    .orderBy("expiresAt")
+    .orderBy(FieldPath.documentId())
+    .limit(limit)
+    .get();
+  return rows.docs.flatMap((doc) => {
+    const value = storedDebugRecord(doc.data());
+    return value?.kind === "report" ? [value] : [];
+  });
+}
+
+/** The cursor capability a keyset listing needs on top of filters. */
+export interface DebugListQuery<Result> {
+  where(
+    field: string,
+    operation: WhereFilterOp,
+    value: unknown,
+  ): DebugListQuery<Result>;
+  orderBy(field: string | FieldPath): DebugListQuery<Result>;
+  startAt(value: string): DebugListQuery<Result>;
+  startAfter(value: string): DebugListQuery<Result>;
+  endAt(value: string): DebugListQuery<Result>;
+  limit(count: number): Result;
+}
+/**
+ * Filters come first: Firestore rejects `where()` once a cursor is set.
+ * A later cursor replaces an earlier one, so there is exactly one start.
+ */
+export function debugListQuery<Result>(
+  query: DebugListQuery<Result>,
+  prefix: string,
+  after: string | undefined,
+  recordingId: string | undefined,
+): DebugListQuery<Result> {
+  const filtered = recordingId
+    ? query.where("recordingId", "==", recordingId)
+    : query;
+  const ordered = filtered.orderBy(FieldPath.documentId());
+  return (after ? ordered.startAfter(after) : ordered.startAt(prefix)).endAt(
+    `${prefix}`,
+  );
+}
+
+/** Separate documents keep transcript growth outside Firestore's per-document size limit. */
+export class FirestoreDebugDatabase implements DebugDatabase {
+  constructor(
+    private firestore: Firestore,
+    private prefix: string,
+  ) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(prefix))
+      throw new Error("Invalid telemetry prefix");
+  }
+  private ref(key: string) {
+    const colon = key.indexOf(":"),
+      kind = key.slice(0, colon);
+    if (
+      !["recording", "report", "segment", "limit"].includes(kind) ||
+      !/^[\w:-]+$/.test(key)
+    )
+      throw new Error("Invalid debug key");
+    return this.firestore
+      .collection(
+        `${this.prefix}-telemetry-${kind === "segment" ? "recording-segments" : kind === "limit" ? "limits" : `${kind}s`}`,
+      )
+      .doc(key);
+  }
+  async transact<T>(
+    keys: readonly string[],
+    operation: (records: ReadonlyMap<string, DebugRecord>) => DebugMutation<T>,
+  ): Promise<T> {
+    return this.firestore.runTransaction(
+      async (transaction) => {
+        const docs = keys.length
+            ? await transaction.getAll(...keys.map((key) => this.ref(key)))
+            : [],
+          records = new Map<string, DebugRecord>();
+        docs.forEach((doc, index) => {
+          const value = storedDebugRecord(doc.data());
+          if (value) records.set(keys[index]!, value);
+        });
+        const mutation = operation(records);
+        for (const [key, value] of mutation.writes ?? []) {
+          if (!keys.includes(key))
+            throw new Error("Undeclared transaction key");
+          transaction.set(this.ref(key), {
+            ...value,
+            cleanupAt: Timestamp.fromMillis(value.expiresAt),
+          });
+        }
+        return mutation.result;
+      },
+      { maxAttempts: 5 },
+    );
+  }
+  async read(key: string) {
+    return storedDebugRecord((await this.ref(key).get()).data());
+  }
+  async reportsInRange(
+    recordingId: string,
+    startMs: number,
+    endMs: number,
+    now: number,
+    limit: number,
+  ) {
+    return queryRecordingReports(
+      this.ref("report:placeholder").parent,
+      recordingId,
+      startMs,
+      endMs,
+      now,
+      limit,
+    );
+  }
+  async list(
+    kind: "recording" | "report" | "segment",
+    prefix: string,
+    after: string | undefined,
+    limit: number,
+    recordingId?: string,
+  ) {
+    const rows = (
+      await debugListQuery(
+        this.ref(`${kind}:placeholder`).parent,
+        prefix,
+        after,
+        recordingId,
+      )
+        .limit(limit)
+        .get()
+    ).docs;
+    return rows.flatMap((doc) => {
+      const value = storedDebugRecord(doc.data());
+      return value ? [{ key: doc.id, value }] : [];
+    });
+  }
+}

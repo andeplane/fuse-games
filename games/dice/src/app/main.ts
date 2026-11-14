@@ -1,8 +1,13 @@
 import { createTopBar } from "fuse-ui";
+import { playtestInputBlocked } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
@@ -139,7 +144,7 @@ function landing(): void {
     },
   });
   card.create.after(shared);
-  const back = el("a", "← FUSE RIDERS", "dice-back");
+  const back = el("a", "All games", "dice-back");
   back.href = import.meta.env.BASE_URL;
   app.replaceChildren(header([back]), card.element);
 }
@@ -337,6 +342,8 @@ function room(solo: boolean): void {
   main.tabIndex = -1;
   main.append(nameEntry.form, lobby, table, result);
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -346,6 +353,11 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // Seated already: any open seat is a move.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     addAI: addBot,
     actions: [lobbyNote, tvLink, start],
   });
@@ -459,18 +471,29 @@ function room(solo: boolean): void {
     joinSent = false;
   const callbacks: DiceCallbacks = {
     state(frame, settings) {
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.phase === "running",
-        ended: frame.phase === "over",
-        round: frame.round,
-        playerCount: frame.players.length,
-        botCount: frame.players.filter((seat) => seat.bot).length,
-        seated: frame.players.some((seat) => seat.id === viewer.me),
-        mode: solo ? "solo" : settings.display ? "shared" : "online",
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => ({
+          matchId: frame.matchId,
+          roundActive: frame.phase === "running",
+          roundEnded: frame.phase === "between" || frame.phase === "over",
+          active: frame.phase === "running",
+          ended: frame.phase === "over",
+          round: frame.round,
+          playerCount: frame.players.length,
+          botCount: frame.players.filter((seat) => seat.bot).length,
+          seated: frame.players.some((seat) => seat.id === viewer.me),
+          mode: solo ? "solo" : settings.display ? "shared" : "online",
+        }),
+      );
       viewer.shared = settings.display;
       const model = presentTable(frame, viewer);
+      ownSeat =
+        frame.phase === "lobby"
+          ? frame.players.find((seat) => seat.id === viewer.me)
+          : undefined;
       const state = runtime.roomState();
       const touch =
         viewer.shared || window.matchMedia("(pointer: coarse)").matches;
@@ -495,7 +518,8 @@ function room(solo: boolean): void {
       lastDie = model.die?.key ?? "";
       // A page that loads into a room with a name remembered from before (a reload frees a lobby seat) joins under it
       // once; a name typed on this page joins only through JOIN.
-      if (model.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (model.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
@@ -580,6 +604,11 @@ function room(solo: boolean): void {
     reload: () => location.reload(),
   });
   document.addEventListener("keydown", (event) => {
+    if (
+      playtestInputBlocked(document) ||
+      document.querySelector("dialog[open]")
+    )
+      return;
     // A focused control answers its own keys: Enter or Space on ROLL must not also HOLD, and Space must still press
     // START or REMATCH.
     if (

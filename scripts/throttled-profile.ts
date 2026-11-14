@@ -1,5 +1,5 @@
 /**
- * Where a slow device spends its main thread: a real solo match (you and four AI riders, the bots-only endgame once
+ * Where a slow device spends its main thread: a real solo match (you and five AI riders, the bots-only endgame once
  * you crash) at a car-screen viewport, under Chrome's CPU throttling, with a sampled CPU profile per rate grouped by
  * source module through the build's source maps. Throttling slows JavaScript, not the GPU, so it is a proxy for a
  * weak CPU (an Atom-class in-car browser at 4–8×), not device evidence. Build readable first, then run:

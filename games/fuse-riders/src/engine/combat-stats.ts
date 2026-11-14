@@ -1,4 +1,10 @@
 import { WEAPONS, type Weapon } from "./shot-log.js";
+import { MAX_PLAYERS } from "./tuning.js";
+/**
+ * How many places a record written while a room sat five riders counts. Stored careers and match details from then are
+ * still read: `parseCombat` pads them with an empty sixth place.
+ */
+const LEGACY_ROUND_PLACES = 5;
 export const KILL_METHODS = [
   ...WEAPONS,
   "trail",
@@ -33,7 +39,7 @@ export const emptyCombat = (): CombatStats => ({
   >,
   victims: {},
   killers: {},
-  roundPlaces: [0, 0, 0, 0, 0],
+  roundPlaces: Array.from({ length: MAX_PLAYERS }, () => 0),
   selfDeaths: 0,
 });
 /** Shared strict boundary for persisted match detail and peer checkpoints. */
@@ -98,7 +104,8 @@ export function parseCombat(
     return;
   if (
     !Array.isArray(raw.roundPlaces) ||
-    raw.roundPlaces.length !== 5 ||
+    (raw.roundPlaces.length !== LEGACY_ROUND_PLACES &&
+      raw.roundPlaces.length !== MAX_PLAYERS) ||
     !raw.roundPlaces.every(count)
   )
     return;
@@ -129,7 +136,10 @@ export function parseCombat(
     uses: ordered(raw.uses, WEAPONS) as Record<Weapon, number>,
     victims: ordered(raw.victims, Object.keys(raw.victims).sort()),
     killers: ordered(raw.killers, Object.keys(raw.killers).sort()),
-    roundPlaces: [...raw.roundPlaces],
+    roundPlaces: Array.from(
+      { length: MAX_PLAYERS },
+      (_, place) => (raw.roundPlaces as number[])[place] ?? 0,
+    ),
     selfDeaths: raw.selfDeaths,
   };
 }

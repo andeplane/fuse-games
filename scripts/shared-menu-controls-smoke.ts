@@ -84,6 +84,29 @@ async function start(page: Page, game: GameFlow): Promise<void> {
   if (game.id === "fuse-lane") await page.locator(".fl-tour-skip").click();
 }
 
+/** The app's bar is where it is in the menus: every control inside the window, none cut off at an edge. */
+async function checkTopBarInWindow(page: Page, game: string): Promise<void> {
+  const outside = await page.evaluate(() => {
+    const width = document.documentElement.clientWidth;
+    return [
+      ...document.querySelectorAll<HTMLElement>(
+        ".fui-top-bar button, .fui-top-bar a",
+      ),
+    ]
+      .filter((node) => node.offsetParent !== null)
+      .map((node) => ({ node, box: node.getBoundingClientRect() }))
+      .filter(
+        ({ box }) =>
+          box.width > 0 && (box.left < 0 || box.right > width || box.top < 0),
+      )
+      .map(
+        ({ node, box }) =>
+          `${node.getAttribute("aria-label") ?? node.textContent?.trim()} at ${Math.round(box.left)}..${Math.round(box.right)} of ${width}`,
+      );
+  });
+  assert.deepEqual(outside, [], `${game}: top bar controls inside the window`);
+}
+
 async function checkSharedMenu(page: Page): Promise<void> {
   const menu = page.locator(".fui-game-menu");
   const trigger = menu.locator(".fui-game-menu-trigger");
@@ -99,7 +122,7 @@ async function checkSharedMenu(page: Page): Promise<void> {
     (await controls.locator(".fui-controls-row").count()) > 0,
     "controls list is populated",
   );
-  await controls.getByRole("button", { name: "← BACK", exact: true }).click();
+  await controls.getByRole("button", { name: "Menu", exact: true }).click();
   await page.keyboard.press("Escape");
   assert.equal(await trigger.getAttribute("aria-expanded"), "false");
   await trigger.click();
@@ -129,12 +152,16 @@ async function checkSharedMenu(page: Page): Promise<void> {
 }
 
 async function checkRidersMenu(page: Page): Promise<void> {
+  // Keyboard controls is an entry of the bar's menu.
+  await page
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Keyboard controls", exact: true })
     .click();
   const help = page.getByRole("dialog");
   await help.getByText("Driving", { exact: true }).waitFor();
-  await help.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await help.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .getByRole("button", { name: "BACK TO LOBBY", exact: true })
     .click();
@@ -500,6 +527,7 @@ try {
         `${game.id}: startup controls identify this round`,
       );
       await page.screenshot({ path: `${shots}/${game.id}-startup.png` });
+      await checkTopBarInWindow(page, game.id);
       if (game.id === "fuse-bombers")
         await page.screenshot({
           path: `${evidence}/bombers-round-controls.png`,
