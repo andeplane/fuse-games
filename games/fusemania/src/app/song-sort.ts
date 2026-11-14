@@ -2,13 +2,7 @@ import type { SongInfo } from "../engine/index.js";
 
 /** What the song select can order the carousel by. `pack` is the library's own order, pack by pack. */
 export type SortKey =
-  | "pack"
-  | "title"
-  | "bpm"
-  | "easy"
-  | "medium"
-  | "hard"
-  | "challenge";
+  "pack" | "title" | "bpm" | "easy" | "medium" | "hard" | "challenge";
 export type SortDirection = "asc" | "desc";
 export interface SongSort {
   key: SortKey;
