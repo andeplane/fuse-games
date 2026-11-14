@@ -59,6 +59,7 @@ def keep_24th_runs(beats: list[float], need: int = 5) -> list[float]:
     return out
 
 
+END_MARGIN = 0.5  # seconds before the end of the audio where the last step may fall
 QUOTA_SECONDS = 2.0  # the window the busy-ness profile and the tapped counts are spent in
 
 
@@ -84,10 +85,11 @@ def _select(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int |
             add(b, t)
     subs = SNAP[diff] + ([3] if swing and diff in ("Medium", "Hard", "Challenge") else []) + ([6] if snap24 else [])
     snapped: list[tuple[float, float]] = []  # (beat, probability), strongest first
+    last = len(prob) / FPS - END_MARGIN  # snapping must not carry a step past the end of the audio
     for f in cand:
         b = tm.time_to_beat(f / FPS)
         best = min((round(b * s) / s for s in subs), key=lambda x: abs(x - b))
-        if abs(best - b) <= 0.2 and best >= 0:
+        if abs(best - b) <= 0.2 and best >= 0 and tm.beat_to_time(best) < last:
             snapped.append((best, float(prob[f])))
 
     def take(best: float) -> bool:
