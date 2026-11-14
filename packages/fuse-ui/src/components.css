@@ -1542,10 +1542,14 @@
     flex-wrap: wrap;
     order: 0;
     background: #0b1426;
+    /* A game whose page scrolls inside its own box sticks the header a little lower than the band below ends: the
+       header's shadow closes that gap. Shifted up by more than it spreads, so it never shows under the header. */
+    box-shadow: 0 -1rem 0 0.5rem #0b1426;
   }
   /* A phone's room scrolls under the top bar, which has no background of its own: the header puts a band behind the
      bar, so the seats never show through the brand and the bar's buttons. It is the header's own, so a room that is
-     not on screen has no band over the game. */
+     not on screen has no band over the game. It ends where the header sticks: the bar's 12px offset and 48px
+     height, and the 12px between them. */
   .fui-room-actions-top > .fui-room-head::before {
     content: "";
     position: fixed;

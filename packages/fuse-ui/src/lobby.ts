@@ -126,7 +126,10 @@ export interface RosterMember {
  * never asks who anybody is; it places the button the panel hands it.
  */
 export interface RosterFriends {
-  /** ADD FRIEND for an account, kept current by the panel; hidden for this device's own account. */
+  /**
+   * ADD FRIEND for an account, kept current by the panel; hidden for this device's own account. A new element on
+   * each call: two seats of one account each get a button of their own.
+   */
   friendButton(publicId: string): HTMLElement;
   /** The account a room member plays under, once the service has matched the seat to one. */
   publicIdOfMember(memberId: string): string | undefined;

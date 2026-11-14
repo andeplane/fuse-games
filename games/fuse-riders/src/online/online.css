@@ -1466,6 +1466,16 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
+/* The room's foot is the connection's state with RETRY beside it when the line asks for one. */
+.room-lobby > .fui-room-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fui-space-2);
+}
+.room-lobby > .fui-room-status:has(> .online-status:empty) {
+  display: none;
+}
 /* In the room the notice is the line under the seats, where every game's room says what it is waiting for. */
 .room-lobby.fui-room-layout .fui-room-actions > .online-notice {
   display: block;
@@ -2918,13 +2928,6 @@
 .desktop-game .online-header > button,
 .desktop-game .online-header > .online-round {
   order: 4;
-}
-.desktop-game .online-header > .online-status {
-  position: static;
-  max-width: 30%;
-  padding: 0 0.375rem;
-  font-size: 0.6875rem;
-  background: none;
 }
 .desktop-game .online-host > button:first-child:not(:disabled) {
   background: var(--player-color);

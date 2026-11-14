@@ -722,3 +722,59 @@ test("a room without the friends system has neither button", () => {
   assert.equal(root.querySelector(".fui-room-invite-friends"), null);
   assert.equal(root.querySelector(".fui-roster-friend"), null);
 });
+
+test("ADD FRIEND follows the room: a player who leaves and comes back, a room on one device, two seats of one account", () => {
+  const { document } = page(),
+    root = document.createElement("section");
+  document.body.append(root);
+  let made = 0;
+  const friends = {
+    friendButton(publicId: string) {
+      const add = document.createElement("button");
+      add.dataset.publicId = publicId;
+      made++;
+      return add;
+    },
+    publicIdOfMember: (memberId: string) =>
+      memberId === "bot" ? undefined : "pub-anders",
+    open: () => {},
+  };
+  const roster = createRoster({ document });
+  // No invitation (a room on one device): nowhere for INVITE FRIENDS, and the rows still have ADD FRIEND.
+  createRoomLayout({ element: root, roster, capacity: 3, friends });
+  assert.equal(root.querySelector(".fui-room-invite-friends"), null);
+  const friendsOf = (id: string) =>
+    roster.row(id)!.querySelectorAll<HTMLElement>(".fui-roster-friend");
+  const both = [
+    { id: "phone", slot: 0, name: "Anders" },
+    { id: "laptop", slot: 1, name: "Anders" },
+    { id: "bot", slot: 2, name: "AI Turing" },
+  ];
+  roster.update(both);
+  assert.equal(friendsOf("phone").length, 1);
+  assert.equal(friendsOf("laptop").length, 1, "one account in two seats");
+  assert.equal(friendsOf("bot").length, 0);
+  assert.equal(made, 2);
+  // The roster runs every frame: an unchanged room asks for no new button and moves none.
+  const phone = friendsOf("phone")[0]!,
+    laptop = friendsOf("laptop")[0]!;
+  for (let frame = 0; frame < 3; frame++) roster.update(both);
+  assert.equal(made, 2);
+  assert.equal(friendsOf("phone")[0] === phone, true);
+  assert.equal(friendsOf("laptop")[0] === laptop, true);
+
+  roster.update(both.slice(1));
+  assert.equal(roster.row("phone"), undefined);
+  roster.update(both);
+  assert.equal(friendsOf("phone").length, 1, "back in the room, one button");
+  assert.equal(made, 3);
+
+  // The friends system can arrive after the players, and leave again.
+  roster.befriend(undefined);
+  roster.update(both);
+  assert.equal(root.querySelector(".fui-roster-friend"), null);
+  roster.befriend(friends);
+  roster.update(both);
+  assert.equal(friendsOf("phone").length, 1);
+  assert.equal(friendsOf("laptop").length, 1);
+});

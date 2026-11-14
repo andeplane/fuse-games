@@ -1027,8 +1027,11 @@ export async function startOnline(): Promise<void> {
     const statusParent = screen.lobbyCard
       ? sharedLobby.querySelector<HTMLElement>(".fui-room-status")
       : headerContext;
-    if (statusParent && status.parentElement !== statusParent)
+    if (statusParent && status.parentElement !== statusParent) {
       statusParent.prepend(status);
+      // RETRY belongs to the line it answers, wherever that line is.
+      status.after(statusAction);
+    }
     // In the room the notice is the line under the seats, where every game's room says what it is waiting for.
     const roomNotes =
       sharedLobby.querySelector<HTMLElement>(".fui-room-actions");
