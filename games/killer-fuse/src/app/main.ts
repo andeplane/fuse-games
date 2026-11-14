@@ -882,6 +882,8 @@ function room(solo: boolean): void {
     element: lobby,
     title: "PLAYERS",
     roster,
+    // ADD FRIEND on a player's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: ROOM_CAPACITY,
     join: nameEntry.form,
     settings: [settingsBox, settingsLine],

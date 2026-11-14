@@ -48,6 +48,7 @@ import {
   createRoomLayout,
   createRoster,
   createRoundControls,
+  createSharedTvOption,
   createSubPage,
   el,
 } from "fuse-ui";
@@ -263,13 +264,6 @@ function createLevelPicker(room: boolean, onPick: (level: number) => void) {
 }
 
 function landing(): void {
-  const shared = el("label", "", "ef-shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   let level = soloLevel();
   const card = createLandingCard({
     background: async (host) =>
@@ -298,7 +292,6 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
-  card.create.after(shared);
   const picker = createLevelPicker(false, (picked) => {
     level = picked;
     store.setItem(names.level, String(picked));
@@ -364,7 +357,22 @@ function room(solo: boolean): void {
   };
 
   // ---- the page ----
-  const status = createNotice({ className: "ef-status" });
+  // How the room is doing sits at the lobby's foot, and beside the menu while a race is on the screen (a link that
+  // is retrying is said there, as it always was); what went wrong is said above the room.
+  const status = createNotice({ className: "ef-status" }),
+    live = createNotice({ className: "ef-live" }),
+    problem = createNotice({ className: "ef-alert" });
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
   const controls = new HeldControls((bits) => runtime.input(bits));
   /** Lets go of every key, button and pad: a menu opened, or the page lost focus. */
   let letGoAll = () => controls.clear();
@@ -377,11 +385,9 @@ function room(solo: boolean): void {
     },
   });
   const roundControls = createRoundControls(QUICK_GUIDE);
-  const top = header([
-    el("strong", solo ? "SOLO" : code, "ef-code"),
-    status.element,
-    menu.element,
-  ]);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a race is on.
+  const top = header([live.element, menu.element]);
   createTopBar({
     music: ELASTO_SONGS,
     element: top,
@@ -403,8 +409,25 @@ function room(solo: boolean): void {
     lobbyMain = el("div", "", "ef-panel"),
     roster = createRoster({ emptyText: "No riders yet" }),
     start = button("START RACE", "fui-button-primary ef-start"),
-    lobbyNote = el("p", "", "fui-lobby-note"),
-    tvLink = button("OPEN TV SCREEN", "ef-tv");
+    lobbyNote = el("p", "", "fui-lobby-note");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates.
+  const sharedTv = createSharedTvOption({
+    className: "ef-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({
+        type: "settings",
+        settings: { ...settings, display },
+      });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
+        "_blank",
+      ),
+  });
   let inviteCard: HTMLElement | undefined;
   if (!solo) {
     const invite = createInviteCard({
@@ -431,11 +454,6 @@ function room(solo: boolean): void {
   });
   lobbyMain.append(el("h2", "RIDERS", "fui-lobby-title"), roster.element);
   start.onclick = () => runtime.command({ type: "action", action: "start" });
-  tvLink.onclick = () =>
-    window.open(
-      withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
-      "_blank",
-    );
   const levelPicker = createLevelPicker(true, (level) => {
     store.setItem(roomLevelKey, String(level));
     runtime.command({ type: "settings", settings: { ...settings, level } });
@@ -477,8 +495,6 @@ function room(solo: boolean): void {
       type: "settings",
       settings: { ...settings, order: orderPicker.value as Settings["order"] },
     });
-  const lobbyActions = el("div", "", "ef-actions");
-  lobbyActions.append(tvLink, start);
   const mapTitle = el("h2", "MAP", "fui-lobby-title");
   lobby.append(lobbyMain);
 
@@ -603,6 +619,7 @@ function room(solo: boolean): void {
   closed.hidden = true;
   const main = el("main", "", "ef-room");
   main.append(
+    problem.element,
     connecting,
     closed,
     nameEntry.form,
@@ -624,6 +641,8 @@ function room(solo: boolean): void {
     element: lobby,
     ...(inviteCard ? { invite: inviteCard } : {}),
     roster,
+    // ADD FRIEND on a rider's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: CAPACITY,
     join: nameEntry.form,
     // Seated already: any open seat is a move, and what the seat is (a team, a colour) follows it.
@@ -633,7 +652,12 @@ function room(solo: boolean): void {
     },
     settings: [keyHelp()],
     modes: [mapTitle, seriesOptions, levelPicker.element],
-    actions: [lobbyNote, lobbyActions],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the riders scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo ? { compact: true, heading: "Solo ride" } : { heading: "Room" }),
   });
   lobby.hidden = true;
   stage.hidden = true;
@@ -811,7 +835,8 @@ function room(solo: boolean): void {
       next.lobby.members.map((member) => ({
         id: member.id,
         slot: member.slot,
-        name: member.you ? `${member.name} (you)` : member.name,
+        // Alone there is nobody to tell apart from: the seat reads "You", not "You (you)".
+        name: member.you && !solo ? `${member.name} (you)` : member.name,
         color: slotColor(member.slot),
         status: member.connected ? slotName(member.slot) : "OFFLINE",
       })),
@@ -820,12 +845,7 @@ function room(solo: boolean): void {
     start.disabled = !next.lobby.canStart;
     setText(lobbyNote, next.lobby.note);
     lobbyNote.hidden = !next.lobby.note;
-    tvLink.hidden = !(
-      view.settings.display &&
-      viewer.host &&
-      !display &&
-      !solo
-    );
+    sharedTv.update(view.settings.display, viewer.host && !display && !solo);
     levelPicker.update(
       view.settings.level,
       next.lobby.editable && view.settings.order === "consecutive",
@@ -1002,17 +1022,17 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     kicked() {
-      status.show("The host removed you from the room", "error");
+      say("The host removed you from the room", "error");
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
       over = true;
       // The frames stop here, so nothing else would let the engine go.
       sfx.engine(0, false, false);
@@ -1024,7 +1044,7 @@ function room(solo: boolean): void {
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           if (roomFailure(String(body.error ?? "")) === NOT_OPEN)
-            status.show(NOT_OPEN, "error");
+            say(NOT_OPEN, "error");
         })
         .catch(() => {
           /* offline: "Room ended" stands */

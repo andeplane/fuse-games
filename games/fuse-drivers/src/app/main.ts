@@ -342,7 +342,14 @@ function room(solo: boolean): void {
   start.hidden = true;
   main.append(nameEntry.form, lobby, race, results.element);
   app.replaceChildren(header(), status.element, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move, and the truck's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -357,6 +364,7 @@ function room(solo: boolean): void {
   });
 
   const render = (model: TableModel) => {
+    ownSeat = model.lobby.own;
     lobby.hidden = model.screen !== "lobby";
     race.hidden = model.screen === "lobby";
     nameEntry.form.hidden = !model.askName;

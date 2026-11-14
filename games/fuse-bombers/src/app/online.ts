@@ -245,7 +245,14 @@ export function showRoom(
     );
   pilots.append(el("h2", "PILOTS", "fui-lobby-title"), roster.element, addBot);
   lobby.append(pilots, match);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   ui.createRoomLayout({
+    // Seated already: any open seat is a move, and the gunship's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -414,6 +421,7 @@ export function showRoom(
   };
   const render = (next: Model) => {
     model = next;
+    ownSeat = next.own;
     showStatus();
     const controller = next.controller;
     menu.update({

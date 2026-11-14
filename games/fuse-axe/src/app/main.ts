@@ -567,7 +567,14 @@ function room(solo: boolean): void {
     results.element,
   );
   app.replaceChildren(top, main, roundControls.element);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move. The hero is the player's own pick, and goes along.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -931,6 +938,10 @@ function room(solo: boolean): void {
         }),
       );
       viewer.touch = coarse.matches;
+      ownSeat =
+        frame.stage === "lobby"
+          ? frame.seats.find((seat) => seat.id === viewer.me && !seat.watcher)
+          : undefined;
       const next = present(frame, viewer);
       // The frames shown are what is heard: the cues come from them, never from the simulation. A phone that is only
       // a controller stays quiet; the shared screen plays the room's sound.

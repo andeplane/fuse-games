@@ -69,6 +69,8 @@ export interface SceneOptions {
   art?: () => SceneArt;
   /** Makes the canvas the ground's tile is drawn on; without it the ground is a flat colour. */
   createCanvas?: CanvasFactory;
+  /** False for a ride nobody is timing (a menu's background): no clock, apples or banner over it. */
+  hud?: boolean;
 }
 /** What one frame shows beside the race itself. */
 export interface Shot {
@@ -347,7 +349,7 @@ export function createScene(
       );
       g.globalAlpha = 1;
     }
-    const hud = paneHud(view, slot);
+    const hud = options.hud === false ? undefined : paneHud(view, slot);
     if (hud) {
       const pad = unit * 0.9;
       let y = pane.y + pad;

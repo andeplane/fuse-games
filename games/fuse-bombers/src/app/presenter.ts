@@ -215,6 +215,9 @@ export function present(view: View, viewer: Viewer) {
     screen,
     askName: !mine && !tv,
     members,
+    // This device's own seat: what a move to another open seat is asked with.
+    own:
+      mine && !mine.watcher ? { name: mine.name, slot: mine.slot } : undefined,
     host: viewer.host,
     canAddBot: viewer.host && players.length < CAPACITY,
     canStart: viewer.host && !few,
