@@ -61,12 +61,34 @@ function takeWeighted(
   return pool.length - 1;
 }
 
-/** True when `nick` stands as its own word, so "Al" does not match inside "skal" or "Andeplane". */
+/** IRC nick tokens in `text`, lowercased, so "Al" does not match inside "skal" or "Andeplane". */
+function nickTokens(text: string): string[] {
+  return text.toLowerCase().split(/[^a-z0-9[\]\\`_^{|}-]+/);
+}
+
+/** True when `nick` stands as its own word. */
 export function nickMentioned(text: string, nick: string): boolean {
   const wanted = nick.toLowerCase();
   if (wanted.length === 0) return false;
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9[\]\\`_^{|}-]+/)
-    .includes(wanted);
+  return nickTokens(text).includes(wanted);
+}
+
+/**
+ * The nick in `nicks` that appears earliest in `text`. List order does not matter, so "Snute og Al"
+ * is Snute even when Al comes first in the nicklist.
+ */
+export function firstMentioned(
+  text: string,
+  nicks: readonly string[],
+): string | undefined {
+  const wanted = new Map<string, string>();
+  for (const nick of nicks) {
+    const key = nick.toLowerCase();
+    if (key.length > 0 && !wanted.has(key)) wanted.set(key, nick);
+  }
+  for (const token of nickTokens(text)) {
+    const nick = wanted.get(token);
+    if (nick) return nick;
+  }
+  return undefined;
 }

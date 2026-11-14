@@ -135,7 +135,7 @@ describe("brains", () => {
     ).toContain("36 turneringer");
   });
 
-  it("uses canned lines for non-AI regulars, failures, empty answers and while busy", async () => {
+  it("uses canned lines for non-AI regulars, failures and empty answers", async () => {
     const quiet = engineBrain(new FakeEngine("", "rules"), () => 0);
     expect(quiet.describe()).toBe("canned lines");
     expect(await quiet.reply(request("RiChY"), signal)).toBe(
@@ -144,9 +144,58 @@ describe("brains", () => {
     expect(await quiet.reply(request("FootieFox"), signal)).toBe("*gjesp*");
     const failing = engineBrain(new FakeEngine(new Error("no gpu")), () => 0);
     expect(await failing.reply(request("Zredna"), signal)).toBe("hehe");
+    const empty = engineBrain(new FakeEngine(""), () => 0);
+    expect(await empty.reply(request("Snute"), signal)).toContain(
+      "36 turneringer",
+    );
     const slow = engineBrain(new FakeEngine("x".repeat(700)), () => 0);
-    const first = slow.reply(request("RiChY"), signal);
-    expect(await slow.reply(request("Zredna"), signal)).toBe("hehe");
-    expect((await first)?.length).toBe(300);
+    expect((await slow.reply(request("RiChY"), signal))?.length).toBe(300);
+  });
+
+  it("lets a second AI reply wait for the model instead of the tournament count", async () => {
+    const engine = new HoldingEngine();
+    const brain = engineBrain(engine, () => 0);
+    const first = brain.reply(request("RiChY"), signal);
+    await tick();
+    expect(engine.requests).toHaveLength(1);
+    const snute = brain.reply(request("Snute"), signal);
+    expect(await brain.reply(request("FootieFox"), signal)).toBe("*gjesp*");
+    expect(engine.requests).toHaveLength(1);
+    let snuteDone = false;
+    void snute.then(() => {
+      snuteDone = true;
+    });
+    await tick();
+    expect(snuteDone).toBe(false);
+    engine.open();
+    expect(await first).toBe("linje");
+    expect(await snute).toBe("linje");
+    expect(engine.requests).toHaveLength(2);
+    expect(snuteDone).toBe(true);
   });
 });
+
+/** A model that does not answer until `open`, so a second reply can be observed waiting. */
+class HoldingEngine implements ChatEngine {
+  readonly requests: ReplyRequest[] = [];
+  private release: () => void = () => undefined;
+  private readonly opened = new Promise<void>((resolve) => {
+    this.release = resolve;
+  });
+  open() {
+    this.release();
+  }
+  backend() {
+    return { kind: "model" as const, modelId: "m", label: "Hold" };
+  }
+  async *reply(request: ReplyRequest) {
+    this.requests.push(request);
+    await this.opened;
+    yield "linje";
+  }
+  dispose() {}
+}
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}

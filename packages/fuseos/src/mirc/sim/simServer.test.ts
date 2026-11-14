@@ -7,7 +7,7 @@ import { channelId, findWindow, queryId, STATUS_ID } from "../irc/session";
 import type { BrainRequest, RegularsBrain } from "./brain";
 import { CCBS_LISTED_PLAYERS, ircNick } from "./ddrPlayers";
 import { regularsIn } from "./regulars";
-import { IDLE_MS } from "./simServer";
+import { IDLE_MS, reactionSpeaker } from "./simServer";
 import { createSimTransport, simHost, SimServer } from "./simServer";
 
 class ScriptedBrain implements RegularsBrain {
@@ -267,6 +267,10 @@ describe("simulated network", () => {
     expect(
       brain.requests.some((request) => request.regular.nick === "Al"),
     ).toBe(false);
+    client.submit(channelId("#ddrnorway"), "Snute og Al, kommer dere?");
+    await flush();
+    scheduler.advance(5000);
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Snute");
     client.submit(channelId("#ddrnorway"), "Bonzo, kommer du?");
     await flush();
     scheduler.advance(5000);
@@ -296,7 +300,29 @@ describe("simulated network", () => {
     scheduler.advance(10_000);
     await posted(scheduler);
     expect(lines()).toContain("<Advena> hei hei");
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(lines()).toContain("<Al> hei hei");
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Abra");
+    expect(brain.requests.at(-1)?.company).toEqual(["Advena", "Al"]);
     expect(brain.prepares).toBe(1);
+  });
+
+  it("keeps an unprompted reply inside the regulars who have canned lines", () => {
+    const seated = regularsIn("#ddrnorway");
+    const canned = seated.filter((regular) => regular.lines.length > 0);
+    let roll = 0;
+    const speaker = reactionSpeaker(seated, "hei alle sammen", () => {
+      roll += 1;
+      return roll === 1 ? 0 : 0.999;
+    });
+    expect(speaker?.nick).toBe(canned.at(-1)?.nick);
+    expect(speaker?.lines.length).toBeGreaterThan(0);
+    expect(reactionSpeaker(seated, "skal vi ta butterfly?", () => 0.9)).toBe(
+      undefined,
+    );
   });
 
   it("refuses commands before registration and ignores garbage", () => {

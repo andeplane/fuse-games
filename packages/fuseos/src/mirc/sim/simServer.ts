@@ -29,7 +29,7 @@ import {
   REGULARS,
   regularsIn,
 } from "./regulars";
-import { nickMentioned, pickScene, sceneGapMs } from "./scene";
+import { firstMentioned, pickScene, sceneGapMs } from "./scene";
 
 /**
  * A pretend IRC server that runs in the page: FuseOS has no IRC backend, and browsers cannot reach the real
@@ -67,6 +67,34 @@ function between(
 
 export function simHost(networkId: string): string {
   return networkId.length > 0 ? `irc.${networkId}.sim` : "irc.fuseos.sim";
+}
+
+/**
+ * Who answers a channel line. A named person always answers, and when several names are in the text the
+ * earliest one does. An unprompted reply, on a 60% roll, stays with someone who has canned lines and is
+ * past the cooldown (`rested`). The model conversation has its own timer.
+ */
+export function reactionSpeaker(
+  seated: readonly Regular[],
+  text: string,
+  random: () => number,
+  rested: (regular: Regular) => boolean = () => true,
+): Regular | undefined {
+  const named = firstMentioned(
+    text,
+    seated
+      .filter((regular) => regular.ai || regular.lines.length > 0)
+      .map((regular) => regular.nick),
+  );
+  const mentioned = named
+    ? seated.find((regular) => regular.nick === named)
+    : undefined;
+  if (mentioned) return mentioned;
+  const present = seated.filter(
+    (regular) => regular.lines.length > 0 && rested(regular),
+  );
+  if (present.length === 0 || random() >= 0.6) return undefined;
+  return present[Math.floor(random() * present.length)];
 }
 
 export class SimServer {
@@ -538,24 +566,14 @@ export class SimServer {
     const seated = [...channel.members.values()]
       .map((member) => findRegular(member.nick))
       .filter((regular): regular is Regular => regular !== undefined);
-    // A named person always answers. Unprompted replies stay with the handful who have canned lines;
-    // the model conversation has its own timer.
-    const mentioned = seated.find(
-      (regular) =>
-        (regular.ai || regular.lines.length > 0) &&
-        nickMentioned(text, regular.nick),
-    );
-    const present = seated.filter((regular) => regular.lines.length > 0);
-    if (!mentioned && present.length === 0) return;
     const now = this.deps.now();
-    const rested = present.filter(
-      (r) => now - (this.lastSpoke.get(r.nick) ?? -Infinity) > COOLDOWN_MS,
+    const speaker = reactionSpeaker(
+      seated,
+      text,
+      this.deps.random,
+      (regular) =>
+        now - (this.lastSpoke.get(regular.nick) ?? -Infinity) > COOLDOWN_MS,
     );
-    const speaker =
-      mentioned ??
-      (this.deps.random() < 0.6 && rested.length > 0
-        ? rested[Math.floor(this.deps.random() * rested.length)]
-        : undefined);
     if (speaker) this.reply(speaker, channel.name, channel.history);
   }
 

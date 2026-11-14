@@ -1,5 +1,5 @@
 import { sceneCandidates } from "./ddrPlayers";
-import { nickMentioned, pickScene, sceneGapMs } from "./scene";
+import { firstMentioned, nickMentioned, pickScene, sceneGapMs } from "./scene";
 
 function rng(seed: number): () => number {
   let state = seed >>> 0;
@@ -37,5 +37,8 @@ describe("model conversation", () => {
     expect(nickMentioned("skal vi ta butterfly", "Al")).toBe(false);
     expect(nickMentioned("hei Andeplane", "Al")).toBe(false);
     expect(nickMentioned("T|na?", "T|na")).toBe(true);
+    expect(firstMentioned("Snute og Al", ["Al", "Snute"])).toBe("Snute");
+    expect(firstMentioned("Al, så Snute", ["Snute", "Al"])).toBe("Al");
+    expect(firstMentioned("skal vi", ["Al", "Snute"])).toBeUndefined();
   });
 });

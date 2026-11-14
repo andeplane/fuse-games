@@ -21,7 +21,7 @@ export type Regular = {
   lines: readonly string[];
   /** Away message for /whois. */
   away?: string;
-  /** Voiced by the language model (the three real regulars and a couple of fictional ones). */
+  /** Voiced by the language model. Every listed CCBS player is, plus the hand-written regulars who have a persona. */
   ai: boolean;
 };
 

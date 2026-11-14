@@ -82,13 +82,14 @@ export function toIrcLine(text: string, nick: string): string | undefined {
 /**
  * The regulars over the shared FuseOS chat engine (Clippy's model through web-llm). AI regulars ask the model;
  * the others, and everyone when the model fails or says nothing usable, use their canned lines. One reply is
- * generated at a time; the engine itself loads lazily on the first request.
+ * generated at a time. A second AI reply waits for the one in flight instead of answering with a canned line.
+ * The engine itself loads lazily on the first request.
  */
 export function engineBrain(
   engine: ChatEngine,
   random: () => number,
 ): RegularsBrain {
-  let busy = false;
+  let tail: Promise<void> = Promise.resolve();
   return {
     describe: () => {
       const backend = engine.backend();
@@ -106,45 +107,61 @@ export function engineBrain(
       }
       return !signal.aborted && engine.backend().kind === "model";
     },
-    async reply(request, signal) {
-      if (!request.regular.ai || busy)
-        return spokenLine(request.regular, random);
-      busy = true;
-      try {
-        let text = "";
-        for await (const piece of engine.reply({
-          system: systemPromptFor(
-            request.regular,
-            request.channel,
-            request.userNick,
-            request.company,
-          ),
-          messages: request.history.map((turn) => ({
-            role:
-              turn.nick === request.regular.nick
-                ? ("assistant" as const)
-                : ("user" as const),
-            content:
-              turn.nick === request.regular.nick
-                ? turn.text
-                : `<${turn.nick}> ${turn.text}`,
-          })),
-          signal,
-          onProgress: () => undefined,
-        })) {
-          text += piece;
-          if (text.length > 600) break;
-        }
-        return (
-          toIrcLine(text, request.regular.nick) ??
-          spokenLine(request.regular, random)
-        );
-      } catch {
-        return spokenLine(request.regular, random);
-      } finally {
-        busy = false;
-      }
+    reply(request, signal) {
+      if (!request.regular.ai || engine.backend().kind !== "model")
+        return Promise.resolve(spokenLine(request.regular, random));
+      const turn = tail.then(() => speak(engine, request, random, signal));
+      tail = turn.then(
+        () => undefined,
+        () => undefined,
+      );
+      return turn;
     },
     dispose: () => engine.dispose(),
   };
+}
+
+/** One model reply. A failure or an empty answer falls back; an abort stays silent. */
+async function speak(
+  engine: ChatEngine,
+  request: BrainRequest,
+  random: () => number,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  if (signal.aborted) return undefined;
+  if (engine.backend().kind !== "model")
+    return spokenLine(request.regular, random);
+  try {
+    let text = "";
+    for await (const piece of engine.reply({
+      system: systemPromptFor(
+        request.regular,
+        request.channel,
+        request.userNick,
+        request.company,
+      ),
+      messages: request.history.map((turn) => ({
+        role:
+          turn.nick === request.regular.nick
+            ? ("assistant" as const)
+            : ("user" as const),
+        content:
+          turn.nick === request.regular.nick
+            ? turn.text
+            : `<${turn.nick}> ${turn.text}`,
+      })),
+      signal,
+      onProgress: () => undefined,
+    })) {
+      text += piece;
+      if (text.length > 600) break;
+    }
+    return (
+      toIrcLine(text, request.regular.nick) ??
+      spokenLine(request.regular, random)
+    );
+  } catch {
+    if (signal.aborted) return undefined;
+    return spokenLine(request.regular, random);
+  }
 }
