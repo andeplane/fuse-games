@@ -6,6 +6,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./killer-fuse.css";
 import QRCode from "qrcode";
 import { createTopBar } from "fuse-ui";
@@ -32,6 +33,7 @@ import {
   createNameEntry,
   createNotice,
   createRadioGroup,
+  createResultsScreen,
   createRoomLayout,
   createRoster,
   el,
@@ -110,6 +112,7 @@ import {
   type SoloSteer,
 } from "./solo-seat.js";
 import { createGameMetrics } from "./metrics.js";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   BOT_LEVELS,
   present,
@@ -122,6 +125,7 @@ import {
   roomSeatRows,
   slotColor,
   slotLabel,
+  TEAM_COLORS,
   type RoomSeatRow,
 } from "./room-model.js";
 import { dueReports, sendReport } from "./reports.js";
@@ -836,35 +840,30 @@ function room(solo: boolean): void {
   lessonBar.hidden = !lesson;
   stage.append(canvasHost, banner, card);
 
-  // The result of a set, over the arena.
-  const result = el("section", "", "kf-result"),
-    resultTitle = el("h2", "", "kf-result-title"),
-    resultGames = el("ol", "", "kf-result-games"),
-    resultPlayers = el("ul", "", "kf-result-players"),
-    rematch = button("REMATCH", "fui-button-primary"),
-    toLobby = button("LOBBY"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "kf-actions");
-  resultActions.append(toLobby, rematch);
-  result.append(
-    resultTitle,
-    resultGames,
-    resultPlayers,
-    resultWaiting,
-    resultActions,
-  );
-  result.hidden = true;
-  stage.append(result);
+  // The result of a set: the shared results screen over the page.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   // The lesson's step goes under the arena, out of the play field.
   arena.append(scoreLine, stage, lessonBar, seatLine, touchRow);
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
 
   const main = el("main", "", "kf-room");
   if (lesson) main.dataset.lesson = lesson.id;
   main.tabIndex = -1;
-  main.append(problem.element, nameEntry.form, lobby, arena);
+  main.append(problem.element, nameEntry.form, lobby, arena, results.element);
   app.replaceChildren(top, main);
   // The shared room: the invitation and the game settings on the left, the six numbered seats on the right. The
   // layout moves the page's own controls; the commands, permissions and validation stay here.
@@ -1134,23 +1133,36 @@ function room(solo: boolean): void {
       (coarse || next.layout === "controller")
     );
     // Result.
-    result.hidden = !next.result;
-    if (next.result) {
-      result.dataset.team = String(next.result.team);
-      resultTitle.textContent = next.result.title;
-      const key = [...next.result.games, ...next.result.players].join("\n");
-      if (result.dataset.lines !== key) {
-        result.dataset.lines = key;
-        resultGames.replaceChildren(
-          ...next.result.games.map((line) => el("li", line)),
-        );
-        resultPlayers.replaceChildren(
-          ...next.result.players.map((line) => el("li", line)),
+    const result = next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the set gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: (team) => TEAM_COLORS[team === 1 ? 1 : 0],
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      resultWaiting.textContent = next.result.waiting;
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
     // START keeps the focus when the game begins; Space must flap, not press it again.
     if (first && next.screen === "arena") {
