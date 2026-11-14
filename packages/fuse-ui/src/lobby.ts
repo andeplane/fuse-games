@@ -121,9 +121,25 @@ export interface RosterMember {
   ready?: boolean;
 }
 
+/**
+ * The friends system as a list of players needs it: a game's `social.friends`, or any friends panel. The roster
+ * never asks who anybody is; it places the button the panel hands it.
+ */
+export interface RosterFriends {
+  /**
+   * ADD FRIEND for an account, kept current by the panel; hidden for this device's own account. A new element on
+   * each call: two seats of one account each get a button of their own.
+   */
+  friendButton(publicId: string): HTMLElement;
+  /** The account a room member plays under, once the service has matched the seat to one. */
+  publicIdOfMember(memberId: string): string | undefined;
+}
+
 export interface RosterOptions {
   /** A heading inside the list, before the rows (e.g. WATCHING). Omit for none. */
   title?: string;
+  /** ADD FRIEND on the row of every member matched to an account; `Roster.befriend` sets it later. */
+  friends?: RosterFriends;
   /** Shown while nobody is seated. Omit for none. */
   emptyText?: string;
   /** Draws an avatar for a member's `avatar` key. Omit for rows without avatars. */
@@ -137,6 +153,9 @@ interface RosterRow {
   entry: HTMLElement;
   head: HTMLElement | undefined;
   avatar: string | undefined;
+  info: HTMLElement;
+  /** ADD FRIEND on this row, and the account it is for. */
+  friend: { publicId: string; button: HTMLElement } | undefined;
   name: HTMLElement;
   status: HTMLElement;
   host: HTMLElement;
@@ -154,6 +173,11 @@ export interface Roster {
   entries(): IterableIterator<[string, HTMLElement]>;
   /** Explicit layout subscription; no polling or mutation observers. */
   observe(listener: (members: readonly RosterMember[]) => void): void;
+  /**
+   * ADD FRIEND on the row of every member the service has matched to an account, from the next update on; member
+   * ids must be the room's member ids. `undefined` takes the buttons away.
+   */
+  befriend(friends: RosterFriends | undefined): void;
 }
 
 /** The lobby's list of who is in the room: avatar, name, status and a HOST badge. */
@@ -169,11 +193,34 @@ export function createRoster(options: RosterOptions = {}): Roster {
   if (empty) element.append(empty);
   const rows = new Map<string, RosterRow>();
   const listeners: ((members: readonly RosterMember[]) => void)[] = [];
+  let friends = options.friends;
+  /** A seat is matched to an account some time after it is taken, so this is asked on every update. */
+  const placeFriend = (id: string, row: RosterRow) => {
+    const publicId = friends?.publicIdOfMember(id);
+    if (row.friend?.publicId === publicId) {
+      // A game that moved the row's children about put the button back where the row's own controls follow it.
+      if (row.friend && row.friend.button.parentElement !== row.entry)
+        row.info.after(row.friend.button);
+      return;
+    }
+    row.friend?.button.remove();
+    row.friend = undefined;
+    if (!friends || publicId === undefined) return;
+    const button = friends.friendButton(publicId);
+    button.classList.add("fui-roster-friend");
+    // After the name, before whatever a game hangs on the row's end (a remove button stays last).
+    row.info.after(button);
+    row.friend = { publicId, button };
+  };
   return {
     element,
     empty,
     observe: (listener) => {
       listeners.push(listener);
+    },
+    befriend(next) {
+      friends = next;
+      for (const [id, row] of rows) placeFriend(id, row);
     },
     row: (id) => rows.get(id)?.entry,
     *entries() {
@@ -201,6 +248,8 @@ export function createRoster(options: RosterOptions = {}): Roster {
             entry,
             head: undefined,
             avatar: undefined,
+            info,
+            friend: undefined,
             name,
             status,
             host,
@@ -237,6 +286,7 @@ export function createRoster(options: RosterOptions = {}): Roster {
           if (ready === undefined) delete row.entry.dataset.ready;
           else row.entry.dataset.ready = ready;
         }
+        if (friends || row.friend) placeFriend(member.id, row);
       }
       if (empty && empty.hidden !== rows.size > 0) empty.hidden = rows.size > 0;
       for (const listener of listeners) listener(members);

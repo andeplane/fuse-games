@@ -55,6 +55,7 @@ export {
   type LobbyState,
   type Roster,
   type RosterMember,
+  type RosterFriends,
   type RosterOptions,
   type RosterPart,
 } from "./lobby.js";
@@ -177,6 +178,7 @@ export {
   requestedRoomSlot,
   createRoomAppearance,
   roomLayoutMarkup,
+  type RoomFriends,
   type RoomLayoutOptions,
 } from "./room-layout.js";
 export {
