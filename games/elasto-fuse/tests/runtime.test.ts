@@ -298,3 +298,34 @@ test("each device's bike runs on its own clock: a late, lossy link moves the gho
   const ridden = host.roomState()!.world!.riders[1]!;
   assert.ok(ridden.step > 300 && (ridden.run > 100 || ridden.deaths > 0));
 });
+
+test("a lobby seat is a choice: a guest joins the seat it asks for, host and guest move to any free one, and a taken one is refused", () => {
+  const mesh = new Mesh("host", DEFAULT_SETTINGS);
+  const host = mesh.join("host"),
+    guest = mesh.join("guest");
+  mesh.run(300);
+  const slots = (runtime: typeof host) =>
+    Object.fromEntries(
+      [...runtime.roomState()!.seats.values()].map((seat) => [
+        seat.id,
+        seat.slot,
+      ]),
+    );
+  host.command({ type: "join", name: "Host" });
+  guest.command({ type: "join", name: "Guest", slot: 3 });
+  mesh.run(3_000);
+  assert.deepEqual(slots(host), { host: 0, guest: 3 });
+  assert.ok(guest.command({ type: "join", name: "Guest", slot: 1 }));
+  mesh.run(3_000);
+  assert.ok(host.command({ type: "join", name: "Host", slot: 4 }));
+  mesh.run(800);
+  assert.deepEqual(slots(host), { host: 4, guest: 1 });
+  assert.deepEqual(slots(guest), slots(host));
+  // A seat somebody holds is not on offer, and asking for it moves nobody.
+  guest.command({ type: "join", name: "Guest", slot: 4 });
+  mesh.run(3_000);
+  assert.deepEqual(slots(host), { host: 4, guest: 1 });
+  assert.ok(host.command({ type: "action", action: "start" }));
+  mesh.run(300);
+  assert.notEqual(guest.roomState()!.stage, "lobby", "the moved seats play");
+});
