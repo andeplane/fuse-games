@@ -857,6 +857,15 @@
 .fui-room-layout .fui-invite-url {
   display: none;
 }
+/* INVITE FRIENDS, the last way to bring somebody in: under Copy link, one line. */
+.fui-room-layout .fui-room-invite-friends {
+  white-space: nowrap;
+}
+/* ADD FRIEND on a player's row: after the name, pushed to the row's end, before a game's own controls. */
+.fui-room-layout .fui-slot-occupant .fui-roster-friend {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 .fui-room-layout .fui-room-code {
   font-size: 28px;
   letter-spacing: 0.14em;
@@ -1532,6 +1541,19 @@
     top: var(--fui-room-sticky-top, 72px);
     flex-wrap: wrap;
     order: 0;
+    background: #0b1426;
+  }
+  /* A phone's room scrolls under the top bar, which has no background of its own: the header puts a band behind the
+     bar, so the seats never show through the brand and the bar's buttons. It is the header's own, so a room that is
+     not on screen has no band over the game. */
+  .fui-room-actions-top > .fui-room-head::before {
+    content: "";
+    position: fixed;
+    z-index: -1;
+    inset: 0 0 auto;
+    height: var(--fui-room-sticky-top, 72px);
+    background: #0b1426;
+    pointer-events: none;
   }
   .fui-room-actions-top > .fui-room-head > .fui-page-actions {
     flex: 1 1 100%;

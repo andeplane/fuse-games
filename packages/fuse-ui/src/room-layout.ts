@@ -1,13 +1,19 @@
 import { createBackLink, createPageHeader } from "./back.js";
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
-import type { Roster } from "./lobby.js";
+import type { Roster, RosterFriends } from "./lobby.js";
 import { mountAttract, type AttractFactory } from "./attract.js";
 
 /** The requested seat is carried by the existing game-owned admission action. */
 export function requestedRoomSlot(element: HTMLElement): number | undefined {
   const value = element.dataset.slot;
   return value === undefined ? undefined : Number(value);
+}
+
+/** The friends system in a room: a game's `social.friends`. */
+export interface RoomFriends extends RosterFriends {
+  /** Opens the friends panel, where a friend is invited into this room. */
+  open(): void;
 }
 
 export interface RoomLayoutOptions {
@@ -68,6 +74,12 @@ export interface RoomLayoutOptions {
   ownSlot?: () => number | undefined;
   /** Ask the room to move this viewer to an open seat (the game's own join command, naming the seat). */
   onMove?: (slot: number) => void;
+  /**
+   * The friends system, the same in every room: ADD FRIEND on the row of each player the service has matched to
+   * an account (the roster must be a `createRoster` whose member ids are the room's), and INVITE FRIENDS under
+   * Copy link on the invitation.
+   */
+  friends?: RoomFriends;
 }
 
 /** A shared waiting room; adapters keep their existing commands, permissions and state updates. */
@@ -108,7 +120,16 @@ export function createRoomLayout(options: RoomLayoutOptions) {
       options.actionsInHeader === true ||
       Boolean(options.headerActions?.length);
   if (invite) left.append(invite);
-  else if (!compact)
+  if (invite && options.friends) {
+    const friends = options.friends,
+      inviteFriends = button("INVITE FRIENDS", "fui-room-invite-friends", doc);
+    inviteFriends.onclick = () => friends.open();
+    // The last way to bring somebody in, under the code and Copy link.
+    invite.append(inviteFriends);
+  }
+  if (options.friends && "befriend" in options.roster)
+    options.roster.befriend(options.friends);
+  if (!invite && !compact)
     left.append(
       el("h2", "Your room", "", doc),
       el("p", "Play together on this device.", "", doc),

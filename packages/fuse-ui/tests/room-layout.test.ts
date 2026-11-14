@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createInviteCard,
   createRoomLayout,
   createRoster,
   roomLayoutMarkup,
@@ -606,4 +607,118 @@ test("a seated viewer is offered every open seat as a move, and a viewer without
     undefined,
     "a move is not an admission: the join form is left alone",
   );
+});
+
+test("the friends system is the same in every room: ADD FRIEND on a matched player's row, INVITE FRIENDS under Copy link", () => {
+  const { document } = page(),
+    root = document.createElement("section");
+  document.body.append(root);
+  const accounts = new Map<string, string>();
+  let opened = 0;
+  const friends = {
+    friendButton(publicId: string) {
+      const add = document.createElement("button");
+      add.textContent = "+ ADD FRIEND";
+      add.dataset.publicId = publicId;
+      return add;
+    },
+    publicIdOfMember: (memberId: string) => accounts.get(memberId),
+    open: () => opened++,
+  };
+  const roster = createRoster({ document }),
+    invite = createInviteCard({
+      code: "XD47",
+      link: "https://example.test/?room=XD47",
+      document,
+    });
+  createRoomLayout({
+    element: root,
+    invite: invite.element,
+    roster,
+    capacity: 3,
+    friends,
+  });
+  const members = [
+    { id: "peer-a", slot: 0, name: "Sindre", host: true },
+    { id: "peer-b", slot: 1, name: "Anders" },
+  ];
+  const friendOf = (id: string) =>
+    roster.row(id)!.querySelector<HTMLElement>(".fui-roster-friend");
+  roster.update(members);
+  assert.equal(friendOf("peer-a"), null, "no account, no button");
+  assert.equal(friendOf("peer-b"), null);
+
+  // The service matches a seat to an account some time after it is taken; the next update shows the button.
+  accounts.set("peer-b", "pub-anders");
+  const remove = document.createElement("button");
+  remove.textContent = "×";
+  roster.row("peer-b")!.append(remove);
+  roster.update(members);
+  const first = friendOf("peer-b")!;
+  assert.equal(first.dataset.publicId, "pub-anders");
+  assert.equal(
+    first.previousElementSibling!.contains(
+      roster.row("peer-b")!.querySelector("strong"),
+    ),
+    true,
+    "after the name",
+  );
+  assert.equal(
+    roster.row("peer-b")!.lastElementChild === remove,
+    true,
+    "a game's own control stays last on the row",
+  );
+  roster.update(members);
+  assert.equal(friendOf("peer-b") === first, true, "kept across updates");
+  assert.equal(friendOf("peer-a"), null);
+
+  // The seat changes hands: the button is the new account's, and there is one of them.
+  accounts.set("peer-b", "pub-other");
+  roster.update(members);
+  assert.equal(friendOf("peer-b")!.dataset.publicId, "pub-other");
+  assert.equal(
+    roster.row("peer-b")!.querySelectorAll(".fui-roster-friend").length,
+    1,
+  );
+  accounts.delete("peer-b");
+  roster.update(members);
+  assert.equal(friendOf("peer-b"), null, "the account left the seat");
+
+  const inviteFriends = invite.element.lastElementChild as HTMLButtonElement;
+  assert.equal(inviteFriends.textContent, "INVITE FRIENDS");
+  assert.equal(inviteFriends.className, "fui-room-invite-friends");
+  assert.equal(
+    inviteFriends.previousElementSibling!.contains(invite.copy),
+    true,
+    "under Copy link",
+  );
+  inviteFriends.click();
+  assert.equal(opened, 1);
+
+  accounts.set("peer-a", "pub-sindre");
+  roster.update(members);
+  assert.equal(friendOf("peer-a")!.dataset.publicId, "pub-sindre");
+  roster.befriend(undefined);
+  assert.equal(friendOf("peer-a"), null, "no friends system, no buttons");
+});
+
+test("a room without the friends system has neither button", () => {
+  const { document } = page(),
+    root = document.createElement("section");
+  document.body.append(root);
+  const roster = createRoster({ document }),
+    invite = createInviteCard({
+      code: "XD47",
+      link: "https://example.test/?room=XD47",
+      document,
+    });
+  createRoomLayout({
+    element: root,
+    invite: invite.element,
+    roster,
+    capacity: 2,
+  });
+  roster.update([{ id: "peer-a", slot: 0, name: "Sindre" }]);
+  assert.equal(root.querySelector(".fui-room-invite-friends"), null);
+  assert.equal(root.querySelector(".fui-roster-friend"), null);
 });

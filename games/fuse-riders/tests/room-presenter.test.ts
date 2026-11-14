@@ -117,7 +117,8 @@ test("lobby: who is ready, what the host may do, and what a guest waits for", ()
     rematchBlocked: undefined,
     ready: { hidden: false, pressed: false, label: "READY" },
     start: { label: "START RACE", disabled: false },
-    reset: { disabled: true, hidden: false },
+    // BACK TO LOBBY means nothing in the lobby, so the lobby does not show it.
+    reset: { disabled: true, hidden: true },
     shareHidden: false,
     addAIDisabled: false,
   });
@@ -196,6 +197,11 @@ test("countdown: the seconds to go, and the power chip", () => {
   assert.equal(view.power.text.startsWith("◆"), true);
   assert.equal(view.actions.start.disabled, true);
   assert.equal(view.actions.reset.disabled, false);
+  assert.equal(
+    view.actions.reset.hidden,
+    false,
+    "the way back, once a race is on",
+  );
   assert.equal(present(frame({ phase: "countdown" })).notice, "READY · 0");
 });
 
