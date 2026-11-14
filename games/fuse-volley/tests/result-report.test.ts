@@ -65,7 +65,7 @@ test("a duel: the winner, the score, points and touches per player, and a friend
     ]),
     [
       ["Busiest hands", ["Ada", "Bo"], "20 touches on the ball."],
-      ["Down to the wire", ["Ada"], "Decided by one point."],
+      ["Down to the wire", ["Ada"], "15 – 14: decided by one point."],
     ],
   );
 });
@@ -141,5 +141,39 @@ test("the bar: the host's REMATCH and lobby, and for a guest what the room waits
       }),
     ),
     { status: "Waiting for the host to start a rematch", actions: [] },
+  );
+});
+
+test("three teams: no margin card, and a middling two-team score has none either", () => {
+  const kings = resultReport(
+    result({
+      rows: [
+        row({ teamName: "CYAN", you: true }),
+        row({ id: "b", team: 1, teamName: "PINK", place: 2, points: 9 }),
+        row({ id: "c", team: 2, teamName: "LIME", place: 2, points: 9 }),
+      ],
+    }),
+    parts,
+  );
+  assert.deepEqual(
+    kings.highlights!.cards.map((card) => card.title),
+    ["Busiest hands"],
+  );
+  assert.deepEqual(
+    kings.standings!.rows.map((entry) => entry.placement),
+    [1, 2, 2],
+  );
+  const middling = resultReport(
+    result({
+      rows: [
+        row({ you: true }),
+        row({ id: "b", team: 1, name: "Bo", place: 2, points: 10 }),
+      ],
+    }),
+    parts,
+  );
+  assert.deepEqual(
+    middling.highlights!.cards.map((card) => card.title),
+    ["Busiest hands"],
   );
 });

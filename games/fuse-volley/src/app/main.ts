@@ -628,6 +628,12 @@ function room(solo: boolean): void {
   // The result: the shared results screen over the court.
   const results = createResultsScreen({
     document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
     onAction: (id) =>
       runtime.command({
         type: "action",

@@ -214,15 +214,19 @@ test("a session: its standings under each song, and leading the report once it i
 
 test("the bar: the host's next steps, MENU alone, and for a guest what the room waits for", () => {
   assert.deepEqual(resultBar(result()), {
+    back: true,
     actions: [
       { id: "secondary", label: "Song select" },
       { id: "primary", label: "PLAY AGAIN", primary: true },
     ],
   });
+  const alone = resultBar(result({ solo: true }));
   assert.deepEqual(
-    resultBar(result({ solo: true })).actions.map((action) => action.id),
+    alone.actions.map((action) => action.id),
     ["menu", "secondary", "primary"],
   );
+  // Alone, MENU is the way out: no second one at the top.
+  assert.equal(alone.back, false);
   assert.deepEqual(
     resultBar(
       result({
@@ -230,6 +234,10 @@ test("the bar: the host's next steps, MENU alone, and for a guest what the room 
         waiting: "Waiting for the host to pick the next song",
       }),
     ),
-    { status: "Waiting for the host to pick the next song", actions: [] },
+    {
+      status: "Waiting for the host to pick the next song",
+      back: true,
+      actions: [],
+    },
   );
 });

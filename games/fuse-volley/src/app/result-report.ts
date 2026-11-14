@@ -43,29 +43,31 @@ export function resultReport(
         .map((row) => ({ name: row.name, color: parts.color(row.team) })),
       detail: `${most} touches on the ball.`,
     });
-  const [first, second] = [
+  // How close it was, between two teams: a third team's points say nothing about the margin.
+  const points = [
     ...new Map(result.rows.map((row) => [row.team, row.points])).values(),
   ];
-  if (first !== undefined && second !== undefined) {
+  const [first, second] = points;
+  if (points.length === 2 && first !== undefined && second !== undefined) {
     const margin = first - second,
       winners = result.rows
         .filter((row) => row.place === 1)
         .map((row) => ({ name: row.name, color: parts.color(row.team) }));
-    cards.push(
-      margin <= 2
-        ? {
-            icon: "≈",
-            title: "Down to the wire",
-            winners,
-            detail: `Decided by ${margin === 1 ? "one point" : `${margin} points`}.`,
-          }
-        : {
-            icon: "▲",
-            title: "Clear win",
-            winners,
-            detail: `${margin} points ahead at the end.`,
-          },
-    );
+    // Two points or fewer apart is close; half the winner's points or fewer is not. In between, no card.
+    if (margin <= 2 && second * 2 > first)
+      cards.push({
+        icon: "≈",
+        title: "Down to the wire",
+        winners,
+        detail: `${first} – ${second}: decided by ${margin === 1 ? "one point" : `${margin} points`}.`,
+      });
+    else if (second * 2 <= first)
+      cards.push({
+        icon: "▲",
+        title: "Clear win",
+        winners,
+        detail: `${margin} points ahead at the end.`,
+      });
   }
   const winner = result.rows[0];
   return {

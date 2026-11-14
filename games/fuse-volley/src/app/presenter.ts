@@ -276,7 +276,9 @@ export function present(view: View, viewer: Viewer): Model {
           .map((each) => `${teamName(each)} ${world.points[each] ?? 0}`)
           .join(" · ")
       : `${teamName(0)} ${world.score[0]} – ${world.score[1]} ${teamName(1)}`;
-    const rows: ResultRow[] = order.flatMap((each, index) =>
+    const pointsOf = (team: number) =>
+      sides.find((side) => side.team === team)?.score ?? 0;
+    const rows: ResultRow[] = order.flatMap((each) =>
       sides
         .filter((side) => side.team === each)
         .map((side) => ({
@@ -287,7 +289,10 @@ export function present(view: View, viewer: Viewer): Model {
           name: side.name,
           you: side.you,
           bot: side.bot,
-          place: index + 1,
+          // Teams level on points share a place.
+          place:
+            1 +
+            order.filter((other) => pointsOf(other) > pointsOf(each)).length,
           points: side.score,
           touches: world.blobs[side.slot]?.hits ?? 0,
         })),
