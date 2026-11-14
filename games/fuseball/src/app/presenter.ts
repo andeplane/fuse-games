@@ -130,10 +130,30 @@ export interface Model {
   note: string;
   result: {
     title: string;
-    lines: string[];
+    /** The final score between the two sides, such as "Ada 3 – 1 Bo". */
+    score: string;
+    /** Every rider, the winning side first and then by goals. */
+    rows: ResultRow[];
     host: boolean;
     waiting: string;
   } | null;
+}
+
+/** One rider's line in the result. */
+export interface ResultRow {
+  id: string;
+  /** The side: 0 is cyan, 1 is magenta. */
+  slot: number;
+  /** The side's name in a team match; empty in a duel. */
+  teamName: string;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for the winning side, 2 for the other; both 1 when nobody won. */
+  place: number;
+  goals: number;
+  ownGoals: number;
+  bubbles: number;
 }
 
 const plural = (count: number, one: string, many: string) =>
@@ -218,10 +238,25 @@ export function present(view: View, viewer: Viewer): Model {
   let result: Model["result"] = null;
   if (view.stage === "over" && world && sides.length >= 2) {
     const won = view.winnerSide;
-    const stats = sides.map((side, index) => {
-      const rider = world.riders[index];
-      return `${side.name}: ${plural(rider?.goals ?? 0, "goal", "goals")}, ${plural(rider?.ownGoals ?? 0, "own goal", "own goals")}, ${plural(world.bubbles[index]?.seq ?? 0, "bubble", "bubbles")}`;
-    });
+    const rows: ResultRow[] = sides
+      .map((side, index) => {
+        const rider = world.riders[index];
+        return {
+          id: side.id,
+          slot: side.slot,
+          teamName: teams ? (SIDE_NAMES[side.slot] ?? "") : "",
+          name: side.name,
+          you: side.you,
+          bot: side.bot,
+          place: won === -1 || side.slot === won ? 1 : 2,
+          goals: rider?.goals ?? 0,
+          ownGoals: rider?.ownGoals ?? 0,
+          bubbles: world.bubbles[index]?.seq ?? 0,
+        };
+      })
+      .sort(
+        (left, right) => left.place - right.place || right.goals - left.goals,
+      );
     const label = (slot: 0 | 1) =>
       teams ? SIDE_NAMES[slot] : (sides[slot]?.name ?? SIDE_NAMES[slot]);
     result = {
@@ -231,10 +266,8 @@ export function present(view: View, viewer: Viewer): Model {
           : localSlot === won
             ? "YOU WIN!"
             : `${label(won).toUpperCase()} WINS`,
-      lines: [
-        `${label(0)} ${world.score[0]} – ${world.score[1]} ${label(1)}`,
-        ...stats,
-      ],
+      score: `${label(0)} ${world.score[0]} – ${world.score[1]} ${label(1)}`,
+      rows,
       host: viewer.host,
       waiting: viewer.host ? "" : "Waiting for the host to start a rematch",
     };

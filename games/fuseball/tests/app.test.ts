@@ -397,10 +397,32 @@ test("the match result: the winner, the score, each rider's numbers, and who can
   assert.equal(winner.status, "YOU WIN!");
   assert.deepEqual(winner.result, {
     title: "YOU WIN!",
-    lines: [
-      "Ada 3 – 1 Bo",
-      "Ada: 2 goals, 0 own goals, 7 bubbles",
-      "Bo: 1 goal, 1 own goal, 1 bubble",
+    score: "Ada 3 – 1 Bo",
+    rows: [
+      {
+        id: "a",
+        slot: 0,
+        teamName: "",
+        name: "Ada",
+        you: true,
+        bot: false,
+        place: 1,
+        goals: 2,
+        ownGoals: 0,
+        bubbles: 7,
+      },
+      {
+        id: "b",
+        slot: 1,
+        teamName: "",
+        name: "Bo",
+        you: false,
+        bot: false,
+        place: 2,
+        goals: 1,
+        ownGoals: 1,
+        bubbles: 1,
+      },
     ],
     host: true,
     waiting: "",
