@@ -17,6 +17,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -45,6 +46,7 @@ import {
   createPicker,
   createRoomLayout,
   createRoster,
+  createResultsScreen,
   createSharedTvOption,
   createRoundControls,
   createSubPage,
@@ -77,6 +79,7 @@ import {
 } from "./forward.js";
 import { createScene, effectKey, VIEW_W } from "../render/scene.js";
 import { PICKUP_COLORS, seatColor } from "../render/palette.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { createSfx } from "./audio.js";
 import { createChopperRadio } from "./radio.js";
 import { HeldControls } from "./controls.js";
@@ -643,26 +646,24 @@ function room(solo: boolean): void {
   const hudLogo = logo();
   hudLogo.classList.add("fc-hud-logo");
   hud.append(hudLogo, cardsRow, time, roundLine, legend, banner, note);
-  const result = el("section", "", "fc-result"),
-    resultTitle = el("h2"),
-    resultLines = el("ol"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "fc-lobby-actions"),
-    rematch = button("REMATCH", "fui-button-primary"),
-    toLobby = button("LOBBY");
-  resultActions.append(toLobby, rematch);
-  result.append(
-    el("small", "MATCH OVER"),
-    resultTitle,
-    resultLines,
-    resultWaiting,
-    resultActions,
-  );
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  screen.append(canvas, hud, result);
+  // The result: the shared results screen over the page, on a phone controller too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  screen.append(canvas, hud);
 
   // Touch pads over the screen, and the phone controller for a shared screen.
   const controls = new HeldControls((bits) => runtime.input(bits));
@@ -739,6 +740,7 @@ function room(solo: boolean): void {
     lobby,
     stage,
     controller,
+    results.element,
   );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
@@ -1041,19 +1043,36 @@ function room(solo: boolean): void {
       );
     }
     // Result.
-    result.hidden = !next.result || next.screen === "controller";
-    if (next.result) {
-      setText(resultTitle, next.result.title);
-      const lines = next.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...next.result.lines.map((line) => el("li", line)),
+    const result = next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: seatColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      setText(resultWaiting, next.result.waiting);
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 
