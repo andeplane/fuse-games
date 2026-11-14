@@ -225,10 +225,19 @@ test("between rounds the scoreboard shows the round's places, shared where level
   finish(r, { a: 3, b: 1 });
   const over = present(view(r), host).result!;
   assert.equal(over.title, "ADA RUNS THE DEPOT!");
-  assert.deepEqual(over.lines.slice(0, 2), [
-    "1. Ada — 2 wins · 8 wagons",
-    "2. Bo — 1 win · 6 wagons",
-  ]);
+  assert.deepEqual(
+    over.rows
+      .slice(0, 2)
+      .map((row) => [row.place, row.name, row.you, row.wins, row.delivered]),
+    [
+      [1, "Ada", true, 2, 8],
+      [2, "Bo", false, 1, 6],
+    ],
+  );
+  assert.equal(over.rounds, 2);
+  assert.equal(over.winnerSlot, 0);
+  const lola = over.rows.find((row) => row.name === "Loco Lola")!;
+  assert.deepEqual([lola.bot, lola.delivered], [true, 2]);
   assert.ok(over.host);
   assert.equal(
     present(view(r), guest).result!.waiting,
