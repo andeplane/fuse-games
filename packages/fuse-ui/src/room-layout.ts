@@ -75,6 +75,12 @@ export interface RoomLayoutOptions {
   /** Ask the room to move this viewer to an open seat (the game's own join command, naming the seat). */
   onMove?: (slot: number) => void;
   /**
+   * A viewer whose name is known (an account, or one remembered in the join form) is seated on arriving, host and
+   * guest alike: the room submits the game's own join form once, for whichever seat is free. `false` leaves the first
+   * seat to a click, for a room where arriving is not playing.
+   */
+  autoSeat?: boolean;
+  /**
    * The friends system, the same in every room: ADD FRIEND on the row of each player the service has matched to
    * an account (the roster must be a `createRoster` whose member ids are the room's), and INVITE FRIENDS under
    * Copy link on the invitation.
@@ -237,6 +243,30 @@ export function createRoomLayout(options: RoomLayoutOptions) {
   let built = false;
   const moving = () =>
     built && options.onMove !== undefined && options.ownSlot?.() !== undefined;
+  /**
+   * Opening or entering a room is taking a seat in it. Once, when the join form is first on offer to a viewer with a
+   * name: no seat is named, so the room gives the first free one, and "Sit here" moves the player from there.
+   */
+  let autoSeated = options.autoSeat === false;
+  const autoSeat = () => {
+    if (autoSeated || !built || root.hidden || !admission || admission.hidden)
+      return;
+    if (typeof admission.requestSubmit !== "function") return;
+    const input = admission.querySelector<HTMLInputElement>(
+      'input:not([type="checkbox"]):not([type="radio"])',
+    );
+    const name = options.playerName?.() || input?.value.trim();
+    if (
+      !name ||
+      admission.querySelector<HTMLButtonElement>('button[type="submit"]')
+        ?.disabled
+    )
+      return;
+    autoSeated = true;
+    if (input) input.value = name;
+    delete admission.dataset.slot;
+    admission.requestSubmit();
+  };
   const createSlot = (index: number) => {
     const slot = el("div", "", "fui-room-open-slot", doc);
     // The number is the seat's own: a label says more only when a game has more to say.
@@ -420,6 +450,7 @@ export function createRoomLayout(options: RoomLayoutOptions) {
     }
     if (root.hidden && settings.dialog.open) settings.dialog.close();
     syncBackground();
+    autoSeat();
   };
   if ("observe" in options.roster) {
     const list = options.roster;

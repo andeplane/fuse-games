@@ -54,11 +54,6 @@ for (const [name, type] of [
     await host.goto("https://fusegames.ai/fuse-riders/?analytics=0&mute");
     await host.getByRole("button", { name: "Play", exact: true }).click();
     await host.waitForURL(/room=/);
-    await host.locator(".fui-room-join input").first().fill("Public host");
-    await host
-      .locator(".fui-room-join")
-      .getByRole("button", { name: "Join", exact: true })
-      .click();
     const invite = host.url();
     result.created = true;
     // Both pages are seated by the room on arrival, under the name the browser remembers, with no form in between
