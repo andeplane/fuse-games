@@ -7,6 +7,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import {
   bindAudioInput,
   browserAudioDependencies,
@@ -40,6 +41,7 @@ import {
   createNameEntry,
   createNotice,
   createPageMessage,
+  createResultsScreen,
   createRoomLayout,
   createRoster,
   createRoundControls,
@@ -73,6 +75,7 @@ import {
   type FuseVolleyCallbacks,
 } from "../online/runtime.js";
 import { SIDE_NAMES, sideColor } from "../render/palette.js";
+import { resultBar, resultReport } from "./result-report.js";
 import type { Cue } from "../render/cues.js";
 import { createScene } from "../render/scene.js";
 import { browserImages, loadArt } from "./art.js";
@@ -622,20 +625,24 @@ function room(solo: boolean): void {
     canvas = el("canvas", "", "fv-canvas"),
     note = el("p", "", "fv-note");
   sidesRow.append(sideNodes[0]!, scoringName, sideNodes[1]!);
-  const result = el("section", "", "fv-result"),
-    resultTitle = el("h2"),
-    resultLines = el("ol"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "fv-actions"),
-    rematch = button("REMATCH", "fui-button-primary fv-rematch"),
-    toLobby = button("LOBBY", "fv-to-lobby");
-  resultActions.append(toLobby, rematch);
-  result.append(resultTitle, resultLines, resultWaiting, resultActions);
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  screen.append(canvas, result, roundControls.element);
+  // The result: the shared results screen over the court.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  screen.append(canvas, roundControls.element);
 
   // A rocker and a jump button, twice: under a phone's own court, and filling the phone for a shared screen.
   const pads = (className: string) => {
@@ -681,8 +688,10 @@ function room(solo: boolean): void {
   const controllerResult = el("div", "", "fv-actions fv-controller-result"),
     controllerRematch = button("REMATCH", "fui-button-primary"),
     controllerLobby = button("LOBBY");
-  controllerRematch.onclick = rematch.onclick;
-  controllerLobby.onclick = toLobby.onclick;
+  controllerRematch.onclick = () =>
+    runtime.command({ type: "action", action: "rematch" });
+  controllerLobby.onclick = () =>
+    runtime.command({ type: "action", action: "lobby" });
   controllerResult.append(controllerLobby, controllerRematch);
   controller.append(controllerHead, controllerResult, controllerPads.row);
 
@@ -716,6 +725,7 @@ function room(solo: boolean): void {
     lobby,
     stage,
     controller,
+    results.element,
   );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
@@ -997,19 +1007,36 @@ function room(solo: boolean): void {
     setText(controllerState, next.status);
     controllerResult.hidden = !(next.result && next.result.host);
     // Result.
-    result.hidden = !next.result || next.screen === "controller";
-    if (next.result) {
-      setText(resultTitle, next.result.title);
-      const lines = next.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...next.result.lines.map((line) => el("li", line)),
+    const result = next.result;
+    if (!result || next.screen === "controller") {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: sideColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      setText(resultWaiting, next.result.waiting);
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 

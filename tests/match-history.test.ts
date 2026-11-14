@@ -226,7 +226,7 @@ test("a result is normalised, and anything outside the schema is refused", () =>
     }),
     "a slot the arena does not have": (value) => ({
       ...value,
-      players: [{ ...value.players[0], slot: 5 }, value.players[1]],
+      players: [{ ...value.players[0], slot: 6 }, value.players[1]],
     }),
     "an implausible kill count": (value) => ({
       ...value,

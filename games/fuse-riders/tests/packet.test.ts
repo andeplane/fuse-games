@@ -189,7 +189,7 @@ test("bounded unpack rejects deep nesting, oversized collections, binary, extens
   );
   assert.throws(() => unpackMessage(new Uint8Array([0x01, 0x02])), /Trailing/);
   assert.throws(() => unpackMessage(new Uint8Array([0x91])), /Truncated/);
-  assert.throws(() => unpackMessage(new Uint8Array(2_000_001)), /too large/);
+  assert.throws(() => unpackMessage(new Uint8Array(2_600_001)), /too large/);
   const wide = packMessage(
     Array.from({ length: 60 }, () => Array.from({ length: 4000 }, () => 0)),
   );

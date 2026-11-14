@@ -93,7 +93,7 @@ test("setup detects multiple pads, retains names and returns fixed assignments p
   f.input("Controller 1 player name").value = " Alice ";
   f.addKeyboard();
   f.tick();
-  assert.match(f.app.textContent!, /3 players · 2 AI/);
+  assert.match(f.app.textContent!, /3 players · 3 AI/);
   f.press(f.button("START LOCAL GAME"));
   assert.deepEqual(await f.result, [
     { name: "Keyboard 1", keys: LOCAL_KEYBOARD_PRESETS[0] },
@@ -119,14 +119,14 @@ test("setup detects multiple pads, retains names and returns fixed assignments p
   assert.equal(f.cancelled(), 1);
 });
 test("capacity, blank names and disconnected pads cannot start an invalid roster", () => {
-  const pads = Array.from({ length: 6 }, (_, i) => pad(i));
+  const pads = Array.from({ length: 7 }, (_, i) => pad(i));
   const f = setup(pads);
-  assert.equal(f.input("Use controller 6").checked, false);
-  f.input("Use controller 6").checked = true;
+  assert.equal(f.input("Use controller 7").checked, false);
+  f.input("Use controller 7").checked = true;
   f.tick();
   assert.equal(f.button("START LOCAL GAME").disabled, true);
-  assert.match(f.app.textContent!, /at most five/);
-  f.input("Use controller 6").checked = false;
+  assert.match(f.app.textContent!, /at most six/);
+  f.input("Use controller 7").checked = false;
   f.input("Controller 1 player name").value = " ";
   f.tick();
   assert.equal(f.button("START LOCAL GAME").disabled, true);

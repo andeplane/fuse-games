@@ -1201,15 +1201,9 @@ function room(solo: boolean): void {
       main.dataset.round = String(frame.round);
       main.dataset.winner = frame.stage === "over" ? String(frame.winner) : "";
       // A page that loads into a room with a name remembered from before (a reload frees a lobby seat) joins under
-      // it once; a name typed on this page joins only through JOIN. Creating a room is not taking a seat, so the
-      // host picks a slot from the layout like everyone else.
-      if (
-        next.askName &&
-        next.canJoin &&
-        remembered &&
-        !joinSent &&
-        (solo || !next.host)
-      ) {
+      // it once; a name typed on this page joins only through JOIN. The host is seated the same way, in the first
+      // free seat: opening a room is taking a seat, and SIT HERE moves anyone to another.
+      if (next.askName && next.canJoin && remembered && !joinSent) {
         joinSent = true;
         runtime.command({ type: "join", name: remembered });
       }

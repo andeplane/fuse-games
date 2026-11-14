@@ -730,6 +730,8 @@ function room(solo: boolean): void {
     controller,
   );
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -739,6 +741,11 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // Seated already: any open seat is a move, and what the seat is (a team, a colour) follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     appearance: [pilotPicker()],
     addAI: addBot,
     settings: [rules],
@@ -910,6 +917,7 @@ function room(solo: boolean): void {
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
+    ownSeat = next.lobby.members.find((member) => member.you);
     avatars = new Map(view.seats.map((seat) => [seat.id, seat.avatarId]));
     connecting.hidden = true;
     main.dataset.screen = next.screen;
@@ -1094,7 +1102,8 @@ function room(solo: boolean): void {
       settings = roomSettings;
       const next = present(frame, viewer);
       main.dataset.round = String(frame.round);
-      if (next.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (next.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
