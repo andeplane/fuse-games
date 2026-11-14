@@ -494,7 +494,7 @@ function room() {
         shared = settings.display;
         runtime?.flush();
         const mine = frame.seats.find((s) => s.id === self && !s.watcher);
-<<<<<<< Updated upstream
+        ownSeat = frame.stage === "lobby" ? mine : undefined;
         observeConfirmedPlay(
           observePlay,
           frame,
@@ -514,19 +514,6 @@ function room() {
             };
           },
         );
-=======
-        ownSeat = frame.stage === "lobby" ? mine : undefined;
-        const players = frame.seats.filter((s) => !s.watcher);
-        observePlay({
-          matchId: frame.matchId,
-          active: frame.stage === "running",
-          ended: frame.stage === "over",
-          playerCount: players.length,
-          botCount: players.filter((s) => s.bot).length,
-          seated: !!mine,
-          mode: solo ? "solo" : shared ? "shared" : "online",
-        });
->>>>>>> Stashed changes
         main.dataset.phase = frame.stage;
         main.dataset.tick = String(frame.tick);
         main.dataset.layout =
