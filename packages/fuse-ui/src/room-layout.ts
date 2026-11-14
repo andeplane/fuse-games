@@ -230,6 +230,7 @@ export function createRoomLayout(options: RoomLayoutOptions) {
   const autoSeat = () => {
     if (autoSeated || !built || root.hidden || !admission || admission.hidden)
       return;
+    if (typeof admission.requestSubmit !== "function") return;
     const input = admission.querySelector<HTMLInputElement>(
       'input:not([type="checkbox"]):not([type="radio"])',
     );
