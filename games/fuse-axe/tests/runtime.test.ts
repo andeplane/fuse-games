@@ -409,3 +409,36 @@ test("the platform registration admits rooms and records nothing yet", () => {
   assert.deepEqual(axeRegistration.parseTotals({ [reserved]: 1 }), {});
   assert.equal(axeRegistration.parseTotals({ kills: 1 }), undefined);
 });
+
+test("a lobby seat is a choice: a seated player moves to any free seat and the hero it picked goes along", () => {
+  const mesh = new Mesh("host", DEFAULT_SETTINGS);
+  const host = mesh.join("host"),
+    guest = mesh.join("guest");
+  mesh.run(300);
+  host.command({ type: "join", name: "Host" });
+  guest.command({ type: "join", name: "Guest", slot: 3 });
+  mesh.run(3_000);
+  assert.ok(guest.pick("gorm"));
+  mesh.run(300);
+  const seat = (id: string) => {
+    const { slot, avatarId } = host.roomState()!.seats.get(id)!;
+    return { slot, avatarId };
+  };
+  assert.deepEqual(seat("guest"), { slot: 3, avatarId: "gorm" });
+  assert.ok(guest.command({ type: "join", name: "Guest", slot: 1 }));
+  mesh.run(3_000);
+  assert.deepEqual(seat("guest"), { slot: 1, avatarId: "gorm" });
+  assert.ok(host.command({ type: "join", name: "Host", slot: 4 }));
+  mesh.run(800);
+  assert.equal(seat("host").slot, 4);
+  // A seat somebody holds is not on offer, and asking for it moves nobody.
+  guest.command({ type: "join", name: "Guest", slot: 4 });
+  mesh.run(3_000);
+  assert.equal(seat("guest").slot, 1);
+  assert.deepEqual(
+    [...guest.roomState()!.seats.values()].map((s) => [s.id, s.slot]),
+    [...host.roomState()!.seats.values()].map((s) => [s.id, s.slot]),
+  );
+  mesh.leave("host");
+  mesh.leave("guest");
+});
