@@ -261,14 +261,56 @@ test("notes for a crashed, escaped, waiting or watching pilot", () => {
 });
 
 test("the match result: the winner, the crowns, and who can rematch", () => {
-  const over = room("over", { winner: "b", wins: { b: 3, a: 1 } });
+  const placing = (
+    id: string,
+    state: "flying" | "crashed" | "escaped",
+    lasted: number,
+  ) => ({ id, name: id, slot: 0, bot: id === "bot:1", state, lasted });
+  const over = room("over", {
+    winner: "b",
+    wins: { b: 3, a: 1 },
+    results: [
+      {
+        round: 1,
+        winner: "b",
+        placings: [
+          placing("b", "escaped", 600),
+          placing("a", "crashed", 300),
+          placing("bot:1", "crashed", 60),
+        ],
+      },
+      {
+        round: 2,
+        winner: "b",
+        placings: [
+          placing("b", "escaped", 600),
+          placing("a", "flying", 300),
+          placing("bot:1", "crashed", 120),
+        ],
+      },
+    ],
+  });
   const model = present(over, host);
   assert.equal(model.result!.title, "BO RULES THE CAVE!");
-  assert.deepEqual(model.result!.lines.slice(0, 3), [
-    "1. Bo — 3 crowns",
-    "2. Ada — 1 crown",
-    "3. Rotor Rex — 0 crowns",
-  ]);
+  assert.deepEqual(
+    model.result!.rows.map((row) => [
+      row.place,
+      row.name,
+      row.you,
+      row.bot,
+      row.crowns,
+      row.escapes,
+      row.crashes,
+      row.airTime,
+    ]),
+    [
+      [1, "Bo", false, false, 3, 2, 0, 20],
+      [2, "Ada", true, false, 1, 0, 1, 10],
+      [3, "Rotor Rex", false, true, 0, 0, 2, 3],
+    ],
+  );
+  assert.equal(model.result!.rounds, 2);
+  assert.equal(model.result!.winnerSlot, 1);
   assert.equal(model.result!.host, true);
   assert.match(present(over, guest).result!.waiting, /host/);
   assert.equal(

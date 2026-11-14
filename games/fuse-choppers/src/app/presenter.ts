@@ -1,5 +1,5 @@
 import type { View } from "../online/game.js";
-import { CAPACITY } from "../engine/index.js";
+import { CAPACITY, STEPS_PER_SECOND } from "../engine/index.js";
 
 /**
  * What the page shows, decided from one frame: the screen (lobby, the cave, or a phone controller for a shared
@@ -60,11 +60,33 @@ export interface Model {
   note: string;
   result: {
     title: string;
-    lines: string[];
+    /** How many rounds the match took. */
+    rounds: number;
+    /** Every pilot, most crowns first. */
+    rows: ResultRow[];
+    /** The winner's seat, or -1 when the cave won. */
+    winnerSlot: number;
     host: boolean;
     waiting: string;
   } | null;
   labels: Map<string, string>;
+}
+
+/** One pilot's line in the result. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** Pilots level on crowns share a place. */
+  place: number;
+  crowns: number;
+  /** Rounds flown out of the cave, and rounds ended in a crash. */
+  escapes: number;
+  crashes: number;
+  /** Whole seconds in the air over the match. */
+  airTime: number;
 }
 
 export const tag = (slot: number): string => `P${slot + 1}`;
@@ -175,14 +197,35 @@ export function present(view: View, viewer: Viewer): Model {
       .map((id) => ({ id, crowns: view.wins[id] ?? 0 }))
       .sort((a, b) => b.crowns - a.crowns || slotOf(a.id) - slotOf(b.id))
       .slice(0, CAPACITY + 3);
+    const flown = view.results.flatMap((round) => round.placings);
     result = {
       title: view.winner
         ? `${name(view.winner).toUpperCase()} RULES THE CAVE!`
         : "THE CAVE WINS",
-      lines: standings.map(
-        (row, i) =>
-          `${i + 1}. ${name(row.id)} — ${row.crowns} ${row.crowns === 1 ? "crown" : "crowns"}`,
-      ),
+      rounds: view.results.length,
+      rows: standings.map((row) => {
+        const mine = flown.filter((placing) => placing.id === row.id);
+        return {
+          id: row.id,
+          slot: slotOf(row.id),
+          name: name(row.id),
+          you: row.id === viewer.me,
+          bot:
+            view.seats.find((seat) => seat.id === row.id)?.bot ??
+            mine[0]?.bot ??
+            false,
+          place:
+            1 + standings.filter((other) => other.crowns > row.crowns).length,
+          crowns: row.crowns,
+          escapes: mine.filter((placing) => placing.state === "escaped").length,
+          crashes: mine.filter((placing) => placing.state === "crashed").length,
+          airTime: Math.round(
+            mine.reduce((sum, placing) => sum + placing.lasted, 0) /
+              STEPS_PER_SECOND,
+          ),
+        };
+      }),
+      winnerSlot: view.winner ? slotOf(view.winner) : -1,
       host: viewer.host,
       waiting: viewer.host ? "" : "Waiting for the host to start a rematch",
     };
