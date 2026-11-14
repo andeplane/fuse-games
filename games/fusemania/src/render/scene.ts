@@ -133,6 +133,7 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
     gap: Number.NaN,
     banner: 0,
     bannerAt: 0,
+    standing: false,
   };
   const band: Race = { x: 0, y: 0, width: 0, height: 0 };
   const boardInfo: BoardInfo = {
@@ -234,6 +235,8 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
         fieldInfo.banner = feedback.banner;
         fieldInfo.bannerAt = feedback.bannerAt;
         fieldInfo.gap = Number.NaN;
+        // The standing lights: on a rider's own field, and on every field of a shared screen.
+        fieldInfo.standing = riders > 1 && (local < 0 || slot === local);
         if (slot === local && riders > 1) {
           // How far ahead of second place, or behind the leader: from the scores as shown, so it rolls with them.
           // The rolling scores can cross a moment after the places have: the sign is the place's.

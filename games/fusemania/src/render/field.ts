@@ -98,6 +98,8 @@ export interface FieldInfo {
   gap: number;
   banner: number;
   bannerAt: number;
+  /** Light the lanes' edges with the rider's standing (`standing` below): its own field, or every field on a shared screen. */
+  standing: boolean;
 }
 
 /** How long a burst on a target, a mine's blast and its shake, and the judgment word last. */
@@ -119,6 +121,94 @@ const LANE = "#08132a",
   EDGE = "rgba(54,84,119,0.9)",
   DOUBLE_TINT = "rgba(255,228,107,0.1)",
   BODY_EDGE = "rgba(3,9,25,0.85)";
+/**
+ * The standing lights. A rider's place is a soft glow down both sides of its lanes: gold, silver, bronze, and a dim
+ * blue from fourth down. Closing in on the place ahead is a green glow at the top of the lanes; somebody closing in
+ * from behind is a red one at the bottom. All of it is at the lanes' edges and under the notes, and fades and never
+ * flashes: it is read out of the corner of the eye.
+ */
+export const PLACE_GLOWS = [
+    "#ffd84a",
+    "#d6e6f7",
+    "#e88c4a",
+    "#4a78d0",
+  ] as const,
+  CHASE_GLOW = "#3dff7a",
+  THREAT_GLOW = "#ff3b4f";
+export const placeGlow = (place: number): string =>
+  PLACE_GLOWS[Math.max(1, Math.min(PLACE_GLOWS.length, place)) - 1]!;
+/** How long the sides take to turn from one place's colour to the next's. */
+export const PLACE_FADE_MS = 700;
+/** A glow is this many bands, each fainter than the one outside it; how far in the sides and the ends reach, in columns; and how strong each is at the edge. */
+const GLOW_BANDS = 6,
+  SIDE_REACH = 0.34,
+  END_REACH = 1.1,
+  SIDE_ALPHA = 0.3,
+  END_ALPHA = 0.5;
+
+/** A glow in from one edge of the lanes: `across` true from the left or right edge inward, false from the top or bottom. */
+function glow(
+  g: Frame["pen"],
+  color: string,
+  alpha: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  across: boolean,
+  fromStart: boolean,
+): void {
+  if (alpha <= 0.01) return;
+  g.fillStyle = color;
+  const band = (across ? width : height) / GLOW_BANDS;
+  for (let i = 0; i < GLOW_BANDS; i++) {
+    const fade = 1 - i / GLOW_BANDS;
+    g.globalAlpha = alpha * fade * fade;
+    const at = fromStart ? i : GLOW_BANDS - 1 - i;
+    if (across) g.fillRect(x + at * band, y, band, height);
+    else g.fillRect(x, y + at * band, width, band);
+  }
+  g.globalAlpha = 1;
+}
+
+/** The standing lights of one field. */
+function standing(
+  frame: Frame,
+  state: RiderFeedback,
+  x: number,
+  top: number,
+  width: number,
+  height: number,
+  col: number,
+): void {
+  const g = frame.pen;
+  const side = Math.min(col * SIDE_REACH, width / 4),
+    end = Math.min(col * END_REACH, height / 4);
+  // The sides, in the place's colour; for a moment after an overtake the old colour goes out as the new comes in.
+  const turn = Math.max(
+    0,
+    Math.min(1, (frame.songMs - state.rowAt) / PLACE_FADE_MS),
+  );
+  for (let pass = 0; pass < 2; pass++) {
+    const alpha = SIDE_ALPHA * (pass === 0 ? 1 - turn : turn);
+    const color = placeGlow(pass === 0 ? state.placeWas : state.place);
+    glow(g, color, alpha, x, top, side, height, true, true);
+    glow(g, color, alpha, x + width - side, top, side, height, true, false);
+  }
+  glow(g, CHASE_GLOW, END_ALPHA * state.chase, x, top, width, end, false, true);
+  glow(
+    g,
+    THREAT_GLOW,
+    END_ALPHA * state.threat,
+    x,
+    top + height - end,
+    width,
+    end,
+    false,
+    false,
+  );
+}
+
 /** A hold's body and core, then a roll's: at rest and while it is being kept. */
 const HOLD_BODY = "rgba(22,201,235,0.62)",
   HOLD_LIVE = "rgba(140,246,255,0.95)",
@@ -277,6 +367,7 @@ export function drawField(
   g.fillStyle = GUIDE;
   for (let column = 1; column < COLUMNS; column++)
     g.fillRect(ox + column * col, top, thin, height);
+  if (info.standing) standing(frame, state, ox, top, width, height, col);
   if (doubled) {
     g.fillStyle = DOUBLE_TINT;
     g.fillRect(ox, top, width, height);
