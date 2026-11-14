@@ -92,7 +92,14 @@ export function roomPanel(
     actions,
   );
   root.append(element);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move, and the base's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) options.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => options.store.getItem(NAME_KEY) ?? undefined,
     background: async (host) =>
@@ -117,6 +124,7 @@ export function roomPanel(
       key = next;
       element.hidden = !model.lobby;
       lastDisplay = model.display;
+      ownSeat = model.own;
       map.querySelectorAll<HTMLOptionElement>("option").forEach((option) => {
         option.selected = option.value === model.mapId;
       });

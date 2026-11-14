@@ -550,7 +550,16 @@ function room(code: string, token: string | undefined, display: boolean): void {
         action: "add",
         slot: requestedRoomSlot(addAI),
       });
+    const ownSeat = view.seats.find(
+      (seat) => seat.id === runtime.self && !seat.watcher,
+    );
     const layout = createRoomLayout({
+      // Seated already: any open seat is a move, and the army and the hero are the seat's.
+      ownSlot: () => ownSeat?.slot,
+      onMove: (slot) => {
+        if (ownSeat)
+          runtime.command({ type: "join", name: ownSeat.name, slot });
+      },
       primaryAction: host ? start : undefined,
       slotColor: (slot) => (slot % 2 ? "#3a6ae0" : "#d8402a"),
       slotLabel: (slot) => `${slot % 2 ? "Blue" : "Red"} · Slot ${slot + 1}`,

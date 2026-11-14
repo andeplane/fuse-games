@@ -61,6 +61,8 @@ export interface ResultModel {
 
 export interface LobbyModel {
   members: RosterMember[];
+  /** This device's own seat, by its plain name: what a move to another seat is asked with. */
+  own?: { name: string; slot: number };
   canStart: boolean;
   showStart: boolean;
   note: string;
@@ -95,8 +97,10 @@ export function presentTable(
     host: false,
   }));
 
+  const own = view.drivers.find((driver) => driver.id === viewer.me);
   const lobby: LobbyModel = {
     members,
+    ...(own ? { own: { name: own.name, slot: own.slot } } : {}),
     canStart: view.drivers.length >= 2,
     showStart: viewer.host && !racing && !over,
     note:
