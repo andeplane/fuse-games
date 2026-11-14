@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { FakeNetwork, type NetworkOptions } from "./fixtures/fake-room.js";
 import { defaultRoomSettings } from "../src/engine/room-settings.js";
-import { COUNTDOWN_TICKS } from "../src/engine/game.js";
+import { COUNTDOWN_TICKS, MAX_PLAYERS } from "../src/engine/game.js";
 import type { RoomRuntime } from "../src/online/room-runtime.js";
 import { TICK_MS } from "fuse-netcode";
 import { fuseGame } from "../src/online/fuse-game.js";
@@ -507,8 +507,8 @@ test("a hidden rider the manager logged absent first steps away on its own, with
 
 test("an away seat is reclaimed when the room is full and a rider is waiting for a place", () => {
   const r = room(3);
-  r.host.command({ type: "bot", action: "add" });
-  r.host.command({ type: "bot", action: "add" });
+  for (let seat = 3; seat < MAX_PLAYERS; seat++)
+    r.host.command({ type: "bot", action: "add" });
   r.net.step(1000);
   const hider = GUESTS[0]!;
   r.net.setHidden(hider, true);

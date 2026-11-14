@@ -206,7 +206,7 @@ try {
           };
         }),
       );
-    assert.equal(scores.length, 5);
+    assert.equal(scores.length, 6);
     assert.ok(
       scores.every(
         (score) => score.fits && /\d+ PTS · \+\d+/.test(score.text ?? ""),

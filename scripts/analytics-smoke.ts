@@ -224,7 +224,7 @@ for (const key of [
     `Match Started lost its properties — is one of them named 'length'? missing: ${key}`,
   );
 }
-assert.equal(started.botCount, 4, "solo seats four AI riders");
+assert.equal(started.botCount, 5, "solo seats five AI riders");
 const ended = only("Match Ended");
 for (const key of [
   "playerCount",

@@ -247,7 +247,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           .locator(".online-roster")
           .getByText("You", { exact: false })
           .waitFor({ state: "attached" });
-        assert.equal(await page.locator(".online-roster>span").count(), 5);
+        assert.equal(await page.locator(".online-roster>span").count(), 6);
         assert.equal(
           await page
             .getByRole("button", { name: /Remove AI/, includeHidden: true })
@@ -477,7 +477,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
         await page.reload();
         await page.locator(".online-controls").waitFor({ state: "visible" });
         await ready(page);
-        assert.equal(await page.locator(".online-roster>span").count(), 5);
+        assert.equal(await page.locator(".online-roster>span").count(), 6);
         const solo = new URL(base);
         solo.search = "?solo=1&display=1";
         await page.goto(solo.href);
