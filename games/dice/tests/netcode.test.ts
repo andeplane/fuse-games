@@ -259,3 +259,32 @@ test("three phones and a bot play Pig over dropped, duplicated and reordered pac
   for (const runtime of runtimes)
     assert.deepEqual(runtime.roomState()!.history, room.history);
 });
+
+test("a lobby seat is a choice: a guest joins the seat it asks for, host and guest move to any free one, and a taken one is refused", () => {
+  const mesh = new DiceMesh("a", { turnTicks: 60, display: false });
+  const host = mesh.join("a"),
+    guest = mesh.join("b");
+  mesh.run(200);
+  const slots = (runtime: TestDiceRuntime) =>
+    Object.fromEntries(
+      [...runtime.roomState()!.seats.values()].map((seat) => [
+        seat.id,
+        seat.slot,
+      ]),
+    );
+  host.command({ type: "join", name: "A" });
+  guest.command({ type: "join", name: "B", slot: 3 });
+  mesh.run(3000);
+  assert.deepEqual(slots(host), { a: 0, b: 3 });
+  assert.ok(guest.command({ type: "join", name: "B", slot: 1 }));
+  mesh.run(3000);
+  assert.ok(host.command({ type: "join", name: "A", slot: 4 }));
+  mesh.run(800);
+  assert.deepEqual(slots(host), { a: 4, b: 1 });
+  assert.deepEqual(slots(guest), slots(host));
+  // A seat somebody holds is not on offer, and asking for it moves nobody.
+  guest.command({ type: "join", name: "B", slot: 4 });
+  mesh.run(3000);
+  assert.deepEqual(slots(host), { a: 4, b: 1 });
+  assert.equal(host.command({ type: "action", action: "start" }), true);
+});

@@ -337,6 +337,8 @@ function room(solo: boolean): void {
   main.tabIndex = -1;
   main.append(nameEntry.form, lobby, table, result);
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -346,6 +348,11 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // Seated already: any open seat is a move.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     addAI: addBot,
     actions: [lobbyNote, tvLink, start],
   });
@@ -471,6 +478,10 @@ function room(solo: boolean): void {
       });
       viewer.shared = settings.display;
       const model = presentTable(frame, viewer);
+      ownSeat =
+        frame.phase === "lobby"
+          ? frame.players.find((seat) => seat.id === viewer.me)
+          : undefined;
       const state = runtime.roomState();
       const touch =
         viewer.shared || window.matchMedia("(pointer: coarse)").matches;
@@ -495,7 +506,8 @@ function room(solo: boolean): void {
       lastDie = model.die?.key ?? "";
       // A page that loads into a room with a name remembered from before (a reload frees a lobby seat) joins under it
       // once; a name typed on this page joins only through JOIN.
-      if (model.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (model.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
