@@ -399,12 +399,12 @@ const rows: Row[] = [
     lobbyCard: false,
   },
   {
-    name: "solo on a desktop, lobby: the arena behind, no lobby card",
+    name: "solo on a desktop, lobby: the same room card as any room",
     input: { role: "solo", joined: true },
-    kind: "arena",
-    classes: ["desktop-game", "mobile-lobby", "scene-background"],
+    kind: "lobby",
+    classes: ["mobile-lobby", "room-waiting", "scene-background"],
     arenaHidden: false,
-    lobbyCard: false,
+    lobbyCard: true,
   },
   {
     name: "solo on a desktop, playing",
@@ -470,12 +470,12 @@ const rows: Row[] = [
     arenaController: true,
   },
   {
-    name: "solo on a desktop, recap: the arena behind the results",
+    name: "solo on a desktop, recap: the room card over the blurred arena, as in any room",
     input: { role: "solo", joined: true, ...RECAP },
     kind: "recap",
-    classes: ["desktop-game", "scene-background"],
+    classes: ["room-waiting", "scene-background"],
     arenaHidden: false,
-    lobbyCard: false,
+    lobbyCard: true,
   },
 ];
 

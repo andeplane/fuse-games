@@ -181,13 +181,13 @@ export function roomScreen(input: RoomScreenInput): RoomScreen {
     phase: input.phase,
     recapReady: input.recapReady,
   });
-  // A phone in the lobby always gets the lobby card (#134); elsewhere solo, a shared-TV controller and a phone playing
-  // as the thirds controller have none. Once the recap is ready the room is back in the lobby it started from.
+  // A phone in the lobby always gets the lobby card (#134), and so does a solo run: its room is the same room, on one
+  // device. Elsewhere a shared-TV controller and a phone playing as the thirds controller have none. Once the recap
+  // is ready the room is back in the lobby it started from.
   const lobbyCard =
     (input.phase === "lobby" || input.recapReady) &&
     !joining &&
-    (mobile.lobby ||
-      !(input.role === "solo" || arena.controller || mobile.active));
+    (mobile.lobby || !(arena.controller || mobile.active));
   const controllerOnly = arena.controller && !mobile.lobby;
   const desktop =
     input.device.desktopPointer &&

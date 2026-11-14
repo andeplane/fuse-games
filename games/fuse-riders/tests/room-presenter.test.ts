@@ -134,6 +134,17 @@ test("lobby: who is ready, what the host may do, and what a guest waits for", ()
   const unseated = present(lobby, { playerId: "new", manages: false });
   assert.equal(unseated.joined, false);
   assert.equal(unseated.notice, "Join your friends, then start the race");
+  // A solo run has no friends to wait for and nobody to tell who runs the room.
+  const solo = present(lobby, { solo: true });
+  assert.equal(solo.notice, "Choose your rivals, then start the race");
+  assert.equal(
+    solo.lobby.riders.some((rider) => rider.host),
+    false,
+  );
+  assert.equal(
+    host.lobby.riders.some((rider) => rider.host),
+    true,
+  );
   assert.equal(unseated.avatarHidden, true);
   assert.equal(unseated.joinPanelHidden, false);
   assert.equal(unseated.controlsHidden, true);

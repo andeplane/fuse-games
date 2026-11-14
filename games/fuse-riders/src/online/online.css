@@ -1466,6 +1466,16 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
+/* A solo run's room is one column from its top, and its seats share the width. */
+.room-lobby.fui-room-layout.fui-room-compact {
+  grid-template-rows: auto;
+  align-items: start;
+  align-content: start;
+  min-height: 0;
+}
+.room-lobby.fui-room-layout.fui-room-compact .fui-room-open-slot {
+  flex: 1 1 17.5rem;
+}
 /* The room's foot is the connection's state with RETRY beside it when the line asks for one. */
 .room-lobby > .fui-room-status {
   display: flex;
@@ -2062,8 +2072,9 @@
 }
 .online-app .recap-dialog .dialog-bar .dialog-close {
   position: absolute;
-  top: max(0.25rem, env(safe-area-inset-top));
-  right: max(0.25rem, env(safe-area-inset-right));
+  /* Far enough from the corner for its focus ring (2px, 3px out) to be whole. */
+  top: max(0.5rem, env(safe-area-inset-top));
+  right: max(0.5rem, env(safe-area-inset-right));
   z-index: 2;
   min-width: 2.75rem;
   min-height: 2.75rem;

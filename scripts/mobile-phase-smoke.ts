@@ -118,7 +118,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     );
     assert.equal(
       await page.locator(".shared-lobby .room-rider").count(),
-      5,
+      6,
       `${label}: riders listed`,
     );
     assert.equal(
@@ -141,7 +141,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page
       .getByRole("button", { name: "BACK TO LOBBY", exact: true })
       .click();
-    await notice(/^Join your friends/);
+    await notice(/^Choose your rivals/);
     await lobbyScreen("landscape lobby");
     await page.screenshot({ path: `artifacts/mobile-phase-lobby-${name}.png` });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -180,7 +180,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     );
     assert.equal(
       await page.locator(".online-roster:visible>span").count(),
-      5,
+      6,
       "match results roster reachable behind MENU",
     );
     await page
@@ -206,7 +206,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page
       .getByRole("button", { name: "BACK TO LOBBY", exact: true })
       .click();
-    await notice(/^Join your friends/);
+    await notice(/^Choose your rivals/);
     await lobbyScreen("lobby after the match");
     assert.equal(
       (seen.countdown as unknown[]).length,

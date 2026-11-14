@@ -41,7 +41,7 @@ try {
   await page.waitForFunction(
     () =>
       document.querySelector(".online-notice")?.textContent ===
-      "Join your friends, then start the race",
+      "Choose your rivals, then start the race",
   );
   for (const [code, button] of [
     ["ArrowLeft", left],
