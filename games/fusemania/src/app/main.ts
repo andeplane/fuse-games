@@ -1825,8 +1825,9 @@ function enterRoom(
         const publicId = social.friends.publicIdOfMember(id);
         return publicId ? social.friends.friendButton(publicId) : undefined;
       };
+      // The bar's own fields change while the result is read (who waits for what): they do not rebuild the report.
       const shown = JSON.stringify([
-        result,
+        { ...result, waiting: "", host: false, primary: null, secondary: null },
         result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
       ]);
       if (shown !== shownResult) {
@@ -1840,12 +1841,16 @@ function enterRoom(
             run: result.own ? [cardReport] : [],
           }),
         );
-        if (first) results.actions.querySelector("button")?.focus();
-        else results.body.scrollTop = scroll;
+        if (!first) results.body.scrollTop = scroll;
         // The graph's canvas has a size only now that it is on the page.
         drawGraph();
-      }
-      results.update(resultBar(result));
+        results.update(resultBar(result));
+        // The main button takes the focus, so Enter and the arrows work without a click.
+        if (first)
+          results.actions
+            .querySelector<HTMLButtonElement>("button.is-primary")
+            ?.focus();
+      } else results.update(resultBar(result));
       setText(controllerRematch, result.primary.text);
       controllerLobby.hidden = !result.secondary;
       if (result.secondary) setText(controllerLobby, result.secondary.text);

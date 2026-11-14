@@ -354,6 +354,10 @@ export function createResultsScreen(
       const ids = next.actions.map((action) => action.id).join("\n");
       if (ids !== order) {
         order = ids;
+        // Moving a button drops its focus: whoever had it gets it back.
+        const focused = [...buttons.values()].find(
+          (button) => button === doc.activeElement,
+        );
         for (const [id, button] of buttons)
           if (!next.actions.some((action) => action.id === id)) {
             button.remove();
@@ -370,6 +374,7 @@ export function createResultsScreen(
           }
           actions.append(button);
         }
+        if (focused?.isConnected) focused.focus();
       }
       for (const action of next.actions) {
         const button = buttons.get(action.id)!;

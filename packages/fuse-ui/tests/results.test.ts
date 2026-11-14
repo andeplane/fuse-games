@@ -228,3 +228,34 @@ test("the bar shows the ready count and the room's buttons, and reports the one 
     true,
   );
 });
+
+test("an action that is gone loses its button, and hidden and disabled reach the page", () => {
+  const { document } = page();
+  const screen = createResultsScreen({ document, onAction: () => {} });
+  const ids = () =>
+    [...screen.actions.querySelectorAll<HTMLButtonElement>("button")].map(
+      (button) => [button.dataset.action, button.hidden, button.disabled],
+    );
+  screen.update({
+    actions: [
+      { id: "menu", label: "Menu" },
+      { id: "lobby", label: "Song select", hidden: true },
+      { id: "again", label: "PLAY AGAIN", primary: true, disabled: true },
+    ],
+  });
+  assert.deepEqual(ids(), [
+    ["menu", false, false],
+    ["lobby", true, false],
+    ["again", false, true],
+  ]);
+  screen.update({
+    actions: [{ id: "again", label: "PLAY AGAIN", primary: true }],
+  });
+  assert.deepEqual(ids(), [["again", false, false]]);
+  // Shown again after being hidden, the report is the new one.
+  screen.show({ game: "DICE", headline: "ADA WINS" });
+  screen.hide();
+  screen.show({ game: "DICE", headline: "BO WINS" });
+  assert.equal(screen.open, true);
+  assert.equal(screen.body.querySelector("h2")!.textContent, "BO WINS");
+});

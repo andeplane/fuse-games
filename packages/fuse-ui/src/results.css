@@ -169,6 +169,10 @@
 .fui-results-standings thead th:nth-child(n + 3) {
   width: 6.5rem;
 }
+.fui-results-standings td {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
 .fui-results-standings tbody tr {
   border-bottom: 1px solid #24365c;
 }
@@ -427,8 +431,8 @@
   }
   .fui-results-standings th,
   .fui-results-standings td {
-    padding: 0.9rem 0.25rem;
-    font-size: 0.8125rem;
+    padding: 0.9rem 0.125rem;
+    font-size: 0.75rem;
   }
   .fui-results-standings thead th {
     font-size: 0.5625rem;
