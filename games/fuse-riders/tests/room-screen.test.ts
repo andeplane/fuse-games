@@ -399,6 +399,19 @@ const rows: Row[] = [
     lobbyCard: false,
   },
   {
+    name: "solo on a phone, lobby: the room card, as it always was (#134)",
+    input: { role: "solo", joined: true, device: PHONE_PORTRAIT },
+    kind: "lobby",
+    classes: [
+      "mobile-lobby",
+      "phone-lobby",
+      "room-waiting",
+      "scene-background",
+    ],
+    arenaHidden: false,
+    lobbyCard: true,
+  },
+  {
     name: "solo on a desktop, lobby: the same room card as any room",
     input: { role: "solo", joined: true },
     kind: "lobby",

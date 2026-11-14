@@ -1466,15 +1466,21 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
-/* A solo run's room is one column from its top, and its seats share the width. */
+/* A solo run's room is one column from its top: the card is as tall as what it holds (a room with an invitation
+   keeps a minimum height and centres its two columns). */
 .room-lobby.fui-room-layout.fui-room-compact {
   grid-template-rows: auto;
   align-items: start;
   align-content: start;
   min-height: 0;
 }
-.room-lobby.fui-room-layout.fui-room-compact .fui-room-open-slot {
-  flex: 1 1 17.5rem;
+/* Beside each other the seats are columns of one width, so a last seat alone on its row is not stretched. A phone
+   keeps the kit's one seat to a row. */
+@media (min-width: 641px) {
+  .room-lobby.fui-room-layout.fui-room-compact .fui-room-open-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  }
 }
 /* The room's foot is the connection's state with RETRY beside it when the line asks for one. */
 .room-lobby > .fui-room-status {
