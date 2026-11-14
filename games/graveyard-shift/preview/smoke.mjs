@@ -202,15 +202,15 @@ try {
     guest.locator("[data-phase=over]").waitFor({ timeout: 110000 }),
   ]);
   assert.deepEqual(
-    await host.locator(".ranks").innerText(),
-    await guest.locator(".ranks").innerText(),
+    await host.locator(".fui-results:not([hidden]) tbody td").allInnerTexts(),
+    await guest.locator(".fui-results:not([hidden]) tbody td").allInnerTexts(),
   );
   await snap(host, "results");
   await host
-    .getByRole("button", { name: "READY FOR ANOTHER SHIFT", exact: true })
+    .locator('.fui-results-actions button[data-action="rematch"]')
     .click();
   await guest
-    .getByRole("button", { name: "READY FOR ANOTHER SHIFT", exact: true })
+    .locator('.fui-results-actions button[data-action="rematch"]')
     .click();
   await host.locator("[data-phase=running]").waitFor();
   await guest.locator("[data-phase=running]").waitFor();

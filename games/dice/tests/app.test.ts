@@ -245,11 +245,24 @@ test("round and match results, the rematch for the host and the wait for a guest
   assert.equal(model.result?.title, "YOU WIN!");
   assert.equal(model.result?.host, true);
   assert.equal(model.result?.waiting, "");
-  assert.match(
-    model.result!.lines[0]!,
-    /^Ada: 2 rounds, best turn \d+, 0 busts$/,
+  assert.equal(model.result?.rounds, 2);
+  assert.equal(model.result?.winnerSlot, 0);
+  assert.deepEqual(
+    model.result!.rows.map((row) => [
+      row.id,
+      row.slot,
+      row.name,
+      row.you,
+      row.bot,
+      row.place,
+      row.roundWins,
+      row.busts,
+    ]),
+    [
+      ["a", 0, "Ada", true, false, 1, 2, 0],
+      ["b", 1, "Bo", false, false, 2, 0, 0],
+    ],
   );
-  assert.match(model.result!.lines[1]!, /^Bo: 0 rounds/);
   const guest = presentTable(frame(room), viewer({ me: "b", host: false }));
   assert.equal(guest.result?.title, "ADA WINS");
   assert.equal(guest.result?.host, false);

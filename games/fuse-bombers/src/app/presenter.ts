@@ -2,11 +2,12 @@ import { MIN_PLAYERS, type TickEvent } from "../engine/index.js";
 import { CAPACITY, entrant, type View } from "../online/game.js";
 import { css, playerColor } from "../render/palette.js";
 import type { PlayerLook } from "../render/round-scene.js";
+import { matchResult, type Result } from "./result-report.js";
 import * as screens from "./screens.js";
 
 /**
  * What an online room's page shows, decided from one frame: the lobby's roster and buttons, or the round's overlay
- * (badges, countdown, results, the match winner) and how the scene draws each gunship. Pure, so it is unit-tested;
+ * (badges, countdown, a round's results), the finished match's result and how the scene draws each gunship. Pure, so it is unit-tested;
  * `online.ts` only puts it on the page.
  */
 export interface Viewer {
@@ -90,7 +91,8 @@ export function present(view: View, viewer: Viewer) {
 
   let screen: "lobby" | "countdown" | "playing" | "controller" | View["stage"] =
       "lobby",
-    overlay = "";
+    overlay = "",
+    result: Result | null = null;
   if (view.stage !== "lobby" && world) {
     const info: screens.MatchInfo = {
       seats: looks.map((look, slot) => ({
@@ -127,8 +129,32 @@ export function present(view: View, viewer: Viewer) {
       line = `${winner == null ? "DRAW!" : `${name(winner)} WINS THE ROUND`} · NEXT IN ${next}`;
     } else {
       const winner = ship(view.winner);
-      const text = `MATCH OVER AFTER ${view.results.length} ROUNDS`;
-      overlay += screens.roomResultsHtml(info, winner, text, viewer);
+      // Whoever flew the last round, then anybody else with a crown: a winner who left keeps their line.
+      const ids = [
+        ...view.ships,
+        ...Object.keys(view.wins).filter((id) => !view.ships.includes(id)),
+      ];
+      result = matchResult(
+        ids.map((id, at) => {
+          const seat = view.seats.find((each) => each.id === id);
+          return {
+            id,
+            slot: seat?.slot ?? at,
+            name: seat?.name ?? "GONE",
+            tag: "",
+            you: id === viewer.me,
+            bot: !!seat?.bot,
+            wins: view.wins[id] ?? 0,
+            stats: world.castles[view.ships.indexOf(id)]?.stats,
+          };
+        }),
+        view.winner || null,
+        {
+          rounds: view.results.length,
+          target: view.play.wins,
+          host: viewer.host,
+        },
+      );
       line = `${winner == null ? "NO WINNER" : `${name(winner)} WINS THE MATCH`}${viewer.host ? "" : " · WAITING FOR THE HOST"}`;
     }
     if (pad) screen = "controller";
@@ -196,6 +222,7 @@ export function present(view: View, viewer: Viewer) {
     note,
     controller,
     overlay, // over the round (screens.ts)
+    result, // the finished match, for the shared results screen (result-report.ts)
     looks, // how the scene draws each gunship, by castle id; `follow` is this device's
     follow,
     flying, // this device flies its gunship (or ghost) in the running round

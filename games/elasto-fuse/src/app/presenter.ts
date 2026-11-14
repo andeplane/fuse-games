@@ -43,6 +43,23 @@ export interface Row {
   /** Points, as the table words them; "" where a single race gives none worth showing. */
   points: string;
 }
+/** One rider of a finished match. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for the winner; riders a tour could not part share a place. */
+  place: number;
+  /** Hundredths: the race's time, or a tour's whole clock when every map was ridden home; null otherwise. */
+  time: number | null;
+  points: number;
+  /** Maps won, and maps ridden home at all. */
+  wins: number;
+  maps: number;
+  crashes: number;
+}
 export interface Model {
   screen: "lobby" | "play" | "controller";
   askName: boolean;
@@ -82,9 +99,15 @@ export interface Model {
   table: { title: string; rows: Row[]; next: string } | null;
   result: {
     title: string;
-    rows: Row[];
-    /** Extra lines: a solo ride's time and best. */
-    lines: string[];
+    /** The level raced, or the last one of a tour. */
+    level: string;
+    /** Maps the match raced: more than one is a tour. */
+    rounds: number;
+    rows: ResultRow[];
+    /** The winner's slot, or −1 when nobody reached a flower. */
+    winnerSlot: number;
+    /** A solo ride: the level's best before it, in hundredths, if there was one. */
+    best: number | null;
     host: boolean;
     waiting: string;
     /** A solo ride: the level it rode and the one NEXT MAP goes to. */
@@ -114,6 +137,57 @@ function raceRows(view: View, me: string, withPoints: boolean): Row[] {
         points: withPoints ? `+${gained} · ${total}` : "",
       };
     });
+}
+
+/** The finished match's riders from the winner down. */
+function resultRows(view: View, me: string, tour: boolean): ResultRow[] {
+  const world = view.world;
+  if (!world) return [];
+  const slots = tour
+    ? view.order
+    : [...world.riders].sort((a, b) => a.place - b.place).map((r) => r.slot);
+  const rows: ResultRow[] = [];
+  slots.forEach((slot, index) => {
+    const entrant = view.roster[slot],
+      standing = view.standings[slot],
+      rider = world.riders[slot],
+      before = rows[index - 1],
+      prior = view.standings[slots[index - 1] ?? -1];
+    // What the order sorts by, all equal: nothing parted the two.
+    const tied =
+      tour &&
+      !!standing &&
+      !!prior &&
+      prior.points === standing.points &&
+      prior.wins === standing.wins &&
+      prior.clock === standing.clock;
+    const home = tour
+      ? !!standing && standing.finishes === view.rounds
+      : rider?.status === "finished";
+    rows.push({
+      id: entrant?.id ?? `slot:${slot}`,
+      slot,
+      name: entrant?.name ?? "",
+      you: entrant?.id === me,
+      bot: entrant?.bot ?? false,
+      place:
+        tied && before
+          ? before.place
+          : tour
+            ? index + 1
+            : (rider?.place ?? index + 1),
+      time: !home
+        ? null
+        : tour
+          ? centiseconds(standing?.clock ?? 0)
+          : centiseconds(rider?.run ?? 0),
+      points: standing?.points ?? 0,
+      wins: standing?.wins ?? 0,
+      maps: standing?.finishes ?? 0,
+      crashes: standing?.deaths ?? 0,
+    });
+  });
+  return rows;
 }
 
 export function present(
@@ -192,32 +266,18 @@ export function present(
     const alone = viewer.solo && view.roster.length === 1;
     const winner = view.roster.find((entrant) => entrant.id === view.winner);
     const won = winner && (view.standings[winner.slot]?.finishes ?? 0) > 0;
+    const base = {
+      level: levelName,
+      rounds: view.rounds,
+      rows: resultRows(view, viewer.me, tour),
+    };
     if (alone) {
-      const me = world.riders[0];
-      const finished = me?.status === "finished";
-      const time = finished && me ? centiseconds(me.run) : undefined;
-      const best =
-        time !== undefined && (bestBefore === undefined || time < bestBefore);
+      const finished = world.riders[0]?.status === "finished";
       result = {
+        ...base,
         title: finished ? levelName : "TIME IS UP",
-        rows: [],
-        lines:
-          time === undefined
-            ? [
-                "The race closed before you reached the flower.",
-                ...(bestBefore !== undefined
-                  ? [`BEST ${clockText(bestBefore)}`]
-                  : []),
-              ]
-            : [
-                `TIME ${clockText(time)}`,
-                best ? "NEW BEST!" : `BEST ${clockText(bestBefore ?? time)}`,
-                ...(me && me.deaths > 0
-                  ? [
-                      `${me.deaths} ${me.deaths === 1 ? "crash" : "crashes"} on the way`,
-                    ]
-                  : []),
-              ],
+        winnerSlot: finished ? 0 : -1,
+        best: bestBefore ?? null,
         host: true,
         waiting: "",
         solo: {
@@ -228,25 +288,14 @@ export function present(
       };
     } else
       result = {
+        ...base,
         title: !won
           ? "RACE OVER"
           : winner.id === viewer.me
             ? "YOU WIN!"
             : `${winner.name.toUpperCase()} WINS`,
-        rows: tour
-          ? view.order.map((slot, index) => {
-              const standing = view.standings[slot];
-              return {
-                place: index + 1,
-                slot,
-                name: view.roster[slot]?.name ?? "",
-                you: view.roster[slot]?.id === viewer.me,
-                detail: `${standing?.finishes ?? 0} / ${view.rounds} MAPS`,
-                points: `${standing?.points ?? 0} PTS`,
-              };
-            })
-          : raceRows(view, viewer.me, false),
-        lines: [],
+        winnerSlot: won ? winner.slot : -1,
+        best: null,
         host: viewer.host,
         waiting: viewer.host ? "" : "Waiting for the host to start a rematch",
         solo: null,

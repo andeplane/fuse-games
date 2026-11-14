@@ -10,6 +10,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -34,6 +35,7 @@ import {
   createNameEntry,
   createNotice,
   createRoster,
+  createResultsScreen,
   el,
 } from "fuse-ui";
 import {
@@ -62,6 +64,7 @@ import {
   createSeatAdmission,
 } from "./session.js";
 import { NightAudio } from "./audio.js";
+import { resultBar, resultReport, shiftResult } from "./result-report.js";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import {
   observeConfirmedPlay,
@@ -442,20 +445,23 @@ function room() {
         sources.delete(`p${e.pointerId}`);
         update();
       };
-  const result = el("section", "", "result"),
-    resultTitle = el("h1", "SHIFT COMPLETE"),
-    ranks = el("div", "", "ranks"),
-    again = button("READY FOR ANOTHER SHIFT", "primary"),
-    back = button("BACK TO LOBBY");
-  again.onclick = () => runtime?.readyUp();
-  back.onclick = () => runtime?.command({ type: "action", action: "lobby" });
-  result.append(resultTitle, ranks, again, back);
-  main.append(name.form, lobby, play, result);
+  // The result: the shared results screen over the page, on the TV and a phone controller too.
+  const results = createResultsScreen({
+    document,
+    onBack: () => navigate(),
+    backText: "Leave",
+    onAction: (id) => {
+      if (id === "rematch") runtime?.readyUp();
+      else runtime?.command({ type: "action", action: "lobby" });
+    },
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  main.append(name.form, lobby, play, results.element);
   ready.hidden = true;
   add.hidden = true;
   tv.hidden = true;
   play.hidden = true;
-  result.hidden = true;
   name.form.hidden = true;
   app.append(main);
   createRoomLayout({
@@ -513,7 +519,6 @@ function room() {
         name.form.hidden = solo || display || !!mine;
         lobby.hidden = frame.stage !== "lobby";
         play.hidden = frame.stage === "lobby";
-        result.hidden = frame.stage !== "over";
         pad.hidden = display || !mine || frame.stage !== "running";
         c.hidden = shared && !display && !!mine;
         personal.hidden = display;
@@ -521,11 +526,37 @@ function room() {
         tv.hidden = !host || !shared;
         ready.hidden = display || !mine;
         ready.textContent = frame.ready[self] ? "WAITING FOR CREW…" : "READY";
-        again.hidden = display || !mine;
-        again.textContent = frame.ready[self]
-          ? "WAITING FOR CREW…"
-          : "READY FOR ANOTHER SHIFT";
-        back.hidden = !host;
+        const result = shiftResult(frame, { self, host, solo });
+        if (!result) {
+          if (results.open) results.hide();
+          shownResult = "";
+        } else {
+          // The bar's own fields do not rebuild the report; an account that turns up after the shift gets its button.
+          const shown = JSON.stringify([
+            { ...result, host: false, ready: false, waiting: "" },
+            result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+          ]);
+          const first = !shownResult;
+          if (shown !== shownResult) {
+            shownResult = shown;
+            results.show(
+              resultReport(result, {
+                color: (slot) => COLORS[slot] ?? "#eef0ff",
+                friend: (id) => {
+                  const publicId = social.friends.publicIdOfMember(id);
+                  return publicId
+                    ? social.friends.friendButton(publicId)
+                    : undefined;
+                },
+              }),
+            );
+          }
+          results.update(resultBar(result));
+          if (first)
+            results.actions
+              .querySelector<HTMLButtonElement>("button.is-primary")
+              ?.focus();
+        }
         if (!display && !host) admission.observe(!!mine);
         roster.update(
           frame.seats
@@ -587,19 +618,6 @@ function room() {
           : me?.tank.length === 5
             ? "TANK FULL — reach either shrine and hold still."
             : "WASD / ARROWS move   ·   J / MOUSE vacuum   ·   SPACE pulse";
-        if (frame.stage === "over") {
-          const sorted = [...w.hunters].sort(
-            (a, b) => b.score - a.score || a.slot - b.slot,
-          );
-          ranks.replaceChildren(
-            ...sorted.map((h) =>
-              el(
-                "p",
-                `${1 + w.hunters.filter((p) => p.score > h.score).length}. ${frame.seats.find((s) => s.id === h.id)?.name ?? "Hunter"} — ${h.score} energy`,
-              ),
-            ),
-          );
-        }
         if (previous && me) {
           const old = previous.hunters.find((h) => h.id === self);
           if (old) {

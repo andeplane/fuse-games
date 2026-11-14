@@ -9,6 +9,7 @@ import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import { reportPlay } from "./analytics.js";
 import { observeConfirmedPlay } from "fuse-ui/play-metrics";
+import "fuse-ui/results.css";
 import "./style.css";
 import "./presentation.css";
 import { createAppPortal } from "fuse-ui/portal";
@@ -1326,6 +1327,8 @@ window.addEventListener("pageshow", (e) => {
 });
 const matchShell = createMatchShell({
   playerName: () => social.playerName(undefined) ?? undefined,
+  leave: () => el<HTMLButtonElement>("leave-room").click(),
+  friends: social.friends,
   join(name, slot) {
     el<HTMLInputElement>("keeper-name").value = name;
     runtime?.command({

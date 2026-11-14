@@ -321,7 +321,7 @@ body.ef-display .ef-lobby {
   padding-right: 2.5rem;
 }
 
-/* The table between two races and the result: one card over the race */
+/* The table between two races: one card over the race */
 .ef-card {
   /* Low in the picture: the bike rides at its middle and stays in view behind the card's top edge. */
   position: absolute;
@@ -380,30 +380,10 @@ body.ef-display .ef-lobby {
   color: var(--fui-yellow);
   font-style: normal;
 }
-.ef-lines {
-  display: grid;
-  gap: var(--fui-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fui-text-muted);
-  font-size: 0.8125rem;
-}
-.ef-lines li:first-child {
-  color: var(--fui-text-bright);
-  font: 0.75rem/1.6 var(--fui-font-pixel);
-}
-.ef-lines li.best {
-  color: var(--fui-yellow);
-  font: 0.625rem/1.6 var(--fui-font-pixel);
-}
 .ef-card-foot {
   margin: 0;
   color: var(--fui-cyan);
   font: 0.5625rem/1.6 var(--fui-font-pixel);
-}
-.ef-card .ef-actions {
-  justify-content: center;
 }
 
 /* Touch buttons: volts and TURN for the left thumb, BRAKE and GAS for the right, a small RESTART on top */

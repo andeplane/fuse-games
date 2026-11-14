@@ -314,21 +314,6 @@ a {
   border-color: #dbbd83;
   color: #edd294;
 }
-.result {
-  text-align: center;
-  padding: 25px;
-  margin: 20px auto;
-  background: #183039;
-  border: 1px solid #789f86;
-  border-radius: 12px;
-  max-width: 600px;
-}
-.result button {
-  margin: 6px;
-}
-.ranks p {
-  font: 16px monospace;
-}
 .handbook {
   max-width: 600px;
   padding: 34px;
@@ -470,9 +455,6 @@ a {
   }
   [data-layout="controller"] .abilities button {
     min-height: 90px;
-  }
-  .result h1 {
-    font-size: 24px;
   }
 }
 @media (max-height: 550px) {

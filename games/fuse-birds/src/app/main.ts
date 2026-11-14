@@ -8,6 +8,7 @@ import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/social.css";
+import "fuse-ui/results.css";
 import "./birds.css";
 import QRCode from "qrcode";
 import {
@@ -28,6 +29,7 @@ import {
   createInviteCard,
   createNameEntry,
   createMainMenu,
+  createResultsScreen,
   createRoomLayout,
   el,
 } from "fuse-ui";
@@ -70,6 +72,7 @@ import { BirdsAudio } from "./audio.js";
 import { PracticeRuntime } from "./practice.js";
 import { birdsPlayFrame } from "./play-metrics.js";
 import { canPlayTurn } from "./turn-controls.js";
+import { matchResult, resultBar, resultReport } from "./result-report.js";
 
 const GAME = "fuse-birds",
   COLORS = ["#6df4ed", "#ff6ec7", "#bded76", "#ffb75e", "#b797ff"];
@@ -329,9 +332,22 @@ function room(code: string, display: boolean, practice = false): void {
   const overlay = el("section", "", "birds-overlay"),
     overlayTitle = el("h2"),
     overlayText = el("p"),
-    rematch = button("PLAY AGAIN", "fui-button-primary"),
+    rematch = button("NEW ROUND", "fui-button-primary"),
     toLobby = button("LOBBY");
   overlay.append(overlayTitle, overlayText, rematch, toLobby);
+  // A finished battle: the shared results screen over the page, on the TV and the phones alike.
+  const results = createResultsScreen({
+    document,
+    onBack: () => leave.click(),
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   const cameraBar = el("div", "", "birds-camera"),
     zoomIn = button("+"),
     zoomOut = button("−"),
@@ -370,7 +386,7 @@ function room(code: string, display: boolean, practice = false): void {
   footer.append(weapons, turnActions, hint);
   board.append(scorebar, turn, sky, overlay, cameraBar, footer);
   board.hidden = true;
-  page.append(header, lobby, board);
+  page.append(header, lobby, board, results.element);
   app.replaceChildren(page);
   const addAI = button("Add AI");
   addAI.disabled = true;
@@ -672,6 +688,43 @@ function room(code: string, display: boolean, practice = false): void {
       lobbyNote.textContent = host
         ? `${present}/5 birds ready. ${present < 2 ? "Invite a friend to start." : "Start when your flock is ready."}`
         : "Waiting for the host to start.";
+      const result = view
+        ? matchResult(view, {
+            me,
+            host,
+            bots: new Set(frame.seats.filter((s) => s.bot).map((s) => s.id)),
+          })
+        : null;
+      if (!result) {
+        if (results.open) results.hide();
+        shownResult = "";
+      } else {
+        // The bar's own fields do not rebuild the report; an account that turns up after the battle gets its button.
+        const shown = JSON.stringify([
+          { ...result, host: false, waiting: "" },
+          result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+        ]);
+        const first = !shownResult;
+        if (shown !== shownResult) {
+          shownResult = shown;
+          results.show(
+            resultReport(result, {
+              color: (slot) => COLORS[slot] ?? "#ffffff",
+              friend: (id) => {
+                const publicId = social.friends.publicIdOfMember(id);
+                return publicId
+                  ? social.friends.friendButton(publicId)
+                  : undefined;
+              },
+            }),
+          );
+        }
+        results.update(resultBar(result));
+        if (first)
+          results.actions
+            .querySelector<HTMLButtonElement>("button.is-primary")
+            ?.focus();
+      }
       if (!view) {
         cancel();
         return;
@@ -738,21 +791,18 @@ function room(code: string, display: boolean, practice = false): void {
             : canPlay()
               ? "Pull your bird backwards to aim. Release to fire. Drag elsewhere to pan."
               : `Watch ${player.name}. You can still explore the map.`;
-      overlay.hidden = !["preparing", "over", "fault"].includes(view.phase);
+      // The battle's result is the results screen's; this card is for a map being made and a round that broke.
+      overlay.hidden = !["preparing", "fault"].includes(view.phase);
       overlayTitle.textContent =
         view.phase === "preparing"
           ? "SHAPING THE ISLANDS"
-          : view.phase === "fault"
-            ? "ROUND INTERRUPTED"
-            : view.winner
-              ? `${view.players.find((p) => p.id === view!.winner)?.name ?? "Bird"} WINS!`
-              : "DRAW!";
+          : "ROUND INTERRUPTED";
       overlayText.textContent =
         view.phase === "preparing"
           ? practice
             ? "Preparing your practice map…"
             : "Checking that every bird has an opening shot…"
-          : (view.fault ?? "New terrain. Fresh ammunition. Another round?");
+          : (view.fault ?? "");
       rematch.hidden = toLobby.hidden = !host || view.phase === "preparing";
     },
   };

@@ -16,7 +16,7 @@ Choose your keeper name before entering from the splash. The assigned P1–P5 se
 
 Cards show the keeper illustration, P number, name, score or hits/returns, and OUT/AWAY/WATCHING/WINNER status. A late joiner's status explicitly says they return next round. Free play shows an infinity clock; competitive rounds use replicated whole seconds, including the frozen remaining time when a round finishes. The presentation does not create a new timer or simulation loop.
 
-Countdown and result panels read the existing contest state. The result supports one winner, shared winners and a draw, reuses winner portraits, and offers **Play again**, **Free play**, and **View arena**. Results can be reopened from the HUD. Manager-only actions reuse the existing commands. Rematch returns keyboard focus to the scene so movement works immediately after countdown. The winner message is a live status; names are always text, never interpreted as HTML. Reduced motion disables the short result entrance animation.
+The countdown panel and the result read the existing contest state. The result is the shared results screen (`fuse-ui`'s `createResultsScreen`, built by `src/app/result-report.ts`): the winner, shared winners or a draw, final standings with the columns the round had on (score or fate, knockouts, falls, bombs, power-ups), up to three highlight cards and friend buttons. Its bar offers **View arena** to everybody and **Free play** and **REMATCH** to the room manager; **Leave** leaves the room. Results can be reopened from the HUD. Manager-only actions reuse the existing commands. Rematch returns keyboard focus to the scene so movement works immediately after countdown. Names are always text, never interpreted as HTML.
 
 The shell only updates when displayed facts change. Countdown seconds, scores, keeper names/status and authority can update it; simulation elapsed ticks alone cannot. Engine rules remain `hook-havok-8` and this phase changes no simulation geometry, timing or protocol.
 
@@ -43,6 +43,6 @@ Screenshots below are actual gameplay, without injected world state. The test na
 ![Room lounge and collapsed development workshop](evidence/match-lounge.png)
 ![Compact match HUD](evidence/match-hud.png)
 ![Winner panel with manager actions](evidence/match-result.png)
-![Phone layout with spectator result and touch pads](evidence/match-phone.png)
+![Phone layout after a round with touch pads](evidence/match-phone.png)
 
 User assessment is still needed for visual density, legibility and feel. No merge or deployment is included. The next planned phase is 8C: cohesion, busy-scene checks and performance qualification.

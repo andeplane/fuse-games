@@ -22,6 +22,7 @@ import {
 } from "fuse-ui/game-audio";
 import "fuse-ui/game-audio.css";
 import { safeStorage } from "fuse-ui/safe-storage";
+import "fuse-ui/results.css";
 import "./elasto-fuse.css";
 import QRCode from "qrcode";
 import { createTopBar } from "fuse-ui";
@@ -43,6 +44,7 @@ import {
   createNameEntry,
   createNotice,
   createPageMessage,
+  createResultsScreen,
   createRoomLayout,
   createRoster,
   createRoundControls,
@@ -85,6 +87,7 @@ import {
   type Viewer,
 } from "./presenter.js";
 import { dueReports, sendReport } from "./reports.js";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   NOT_OPEN,
   bestTime,
@@ -479,7 +482,7 @@ function room(solo: boolean): void {
   const mapTitle = el("h2", "MAP", "fui-lobby-title");
   lobby.append(lobbyMain);
 
-  // The race: the canvas, the card over it (the table between two races, the result) and the touch buttons.
+  // The race: the canvas, the table over it between two races, and the touch buttons.
   const stage = el("section", "", "ef-stage"),
     screen = el("div", "", "ef-screen"),
     canvas = el("canvas", "", "ef-canvas"),
@@ -487,23 +490,12 @@ function room(solo: boolean): void {
   const card = el("section", "", "ef-card"),
     cardTitle = el("h2"),
     cardRows = el("ol", "", "ef-rows"),
-    cardLines = el("ul", "", "ef-lines"),
-    cardFoot = el("p", "", "ef-card-foot"),
-    cardActions = el("div", "", "ef-actions"),
-    rematch = button("REMATCH", "fui-button-primary ef-rematch"),
-    toLobby = button("LOBBY", "ef-to-lobby"),
-    nextMap = button("NEXT MAP", "ef-next-map"),
-    toMenu = button("MENU", "ef-to-menu");
-  cardActions.append(toMenu, toLobby, rematch, nextMap);
-  card.append(cardTitle, cardRows, cardLines, cardFoot, cardActions);
+    cardFoot = el("p", "", "ef-card-foot");
+  card.append(cardTitle, cardRows, cardFoot);
   card.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  toMenu.onclick = leave;
-  /** The result's main button: NEXT MAP after a solo map ridden home, otherwise another go. */
-  const mainAction = () => (model?.result?.solo?.finished ? nextMap : rematch);
-  nextMap.onclick = () => {
+  const rematch = () => runtime.command({ type: "action", action: "rematch" }),
+    toLobby = () => runtime.command({ type: "action", action: "lobby" });
+  const nextMap = () => {
     const next = model?.result?.solo?.next;
     if (next === undefined) return;
     // The next level, then a rematch: both fold on the same tick, in this order.
@@ -519,6 +511,26 @@ function room(solo: boolean): void {
       withFlags(endpoints.appUrl(`?solo=1&level=${next}`)),
     );
   };
+  /** The result's main button: NEXT MAP after a solo map ridden home, otherwise another go. */
+  const mainAction = () =>
+    model?.result?.solo?.finished ? nextMap() : rematch();
+  // The result: the shared results screen over the page. A phone controller keeps its own two buttons.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: leave,
+    backText: "Leave",
+    onAction: (id) =>
+      id === "menu"
+        ? leave()
+        : id === "next"
+          ? nextMap()
+          : id === "lobby"
+            ? toLobby()
+            : rematch(),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -563,8 +575,8 @@ function room(solo: boolean): void {
   const controllerResult = el("div", "", "ef-actions ef-controller-result"),
     controllerRematch = button("REMATCH", "fui-button-primary"),
     controllerLobby = button("LOBBY");
-  controllerRematch.onclick = rematch.onclick;
-  controllerLobby.onclick = toLobby.onclick;
+  controllerRematch.onclick = rematch;
+  controllerLobby.onclick = toLobby;
   controllerResult.append(controllerLobby, controllerRematch);
   controller.append(controllerHead, controllerResult, controllerPads.row);
 
@@ -590,7 +602,15 @@ function room(solo: boolean): void {
   );
   closed.hidden = true;
   const main = el("main", "", "ef-room");
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  main.append(
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+    results.element,
+  );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
@@ -634,7 +654,8 @@ function room(solo: boolean): void {
     const fresh = bits & ~padBits & (GAS | RESTART);
     padBits = bits;
     if (fresh && !model?.riding && model?.result?.host)
-      (fresh & RESTART ? rematch : mainAction()).click();
+      if (fresh & RESTART) rematch();
+      else mainAction();
     controls.hold("gamepad", bits);
   });
   let model: Model | undefined;
@@ -852,40 +873,49 @@ function room(solo: boolean): void {
     }
     setText(controllerState, next.status);
     controllerResult.hidden = !(next.result && next.result.host);
-    // The card: the table between two races, or the result.
-    const shown = next.result ?? next.table;
-    card.hidden = !shown || next.screen === "controller";
-    card.dataset.kind = next.result ? "result" : next.table ? "table" : "";
-    if (shown) {
-      setText(cardTitle, shown.title);
-      const rows = JSON.stringify(shown.rows);
+    // The card: the table between two races.
+    const table = next.screen === "controller" ? null : next.table;
+    card.hidden = !table;
+    if (table) {
+      setText(cardTitle, table.title);
+      const rows = JSON.stringify(table.rows);
       if (cardRows.dataset.rows !== rows) {
         cardRows.dataset.rows = rows;
-        cardRows.replaceChildren(...shown.rows.map(rowNode));
+        cardRows.replaceChildren(...table.rows.map(rowNode));
       }
-      cardRows.hidden = !shown.rows.length;
-      const lines = next.result?.lines ?? [];
-      const joined = lines.join("\n");
-      if (cardLines.dataset.lines !== joined) {
-        cardLines.dataset.lines = joined;
-        cardLines.replaceChildren(
-          ...lines.map((line) =>
-            el("li", line, /^(NEW )?BEST/.test(line) ? "best" : ""),
-          ),
+      setText(cardFoot, table.next);
+    }
+    // The result.
+    const result = next.screen === "controller" ? null : next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: slotColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      cardLines.hidden = !lines.length;
-      setText(cardFoot, next.table?.next ?? next.result?.waiting ?? "");
-      cardFoot.hidden = !cardFoot.textContent;
-      const alone = !!next.result?.solo;
-      cardActions.hidden = !next.result?.host;
-      setText(rematch, alone ? "RETRY" : "REMATCH");
-      // A map ridden home goes on to the next: NEXT MAP is the main button then, and RETRY the other.
-      const onward = !!next.result?.solo?.finished;
-      nextMap.classList.toggle("fui-button-primary", onward);
-      rematch.classList.toggle("fui-button-primary", !onward);
-      nextMap.hidden = toMenu.hidden = !alone;
-      toLobby.hidden = alone;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 
@@ -1047,31 +1077,33 @@ function room(solo: boolean): void {
   });
 
   // Keys: while this device rides, ours are swallowed so Space never scrolls or presses a focused button.
-  const typing = (target: EventTarget | null) =>
+  const field = (target: EventTarget | null) =>
     target instanceof HTMLInputElement ||
     target instanceof HTMLSelectElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLButtonElement && !model?.riding);
+    target instanceof HTMLTextAreaElement;
   const captured = new Set<string>();
   document.addEventListener("keydown", (event) => {
     if (
       menu.isOpen() ||
       modalOpen() ||
-      typing(event.target) ||
+      field(event.target) ||
       event.metaKey ||
       event.ctrlKey ||
       event.altKey
     )
       return;
+    const onButton = event.target instanceof HTMLButtonElement;
     // A result that offers another go takes Enter as its main button and R as a retry, without the mouse.
+    // The results screen focuses its main button, so R must work from a button; Enter there is the button's own.
     if (
       !model?.riding &&
       model?.result?.host &&
       !event.repeat &&
-      (event.code === "Enter" || event.code === "KeyR")
+      (event.code === "KeyR" || (event.code === "Enter" && !onButton))
     ) {
       event.preventDefault();
-      (event.code === "KeyR" ? rematch : mainAction()).click();
+      if (event.code === "KeyR") rematch();
+      else mainAction();
       return;
     }
     // Only a race swallows keys: in the lobby Space and the arrows scroll and press as usual.

@@ -13,6 +13,7 @@ import "fuse-ui/portal.css";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import { createAppPortal } from "fuse-ui/portal";
 import { createPlayMetrics, startGameAnalytics } from "fuse-ui/play-metrics";
+import "fuse-ui/results.css";
 import "./fuseDrivers.css";
 import QRCode from "qrcode";
 import {
@@ -37,6 +38,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createResultsScreen,
   createRoster,
   el,
 } from "fuse-ui";
@@ -51,6 +53,7 @@ import {
 } from "./arena/index.js";
 import { createSmoother, forward } from "./forward.js";
 import { presentTable, type TableModel, type Viewer } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { createReportDispatcher, dueReports, sendReport } from "./reports.js";
 import { FuseDriversRuntime, type FuseDriversCallbacks } from "./runtime.js";
 import { keys, roomFailure, safeStore, sessionFor } from "./session.js";
@@ -89,6 +92,10 @@ const store = safeStore(() => localStorage);
 const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
+/** The truck sprites' colours by grid slot (`TRUCK_COLORS` in the arena), as the page can paint them. */
+const TRUCK_HEX = ["#16e7ff", "#ff2e9d", "#b6ff4d", "#ff9f1c", "#a78bfa"];
+const truckColor = (truck: number): string =>
+  TRUCK_HEX[truck % TRUCK_HEX.length] ?? "#ffffff";
 
 function header(): HTMLElement {
   const bar = el("header", "", "fd-top");
@@ -268,7 +275,23 @@ function room(solo: boolean): void {
   const canvas = document.createElement("canvas");
   canvas.className = "fd-arena";
   const hud = el("p", "", "fd-hud");
-  const results = el("section", "", "fd-results");
+  // The result: the shared results screen over the page, on a phone controller and the TV too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's header: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = endpoints.appUrl();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   const race = el("section", "", "fd-race");
   race.classList.toggle("fd-display", display);
   const arenaBox = el("div", "", "fd-arena-box");
@@ -316,9 +339,8 @@ function room(solo: boolean): void {
   // Until the first view arrives there is nothing to show but the lobby: a room with no host yet would
   // otherwise show an empty arena and an empty results table at the same time.
   race.hidden = true;
-  results.hidden = true;
   start.hidden = true;
-  main.append(nameEntry.form, lobby, race, results);
+  main.append(nameEntry.form, lobby, race, results.element);
   app.replaceChildren(header(), status.element, main);
   createRoomLayout({
     primaryAction: start,
@@ -337,7 +359,6 @@ function room(solo: boolean): void {
   const render = (model: TableModel) => {
     lobby.hidden = model.screen !== "lobby";
     race.hidden = model.screen === "lobby";
-    results.hidden = model.screen !== "results";
     nameEntry.form.hidden = !model.askName;
     canvas.hidden = viewer.shared && !display && !solo;
     arenaBox.hidden = canvas.hidden;
@@ -350,19 +371,41 @@ function room(solo: boolean): void {
     if (model.lobby.note) status.show(model.lobby.note, "info");
     if (model.race)
       hud.textContent = `LAP ${String(model.race.lap)}/${String(model.race.laps)}   POS ${String(model.race.place)}/${String(model.race.drivers.length)}`;
-    if (model.results)
-      results.replaceChildren(
-        el("h2", model.results.title, "fd-results-title"),
-        ...model.results.rows.map((row) => el("p", row, "fd-results-row")),
-        ...(model.results.host ? [rematch] : []),
-      );
+    const result = model.results;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the race gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: truckColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
+        );
+      }
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
+    }
     // A phone that is only a controller has no room for the arena.
     pad.element.hidden = model.screen !== "race" || display;
   };
 
-  const rematch = button("RACE AGAIN", "fui-button-primary");
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
   start.onclick = () => runtime.command({ type: "action", action: "start" });
 
   let latest: Parameters<FuseDriversCallbacks["state"]>[0] | undefined;

@@ -32,6 +32,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./fuse-craft.css";
 
 const GAME = "fuse-craft";
@@ -115,6 +116,10 @@ mountFuseCraft(root, {
       search: location.search,
     }).element,
   social: () => social.element(),
+  friends: {
+    publicIdOfMember: (id) => social.friends.publicIdOfMember(id),
+    friendButton: (publicId) => social.friends.friendButton(publicId),
+  },
   maps: createBrowserMapRepository(fetch.bind(globalThis)),
   preferences: createPreferencesStore(localStorage),
   createSession: (map, slot, mode, settings, options) =>

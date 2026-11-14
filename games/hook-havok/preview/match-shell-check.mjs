@@ -89,18 +89,40 @@ try {
   await phase(host, "over");
   await guest.keyboard.up("d");
   await phase(guest, "over");
+  await host.locator(".fui-results:not([hidden])").waitFor();
   assert.match(
-    await host.locator("#result-detail").innerText(),
+    await host.locator(".fui-results-victory h2").textContent(),
+    /<b>Amber<\/b> WINS/i,
+  );
+  assert.match(
+    await host.locator(".fui-results-standings").textContent(),
     /<b>Amber<\/b>/,
   );
-  assert.equal(await host.locator("#result-detail b").count(), 0);
-  assert.equal(await guest.locator("#rematch").isDisabled(), true);
-  assert.equal(await tv.locator("#rematch").isVisible(), false);
+  assert.equal(await host.locator(".fui-results b").count(), 0);
+  // Only the room manager gets the next steps; a guest and the display wait.
+  await guest.locator(".fui-results:not([hidden])").waitFor();
+  await tv.locator(".fui-results:not([hidden])").waitFor();
+  assert.equal(
+    await guest
+      .locator('.fui-results-actions button[data-action="rematch"]')
+      .count(),
+    0,
+  );
+  assert.equal(
+    await tv
+      .locator('.fui-results-actions button[data-action="rematch"]')
+      .count(),
+    0,
+  );
   await host.screenshot({
     path: "games/hook-havok/docs/evidence/match-result.png",
     animations: "disabled",
     fullPage: true,
   });
+  // The results cover the page: look at the arena first.
+  await late
+    .locator('.fui-results-actions button[data-action="arena"]')
+    .click();
   await late.locator("#arena-focus").click();
   assert.ok(
     await late.evaluate(
@@ -114,11 +136,15 @@ try {
   await late.setViewportSize({ width: 844, height: 390 });
   const pad = await late.locator('[data-pad="move"]').boundingBox();
   assert.ok(pad.y + pad.height <= 390, "landscape phone pad fits");
-  await host.locator("#dismiss-results").click();
-  assert.equal(await host.locator("#result-card").isVisible(), false);
+  await host
+    .locator('.fui-results-actions button[data-action="arena"]')
+    .click();
+  assert.equal(await host.locator(".fui-results").isVisible(), false);
   await host.locator("#show-results").click();
-  assert.equal(await host.locator("#result-card").isVisible(), true);
-  await host.locator("#rematch").click();
+  assert.equal(await host.locator(".fui-results").isVisible(), true);
+  await host
+    .locator('.fui-results-actions button[data-action="rematch"]')
+    .click();
   await phase(host, "countdown");
   await phase(host, "active");
   const startX = Number(
@@ -130,7 +156,7 @@ try {
     startX,
   );
   await host.keyboard.up("a");
-  assert.equal(await host.locator("#result-card").isVisible(), false);
+  assert.equal(await host.locator(".fui-results").isVisible(), false);
   console.log(
     "PASS lounge, name safety, workshop, countdown, late watcher, HUD, winner, result reopen, rematch, display and phone layouts",
   );
@@ -141,13 +167,13 @@ try {
   }
   await phase(host, "over");
   for (const p of [guest, late]) await p.keyboard.up("d");
-  await host.locator("#result-free").click();
+  await host.locator('.fui-results-actions button[data-action="free"]').click();
   await host.waitForFunction(
     () =>
       JSON.parse(document.querySelector("#scene").dataset.contest).rules ===
       "free",
   );
-  assert.equal(await host.locator("#match-overlay").isVisible(), false);
+  assert.equal(await host.locator(".fui-results").isVisible(), false);
   await host.reload();
   await host.locator('#status[data-state="playing"]').waitFor();
   assert.equal(await host.locator("#match-mode").innerText(), "Free play");

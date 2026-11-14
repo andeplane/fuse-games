@@ -28,18 +28,77 @@ test("HUD shows countdown, launch, damage, spectating and corrected results from
   assert.equal(hud().toast, "CORE LOST · WATCH THE FINISH");
   arena.phase = "over";
   arena.winner = "bot-1";
-  assert.equal(hud().title, "SPARKS WINS");
+  arena.bases[0]!.saves = 4;
+  arena.bases[1]!.broken = 7;
+  arena.bases[1]!.blocks[0]!.alive = false;
   assert.equal(hud().toast, "");
+  // The last core standing first; a solo run is its own host.
+  assert.deepEqual(hud().result, {
+    title: "SPARKS WINS",
+    map: hud().map,
+    rows: [
+      {
+        id: "bot-1",
+        slot: 1,
+        name: "Sparks",
+        you: false,
+        bot: true,
+        place: 1,
+        alive: true,
+        saves: 0,
+        broken: 7,
+        armor: 47,
+      },
+      {
+        id: "solo",
+        slot: 0,
+        name: "You",
+        you: true,
+        bot: false,
+        place: 2,
+        alive: false,
+        saves: 4,
+        broken: 0,
+        armor: 47,
+      },
+    ],
+    winnerSlot: 1,
+    solo: true,
+    host: true,
+    waiting: "",
+  });
+  // In a room only the host leads on; everybody else waits.
+  const room = (host: boolean) =>
+    present(view(arena.tick, "match", arena), "solo", host)!.result!;
+  assert.deepEqual(
+    [room(false).solo, room(false).host, room(false).waiting],
+    [false, false, "Waiting for the host"],
+  );
+  assert.deepEqual([room(true).host, room(true).waiting], [true, ""]);
+  // A draw at the time limit: whoever still stands shares first place, the most blocks broken leading.
   arena.winner = null;
   arena.tick = 2460;
-  assert.equal(hud().title, "ROUND DRAW");
+  arena.bases[0]!.alive = true;
+  assert.equal(hud().result!.title, "ROUND DRAW");
+  assert.equal(hud().result!.winnerSlot, -1);
+  assert.deepEqual(
+    hud().result!.rows.map((row) => [row.id, row.place]),
+    [
+      ["bot-1", 1],
+      ["solo", 1],
+    ],
+  );
+  // Nobody left standing is a draw too.
+  arena.bases.forEach((base) => (base.alive = false));
+  assert.deepEqual(
+    hud().result!.rows.map((row) => row.place),
+    [1, 1],
+  );
   assert.equal(hud().time, "00:00");
   // A corrected snapshot restores the player's armor and removes the speculative result.
   arena.bases[0]!.alive = true;
   arena.bases[0]!.blocks[0]!.alive = true;
   arena.phase = "playing";
-  assert.equal(hud().over, false);
+  assert.equal(hud().result, undefined);
   assert.equal(hud().cards[0]!.armor, "48 / 48");
-  arena.bases[0]!.bot = true;
-  assert.equal(hud().result, "Last core standing wins");
 });

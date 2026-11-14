@@ -1,12 +1,29 @@
 import type { BallView } from "../engine/view.js";
 
+/** One line of the final standings. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for whoever still stands; ties share a place. */
+  place: number;
+  alive: boolean;
+  saves: number;
+  /** Enemy blocks broken. */
+  broken: number;
+  /** Own blocks left. */
+  armor: number;
+}
+export type Model = NonNullable<ReturnType<typeof present>>;
+
 /** The HUD is derived from the latest view, including corrected rollback outcomes. */
-export function present(v: BallView, playerId?: string) {
+export function present(v: BallView, playerId?: string, host = false) {
   const s = v.arena;
   if (!s) return undefined;
-  const you = s.bases.find((b) =>
-    playerId === undefined ? !b.bot : b.id === playerId,
-  );
+  const solo = playerId === undefined;
+  const you = s.bases.find((b) => (solo ? !b.bot : b.id === playerId));
   const effects = (b: (typeof s.bases)[number]) => {
     if (!b.alive) return "";
     const seconds = (until: number) => `${Math.ceil((until - s.tick) / 20)}s`;
@@ -62,12 +79,49 @@ export function present(v: BallView, playerId?: string) {
                 : s.tick >= v.rules.frenzy && s.tick < v.rules.frenzy + 60
                   ? "FUSE FRENZY · BASES ON THE MOVE"
                   : "",
-    over: s.phase === "over",
-    title: s.winner
-      ? `${s.bases.find((b) => b.id === s.winner)!.name.toUpperCase()} WINS`
-      : "ROUND DRAW",
-    result: you
-      ? `Your saves: ${you.saves} · Enemy blocks broken: ${you.broken}`
-      : "Last core standing wins",
+    result: s.phase === "over" ? result(v, s, you?.id, solo, host) : undefined,
+  };
+}
+
+function result(
+  v: BallView,
+  s: NonNullable<BallView["arena"]>,
+  me: string | undefined,
+  solo: boolean,
+  host: boolean,
+) {
+  const winner = s.bases.find((b) => b.id === s.winner);
+  // The arena keeps no order of elimination: whoever still stands shares first, the rest share what follows.
+  const standing = s.bases.filter((b) => b.alive).length;
+  const rows: ResultRow[] = s.bases
+    .map((b) => ({
+      id: b.id,
+      slot: b.slot,
+      name: b.name,
+      you: b.id === me,
+      bot: b.bot,
+      place: b.alive || !standing ? 1 : standing + 1,
+      alive: b.alive,
+      saves: b.saves,
+      broken: b.broken,
+      armor: b.blocks.filter((k) => k.alive).length,
+    }))
+    .sort(
+      (a, b) =>
+        a.place - b.place ||
+        b.broken - a.broken ||
+        b.saves - a.saves ||
+        a.slot - b.slot,
+    );
+  return {
+    title: winner ? `${winner.name.toUpperCase()} WINS` : "ROUND DRAW",
+    map: v.rules.maps[s.mapId].label,
+    rows,
+    /** -1 for a draw. */
+    winnerSlot: winner?.slot ?? -1,
+    solo,
+    /** This device may start the next round. */
+    host: solo || host,
+    waiting: solo || host ? "" : "Waiting for the host",
   };
 }

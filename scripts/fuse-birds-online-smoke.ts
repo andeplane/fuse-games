@@ -479,8 +479,9 @@ try {
     for (const p of [first, second, tv])
       await p.locator('.birds-room[data-phase="over"]').waitFor();
     await first.screenshot({ path: `${output}/result.png` });
+    await first.locator(".fui-results:not([hidden])").waitFor();
     await first
-      .getByRole("button", { name: "PLAY AGAIN", exact: true })
+      .locator('.fui-results-actions button[data-action="rematch"]')
       .click();
     for (const p of [first, second, tv]) {
       await p

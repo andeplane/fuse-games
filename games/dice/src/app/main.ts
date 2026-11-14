@@ -12,6 +12,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./dice.css";
 import QRCode from "qrcode";
 import {
@@ -32,6 +33,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createResultsScreen,
   createRoster,
   createRoundControls,
   el,
@@ -44,6 +46,7 @@ import {
   type Viewer,
 } from "./presenter.js";
 import { dueReports, sendReport } from "./reports.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { DiceRuntime, type DiceCallbacks } from "./runtime.js";
 import {
   NOT_OPEN,
@@ -323,24 +326,27 @@ function room(solo: boolean): void {
   );
   const cards = new Map<string, Record<string, HTMLElement>>();
 
-  // The result of a match.
-  const result = el("section", "", "dice-result"),
-    resultTitle = el("h2", "", "dice-result-title"),
-    resultLines = el("ol", "", "dice-result-lines"),
-    rematch = button("REMATCH", "fui-button-primary"),
-    toLobby = button("LOBBY"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "dice-lobby-actions");
-  resultActions.append(toLobby, rematch);
-  result.append(resultTitle, resultLines, resultWaiting, resultActions);
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
+  // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = endpoints.appUrl();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
 
   const main = el("main", "", "dice-room");
   main.tabIndex = -1;
-  main.append(nameEntry.form, lobby, table, result);
+  main.append(nameEntry.form, lobby, table, results.element);
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
@@ -446,19 +452,36 @@ function room(solo: boolean): void {
     rollButton.disabled = !model.controls.roll;
     holdButton.disabled = !model.controls.hold;
     // Result.
-    result.hidden = !model.result;
-    if (model.result) {
-      resultTitle.textContent = model.result.title;
-      const lines = model.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...model.result.lines.map((line) => el("li", line)),
+    const result = model.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: (slot) => COLORS[slot % COLORS.length]!,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !model.result.host;
-      resultWaiting.textContent = model.result.waiting;
-      resultWaiting.hidden = !model.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 

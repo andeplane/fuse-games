@@ -2,6 +2,7 @@ import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
 import "fuse-ui/components.css";
+import "fuse-ui/results.css";
 import {
   observeConfirmedPlay,
   startGameAnalytics,
@@ -27,7 +28,7 @@ import {
 } from "../online/game.js";
 import { seatName } from "../online/names.js";
 import { BombersRuntime, type BombersCallbacks } from "../online/runtime.js";
-import { css } from "../render/palette.js";
+import { css, playerColor } from "../render/palette.js";
 import { RoundScene, type PlayerLook } from "../render/round-scene.js";
 import type { GameAudio } from "./audio/index.js";
 import { createBrowserInput, type DeviceId } from "./input/index.js";
@@ -42,6 +43,7 @@ import {
   type Trouble,
   type Viewer,
 } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { carry, keys, type Session, type Store } from "./session.js";
 import { GOAL, ONLINE_CONTROLS, TOUCH_CONTROLS } from "./controls.js";
 
@@ -315,6 +317,24 @@ export function showRoom(
   document.body.append(roundControls.element);
   const root = bar.parentElement!;
   root.dataset.screen = "card";
+  // The finished match: the shared results screen over the page. A phone controller keeps its own two buttons.
+  const results = ui.createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      go();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  root.append(results.element);
   // The round's overlay (badges, countdown, results) over the canvas, laid out by screens.css as the local game's.
   const overlay = el("div");
   overlay.id = "screen";
@@ -322,13 +342,6 @@ export function showRoom(
   if (display) overlay.dataset.display = ""; // and makes it big enough to read across the room
   document.body.append(overlay);
   audio.mountToggle(); // After `#screen`, so screens.css hides it mid-round.
-  overlay.addEventListener("click", (event) => {
-    const action = (event.target as Element)
-      .closest("[data-action]")
-      ?.getAttribute("data-action");
-    if (action === "rematch" || action === "lobby")
-      runtime.command({ type: "action", action });
-  });
   nameEntry.form.hidden = lobby.hidden = true;
 
   /** A dead end: the card says why, with BACK to the landing. The first one stands. */
@@ -346,6 +359,7 @@ export function showRoom(
     if (stopped) game.loop.wake();
     game.destroy(true);
     nameEntry.form.hidden = lobby.hidden = overlay.hidden = pad.hidden = true;
+    results.hide();
     root.dataset.screen = "card";
     root.classList.remove("fb-match");
     document.body.classList.remove("fb-controller", "fb-display");
@@ -464,6 +478,37 @@ export function showRoom(
       if (scene?.sys.isSleeping()) game.scene.wake(RoundScene.KEY);
     }
     tv.hidden = !next.openTv;
+    const result = controller ? null : next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const key = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (key !== shownResult) {
+        shownResult = key;
+        results.show(
+          resultReport(result, {
+            color: (slot) => css(playerColor(slot)),
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
+        );
+      }
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
+    }
     if (overlay.dataset.html !== next.overlay)
       overlay.innerHTML = overlay.dataset.html = next.overlay;
     roster.update(next.members);

@@ -15,6 +15,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -44,6 +45,7 @@ import {
   createPageMessage,
   createPhoneLayout,
   createPicker,
+  createResultsScreen,
   createRoomLayout,
   createRoster,
   createRoundControls,
@@ -61,6 +63,7 @@ import { axeGame, type View } from "../online/game.js";
 import { DEFAULT_HERO, isHero, seatName } from "../online/names.js";
 import { AxeRuntime, type AxeCallbacks } from "../online/runtime.js";
 import { createScene } from "../render/scene.js";
+import { SEAT_COLORS } from "../render/seat-colors.js";
 import type { MakeSurface } from "../render/surface.js";
 import { AxeAudio } from "./audio/director.js";
 import { WebAudioBackend } from "./audio/web-backend.js";
@@ -92,6 +95,7 @@ import {
   type Model,
   type Viewer,
 } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   NOT_OPEN,
   keys,
@@ -433,7 +437,7 @@ function room(solo: boolean): void {
     screen = el("div", "", "fa-screen"),
     canvas = el("canvas", "", "fa-canvas"),
     note = el("p", "", "fa-note");
-  // The stage flow's card over the game: a cleared stage's tally, the continue countdown, the run's end.
+  // The stage flow's card over the game: a cleared stage's tally, camp's caption, the continue countdown.
   const card = el("div", "", "fa-card"),
     cardTitle = el("h2", "", "fa-card-title"),
     cardLine = el("p", "", "fa-card-line"),
@@ -444,17 +448,28 @@ function room(solo: boolean): void {
     continueButton = button(
       TEXT.continueButton,
       "fui-button-primary fa-continue",
-    ),
-    rematch = button(TEXT.rematchButton, "fui-button-primary fa-rematch"),
-    backToLobby = button(TEXT.lobbyButton, "fa-card-lobby");
-  actions.append(continueButton, rematch, backToLobby);
+    );
+  actions.append(continueButton);
   card.append(cardTitle, cardLine, cardHint, cardClock, tally, actions);
   card.hidden = true;
   continueButton.onclick = () => runtime.continueRun();
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  backToLobby.onclick = () =>
-    runtime.command({ type: "action", action: "lobby" });
+  // The run's end: the shared results screen over the page, on a phone's controller and the shared screen too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   // The HUD draws the party in pixels; the canvas says it in words.
   canvas.setAttribute("role", "img");
   // The pads: an 8-way d-pad a thumb slides on, and ATTACK, JUMP and MAGIC. One set, over the game's corners on a
@@ -542,7 +557,15 @@ function room(solo: boolean): void {
   });
   const main = el("main", "", "fa-room");
   main.tabIndex = -1;
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  main.append(
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+    results.element,
+  );
   app.replaceChildren(top, main, roundControls.element);
   createRoomLayout({
     primaryAction: start,
@@ -698,18 +721,14 @@ function room(solo: boolean): void {
   requestAnimationFrame(paint);
 
   const showCard = (shown: Card | null) => {
-    main.dataset.card = shown?.kind ?? "";
     card.hidden = !shown;
     if (!shown) return;
     card.dataset.kind = shown.kind;
     setText(cardTitle, shown.title);
     setText(cardLine, shown.line);
     setText(cardHint, shown.hint);
-    setText(cardClock, shown.seconds === null ? "" : String(shown.seconds));
-    cardClock.hidden = shown.seconds === null;
-    continueButton.hidden = !shown.canContinue;
-    rematch.hidden = backToLobby.hidden = !shown.canRematch;
-    actions.hidden = !shown.canContinue && !shown.canRematch;
+    setText(cardClock, String(shown.seconds));
+    actions.hidden = !shown.canContinue;
     tally.hidden = !shown.rows.length;
     const rows = JSON.stringify(shown.rows);
     if (tally.dataset.rows === rows) return;
@@ -826,6 +845,39 @@ function room(solo: boolean): void {
     if (card.parentElement !== cardHome) cardHome.append(card);
     touch.hidden = !next.pads || next.screen !== "play";
     showCard(next.card);
+    // What holds the game: the stage flow's card, or the run's end.
+    main.dataset.card = next.card?.kind ?? next.result?.kind ?? "";
+    const result = next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the run gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: (slot) => SEAT_COLORS[slot % SEAT_COLORS.length]!,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
+        );
+      }
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
+    }
     phase = {
       // Camp is played as a stage is, so its pads and their hints come up as it begins.
       phase: `${view.stage}:${view.round}:${!!view.world?.camp}`,
