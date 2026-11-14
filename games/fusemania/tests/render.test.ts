@@ -2182,8 +2182,8 @@ test("a rider's lanes are lit at the sides in its place's colour, on its own fie
       call.x - own.x,
       own.x + own.col * COLUMNS - call.x,
     );
-    assert.ok(fromSide <= own.col * 0.4, `at the side (${fromSide})`);
-    assert.ok(call.alpha <= 0.3, "faint");
+    assert.ok(fromSide <= own.col * 0.5, `at the side (${fromSide})`);
+    assert.ok(call.alpha <= 0.5, "soft");
   }
   assert.equal(fillsOf(calls, placeGlow(1)).length, 0);
   assert.equal(fillsOf(calls, placeGlow(3)).length, 0, "not on rival fields");

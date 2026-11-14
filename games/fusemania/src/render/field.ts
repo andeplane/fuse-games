@@ -122,16 +122,16 @@ const LANE = "#08132a",
   DOUBLE_TINT = "rgba(255,228,107,0.1)",
   BODY_EDGE = "rgba(3,9,25,0.85)";
 /**
- * The standing lights. A rider's place is a soft glow down both sides of its lanes: gold, silver, bronze, and a dim
- * blue from fourth down. Closing in on the place ahead is a green glow at the top of the lanes; somebody closing in
+ * The standing lights. A rider's place is a soft glow down both sides of its lanes: gold, silver, bronze, and violet
+ * from fourth down. Closing in on the place ahead is a green glow at the top of the lanes; somebody closing in
  * from behind is a red one at the bottom. All of it is at the lanes' edges and under the notes, and fades and never
  * flashes: it is read out of the corner of the eye.
  */
 export const PLACE_GLOWS = [
     "#ffd84a",
-    "#d6e6f7",
-    "#e88c4a",
-    "#4a78d0",
+    "#e6f1ff",
+    "#ff9a3d",
+    "#8a5cff",
   ] as const,
   CHASE_GLOW = "#3dff7a",
   THREAT_GLOW = "#ff3b4f";
@@ -140,10 +140,10 @@ export const placeGlow = (place: number): string =>
 /** How long the sides take to turn from one place's colour to the next's. */
 export const PLACE_FADE_MS = 700;
 /** A glow is this many bands, each fainter than the one outside it; how far in the sides and the ends reach, in columns; and how strong each is at the edge. */
-const GLOW_BANDS = 6,
-  SIDE_REACH = 0.34,
+const GLOW_BANDS = 10,
+  SIDE_REACH = 0.5,
   END_REACH = 1.1,
-  SIDE_ALPHA = 0.3,
+  SIDE_ALPHA = 0.5,
   END_ALPHA = 0.5;
 
 /** A glow in from one edge of the lanes: `across` true from the left or right edge inward, false from the top or bottom. */
