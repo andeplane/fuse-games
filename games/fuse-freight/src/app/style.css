@@ -823,8 +823,7 @@ body:has(.ff-lobby:not([hidden])) .ff-live {
   background: rgba(6, 8, 18, 0.85);
   color: var(--ff-cream);
 }
-.ff-board,
-.ff-result {
+.ff-board {
   position: absolute;
   left: 50%;
   top: 54%;
@@ -842,22 +841,19 @@ body:has(.ff-lobby:not([hidden])) .ff-live {
   text-align: center;
   pointer-events: auto;
 }
-.ff-board small,
-.ff-result small {
+.ff-board small {
   font-family: var(--ff-pixel);
   font-size: 0.8cqw;
   color: var(--ff-muted);
 }
-.ff-board h2,
-.ff-result h2 {
+.ff-board h2 {
   margin: 0;
   font-family: var(--ff-pixel);
   font-size: 1.5cqw;
   color: var(--ff-brass-light);
   line-height: 1.4;
 }
-.ff-board ol,
-.ff-result ol {
+.ff-board ol {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -910,21 +906,6 @@ body:has(.ff-lobby:not([hidden])) .ff-live {
   font-size: 0.8cqw;
   color: var(--ff-muted);
 }
-.ff-result li {
-  font-size: 1.3cqw;
-  padding: 0.4cqw 0.8cqw;
-  border-radius: 0.3cqw;
-  background: rgba(255, 255, 255, 0.04);
-}
-.ff-result .ff-lobby-actions {
-  justify-content: center;
-}
-.ff-result .fui-lobby-note {
-  margin: 0;
-  font-size: 1cqw;
-  color: var(--ff-muted);
-}
-
 /* ---- touch ---- */
 .ff-touch {
   width: min(100%, calc((100dvh - 4.2rem) * 16 / 9));
@@ -1267,26 +1248,22 @@ body:has(.ff-lobby:not([hidden])) .ff-live {
   .ff-banner span {
     font-size: max(9px, 1.3cqw);
   }
-  .ff-board,
-  .ff-result {
+  .ff-board {
     width: 96%;
     max-height: 96%;
     overflow: auto;
     gap: 0.3rem;
     padding: 0.4rem 0.6rem;
   }
-  .ff-board h2,
-  .ff-result h2 {
+  .ff-board h2 {
     font-size: max(9px, 1.5cqw);
   }
   .ff-board small,
-  .ff-result small,
   .ff-board-next,
   .ff-board li small {
     font-size: max(7px, 0.8cqw);
   }
   .ff-board-name,
-  .ff-result li,
   .ff-board-score,
   .ff-board-place {
     font-size: max(9px, 1.3cqw);

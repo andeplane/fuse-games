@@ -79,11 +79,33 @@ export interface Model {
   note: string;
   result: {
     title: string;
-    lines: string[];
+    /** How many rounds the match took. */
+    rounds: number;
+    /** Every driver, most wins first and then most wagons. */
+    rows: ResultRow[];
+    /** The winner's seat; -1 when the victory is shared or the depot won. */
+    winnerSlot: number;
     host: boolean;
     waiting: string;
   } | null;
   labels: Map<string, string>;
+}
+
+/** One driver's line in the result. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** Drivers level on wins and wagons share a place. */
+  place: number;
+  wins: number;
+  /** Wagons delivered over the match. */
+  delivered: number;
+  /** Rival wagons cut loose, and wagons still pulled at a whistle. */
+  stolen: number;
+  stranded: number;
 }
 
 export const tag = (slot: number): string => `P${slot + 1}`;
@@ -121,6 +143,8 @@ export function present(view: View, viewer: Viewer): Model {
   const slotOf = (id: string) =>
     view.seats.find((seat) => seat.id === id)?.slot ??
     world?.trains.find((t) => t.id === id)?.slot ??
+    // A driver who left keeps the seat they drove in.
+    view.results.flatMap((r) => r.placings).find((p) => p.id === id)?.slot ??
     0;
 
   const cards: Card[] = seats.map((seat) => {
@@ -249,10 +273,28 @@ export function present(view: View, viewer: Viewer): Model {
           : view.winners.length > 1
             ? `SHARED VICTORY: ${joined(view.winners.map(name)).toUpperCase()}`
             : "THE DEPOT WINS",
-      lines: rows.map(
-        (row) =>
-          `${placeOf(row)}. ${name(row.id)} — ${row.wins} ${row.wins === 1 ? "win" : "wins"} · ${wagons(row.total)}`,
-      ),
+      rounds: view.results.length,
+      rows: rows.map((row) => {
+        const driven = view.results
+          .flatMap((round) => round.placings)
+          .filter((placing) => placing.id === row.id);
+        return {
+          id: row.id,
+          slot: slotOf(row.id),
+          name: name(row.id),
+          you: row.id === viewer.me,
+          bot:
+            view.seats.find((seat) => seat.id === row.id)?.bot ??
+            driven[0]?.bot ??
+            false,
+          place: placeOf(row),
+          wins: row.wins,
+          delivered: row.total,
+          stolen: driven.reduce((sum, placing) => sum + placing.stolen, 0),
+          stranded: driven.reduce((sum, placing) => sum + placing.stranded, 0),
+        };
+      }),
+      winnerSlot: view.winners.length === 1 ? slotOf(view.winners[0]!) : -1,
       host: viewer.host,
       waiting: viewer.host ? "" : "Waiting for the host to start a rematch",
     };
