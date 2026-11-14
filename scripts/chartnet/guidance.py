@@ -95,3 +95,17 @@ def forced_beats(song: str, logmel: np.ndarray, tm, subdivisions: list[int], pro
         top = max(cands.values())
         out |= {b for b, v in cands.items() if v >= strength * top and top > 0}
     return sorted(out)
+
+
+def opening_beat(onset: np.ndarray, tm, subdivisions: list[int], lead_in: float = 1.0) -> float | None:
+    """The first clear, sharp sound of the song after the lead-in, on the chart's grid: a chart starts there.
+    `onset` is the onset strength per frame; a sharp sound is a peak at least twice the median peak."""
+    pk = np.where((onset > np.r_[-1, onset[:-1]]) & (onset >= np.r_[onset[1:], -1]))[0]
+    if len(pk) == 0:
+        return None
+    for f in pk[onset[pk] > 2.0 * np.median(onset[pk])]:
+        b = tm.time_to_beat((f - LAG) / FPS)
+        best = min((round(b * s) / s for s in subdivisions), key=lambda x: abs(x - b))
+        if tm.beat_to_time(best) >= lead_in + 0.02:
+            return best
+    return None

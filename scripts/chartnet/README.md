@@ -220,15 +220,29 @@ What is built on that:
 
 - `density.py` trains a second small model (dilated convolutions over the whole song at 2 frames a second: band
   energies, onset strength and note rate per band, the placement model's probability mass) to predict how many steps
-  a human chart has around each moment compared with its own average. `gen.place` multiplies each peak's probability
-  by that profile to the power `CHARTNET_BUSY_POWER` (0.5) before ranking. On the held-out DDR/ITG songs the charts
-  get busy where the human charts do more often (Hard 0.25 to 0.33, Challenge 0.34 to 0.38) and step timing F1 goes
-  from 0.742 to 0.746; on the community songs both stay level. It trains on the Mac in two minutes
-  (`density.py pool`, `density.py train 1500`; longer overfits).
+  a human chart has around each moment compared with its own average. `gen.place` lets the placement model spread
+  the steps its own way first, then scales every two-second window's share by that profile (to the power
+  `CHARTNET_BUSY_POWER`, 1) and fills each window with its strongest peaks. Charts then get busy where the human
+  charts do more often: on the held-out community songs the correlation per chart goes from 0.38 to 0.47 on Hard,
+  0.32 to 0.41 on Medium and 0.54 to 0.57 on Challenge, on the DDR/ITG songs from 0.25 to 0.28 on Hard and 0.34 to
+  0.38 on Challenge; step timing F1 stays where it was (0.742 and 0.741, 0.765 and 0.761). It trains on the Mac in
+  two minutes (`density.py pool`, `density.py train 1500`; longer overfits). A first version multiplied every
+  peak's probability by the profile: that scored better (0.33 and 0.41 on the DDR/ITG songs) but emptied calm
+  stretches, six songs lost every step of their first ten seconds, so windows now only scale.
 - `guidance.tapped_beats`: taps scatter over a whole sixteenth, so they are not snapped. Every two beats get as many
   steps as were tapped there, on the grid positions the placement model likes best (a share of them, on 8ths, for
-  Medium and Hard). Final Chase's Challenge then has a step on 90% of his taps (66% before, 72% with the notes
-  alone) and is busy where he is (correlation 0.83, from 0.04).
+  Medium and Hard), on top of what the window would have had. Final Chase's Challenge then has a step on about 90%
+  of his taps (66% before) and is busy where he is.
+- `guidance.opening_beat`: every chart starts on the song's first clear, sharp sound after the lead-in.
+
+Also measured, and not built on yet:
+
+- What he marks is a lead that stands out. In the densely labelled part of Final Chase, quieter drums tell marked
+  spans from the gaps between them with an AUC of 0.75, one clear note at a time in the melody range 0.72, the
+  harmonic share of the sound 0.66. Splitting the song into sections does not find the spans (his notes start 3.2 s
+  from the nearest boundary, a random moment 3.9 s).
+- Telling the arrow model how accented each step's sound is adds nothing: held-out loss 1.264 and 0.936 without,
+  1.262 and 0.935 with. It already gives a jump 56 to 62% probability on the rows where the human chart has one.
 
 ## Chart lab (reviewing charts against the music)
 

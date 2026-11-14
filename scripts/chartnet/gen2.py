@@ -19,9 +19,9 @@ import data
 from data import load, split
 from features import FPS
 from bursts import burst_beats
-from guidance import forced_beats
+from guidance import forced_beats, opening_beat
 from feet import Feet
-from gen import FUSE_DIFFS, mean_stats, place, ssc, stats, timing
+from gen import FUSE_DIFFS, SNAP, mean_stats, place, ssc, stats, timing
 from onset import OnsetNet, chart_nps, f1, predict
 from simfile import DIFFS
 
@@ -312,11 +312,14 @@ def fuse():
             n_target = None if THR > 0 else int(target[d] * 0.9 * len(s.feats) / FPS)
             # review material from the chart lab: a marked band's onsets (8ths on Medium and Hard, 16ths on
             # Challenge), and where he tapped, as many steps as he tapped (a share of them on the easier charts)
-            forced: list[float] = []
+            # every chart starts on the song's first clear, sharp sound
+            start = opening_beat(s.onset, tm, SNAP[d])
+            forced: list[float] = [] if start is None else [start]
             if d != "Easy":
-                forced = forced_beats(s.key, raw, tm, {"Medium": [2], "Hard": [2], "Challenge": [4]}[d], prob,
-                                      share=min(1.0, target[d] / target["Challenge"]))
-            guided[s.key] = max(guided.get(s.key, 0), len(forced))
+                forced = sorted(set(forced) | set(forced_beats(
+                    s.key, raw, tm, {"Medium": [2], "Hard": [2], "Challenge": [4]}[d], prob,
+                    share=min(1.0, target[d] / target["Challenge"]))))
+            guided[s.key] = max(guided.get(s.key, 0), len(forced) - (start is not None))
             beats = place(prob, tm, d, THR, n_target=n_target, swing=swing,
                           snap24=d == "Challenge" and BURSTS in ("learned", "both"), forced=forced,
                           busy=busy_for(profiles, s.key, d, target[d], "pool_fuse"))
