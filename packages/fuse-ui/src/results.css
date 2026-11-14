@@ -442,7 +442,13 @@
     width: 2rem;
   }
   .fui-results-standings thead th:nth-child(n + 3) {
-    width: 3.75rem;
+    width: 3.25rem;
+  }
+  .fui-results-standings td {
+    font-size: 0.6875rem;
+  }
+  .fui-results-standings thead th {
+    font-size: 0.5rem;
   }
   .fui-results-name {
     gap: var(--fui-space-3);
