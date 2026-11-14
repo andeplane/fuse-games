@@ -735,45 +735,6 @@ body:has(.fc-lobby:not([hidden])) .fc-live {
   white-space: nowrap;
 }
 
-.fc-result {
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  transform: translate(-50%, -50%);
-  width: min(90%, 520px);
-  padding: 22px 26px;
-  background: rgba(5, 9, 30, 0.92);
-  border: 2px solid var(--fc-yellow);
-  border-radius: 14px;
-  box-shadow: 0 0 40px rgba(255, 210, 63, 0.35);
-  text-align: center;
-}
-
-.fc-result small {
-  font-family: var(--fui-font-pixel, monospace);
-  font-size: 10px;
-  color: #9fdcff;
-}
-
-.fc-result h2 {
-  margin: 10px 0 14px;
-  font-family: var(--fc-logo);
-  font-style: italic;
-  font-size: clamp(18px, 3cqw, 30px);
-  color: var(--fc-yellow);
-  text-shadow: 0 0 12px rgba(255, 210, 63, 0.6);
-}
-
-.fc-result ol {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 16px;
-  display: grid;
-  gap: 6px;
-  font-family: var(--fui-font-pixel, monospace);
-  font-size: 11px;
-}
-
 /* ---- touch pads over the screen ---- */
 .fc-touch {
   position: absolute;

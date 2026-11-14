@@ -550,7 +550,7 @@ test("solo runs a room with no peers: one human, five AI, a paused clock while h
   );
   assert.equal(
     recorded.at(-1),
-    "Solo · you and five AI riders",
+    "Solo · you against the AI riders",
     "the recurring status returns once the notice hold expires",
   );
   assert.equal(

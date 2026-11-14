@@ -252,7 +252,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           await page
             .getByRole("button", { name: /Remove AI/, includeHidden: true })
             .count(),
-          4,
+          5,
         );
         await page.locator(".online-controls").waitFor({ state: "visible" });
         await ready(page);

@@ -16,6 +16,7 @@ export { seedOf } from "./rng.js";
 export {
   CAPACITY,
   COUNTDOWN_STEPS,
+  STEPS_PER_SECOND,
   STEPS_PER_TICK,
   OUTRO_STEPS,
 } from "./tuning.js";
