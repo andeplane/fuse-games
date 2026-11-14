@@ -834,7 +834,6 @@ body:has(.kf-lobby:not([hidden])) .kf-live {
   overflow: visible;
 }
 .kf-room[data-layout="controller"] .kf-banner,
-.kf-room[data-layout="controller"] .kf-result,
 .kf-room[data-layout="controller"] .kf-brief {
   position: static;
   transform: none;
@@ -844,41 +843,14 @@ body:has(.kf-lobby:not([hidden])) .kf-live {
   padding-top: var(--fui-space-5);
 }
 
-/* Result */
-.kf-result {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: var(--fui-space-2);
-  padding: var(--fui-space-3);
-  overflow: auto;
-  background: #04091af7;
-  text-align: center;
-}
-.kf-result-title {
-  margin: 0;
-  color: var(--kf-gold);
-  font: 1rem/1.4 var(--fui-font-pixel);
-}
-.kf-result[data-team="0"] .kf-result-title {
-  color: var(--kf-cyan);
-}
-.kf-result[data-team="1"] .kf-result-title {
-  color: var(--kf-pink);
-}
-.kf-result-games,
-.kf-result-players {
+/* Result: the games of the set, inside the shared results screen */
+.kf-result-games {
   display: grid;
   gap: var(--fui-space-1);
   margin: 0;
   padding: 0;
   list-style: none;
   font-size: 0.8125rem;
-}
-.kf-result-players {
-  color: var(--fui-text-muted);
 }
 
 /* The shared screen: nothing but the arena. */

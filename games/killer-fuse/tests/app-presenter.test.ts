@@ -330,9 +330,33 @@ test("a game: the countdown, then the controls, then the pause banner and the re
     /^Game 1, .+: PINK rode the snail home in \d+ s$/,
   );
   assert.match(result.games[1]!, /PINK filled the hive with berries/);
-  assert.deepEqual(result.players, [
-    "Ada (Cyan Queen): 0 kills, 0 deaths, 0 berries",
-    "Bo (Pink Queen): 0 kills, 0 deaths, 0 berries",
+  assert.equal(result.score, "CYAN 0 – 2 PINK");
+  // The winning team first.
+  assert.deepEqual(result.rows, [
+    {
+      id: "b",
+      slot: 1,
+      team: 1,
+      seat: "Pink Queen",
+      name: "Bo",
+      you: false,
+      place: 1,
+      kills: 0,
+      deaths: 0,
+      berries: 0,
+    },
+    {
+      id: "a",
+      slot: 0,
+      team: 0,
+      seat: "Cyan Queen",
+      name: "Ada",
+      you: true,
+      place: 2,
+      kills: 0,
+      deaths: 0,
+      berries: 0,
+    },
   ]);
   assert.deepEqual([result.host, result.waiting], [true, ""]);
   const bo = present(frame(room), viewer({ me: "b" })).result!;
@@ -346,15 +370,10 @@ test("a game: the countdown, then the controls, then the pause banner and the re
     "PINK WINS THE SET",
   );
   room.stats.a = { ...room.stats.a!, kills: 1, deaths: 1, berries: 1 };
-  assert.equal(
-    present(frame(room), viewer()).result!.players[0],
-    "Ada (Cyan Queen): 1 kill, 1 death, 1 berry",
-  );
+  const ada = present(frame(room), viewer()).result!.rows[1]!;
+  assert.deepEqual([ada.kills, ada.deaths, ada.berries], [1, 1, 1]);
   delete room.stats.b;
-  assert.match(
-    present(frame(room), viewer()).result!.players[1]!,
-    /^Bo .*0 kills/,
-  );
+  assert.equal(present(frame(room), viewer()).result!.rows[0]!.kills, 0);
 
   fold(room, { a: [[ACTION, "lobby"]] });
   assert.equal(present(frame(room), viewer()).screen, "lobby");
