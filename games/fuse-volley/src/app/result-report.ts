@@ -36,7 +36,7 @@ export function resultReport(
   const most = Math.max(0, ...result.rows.map((row) => row.touches));
   if (most > 0)
     cards.push({
-      icon: "✋",
+      icon: "✦",
       title: "Busiest hands",
       winners: result.rows
         .filter((row) => row.touches === most)
