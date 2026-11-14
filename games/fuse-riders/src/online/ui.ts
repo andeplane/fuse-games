@@ -316,9 +316,10 @@ export async function startOnline(): Promise<void> {
   let ownSeat: { name: string; slot: number; colorIndex: number } | undefined;
   /**
    * A move to another seat is a leave and a join, and a join takes the lowest free colour: the colour this rider wore
-   * is asked for again once the room shows it in the seat it moved to.
+   * is asked for again once the room shows it in another seat than the one it left. Whichever seat that is: of two
+   * quick clicks the room takes the first, and a refused move leaves the rider, and this, where they were.
    */
-  let movedColor: { slot: number; colorIndex: number } | undefined;
+  let movedColor: { from: number; colorIndex: number } | undefined;
   /**
    * The name this device takes its seat under, without asking: its account's, the one it last played under on this
    * browser, or a plain one for a browser that has never played. None of them is a commitment — the room is where a
@@ -1516,7 +1517,7 @@ export async function startOnline(): Promise<void> {
             }
           : undefined;
       if (!ownSeat) movedColor = undefined;
-      else if (movedColor?.slot === ownSeat.slot) {
+      else if (movedColor && movedColor.from !== ownSeat.slot) {
         const asked = movedColor.colorIndex;
         movedColor = undefined;
         if (ownSeat.colorIndex !== asked)
@@ -2143,7 +2144,7 @@ export async function startOnline(): Promise<void> {
       if (!ownSeat) return;
       const { name, colorIndex } = ownSeat;
       if (runtime.command({ type: "join", name, slot }))
-        movedColor = { slot, colorIndex };
+        movedColor ??= { from: ownSeat.slot, colorIndex };
     },
     primaryAction: primaryPlay,
     background: async (host) =>
