@@ -137,9 +137,38 @@ def placement_model():
     return (st["mean"], st["std"]), om, cfg
 
 
+def busy_profiles():
+    """The busy-ness model (`density.py`), or None when CHARTNET_BUSY=0 or it has not been trained."""
+    if os.environ.get("CHARTNET_BUSY", "1") == "0" or not (ROOT / "profile.pt").exists():
+        return None
+    import density
+    return density.load_model()
+
+
+def busy_for(profiles, key: str, diff: str, nps: float, folder: str = "pool"):
+    if profiles is None or not (ROOT / folder / f"{key}.npz").exists():
+        return None
+    import density
+    return density.busy(profiles[0], profiles[1], np.load(ROOT / folder / f"{key}.npz")["x"], diff, nps)
+
+
+def local_density_corr(a: np.ndarray, b: np.ndarray) -> float | None:
+    """Correlation of two step lists' steps per 2 s window (hop 1 s): do they get busy in the same places?"""
+    if len(a) < 20 or len(b) < 20:
+        return None
+    wins = np.arange(b[0], b[-1] - 2.0, 1.0)
+    ra = np.array([np.sum((a >= w) & (a < w + 2)) for w in wins])
+    rb = np.array([np.sum((b >= w) & (b < w + 2)) for w in wins])
+    if len(wins) < 5 or ra.std() < 1e-9 or rb.std() < 1e-9:
+        return None
+    return float(np.corrcoef(ra, rb)[0, 1])
+
+
 def place_eval(keys_file="test_keys.json"):
     """Step-timing F1 of the placement model alone on held-out songs, told each human chart's density and count."""
     stats_, om, _ = placement_model()
+    profiles = busy_profiles()
+    corr: dict = {}
     te, _ = load("cache", stats_, only=set(json.loads((ROOT / keys_file).read_text())))
     tot: dict = {}
     streams: dict = {}
@@ -149,7 +178,11 @@ def place_eval(keys_file="test_keys.json"):
             d = c["difficulty"]
             true = np.array([int(round(t * FPS)) for _, t, r in c["rows"] if any(x in "124" for x in r)])
             beats = place(predict(om, s, d, chart_nps(c)), tm, d, 0.0, n_target=len(true),
-                          snap24=d == "Challenge" and BURSTS in ("learned", "both"))
+                          snap24=d == "Challenge" and BURSTS in ("learned", "both"),
+                          busy=busy_for(profiles, s.key, d, chart_nps(c)))
+            r = local_density_corr(np.array([tm.beat_to_time(b) for b in beats]), true / FPS)
+            if r is not None:
+                corr.setdefault(d, []).append(r)
             got = f1(np.array([int(round(tm.beat_to_time(b) * FPS)) for b in beats]), true)
             for name, bs in (("gen", beats), ("human", sorted(b for b, _, r in c["rows"] if any(x in "124" for x in r)))):
                 run = best = 1
@@ -169,6 +202,8 @@ def place_eval(keys_file="test_keys.json"):
         p, r = tp / max(npred, 1), tp / max(ntrue, 1)
         out[k] = round(2 * p * r / max(p + r, 1e-9), 3)
     print(WEIGHTS[0], keys_file, " ".join(f"{k}={out[k]}" for k in ["all"] + [d for d in DIFFS if d in out]))
+    print("   busy where the human chart is busy (correlation per chart):",
+          " ".join(f"{d}={np.mean(v):.2f}" for d, v in corr.items()))
     for d in ("Hard", "Challenge"):
         print("  ", d, " ".join(f"{n}: 16th-stream share {streams[d, n][0] / streams[d, n][1]:.3f}, longest run "
                                 f"{streams[d, n][2] / streams[d, n][3]:.1f};" for n in ("gen", "human") if (d, n) in streams))
@@ -192,6 +227,7 @@ def models():
 
 def eval_packs(only=None, keys_file="test_keys.json", out_name="eval2_results.json"):
     stats_, om, am = models()
+    profiles = busy_profiles()
     te, _ = load("cache", stats_, only=set(json.loads((ROOT / keys_file).read_text())))
     rd = ROOT / "rulegen"
     rule = json.loads((rd / "out.json").read_text())
@@ -209,7 +245,8 @@ def eval_packs(only=None, keys_file="test_keys.json", out_name="eval2_results.js
             true = np.array([int(round(t * FPS)) for _, t, r in true_rows if any(x in "124" for x in r)])
             prob = predict(om, s, d, nps)
             beats = place(prob, tm, d, THR, n_target=None if THR > 0 else len(true),
-                          snap24=d == "Challenge" and BURSTS in ("learned", "both"))
+                          snap24=d == "Challenge" and BURSTS in ("learned", "both"),
+                          busy=busy_for(profiles, s.key, d, nps))
             rows = generate(am, s, beats, tm, d, nps, seed=zlib.crc32((s.key + d).encode()))
             r = res.setdefault(d, {"human": [], "v2": [], "hybrid": [], "rule": []})
             r["human"].append(stats2(true_rows))
@@ -240,6 +277,7 @@ def eval_packs(only=None, keys_file="test_keys.json", out_name="eval2_results.js
 
 def fuse():
     stats_, om, am = models()
+    profiles = busy_profiles()
     only = set(os.environ["CHARTNET_SONGS"].split(",")) if os.environ.get("CHARTNET_SONGS") else None
     songs, _ = load("cache_fuse", stats_, only=only)
     outdir = ROOT / os.environ.get("CHARTNET_OUT", "out_fuse2")
@@ -272,11 +310,16 @@ def fuse():
         for d in FUSE_DIFFS:
             prob = predict(om, s, d, target[d])
             n_target = None if THR > 0 else int(target[d] * 0.9 * len(s.feats) / FPS)
-            # review notes from the chart lab: Medium follows the marked band on 8ths, Hard and Challenge on 16ths
-            forced = [] if d == "Easy" else forced_beats(s.key, raw, tm, [2] if d == "Medium" else [4])
+            # review material from the chart lab: a marked band's onsets (8ths on Medium and Hard, 16ths on
+            # Challenge), and where he tapped, as many steps as he tapped (a share of them on the easier charts)
+            forced: list[float] = []
+            if d != "Easy":
+                forced = forced_beats(s.key, raw, tm, {"Medium": [2], "Hard": [2], "Challenge": [4]}[d], prob,
+                                      share=min(1.0, target[d] / target["Challenge"]))
             guided[s.key] = max(guided.get(s.key, 0), len(forced))
             beats = place(prob, tm, d, THR, n_target=n_target, swing=swing,
-                          snap24=d == "Challenge" and BURSTS in ("learned", "both"), forced=forced)
+                          snap24=d == "Challenge" and BURSTS in ("learned", "both"), forced=forced,
+                          busy=busy_for(profiles, s.key, d, target[d], "pool_fuse"))
             if d == "Challenge" and BURSTS in ("rule", "both"):  # where the music itself moves at 24th speed
                 beats, n_burst = with_bursts(beats, burst_beats(s.onset, tm, beats[0], beats[-1]))
                 bursts_[s.key] = n_burst

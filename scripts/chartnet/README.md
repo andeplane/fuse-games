@@ -147,7 +147,7 @@ v3 is v2's two small models retrained on much more data, with sampling tuned aga
   the onset energy over 4 seconds; `--wide 1` lets placement look about 5 seconds each way.
 - **Sampling** (`arrows.generate`, `gen.place`): six candidate continuations per 16 rows, keeping the one the model
   likes best that repeats least; costs on jumps, freezes and jacks set so held-out charts land on human rates; the
-  last 11% of a Challenge chart's steps prefer positions a sixteenth from a step already placed, so near-runs close
+  last 5% of a Challenge chart's steps prefer positions a sixteenth from a step already placed, so near-runs close
   up into streams; 24ths are placed by the model and kept only as runs.
 - **Review notes** (`guidance.py`): a span and frequency band marked in the chart lab becomes steps on that band's
   onsets, placed before anything else.
@@ -157,15 +157,15 @@ What was measured, on the 48 held-out DDR/ITG songs (`gen2.py eval`, `gen2.py pl
 | Held-out DDR/ITG charts     | Human | v2    | v3    |
 | --------------------------- | ----- | ----- | ----- |
 | Challenge: step timing F1   |       | 0.69  | 0.71  |
-| Challenge: steps in streams | 0.25  | 0.12  | 0.25  |
-| Challenge: longest 16th run | 28.7  | 4.9   | 11.9  |
-| Challenge: jumps            | 0.074 | 0.137 | 0.113 |
-| Challenge: freezes          | 0.065 | 0.052 | 0.035 |
-| Challenge: jacks            | 0.034 | 0.025 | 0.033 |
+| Challenge: steps in streams | 0.25  | 0.12  | 0.23  |
+| Challenge: longest 16th run | 28.7  | 4.9   | 15.9  |
+| Challenge: jumps            | 0.074 | 0.137 | 0.111 |
+| Challenge: freezes          | 0.065 | 0.052 | 0.028 |
+| Challenge: jacks            | 0.034 | 0.025 | 0.045 |
 | Hard: step timing F1        |       | 0.75  | 0.75  |
-| Hard: jumps                 | 0.080 | 0.125 | 0.084 |
-| Hard: freezes               | 0.022 | 0.018 | 0.022 |
-| Hard: jacks                 | 0.042 | 0.015 | 0.026 |
+| Hard: jumps                 | 0.080 | 0.125 | 0.068 |
+| Hard: freezes               | 0.022 | 0.018 | 0.023 |
+| Hard: jacks                 | 0.042 | 0.015 | 0.030 |
 
 Placement alone, told each human chart's step count: 0.737 overall for v2 and 0.742 for v3 (Challenge 0.691 and
 0.729; the stream preference then trades 0.02 of that for the stream share). On the held-out community songs 0.750 and
@@ -188,10 +188,10 @@ Over the game's 36 songs (`gen2.py fuse`; a cover's Challenge aims at its origin
 
 | Difficulty | Steps/s | 16th-stream share | 24th share | Longest 16th run | 4-gram variety | Jacks | Jumps | Freezes |
 | ---------- | ------- | ----------------- | ---------- | ---------------- | -------------- | ----- | ----- | ------- |
-| Easy       | 1.63    | 0                 | 0          | 1                | 0.61           | 0     | 0.035 | 0.024   |
-| Medium     | 2.51    | 0                 | 0          | 1                | 0.53           | 0.002 | 0.070 | 0.021   |
-| Hard       | 3.75    | 0.15              | 0.009      | 5.6              | 0.56           | 0.044 | 0.073 | 0.035   |
-| Challenge  | 5.62    | 0.54              | 0.096      | 38.1             | 0.45           | 0.049 | 0.067 | 0.035   |
+| Easy       | 1.65    | 0                 | 0          | 1                | 0.60           | 0     | 0.034 | 0.019   |
+| Medium     | 2.53    | 0                 | 0          | 1                | 0.53           | 0.002 | 0.076 | 0.023   |
+| Hard       | 3.79    | 0.18              | 0.011      | 7.5              | 0.54           | 0.041 | 0.068 | 0.030   |
+| Challenge  | 5.69    | 0.56              | 0.103      | 43.5             | 0.41           | 0.047 | 0.055 | 0.024   |
 
 Human Challenge charts at 5.5 to 7.5 steps a second: 0.53 in 16th streams, 0.05 in 24ths, variety 0.42, jumps 0.05,
 freezes 0.07. v2's Challenge charts for the same songs had variety 0.33.
@@ -199,6 +199,36 @@ freezes 0.07. v2's Challenge charts for the same songs had variety 0.33.
 Whole-chart variety (the share of distinct four-row patterns) falls as a chart gets denser, so compare it at equal
 density: human Challenge charts score 0.58 at 4 to 5 steps a second and 0.42 at 5.5 to 7.5. `variety_w64` measures
 it inside 64-row windows instead.
+
+## Where a chart gets busy (`density.py`) and what the chart lab taught
+
+Anders marked 17 spans with a frequency band on Final Chase in the chart lab and tapped 569 steps of rhythm. Measured
+against them (`$CHARTNET_WORK/labels`):
+
+- **The placement model already hears the rhythm.** Inside each marked span, the strongest moments (as many as were
+  tapped) land within 60 ms of a tap for 77% with plain onsets over all frequencies, 82% in the marked band, 86% in
+  the best single band per span, and 84% with the model's step probability.
+- **It does not know where to get busy.** Steps per 2 seconds in the old Challenge chart correlate 0.04 with his
+  taps. The same holds against held-out human charts: 0.25 (Hard) and 0.34 (Challenge) on the DDR/ITG songs.
+- **No single audio measure says where he taps fast**: onset rates per band, harmonic and percussive onset rates and
+  the note rate of the strongest melodic line each correlate at most 0.3 to 0.4 with his tap rate.
+- **Which arrows a human chart uses hardly depends on the music.** The arrow model's held-out loss is 1.261 with
+  the audio and 1.259 with the audio blanked on the DDR/ITG songs (0.914 and 0.933 on the community songs): given
+  the rhythm and the feet, the sound adds almost nothing.
+
+What is built on that:
+
+- `density.py` trains a second small model (dilated convolutions over the whole song at 2 frames a second: band
+  energies, onset strength and note rate per band, the placement model's probability mass) to predict how many steps
+  a human chart has around each moment compared with its own average. `gen.place` multiplies each peak's probability
+  by that profile to the power `CHARTNET_BUSY_POWER` (0.5) before ranking. On the held-out DDR/ITG songs the charts
+  get busy where the human charts do more often (Hard 0.25 to 0.33, Challenge 0.34 to 0.38) and step timing F1 goes
+  from 0.742 to 0.746; on the community songs both stay level. It trains on the Mac in two minutes
+  (`density.py pool`, `density.py train 1500`; longer overfits).
+- `guidance.tapped_beats`: taps scatter over a whole sixteenth, so they are not snapped. Every two beats get as many
+  steps as were tapped there, on the grid positions the placement model likes best (a share of them, on 8ths, for
+  Medium and Hard). Final Chase's Challenge then has a step on 90% of his taps (66% before, 72% with the notes
+  alone) and is busy where he is (correlation 0.83, from 0.04).
 
 ## Chart lab (reviewing charts against the music)
 

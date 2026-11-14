@@ -34,8 +34,10 @@ def timing(meta) -> Timing:
     return Timing(meta["offset"], [tuple(x) for x in meta["bpms"]], [tuple(x) for x in meta.get("stops", [])])
 
 
+BUSY_POWER = float(os.environ.get("CHARTNET_BUSY_POWER", "0.5"))
+BUSY_HOP = 0.5  # seconds between frames of the busy-ness profile
 RUN_BONUS = float(os.environ.get("CHARTNET_RUN_BONUS", "1"))
-RUN_SHARE = {"Challenge": float(os.environ.get("CHARTNET_RUN_SHARE", "0.11"))}
+RUN_SHARE = {"Challenge": float(os.environ.get("CHARTNET_RUN_SHARE", "0.05"))}
 
 
 def only_24th(b: float) -> bool:
@@ -58,11 +60,16 @@ def keep_24th_runs(beats: list[float], need: int = 5) -> list[float]:
 
 
 def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None = None, swing: bool = False,
-          snap24: bool = False, forced: list[float] | None = None):
+          snap24: bool = False, forced: list[float] | None = None, busy: np.ndarray | None = None):
     """Peaks of the step probability → snapped beats (respecting the difficulty's grid and minimum gap).
     `snap24` lets steps land on the 24th grid too; isolated ones are dropped again (`keep_24th_runs`).
     `forced` beats (review notes, `guidance.py`) go in first; the model fills the chart around them."""
     cand = peaks(prob, thr if n_target is None else 0.0)
+    if busy is not None and n_target is not None and BUSY_POWER > 0:
+        # where the chart should be busy (`density.py`: local density over the chart's average, every half second):
+        # a peak in a busy stretch outranks an equally likely one in a calm stretch
+        at = np.interp(np.arange(len(prob)) / FPS, np.arange(len(busy)) * BUSY_HOP, busy)
+        prob = prob * np.clip(at, 0.05, 4.0) ** BUSY_POWER
     cand = cand[np.argsort(-prob[cand])]
     chosen: dict[float, float] = {}
     times: list[float] = []
