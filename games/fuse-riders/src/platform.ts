@@ -216,6 +216,7 @@ export const fuseRiders: GameRegistration<
   FuseCredit
 > = {
   id: GAME_ID,
+  minRatedRoundTicks: 20, // engine/tuning.ts TICK_HZ
   isBot,
   parseStats: parsePlayer,
   // Kills and deaths may only name other riders of the same match.

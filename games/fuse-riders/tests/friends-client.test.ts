@@ -77,6 +77,7 @@ function harness(options: { token?: string | undefined } = {}) {
   const token = "token" in options ? options.token : "id-token";
   const states: FriendsState[] = [];
   const client: FriendsClient = createFriendsClient({
+    presenceSession: () => "f".repeat(32),
     fetch,
     token: async () => token,
     apiUrl: (path) => `https://api${path}`,
@@ -142,7 +143,13 @@ test("a signed-in client polls, reports where it is, and stops when signed out",
   assert.deepEqual(h.requests[1]!.body, {
     name: "Me",
     avatarId: "cat",
-    room: { code: "AB12AA", memberId: "m1", gameId: "fuse-riders" },
+    room: {
+      code: "AB12AA",
+      memberId: "m1",
+      token: "t",
+      session: "f".repeat(32),
+      gameId: "fuse-riders",
+    },
   });
   await h.advance(20_000);
   assert.equal(h.requests.length, 3);

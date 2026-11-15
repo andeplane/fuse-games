@@ -60,5 +60,11 @@ export function roundResult(
   room: Room,
 ): MatchResult<FuseballPlayerResult> | undefined {
   const result = matchResult(room);
-  return result && { ...result, round: 1 };
+  return result && room.world
+    ? {
+        ...result,
+        round: 1,
+        roundDuration: { version: 1, ticks: room.world.step },
+      }
+    : undefined;
 }

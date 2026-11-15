@@ -162,7 +162,7 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
       errorType: error instanceof Error ? error.name : "unknown",
       code: (error as { code?: unknown })?.code,
     });
-  const admissions = new AdmissionGate(store.database, now);
+  const admissions = new AdmissionGate(store.database, now, log);
   const lookup = () =>
     new AddressBudget(now, ROOM_LOOKUP_BURST, ROOM_LOOKUP_PER_SECOND);
   const iceLookups = lookup(),
@@ -231,6 +231,7 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
             ok: gateway.state !== "failed",
             state: gateway.state,
             connections: gateway.connections,
+            socketCapacity: gateway.capacity,
           },
           gateway.state === "failed" ? 503 : 200,
         );
@@ -419,142 +420,149 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
     }
     let upgraded: WebSocket | undefined;
     socket.on("error", () => socket.destroy());
+    const address = options.clientAddress(req);
     void admissions
-      .run(
-        options.clientAddress(req),
-        () =>
-          new Promise<void>((resolve, reject) => {
-            if (socket.destroyed) {
-              reject(new RoomError(503, "Connection closed"));
-              return;
-            }
-            // ws can reject malformed upgrade headers without invoking its callback.
-            // Release the pending slot when that rejected connection closes.
-            const aborted = () =>
-              reject(new RoomError(400, "Invalid WebSocket upgrade"));
-            socket.once("close", aborted);
-            sockets.handleUpgrade(req, socket, head, (ws) => {
-              socket.off("close", aborted);
-              upgraded = ws;
-              let connectionId: string | undefined,
-                closed = false,
-                pending: string[] = [],
-                // "auth": only an `auth` frame is read. "rejected": nothing is read again.
-                // LEGACY-QUERY-TOKEN: without the window the initial phase is always "auth".
-                phase: "auth" | "admitted" | "rejected" =
-                  queryToken === undefined ? "auth" : "admitted",
-                cancelDeadline: (() => void) | undefined;
-              const refuse = (error: RoomError) => {
+      .run(address, () =>
+        new Promise<void>((resolve, reject) => {
+          if (socket.destroyed) {
+            reject(new RoomError(503, "Connection closed"));
+            return;
+          }
+          // ws can reject malformed upgrade headers without invoking its callback.
+          // Release the pending slot when that rejected connection closes.
+          const aborted = () =>
+            reject(new RoomError(400, "Invalid WebSocket upgrade"));
+          socket.once("close", aborted);
+          sockets.handleUpgrade(req, socket, head, (ws) => {
+            socket.off("close", aborted);
+            upgraded = ws;
+            const untilClosed = new Promise<void>((resolve) =>
+              ws.once("close", resolve),
+            );
+            let connectionId: string | undefined,
+              closed = false,
+              pending: string[] = [],
+              // "auth": only an `auth` frame is read. "rejected": nothing is read again.
+              // LEGACY-QUERY-TOKEN: without the window the initial phase is always "auth".
+              phase: "auth" | "admitted" | "rejected" =
+                queryToken === undefined ? "auth" : "admitted",
+              cancelDeadline: (() => void) | undefined;
+            const refuse = (error: RoomError) => {
+              phase = "rejected";
+              cancelDeadline?.();
+              reject(error);
+            };
+            // Set once the socket has closed: whether the seat is kept for the page to resume. A socket that
+            // just stops (1006: the platform's hourly cut, a network change, a stopped instance) said no goodbye,
+            // so its page is taken to be coming back; a close frame from the page is the page leaving.
+            let hold = false;
+            const admit = (token: string, gameId?: string, resume?: string) => {
+              phase = "admitted";
+              cancelDeadline?.();
+              void gateway
+                .connect(code, token, ws, gameId, resume, address, untilClosed)
+                .then((id) => {
+                  connectionId = id;
+                  if (closed) {
+                    void gateway.disconnect(id, { socket: ws, hold });
+                    resolve();
+                    return;
+                  }
+                  for (const data of pending)
+                    void gateway.receive(id, data, ws);
+                  pending = [];
+                  resolve();
+                })
+                .catch(reject);
+            };
+            if (phase === "auth")
+              cancelDeadline = schedule(() => {
+                if (phase === "auth")
+                  refuse(new RoomError(401, "Authentication timed out"));
+              }, AUTH_DEADLINE_MS);
+            ws.on("message", (raw, binary) => {
+              if (phase === "rejected") return;
+              if (phase === "auth") {
+                // Whatever arrives first is the authentication attempt; it is never handed to the gateway.
+                const frame = readAuthFrame(raw.toString(), binary);
+                if (frame === undefined)
+                  // Nothing about the frame is echoed or logged.
+                  refuse(new RoomError(401, "Authentication required"));
+                else admit(frame.token, frame.gameId, frame.resume);
+                return;
+              }
+              if (binary) {
+                ws.close(1003, "Text frames required");
+                return;
+              }
+              const data = raw.toString();
+              if (connectionId) void gateway.receive(connectionId, data, ws);
+              else if (pending.length < 4) pending.push(data);
+              else ws.close(1008, "Wait for welcome");
+            });
+            ws.on("close", (closeCode) => {
+              closed = true;
+              hold = closeCode === CLOSE_ABNORMAL;
+              pending = [];
+              // Leaving before authenticating frees the slot and is not a failure. Charging it would stop nobody —
+              // a slot can be held to the deadline and then authenticated for free — and it would land on honest
+              // pages: one closed, frozen or dropped within a round trip of the upgrade.
+              if (phase === "auth") {
                 phase = "rejected";
                 cancelDeadline?.();
-                reject(error);
-              };
-              // Set once the socket has closed: whether the seat is kept for the page to resume. A socket that
-              // just stops (1006: the platform's hourly cut, a network change, a stopped instance) said no goodbye,
-              // so its page is taken to be coming back; a close frame from the page is the page leaving.
-              let hold = false;
-              const admit = (
-                token: string,
-                gameId?: string,
-                resume?: string,
-              ) => {
-                phase = "admitted";
-                cancelDeadline?.();
-                void gateway
-                  .connect(code, token, ws, gameId, resume)
-                  .then((id) => {
-                    connectionId = id;
-                    if (closed) {
-                      void gateway.disconnect(id, { socket: ws, hold });
-                      resolve();
-                      return;
-                    }
-                    for (const data of pending)
-                      void gateway.receive(id, data, ws);
-                    pending = [];
-                    resolve();
-                  })
-                  .catch(reject);
-              };
-              if (phase === "auth")
-                cancelDeadline = schedule(() => {
-                  if (phase === "auth")
-                    refuse(new RoomError(401, "Authentication timed out"));
-                }, AUTH_DEADLINE_MS);
-              ws.on("message", (raw, binary) => {
-                if (phase === "rejected") return;
-                if (phase === "auth") {
-                  // Whatever arrives first is the authentication attempt; it is never handed to the gateway.
-                  const frame = readAuthFrame(raw.toString(), binary);
-                  if (frame === undefined)
-                    // Nothing about the frame is echoed or logged.
-                    refuse(new RoomError(401, "Authentication required"));
-                  else admit(frame.token, frame.gameId, frame.resume);
-                  return;
-                }
-                if (binary) {
-                  ws.close(1003, "Text frames required");
-                  return;
-                }
-                const data = raw.toString();
-                if (connectionId) void gateway.receive(connectionId, data, ws);
-                else if (pending.length < 4) pending.push(data);
-                else ws.close(1008, "Wait for welcome");
-              });
-              ws.on("close", (closeCode) => {
-                closed = true;
-                hold = closeCode === CLOSE_ABNORMAL;
-                pending = [];
-                // Leaving before authenticating frees the slot and is not a failure. Charging it would stop nobody —
-                // a slot can be held to the deadline and then authenticated for free — and it would land on honest
-                // pages: one closed, frozen or dropped within a round trip of the upgrade.
-                if (phase === "auth") {
-                  phase = "rejected";
-                  cancelDeadline?.();
-                  resolve();
-                }
-                if (connectionId)
-                  void gateway.disconnect(connectionId, { socket: ws, hold });
-              });
-              ws.on("error", () => {
-                // `ws` reports a frame it will not parse (a protocol violation, or one past `maxPayload`) here, not a
-                // network drop. As a first frame that is a bad authentication attempt like any other.
-                if (phase === "auth")
-                  refuse(new RoomError(401, "Authentication required"));
-                ws.close();
-              });
-              // LEGACY-QUERY-TOKEN: admitted without an `auth` frame.
-              if (queryToken !== undefined) admit(queryToken);
+                resolve();
+              }
+              if (connectionId)
+                void gateway.disconnect(connectionId, { socket: ws, hold });
             });
-          }),
+            ws.on("error", () => {
+              // `ws` reports a frame it will not parse (a protocol violation, or one past `maxPayload`) here, not a
+              // network drop. As a first frame that is a bad authentication attempt like any other.
+              if (phase === "auth")
+                refuse(new RoomError(401, "Authentication required"));
+              ws.close();
+            });
+            // LEGACY-QUERY-TOKEN: admitted without an `auth` frame.
+            if (queryToken !== undefined) admit(queryToken);
+          });
+        }).catch(async (error: unknown) => {
+          // A refused upgraded socket still occupies a Cloud Run request until the close handshake finishes.
+          // Keep its pending slot until then, so repeated refusals cannot bypass the concurrency budget.
+          if (upgraded) {
+            const refused = upgraded;
+            const closed = new Promise<void>((resolve) => {
+              if (refused.readyState === refused.CLOSED) return resolve();
+              refused.once("close", resolve);
+            });
+            refused.close(
+              !(error instanceof RoomError)
+                ? 4000
+                : error instanceof RoomFullError
+                  ? CLOSE_ROOM_FULL
+                  : error.status === 503
+                    ? 1013
+                    : error.status === 404
+                      ? CLOSE_ROOM_ENDED
+                      : error.status === 401
+                        ? CLOSE_UNAUTHENTICATED
+                        : 4000,
+              error instanceof RoomError
+                ? error.message
+                : "Room service unavailable",
+            );
+            if (refused.readyState !== refused.CLOSED)
+              refused.once(
+                "close",
+                schedule(() => refused.terminate(), REFUSED_CLOSE_GRACE_MS),
+              );
+            await closed;
+          }
+          throw error;
+        }),
       )
       .catch((error) => {
         logFailure("admission", error);
-        if (upgraded) {
-          const refused = upgraded;
-          refused.close(
-            !(error instanceof RoomError)
-              ? 4000
-              : error instanceof RoomFullError
-                ? CLOSE_ROOM_FULL
-                : error.status === 404
-                  ? CLOSE_ROOM_ENDED
-                  : error.status === 401
-                    ? CLOSE_UNAUTHENTICATED
-                    : 4000,
-            error instanceof RoomError
-              ? error.message
-              : "Room service unavailable",
-          );
-          // `ws` waits 30 s for the peer's close frame. A refused socket holds no admission slot by then, but it
-          // still occupies one of the platform's concurrent requests; a peer that never answers is cut off.
-          // Only refused sockets: an admitted socket's close handshake is left to run.
-          if (refused.readyState !== refused.CLOSED)
-            refused.once(
-              "close",
-              schedule(() => refused.terminate(), REFUSED_CLOSE_GRACE_MS),
-            );
-        } else if (!socket.destroyed)
+        if (!upgraded && !socket.destroyed)
           socket.end(
             `HTTP/1.1 ${error instanceof RoomError && error.status === 429 ? "429 Too Many Requests" : "503 Service Unavailable"}\r\nConnection: close\r\n\r\n`,
           );

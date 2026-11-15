@@ -1,7 +1,13 @@
 import type { IncomingMessage } from "node:http";
-import { RoomError, type HttpExtension } from "fuse-network-be";
+import {
+  AddressBudget,
+  RoomError,
+  ROOM_LOOKUP_BURST,
+  ROOM_LOOKUP_PER_SECOND,
+  type HttpExtension,
+} from "fuse-network-be";
 import { LEGACY_GAME_ID } from "./game.js";
-import type { FriendsStore } from "./friends.js";
+import { publicIdOf, type FriendsStore } from "./friends.js";
 import type { HistoryStore } from "./history.js";
 import type { IdentityVerifier } from "./identity.js";
 import type { ActivityDatabase } from "./activity.js";
@@ -9,6 +15,12 @@ import { createActivityHttp } from "./activity-http.js";
 
 const MAX_BODY_BYTES = 256_000,
   BODY_TIMEOUT_MS = 10_000;
+/** Shared across games and result kinds: enough for 12 devices reporting a round and match together. */
+export const RESULT_LOOKUP_BURST = 60,
+  RESULT_LOOKUP_PER_SECOND = 2;
+export interface PlatformHttpDependencies {
+  now: () => number;
+}
 const bearer = (req: IncomingMessage): string =>
   req.headers.authorization?.replace(/^Bearer /, "") ?? "";
 /** A bounded JSON body: the limit is enforced while reading, so a lying Content-Length cannot buy memory. */
@@ -66,7 +78,13 @@ const HISTORY_ROUTE =
 export function createHistoryHttp(
   store: HistoryStore,
   identity: IdentityVerifier,
+  dependencies: PlatformHttpDependencies = { now: Date.now },
 ): HttpExtension {
+  const resultLookups = new AddressBudget(
+    dependencies.now,
+    RESULT_LOOKUP_BURST,
+    RESULT_LOOKUP_PER_SECOND,
+  );
   return {
     methods: ["PUT"],
     headers: ["X-Fuse-Identity"],
@@ -86,6 +104,9 @@ export function createHistoryHttp(
       // The room token says which seat is reporting; the optional identity header says whose account that seat is.
       // An identity that does not verify is a guest's report, never a refusal: signing in must not be able to cost a rider their result.
       if (route && req.method === "POST") {
+        // Refused credentials must not buy unlimited room reads. Database budgets still apply to proven seats.
+        if (!resultLookups.take(clientAddress))
+          throw new RoomError(429, "Too many results; try later");
         // The room token is checked first, so a stranger can buy neither a body read nor a signature verification.
         const reporter = await history.admit(
             route[1]!,
@@ -192,7 +213,7 @@ export function createHistoryHttp(
 }
 
 const FRIENDS_ROUTE =
-  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20})?|rooms\/[A-Z0-9]{6}\/invites)$/;
+  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
 
 /**
  * Friends, presence and invites: account routes, so shared by every game and never under `/api/games/:gameId/`.
@@ -202,27 +223,48 @@ const FRIENDS_ROUTE =
 export function createFriendsHttp(
   store: FriendsStore,
   identity: IdentityVerifier,
+  dependencies: PlatformHttpDependencies = { now: Date.now },
 ): HttpExtension {
+  const inviteLookups = new AddressBudget(
+    dependencies.now,
+    ROOM_LOOKUP_BURST,
+    ROOM_LOOKUP_PER_SECOND,
+  );
   return {
     methods: ["DELETE"],
-    headers: ["X-Fuse-Identity"],
-    async handle(req, res) {
+    headers: ["X-Fuse-Identity", "X-Fuse-Account"],
+    async handle(req, res, clientAddress) {
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
       if (!FRIENDS_ROUTE.test(pathname)) return false;
       const json = (value: unknown, status = 200) => {
-        res.writeHead(status, { "Content-Type": "application/json" });
+        res.writeHead(status, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify(value));
       };
       const invite = pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/invites$/);
       if (invite) {
         if (req.method !== "POST") return false;
+        // Limit room lookups before verification/body reads; an identity is not proof of room membership.
+        if (!inviteLookups.take(clientAddress))
+          throw new RoomError(429, "Too many invites; try later");
         const header = req.headers["x-fuse-identity"];
         const uid =
           typeof header === "string" && header
             ? await identity(header)
             : undefined;
         if (!uid) throw new RoomError(401, "Sign in first");
+        const expectedAccount = req.headers["x-fuse-account"];
+        if (
+          expectedAccount !== undefined &&
+          expectedAccount !== publicIdOf(uid)
+        )
+          throw new RoomError(
+            403,
+            "The signed-in account changed. Reopen Messenger and try again.",
+          );
         json(
           await store.invite(invite[1]!, bearer(req), uid, await readJson(req)),
         );
@@ -239,6 +281,24 @@ export function createFriendsHttp(
       }
       if (pathname === "/api/friends" && req.method === "POST") {
         json(await store.add(uid, await readJson(req)));
+        return true;
+      }
+      const conversation = pathname.match(
+        /^\/api\/friends\/([a-f0-9]{20})\/messages$/,
+      );
+      if (conversation && (req.method === "GET" || req.method === "POST")) {
+        if (req.headers["x-fuse-account"] !== publicIdOf(uid))
+          throw new RoomError(
+            403,
+            "The signed-in account changed. Reopen this conversation.",
+          );
+        json(
+          await store.conversation(
+            uid,
+            conversation[1]!,
+            req.method === "POST" ? await readJson(req) : undefined,
+          ),
+        );
         return true;
       }
       const friend = pathname.match(/^\/api\/friends\/([a-f0-9]{20})$/);
@@ -280,7 +340,9 @@ export function createPlatformHttp(options: {
   friends: FriendsStore;
   identity: IdentityVerifier;
   activity?: ActivityDatabase;
+  now?: () => number;
 }): HttpExtension {
+  const dependencies = { now: options.now ?? Date.now };
   return composeHttp(
     ...(options.activity
       ? [
@@ -289,10 +351,11 @@ export function createPlatformHttp(options: {
             platform: options.history.platform,
             identity: options.identity,
             allowRead: (address) => options.history.allowActivity(address),
+            now: dependencies.now,
           }),
         ]
       : []),
-    createHistoryHttp(options.history, options.identity),
-    createFriendsHttp(options.friends, options.identity),
+    createHistoryHttp(options.history, options.identity, dependencies),
+    createFriendsHttp(options.friends, options.identity, dependencies),
   );
 }

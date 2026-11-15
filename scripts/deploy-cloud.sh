@@ -177,6 +177,11 @@ NODE
 
 # Same rule as the gate above: the revision must still be on main, not still be its head.
 [[ "$(gh api "repos/$repository/compare/$revision...main" --jq .status)" =~ ^(identical|ahead)$ ]] || { echo "Revision $revision left main during the build; refusing to deploy it." >&2; exit 1; }
+# Capacity per deployment: 2 instances × 80 concurrent requests. Per instance:
+# | Cloud Run concurrency | admitted/reserved sockets | pending admissions | spare |
+# | 80                    | 60                       | 16                 | 4     |
+# Socket limits live in packages/fuse-network-be/src/socket-capacity.ts; the config test keeps these in sync.
+# Up to 120 sockets across two instances support 8 full 14-socket rooms (112 sockets), subject to balancing.
 gcloud run deploy "$CLOUD_RUN_SERVICE" --project="$PROJECT_ID" --region="$GCP_REGION" \
   --image="$image" --service-account="$RUNTIME_SERVICE_ACCOUNT" --port=8080 \
   --min=0 --max=2 --min-instances=0 --max-instances=2 \

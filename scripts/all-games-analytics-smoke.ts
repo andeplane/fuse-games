@@ -25,6 +25,9 @@ try {
     if (gameId === "fuse-front")
       required.push("fuse.Seat Taken", "fuse.Match Started");
     const context = await browser.newContext();
+    await context.route("**/api/telemetry/session", async (route) => {
+      await route.fulfill({ status: 200, json: { token: "smoke-only" } });
+    });
     const reported: { event: string; properties: Record<string, unknown> }[] =
       [];
     let opened!: () => void;

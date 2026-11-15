@@ -44,6 +44,7 @@ export function roundResult(
   return {
     matchId: room.matchId,
     round,
+    roundDuration: { version: 1, ticks: record.steps },
     length: 1,
     ...(winnerId ? { winnerId } : {}),
     finishers: record.present,

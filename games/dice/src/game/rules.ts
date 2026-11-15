@@ -77,6 +77,7 @@ export interface RoundRecord {
   winnerId: string;
   /** The log tick the round was decided at: a device reports the round once its confirmed tick reaches it. */
   tick: number;
+  durationTicks: number;
   /** Every round player's bank when the round was decided. */
   scores: Record<string, number>;
   /** Seated players taking turns (bots, and humans who were here) when the round was decided; sorted. */
@@ -103,6 +104,7 @@ export const noStats = (): PlayerStats => ({
 export interface DiceRoom extends ManagedRoom<DiceSettings> {
   /** The log tick folded through; the game's clock is the same tick (one step per log tick). */
   tick: number;
+  roundStartTick: number;
   matchId: string;
   round: number;
   stage: Stage;
@@ -253,6 +255,7 @@ export function seedOf(matchId: string): number {
 export function createRoom(matchId: string, settings: DiceSettings): DiceRoom {
   return {
     tick: 0,
+    roundStartTick: 0,
     matchId,
     round: 1,
     stage: "lobby",
@@ -321,6 +324,7 @@ function remember(room: DiceRoom): void {
     room.roster[seat.id] = { name: seat.name, slot: seat.slot };
 }
 function startRound(room: DiceRoom, tick: number): void {
+  room.roundStartTick = tick;
   room.stage = "running";
   room.scores = {};
   room.roundWinner = "";
@@ -408,6 +412,7 @@ function endRound(
     round: room.round,
     winnerId: id,
     tick,
+    durationTicks: tick - room.roundStartTick,
     scores: { ...room.scores },
     present: present.map((seat) => seat.id).sort(),
     finishers: present

@@ -1,6 +1,7 @@
 import test from "node:test";
 import { Readable } from "node:stream";
 import assert from "node:assert/strict";
+import { MESSAGE_HISTORY_MS } from "../src/messages-api.js";
 import {
   MemoryRoomDatabase,
   RoomError,
@@ -51,6 +52,7 @@ const ACCOUNT: AccountRules = {
 };
 const game: GameRegistration = {
   id: LEGACY_GAME_ID,
+  minRatedRoundTicks: 1,
   isBot: (id) => id.startsWith("bot:"),
   parseStats: (raw) => raw as PlayerResult,
   emptyTotals: () => ({}),
@@ -65,9 +67,17 @@ const member = (n: number) => peerId(token(n));
 /** Counts room reads, so a proven room claim can be shown to cost nothing until it changes. */
 class CountingRoomDatabase extends MemoryRoomDatabase {
   reads = 0;
+  fail = false;
   override read(code: string) {
+    if (this.fail) throw new Error("database unavailable");
     this.reads++;
     return super.read(code);
+  }
+  override transact<T>(
+    ...args: Parameters<MemoryRoomDatabase["transact"]>
+  ): Promise<T> {
+    if (this.fail) return Promise.reject(new Error("database unavailable"));
+    return super.transact(...args) as Promise<T>;
   }
 }
 /** Counts presence writes, so the heartbeat rule can be checked. */
@@ -117,6 +127,9 @@ function fixture() {
     http,
     room,
     roomReads: () => roomDatabase.reads,
+    failRooms: (fail: boolean) => {
+      roomDatabase.fail = fail;
+    },
     tick: (ms: number) => {
       now += ms;
     },
@@ -167,6 +180,209 @@ async function handle(
 }
 
 const names = (cards: readonly { name: string }[]) => cards.map((c) => c.name);
+
+test("private messages require accepted friends and are shared with exactly the two accounts", async () => {
+  const f = fixture();
+  const alice = publicIdOf("alice"),
+    bob = publicIdOf("bob"),
+    eve = publicIdOf("eve");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.sync("eve");
+  const path = `/api/friends/${bob}/messages`;
+  const send = { id: "a".repeat(32), text: "Hello <b>Bob</b>" };
+  assert.equal((await handle(f.http, "POST", path, {}, send)).status, 401);
+  assert.equal(
+    (
+      await handle(
+        f.http,
+        "POST",
+        path,
+        { authorization: "Bearer id:alice", "x-fuse-account": alice },
+        send,
+      )
+    ).status,
+    403,
+  );
+  await f.store.add("alice", { publicId: bob });
+  await assert.rejects(
+    f.store.conversation("alice", bob, send),
+    /accepted friends/,
+  );
+  await f.store.add("bob", { publicId: alice });
+  const sent = await f.store.conversation("alice", bob, send);
+  assert.equal(
+    (
+      await handle(f.http, "GET", path, {
+        authorization: "Bearer id:alice",
+        "x-fuse-account": alice,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await handle(
+        f.http,
+        "POST",
+        path,
+        { authorization: "Bearer id:bob", "x-fuse-account": alice },
+        send,
+      )
+    ).status,
+    403,
+    "a draft from the old account cannot be sent by the new account",
+  );
+  assert.equal(sent.messages.length, 1);
+  assert.deepEqual(
+    (await f.store.conversation("bob", alice)).messages,
+    sent.messages,
+  );
+  assert.equal(
+    sent.messages[0]!.text,
+    "Hello <b>Bob</b>",
+    "plain text is not interpreted or rewritten as markup",
+  );
+  assert.equal(sent.messages[0]!.from, alice);
+  await assert.rejects(f.store.conversation("eve", bob), /accepted friends/);
+  await assert.rejects(f.store.conversation("alice", eve), /accepted friends/);
+});
+
+test("message retries are idempotent, concurrent sends survive, invalid data is refused and unfriend clears history", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const message = { id: "1".repeat(32), text: "hi" };
+  await Promise.all([
+    f.store.conversation("alice", bob, message),
+    f.store.conversation("alice", bob, message),
+    f.store.conversation("bob", alice, { id: "2".repeat(32), text: "hello" }),
+  ]);
+  assert.equal((await f.store.conversation("alice", bob)).messages.length, 2);
+  await assert.rejects(
+    f.store.conversation("alice", bob, { ...message, text: "changed" }),
+    /already sent/,
+  );
+  for (const invalid of [
+    { id: "bad", text: "hey" },
+    { ...message, text: " " },
+    { ...message, text: "a".repeat(1001) },
+    { ...message, text: "\u0000" },
+    { ...message, extra: 1 },
+  ])
+    await assert.rejects(
+      f.store.conversation("alice", bob, invalid),
+      /plain-text/,
+    );
+  await f.store.remove("alice", bob);
+  await assert.rejects(f.store.conversation("bob", alice), /accepted friends/);
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  assert.deepEqual((await f.store.conversation("alice", bob)).messages, []);
+});
+
+test("the buddy list's poll says who sent the newest message and when, so a closed chat can pop up", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const lastFrom = async (uid: string, friend: string) =>
+    (await f.sync(uid)).friends.find((x) => x.publicId === friend)?.lastMessage;
+  assert.equal(await lastFrom("bob", alice), undefined);
+  const sentAt = f.now();
+  await f.store.conversation("alice", bob, { id: "1".repeat(32), text: "hi" });
+  // Both see it, by public id; the account id never leaves the service.
+  assert.deepEqual(await lastFrom("bob", alice), { from: alice, at: sentAt });
+  assert.deepEqual(await lastFrom("alice", bob), { from: alice, at: sentAt });
+  f.tick(1_000);
+  // Reading and retrying the same message change nothing.
+  await f.store.conversation("bob", alice);
+  await f.store.conversation("alice", bob, { id: "1".repeat(32), text: "hi" });
+  assert.deepEqual(await lastFrom("bob", alice), { from: alice, at: sentAt });
+  await f.store.conversation("bob", alice, { id: "2".repeat(32), text: "yo" });
+  assert.deepEqual(await lastFrom("alice", bob), {
+    from: bob,
+    at: sentAt + 1_000,
+  });
+  // A friend who is offline still carries the marker, so the chat opens when they come back.
+  f.tick(ONLINE_WINDOW_MS + 1);
+  assert.deepEqual(await lastFrom("alice", bob), {
+    from: bob,
+    at: sentAt + 1_000,
+  });
+});
+
+test("an interleaved retry at the same clock time preserves the newest message's sender", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const original = { id: "1".repeat(32), text: "hi" };
+  await f.store.conversation("alice", bob, original);
+  await f.store.conversation("bob", alice, {
+    id: "2".repeat(32),
+    text: "hello",
+  });
+  // Both sends and the retry deliberately share a timestamp. A retry is not a new send.
+  await f.store.conversation("alice", bob, original);
+  assert.deepEqual(
+    (await f.sync("alice")).friends.find((friend) => friend.publicId === bob)
+      ?.lastMessage,
+    { from: bob, at: f.now() },
+  );
+  assert.deepEqual(
+    (await f.store.conversation("alice", bob)).messages.map(
+      (message) => message.text,
+    ),
+    ["hi", "hello"],
+  );
+});
+
+test("message history is bounded and expires from both friends' views", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  for (let n = 0; n < 85; n++)
+    await f.store.conversation("alice", bob, {
+      id: n.toString(16).padStart(32, "0"),
+      text: `message ${n}`,
+    });
+  const messages = (await f.store.conversation("bob", alice)).messages;
+  assert.equal(messages.length, 80);
+  assert.equal(messages[0]!.text, "message 5");
+  f.tick(MESSAGE_HISTORY_MS - 1);
+  assert.deepEqual(
+    (await f.sync("bob")).friends.find((friend) => friend.publicId === alice)
+      ?.lastMessage,
+    { from: alice, at: f.now() - MESSAGE_HISTORY_MS + 1 },
+  );
+  f.tick(1);
+  for (const [uid, friend] of [
+    ["alice", bob],
+    ["bob", alice],
+  ] as const) {
+    assert.equal(
+      (await f.sync(uid)).friends.find((entry) => entry.publicId === friend)
+        ?.lastMessage,
+      undefined,
+    );
+  }
+  assert.deepEqual((await f.store.conversation("bob", alice)).messages, []);
+});
 
 test("a public id is stable, opaque and not the account", () => {
   assert.equal(publicIdOf("alice"), publicIdOf("alice"));
@@ -327,7 +543,15 @@ test("presence: online inside the window, in a room while it last said so, writt
   const code = await f.room(1);
   assert.equal(
     await written(() =>
-      f.sync("bob", { name: "Bob", room: { code, memberId: member(2) } }),
+      f.sync("bob", {
+        name: "Bob",
+        room: {
+          code,
+          memberId: member(2),
+          token: token(2),
+          session: "2".repeat(32),
+        },
+      }),
     ),
     1,
   );
@@ -340,7 +564,15 @@ test("presence: online inside the window, in a room while it last said so, writt
   // A name change writes too, and a rename wins over the name the player showed up with.
   assert.equal(
     await written(() =>
-      f.sync("bob", { name: "Bobby", room: { code, memberId: member(2) } }),
+      f.sync("bob", {
+        name: "Bobby",
+        room: {
+          code,
+          memberId: member(2),
+          token: token(2),
+          session: "2".repeat(32),
+        },
+      }),
     ),
     1,
   );
@@ -371,10 +603,33 @@ test("a presence claim is validated", async () => {
     { name: "<b>" },
     { avatarId: "dog" },
     { room: {} },
-    { room: { code: "bad", memberId: member(1) } },
+    {
+      room: {
+        code: "bad",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    },
     { room: { code: "AB12AA", memberId: "short" } },
-    { room: { code: "AB12AA", memberId: member(1), gameId: "chess" } },
-    { room: { code: "AB12AA", memberId: member(1), extra: 1 } },
+    {
+      room: {
+        code: "AB12AA",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+        gameId: "chess",
+      },
+    },
+    {
+      room: {
+        code: "AB12AA",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+        extra: 1,
+      },
+    },
     { extra: 1 },
     { passive: "yes" },
     { passive: 1 },
@@ -389,7 +644,15 @@ test("a presence claim is validated", async () => {
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
     { status: "x".repeat(MAX_STATUS_INPUT + 1) },
     // A passive page has no room of its own to claim.
-    { passive: true, room: { code: "AB12AA", memberId: member(1) } },
+    {
+      passive: true,
+      room: {
+        code: "AB12AA",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    },
   ])
     await assert.rejects(f.sync("alice", body), /Invalid presence/);
 });
@@ -439,7 +702,12 @@ test("an old-shaped body and an old-shaped record still work, and say nothing ne
   const view = await f.sync("bob", {
     name: "Bob",
     avatarId: "cat",
-    room: { code, memberId: member(2) },
+    room: {
+      code,
+      memberId: member(2),
+      token: token(2),
+      session: "2".repeat(32),
+    },
   });
   assert.deepEqual(Object.keys(view).sort(), [
     "friends",
@@ -579,7 +847,15 @@ test("a passive page alone (the desktop, no game open) keeps the account online 
 test("the desktop and a game on one account: passive polls keep the game's room claim, and neither overwrites the other", async () => {
   const f = await pair();
   const code = await f.room(1);
-  const game = { name: "Bob", room: { code, memberId: member(2) } },
+  const game = {
+      name: "Bob",
+      room: {
+        code,
+        memberId: member(2),
+        token: token(2),
+        session: "2".repeat(32),
+      },
+    },
     desktop = { passive: true, away: true, status: "in a match" };
   await f.sync("bob", game);
   const playing = {
@@ -611,11 +887,13 @@ test("the desktop and a game on one account: passive polls keep the game's room 
       memberId: member(2),
       gameId: LEGACY_GAME_ID,
       incarnation: "incarnation-0",
+      proven: true,
+      session: "2".repeat(32),
     });
   }
   assert.equal(writes, 3);
-  // One proof per rewrite, whichever page's poll it falls to.
-  assert.equal(f.roomReads() - reads, 3);
+  // Active polls recheck the live seat; passive polls recheck on refresh.
+  assert.equal(f.roomReads() - reads, 9);
   // The game page leaves (its unload sync names no room): the room goes at once, and the desktop is heard on away.
   await f.sync("bob", { name: "Bob" });
   assert.equal((await f.friend()).room, undefined);
@@ -633,7 +911,14 @@ test("the desktop and a game on one account: passive polls keep the game's room 
 test("a passive poll cannot keep a dead room alive: the carried claim is re-proven on the rewrite and dropped, not refused", async () => {
   const f = await pair();
   const code = await f.room(1);
-  await f.sync("bob", { room: { code, memberId: member(2) } });
+  await f.sync("bob", {
+    room: {
+      code,
+      memberId: member(2),
+      token: token(2),
+      session: "2".repeat(32),
+    },
+  });
   // The game's tab closes without a word; the desktop keeps polling. Inside the refresh period the claim stands.
   f.tick(20_000);
   await f.sync("bob", { passive: true });
@@ -711,7 +996,14 @@ test("the Firestore reader and the in-memory database agree on every presence re
   await f.sync("bob", { passive: true, away: true });
   await same();
   const code = await f.room(1);
-  await f.sync("bob", { room: { code, memberId: member(2) } });
+  await f.sync("bob", {
+    room: {
+      code,
+      memberId: member(2),
+      token: token(2),
+      session: "2".repeat(32),
+    },
+  });
   await same();
   await f.sync("bob", { status: "" });
   await same();
@@ -728,7 +1020,16 @@ test("the Firestore reader and the in-memory database agree on every presence re
     { ...base, publicId: "nope" },
     { ...base, uid: "" },
     { ...base, room: "AB12AA" },
-    { ...base, room: { code, memberId: member(2), gameId: LEGACY_GAME_ID } },
+    {
+      ...base,
+      room: {
+        code,
+        memberId: member(2),
+        token: token(2),
+        session: "2".repeat(32),
+        gameId: LEGACY_GAME_ID,
+      },
+    },
   ])
     assert.throws(() => storedPresence(bad), /Stored presence is incompatible/);
 });
@@ -753,7 +1054,15 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
     { passive: "yes" },
     { status: 12 },
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
-    { passive: true, room: { code: "AB12AA", memberId: member(1) } },
+    {
+      passive: true,
+      room: {
+        code: "AB12AA",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    },
   ])
     assert.deepEqual(await post(body), {
       handled: true,
@@ -763,62 +1072,157 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
   assert.equal((await f.friend()).status, "hi there");
 });
 
-test("a room claim is proven by a live seat in that room, once per change", async () => {
+test("a room claim requires a live seat in that room", async () => {
   const f = fixture();
   const code = await f.room(1);
   // Not a room, not a member of one, a seat that is not in this room.
   await assert.rejects(
-    f.sync("alice", { room: { code: "ZZ99AA", memberId: member(1) } }),
+    f.sync("alice", {
+      room: {
+        code: "ZZ99AA",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(9) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(9),
+        token: token(9),
+        session: "9".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   const other = await f.room(3);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(3) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(3),
+        token: token(3),
+        session: "3".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
-  await f.sync("alice", { room: { code, memberId: member(1) } });
-  // The same claim again reads no room; a changed one is proven again.
+  await f.sync("alice", {
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
+  });
+  // Every active claim rechecks the live room.
   const reads = f.roomReads();
-  await f.sync("alice", { room: { code, memberId: member(1) } });
+  await f.sync("alice", {
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
+  });
   assert.equal(f.roomReads(), reads);
-  await f.sync("alice", { room: { code: other, memberId: member(3) } });
-  assert.equal(f.roomReads(), reads + 1);
-  // A seat id is only known inside its room, so naming a live one is the proof; the room's own members are trusted
-  // with each other's, as they are with the shared log.
+  await f.sync("alice", {
+    room: {
+      code: other,
+      memberId: member(3),
+      token: token(3),
+      session: "3".repeat(32),
+    },
+  });
+  assert.equal(f.roomReads(), reads);
+});
+
+test("F-07 room database outages are not reported as lost membership", async () => {
+  const f = fixture();
+  const code = await f.room(1);
+  const room = {
+    code,
+    memberId: member(1),
+    token: token(1),
+    session: "1".repeat(32),
+  };
+  await f.sync("alice", { room });
+  f.failRooms(true);
+  await assert.rejects(f.sync("alice", { room }), /database unavailable/);
+  await assert.rejects(
+    f.sync("alice", { passive: true }),
+    /database unavailable/,
+  );
+  f.failRooms(false);
+  assert.equal((await f.sync("alice", { room })).roomPlayers.length, 1);
 });
 
 test("a reissued room code is another room: a stale claim sees nobody there and is refused once re-proven", async () => {
   const f = fixture();
   const code = await f.room(1);
-  await f.sync("alice", { name: "Alice", room: { code, memberId: member(1) } });
+  await f.sync("alice", {
+    name: "Alice",
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
+  });
   // The room ends and its code is handed to a new room with other members.
   await f.rooms.end(code, token(1));
   await f.rooms.create(code, token(5));
   await f.rooms.admit(code, token(5), "gateway");
   await f.rooms.admit(code, token(6), "gateway");
-  await f.sync("bob", { name: "Bob", room: { code, memberId: member(5) } });
-  // Alice's device still claims its old seat: inside the refresh window nothing is re-read, and it sees only itself.
+  await f.sync("bob", {
+    name: "Bob",
+    room: {
+      code,
+      memberId: member(5),
+      token: token(5),
+      session: "5".repeat(32),
+    },
+  });
+  // Alice's old seat is refused immediately, even inside the refresh window.
   f.tick(1000);
-  assert.deepEqual(
-    (
-      await f.sync("alice", { room: { code, memberId: member(1) } })
-    ).roomPlayers.map((p) => p.name),
-    ["Alice"],
+  await assert.rejects(
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    }),
+    /Join the room first/,
   );
   assert.deepEqual(
     (
-      await f.sync("bob", { room: { code, memberId: member(5) } })
+      await f.sync("bob", {
+        room: {
+          code,
+          memberId: member(5),
+          token: token(5),
+          session: "5".repeat(32),
+        },
+      })
     ).roomPlayers.map((p) => p.name),
     ["Bob"],
   );
   // Once the record is due a rewrite the claim is proven again, and Alice holds no seat in the room the code names now.
   f.tick(PRESENCE_REFRESH_MS);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(1) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   // Without the room the poll is fine, and Alice is no longer in any room.
@@ -831,21 +1235,41 @@ test("the room's signed-in members are listed with their relation to the caller"
   const code = await f.room(1);
   const alice = await f.sync("alice", {
       name: "Alice",
-      room: { code, memberId: member(1) },
+      room: {
+        code,
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
     }),
     bob = await f.sync("bob", {
       name: "Bob",
-      room: { code, memberId: member(2) },
+      room: {
+        code,
+        memberId: member(2),
+        token: token(2),
+        session: "2".repeat(32),
+      },
     });
   const elsewhere = await f.room(3);
   await f.sync("carol", {
     name: "Carol",
-    room: { code: elsewhere, memberId: member(3) },
+    room: {
+      code: elsewhere,
+      memberId: member(3),
+      token: token(3),
+      session: "3".repeat(32),
+    },
   });
   await f.store.add("alice", { publicId: bob.me.publicId });
   const view = await f.sync("alice", {
     name: "Alice",
-    room: { code, memberId: member(1) },
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
   });
   assert.deepEqual(view.roomPlayers.map((p) => [p.name, p.relation]).sort(), [
     ["Alice", "you"],
@@ -857,7 +1281,15 @@ test("the room's signed-in members are listed with their relation to the caller"
   );
   assert.equal(
     (
-      await f.sync("bob", { name: "Bob", room: { code, memberId: member(2) } })
+      await f.sync("bob", {
+        name: "Bob",
+        room: {
+          code,
+          memberId: member(2),
+          token: token(2),
+          session: "2".repeat(32),
+        },
+      })
     ).roomPlayers.find((p) => p.name === "Alice")!.relation,
     "incoming",
   );
@@ -869,7 +1301,14 @@ test("the room's signed-in members are listed with their relation to the caller"
   });
   assert.deepEqual(
     (
-      await f.sync("alice", { room: { code, memberId: member(1) } })
+      await f.sync("alice", {
+        room: {
+          code,
+          memberId: member(1),
+          token: token(1),
+          session: "1".repeat(32),
+        },
+      })
     ).roomPlayers.map((p) => p.name),
     ["Alice"],
   );
@@ -1033,7 +1472,64 @@ test("every friends route needs a sign-in and the room invite is proven by the r
     false,
   );
   assert.deepEqual(f.http.methods, ["PUT", "DELETE"]);
-  assert.deepEqual(f.http.headers, ["X-Fuse-Identity"]);
+  assert.deepEqual(f.http.headers, ["X-Fuse-Identity", "X-Fuse-Account"]);
+});
+
+test("Messenger invites are bound to the expected account before reading a body or writing an invite", async () => {
+  const f = fixture();
+  const alice = (await f.sync("alice")).me.publicId,
+    bob = (await f.sync("bob")).me.publicId;
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const code = await f.room(1);
+  const headers = {
+    authorization: `Bearer ${token(1)}`,
+    "x-fuse-identity": "id:alice",
+  };
+  const wrongAccount = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    { ...headers, "x-fuse-account": bob },
+    { malformed: true },
+  );
+  assert.equal(
+    wrongAccount.status,
+    403,
+    "account mismatch is rejected before the malformed body is parsed",
+  );
+  assert.deepEqual(
+    (await f.sync("bob")).invites,
+    [],
+    "a stale Messenger cannot send from a different iframe account",
+  );
+  const matching = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    { ...headers, "x-fuse-account": alice },
+    { to: [bob] },
+  );
+  assert.deepEqual(matching.json, { sent: 1 });
+  const invite = (await f.sync("bob")).invites[0]!;
+  await f.store.dismissInvite("bob", invite.id);
+  const legacy = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    headers,
+    { to: [bob] },
+  );
+  assert.deepEqual(
+    legacy.json,
+    { sent: 1 },
+    "existing in-game invites remain compatible without expected-account binding",
+  );
+  assert.equal((await f.sync("bob")).invites.length, 1);
+  assert.deepEqual(createFriendsHttp(f.store, async () => "alice").headers, [
+    "X-Fuse-Identity",
+    "X-Fuse-Account",
+  ]);
 });
 
 test("createPlatformHttp serves history and friends behind one extension", async () => {
@@ -1075,10 +1571,12 @@ test("listed players carry their public id, so a leaderboard row can be added", 
     matchScoreUnits: 10 - placement,
     matchPlacement: placement,
     earlyExits: 0,
+    combat: { victims: { [member(slot === 0 ? 2 : 1)]: 1 } },
   });
   const result = {
     matchId: "m1",
     round: 1,
+    roundDuration: { version: 1, ticks: 1 },
     length: 1,
     finishers: [member(1), member(2)],
     winnerId: member(1),
@@ -1090,7 +1588,7 @@ test("listed players carry their public id, so a leaderboard row can be added", 
       { result },
       uid,
     );
-  const whole = { ...result, round: undefined };
+  const whole = { ...result, round: undefined, roundDuration: undefined };
   for (const [i, uid] of ["alice", "bob"].entries())
     await history.submit(
       await history.admit(code, token(i + 1), "ip"),
@@ -1106,16 +1604,21 @@ test("listed players carry their public id, so a leaderboard row can be added", 
     ],
   );
   const feed = await history.feed("ip", "alice", undefined);
-  assert.deepEqual(feed.matches[0]!.accounts, {
-    [member(1)]: publicIdOf("alice"),
-    [member(2)]: publicIdOf("bob"),
+  const entry = feed.matches[0]!;
+  const alice = entry.result.players.find((p) => p.name === "Alice")!.playerId;
+  const bob = entry.result.players.find((p) => p.name === "Bob")!.playerId;
+  assert.ok(!JSON.stringify(entry).includes(member(1)));
+  assert.ok(!JSON.stringify(entry).includes(member(2)));
+  assert.ok(JSON.stringify(entry).includes(`"${bob}":1`));
+  assert.notEqual(alice, member(1));
+  assert.notEqual(bob, member(2));
+  assert.deepEqual(entry.accounts, {
+    [alice]: publicIdOf("alice"),
+    [bob]: publicIdOf("bob"),
   });
   assert.deepEqual(
     (await history.history("bob", undefined)).matches[0]!.accounts,
-    {
-      [member(1)]: publicIdOf("alice"),
-      [member(2)]: publicIdOf("bob"),
-    },
+    entry.accounts,
   );
 });
 

@@ -16,6 +16,8 @@ export interface MatchResult<P extends PlayerResult = PlayerResult> {
   matchId: string;
   /** Present only for rating receipts; these never credit whole-game career history. */
   round?: number;
+  /** Frozen duration in this game's registered simulation-tick units, reported by all attesters. */
+  roundDuration?: { version: 1; ticks: number };
   length: number;
   winnerId?: string;
   finishers: string[];
@@ -114,6 +116,7 @@ export function parseMatchResult<P extends PlayerResult>(
       [
         "matchId",
         "round",
+        "roundDuration",
         "length",
         "winnerId",
         "finishers",
@@ -125,6 +128,7 @@ export function parseMatchResult<P extends PlayerResult>(
   const {
     matchId,
     round,
+    roundDuration,
     length,
     winnerId,
     finishers,
@@ -136,6 +140,17 @@ export function parseMatchResult<P extends PlayerResult>(
       (round as number) < 1 ||
       (round as number) > 1_000_000 ||
       length !== 1)
+  )
+    return;
+  if (
+    roundDuration !== undefined &&
+    (round === undefined ||
+      !plain(roundDuration) ||
+      Object.keys(roundDuration).length !== 2 ||
+      roundDuration.version !== 1 ||
+      !Number.isSafeInteger(roundDuration.ticks) ||
+      (roundDuration.ticks as number) < 0 ||
+      (roundDuration.ticks as number) > 0xffffffff)
   )
     return;
   if (typeof matchId !== "string" || !/^[\x21-\x7e]{1,128}$/.test(matchId))
@@ -182,6 +197,14 @@ export function parseMatchResult<P extends PlayerResult>(
   return {
     matchId,
     ...(round === undefined ? {} : { round: round as number }),
+    ...(roundDuration === undefined
+      ? {}
+      : {
+          roundDuration: {
+            version: 1 as const,
+            ticks: (roundDuration as { ticks: number }).ticks,
+          },
+        }),
     length: length as number,
     finishers: [...finishers].sort(),
     ...(winnerId === undefined ? {} : { winnerId }),

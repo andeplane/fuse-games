@@ -1,0 +1,37 @@
+{
+  "displayName": "Fuse telemetry intake and quota",
+  "combiner": "OR",
+  "enabled": true,
+  "conditions": [
+    {
+      "displayName": "Global telemetry quota rejected",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/fuse_telemetry_quota\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "0s",
+        "aggregations": [{ "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM" }]
+      }
+    },
+    {
+      "displayName": "Report request volume above 30 per five minutes",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/fuse_telemetry_reports\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 30,
+        "duration": "0s",
+        "aggregations": [{ "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": ["resource.label.service_name"] }]
+      }
+    },
+    {
+      "displayName": "Event request volume above 1000 per five minutes",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/fuse_telemetry_events\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1000,
+        "duration": "0s",
+        "aggregations": [{ "alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": ["resource.label.service_name"] }]
+      }
+    }
+  ]
+}

@@ -12,13 +12,13 @@ import type {
   PresenceService,
   PresenceSnapshot,
 } from "./presenceService";
-import { EMPTY_SNAPSHOT, SnapshotStore } from "./presenceService";
+import { EMPTY_SNAPSHOT, isPublicId, SnapshotStore } from "./presenceService";
 
 /**
  * The live service: fuse-ui's polling friends client over the browser's Google sign-in, both injected so a test
  * drives them. The desktop reports no name or avatar (it has none; the service keeps what a game last said) and
- * never a room: a game window reports its own room from inside its iframe, and while one is open the desktop
- * pauses (`setSuspended`) so the two do not overwrite each other's claim. See docs/fuseos/friends-design.md.
+ * never a room: a game window reports its own room from inside its iframe. Passive polls keep the room claim
+ * intact while the buddy list remains live. Suspension is reserved for switching away to demo mode.
  */
 export type FriendsView = NonNullable<FriendsState["view"]>;
 
@@ -81,6 +81,21 @@ export function apiUrlFor(
  * away. The status line and last-seen time are kept when the service sends them; an older service leaves them
  * out and the list looks as it did.
  */
+/** The view is JSON from the network: a last-message marker counts only when it is the shape the service sends. */
+function validLastMessage(
+  value: unknown,
+): value is { from: string; at: number } {
+  if (typeof value !== "object" || value === null) return false;
+  const { from, at } = value as Record<string, unknown>;
+  return (
+    typeof from === "string" &&
+    isPublicId(from) &&
+    typeof at === "number" &&
+    Number.isSafeInteger(at) &&
+    at >= 0
+  );
+}
+
 export function buddyFrom(friend: FriendsView["friends"][number]): Buddy {
   const status = friend.online
     ? friend.room
@@ -102,6 +117,14 @@ export function buddyFrom(friend: FriendsView["friends"][number]): Buddy {
       : {}),
     ...(!friend.online && typeof friend.lastSeen === "number"
       ? { lastSeen: friend.lastSeen }
+      : {}),
+    ...(validLastMessage(friend.lastMessage)
+      ? {
+          lastMessage: {
+            from: friend.lastMessage.from,
+            at: friend.lastMessage.at,
+          },
+        }
       : {}),
   };
 }
@@ -158,6 +181,9 @@ export function createRealPresenceService(
   // The watch reports "nobody" at once, before a remembered sign-in has been restored; that is not a sign-out.
   let restoring = store.get().account.kind === "restoring";
   const stopAuth = auth.watch((account) => {
+    // Auth notifications can switch directly from account A to B (even with the same display name). End the old
+    // polling generation and clear its private lists before starting the new account's request.
+    if (signedIn && account) client.setSignedIn(false);
     signedIn = account !== undefined;
     if (account) restoring = false;
     const status: AccountStatus = account
@@ -165,11 +191,7 @@ export function createRealPresenceService(
       : restoring
         ? { kind: "restoring" }
         : { kind: "signed-out" };
-    store.set(
-      account
-        ? { ...store.get(), account: status }
-        : { ...EMPTY_SNAPSHOT, account: status, suspended },
-    );
+    store.set({ ...EMPTY_SNAPSHOT, account: status, suspended });
     apply();
   });
   // A remembered sign-in that the SDK could not restore is a signed-out browser, not one forever restoring.

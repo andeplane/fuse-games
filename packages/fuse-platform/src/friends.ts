@@ -7,6 +7,7 @@ import {
   validCode,
   validToken,
   type RoomStore,
+  type RoomRecord,
 } from "fuse-network-be";
 import { LEGACY_GAME_ID, type Platform } from "./game.js";
 import type { Account } from "./settlement.js";
@@ -31,6 +32,14 @@ import {
 import type { HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
 import { plain } from "./result.js";
+import {
+  MAX_CONVERSATION_MESSAGES,
+  MAX_MESSAGE_LENGTH,
+  MESSAGE_HISTORY_MS,
+  validMessageId,
+  type FriendMessage,
+  type FriendConversation,
+} from "./messages-api.js";
 
 /**
  * Friends, presence and invites for every game's accounts. Gameplay is peer-to-peer and the service pushes nothing,
@@ -63,6 +72,9 @@ export interface PresenceRecord {
     memberId: string;
     gameId: string;
     incarnation: string;
+    /** Claim was authenticated with the seat token. */
+    proven?: true;
+    session?: string;
   };
 }
 /**
@@ -106,6 +118,11 @@ export function storedPresence(value: unknown): PresenceRecord | undefined {
             memberId: room.memberId as string,
             gameId: room.gameId as string,
             incarnation: room.incarnation as string,
+            ...(room.proven === true ? { proven: true as const } : {}),
+            ...(typeof room.session === "string" &&
+            /^[a-f0-9]{32}$/.test(room.session)
+              ? { session: room.session }
+              : {}),
           },
         }),
   };
@@ -117,6 +134,8 @@ export interface FriendEdge {
   requestedBy: string;
   status: "pending" | "accepted";
   at: number;
+  /** The newest chat message's sender (an account id, never sent to clients) and time. */
+  lastMessage?: { from: string; at: number };
 }
 export interface InviteRecord {
   id: string;
@@ -128,7 +147,37 @@ export interface InviteRecord {
   expiresAt: number;
 }
 
+/** The friendship's newest chat message as a client sees it: sender by public id, inside the history window. */
+function lastMessageOf(
+  edge: FriendEdge,
+  uid: string,
+  other: string,
+  now: number,
+): Pick<Friend, "lastMessage"> {
+  const last = edge.lastMessage;
+  if (
+    !last ||
+    last.at <= now - MESSAGE_HISTORY_MS ||
+    (last.from !== uid && last.from !== other)
+  )
+    return {};
+  return { lastMessage: { from: publicIdOf(last.from), at: last.at } };
+}
+
 export interface FriendsDatabase {
+  /** The friendship and its bounded transcript are read atomically, so unfriending immediately revokes chat. */
+  transactConversation<T>(
+    id: string,
+    operation: (
+      edge: FriendEdge | undefined,
+      messages: FriendMessage[],
+    ) => {
+      messages?: FriendMessage[];
+      /** The friendship as it should be stored after the operation, when it changed. */
+      edge?: FriendEdge;
+      result: T;
+    },
+  ): Promise<T>;
   presence(uid: string): Promise<PresenceRecord | undefined>;
   presences(uids: readonly string[]): Promise<PresenceRecord[]>;
   setPresence(record: PresenceRecord): Promise<void>;
@@ -163,8 +212,7 @@ const SYNCS_PER_HOUR = 400,
   ADDS_PER_HOUR = 30,
   INVITES_PER_HOUR = 60,
   EDGE_LIMIT = 2 * MAX_FRIENDS + 50,
-  INVITE_LIMIT = 20,
-  ROOM_PRESENCE_LIMIT = 12;
+  INVITE_LIMIT = 20;
 
 export class FriendsStore {
   constructor(
@@ -231,12 +279,16 @@ export class FriendsStore {
       if (
         !plain(room) ||
         !Object.keys(room).every((key) =>
-          ["code", "memberId", "gameId"].includes(key),
+          ["code", "memberId", "gameId", "token", "session"].includes(key),
         ) ||
         typeof room.code !== "string" ||
         !validCode(room.code) ||
         typeof room.memberId !== "string" ||
         !/^[a-f0-9]{24}$/.test(room.memberId) ||
+        typeof room.token !== "string" ||
+        !validToken(room.token) ||
+        typeof room.session !== "string" ||
+        !/^[a-f0-9]{32}$/.test(room.session) ||
         (room.gameId !== undefined &&
           (typeof room.gameId !== "string" ||
             !this.platform.gameIds.includes(room.gameId)))
@@ -259,7 +311,10 @@ export class FriendsStore {
       now = this.now();
     const current = await this.database.presence(uid);
     const passive = claim.passive === true,
-      stored = current?.room,
+      stored =
+        current?.room?.proven && current.room.session
+          ? current.room
+          : undefined,
       due = !current || now - current.at >= PRESENCE_REFRESH_MS;
     // A passive poll (the desktop around an embedded game) makes no claim of its own: it carries the stored one
     // forward, so the two pages of one account do not overwrite each other's room every poll.
@@ -268,41 +323,82 @@ export class FriendsStore {
           code: stored.code,
           memberId: stored.memberId,
           gameId: stored.gameId,
+          session: stored.session!,
         }
       : claim.room
         ? {
             code: claim.room.code,
             memberId: claim.room.memberId,
             gameId: claim.room.gameId ?? LEGACY_GAME_ID,
+            session: claim.room.session,
           }
         : undefined;
-    const sameClaim =
-      stored !== undefined &&
-      claimed !== undefined &&
-      stored.code === claimed.code &&
-      stored.memberId === claimed.memberId &&
-      stored.gameId === claimed.gameId;
-    // A room claim is proven when it changes and again whenever the record is due a rewrite anyway: the seat must be a
-    // live member of the room the code names now, which only a device in that room can know, and the claim is bound
-    // to that room's incarnation, so a reissued code is another room. Otherwise any signed-in account could name a
-    // room code and read who is in it. A carried-forward claim is re-proven on the same schedule, so a passive poll
-    // cannot keep a dead room alive longer than an active one would; it is dropped, not refused, when the proof
-    // fails, because the passive page is not the one that can act on a refusal.
+    if (
+      !passive &&
+      claim.room &&
+      peerId(claim.room.token) !== claim.room.memberId
+    )
+      throw new RoomError(403, "Join the room first");
+    // An active page proves possession on every request. Passive pages can only carry a previously
+    // proven claim, and periodically recheck the live seat and room incarnation.
     let room: PresenceRecord["room"];
-    if (claimed) {
-      if (!sameClaim || due) {
-        const record = await this.rooms
-            .get(claimed.code)
-            .catch(() => undefined),
-          seat = record?.members[claimed.memberId],
-          live =
-            record !== undefined &&
-            seat !== undefined &&
-            seat.expiresAt > now &&
-            (!passive || record.incarnation === stored!.incarnation);
-        if (live) room = { ...claimed, incarnation: record.incarnation };
-        else if (!passive) throw new RoomError(403, "Join the room first");
-      } else room = { ...claimed, incarnation: stored!.incarnation };
+    let liveRoom: RoomRecord | undefined;
+    if (claimed && !passive) {
+      liveRoom = await this.rooms.database.transact(
+        claimed.code,
+        (currentRoom) => {
+          const seat = currentRoom?.members[claimed.memberId];
+          if (
+            !currentRoom ||
+            currentRoom.expiresAt <= now ||
+            !seat ||
+            seat.expiresAt <= now ||
+            roomGameId(currentRoom) !== claimed.gameId
+          )
+            throw new RoomError(403, "Join the room first");
+          const owner = publicIdOf(uid),
+            previous = seat.presence;
+          if (
+            previous?.retired.includes(claimed.session) ||
+            (previous?.session === claimed.session && previous.owner !== owner)
+          )
+            throw new RoomError(
+              409,
+              "Presence session replaced; sign in again",
+            );
+          if (!previous || previous.session !== claimed.session) {
+            const retired = previous
+              ? [...previous.retired, previous.session]
+              : [];
+            if (retired.length > 128)
+              throw new RoomError(
+                409,
+                "Too many presence sessions; rejoin the room",
+              );
+            seat.presence = { owner, session: claimed.session, retired };
+            currentRoom.revision++;
+            return { room: currentRoom, result: currentRoom };
+          }
+          return { result: currentRoom };
+        },
+      );
+      room = { ...claimed, incarnation: liveRoom.incarnation, proven: true };
+    } else if (claimed && passive) {
+      try {
+        const record = await this.rooms.get(claimed.code);
+        const seat = record.members[claimed.memberId];
+        if (
+          record.incarnation === stored!.incarnation &&
+          roomGameId(record) === claimed.gameId &&
+          seat &&
+          seat.expiresAt > now &&
+          seat.presence?.owner === publicIdOf(uid) &&
+          seat.presence.session === claimed.session
+        )
+          room = { ...claimed, incarnation: record.incarnation, proven: true };
+      } catch (error) {
+        if (!(error instanceof RoomError && error.status === 404)) throw error;
+      }
     }
     // A poll that names nothing keeps the name, head and status the player last showed up with.
     const name = claim.name ?? current?.name,
@@ -344,16 +440,27 @@ export class FriendsStore {
       await this.database.setPresence(next);
     // The room's signed-in members are for the page in the room; a passive poll does not pay for that query.
     const here = passive ? undefined : room;
-    // Three lists, then two batches: one of presence records and one of accounts for everyone they name, so the
-    // poll's cost is a handful of requests however many friends there are.
+    // Resolve only current live seat owners. Room capacity bounds these lookups; stale presence rows
+    // from previous sessions or room incarnations cannot consume a limited query page.
+    const owners =
+      here && liveRoom
+        ? [
+            ...new Set(
+              Object.values(liveRoom.members)
+                .filter((member) => member.expiresAt > now && member.presence)
+                .map((member) => member.presence!.owner),
+            ),
+          ]
+        : [];
+    const ownerUids = (
+      await Promise.all(owners.map((id) => this.database.resolve(id)))
+    ).filter((id): id is string => id !== undefined);
     const [edges, pending, seated] = await Promise.all([
       this.database.edges(uid, EDGE_LIMIT),
       this.database
         .invites(uid, INVITE_LIMIT)
         .then((invites) => invites.filter((i) => i.expiresAt > now)),
-      here
-        ? this.database.roomPresences(here.code, ROOM_PRESENCE_LIMIT)
-        : Promise.resolve([] as PresenceRecord[]),
+      this.database.presences(ownerUids),
     ]);
     const others = edges.map((edge) =>
       edge.uids[0] === uid ? edge.uids[1] : edge.uids[0],
@@ -394,14 +501,16 @@ export class FriendsStore {
                 online: true,
                 ...(p.away ? { away: true as const } : {}),
                 ...(p.status ? { status: p.status } : {}),
-                ...(p.room
+                ...(p.room?.proven
                   ? { room: { code: p.room.code, gameId: p.room.gameId } }
                   : {}),
+                ...lastMessageOf(edge, uid, other, now),
               }
             : {
                 ...card,
                 online: false,
                 ...(p ? { lastSeen: lastSeenOf(p.at) } : {}),
+                ...lastMessageOf(edge, uid, other, now),
               },
         );
         relations.set(other, "friend");
@@ -431,14 +540,38 @@ export class FriendsStore {
     invites.sort((a, b) => b.at - a.at);
     const roomPlayers: RoomPlayer[] = [];
     if (here) {
+      const seenPublic = new Set<string>();
+      const seatCounts = new Map<string, number>();
+      for (const p of seated) {
+        if (
+          online(p) &&
+          p.room?.proven &&
+          p.room.code === here.code &&
+          p.room.incarnation === here.incarnation &&
+          (liveRoom?.members[p.room.memberId]?.expiresAt ?? 0) > now &&
+          liveRoom?.members[p.room.memberId]?.presence?.owner === p.publicId &&
+          liveRoom?.members[p.room.memberId]?.presence?.session ===
+            p.room.session
+        )
+          seatCounts.set(
+            p.room.memberId,
+            (seatCounts.get(p.room.memberId) ?? 0) + 1,
+          );
+      }
       for (const p of seated) {
         if (
           !online(p) ||
-          !p.room ||
+          !p.room?.proven ||
+          seatCounts.get(p.room.memberId) !== 1 ||
+          liveRoom?.members[p.room.memberId]?.presence?.owner !== p.publicId ||
+          liveRoom?.members[p.room.memberId]?.presence?.session !==
+            p.room.session ||
+          seenPublic.has(p.publicId) ||
           p.room.code !== here.code ||
           p.room.incarnation !== here.incarnation
         )
           continue;
+        seenPublic.add(p.publicId);
         roomPlayers.push({
           memberId: p.room.memberId,
           publicId: p.publicId,
@@ -532,6 +665,83 @@ export class FriendsStore {
     }));
   }
 
+  /** Only the two accepted friends can read or send. A retry reuses its id and never duplicates a message. */
+  async conversation(
+    uid: string,
+    publicId: string,
+    body?: unknown,
+  ): Promise<FriendConversation> {
+    if (
+      body !== undefined &&
+      (!plain(body) ||
+        Object.keys(body).length !== 2 ||
+        !validMessageId(body.id) ||
+        typeof body.text !== "string" ||
+        body.text.length > MAX_MESSAGE_LENGTH ||
+        !body.text.trim() ||
+        /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(body.text))
+    )
+      throw new RoomError(
+        400,
+        "A message must contain 1 to 1000 plain-text characters",
+      );
+    await this.allow(
+      `messages-${body === undefined ? "read" : "send"}:${uid}`,
+      body === undefined ? 800 : 600,
+    );
+    const other = await this.resolve(publicId);
+    const now = this.now();
+    return this.database.transactConversation(
+      edgeId(uid, other),
+      (edge, stored) => {
+        if (
+          !edge ||
+          edge.status !== "accepted" ||
+          !edge.uids.includes(uid) ||
+          !edge.uids.includes(other)
+        )
+          throw new RoomError(403, "Only accepted friends can chat");
+        const messages = stored.filter(
+          (message) => message.at > now - MESSAGE_HISTORY_MS,
+        );
+        let sent = false;
+        if (body !== undefined) {
+          // Validated above, before any storage operation.
+          const input = body as { id: string; text: string };
+          const from = publicIdOf(uid);
+          const existing = messages.find(
+            (message) => message.from === from && message.id === input.id,
+          );
+          if (existing && existing.text !== input.text.trim())
+            throw new RoomError(
+              409,
+              "That message was already sent with different text",
+            );
+          if (!existing) {
+            messages.push({
+              id: input.id,
+              from,
+              text: input.text.trim(),
+              at: now,
+            });
+            sent = true;
+          }
+        }
+        const recent = messages.slice(-MAX_CONVERSATION_MESSAGES);
+        return {
+          ...(body !== undefined || recent.length !== stored.length
+            ? { messages: recent }
+            : {}),
+          // The buddy list's poll reads the friendship anyway: marking it here lets a closed chat pop up for free.
+          ...(sent
+            ? { edge: { ...edge, lastMessage: { from: uid, at: now } } }
+            : {}),
+          result: { messages: recent },
+        };
+      },
+    );
+  }
+
   /**
    * Invite friends to a room the caller is a live member of, proven by its room token as a result report is. Only
    * accepted friends are invited; anyone else in the list is skipped, not refused, so one stale name cannot block
@@ -596,6 +806,7 @@ export class FriendsStore {
 
 /** Single-process FriendsDatabase with the Firestore adapter's contract; everything is gone when the process exits. */
 export class MemoryFriendsDatabase implements FriendsDatabase {
+  private conversations = new Map<string, FriendMessage[]>();
   private presenceByUid = new Map<string, PresenceRecord>();
   private edgesById = new Map<string, FriendEdge>();
   private invitesById = new Map<string, InviteRecord>();
@@ -639,8 +850,35 @@ export class MemoryFriendsDatabase implements FriendsDatabase {
   ): Promise<T> {
     const work = this.chain.then(() => {
       const next = operation(structuredClone(this.edgesById.get(id)));
-      if (next.edge === null) this.edgesById.delete(id);
-      else if (next.edge) this.edgesById.set(id, structuredClone(next.edge));
+      if (next.edge === null) {
+        this.edgesById.delete(id);
+        this.conversations.delete(id);
+      } else if (next.edge) this.edgesById.set(id, structuredClone(next.edge));
+      return next.result;
+    });
+    this.chain = work.catch(() => undefined);
+    return work;
+  }
+  transactConversation<T>(
+    id: string,
+    operation: (
+      edge: FriendEdge | undefined,
+      messages: FriendMessage[],
+    ) => {
+      messages?: FriendMessage[];
+      edge?: FriendEdge;
+      result: T;
+    },
+  ): Promise<T> {
+    const work = this.chain.then(() => {
+      const next = operation(
+        structuredClone(this.edgesById.get(id)),
+        structuredClone(this.conversations.get(id) ?? []),
+      );
+      if (next.messages)
+        this.conversations.set(id, structuredClone(next.messages));
+      if (next.edge && this.edgesById.has(id))
+        this.edgesById.set(id, structuredClone(next.edge));
       return next.result;
     });
     this.chain = work.catch(() => undefined);

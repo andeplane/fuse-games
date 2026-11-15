@@ -1,0 +1,4 @@
+{
+  "action": { "type": "Delete" },
+  "condition": { "age": 2, "matchesPrefix": ["anonymous-screenshots/"] }
+}
