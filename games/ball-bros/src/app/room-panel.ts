@@ -84,6 +84,7 @@ export function roomPanel(
     onOpenScreen: () =>
       document.defaultView?.open(options.displayLink, "_blank", "noopener"),
   });
+  const tvBox = sharedTv.element.querySelector("input");
   const note = el("p", "Connecting to the room…", "room-note");
   const map = el("select", "", "map-select");
   for (const mapId of MAP_IDS) {
@@ -96,7 +97,11 @@ export function roomPanel(
   map.onchange = () =>
     options.command({
       type: "settings",
-      settings: { display: lastDisplay, mapId: map.value as MapId },
+      // The box holds a Shared TV choice the room has not answered yet; the last frame would send the old one back.
+      settings: {
+        display: tvBox?.checked ?? lastDisplay,
+        mapId: map.value as MapId,
+      },
     });
   element.append(invite.element, name.form, roster.element);
   root.append(element);
@@ -131,6 +136,11 @@ export function roomPanel(
   return {
     element,
     render(model: ReturnType<typeof roomModel>) {
+      // Every frame, not only a changed one: a choice the room never answers has to fall back by itself.
+      sharedTv.update(
+        model.display,
+        model.manage && model.lobby && !options.display,
+      );
       const next = JSON.stringify(model);
       if (next === key) return;
       key = next;
@@ -145,10 +155,6 @@ export function roomPanel(
       add.hidden = !model.canAdd;
       start.hidden = !model.manage;
       start.disabled = !model.canStart;
-      sharedTv.update(
-        model.display,
-        model.manage && model.lobby && !options.display,
-      );
       note.textContent = model.note;
       roster.update(
         model.players.map((p) => ({ ...p, color: colorCss(p.color) })),

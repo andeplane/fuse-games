@@ -14,6 +14,7 @@ import {
   NAME_KEY,
   chosenMap,
   rememberRoom,
+  rememberShared,
   roomFailure,
   safeStore,
   session,
@@ -159,7 +160,8 @@ test("room identities are game-scoped, reloadable and never included in invites"
     session("?room=<script>", memory, () => "guest").kind,
     "invalid",
   );
-  rememberRoom(memory, "AB42", "host-secret", true);
+  rememberRoom(memory, "AB42", "host-secret");
+  rememberShared(memory, "AB42", true);
   assert.deepEqual(
     session("?room=ab42", memory, () => "unused"),
     {
@@ -485,6 +487,14 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
     type: "settings",
     settings: { display: true, mapId: "ricochet" },
   });
+  // The room has not answered yet: an arena chosen in between keeps the tick instead of sending the old value back.
+  map.querySelector<HTMLOptionElement>('option[value="classic"]')!.selected =
+    true;
+  map.dispatchEvent(new s.window.Event("change"));
+  assert.deepEqual(s.commands.at(-1), {
+    type: "settings",
+    settings: { display: true, mapId: "classic" },
+  });
   button(s.root, "START MATCH").click();
   assert.deepEqual(s.commands.at(-1), { type: "action", action: "start" });
   const lobby = frame();
@@ -670,6 +680,23 @@ test("name entry, remembered lobby rejoin, renderer failures and solo restart re
     avatarId: "fox",
   });
   s.destroy();
+  // A room whose arena stops keeps its failure in view: the next lobby frame must not hide both lines.
+  const stalled = screen(true, false, false, "paint");
+  await flush();
+  stalled.update(frame());
+  stalled.draw();
+  stalled.update(frame());
+  const line = stalled.root.querySelector<HTMLElement>(".status")!,
+    room = stalled.root.querySelector<HTMLElement>(".room-panel")!;
+  assert.equal(line.hidden, false);
+  assert.match(line.textContent!, /rendering stopped/);
+  assert.equal(room.hidden, true);
+  stalled.repair();
+  button(stalled.root, "RETRY ARENA").click();
+  await flush();
+  stalled.update(frame());
+  assert.equal(room.hidden, false, "the retry brings the room back");
+  stalled.destroy();
   for (const fault of ["ready", "paint"]) {
     const bad = screen(false, false, false, fault);
     await flush();

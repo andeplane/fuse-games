@@ -203,7 +203,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const controlsRow = el("div", "", "touch-controls");
   root.append(top, heading, scoreboard, layout, controlsRow);
   let renderer = options.renderer(canvasHost),
-    graphicsFailed = false;
+    graphicsFailed = false,
+    // A failed start or a stopped arena takes the room away for the retry; it stays away until the retry runs.
+    retrying = false;
   let runtime: Client | undefined,
     latest: BallView | undefined,
     frame = 0,
@@ -381,8 +383,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         "managerId" in v && typeof v.managerId === "string" ? v.managerId : "",
       );
       panel!.render(m);
+      panel!.element.hidden = !m.lobby || retrying;
       heading.hidden = m.lobby;
-      status.hidden = m.lobby;
+      status.hidden = m.lobby && !retrying;
       const remembered = options.store.getItem(NAME_KEY);
       if (m.askName && remembered && !joined && !runtime?.canManage) {
         joined = true;
@@ -456,6 +459,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       return;
     }
     start.disabled = true;
+    retrying = false;
     try {
       if (graphicsFailed) {
         renderer.destroy();
@@ -529,6 +533,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
+      retrying = true;
       if (panel) panel.element.hidden = true;
       status.hidden = false;
       start.hidden = false;
@@ -628,6 +633,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
+      retrying = true;
       if (panel) panel.element.hidden = true;
       start.hidden = false;
       start.textContent = "RETRY ARENA";

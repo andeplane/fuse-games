@@ -45,14 +45,8 @@ export function session(
     shared: store.getItem(`ball-bros-shared-${code}`) === "1",
   };
 }
-export function rememberRoom(
-  store: Store,
-  code: string,
-  token: string,
-  shared: boolean,
-): void {
+export function rememberRoom(store: Store, code: string, token: string): void {
   store.setItem(hostKey(code), token);
-  store.setItem(`ball-bros-shared-${code}`, shared ? "1" : "0");
 }
 /** The room's Shared TV choice as this device last saw the room take it: what a reload starts the room with. */
 export function rememberShared(

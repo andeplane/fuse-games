@@ -48,7 +48,7 @@ export function landing(
         const room = await options.create();
         if (options.active && !options.active()) return;
         // Shared TV is the room's choice, made in the room.
-        rememberRoom(options.store, room.code, room.token, false);
+        rememberRoom(options.store, room.code, room.token);
         options.navigate(`?room=${room.code}`);
       } catch (error) {
         throw new Error(
