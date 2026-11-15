@@ -9,6 +9,66 @@ import {
 } from "fuse-ui";
 import { page } from "./dom-fixture.js";
 
+test("configuration rooms keep seats below invites and authored round choices on the right; compact stays intact", () => {
+  for (const compact of [false, true]) {
+    const { document } = page();
+    const root = document.createElement("section");
+    const invite = document.createElement("div");
+    const choices = document.createElement("button");
+    choices.textContent = "Choose round";
+    const layout = createRoomLayout({
+      element: root,
+      invite,
+      roster: createRoster({ document }),
+      capacity: 3,
+      compact,
+      layout: "configuration",
+      configuration: [choices],
+    });
+    layout.update(1);
+    assert.equal(root.classList.contains("fui-room-configuration"), !compact);
+    const slots = root.querySelector(".fui-room-open-slots")!;
+    assert.equal(slots.closest(".fui-room-invitation") !== null, !compact);
+    assert.ok(choices.closest(".fui-room-players"));
+    assert.ok(choices.closest(".fui-room-configuration-content"));
+    assert.equal(root.querySelectorAll(".fui-room-open-slot").length, 3);
+    layout.dispose();
+  }
+});
+
+test("markup configuration mode has the same invitation, seats and round-choice grouping", () => {
+  const { document } = page();
+  const root = document.createElement("div");
+  for (const layout of ["players", "configuration"] as const) {
+    root.innerHTML = roomLayoutMarkup({
+      layout,
+      invite: '<div id="invite">QR</div>',
+      players: '<ul class="fui-roster"></ul>',
+      join: "",
+      settings: "",
+      configuration: '<button id="round-choice">Choose round</button>',
+      actions: "",
+      occupied: 0,
+      capacity: 2,
+      canJoin: true,
+    });
+    const slots = root.querySelector(".fui-room-open-slots")!;
+    assert.equal(
+      slots.closest(".fui-room-invitation") !== null,
+      layout === "configuration",
+    );
+    assert.equal(root.querySelectorAll(".fui-room-open-slot").length, 2);
+    assert.ok(
+      root
+        .querySelector("#round-choice")!
+        .closest(".fui-room-configuration-content"),
+    );
+    assert.ok(
+      root.querySelector("#round-choice")!.closest(".fui-room-players"),
+    );
+  }
+});
+
 test("Back is the room's first control, top left, and can reuse the game's leave handler", () => {
   const { document } = page(),
     root = document.createElement("section"),

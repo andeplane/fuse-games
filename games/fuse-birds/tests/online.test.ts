@@ -21,6 +21,7 @@ import {
   type BirdsEntry,
   type BirdsRoom,
 } from "../src/online/game.js";
+import { birdsResults } from "../src/online/result.js";
 function tick(
   room: BirdsRoom,
   entries: BirdsEntry[] = [],
@@ -199,10 +200,26 @@ test("a rematch resets inventory and rotates the opening player", () => {
     );
   }
   assert.equal(room.stage, "over");
+  const receipts = birdsResults(birdsGame.view(room));
+  assert.equal(receipts.length, 2);
+  assert.deepEqual(receipts[0]!.result.finishers, ["a", "b"]);
+  const restored = decodeRoom(encodeRoom(room), room.tick);
+  assert.ok(restored);
+  assert.deepEqual(birdsResults(birdsGame.view(restored)), receipts);
+  const seats = room.seats;
+  room.seats = new Map();
+  assert.deepEqual(birdsResults(birdsGame.view(room)), receipts);
+  room.seats = seats;
   tick(room, [[5000, room.tick + 1, ACTION, "rematch", "match-2"]]);
   assert.equal(room.stage, "running");
   assert.equal(room.match!.round, 2);
   assert.equal(room.match!.active, 1);
   assert.ok(room.match!.players.every((p) => p.ammo === 3 && p.hp === 100));
   assert.ok(decodeRoom(encodeRoom(room), room.tick));
+  assert.deepEqual(
+    birdsGame.view(room).history,
+    receipts,
+    "rematch keeps the completed battle until a later confirmed frame reads it",
+  );
+  assert.deepEqual(decodeRoom(encodeRoom(room), room.tick)!.history, receipts);
 });

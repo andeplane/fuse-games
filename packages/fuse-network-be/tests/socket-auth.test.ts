@@ -270,17 +270,21 @@ test("a token in the query string does not authenticate a socket", async () => {
     // A page built before the change: token in the URL, then the first heartbeat, never an auth frame.
     const old = f.open(code, `?token=${token}`);
     await old.opened;
+    const oldCharge = f.database.nextCharge();
     old.socket.send(JSON.stringify({ type: "time", id: 1, sentAt: 5 }));
     assert.deepEqual(await old.closed, {
       code: CLOSE_UNAUTHENTICATED,
       reason: "Authentication required",
     });
+    await oldCharge;
     assert.deepEqual(old.frames, []);
     // The same page staying silent instead meets the deadline.
     const silent = f.open(code, `?token=${token}`);
     await silent.opened;
+    const silentCharge = f.database.nextCharge();
     f.deadlines().at(-1)!.callback();
     assert.equal((await silent.closed).code, CLOSE_UNAUTHENTICATED);
+    await silentCharge;
     assert.equal(f.database.charged, 2);
     assert.equal(f.gateway.connections, 0);
   } finally {
@@ -306,8 +310,10 @@ test("garbage, oversized, binary and wrong first frames are refused and charged 
       const before = f.database.charged,
         peer = f.open(code);
       await peer.opened;
+      const charged = f.database.nextCharge();
       peer.socket.send(first);
       assert.equal((await peer.closed).code, CLOSE_UNAUTHENTICATED, name);
+      await charged;
       assert.deepEqual(peer.frames, [], name);
       assert.equal(f.database.charged, before + 1, name);
       assert.equal(f.deadlines().at(-1)!.cancelled, true, name);
@@ -325,8 +331,10 @@ test("garbage, oversized, binary and wrong first frames are refused and charged 
     // A well-formed token the room has never seen is an ordinary guest; one for a missing room is charged as before.
     const missing = f.open("ZZ99");
     await missing.opened;
+    const missingCharge = f.database.nextCharge();
     missing.socket.send(authFrame("a".repeat(64)));
     assert.equal((await missing.closed).code, 4004);
+    await missingCharge;
     assert.equal(f.database.charged, attempts.length + 2);
   } finally {
     await f.close();
@@ -339,11 +347,13 @@ test("frames before authentication are never processed and close the socket", as
     const { code, token } = await f.create();
     const peer = f.open(code);
     await peer.opened;
+    const charged = f.database.nextCharge();
     // A valid auth frame arriving second does not rescue the socket.
     peer.socket.send(JSON.stringify({ type: "time", id: 1, sentAt: 5 }));
     peer.socket.send(authFrame(token));
     peer.socket.send(JSON.stringify({ type: "time", id: 2, sentAt: 6 }));
     assert.equal((await peer.closed).code, CLOSE_UNAUTHENTICATED);
+    await charged;
     assert.deepEqual(peer.frames, [], "no welcome and no time reply");
     assert.equal(f.gateway.connections, 0);
     assert.equal(f.database.charged, 1);
@@ -458,8 +468,10 @@ test("a full room is not an admission failure: its own close code, no charge, ho
     // A wrong code is still a guess, and still charged.
     const missing = f.open("ZZ99");
     await missing.opened;
+    const charged = f.database.nextCharge();
     missing.socket.send(authFrame("c".repeat(64)));
     assert.equal((await missing.closed).code, 4004);
+    await charged;
     assert.equal(f.database.charged, 1);
   } finally {
     await f.close();

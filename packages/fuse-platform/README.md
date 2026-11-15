@@ -4,6 +4,21 @@ The backend every game shares: accounts, match history and its settlement, Elo, 
 and one Firestore database serve every game; everything a game stores carries its `gameId`. A game supplies a
 `GameRegistration` (its stats, totals and rivalries) and the platform does the rest.
 
+Shared gameplay activity uses `GET /api/activity`: filter by `gameId`, `scope=mine`
+(verified bearer identity), `player` (public ID), `mode=solo|multiplayer|unknown`,
+and `kind=match|round`. Its `before=timestamp:eventId` cursor preserves tied times.
+`GET /api/activity/:id` reads details and `/api/activity/groups/:id` links a match
+and its rounds. The bounded projection in `${prefix}-telemetry-activity` commits
+atomically with accepted history, including late account links. It never exposes
+room capabilities, raw seat IDs or account UIDs. Existing career feeds retain their
+whole-match meaning. See [gameplay activity](../../docs/design/gameplay-activity.md).
+
+Games may opt into `historyOnlyRegistration` for strict base results without Elo;
+otherwise they keep their existing game-specific registration and rating rules.
+Browser adapters use `fuse-ui/results-history` after confirmation, while the shared
+account dialog supplies global, personal and player views. Anonymous analytics is
+separate from gameplay history and keeps its opt-out contract.
+
 ```ts
 import { createDevRoomService } from "fuse-network-be";
 import {
@@ -42,7 +57,7 @@ bots, what a confirmed match adds to an account (`credit`, `addTotals`, `parseTo
 | Route (`/api/games/:gameId` prefix, or none for `fuse-riders`) |                                                   |
 | -------------------------------------------------------------- | ------------------------------------------------- |
 | `POST /rooms/:code/results`, `/rooms/:code/round-results`      | a player's report, room token as bearer           |
-| `POST /me/round-results`                                       | a signed-in solo round                            |
+| `POST /me/results`, `/me/round-results`                        | a signed-in solo match or round                   |
 | `GET /leaderboard`                                             | the game's top 50                                 |
 | `GET /me`, `PUT /me`                                           | the account with this game's rating; the username |
 | `GET /me/matches?before=`                                      | the account's confirmed matches in this game      |

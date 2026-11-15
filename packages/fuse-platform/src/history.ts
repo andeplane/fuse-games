@@ -4,6 +4,7 @@ import {
   digest,
   peerId,
   roomGameId,
+  rateLimitAddress,
   validCode,
   validToken,
   type RoomStore,
@@ -102,6 +103,7 @@ export interface Reporter {
   code: string;
   rider: string;
   incarnation: string;
+  mode?: "solo" | "multiplayer";
 }
 /**
  * What anyone may see of a confirmed game: every player's stats, which seat was the caller's own, and the public id
@@ -148,6 +150,39 @@ const publicSeats = (record: MatchRecord): Record<string, string> =>
     ]),
   );
 
+/** Replace live seat identifiers throughout a match response, including game-specific nested stats. */
+function publicMatch<P extends PlayerResult>(record: MatchRecord<P>) {
+  const ids = new Map(
+    record.result.players.map(({ playerId }) => [
+      playerId,
+      /^[a-f0-9]{24}$/.test(playerId)
+        ? createHash("sha256")
+            .update(`match-seat:${record.id}:${playerId}`)
+            .digest("hex")
+            .slice(0, 24)
+        : playerId,
+    ]),
+  );
+  const remap = (value: unknown): unknown => {
+    if (typeof value === "string") return ids.get(value) ?? value;
+    if (Array.isArray(value)) return value.map(remap);
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          ids.get(key) ?? key,
+          remap(item),
+        ]),
+      );
+    return value;
+  };
+  return {
+    id: (seat: string) => ids.get(seat) ?? seat,
+    avatars: remap(record.avatars) as Record<string, string>,
+    accounts: remap(publicSeats(record)) as Record<string, string>,
+    result: remap(record.result) as MatchResult<P>,
+  };
+}
+
 /**
  * Solo play has no room, so no incarnation; the account stands in for one. The legacy game keeps the form it always
  * had, so its record ids and rating scopes do not move; any other game's solo rounds are kept apart by its id.
@@ -164,6 +199,13 @@ export class HistoryStore {
     private rooms: RoomStore,
     private now: () => number,
   ) {}
+  async allowActivity(address: string): Promise<boolean> {
+    return this.rooms.database.allowance(
+      digest(`activity:${rateLimitAddress(address)}`),
+      this.now(),
+      READS_PER_HOUR,
+    );
+  }
   /**
    * One game's history, by id or by the registration itself (which types the view). An unregistered game is refused
    * with 404.
@@ -262,6 +304,7 @@ export class GameHistory<
       code,
       rider,
       incarnation: room.incarnation,
+      mode: "multiplayer",
     };
   }
 
@@ -289,6 +332,7 @@ export class GameHistory<
       code: "SO00",
       rider: SOLO_RATING_PLAYER_ID,
       incarnation: soloIncarnation(this.game.id, uid),
+      mode: "solo",
     };
   }
 
@@ -389,6 +433,13 @@ export class GameHistory<
         ? structuredClone(current)
         : {
             gameId: game.id,
+            ...(reporter.mode === undefined ? {} : { playMode: reporter.mode }),
+            groupScope: createHash("sha256")
+              .update(
+                JSON.stringify([game.id, reporter.incarnation, result.matchId]),
+              )
+              .digest("hex")
+              .slice(0, 40),
             version: 1,
             ratingScope: createHash("sha256")
               .update(
@@ -549,15 +600,16 @@ export class GameHistory<
             : Object.entries(record.uidByPlayer).find(
                 ([, account]) => account === uid,
               )?.[0];
+        const safe = publicMatch(record);
         return [
           {
             id: record.id,
             // When the game ended, not when it became public: `feedAt` orders the feed, `endedAt` dates the row.
             endedAt: record.endedAt ?? record.createdAt,
-            ...(you ? { you } : {}),
-            avatars: record.avatars,
-            accounts: publicSeats(record),
-            result: record.result as MatchResult<P>,
+            ...(you ? { you: safe.id(you) } : {}),
+            avatars: safe.avatars,
+            accounts: safe.accounts,
+            result: safe.result as MatchResult<P>,
           },
         ];
       }),
@@ -607,6 +659,7 @@ export class GameHistory<
         const you = Object.entries(record.uidByPlayer).find(
           ([, account]) => account === uid,
         )?.[0];
+        const safe = publicMatch(record);
         return {
           ...(you && record.ratings?.[you]
             ? { rating: record.ratings[you] }
@@ -614,11 +667,11 @@ export class GameHistory<
           id: record.id,
           endedAt: record.endedAt ?? record.createdAt,
           roomCode: record.roomCode,
-          ...(you ? { you } : {}),
+          ...(you ? { you: safe.id(you) } : {}),
           attestations: record.attesters.length,
-          avatars: record.avatars,
-          accounts: publicSeats(record),
-          result: record.result as MatchResult<P>,
+          avatars: safe.avatars,
+          accounts: safe.accounts,
+          result: safe.result as MatchResult<P>,
         };
       }),
     };

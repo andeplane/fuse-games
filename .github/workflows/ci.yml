@@ -198,7 +198,10 @@ jobs:
     needs: [checks, unit]
     if: inputs.release || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Instrumented full replays need more headroom than ordinary unit tests:
+    # one release shard took 18m30 and another was still running at the old 20m cap.
+    # This budget applies only to release/full-ci coverage, not the normal PR gate.
+    timeout-minutes: 35
     strategy:
       # Every share reports; `coverage` below needs all of them.
       fail-fast: false

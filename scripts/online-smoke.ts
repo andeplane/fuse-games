@@ -82,6 +82,9 @@ const joinAs = async (page: Page, name: string, url: string) => {
     .filter({ hasText: name })
     .first()
     .waitFor();
+  await page
+    .locator(".room-ready-button:not([hidden])")
+    .waitFor({ state: "attached" });
 };
 // A member's own name: these lists also carry the HOST badge and the status lines, and `getByText` is not case
 // sensitive, so "Host" would match the badge too. The watching list is nested in `.fui-room-players`, so this matches a
@@ -171,7 +174,7 @@ try {
     target.searchParams.set("renderer", "phaser-canvas");
   target.searchParams.set("benchmark", "1");
   await host.goto(target.href);
-  await takeHostSeat(host, "Host");
+  await takeHostSeat(host, "Host", { autoSeat: true });
   const url = host.url().replace(/&benchmark=1/, "");
   await rosterHas(host, "Host");
   assert.equal(
@@ -282,6 +285,18 @@ try {
     riders.push(page);
   }
   console.log(`${riderCount} riders joined`);
+  // Confirm the complete membership on every voter before submitting votes. A host-only roster check does not
+  // establish that the last phone has applied the same lobby membership.
+  for (const page of [host, guest, ...riders])
+    for (const name of [
+      "Host",
+      "Guest",
+      ...riders.map((_, index) => `Rider ${index + 2}`),
+    ])
+      await page
+        .locator(".fui-room-players .fui-slot-occupant")
+        .getByText(name, { exact: true })
+        .waitFor({ state: "visible" });
   await readyRoom(host);
   await guest.waitForFunction(() =>
     document.querySelector(".online-notice")?.textContent?.includes("READY"),
@@ -569,13 +584,17 @@ try {
   const leaver = riders.pop();
   if (leaver) {
     const name = `Rider ${riders.length + 2}`;
+    for (const page of [host, guest, ...riders])
+      await page
+        .locator(".fui-room-players .fui-slot-occupant")
+        .getByText(name, { exact: true })
+        .waitFor({ state: "visible" });
     await leaver.context().close();
-    await host.waitForFunction(
-      (gone) =>
-        !document.querySelector(".online-roster")?.textContent?.includes(gone),
-      name,
-      { timeout: smokeTimeout(20000) },
-    );
+    for (const page of [host, guest, ...riders])
+      await page
+        .locator(".fui-room-players .fui-slot-occupant")
+        .getByText(name, { exact: true })
+        .waitFor({ state: "hidden", timeout: smokeTimeout(20000) });
   }
   await host
     .getByRole("button", { name: /^Add AI$/i, exact: true })
@@ -589,6 +608,16 @@ try {
     /^Remove AI \w+$/,
     "AI roster names omit difficulty",
   );
+  const botName = (await host
+    .getByRole("button", { name: /Remove AI/ })
+    .getAttribute("aria-label"))!.slice("Remove ".length);
+  // Membership changes invalidate readiness. Every voter must see the replacement before anyone votes, rather
+  // than racing a late departure/join entry which correctly clears an earlier vote.
+  for (const page of [host, guest, ...riders])
+    await page
+      .locator(".fui-room-players .fui-slot-occupant")
+      .getByText(botName, { exact: true })
+      .waitFor({ state: "visible" });
   await readyRoom(host);
   await waitPhase(host, ["countdown", "playing"]);
   await waitPhase(guest, ["countdown", "playing"]);

@@ -1,5 +1,6 @@
 import {
   FRIENDS_POLL_MS,
+  validPublicId,
   type FriendInvite,
   type FriendsSyncBody,
   type FriendsView,
@@ -15,7 +16,7 @@ export interface FriendsRoom {
   code: string;
   memberId: string;
   gameId: string;
-  /** The room token, to prove membership when inviting; never sent anywhere but `POST /api/rooms/:code/invites`. */
+  /** The room token, to prove membership on sync and when inviting; never persisted or sent to other players. */
   token: string;
 }
 export interface FriendsClientDependencies {
@@ -36,6 +37,8 @@ export interface FriendsClientDependencies {
     now: () => number;
     schedule: (callback: () => void, delayMs: number) => () => void;
   };
+  /** Creates a fresh presence session after sign-in. */
+  presenceSession?: () => string;
   pollMs?: number;
 }
 export interface FriendsState {
@@ -60,7 +63,10 @@ export interface FriendsClient {
   add(publicId: string): Promise<void>;
   remove(publicId: string): Promise<void>;
   /** Invite friends to the room this device is in; resolves with how many were invited. */
-  invite(publicIds: readonly string[]): Promise<number>;
+  invite(
+    publicIds: readonly string[],
+    expectedAccount?: string,
+  ): Promise<number>;
   dismissInvite(id: string): Promise<void>;
   /** Tell the service this device left its room, on a page that is going away. */
   leave(): void;
@@ -101,6 +107,7 @@ export function createFriendsClient(
   let signedIn = false,
     generation = 0,
     room: FriendsRoom | undefined,
+    presenceSession = "",
     disposed = false,
     cancelPoll: (() => void) | undefined,
     lastPoll = 0,
@@ -169,6 +176,8 @@ export function createFriendsClient(
             room: {
               code: room.code,
               memberId: room.memberId,
+              token: room.token,
+              session: presenceSession,
               gameId: room.gameId,
             },
           }
@@ -271,6 +280,9 @@ export function createFriendsClient(
       signedIn = next;
       generation++;
       if (signedIn) {
+        presenceSession =
+          dependencies.presenceSession?.() ??
+          crypto.randomUUID().replaceAll("-", "");
         seen.clear();
         refresh();
       } else {
@@ -290,7 +302,9 @@ export function createFriendsClient(
     refresh,
     add: (publicId) => act(() => call("POST", "/api/friends", { publicId })),
     remove: (publicId) => act(() => call("DELETE", `/api/friends/${publicId}`)),
-    async invite(publicIds) {
+    async invite(publicIds, expectedAccount) {
+      if (expectedAccount !== undefined && !validPublicId(expectedAccount))
+        throw new Error("Invalid expected account");
       const where = room;
       if (!where) throw new Error("Join a room first");
       let sent = 0;
@@ -304,6 +318,9 @@ export function createFriendsClient(
             headers: {
               Authorization: `Bearer ${where.token}`,
               "X-Fuse-Identity": identity,
+              ...(expectedAccount === undefined
+                ? {}
+                : { "X-Fuse-Account": expectedAccount }),
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ to: publicIds }),

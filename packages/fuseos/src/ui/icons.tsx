@@ -1,7 +1,6 @@
 import { CdMusic } from "@react95/icons/CdMusic";
 import { Computer } from "@react95/icons/Computer";
 import { ComputerFind } from "@react95/icons/ComputerFind";
-import { Conf100 } from "@react95/icons/Conf100";
 import { CurvesAndColors100 } from "@react95/icons/CurvesAndColors100";
 import { Desk100 } from "@react95/icons/Desk100";
 import { Dialmon200 } from "@react95/icons/Dialmon200";
@@ -54,6 +53,7 @@ import { WinampLogo } from "../assets/WinampLogo";
 import { DcppLogo } from "../dcpp/DcppLogo";
 import { DefragIcon } from "../defrag/DefragIcon";
 import { FusteamLogo } from "../launcher/FusteamLogo";
+import { MessengerIcon } from "../friends/MessengerIcon";
 import { TrophyIcon } from "../halloffame/TrophyIcon";
 import { MircLogo } from "../mirc/mircIcons";
 import { NapsterLogo } from "../napster/NapsterLogo";
@@ -192,7 +192,7 @@ const ICONS: Record<IconName, IconComponent> = {
   keys: fixed(Keys, "32x32_4"),
   sounds: Mmsys110,
   dialup: fixed(Dialmon200, "32x32_4"),
-  messenger: Conf100,
+  messenger: MessengerIcon,
   defrag: DefragIcon,
   desktop: Desktop,
   printers: FolderPrint,

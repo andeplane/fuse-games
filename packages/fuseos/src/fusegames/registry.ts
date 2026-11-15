@@ -15,6 +15,7 @@ export interface FuseGameRegistry {
   embedUrl(game: FuseGame): string;
   /** The gameplay capture a window shows while the game loads, when the game ships one. */
   screenshotUrl(game: FuseGame): string | undefined;
+  screenshotUrls(game: FuseGame): readonly string[];
   /** The game's desktop icon at both sizes, when the build found one; the caller falls back to the tile. */
   icon(game: FuseGame): ImageIcon | undefined;
 }
@@ -42,6 +43,10 @@ export function createFuseGameRegistry(
     embedUrl: (game) => `${base}${game.path}${query}`,
     screenshotUrl: (game) =>
       game.screenshot ? `${base}${game.screenshot}` : undefined,
+    screenshotUrls: (game) =>
+      (game.screenshots ?? (game.screenshot ? [game.screenshot] : [])).map(
+        (path) => `${base}${path}`,
+      ),
     icon: (game) =>
       game.icon
         ? {

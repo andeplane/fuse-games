@@ -43,6 +43,18 @@ button:focus-visible {
     radial-gradient(ellipse at 80% 85%, #a23268, transparent 65%),
     radial-gradient(ellipse at 10% 15%, #285bc4, transparent 75%), #202246;
 }
+.phone-display {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html[data-phone-home-edge="top"] .phone-shell {
+  flex-direction: column-reverse;
+}
 .phone-status {
   height: 48px;
   flex: none;
@@ -213,6 +225,29 @@ button:focus-visible {
 .phone-webamp #webamp {
   z-index: 1 !important;
 }
+.phone-webamp #playlist-window {
+  height: max(232px, calc(var(--phone-player-height) - 232px)) !important;
+}
+.phone-webamp [data-landscape] {
+  min-height: 0;
+}
+.phone-webamp[data-landscape="true"] #playlist-window {
+  height: max(232px, var(--phone-player-height)) !important;
+}
+.phone-webamp[data-landscape="true"]
+  div[style*="touch-action: none"]:has(#playlist-window) {
+  transform: translate(275px, 0px) !important;
+}
+.phone-webamp div[style*="touch-action: none"]:has(#main-window) {
+  transform: translate(0px, 0px) !important;
+}
+.phone-webamp div[style*="touch-action: none"]:has(#equalizer-window) {
+  transform: translate(0px, 116px) !important;
+}
+.phone-webamp[data-landscape="false"]
+  div[style*="touch-action: none"]:has(#playlist-window) {
+  transform: translate(0px, 232px) !important;
+}
 .phone-game {
   flex: 1;
   min-height: 0;
@@ -223,55 +258,290 @@ button:focus-visible {
 .phone-game[hidden] {
   display: none;
 }
-.phone-navigation .phone-return {
-  position: absolute;
-  left: 0;
-  font-size: 12px;
-  padding-inline: 8px;
-}
 .phone-navigation {
   flex: none;
-  min-height: 44px;
+  height: 64px;
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
 }
-.phone-navigation button {
-  min-height: 44px;
+.phone-home-button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid #718096;
+  border-radius: 50%;
+  background: #101b2b;
+}
+.phone-home-button span {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #c6d0df;
+  border-radius: 4px;
+}
+.phone-home-button:active {
+  background: #25344b;
+}
+@media (hover: hover) {
+  .phone-home-button:hover {
+    border-color: #c6d0df;
+  }
+}
+.phone-status[hidden] {
+  display: none;
+}
+.phone-status svg {
+  display: none;
+}
+.phone-homescreen {
+  display: flex;
+  flex-direction: column;
+  padding-inline: 0;
+}
+.phone-homescreen h1 {
+  margin-bottom: 24px;
+}
+.phone-pages {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  flex: 1;
+  min-height: 300px;
+}
+.phone-pages > .phone-apps {
+  flex: 0 0 100%;
+  padding: 8px 16px;
+  scroll-snap-align: start;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  row-gap: 22px;
+}
+.phone-page-dots {
+  display: flex;
+  justify-content: center;
+}
+.phone-page-dots button {
+  width: 44px;
+  height: 44px;
   border: 0;
   background: none;
-  padding: 10px 24px;
+  display: grid;
+  place-items: center;
 }
-.phone-navigation .phone-music-shortcut {
-  position: absolute;
-  right: 0;
-  font-size: 12px;
+.phone-page-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ffffff66;
 }
-.phone-home-bar {
+.phone-page-dots [aria-current] span {
+  background: white;
+}
+.phone-home-hint {
+  margin: 0;
+}
+.phone-about-icon {
+  background: #d9e8fc;
+  color: #264d8b;
+}
+.phone-about-icon svg {
+  width: 44px;
+  height: 44px;
+}
+.phone-games {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.phone-games h1 {
+  margin: 0;
+  padding: 16px;
+  font-size: 32px;
+  line-height: 1.2;
+}
+.phone-game-pages {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.phone-game-dots {
+  flex: none;
+  position: relative;
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-inline: 16px;
+}
+.phone-game-dots button {
+  flex: 0 0 24px;
+  padding: 0;
+}
+.phone-game-dots button:first-child {
+  margin-inline-start: auto;
+}
+.phone-game-dots button:last-child {
+  margin-inline-end: auto;
+}
+.phone-game-card {
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.phone-game-shot {
   display: block;
-  width: 72px;
-  height: 5px;
-  border-radius: 4px;
-  background: #f4f7ff;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #020715;
+  border-radius: 12px;
 }
-.phone-navigation > button[aria-label="Home"] {
-  padding-inline: 8px;
+.phone-shot-fallback {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+.phone-game-card h2 {
+  margin: 20px 0 4px;
+  font-size: 26px;
+}
+.phone-game-card p {
+  color: #b6cce3;
+  margin: 0 0 20px;
+}
+.phone-play,
+.phone-about button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: #dceaff;
+  color: #10213c;
+  font-weight: 700;
+  padding: 12px 20px;
+}
+.phone-play {
+  width: 100%;
+}
+.phone-music {
+  padding: 0;
+  background: #191927;
+}
+.phone-music[data-background-loading="true"] {
+  inset: 0;
+}
+.phone-webamp {
+  min-height: 464px;
+  width: 275px;
+  height: 464px;
+}
+.phone-webamp[data-landscape="true"] {
+  min-height: 0;
+  margin-inline: auto;
+}
+.phone-webamp #webamp {
+  left: 0 !important;
+  top: 0 !important;
+}
+.phone-music [role="status"] {
+  padding: 20px;
+}
+.phone-about {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+}
+.phone-about h1 {
+  font-size: 30px;
+  line-height: 1.2;
+}
+.phone-about h2 {
+  font-size: 20px;
+  margin-top: 28px;
+}
+.phone-about p {
+  color: #b6cce3;
+  max-width: 65ch;
+}
+@media (prefers-reduced-motion: reduce) {
+  .phone-pages,
+  .phone-game-pages {
+    scroll-behavior: auto;
+  }
+}
+@media (orientation: landscape) {
+  .phone-shell {
+    flex-direction: row;
+  }
+  html[data-phone-home-edge="left"] .phone-shell {
+    flex-direction: row-reverse;
+  }
+  .phone-navigation {
+    width: 64px;
+    height: auto;
+  }
+  .phone-status {
+    display: none;
+  }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  .phone-status {
-    height: 32px;
-  }
   .phone-homescreen {
     padding-top: 8px;
   }
   .phone-homescreen h1 {
-    margin-bottom: 16px;
+    margin: 0 0 8px;
+    font-size: 14px;
   }
   .phone-apps {
     grid-template-columns: repeat(8, minmax(0, 1fr));
   }
   .phone-home-hint {
-    margin-top: 20px;
+    display: none;
+  }
+  .phone-pages {
+    min-height: 200px;
+  }
+  .phone-pages > .phone-apps {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    row-gap: 10px;
+  }
+  .phone-app-icon {
+    width: 48px;
+    height: 48px;
+  }
+  .phone-folder {
+    padding: 4px;
+    gap: 2px;
+  }
+  .phone-folder .phone-app-icon {
+    width: 12px;
+    height: 12px;
+  }
+  .phone-game-shot {
+    width: 55%;
+    height: 100%;
+    float: left;
+    margin-right: 20px;
+    aspect-ratio: 16 / 9;
+  }
+  .phone-game-card h2 {
+    margin-top: 0;
+  }
+  .phone-play {
+    width: auto;
   }
 }

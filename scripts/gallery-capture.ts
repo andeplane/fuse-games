@@ -17,6 +17,16 @@ import type { Page } from "playwright";
 import { launchSelected } from "./lib/browser.js";
 import { startRoomService } from "./lib/server.js";
 
+// A carousel adds the game's real front door and controls alongside its gameplay cover.
+// Captures use agent-browser; run this mode against Vite to refresh from source without a build.
+if (process.argv.includes("--carousel")) {
+  const { captureCarousel } = await import("./lib/gallery-carousel.js");
+  await captureCarousel(
+    process.argv.slice(2).filter((arg) => arg !== "--carousel"),
+  );
+  process.exit(0);
+}
+
 /** The card's image: 1200 pixels wide, as `public/gallery/README.md` asks, at the catalog's 16:10. */
 const VIEWPORT = { width: 1200, height: 750 };
 const JPEG_QUALITY = 84;
@@ -142,6 +152,18 @@ const RECIPES: Record<string, Recipe> = {
     await hold(page, ["ArrowRight"], 250);
     await page.keyboard.press("ArrowUp", { delay: 200 });
     await page.waitForTimeout(700);
+  },
+  "fuse-surge": async (page) => {
+    await openPlayOptions(page, "single");
+    await page
+      .locator('.fs-room[data-phase="play"]')
+      .waitFor({ timeout: 30_000 });
+    // The picture is two canvases in a 3D look (the world and the flat layer over it): click their box.
+    await page.locator(".fs-canvas").click({ position: { x: 20, y: 20 } });
+    // Two surges in: the rider nobody is steering has been thrown back to the last foothold, by the pit, and hops
+    // there while the third bears down; the bots are still up the deck.
+    await page.waitForTimeout(5200);
+    await page.keyboard.press("ArrowUp", { delay: 220 });
   },
   fuseball: async (page) => {
     await openPlayOptions(page);

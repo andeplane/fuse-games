@@ -46,6 +46,9 @@ export class BallRuntime extends RoomRuntime<
   get self(): string {
     return this.id;
   }
+  historyReceipts(): readonly import("./game.js").BallHistoryReceipt[] {
+    return this.world?.state.history ?? [];
+  }
   get canManage(): boolean {
     return (
       this.creator ||

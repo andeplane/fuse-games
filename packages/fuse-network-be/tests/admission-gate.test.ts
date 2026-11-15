@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AdmissionGate } from "../src/admission-gate.js";
+import { MAX_PENDING_ADMISSIONS } from "../src/socket-capacity.js";
 import { MemoryRoomDatabase } from "../src/memory-database.js";
 import { RoomError, RoomFullError } from "../src/room-store.js";
 
@@ -63,7 +64,7 @@ test("pending admission work is bounded per IP and process before touching the d
     gate.run("one", async () => {}),
     limited,
   );
-  const others = Array.from({ length: 124 }, (_, i) =>
+  const others = Array.from({ length: MAX_PENDING_ADMISSIONS - 4 }, (_, i) =>
     gate.run(`ip-${i}`, () => wait),
   );
   await assert.rejects(

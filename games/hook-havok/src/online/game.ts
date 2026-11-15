@@ -45,6 +45,14 @@ import {
   type WorldView,
   type KeeperView,
 } from "../engine/view.js";
+import { parseHistoryResult } from "fuse-platform/history-api";
+import type { MatchResult } from "fuse-platform";
+import {
+  activityResult,
+  isHistoryBot,
+  parseHookHistoryPlayer,
+  type HookHistoryPlayer,
+} from "./activity.js";
 export type Entry =
   ManagementEntry<Tuning> | [number, number, 0, string, number, Input];
 export interface Room {
@@ -55,12 +63,15 @@ export interface Room {
   settings: Tuning;
   seats: Map<string, SeatRecord>;
   simulation: Arena;
+  history: { tick: number; result: MatchResult<HookHistoryPlayer> }[];
 }
 export interface View extends WorldView {
+  matchId: string;
   stage: Room["stage"];
   seated: boolean;
   seats: SeatRecord[];
   round: number;
+  history: Room["history"];
 }
 const name = (v: unknown): v is string =>
   typeof v === "string" &&
@@ -132,6 +143,7 @@ export function createRoom(matchId: string, settings: Tuning): Room {
     settings: { ...settings },
     seats: new Map(),
     simulation: createArena(settings, 0, arenaSeed(matchId, 0)),
+    history: [],
   };
 }
 const lifecycle: LifecycleHooks<Room, Tuning> = {
@@ -231,6 +243,7 @@ export function foldTick(
     r.simulation = freshArena(r);
     r.round++;
   }
+  const wasOver = r.simulation.contest.phase === "over";
   syncKeepers(
     r.simulation,
     [...r.seats.values()].map((s) => ({ ...s, generation: s.generation ?? 0 })),
@@ -284,6 +297,13 @@ export function foldTick(
     stepArena(r.simulation, r.stage === "running");
   }
   r.tick = tick;
+  if (!wasOver && r.simulation.contest.phase === "over") {
+    const result = activityResult(hookGame.view(r));
+    if (result) {
+      r.history.push({ tick, result });
+      r.history = r.history.slice(-8);
+    }
+  }
   return [];
 }
 export function encode(r: Room): unknown[] {
@@ -296,11 +316,12 @@ export function encode(r: Room): unknown[] {
       .sort((a, b) => a.slot - b.slot)
       .map((s) => ({ ...s })),
     encodeArena(r.simulation),
+    structuredClone(r.history),
   ];
 }
 export function decode(f: readonly unknown[], tick: number): Room | undefined {
   if (
-    f.length !== 6 ||
+    f.length !== 7 ||
     !uint32(tick) ||
     !match(f[0]) ||
     !uint32(f[1]) ||
@@ -309,6 +330,33 @@ export function decode(f: readonly unknown[], tick: number): Room | undefined {
     f[4].length > 5
   )
     return;
+  if (!Array.isArray(f[6]) || f[6].length > 8) return;
+  const history: Room["history"] = [];
+  for (const raw of f[6]) {
+    if (
+      !plain(raw) ||
+      Object.keys(raw).length !== 2 ||
+      !uint32(raw.tick) ||
+      raw.tick > tick
+    )
+      return;
+    const at = raw.tick;
+    if (history.some((receipt) => receipt.tick >= at)) return;
+    const result = parseHistoryResult(
+      raw.result,
+      parseHookHistoryPlayer,
+      memberId,
+      isHistoryBot,
+    );
+    if (
+      !result ||
+      result.round !== undefined ||
+      !/:[1-9][0-9]*$/.test(result.matchId) ||
+      history.some((receipt) => receipt.result.matchId === result.matchId)
+    )
+      return;
+    history.push({ tick: raw.tick, result });
+  }
   const settings = parseTuning(f[3]),
     simulation = decodeArena(f[5]);
   if (
@@ -409,6 +457,7 @@ export function decode(f: readonly unknown[], tick: number): Room | undefined {
     settings,
     seats,
     simulation,
+    history,
   };
 }
 export function hash(r: Room): string {
@@ -430,7 +479,7 @@ export function hash(r: Room): string {
 }
 export const hookGame: RollbackGame<Room, Entry, View, never, Tuning> = {
   id: "hook-havok",
-  rules: RULES,
+  rules: `${RULES}-history-1`,
   isEntry,
   createRoom,
   createTicker: () => foldTick,
@@ -439,6 +488,7 @@ export const hookGame: RollbackGame<Room, Entry, View, never, Tuning> = {
   steps: () => 3,
   maxSteps: 3,
   view: (r) => ({
+    matchId: r.matchId,
     ...toView(
       r.simulation.keepers[0]?.world ?? {
         ...createWorld(r.settings),
@@ -523,9 +573,10 @@ export const hookGame: RollbackGame<Room, Entry, View, never, Tuning> = {
     seated: [...r.seats.values()].some((s) => s.connected),
     seats: [...r.seats.values()].map((s) => ({ ...s })),
     round: r.round,
+    history: structuredClone(r.history),
   }),
   hash,
-  checkpoint: { leading: 5, encode, decode },
+  checkpoint: { leading: 7, encode, decode },
   members: (r) => r.seats.values(),
   seat: (r, id) => r.seats.get(id),
   stage: (r) => r.stage,

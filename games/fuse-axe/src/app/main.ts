@@ -63,6 +63,7 @@ import { VIEW_H, VIEW_W } from "../engine/view-kit.js";
 import { axeGame, type View } from "../online/game.js";
 import { DEFAULT_HERO, isHero, seatName } from "../online/names.js";
 import { AxeRuntime, type AxeCallbacks } from "../online/runtime.js";
+import { createResultsHistory } from "fuse-ui/results-history";
 import { createScene } from "../render/scene.js";
 import { SEAT_COLORS } from "../render/seat-colors.js";
 import type { MakeSurface } from "../render/surface.js";
@@ -313,10 +314,7 @@ function room(solo: boolean): void {
     touchControls: AXE_TOUCH_CONTROLS,
     goal: AXE_GOAL,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onLeave: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onLeave: () => leaveRoom(),
     onOpenChange: (open) => {
       letGo();
       if (
@@ -454,10 +452,7 @@ function room(solo: boolean): void {
   const results = createResultsScreen({
     document,
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onBack: () => leaveRoom(),
     backText: "Leave",
     onAction: (id) =>
       runtime.command({
@@ -899,8 +894,38 @@ function room(solo: boolean): void {
     adopted = false;
   // Solo sets out at once; this page opens on the hero picker, so its first frames never show (see `SoloOpening`).
   const opening = solo ? new SoloOpening() : undefined;
+  const resultsHistory = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => (display ? "" : viewer.me),
+    now: () => performance.now(),
+  });
+  let forceStop = false;
+  function leaveRoom() {
+    letGo();
+    resultsHistory.close(
+      () => ({
+        receipts: runtime.roomState()?.history ?? [],
+        confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+      }),
+      () => {
+        runtime.stop();
+        if (!forceStop) location.href = withFlags(endpoints.appUrl());
+      },
+    );
+  }
   const callbacks: AxeCallbacks = {
     state(frame) {
+      const confirmed = runtime.confirmedFrame();
+      resultsHistory.observe(
+        runtime.roomState()?.history ?? [],
+        confirmed?.logTick ?? -1,
+      );
       if (
         opening?.holds(frame, () =>
           runtime.command({ type: "action", action: "lobby" }),
@@ -1037,7 +1062,11 @@ function room(solo: boolean): void {
         },
   );
   installRoomLifecycle(window, {
-    stop: () => runtime.stop(),
+    stop: () => {
+      forceStop = true;
+      resultsHistory.dispose();
+      runtime.stop();
+    },
     destroy: () => stopPlaytestInput(),
     reload: () => location.reload(),
   });
