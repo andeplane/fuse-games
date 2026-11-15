@@ -58,6 +58,29 @@ test("bass attacks do not inherit the long window's early log-flux timestamp", (
     assert.ok(result.events.some((e) => Math.abs(e.time - hit) < 0.025));
 });
 
+test("calibrated stream settings retain closely spaced repeated notes", () => {
+  const hits = Array.from({ length: 16 }, (_, i) => 0.3 + i * 0.067);
+  const signal = audio((t) => {
+    const hit = hits.find((at) => t >= at && t < at + 0.04);
+    return hit === undefined ? 0 : tone(1200, t - hit);
+  });
+  const spectra = computeSpectra(signal);
+  const result = detectRhythm(spectra, {
+    ...options,
+    lowHz: 400,
+    highHz: 4000,
+    sensitivity: 0.9,
+    minGap: 0.04,
+  });
+  assert.equal(result.events.length, hits.length);
+  for (const hit of hits)
+    assert.ok(result.events.some((e) => Math.abs(e.time - hit) < 0.025));
+  assert.ok(
+    detectRhythm(spectra, { ...options, minGap: 0.08 }).events.length <
+      hits.length,
+  );
+});
+
 test("equal-loudness connected melody notes produce events without requiring silence", () => {
   const signal = audio((t) =>
     tone(t < 0.5 ? 440 : t < 0.9 ? 554.37 : t < 1.3 ? 659.25 : 493.88, t),

@@ -47,6 +47,7 @@ import {
 } from "./spectrum.js";
 import type { SpectrumReply, SpectrumRequest } from "./spectrum-worker.js";
 import type { RhythmResult } from "./rhythm.js";
+import { scoreRhythm } from "./rhythm-score.js";
 import type { RhythmRequest, RhythmReply } from "./rhythm-worker.js";
 import {
   parseResume,
@@ -279,22 +280,22 @@ const rhythmSensitivity = el("input", {
   min: "0",
   max: "1",
   step: "0.05",
-  value: "0.6",
+  value: "0.9",
   title: "Higher sensitivity includes quieter attacks",
 });
-const sensitivityValue = el("output", { textContent: "60%" });
+const sensitivityValue = el("output", { textContent: "90%" });
 const rhythmGap = el("select", {
   title: "Minimum time between detected clicks",
 });
-for (const ms of [60, 80, 120, 180])
+for (const ms of [40, 60, 80, 120, 180])
   rhythmGap.append(
     el("option", { value: String(ms / 1000), textContent: `${ms} ms` }),
   );
-rhythmGap.value = "0.08";
+rhythmGap.value = "0.04";
 const detectButton = button(
   "Detect rhythm",
   () => runRhythm(),
-  "Analyse the selected phrase and band; otherwise the listening band or 200–3000 Hz over the song",
+  "Analyse the selected phrase and band; otherwise the listening band or 400–4000 Hz over the song",
 );
 const listenButton = button(
   "Listen",
@@ -330,6 +331,22 @@ const rhythmStatus = el("p", {
   textContent: "Loading audio analysis…",
 });
 rhythmStatus.setAttribute("role", "status");
+const referenceSelect = el("select", {
+  title: "Reference chart for timing comparison",
+});
+const comparisonText = el("p", {
+  className: "lab-dim",
+  textContent: "Detect rhythm to compare it with a chart.",
+});
+const referenceListen = button(
+  "Listen to reference",
+  () => {
+    if (!rhythm || !referenceSelect.value) return;
+    audition(referenceSelect.value, rhythm.options.start, rhythm.options.end);
+  },
+  "Play the same span with clicks from the reference chart",
+);
+referenceListen.disabled = true;
 const rhythmBox = el(
   "section",
   { className: "lab-card lab-rhythm" },
@@ -337,7 +354,7 @@ const rhythmBox = el(
   el("p", {
     className: "lab-dim",
     textContent:
-      "Select a phrase and frequency band, then detect. With no selection: listening band, or 200–3000 Hz over the song.",
+      "Select a phrase and frequency band, then detect. With no selection: listening band, or 400–4000 Hz over the song. Defaults were calibrated on DukAmok songs.",
   }),
   el("label", { className: "lab-rhythm-control" }, "Follow ", rhythmMode),
   el(
@@ -361,6 +378,14 @@ const rhythmBox = el(
   ),
   rhythmStatus,
   eventsButton,
+  el(
+    "label",
+    { className: "lab-rhythm-control" },
+    "Reference ",
+    referenceSelect,
+  ),
+  comparisonText,
+  referenceListen,
   el("p", {
     className: "lab-dim",
     textContent:
@@ -472,6 +497,7 @@ let spectra: Spectra | undefined;
 let rhythm: RhythmResult | undefined;
 let rhythmWorker: Worker | undefined;
 let auditionEnd: number | undefined;
+let auditionClicks: { start: number; end: number } | undefined;
 let tiles: { canvas: HTMLCanvasElement; from: number; frames: number }[] = [];
 let flux: Float32Array | undefined;
 let fluxScale = 1;
@@ -573,6 +599,7 @@ async function loadSong(id: string): Promise<void> {
   url.searchParams.set("song", data.id);
   history.replaceState(null, "", url);
   extraSims.length = 0;
+  referenceSelect.value = "";
   hidden.clear();
   selection = undefined;
   flux = undefined;
@@ -755,7 +782,60 @@ function rebuildCharts(): void {
   )
     ? current
     : "";
+  const previousReference = referenceSelect.value;
+  const references = charts.filter((c) => c.key !== TAPPED);
+  referenceSelect.replaceChildren(
+    ...references.map((c) =>
+      el("option", {
+        value: c.key,
+        textContent: `${c.label} · ${c.chart.meter}`,
+      }),
+    ),
+  );
+  referenceSelect.value = references.some((c) => c.key === previousReference)
+    ? previousReference
+    : ([...references]
+        .sort((a, b) => {
+          // Match the game library and benchmark: authored Edit follows Challenge.
+          const order = [
+            "beginner",
+            "easy",
+            "medium",
+            "hard",
+            "challenge",
+            "edit",
+          ];
+          const rank = (chart: LabChart) => {
+            const i = order.indexOf(chart.chart.difficulty.toLowerCase());
+            return i < 0 ? order.length : i;
+          };
+          return rank(a) - rank(b) || a.chart.meter - b.chart.meter;
+        })
+        .at(-1)?.key ?? "");
+  renderComparison();
   renderChips();
+}
+
+function rhythmComparison() {
+  const reference = charts.find((c) => c.key === referenceSelect.value);
+  if (!reference || !rhythm) return undefined;
+  const { start, end } = rhythm.options;
+  const score = scoreRhythm(
+    reference.notes
+      .filter((n) => n.kind !== "mine" && n.time >= start && n.time <= end)
+      .map((n) => n.time),
+    rhythm.events.map((e) => e.time),
+    0.04,
+  );
+  return { chart: reference.label, ...score };
+}
+
+function renderComparison(): void {
+  const comparison = rhythmComparison();
+  referenceListen.disabled = !comparison;
+  comparisonText.textContent = comparison
+    ? `${comparison.matched}/${comparison.reference} reference rows matched · ${comparison.reference - comparison.matched} missed · ${comparison.detected - comparison.matched} extra clicks (±40 ms). F1 ${comparison.f1.toFixed(2)}. This measures chart agreement.`
+    : "Detect rhythm to compare it with a chart.";
 }
 
 function renderChips(): void {
@@ -810,6 +890,7 @@ function runRhythm(): void {
   rhythmWorker = worker;
   detectButton.disabled = true;
   listenButton.disabled = eventsButton.disabled = true;
+  referenceListen.disabled = true;
   rhythmStatus.textContent = "Detecting rhythm…";
   const finish = (): boolean => {
     worker.terminate();
@@ -818,6 +899,7 @@ function runRhythm(): void {
     detectButton.disabled = !spectra;
     listenButton.disabled = !rhythm?.events.length;
     eventsButton.disabled = !rhythm;
+    renderComparison();
     return true;
   };
   worker.onerror = () => {
@@ -843,6 +925,7 @@ function runRhythm(): void {
     if (option) option.disabled = !count;
     const o = result.options;
     rhythmStatus.textContent = `${count} events · ${o.start.toFixed(2)}–${o.end.toFixed(2)} s · ${Math.round(o.lowHz)}–${Math.round(o.highHz)} Hz. ${count ? "Listen, or choose Detected in the tick menu." : "Try a wider band or higher sensitivity."}${muted ? " This ?mute preview is silent; remove ?mute to hear it." : ""}`;
+    renderComparison();
     draw();
   };
   try {
@@ -853,8 +936,8 @@ function runRhythm(): void {
     const options = {
       start: Math.max(0, selection?.start ?? 0),
       end: Math.min(duration, selection?.end ?? duration),
-      lowHz: frequencies?.lowHz ?? 200,
-      highHz: frequencies?.highHz ?? 3000,
+      lowHz: frequencies?.lowHz ?? 400,
+      highHz: frequencies?.highHz ?? 4000,
       mode:
         rhythmMode.value === "attacks"
           ? ("attacks" as const)
@@ -897,15 +980,21 @@ function clearRhythm(): void {
   if (tickSelect.value === DETECTED) tickSelect.value = "";
   rhythmStatus.textContent =
     "Ready. Select a phrase or detect over the whole song.";
+  renderComparison();
   draw();
 }
 
 function listenToRhythm(): void {
   if (!rhythm?.events.length) return;
+  audition(DETECTED, rhythm.options.start, rhythm.options.end);
+}
+
+function audition(choice: string, start: number, end: number): void {
   stop();
-  tickSelect.value = DETECTED;
-  playhead = Math.max(0, rhythm.options.start - 0.1);
-  auditionEnd = Math.min(duration, rhythm.options.end + 0.1);
+  tickSelect.value = choice;
+  playhead = Math.max(0, start - 0.1);
+  auditionEnd = Math.min(duration, end + 0.1);
+  auditionClicks = { start, end };
   play();
 }
 
@@ -1682,6 +1771,7 @@ function stop(): void {
   }
   cancelTicks();
   auditionEnd = undefined;
+  auditionClicks = undefined;
   playButton.textContent = "▶ Play";
   draw();
 }
@@ -1748,6 +1838,12 @@ function scheduleTicks(): void {
       }
   }
   for (const time of times) {
+    // Music has a short lead/tail; both click sources use exactly the scored phrase.
+    if (
+      auditionClicks &&
+      (time < auditionClicks.start || time > auditionClicks.end)
+    )
+      continue;
     const when = startCtx + (time - startSong) / rate;
     if (when < audioContext.currentTime) continue;
     const tick = audioContext.createBufferSource();
@@ -2628,8 +2724,10 @@ recordInput.onchange = () => {
 speedSelect.onchange = () => {
   if (source) {
     const end = auditionEnd;
+    const clicks = auditionClicks;
     stop();
     auditionEnd = end;
+    auditionClicks = clicks;
     play();
   }
 };
@@ -2637,6 +2735,7 @@ tickSelect.onchange = () => {
   cancelTicks();
   draw();
 };
+referenceSelect.onchange = () => renderComparison();
 rhythmSensitivity.oninput = () => {
   sensitivityValue.textContent = `${Math.round(Number(rhythmSensitivity.value) * 100)}%`;
 };
@@ -2786,6 +2885,7 @@ new ResizeObserver(() => draw()).observe(stage);
     rhythm: rhythm
       ? { options: rhythm.options, events: rhythm.events }
       : undefined,
+    comparison: rhythmComparison(),
   }),
   select: (span: Selection) => {
     selection = span;
