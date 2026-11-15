@@ -39,6 +39,7 @@ export type LauncherGame = {
   /** The game's bitmap icon when it ships one; the row draws an accent tile otherwise. */
   icon: ImageIcon | undefined;
   screenshotUrl: string | undefined;
+  screenshotUrls: readonly string[];
   /** The game's own page, for the LINKS column. */
   url: string;
 };
@@ -69,6 +70,7 @@ export type LauncherViewModel = {
   openTab: (tab: LauncherTab) => void;
   /** FRIENDS & CHAT and the Friends link: Fuse Messenger. */
   openFriends: () => void;
+  openLeaderboard: () => void;
   games: LauncherGame[];
   selected: LauncherGame | undefined;
   details: LauncherDetails | undefined;
@@ -110,6 +112,7 @@ export function useLauncherViewModel(): LauncherViewModel {
         accent: game.accent,
         icon: registry.icon(game),
         screenshotUrl: registry.screenshotUrl(game),
+        screenshotUrls: registry.screenshotUrls(game),
         url: registry.embedUrl(game),
       })),
     [registry],
@@ -161,6 +164,9 @@ export function useLauncherViewModel(): LauncherViewModel {
     () => online.open({ kind: "friends" }, { id: FRIENDS_WINDOW_ID }),
     [online],
   );
+  const openLeaderboard = useCallback(() => {
+    if (selected) commands.open({ kind: "halloffame", gameId: selected.id });
+  }, [selected, commands]);
   // Capability-detected: the Hall of Fame is its own package and may not be in this build.
   const openHallOfFame = registrations.find(
     (entry) => HALL_OF_FAME_REGISTRATION_IDS.includes(entry.id) && entry.open,
@@ -219,6 +225,7 @@ export function useLauncherViewModel(): LauncherViewModel {
     tab,
     openTab,
     openFriends,
+    openLeaderboard,
     games,
     selected,
     details,

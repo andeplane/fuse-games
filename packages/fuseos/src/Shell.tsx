@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AssistantToolsProvider } from "./assistant/assistantToolsContext";
 import { BsodProvider } from "./bsod/BsodProvider";
 import { Desktop } from "./desktop/Desktop";
+import { DesktopBridgeProvider } from "./fusegames/DesktopBridgeProvider";
 import { DesktopUiProvider } from "./desktop/DesktopUiProvider";
 import { DisplayViewportProvider } from "./desktop/DisplayViewportProvider";
 import { DisplayEffectsProvider } from "./display/effects/DisplayEffectsProvider";
@@ -37,7 +38,9 @@ export function Shell({ store, initialOpen, children }: ShellProps) {
                   <AssistantToolsProvider>
                     <System32BsodProvider>
                       <RunAgentProvider>
-                        {children ?? <Desktop />}
+                        <DesktopBridgeProvider>
+                          {children ?? <Desktop />}
+                        </DesktopBridgeProvider>
                       </RunAgentProvider>
                     </System32BsodProvider>
                   </AssistantToolsProvider>

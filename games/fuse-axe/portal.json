@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-axe.jpg",
   "tagline": "Cleave the road to the Dark Keep.",
   "mark": "FA",
-  "accent": "#ffc23d"
+  "accent": "#ffc23d",
+  "screenshots": [
+    "gallery/fuse-axe.jpg",
+    "gallery/fuse-axe-menu.jpg",
+    "gallery/fuse-axe-controls.jpg"
+  ]
 }

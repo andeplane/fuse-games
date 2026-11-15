@@ -1,6 +1,7 @@
 import type { AppState, WindowState } from "../state/appState";
 import { activeWindowId, DEFAULT_STATE } from "../state/appState";
 import { MemoryStateStore } from "../state/stateStore";
+import { MemoryDialUpSession } from "../sounds/dialup/dialUpSession";
 
 import {
   withBootWindows,
@@ -95,7 +96,7 @@ describe(withLauncherOnTop.name, () => {
 });
 
 describe(withBootWindows.name, () => {
-  it("opens Winamp with the launcher focused above it on an empty desktop", () => {
+  it("opens Winamp, Fusteam and Messenger in order on an empty desktop", () => {
     const state = withBootWindows(DEFAULT_STATE, LAPTOP);
     expect(state.windows).toEqual([
       { id: "w1", kind: "winamp", minimized: false, maximized: false },
@@ -105,8 +106,9 @@ describe(withBootWindows.name, () => {
         minimized: false,
         maximized: false,
       },
+      { id: "friends", kind: "friends", minimized: false, maximized: false },
     ]);
-    expect(activeWindowId(state)).toBe(LAUNCHER_WINDOW_ID);
+    expect(activeWindowId(state)).toBe("friends");
   });
 
   it("brings up the stored Winamp and launcher instead of adding second ones, above the other windows", () => {
@@ -123,20 +125,35 @@ describe(withBootWindows.name, () => {
       ["w1", false],
       ["w3", false],
       [LAUNCHER_WINDOW_ID, false],
+      ["friends", false],
     ]);
     // Booting again changes nothing: one of each.
     expect(withBootWindows(state, LAPTOP)).toEqual(state);
   });
 
-  it("boots a phone with the launcher alone, maximized", () => {
+  it("keeps all three startup apps on a phone, with Fusteam maximized", () => {
     expect(withBootWindows(DEFAULT_STATE, PHONE).windows).toEqual([
+      { id: "w1", kind: "winamp", minimized: false, maximized: false },
       {
         id: LAUNCHER_WINDOW_ID,
         kind: "launcher",
         minimized: false,
         maximized: true,
       },
+      { id: "friends", kind: "friends", minimized: false, maximized: false },
     ]);
+  });
+  it("gates first-run Messenger with dial-up and skips it after connection", () => {
+    const session = new MemoryDialUpSession();
+    expect(
+      withBootWindows(DEFAULT_STATE, LAPTOP, session).windows.at(-1),
+    ).toMatchObject({ kind: "dialup", then: { kind: "friends" } });
+    session.markConnected();
+    expect(
+      withBootWindows(DEFAULT_STATE, LAPTOP, session).windows.map(
+        (item) => item.kind,
+      ),
+    ).toEqual(["winamp", "launcher", "friends"]);
   });
 });
 
@@ -152,6 +169,7 @@ describe(withLauncherOnBoot.name, () => {
       "w1",
       "w2",
       LAUNCHER_WINDOW_ID,
+      "friends",
     ]);
     expect(loaded.windows[1]).toMatchObject({ kind: "winamp" });
     const closed: AppState = { version: 1, windows: [window("w1")] };
@@ -163,6 +181,7 @@ describe(withLauncherOnBoot.name, () => {
       "paint",
       "winamp",
       "launcher",
+      "friends",
     ]);
   });
 });

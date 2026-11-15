@@ -85,17 +85,6 @@ export function useOpenFriends(): () => void {
   );
 }
 
-/**
- * While a Fuse game window is open, the desktop stops reporting presence: the game reports its own, room
- * included, and a second reporter would wipe that claim (docs/fuseos/friends-design.md). Mounted once, by the tray.
- */
-export function useGameWindowSuspension(): void {
-  const presence = useContext(PresenceServiceContext);
-  const { state } = useAppState();
-  const gameOpen = state.windows.some((window) => window.kind === "fusegame");
-  useEffect(() => presence.setSuspended(gameOpen), [presence, gameOpen]);
-}
-
 export type BuddyGroup = { status: BuddyStatus; buddies: Buddy[] };
 
 export type FriendsViewModel = {
