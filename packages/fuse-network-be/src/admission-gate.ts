@@ -20,9 +20,13 @@ interface Entry {
 export class AdmissionGate {
   private entries = new Map<string, Entry>();
   private pending = 0;
+  private saturatedHour: number | undefined;
   constructor(
     private database: Pick<RoomDatabase, "allowance">,
     private now: () => number,
+    private log: (entry: {
+      kind: "admission-map-saturated";
+    }) => void = () => {},
   ) {}
 
   async run<T>(address: string, admit: () => Promise<T>): Promise<T> {
@@ -38,8 +42,21 @@ export class AdmissionGate {
         for (const [key, value] of this.entries)
           if (value.pending === 0 && value.hour !== hour)
             this.entries.delete(key);
-        if (this.entries.size >= MAX_KEYS)
-          throw new RoomError(429, "Admission limit; try later");
+        if (this.entries.size >= MAX_KEYS) {
+          // The map is only a cache of shared allowance decisions. Evict an idle
+          // blocked entry rather than refusing an unrelated address. Never evict
+          // pending work: it must retain the per-address concurrency bound.
+          for (const [cachedKey, value] of this.entries) {
+            if (value.pending === 0) {
+              this.entries.delete(cachedKey);
+              break;
+            }
+          }
+          if (this.saturatedHour !== hour) {
+            this.saturatedHour = hour;
+            this.log({ kind: "admission-map-saturated" });
+          }
+        }
       }
       entry = { hour, pending: 0, blocked: false };
       this.entries.set(key, entry);
