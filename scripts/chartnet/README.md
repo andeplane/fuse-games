@@ -78,7 +78,7 @@ On Easy and Medium the learned arrows look like the human ones. On Hard and Chal
 too many crossovers, so the game's ChartNet charts take the rule generator's arrows. With the learned (denser) rhythm
 the rule generator's arrows cross over more than on its own rhythm; playtesting decides whether that matters.
 
-## ChartNet v2 (what the game offers)
+## ChartNet v2
 
 v2 learns the arrows too, and makes Hard and Challenge busier:
 
@@ -130,6 +130,138 @@ These are the game's charts: `bundle.ts` writes them into `games/fusemania/chart
 which `fusemania-charts.ts generate` leaves alone), and `gen.py fixup` keeps a one-second lead-in and ends a freeze
 before any row that would need a third arrow. To rebuild: train (`onset.py --density 1 --name onset_dens`, `arrows.py`), then `gen2.py fuse` and
 `pnpm exec tsx scripts/chartnet/bundle.ts $CHARTNET_WORK/out_fuse2`.
+
+## ChartNet v3 (what the game offers now)
+
+v3 is v2's two small models retrained on much more data, with sampling tuned against human charts.
+
+- **Data.** 89 community packs from 2005 to 2016 (`community-packs.txt`, downloaded by `packs.py`) on top of the DDR
+  and In The Groove packs: 3,417 songs and 11,028 charts, up from 480 and 1,950, and 2,959 Challenge charts where
+  there were 182. The 48 DDR/ITG test songs are frozen in `$CHARTNET_WORK/test_keys.json`; `test2_keys.json` holds out
+  128 community songs; a song held out in one pack is not trained on from another (`data.split`).
+- **Training** runs on a rented GPU: all songs at once need about 18 GB of memory per run. `extract.py` (with
+  `OMP_NUM_THREADS=1`: one thread per worker is 15 times faster than letting every worker thread), then
+  `onset.py --phase 1 --density 1 --wide 1 --len 1000 --steps 12000 --name onset_v3` and
+  `arrows.py --steps 24000 --name arrows_c1`. Scoring and generation run on the Mac and load only the songs they need.
+- **Features.** `data.band_rhythm` adds the onset strength in 8 bands, bass to high melody, and each band's share of
+  the onset energy over 4 seconds; `--wide 1` lets placement look about 5 seconds each way.
+- **Sampling** (`arrows.generate`, `gen.place`): six candidate continuations per 16 rows, keeping the one the model
+  likes best that repeats least; costs on jumps, freezes and jacks set so held-out charts land on human rates; the
+  last 5% of a Challenge chart's steps prefer positions a sixteenth from a step already placed, so near-runs close
+  up into streams; 24ths are placed by the model and kept only as runs.
+- **Review notes** (`guidance.py`): a span and frequency band marked in the chart lab becomes steps on that band's
+  onsets, placed before anything else.
+
+What was measured, on the 48 held-out DDR/ITG songs (`gen2.py eval`, `gen2.py place-eval`):
+
+| Held-out DDR/ITG charts     | Human | v2    | v3    |
+| --------------------------- | ----- | ----- | ----- |
+| Challenge: step timing F1   |       | 0.69  | 0.72  |
+| Challenge: steps in streams | 0.25  | 0.12  | 0.20  |
+| Challenge: longest 16th run | 28.7  | 4.9   | 11.9  |
+| Challenge: jumps            | 0.074 | 0.137 | 0.105 |
+| Challenge: freezes          | 0.065 | 0.052 | 0.046 |
+| Challenge: jacks            | 0.034 | 0.025 | 0.039 |
+| Hard: step timing F1        |       | 0.75  | 0.75  |
+| Hard: jumps                 | 0.080 | 0.125 | 0.080 |
+| Hard: freezes               | 0.022 | 0.018 | 0.030 |
+| Hard: jacks                 | 0.042 | 0.015 | 0.024 |
+
+Placement alone, told each human chart's step count: 0.737 overall for v2 and 0.742 for v3 (Challenge 0.691 and
+0.729; the stream preference then trades 0.02 of that for the stream share). On the held-out community songs 0.750 and
+0.765 (Challenge 0.794 and 0.823). What did not help: the band features (0.738 without, 0.742 with), the wider context
+alone (0.740 without, 0.738 with), and a bigger arrow model (8 layers, d=384: best validation loss 1.06 against 1.04
+for the small one, then it overfits).
+
+Data did, for the arrows. Loss per row on the same held-out charts (`gen2.py arrow-eval`), by training songs:
+
+| Training songs       | 480 (v2) | 735  | 1,470 | 2,944 | 5,923 |
+| -------------------- | -------- | ---- | ----- | ----- | ----- |
+| DDR/ITG test songs   | 1.53     | 1.43 | 1.35  | 1.30  | 1.26  |
+| Community test songs | 1.28     | 1.05 | 0.99  | 0.94  | 0.91  |
+
+The last column adds a second batch of 88 packs (`packs.py chunk 1`, 6,444 songs in all). The game's arrows come from
+that model (`arrows_c1`). Placement did not gain from the second batch (0.738 on the DDR/ITG songs, 0.765 on the
+community songs), so it stays the model trained on the first (`onset_v3`).
+
+Over the game's 36 songs (`gen2.py fuse`; a cover's Challenge aims at its original's density):
+
+| Difficulty | Steps/s | 16th-stream share | 24th share | Longest 16th run | 4-gram variety | Jacks | Jumps | Freezes |
+| ---------- | ------- | ----------------- | ---------- | ---------------- | -------------- | ----- | ----- | ------- |
+| Easy       | 1.62    | 0                 | 0          | 1                | 0.62           | 0     | 0.035 | 0.024   |
+| Medium     | 2.52    | 0                 | 0          | 1                | 0.53           | 0.002 | 0.072 | 0.020   |
+| Hard       | 3.76    | 0.17              | 0.010      | 7.5              | 0.52           | 0.041 | 0.064 | 0.028   |
+| Challenge  | 5.55    | 0.52              | 0.103      | 46.8             | 0.44           | 0.052 | 0.053 | 0.033   |
+
+Human Challenge charts at 5.5 to 7.5 steps a second: 0.53 in 16th streams, 0.05 in 24ths, variety 0.42, jumps 0.05,
+freezes 0.07. v2's Challenge charts for the same songs had variety 0.33.
+
+Whole-chart variety (the share of distinct four-row patterns) falls as a chart gets denser, so compare it at equal
+density: human Challenge charts score 0.58 at 4 to 5 steps a second and 0.42 at 5.5 to 7.5. `variety_w64` measures
+it inside 64-row windows instead.
+
+## Where a chart gets busy (`density.py`) and what the chart lab taught
+
+Anders marked 17 spans with a frequency band on Final Chase in the chart lab and tapped 569 steps of rhythm. Measured
+against them (`$CHARTNET_WORK/labels`):
+
+- **The placement model already hears the rhythm.** Inside each marked span, the strongest moments (as many as were
+  tapped) land within 60 ms of a tap for 77% with plain onsets over all frequencies, 82% in the marked band, 86% in
+  the best single band per span, and 84% with the model's step probability.
+- **It does not know where to get busy.** Steps per 2 seconds in the old Challenge chart correlate 0.04 with his
+  taps. The same holds against held-out human charts: 0.25 (Hard) and 0.34 (Challenge) on the DDR/ITG songs.
+- **No single audio measure says where he taps fast**: onset rates per band, harmonic and percussive onset rates and
+  the note rate of the strongest melodic line each correlate at most 0.3 to 0.4 with his tap rate.
+- **Which arrows a human chart uses hardly depends on the music.** The arrow model's held-out loss is 1.261 with
+  the audio and 1.259 with the audio blanked on the DDR/ITG songs (0.914 and 0.933 on the community songs): given
+  the rhythm and the feet, the sound adds almost nothing.
+
+What is built on that:
+
+- `density.py` trains a second small model (dilated convolutions over the whole song at 2 frames a second: band
+  energies, onset strength and note rate per band, the placement model's probability mass) to predict how many steps
+  a human chart has around each moment compared with its own average. `gen.place` lets the placement model spread
+  the steps its own way first, then scales every two-second window's share by that profile (to the power
+  `CHARTNET_BUSY_POWER`, 1) and fills each window with its strongest peaks. Charts then get busy where the human
+  charts do more often: on the held-out community songs the correlation per chart goes from 0.38 to 0.47 on Hard,
+  0.32 to 0.41 on Medium and 0.54 to 0.57 on Challenge, on the DDR/ITG songs from 0.25 to 0.28 on Hard and 0.34 to
+  0.38 on Challenge; step timing F1 stays where it was (0.742 and 0.741, 0.765 and 0.761). It trains on the Mac in
+  two minutes (`density.py pool`, `density.py train 1500`; longer overfits). A first version multiplied every
+  peak's probability by the profile: that scored better (0.33 and 0.41 on the DDR/ITG songs) but emptied calm
+  stretches, six songs lost every step of their first ten seconds, so windows now only scale.
+- `guidance.tapped_beats`: taps scatter over a whole sixteenth, so they are not snapped. Every two beats get as many
+  steps as were tapped there, on the grid positions the placement model likes best (a share of them, on 8ths, for
+  Medium and Hard), on top of what the window would have had. Final Chase's Challenge then has a step on about 90%
+  of his taps (66% before) and is busy where he is.
+- `guidance.opening_beat`: every chart starts on the song's first clear, sharp sound after the lead-in.
+
+### The labelling loop (`watch_notes.py`)
+
+`python watch_notes.py` watches the lab's notes and taps and regenerates a song about 20 seconds after its labels
+change (`gen2.py fuse` for that song, `bundle.ts`, `gen.py fixup`, `fusemania-charts.ts bundle`); the lab served from
+the same checkout shows the result on reload. The labels the committed charts were made from are copied to
+`labels/` so the charts can be regenerated without the labeller's machine. What a note does (`guidance.py`):
+
+- starts with `good`: the span is locked, later regenerations keep its rows;
+- `bad: too many` or `bad: too few`: the span gets half or 1.7 times its steps;
+- has a frequency box: the steps follow that band's onsets; with `jump` in the text those steps become jumps;
+- contains `good first` (or is tagged `start`): the chart starts on the strongest onset in the span;
+- a tapped rhythm: where the taps sit on the grid (Burning Heat: 12 ms from the nearest triplet or sixteenth, random
+  taps would be 22 ms) each tap is a step; where they scatter (Final Chase) they set the step count per two beats.
+
+Burning Heat was labelled after the model was trained and served as a blind test: the placement model matches the
+tapped rhythm at 70% there (84% on Final Chase), and the chart made without its labels has a step on 59% of the taps.
+With the labels: 73%, busy where the taps are busy 0.60 (from 0.24), first step at 3.2 s where the note says. Training
+the placement model further on one song's taps did not transfer to the other (70% to 65%, 84% to 82%).
+
+Also measured, and not built on yet:
+
+- What he marks is a lead that stands out. In the densely labelled part of Final Chase, quieter drums tell marked
+  spans from the gaps between them with an AUC of 0.75, one clear note at a time in the melody range 0.72, the
+  harmonic share of the sound 0.66. Splitting the song into sections does not find the spans (his notes start 3.2 s
+  from the nearest boundary, a random moment 3.9 s).
+- Telling the arrow model how accented each step's sound is adds nothing: held-out loss 1.264 and 0.936 without,
+  1.262 and 0.935 with. It already gives a jump 56 to 62% probability on the rows where the human chart has one.
 
 ## Chart lab (reviewing charts against the music)
 
