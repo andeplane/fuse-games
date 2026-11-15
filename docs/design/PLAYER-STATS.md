@@ -38,15 +38,22 @@ hour, and never carries a room code, an account id or a round receipt; a signed-
 their own seat, and nobody else's. Guests appear: a game between guests is public once the riders themselves vouch
 for it.
 
-Confirmation stamps a whole game with `feedAt`, and only then. A lone guest confirms their own game against bots and
-room tokens are free, so a game is published only once **a second rider attests it or an account owns a seat**; a
+Confirmation requires the existing majority of finishers and at least two distinct human seat reports of the same
+whole-game result. A single human playing against bots, including solo play, stays pending and expires; a departed
+player can still corroborate by reporting the same result. A pending result gives no career credit and does not enter
+the feed. Room tokens do not prove independent people, so colluding or self-controlled seats can still invent results.
+Whole-match links are limited to 30 per account per hour and submissions to 240 per address per hour, separately from
+round receipt budgets. Older one-seat confirmations are hidden from the public feed, but their already credited career
+totals are not automatically reversed; those totals require a separate migration or reconciliation.
+
+Confirmation stamps a whole game with `feedAt`, and only then. A
 round receipt never gets a `feedAt` at all, and the storage parser refuses a record that claims one while pending or
 while carrying a round. `feedAt` is stamped from `endedAt`, which is what makes a listed `endedAt` a usable page
 cursor; the row itself is always dated by `endedAt`, never by when it became public. Games confirmed before this
 existed have no `feedAt`, and Firestore returns no document that lacks the field its query orders by, so EVERYONE
 comes back empty — not failed — while those same games are still in YOURS. That asymmetry is what
 `scripts/backfill-match-feed-at.ts` closes: it stamps `feedAt` from `endedAt` on every stored record that passes
-confirmation's own published test (`feedlessMatchStamps` in `packages/fuse-platform/src/backfill.ts`), skips any
+corroboration test (`feedlessMatchStamps` in `packages/fuse-platform/src/backfill.ts`), skips any
 record that already has one, and so is safe to repeat. A database that also predates `gameId` needs
 `scripts/backfill-match-game-id.ts` first, because the feed filters on `gameId` before it orders.
 

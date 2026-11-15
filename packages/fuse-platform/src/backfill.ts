@@ -31,8 +31,7 @@ export interface FeedStamp {
  * orders by `feedAt` while a player's own history orders by `endedAt` — and Firestore returns no document that
  * lacks the field it is asked to order by, so the page comes back empty rather than failing.
  *
- * The predicate is confirmation's own, unchanged (`GameHistory.submit` in `history.ts`): a confirmed whole game,
- * never a round receipt, that an account owns a seat in or that two riders attested. `feedAt` is stamped from
+ * Only a confirmed whole game with two distinct attestations is eligible; never a round receipt. `feedAt` is stamped from
  * `endedAt`, exactly as confirmation stamps it, so a backfilled row sorts and pages like one confirmed today and
  * is still dated by when the game ended. A record that already carries any `feedAt`, valid or not, is left for its
  * reader to judge, which also makes the backfill safe to repeat.
@@ -46,11 +45,10 @@ export function feedlessMatchStamps(page: readonly StoredMatch[]): FeedStamp[] {
     // anyway; stamping it would only invent a feed position for a row no reader accepts.
     if (!counterLike(data.endedAt)) return [];
     if (!plain(data.result) || data.result.round !== undefined) return [];
-    const accounts = plain(data.uidByPlayer)
-      ? Object.keys(data.uidByPlayer).length
+    const attesters = Array.isArray(data.attesters)
+      ? new Set(data.attesters.filter((id) => typeof id === "string")).size
       : 0;
-    const attesters = Array.isArray(data.attesters) ? data.attesters.length : 0;
-    if (accounts === 0 && attesters < 2) return [];
+    if (attesters < 2) return [];
     return [{ id, feedAt: data.endedAt }];
   });
 }

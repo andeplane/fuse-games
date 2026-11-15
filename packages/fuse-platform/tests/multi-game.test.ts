@@ -461,7 +461,7 @@ test("a record cannot change games: the same record id reported to another game 
   );
   assert.equal(
     (await legacyHistory.history("alice", undefined)).matches.length,
-    1,
+    0,
   );
   assert.deepEqual((await diceHistory.history("alice", undefined)).matches, []);
 });

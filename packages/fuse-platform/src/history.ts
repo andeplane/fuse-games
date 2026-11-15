@@ -338,8 +338,12 @@ export class GameHistory<
     const result = this.parseResult(body.result),
       avatarId = body.avatarId as string | undefined;
     if (!result) throw new RoomError(400, "Invalid match result");
-    const needed = attestationsNeeded(result);
-    if (!humansOf(game, result).includes(rider))
+    const humans = humansOf(game, result);
+    const needed =
+      result.round === undefined
+        ? Math.max(2, attestationsNeeded(result))
+        : attestationsNeeded(result);
+    if (!humans.includes(rider))
       throw new RoomError(403, "Only a rider in the match can report it");
     // Only an account makes a record permanent, and fresh room tokens are free, so the per-rider limit above cannot
     // bound permanent storage. This one can: past it a report still counts, as a guest's, and the record expires.
@@ -413,6 +417,14 @@ export class GameHistory<
           };
       const credits: Credit[] = [];
       if (!match.attesters.includes(rider)) match.attesters.push(rider);
+      // Older records could be confirmed by one seat. Do not let a repeat report
+      // create new credits or publish one until another seat has corroborated it.
+      if (
+        result.round === undefined &&
+        match.status === "confirmed" &&
+        match.attesters.length < 2
+      )
+        throw new RoomError(409, "Match needs another player's report");
       if (avatarId !== undefined) match.avatars[rider] = avatarId;
       // One account per seat and one seat per account: a second device on the same account reports, but is not credited twice.
       const linking =
@@ -423,7 +435,8 @@ export class GameHistory<
       if (
         match.status === "pending" &&
         match.attesters.filter((id) => result.finishers.includes(id)).length >=
-          needed
+          attestationsNeeded(result) &&
+        (result.round !== undefined || match.attesters.length >= 2)
       ) {
         match.status = "confirmed";
         match.endedAt = now;
@@ -453,10 +466,7 @@ export class GameHistory<
         const hasAccounts = match.participantUids.length > 0;
         // Round receipts remain durable and idempotent, but do not appear as career games or in the public feed.
         if (result.round !== undefined) match.participantUids = [];
-        // A lone guest confirms their own game, so it is public only once a second player vouches or an account (whose
-        // links are rate limited) owns a seat: otherwise free room tokens could fill everyone's feed with inventions.
-        else if (hasAccounts || match.attesters.length >= 2)
-          match.feedAt ??= match.endedAt;
+        else match.feedAt ??= match.endedAt;
         if (hasAccounts) delete match.expiresAt;
         else match.expiresAt = (match.endedAt ?? now) + GUEST_MATCH_TTL_MS;
       }
@@ -541,7 +551,11 @@ export class GameHistory<
     return {
       matches: records.flatMap((record) => {
         // A record the storage layer ordered by `feedAt` still has to earn its place here.
-        if (record.feedAt === undefined || record.result.round !== undefined)
+        if (
+          record.feedAt === undefined ||
+          record.result.round !== undefined ||
+          new Set(record.attesters).size < 2
+        )
           return [];
         const you =
           uid === undefined

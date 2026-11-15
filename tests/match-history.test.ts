@@ -540,19 +540,24 @@ test("a forged result cannot displace or block the honest one", async () => {
   );
 });
 
-test("a rider who quit mid-match is not waited for, and an address is limited as well as a seat", async () => {
+test("a rider who quit can corroborate, and an address is limited as well as a seat", async () => {
   const f = await room(2),
     result = resultOf(f.ids);
   result.finishers = [f.ids[0]!];
   assert.deepEqual(await f.report(f.tokens[0]!, { result }, "alice"), {
-    status: "confirmed",
+    status: "pending",
     attestations: 1,
-    needed: 1,
+    needed: 2,
     linked: true,
   });
   assert.deepEqual(
+    (await f.history.feed("viewer", undefined, undefined)).matches,
+    [],
+  );
+  assert.equal((await f.history.profile("alice"))?.totals.matches ?? 0, 0);
+  assert.deepEqual(
     await f.report(f.tokens[1]!, { result }, "bob"),
-    { status: "confirmed", attestations: 2, needed: 1, linked: true },
+    { status: "confirmed", attestations: 2, needed: 2, linked: true },
     "a leaver who came back may still report",
   );
   // Room tokens are free to mint, so one address cannot report without limit by rotating them.
@@ -586,15 +591,22 @@ test("pending and guest-only matches expire; a match an account owns does not", 
   assert.equal((await stored())!.status, "confirmed");
 });
 
-test("a solo rider with bots confirms alone, history pages newest first, and reporting is rate limited", async () => {
-  const f = await room(1);
+test("corroborated history pages newest first, and reporting is rate limited", async () => {
+  const f = await room(2);
   for (let index = 0; index < 25; index++) {
     f.advance(1000);
+    await f.report(
+      f.tokens[1]!,
+      { result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"], `match-${index}`) },
+      undefined,
+    );
     assert.equal(
       (
         await f.report(
           f.tokens[0]!,
-          { result: resultOf([f.ids[0]!, "bot:1"], `match-${index}`) },
+          {
+            result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"], `match-${index}`),
+          },
           "alice",
         )
       ).status,
@@ -636,7 +648,7 @@ test("a solo rider with bots confirms alone, history pages newest first, and rep
       { result: resultOf([f.ids[0]!, "bot:1"], "match-30") },
       "alice",
     ),
-    { status: "confirmed", attestations: 1, needed: 1, linked: false },
+    { status: "pending", attestations: 1, needed: 2, linked: false },
   );
   for (let index = 31; index < 40; index++)
     await f.report(
@@ -730,12 +742,12 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   });
 });
 
-test("a lone guest's game stays out of the public feed until a second rider or an account vouches for it", async () => {
+test("a lone guest's game stays pending even after signing in", async () => {
   const f = await room(2),
     result = resultOf([f.ids[0]!, "bot:1"], "lone");
   assert.equal(
     (await f.report(f.tokens[0]!, { result }, undefined)).status,
-    "confirmed",
+    "pending",
   );
   assert.deepEqual(
     (await f.history.feed("viewer", undefined, undefined)).matches,
@@ -744,18 +756,52 @@ test("a lone guest's game stays out of the public feed until a second rider or a
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
   const listed = (await f.history.feed("viewer", undefined, undefined)).matches;
-  assert.deepEqual(
-    listed.map((entry) => entry.result.matchId),
-    ["lone"],
-    "a late sign-in makes it public",
-  );
-  assert.equal(listed[0]!.endedAt, f.now() - 1000, "listed at when it ended");
+  assert.deepEqual(listed, []);
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
   assert.equal(
-    (await f.history.feed("viewer", undefined, undefined)).matches[0]!.endedAt,
-    f.now() - 2000,
-    "a rewrite keeps its place",
+    (await f.history.feed("viewer", undefined, undefined)).matches.length,
+    0,
+    "a repeat report cannot publish it",
+  );
+});
+
+test("legacy one-seat confirmations cannot be republished by the same seat", async () => {
+  const f = await room(2),
+    result = parseMatchResult(resultOf(f.ids, "legacy"))!;
+  const id = matchRecordId((await f.rooms.get(f.code)).incarnation, result);
+  await f.matches.transactMatch(GAME_ID, id, () => ({
+    match: {
+      gameId: GAME_ID,
+      version: 1,
+      id,
+      roomCode: f.code,
+      status: "confirmed",
+      result,
+      attesters: [f.ids[0]!],
+      uidByPlayer: { [f.ids[0]!]: "alice" },
+      avatars: {},
+      participantUids: ["alice"],
+      createdAt: 1,
+      endedAt: 2,
+      feedAt: 2,
+    },
+    result: undefined,
+  }));
+  assert.deepEqual(
+    (await f.history.feed("viewer", undefined, undefined)).matches,
+    [],
+  );
+  await assert.rejects(f.report(f.tokens[0]!, { result }, "alice"), {
+    status: 409,
+  });
+  assert.equal(
+    (await f.report(f.tokens[1]!, { result }, undefined)).status,
+    "confirmed",
+  );
+  assert.equal(
+    (await f.history.feed("viewer", undefined, undefined)).matches.length,
+    1,
   );
 });
 
@@ -879,7 +925,7 @@ test("only a confirmed whole game can carry a feed time", () => {
 });
 
 test("an account chooses its username; it is not unique, and totals survive a rename", async () => {
-  const f = await room(1);
+  const f = await room(2);
   assert.equal(
     await f.history.profile("alice"),
     undefined,
@@ -892,8 +938,13 @@ test("an account chooses its username; it is not unique, and totals survive a re
   assert.equal((await f.history.profile("alice"))!.totals.matches, 0);
   await f.report(
     f.tokens[0]!,
-    { result: resultOf([f.ids[0]!, "bot:1"]) },
+    { result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"]) },
     "alice",
+  );
+  await f.report(
+    f.tokens[1]!,
+    { result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"]) },
+    undefined,
   );
   await f.history.rename("alice", { username: "Ace 2" });
   const renamed = (await f.history.history("alice", undefined)).profile!;
@@ -1232,7 +1283,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
   }
 });
 
-test("solo HTTP rounds and finished games authenticate, isolate accounts and credit history once", async () => {
+test("solo HTTP rounds authenticate and finished games stay pending without corroboration", async () => {
   const service = createDevRoomService({
     identity: async (value) =>
       value.startsWith("id:") ? value.slice(3) : undefined,
@@ -1338,7 +1389,7 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
     for (let retry = 0; retry < 2; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
     const after = (await profile("a")).profile!;
-    assert.equal(after.totals.matches, 1);
+    assert.equal(after.totals.matches, 0);
     assert.deepEqual(
       after.rating,
       ratingBefore,
@@ -1349,12 +1400,11 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
         headers: { origin, authorization: "Bearer id:a" },
       })
     ).json()) as { matches: { result: MatchResult }[] };
-    assert.equal(personal.matches.length, 1);
-    assert.deepEqual(personal.matches[0]!.result, whole);
+    assert.equal(personal.matches.length, 0);
     const feed = (await (
       await fetch(`${origin}/api/matches`, { headers: { origin } })
     ).json()) as { matches: unknown[] };
-    assert.equal(feed.matches.length, 1);
+    assert.equal(feed.matches.length, 0);
     // Exhausting account links must not silently turn authenticated solo games into unlisted guest records.
     for (let retry = 2; retry < 30; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
@@ -1362,7 +1412,7 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
       (await finish({ ...whole, matchId: "over-budget" }, "id:a")).status,
       429,
     );
-    assert.equal((await profile("a")).profile!.totals.matches, 1);
+    assert.equal((await profile("a")).profile!.totals.matches, 0);
     assert.equal(
       (await report({ result: { ...result, round: 3 } }, "id:a")).status,
       200,
