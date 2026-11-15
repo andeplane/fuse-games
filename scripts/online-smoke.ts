@@ -82,6 +82,9 @@ const joinAs = async (page: Page, name: string, url: string) => {
     .filter({ hasText: name })
     .first()
     .waitFor();
+  await page
+    .locator(".room-ready-button:not([hidden])")
+    .waitFor({ state: "attached" });
 };
 // A member's own name: these lists also carry the HOST badge and the status lines, and `getByText` is not case
 // sensitive, so "Host" would match the badge too. The watching list is nested in `.fui-room-players`, so this matches a
@@ -282,6 +285,18 @@ try {
     riders.push(page);
   }
   console.log(`${riderCount} riders joined`);
+  // Confirm the complete membership on every voter before submitting votes. A host-only roster check does not
+  // establish that the last phone has applied the same lobby membership.
+  for (const page of [host, guest, ...riders])
+    for (const name of [
+      "Host",
+      "Guest",
+      ...riders.map((_, index) => `Rider ${index + 2}`),
+    ])
+      await page
+        .locator(".fui-room-players .fui-slot-occupant")
+        .getByText(name, { exact: true })
+        .waitFor({ state: "visible" });
   await readyRoom(host);
   await guest.waitForFunction(() =>
     document.querySelector(".online-notice")?.textContent?.includes("READY"),
