@@ -7,37 +7,37 @@ import { SONGS } from "../../../scripts/lib/fusemania/songs.js";
 import { FUSE_TRACKS } from "../../../packages/fuseos/src/winamp/fuseTracks.js";
 import { LIBRARY } from "../src/songs.js";
 
-// Main 3d64fc9a before the display-name change, with only #TITLE normalized. Holds chart notes, timing, audio reference and
-// all other simfile metadata to the original authored files while allowing their display titles to change.
+// Baseline refreshed for the intentional DSP regeneration of all first-party charts.
+// Normalizing only #TITLE keeps subsequent display-name edits independent of notes, timing and audio metadata.
 const ORIGINAL_CHARTS: Readonly<Record<string, string>> = {
-  afronova: "1fe0d03e1650a504d31d27741e41a1c3a7ca17d3e6967add4f0bf8f1cea120ed",
+  afronova: "91e99b7b6c97d0553fda9b72ea5a8ee5f40cf68ba1a4af5909324c61d5608b6d",
   "afronova-radio-edit":
-    "58adb0dbd3dd5cca85d2cb04e6de459fda7767ec4931ad2892bbfb83f32e544c",
+    "ad832bb4f57938d76a98a62d619a80d85d7ae06371e7b7cae7ecd64ded609aea",
   "burning-heat":
-    "93a2af8363ba2eccd1888ff53cdacc7aee061134a29dd56f9da0105237aa6565",
+    "d85690ed337888602545d57b4fc09231054b1acc00518f991f7562cb09a520d5",
   "cant-stop-fallin-in-love":
-    "1be8e4976687ba8455a3f3c2508c83bce924eb2e1ba3ef1b180662fae749f1fc",
-  candy: "e0745aa8700a0f558884560290f1d9804c169cf745c03603ca41ef3bfdfa7c16",
+    "8f74189d04b29f086c8c1ce0940647ceab6e8f684ac727ee361218b128846283",
+  candy: "c06a77925e11181d6bc8b3f8b3d972a5f23c43bf20a1f89fa20a7c079c5cdecd",
   "electro-tuned":
-    "d49bd988d11c69e3405fe0d483e5036d18b4eeece40493a12b736f702226a8c5",
+    "79043c9774a7fc8fde65fdca5f8de2e4ea5cddca4910745f553980869aa4f11b",
   "exotic-ethnic":
-    "d956fbef015f6d6afb3a9e7297539b76e378b2cdc8c6fb20113d27d262f21e48",
+    "2b9f52094b0b9d602405edf4f1f47b424296490a8c933798332c28c8d8ceed93",
   "paranoia-survivor-max":
-    "17f87c812fc69e2cd19df0e0c4e49a39d5f3536c193f2c02479c06ca5aaad1e7",
+    "18bdf1e4a851d1009af15f00a53eb36ba3a9505e7901f4d6b3d1fa9dfd4caa3c",
   "rain-of-sorrow":
-    "270615447945f12aab8f14cb4c1c73bb749d32c7ef4d9d6d5acee2c668e01991",
+    "4b9b446a8c045218958bddc96c29cd72356e8bc47947228af48fcf9c0b1512ed",
   "rain-of-sorrow-night-mix":
-    "97de66c41db7e677a5a9f0ecbd5c8b8be0ea0154eafd843e0e439914aee3bcb6",
+    "e618e4174f80436a8c5fc57824dd1c389d7ae28cc348ed789d7bd2f790cd5f3d",
   "the-least-100sec":
-    "b76cf933bbc6860ddb568ca4b3dc374a2a4b72350f86c1b47d16a7c75e255d43",
+    "a32c94f17f565b08f33d134f61b79eaa02e735681893dfbbbacc8a665a05b71d",
   "the-legend-of-max":
-    "44d7b1ddf7743c69580837e75b029f2f0b4a05f7925b4e4f4a438851146b0dbf",
-  xenon: "3f92b9390f2c895b2c3f6d14c32a3c504e0a1b87217a124229d8cb8f8929bbd0",
+    "793c35b92f3cc32ddcb854a21bc2507a9ee17dc7638448fd85ac9e55c3f5ac50",
+  xenon: "8c64bd483e6470e1f0bc8fc295cc0fe0d4b9413aafa9daf5676633c51d49ed59",
   determinator:
-    "82d17cc7b108d2cc55749c208e1a9d7a784a0e22bb1be5f6ae20cc7e445a7c96",
-  monolith: "e9321a41c9dc3f4dc1a30d039935e44080a925f47033cfdf023f8395cdff494b",
+    "2f03ae55ec31592bb0102fbc3aaa153419b8690a0f1dfa42f0b4d22030584e54",
+  monolith: "c3ae5daf2b1bfd6298bf9c524d7fced3a5317c96c48278760bfd817cead41722",
   "temple-of-boom":
-    "c556e9c6e59026cc4c325f186917fa1248b2c1ca128c230d995b34530a932ed4",
+    "9415cbf1a4e67111e2360939ac566f3e9a2f1ceeeeb5d9c7b90f23b77713919d",
 };
 const mixes = SONGS.filter((song) =>
   ["ddr-jazz-mix", "itg-jazz-mix"].includes(song.pack),

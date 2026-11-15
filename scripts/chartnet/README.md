@@ -350,3 +350,106 @@ feature such a band would add) and counts each chart's steps by subdivision in t
 note (`src/lab/notes.ts`, versioned JSON): kept in the browser, downloadable, copyable as text for a chat, or saved to
 a file on every change (Chrome's file picker). `Load .ssc…` adds a candidate's charts (e.g. `gen2.py fuse` output)
 beside the song's own for comparison. The DSP is `src/lab/spectrum.ts` and runs in a worker (about 8 s a song).
+
+### Auditioning extracted rhythm (experimental)
+
+The lab's **Rhythm experiment** panel extracts candidate events without training or changing a chart:
+
+1. Drag a time/frequency box over the musical line to follow. Without a selection it uses the listening band,
+   or 400–4000 Hz over the whole song. The DukAmok-calibrated defaults are 90% sensitivity and a 40 ms minimum gap;
+   the earlier 80 ms gap suppresses notes in fast solo streams.
+2. Choose **Melody changes + attacks** or **Band attacks only**, sensitivity and minimum spacing, then
+   **Detect rhythm**. Detection runs in its own cancellable worker; switching songs or settings retires it.
+3. **Listen** plays the analysed span with clicks; **Detected** in the tick menu uses the same events during normal
+   playback. White traces show estimated pitch, orange dots attacks, yellow squares persistent pitch changes.
+   Change the band/settings and detect again to compare. A later selection alone does not replace the analysed span.
+4. **Download events** exports unsnapped event times/strengths, the pitch trace and novelty features at 100 Hz with
+   their options and starting frame. These are experimental features, not verified training labels. They are not
+   written to saved notes, Custom taps or `.ssc` charts. `?mute` silences both the song and clicks for browser checks;
+   remove it for listening.
+5. Pick a **Reference** chart, then **Listen to reference** to hear its authored rows over the same analysed phrase.
+   Both auditions use the exact phrase for clicks, with 100 ms of music padding. The comparison counts simultaneous
+   panels once, excludes mines and hold tails, and matches each event/row at most once within ±40 ms. It shows missed
+   rows, extra clicks and F1. This measures agreement with that chart, rather than proving which instrument was heard.
+
+`src/lab/rhythm.ts` uses noise-gated harmonic magnitude summation, up to six harmonics with decaying weights, and
+dynamic-programming ridge continuity. This is a simplified salience tracker inspired by
+[MELODIA's predominant-melody approach](https://essentia.upf.edu/reference/std_PredominantPitchMelodia.html), not a
+reproduction of that algorithm. Attacks use a two-frame positive spectral difference against a ±1-bin frequency
+maximum, following [SuperFlux](https://phenicx.upf.edu/system/files/publications/Boeck_DAFx-13.pdf); median-background
+thresholding and minimum-spacing suppression select events. Stable pitch changes provide additional evidence for
+connected notes, with relative pitch hysteresis to reject detuned vibrato. A local half-amplitude crossing refines
+pitched attack times to reduce the early log-flux bias of centred bass windows. Neither branch needs the beat grid
+or a chart. Changing playback speed preserves Listen's end; seeking leaves the bounded audition.
+
+Limits: the selected band does not separate instruments, and the strongest coherent line can still be accompaniment
+or an overtone. Fast runs, slides and tremolo can be ambiguous; the multiresolution spectrum can smear attack timing.
+Synthetic regressions cover silence, steady tones, repeated and connected notes, a missing fundamental, vibrato,
+off-band bass, broadband attacks, fast repeated notes and spacing/crop behaviour. The pack benchmark below measures
+authored-chart agreement; instrument-level transcription accuracy and improvements to ChartNet remain unmeasured.
+Compare missed and extra events against the intended musical line before using them as inputs.
+
+The next distinct onset experiment is [complex-domain onset detection](https://www.dafx.de/paper-archive/2003/pdfs/dafx81.pdf),
+which also uses phase prediction error. It requires retaining FFT phase; sharpening the current dB picture cannot
+recover it. Harmonic/percussive separation and NMF are other possible experiments, rather than prerequisites for
+auditioning this baseline.
+
+### DukAmok calibration (47 songs, 85 dance-single charts)
+
+`benchmark-rhythm.ts` decodes the original MP3/OGG files and runs the exact lab spectrum and audio-only detector.
+It uses the game's SM/SSC/DWI parser and timing code, including offsets, BPM changes and stops, to score all 85 charts
+at ±20/40/60 ms. Chords count as one row; mines and hold tails do not count. The primary chart per song follows the
+game's difficulty order (Beginner through Edit), then meter. Return of Salieri therefore uses Edit 13; the raw result
+also retains its Challenge 12 score. There is no fitted timing offset, beat snapping or chart input to the detector.
+
+The fixed eight-setting sweep chooses its setting using only mean whole-song F1 at ±40 ms on the four songs Anders
+named: Beyond Abilities v2, Big Blue, Return of Salieri and Salieri Strikes Back. The other 43 songs are a separate
+check set. These are pack-level checks, not an independent corpus or a comparison with ChartNet's different benchmark.
+The committed [measurement report](../../docs/audio/dukamok-rhythm-benchmark.json) retains all 47 song scores, all
+eight configurations, immutable audio/chart checksums, decoder details and hashes of the analysis/scoring sources.
+
+| Songs / metric (macro mean, ±40 ms) | Earlier defaults | Calibrated defaults |
+| ----------------------------------- | ---------------- | ------------------- |
+| Four tuning songs, whole-song F1    | 0.581            | 0.730               |
+| Other 43 songs, whole-song F1       | 0.502            | 0.623               |
+| Four tuning songs, stream F1        | 0.612            | 0.793               |
+| Other 43 songs, stream F1           | 0.541            | 0.710               |
+| Other 43 songs, recall              | 0.418            | 0.688               |
+| Other 43 songs, precision           | 0.655            | 0.590               |
+
+The winner is **Melody changes + attacks, 400–4000 Hz, 90%, 40 ms**. The baseline was 200–3000 Hz, 60%, 80 ms.
+The gain recovers more authored notes and also introduces more extra clicks. A “stream” here is a density proxy:
+at least 16 consecutive authored rows with gaps no greater than half a beat and 200 ms, not an annotated instrument
+solo. Stream scores select predictions from the whole-song run; detecting an isolated phrase can differ because
+ridge tracking and adaptive thresholds use different context.
+
+| Primary reference                    | Whole-song F1 before → after | Stream F1 after | Suggested audition (seconds) |
+| ------------------------------------ | ---------------------------- | --------------- | ---------------------------- |
+| Beyond Abilities v2 · Hard 11        | 0.548 → 0.766                | 0.817           | 53.89–87.77                  |
+| Big Blue · Hard 12                   | 0.609 → 0.683                | 0.730           | 58.65–69.67                  |
+| Return of Salieri · Edit 13          | 0.628 → 0.804                | 0.875           | 238.71–284.03                |
+| Salieri Strikes Back · Hard 13       | 0.538 → 0.669                | 0.750           | 253.85–302.60                |
+| Holy Orders v2 · Hard 11 (check set) | 0.515 → 0.603                | 0.735           | 41.26–55.82                  |
+
+Run the full analysis on a compute worker with Node 22, the project's pnpm dependencies and FFmpeg (the recorded run
+uses Node 22.20.0 and FFmpeg 6.1.1). Keep media, detailed event arrays and caches outside Git. For example, with an
+ignored work directory on that worker:
+
+```bash
+ROOT=artifacts/rhythm-calibration
+mkdir -p "$ROOT"
+pnpm exec tsx scripts/chartnet/benchmark-rhythm.ts manifest --manifest "$ROOT/manifest.json"
+pnpm exec tsx scripts/chartnet/benchmark-rhythm.ts run --manifest "$ROOT/manifest.json" --work "$ROOT/results" --cache "$ROOT/cache"
+pnpm exec tsx scripts/chartnet/benchmark-rhythm.ts summary --manifest "$ROOT/manifest.json" --work "$ROOT/results" --cache "$ROOT/cache"
+```
+
+For parallel execution, start six `run` processes with distinct `--shard 0/6` through `--shard 5/6`, using the same
+work/cache directories. Wait for every shard to succeed before `summary`. Audio is verified against its URL's SHA-256;
+spectrum caches are invalidated by spectrum source or decoder changes. Summary rejects results whose detector,
+scorer, parser/timing, benchmark, configuration or manifest hashes differ. The longest song is decoded in full
+(The Glass Prison, 804 seconds), without the old Python extractor's 420-second cap.
+
+FFmpeg reports an invalid MP3 packet in the original Return of Salieri file; decoding still exits zero, produces
+the full song and all chart rows fit within its duration. This warning is retained as a data limitation, with the
+original audio checksum recorded; the benchmark does not replace the source file. Browser decoding can differ
+slightly in padding/resampling, so its displayed counts can differ by a few events from the FFmpeg measurement.

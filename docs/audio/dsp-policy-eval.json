@@ -1,0 +1,3501 @@
+{
+  "summary": [
+    {
+      "level": "Easy",
+      "charts": 0,
+      "rawF1": 0,
+      "policyF1": 0,
+      "targetNpsMae": 0
+    },
+    {
+      "level": "Medium",
+      "charts": 7,
+      "rawF1": 0.7434767945216851,
+      "policyF1": 0.5598356053808297,
+      "targetNpsMae": 2.168411946663561
+    },
+    {
+      "level": "Hard",
+      "charts": 23,
+      "rawF1": 0.675591266354557,
+      "policyF1": 0.6375696021335812,
+      "targetNpsMae": 1.4908591313225577
+    },
+    {
+      "level": "Challenge",
+      "charts": 43,
+      "rawF1": 0.6354787311568916,
+      "policyF1": 0.6081753853113022,
+      "targetNpsMae": 1.3667339132353113
+    }
+  ],
+  "scores": [
+    {
+      "id": "dukamok-animate-inanimate",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 6.673346575998667,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.780981198192194,
+      "raw": {
+        "reference": 930,
+        "detected": 1198,
+        "matched": 675,
+        "precision": 0.5634390651085142,
+        "recall": 0.7258064516129032,
+        "f1": 0.6343984962406014,
+        "meanErrorMs": 17.40658350164554,
+        "meanSignedErrorMs": 0.38077091063609586
+      },
+      "selected": {
+        "reference": 930,
+        "detected": 945,
+        "matched": 637,
+        "precision": 0.674074074074074,
+        "recall": 0.6849462365591398,
+        "f1": 0.6794666666666667,
+        "meanErrorMs": 8.932964689894273,
+        "meanSignedErrorMs": 1.376555214507858
+      }
+    },
+    {
+      "id": "dukamok-animate-inanimate",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 14,
+      "example": false,
+      "referenceNps": 7.268924818802849,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.484194063189903,
+      "raw": {
+        "reference": 1013,
+        "detected": 1198,
+        "matched": 709,
+        "precision": 0.5918196994991652,
+        "recall": 0.6999012833168805,
+        "f1": 0.6413387607417458,
+        "meanErrorMs": 17.385624166613727,
+        "meanSignedErrorMs": 0.6230165197601419
+      },
+      "selected": {
+        "reference": 1013,
+        "detected": 1043,
+        "matched": 691,
+        "precision": 0.6625119846596357,
+        "recall": 0.6821322803553801,
+        "f1": 0.6721789883268482,
+        "meanErrorMs": 9.908849385489441,
+        "meanSignedErrorMs": -1.2149815322810535
+      }
+    },
+    {
+      "id": "dukamok-another-world",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 7.1728501385243515,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.915254082822981,
+      "raw": {
+        "reference": 1285,
+        "detected": 1598,
+        "matched": 892,
+        "precision": 0.55819774718398,
+        "recall": 0.6941634241245136,
+        "f1": 0.6187998612556365,
+        "meanErrorMs": 19.74033226557173,
+        "meanSignedErrorMs": 6.075525571900161
+      },
+      "selected": {
+        "reference": 1285,
+        "detected": 1418,
+        "matched": 924,
+        "precision": 0.6516220028208745,
+        "recall": 0.7190661478599222,
+        "f1": 0.683684794672586,
+        "meanErrorMs": 8.152483481430465,
+        "meanSignedErrorMs": -0.6052061973114297
+      }
+    },
+    {
+      "id": "dukamok-bat-country",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.755114962895021,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 6.546722567330943,
+      "raw": {
+        "reference": 1803,
+        "detected": 2617,
+        "matched": 1276,
+        "precision": 0.4875811998471532,
+        "recall": 0.7077093732667776,
+        "f1": 0.5773755656108597,
+        "meanErrorMs": 17.316622872815834,
+        "meanSignedErrorMs": 0.8255540201092783
+      },
+      "selected": {
+        "reference": 1803,
+        "detected": 2051,
+        "matched": 1118,
+        "precision": 0.5450999512432959,
+        "recall": 0.620077648363838,
+        "f1": 0.5801764400622729,
+        "meanErrorMs": 9.26654740608124,
+        "meanSignedErrorMs": -5.438282647584351
+      }
+    },
+    {
+      "id": "dukamok-beyond-abilities-v2",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 8.794429510155316,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.997311827956989,
+      "raw": {
+        "reference": 1346,
+        "detected": 1445,
+        "matched": 1069,
+        "precision": 0.7397923875432526,
+        "recall": 0.7942050520059435,
+        "f1": 0.7660336796847009,
+        "meanErrorMs": 16.250722993293905,
+        "meanSignedErrorMs": -0.015852616740967117
+      },
+      "selected": {
+        "reference": 1346,
+        "detected": 1224,
+        "matched": 892,
+        "precision": 0.7287581699346405,
+        "recall": 0.662704309063893,
+        "f1": 0.6941634241245136,
+        "meanErrorMs": 4.8796627129084875,
+        "meanSignedErrorMs": -0.3503347588753273
+      }
+    },
+    {
+      "id": "dukamok-big-blue",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 6.815910614813287,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 5.504854807097174,
+      "raw": {
+        "reference": 863,
+        "detected": 1000,
+        "matched": 636,
+        "precision": 0.636,
+        "recall": 0.7369640787949016,
+        "f1": 0.6827697262479872,
+        "meanErrorMs": 16.602825479177934,
+        "meanSignedErrorMs": 1.8158972333360406
+      },
+      "selected": {
+        "reference": 863,
+        "detected": 697,
+        "matched": 453,
+        "precision": 0.6499282639885222,
+        "recall": 0.5249130938586327,
+        "f1": 0.5807692307692308,
+        "meanErrorMs": 0.830256500419844,
+        "meanSignedErrorMs": 0.14651585301527076
+      }
+    },
+    {
+      "id": "dukamok-black-dragon",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 8.611023114567859,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.938330201870139,
+      "raw": {
+        "reference": 2574,
+        "detected": 2491,
+        "matched": 1622,
+        "precision": 0.65114411882778,
+        "recall": 0.6301476301476302,
+        "f1": 0.6404738400789735,
+        "meanErrorMs": 19.505426982469267,
+        "meanSignedErrorMs": -2.476539150959249
+      },
+      "selected": {
+        "reference": 2574,
+        "detected": 2074,
+        "matched": 1495,
+        "precision": 0.7208293153326905,
+        "recall": 0.5808080808080808,
+        "f1": 0.6432874354561101,
+        "meanErrorMs": 5.432303274550277,
+        "meanSignedErrorMs": -0.5606291635656184
+      }
+    },
+    {
+      "id": "dukamok-black-dragon",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 8.718075460980513,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.523772721314341,
+      "raw": {
+        "reference": 2606,
+        "detected": 2491,
+        "matched": 1639,
+        "precision": 0.6579686872741871,
+        "recall": 0.6289332310053722,
+        "f1": 0.643123405925054,
+        "meanErrorMs": 19.508794215770774,
+        "meanSignedErrorMs": -2.563943798512258
+      },
+      "selected": {
+        "reference": 2606,
+        "detected": 2249,
+        "matched": 1603,
+        "precision": 0.7127612272120942,
+        "recall": 0.6151189562547966,
+        "f1": 0.6603501544799175,
+        "meanErrorMs": 5.517048281377641,
+        "meanSignedErrorMs": -0.6851236427853534
+      }
+    },
+    {
+      "id": "dukamok-bring-me-to-life",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 3.2170717304823473,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.888446875517984,
+      "raw": {
+        "reference": 507,
+        "detected": 1048,
+        "matched": 273,
+        "precision": 0.26049618320610685,
+        "recall": 0.5384615384615384,
+        "f1": 0.3511254019292604,
+        "meanErrorMs": 22.32093268831282,
+        "meanSignedErrorMs": 6.840844114793696
+      },
+      "selected": {
+        "reference": 507,
+        "detected": 928,
+        "matched": 239,
+        "precision": 0.25754310344827586,
+        "recall": 0.4714003944773176,
+        "f1": 0.33310104529616724,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-cold-pizza",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": true,
+      "referenceNps": 8.283788041448842,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 5.982338732262883,
+      "raw": {
+        "reference": 1159,
+        "detected": 1594,
+        "matched": 1022,
+        "precision": 0.6411543287327478,
+        "recall": 0.8817946505608283,
+        "f1": 0.742462767889575,
+        "meanErrorMs": 14.251530332937197,
+        "meanSignedErrorMs": 0.32304546326592315
+      },
+      "selected": {
+        "reference": 1159,
+        "detected": 837,
+        "matched": 655,
+        "precision": 0.7825567502986858,
+        "recall": 0.5651423641069888,
+        "f1": 0.6563126252505009,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-cold-pizza",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 13,
+      "example": true,
+      "referenceNps": 8.81269254107543,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 7.8763886295743095,
+      "raw": {
+        "reference": 1233,
+        "detected": 1594,
+        "matched": 1030,
+        "precision": 0.6461731493099122,
+        "recall": 0.8353609083536091,
+        "f1": 0.7286876547576937,
+        "meanErrorMs": 14.172770898761554,
+        "meanSignedErrorMs": 1.4123400335336944
+      },
+      "selected": {
+        "reference": 1233,
+        "detected": 1102,
+        "matched": 793,
+        "precision": 0.7196007259528131,
+        "recall": 0.643146796431468,
+        "f1": 0.6792291220556745,
+        "meanErrorMs": 2.9424127784782836,
+        "meanSignedErrorMs": -0.14011489421332604
+      }
+    },
+    {
+      "id": "dukamok-cold-pizza",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 14,
+      "example": true,
+      "referenceNps": 9.127176297610157,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 7.883535987677371,
+      "raw": {
+        "reference": 1277,
+        "detected": 1594,
+        "matched": 1070,
+        "precision": 0.671267252195734,
+        "recall": 0.8379013312451057,
+        "f1": 0.7453848833159178,
+        "meanErrorMs": 14.31148778701865,
+        "meanSignedErrorMs": 1.4037095001449311
+      },
+      "selected": {
+        "reference": 1277,
+        "detected": 1103,
+        "matched": 819,
+        "precision": 0.742520398912058,
+        "recall": 0.6413469068128426,
+        "f1": 0.6882352941176471,
+        "meanErrorMs": 3.0864197530862993,
+        "meanSignedErrorMs": -0.16958350291689744
+      }
+    },
+    {
+      "id": "dukamok-concertino-in-blue",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.829387427636547,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.9064702365970305,
+      "raw": {
+        "reference": 605,
+        "detected": 754,
+        "matched": 448,
+        "precision": 0.5941644562334217,
+        "recall": 0.740495867768595,
+        "f1": 0.659308314937454,
+        "meanErrorMs": 17.51139885255974,
+        "meanSignedErrorMs": 4.090852770459982
+      },
+      "selected": {
+        "reference": 605,
+        "detected": 613,
+        "matched": 421,
+        "precision": 0.6867862969004894,
+        "recall": 0.6958677685950413,
+        "f1": 0.6912972085385878,
+        "meanErrorMs": 5.367780375241113,
+        "meanSignedErrorMs": 0.24819841520710909
+      }
+    },
+    {
+      "id": "dukamok-concertino-in-blue",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 5.829387427636547,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.9064702365970305,
+      "raw": {
+        "reference": 605,
+        "detected": 754,
+        "matched": 448,
+        "precision": 0.5941644562334217,
+        "recall": 0.740495867768595,
+        "f1": 0.659308314937454,
+        "meanErrorMs": 17.51139885255974,
+        "meanSignedErrorMs": 4.090852770459982
+      },
+      "selected": {
+        "reference": 605,
+        "detected": 613,
+        "matched": 421,
+        "precision": 0.6867862969004894,
+        "recall": 0.6958677685950413,
+        "f1": 0.6912972085385878,
+        "meanErrorMs": 5.367780375241113,
+        "meanSignedErrorMs": 0.24819841520710909
+      }
+    },
+    {
+      "id": "dukamok-counting-snow",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 10,
+      "example": true,
+      "referenceNps": 1.6289893617021276,
+      "policy": {
+        "targetNps": 4,
+        "peakNps2s": 6,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 4,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 2.734375,
+      "raw": {
+        "reference": 56,
+        "detected": 162,
+        "matched": 55,
+        "precision": 0.3395061728395062,
+        "recall": 0.9821428571428571,
+        "f1": 0.5045871559633027,
+        "meanErrorMs": 16.03586926909382,
+        "meanSignedErrorMs": 14.903828785092532
+      },
+      "selected": {
+        "reference": 56,
+        "detected": 94,
+        "matched": 55,
+        "precision": 0.5851063829787234,
+        "recall": 0.9821428571428571,
+        "f1": 0.7333333333333334,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-counting-snow",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 11,
+      "example": true,
+      "referenceNps": 2.734375,
+      "policy": {
+        "targetNps": 4,
+        "peakNps2s": 8,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 2.734375,
+      "raw": {
+        "reference": 94,
+        "detected": 162,
+        "matched": 61,
+        "precision": 0.3765432098765432,
+        "recall": 0.648936170212766,
+        "f1": 0.4765625,
+        "meanErrorMs": 17.079754182595337,
+        "meanSignedErrorMs": 16.059061942922046
+      },
+      "selected": {
+        "reference": 94,
+        "detected": 94,
+        "matched": 55,
+        "precision": 0.5851063829787234,
+        "recall": 0.5851063829787234,
+        "f1": 0.5851063829787234,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-counting-snow",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 15,
+      "example": true,
+      "referenceNps": 12.799202127659575,
+      "policy": {
+        "targetNps": 4,
+        "peakNps2s": 8,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 2.734375,
+      "raw": {
+        "reference": 440,
+        "detected": 162,
+        "matched": 111,
+        "precision": 0.6851851851851852,
+        "recall": 0.25227272727272726,
+        "f1": 0.36877076411960125,
+        "meanErrorMs": 19.561621127183432,
+        "meanSignedErrorMs": 15.779525985078383
+      },
+      "selected": {
+        "reference": 440,
+        "detected": 94,
+        "matched": 75,
+        "precision": 0.7978723404255319,
+        "recall": 0.17045454545454544,
+        "f1": 0.28089887640449435,
+        "meanErrorMs": 7.738095238095255,
+        "meanSignedErrorMs": 7.738095238095255
+      }
+    },
+    {
+      "id": "dukamok-cynthia",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": true,
+      "referenceNps": 6.373831950829503,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 4,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 3.6115830501698984,
+      "raw": {
+        "reference": 833,
+        "detected": 903,
+        "matched": 450,
+        "precision": 0.4983388704318937,
+        "recall": 0.5402160864345739,
+        "f1": 0.5184331797235022,
+        "meanErrorMs": 17.99814327482868,
+        "meanSignedErrorMs": 4.322901930796817
+      },
+      "selected": {
+        "reference": 833,
+        "detected": 472,
+        "matched": 343,
+        "precision": 0.7266949152542372,
+        "recall": 0.4117647058823529,
+        "f1": 0.5256704980842911,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-cynthia",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 12,
+      "example": true,
+      "referenceNps": 6.756414901059365,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.93768738756746,
+      "raw": {
+        "reference": 883,
+        "detected": 903,
+        "matched": 483,
+        "precision": 0.5348837209302325,
+        "recall": 0.5469988674971688,
+        "f1": 0.5408734602463606,
+        "meanErrorMs": 18.043634644233055,
+        "meanSignedErrorMs": 4.443393756610023
+      },
+      "selected": {
+        "reference": 883,
+        "detected": 776,
+        "matched": 422,
+        "precision": 0.5438144329896907,
+        "recall": 0.47791619479048697,
+        "f1": 0.5087402049427365,
+        "meanErrorMs": 2.2334440023314395,
+        "meanSignedErrorMs": -0.17424031223864944
+      }
+    },
+    {
+      "id": "dukamok-cynthia",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 13,
+      "example": true,
+      "referenceNps": 6.756414901059365,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.93768738756746,
+      "raw": {
+        "reference": 883,
+        "detected": 903,
+        "matched": 483,
+        "precision": 0.5348837209302325,
+        "recall": 0.5469988674971688,
+        "f1": 0.5408734602463606,
+        "meanErrorMs": 18.043634644233055,
+        "meanSignedErrorMs": 4.443393756610023
+      },
+      "selected": {
+        "reference": 883,
+        "detected": 776,
+        "matched": 422,
+        "precision": 0.5438144329896907,
+        "recall": 0.47791619479048697,
+        "f1": 0.5087402049427365,
+        "meanErrorMs": 2.2334440023314395,
+        "meanSignedErrorMs": -0.17424031223864944
+      }
+    },
+    {
+      "id": "dukamok-die-motherfucker-die",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 4.752385982806353,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 6.554053438729419,
+      "raw": {
+        "reference": 852,
+        "detected": 1978,
+        "matched": 749,
+        "precision": 0.3786653185035389,
+        "recall": 0.8791079812206573,
+        "f1": 0.5293286219081271,
+        "meanErrorMs": 13.11817759400476,
+        "meanSignedErrorMs": -2.2801773436921993
+      },
+      "selected": {
+        "reference": 852,
+        "detected": 1175,
+        "matched": 616,
+        "precision": 0.5242553191489362,
+        "recall": 0.7230046948356808,
+        "f1": 0.6077947705969414,
+        "meanErrorMs": 7.235104728140606,
+        "meanSignedErrorMs": -2.5839659743359853
+      }
+    },
+    {
+      "id": "dukamok-die-motherfucker-die",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 4.958768942153577,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 6.554053438729419,
+      "raw": {
+        "reference": 889,
+        "detected": 1978,
+        "matched": 778,
+        "precision": 0.39332659251769464,
+        "recall": 0.875140607424072,
+        "f1": 0.5427275898151378,
+        "meanErrorMs": 13.03771830716837,
+        "meanSignedErrorMs": -2.1859538096875744
+      },
+      "selected": {
+        "reference": 889,
+        "detected": 1175,
+        "matched": 629,
+        "precision": 0.5353191489361702,
+        "recall": 0.7075365579302587,
+        "f1": 0.6094961240310077,
+        "meanErrorMs": 7.085571562058265,
+        "meanSignedErrorMs": -2.2775051449473223
+      }
+    },
+    {
+      "id": "dukamok-estella",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.25889773599386,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.57117389357892,
+      "raw": {
+        "reference": 537,
+        "detected": 742,
+        "matched": 405,
+        "precision": 0.545822102425876,
+        "recall": 0.7541899441340782,
+        "f1": 0.6333072713057076,
+        "meanErrorMs": 15.594483171008713,
+        "meanSignedErrorMs": 7.57854709157073
+      },
+      "selected": {
+        "reference": 537,
+        "detected": 671,
+        "matched": 408,
+        "precision": 0.6080476900149031,
+        "recall": 0.7597765363128491,
+        "f1": 0.6754966887417219,
+        "meanErrorMs": 7.598845459236679,
+        "meanSignedErrorMs": 2.600135448916559
+      }
+    },
+    {
+      "id": "dukamok-estella",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 5.601656433870555,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.57117389357892,
+      "raw": {
+        "reference": 572,
+        "detected": 742,
+        "matched": 432,
+        "precision": 0.5822102425876011,
+        "recall": 0.7552447552447552,
+        "f1": 0.6575342465753424,
+        "meanErrorMs": 15.47725611762112,
+        "meanSignedErrorMs": 7.541007722936423
+      },
+      "selected": {
+        "reference": 572,
+        "detected": 671,
+        "matched": 432,
+        "precision": 0.6438152011922503,
+        "recall": 0.7552447552447552,
+        "f1": 0.6950925181013676,
+        "meanErrorMs": 7.633558723197252,
+        "meanSignedErrorMs": 2.6079739278753817
+      }
+    },
+    {
+      "id": "dukamok-euphoria",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.911436085006407,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.478094297308842,
+      "raw": {
+        "reference": 723,
+        "detected": 936,
+        "matched": 549,
+        "precision": 0.5865384615384616,
+        "recall": 0.7593360995850622,
+        "f1": 0.6618444846292948,
+        "meanErrorMs": 29.354437663983077,
+        "meanSignedErrorMs": -24.954550064846703
+      },
+      "selected": {
+        "reference": 723,
+        "detected": 670,
+        "matched": 489,
+        "precision": 0.7298507462686568,
+        "recall": 0.6763485477178424,
+        "f1": 0.7020818377602298,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-euphoria",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 7.121522586501495,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.478094297308842,
+      "raw": {
+        "reference": 871,
+        "detected": 936,
+        "matched": 645,
+        "precision": 0.6891025641025641,
+        "recall": 0.7405281285878301,
+        "f1": 0.7138904261206419,
+        "meanErrorMs": 28.459036345402886,
+        "meanSignedErrorMs": -22.222442122089888
+      },
+      "selected": {
+        "reference": 871,
+        "detected": 670,
+        "matched": 550,
+        "precision": 0.8208955223880597,
+        "recall": 0.6314580941446614,
+        "f1": 0.7138221933809215,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-forever",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 6.861822289156626,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.789210413080895,
+      "raw": {
+        "reference": 1701,
+        "detected": 1833,
+        "matched": 1036,
+        "precision": 0.5651936715766503,
+        "recall": 0.6090534979423868,
+        "f1": 0.5863044708545557,
+        "meanErrorMs": 19.103475252940466,
+        "meanSignedErrorMs": -4.84760567821654
+      },
+      "selected": {
+        "reference": 1701,
+        "detected": 1683,
+        "matched": 1034,
+        "precision": 0.6143790849673203,
+        "recall": 0.6078777189888301,
+        "f1": 0.6111111111111112,
+        "meanErrorMs": 4.010695187165952,
+        "meanSignedErrorMs": -1.678234156331891
+      }
+    },
+    {
+      "id": "dukamok-gaussian-blur",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 9.153397271169847,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.061666360744004,
+      "raw": {
+        "reference": 977,
+        "detected": 720,
+        "matched": 562,
+        "precision": 0.7805555555555556,
+        "recall": 0.5752302968270215,
+        "f1": 0.6623453152622276,
+        "meanErrorMs": 22.37297360275202,
+        "meanSignedErrorMs": 17.131153866432793
+      },
+      "selected": {
+        "reference": 977,
+        "detected": 647,
+        "matched": 513,
+        "precision": 0.7928902627511591,
+        "recall": 0.5250767656090072,
+        "f1": 0.6317733990147784,
+        "meanErrorMs": 0.5599097162477327,
+        "meanSignedErrorMs": 0.5599097162477327
+      }
+    },
+    {
+      "id": "dukamok-heaven-is-a-place-on-earth",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 7.780051125554851,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.549441185795815,
+      "raw": {
+        "reference": 641,
+        "detected": 803,
+        "matched": 503,
+        "precision": 0.6264009962640099,
+        "recall": 0.7847113884555382,
+        "f1": 0.6966759002770082,
+        "meanErrorMs": 15.366187582178563,
+        "meanSignedErrorMs": 3.61197201925405
+      },
+      "selected": {
+        "reference": 641,
+        "detected": 622,
+        "matched": 444,
+        "precision": 0.7138263665594855,
+        "recall": 0.6926677067082684,
+        "f1": 0.7030878859857482,
+        "meanErrorMs": 2.291522398963806,
+        "meanSignedErrorMs": 0.8511368910437249
+      }
+    },
+    {
+      "id": "dukamok-heaven-is-a-place-on-earth",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.277683100824351,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.816463221306279,
+      "raw": {
+        "reference": 682,
+        "detected": 803,
+        "matched": 529,
+        "precision": 0.6587795765877957,
+        "recall": 0.7756598240469208,
+        "f1": 0.7124579124579125,
+        "meanErrorMs": 15.51678003288264,
+        "meanSignedErrorMs": 2.9351724516512654
+      },
+      "selected": {
+        "reference": 682,
+        "detected": 644,
+        "matched": 480,
+        "precision": 0.7453416149068323,
+        "recall": 0.7038123167155426,
+        "f1": 0.7239819004524887,
+        "meanErrorMs": 2.60415152625096,
+        "meanSignedErrorMs": 0.6661782974130965
+      }
+    },
+    {
+      "id": "dukamok-holy-orders-v2",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 6.78935996993988,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 6.87374749498998,
+      "raw": {
+        "reference": 1770,
+        "detected": 2133,
+        "matched": 1176,
+        "precision": 0.5513361462728551,
+        "recall": 0.6644067796610169,
+        "f1": 0.6026133743274404,
+        "meanErrorMs": 19.232253468749022,
+        "meanSignedErrorMs": 7.125422410359905
+      },
+      "selected": {
+        "reference": 1770,
+        "detected": 1792,
+        "matched": 1148,
+        "precision": 0.640625,
+        "recall": 0.6485875706214689,
+        "f1": 0.6445816956765862,
+        "meanErrorMs": 12.760088058375793,
+        "meanSignedErrorMs": -1.6170249609738823
+      }
+    },
+    {
+      "id": "dukamok-in-the-name-of-god-unison-solos",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.208836156880947,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 4,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 2.5941343699234163,
+      "raw": {
+        "reference": 924,
+        "detected": 1255,
+        "matched": 811,
+        "precision": 0.6462151394422311,
+        "recall": 0.8777056277056277,
+        "f1": 0.7443781551170262,
+        "meanErrorMs": 17.528570539265555,
+        "meanSignedErrorMs": -5.44558471683797
+      },
+      "selected": {
+        "reference": 924,
+        "detected": 292,
+        "matched": 206,
+        "precision": 0.7054794520547946,
+        "recall": 0.22294372294372294,
+        "f1": 0.33881578947368424,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-in-the-name-of-god-unison-solos",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 9.008398120213506,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 3.1804798097006266,
+      "raw": {
+        "reference": 1014,
+        "detected": 1255,
+        "matched": 854,
+        "precision": 0.6804780876494024,
+        "recall": 0.8422090729783037,
+        "f1": 0.75275451740855,
+        "meanErrorMs": 17.020200427411098,
+        "meanSignedErrorMs": -1.713704440754326
+      },
+      "selected": {
+        "reference": 1014,
+        "detected": 358,
+        "matched": 261,
+        "precision": 0.729050279329609,
+        "recall": 0.257396449704142,
+        "f1": 0.38046647230320696,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-in-the-name-of-god-unison-solos",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 14,
+      "example": false,
+      "referenceNps": 9.008398120213506,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 3.1804798097006266,
+      "raw": {
+        "reference": 1014,
+        "detected": 1255,
+        "matched": 854,
+        "precision": 0.6804780876494024,
+        "recall": 0.8422090729783037,
+        "f1": 0.75275451740855,
+        "meanErrorMs": 17.020200427411098,
+        "meanSignedErrorMs": -1.713704440754326
+      },
+      "selected": {
+        "reference": 1014,
+        "detected": 358,
+        "matched": 261,
+        "precision": 0.729050279329609,
+        "recall": 0.257396449704142,
+        "f1": 0.38046647230320696,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-july",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 5.506044637321761,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.933237755734656,
+      "raw": {
+        "reference": 696,
+        "detected": 874,
+        "matched": 411,
+        "precision": 0.4702517162471396,
+        "recall": 0.5905172413793104,
+        "f1": 0.5235668789808917,
+        "meanErrorMs": 29.692615046291262,
+        "meanSignedErrorMs": -25.932525909633927
+      },
+      "selected": {
+        "reference": 696,
+        "detected": 750,
+        "matched": 369,
+        "precision": 0.492,
+        "recall": 0.5301724137931034,
+        "f1": 0.5103734439834025,
+        "meanErrorMs": 8.688028056751026,
+        "meanSignedErrorMs": -3.427387215048077
+      }
+    },
+    {
+      "id": "dukamok-k8107",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 7.117828761158284,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.742930818637056,
+      "raw": {
+        "reference": 854,
+        "detected": 1126,
+        "matched": 646,
+        "precision": 0.5737122557726465,
+        "recall": 0.7564402810304449,
+        "f1": 0.6525252525252525,
+        "meanErrorMs": 16.757616129760393,
+        "meanSignedErrorMs": -2.8487813123814134
+      },
+      "selected": {
+        "reference": 854,
+        "detected": 929,
+        "matched": 558,
+        "precision": 0.6006458557588805,
+        "recall": 0.6533957845433255,
+        "f1": 0.6259113853056647,
+        "meanErrorMs": 4.878534448426424,
+        "meanSignedErrorMs": -2.1903624054159763
+      }
+    },
+    {
+      "id": "dukamok-k8107",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 7.18450631395602,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.776269595035924,
+      "raw": {
+        "reference": 862,
+        "detected": 1126,
+        "matched": 652,
+        "precision": 0.5790408525754884,
+        "recall": 0.7563805104408353,
+        "f1": 0.6559356136820925,
+        "meanErrorMs": 16.708170988066172,
+        "meanSignedErrorMs": -2.8278165256939816
+      },
+      "selected": {
+        "reference": 862,
+        "detected": 933,
+        "matched": 544,
+        "precision": 0.5830653804930332,
+        "recall": 0.6310904872389791,
+        "f1": 0.6061281337047354,
+        "meanErrorMs": 7.046568627450292,
+        "meanSignedErrorMs": -2.3488562091499494
+      }
+    },
+    {
+      "id": "dukamok-kick-your-a",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 5.111759494224711,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.694620668533426,
+      "raw": {
+        "reference": 763,
+        "detected": 1090,
+        "matched": 431,
+        "precision": 0.39541284403669724,
+        "recall": 0.564875491480996,
+        "f1": 0.4651915812196438,
+        "meanErrorMs": 19.374046383582908,
+        "meanSignedErrorMs": 4.944535981716824
+      },
+      "selected": {
+        "reference": 763,
+        "detected": 850,
+        "matched": 416,
+        "precision": 0.4894117647058824,
+        "recall": 0.54521625163827,
+        "f1": 0.5158090514569127,
+        "meanErrorMs": 4.329461304386513,
+        "meanSignedErrorMs": -0.32309412719288255
+      }
+    },
+    {
+      "id": "dukamok-lab-v2",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 6.994883337193145,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.987819881889764,
+      "raw": {
+        "reference": 789,
+        "detected": 1203,
+        "matched": 673,
+        "precision": 0.5594347464671654,
+        "recall": 0.85297845373891,
+        "f1": 0.6757028112449799,
+        "meanErrorMs": 15.539499431036786,
+        "meanSignedErrorMs": -11.134069095082763
+      },
+      "selected": {
+        "reference": 789,
+        "detected": 901,
+        "matched": 565,
+        "precision": 0.6270810210876804,
+        "recall": 0.7160963244613435,
+        "f1": 0.6686390532544378,
+        "meanErrorMs": 2.064896755162279,
+        "meanSignedErrorMs": -0.9832841691248965
+      }
+    },
+    {
+      "id": "dukamok-lab-v2",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 6.994883337193145,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.987819881889764,
+      "raw": {
+        "reference": 789,
+        "detected": 1203,
+        "matched": 673,
+        "precision": 0.5594347464671654,
+        "recall": 0.85297845373891,
+        "f1": 0.6757028112449799,
+        "meanErrorMs": 15.539499431036786,
+        "meanSignedErrorMs": -11.134069095082763
+      },
+      "selected": {
+        "reference": 789,
+        "detected": 901,
+        "matched": 565,
+        "precision": 0.6270810210876804,
+        "recall": 0.7160963244613435,
+        "f1": 0.6686390532544378,
+        "meanErrorMs": 2.064896755162279,
+        "meanSignedErrorMs": -0.9832841691248965
+      }
+    },
+    {
+      "id": "dukamok-octavarium-full-circle",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 7.768983371243767,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 2.874617789118008,
+      "raw": {
+        "reference": 827,
+        "detected": 898,
+        "matched": 623,
+        "precision": 0.6937639198218263,
+        "recall": 0.7533252720677146,
+        "f1": 0.7223188405797103,
+        "meanErrorMs": 20.079780239429812,
+        "meanSignedErrorMs": 10.328057681539056
+      },
+      "selected": {
+        "reference": 827,
+        "detected": 306,
+        "matched": 282,
+        "precision": 0.9215686274509803,
+        "recall": 0.34099153567110035,
+        "f1": 0.4977934686672551,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-octavarium-full-circle",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 8.013231941560983,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 2.874617789118008,
+      "raw": {
+        "reference": 853,
+        "detected": 898,
+        "matched": 630,
+        "precision": 0.7015590200445434,
+        "recall": 0.738569753810082,
+        "f1": 0.719588806396345,
+        "meanErrorMs": 19.98247773013178,
+        "meanSignedErrorMs": 10.54052564189668
+      },
+      "selected": {
+        "reference": 853,
+        "detected": 306,
+        "matched": 285,
+        "precision": 0.9313725490196079,
+        "recall": 0.33411488862837047,
+        "f1": 0.4918032786885246,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-oi-rock",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 5.8009553482997696,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.824653350940905,
+      "raw": {
+        "reference": 459,
+        "detected": 722,
+        "matched": 377,
+        "precision": 0.5221606648199446,
+        "recall": 0.8213507625272332,
+        "f1": 0.6384419983065199,
+        "meanErrorMs": 14.13443324153622,
+        "meanSignedErrorMs": -1.2923969284074068
+      },
+      "selected": {
+        "reference": 459,
+        "detected": 540,
+        "matched": 300,
+        "precision": 0.5555555555555556,
+        "recall": 0.6535947712418301,
+        "f1": 0.6006006006006006,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-oi-rock",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 6.3191234730934305,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 32,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.431289204357874,
+      "raw": {
+        "reference": 500,
+        "detected": 722,
+        "matched": 396,
+        "precision": 0.5484764542936288,
+        "recall": 0.792,
+        "f1": 0.6481178396072014,
+        "meanErrorMs": 14.296582425669515,
+        "meanSignedErrorMs": -2.0691629329789083
+      },
+      "selected": {
+        "reference": 500,
+        "detected": 588,
+        "matched": 336,
+        "precision": 0.5714285714285714,
+        "recall": 0.672,
+        "f1": 0.6176470588235294,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-one-minutes",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 10.767575765845082,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 4,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 4.829574424386397,
+      "raw": {
+        "reference": 680,
+        "detected": 597,
+        "matched": 434,
+        "precision": 0.7269681742043551,
+        "recall": 0.638235294117647,
+        "f1": 0.6797180892717305,
+        "meanErrorMs": 18.066788953660573,
+        "meanSignedErrorMs": -5.163280901980593
+      },
+      "selected": {
+        "reference": 680,
+        "detected": 305,
+        "matched": 300,
+        "precision": 0.9836065573770492,
+        "recall": 0.4411764705882353,
+        "f1": 0.6091370558375634,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-one-minutes",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 14.916259369744218,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.985505352190355,
+      "raw": {
+        "reference": 942,
+        "detected": 597,
+        "matched": 440,
+        "precision": 0.7370184254606366,
+        "recall": 0.46709129511677283,
+        "f1": 0.5717998700454842,
+        "meanErrorMs": 20.48109721104296,
+        "meanSignedErrorMs": 3.1246489932451262
+      },
+      "selected": {
+        "reference": 942,
+        "detected": 378,
+        "matched": 236,
+        "precision": 0.6243386243386243,
+        "recall": 0.2505307855626327,
+        "f1": 0.35757575757575755,
+        "meanErrorMs": 13.449412853589552,
+        "meanSignedErrorMs": 13.256589730240623
+      }
+    },
+    {
+      "id": "dukamok-one-minutes",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 15,
+      "example": false,
+      "referenceNps": 19.207455005838362,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.985505352190355,
+      "raw": {
+        "reference": 1213,
+        "detected": 597,
+        "matched": 442,
+        "precision": 0.7403685092127303,
+        "recall": 0.36438582028029676,
+        "f1": 0.4883977900552485,
+        "meanErrorMs": 21.826934132609157,
+        "meanSignedErrorMs": 5.579555940211304
+      },
+      "selected": {
+        "reference": 1213,
+        "detected": 378,
+        "matched": 237,
+        "precision": 0.626984126984127,
+        "recall": 0.1953833470733718,
+        "f1": 0.2979258328095537,
+        "meanErrorMs": 16.560821416742375,
+        "meanSignedErrorMs": 16.368811893070024
+      }
+    },
+    {
+      "id": "dukamok-presto",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 4.786394965053067,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.628721201139011,
+      "raw": {
+        "reference": 483,
+        "detected": 637,
+        "matched": 335,
+        "precision": 0.5259026687598116,
+        "recall": 0.6935817805383023,
+        "f1": 0.5982142857142857,
+        "meanErrorMs": 13.69834736730763,
+        "meanSignedErrorMs": -2.339148714853954
+      },
+      "selected": {
+        "reference": 483,
+        "detected": 568,
+        "matched": 344,
+        "precision": 0.6056338028169014,
+        "recall": 0.7122153209109731,
+        "f1": 0.6546146527117032,
+        "meanErrorMs": 5.02308481532152,
+        "meanSignedErrorMs": -1.3893638850887866
+      }
+    },
+    {
+      "id": "dukamok-rain-of-a-thousand-flames",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 7.88196491745283,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.23658608490566,
+      "raw": {
+        "reference": 1746,
+        "detected": 2121,
+        "matched": 1239,
+        "precision": 0.5841584158415841,
+        "recall": 0.7096219931271478,
+        "f1": 0.6408068269976727,
+        "meanErrorMs": 18.607396852150142,
+        "meanSignedErrorMs": -2.3891941212400885
+      },
+      "selected": {
+        "reference": 1746,
+        "detected": 1160,
+        "matched": 854,
+        "precision": 0.7362068965517241,
+        "recall": 0.48911798396334477,
+        "f1": 0.5877494838265657,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-rain-of-a-thousand-flames",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.310823260613207,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.23658608490566,
+      "raw": {
+        "reference": 1841,
+        "detected": 2121,
+        "matched": 1302,
+        "precision": 0.6138613861386139,
+        "recall": 0.7072243346007605,
+        "f1": 0.657243816254417,
+        "meanErrorMs": 18.53039649466985,
+        "meanSignedErrorMs": -1.6843796583370851
+      },
+      "selected": {
+        "reference": 1841,
+        "detected": 1160,
+        "matched": 856,
+        "precision": 0.7379310344827587,
+        "recall": 0.46496469310157523,
+        "f1": 0.570476507830723,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-rain-of-a-thousand-flames",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 8.337909050707546,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.994822376179245,
+      "raw": {
+        "reference": 1847,
+        "detected": 2121,
+        "matched": 1304,
+        "precision": 0.6148043375766148,
+        "recall": 0.7060097455332972,
+        "f1": 0.657258064516129,
+        "meanErrorMs": 18.537666918967858,
+        "meanSignedErrorMs": -1.6461049761356932
+      },
+      "selected": {
+        "reference": 1847,
+        "detected": 1771,
+        "matched": 922,
+        "precision": 0.5206098249576511,
+        "recall": 0.4991878722252301,
+        "f1": 0.509673852957435,
+        "meanErrorMs": 7.995613742503854,
+        "meanSignedErrorMs": -2.1943797968384127
+      }
+    },
+    {
+      "id": "dukamok-rebirth",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 8.158537163443308,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.998850492984452,
+      "raw": {
+        "reference": 1686,
+        "detected": 2318,
+        "matched": 1457,
+        "precision": 0.6285591026747196,
+        "recall": 0.8641755634638197,
+        "f1": 0.7277722277722277,
+        "meanErrorMs": 12.990937128851476,
+        "meanSignedErrorMs": -5.816806714824325
+      },
+      "selected": {
+        "reference": 1686,
+        "detected": 1653,
+        "matched": 1174,
+        "precision": 0.7102238354506957,
+        "recall": 0.6963226571767497,
+        "f1": 0.703204552261156,
+        "meanErrorMs": 1.8518072318905232,
+        "meanSignedErrorMs": -0.6172690772967897
+      }
+    },
+    {
+      "id": "dukamok-rebirth",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 8.26499494374921,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.998850492984452,
+      "raw": {
+        "reference": 1708,
+        "detected": 2318,
+        "matched": 1473,
+        "precision": 0.6354616048317515,
+        "recall": 0.8624121779859485,
+        "f1": 0.7317436661698956,
+        "meanErrorMs": 12.992121117667557,
+        "meanSignedErrorMs": -5.714036719279368
+      },
+      "selected": {
+        "reference": 1708,
+        "detected": 1653,
+        "matched": 1184,
+        "precision": 0.7162734422262553,
+        "recall": 0.6932084309133489,
+        "f1": 0.7045522166022018,
+        "meanErrorMs": 1.9205884379056841,
+        "meanSignedErrorMs": -0.527634186237817
+      }
+    },
+    {
+      "id": "dukamok-return-of-salieri",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 7.883463841547675,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 3.4200829111008755,
+      "raw": {
+        "reference": 2282,
+        "detected": 2647,
+        "matched": 1963,
+        "precision": 0.74159425765017,
+        "recall": 0.8602103418054339,
+        "f1": 0.7965104483668086,
+        "meanErrorMs": 15.895561572631205,
+        "meanSignedErrorMs": -7.960818154541896
+      },
+      "selected": {
+        "reference": 2282,
+        "detected": 990,
+        "matched": 886,
+        "precision": 0.8949494949494949,
+        "recall": 0.38825591586327785,
+        "f1": 0.5415647921760391,
+        "meanErrorMs": 0.05919588312365744,
+        "meanSignedErrorMs": -0.05919588312365744
+      }
+    },
+    {
+      "id": "dukamok-return-of-salieri",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.007830492860434,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.648549055734685,
+      "raw": {
+        "reference": 2318,
+        "detected": 2647,
+        "matched": 1996,
+        "precision": 0.7540612013600302,
+        "recall": 0.8610871440897325,
+        "f1": 0.8040281973816717,
+        "meanErrorMs": 15.835255030969588,
+        "meanSignedErrorMs": -7.915004910002798
+      },
+      "selected": {
+        "reference": 2318,
+        "detected": 2214,
+        "matched": 1832,
+        "precision": 0.8274616079494128,
+        "recall": 0.7903364969801553,
+        "f1": 0.8084730803177405,
+        "meanErrorMs": 5.868858216020224,
+        "meanSignedErrorMs": -1.7272574586986158
+      }
+    },
+    {
+      "id": "dukamok-return-of-salieri",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 8.643482266236758,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.68654997696914,
+      "raw": {
+        "reference": 2502,
+        "detected": 2647,
+        "matched": 2069,
+        "precision": 0.7816395919909331,
+        "recall": 0.8269384492406076,
+        "f1": 0.8036511944066809,
+        "meanErrorMs": 16.033958353816526,
+        "meanSignedErrorMs": -7.297499025717824
+      },
+      "selected": {
+        "reference": 2502,
+        "detected": 2225,
+        "matched": 1910,
+        "precision": 0.8584269662921349,
+        "recall": 0.7633892885691447,
+        "f1": 0.8081235455891685,
+        "meanErrorMs": 6.407205360085472,
+        "meanSignedErrorMs": -0.8970087504118797
+      }
+    },
+    {
+      "id": "dukamok-salieri-strikes-back",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 7.64246285913072,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.990274821969387,
+      "raw": {
+        "reference": 2439,
+        "detected": 2848,
+        "matched": 1768,
+        "precision": 0.6207865168539326,
+        "recall": 0.7248872488724887,
+        "f1": 0.6688102893890675,
+        "meanErrorMs": 19.545420531437784,
+        "meanSignedErrorMs": 8.350617050861263
+      },
+      "selected": {
+        "reference": 2439,
+        "detected": 2550,
+        "matched": 1037,
+        "precision": 0.4066666666666667,
+        "recall": 0.42517425174251744,
+        "f1": 0.41571457205852874,
+        "meanErrorMs": 4.49508096791909,
+        "meanSignedErrorMs": -0.06995068476757509
+      }
+    },
+    {
+      "id": "dukamok-scorpion-fire",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 6.01428077632118,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 4.877291581319132,
+      "raw": {
+        "reference": 767,
+        "detected": 678,
+        "matched": 354,
+        "precision": 0.5221238938053098,
+        "recall": 0.46153846153846156,
+        "f1": 0.48996539792387545,
+        "meanErrorMs": 22.314270254064745,
+        "meanSignedErrorMs": -3.7147952623905574
+      },
+      "selected": {
+        "reference": 767,
+        "detected": 622,
+        "matched": 364,
+        "precision": 0.5852090032154341,
+        "recall": 0.4745762711864407,
+        "f1": 0.5241180705543557,
+        "meanErrorMs": 5.240600635337624,
+        "meanSignedErrorMs": -0.37504971715512986
+      }
+    },
+    {
+      "id": "dukamok-since-1983-v2",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": true,
+      "referenceNps": 7.509774521712725,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 3.6793245141208626,
+      "raw": {
+        "reference": 1292,
+        "detected": 1612,
+        "matched": 1019,
+        "precision": 0.6321339950372209,
+        "recall": 0.7886996904024768,
+        "f1": 0.7017906336088154,
+        "meanErrorMs": 17.97700804118538,
+        "meanSignedErrorMs": -6.398488111911834
+      },
+      "selected": {
+        "reference": 1292,
+        "detected": 633,
+        "matched": 405,
+        "precision": 0.6398104265402843,
+        "recall": 0.31346749226006193,
+        "f1": 0.42077922077922075,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-since-1983-v2",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 12,
+      "example": true,
+      "referenceNps": 8.21890183723049,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 6.823897282113575,
+      "raw": {
+        "reference": 1414,
+        "detected": 1612,
+        "matched": 1097,
+        "precision": 0.6805210918114144,
+        "recall": 0.7758132956152758,
+        "f1": 0.7250495703899537,
+        "meanErrorMs": 17.94603547998034,
+        "meanSignedErrorMs": -4.977760346240052
+      },
+      "selected": {
+        "reference": 1414,
+        "detected": 1174,
+        "matched": 944,
+        "precision": 0.8040885860306644,
+        "recall": 0.6676096181046676,
+        "f1": 0.7295208655332303,
+        "meanErrorMs": 8.36306868866992,
+        "meanSignedErrorMs": -0.8363068688670061
+      }
+    },
+    {
+      "id": "dukamok-since-1983-v2",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 13,
+      "example": true,
+      "referenceNps": 8.381652368660797,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 7.875963217430915,
+      "raw": {
+        "reference": 1442,
+        "detected": 1612,
+        "matched": 1113,
+        "precision": 0.6904466501240695,
+        "recall": 0.7718446601941747,
+        "f1": 0.7288801571709234,
+        "meanErrorMs": 17.917376134101275,
+        "meanSignedErrorMs": -4.664796081986889
+      },
+      "selected": {
+        "reference": 1442,
+        "detected": 1355,
+        "matched": 979,
+        "precision": 0.7225092250922509,
+        "recall": 0.6789181692094314,
+        "f1": 0.7000357525920629,
+        "meanErrorMs": 7.761679479597003,
+        "meanSignedErrorMs": -1.3776141067682257
+      }
+    },
+    {
+      "id": "dukamok-slave-labor",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 8.642759928917974,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 64,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.999196096129978,
+      "raw": {
+        "reference": 2001,
+        "detected": 2078,
+        "matched": 1333,
+        "precision": 0.6414821944177094,
+        "recall": 0.6661669165417291,
+        "f1": 0.6535915665604314,
+        "meanErrorMs": 19.65718982751593,
+        "meanSignedErrorMs": 3.4824782802048033
+      },
+      "selected": {
+        "reference": 2001,
+        "detected": 1852,
+        "matched": 1183,
+        "precision": 0.6387688984881209,
+        "recall": 0.5912043978010995,
+        "f1": 0.6140669608097585,
+        "meanErrorMs": 4.567135558677756,
+        "meanSignedErrorMs": 0.5935725604923566
+      }
+    },
+    {
+      "id": "dukamok-snow05",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 7.404996581586144,
+      "policy": {
+        "targetNps": 4,
+        "peakNps2s": 8,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 3.9991169097538743,
+      "raw": {
+        "reference": 1061,
+        "detected": 914,
+        "matched": 729,
+        "precision": 0.7975929978118161,
+        "recall": 0.6870876531573987,
+        "f1": 0.7382278481012658,
+        "meanErrorMs": 15.654974386128302,
+        "meanSignedErrorMs": 11.19819500538482
+      },
+      "selected": {
+        "reference": 1061,
+        "detected": 573,
+        "matched": 539,
+        "precision": 0.9406631762652705,
+        "recall": 0.5080113100848256,
+        "f1": 0.6597307221542227,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-snow05",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.23552871467639,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.855600501367365,
+      "raw": {
+        "reference": 1180,
+        "detected": 914,
+        "matched": 737,
+        "precision": 0.8063457330415755,
+        "recall": 0.6245762711864407,
+        "f1": 0.7039159503342886,
+        "meanErrorMs": 15.953287917303191,
+        "meanSignedErrorMs": 11.531205051766502
+      },
+      "selected": {
+        "reference": 1180,
+        "detected": 839,
+        "matched": 683,
+        "precision": 0.8140643623361145,
+        "recall": 0.5788135593220339,
+        "f1": 0.6765725606736008,
+        "meanErrorMs": 4.4289897510979594,
+        "meanSignedErrorMs": 2.3426061493411128
+      }
+    },
+    {
+      "id": "dukamok-snow05",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 8.23552871467639,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.855600501367365,
+      "raw": {
+        "reference": 1180,
+        "detected": 914,
+        "matched": 737,
+        "precision": 0.8063457330415755,
+        "recall": 0.6245762711864407,
+        "f1": 0.7039159503342886,
+        "meanErrorMs": 15.953287917303191,
+        "meanSignedErrorMs": 11.531205051766502
+      },
+      "selected": {
+        "reference": 1180,
+        "detected": 839,
+        "matched": 683,
+        "precision": 0.8140643623361145,
+        "recall": 0.5788135593220339,
+        "f1": 0.6765725606736008,
+        "meanErrorMs": 4.4289897510979594,
+        "meanSignedErrorMs": 2.3426061493411128
+      }
+    },
+    {
+      "id": "dukamok-stratofortress-v2",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 10.15226823374341,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 4,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 3.59265158172232,
+      "raw": {
+        "reference": 1509,
+        "detected": 1545,
+        "matched": 1311,
+        "precision": 0.8485436893203884,
+        "recall": 0.8687872763419483,
+        "f1": 0.8585461689587426,
+        "meanErrorMs": 15.127248399121761,
+        "meanSignedErrorMs": -5.684346092200102
+      },
+      "selected": {
+        "reference": 1509,
+        "detected": 534,
+        "matched": 492,
+        "precision": 0.9213483146067416,
+        "recall": 0.3260437375745527,
+        "f1": 0.4816446402349486,
+        "meanErrorMs": 0.07817385866165243,
+        "meanSignedErrorMs": 0.07817385866165243
+      }
+    },
+    {
+      "id": "dukamok-stratofortress-v2",
+      "level": "Hard",
+      "source": "Medium",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 9.829333260105448,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.959001537785589,
+      "raw": {
+        "reference": 1461,
+        "detected": 1545,
+        "matched": 1294,
+        "precision": 0.8375404530744337,
+        "recall": 0.8856947296372347,
+        "f1": 0.8609447771124418,
+        "meanErrorMs": 15.168389558510462,
+        "meanSignedErrorMs": -6.6015064804923345
+      },
+      "selected": {
+        "reference": 1461,
+        "detected": 1183,
+        "matched": 1072,
+        "precision": 0.9061707523245984,
+        "recall": 0.7337440109514032,
+        "f1": 0.81089258698941,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-stratofortress-v2",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 10.192635105448156,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.999368409490335,
+      "raw": {
+        "reference": 1515,
+        "detected": 1545,
+        "matched": 1316,
+        "precision": 0.8517799352750809,
+        "recall": 0.8686468646864687,
+        "f1": 0.8601307189542483,
+        "meanErrorMs": 15.119089634144723,
+        "meanSignedErrorMs": -5.691444623622224
+      },
+      "selected": {
+        "reference": 1515,
+        "detected": 1189,
+        "matched": 1037,
+        "precision": 0.872161480235492,
+        "recall": 0.6844884488448845,
+        "f1": 0.7670118343195266,
+        "meanErrorMs": 4.0798160373855215,
+        "meanSignedErrorMs": 0.5192493138491706
+      }
+    },
+    {
+      "id": "dukamok-synthesized",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 6.919380868544601,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.997725938967137,
+      "raw": {
+        "reference": 693,
+        "detected": 909,
+        "matched": 455,
+        "precision": 0.5005500550055005,
+        "recall": 0.6565656565656566,
+        "f1": 0.5680399500624219,
+        "meanErrorMs": 22.06561336665211,
+        "meanSignedErrorMs": 4.8649783910551765
+      },
+      "selected": {
+        "reference": 693,
+        "detected": 801,
+        "matched": 420,
+        "precision": 0.5243445692883895,
+        "recall": 0.6060606060606061,
+        "f1": 0.5622489959839357,
+        "meanErrorMs": 4.3471956708888335,
+        "meanSignedErrorMs": -1.270718734567376
+      }
+    },
+    {
+      "id": "dukamok-tgtmn",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 8.125640482979861,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.586660131883799,
+      "raw": {
+        "reference": 1191,
+        "detected": 1436,
+        "matched": 990,
+        "precision": 0.6894150417827298,
+        "recall": 0.8312342569269522,
+        "f1": 0.75371145793681,
+        "meanErrorMs": 11.885351501566808,
+        "meanSignedErrorMs": -2.577957790304196
+      },
+      "selected": {
+        "reference": 1191,
+        "detected": 1112,
+        "matched": 801,
+        "precision": 0.7203237410071942,
+        "recall": 0.672544080604534,
+        "f1": 0.6956144159791575,
+        "meanErrorMs": 2.0110171563894124,
+        "meanSignedErrorMs": 0.6703390521298869
+      }
+    },
+    {
+      "id": "dukamok-tgtmn",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.26209120477633,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.586660131883799,
+      "raw": {
+        "reference": 1211,
+        "detected": 1436,
+        "matched": 1003,
+        "precision": 0.6984679665738162,
+        "recall": 0.8282411230388109,
+        "f1": 0.7578390630902909,
+        "meanErrorMs": 11.989362146095555,
+        "meanSignedErrorMs": -2.331337368640243
+      },
+      "selected": {
+        "reference": 1211,
+        "detected": 1112,
+        "matched": 810,
+        "precision": 0.7284172661870504,
+        "recall": 0.6688687035507844,
+        "f1": 0.6973740852346104,
+        "meanErrorMs": 1.97210025030747,
+        "meanSignedErrorMs": 0.7126076534725404
+      }
+    },
+    {
+      "id": "dukamok-the-dark-tower-of-abyss",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.0557372532106575,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.980298782825378,
+      "raw": {
+        "reference": 2067,
+        "detected": 3015,
+        "matched": 1317,
+        "precision": 0.4368159203980099,
+        "recall": 0.637155297532656,
+        "f1": 0.5182998819362455,
+        "meanErrorMs": 18.682929284598462,
+        "meanSignedErrorMs": 1.5442583218329657
+      },
+      "selected": {
+        "reference": 2067,
+        "detected": 2445,
+        "matched": 1285,
+        "precision": 0.5255623721881391,
+        "recall": 0.621673923560716,
+        "f1": 0.5695921985815603,
+        "meanErrorMs": 4.043179943234513,
+        "meanSignedErrorMs": -0.83914594083449
+      }
+    },
+    {
+      "id": "dukamok-the-glass-prison",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 6.741250527871622,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 4
+      },
+      "realizedNps": 7.78085308114605,
+      "raw": {
+        "reference": 5421,
+        "detected": 7878,
+        "matched": 4133,
+        "precision": 0.5246255394770246,
+        "recall": 0.7624054602471869,
+        "f1": 0.6215504925182345,
+        "meanErrorMs": 18.852357861003348,
+        "meanSignedErrorMs": -1.7996152546028616
+      },
+      "selected": {
+        "reference": 5421,
+        "detected": 6257,
+        "matched": 3776,
+        "precision": 0.6034840978104523,
+        "recall": 0.6965504519461354,
+        "f1": 0.6466860763829423,
+        "meanErrorMs": 10.345610953785528,
+        "meanSignedErrorMs": -4.287355419149175
+      }
+    },
+    {
+      "id": "dukamok-the-sun-and-the-star",
+      "level": "Medium",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 6.12022187041116,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 4.075463472834068,
+      "raw": {
+        "reference": 871,
+        "detected": 1142,
+        "matched": 751,
+        "precision": 0.6576182136602452,
+        "recall": 0.8622273249138921,
+        "f1": 0.7461500248385493,
+        "meanErrorMs": 12.344378996425895,
+        "meanSignedErrorMs": 6.3939595635690525
+      },
+      "selected": {
+        "reference": 871,
+        "detected": 580,
+        "matched": 508,
+        "precision": 0.8758620689655172,
+        "recall": 0.5832376578645235,
+        "f1": 0.7002067539627842,
+        "meanErrorMs": 0,
+        "meanSignedErrorMs": 0
+      }
+    },
+    {
+      "id": "dukamok-the-sun-and-the-star",
+      "level": "Hard",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 6.12022187041116,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.717488069016152,
+      "raw": {
+        "reference": 871,
+        "detected": 1142,
+        "matched": 751,
+        "precision": 0.6576182136602452,
+        "recall": 0.8622273249138921,
+        "f1": 0.7461500248385493,
+        "meanErrorMs": 12.344378996425895,
+        "meanSignedErrorMs": 6.3939595635690525
+      },
+      "selected": {
+        "reference": 871,
+        "detected": 956,
+        "matched": 683,
+        "precision": 0.7144351464435147,
+        "recall": 0.7841561423650976,
+        "f1": 0.7476737821565407,
+        "meanErrorMs": 1.4471040893458764,
+        "meanSignedErrorMs": -0.1702475399230146
+      }
+    },
+    {
+      "id": "dukamok-the-sun-and-the-star",
+      "level": "Challenge",
+      "source": "Edit",
+      "meter": 13,
+      "example": false,
+      "referenceNps": 6.155355176211454,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.743380598384729,
+      "raw": {
+        "reference": 876,
+        "detected": 1142,
+        "matched": 753,
+        "precision": 0.659369527145359,
+        "recall": 0.8595890410958904,
+        "f1": 0.7462834489593657,
+        "meanErrorMs": 12.368466299934031,
+        "meanSignedErrorMs": 6.360655844229824
+      },
+      "selected": {
+        "reference": 876,
+        "detected": 1102,
+        "matched": 734,
+        "precision": 0.6660617059891107,
+        "recall": 0.8378995433789954,
+        "f1": 0.7421638018200203,
+        "meanErrorMs": 1.9010202141816384,
+        "meanSignedErrorMs": -0.7920917559090132
+      }
+    },
+    {
+      "id": "dukamok-triforce-majeure",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 4.323961513301352,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.103651057566506,
+      "raw": {
+        "reference": 518,
+        "detected": 1036,
+        "matched": 416,
+        "precision": 0.4015444015444015,
+        "recall": 0.803088803088803,
+        "f1": 0.5353925353925354,
+        "meanErrorMs": 18.67311175932389,
+        "meanSignedErrorMs": 8.206139423811106
+      },
+      "selected": {
+        "reference": 518,
+        "detected": 851,
+        "matched": 380,
+        "precision": 0.44653349001175086,
+        "recall": 0.7335907335907336,
+        "f1": 0.5551497443389335,
+        "meanErrorMs": 4.294590643275036,
+        "meanSignedErrorMs": -0.2741228070176685
+      }
+    },
+    {
+      "id": "dukamok-unkown-soldier",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 8.903673317941953,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 16,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 16,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.954217513192613,
+      "raw": {
+        "reference": 1763,
+        "detected": 1820,
+        "matched": 1356,
+        "precision": 0.7450549450549451,
+        "recall": 0.7691435053885423,
+        "f1": 0.7569076193134245,
+        "meanErrorMs": 19.311971486175903,
+        "meanSignedErrorMs": 5.728098628147418
+      },
+      "selected": {
+        "reference": 1763,
+        "detected": 1575,
+        "matched": 1234,
+        "precision": 0.7834920634920635,
+        "recall": 0.6999432785025524,
+        "f1": 0.7393648891551827,
+        "meanErrorMs": 6.962685593993947,
+        "meanSignedErrorMs": 0.9547495296112739
+      }
+    },
+    {
+      "id": "dukamok-untitled-gabber-song",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 6.555333584204003,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.206121613245972,
+      "raw": {
+        "reference": 967,
+        "detected": 1132,
+        "matched": 754,
+        "precision": 0.666077738515901,
+        "recall": 0.7797311271975181,
+        "f1": 0.7184373511195807,
+        "meanErrorMs": 15.247277215274796,
+        "meanSignedErrorMs": 5.219881846664949
+      },
+      "selected": {
+        "reference": 967,
+        "detected": 1063,
+        "matched": 704,
+        "precision": 0.6622765757290687,
+        "recall": 0.7280248190279214,
+        "f1": 0.6935960591133005,
+        "meanErrorMs": 2.034920837589059,
+        "meanSignedErrorMs": -0.43890449438179563
+      }
+    },
+    {
+      "id": "dukamok-untitled-gabber-song",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 6.92140185054011,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.206121613245972,
+      "raw": {
+        "reference": 1021,
+        "detected": 1132,
+        "matched": 772,
+        "precision": 0.6819787985865724,
+        "recall": 0.7561214495592556,
+        "f1": 0.7171388759869949,
+        "meanErrorMs": 15.27090155504942,
+        "meanSignedErrorMs": 5.324265354605783
+      },
+      "selected": {
+        "reference": 1021,
+        "detected": 1063,
+        "matched": 724,
+        "precision": 0.6810912511759172,
+        "recall": 0.7091087169441724,
+        "f1": 0.6948176583493282,
+        "meanErrorMs": 2.3666894282695607,
+        "meanSignedErrorMs": -0.19399093674324766
+      }
+    },
+    {
+      "id": "dukamok-utopia",
+      "level": "Challenge",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.855440883340327,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 10,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.9598588963491395,
+      "raw": {
+        "reference": 729,
+        "detected": 807,
+        "matched": 344,
+        "precision": 0.42627013630731103,
+        "recall": 0.4718792866941015,
+        "f1": 0.44791666666666663,
+        "meanErrorMs": 24.015385597388082,
+        "meanSignedErrorMs": -10.6017320712999
+      },
+      "selected": {
+        "reference": 729,
+        "detected": 742,
+        "matched": 338,
+        "precision": 0.4555256064690027,
+        "recall": 0.46364883401920437,
+        "f1": 0.45955132562882395,
+        "meanErrorMs": 3.5645540742854354,
+        "meanSignedErrorMs": -0.7129108148571544
+      }
+    },
+    {
+      "id": "dukamok-what-four",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 11,
+      "example": false,
+      "referenceNps": 5.85937387036107,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.382669374747564,
+      "raw": {
+        "reference": 827,
+        "detected": 1122,
+        "matched": 561,
+        "precision": 0.5,
+        "recall": 0.6783555018137848,
+        "f1": 0.5756798358132376,
+        "meanErrorMs": 16.960128951002854,
+        "meanSignedErrorMs": 2.1858030355679077
+      },
+      "selected": {
+        "reference": 827,
+        "detected": 1042,
+        "matched": 525,
+        "precision": 0.5038387715930902,
+        "recall": 0.6348246674727932,
+        "f1": 0.5617977528089888,
+        "meanErrorMs": 3.2467532467529194,
+        "meanSignedErrorMs": 0.43290043290012037
+      }
+    },
+    {
+      "id": "dukamok-what-four",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 14,
+      "example": false,
+      "referenceNps": 6.241969020300003,
+      "policy": {
+        "targetNps": 8,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 7.382669374747564,
+      "raw": {
+        "reference": 881,
+        "detected": 1122,
+        "matched": 596,
+        "precision": 0.5311942959001783,
+        "recall": 0.6765039727582293,
+        "f1": 0.5951073389915127,
+        "meanErrorMs": 16.852101747017063,
+        "meanSignedErrorMs": 2.0453621992827915
+      },
+      "selected": {
+        "reference": 881,
+        "detected": 1042,
+        "matched": 560,
+        "precision": 0.5374280230326296,
+        "recall": 0.6356413166855845,
+        "f1": 0.5824232969318772,
+        "meanErrorMs": 3.0945616883113605,
+        "meanSignedErrorMs": 0.4565746753243616
+      }
+    },
+    {
+      "id": "dukamok-xuxa",
+      "level": "Hard",
+      "source": "Hard",
+      "meter": 10,
+      "example": false,
+      "referenceNps": 6.971504374594945,
+      "policy": {
+        "targetNps": 6,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 5.970849535536833,
+      "raw": {
+        "reference": 843,
+        "detected": 966,
+        "matched": 472,
+        "precision": 0.4886128364389234,
+        "recall": 0.5599051008303677,
+        "f1": 0.5218352681039249,
+        "meanErrorMs": 29.545049900470605,
+        "meanSignedErrorMs": -20.801497160544844
+      },
+      "selected": {
+        "reference": 843,
+        "detected": 722,
+        "matched": 440,
+        "precision": 0.6094182825484764,
+        "recall": 0.5219454329774614,
+        "f1": 0.5623003194888178,
+        "meanErrorMs": 8.9488636363637,
+        "meanSignedErrorMs": -0.568181818180769
+      }
+    },
+    {
+      "id": "dukamok-xuxa",
+      "level": "Challenge",
+      "source": "Challenge",
+      "meter": 12,
+      "example": false,
+      "referenceNps": 7.376728235039965,
+      "policy": {
+        "targetNps": 7,
+        "peakNps2s": 12,
+        "subdivisions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "maxStreamBeats": 8,
+        "recoveryBeats": 2
+      },
+      "realizedNps": 6.996313998703823,
+      "raw": {
+        "reference": 892,
+        "detected": 966,
+        "matched": 508,
+        "precision": 0.525879917184265,
+        "recall": 0.5695067264573991,
+        "f1": 0.5468245425188375,
+        "meanErrorMs": 29.378142875822448,
+        "meanSignedErrorMs": -20.51376398729309
+      },
+      "selected": {
+        "reference": 892,
+        "detected": 846,
+        "matched": 533,
+        "precision": 0.6300236406619385,
+        "recall": 0.5975336322869955,
+        "f1": 0.6133486766398158,
+        "meanErrorMs": 8.266885553470852,
+        "meanSignedErrorMs": -1.5830206378977338
+      }
+    }
+  ],
+  "method": {
+    "date": "2026-11-15",
+    "model": "gpt-6-luna",
+    "mapping": "Top4 authored charts by meter, aligned to upper levels; original references only",
+    "toleranceMs": 40,
+    "exampleIds": [
+      "dukamok-cold-pizza",
+      "dukamok-counting-snow",
+      "dukamok-cynthia",
+      "dukamok-since-1983-v2"
+    ],
+    "limit": "Decisions policies have not improved authored-chart timing F1; this is a playtesting experiment, not production acceptance"
+  }
+}

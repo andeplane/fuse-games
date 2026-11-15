@@ -4,6 +4,7 @@
  * `games/fuse-volley/src/app/audio.ts`, `games/fuseball/src/app/audio.ts`, Killer Fuse's match and victory music).
  */
 import { DUKAMOK_SONGS } from "./dukamok-songs.js";
+import { DSP_SONGS } from "./dsp-songs.js";
 
 export interface SongSpec {
   /** The file's base name: unique, kebab-case. */
@@ -20,6 +21,8 @@ export interface SongSpec {
   readonly pack: string;
   /** Existing authored simfile; generation must never overwrite it. */
   readonly simfile?: string;
+  /** A chart variant reuses this song's existing immutable menu clip. */
+  readonly previewOf?: string;
 }
 
 /**
@@ -163,6 +166,7 @@ export const SONGS: readonly SongSpec[] = [
     "Temple of Boom (Jungle Funk Jazz Mix)",
   ),
   ...DUKAMOK_SONGS,
+  ...DSP_SONGS,
 ];
 
 export const songById = (id: string): SongSpec | undefined =>
