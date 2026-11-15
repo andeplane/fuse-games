@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { FieldPath } from "@google-cloud/firestore";
-import { readFeedPage, type FeedQuery } from "../src/firestore.js";
-import { platform } from "../../../service/history.js";
+import {
+  readFeedPage,
+  type FeedQuery,
+} from "../packages/fuse-platform/src/firestore.js";
+import { platform } from "../service/history.js";
 
 interface Document {
   id: string;
