@@ -530,10 +530,17 @@ function landing(): void {
    * the carousel leaves no trail for Back to walk.
    */
   const address = () => {
-    const selecting = card.menu.dialog.open && picker.element.isConnected;
-    const url = withFlags(
-      endpoints.appUrl(selecting ? songQuery(choice.song, choice.chart) : ""),
-    );
+    const selecting =
+      card.menu.dialog.open && card.menu.dialog.contains(picker.element);
+    // Whatever else the page was opened with (its flags, `latency`) stays as it was written.
+    const kept = location.search
+      .slice(1)
+      .split("&")
+      .filter((part) => part && !/^(song|chart)(=|$)/.test(part));
+    const parts = selecting
+      ? [songQuery(choice.song, choice.chart).slice(1), ...kept]
+      : kept;
+    const url = endpoints.appUrl(parts.length ? `?${parts.join("&")}` : "");
     if (url !== location.href) history.replaceState(history.state, "", url);
   };
   const showOptions = () =>
