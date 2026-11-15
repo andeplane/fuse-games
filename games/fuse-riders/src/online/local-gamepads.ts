@@ -131,7 +131,12 @@ export function setupLocalPlayers(
       return { count, conflictingKeys, ready };
     };
     addKeyboard.onclick = () => {
-      if (selected().length + keyboards.size >= MAX_PLAYERS) return;
+      // Each keyboard player takes its own preset, and there are fewer presets than seats.
+      if (
+        selected().length + keyboards.size >= MAX_PLAYERS ||
+        keyboards.size >= LOCAL_KEYBOARD_PRESETS.length
+      )
+        return;
       let slot = 0;
       while (keyboards.has(slot)) slot++;
       const preset = LOCAL_KEYBOARD_PRESETS[slot]!;
@@ -282,7 +287,11 @@ export function setupLocalPlayers(
       }
       const { count, conflictingKeys, ready } = setupState();
       setIfChanged(start, "disabled", !ready);
-      setIfChanged(addKeyboard, "disabled", count >= MAX_PLAYERS);
+      setIfChanged(
+        addKeyboard,
+        "disabled",
+        count >= MAX_PLAYERS || keyboards.size >= LOCAL_KEYBOARD_PRESETS.length,
+      );
       setIfChanged(
         status,
         "textContent",

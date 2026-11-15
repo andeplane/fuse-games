@@ -20,6 +20,8 @@ import {
   ARENA_HEIGHT,
   MAX_ARENA_WIDTH,
   MAX_ARENA_HEIGHT,
+  MIN_PLAYERS,
+  arenaSize,
   isArenaSize,
   GRAVITY_FIELD_TICKS,
   GRAVITY_MAX_RADIUS,
@@ -695,6 +697,14 @@ function gameInvariants(game: GameState): boolean {
   if (game.tracks.some((loop) => !(trackLength(loop) > 0))) return false;
   // The board is one a round can be played on, its walls have not met, and every rail stays on it.
   if (!isArenaSize(game.width, game.height)) return false;
+  // And the one this round's riders are played on: `prepareRound` sizes it from them, and a room with no round yet
+  // (the lobby, whose participants are empty) is on the standard board.
+  const board = arenaSize(
+    game.roundParticipants.size >= MIN_PLAYERS
+      ? game.roundParticipants.size
+      : 0,
+  );
+  if (game.width !== board.width || game.height !== board.height) return false;
   if (game.boundaryInset >= game.height / 2) return false;
   if (
     game.tracks.some((loop) =>

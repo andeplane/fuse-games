@@ -164,6 +164,9 @@ test("a checkpoint of an eight-rider round on the grown arena round-trips, and a
     [1700, 950],
     [1848, 900],
     [1600, 1040],
+    // Boards some round uses, but not a round of eight.
+    [1600, 900],
+    [1728, 972],
   ] as const) {
     const tampered = JSON.parse(encodeGameState(state));
     const patch = (value: unknown): void => {
