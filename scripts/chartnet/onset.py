@@ -181,6 +181,11 @@ def main() -> None:
     ap.add_argument("--len", type=int, default=800)
     a = ap.parse_args()
     songs, stats = load("cache")
+    n_in = int(os.environ.get("CHARTNET_N_IN", "0"))  # train on the first columns only (a baseline on the same songs)
+    if n_in:
+        stats = (stats[0][:n_in], stats[1][:n_in])
+        for s in songs:
+            s.feats = s.feats[:, :n_in]
     np.savez(ROOT / f"feat_stats_{a.name}.npz", mean=stats[0], std=stats[1])
     (ROOT / f"{a.name}.json").write_text(json.dumps({"n_in": int(songs[0].feats.shape[1]), "wide": bool(a.wide),
                                                      "stats": f"feat_stats_{a.name}.npz"}))

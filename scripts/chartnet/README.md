@@ -111,9 +111,9 @@ density, below.
 
 ## Fuse songs
 
-Each song's charts keep its own header and timing (`bundle.ts`). The charts aim at
-about the packs' 75th to 90th percentile of steps per second: Easy 1.8, Medium 2.8 and Hard 4.3; Challenge aims at 7.0, which these songs' tempos cap at about 12 steps a second
-in 16th streams. Over the
+Each song's charts keep its own header and timing (`bundle.ts`). Until 2026-11-15 the charts aimed at
+about the packs' 75th to 90th percentile of steps per second: Easy 1.8, Medium 2.8 and Hard 4.3; Challenge aimed at 7.0, which these songs' tempos cap at about 12 steps a second
+in 16th streams (the ladder has moved up since, see "The ladder" below). Over the
 20 songs (`gen2.py fuse`):
 
 | Difficulty | Steps/s | 16th-stream share | Longest 16th run | 4-gram variety | Crossovers | Jacks | Jumps | Freezes |
@@ -262,6 +262,79 @@ Also measured, and not built on yet:
   from the nearest boundary, a random moment 3.9 s).
 - Telling the arrow model how accented each step's sound is adds nothing: held-out loss 1.264 and 0.936 without,
   1.262 and 0.935 with. It already gives a jump 56 to 62% probability on the rows where the human chart has one.
+
+## The ladder, repeats, and what the timing score can still tell us (2026-11-15)
+
+**The ladder.** Hard is now what Challenge was (as busy as the packs' meter 12), and Challenge is a new chart well
+above it, as busy as the packs' 14s and 15s where the song carries it (`gen2.ladder`): 1.8, 3.2, 7.0 and 10 steps
+a second asked for, charts come out at 0.9 of that. A cover's Hard is its original's hardest chart and its Challenge
+at most 1.75 times that. Both top charts are written the way the packs write a Challenge (`MODEL_DIFF`). Over the 36
+songs the median chart has 1.6, 2.9, 5.7 and 8.1 rows a second.
+
+- A meter is no longer fixed per difficulty: a chart carries the meter whose median pack chart is as busy
+  (`games/fusemania/charts/pack-meters.json`, from 13,000 pack charts; `gen2.py meters` writes it after
+  `gen.py fixup`). The old meters ran about three too high: what was called 13 to 15 is a pack 12.
+- A slow song's grid fills up before its Challenge gets as busy as asked; its Hard then steps down to 0.78 of what
+  the Challenge reached (`HARD_SHARE`), so the two stay a step apart.
+- Where 24ths are closer than 85 ms (above about 118 BPM) the Challenge takes its 24th runs from the Hard chart,
+  which has them only where the music does, and puts its extra steps on sixteenths. Left free, up to half of such
+  a chart became 24th runs at 13 steps a second; pack charts of that density have 3% of their steps in such runs.
+- In the new Challenge a jack costs more (`DENSE_PENALTY`): 1.4% of its steps repeat the arrow before, where it was
+  2.9%; pack charts of that density have 1.6%.
+- Twelve songs are stored at 95 to 113 BPM, and several of them are really twice as fast (the covers' originals
+  run at 190 to 200 BPM). Their sixteenths are then eighths, so their top charts cannot get much busier on this
+  grid: Monolith, Jelly Beach Bounce and Snaky Jazz gain under 15% on the old Challenge. Storing the real tempo
+  would fix it and would also double the scroll speed of those songs, so it is not done here.
+
+**Repeats** (`repeats.py`). Human charts give bars that sound alike the same rhythm: a bar and the earlier bar it
+sounds most like share 0.77 to 0.90 of their steps. The placement model scores every moment on its own, so two such
+bars could come out a step apart. `repeats.share` blends each bar's step probability with the bars that sound like
+it (similarity of their spectra at the sixteenth slots, at least 0.5; half the weight on the group) before any step
+is picked. `gen2.py place-eval` prints the measure.
+
+| Songs                                  | Timing F1      | Same rhythm on alike bars | Human charts |
+| -------------------------------------- | -------------- | ------------------------- | ------------ |
+| DDR/ITG held out                       | 0.741 to 0.744 | 0.786 to 0.831            | 0.772        |
+| Community held out                     | 0.762 to 0.762 | 0.806 to 0.842            | 0.840        |
+| DukAmok originals (never trained on)   | 0.864 to 0.867 | 0.849 to 0.896            | 0.895        |
+| The game's 36 songs, at Hard's density |                | 0.719 to 0.772            |              |
+
+The game's songs repeat less than pack songs do: 47% of their bars have another bar that sounds alike, 78 to 88%
+in the packs. When a rhythm repeats, human charts rarely repeat the arrows: 7% of such bars carry the same or the
+mirrored arrows in community charts, 24% in DDR/ITG charts.
+
+**The timing score is at its ceiling.** Some songs are in two packs with two different human charts. At a similar
+density (57 pairs of Hard and Challenge charts) two human charters put 0.69 of their steps on the same sixteenth
+(the middle half of the pairs: 0.61 to 0.77). ChartNet scores 0.76, 0.84 and 0.86 against a human chart on the three
+held-out sets, measured the same way. A higher score against pack charts therefore no longer says the chart is
+better, and nothing below moved it:
+
+| Added to the placement model (a bar-by-bar model on top of ChartNet's probability) | DDR/ITG | Community | DukAmok |
+| ---------------------------------------------------------------------------------- | ------- | --------- | ------- |
+| The steps it already placed, and the matching earlier bar's steps                  | +0.005  | -0.011    | -0.037  |
+| The same, trained on its own earlier picks instead of the human's                  | -0.001  | -0.005    | -0.030  |
+| A spectrogram resampled to the beat grid                                           | -0.002  | 0.000     | -0.004  |
+| Fine pitch: 84 constant-Q bins and their rise                                      | -0.005  | -0.008    | -0.003  |
+| Separated instruments (Demucs: drums, bass, vocals, other), three runs each        | 0.000   | +0.003    | +0.007  |
+| Transcribed notes (basic-pitch)                                                    | 0.000   | +0.003    | -0.002  |
+| Instruments and notes together                                                     | -0.002  | +0.001    | +0.005  |
+| Pitch, instruments and notes together                                              | -0.008  | -0.007    | 0.000   |
+| terra's answers (97 songs it labelled)                                             |         |           | -0.005  |
+
+Each row is the change against the same model without the input; three runs of the same model differ by up to 0.004.
+Separated instruments are the one input with a repeatable gain: on the DukAmok songs all three runs with them
+(0.847 to 0.850) beat all three without (0.839 to 0.843). The last five rows were trained on the 2,187 songs whose
+features were extracted (70%); the extractors are not in this folder yet.
+
+Two things did move a score, and both say the same: what is missing is which layer of the music this charter
+follows, not a better ear.
+
+- Shown the human chart's steps in the bar before, terra (a vision model reading one measure of a constant-Q
+  picture) scores 0.83 where it scores 0.74 without and ChartNet 0.77. Shown its own answer for the bar before, it
+  scores 0.72. The bar-by-bar model given the human's first 16 bars scores 0.79 on the rest where it scores 0.76
+  without (DDR/ITG; on community songs 0.86 and 0.84, level with ChartNet).
+- terra's prompt, over ten variants on held-out measures: 0.755 as first written, 0.806 with ChartNet's score for
+  each line under the picture (ChartNet with the same number of steps: 0.797).
 
 ## Chart lab (reviewing charts against the music)
 
