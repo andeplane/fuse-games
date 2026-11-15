@@ -57,7 +57,7 @@ import { present, type Viewer } from "./presenter.js";
 import { createOnlineSheet, nextFace, storedFace } from "./online-menu.js";
 import { createRoomLobby } from "./room-lobby.js";
 import { createPendingSettings } from "fuse-ui";
-import { dueReports, sendReport } from "./reports.js";
+import { dueReports, localReports, sendReport } from "./reports.js";
 import { FuseLaneRuntime, type FuseLaneCallbacks } from "./runtime.js";
 import { markToured, owesTour, tourSteps } from "./tour.js";
 import {
@@ -371,6 +371,22 @@ function local(match: LocalMatch, resumed = false): void {
     paused.hidden = !runtime.paused || touring || gameMenu.isOpen();
     screen.game.classList.toggle("paused", runtime.paused && !touring);
   };
+  const sent = new Set<string>();
+  const reportLocal = () => {
+    for (const report of localReports(
+      match.room,
+      match.humans,
+      social.isSignedIn(),
+      sent,
+    )) {
+      sent.add(report.key);
+      void sendReport(
+        endpoints.apiUrl(`/api/games/${GAME}/me/${report.path}`),
+        report,
+        { fetch: social.reportFetch },
+      );
+    }
+  };
   const runtime = new LocalRuntime(
     match,
     (view) => {
@@ -399,6 +415,7 @@ function local(match: LocalMatch, resumed = false): void {
       main.dataset.part = view.part;
       main.dataset.current = view.current;
       screen.render(model);
+      reportLocal();
       if (owed && model.hud && view.part === "week" && !resumed) {
         owed = false;
         runtime.setPaused(true);
@@ -455,10 +472,13 @@ function local(match: LocalMatch, resumed = false): void {
     else if (!runtime.paused) screen.keydown(event);
   };
   const onHide = () => runtime.save();
+  // The finished local clock no longer emits frames; signing in on the result can still save its history.
+  const stopReports = localDeps.every(reportLocal, 1000);
   document.addEventListener("visibilitychange", onVisibility);
   document.addEventListener("keydown", onKey);
   window.addEventListener("pagehide", onHide);
   const cleanup = () => {
+    stopReports();
     gameMenu.dispose();
     screen.destroy();
     document.removeEventListener("visibilitychange", onVisibility);

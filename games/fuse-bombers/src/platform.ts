@@ -1,13 +1,7 @@
-import { RESERVED_KEYS, type GameRegistration } from "fuse-platform";
+import { historyOnlyRegistration } from "fuse-platform";
 
-/** Room admission only: Fuse Bombers' first online version reports no results and credits no progression. */
-export const bombersRegistration: GameRegistration = {
+/** Frozen outcomes and activity; ratings and progression remain disabled. */
+export const bombersRegistration = historyOnlyRegistration({
   id: "fuse-bombers",
-  isBot: () => false,
-  parseStats: () => undefined,
-  emptyTotals: () => ({}),
-  credit: () => undefined,
-  addTotals: () => {},
-  parseTotals: (raw) =>
-    Object.keys(raw).every((key) => RESERVED_KEYS.has(key)) ? {} : undefined,
-};
+  isBot: (id) => /^bot:[1-9][0-9]*$/.test(id),
+});

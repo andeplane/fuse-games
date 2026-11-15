@@ -4,6 +4,8 @@ import {
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { identityToken } from "fuse-ui/browser-account";
 import "fuse-ui/social.css";
 import {
   observeConfirmedPlay,
@@ -28,6 +30,7 @@ import "./fusemania.css";
 import "./song-picker.css";
 import "./settings.css";
 import "./options.css";
+import "./song-leaderboards.css";
 import QRCode from "qrcode";
 import {
   PeerTransport,
@@ -65,6 +68,8 @@ import {
   MAX_SIMFILE_BYTES,
   RULES,
   SCORE_MODE,
+  LEAD_IN_MS,
+  SOLO_LEAD_IN_MS,
   createLibrary,
   type Library,
   type Steps,
@@ -107,7 +112,7 @@ import {
   type SessionModel,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { historyReceipts } from "../online/result.js";
 import {
   NOT_OPEN,
   bestRating,
@@ -154,9 +159,18 @@ import {
 } from "./run-log.js";
 import { drawTimingGraph } from "./timing-graph.js";
 import { resultBar, resultReport } from "./result-report.js";
+import { createSongLinkButton, songLink, songQuery } from "./song-link.js";
 import { createSongPicker } from "./song-picker.js";
 import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
+import { createSongLeaderboards } from "./song-leaderboards.js";
+import { RankedRun } from "./ranked-run.js";
+import { fusemaniaPlayFrame } from "./play-metrics.js";
+import {
+  scoreSource,
+  type SongBoard,
+  type ScoreEntry,
+} from "../song-scores.js";
 
 /**
  * The Fusemania page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -171,6 +185,30 @@ const endpoints = createEndpoints(
   { basePath: `${BASE}${GAME}/`, apiOrigin: import.meta.env.VITE_API_ORIGIN },
   location.origin,
 );
+const scoresUrl = (path = "") =>
+  endpoints.apiUrl(`/api/games/fusemania/song-scores${path}`);
+async function scoreRequest(
+  path: string,
+  token?: string,
+  body?: unknown,
+): Promise<unknown> {
+  const response = await fetch(scoresUrl(path), {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const value = await response.json();
+  if (!response.ok)
+    throw new Error(
+      typeof value?.error === "string"
+        ? value.error
+        : "Song scores are unavailable",
+    );
+  return value;
+}
 const social = createGameSocial({
   gameId: GAME,
   base: BASE,
@@ -307,11 +345,24 @@ function remember(choice: Choice): void {
   store.setItem(names.chart, String(choice.chart));
   store.setItem(names.mode, String(choice.mode));
 }
+const localScoreVersions = new Map(
+  SONGS_DATA.map((source) => {
+    let hash = 2166136261;
+    for (const character of source.ssc)
+      hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+    return [source.id, `${RULES}:${hash >>> 0}`] as const;
+  }),
+);
 const bestKey = (library: Library, song: string, chart: number) => {
   // A player's own file keeps no best: every loaded file would share the one key.
   const info = localSong(song) ? undefined : library.song(song)?.charts;
   const picked = info?.[Math.min(chart, info.length - 1)];
-  return picked ? names.best(song, picked.name.toLowerCase()) : undefined;
+  return picked
+    ? names.best(
+        song,
+        `${picked.name.toLowerCase()}:${localScoreVersions.get(song)}`,
+      )
+    : undefined;
 };
 const bestLookup = (library: Library) => (song: string, chart: number) => {
   const key = bestKey(library, song, chart);
@@ -495,6 +546,10 @@ function landing(): void {
       if (song) show({ ...choice, song });
     },
   });
+  const share = createSongLinkButton({
+    document,
+    link: () => songLink(endpoints.appUrl, choice.song, choice.chart),
+  });
   const picker = createSongPicker({
     document,
     songs: library.songs,
@@ -505,7 +560,7 @@ function landing(): void {
     audio: songs.status,
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
-    tools: [options.random],
+    tools: [options.random, share.element],
     onPlay: () => {
       leaveLanding();
       startSolo(library, choice);
@@ -517,6 +572,26 @@ function landing(): void {
     remember(choice);
     picker.update({ ...choice, host: true });
     preview.show(choice.song);
+    address();
+  };
+  /**
+   * The address bar follows the select: while it is open the page's address is a link to the selected song and
+   * level, to copy as it is, and the front door's own address once it is closed. Replaced, never pushed: turning
+   * the carousel leaves no trail for Back to walk.
+   */
+  const address = () => {
+    const selecting =
+      card.menu.dialog.open && card.menu.dialog.contains(picker.element);
+    // Whatever else the page was opened with (its flags, `latency`) stays as it was written.
+    const kept = location.search
+      .slice(1)
+      .split("&")
+      .filter((part) => part && !/^(song|chart)(=|$)/.test(part));
+    const parts = selecting
+      ? [songQuery(choice.song, choice.chart).slice(1), ...kept]
+      : kept;
+    const url = endpoints.appUrl(parts.length ? `?${parts.join("&")}` : "");
+    if (url !== location.href) history.replaceState(history.state, "", url);
   };
   const showOptions = () =>
     options.update({
@@ -528,6 +603,8 @@ function landing(): void {
   /** `keepMusic`: the room that opens next plays the same preview on, without a gap. */
   const leaveLanding = (keepMusic = false) => {
     if (!keepMusic) preview.stop();
+    share.dispose();
+    card.menu.dialog.removeEventListener("close", address);
     optionsMenu.dispose();
     settings.dispose();
     card.menu.dispose();
@@ -583,6 +660,12 @@ function landing(): void {
   card.menu.addEntry("Sync timing", () => {
     leaveLanding();
     openTiming();
+  });
+  card.menu.addEntry("Song highscores", () => {
+    leaveLanding();
+    history.pushState(null, "", withFlags(endpoints.appUrl("?highscores")));
+    window.addEventListener("popstate", () => location.reload());
+    songHighscores();
   });
 
   // A player's own simfile: any 4-panel .sm, .ssc or .dwi with its music, for a solo run on this device.
@@ -644,6 +727,9 @@ function landing(): void {
   card.soloDetails.append(select, own);
   // A select that is opened again starts with the speeds put away.
   card.menu.dialog.addEventListener("close", () => optionsMenu.close());
+  card.menu.dialog.addEventListener("close", address);
+  // After the menu's own handler has opened the select.
+  card.menu.singlePlayer.addEventListener("click", address);
   card.solo?.classList.add("fui-button-primary", "fm-solo-play");
   const settings = settingsPanel(() => {
     help.dispatchEvent(new Event("fm-refresh"));
@@ -689,6 +775,9 @@ function landing(): void {
   preview.show(choice.song);
   // Until a room takes the page over (`room` clears the watchers and the timer).
   audioWatchers.add(() => picker.update({ ...choice, host: true }));
+  // A link to a song opens the select on it: the friend it was sent to sees the song, with PLAY beside it.
+  if (new URLSearchParams(location.search).has("song"))
+    card.menu.singlePlayer.click();
 }
 
 /** From the menu into a solo song without leaving the page, so the click that asked for it is what lets sound out. */
@@ -715,6 +804,31 @@ function openTiming(): void {
   window.addEventListener("popstate", () => location.reload());
   audio.unlock();
   timing();
+}
+
+function songHighscores(): void {
+  const scores = createSongLeaderboards(
+    {
+      catalog: async () =>
+        ((await scoreRequest("")) as { songs: SongBoard[] }).songs,
+      leaderboard: async (song, chart) =>
+        (
+          (await scoreRequest(
+            `?song=${encodeURIComponent(song)}&chart=${chart}`,
+          )) as { players: ScoreEntry[] }
+        ).players,
+    },
+    document,
+    { openPlayer: social.openPlayer },
+  );
+  const page = createSubPage({
+    title: "Song highscores",
+    backHref: withFlags(endpoints.appUrl()),
+    content: [scores.element],
+  });
+  app.replaceChildren(header(), page.element);
+  backOnEscape(page.back);
+  window.addEventListener("pagehide", scores.dispose, { once: true });
 }
 
 /** The Timing screen ("sync"): thirty seconds of a steady tick, then what to set. No song, no room. */
@@ -787,8 +901,10 @@ function enterRoom(
   const viewer: Viewer = { me: "", host: solo, solo, display };
   const choice = first ?? chosen(library);
   const leave = () => {
-    runtime.stop();
-    location.href = withFlags(endpoints.appUrl());
+    history.close(historySnapshot, () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    });
   };
 
   // ---- the page ----
@@ -937,6 +1053,16 @@ function enterRoom(
       runtime.command({ type: "settings", settings: { ...settings, random } });
     },
   });
+  // A link to the room's song, for a friend to try alone. A player's own file has none: it is on this device only.
+  /** The level this player's select shows: their own pick, as the room last drew it. */
+  let shownChart = choice.chart;
+  const share = createSongLinkButton({
+    document,
+    link: () =>
+      localSong(settings.song)
+        ? undefined
+        : songLink(endpoints.appUrl, settings.song, shownChart),
+  });
   const picker = createSongPicker({
     document,
     songs: library.songs,
@@ -958,7 +1084,7 @@ function enterRoom(
     audio: songs.status,
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
-    tools: [options.random],
+    tools: [options.random, share.element],
     onPlay: () => start.click(),
   });
   const showOptions = () =>
@@ -1036,6 +1162,31 @@ function enterRoom(
   cardGraph.append(graph, graphStats, cardTiming);
   cardGraph.hidden = true;
   cardReport.append(cardCounts, cardGraph);
+  const rankedStatus = el("p", "", "fm-ranked-status"),
+    rankedRetry = button("RETRY SAVING SCORE");
+  rankedStatus.setAttribute("role", "status");
+  rankedRetry.hidden = true;
+  const rankedRun = new RankedRun({
+    token: identityToken,
+    version: async (song) => {
+      const source = SONGS_DATA.find((source) => source.id === song);
+      if (!source) throw new Error("Custom songs are unranked");
+      const hash = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(scoreSource(RULES, source.ssc, source.id)),
+      );
+      return Array.from(new Uint8Array(hash), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+    },
+    post: scoreRequest,
+    inputs: () => runtime.scoreInputs(),
+    changed: () => {
+      rankedStatus.textContent = rankedRun.status;
+      rankedRetry.hidden = !rankedRun.canRetry;
+    },
+  });
+  rankedRetry.onclick = () => rankedRun.retry();
   // The menu over a song: a pause alone, a player's own menu in a room (`play-menu.ts`).
   const playMenu = createPlayMenu({
     document,
@@ -1229,6 +1380,7 @@ function enterRoom(
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
+    layout: "configuration",
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor,
@@ -1615,6 +1767,7 @@ function enterRoom(
       title: model.title,
       chartNames: model.chartNames,
       totals: model.totals,
+      totalSongs: model.totalSongs,
       itemKey: coarse() ? "ITEM" : keyLabel(prefs.keys.item[0] ?? ""),
     });
     const done = performance.now();
@@ -1775,6 +1928,7 @@ function enterRoom(
     if (tvToggle.checked !== view.settings.display)
       tvToggle.checked = view.settings.display;
     tvLink.hidden = !view.settings.display;
+    shownChart = next.chart;
     picker.update({
       song: view.settings.song,
       chart: next.chart,
@@ -1866,7 +2020,7 @@ function enterRoom(
           resultReport(result, {
             color: slotColor,
             friend,
-            run: result.own ? [cardReport] : [],
+            run: result.own ? [rankedStatus, rankedRetry, cardReport] : [],
           }),
         );
         if (!first) results.body.scrollTop = scroll;
@@ -1886,7 +2040,27 @@ function enterRoom(
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => (display ? "" : runtime.self),
+    now: () => performance.now(),
+  });
+  const historySnapshot = () => {
+    const state = runtime.roomState();
+    return {
+      receipts:
+        !display && state && library === LIBRARY
+          ? historyReceipts(library, state)
+          : [],
+      confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+    };
+  };
   const bests = createBests(store);
   let finished = "";
   const remembered = seatName(
@@ -1901,34 +2075,35 @@ function enterRoom(
         reportPlay,
         frame,
         () => runtime.confirmedFrame(),
-        (frame) => {
-          const players =
-            frame.stage === "lobby"
-              ? frame.seats.filter((seat) => !seat.watcher)
-              : frame.roster;
-          return {
-            matchId: frame.matchId,
-            roundActive:
-              frame.stage === "running" &&
-              !!frame.world &&
-              frame.world.ms >= 0 &&
-              frame.world.phase === "playing",
-            roundEnded: frame.stage === "over",
-            active: frame.stage === "running",
-            ended: frame.stage === "over",
-            playerCount: players.length,
-            botCount: players.filter((player) => player.bot).length,
-            seated: players.some((player) => player.id === viewer.me),
+        (frame) =>
+          fusemaniaPlayFrame(frame, {
+            self: viewer.display ? "" : viewer.me,
             mode,
-            round: 1,
-          };
-        },
+          }),
       );
       settings = roomSettings;
       // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
       let bestBefore: number | undefined;
       const world = frame.world;
       const mine = world?.players.find((each) => each.id === viewer.me);
+      if (world && mine && !mine.bot && !viewer.display) {
+        rankedRun.observe({
+          key: `${frame.matchId}:${runtime.roomState()?.epoch}`,
+          song: world.song,
+          chart: mine.chart,
+          leadIn: world.players.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS,
+          eligible: world.mode === SCORE_MODE && library === LIBRARY,
+          beforeSong: world.ms < 0,
+          finished: frame.stage === "over",
+          confirmed:
+            solo ||
+            (runtime.roomState()?.decided?.clock ?? Infinity) <=
+              runtime.confirmedTick(),
+          rating: mine.rating,
+        });
+        rankedStatus.textContent = rankedRun.status;
+        rankedRetry.hidden = !rankedRun.canRetry;
+      }
       if (frame.stage === "over" && world && mine && !mine.bot) {
         const key = bestKey(library, world.song, mine.chart);
         const decided = runtime.roomState()?.decided?.clock;
@@ -1966,22 +2141,8 @@ function enterRoom(
         if (next.chart !== choice.chart) runtime.pick(choice.chart);
       }
       render(next, frame);
-      const state = runtime.roomState();
-      if (session.kind === "room" && !display && state)
-        for (const report of dueReports(
-          library,
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
-            report,
-            { fetch: social.reportFetch, roomToken: session.token },
-          );
-        }
+      const snapshot = historySnapshot();
+      history.observe(snapshot.receipts, snapshot.confirmedTick);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.
@@ -2048,7 +2209,10 @@ function enterRoom(
         },
   );
   installRoomLifecycle(window, {
-    stop: () => runtime.stop(),
+    stop: () => {
+      history.dispose();
+      runtime.stop();
+    },
     destroy: () => {
       stopPlaytestInput();
       menu.dispose();
@@ -2167,6 +2331,7 @@ function enterRoom(
 
 const query = new URLSearchParams(location.search);
 if (query.has("timing") || query.has("sync")) timing();
+else if (query.has("highscores")) songHighscores();
 else if (query.get("solo") === "1") enterRoom(true, LIBRARY);
 else if (query.has("room")) enterRoom(false, LIBRARY);
 else landing();

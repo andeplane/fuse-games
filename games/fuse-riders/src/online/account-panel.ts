@@ -54,6 +54,7 @@ export interface AccountPanelDependencies {
   /** GET the profile, PUT `{ username }`. */
   profileUrl: string;
   leaderboardUrl: string;
+  activityApiUrl?: string;
   /** Browser smoke tests inject an explicit identity surface, never real credentials. */
   auth?: AccountPanelAuth;
   refreshClock?: {
@@ -213,6 +214,7 @@ export function createAccountPanel(dependencies: AccountPanelDependencies): {
     matchesUrl: dependencies.matchesUrl,
     profileUrl: dependencies.profileUrl,
     leaderboardUrl: dependencies.leaderboardUrl,
+    activityApiUrl: dependencies.activityApiUrl,
     localName: dependencies.localName,
     track: (event) => dependencies.track(event),
     names: {
@@ -226,8 +228,8 @@ export function createAccountPanel(dependencies: AccountPanelDependencies): {
     match: matchRow,
     matchDetail: (entry, context) =>
       matchDetail(entry, context, dependencies.friendButton),
-    leaderboard: (players) =>
-      leaderboardTable(players, dependencies.friendButton),
+    leaderboard: (players, handlers) =>
+      leaderboardTable(players, dependencies.friendButton, handlers.openPlayer),
     avatar: (id) => createAvatarPortrait(id as AvatarId),
     ...(dependencies.refreshClock
       ? { refreshClock: dependencies.refreshClock }

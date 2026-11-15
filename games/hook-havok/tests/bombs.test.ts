@@ -762,7 +762,8 @@ test("checkpoints round-trip bombs; a corrupt one is refused whole and the live 
   }
   // A snapshot carrying such a checkpoint is refused whole.
   const packed = unpackMessage(bytes) as unknown[];
-  (packed[10] as Encoded).bombs[0]!.fuse = 0;
+  // Header occupies three fields; the arena is checkpoint field five, now inside the leading prefix.
+  (packed[3 + 5] as Encoded).bombs[0]!.fuse = 0;
   assert.equal(decodeSnapshot(hookGame, packMessage(packed), 7), undefined);
   // Bomb state under the off setting is rejected by the arena itself.
   const good = hookGame.checkpoint.encode(live.world.state);

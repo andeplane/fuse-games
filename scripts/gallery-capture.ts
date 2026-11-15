@@ -165,6 +165,18 @@ const RECIPES: Record<string, Recipe> = {
     await page.keyboard.press("ArrowUp", { delay: 200 });
     await page.waitForTimeout(700);
   },
+  "fuse-surge": async (page) => {
+    await openPlayOptions(page, "single");
+    await page
+      .locator('.fs-room[data-phase="play"]')
+      .waitFor({ timeout: 30_000 });
+    // The picture is two canvases in a 3D look (the world and the flat layer over it): click their box.
+    await page.locator(".fs-canvas").click({ position: { x: 20, y: 20 } });
+    // Two surges in: the rider nobody is steering has been thrown back to the last foothold, by the pit, and hops
+    // there while the third bears down; the bots are still up the deck.
+    await page.waitForTimeout(5200);
+    await page.keyboard.press("ArrowUp", { delay: 220 });
+  },
   fuseball: async (page) => {
     await openPlayOptions(page);
     await page

@@ -54,6 +54,7 @@ export interface BoardInfo {
   chartNames: readonly string[];
   /** Each rider's session total before this song, by slot: a box adds the song's score to it. Empty for none. */
   totals: readonly number[];
+  totalSongs: number;
   local: number;
   texts: readonly RiderTexts[];
 }
@@ -296,7 +297,10 @@ function box(
     const base = info.totals[slot];
     const total =
       base !== undefined && chars >= 22
-        ? totalText(texts.boxTotal, base + Math.round(rider.score))
+        ? totalText(
+            texts.boxTotal,
+            (base + Math.round(rider.score)) / info.totalSongs,
+          )
         : "";
     if (total)
       label(g, total, right, third, size, TEXT, "right", size * total.length);

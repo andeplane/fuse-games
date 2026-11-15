@@ -63,6 +63,8 @@ Every menu, dialog, room and page in every game follows one set of patterns. Use
 
 Room commands carrying a whole settings object can use `createPendingSettings(now)` to preserve rapid edits made before the next frame answers. Build commands with `with`, call `sent` only when the local command accepts the patch, and call `answered` with each room frame. Clear pending choices when the phase or authority changes. The default two-second expiry only bounds unanswered UI choices; it is not delivery confirmation.
 
+Rooms with authored inline per-round choices use `layout: "configuration"`: seats follow QR/invites in the left column, while `modes`, `configuration` and `actions` lead on the right. `configuration` is an explicit content slot in both `createRoomLayout` and `roomLayoutMarkup`; it is not inferred from element size or the presence of a settings dialog. Compact solo rooms retain their single column. Fusemania, Elasto Fuse, Fuse Front, Fuseball and Fuse Volley select this mode. Other rooms retain Players on the right; their dialog-only settings and general personal preferences do not create an empty configuration column.
+
 ## Components
 
 Each component is a function that returns its elements. Options take callbacks, and none of them use `innerHTML`. Every component accepts `document` (the tests pass a `linkedom` one). Most also accept `classes`, which renames the class of any part; `""` leaves a part without a class.
@@ -133,6 +135,24 @@ effects. Every game currently uses the full catalogue, including the Fuseball
 and Volley songs. `createTopBar` supplies radio controls by default; pass
 `music: chosenSongs` for a game's selection, or `music: false` for a custom radio
 UI backed by the same player. See [Fuse Music](../fuse-music/README.md).
+
+## Gameplay activity
+
+The account dialog's Activity tab is a shared global, personal or public-player
+feed with game, solo/multiplayer and match/round filters. Supply `activityApiUrl`
+to `createAccountDialog`; `createGameSocial` supplies it automatically. Leaderboard
+names use the provided `openPlayer` handler. Specialized game boards can call the
+same handler without implementing another player-history view.
+
+New outcome adapters use `createResultsHistory` from `fuse-ui/results-history`.
+Feed it immutable, checkpointed receipts and a rollback-closed **log tick** from
+`runtime.confirmedFrame()?.logTick`, not a prediction or a different game clock.
+Retain recent receipts across lobby/rematch transitions. Inject fetch, endpoints,
+identity state and clock; the shared social fetch attaches verified account identity
+and translates the local solo seat only at the authenticated HTTP boundary.
+`close(readFreshState, stop)` drains confirmation and initial HTTP attempts within
+three seconds before ordinary Back navigation; explicit forced disposal remains
+available for page teardown. See [gameplay activity](../../docs/design/gameplay-activity.md).
 
 ## Tests
 

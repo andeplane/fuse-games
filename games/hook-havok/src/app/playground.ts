@@ -1,4 +1,5 @@
 import { social } from "./social.js";
+import { createResultsHistory } from "fuse-ui/results-history";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import {
   playtestInputBlocked,
@@ -364,6 +365,7 @@ let runtime: HookRuntime | undefined,
   attempt = 0,
   disposed = false,
   roomAttempt = 0;
+let resultsHistory: ReturnType<typeof createResultsHistory> | undefined;
 let input: Input = { ...NEUTRAL };
 let touch: TouchControls | undefined;
 let mousePointer: number | undefined;
@@ -563,6 +565,10 @@ function localView(view: WorldView): WorldView {
   };
 }
 function stopRoom() {
+  const previous = runtime,
+    reports = resultsHistory;
+  runtime = undefined;
+  resultsHistory = undefined;
   matchShell.reset();
   knockoutFeed.reset();
   menu.close();
@@ -576,8 +582,8 @@ function stopRoom() {
   roomAttempt++;
   clearTimeout(roomDeadline);
   clear();
-  runtime?.stop();
-  runtime = undefined;
+  previous?.stop();
+  reports?.dispose();
   // A removal asked of this room must not land in the next one.
   botTarget = undefined;
   botConfirm.close();
@@ -594,6 +600,35 @@ function stopRoom() {
   touch?.enable(false);
   el<HTMLButtonElement>("restart-room").disabled = true;
   el("invitation").hidden = true;
+}
+function closeRoom(next: () => void) {
+  clear();
+  const previous = runtime,
+    reports = resultsHistory;
+  if (!previous || !reports) {
+    stopRoom();
+    next();
+    return;
+  }
+  reports.close(
+    () => ({
+      receipts: previous
+        .historyReceipts()
+        .flatMap((receipt) => [
+          { tick: receipt.tick, result: { ...receipt.result, round: 1 } },
+          receipt,
+        ]),
+      confirmedTick: previous.confirmedFrame()?.logTick ?? -1,
+    }),
+    () => {
+      if (runtime !== previous) {
+        previous.stop();
+        return;
+      }
+      stopRoom();
+      next();
+    },
+  );
 }
 function fail(message: string) {
   stopRoom();
@@ -754,6 +789,15 @@ const enterRoom = async () => {
       roomShown = false,
       wasRunning = false,
       restarting = false;
+    resultsHistory = createResultsHistory({
+      fetch: social.reportFetch,
+      apiUrl: endpoints.apiUrl,
+      gameId: "hook-havok",
+      room: { code: room.code, token: room.token },
+      signedIn: social.isSignedIn,
+      playerId: () => (display ? "" : selfId),
+      now: () => performance.now(),
+    });
     runtime = new HookRuntime(
       room.code,
       DEFAULT_TUNING,
@@ -767,6 +811,14 @@ const enterRoom = async () => {
           matchShell.say(text);
         },
         state(frame, settings) {
+          const confirmed = runtime?.confirmedFrame();
+          resultsHistory?.observe(
+            (runtime?.historyReceipts() ?? []).flatMap((receipt) => [
+              { tick: receipt.tick, result: { ...receipt.result, round: 1 } },
+              receipt,
+            ]),
+            confirmed?.logTick ?? -1,
+          );
           observeConfirmedPlay(
             reportPlay,
             frame,
@@ -1072,13 +1124,20 @@ el("restart-room").onclick = () => {
   restartRequested = !!runtime?.command({ type: "action", action: "lobby" });
 };
 el("leave-room").onclick = () => {
-  stopRoom();
-  roomCode = undefined;
-  display = false;
-  const url = new URL(location.href);
-  url.searchParams.delete("room");
-  url.searchParams.delete("display");
-  location.href = url.href;
+  closeRoom(() => {
+    roomCode = undefined;
+    display = false;
+    const url = new URL(location.href);
+    url.searchParams.delete("room");
+    url.searchParams.delete("display");
+    location.href = url.href;
+  });
+};
+el<HTMLAnchorElement>("home").onclick = (event) => {
+  event.preventDefault();
+  closeRoom(() => {
+    location.href = el<HTMLAnchorElement>("home").href;
+  });
 };
 el("copy-invite").onclick = async () => {
   const field = el<HTMLInputElement>("invite-url");

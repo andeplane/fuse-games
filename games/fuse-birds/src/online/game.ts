@@ -29,6 +29,12 @@ import {
 } from "../engine/index.js";
 import type { WorldView } from "../engine/view.js";
 import { encodeMatch, decodeMatch } from "./terrain-wire.js";
+import { birdsResults } from "./result.js";
+import {
+  parseHistoryReceipts,
+  parseHistoryPlayer,
+  type HistoryReceipt,
+} from "fuse-platform/history-api";
 
 export interface BirdsSettings {
   display: boolean;
@@ -40,6 +46,9 @@ export interface BirdsRoom extends ManagedRoom<BirdsSettings> {
   stage: Stage;
   startedAt: number;
   match: Match | null;
+  /** Frozen at the deciding tick; later lobby membership cannot rewrite a receipt. */
+  decided: { tick: number; finishers: string[] } | null;
+  history: HistoryReceipt[];
 }
 export type PlayEntry = [
   seq: number,
@@ -54,6 +63,8 @@ export interface BirdsView {
   stage: Stage;
   world: WorldView | null;
   seats: SeatRecord[];
+  decided: BirdsRoom["decided"];
+  history: readonly HistoryReceipt[];
 }
 const validId = (x: unknown): x is string =>
   typeof x === "string" && /^[\w:-]{1,64}$/.test(x);
@@ -119,6 +130,7 @@ function start(room: BirdsRoom, id: string): void {
     (room.match?.round ?? 0) + 1,
   );
   room.matchId = id;
+  room.decided = null;
   room.startedAt = room.tick;
   room.stage = "running";
 }
@@ -131,6 +143,7 @@ const lifecycle: LifecycleHooks<BirdsRoom, BirdsSettings> = {
   lobby(room, id) {
     room.matchId = id;
     room.match = null;
+    room.decided = null;
     room.startedAt = 0;
     room.stage = "lobby";
   },
@@ -164,6 +177,29 @@ export function foldTick(
       }
   }
   const facts = room.match ? advance(room.match, actions) : [];
+  if (room.match?.phase === "over" && !room.decided) {
+    room.decided = {
+      tick,
+      finishers: room.match.players
+        .filter((player) => {
+          const seat = room.seats.get(player.id);
+          return seat?.connected && !seat.watcher && !seat.bot;
+        })
+        .map((player) => player.id)
+        .sort(),
+    };
+    room.history.push(
+      ...birdsResults({
+        tick: tick * 3,
+        stage: "over",
+        world: getView(room.match),
+        seats: [],
+        decided: room.decided,
+        history: [],
+      }),
+    );
+    room.history = room.history.slice(-64);
+  }
   if (room.match?.phase === "over" || room.match?.phase === "fault")
     room.stage = "over";
   room.tick = tick;
@@ -171,7 +207,13 @@ export function foldTick(
 }
 function roomFields(room: BirdsRoom): unknown[] {
   return [
-    [room.matchId, room.stage, room.startedAt],
+    [
+      room.matchId,
+      room.stage,
+      room.startedAt,
+      room.decided && [room.decided.tick, [...room.decided.finishers]],
+      structuredClone(room.history),
+    ],
     orderedSeats(room).map((s) => [
       s.id,
       s.name,
@@ -196,7 +238,7 @@ export function decodeRoom(
   const [head, rawSeats, rawSettings, rawMatch] = fields;
   if (
     !Array.isArray(head) ||
-    head.length !== 3 ||
+    head.length !== 5 ||
     !validId(head[0]) ||
     !["lobby", "running", "over"].includes(head[1]) ||
     !uint32(head[2]) ||
@@ -244,6 +286,48 @@ export function decodeRoom(
   }
   const match = rawMatch === null ? null : decodeMatch(rawMatch);
   if (match === undefined) return;
+  const rawDecided: unknown = head[3];
+  let decided: BirdsRoom["decided"] = null;
+  if (rawDecided !== null) {
+    if (
+      !Array.isArray(rawDecided) ||
+      rawDecided.length !== 2 ||
+      !uint32(rawDecided[0]) ||
+      rawDecided[0] < 1 ||
+      rawDecided[0] > tick ||
+      !Array.isArray(rawDecided[1]) ||
+      rawDecided[1].length > 5 ||
+      !rawDecided[1].every(
+        (id: unknown) =>
+          typeof id === "string" &&
+          match?.players.some((player) => player.id === id),
+      ) ||
+      rawDecided[1].some(
+        (id: string, index: number) =>
+          index > 0 && id <= rawDecided[1][index - 1],
+      )
+    )
+      return;
+    decided = { tick: rawDecided[0], finishers: [...rawDecided[1]] };
+  }
+  if ((match?.phase === "over") !== (decided !== null)) return;
+  const history = parseHistoryReceipts(
+    head[4],
+    tick,
+    (raw, rounds) => {
+      const player = parseHistoryPlayer(raw, rounds);
+      return player &&
+        rounds === 1 &&
+        player.roundsPlayed === 1 &&
+        player.slot < 5 &&
+        player.matchScoreUnits <= 100
+        ? player
+        : undefined;
+    },
+    validId,
+    () => false,
+  );
+  if (!history) return;
   if (head[1] === "lobby") {
     if (match !== null || head[2] !== 0) return;
   } else {
@@ -278,6 +362,8 @@ export function decodeRoom(
     settings,
     seats,
     match,
+    decided,
+    history,
   };
 }
 export function hashRoom(room: BirdsRoom): string {
@@ -285,7 +371,17 @@ export function hashRoom(room: BirdsRoom): string {
     ...roomFields(room),
     room.match ? hashState(room.match) : null,
   ];
-  const value = JSON.stringify([room.tick, ...encoded]);
+  const value = JSON.stringify(
+    [room.tick, ...encoded],
+    (_key, value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.entries(value).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            ),
+          )
+        : value,
+  );
   let a = 2166136261,
     b = 0x9e3779b9;
   for (let i = 0; i < value.length; i++) {
@@ -305,7 +401,7 @@ export const birdsGame: RollbackGame<
   BirdsSettings
 > = {
   id: "fuse-birds",
-  rules: `${RULES}-snapshot2`,
+  rules: `${RULES}-snapshot3`,
   isEntry: isBirdsEntry,
   createRoom: (matchId, settings) => ({
     tick: 0,
@@ -315,6 +411,8 @@ export const birdsGame: RollbackGame<
     startedAt: 0,
     stage: "lobby",
     match: null,
+    decided: null,
+    history: [],
   }),
   createTicker: () => foldTick,
   scope: (room) => ({ matchId: room.matchId, round: room.match?.round ?? 1 }),
@@ -326,6 +424,8 @@ export const birdsGame: RollbackGame<
     stage: room.stage,
     world: room.match ? getView(room.match) : null,
     seats: orderedSeats(room).map((s) => ({ ...s })),
+    decided: room.decided && structuredClone(room.decided),
+    history: structuredClone(room.history),
   }),
   hash: hashRoom,
   checkpoint: { leading: 3, encode: encodeRoom, decode: decodeRoom },

@@ -49,6 +49,7 @@
     "fuse-freight": "workspace:*",
     "fuse-front": "workspace:*",
     "fuse-volley": "workspace:*",
+    "fuse-surge": "workspace:*",
     "fuse-lane": "workspace:*",
     "fusero": "workspace:*",
     "fuse-network-be": "workspace:*",

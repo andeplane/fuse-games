@@ -1,9 +1,11 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { PRESENCE } from "fuse-netcode";
-import type { FuseLaneRoom } from "../src/game/index.js";
+import { END_WEEK, type FuseLaneRoom } from "../src/game/index.js";
+import { LocalMatch } from "../src/app/local.js";
 import {
   dueReports,
+  localReports,
   sendReport,
   type DueReport,
   type ReportTransport,
@@ -46,6 +48,55 @@ test("only a finisher owes the match, once it is confirmed, and not before the e
 });
 
 const REPORT: DueReport = dueReports(over(), "a", Infinity, new Set())[0]!;
+
+test("single-human local history waits for sign-in, normalizes its seat and does not claim pass-and-play", () => {
+  const match = LocalMatch.create({
+    humans: [{ name: "Ada", avatar: "fox" }],
+    bots: 1,
+    level: 0,
+    goals: [50, 50, 50, 50],
+    weekSeconds: 45,
+    seed: "local-score",
+  });
+  const sent = new Set<string>();
+  assert.deepEqual(localReports(match.room, match.humans, true, sent), []);
+  Object.assign(match.room.players.p1!, {
+    goals: [10, 10, 10, 10],
+    cash: 1000,
+    happiness: 20,
+    job: 0,
+    wage: 4,
+    dep: 30,
+  });
+  match.room.players.p1!.courses[0] = 10;
+  match.play([END_WEEK, match.room.week]);
+  match.step();
+  assert.equal(match.room.stage, "over");
+  assert.deepEqual(localReports(match.room, match.humans, false, sent), []);
+  assert.equal(
+    sent.size,
+    0,
+    "signing in later can still report the completed match",
+  );
+  const reports = localReports(match.room, match.humans, true, sent);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0]!.result.winnerId, "solo");
+  assert.deepEqual(reports[0]!.result.finishers, ["solo"]);
+  assert.ok(
+    reports[0]!.result.players.some((player) => player.playerId === "bot:1"),
+  );
+  assert.ok(
+    reports[0]!.result.players.some((player) => player.playerId === "solo"),
+  );
+  assert.ok(
+    match.room.roster.p1,
+    "normalization leaves the runtime's original identity intact",
+  );
+  assert.equal(match.room.winners[0], "p1");
+  assert.deepEqual(localReports(match.room, ["p1", "p2"], true, sent), []);
+  sent.add(reports[0]!.key);
+  assert.deepEqual(localReports(match.room, match.humans, true, sent), []);
+});
 
 interface Post {
   url: string;

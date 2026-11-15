@@ -316,7 +316,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               page,
               page.getByRole("button", { name: "Back", exact: true }),
             );
-            await page
+            await dialog
               .getByRole("button", {
                 name: "Room settings",
                 exact: true,
@@ -336,7 +336,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
               .click();
             assert.equal(await power.inputValue(), "42");
-            await page
+            await dialog
               .getByRole("button", {
                 name: "Room settings",
                 exact: true,
@@ -378,7 +378,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             await page
               .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
               .click();
-            await page
+            await dialog
               .getByRole("button", {
                 name: "Room settings",
                 exact: true,
@@ -428,7 +428,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
               .click();
             assert.equal(await power.inputValue(), "42");
-            await page
+            await dialog
               .getByRole("button", {
                 name: "Room settings",
                 exact: true,
