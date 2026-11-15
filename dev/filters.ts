@@ -18,6 +18,7 @@ export function gameAutocomplete(
   dom: Dom,
   games: readonly string[],
   value: string,
+  changed?: (value: string) => void,
 ): { element: HTMLElement; input: HTMLInputElement } {
   const { node, button } = dom;
   const element = node("div", "game-combobox");
@@ -51,6 +52,7 @@ export function gameAutocomplete(
         label!,
         () => {
           input.value = id!;
+          changed?.(input.value);
           hide();
           input.focus({ preventScroll: true });
         },
@@ -70,7 +72,10 @@ export function gameAutocomplete(
   };
   input.addEventListener("focus", () => draw(""));
   input.addEventListener("click", () => draw(""));
-  input.addEventListener("input", () => draw(input.value));
+  input.addEventListener("input", () => {
+    changed?.(input.value);
+    draw(input.value);
+  });
   element.addEventListener("focusout", (event) => {
     if (!element.contains(event.relatedTarget as Node | null)) hide();
   });
@@ -130,24 +135,29 @@ export function filterEditor(
   dom: Dom,
   filters: EventFilters,
   fields: readonly string[],
-  change: (filters: EventFilters) => void,
+  change: (filters: EventFilters, rebuild?: boolean, focusKey?: string) => void,
 ): HTMLElement {
   const { node, select, field, button } = dom;
   const section = node("details", "filter-builder");
   section.open = filters.groups.length > 0;
   const count = filters.groups.reduce((sum, group) => sum + group.length, 0);
-  section.append(
-    node(
-      "summary",
-      "",
-      count ? `Filters · ${count} constraints` : "Add filters",
-    ),
+  const summary = node(
+    "summary",
+    "",
+    count ? `Filters · ${count} constraints` : "Add filters",
   );
+  summary.dataset.focusKey = "filters-summary";
+  section.append(summary);
   const body = node("div", "filter-groups");
-  const update = (edit: (next: EventFilters) => void) => {
+  const update = (
+    edit: (next: EventFilters) => void,
+    rebuild = true,
+    focusKey = "filters-summary",
+  ) => {
     const next = structuredClone(filters);
     edit(next);
-    change(next);
+    filters = next;
+    change(next, rebuild, focusKey);
   };
   const operators = [
     ["eq", "is"],
@@ -185,7 +195,16 @@ export function filterEditor(
         rule.value === null ? "null" : typeof rule.value,
       );
       value.disabled = valueType.value === "null";
-      const save = () =>
+      property.dataset.eventField = "true";
+      for (const [name, control] of [
+        ["property", property],
+        ["operator", operator],
+        ["type", valueType],
+        ["value", value],
+      ] as const)
+        control.dataset.focusKey = `filter-${groupIndex}-${index}-${name}`;
+      const save = () => {
+        value.disabled = valueType.value === "null";
         update((next) => {
           const text = value.value;
           const parsed =
@@ -202,7 +221,8 @@ export function filterEditor(
             operator: operator.value as EventConstraint["operator"],
             value: parsed,
           };
-        });
+        }, false);
+      };
       property.addEventListener("change", save);
       operator.addEventListener("change", save);
       value.addEventListener("change", save);
@@ -216,10 +236,14 @@ export function filterEditor(
         button(
           "Remove",
           () =>
-            update((next) => {
-              next.groups[groupIndex]!.splice(index, 1);
-              next.groups = next.groups.filter((group) => group.length);
-            }),
+            update(
+              (next) => {
+                next.groups[groupIndex]!.splice(index, 1);
+                next.groups = next.groups.filter((group) => group.length);
+              },
+              true,
+              "filters-summary",
+            ),
           "quiet",
         ),
       );
@@ -230,13 +254,17 @@ export function filterEditor(
         button(
           "Add AND constraint",
           () =>
-            update((next) => {
-              next.groups[groupIndex]!.push({
-                field: "kind",
-                operator: "eq",
-                value: "round",
-              });
-            }),
+            update(
+              (next) => {
+                next.groups[groupIndex]!.push({
+                  field: "kind",
+                  operator: "eq",
+                  value: "round",
+                });
+              },
+              true,
+              `filter-${groupIndex}-${group.length}-property`,
+            ),
           "quiet",
         ),
       );
@@ -247,11 +275,15 @@ export function filterEditor(
       button(
         filters.groups.length ? "Add OR group" : "Add constraint",
         () =>
-          update((next) => {
-            next.groups.push([
-              { field: "kind", operator: "eq", value: "round" },
-            ]);
-          }),
+          update(
+            (next) => {
+              next.groups.push([
+                { field: "kind", operator: "eq", value: "round" },
+              ]);
+            },
+            true,
+            `filter-${filters.groups.length}-0-property`,
+          ),
         "quiet",
       ),
     );

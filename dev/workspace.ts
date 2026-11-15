@@ -81,6 +81,9 @@ export function mountWorkspace(
     ...defaultDateRange(deps.now()),
     gameId: "",
   };
+  const filterDraft: MetricsFilters = { ...filters };
+  const actionDraft = { gameId: "", status: "" };
+  let keyboardMode = false;
   let current: View = "metrics";
   let controller = new AbortController();
   let disposed = false;
@@ -106,6 +109,7 @@ export function mountWorkspace(
     columns: string[];
     customColumns: boolean;
     filters: MetricsFilters;
+    filterDraft: MetricsFilters;
     view: View;
   }[] = [];
   function remember() {
@@ -114,6 +118,7 @@ export function mountWorkspace(
       columns: [...columns],
       customColumns,
       filters: { ...filters },
+      filterDraft: { ...filterDraft },
       view: current,
     });
     if (filterHistory.length > 40) filterHistory.shift();
@@ -125,11 +130,13 @@ export function mountWorkspace(
     columns = previous.columns;
     customColumns = previous.customColumns;
     Object.assign(filters, previous.filters);
+    Object.assign(filterDraft, previous.filterDraft);
     current = previous.view;
     shell();
     void load();
   }
   const undoKey = (event: KeyboardEvent) => {
+    keyboardMode = true;
     const target = event.target as HTMLElement | null;
     if (
       (event.metaKey || event.ctrlKey) &&
@@ -143,6 +150,10 @@ export function mountWorkspace(
     }
   };
   root.addEventListener("keydown", undoKey);
+  const pointerMode = () => {
+    keyboardMode = false;
+  };
+  root.addEventListener("pointerdown", pointerMode);
   let actionsPage: ActionsPage | undefined;
   const assistant = createAssistant(dom, api, executeTool, screen);
   let controlSequence = 0;
@@ -215,10 +226,15 @@ export function mountWorkspace(
       visible: (clone.innerText || clone.textContent || "").slice(0, 3000),
     }).slice(0, 8000);
   }
-  function changeFilters(next: EventFilters) {
+  function changeFilters(
+    next: EventFilters,
+    rebuild = true,
+    focusKey = "filters-summary",
+  ) {
     remember();
     eventFilters = next;
-    buildToolbar();
+    if (rebuild) buildToolbar(keyboardMode ? focusKey : undefined);
+    else refreshToolbar();
     void load();
   }
   function addFilter(rule: EventConstraint) {
@@ -275,6 +291,7 @@ export function mountWorkspace(
       filters.from = args.from;
       filters.to = args.to;
       filters.gameId = args.gameId;
+      Object.assign(filterDraft, filters);
       eventFilters = next;
       buildToolbar();
       await load();
@@ -442,6 +459,10 @@ export function mountWorkspace(
     main.replaceChildren(panel);
   }
   function shell() {
+    const focusKey = keyboardMode
+      ? ((deps.document.activeElement as HTMLElement | null)?.dataset
+          .focusKey ?? `nav-${current}`)
+      : undefined;
     identity.replaceChildren(
       node("span", "", accountName),
       button("Sign out", () => {
@@ -470,6 +491,7 @@ export function mountWorkspace(
         void load();
       });
       tab.setAttribute("aria-current", current === id ? "page" : "false");
+      tab.dataset.focusKey = `nav-${id}`;
       navigation.append(tab);
     }
     toolbar = node("div", "toolbar");
@@ -478,20 +500,53 @@ export function mountWorkspace(
     content.setAttribute("aria-atomic", "false");
     main.replaceChildren(navigation, assistant.element, toolbar, content);
     buildToolbar();
+    if (focusKey) focusControl(focusKey);
   }
-  function buildToolbar() {
+  function focusControl(key: string) {
+    const target = root.querySelector<HTMLElement>(`[data-focus-key="${key}"]`);
+    if (target && !target.closest("[hidden]"))
+      target.focus({ preventScroll: true });
+  }
+  function refreshToolbar() {
+    const undoControl =
+      toolbar.querySelector<HTMLButtonElement>(".undo-control");
+    if (undoControl) undoControl.hidden = !filterHistory.length;
+    for (const select of toolbar.querySelectorAll<HTMLSelectElement>(
+      "select[data-event-field]",
+    ))
+      for (const key of availableFields)
+        if (![...select.options].some((option) => option.value === key)) {
+          const option = node("option", "", key.replace(/^properties\./, ""));
+          option.value = key;
+          select.append(option);
+        }
+  }
+  function buildToolbar(focusKey?: string) {
     toolbar.replaceChildren();
     const form = node("form", "filters");
     if (["metrics", "events", "players"].includes(current)) {
       const from = node("input");
       from.type = "date";
-      from.value = filters.from;
+      from.value = filterDraft.from;
+      from.addEventListener("input", () => {
+        filterDraft.from = from.value;
+      });
       from.required = true;
       const to = node("input");
       to.type = "date";
-      to.value = filters.to;
+      to.value = filterDraft.to;
+      to.addEventListener("input", () => {
+        filterDraft.to = to.value;
+      });
       to.required = true;
-      const gameControl = gameAutocomplete(dom, gameIds, filters.gameId),
+      const gameControl = gameAutocomplete(
+          dom,
+          gameIds,
+          filterDraft.gameId,
+          (value) => {
+            filterDraft.gameId = value;
+          },
+        ),
         game = gameControl.input;
       form.append(
         field("From · UTC", from),
@@ -517,8 +572,18 @@ export function mountWorkspace(
       to.addEventListener("input", () => to.setCustomValidity(""));
       from.addEventListener("input", () => to.setCustomValidity(""));
     } else if (current === "actions") {
-      const status = select(actionStatuses, actionStatus);
-      const gameControl = gameAutocomplete(dom, gameIds, actionGame),
+      const status = select(actionStatuses, actionDraft.status);
+      status.addEventListener("change", () => {
+        actionDraft.status = status.value;
+      });
+      const gameControl = gameAutocomplete(
+          dom,
+          gameIds,
+          actionDraft.gameId,
+          (value) => {
+            actionDraft.gameId = value;
+          },
+        ),
         game = gameControl.input;
       form.append(
         field("Status", status),
@@ -582,12 +647,15 @@ export function mountWorkspace(
       toolbar.append(
         filterEditor(dom, eventFilters, availableFields, changeFilters),
       );
-      if (filterHistory.length) {
-        const control = button("Undo changes", undo, "quiet");
+      {
+        const control = button("Undo changes", undo, "quiet undo-control");
+        control.dataset.focusKey = "undo";
+        control.hidden = !filterHistory.length;
         control.title = "Undo changes (Cmd/Ctrl+Z)";
         toolbar.append(control);
       }
     }
+    if (focusKey) focusControl(focusKey);
   }
   function openRecording(id: string, reportId?: string, offsetMs?: number) {
     current = "sessions";
@@ -736,7 +804,7 @@ export function mountWorkspace(
               columns = next;
               customColumns = true;
               show(result);
-              buildToolbar();
+              refreshToolbar();
             };
             const selectedSession = eventFilters.groups
               .flat()
@@ -811,7 +879,7 @@ export function mountWorkspace(
             ),
           );
         } else show(data);
-        buildToolbar();
+        refreshToolbar();
       } else if (selectedRecording) {
         const data = await api.json<RecordingDetail>(
           `/api/dev/recordings/${encodeURIComponent(selectedRecording)}`,
@@ -950,6 +1018,7 @@ export function mountWorkspace(
   return () => {
     disposed = true;
     root.removeEventListener("keydown", undoKey);
+    root.removeEventListener("pointerdown", pointerMode);
     assistant.clear();
     controller.abort();
     unwatch();
