@@ -93,41 +93,71 @@ export function createSongLeaderboards(
     void load();
   };
   retry.onclick = () => retryAction();
-  const open = async (song: SongBoard, chart: SongBoard["charts"][number]) => {
-    const own = ++generation;
-    const heading = el("h3", `${song.title} · ${chart.difficulty}`, "", doc);
+  const open = (song: SongBoard, chart: SongBoard["charts"][number]) => {
+    const heading = el("h3", "", "", doc);
     heading.tabIndex = -1;
+    const label = el("label", "Chart", "fm-score-chart-label", doc);
+    const select = el("select", "", "fm-score-chart-select", doc);
+    for (const available of song.charts) {
+      const option = el(
+        "option",
+        `${available.difficulty} · chart ${available.chart + 1}`,
+        "",
+        doc,
+      );
+      option.value = String(available.chart);
+      option.selected = available.chart === chart.chart;
+      select.append(option);
+    }
+    label.append(select);
     const message = el("p", "Loading leaderboard…", "", doc);
     message.setAttribute("role", "status");
     message.setAttribute("aria-live", "polite");
-    detail.replaceChildren(heading, message);
+    const ranking = el("div", "", "", doc);
+    detail.replaceChildren(heading, label, message, ranking);
     detail.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-    heading.focus?.({ preventScroll: true });
-    try {
-      const players = await reader.leaderboard(song.song, chart.chart);
-      if (disposed || own !== generation) return;
-      const list = el("ol", "", "fm-score-ranking", doc);
-      for (const player of players) {
-        const row = el("li", "", "", doc);
-        row.append(
-          playerName(player),
-          el("strong", scorePercent(player.rating), "", doc),
-        );
-        list.append(row);
+    const loadChart = async (
+      chosen: SongBoard["charts"][number],
+      focusHeading = false,
+    ) => {
+      const own = ++generation;
+      heading.textContent = `${song.title} · ${chosen.difficulty} · chart ${chosen.chart + 1}`;
+      message.textContent = "Loading leaderboard…";
+      ranking.replaceChildren();
+      if (focusHeading) heading.focus?.({ preventScroll: true });
+      try {
+        const players = await reader.leaderboard(song.song, chosen.chart);
+        if (disposed || own !== generation) return;
+        const list = el("ol", "", "fm-score-ranking", doc);
+        for (const player of players) {
+          const row = el("li", "", "", doc);
+          row.append(
+            playerName(player),
+            el("strong", scorePercent(player.rating), "", doc),
+          );
+          list.append(row);
+        }
+        message.textContent = players.length
+          ? `${players.length} verified ${players.length === 1 ? "score" : "scores"}.`
+          : "No verified scores yet. Be the first to play this chart.";
+        if (players.length) ranking.append(list);
+      } catch {
+        if (disposed || own !== generation) return;
+        const again = button("RETRY LEADERBOARD", "", doc);
+        again.onclick = () => {
+          void loadChart(chosen, true);
+        };
+        message.textContent = "Could not load this leaderboard.";
+        ranking.append(again);
       }
-      message.textContent = players.length
-        ? `${players.length} verified ${players.length === 1 ? "score" : "scores"}.`
-        : "No verified scores yet. Be the first to play this chart.";
-      if (players.length) detail.append(list);
-    } catch {
-      if (disposed || own !== generation) return;
-      const again = button("RETRY LEADERBOARD", "", doc);
-      again.onclick = () => {
-        void open(song, chart);
-      };
-      message.textContent = "Could not load this leaderboard.";
-      detail.append(again);
-    }
+    };
+    select.onchange = () => {
+      const chosen = song.charts.find(
+        (available) => available.chart === Number(select.value),
+      );
+      if (chosen) void loadChart(chosen);
+    };
+    void loadChart(chart, true);
   };
   const draw = () => {
     const table = el("table", "", "fm-score-table", doc);
@@ -196,6 +226,28 @@ export function createSongLeaderboards(
         const row = el("tr", "", "", doc),
           name = el("th", song.title, "", doc);
         name.scope = "row";
+        const represented = new Set(
+          SCORE_DIFFICULTIES.map((difficulty) =>
+            song.charts.find(
+              (chart) =>
+                chart.difficulty.toLowerCase() === difficulty.toLowerCase(),
+            ),
+          ),
+        );
+        const extra = song.charts.filter((chart) => !represented.has(chart));
+        if (extra.length) {
+          const more = button(
+            `MORE CHARTS (${extra.length})`,
+            "fm-score-more-charts",
+            doc,
+          );
+          more.setAttribute(
+            "aria-label",
+            `${song.title}: ${extra.length} more ${extra.length === 1 ? "chart" : "charts"}. Open leaderboard`,
+          );
+          more.onclick = () => open(song, extra[0]!);
+          name.append(more);
+        }
         row.dataset.song = song.song;
         row.append(name);
         for (const difficulty of SCORE_DIFFICULTIES) {

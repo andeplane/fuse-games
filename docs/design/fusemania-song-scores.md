@@ -78,6 +78,10 @@ the shared activity view. A playlist has a stable parent match and one numbered
 round per completed song; its summary appears only when all selected songs finish.
 The activity percentage divides the aggregate by the selected playlist length.
 Ordinary reported results do not update the replay-verified song leaderboard.
+Edit charts and additional charts in the same difficulty remain reachable through
+**More charts** and the leaderboard's chart selector, without adding columns to
+the four-difficulty table. Legacy activity without song metadata still uses
+percentage units; its missing song identity is not invented.
 
 Song receipts are frozen on their deciding tick in the rollback-owned room state,
 before a lobby or rematch replaces the current world. The checkpoint retains eight

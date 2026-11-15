@@ -267,7 +267,7 @@ export const fusemaniaRegistration: GameRegistration<
               : {}),
           },
         }
-      : {};
+      : { context: { scoreUnit: "percent" } };
   },
   activityPlayer(player) {
     const chart =

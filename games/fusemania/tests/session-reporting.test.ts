@@ -376,6 +376,31 @@ test("song and aggregate receipts survive rematch before a non-checkpoint comple
   );
 });
 
+test("legacy song results retain percentage units when their song context is unavailable", () => {
+  const room = started();
+  finish(room);
+  const original = wire(matchResult(library, room)!);
+  const players = original.players.map((player) => {
+    const raw: Record<string, unknown> = { ...player };
+    delete raw.songId;
+    delete raw.chart;
+    delete raw.mode;
+    return raw;
+  });
+  const legacy = parseMatchResult(registration, account, {
+    ...original,
+    players,
+  });
+  assert.ok(legacy);
+  const presentation = fusemaniaRegistration.activity?.(legacy);
+  assert.equal(presentation?.context?.scoreUnit, "percent");
+  assert.equal(
+    presentation?.context?.songId,
+    undefined,
+    "missing historical song identity is not invented",
+  );
+});
+
 test("reused host parent ids replace closed groups without growing or corrupting checkpoint history", () => {
   const room = started();
   finish(room);

@@ -252,3 +252,155 @@ test("opening a chart moves keyboard focus to its stable heading and announces t
   page.dispose();
   await window.happyDOM.close();
 });
+
+test("Edit-only songs keep four blank columns and expose every real chart through More charts", async () => {
+  const window = new Window();
+  const document = window.document as unknown as Document;
+  const requested: number[] = [];
+  const page = createSongLeaderboards(
+    {
+      catalog: async () => [
+        {
+          song: "edits",
+          title: "Edits only",
+          charts: [
+            { chart: 2, difficulty: "Edit", version: "v1" },
+            { chart: 5, difficulty: "Edit", version: "v1" },
+          ],
+        },
+      ],
+      leaderboard: async (_song, chart) => {
+        requested.push(chart);
+        return chart === 2
+          ? []
+          : [{ name: "Bo", rating: 750_000, endedAt: 10 }];
+      },
+    },
+    document,
+  );
+  document.body.append(page.element);
+  await flush();
+  assert.equal(page.element.querySelectorAll("thead th").length, 5);
+  assert.deepEqual(
+    [...page.element.querySelectorAll("td")].map((cell) => cell.textContent),
+    ["", "", "", ""],
+  );
+  const more = page.element.querySelector<HTMLButtonElement>(
+    ".fm-score-more-charts",
+  )!;
+  assert.equal(more.textContent, "MORE CHARTS (2)");
+  more.click();
+  await flush();
+  assert.deepEqual(requested, [2]);
+  assert.match(
+    page.element.querySelector(".fm-score-detail")!.textContent!,
+    /No verified scores yet/,
+  );
+  const select = page.element.querySelector<HTMLSelectElement>(
+    ".fm-score-chart-select",
+  )!;
+  assert.equal(select.parentElement!.tagName, "LABEL");
+  assert.deepEqual(
+    [...select.options].map((option) => [option.value, option.textContent]),
+    [
+      ["2", "Edit · chart 3"],
+      ["5", "Edit · chart 6"],
+    ],
+  );
+  select.focus();
+  select.value = "5";
+  select.dispatchEvent(new window.Event("change") as unknown as Event);
+  await flush();
+  assert.deepEqual(requested, [2, 5]);
+  assert.equal(document.activeElement, select);
+  assert.match(
+    page.element.querySelector(".fm-score-detail")!.textContent!,
+    /Bo75.00%/,
+  );
+  page.dispose();
+  await window.happyDOM.close();
+});
+
+test("duplicate standard charts and Edits remain selectable with indexed requests, retry and stale-response protection", async () => {
+  const window = new Window();
+  const document = window.document as unknown as Document;
+  const requested: number[] = [];
+  let resolveOld!: (
+    players: { name: string; rating: number; endedAt: number }[],
+  ) => void;
+  let failEdit = true;
+  const page = createSongLeaderboards(
+    {
+      catalog: async () => [
+        {
+          song: "duplicates",
+          title: "Duplicate charts",
+          charts: [
+            { chart: 0, difficulty: "Easy", version: "v1" },
+            { chart: 1, difficulty: "Hard", version: "v1" },
+            { chart: 4, difficulty: "Hard", version: "v1" },
+            { chart: 6, difficulty: "Edit", version: "v1" },
+          ],
+        },
+      ],
+      leaderboard: async (_song, chart) => {
+        requested.push(chart);
+        if (chart === 4)
+          return new Promise((resolve) => {
+            resolveOld = resolve;
+          });
+        if (chart === 6 && failEdit) throw new Error("offline");
+        return [];
+      },
+    },
+    document,
+  );
+  document.body.append(page.element);
+  await flush();
+  const standard =
+    page.element.querySelectorAll<HTMLButtonElement>(".fm-score-pick");
+  standard[1]!.click();
+  await flush();
+  assert.deepEqual(
+    requested,
+    [1],
+    "the standard Hard cell still selects its first chart",
+  );
+  page.element
+    .querySelector<HTMLButtonElement>(".fm-score-more-charts")!
+    .click();
+  assert.deepEqual(
+    requested,
+    [1, 4],
+    "More charts opens the second Hard chart first",
+  );
+  const select = page.element.querySelector<HTMLSelectElement>(
+    ".fm-score-chart-select",
+  )!;
+  assert.deepEqual(
+    [...select.options].map((option) => option.value),
+    ["0", "1", "4", "6"],
+  );
+  select.focus();
+  select.value = "6";
+  select.dispatchEvent(new window.Event("change") as unknown as Event);
+  await flush();
+  assert.equal(document.activeElement, select);
+  assert.match(page.element.textContent!, /Could not load this leaderboard/);
+  failEdit = false;
+  page.element
+    .querySelector<HTMLButtonElement>(".fm-score-detail button")!
+    .click();
+  await flush();
+  assert.deepEqual(requested, [1, 4, 6, 6]);
+  resolveOld([{ name: "Stale", rating: 1_000_000, endedAt: 10 }]);
+  await flush();
+  assert.match(
+    page.element.querySelector(".fm-score-detail")!.textContent!,
+    /No verified scores yet/,
+  );
+  assert.ok(!page.element.textContent!.includes("Stale"));
+  assert.equal(select.value, "6");
+  page.dispose();
+  await window.happyDOM.close();
+});
