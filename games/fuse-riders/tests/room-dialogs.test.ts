@@ -298,7 +298,7 @@ test("the results bar: READY, Back to lobby for whoever runs the room, and the f
   assert.equal(bar.firstElementChild!.getAttribute("aria-label"), "Back");
   const report = document.createElement("section"),
     details = document.createElement("div");
-  details.className = "recap-details";
+  details.className = "fui-results-details";
   details.hidden = true;
   report.append(details);
   recap.open(report, {

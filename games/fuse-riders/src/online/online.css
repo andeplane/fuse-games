@@ -1802,216 +1802,17 @@
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-.recap-masthead {
-  padding-right: var(--fui-space-6);
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: var(--fui-space-5);
-}
-.recap-brand {
-  color: #f4f0ff;
-  font:
-    clamp(0.75rem, 1.5vw, 1.25rem)/1.5 "Press Start 2P",
-    monospace;
-  text-shadow: 0 0 1rem #9b63ff70;
-}
-.recap-context {
-  display: grid;
-  gap: var(--fui-space-2);
-  text-align: right;
-  color: #a6bee7;
-}
-.recap-context > span {
-  font-size: 0.875rem;
-  letter-spacing: 0.24em;
-}
-.recap-context small {
-  font-size: 0.75rem;
-}
-.recap-victory {
-  display: grid;
-  justify-items: center;
-  text-align: center;
-  gap: 1.25rem;
-  padding: 1.75rem 0 3.5rem;
-}
-.recap-crown {
-  width: 3.5rem;
-  height: 2.75rem;
-  background: var(--winner-color);
-  clip-path: polygon(
-    0 20%,
-    14% 20%,
-    14% 40%,
-    28% 40%,
-    28% 20%,
-    42% 20%,
-    42% 0,
-    58% 0,
-    58% 20%,
-    72% 20%,
-    72% 40%,
-    86% 40%,
-    86% 20%,
-    100% 20%,
-    100% 60%,
-    90% 60%,
-    90% 82%,
-    10% 82%,
-    10% 60%,
-    0 60%
-  );
-  filter: drop-shadow(0 0 0.7rem var(--winner-color));
-}
-.match-recap-report .recap-victory h2 {
-  max-width: 100%;
+/* The dialogs' own `.dialog-body h2` would otherwise size the shared report's winner headline. */
+.match-recap-report .fui-results-victory h2 {
   margin: 0;
   font:
     clamp(1.3rem, 3.8vw, 3.5rem)/1.5 "Press Start 2P",
     monospace;
-  color: #f7f4ff;
-  text-transform: uppercase;
-  overflow-wrap: anywhere;
-  text-shadow:
-    0 0 0.2rem var(--winner-color),
-    0 0 2rem color-mix(in srgb, var(--winner-color) 45%, transparent);
 }
-.recap-victory p {
-  margin: 0;
-  color: #c5c4d9;
-  font-size: clamp(0.85rem, 1.5vw, 1.25rem);
-  overflow-wrap: anywhere;
-}
-.recap-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
-  gap: 2.5rem;
-}
-.match-recap-report h3 {
-  margin: 0 0 1.125rem;
-  color: #afc9ff;
-  font-size: 1rem;
-  letter-spacing: 0.19em;
-  line-height: 1.5;
-}
-.recap-standings table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 1rem;
-}
-.recap-standings th,
-.recap-standings td {
-  padding: 0.95rem var(--fui-space-3);
-  text-align: center;
-}
-.recap-standings thead th {
-  color: #92a6cb;
-  font-size: 0.75rem;
-  font-weight: 400;
-}
-.recap-standings th:first-child {
-  width: 3.5rem;
-}
-.recap-standings th:nth-child(2) {
-  width: auto;
-  text-align: left;
-}
-.recap-standings th:nth-child(n + 3) {
-  width: 5rem;
-}
-.recap-standings tbody tr {
-  border-bottom: 1px solid #24365c;
-}
-.recap-standings tbody td:first-child {
-  color: #9bb7e7;
-}
-.recap-standings .is-champion {
-  background: color-mix(in srgb, var(--player-color) 13%, transparent);
-  outline: 1px solid color-mix(in srgb, var(--player-color) 50%, transparent);
-  outline-offset: -1px;
-}
-.recap-standings .is-you {
-  background: color-mix(in srgb, var(--player-color) 12%, transparent);
-  box-shadow:
-    inset 0 1px color-mix(in srgb, var(--player-color) 50%, transparent),
-    inset 0 -1px color-mix(in srgb, var(--player-color) 50%, transparent);
-}
-.recap-rider-name {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  text-align: left;
-  text-transform: uppercase;
-}
-.recap-rider-name > span {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.recap-rider-name i {
-  width: 0.85rem;
-  height: 0.85rem;
-  flex: 0 0 0.85rem;
-  transform: rotate(45deg);
-  background: var(--player-color);
-  box-shadow: 0 0 1rem color-mix(in srgb, var(--player-color) 50%, transparent);
-}
-.recap-rider-name small {
-  font-size: 0.6rem;
-  color: var(--player-color);
-}
-.recap-standings .is-you .recap-rider-name {
-  color: var(--player-color);
-}
-.recap-tie-note {
-  margin: 1.25rem 0 0;
-  color: #94aacf;
-  font-size: 0.75rem;
-  line-height: 1.6;
-}
-.recap-featured {
-  border-left: 1px solid #253554;
-  padding-left: 2.5rem;
-  min-width: 0;
-}
-.recap-feature {
-  display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr);
-  align-items: center;
-  gap: var(--fui-space-5);
-  margin: 2.5rem 0;
-}
-.recap-feature-icon {
-  font-size: 3.5rem;
-  text-shadow: 0 0 1.5rem currentColor;
-  text-align: center;
-  line-height: 1;
-}
-.recap-feature h4 {
-  margin: 0 0 var(--fui-space-2);
-  font-size: 1rem;
-  letter-spacing: 0.04em;
-}
-.recap-feature-names {
-  margin: 0 0 var(--fui-space-2);
-  font-size: 1rem;
-}
-.recap-feature small {
-  color: #94aacf;
-  font-size: 0.75rem;
-  line-height: 1.7;
-}
-.recap-feature > div {
-  overflow-wrap: anywhere;
-}
-.recap-details:not([hidden]) {
-  display: grid;
-  gap: var(--fui-space-4);
-  padding-top: 3rem;
-}
-.recap-details {
-  scroll-margin-top: 1rem;
+@media (orientation: landscape) and (max-height: 550px) {
+  .match-recap-report .fui-results-victory h2 {
+    font-size: 1.5rem;
+  }
 }
 .online-app .recap-dialog .dialog-bar {
   order: 2;
@@ -2086,11 +1887,6 @@
   min-height: 2.75rem;
   padding: var(--fui-space-2);
 }
-.match-recap-report .recap-empty {
-  text-align: center;
-  padding: 4rem 0;
-  color: #94aacf;
-}
 .match-recap-report .recap-totals {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
@@ -2141,55 +1937,6 @@
   .recap-dialog .dialog-body {
     padding: max(1.25rem, env(safe-area-inset-top)) 1rem 1.5rem;
   }
-  .recap-context > span {
-    font-size: 0.625rem;
-    letter-spacing: 0.12em;
-  }
-  .recap-context small {
-    font-size: 0.625rem;
-  }
-  .recap-victory {
-    padding: var(--fui-space-6) 0;
-    gap: var(--fui-space-4);
-  }
-  .recap-overview {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--fui-space-6);
-  }
-  .recap-featured {
-    padding: var(--fui-space-5) 0 0;
-    border-left: 0;
-    border-top: 1px solid #253554;
-  }
-  .recap-feature {
-    margin: var(--fui-space-5) 0;
-  }
-  .recap-standings th,
-  .recap-standings td {
-    padding: 0.9rem 0.375rem;
-    font-size: 0.8125rem;
-  }
-  .recap-standings th:first-child {
-    width: 2rem;
-  }
-  .recap-standings th:nth-child(n + 3) {
-    width: 3.5rem;
-  }
-  .recap-rider-name {
-    gap: var(--fui-space-3);
-    flex-wrap: wrap;
-  }
-  .recap-rider-name > span {
-    flex: 1;
-  }
-  .recap-rider-name small {
-    flex-basis: 100%;
-  }
-  .recap-rider-name i {
-    width: 0.625rem;
-    height: 0.625rem;
-    flex-basis: 0.625rem;
-  }
   .online-app .recap-dialog .dialog-bar {
     margin: 0 var(--fui-space-4);
     flex-wrap: wrap;
@@ -2220,24 +1967,6 @@
 @media (orientation: landscape) and (max-height: 550px) {
   .recap-dialog .dialog-body {
     padding-top: var(--fui-space-4);
-  }
-  .recap-victory {
-    padding: var(--fui-space-4) 0 var(--fui-space-5);
-    gap: var(--fui-space-3);
-  }
-  .recap-crown {
-    width: 2rem;
-    height: 1.5rem;
-  }
-  .recap-dialog .dialog-body .recap-victory h2 {
-    font-size: 1.5rem;
-  }
-  .recap-featured {
-    padding-left: var(--fui-space-5);
-  }
-  .recap-feature {
-    gap: var(--fui-space-4);
-    margin: var(--fui-space-5) 0;
   }
   .online-app .recap-dialog .dialog-bar {
     padding-top: var(--fui-space-2);
