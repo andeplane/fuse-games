@@ -114,7 +114,7 @@ async function assertRecapLayout(page: Page): Promise<{
     "the actual arena stays visible behind results",
   );
   assert.equal(
-    await page.locator("canvas").count(),
+    await page.locator("canvas.online-arena, dialog[open] canvas").count(),
     1,
     "results use the existing scene, not a copied canvas",
   );
