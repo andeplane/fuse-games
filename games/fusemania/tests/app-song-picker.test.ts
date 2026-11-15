@@ -902,3 +902,72 @@ test("without a word on the audio no cover is marked", () => {
   picker.update(state());
   assert.ok(all(".fm-picker-row-audio").every((mark) => mark.hidden));
 });
+
+test("the slider sits under the carousel, follows the selected song and moves it when dragged", () => {
+  const f = setup();
+  f.picker.update(state());
+  const slider = f.one(".fm-picker-slider") as HTMLInputElement;
+  const wheel = f.one(".fm-picker-wheel");
+  assert.equal(wheel.contains(slider), true);
+  // Under the covers, before the details.
+  assert.deepEqual(
+    f.all(".fm-picker-list, .fm-picker-scrub").map((n) => n.className),
+    ["fm-picker-list", "fm-picker-scrub"],
+  );
+  assert.equal(slider.max, "2");
+  assert.equal(slider.value, "0");
+  // The default order is the pack's: the badge names no pack here, so it has no text to show.
+  f.picker.update(state({ song: "c" }));
+  assert.equal(slider.value, "2");
+  slider.value = "1";
+  slider.dispatchEvent(new slider.ownerDocument.defaultView!.Event("input"));
+  assert.deepEqual(f.calls, ["song b"]);
+});
+
+test("the slider's badge shows the title's letter, and the slider is the host's", () => {
+  const f = setup();
+  f.picker.update(state());
+  f.one(".fm-picker-sort").click();
+  [...f.all<HTMLButtonElement>(".fm-sort-option")]
+    .concat([
+      ...f
+        .one(".fm-sort-dialog")
+        .ownerDocument.querySelectorAll<HTMLButtonElement>(".fm-sort-option"),
+    ])
+    .find((node) => node.textContent?.startsWith("Title"))
+    ?.click();
+  assert.equal(f.one(".fm-picker-badge").textContent, "S");
+  const slider = f.one(".fm-picker-slider") as HTMLInputElement;
+  assert.equal(slider.disabled, false);
+  f.picker.update(state({ host: false }));
+  assert.equal(slider.disabled, true);
+  slider.value = "2";
+  slider.dispatchEvent(new slider.ownerDocument.defaultView!.Event("input"));
+  assert.deepEqual(f.calls, []);
+});
+
+test("PLAY on the selected song, and Enter, start it, for the host only", () => {
+  const { document } = parseHTML("<!doctype html><html><body></body></html>");
+  const plays: string[] = [];
+  const picker = createSongPicker({
+    document: document as unknown as Document,
+    songs: THREE,
+    onSong: () => {},
+    onChart: () => {},
+    onMode: () => {},
+    onPlay: () => plays.push("play"),
+  });
+  document.body.append(picker.element);
+  picker.update(state());
+  const play = picker.element.querySelector<HTMLButtonElement>(
+    ".fm-picker-detail .fm-picker-play",
+  )!;
+  assert.equal(play.hidden, false);
+  play.click();
+  assert.equal(picker.key("Enter"), true);
+  assert.deepEqual(plays, ["play", "play"]);
+  // A guest has neither.
+  picker.update(state({ host: false }));
+  assert.equal(play.hidden, true);
+  assert.equal(picker.key("Enter"), false);
+});
