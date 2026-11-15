@@ -21,25 +21,34 @@ async function page(phone = false): Promise<Page> {
   result.on("pageerror", (error) => errors.push(error.message));
   return result;
 }
+/** Hosts a room from the menu. `shared` ticks Shared TV in the room and leaves the host without a seat: the TV. */
 async function create(host: Page, shared: boolean): Promise<string> {
-  await host.goto(`${service.url}?mute`);
-  await host.locator('.arcade-game[href*="fuse-lane/"]').click();
+  await host.goto(`${service.url}fuse-lane/?mute`);
   await openPlayOptions(host);
-  await host.getByRole("textbox", { name: "Your name" }).fill("Host");
-  if (shared)
-    await host.getByRole("button", { name: "SHARED TV", exact: true }).click();
-  await openPlayOptions(host);
+  assert.equal(
+    await host.getByRole("button", { name: "SHARED TV", exact: true }).count(),
+    0,
+    "the menu has no hosting options: Shared TV is the room's",
+  );
   await host.getByRole("button", { name: "Host room", exact: true }).click();
-  await host.locator(".fl-code").waitFor();
-  if (!shared) await takeHostSeat(host, "Host");
-  return (await host.locator(".fl-code").innerText()).trim();
+  await host.waitForURL(/[?&]room=/);
+  const code = new URL(host.url()).searchParams.get("room")!;
+  // The code is said once in the room, by the QR code.
+  await host
+    .locator(".fl-lobby .fui-room-code")
+    .filter({ hasText: code })
+    .waitFor();
+  assert.equal(await host.locator(".fl-code").count(), 0);
+  if (shared) {
+    await host.locator(".fl-shared-tv input").check();
+    await host.locator(".fl-shared-tv .fui-room-tv-screen").waitFor();
+  } else await takeHostSeat(host, "Host");
+  return code;
 }
 async function join(phone: Page, code: string, name: string): Promise<void> {
   await phone.goto(`${service.url}fuse-lane/?room=${code}&mute`);
-  await phone.locator(".fui-room-join").waitFor();
-  await phone.getByRole("textbox").fill(name);
-  await phone.getByRole("button", { name: /^Join$/i, exact: true }).click();
-  await phone.locator(".fl-roster-name").filter({ hasText: name }).waitFor();
+  await takeHostSeat(phone, name);
+  await phone.locator(".fui-roster-name").filter({ hasText: name }).waitFor();
 }
 async function running(target: Page, layout: string): Promise<void> {
   await target
@@ -81,9 +90,9 @@ try {
   const sharedCode = await create(tv, true);
   await join(first, sharedCode, "First");
   await join(second, sharedCode, "Second");
-  await tv.locator(".fl-roster-name").filter({ hasText: "Second" }).waitFor();
+  await tv.locator(".fui-roster-name").filter({ hasText: "Second" }).waitFor();
   assert.equal(
-    await tv.locator(".fl-roster-name").count(),
+    await tv.locator(".fui-roster-name").count(),
     2,
     "the TV holds no seat",
   );

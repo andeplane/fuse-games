@@ -898,19 +898,30 @@ test("online, once your week is over: who it still waits for, never someone who 
   );
 });
 
-test("a shared-screen room's creator is the TV: it asks no name, keeps START, and shows everyone's week on a clock", () => {
+test("a Shared TV room's host without a seat is the TV once the match runs: it keeps START, asks no name then, and shows everyone's week on a clock", () => {
   const room = createRoom("m0", { ...FAST, display: true });
   const host: Viewer = { ...ADA, me: "h", shared: true };
   fold(room, { a: [[JOIN, "a", "Ada", 0, "fox", 1]] });
   let tv = present(fuseLaneView(room), host);
-  assert.equal(tv.askName, false, "the TV holds no seat");
+  assert.equal(tv.askName, true, "in the lobby the host may still take a seat");
   assert.equal(tv.layout, "board", "the lobby is the lobby");
+  assert.deepEqual(
+    [tv.lobby.shared, tv.lobby.canShare],
+    [true, true],
+    "Shared TV is the host's tick in the room",
+  );
+  assert.equal(
+    present(fuseLaneView(room), { ...BO, shared: true }).lobby.canShare,
+    false,
+    "a guest sees the choice, and cannot change it",
+  );
   fold(room, { a: [[JOIN, "b", "Bo", 1, "cat", 1]] });
   tv = present(fuseLaneView(room), host);
   assert.deepEqual([tv.lobby.showStart, tv.lobby.canStart], [true, true]);
   assert.equal(tv.lobby.canPickGoals, false);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   tv = present(fuseLaneView(room), host);
+  assert.equal(tv.askName, false, "the TV holds no seat");
   assert.equal(tv.layout, "tv");
   assert.equal(tv.hud, undefined);
   assert.equal(tv.tv?.headline, "WEEK 1");
