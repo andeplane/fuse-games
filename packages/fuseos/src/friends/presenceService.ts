@@ -30,6 +30,8 @@ export interface Buddy extends PlayerCard {
   statusLine?: string;
   /** For an offline buddy: when it was last online (ms since the epoch, rounded to the hour by the service). */
   lastSeen?: number;
+  /** The newest chat message between you two: who sent it (a public id) and when. Opens a closed chat. */
+  lastMessage?: { from: string; at: number };
 }
 
 export interface RoomInvite {

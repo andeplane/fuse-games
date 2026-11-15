@@ -138,3 +138,38 @@ test("an active client may report away and status beside its room", async () => 
   assert.deepEqual(bodies, [{ name: "Bob", away: true }]);
   client.dispose();
 });
+
+test("Messenger invites send a validated expected account while legacy invites omit the header", async () => {
+  const requests: RequestInit[] = [];
+  const client = createFriendsClient({
+    token: async () => "signed-in-account-token",
+    apiUrl: (path) => path,
+    identity: () => ({}),
+    clock: { now: () => 100_000, schedule: () => () => {} },
+    fetch: async (_url, init) => {
+      requests.push(init ?? {});
+      return Response.json({ sent: 1 });
+    },
+  });
+  client.setRoom(ROOM);
+  const expected = "a".repeat(20),
+    friend = "b".repeat(20);
+  await assert.rejects(
+    client.invite([friend], "invalid"),
+    /Invalid expected account/,
+  );
+  assert.equal(
+    requests.length,
+    0,
+    "an invalid expected account sends no request",
+  );
+  assert.equal(await client.invite([friend], expected), 1);
+  const bound = new Headers(requests[0]!.headers);
+  assert.equal(bound.get("X-Fuse-Account"), expected);
+  assert.equal(bound.get("X-Fuse-Identity"), "signed-in-account-token");
+  assert.equal(bound.get("Authorization"), "Bearer secret");
+  assert.deepEqual(JSON.parse(String(requests[0]!.body)), { to: [friend] });
+  assert.equal(await client.invite([friend]), 1);
+  assert.equal(new Headers(requests[1]!.headers).has("X-Fuse-Account"), false);
+  client.dispose();
+});

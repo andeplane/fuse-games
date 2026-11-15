@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { RoomError, type HttpExtension } from "fuse-network-be";
 import { LEGACY_GAME_ID } from "./game.js";
-import type { FriendsStore } from "./friends.js";
+import { publicIdOf, type FriendsStore } from "./friends.js";
 import type { HistoryStore } from "./history.js";
 import type { IdentityVerifier } from "./identity.js";
 import type { ActivityDatabase } from "./activity.js";
@@ -192,7 +192,7 @@ export function createHistoryHttp(
 }
 
 const FRIENDS_ROUTE =
-  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20})?|rooms\/[A-Z0-9]{6}\/invites)$/;
+  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
 
 /**
  * Friends, presence and invites: account routes, so shared by every game and never under `/api/games/:gameId/`.
@@ -205,13 +205,16 @@ export function createFriendsHttp(
 ): HttpExtension {
   return {
     methods: ["DELETE"],
-    headers: ["X-Fuse-Identity"],
+    headers: ["X-Fuse-Identity", "X-Fuse-Account"],
     async handle(req, res) {
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
       if (!FRIENDS_ROUTE.test(pathname)) return false;
       const json = (value: unknown, status = 200) => {
-        res.writeHead(status, { "Content-Type": "application/json" });
+        res.writeHead(status, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify(value));
       };
       const invite = pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/invites$/);
@@ -223,6 +226,15 @@ export function createFriendsHttp(
             ? await identity(header)
             : undefined;
         if (!uid) throw new RoomError(401, "Sign in first");
+        const expectedAccount = req.headers["x-fuse-account"];
+        if (
+          expectedAccount !== undefined &&
+          expectedAccount !== publicIdOf(uid)
+        )
+          throw new RoomError(
+            403,
+            "The signed-in account changed. Reopen Messenger and try again.",
+          );
         json(
           await store.invite(invite[1]!, bearer(req), uid, await readJson(req)),
         );
@@ -239,6 +251,24 @@ export function createFriendsHttp(
       }
       if (pathname === "/api/friends" && req.method === "POST") {
         json(await store.add(uid, await readJson(req)));
+        return true;
+      }
+      const conversation = pathname.match(
+        /^\/api\/friends\/([a-f0-9]{20})\/messages$/,
+      );
+      if (conversation && (req.method === "GET" || req.method === "POST")) {
+        if (req.headers["x-fuse-account"] !== publicIdOf(uid))
+          throw new RoomError(
+            403,
+            "The signed-in account changed. Reopen this conversation.",
+          );
+        json(
+          await store.conversation(
+            uid,
+            conversation[1]!,
+            req.method === "POST" ? await readJson(req) : undefined,
+          ),
+        );
         return true;
       }
       const friend = pathname.match(/^\/api\/friends\/([a-f0-9]{20})$/);

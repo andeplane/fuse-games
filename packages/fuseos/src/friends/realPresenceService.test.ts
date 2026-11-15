@@ -179,6 +179,19 @@ describe(apiUrlFor.name, () => {
   });
 });
 
+it("clears the old account's private view before a direct account switch, including equal display names", () => {
+  const { service, account, client } = setup();
+  account.signIn("Same name");
+  client.emit({ view, loading: false });
+  expect(service.snapshot().me?.publicId).toBe(view.me.publicId);
+  account.signIn("Same name");
+  expect(service.snapshot().me).toBeUndefined();
+  expect(service.snapshot().buddies).toEqual([]);
+  expect(service.snapshot().invites).toEqual([]);
+  expect(client.calls.slice(-2)).toEqual(["signedIn:false", "signedIn:true"]);
+  service.dispose();
+});
+
 describe(buddyFrom.name, () => {
   it("maps online+room to playing, online to online and anything else to offline", () => {
     expect(view.friends.map(buddyFrom)).toEqual([
@@ -210,6 +223,22 @@ describe(buddyFrom.name, () => {
     expect(
       buddyFrom({ ...base, online: false, lastSeen: 3_600_000, status: "x" }),
     ).toEqual({ ...base, status: "offline", lastSeen: 3_600_000 });
+  });
+  it("keeps the newest-message marker only when it is well formed", () => {
+    const base = { publicId: "4".repeat(20), name: "Dee", online: true };
+    const from = "5".repeat(20);
+    expect(buddyFrom({ ...base, lastMessage: { from, at: 42 } })).toEqual({
+      publicId: base.publicId,
+      name: "Dee",
+      status: "online",
+      lastMessage: { from, at: 42 },
+    });
+    for (const lastMessage of [
+      { from: "uid-1", at: 42 },
+      { from, at: -1 },
+      { from, at: 1.5 },
+    ])
+      expect(buddyFrom({ ...base, lastMessage }).lastMessage).toBeUndefined();
   });
 });
 

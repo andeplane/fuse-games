@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-birds.jpg",
   "tagline": "Small birds. Big slingshot battles.",
   "mark": "FB",
-  "accent": "#6df4ed"
+  "accent": "#6df4ed",
+  "screenshots": [
+    "gallery/fuse-birds.jpg",
+    "gallery/fuse-birds-menu.jpg",
+    "gallery/fuse-birds-controls.jpg"
+  ]
 }

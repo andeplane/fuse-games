@@ -37,6 +37,11 @@ import {
 import { createDemoPresenceService } from "../friends/demoPresenceService";
 import type { FriendsDeps } from "../friends/friendsDepsContext";
 import { FriendsDepsContext } from "../friends/friendsDepsContext";
+import type { MessengerReadStore } from "../friends/messengerRead";
+import {
+  createMessengerReadStore,
+  MessengerReadContext,
+} from "../friends/messengerRead";
 import type { PresenceService } from "../friends/presenceService";
 import { PresenceServiceContext } from "../friends/presenceService";
 import type { FuseGameRegistry } from "../fusegames/registry";
@@ -244,6 +249,8 @@ export type ProviderOptions = {
   /** Defaults to the demo presence service, signed out, over the manual scheduler in `friendsDeps`. */
   presence?: PresenceService;
   friendsDeps?: Partial<FriendsDeps>;
+  /** Which chats this browser has shown; defaults to an empty in-memory store. */
+  messengerRead?: MessengerReadStore;
   /** Defaults to an empty memory leaderboard service (every game: no rated players yet). */
   hallOfFameDeps?: HallOfFameDeps;
 };
@@ -605,6 +612,10 @@ export function createWrapper(options: ProviderOptions = {}) {
     provider(FuseGamesContext, games),
     provider(PresenceServiceContext, presence),
     provider(FriendsDepsContext, friendsDeps),
+    provider(
+      MessengerReadContext,
+      options.messengerRead ?? createMessengerReadStore(undefined),
+    ),
     provider(RecentRoomsStoreContext, recentRooms),
     provider(RoomDirectoryContext, roomDirectory),
     provider(RoomLauncherContext, roomLauncher),

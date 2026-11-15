@@ -119,7 +119,7 @@ test("the unit shards cover the whole suite, and only the gate thins the replay 
   );
 });
 
-test("coverage collectors run independently and preserve the release commands and timeout", () => {
+test("coverage collectors run independently and preserve release commands and phase budgets", () => {
   assert.deepEqual(runsIn(job("coverage-unit")), [
     "pnpm install --frozen-lockfile",
     "pnpm test:coverage",
@@ -134,11 +134,8 @@ test("coverage collectors run independently and preserve the release commands an
     assert.ok(collector.includes("    needs: [checks, unit]\n"));
     assert.ok(collector.includes(`    if: ${RELEASE}\n`));
     assert.ok(collector.includes(`      COVERAGE_PHASE: ${phase}\n`));
-    assert.ok(
-      collector.includes(
-        `    timeout-minutes: ${phase === "unit" ? 35 : 20}\n`,
-      ),
-    );
+    const budget = phase === "unit" ? 35 : 20;
+    assert.ok(collector.includes(`    timeout-minutes: ${budget}\n`));
     assert.ok(
       collector.includes(
         `          name: coverage-${phase}-raw-\${{ matrix.shard }}\n`,

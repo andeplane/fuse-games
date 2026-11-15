@@ -2,6 +2,8 @@ import type { AppState } from "../state/appState";
 import { appStateReducer } from "../state/appState";
 import type { StateStore } from "../state/stateStore";
 import type { Size } from "../windows/windowManager";
+import type { DialUpSession } from "../sounds/dialup/dialUpSession";
+import { FRIENDS_WINDOW_ID } from "../desktop/startMenuRegistry";
 
 import { LAUNCHER_WINDOW_ID, shouldMaximizeLauncher } from "./launcherFacts";
 
@@ -22,29 +24,44 @@ export function withLauncherOnTop(state: AppState, viewport: Size): AppState {
 }
 
 /**
- * The state as the desktop boots it: Winamp open (frameless, its playlist loaded, nothing playing until someone
- * presses play) with the launcher on top of it and focused. Both are single-instance programs, so a Winamp or a
- * launcher the stored desktop already holds is brought up rather than doubled, and a `?open=winamp` on top of
- * this only focuses it. A display the launcher fills (a phone) boots without Winamp: it would sit unseen behind
- * the launcher and cost the player's download for nothing.
+ * Startup opens Winamp (queued and silent), Fusteam and Messenger, including on a phone.
+ * Single-instance apps are focused rather than doubled. First-run dial-up sits above Messenger
+ * until a completed connection is remembered. Deep links open above this startup stack.
  */
-export function withBootWindows(state: AppState, viewport: Size): AppState {
-  const withWinamp = shouldMaximizeLauncher(viewport)
-    ? state
-    : appStateReducer(state, { type: "open", content: { kind: "winamp" } });
-  return withLauncherOnTop(withWinamp, viewport);
+export function withBootWindows(
+  state: AppState,
+  viewport: Size,
+  session?: DialUpSession,
+): AppState {
+  const withWinamp = appStateReducer(state, {
+    type: "open",
+    content: { kind: "winamp" },
+  });
+  const withLauncher = withLauncherOnTop(withWinamp, viewport);
+  const withMessenger = appStateReducer(withLauncher, {
+    type: "open",
+    content: { kind: "friends" },
+    options: { id: FRIENDS_WINDOW_ID },
+  });
+  return session && !session.connected
+    ? appStateReducer(withMessenger, {
+        type: "open",
+        content: { kind: "dialup", then: { kind: "friends" } },
+      })
+    : withMessenger;
 }
 
 /**
- * Wraps the desktop's store so every boot loads with Winamp open and the launcher focused above it (`?open=`
- * windows are opened on top of what this returns). Saves pass straight through.
+ * Wraps the desktop store with the three startup programs and the first-run connection dialog.
+ * Saves pass straight through; `?open=` windows are opened above this stack.
  */
 export function withLauncherOnBoot(
   store: StateStore,
   viewport: () => Size,
+  session?: DialUpSession,
 ): StateStore {
   return {
-    load: () => withBootWindows(store.load(), viewport()),
+    load: () => withBootWindows(store.load(), viewport(), session),
     save: (state) => store.save(state),
   };
 }

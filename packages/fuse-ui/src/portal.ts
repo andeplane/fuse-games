@@ -14,6 +14,8 @@ export interface PortalEntry {
   order: number;
   /** Site-relative gameplay capture, shown behind the game's desktop window while it loads. */
   screenshot?: string;
+  /** Distinct game captures in Fusteam's carousel, in display order. */
+  screenshots?: readonly string[];
 }
 
 /** A portal entry as the build hands it to the page: the game id and its path under the site base. */
@@ -42,10 +44,8 @@ const text = (value: unknown, max: number): value is string =>
 /** Validates a parsed `portal.json`; null when a field is missing or malformed. */
 export function parsePortalEntry(raw: unknown): PortalEntry | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const { name, tagline, mark, accent, order, screenshot } = raw as Record<
-    string,
-    unknown
-  >;
+  const { name, tagline, mark, accent, order, screenshot, screenshots } =
+    raw as Record<string, unknown>;
   if (!text(name, 40) || !text(tagline, 80) || !text(mark, 3)) return null;
   if (typeof accent !== "string" || !/^#[0-9a-f]{6}$/i.test(accent))
     return null;
@@ -56,6 +56,19 @@ export function parsePortalEntry(raw: unknown): PortalEntry | null {
       !/^gallery\/[a-z0-9-]+\.(jpg|webp|png)$/.test(screenshot))
   )
     return null;
+  if (
+    screenshots !== undefined &&
+    (!Array.isArray(screenshots) ||
+      screenshots.length < 1 ||
+      screenshots.length > 5 ||
+      new Set(screenshots).size !== screenshots.length ||
+      !screenshots.every(
+        (path: unknown) =>
+          typeof path === "string" &&
+          /^gallery\/[a-z0-9-]+\.(jpg|webp|png)$/.test(path),
+      ))
+  )
+    return null;
   return {
     name,
     tagline,
@@ -63,6 +76,9 @@ export function parsePortalEntry(raw: unknown): PortalEntry | null {
     accent,
     order: typeof order === "number" ? order : DEFAULT_ORDER,
     ...(typeof screenshot === "string" ? { screenshot } : {}),
+    ...(Array.isArray(screenshots)
+      ? { screenshots: screenshots as string[] }
+      : {}),
   };
 }
 

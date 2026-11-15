@@ -23,6 +23,17 @@ export interface FriendsWindowContent {
   kind: "friends";
 }
 
+/** An Instant Message window with one buddy, opened from the buddy list or by an incoming message. One per buddy. */
+export interface InstantMessageWindowContent {
+  kind: "im";
+  /** The public account that opened this transient private window. */
+  accountId: string;
+  /** The buddy's public id (20 hex characters); never an account id. */
+  buddyId: string;
+  /** The buddy's name when the window opened, for the title until the list says otherwise. */
+  name: string;
+}
+
 /** One of the retro games under Start > Programs > Games (DOS bundles, vendored web games, Minesweeper, Solitaire). */
 export interface RetroGameWindowContent {
   kind: "retro";
@@ -176,6 +187,7 @@ export type WindowContent =
   | RunWindowContent
   | DialUpWindowContent
   | FriendsWindowContent
+  | InstantMessageWindowContent
   | DefragWindowContent
   | HallOfFameWindowContent
   | TaskManagerWindowContent
@@ -268,6 +280,12 @@ export function sameInstance(
       return existing.kind === "retro" && existing.game === content.game;
     case "fusegame":
       return existing.kind === "fusegame" && existing.gameId === content.gameId;
+    case "im":
+      return (
+        existing.kind === "im" &&
+        existing.buddyId === content.buddyId &&
+        existing.accountId === content.accountId
+      );
     case "controlpanel":
       return (
         existing.kind === "controlpanel" && existing.applet === content.applet
@@ -293,6 +311,18 @@ export function mergeInstance(
   existing: WindowState,
   content: WindowContent,
 ): WindowState {
+  if (
+    existing.kind === "halloffame" &&
+    content.kind === "halloffame" &&
+    content.gameId !== undefined
+  )
+    return { ...existing, gameId: content.gameId };
+  if (
+    existing.kind === "fusegame" &&
+    content.kind === "fusegame" &&
+    content.room !== undefined
+  )
+    return { ...existing, room: content.room };
   if (existing.kind === "controlpanel" && content.kind === "controlpanel")
     return content.tab === undefined
       ? existing
@@ -506,6 +536,15 @@ function isWindowContent(
       );
     case "halloffame":
       return value.gameId === undefined || typeof value.gameId === "string";
+    case "im":
+      return (
+        typeof value.accountId === "string" &&
+        /^[0-9a-f]{20}$/.test(value.accountId) &&
+        typeof value.buddyId === "string" &&
+        /^[0-9a-f]{20}$/.test(value.buddyId) &&
+        typeof value.name === "string" &&
+        value.name.length <= 80
+      );
     default:
       return false;
   }
@@ -570,10 +609,12 @@ export function parseAppState(serialized: string | null | undefined): AppState {
   }
 }
 
-/** Serializes the state for storage, dropping transient dialogs. */
+/** Private conversation metadata and dialogs never enter saved desktop state. */
 export function serializeAppState(state: AppState): string {
   return JSON.stringify({
     ...state,
-    windows: state.windows.filter((window) => window.kind !== "dialog"),
+    windows: state.windows.filter(
+      (window) => window.kind !== "dialog" && window.kind !== "im",
+    ),
   });
 }
