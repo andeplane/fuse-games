@@ -134,7 +134,11 @@ test("coverage collectors run independently and preserve the release commands an
     assert.ok(collector.includes("    needs: [checks, unit]\n"));
     assert.ok(collector.includes(`    if: ${RELEASE}\n`));
     assert.ok(collector.includes(`      COVERAGE_PHASE: ${phase}\n`));
-    assert.ok(collector.includes("    timeout-minutes: 20\n"));
+    assert.ok(
+      collector.includes(
+        `    timeout-minutes: ${phase === "unit" ? 35 : 20}\n`,
+      ),
+    );
     assert.ok(
       collector.includes(
         `          name: coverage-${phase}-raw-\${{ matrix.shard }}\n`,

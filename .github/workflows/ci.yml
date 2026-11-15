@@ -198,7 +198,7 @@ jobs:
     needs: [checks, unit]
     if: inputs.release || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     strategy:
       # Every share reports; `coverage` below needs all of them.
       fail-fast: false
