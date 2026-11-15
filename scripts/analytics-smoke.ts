@@ -39,6 +39,9 @@ const reported: Reported[] = [];
 const requestUrls: string[] = [];
 const acknowledged = new Set<string>();
 // Intercepted, never delivered: a smoke must not write into the production project.
+await context.route("**/api/telemetry/session", async (route) => {
+  await route.fulfill({ status: 200, json: { token: "smoke-only" } });
+});
 await context.route("**/api/telemetry/events", async (route) => {
   requestUrls.push(route.request().url());
   const payload: {

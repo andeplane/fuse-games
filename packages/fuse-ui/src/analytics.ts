@@ -170,6 +170,7 @@ export function createAnalytics(
 }
 export function createBrowserAnalytics(gameId: string): Analytics {
   const storage = safeStorage(() => localStorage);
+  let session: string | undefined;
   return createAnalytics(gameId, {
     storage,
     now: () => Date.now(),
@@ -188,12 +189,36 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         { basePath: "/", apiOrigin: import.meta.env.VITE_API_ORIGIN },
         location.origin,
       );
+      if (!session) {
+        const admission = await fetch(
+          endpoints.apiUrl("/api/telemetry/session"),
+          { method: "POST" },
+        );
+        if (admission.status === 404) return events.map((event) => event.id);
+        if (!admission.ok) throw new Error("Metrics admission unavailable");
+        const body: unknown = await admission.json();
+        if (
+          !body ||
+          typeof body !== "object" ||
+          !("token" in body) ||
+          typeof body.token !== "string"
+        )
+          throw new Error("Invalid metrics admission");
+        session = body.token;
+      }
       const response = await fetch(endpoints.apiUrl("/api/telemetry/events"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session}`,
+        },
         body: JSON.stringify({ events }),
         keepalive: true,
       });
+      if (response.status === 401) {
+        session = undefined;
+        throw new Error("Metrics session expired");
+      }
       // A batch the service refuses outright will be refused again: retrying
       // it would hold every later event, from every game on this origin,
       // behind it. Let it go; only overload and server failures are retried.

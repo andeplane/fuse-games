@@ -11,6 +11,7 @@ import { readDebugBody } from "./worker.js";
 export interface DebugHttpOptions {
   service: DebugService;
   verifier: DeveloperVerifier;
+  identity?: (token: string) => Promise<string | undefined>;
   recordingEnabled?: boolean;
   /** HMAC-derived identity; never raw IP. */ reportIdentity: (
     req: IncomingMessage,
@@ -58,12 +59,19 @@ export function createDebugHttpExtension(
         let owner: string | undefined;
         if (input && typeof input === "object" && "recordingId" in input)
           owner = (await requireDeveloper(req, verifier)).uid;
+        const token =
+          req.headers.authorization?.match(/^Bearer ([^\s]+)$/)?.[1];
+        const trusted = Boolean(
+          owner ||
+          (token && options.identity && (await options.identity(token))),
+        );
         send(
           res,
           await service.submitReport(
             options.reportIdentity(req, address),
             owner,
             input,
+            trusted,
           ),
         );
         return true;

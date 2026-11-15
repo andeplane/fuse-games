@@ -15,6 +15,7 @@ export interface TelemetryQuota {
 }
 /** Atomic multi-dimensional quotas across all gateway instances. HMAC keys never leave this process. */
 export class SharedTelemetryQuota implements TelemetryQuota {
+  private lastWarning = 0;
   constructor(
     private database: TelemetryDatabase,
     private secret: string,
@@ -31,7 +32,7 @@ export class SharedTelemetryQuota implements TelemetryQuota {
     const now = this.now();
     const buckets = new Map<
       string,
-      { cost: number; limit: number; expiresAt: number }
+      { cost: number; limit: number; expiresAt: number; dimension: string }
     >();
     for (const charge of charges) {
       if (
@@ -63,6 +64,7 @@ export class SharedTelemetryQuota implements TelemetryQuota {
         cost: (existing?.cost ?? 0) + charge.cost,
         limit: charge.limit,
         expiresAt: (window + 2) * charge.windowMs,
+        dimension: charge.dimension,
       });
     }
     await this.database.transact(async (tx) => {
@@ -74,8 +76,18 @@ export class SharedTelemetryQuota implements TelemetryQuota {
         if (data && (!Number.isSafeInteger(data.used) || Number(data.used) < 0))
           throw new Error("Stored telemetry quota is invalid");
         const used = Number(data?.used ?? 0) + bucket.cost;
-        if (used > bucket.limit)
+        if (used > bucket.limit) {
+          if (
+            bucket.dimension.includes("global") &&
+            now - this.lastWarning >= 60_000
+          ) {
+            this.lastWarning = now;
+            console.error("Telemetry quota exceeded", {
+              dimension: bucket.dimension,
+            });
+          }
           throw new RoomError(429, "Telemetry limit reached; retry later");
+        }
         return { key, used, expiresAt: bucket.expiresAt };
       });
       for (const { key, ...value } of next) tx.set(key, value);

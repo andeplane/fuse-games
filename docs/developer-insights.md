@@ -169,11 +169,32 @@ resource names, verification and remaining acceptance checks. A release requires
   and a dead-letter topic. A failed or missing predecessor transcript blocks
   subsequent action extraction until repaired; it does not silently turn later
   speech into tasks without its context. Review failed segments and dead letters.
-- Raw events: 90 days. Audio/screenshots: 30 days. Report text, transcripts,
+- Raw events: 90 days. Audio/trusted screenshots: 30 days. Anonymous report text
+  and screenshots expire after two days; screenshots use the separate
+  `anonymous-screenshots/` prefix. Report text, transcripts,
   action records and metric aggregates: 365 days. Configure Firestore TTL and
   bucket lifecycle cleanup; server-side expiry checks must independently deny
   reads because background deletion is asynchronous. No Mixpanel history is
   migrated or deleted.
+
+The shared Firestore transactions admit at most 100,000 metric events, 500
+reports and 100 MiB of report text and screenshots per UTC day; anonymous
+addresses may submit five reports daily. Metrics require a one-hour bearer
+issued by `/api/telemetry/session`, limited to 50 issues per address and 10,000
+globally per day. This capability is an admission signal, not proof of a real
+installation or protection against distributed automation. Quota rejections
+emit `Telemetry quota exceeded` or `Telemetry global report budget exceeded`.
+Create log-based alerts for these messages and report/event volume, and a
+Cloud Billing budget alert; no alert or budget is provisioned by this code.
+The caps are conservative: retries and failed writes can consume admission.
+
+Before enabling this version, configure bucket lifecycle deletion of objects
+under `anonymous-screenshots/` at age two days and retain the existing 30-day
+deletion for `screenshots/` and `recordings/`; configure Firestore TTL on
+`cleanupAt`. GCS lifecycle and Firestore TTL are asynchronous, so deletion is
+not immediate at the expiry time; application reads deny expired records.
+Verify the policies and their execution in the target project. These external
+policies are required for physical deletion and are not installed by deploy.
 
 The worker validates reserved object ownership/generation, uses fenced leases
 for duplicate/concurrent deliveries and persists transcripts and extraction
