@@ -449,6 +449,7 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
   transform: translateX(-50%);
   width: min(24rem, calc(100% - 1rem));
   height: min(12rem, 32dvh);
+  min-height: 152px;
   pointer-events: none;
 }
 .fm-touch .fm-pad {
