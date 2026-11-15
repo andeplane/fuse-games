@@ -47,7 +47,7 @@
   margin-left: 6px;
   vertical-align: middle;
 }
-.recap-rider-name .friend-add {
+.fui-results-name .friend-add {
   margin-left: 8px;
 }
 .room-rider .friend-add,
@@ -63,8 +63,7 @@
   max-width: min(92vw, 34rem);
   box-shadow: 0 0 24px #b6ff4d33;
 }
-.landing-invite-friends,
-.room-invite-friends {
+.landing-invite-friends {
   font-size: 10px;
   letter-spacing: 1px;
 }

@@ -1,6 +1,6 @@
 import type { RosterMember } from "fuse-ui";
 import { CAPACITY, type FuseDriversView } from "../game/index.js";
-import { config } from "../game/sim/config.js";
+import { TICK_RATE, config } from "../game/sim/config.js";
 
 /**
  * What the screen shows, as a pure function of the view and who this device is.
@@ -51,9 +51,32 @@ export interface RaceModel {
   finished: boolean;
 }
 
+/** One driver's line of the final standings. */
+export interface ResultRow {
+  id: string;
+  /** The grid slot, which is the truck's colour. */
+  truck: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for the winner; trucks that crossed the line on the same tick share a place. */
+  place: number;
+  /** Seconds from the start signal to the finish line, or 0 for a truck that never finished. */
+  time: number;
+  laps: number;
+  kills: number;
+  wrecks: number;
+  lapsLed: number;
+  nitros: number;
+}
+
 export interface ResultModel {
   title: string;
-  rows: string[];
+  track: string;
+  laps: number;
+  rows: ResultRow[];
+  /** The winner's grid slot, or -1 when the win is shared. */
+  winnerTruck: number;
   /** This device may start the next race or return to the lobby. */
   host: boolean;
   waiting: string;
@@ -61,6 +84,8 @@ export interface ResultModel {
 
 export interface LobbyModel {
   members: RosterMember[];
+  /** This device's own seat, by its plain name: what a move to another seat is asked with. */
+  own?: { name: string; slot: number };
   canStart: boolean;
   showStart: boolean;
   note: string;
@@ -95,8 +120,10 @@ export function presentTable(
     host: false,
   }));
 
+  const own = view.drivers.find((driver) => driver.id === viewer.me);
   const lobby: LobbyModel = {
     members,
+    ...(own ? { own: { name: own.name, slot: own.slot } } : {}),
     canStart: view.drivers.length >= 2,
     showStart: viewer.host && !racing && !over,
     note:
@@ -146,17 +173,50 @@ export function presentTable(
       countdown: Math.max(0, race.countdownEndTick - race.tick),
       finished: over,
     };
-    if (over)
+    if (over) {
+      const results: ResultRow[] = [];
+      let lastFinish = -1;
+      for (const row of rows) {
+        const car = race.trucks[row.truck];
+        if (!car) continue;
+        const previous = results.at(-1);
+        results.push({
+          id: row.id,
+          truck: row.truck,
+          name: row.name,
+          you: row.you,
+          bot: row.bot,
+          place:
+            previous && car.finishedTick && car.finishedTick === lastFinish
+              ? previous.place
+              : results.length + 1,
+          time: car.finishedTick
+            ? Math.max(0, car.finishedTick - race.countdownEndTick) / TICK_RATE
+            : 0,
+          laps: Math.min(car.laps, config.laps),
+          kills: car.kills,
+          wrecks: car.deaths,
+          lapsLed: car.lapsLed,
+          nitros: car.nitrosUsed,
+        });
+        lastFinish = car.finishedTick;
+      }
+      const winners = results.filter((row) => row.place === 1);
+      const winner = winners.length === 1 ? winners[0] : undefined;
       model.results = {
-        title:
-          rows[0]?.you === true ? "YOU WIN" : `${rows[0]?.name ?? ""} WINS`,
-        rows: rows.map(
-          (row, index) =>
-            `${String(index + 1)}. ${row.label}  ${String(row.kills)} kills`,
-        ),
+        title: winner
+          ? winner.you
+            ? "YOU WIN"
+            : `${winner.name} WINS`
+          : "DEAD HEAT",
+        track: view.track,
+        laps: config.laps,
+        rows: results,
+        winnerTruck: winner?.truck ?? -1,
         host: viewer.host,
         waiting: viewer.host ? "" : "Waiting for the host",
       };
+    }
   }
 
   return model;

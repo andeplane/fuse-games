@@ -4,7 +4,7 @@
 Supply native dialog observation and the game's cancellation callback; cancel held controls when a dialog opens,
 and check `blocked()` before dispatching gameplay keys or pointer inputs. Dispose the observer with the game.
 
-Shared menus, social controls and neon/pixel styles for the room games in this repo. DOM components import no game or network code. The separate browser adapters use the shared network/platform contracts; sign-in downloads Firebase lazily, and analytics downloads `mixpanel-browser` only when analytics is enabled.
+Shared menus, social controls and neon/pixel styles for the room games in this repo. DOM components import no game or network code. The separate browser adapters use shared contracts; sign-in downloads Firebase lazily, and first-party analytics sends bounded batches only when enabled.
 
 ## Shared accounts and friends
 
@@ -23,7 +23,8 @@ current players. Games never import another game's client for these features.
 
 Each game starts one client with `startGameAnalytics(gameId)` from `fuse-ui/play-metrics`, which reports `fuse.App Opened`.
 Pass its `track` and an injected clock to `createPlayMetrics` and feed it actual rendered match state for seat/start/end events.
-The shared `fuse-ui/analytics` client attaches `gameId` on every event and owns consent, SDK loading and text scrubbing.
+Supply explicit `roundActive` and `roundEnded` boundaries for actual participation, excluding countdowns and spectators.
+The shared `fuse-ui/analytics` client attaches `gameId` on every event and owns consent, anonymous browser/session identity, bounded retry delivery and text scrubbing.
 Fuse Riders uses its more detailed funnel with that same client. See [the event contract](../../docs/ANALYTICS.md).
 
 ## Styles
@@ -48,6 +49,18 @@ Fuse Riders loads both files, without `fui-app` (its page has its own base style
 - `copyText(text)`: clipboard write with the `execCommand` fallback. It returns whether the copy worked.
 - `closeOnBackdrop(dialog)`: a click on a modal dialog's backdrop closes it.
 
+## Menu patterns
+
+Every menu, dialog, room and page in every game follows one set of patterns. Use these before adding a button style, a close control or a header of a game's own; a game's CSS arranges its screens and does not restyle them.
+
+- **Back** is the one way out of a page or a dialog: `createBackButton` or `createBackLink` (`.fui-back`), a chevron and the word, the first control at the top left. There is no CLOSE, no ✕ and no "Main menu" button. A view nested inside a dialog names where its Back returns to (`label: "Matches"`), because the dialog around it already has a plain Back.
+- **Escape presses Back** (`backOnEscape`), except while a dialog is open (Escape is that dialog's) or the page says Escape is busy (a song playing, a key being bound). Escape never leaves a room.
+- **A header reads Back, title, actions** (`createPageHeader`, `createSubPage`, and `createDialog`'s bar): secondary actions first, the primary action last, at the right. A page's main action is in its header, never under the content it acts on.
+- **Buttons** have one shape, two heights and three roles: `.fui-button` (secondary), `.fui-button-primary`, `.fui-button-danger`, at `--fui-control-height`; a menu column's buttons are `--fui-menu-height`. A column has its primary action first, a row has it last. The primary differs by colour, never by size, so a button does not jump when one page replaces another.
+- **Type**: the pixel face for titles only, the sans face for buttons, names and text, the monospace face for readouts.
+- **Focus** is one ring (`--fui-focus-ring`). **Arrow keys** walk a menu's buttons (`menuKeys`), Home and End jump to its ends, and Enter presses the focused one; the main menu, the game menu and the top bar's menu have it built in.
+- **A room** (`createRoomLayout`) has Back at its top left. With `actionsInHeader` or `headerActions`, Settings and the main action sit across its top and follow the page down. Seats show their number on a chip in the seat's colour and say "Open seat" until somebody sits there; `slotLabel` is for a seat that is more than a number (a role, a team). With `slotLabelOpenOnly` the label describes the open seats and a taken one shows the player alone, for a game whose player rows already name the team. `extras` holds the host's own choices for the room under the invitation; Shared TV is `createSharedTvOption`, a checkbox with OPEN TV SCREEN beside it that keeps the host's choice until the room answers, and it is never a setting on a main menu, `status` puts the connection's state at the room's foot, and `compact` makes a room on one device one column with no invitation, its seats a strip of who is here and the next open one (`compactShowsEverySeat` keeps every open seat, for a game whose seats are roles to choose). The room's code is on the invitation and nowhere else. Seats work the same way in every room: a viewer with a name (an account, or one remembered in the join form) is seated on arriving, host and guest alike, in the first free seat (`autoSeat: false` leaves that to a click); with `ownSlot` and `onMove`, a seated viewer sees "Sit here" on every open seat and moves there while the room waits, and a team or a colour follows the seat. The move is the game's own join command naming the seat, which `fuse-netcode` writes as one step in the lobby. `friends` is the game's friends panel (`social.friends` from `createGameSocial`): every room then has ADD FRIEND on the row of a player whose account is known, after the player's name and before the game's own row controls, and INVITE FRIENDS under Copy link. On a phone the room's header also puts a band behind the top bar, so a scrolled room never shows through it. A game that showed the connection's state during a match keeps a line for it on the match's screen: the room's foot is hidden then.
+
 ## Components
 
 Each component is a function that returns its elements. Options take callbacks, and none of them use `innerHTML`. Every component accepts `document` (the tests pass a `linkedom` one). Most also accept `classes`, which renames the class of any part; `""` leaves a part without a class.
@@ -64,7 +77,12 @@ Each component is a function that returns its elements. Options take callbacks, 
 | `createNameEntry`     | Name field and JOIN; your `normalize` decides the seated name; a second way in, a lockable account name and a slot (an avatar)      |
 | `createPicker`        | One choice of a few as pressed buttons (avatars), optionally folded behind a summary with CHANGE                                    |
 | `createNotice`        | A status line, or a toast with `holdMs`; `show(text, tone)` is safe every frame, `flash(text, tone)` is one event                   |
-| `createDialog`        | `<dialog>` with a title bar, an actions slot with CLOSE, and a body; `show({ title, content })` lets one shell serve every menu     |
+| `createDialog`        | `<dialog>` with a bar (Back, the title, an actions slot) and a body; `show({ title, content })` lets one shell serve every menu     |
+| `createBackButton`    | Back, as a button; `createBackLink` is the same control as a link, for a page left by going to another address                      |
+| `createPageHeader`    | A page's bar: Back, the title, then actions with the primary last; `createSubPage` is a whole page under it                         |
+| `backOnEscape`        | Escape presses a Back, unless a dialog is open or the page says Escape is busy; returns what removes the listener                   |
+| `menuKeys`            | Arrow keys, Home and End walk a menu's buttons from wherever the focus is; returns what removes the listener                        |
+| `createRoomLayout`    | A waiting room: Back, the invitation, numbered seats with Join and Add AI, a game's own choices, Game settings and the main action  |
 | `createConfirm`       | A yes/no question for a dialog body (LEAVE ROOM / STAY)                                                                             |
 | `createKeyList`       | Keyboard shortcuts as headed definition lists                                                                                       |
 | `createAccountDialog` | Account and leaderboard buttons and their dialog: sign-in, history pages, username; auth, fetch and renderers are the game's        |
@@ -106,6 +124,14 @@ const pad = createControllerRow({
 });
 ```
 
+## Music
+
+`fuse-music` supplies `ALL_SONGS` and `MusicPlayer` independently of any game's
+effects. Every game currently uses the full catalogue, including the Fuseball
+and Volley songs. `createTopBar` supplies radio controls by default; pass
+`music: chosenSongs` for a game's selection, or `music: false` for a custom radio
+UI backed by the same player. See [Fuse Music](../fuse-music/README.md).
+
 ## Tests
 
-`packages/fuse-ui/tests/` runs in `pnpm test` on `linkedom`: structure, hostile names rendered as text, and callbacks. It also checks that the package imports nothing outside itself.
+`packages/fuse-ui/tests/` runs in `pnpm test` on `linkedom`: structure, hostile names rendered as text, and callbacks. Its boundary check permits only explicit shared browser capabilities, including `fuse-music`.

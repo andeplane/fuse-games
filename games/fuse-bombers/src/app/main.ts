@@ -2,12 +2,18 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/components.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import "./screens.css";
 import { validRoomCode } from "fuse-network-fe";
 import { uuid } from "fuse-netcode";
 import { createAppPortal, type AppPortal } from "fuse-ui/portal";
-import { createGameMenu, createRoundControls } from "fuse-ui";
+import {
+  createGameMenu,
+  createResultsScreen,
+  createRoundControls,
+  createTopBar,
+} from "fuse-ui";
 import Phaser from "phaser";
 import {
   RoundScene,
@@ -15,6 +21,7 @@ import {
   VIEW_WIDTH,
   type RoundSceneData,
 } from "../render/round-scene.js";
+import { css, playerColor } from "../render/palette.js";
 import { createAudio } from "./audio/index.js";
 import { Flow } from "./flow.js";
 import { createBrowserInput } from "./input/index.js";
@@ -26,6 +33,7 @@ import {
   showLanding,
   showRoom,
 } from "./online.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { carry, safeStore, sessionFor } from "./session.js";
 import { GOAL, ONLINE_CONTROLS } from "./controls.js";
 
@@ -79,19 +87,37 @@ async function boot(): Promise<void> {
   const root = document.createElement("div");
   root.id = "screen";
   document.body.append(root);
-  audio.mountToggle(); // After `#screen`, so screens.css can hide it mid-round.
   const portal = mountPortal();
-  portal.element.append(social.element());
+  const top = portal.element.parentElement!;
+  const brand = document.createElement("a");
+  brand.textContent = "FUSE BOMBERS";
+  brand.href = import.meta.env.BASE_URL;
+  top.append(brand, social.element());
+  createTopBar({ element: top, brand, gameId: GAME, sound: audio.master });
   let flow: Flow | undefined;
+  const leave = () =>
+    location.assign(
+      `${import.meta.env.BASE_URL}${GAME}/?${carry(location.search, "")}`,
+    );
+  // The finished match: the shared results screen. Nothing is focused, so Enter and Esc stay the flow's menu keys
+  // (and Space, a rider's fire key, presses nothing); `fui-app` gives its buttons the shared look.
+  const results = createResultsScreen({
+    document,
+    onBack: leave,
+    backText: "Leave",
+    onAction: (id) => flow?.choose(id === "rematch" ? "again" : "lobby"),
+  });
+  const resultsHost = document.createElement("div");
+  resultsHost.className = "fui-app fb-results-host";
+  resultsHost.append(results.element);
+  document.body.append(resultsHost);
+  let shownResult = "";
   const menu = createGameMenu({
     title: "FUSE BOMBERS",
     controls: ONLINE_CONTROLS,
     goal: GOAL,
     onLobby: () => flow?.returnToLobby(),
-    onLeave: () =>
-      location.assign(
-        `${import.meta.env.BASE_URL}${GAME}/?${carry(location.search, "")}`,
-      ),
+    onLeave: leave,
     onOpenChange: (open) => {
       flow?.setSharedMenuOpen(open);
       // Resume at the arena: Space on the menu trigger would reopen it instead of firing.
@@ -138,6 +164,21 @@ async function boot(): Promise<void> {
       attachAudio();
     },
     music: (kind) => audio.music(kind),
+    result: (result) => {
+      if (!result) {
+        if (results.open) results.hide();
+        shownResult = "";
+        return;
+      }
+      const key = JSON.stringify(result);
+      if (key !== shownResult) {
+        shownResult = key;
+        results.show(
+          resultReport(result, { color: (slot) => css(playerColor(slot)) }),
+        );
+      }
+      results.update(resultBar(result));
+    },
   });
   if (params.has("debug"))
     Object.assign(window, { fuseBombers: { game, flow, runner: flow, audio } }); // `runner.view` for browser-check.mjs
@@ -166,9 +207,9 @@ function mountPortal(): AppPortal {
   return portal;
 }
 
-if (session.kind === "landing") showLanding(store);
+if (session.kind === "landing") showLanding(store, "", audio);
 else if (session.kind === "invalid")
-  showLanding(store, `${session.code} is not a room code`);
+  showLanding(store, `${session.code} is not a room code`, audio);
 else
   boot().catch((error: unknown) => {
     analytics.reportBootFailure(error);

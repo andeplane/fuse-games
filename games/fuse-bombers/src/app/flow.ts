@@ -11,6 +11,7 @@ import {
   type DeviceId,
 } from "./input/index.js";
 import { Lobby, type Seat } from "./lobby.js";
+import { matchResult, type Result } from "./result-report.js";
 import { RoundRunner } from "./round-runner.js";
 import * as screens from "./screens.js";
 import { localControls } from "./controls.js";
@@ -49,6 +50,8 @@ export interface FlowOptions {
     controls: readonly ControlHint[];
     spectator: boolean;
   }): void;
+  /** The finished match while the winner screen is up, else null: the page shows it on the shared results screen. */
+  result?(result: Result | null): void;
   /** Where menu keys come from; `window` by default, a fake in tests. */
   keys?: {
     addEventListener(
@@ -192,7 +195,10 @@ export class Flow implements RoundSource {
     const { runner, seats, screen } = this;
     if (screen.kind !== "lobby")
       this.options.playMetrics?.({
-        matchId: `local:${this.playMatch}`,
+        matchId: `local:${this.options.seed}:${this.playMatch}`,
+        roundKey: runner.view.config.seed,
+        roundActive: screen.kind === "playing" && runner.view.phase !== "over",
+        roundEnded: screen.kind === "results" || screen.kind === "winner",
         active: screen.kind === "countdown" || screen.kind === "playing",
         ended: screen.kind === "winner",
         playerCount: seats.length,
@@ -227,9 +233,32 @@ export class Flow implements RoundSource {
         html += screens.countdownHtml(
           screen.left > 0 ? String(Math.ceil(screen.left)) : "GO!",
         );
-      else if (screen.kind !== "playing")
-        html += screens.resultsHtml(info, "left" in screen ? screen.left : 0);
+      else if (screen.kind === "results")
+        html += screens.resultsHtml(info, screen.left);
     }
+    const won = screen.kind === "winner" && !this.paused;
+    this.options.result?.(
+      won
+        ? matchResult(
+            seats.map((seat) => ({
+              id: `seat:${seat.slot}`,
+              slot: seat.slot,
+              name: seat.name,
+              tag: seat.device ? seat.tag : "",
+              you: false, // everyone is at this screen
+              bot: !seat.device,
+              wins: runner.match.wins[seat.slot] ?? 0,
+              stats: runner.view.castles[seat.slot]?.stats,
+            })),
+            runner.match.winner === null ? null : `seat:${runner.match.winner}`,
+            {
+              rounds: runner.match.history.length,
+              target: runner.match.winsToWin,
+              host: true,
+            },
+          )
+        : null,
+    );
     if (html === this.html) return;
     this.html = html;
     this.options.root.innerHTML = html;
@@ -274,6 +303,11 @@ export class Flow implements RoundSource {
       this.lobby.devices.includes(device)
     )
       this.act("start");
+  }
+
+  /** A button of the results screen, which is the page's and not in `root`. */
+  choose(action: "again" | "lobby"): void {
+    this.act(action);
   }
 
   private act(action: string): void {

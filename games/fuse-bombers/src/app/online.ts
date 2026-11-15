@@ -2,22 +2,38 @@ import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
 import "fuse-ui/components.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import "fuse-ui/results.css";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "./online.css";
 import QRCode from "qrcode";
 import * as net from "fuse-network-fe";
-import { MAX_PACKET_BYTES } from "fuse-netcode";
+import {
+  MAX_PACKET_BYTES,
+  createLeadClock,
+  ticksAhead,
+  type FrameTiming,
+} from "fuse-netcode";
 import * as ui from "fuse-ui";
 import type Phaser from "phaser";
-import { BOT_DIFFICULTIES as LEVELS } from "../engine/index.js";
-import { DEFAULT_SETTINGS, MAX_WINS, bombersGame } from "../online/game.js";
+import { BOT_DIFFICULTIES as LEVELS, type RoundView } from "../engine/index.js";
+import {
+  DEFAULT_SETTINGS,
+  MAX_WINS,
+  bombersGame,
+  type View,
+} from "../online/game.js";
 import { seatName } from "../online/names.js";
 import { BombersRuntime, type BombersCallbacks } from "../online/runtime.js";
-import { css } from "../render/palette.js";
+import { css, playerColor } from "../render/palette.js";
 import { RoundScene, type PlayerLook } from "../render/round-scene.js";
 import type { GameAudio } from "./audio/index.js";
 import { createBrowserInput, type DeviceId } from "./input/index.js";
 import { controllerPadLayout } from "./input/touch.js";
+import { createForward, createSmoother } from "./forward.js";
 import { OnlineSource } from "./online-source.js";
 import {
   buzz,
@@ -27,6 +43,7 @@ import {
   type Trouble,
   type Viewer,
 } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { carry, keys, type Session, type Store } from "./session.js";
 import { GOAL, ONLINE_CONTROLS, TOUCH_CONTROLS } from "./controls.js";
 
@@ -71,7 +88,10 @@ const after = <T>(list: readonly T[], item: T) =>
 const CLOSED = "Online rooms are not open yet: play solo or at this screen";
 
 /** The page under a bar with the app portal and the brand; returns the bar. */
-function page(...parts: HTMLElement[]): HTMLElement {
+function page(
+  audio: GameAudio | undefined,
+  ...parts: HTMLElement[]
+): HTMLElement {
   const root = el("div", "", "fui-app fb-online"),
     bar = el("header", "", "fb-bar"),
     brand = el("a", "FUSE BOMBERS");
@@ -83,13 +103,14 @@ function page(...parts: HTMLElement[]): HTMLElement {
     search: location.search,
   });
   bar.append(portal.element, brand, social.element());
+  ui.createTopBar({ element: bar, brand, gameId: GAME, sound: audio?.master });
   root.append(bar, ...parts);
   document.body.append(root);
   return bar;
 }
 
 /** The first screen: create or join a room, play against bots, or everyone at this screen (the local lobby). */
-export function showLanding(store: Store, error = ""): void {
+export function showLanding(store: Store, error = "", audio?: GameAudio): void {
   // A room made with this ticked shows the arena on a TV (OPEN TV SCREEN) and every seated phone is a controller.
   const shared = el("label", "", "fb-shared"),
     toggle = el("input");
@@ -133,7 +154,7 @@ export function showLanding(store: Store, error = ""): void {
       "Your gunship flies around its castle while the launcher rotates. Press to fire toward the other castles. Dodge enemy shots and be the last castle standing. Use the same fire button on a keyboard or phone.",
     ),
   );
-  page(card.element);
+  page(audio, card.element);
 }
 
 /** A room, as its creator, a joiner or the shared TV, or a match against bots (`solo`), drawn by `game`'s round scene;
@@ -224,7 +245,14 @@ export function showRoom(
     );
   pilots.append(el("h2", "PILOTS", "fui-lobby-title"), roster.element, addBot);
   lobby.append(pilots, match);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   ui.createRoomLayout({
+    // Seated already: any open seat is a move, and the gunship's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -261,7 +289,7 @@ export function showRoom(
   pad.append(head, meters, padState, padLine, padActions);
   if (!touch) pad.append(el("p", "WASD OR ARROW KEYS TO FLY · SPACE TO FIRE"));
   pad.hidden = true;
-  const bar = page(card, nameEntry.form, note, lobby, pad);
+  const bar = page(audio, card, nameEntry.form, note, lobby, pad);
   bar.append(el("strong", code), status.element, leave);
   const menu = ui.createGameMenu({
     title: "FUSE BOMBERS",
@@ -296,6 +324,24 @@ export function showRoom(
   document.body.append(roundControls.element);
   const root = bar.parentElement!;
   root.dataset.screen = "card";
+  // The finished match: the shared results screen over the page. A phone controller keeps its own two buttons.
+  const results = ui.createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      go();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  root.append(results.element);
   // The round's overlay (badges, countdown, results) over the canvas, laid out by screens.css as the local game's.
   const overlay = el("div");
   overlay.id = "screen";
@@ -303,13 +349,6 @@ export function showRoom(
   if (display) overlay.dataset.display = ""; // and makes it big enough to read across the room
   document.body.append(overlay);
   audio.mountToggle(); // After `#screen`, so screens.css hides it mid-round.
-  overlay.addEventListener("click", (event) => {
-    const action = (event.target as Element)
-      .closest("[data-action]")
-      ?.getAttribute("data-action");
-    if (action === "rematch" || action === "lobby")
-      runtime.command({ type: "action", action });
-  });
   nameEntry.form.hidden = lobby.hidden = true;
 
   /** A dead end: the card says why, with BACK to the landing. The first one stands. */
@@ -327,6 +366,7 @@ export function showRoom(
     if (stopped) game.loop.wake();
     game.destroy(true);
     nameEntry.form.hidden = lobby.hidden = overlay.hidden = pad.hidden = true;
+    results.hide();
     root.dataset.screen = "card";
     root.classList.remove("fb-match");
     document.body.classList.remove("fb-controller", "fb-display");
@@ -337,6 +377,33 @@ export function showRoom(
 
   // `looks` is the round scene's, kept up to date in place: it reads them when a round starts.
   const looks: PlayerLook[] = [];
+  // Drawing: the newest folded round played forward to the clock, once per animation frame (`forward.ts`).
+  // `?lead=off` draws the old way, a tick behind the clock and blended, to compare the feel against; `?probe`
+  // publishes `window.fuseBombersProbe()`, where this device's gunship would be drawn now, for latency measurements.
+  const forward = createForward(),
+    smoother = createSmoother(),
+    leadClock = createLeadClock(),
+    drawAhead = flags.get("lead") !== "off";
+  const picture = (timing: FrameTiming<View>): RoundView | undefined => {
+    const base = timing.newer.world,
+      ahead = drawAhead && base ? runtime.ahead() : undefined;
+    // Only while the newest frame is the room's newest round: mid-replay and outside play the frames are blended.
+    if (!base || !ahead || ahead.tick !== timing.newer.logTick)
+      return undefined;
+    const now = performance.now(),
+      revision = timing.revision ?? 0;
+    return smoother.apply(
+      forward(
+        ahead,
+        base,
+        `${revision}:${ahead.game}:${ahead.tick}`,
+        leadClock(ticksAhead(timing), timing.newer.logTick, now),
+      ),
+      { revision, ...ahead },
+      now,
+      timing.newer.ships.indexOf(viewer.me),
+    );
+  };
   let source: OnlineSource | undefined,
     model: Model | undefined,
     frame: Parameters<BombersCallbacks["state"]>[0] | undefined,
@@ -354,6 +421,7 @@ export function showRoom(
   };
   const render = (next: Model) => {
     model = next;
+    ownSeat = next.own;
     showStatus();
     const controller = next.controller;
     menu.update({
@@ -418,6 +486,33 @@ export function showRoom(
       if (scene?.sys.isSleeping()) game.scene.wake(RoundScene.KEY);
     }
     tv.hidden = !next.openTv;
+    const result = controller ? null : next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const key = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      if (key !== shownResult) {
+        shownResult = key;
+        results.show(
+          resultReport(result, {
+            color: (slot) => css(playerColor(slot)),
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
+        );
+      }
+      results.update(resultBar(result));
+      // No focus on show: Space is a play key here, and a held one would press the primary button.
+    }
     if (overlay.dataset.html !== next.overlay)
       overlay.innerHTML = overlay.dataset.html = next.overlay;
     roster.update(next.members);
@@ -467,18 +562,28 @@ export function showRoom(
   const callbacks: BombersCallbacks = {
     state(next, roomSettings) {
       if (dead) return;
-      reportPlay({
-        matchId: next.matchId,
-        active: next.stage === "running",
-        ended: next.stage === "over",
-        round: next.round,
-        playerCount: next.seats.filter((seat) => !seat.watcher).length,
-        botCount: next.seats.filter((seat) => seat.bot).length,
-        seated: next.seats.some(
-          (seat) => seat.id === viewer.me && !seat.watcher,
-        ),
-        mode: solo ? "solo" : roomSettings.display ? "shared" : "online",
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        next,
+        () => runtime.confirmedFrame(),
+        (next) => ({
+          matchId: next.matchId,
+          roundActive:
+            next.stage === "running" &&
+            next.logTick >= next.startAt &&
+            next.world?.phase !== "over",
+          roundEnded: next.stage === "between" || next.stage === "over",
+          active: next.stage === "running",
+          ended: next.stage === "over",
+          round: next.round,
+          playerCount: next.seats.filter((seat) => !seat.watcher).length,
+          botCount: next.seats.filter((seat) => seat.bot).length,
+          seated: next.seats.some(
+            (seat) => seat.id === viewer.me && !seat.watcher,
+          ),
+          mode: solo ? "solo" : roomSettings.display ? "shared" : "online",
+        }),
+      );
       frame = next;
       settings = roomSettings;
       shown = `${next.matchId}:${next.round}`;
@@ -491,7 +596,22 @@ export function showRoom(
         () => runtime.frameTiming(),
         () => viewer.me,
         next.world,
+        picture,
       );
+      if (flags.has("probe")) {
+        // Where this device's gunship (its ghost once it falls) would be drawn right now.
+        const sampled = source;
+        Object.assign(window, {
+          fuseBombersProbe: () => {
+            const view = sampled.peek(),
+              ship = view.castles[sampled.follow ?? -1],
+              body = ship?.alive
+                ? ship
+                : view.ghosts.find((ghost) => ghost.owner === sampled.follow);
+            return { tick: view.tick, x: body?.x, y: body?.y };
+          },
+        });
+      }
       game.scene.start(RoundScene.KEY, { source, players: looks });
       const attach = () => {
         if (!dead) audio.attachRound(game.scene.getScene(RoundScene.KEY)!);
@@ -580,17 +700,29 @@ export function showRoom(
   input.hub.onPress(
     (device) => !dead && !menu.isOpen() && flies(device) && runtime.fire(),
   );
-  const poll = () => {
+  const steer = () => {
     if (dead) return;
-    input.hub.poll();
     runtime.input(
       menu.isOpen()
         ? 0
         : steering.reduce((bits, d) => bits | input.hub.heldBy(d), 0),
     );
+  };
+  const poll = () => {
+    if (dead) return;
+    input.hub.poll();
+    steer();
     requestAnimationFrame(poll);
   };
   requestAnimationFrame(poll);
+  // A key steers from its own event, once the hub has heard it, rather than from the next frame: up to a frame sooner.
+  let pending: ReturnType<typeof setTimeout> | undefined;
+  const keyed = () => {
+    clearTimeout(pending);
+    pending = setTimeout(steer, 0);
+  };
+  window.addEventListener("keydown", keyed);
+  window.addEventListener("keyup", keyed);
   // A hidden page draws no frames to poll from: let go of everything at once (the sources forget their holds too).
   const release = () => {
     if (!dead) runtime.input(0);
@@ -605,6 +737,9 @@ export function showRoom(
     destroy: () => {
       input.hub.dispose();
       menu.dispose();
+      clearTimeout(pending);
+      window.removeEventListener("keydown", keyed);
+      window.removeEventListener("keyup", keyed);
       window.removeEventListener("blur", release);
       document.removeEventListener("visibilitychange", hide);
     },

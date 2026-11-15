@@ -1,11 +1,21 @@
+import { createTopBar } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -15,8 +25,14 @@ import {
   installRoomLifecycle,
   validRoomCode,
 } from "fuse-network-fe";
-import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
+  MAX_PACKET_BYTES,
+  createLeadClock,
+  ticksAhead,
+  uuid,
+} from "fuse-netcode";
+import {
+  backOnEscape,
   button,
   createAppPortal,
   createControllerRow,
@@ -24,21 +40,31 @@ import {
   createInviteCard,
   createKeyList,
   createLandingCard,
-  createRoomLayout,
   createNameEntry,
   createNotice,
+  createPageMessage,
   createPhoneLayout,
   createPicker,
+  createResultsScreen,
+  createRoomLayout,
   createRoster,
   createRoundControls,
+  createSharedTvOption,
+  createSubPage,
   el,
 } from "fuse-ui";
-import { HERO_KINDS, type HeroKind } from "../engine/index.js";
+import {
+  HERO_KINDS,
+  botInput,
+  type HeroKind,
+  type WorldView,
+} from "../engine/index.js";
 import { VIEW_H, VIEW_W } from "../engine/view-kit.js";
 import { axeGame, type View } from "../online/game.js";
 import { DEFAULT_HERO, isHero, seatName } from "../online/names.js";
 import { AxeRuntime, type AxeCallbacks } from "../online/runtime.js";
 import { createScene } from "../render/scene.js";
+import { SEAT_COLORS } from "../render/seat-colors.js";
 import type { MakeSurface } from "../render/surface.js";
 import { AxeAudio } from "./audio/director.js";
 import { WebAudioBackend } from "./audio/web-backend.js";
@@ -52,6 +78,13 @@ import {
 import { PendingPick, SoloOpening } from "./flow.js";
 import { GamepadInput, browserGamepads } from "./gamepad.js";
 import { drawn } from "./interpolate.js";
+import {
+  createSmoother,
+  forward,
+  forwardInputs,
+  loggedBits,
+  memoBot,
+} from "./forward.js";
 import { DPad, directionName, padButtons, releasePads } from "./pad.js";
 import {
   HEROES,
@@ -63,6 +96,7 @@ import {
   type Model,
   type Viewer,
 } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   NOT_OPEN,
   keys,
@@ -109,6 +143,10 @@ const social = createGameSocial({
 const store = safeStore(() => localStorage);
 const names = keys(GAME);
 const query = new URLSearchParams(location.search);
+/** `?lead=off` draws the old way, a tick behind the clock and blended, to compare the feel against. */
+const drawAhead = query.get("lead") !== "off",
+  /** `?probe` publishes where this device's hero was last drawn, for `scripts/lead-press-latency.ts`. */
+  probe = query.has("probe");
 const app = document.querySelector<HTMLElement>("#app")!;
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 /** A link within the game that keeps this page's `mute` flag. */
@@ -135,7 +173,21 @@ function header(extra: HTMLElement[] = []): HTMLElement {
     search: location.search,
   });
   bar.append(portal.element, brand, social.element(), ...extra);
-  return bar;
+  return createTopBar({
+    element: bar,
+    gameId: GAME,
+    sound: {
+      forcedMute: query.has("mute"),
+      enabled: () =>
+        store.getItem(names.music) !== "0" ||
+        store.getItem(names.effects) !== "0",
+      setEnabled: (on) => {
+        if (query.has("mute")) return;
+        store.setItem(names.music, on ? "1" : "0");
+        store.setItem(names.effects, on ? "1" : "0");
+      },
+    },
+  });
 }
 function keyHelp(): HTMLElement {
   const box = el("div", "", "fa-keys");
@@ -188,7 +240,7 @@ function landing(): void {
     },
   });
   card.menu.help.append(keyHelp());
-  const back = el("a", "← FUSE RIDERS", "fa-back");
+  const back = el("a", "All games", "fa-back");
   back.href = import.meta.env.BASE_URL + (query.has("mute") ? "?mute" : "");
   app.replaceChildren(header([back, menu.element]), card.element);
 }
@@ -198,12 +250,15 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const back = el("a", "← BACK", "fa-back");
-    back.href = withFlags(endpoints.appUrl());
-    app.replaceChildren(
-      header([back]),
-      el("p", "That is not a room code: check it and try again.", "fa-error"),
-    );
+    const page = createSubPage({
+      title: "Join room",
+      backHref: withFlags(endpoints.appUrl()),
+      content: [
+        createPageMessage("That is not a room code: check it and try again."),
+      ],
+    });
+    app.replaceChildren(header(), page.element);
+    backOnEscape(page.back);
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -224,7 +279,11 @@ function room(solo: boolean): void {
   const controls = new HeldControls((bits) => runtime.input(bits));
 
   // ---- the page ----
+  // The room's state is one line: at the lobby's foot while the room waits, beside the menu while a run is on.
+  // What went wrong is said apart from it, above the room, so a failure is never a quiet line at the foot.
   const status = createNotice({ className: "fa-status" }),
+    live = createNotice({ className: "fa-live" }),
+    problem = createNotice({ className: "fa-alert" }),
     tvInvite = el("div", "", "fa-tv-invite"),
     tvQr = el("img", "", "fa-tv-qr");
   tvQr.alt = `QR code to join room ${code}`;
@@ -237,6 +296,17 @@ function room(solo: boolean): void {
       // Without a code the header says nothing of it; the room's code beside it is still there to type.
       () => tvInvite.remove(),
     );
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
   // The host can take the room back to the lobby, and its hero picker, from a run.
   const menu = createGameMenu({
     controls: AXE_CONTROLS,
@@ -267,49 +337,35 @@ function room(solo: boolean): void {
   });
   // Sound: this browser's MUSIC and EFFECTS choices, kept; `?mute` silences the page and leaves them alone.
   const muted = query.has("mute"),
-    audio = new AxeAudio(new WebAudioBackend(), store, names, muted);
-  const soundToggle = (
-    label: string,
-    on: () => boolean,
-    set: (on: boolean) => void,
-  ) => {
-    const toggle = button("", "fa-sound");
-    const show = () => {
-      setText(toggle, `${label} ${on() ? "ON" : "OFF"}`);
-      toggle.setAttribute("aria-pressed", String(on()));
-    };
-    toggle.disabled = muted;
-    if (muted) toggle.title = "Silenced by ?mute";
-    toggle.onclick = () => {
-      set(!on());
-      show();
-      toggle.blur(); // Space or Enter steers the hero, never toggles it again.
-    };
-    show();
-    return toggle;
-  };
+    audio = new AxeAudio(new WebAudioBackend(true), store, names, muted);
   // Browsers hold audio until a gesture; every gesture retries, since a phone can suspend it again later.
   for (const type of ["pointerdown", "keydown", "touchend"] as const)
     window.addEventListener(type, () => audio.unlock(), {
       capture: true,
       passive: true,
     });
-  const top = header([
-    el("strong", code, "fa-code"),
-    status.element,
-    tvInvite,
-    soundToggle(
-      "♫ MUSIC",
-      () => audio.music,
-      (on) => audio.setMusic(on),
-    ),
-    soundToggle(
-      "EFFECTS",
-      () => audio.effects,
-      (on) => audio.setEffects(on),
-    ),
-    menu.element,
-  ]);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a run is on.
+  const top = header([live.element, tvInvite, menu.element]);
+
+  createTopBar({
+    element: top,
+    sound: {
+      enabled: () => audio.music || audio.effects,
+      forcedMute: muted,
+      setEnabled: (on) => {
+        audio.setMusic(on);
+        audio.setEffects(on);
+        if (on) audio.unlock();
+      },
+    },
+    onOpenChange: (open) => {
+      if (open) letGo();
+    },
+  });
+  const modalOpen = () =>
+    playtestInputBlocked(document) ||
+    Boolean(document.querySelector("dialog[open]"));
 
   // The lobby: who is here and which hero each plays; this device's pick, and the host's START.
   const lobby = el("section", "", "fa-lobby"),
@@ -341,30 +397,22 @@ function room(solo: boolean): void {
         qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 360 }),
       }).element,
     );
-  // The host's shared screen: the game on a TV (this room's `?display=1` page), every seat's phone its controller.
-  // This browser offers its last choice to the next room it creates.
-  const share = el("label", "", "fa-share"),
-    shareBox = el("input"),
-    tvLink = button("OPEN TV SCREEN", "fa-tv");
-  shareBox.type = "checkbox";
-  share.append(
-    shareBox,
-    el("span", "SHARED SCREEN"),
-    el("small", "The game on a TV, phones as controllers"),
-  );
-  shareBox.onchange = () => {
-    const wanted = shareBox.checked;
-    // The choice is kept only once the room has taken it; a room that did not (this device is not running it right
-    // now) goes on as it was, and so does the box.
-    if (runtime.command({ type: "settings", settings: { display: wanted } }))
-      store.setItem(names.shared, wanted ? "1" : "0");
-    else shareBox.checked = shownShared ?? false;
-  };
-  tvLink.onclick = () =>
-    window.open(
-      withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
-      "_blank",
-    );
+  // Shared TV is the room's choice, made in the room: the game on a TV (this room's `?display=1` page), every
+  // seat's phone its controller. The choice is kept only once the room has taken it, and this browser offers it to
+  // the next room it creates.
+  const sharedTv = createSharedTvOption({
+    className: "fa-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({ type: "settings", settings: { display } });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
+        "_blank",
+      ),
+  });
   // The host seats bot companions (solo too), each playing its seat's hero, and removes them before setting out.
   addBot.onclick = () =>
     runtime.command({
@@ -377,15 +425,7 @@ function room(solo: boolean): void {
     roster.element,
     addBot,
   );
-  lobbySide.append(
-    picker.element,
-    blurb,
-    share,
-    tvLink,
-    lobbyNote,
-    start,
-    keyHelp(),
-  );
+  lobbySide.append(picker.element, blurb, lobbyNote, start, keyHelp());
   lobby.append(lobbyMain, lobbySide);
   start.onclick = () => runtime.command({ type: "action", action: "start" });
 
@@ -394,7 +434,7 @@ function room(solo: boolean): void {
     screen = el("div", "", "fa-screen"),
     canvas = el("canvas", "", "fa-canvas"),
     note = el("p", "", "fa-note");
-  // The stage flow's card over the game: a cleared stage's tally, the continue countdown, the run's end.
+  // The stage flow's card over the game: a cleared stage's tally, camp's caption, the continue countdown.
   const card = el("div", "", "fa-card"),
     cardTitle = el("h2", "", "fa-card-title"),
     cardLine = el("p", "", "fa-card-line"),
@@ -405,17 +445,28 @@ function room(solo: boolean): void {
     continueButton = button(
       TEXT.continueButton,
       "fui-button-primary fa-continue",
-    ),
-    rematch = button(TEXT.rematchButton, "fui-button-primary fa-rematch"),
-    backToLobby = button(TEXT.lobbyButton, "fa-card-lobby");
-  actions.append(continueButton, rematch, backToLobby);
+    );
+  actions.append(continueButton);
   card.append(cardTitle, cardLine, cardHint, cardClock, tally, actions);
   card.hidden = true;
   continueButton.onclick = () => runtime.continueRun();
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  backToLobby.onclick = () =>
-    runtime.command({ type: "action", action: "lobby" });
+  // The run's end: the shared results screen over the page, on a phone's controller and the shared screen too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   // The HUD draws the party in pixels; the canvas says it in words.
   canvas.setAttribute("role", "img");
   // The pads: an 8-way d-pad a thumb slides on, and ATTACK, JUMP and MAGIC. One set, over the game's corners on a
@@ -430,7 +481,7 @@ function room(solo: boolean): void {
   for (const side of ["up", "down", "left", "right"])
     dpadPad.append(el("i", "", `fa-dpad-${side}`));
   const dpad = new DPad(dpadPad, (bits) => {
-    if (menu.isOpen() && bits !== 0) return;
+    if ((menu.isOpen() || modalOpen()) && bits !== 0) return;
     controls.hold("dpad", bits);
     dpadPad.dataset.dir = directionName(bits);
   });
@@ -439,7 +490,7 @@ function room(solo: boolean): void {
     window.addEventListener(type, (event) => dpad.lift(event.pointerId));
   const fightPads = createControllerRow({
     buttons: padButtons((source, bits) => {
-      if (!menu.isOpen()) controls.hold(source, bits);
+      if (!menu.isOpen() && !modalOpen()) controls.hold(source, bits);
     }),
     className: "fui-controller fa-buttons",
   }).element;
@@ -503,9 +554,25 @@ function room(solo: boolean): void {
   });
   const main = el("main", "", "fa-room");
   main.tabIndex = -1;
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  main.append(
+    problem.element,
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+    results.element,
+  );
   app.replaceChildren(top, main, roundControls.element);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move. The hero is the player's own pick, and goes along.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -514,9 +581,16 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // ADD FRIEND on a hero's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     addAI: addBot,
-    settings: [picker.element, blurb, share],
-    actions: [lobbyNote, tvLink, start],
+    settings: [picker.element, blurb],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the heroes scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo ? { compact: true, heading: "Solo run" } : { heading: "Room" }),
   });
   for (const part of [
     closed,
@@ -533,10 +607,11 @@ function room(solo: boolean): void {
   );
   const letGo = () => {
     controls.clear();
-    dpad.cancel();
+    letGoPads();
     gamepads.letGo();
   };
-  // A phone in play folds the header behind a MENU button, and shows the pads' hints as each stage begins.
+  // A phone in play shows the pads' hints as each stage begins. The game's own menu stays where the shared bar put
+  // it, in the bar's menu, on a phone as on a desktop: moved out, it lay over the bar's buttons and the room's Back.
   const phone = createPhoneLayout({
     root: app,
     clearControls: letGo,
@@ -548,8 +623,6 @@ function room(solo: boolean): void {
   const layOut = (resized: boolean) => {
     if (!model) return;
     document.body.classList.toggle("fa-phone", model.phone);
-    const menuHome = model.phone ? app : top;
-    if (menu.element.parentElement !== menuHome) menuHome.append(menu.element);
     phone.update(
       { active: model.phone, portrait: portrait.matches },
       phase,
@@ -558,8 +631,7 @@ function room(solo: boolean): void {
     );
   };
   window.addEventListener("resize", () => layOut(true));
-  let over = false,
-    shownShared: boolean | undefined;
+  let over = false;
   let model: Model | undefined;
   // The log tick of the newest frame, and the hero this device has picked that the seat has not yet answered.
   let tick = 0;
@@ -585,13 +657,70 @@ function room(solo: boolean): void {
     canvas.style.height = `${canvas.height / ratio}px`;
   };
   new ResizeObserver(fit).observe(screen);
+  // ---- the newest folded world played forward to the clock, once per animation frame ----
+  const smoother = createSmoother(),
+    leadClock = createLeadClock(),
+    drawBot = memoBot(botInput);
+  /** What to draw now: the forward run while heroes can be steered, otherwise the two newest frames blended. */
+  const picture = (now: number): WorldView | null => {
+    const timing = runtime.frameTiming(),
+      state = runtime.roomState(),
+      newer = timing?.newer,
+      world = state?.world;
+    if (
+      !drawAhead ||
+      !timing ||
+      !newer?.world ||
+      !state ||
+      !world ||
+      !(
+        state.stage === "running" ||
+        (state.stage === "between" && world.camp)
+      ) ||
+      newer.matchId !== state.matchId ||
+      newer.round !== state.round ||
+      newer.world.camp !== world.camp ||
+      newer.world.step !== world.step
+    )
+      return drawn(timing);
+    const revision = timing.revision ?? 0;
+    return smoother.apply(
+      forward(
+        world,
+        leadClock(ticksAhead(timing), newer.logTick, now),
+        forwardInputs(
+          state,
+          runtime.self,
+          runtime.heldNow,
+          drawBot(`${state.matchId}:${state.round}:${world.camp}:${revision}`),
+        ),
+      ),
+      `${state.matchId}:${state.round}:${world.camp}`,
+      revision,
+      world.step,
+      loggedBits(state, world),
+      now,
+      state.seats.get(runtime.self)?.slot ?? -1,
+    );
+  };
   const paint = (now: number) => {
     // A room that has ended draws nothing more, so its loop ends with it.
     if (over) return;
     // A hidden page, or the phone's MENU open over the pads, reads no gamepad: it must not steer from behind them.
-    gamepads.poll(!document.hidden && !phone.blocked() && !menu.isOpen());
-    const world = stage.hidden ? null : drawn(runtime.frameTiming());
+    gamepads.poll(
+      !document.hidden && !phone.blocked() && !menu.isOpen() && !modalOpen(),
+    );
+    const world = stage.hidden ? null : picture(now);
     if (world) {
+      if (probe) {
+        const slot = runtime.roomState()?.seats.get(runtime.self)?.slot,
+          mine = world.heroes.find((hero) => hero.seat === slot);
+        Reflect.set(window, "__leadProbe", {
+          at: performance.now(),
+          x: mine?.x,
+          y: mine?.y,
+        });
+      }
       scene.draw(native, world, Math.floor((now * 60) / 1000), model?.hud);
       // Resizing the canvas resets its context, smoothing included.
       g.imageSmoothingEnabled = false;
@@ -602,18 +731,14 @@ function room(solo: boolean): void {
   requestAnimationFrame(paint);
 
   const showCard = (shown: Card | null) => {
-    main.dataset.card = shown?.kind ?? "";
     card.hidden = !shown;
     if (!shown) return;
     card.dataset.kind = shown.kind;
     setText(cardTitle, shown.title);
     setText(cardLine, shown.line);
     setText(cardHint, shown.hint);
-    setText(cardClock, shown.seconds === null ? "" : String(shown.seconds));
-    cardClock.hidden = shown.seconds === null;
-    continueButton.hidden = !shown.canContinue;
-    rematch.hidden = backToLobby.hidden = !shown.canRematch;
-    actions.hidden = !shown.canContinue && !shown.canRematch;
+    setText(cardClock, String(shown.seconds));
+    actions.hidden = !shown.canContinue;
     tally.hidden = !shown.rows.length;
     const rows = JSON.stringify(shown.rows);
     if (tally.dataset.rows === rows) return;
@@ -703,14 +828,8 @@ function room(solo: boolean): void {
       setText(line, next.note);
       line.hidden = !next.note;
     }
-    // The shared screen: the host's switch follows the room (only when the room changes it, so a click is not undone
-    // by a frame that has not folded it yet), the TV link, and the TV's QR code.
-    share.hidden = !next.canShare;
-    if (shownShared !== next.shared) {
-      shownShared = next.shared;
-      shareBox.checked = next.shared;
-    }
-    tvLink.hidden = !next.showTv;
+    // The shared screen: the host's choice follows the room, and the TV shows its QR code.
+    sharedTv.update(next.shared, next.canShare);
     tvInvite.hidden = !next.invite;
     controller.hidden = next.screen !== "controller";
     if (next.controller) {
@@ -730,6 +849,39 @@ function room(solo: boolean): void {
     if (card.parentElement !== cardHome) cardHome.append(card);
     touch.hidden = !next.pads || next.screen !== "play";
     showCard(next.card);
+    // What holds the game: the stage flow's card, or the run's end.
+    main.dataset.card = next.card?.kind ?? next.result?.kind ?? "";
+    const result = next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the run gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: (slot) => SEAT_COLORS[slot % SEAT_COLORS.length]!,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
+        );
+      }
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
+    }
     phase = {
       // Camp is played as a stage is, so its pads and their hints come up as it begins.
       phase: `${view.stage}:${view.round}:${!!view.world?.camp}`,
@@ -756,19 +908,37 @@ function room(solo: boolean): void {
       )
         return;
 
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.stage === "running",
-        ended: frame.stage === "over",
-        round: frame.round,
-        playerCount: frame.seats.filter((seat) => !seat.watcher).length,
-        botCount: frame.seats.filter((seat) => seat.bot).length,
-        seated: frame.seats.some(
-          (seat) => seat.id === viewer.me && !seat.watcher,
-        ),
-        mode: solo ? "solo" : frame.settings.display ? "shared" : "online",
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => ({
+          matchId: frame.matchId,
+          roundActive:
+            frame.stage === "running" &&
+            !!frame.world &&
+            !frame.world.camp &&
+            !frame.world.cleared,
+          roundEnded:
+            !!frame.world &&
+            !frame.world.camp &&
+            (frame.world.cleared || frame.stage === "over"),
+          active: frame.stage === "running",
+          ended: frame.stage === "over",
+          round: frame.round,
+          playerCount: frame.seats.filter((seat) => !seat.watcher).length,
+          botCount: frame.seats.filter((seat) => seat.bot).length,
+          seated: frame.seats.some(
+            (seat) => seat.id === viewer.me && !seat.watcher,
+          ),
+          mode: solo ? "solo" : frame.settings.display ? "shared" : "online",
+        }),
+      );
       viewer.touch = coarse.matches;
+      ownSeat =
+        frame.stage === "lobby"
+          ? frame.seats.find((seat) => seat.id === viewer.me && !seat.watcher)
+          : undefined;
       const next = present(frame, viewer);
       // The frames shown are what is heard: the cues come from them, never from the simulation. A phone that is only
       // a controller stays quiet; the shared screen plays the room's sound.
@@ -798,17 +968,17 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     kicked() {
-      status.show("The host removed you from the room", "error");
+      say("The host removed you from the room", "error");
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
       over = true;
       audio.stop();
       controls.close();
@@ -830,7 +1000,7 @@ function room(solo: boolean): void {
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           if (roomFailure(String(body.error ?? "")) === NOT_OPEN)
-            status.show(NOT_OPEN, "error");
+            say(NOT_OPEN, "error");
         })
         .catch(() => {
           /* offline: "Room ended" stands */
@@ -868,7 +1038,7 @@ function room(solo: boolean): void {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => {},
+    destroy: () => stopPlaytestInput(),
     reload: () => location.reload(),
   });
 
@@ -881,12 +1051,19 @@ function room(solo: boolean): void {
     target instanceof HTMLTextAreaElement ||
     (target instanceof HTMLButtonElement && !model?.playing);
   document.addEventListener("keydown", (event) => {
-    if (controls.down(event, menu.isOpen() || typing(event.target)))
+    if (event.repeat) {
+      if (controls.holds(event.code)) event.preventDefault();
+      return;
+    }
+    if (
+      controls.down(event, menu.isOpen() || modalOpen() || typing(event.target))
+    )
       event.preventDefault();
   });
   document.addEventListener("keyup", (event) => {
     if (controls.up(event.code)) event.preventDefault();
   });
+  const stopPlaytestInput = registerPlaytestInput(document, { cancel: letGo });
   window.addEventListener("blur", letGo);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) letGo();

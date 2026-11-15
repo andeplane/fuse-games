@@ -50,7 +50,7 @@ for (const { name, kind } of BOTH_ENGINES) {
         await phone.goto(base);
         await openPlayOptions(phone);
         await phone
-          .getByRole("button", { name: "CREATE ROOM", exact: true })
+          .getByRole("button", { name: "Host room", exact: true })
           .click();
         await phone.waitForURL(/room=/);
         await takeHostSeat(phone, "Phone host");
@@ -93,10 +93,7 @@ for (const { name, kind } of BOTH_ENGINES) {
             "no rotate gate",
           );
           assert.equal(
-            await phone
-              .locator("button:visible")
-              .filter({ hasText: /^(ROOM|MENU|☰ MENU)$/ })
-              .count(),
+            await phone.locator(".fui-top-bar-toggle:visible").count(),
             1,
             "one menu button",
           );
@@ -119,10 +116,11 @@ for (const { name, kind } of BOTH_ENGINES) {
             "COPY LINK",
             phone.getByRole("button", { name: "COPY LINK", exact: true }),
           );
+          // Every open slot offers Add AI; the first is as good as any.
           for (const action of ["Game settings", "Add AI"])
             await onScreen(
               action,
-              phone.getByRole("button", { name: action, exact: true }),
+              phone.getByRole("button", { name: action, exact: true }).first(),
             );
           assert.equal(
             await phone
@@ -131,18 +129,32 @@ for (const { name, kind } of BOTH_ENGINES) {
             false,
             "a phone is never the TV: no TV VIEW in the phone lobby",
           );
-          // #142: the yellow hint clears the lobby card, the head grid stays behind AVATAR, no truncated URL, and ⛶ only where fullscreen exists.
-          const hintBox = (await phone
-              .locator(".online-notice")
-              .boundingBox())!,
-            lobbyBox = (await phone
-              .locator(".phone-lobby>.room-lobby")
-              .boundingBox())!;
+          // #142: the yellow hint is a line of its own in the room (it never paints over the QR card, the seats or the
+          // rider's own buttons, and its text stays inside it), the head grid stays behind AVATAR, no truncated URL,
+          // and ⛶ only where fullscreen exists.
+          const hint = phone.locator(".room-lobby .online-notice"),
+            hintBox = (await hint.boundingBox())!;
           assert.ok(
             hintBox.height >= 12 &&
-              hintBox.y + hintBox.height <= lobbyBox.y + 1,
-            `lobby hint must sit above the lobby card: ${JSON.stringify({ hintBox, lobbyBox })}`,
+              (await hint.evaluate(
+                (node) => node.scrollWidth <= node.clientWidth + 1,
+              )),
+            `lobby hint is a readable line: ${JSON.stringify(hintBox)}`,
           );
+          for (const part of [
+            ".room-qr-card",
+            ".fui-room-open-slots",
+            ".room-lobby-footer",
+          ]) {
+            const box = (await phone
+              .locator(`.room-lobby ${part}`)
+              .boundingBox())!;
+            assert.ok(
+              hintBox.y + hintBox.height <= box.y + 1 ||
+                box.y + box.height <= hintBox.y + 1,
+              `lobby hint must not sit over ${part}: ${JSON.stringify({ hintBox, box })}`,
+            );
+          }
           assert.equal(
             await phone
               .getByRole("dialog", { name: "Avatar", exact: true })
@@ -172,7 +184,7 @@ for (const { name, kind } of BOTH_ENGINES) {
             "fullscreen button only where fullscreen exists",
           );
           await phone
-            .getByRole("button", { name: "CLOSE", exact: true })
+            .getByRole("button", { name: "Back", exact: true })
             .click();
           await phone.screenshot({
             path: `artifacts/shared-phone-host-${name}-${viewport.width}x${viewport.height}.png`,
@@ -239,9 +251,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await host.locator(".landing-mode label", { has: sharedMode }).click();
     assert.equal(await sharedMode.isChecked(), true, "Shared TV is selected");
     await openPlayOptions(host);
-    await host
-      .getByRole("button", { name: "CREATE ROOM", exact: true })
-      .click();
+    await host.getByRole("button", { name: "Host room", exact: true }).click();
     await host.waitForURL(/room=/);
     const invite = host.url(),
       code = new URL(invite).searchParams.get("room")!;
@@ -363,7 +373,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     releaseConnection();
     await guest.locator(".room-boot-note").waitFor({ state: "hidden" });
     await host
-      .locator(".room-riders")
+      .locator(".fui-room-players")
       .getByText("QR guest", { exact: true })
       .waitFor();
     await guest
@@ -394,7 +404,7 @@ for (const { name, kind } of BOTH_ENGINES) {
         "no rotate gate in the lobby",
       );
       const me = guest
-        .locator(".room-riders")
+        .locator(".fui-room-players")
         .getByText("QR guest", { exact: true });
       await me.scrollIntoViewIfNeeded();
       const rider = (await me.boundingBox())!;
@@ -407,10 +417,7 @@ for (const { name, kind } of BOTH_ENGINES) {
         `rider row must be on screen: ${JSON.stringify(rider)}`,
       );
       assert.equal(
-        await guest
-          .locator("button:visible")
-          .filter({ hasText: /^(ROOM|MENU|☰ MENU)$/ })
-          .count(),
+        await guest.locator(".fui-top-bar-toggle:visible").count(),
         1,
         "one menu button in the lobby",
       );
@@ -446,14 +453,19 @@ for (const { name, kind } of BOTH_ENGINES) {
       await display.locator(".shared-room-code").textContent(),
       code,
     );
-    await host.getByRole("button", { name: /^Add AI$/i, exact: true }).click();
+    await host
+      .getByRole("button", { name: /^Add AI$/i, exact: true })
+      .first()
+      .click();
     await host.getByRole("button", { name: /Remove AI/ }).waitFor();
     await host.screenshot({ path: `artifacts/shared-qr-${name}.png` });
     await readyRoom(host);
     await display.locator(".shared-lobby").waitFor({ state: "hidden" });
     await display.locator(".online-arena").waitFor({ state: "visible" });
     await display.waitForFunction(() =>
-      document.querySelector("canvas")?.dataset.renderer?.startsWith("phaser-"),
+      document
+        .querySelector<HTMLCanvasElement>("canvas.online-arena")
+        ?.dataset.renderer?.startsWith("phaser-"),
     );
     await guest.waitForFunction(() => {
       const states = Reflect.get(window, "__sharedStates") as {
@@ -559,10 +571,13 @@ for (const { name, kind } of BOTH_ENGINES) {
       .click();
     await qr(host);
     await qr(display);
+    await openTopMenu(host);
     await host.getByRole("button", { name: "ROOM", exact: true }).click();
     await host.getByRole("button", { name: "END ROOM", exact: true }).click();
     await openPlayOptions(host);
-    await host.getByRole("link", { name: /PLAY SOLO/ }).waitFor(); // #44: a joined phone must see the ended room without opening ☰ MENU — the thirds controller gives way to the ordinary header, status and MENU.
+    await host
+      .getByRole("button", { name: "Single player", exact: true })
+      .waitFor(); // #44: a joined phone must see the ended room without opening ☰ MENU — the thirds controller gives way to the ordinary header, status and MENU.
     const ended = guest.getByText(/room.*(ended|expired)/i).first();
     await ended.waitFor({ state: "visible" });
     const endedBox = await ended.boundingBox();

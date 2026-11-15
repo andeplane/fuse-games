@@ -1,4 +1,8 @@
 import { friendRoomUrl } from "fuse-ui/social";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { PORTAL_GAMES } from "fuse-ui/portal";
 import "fuse-ui/social.css";
 import { legendSrc } from "../client/legend-src.js";
@@ -13,7 +17,7 @@ import { createAccountPanel } from "./account-panel.js";
 import { createFriendsPanel } from "./friends-panel.js";
 import { isRiderAvatarId } from "../engine/avatar-id.js";
 import { validRiderName } from "../engine/rider-name.js";
-import { createTopMenuToggle } from "./top-menu-toggle.js";
+import { createTopBar } from "fuse-ui";
 import { requestedRoomSlot } from "fuse-ui";
 import {
   accountUsername,
@@ -112,6 +116,7 @@ import {
   createLobbyShell,
   createRoster,
 } from "fuse-ui";
+import "fuse-ui/results.css";
 import "./online.css";
 import "./top-menu.css";
 import { formatNetStats } from "./net-stats.js";
@@ -130,6 +135,7 @@ import {
   recapReady,
   type RemoveView,
   type SwitchView,
+  MAX_RIDERS,
 } from "./room-presenter.js";
 import { connectHint } from "./connect-hint.js";
 import { createRiderRoundControls } from "./round-controls.js";
@@ -155,7 +161,7 @@ const TRANSPORT_COPY = {
   linking: "Connected · linking riders",
   protocolChanged: "Game protocol changed — reload this page",
   roomEnded: "Room ended — return to menu to start again",
-  roomFull: "Room full (five players, five spectators and TV)",
+  roomFull: "Room full (six players, five spectators and TV)",
   hostAbsent: "the creator is not in the room yet",
 };
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
@@ -307,6 +313,14 @@ export async function startOnline(): Promise<void> {
   let latestWatchers: readonly { id: string; name: string }[] = [];
   /** A colour asked for in the join form, sent once the room has seated this rider; the fold decides whether it sticks. */
   let wantedColor: number | undefined;
+  /** This device's own seat while the room waits in its lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number; colorIndex: number } | undefined;
+  /**
+   * A move to another seat is a leave and a join, and a join takes the lowest free colour: the colour this rider wore
+   * is asked for again once the room shows it in another seat than the one it left. Whichever seat that is: of two
+   * quick clicks the room takes the first, and a refused move leaves the rider, and this, where they were.
+   */
+  let movedColor: { from: number; colorIndex: number } | undefined;
   /**
    * The name this device takes its seat under, without asking: its account's, the one it last played under on this
    * browser, or a plain one for a browser that has never played. None of them is a commitment — the room is where a
@@ -397,7 +411,7 @@ export async function startOnline(): Promise<void> {
       return sent;
     },
     accountUsername(),
-    // Solo is one rider and four AI on this device: there is no room to watch.
+    // Solo is one rider and five AI on this device: there is no room to watch.
     solo
       ? undefined
       : (playerName) => runtime.command({ type: "spectate", name: playerName }),
@@ -675,39 +689,7 @@ export async function startOnline(): Promise<void> {
   });
   const lobbyRiders = lobbyRoster.element;
   const lobbyCount = node("span", "Waiting for riders");
-  const inviteFriends = node("button", "INVITE FRIENDS", "room-invite-friends");
-  inviteFriends.type = "button";
-  inviteFriends.hidden = solo;
-  /** ADD FRIEND on each lobby row whose seat the service has matched to an account. */
-  const lobbyFriendButtons = new Map<
-    string,
-    { publicId: string; button: HTMLElement }
-  >();
-  const placeFriendButton = (
-    row: HTMLElement,
-    memberId: string,
-    buttons: Map<string, { publicId: string; button: HTMLElement }>,
-  ) => {
-    const publicId = roomFriends.publicIdOfMember(memberId);
-    const current = buttons.get(memberId);
-    if (!publicId || memberId === id) {
-      if (current) {
-        current.button.remove();
-        buttons.delete(memberId);
-      }
-      return;
-    }
-    if (current?.publicId === publicId && current.button.parentElement === row)
-      return;
-    current?.button.remove();
-    const button = roomFriends.friendButton(publicId);
-    // Before the row's × when it has one, so the remove button stays where it was.
-    const remove = row.querySelector(".room-remove");
-    if (remove) remove.before(button);
-    else row.append(button);
-    buttons.set(memberId, { publicId, button });
-  };
-  // The watching list: the rider row's height in neutral grey, no colour, no avatar and no READY, so the five seats stay
+  // The watching list: the rider row's height in neutral grey, no colour, no avatar and no READY, so the six seats stay
   // the thing being read. It lives inside the rider column (the lobby grid has one cell per column) and CSS `order` keeps it last.
   const watchers = createRoster({
     title: "WATCHING",
@@ -734,7 +716,7 @@ export async function startOnline(): Promise<void> {
   const watcherRemoves = new Map<string, HTMLButtonElement>();
   const lobbyShell = createLobbyShell({
     intro: [
-      node("p", "PHONE PARTY // 2–5 RIDERS", "room-eyebrow"),
+      node("p", "PHONE PARTY // 2–6 RIDERS", "room-eyebrow"),
       lobbyHeading,
       node(
         "p",
@@ -745,7 +727,7 @@ export async function startOnline(): Promise<void> {
     ],
     invite: qrCard,
     roster: lobbyRiders,
-    footer: [lobbyCount, inviteFriends],
+    footer: [lobbyCount],
     classes: {
       root: "shared-lobby room-lobby",
       intro: "room-lobby-copy",
@@ -809,10 +791,14 @@ export async function startOnline(): Promise<void> {
     settingsButton = node("button", "ROOM SETTINGS"),
     share = node("button", "TV VIEW"),
     addAI = node("button", "ADD AI");
+  // The same name wherever the button sits: "Settings" in the room's header, "Game settings" among the host's buttons.
+  settingsButton.setAttribute("aria-label", "Game settings");
   const readyButton = node("button", "READY");
   const primaryPlay = node("div", "", "room-primary-play");
   readyButton.type = "button";
-  readyButton.className = "room-ready-button";
+  // The room's main action, in the header's primary colour like every game's START.
+  readyButton.className = "room-ready-button fui-button-primary";
+  start.classList.add("fui-button-primary");
   readyButton.hidden = true;
   // Which side of the room this device is on, beside READY rather than at the end of its roster row: the two are the
   // same kind of choice — what this device is doing here — and a row's buttons read as things done to that rider.
@@ -1017,36 +1003,57 @@ export async function startOnline(): Promise<void> {
     }
     const { desktop, sideStandings: side } = screen;
     // Keep the same account control visible beside MENU during full-screen phone play.
-    const accountParent = screen.mobile.active ? app : topMenu;
+    const accountParent = topMenu;
     if (roomAccount.button.parentElement !== accountParent)
       accountParent.append(roomAccount.button);
     // Desktop play keeps the standings in a fixed column right of the arena (its width lives in online.css), so the game bar holds actions only.
-    const rosterParent = side ? app : desktop ? header : scoreboard;
+    const rosterParent = side ? app : desktop ? headerContext : scoreboard;
     if (roster.parentElement !== rosterParent) {
       if (side) app.append(roster);
-      else if (desktop) header.insertBefore(roster, topMenu);
+      else if (desktop) headerContext.append(roster);
       else scoreboard.append(roster);
     }
     const actionsParent = screen.lobbyCard
       ? lobbyFooter
       : desktop
-        ? header
+        ? headerContext
         : footer;
     if (hostControls.parentElement !== actionsParent) {
-      if (actionsParent === header) header.insertBefore(hostControls, topMenu);
-      else actionsParent.append(hostControls);
+      actionsParent.append(hostControls);
     }
     const aiParent = screen.lobbyCard
       ? sharedLobby.querySelector<HTMLElement>(".fui-room-join")
       : hostControls;
     if (aiParent && addAI.parentElement !== aiParent) aiParent.append(addAI);
-    const settingsParent = screen.lobbyCard
-      ? sharedLobby.querySelector<HTMLElement>(".fui-room-invitation")
-      : hostControls;
-    if (settingsParent && settingsButton.parentElement !== settingsParent)
-      settingsParent.append(settingsButton);
-    const noticeParent = desktop ? header : scoreboard;
-    if (notice.parentElement !== noticeParent) noticeParent.append(notice);
+    // In the room Settings is in its header, before the main action; in a match it is one of the host's buttons.
+    const roomActions = sharedLobby.querySelector<HTMLElement>(
+      ".fui-room-head .fui-page-actions",
+    );
+    const settingsParent = screen.lobbyCard ? roomActions : hostControls;
+    if (settingsParent && settingsButton.parentElement !== settingsParent) {
+      if (settingsParent === roomActions) roomActions.prepend(settingsButton);
+      else settingsParent.append(settingsButton);
+      settingsButton.textContent =
+        settingsParent === roomActions ? "Settings" : "Game settings";
+    }
+    // The connection's state: the line at the room's foot, and in the game bar once a match is on.
+    const statusParent = screen.lobbyCard
+      ? sharedLobby.querySelector<HTMLElement>(".fui-room-status")
+      : headerContext;
+    if (statusParent && status.parentElement !== statusParent) {
+      statusParent.prepend(status);
+      // RETRY belongs to the line it answers, wherever that line is.
+      status.after(statusAction);
+    }
+    // In the room the notice is the line under the seats, where every game's room says what it is waiting for.
+    const roomNotes =
+      sharedLobby.querySelector<HTMLElement>(".fui-room-actions");
+    const noticeParent =
+      screen.lobbyCard && roomNotes ? roomNotes : desktop ? header : scoreboard;
+    if (notice.parentElement !== noticeParent) {
+      if (noticeParent === roomNotes) roomNotes.prepend(notice);
+      else noticeParent.append(notice);
+    }
   };
   // The standings column starts under the game bar, whose height changes as its buttons wrap or hide; measured on change, never per snapshot.
   new ResizeObserver(() =>
@@ -1145,18 +1152,13 @@ export async function startOnline(): Promise<void> {
   const roomAccount = createPlayerAccountPanel(roomFriends.friendButton);
   roomAccount.button.classList.add("player-account");
   app.append(roomAccount.dialog, roomFriends.dialog, roomFriends.banner);
-  inviteFriends.onclick = roomFriends.open;
   const topMenu = node("nav", "", "game-top-menu");
   topMenu.setAttribute("aria-label", "Player menu");
-  const topRadio = node("button", "♫ RADIO"),
-    topMusic = node("button"),
-    topMute = node("button");
-  topRadio.type = topMusic.type = topMute.type = "button";
+  const topRadio = node("button", "♫ RADIO");
+  topRadio.type = "button";
   topRadio.onclick = () => radioDialog.open();
   topMenu.append(
     topRadio,
-    topMusic,
-    topMute,
     prefsButton,
     roomAccount.matchesButton,
     roomAccount.leaderboardButton,
@@ -1166,13 +1168,22 @@ export async function startOnline(): Promise<void> {
   header.append(topMenu);
   // One ☰ instead of two wrapped rows of buttons where the viewport is too short to spare them; top-menu.css decides
   // where that is, and the sheet it opens floats over the page so the lobby keeps its height either way.
-  const topMenuToggle = createTopMenuToggle(header, topMenu);
-  header.append(topMenuToggle.button);
   topMenu.append(results, menu, help);
+  createTopBar({
+    music: false,
+    element: header,
+    brand: title,
+    account: roomAccount.button,
+    gameId: GAME_ID,
+    sound: sharedAudio().master,
+  });
+  const headerContext = header.querySelector<HTMLElement>(
+    ".fui-top-bar-context",
+  )!;
+  const topBarDialog =
+    header.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
   for (const extra of [
     topRadio,
-    topMusic,
-    topMute,
     roomAccount.matchesButton,
     roomAccount.leaderboardButton,
     results,
@@ -1187,15 +1198,12 @@ export async function startOnline(): Promise<void> {
     "pagehide",
     () => {
       roomAccount.dispose();
-      topMenuToggle.dispose();
       window.removeEventListener("focus", refreshAccount);
       document.removeEventListener("visibilitychange", refreshAccount);
     },
     { once: true },
   );
   const audio = sharedAudio();
-  audio.bindMusicToggle(topMusic);
-  audio.bindMuteToggle(topMute);
   const radioDialog = createRadioDialog(dialogs, audio);
   radioToggle = radioDialog.toggle;
   // Device preferences: music, effects, radio, visual style and fullscreen are this device's own and change nothing shared, so
@@ -1309,7 +1317,7 @@ export async function startOnline(): Promise<void> {
       }
       id = peerId;
       isHost = host;
-      // A display has no account and solo has no room; a rider tells friends where it is, and can invite them.
+      // A display has no account and a solo run is not an online room; a rider tells friends where it is, and can invite them.
       if (!displayOnly && !solo)
         roomFriends.setRoom({ code, memberId: peerId, gameId: GAME_ID, token });
       joinForm.ready();
@@ -1418,6 +1426,7 @@ export async function startOnline(): Promise<void> {
         playerId: id,
         host: isHost,
         confirmedTick: runtime.confirmedTick(),
+        confirmedRoundFrame: runtime.confirmedFrame(),
         rules,
       });
       const roundReport =
@@ -1500,6 +1509,21 @@ export async function startOnline(): Promise<void> {
       // Seated at last: ask for the colour the join form chose, once. The join gave this rider the lowest free colour,
       // so it already has one; this is the preference on top, and a single attempt is right because the fold's answer
       // is final — a colour someone else holds stays theirs rather than being retried every frame.
+      ownSeat =
+        player && state.phase === "lobby" && !localPlayers
+          ? {
+              name: player.name,
+              slot: player.slot,
+              colorIndex: riderColorIndex(player.color),
+            }
+          : undefined;
+      if (!ownSeat) movedColor = undefined;
+      else if (movedColor && movedColor.from !== ownSeat.slot) {
+        const asked = movedColor.colorIndex;
+        movedColor = undefined;
+        if (ownSeat.colorIndex !== asked)
+          runtime.command({ type: "color", colorIndex: asked });
+      }
       if (player && wantedColor !== undefined) {
         const asked = wantedColor;
         wantedColor = undefined;
@@ -1629,15 +1653,6 @@ export async function startOnline(): Promise<void> {
           host: p.host,
         })),
       );
-      for (const p of view.lobby.riders) {
-        const row = lobbyRoster.row(p.id);
-        if (row) placeFriendButton(row, p.id, lobbyFriendButtons);
-      }
-      for (const [memberId, entry] of lobbyFriendButtons)
-        if (!view.lobby.riders.some((p) => p.id === memberId)) {
-          entry.button.remove();
-          lobbyFriendButtons.delete(memberId);
-        }
       showSwitch(switchButton, view.actions.switchSide);
       latestWatchers = view.lobby.watchers;
       setIfChanged(lobbyWatchers, "hidden", view.lobby.watchersHidden);
@@ -1899,7 +1914,7 @@ export async function startOnline(): Promise<void> {
       }
     },
   };
-  // Solo is the same runtime with no transport: one rider and four AI riders fold the log locally.
+  // Solo is the same runtime with no transport: one rider and five AI riders fold the log locally.
   const runtime = new RoomRuntime(
     code,
     settings,
@@ -2124,20 +2139,39 @@ export async function startOnline(): Promise<void> {
   settingsButton.onclick = () => openSettings();
   settingsButton.textContent = "Game settings";
   createRoomLayout({
+    // Seated already: any open seat is a move. The head goes along, and the colour is asked for again (`movedColor`).
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (!ownSeat) return;
+      const { name, colorIndex } = ownSeat;
+      if (runtime.command({ type: "join", name, slot }))
+        movedColor ??= { from: ownSeat.slot, colorIndex };
+    },
     primaryAction: primaryPlay,
     background: async (host) =>
       (await import("./menu-attract.js")).createAttract(host),
     element: sharedLobby,
     invite: qrCard,
     roster: lobbyRoster,
-    capacity: 5,
+    capacity: MAX_RIDERS,
     join: joinForm.element,
     addAI,
     settingsTrigger: settingsButton,
     onSettings: () => openSettings(),
     actions: [lobbyFooter],
+    // Back, the heading, Settings and READY across the room's top, as in every game's room.
+    actionsInHeader: true,
+    heading: solo ? "Solo game" : "Room",
+    // A solo run is a room on one device: one column, no invitation.
+    compact: solo,
+    // The connection's state is the line at the room's foot; `placeElements` lends it to the game bar in a match.
+    status,
+    // ADD FRIEND on each rider's row and INVITE FRIENDS under Copy link are the shared room's.
+    friends: roomFriends,
   });
-  sharedLobby.querySelector(".fui-room-invitation")!.append(settingsButton);
+  // The layout seats each rider's row in a slot and hides the roster they came from, so the watching list
+  // cannot stay nested in it: it goes under the slots, where it is still read after the seats.
+  sharedLobby.querySelector(".fui-room-open-slots")!.after(lobbyWatchers);
   sharedLobby.querySelector(".fui-room-join")!.append(addAI);
   addAI.textContent = "Add AI";
   // Ctrl+P (⌘P on a Mac) goes to the power-ups page instead of the browser's print dialog (#168). The key is only taken when it will act:
@@ -2158,8 +2192,10 @@ export async function startOnline(): Promise<void> {
     )
       return;
     if (
+      playtestInputBlocked(document) ||
       dialogs.current() !== undefined ||
       roomAccount.dialog.open ||
+      topBarDialog.open ||
       roomEnded ||
       !(manages || solo)
     )
@@ -2225,16 +2261,18 @@ export async function startOnline(): Promise<void> {
           target === button || Boolean(target && button.contains(target)),
       );
     },
+    () => !playtestInputBlocked(document),
   );
   const keyboard = new ControllerKeyboardBindings(
     inputState,
     () =>
       joined &&
+      !playtestInputBlocked(document) &&
       !localPlayers &&
       !roomEnded &&
       !mobileLayout.blocked() &&
       dialogs.current() === undefined &&
-      !roomAccount.dialog.open &&
+      !(roomAccount.dialog.open || topBarDialog.open) &&
       !document.hidden &&
       !leftButton.disabled &&
       !Boolean(
@@ -2274,10 +2312,11 @@ export async function startOnline(): Promise<void> {
         state,
         () =>
           joined &&
+          !playtestInputBlocked(document) &&
           !roomEnded &&
           !mobileLayout.blocked() &&
           dialogs.current() === undefined &&
-          !roomAccount.dialog.open &&
+          !(roomAccount.dialog.open || topBarDialog.open) &&
           !document.hidden &&
           !Boolean(
             document.activeElement?.closest(
@@ -2313,6 +2352,9 @@ export async function startOnline(): Promise<void> {
     ];
   });
   const gamepadStatus = node("p", "", "local-gamepads-status");
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: clearControls,
+  });
   gamepadStatus.setAttribute("role", "status");
   gamepadStatus.hidden = true;
   if (localPlayers) app.append(gamepadStatus);
@@ -2333,7 +2375,7 @@ export async function startOnline(): Promise<void> {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) clearControls();
   });
-  for (const modal of [...dialogElements, roomAccount.dialog])
+  for (const modal of [...dialogElements, roomAccount.dialog, topBarDialog])
     modal.addEventListener("focusin", clearControls);
   document.addEventListener("focusin", () => {
     if (
@@ -2348,7 +2390,7 @@ export async function startOnline(): Promise<void> {
     if (open !== undefined) clearControls();
   });
   new MutationObserver(() => {
-    if (roomAccount.dialog.open) clearControls();
+    if (roomAccount.dialog.open || topBarDialog.open) clearControls();
   }).observe(roomAccount.dialog, {
     attributes: true,
     attributeFilter: ["open"],
@@ -2460,11 +2502,12 @@ export async function startOnline(): Promise<void> {
     if (gamepads.length) {
       const { pads, error } = readGamepads(navigator);
       const allowed =
+        !playtestInputBlocked(document) &&
         gamepadFocused &&
         !document.hidden &&
         !roomEnded &&
         dialogs.current() === undefined &&
-        !roomAccount.dialog.open &&
+        !(roomAccount.dialog.open || topBarDialog.open) &&
         !Boolean(
           document.activeElement?.closest(
             'input,textarea,select,[contenteditable]:not([contenteditable="false"])',
@@ -2555,7 +2598,10 @@ export async function startOnline(): Promise<void> {
   requestAnimationFrame(frame);
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => presentation.destroy(),
+    destroy: () => {
+      stopPlaytestInput();
+      presentation.destroy();
+    },
     reload: () => location.reload(),
   });
 }

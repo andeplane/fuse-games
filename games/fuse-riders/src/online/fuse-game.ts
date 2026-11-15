@@ -42,6 +42,7 @@ import {
 } from "../engine/room-settings.js";
 import { stepsPerTick } from "../engine/game.js";
 import { MAX_STEPS_PER_TICK, stepsCover } from "../engine/tick-driver.js";
+import { MAX_PLAYERS } from "../engine/tuning.js";
 import { toView, type GameEvent, type WorldView } from "../engine/view.js";
 import type { PlayerState } from "../engine/state.js";
 import { isAvatarId, isRiderAvatarId } from "../engine/avatar-id.js";
@@ -298,7 +299,7 @@ export const fuseGame: RollbackGame<
   settings: (state) => state.settings,
   matchSettings: (state) => state.game.settings,
   seating: {
-    capacity: 5,
+    capacity: MAX_PLAYERS,
     maxWatchers: MAX_SPECTATORS,
     seatName: seatRiderName,
     /**
@@ -329,10 +330,11 @@ export const fuseGame: RollbackGame<
       return `${BOT_ID_PREFIX}${number}`;
     },
     botName: (slot) => botDisplayName(BOT_NAMES[slot]!),
-    solo: { name: "You", bots: 4 },
+    solo: { name: "You", bots: MAX_PLAYERS - 1 },
   },
   text: {
-    solo: "Solo · you and four AI riders",
+    // No number: the room lets a solo rider drop and add rivals.
+    solo: "Solo · you against the AI riders",
     connected: "Connected · direct game link",
     preparing: "Connected · preparing the room",
     waitingForGame: "Connected · waiting for the game",
@@ -349,8 +351,8 @@ export const fuseGame: RollbackGame<
     matchRunning: "A match is already running",
     needTwo: "Two riders are needed to start",
     rematchLater: "Rematch is available after the match ends",
-    full: "Room is full (5 players)",
-    fullWithBots: "Room is full (5 players including AI)",
+    full: `Room is full (${MAX_PLAYERS} players)`,
+    fullWithBots: `Room is full (${MAX_PLAYERS} players including AI)`,
     botNotFound: "AI rider not found",
     botBetweenRounds: "Remove AI between rounds or return to menu",
     kickGone: "That rider has already left",

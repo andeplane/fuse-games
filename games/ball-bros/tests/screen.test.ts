@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseHTML } from "linkedom";
+import { createTopBar } from "fuse-ui";
 import type { Callbacks, Frame, RoomCommand } from "fuse-netcode";
 import type { PlayFrame } from "fuse-ui/play-metrics";
 import {
@@ -292,6 +293,7 @@ function screen(online = true, display = false, shared = false, fail = "") {
       return true;
     },
     frameTiming: () => ({ newer: current, tick: current.tick, lead: 0 }),
+    confirmedFrame: () => current,
   };
   const options: ScreenOptions = {
     observePlay: (observed) => metrics.push(observed),
@@ -307,6 +309,15 @@ function screen(online = true, display = false, shared = false, fail = "") {
     store,
     settings: { display: shared, mapId: "classic" },
     qr: async () => "data:image/png;base64,test",
+    friends: {
+      publicIdOfMember: (id) => `account-${id}`,
+      friendButton(publicId) {
+        const add = document.createElement("button");
+        add.className = "friend";
+        add.textContent = `ADD ${publicId}`;
+        return add;
+      },
+    },
     events,
     audio: {
       muted: true,
@@ -349,6 +360,15 @@ function screen(online = true, display = false, shared = false, fail = "") {
     },
   };
   const destroy = mountGame(root, options);
+  createTopBar({
+    element: root.querySelector<HTMLElement>("header")!,
+    sound: {
+      enabled: () => !options.audio.muted,
+      setEnabled: (on) => {
+        options.audio.muted = !on;
+      },
+    },
+  });
   return {
     root,
     document,
@@ -475,33 +495,57 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   assert.deepEqual(s.inputs.at(-1), [0, 1, false]);
   s.events.dispatchEvent(new Event("blur"));
   assert.deepEqual(s.inputs.at(-1), [0, 0, false]);
-  s.key("Space", "keydown", button(s.root, "SOUND OFF"));
+  const sound = s.root.querySelector<HTMLButtonElement>(".fui-top-bar-sound")!;
+  assert.equal(sound.getAttribute("aria-label"), "Sound off");
+  s.key("Space", "keydown", sound);
   assert.deepEqual(s.inputs.at(-1), [0, 0, false]);
-  button(s.root, "SOUND OFF").click();
-  assert.ok(button(s.root, "SOUND ON"));
+  sound.click();
+  assert.equal(sound.getAttribute("aria-label"), "Sound on");
   s.key("Space");
   assert.deepEqual(s.inputs.at(-1), [0, 0, true]);
   s.key("Space", "keyup");
   const result = frame("over");
   result.arena!.bases[1]!.saves = 3;
   s.update(result);
-  assert.match(
-    s.root.querySelector(".overlay p")!.textContent!,
-    /Your saves: 3/,
+  const results = s.root.querySelector<HTMLElement>(".fui-results")!;
+  assert.equal(results.hidden, false);
+  assert.equal(s.root.querySelector<HTMLElement>(".overlay")!.hidden, true);
+  assert.equal(
+    results.querySelector(".fui-results-victory h2")!.textContent,
+    "BOB WINS",
   );
-  button(s.root, "PLAY AGAIN").click();
+  // The winner first, tagged as this device's, with their saves; the other human gets the friend button.
+  const rows = [...results.querySelectorAll("tbody tr")];
+  assert.deepEqual(
+    [...rows[0]!.querySelectorAll("td")].map((cell) => cell.textContent),
+    ["01", "3", "0", "48"],
+  );
+  assert.ok(rows[0]!.classList.contains("is-you"));
+  assert.deepEqual(
+    rows.map((row) => row.querySelector(".friend")?.textContent),
+    [undefined, "ADD account-a"],
+  );
+  s.update(result);
+  assert.equal(results.querySelectorAll("tbody tr")[0], rows[0]);
+  results
+    .querySelector<HTMLButtonElement>('button[data-action="rematch"]')!
+    .click();
   await flush();
   assert.deepEqual(s.commands.at(-1), { type: "action", action: "rematch" });
-  button(s.root, "BACK TO LOBBY").click();
+  button(s.root, "Back to lobby").click();
   assert.deepEqual(s.commands.at(-1), { type: "action", action: "lobby" });
   s.update(frame("running", "rematch"));
-  assert.equal(s.root.querySelector<HTMLElement>(".overlay")!.hidden, true);
+  assert.equal(results.hidden, true);
+  s.update(result);
+  button(s.root, "Leave").click();
+  assert.equal(s.counters().homes, 1);
+  s.update(frame("running", "rematch"));
   s.status("Link failed: retry");
   assert.match(s.root.querySelector(".status")!.textContent!, /Link failed/);
   button(s.root, "RECONNECT").click();
   button(s.root, "LEAVE").click();
   assert.equal(s.counters().retries, 1);
-  assert.equal(s.counters().homes, 1);
+  assert.equal(s.counters().homes, 2);
   s.ended();
   assert.match(s.root.querySelector(".status")!.textContent!, /Room ended/);
   s.kicked();
@@ -560,7 +604,14 @@ test("shared phones show a controller, displays never play, and eliminated playe
   );
   assert.ok(tv.inputs.every((i) => i[0] === 0 && i[1] === 0));
   tv.update(frame("over"));
-  assert.equal(button(tv.root, "PLAY AGAIN").hidden, true);
+  // The TV shows the result and waits for the host: it has no next step of its own.
+  const shown = tv.root.querySelector<HTMLElement>(".fui-results")!;
+  assert.equal(shown.hidden, false);
+  assert.equal(shown.querySelector("button[data-action]"), null);
+  assert.equal(
+    shown.querySelector(".fui-results-status")!.textContent,
+    "Waiting for the host",
+  );
   tv.destroy();
 });
 

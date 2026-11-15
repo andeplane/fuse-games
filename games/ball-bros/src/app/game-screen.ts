@@ -1,10 +1,20 @@
-import { elementsFor } from "fuse-ui";
+import { createResultsScreen, elementsFor } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { createAppPortal } from "fuse-ui/portal";
-import type { PlayFrame } from "fuse-ui/play-metrics";
+import { observeConfirmedPlay, type PlayObserver } from "fuse-ui/play-metrics";
 import { playFrame } from "./play-metrics.js";
 import type { BallRuntime } from "../online/runtime.js";
 import type { ArenaRenderer } from "../render/arena.js";
-import type { Callbacks } from "fuse-netcode";
+import {
+  createLeadClock,
+  ticksAhead,
+  type Callbacks,
+  type FrameTiming,
+} from "fuse-netcode";
+import { createSmoother, forward, forwardInputs } from "./forward.js";
 import type { RoomView, Settings } from "../online/game.js";
 import type { Impact } from "../engine/view.js";
 import { colorCss, interpolate } from "../render/present.js";
@@ -13,7 +23,8 @@ import { view } from "../engine/view.js";
 import { createArena } from "../engine/state.js";
 import { Controls, keyboardButton, gameplayKey } from "./controls.js";
 import type { Audio } from "./audio.js";
-import { present } from "./presenter.js";
+import { present, type Model } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { roomPanel } from "./room-panel.js";
 import { roomModel } from "./room-model.js";
 import { NAME_KEY, roomFailure, type Store } from "./session.js";
@@ -28,13 +39,16 @@ export type Client = Pick<
   | "input"
   | "command"
   | "frameTiming"
+  | "confirmedFrame"
   | "self"
   | "canManage"
->;
+> &
+  // Optional: a client without it is drawn a tick behind the clock, blended.
+  Partial<Pick<BallRuntime, "lead">>;
 export interface ScreenOptions {
   base?: string;
   search?: string;
-  observePlay?(frame: PlayFrame): void;
+  observePlay?: PlayObserver;
   online?: {
     code: string;
     display: boolean;
@@ -47,6 +61,11 @@ export interface ScreenOptions {
   qr(link: string): Promise<string>;
   audio: Pick<Audio, "muted" | "unlock" | "play" | "destroy">;
   radio?: Radio;
+  /** The results screen's friend buttons, in a room. */
+  friends?: {
+    publicIdOfMember(memberId: string): string | undefined;
+    friendButton(publicId: string): HTMLElement;
+  };
   renderer(parent: HTMLElement): ArenaRenderer;
   runtime(callbacks: Callbacks<RoomView, Impact, Settings>): Client;
   now(): number;
@@ -61,28 +80,21 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     el = elementsFor(document);
   const abort = new AbortController(),
     signal = abort.signal;
+  const query = new URLSearchParams(options.search ?? "");
+  /** `?lead=off` draws the old way, a tick behind the clock and blended, to compare the feel against. */
+  const drawAhead = query.get("lead") !== "off",
+    /** For latency measurements: `?probe` publishes where this device's paddle was last drawn. */
+    probe = query.has("probe"),
+    smoother = createSmoother(),
+    leadClock = createLeadClock();
   const audio = options.audio;
   const top = el("header", "", "topbar"),
-    home = el("a", "← FUSE ARCADE", "back");
+    home = el("a", "All games", "back");
   home.href = "../";
   const badge = el(
     "span",
     options.online ? `ROOM ${options.online.code}` : "SOLO + 4 BOTS",
     "eyebrow",
-  );
-  const sound = el(
-    "button",
-    audio.muted ? "SOUND OFF" : "SOUND ON",
-    "quiet-button",
-  );
-  sound.addEventListener(
-    "click",
-    () => {
-      audio.muted = !audio.muted;
-      audio.unlock();
-      sound.textContent = audio.muted ? "SOUND OFF" : "SOUND ON";
-    },
-    { signal },
   );
   top.append(
     createAppPortal({
@@ -93,7 +105,6 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     }).element,
     home,
     badge,
-    sound,
   );
   if (options.radio) top.append(options.radio.element);
   const retry = el("button", "RECONNECT", "quiet-button");
@@ -103,12 +114,13 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     runtime?.stop();
     options.retry();
   };
-  const leave = el("button", "LEAVE", "quiet-button");
-  leave.onclick = () => {
+  const exit = () => {
     cancel();
     runtime?.stop();
     options.home();
   };
+  const leave = el("button", "LEAVE", "quiet-button");
+  leave.onclick = exit;
   top.append(retry, leave);
   const heading = el("section", "", "heading");
   heading.append(
@@ -213,11 +225,55 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     root.insertBefore(status, heading);
     status.classList.add("room-status");
   }
-  const returnLobby = el("button", "BACK TO LOBBY", "quiet-button");
-  returnLobby.hidden = true;
-  returnLobby.onclick = () =>
-    runtime?.command({ type: "action", action: "lobby" });
-  overlay.append(returnLobby);
+  // The result: the shared results screen over the page, on a phone controller and the TV too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the top bar: whoever is not the host still has a way out.
+    onBack: exit,
+    backText: "Leave",
+    onAction: (id) => {
+      if (id === "rematch") void begin();
+      else runtime?.command({ type: "action", action: "lobby" });
+    },
+  });
+  root.append(results.element);
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  function showResult(result: Model["result"]): void {
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+      return;
+    }
+    const friends = result.solo ? undefined : options.friends;
+    // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+    const shown = JSON.stringify([
+      { ...result, host: false, waiting: "" },
+      result.rows.map((row) => friends?.publicIdOfMember(row.id)),
+    ]);
+    const first = !shownResult;
+    if (shown !== shownResult) {
+      shownResult = shown;
+      results.show(
+        resultReport(result, {
+          color: colorCss,
+          ...(friends
+            ? {
+                friend: (id: string) => {
+                  const publicId = friends.publicIdOfMember(id);
+                  return publicId ? friends.friendButton(publicId) : undefined;
+                },
+              }
+            : {}),
+        }),
+      );
+    }
+    results.update(resultBar(result));
+    if (first)
+      results.actions
+        .querySelector<HTMLButtonElement>("button.is-primary")
+        ?.focus();
+  }
   const identity = el("p", "", "controller-identity");
   root.insertBefore(identity, controlsRow);
   const powers = el("p", "", "power-status");
@@ -239,6 +295,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     button.addEventListener(
       "pointerdown",
       (e) => {
+        if (playtestInputBlocked(document)) return;
         e.preventDefault();
         button.setPointerCapture(e.pointerId);
         controls.press(`pointer-${e.pointerId}`, action);
@@ -277,7 +334,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         ),
         !!target?.closest("button, a"),
       );
-      if (!action || e.repeat || !playing) return;
+      if (!action || e.repeat || !playing || playtestInputBlocked(document))
+        return;
       e.preventDefault();
       controls.press(e.code, action);
     },
@@ -292,6 +350,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     },
     { signal },
   );
+  const stopPlaytestInput = registerPlaytestInput(document, { cancel });
   options.events.addEventListener("blur", cancel, { signal });
   document.addEventListener(
     "visibilitychange",
@@ -340,10 +399,10 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       identity.style.color = m.slot === undefined ? "" : colorCss(m.slot);
       identity.hidden = m.lobby || options.online.display;
       restart.hidden = true;
-      start.hidden = !m.manage;
-      returnLobby.hidden = !m.over || !m.manage;
-      overlay.hidden = !m.over;
+      // In a room the overlay is only the arena's retry; a result is the results screen's.
+      overlay.hidden = true;
       if (m.lobby) {
+        showResult(undefined);
         powers.textContent = "";
         powers.hidden = true;
         previousHud = "";
@@ -354,7 +413,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     const model = present(
       v,
       options.online ? (runtime?.self ?? "") : undefined,
+      !!runtime?.canManage && !options.online?.display,
     );
+    showResult(model?.result);
     if (!model) return;
     const key = JSON.stringify(model);
     if (key === previousHud) return;
@@ -375,13 +436,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     powers.textContent = model.effects;
     powers.hidden = !model.effects;
     toast.textContent = model.toast;
-    if (model.over) {
+    if (model.result) {
       playing = false;
       cancel();
-      overlay.hidden = false;
-      overlayTitle.textContent = model.title;
-      overlayText.textContent = model.result;
-      start.textContent = "PLAY AGAIN";
       status.textContent = "Round complete";
     }
   }
@@ -418,19 +475,24 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         state: (f, settings) => {
           activeSettings = settings;
           shared = settings.display;
-          options.observePlay?.(
-            playFrame(
+          if (options.observePlay)
+            observeConfirmedPlay(
+              options.observePlay,
               f,
-              runtime?.self ?? "",
-              !options.online
-                ? "solo"
-                : options.online.display
-                  ? "display"
-                  : shared
-                    ? "controller"
-                    : "online",
-            ),
-          );
+              () => runtime?.confirmedFrame(),
+              (f) =>
+                playFrame(
+                  f,
+                  runtime?.self ?? "",
+                  !options.online
+                    ? "solo"
+                    : options.online.display
+                      ? "display"
+                      : shared
+                        ? "controller"
+                        : "online",
+                ),
+            );
           update(f);
         },
         event: (e) => {
@@ -455,6 +517,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     } catch (error) {
       graphicsFailed = true;
       playing = false;
+      // The retry is on the overlay, under the results screen.
+      showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
       if (panel) panel.element.hidden = true;
@@ -490,6 +554,32 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     ),
   );
   toast.textContent = "";
+  /**
+   * What to draw now: the room's newest arena played forward to the clock when the newest frame is that arena,
+   * otherwise the two newest frames blended a tick behind it.
+   */
+  function picture(timing: FrameTiming<RoomView>, now: number): BallView {
+    const lead = drawAhead ? runtime?.lead?.() : undefined;
+    if (!lead || lead.tick !== timing.newer.tick)
+      return interpolate(timing.older, timing.newer, timing.tick);
+    const ahead = leadClock(ticksAhead(timing), timing.newer.logTick, now),
+      me = runtime?.self ?? "";
+    return {
+      ...timing.newer,
+      arena: smoother.apply(
+        forward(
+          lead.arena,
+          ahead,
+          forwardInputs(lead.connected, me, lead.control),
+        ),
+        timing.revision ?? 0,
+        lead.arena,
+        lead.matchId,
+        now,
+        me,
+      ),
+    };
+  }
   function paint(now: number): void {
     const timing = runtime?.frameTiming();
     try {
@@ -498,12 +588,20 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         !document.hidden &&
         timing &&
         !root.classList.contains("controller-mode")
-      )
-        renderer.paint(
-          interpolate(timing.older, timing.newer, timing.tick),
-          now,
-        );
-      else if (
+      ) {
+        const drawn = picture(timing, now);
+        if (probe) {
+          const mine = drawn.arena?.bases.find(
+            (base) => base.id === runtime?.self,
+          );
+          Reflect.set(root.ownerDocument.defaultView ?? {}, "__ballBrosProbe", {
+            at: options.now(),
+            angle: mine?.angle,
+            radius: mine?.radius,
+          });
+        }
+        renderer.paint(drawn, now);
+      } else if (
         !graphicsFailed &&
         !document.hidden &&
         latest &&
@@ -516,6 +614,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       runtime?.stop();
       runtime = undefined;
       playing = false;
+      showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
       if (panel) panel.element.hidden = true;
@@ -530,6 +629,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   void begin();
   return () => {
     stopped = true;
+    stopPlaytestInput();
     cancel();
     runtime?.stop();
     options.cancelFrame(frame);

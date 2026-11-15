@@ -6,7 +6,7 @@ import { type RoomRuntime } from "../src/online/room-runtime.js";
 import { defaultRoomSettings } from "../src/engine/room-settings.js";
 import { MAX_SPECTATORS, actingCreator } from "../src/engine/apply-tick.js";
 import { MAX_PLAYERS } from "../src/engine/game.js";
-import { ROOM_LIMITS } from "../../../service/room-limits.js";
+import { roomSockets } from "../../../service/room-limits.js";
 
 // The classic arena: these rooms are driven by idle riders, and scenery would end their rounds before the membership
 // behaviour under test had played out.
@@ -48,9 +48,68 @@ const world = (runtime: RoomRuntime) => runtime.sync.world!;
 const watching = (net: FakeNetwork, id: string) =>
   (net.frame(id)?.spectators ?? []).map((seat) => seat.name);
 
-test("the room service admits every member the game can list: five riders, five watchers and a display", () => {
+test("a sixth rider takes the last seat on every replica, and a seventh is turned away and may watch instead", () => {
+  const { net, join } = room();
+  const riders = (id: string) => net.frame(id)!.players;
+  const host = join(HOST, "Host");
+  net.step(200);
+  const guests = ["b-rider", "c-rider", "d-rider", "e-rider", "f-rider"];
+  for (const [index, id] of guests.entries()) join(id, `Rider ${index + 2}`);
+  net.step(2500);
+  for (const id of [HOST, ...guests]) {
+    assert.equal(riders(id).length, 6, `${id} seats six riders`);
+    assert.deepEqual(
+      riders(id).map((rider) => rider.slot),
+      [0, 1, 2, 3, 4, 5],
+      `${id} fills seats one to six`,
+    );
+    assert.equal(
+      new Set(riders(id).map((rider) => rider.color)).size,
+      6,
+      `${id} gives every rider its own colour`,
+    );
+  }
+  assert.equal(riders(HOST)[5]!.name, "Rider 6");
+
+  const seventh = join("g-rider", "Rider 7");
+  net.step(2500);
+  for (const id of [HOST, ...guests, "g-rider"]) {
+    assert.equal(riders(id).length, 6, `${id} still seats six`);
+    assert.equal(
+      riders(id).some((rider) => rider.name === "Rider 7"),
+      false,
+      `${id} gave the seventh no seat`,
+    );
+  }
+  seventh.command({ type: "spectate", name: "Rider 7" });
+  net.step(1500);
+  for (const id of [HOST, "f-rider", "g-rider"])
+    assert.deepEqual(watching(net, id), ["Rider 7"], `${id} lists the watcher`);
+  assert.equal(riders(HOST).length, 6, "and the seats are untouched");
+
+  // And the six play: a round is placed and scored for six on every replica, with no divergence.
+  assert.equal(host.command({ type: "action", action: "start" }), true);
+  const scored = () => {
+    const frame = net.frame(HOST)!;
+    return frame.round > 1 || frame.phase === "roundOver";
+  };
+  for (let elapsed = 0; elapsed < 120_000 && !scored(); elapsed += 500)
+    net.step(500);
+  assert.ok(scored(), "the first round of six ended");
+  net.step(1000);
+  const points = (id: string) =>
+    riders(id)
+      .map((rider) => rider.matchScoreUnits)
+      .join(",");
+  for (const id of [...guests, "g-rider"])
+    assert.equal(points(id), points(HOST), `${id} scored the round alike`);
+  for (const [id, runtime] of net.runtimes)
+    assert.equal(runtime.metrics().mismatches, 0, `${id} never diverged`);
+});
+
+test("the room service admits every member the game can list: six riders, five watchers and a display", () => {
   assert.equal(
-    ROOM_LIMITS.maxGuests + 1,
+    roomSockets("fuse-riders"),
     MAX_PLAYERS + MAX_SPECTATORS + 1,
     "the creator plus its guests is the whole roster plus the TV",
   );

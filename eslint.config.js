@@ -20,6 +20,9 @@ export default defineConfig(
       "public/**",
       // Nested agent worktrees are whole checkouts of this repository; each lints itself.
       ".claude/**",
+      // Generated level table (5 MiB): re-run scripts/elasto-fuse-levels.ts rather than linting it.
+      "games/elasto-fuse/src/engine/levels-data.ts",
+      "games/fusemania/src/engine/songs-data.ts", // Generated step charts: re-run scripts/fusemania-charts.ts.
     ],
   },
   { linterOptions: { reportUnusedDisableDirectives: "error" } },
@@ -28,9 +31,13 @@ export default defineConfig(
     files: [
       "service/**/*.ts",
       "site/**/*.ts",
+      "dev/**/*.ts",
       "tests/**/*.ts",
       "scripts/**/*.ts",
       "packages/*/src/**/*.ts",
+      "packages/fuseos/src/**/*.tsx",
+      "packages/fuseos/vitest.config.ts",
+      "packages/fuseos/vitest.setup.ts",
       "packages/*/tests/**/*.ts",
       "games/*/src/**/*.ts",
       "games/*/tests/**/*.ts",

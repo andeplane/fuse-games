@@ -46,7 +46,7 @@ import {
 } from "../src/online/game.js";
 import { matchResult } from "../src/online/result.js";
 import { validFuseballField } from "../src/platform.js";
-import { present } from "../src/app/presenter.js";
+import { MAP_ORDER, present } from "../src/app/presenter.js";
 import { MIN_RIDER_CSS, cameraFor } from "../src/render/scene.js";
 import { blend } from "../src/render/interpolate.js";
 import { cues } from "../src/render/effects.js";
@@ -558,8 +558,18 @@ test("a team result places each side as one, and the service's field check accep
     });
   assert.equal(mine.result?.title, "YOU WIN!");
   assert.equal(theirs.result?.title, "CYAN WINS");
-  assert.equal(mine.result?.lines[0], "Cyan 3 – 0 Magenta");
-  assert.equal(mine.result?.lines.length, 7);
+  assert.equal(mine.result?.score, "Cyan 3 – 0 Magenta");
+  assert.deepEqual(
+    mine.result?.rows.map((row) => [row.teamName, row.place]),
+    [
+      ["Cyan", 1],
+      ["Cyan", 1],
+      ["Cyan", 1],
+      ["Magenta", 2],
+      ["Magenta", 2],
+      ["Magenta", 2],
+    ],
+  );
   assert.equal(mine.names, undefined, "the banner names the colour");
 });
 
@@ -609,7 +619,7 @@ test("the lobby offers the modes, the mode's arenas and a change of sides", () =
   assert.equal(duel.lobby.canSwitch, false, "a duel has no sides to change");
   assert.deepEqual(
     duel.lobby.maps.map((map) => map.id),
-    [...MAP_IDS, "random"],
+    [...MAP_ORDER],
   );
 });
 

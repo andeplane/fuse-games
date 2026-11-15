@@ -319,11 +319,14 @@ try {
         await page.locator(".account-match-open").first().click();
         await page.locator(".match-recap-report").waitFor();
         assert.match(
-          await page.locator(".recap-standings").innerText(),
+          await page.locator(".fui-results-standings").innerText(),
           /YOU/,
           "your seat is marked in an opened match",
         );
-        assert.equal(await page.locator(".recap-details").isVisible(), true);
+        assert.equal(
+          await page.locator(".fui-results-details").isVisible(),
+          true,
+        );
         assert.equal(
           await page
             .locator(".stats-dialog .dialog-body")

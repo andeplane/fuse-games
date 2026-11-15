@@ -1,3 +1,4 @@
+import { openPlayOptions } from "./lib/main-menu.js";
 import { launchSelected } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -26,7 +27,9 @@ try {
   });
   await page.goto(`${base}/fuse-birds/?mute`);
   assert.equal(
-    await page.locator(".birds-top > :first-child").getAttribute("class"),
+    await page
+      .locator(".birds-top .fui-top-bar-left > :first-child")
+      .getAttribute("class"),
     "fui-portal",
   );
   await page.getByRole("button", { name: "Fuse games", exact: true }).click();
@@ -38,17 +41,25 @@ try {
   );
   assert.ok((await page.locator(".fui-portal-game").count()) > 1);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "FRIENDS", exact: true }).click();
-  const friends = page.locator("dialog[open]");
+  // Account and friends sit in the header's game menu, which closes as their own dialog opens.
+  const gameMenu = page.locator(".fui-top-bar-menu");
+  const openGameMenu = () =>
+    page.getByRole("button", { name: "Open game menu", exact: true }).click();
+  await openGameMenu();
+  await gameMenu.getByRole("button", { name: "FRIENDS", exact: true }).click();
+  const friends = page.locator("dialog[open]:not(.fui-top-bar-menu)");
   await friends.getByRole("button", { name: "SIGN IN", exact: true }).waitFor();
   await page.keyboard.press("Escape");
+  await openPlayOptions(page);
   await page
-    .getByRole("button", { name: "1 PLAYER PRACTICE", exact: true })
+    .getByRole("button", { name: "Single player", exact: true })
     .click();
   await page.locator('canvas[data-ready="true"]').waitFor({ timeout: 60_000 });
   assert.ok(page.url().includes("practice=1"));
   assert.equal(
-    await page.locator(".birds-top > :first-child").getAttribute("class"),
+    await page
+      .locator(".birds-top .fui-top-bar-left > :first-child")
+      .getAttribute("class"),
     "fui-portal",
   );
   assert.equal(await page.locator(".birds-player").count(), 1);
@@ -57,11 +68,21 @@ try {
   const canvas = page.locator("canvas");
   // An ordinary modal must own keyboard input even when the battlefield has an aim queued.
   for (const name of ["FRIENDS", "SIGN IN"]) {
-    await page.locator(".birds-menu summary").click();
     await canvas.focus();
     await page.keyboard.press("i");
-    await page.getByRole("button", { name, exact: true }).click();
-    const modal = page.locator("dialog[open]");
+    if (name === "SIGN IN") {
+      // The header shows the account button itself; the menu keeps the rest.
+      await page.locator(".fui-top-bar-account").click();
+    } else {
+      await openGameMenu();
+      const birdsMenu = gameMenu.locator(".birds-menu");
+      if (
+        !(await birdsMenu.evaluate((menu) => (menu as HTMLDetailsElement).open))
+      )
+        await birdsMenu.locator("summary").click();
+      await gameMenu.getByRole("button", { name, exact: true }).click();
+    }
+    const modal = page.locator("dialog[open]:not(.fui-top-bar-menu)");
     await modal.waitFor();
     if (name === "SIGN IN")
       await modal.getByRole("button", { name: "MATCHES", exact: true }).click();
@@ -99,7 +120,6 @@ try {
       "1",
       "opening a modal clears queued aim rather than firing it after close",
     );
-    await page.locator(".birds-menu summary").click();
   }
   for (const [weapon, turn] of [
     ["Pebble, unlimited ammunition", 2],

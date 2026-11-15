@@ -4,7 +4,7 @@ import { sortedPlayers, type GameState } from "./state.js";
 import { type HasEffects, speedMultiplier } from "./effects.js";
 
 export const TICK_HZ = 20;
-export const MAX_PLAYERS = 5;
+export const MAX_PLAYERS = 6;
 export const MIN_PLAYERS = 2;
 
 export const ARENA_WIDTH = 1600;
@@ -16,7 +16,7 @@ export const INITIAL_BOUNDARY_INSET = 20;
  * share a trail colour and nobody has to guess whose line they just crossed.
  *
  * The first five are the seat colours every earlier room wore, in the order seats are claimed, so a room nobody
- * recolours looks exactly as it did. The five after them fill the gaps around the wheel — amber above orange, red
+ * recolours looks exactly as it did; a sixth rider takes the amber after them. The five after them fill the gaps around the wheel — amber above orange, red
  * between orange and pink, emerald between lime and cyan, blue between cyan and violet, fuchsia between violet and
  * pink — each at least 20° of hue from its neighbours, and checked as trails against the dark field and the desert
  * and forest grounds (`npx tsx scripts/rider-colors-sheet.ts`).

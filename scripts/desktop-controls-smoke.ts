@@ -2,6 +2,7 @@ import { launchSelected } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { smokeTimeout } from "./smoke-timeout.js";
 import { keyboardShortcuts } from "../games/fuse-riders/src/online/keyboard-shortcuts.js";
+import { openTopMenu } from "./lib/top-menu.js";
 
 // Isolated offline solo game: never joins or disturbs an occupied online room.
 const browser = await launchSelected("chrome", { headless: true });
@@ -40,7 +41,7 @@ try {
   await page.waitForFunction(
     () =>
       document.querySelector(".online-notice")?.textContent ===
-      "Join your friends, then start the race",
+      "Choose your rivals, then start the race",
   );
   for (const [code, button] of [
     ["ArrowLeft", left],
@@ -56,14 +57,14 @@ try {
   }
   await page.keyboard.down("Space");
   await page
-    .getByRole("button", { name: "ROOM SETTINGS", exact: true })
+    .getByRole("button", { name: "Game settings", exact: true })
     .click();
   assert.doesNotMatch((await fire.getAttribute("class")) ?? "", /active/);
   await page.keyboard.up("Space");
   await page.getByLabel("Match length").fill("2");
   await page.keyboard.press("ArrowLeft");
   assert.doesNotMatch((await left.getAttribute("class")) ?? "", /active/);
-  await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.keyboard.down("Space");
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   assert.doesNotMatch((await fire.getAttribute("class")) ?? "", /active/);
@@ -77,6 +78,7 @@ try {
     "desktop arena should use over 80% of viewport height",
   );
   assert.equal(pads, null, "desktop pads are hidden behind keyboard help");
+  await openTopMenu(page);
   await page
     .getByRole("button", { name: "Keyboard controls", exact: true })
     .click();
@@ -96,7 +98,7 @@ try {
     await shortcuts.getByText(keys, { exact: true }).waitFor();
     await shortcuts.getByText(action, { exact: true }).waitFor();
   }
-  await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   assert.ok(
     await page.evaluate(
       () => document.documentElement.scrollHeight <= innerHeight,
@@ -204,15 +206,16 @@ try {
           };
         }),
       );
-    assert.equal(scores.length, 5);
+    assert.equal(scores.length, 6);
     assert.ok(
       scores.every(
         (score) => score.fits && /\d+ PTS · \+\d+/.test(score.text ?? ""),
       ),
       "long rider names must not truncate match points or the round award",
     );
+    // The shared top bar is a transparent overlay: the arena starts under its bottom padding, not below it.
     assert.ok(
-      layout.arena.y >= layout.bar.bottom &&
+      layout.arena.y >= layout.bar.bottom - 10 * layout.ui &&
         layout.arena.y <= layout.bar.bottom + 5 * layout.ui,
       `Arena/bar placement: ${JSON.stringify(layout)}`,
     );

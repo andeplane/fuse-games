@@ -1,3 +1,8 @@
+import { createTopBar } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
@@ -8,6 +13,7 @@ import "fuse-ui/portal.css";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import { createAppPortal } from "fuse-ui/portal";
 import { createPlayMetrics, startGameAnalytics } from "fuse-ui/play-metrics";
+import "fuse-ui/results.css";
 import "./fuseDrivers.css";
 import QRCode from "qrcode";
 import {
@@ -17,7 +23,13 @@ import {
   installRoomLifecycle,
   validRoomCode,
 } from "fuse-network-fe";
-import { MAX_PACKET_BYTES, TICK_MS, uuid } from "fuse-netcode";
+import {
+  MAX_PACKET_BYTES,
+  TICK_MS,
+  createLeadClock,
+  ticksAhead,
+  uuid,
+} from "fuse-netcode";
 import {
   button,
   createControllerRow,
@@ -26,18 +38,27 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createResultsScreen,
   createRoster,
+  createSharedTvOption,
   el,
 } from "fuse-ui";
 import { DEFAULT_SETTINGS, fuseDriversGame, seatName } from "../game/index.js";
 import { TRACK_NAMES } from "../game/tracks-data.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
-import { mountArena, type MountedArena } from "./arena/index.js";
+import type { RaceState } from "../game/sim/race.js";
+import {
+  mountArena,
+  renderSnapshot,
+  type MountedArena,
+} from "./arena/index.js";
+import { createSmoother, forward } from "./forward.js";
 import { presentTable, type TableModel, type Viewer } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { createReportDispatcher, dueReports, sendReport } from "./reports.js";
 import { FuseDriversRuntime, type FuseDriversCallbacks } from "./runtime.js";
 import { keys, roomFailure, safeStore, sessionFor } from "./session.js";
-import { playFrame } from "./play-metrics.js";
+import { playFrame, confirmedPlayFrame } from "./play-metrics.js";
 
 /**
  * The page's glue: it reads the query, builds the screens from fuse-ui, wires the runtime to the transport,
@@ -45,6 +66,11 @@ import { playFrame } from "./play-metrics.js";
  * session modules, which are unit-tested; this file only puts their answers on the page.
  */
 const GAME = fuseDriversGame.id;
+const query = new URLSearchParams(location.search);
+/** `?lead=off` draws the old way, between the two newest folded races, to compare the feel against. */
+const drawAhead = query.get("lead") !== "off",
+  /** `?probe` publishes the heading this device's truck was last drawn at, for `scripts/lead-press-latency.ts`. */
+  probe = query.has("probe");
 const analytics = startGameAnalytics(GAME);
 const observePlay = createPlayMetrics(analytics.track, () => performance.now());
 const social = createGameSocial({
@@ -67,8 +93,12 @@ const store = safeStore(() => localStorage);
 const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
+/** The truck sprites' colours by grid slot (`TRUCK_COLORS` in the arena), as the page can paint them. */
+const TRUCK_HEX = ["#10e0f0", "#f050a0", "#a0f020", "#f09020", "#b050f0"];
+const truckColor = (truck: number): string =>
+  TRUCK_HEX[truck % TRUCK_HEX.length] ?? "#ffffff";
 
-function header(): HTMLElement {
+function header(extra: HTMLElement[] = []): HTMLElement {
   const bar = el("header", "", "fd-top");
   const brand = el("a", "FUSE DRIVERS", "fd-brand");
   (brand as HTMLAnchorElement).href = import.meta.env.BASE_URL;
@@ -81,16 +111,12 @@ function header(): HTMLElement {
     }).element,
     brand,
     social.element(),
+    ...extra,
   );
-  return bar;
+  return createTopBar({ element: bar, gameId: GAME });
 }
 
 function landing(): void {
-  const shared = document.createElement("input");
-  shared.type = "checkbox";
-  shared.checked = store.getItem(names.shared) === "1";
-  const choice = el("label", "", "fd-shared-choice");
-  choice.append(shared, el("span", "Shared TV + phone controllers"));
   const card = createLandingCard({
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
@@ -105,7 +131,6 @@ function landing(): void {
           );
         },
       );
-      store.setItem(names.shared, shared.checked ? "1" : "0");
       store.setItem(names.host(room.code), room.token);
       location.href = endpoints.appUrl(`?room=${room.code}`);
     },
@@ -117,7 +142,6 @@ function landing(): void {
       location.href = endpoints.appUrl(`?room=${code}`);
     },
   });
-  card.create.before(choice);
   card.menu.help.append(
     el(
       "p",
@@ -188,7 +212,23 @@ function room(solo: boolean): void {
     shared: false,
   };
 
-  const status = createNotice({ className: "fd-status" });
+  // The room's state is one line: at the lobby's foot while the room waits, beside the menu while a race is on.
+  // What went wrong is said apart from it, above the room, so a failure is never a quiet line at the foot.
+  const status = createNotice({ className: "fd-status" }),
+    live = createNotice({ className: "fd-live" }),
+    problem = createNotice({ className: "fd-alert" });
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
+  const lobbyNote = el("p", "", "fui-lobby-note");
   const roster = createRoster({ emptyText: "Nobody has joined yet" });
   const start = button("START RACE", "fui-button-primary");
   const addAI = button("Add AI");
@@ -220,13 +260,21 @@ function room(solo: boolean): void {
       }).element,
     );
   lobby.append(roster.element, start);
-  if (!solo) {
-    const tv = el("a", "OPEN TV DISPLAY", "fui-button");
-    (tv as HTMLAnchorElement).href = endpoints.appUrl(
-      `?room=${code}&display=1`,
-    );
-    lobby.append(tv);
-  }
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates.
+  const sharedTv = createSharedTvOption({
+    className: "fd-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({
+        type: "settings",
+        settings: { display, track: track.value },
+      });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(endpoints.appUrl(`?room=${code}&display=1`), "_blank"),
+  });
 
   const nameEntry = createNameEntry({
     normalize: (raw) => seatName(raw) ?? "",
@@ -246,7 +294,23 @@ function room(solo: boolean): void {
   const canvas = document.createElement("canvas");
   canvas.className = "fd-arena";
   const hud = el("p", "", "fd-hud");
-  const results = el("section", "", "fd-results");
+  // The result: the shared results screen over the page, on a phone controller and the TV too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's header: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = endpoints.appUrl();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   const race = el("section", "", "fd-race");
   race.classList.toggle("fd-display", display);
   const arenaBox = el("div", "", "fd-arena-box");
@@ -294,11 +358,19 @@ function room(solo: boolean): void {
   // Until the first view arrives there is nothing to show but the lobby: a room with no host yet would
   // otherwise show an empty arena and an empty results table at the same time.
   race.hidden = true;
-  results.hidden = true;
   start.hidden = true;
-  main.append(nameEntry.form, lobby, race, results);
-  app.replaceChildren(header(), status.element, main);
+  main.append(problem.element, nameEntry.form, lobby, race, results.element);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a race is on.
+  app.replaceChildren(header([live.element]), main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move, and the truck's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
@@ -307,15 +379,22 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // ADD FRIEND on a driver's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     addAI,
     settings: [track],
-    actions: [...lobby.querySelectorAll<HTMLAnchorElement>("a"), start],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the drivers scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo ? { compact: true, heading: "Solo race" } : { heading: "Room" }),
   });
 
   const render = (model: TableModel) => {
+    ownSeat = model.lobby.own;
     lobby.hidden = model.screen !== "lobby";
     race.hidden = model.screen === "lobby";
-    results.hidden = model.screen !== "results";
     nameEntry.form.hidden = !model.askName;
     canvas.hidden = viewer.shared && !display && !solo;
     arenaBox.hidden = canvas.hidden;
@@ -325,32 +404,61 @@ function room(solo: boolean): void {
     if (track.value !== model.lobby.track) track.value = model.lobby.track;
     start.hidden = !model.lobby.showStart;
     start.disabled = !model.lobby.canStart;
-    if (model.lobby.note) status.show(model.lobby.note, "info");
+    if (lobbyNote.textContent !== model.lobby.note)
+      lobbyNote.textContent = model.lobby.note;
+    lobbyNote.hidden = !model.lobby.note;
+    main.dataset.screen = model.screen;
+    sharedTv.update(
+      viewer.shared,
+      viewer.host && !display && !solo && model.screen === "lobby",
+    );
     if (model.race)
       hud.textContent = `LAP ${String(model.race.lap)}/${String(model.race.laps)}   POS ${String(model.race.place)}/${String(model.race.drivers.length)}`;
-    if (model.results)
-      results.replaceChildren(
-        el("h2", model.results.title, "fd-results-title"),
-        ...model.results.rows.map((row) => el("p", row, "fd-results-row")),
-        ...(model.results.host ? [rematch] : []),
-      );
+    const result = model.results;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the race gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: truckColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
+        );
+      }
+      results.update(resultBar(result));
+      // No focus on show: Space is a play key here, and a held one would press the primary button.
+    }
     // A phone that is only a controller has no room for the arena.
     pad.element.hidden = model.screen !== "race" || display;
   };
 
-  const rematch = button("RACE AGAIN", "fui-button-primary");
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
   start.onclick = () => runtime.command({ type: "action", action: "start" });
 
   let latest: Parameters<FuseDriversCallbacks["state"]>[0] | undefined;
   /** When the newest view arrived, so a frame between two views draws part way between them. */
   let viewAt = 0;
+  /** The race of the view before `latest`, as the arena poses from it: only the latency probe reads it. */
+  let shownBefore: RaceState | undefined;
   const callbacks: FuseDriversCallbacks = {
     state(frame, settings) {
       viewer.shared = settings.display;
+      if (frame.race !== latest?.race) shownBefore = latest?.race;
       latest = frame;
       main.dataset.tick = String(frame.tick);
+      main.dataset.race = frame.race?.phase ?? "";
       const slot = frame.drivers.find(
         (driver) => driver.id === viewer.me,
       )?.truck;
@@ -365,14 +473,14 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
     },
   };
 
@@ -404,8 +512,17 @@ function room(solo: boolean): void {
   );
 
   const board = keyboardControls(() => modalInput.blocked());
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: () => {
+      board.clear();
+      Object.assign(touch, NEUTRAL_INPUT);
+      runtime.drive(NEUTRAL_INPUT);
+    },
+  });
   const modalInput = createModalInputGate({
-    isOpen: () => !!document.querySelector("dialog[open]"),
+    isOpen: () =>
+      playtestInputBlocked(document) ||
+      !!document.querySelector("dialog[open]"),
     observe: (change) => {
       const observer = new MutationObserver(change);
       observer.observe(document.body, {
@@ -435,6 +552,9 @@ function room(solo: boolean): void {
         : Promise.resolve(true),
   });
 
+  // ---- drawing: the newest folded race played forward to the clock, once per animation frame ----
+  const smoother = createSmoother(),
+    leadClock = createLeadClock();
   const frame = () => {
     if (stopped) return;
     requestAnimationFrame(frame);
@@ -449,15 +569,9 @@ function room(solo: boolean): void {
         onError: (error: unknown) => {
           // The race keeps running without a picture; say so rather than leaving a black rectangle.
           console.error("arena", error);
-          status.show("The arena could not start", "error");
+          say("The arena could not start", "error");
         },
       });
-    // Views arrive one log tick apart; alpha is how far into that gap this frame falls.
-    const alpha = Math.min(
-      1,
-      Math.max(0, (performance.now() - viewAt) / TICK_MS),
-    );
-    if (drawArena) arena?.render(latest, alpha, runtime.self);
     if (!display)
       runtime.drive(
         modalInput.blocked()
@@ -472,20 +586,79 @@ function room(solo: boolean): void {
             },
       );
     const room = runtime.roomState();
-    if (room)
-      observePlay(
-        playFrame(
-          room,
+    if (drawArena) {
+      const now = performance.now(),
+        timing = runtime.frameTiming(),
+        lead =
+          drawAhead &&
+          timing &&
+          room?.stage === "running" &&
+          room.race &&
+          room.race === latest.race
+            ? forward(
+                room,
+                leadClock(ticksAhead(timing), timing.newer.logTick, now),
+                runtime.self,
+                runtime.heldNow,
+              )
+            : undefined;
+      if (lead && room) {
+        const own = room.grid.indexOf(runtime.self);
+        smoother.begin(
+          `${room.matchId}:${room.round}`,
+          timing?.revision ?? 0,
+          room.tick,
+          room.grid.map((id) => room.controls[id] ?? 0),
+          now,
+        );
+        if (probe) {
+          const pose = renderSnapshot(lead.previous, lead.race, lead.alpha)[
+            own
+          ];
+          Reflect.set(window, "__leadProbe", {
+            at: now,
+            x: pose?.heading,
+            y: 0,
+          });
+        }
+        arena?.render(
+          { ...latest, race: lead.race },
+          lead.alpha,
           runtime.self,
-          solo
-            ? "solo"
-            : display
-              ? "display"
-              : viewer.shared
-                ? "controller"
-                : "online",
-        ),
-      );
+          {
+            previous: lead.previous,
+            place: (slot, pose) =>
+              slot === own ? pose : smoother.place(slot, pose),
+          },
+        );
+      } else {
+        // Views arrive one log tick apart; alpha is how far into that gap this frame falls.
+        const alpha = Math.min(1, Math.max(0, (now - viewAt) / TICK_MS));
+        if (probe && latest.race) {
+          const slot = room?.grid.indexOf(runtime.self) ?? -1,
+            pose = renderSnapshot(shownBefore, latest.race, alpha)[slot];
+          Reflect.set(window, "__leadProbe", {
+            at: now,
+            x: pose?.heading,
+            y: 0,
+          });
+        }
+        arena?.render(latest, alpha, runtime.self);
+      }
+    }
+    if (room) {
+      const final = runtime.confirmedFrame();
+      const mode = solo
+        ? "solo"
+        : display
+          ? "display"
+          : viewer.shared
+            ? "controller"
+            : "online";
+      observePlay(playFrame(room, runtime.self, mode), {
+        frame: final && confirmedPlayFrame(final, runtime.self, mode),
+      });
+    }
     if (room && session.kind === "room")
       reports.tick(
         dueReports(
@@ -502,6 +675,7 @@ function room(solo: boolean): void {
     stop: () => {
       stopped = true;
       modalInput.dispose();
+      stopPlaytestInput();
       board.stop();
       runtime.stop();
     },
@@ -511,7 +685,6 @@ function room(solo: boolean): void {
   runtime.start();
 }
 
-const query = new URLSearchParams(location.search);
 if (query.get("solo") === "1") room(true);
 else if (query.has("room")) room(false);
 else landing();

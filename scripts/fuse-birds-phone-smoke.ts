@@ -1,4 +1,4 @@
-import { openPlayOptions } from "./lib/main-menu.js";
+import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { chromium, type Page } from "playwright";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -27,18 +27,18 @@ try {
   }
   const [first, second, tv] = pages as [Page, Page, Page];
   await first.goto(`${base}/fuse-birds/?mute`);
-  await first.getByRole("button", { name: "Settings", exact: true }).click();
-  await first.getByLabel("Shared TV + phone controllers").check();
-  await first.keyboard.press("Escape");
   await openPlayOptions(first);
-  await first.getByRole("button", { name: "CREATE ROOM" }).click();
-  await first.locator(".fui-name-input").fill("SKYE");
-  await first.getByRole("button", { name: "Join" }).click();
-  const code = await first.locator(".birds-code").innerText();
+  await first.getByRole("button", { name: "Host room" }).click();
+  await takeHostSeat(first, "SKYE");
+  // The room's code is on its invitation and in the address; Shared TV is the host's choice in the room.
+  const code = new URL(first.url()).searchParams.get("room")!;
+  await first.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await first
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
   await second.goto(`${base}/fuse-birds/?room=${code}&mute`);
-  await second.locator(".fui-name-input").fill("EMBER");
-  await second.getByRole("button", { name: "Join" }).click();
-  await first.locator(".birds-roster").getByText("EMBER").waitFor();
+  await takeHostSeat(second, "EMBER");
+  await first.locator(".fui-room-players").getByText("EMBER").waitFor();
   await tv.goto(`${base}/fuse-birds/?room=${code}&display=1&mute`);
   await first.getByRole("button", { name: "START BATTLE" }).click();
   for (const page of pages)
@@ -55,7 +55,7 @@ try {
   const turn = await first.locator(".birds-room").getAttribute("data-turn");
   const cdp = await first.context().newCDPSession(first);
   async function startAim() {
-    const box = await first.locator("canvas").boundingBox();
+    const box = await first.locator("canvas[data-ready]").boundingBox();
     assert.ok(box);
     const scale = Math.min(box.width / 1536, box.height / 768);
     // Spawn pad height is 350–409; this point is within the minimum 48 CSS-pixel aim target.

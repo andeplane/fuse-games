@@ -214,11 +214,11 @@ try {
   const victoryText = await page.locator("#match-result").innerText();
   assert.match(
     victoryText,
-    /Victory/,
+    /Victory/i,
     `result announces Victory: ${victoryText}`,
   );
   await page.screenshot({ path: `${output}/victory.png` });
-  await page.locator('#match-result [data-action="reset"]').click();
+  await page.locator('#match-result [data-action="rematch"]').click();
   await page.locator("#match-result").waitFor({ state: "hidden" });
   assert.equal(
     await page.locator(".structure-brain").count(),

@@ -27,13 +27,14 @@ const rows = (room: Room, who: Partial<Viewer> = {}) =>
 
 test("six numbered slots, coloured and named for the two teams", () => {
   assert.equal(ROOM_CAPACITY, 6);
+  // The label also says what the role does: the slot is where a player chooses, so it cannot assume they know.
   assert.deepEqual([0, 1, 2, 3, 4, 5].map(slotLabel), [
-    "1 · CYAN QUEEN",
-    "2 · PINK QUEEN",
-    "3 · CYAN WORKER",
-    "4 · PINK WORKER",
-    "5 · CYAN WORKER",
-    "6 · PINK WORKER",
+    "Cyan Queen · flies, fights",
+    "Pink Queen · flies, fights",
+    "Cyan Worker · berries, snail, gates",
+    "Pink Worker · berries, snail, gates",
+    "Cyan Worker · berries, snail, gates",
+    "Pink Worker · berries, snail, gates",
   ]);
   assert.deepEqual([0, 1, 2, 3, 4, 5].map(slotColor), [
     TEAM_COLORS[0],

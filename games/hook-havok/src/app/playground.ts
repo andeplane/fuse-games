@@ -1,11 +1,19 @@
 import { social } from "./social.js";
 import { createModalInputGate } from "fuse-ui/modal-input";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import "fuse-ui/portal.css";
+import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import { reportPlay } from "./analytics.js";
+import { observeConfirmedPlay } from "fuse-ui/play-metrics";
+import "fuse-ui/results.css";
 import "./style.css";
 import "./presentation.css";
 import { createAppPortal } from "fuse-ui/portal";
+import { createTopBar } from "fuse-ui";
 import { createGameMenu, createRoundControls } from "fuse-ui";
 import { createRadio } from "fuse-ui/radio";
 import { EffectsAudio, browserToneSink } from "./audio.js";
@@ -17,6 +25,7 @@ import {
   validRoomCode,
 } from "fuse-network-fe";
 import { MAX_PACKET_BYTES, roomManager } from "fuse-netcode";
+import { createPicture } from "./forward.js";
 import { HookRuntime } from "../online/runtime.js";
 import {
   DEFAULT_TUNING,
@@ -264,6 +273,17 @@ const radio = createRadio(
   new Audio(),
   muted,
 );
+let soundEnabled = !muted;
+const sound = {
+  forcedMute: muted,
+  enabled: () => soundEnabled,
+  setEnabled(on: boolean) {
+    if (muted) return;
+    soundEnabled = on;
+    effects.setMuted(!on);
+    radio.setMuted(!on);
+  },
+};
 const effectLabel = document.createElement("label"),
   effectVolume = document.createElement("input");
 effectLabel.textContent = "Effects ";
@@ -297,6 +317,16 @@ homeBar.append(
   social.element(),
 );
 el<HTMLAnchorElement>("study").href = `?showcase=1${muted ? "&mute" : ""}`;
+el("home").textContent = "HOOK HAVOK";
+const gameHeader = homeBar.closest<HTMLElement>("header")!;
+gameHeader.replaceChildren(homeBar);
+createTopBar({
+  music: false,
+  element: gameHeader,
+  brand: el("home"),
+  gameId: "hook-havok",
+  sound,
+});
 const tuning = el<HTMLFormElement>("tuning");
 const experiment = el<HTMLSelectElement>("experiment");
 experiment.add(new Option("Arena ricochets · gentle", "ricochet"));
@@ -454,7 +484,8 @@ touch = createTouchControls(
   clear,
 );
 const modalInput = createModalInputGate({
-  isOpen: () => !!document.querySelector("dialog[open]"),
+  isOpen: () =>
+    playtestInputBlocked(document) || !!document.querySelector("dialog[open]"),
   observe: (change) => {
     const observer = new MutationObserver(change);
     observer.observe(document.body, {
@@ -466,6 +497,7 @@ const modalInput = createModalInputGate({
   },
   cancel: clear,
 });
+const stopPlaytestInput = registerPlaytestInput(document, { cancel: clear });
 function touchLayout() {
   clear();
   const enabled = touchToggle.checked;
@@ -493,14 +525,36 @@ el<HTMLSelectElement>("aim-mode").onchange = (event) => {
 touchLayout();
 // Not on resize: a phone's URL bar and rotation resize mid-charge, and a
 // clear would throw the bomb.
+/** `?lead=off` draws the old way, a tick behind the clock and blended, to compare the feel against. */
+const drawAhead = query.get("lead") !== "off",
+  /** For latency measurements: `?probe` publishes where this device's keeper was last drawn. */
+  probe = query.has("probe"),
+  picture = createPicture();
+/**
+ * What to draw now: the newest folded room played forward to the clock (`createPicture`), or, when there is nothing
+ * to lead with, the two newest frames blended a tick behind it.
+ */
 function sample(): WorldView {
   const timing = runtime?.frameTiming();
   if (!timing) return latest;
-  return interpolate(
-    timing.older && localView(timing.older),
-    localView(timing.newer),
-    timing.tick,
-  );
+  const ahead =
+    drawAhead && runtime
+      ? picture(runtime, display ? "" : selfId, performance.now())
+      : undefined;
+  const drawn = ahead
+    ? localView(ahead)
+    : interpolate(
+        timing.older && localView(timing.older),
+        localView(timing.newer),
+        timing.tick,
+      );
+  if (probe)
+    Reflect.set(window, "__hookHavokProbe", {
+      at: performance.now(),
+      x: drawn.x,
+      feet: drawn.feet,
+    });
+  return drawn;
 }
 function localView(view: WorldView): WorldView {
   const local = view.keepers.find((k) => k.id === selfId);
@@ -566,6 +620,14 @@ function fail(message: string) {
   entrance.show();
   entrance.busy(false, graphicsReady);
 }
+// Under the entrance menu the arena cannot be seen, and the menu draws its own scene: this one rests until play.
+const restScene = () =>
+  scene?.setAwake(!document.body.classList.contains("at-entrance"));
+const entranceWatch = new MutationObserver(restScene);
+entranceWatch.observe(document.body, {
+  attributes: true,
+  attributeFilter: ["class"],
+});
 async function graphics() {
   scene?.destroy();
   scene = undefined;
@@ -631,6 +693,7 @@ async function graphics() {
       time: () => {},
     });
     scene.setFollow(followCam.checked);
+    restScene();
   } catch {
     clearTimeout(deadline);
     if (token === attempt) {
@@ -712,22 +775,33 @@ const enterRoom = async () => {
           status.textContent = text;
         },
         state(frame, settings) {
-          reportPlay({
-            matchId: frame.matchId,
-            active:
-              frame.stage === "running" &&
-              (frame.contest.phase === "countdown" ||
-                frame.contest.phase === "active"),
-            ended:
-              frame.contest.rules !== "free" && frame.contest.phase === "over",
-            round: frame.round,
-            playerCount: frame.seats.filter((seat) => !seat.watcher).length,
-            botCount: frame.seats.filter((seat) => seat.bot).length,
-            seated: frame.seats.some(
-              (seat) => seat.id === selfId && !seat.watcher,
-            ),
-            mode: frame.contest.rules,
-          });
+          observeConfirmedPlay(
+            reportPlay,
+            frame,
+            () => runtime?.confirmedFrame(),
+            (frame) => ({
+              matchId: frame.matchId,
+              roundActive:
+                frame.stage === "running" && frame.contest.phase === "active",
+              roundEnded:
+                frame.contest.rules !== "free" &&
+                frame.contest.phase === "over",
+              active:
+                frame.stage === "running" &&
+                (frame.contest.phase === "countdown" ||
+                  frame.contest.phase === "active"),
+              ended:
+                frame.contest.rules !== "free" &&
+                frame.contest.phase === "over",
+              round: frame.round,
+              playerCount: frame.seats.filter((seat) => !seat.watcher).length,
+              botCount: frame.seats.filter((seat) => seat.bot).length,
+              seated: frame.seats.some(
+                (seat) => seat.id === selfId && !seat.watcher,
+              ),
+              mode: frame.contest.rules,
+            }),
+          );
           latest = localView(frame);
           host.dataset.logTick = String(frame.logTick);
           const c = frame.contest;
@@ -1143,7 +1217,7 @@ el<HTMLInputElement>("atmosphere").checked = !matchMedia(
 el<HTMLInputElement>("atmosphere").onchange = (e) =>
   scene?.setAtmosphere((e.target as HTMLInputElement).checked);
 host.addEventListener("keydown", (e) => {
-  if (menu.isOpen()) return;
+  if (menu.isOpen() || modalInput.blocked()) return;
   if (!keyboard.accepts(e.code)) return;
   e.preventDefault();
   if (e.repeat) return;
@@ -1186,7 +1260,7 @@ function mouseButtons(mask: number): void {
 }
 host.addEventListener("contextmenu", (e) => e.preventDefault());
 host.addEventListener("pointerdown", (e) => {
-  if (menu.isOpen()) return;
+  if (menu.isOpen() || modalInput.blocked()) return;
   if ((e.button !== 0 && e.button !== 2) || e.pointerType !== "mouse") return;
   if (touchDeck.dataset.active === "true") clear();
   e.preventDefault();
@@ -1235,6 +1309,7 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", () => {
   modalInput.dispose();
+  stopPlaytestInput();
   effects.destroy();
   radio.destroy();
   disposed = true;
@@ -1243,6 +1318,7 @@ window.addEventListener("pagehide", () => {
   stopRoom();
   touch?.destroy();
   scene?.destroy();
+  entranceWatch.disconnect();
   entrance.destroy();
   menu.dispose();
 });
@@ -1251,6 +1327,8 @@ window.addEventListener("pageshow", (e) => {
 });
 const matchShell = createMatchShell({
   playerName: () => social.playerName(undefined) ?? undefined,
+  leave: () => el<HTMLButtonElement>("leave-room").click(),
+  friends: social.friends,
   join(name, slot) {
     el<HTMLInputElement>("keeper-name").value = name;
     runtime?.command({
@@ -1320,6 +1398,7 @@ document.querySelector("header")!.append(menu.element);
 document.querySelector("main")!.append(roundControls.element);
 menu.update({ canLobby: false, canLeave: false, touch: touchToggle.checked });
 const entrance = createEntrance({
+  sound,
   main: document.querySelector("main")!,
   start,
   status,

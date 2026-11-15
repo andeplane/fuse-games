@@ -120,14 +120,16 @@ test("the creator opens a fresh world, seats joiners, adds bots and starts; ever
   guest.stop();
 });
 
-test("five riders and a TV keep one world through 5% loss, 100 ms jitter and reordering; gaps repair within 600 ms", () => {
+test("six riders and a TV keep one world through 5% loss, 100 ms jitter and reordering; gaps repair within 600 ms", () => {
   const { net, join } = room(
     { loss: 0.05, baseMs: 20, jitterMs: 100, reliableMs: 40 },
     7,
   );
   const host = join(HOST, "Host");
   net.step(200);
-  const guests = GUESTS.map((id, index) => {
+  // A full room: the host, five guests, and the display that takes no seat.
+  const riders = [...GUESTS, "ee-guest"];
+  const guests = riders.map((id, index) => {
     const runtime = join(id, `Rider ${index}`);
     net.step(150);
     return runtime;
@@ -135,7 +137,7 @@ test("five riders and a TV keep one world through 5% loss, 100 ms jitter and reo
   const tv = net.add(TV, settings, { displayOnly: true });
   tv.start();
   net.step(600);
-  assert.equal(net.frame(TV)!.players.length, 5);
+  assert.equal(net.frame(TV)!.players.length, 6);
   assert.equal(host.command({ type: "action", action: "start" }), true);
   net.step(COUNTDOWN_TICKS * 50 + 300);
   let steer = 0,
@@ -172,7 +174,7 @@ test("five riders and a TV keep one world through 5% loss, 100 ms jitter and reo
   assert.ok(longestGapMs <= 600, `longest unrepaired gap ${longestGapMs} ms`);
   net.step(2500);
   assert.equal(
-    hashes(net, [HOST, ...GUESTS, TV]).size,
+    hashes(net, [HOST, ...riders, TV]).size,
     1,
     "every replica agrees once packets settle",
   );
@@ -189,7 +191,10 @@ test("five riders and a TV keep one world through 5% loss, 100 ms jitter and reo
     ),
     "no divergence",
   );
-  const perSecond = net.bytesFast / 6 / 5 / (net.now / 1000);
+  // Seven members, each sending to the other six.
+  const perSecond = net.bytesFast / 7 / 6 / (net.now / 1000);
+  if (process.env.FUSE_NET_REPORT)
+    console.log(`fast bytes per link: ${Math.round(perSecond)} B/s`);
   assert.ok(perSecond < 15_000, `${Math.round(perSecond)} B/s per link`);
   assert.ok(world(host).state.game.round >= 1);
   for (const runtime of net.runtimes.values()) runtime.stop();
@@ -487,7 +492,7 @@ test("a joiner whose snapshot source vanishes retries other peers and reports re
   for (const runtime of net.runtimes.values()) runtime.stop();
 });
 
-test("solo runs a room with no peers: one human, four AI, a paused clock while hidden and lobby actions", () => {
+test("solo runs a room with no peers: one human, five AI, a paused clock while hidden and lobby actions", () => {
   const net = new FakeNetwork("solo", {
     loss: 0,
     baseMs: 0,
@@ -513,7 +518,7 @@ test("solo runs a room with no peers: one human, four AI, a paused clock while h
   runtime.start();
   runtime.start();
   assert.ok(recorded.includes("ready:solo"), recorded.join("|"));
-  assert.equal(frame!.players.length, 5);
+  assert.equal(frame!.players.length, 6);
   assert.equal(frame!.players[0]!.name, "Player");
   assert.equal(frame!.phase, "countdown");
   net.step(COUNTDOWN_TICKS * 50 + 100);
@@ -545,7 +550,7 @@ test("solo runs a room with no peers: one human, four AI, a paused clock while h
   );
   assert.equal(
     recorded.at(-1),
-    "Solo · you and four AI riders",
+    "Solo · you against the AI riders",
     "the recurring status returns once the notice hold expires",
   );
   assert.equal(
@@ -586,7 +591,7 @@ test("solo runs a room with no peers: one human, four AI, a paused clock while h
   assert.equal(
     runtime.command({ type: "bot", action: "add" }),
     false,
-    "five seats are taken",
+    "six seats are taken",
   );
   // The command is accepted — the entry is this rider's to write — but the fold refuses the head, because the four AI
   // riders in this solo room wear `robot` and a human that wore it too could not be told from them (rules 48).

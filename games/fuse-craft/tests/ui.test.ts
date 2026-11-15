@@ -321,7 +321,8 @@ test("watch mode shows both openings, inspection and neutral results without gam
   f.publish();
   const result = f.root.querySelector("#match-result")!.textContent!;
   assert.match(result, /wins/);
-  assert.match(result, /Watch again/);
+  assert.match(result, /WATCH AGAIN/);
+  assert.match(result, /AI/, "both networks are tagged as AI");
   assert.doesNotMatch(result, /Victory|Defeat|Your brain/);
   f.app.dispose();
 });
@@ -329,24 +330,40 @@ test("watch mode shows both openings, inspection and neutral results without gam
 test("completed matches show a result and offer restart", async () => {
   const f = fixture();
   await f.start();
-  assert.equal(
-    f.root.querySelector("#match-result")!.hasAttribute("hidden"),
-    true,
-  );
+  assert.equal(f.root.querySelector("#match-result"), null);
   f.world.finished = true;
   f.world.winnerId = "coral";
   f.publish();
   const result = f.root.querySelector("#match-result")!;
+  assert.ok(result.classList.contains("fui-results"));
   assert.equal(result.hasAttribute("hidden"), false);
-  assert.match(result.textContent!, /Victory/);
-  assert.match(result.textContent!, /Play again/);
+  assert.equal(
+    result.querySelector(".fui-results-victory h2")!.textContent,
+    "Victory",
+  );
+  assert.equal(
+    result.querySelector('.fui-results-actions [data-action="rematch"]')!
+      .textContent,
+    "PLAY AGAIN",
+  );
+  assert.equal(
+    result.querySelector(".fui-add-friend"),
+    null,
+    "a local match offers no friend buttons",
+  );
   f.world.winnerId = null;
   f.publish();
-  assert.match(result.textContent!, /Draw/);
+  assert.equal(
+    result.querySelector(".fui-results-victory h2")!.textContent,
+    "Draw",
+  );
+  // Menu in the bar leads out of a local match.
+  result.querySelector<HTMLElement>('[data-action="menu"]')!.click();
+  assert.ok(f.root.querySelector('[data-action="new-game"]'));
   f.app.dispose();
 });
 
-test("the match report opens from the result with charts, a scoreboard and key moments", async () => {
+test("the result shows the chart, with the scoreboard and key moments behind View full stats", async () => {
   const f = fixture();
   await f.start();
   f.world.finished = true;
@@ -372,11 +389,14 @@ test("the match report opens from the result with charts, a scoreboard and key m
   f.publish();
   const result = f.root.querySelector("#match-result")!;
   assert.match(result.textContent!, /dominant share/);
-  assert.equal(result.querySelector(".match-report"), null);
-  f.click("toggle-report");
-  assert.ok(result.classList.contains("expanded"));
-  assert.ok(result.querySelector(".match-report"));
-  assert.equal(result.querySelectorAll(".report-line").length, 2);
+  assert.ok(result.querySelector(".fui-results-standings"));
+  assert.ok(result.querySelector(".report-findings .finding"));
+  const details = result.querySelector<HTMLElement>(".fui-results-details")!;
+  assert.equal(details.hidden, true, "the breakdown waits for its toggle");
+  assert.equal(
+    result.querySelectorAll(".fui-results-section .report-line").length,
+    2,
+  );
   assert.ok(
     result.querySelector(".report-threshold"),
     "territory shows dominance",
@@ -389,8 +409,9 @@ test("the match report opens from the result with charts, a scoreboard and key m
     "Economy",
   );
   assert.equal(result.querySelector(".report-threshold"), null);
-  f.click("toggle-report");
-  assert.equal(result.querySelector(".match-report"), null);
+  result.querySelector<HTMLElement>(".fui-results-stats-toggle")!.click();
+  assert.equal(details.hidden, false);
+  assert.ok(details.querySelector(".report-table"));
   f.app.dispose();
 });
 
@@ -718,7 +739,7 @@ test("menu uses Fuse controls and actual board scenery without starting a simula
   assert.ok(f.root.classList.contains("fui-app"));
   assert.deepEqual(
     Array.from(
-      f.root.querySelectorAll(".fui-main-menu-nav button"),
+      f.root.querySelectorAll(".fui-main-menu-nav:not(.fui-play-menu) button"),
       (b) => b.textContent,
     ),
     ["Play", "How to play", "About", "Settings"],
@@ -1024,7 +1045,7 @@ test("the opponent's opening is random by default, redrawn each match and reveal
   assert.match(result.textContent!, /played Swarm/);
   // Play again draws a new opening for the new match.
   draw = 0;
-  f.click("reset");
+  f.click("rematch");
   assert.equal(f.settings()?.aiStrategy, "balanced");
   assert.equal(f.counts().created, 2);
   f.app.dispose();
@@ -1066,15 +1087,19 @@ test("the Fuse app portal comes first in every page header and survives re-rende
       element = parseHTML("<html></html>").document.createElement(
         "nav",
       ) as unknown as HTMLElement;
-      element.className = "portal-stub";
+      element.className = "fui-portal portal-stub";
       return element;
     },
   );
-  const first = () => f.root.querySelector(".nd-header")!.firstElementChild;
-  assert.equal(first(), element);
+  const first = () =>
+    f.root.querySelector(".nd-header .fui-top-bar-left")!.firstElementChild;
+  assert.ok(
+    first() === element,
+    "portal precedes the brand in the shared header",
+  );
   f.click("new-game");
   await settle();
-  assert.equal(first(), element, "the setup header keeps the same portal");
+  assert.ok(first() === element, "the setup header keeps the same portal");
   assert.equal(made, 1, "one portal for the page's lifetime");
   f.app.dispose();
 });

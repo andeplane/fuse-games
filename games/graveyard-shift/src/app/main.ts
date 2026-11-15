@@ -1,3 +1,8 @@
+import { createTopBar } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
@@ -5,6 +10,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -14,7 +20,12 @@ import {
   installRoomLifecycle,
   validRoomCode,
 } from "fuse-network-fe";
-import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
+import {
+  MAX_PACKET_BYTES,
+  createLeadClock,
+  ticksAhead,
+  uuid,
+} from "fuse-netcode";
 import {
   button,
   createAppPortal,
@@ -24,6 +35,8 @@ import {
   createNameEntry,
   createNotice,
   createRoster,
+  createResultsScreen,
+  createSharedTvOption,
   el,
 } from "fuse-ui";
 import {
@@ -34,9 +47,12 @@ import {
   VACUUM,
   PULSE,
   DURATION,
+  botInput,
   carried,
   type World,
 } from "../engine/world.js";
+import type { WorldView } from "../engine/view.js";
+import { createSmoother, forward, forwardInputs, memoBot } from "./forward.js";
 import { GraveyardRuntime } from "../online/runtime.js";
 import type { View } from "../online/game.js";
 import { seatName } from "../online/names.js";
@@ -49,13 +65,22 @@ import {
   createSeatAdmission,
 } from "./session.js";
 import { NightAudio } from "./audio.js";
+import { resultBar, resultReport, shiftResult } from "./result-report.js";
 import { createModalInputGate } from "fuse-ui/modal-input";
-import { createPlayMetrics, startGameAnalytics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  createPlayMetrics,
+  startGameAnalytics,
+} from "fuse-ui/play-metrics";
 const GAME = "graveyard-shift",
   app = document.querySelector<HTMLElement>("#app")!,
   store = safeStore(() => localStorage),
   names = keys(GAME),
   query = new URLSearchParams(location.search);
+/** `?lead=off` draws the old way, the newest folded tick as it is, to compare the feel against. */
+const drawAhead = query.get("lead") !== "off",
+  /** `?probe` publishes where this device's hunter was last drawn, for `scripts/lead-press-latency.ts`. */
+  probe = query.has("probe");
 const analytics = startGameAnalytics(GAME);
 const observePlay = createPlayMetrics(analytics.track, () => performance.now());
 const social = createGameSocial({
@@ -88,7 +113,7 @@ function navigate(search = "") {
   audio.stop();
   location.href = url(search);
 }
-function header() {
+function header(extra: HTMLElement[] = []) {
   const h = el("header", "", "top"),
     portal = createAppPortal({
       document,
@@ -98,20 +123,19 @@ function header() {
     }),
     brand = el("a", "GRAVEYARD SHIFT", "brand");
   brand.href = url();
-  const sound = button(audio.silent ? "SOUND OFF" : "SOUND", "sound");
-  sound.disabled = audio.silent;
-  sound.onclick = () => {
-    audio.toggle();
-    sound.textContent = audio.prefs.muted.music ? "SOUND OFF" : "SOUND ON";
-  };
-  h.append(
-    portal.element,
-    brand,
-    social.element(),
-    el("span", "A FUSE GAME", "eyebrow"),
-    sound,
-  );
-  return h;
+  h.append(portal.element, brand, social.element(), ...extra);
+  return createTopBar({
+    element: h,
+    gameId: GAME,
+    sound: {
+      enabled: () => !(audio.prefs.muted.music && audio.prefs.muted.effects),
+      forcedMute: audio.silent,
+      setEnabled(on) {
+        if (on === (audio.prefs.muted.music && audio.prefs.muted.effects))
+          audio.toggle();
+      },
+    },
+  });
 }
 function handbook() {
   const d = el("dialog", "", "handbook");
@@ -163,13 +187,12 @@ function canvas() {
   );
   return c;
 }
-const top = header();
-app.append(top);
 document.addEventListener("pointerdown", () => audio.resume());
 document.addEventListener("keydown", () => audio.resume());
 if (!query.has("room") && query.get("solo") !== "1") landing();
 else room();
 function landing() {
+  app.append(header());
   const hero = el("main", "", "landing"),
     art = el("section", "", "hero"),
     c = canvas();
@@ -187,13 +210,6 @@ function landing() {
   title.remove();
   hero.classList.add("fui-menu-stage");
   art.classList.add("fui-menu-scene");
-  const shared = el("label", "", "shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV + phone controllers"));
   const card = createLandingCard({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -210,7 +226,6 @@ function landing() {
     valid: validRoomCode,
     onJoin: (code) => navigate(`?room=${code}`),
   });
-  card.create.after(shared);
   const guide = button("HOW TO PLAY", "guide");
   guide.onclick = handbook;
   card.menu.help.append(
@@ -229,7 +244,7 @@ function room() {
     () => uuid().replaceAll("-", "") + uuid().replaceAll("-", ""),
   );
   if (session.kind === "invalid" || session.kind === "landing") {
-    app.append(el("p", "Invalid room code. Return to the menu."));
+    app.append(header(), el("p", "Invalid room code. Return to the menu."));
     return;
   }
   const solo = session.kind === "solo",
@@ -237,18 +252,60 @@ function room() {
     display = session.kind === "room" && session.role === "display";
   let host = solo,
     shared = false;
-  const status = createNotice({ className: "status" }),
-    exit = button("LEAVE");
+  // The room's state is one line: at the room's foot while it waits, in the bar during a shift. What went wrong is
+  // said apart from it, above the room. The room's code is on its invitation.
+  const status = createNotice({ className: "gs-status" }),
+    live = createNotice({ className: "gs-live" }),
+    problem = createNotice({ className: "gs-alert" });
+  // The room gone: nothing that arrives afterwards may take that off the screen.
+  let over = false;
+  const say = (text: string, tone: "info" | "error", last = false) => {
+    if (over) return;
+    over = last;
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
+  // Leaving and reconnecting are the bar's menu's: the room has Back, a shift has only the bar.
+  const exit = button("LEAVE"),
+    retry = button("RECONNECT", "retry"),
+    menu = el("div", "", "gs-menu");
   exit.onclick = () => navigate();
-  top.append(el("b", code, "room-code"), status.element, exit);
+  retry.onclick = () => location.reload();
+  menu.append(exit, retry);
+  app.append(header([live.element, menu]));
   const main = el("main", "", "room"),
     lobby = el("section", "", "lobby"),
     roster = createRoster({ emptyText: "Waiting for the night crew" }),
     add = button("+ ADD BOT"),
     ready = button("READY", "primary"),
-    tv = button("OPEN TV"),
     help = button("HOW TO PLAY");
   help.onclick = handbook;
+  const lobbyNote = el(
+      "p",
+      "Every human hunter presses READY. Bots are always ready.",
+      "fui-lobby-note",
+    ),
+    rules = el("p", "90 seconds. Two shrines. Only banked energy counts.");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates, once the room has taken it.
+  const sharedTv = createSharedTvOption({
+    className: "gs-tv-option",
+    onChange: (display) => {
+      const sent =
+        runtime?.command({ type: "settings", settings: { display } }) ?? false;
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(url(`?room=${code}&display=1`), "_blank", "noopener"),
+  });
   add.onclick = () =>
     runtime?.command({
       type: "bot",
@@ -256,7 +313,6 @@ function room() {
       slot: requestedRoomSlot(add),
     });
   ready.onclick = () => runtime?.readyUp();
-  tv.onclick = () => window.open(url(`?room=${code}&display=1`), "_blank");
   if (!solo) {
     const invite = createInviteCard({
       code,
@@ -283,15 +339,6 @@ function room() {
       admission.submit(v);
     },
   });
-  const actions = el("div", "", "actions");
-  actions.append(add, ready, tv, help);
-  lobby.append(
-    el("p", "NIGHT CREW", "eyebrow"),
-    el("h1", "The gates are open."),
-    roster.element,
-    el("p", "Every human hunter presses READY. Bots are always ready."),
-    actions,
-  );
   const play = el("section", "", "play"),
     hud = el("div", "", "hud"),
     timer = el("strong", "01:30", "clock"),
@@ -318,7 +365,9 @@ function room() {
     runtime?.cancel();
   };
   const modalInput = createModalInputGate({
-    isOpen: () => Boolean(document.querySelector("dialog[open]")),
+    isOpen: () =>
+      playtestInputBlocked(document) ||
+      Boolean(document.querySelector("dialog[open]")),
     observe(change) {
       const observer = new MutationObserver(change);
       observer.observe(document.body, {
@@ -376,7 +425,7 @@ function room() {
     " ": PULSE,
   };
   document.addEventListener("keydown", (e) => {
-    if (modalInput.blocked()) return;
+    if (modalInput.blocked() || e.repeat) return;
     if (
       e.target instanceof HTMLInputElement ||
       e.target instanceof HTMLTextAreaElement ||
@@ -394,12 +443,15 @@ function room() {
     sources.delete(e.key.toLowerCase());
     update();
   });
+  const stopPlaytestInput = registerPlaytestInput(document, { cancel: clear });
+  window.addEventListener("pagehide", stopPlaytestInput, { once: true });
   window.addEventListener("blur", clear);
   document.addEventListener("visibilitychange", () => {
     clear();
     audio.visibility(document.hidden);
   });
   c.onpointerdown = (e) => {
+    if (modalInput.blocked()) return;
     if (e.button !== 0) return;
     c.setPointerCapture(e.pointerId);
     sources.set(`p${e.pointerId}`, VACUUM);
@@ -412,33 +464,49 @@ function room() {
         sources.delete(`p${e.pointerId}`);
         update();
       };
-  const result = el("section", "", "result"),
-    resultTitle = el("h1", "SHIFT COMPLETE"),
-    ranks = el("div", "", "ranks"),
-    again = button("READY FOR ANOTHER SHIFT", "primary"),
-    back = button("BACK TO LOBBY");
-  again.onclick = () => runtime?.readyUp();
-  back.onclick = () => runtime?.command({ type: "action", action: "lobby" });
-  result.append(resultTitle, ranks, again, back);
-  main.append(name.form, lobby, play, result);
+  // The result: the shared results screen over the page, on the TV and a phone controller too.
+  const results = createResultsScreen({
+    document,
+    onBack: () => navigate(),
+    backText: "Leave",
+    onAction: (id) => {
+      if (id === "rematch") runtime?.readyUp();
+      else runtime?.command({ type: "action", action: "lobby" });
+    },
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  main.append(problem.element, name.form, lobby, play, results.element);
   ready.hidden = true;
   add.hidden = true;
-  tv.hidden = true;
   play.hidden = true;
-  result.hidden = true;
   name.form.hidden = true;
   app.append(main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
+    // Seated already: any open seat is a move, and the hunter's colour follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime?.command({ type: "join", name: ownSeat.name, slot });
+    },
     primaryAction: ready,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     roster,
+    friends: social.friends,
     capacity: 5,
     join: name.form,
     addAI: add,
-    actions: [ready, tv, help],
+    settings: [rules, help],
+    actions: [lobbyNote],
+    actionsInHeader: true,
+    status: status.element,
+    ...(solo
+      ? { compact: true, heading: "Solo shift" }
+      : { heading: "Room", extras: [sharedTv.element] }),
   });
   let previous: World | undefined;
   runtime = new GraveyardRuntime(
@@ -457,36 +525,79 @@ function room() {
         shared = settings.display;
         runtime?.flush();
         const mine = frame.seats.find((s) => s.id === self && !s.watcher);
-        const players = frame.seats.filter((s) => !s.watcher);
-        observePlay({
-          matchId: frame.matchId,
-          active: frame.stage === "running",
-          ended: frame.stage === "over",
-          playerCount: players.length,
-          botCount: players.filter((s) => s.bot).length,
-          seated: !!mine,
-          mode: solo ? "solo" : shared ? "shared" : "online",
-        });
+        ownSeat = frame.stage === "lobby" ? mine : undefined;
+        observeConfirmedPlay(
+          observePlay,
+          frame,
+          () => runtime?.confirmedFrame(),
+          (frame) => {
+            const players = frame.seats.filter((s) => !s.watcher);
+            return {
+              matchId: frame.matchId,
+              roundActive: frame.stage === "running",
+              roundEnded: frame.stage === "over",
+              active: frame.stage === "running",
+              ended: frame.stage === "over",
+              playerCount: players.length,
+              botCount: players.filter((s) => s.bot).length,
+              seated: players.some((seat) => seat.id === self),
+              mode: solo ? "solo" : shared ? "shared" : "online",
+            };
+          },
+        );
         main.dataset.phase = frame.stage;
+        main.dataset.screen = frame.stage === "lobby" ? "lobby" : "play";
         main.dataset.tick = String(frame.tick);
         main.dataset.layout =
           shared && !display && !!mine ? "controller" : "arena";
         name.form.hidden = solo || display || !!mine;
         lobby.hidden = frame.stage !== "lobby";
         play.hidden = frame.stage === "lobby";
-        result.hidden = frame.stage !== "over";
         pad.hidden = display || !mine || frame.stage !== "running";
         c.hidden = shared && !display && !!mine;
         personal.hidden = display;
         add.hidden = !host || frame.seats.filter((s) => !s.watcher).length >= 5;
-        tv.hidden = !host || !shared;
+        sharedTv.update(
+          shared,
+          host && !display && !solo && frame.stage === "lobby",
+        );
         ready.hidden = display || !mine;
         ready.textContent = frame.ready[self] ? "WAITING FOR CREW…" : "READY";
-        again.hidden = display || !mine;
-        again.textContent = frame.ready[self]
-          ? "WAITING FOR CREW…"
-          : "READY FOR ANOTHER SHIFT";
-        back.hidden = !host;
+        // A newcomer without a seat still needs the name form, which the screen would cover.
+        const result =
+          !mine && !display && !solo
+            ? undefined
+            : shiftResult(frame, { self, host, solo });
+        if (!result) {
+          if (results.open) results.hide();
+          shownResult = "";
+        } else {
+          // The bar's own fields do not rebuild the report; an account that turns up after the shift gets its button.
+          const shown = JSON.stringify([
+            { ...result, host: false, ready: false, waiting: "" },
+            result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+          ]);
+          const first = !shownResult;
+          if (shown !== shownResult) {
+            shownResult = shown;
+            results.show(
+              resultReport(result, {
+                color: (slot) => COLORS[slot] ?? "#eef0ff",
+                friend: (id) => {
+                  const publicId = social.friends.publicIdOfMember(id);
+                  return publicId
+                    ? social.friends.friendButton(publicId)
+                    : undefined;
+                },
+              }),
+            );
+          }
+          results.update(resultBar(result));
+          if (first)
+            results.actions
+              .querySelector<HTMLButtonElement>("button.is-primary")
+              ?.focus();
+        }
         if (!display && !host) admission.observe(!!mine);
         roster.update(
           frame.seats
@@ -494,11 +605,16 @@ function room() {
             .map((s) => ({
               id: s.id,
               slot: s.slot,
-              name:
-                s.name +
-                (s.bot ? " / BOT" : frame.ready[s.id] ? " / READY" : ""),
+              name: s.name,
+              status: s.bot
+                ? "BOT"
+                : !s.connected
+                  ? "AWAY"
+                  : frame.ready[s.id]
+                    ? "READY"
+                    : "NOT READY",
               color: COLORS[s.slot]!,
-              connected: s.connected,
+              host: s.id === frame.managerId,
             })),
         );
         for (const [id, row] of roster.entries()) {
@@ -548,19 +664,6 @@ function room() {
           : me?.tank.length === 5
             ? "TANK FULL — reach either shrine and hold still."
             : "WASD / ARROWS move   ·   J / MOUSE vacuum   ·   SPACE pulse";
-        if (frame.stage === "over") {
-          const sorted = [...w.hunters].sort(
-            (a, b) => b.score - a.score || a.slot - b.slot,
-          );
-          ranks.replaceChildren(
-            ...sorted.map((h) =>
-              el(
-                "p",
-                `${1 + w.hunters.filter((p) => p.score > h.score).length}. ${frame.seats.find((s) => s.id === h.id)?.name ?? "Hunter"} — ${h.score} energy`,
-              ),
-            ),
-          );
-        }
         if (previous && me) {
           const old = previous.hunters.find((h) => h.id === self);
           if (old) {
@@ -574,16 +677,18 @@ function room() {
       },
       event() {},
       status: (s) => {
-        status.show(roomFailure(s), "info");
+        const shown = roomFailure(s);
+        say(shown, shown === s ? "info" : "error");
       },
       ready(id, isHost) {
         self = id;
         host = isHost;
       },
       ended() {
-        status.show(
+        say(
           "Room ended. Return to the menu to create a new shift.",
           "error",
+          true,
         );
       },
     },
@@ -605,9 +710,6 @@ function room() {
         }
       : { humanName: social.playerName(store.getItem(names.name)) ?? "Hunter" },
   );
-  const retry = button("RECONNECT", "retry");
-  retry.onclick = () => location.reload();
-  top.append(retry);
   installRoomLifecycle(window, {
     stop: () => {
       clear();
@@ -615,16 +717,65 @@ function room() {
     },
     destroy: () => {
       modalInput.dispose();
+      stopPlaytestInput();
       alive = false;
       audio.stop();
     },
     reload: () => location.reload(),
   });
   runtime.start();
-  const render = () => {
+  // ---- drawing: the newest folded night played forward to the clock, once per animation frame ----
+  const smoother = createSmoother(),
+    leadClock = createLeadClock(),
+    drawBot = memoBot(botInput);
+  /** What to draw now: the forward run while the night runs, otherwise the newest folded world as it is. */
+  const picture = (now: number): WorldView | null | undefined => {
+    const timing = runtime?.frameTiming(),
+      state = runtime?.roomState(),
+      newer = timing?.newer.world;
+    if (
+      !drawAhead ||
+      !runtime ||
+      !timing ||
+      !newer ||
+      state?.stage !== "running" ||
+      state.world?.tick !== newer.tick
+    )
+      return latest?.world;
+    const revision = timing.revision ?? 0;
+    return smoother.apply(
+      forward(
+        state.world,
+        leadClock(ticksAhead(timing), timing.newer.logTick, now),
+        forwardInputs(
+          state,
+          self,
+          runtime.heldNow,
+          drawBot(`${state.matchId}:${state.round}:${revision}`),
+        ),
+      ),
+      `${state.matchId}:${state.round}`,
+      revision,
+      newer.tick,
+      state.held,
+      now,
+      self,
+    );
+  };
+  const render = (now: number) => {
     if (!alive) return;
-    if (latest?.world && !c.hidden)
-      draw(c.getContext("2d")!, latest.world, self);
+    const world = c.hidden ? undefined : picture(now);
+    if (world) {
+      if (probe) {
+        const mine = world.hunters.find((h) => h.id === self);
+        Reflect.set(window, "__leadProbe", {
+          at: performance.now(),
+          x: mine?.x,
+          y: mine?.y,
+        });
+      }
+      draw(c.getContext("2d")!, world, self);
+    }
     audio.frame();
     requestAnimationFrame(render);
   };

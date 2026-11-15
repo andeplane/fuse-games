@@ -73,6 +73,15 @@ const open = async (
   await page.goto(base + path);
   return page;
 };
+/** The game's own menu lives in the shared bar's menu, as "Game controls". */
+const openGameMenu = async (page) => {
+  await page
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Game controls", exact: true })
+    .click();
+};
 const P1 = [0x2d, 0xe2, 0xff],
   P2 = [0xff, 0x4f, 0xa3],
   P3 = [0xb6, 0xff, 0x4d];
@@ -242,7 +251,7 @@ const padsFit = (page) =>
       a.bottom > b.top;
     const problems = [],
       canvas = box(".fa-canvas"),
-      menu = box(".fui-game-menu-trigger");
+      menu = box(".fui-top-bar-toggle");
     if (document.documentElement.scrollWidth > innerWidth)
       problems.push("the page is wider than the screen");
     for (const selector of [".fa-dpad", ".fa-buttons"]) {
@@ -308,7 +317,7 @@ try {
   // Menu closure returns the keyboard to the run. Enter must not reopen MENU;
   // the hero still responds to movement after both BACK TO GAME and Escape.
   for (const close of ["resume", "escape"]) {
-    await landing.getByRole("button", { name: "MENU", exact: true }).click();
+    await openGameMenu(landing);
     if (close === "resume")
       await landing
         .getByRole("button", { name: "BACK TO GAME", exact: true })
@@ -457,7 +466,7 @@ try {
   await lead.waitForURL(/room=[A-Z0-9]+/);
   const shared = new URL(lead.url()).searchParams.get("room");
   await enter(lead, "Host");
-  await lead.locator(".fa-share input").check();
+  await lead.locator(".fa-tv-option input").check();
   await lead.getByRole("button", { name: "OPEN TV SCREEN" }).waitFor();
   assert.equal(
     await lead.evaluate(() => localStorage.getItem("fuse-axe-shared-screen")),
@@ -516,7 +525,7 @@ try {
     "the TV stores no room token",
   );
   // The host's controller (a desktop page here, its header showing) can still call the room back to the lobby.
-  await lead.getByRole("button", { name: "MENU", exact: true }).click();
+  await openGameMenu(lead);
   assert.ok(
     await lead
       .getByRole("button", { name: "BACK TO LOBBY", exact: true })
@@ -524,7 +533,7 @@ try {
     "the host's controller offers the lobby",
   );
   await lead.keyboard.press("Escape");
-  await phone.getByRole("button", { name: "MENU", exact: true }).click();
+  await openGameMenu(phone);
   assert.equal(
     await phone
       .getByRole("button", { name: "BACK TO LOBBY", exact: true })

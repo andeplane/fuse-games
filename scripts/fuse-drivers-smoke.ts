@@ -1,4 +1,4 @@
-import { openPlayOptions } from "./lib/main-menu.js";
+import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
@@ -44,23 +44,21 @@ try {
   await host.screenshot({ path: "artifacts/fuse-drivers/solo.png" });
   await host.goto(new URL("fuse-drivers/?mute", origin).href);
   await openPlayOptions(host);
-  await host
-    .getByRole("checkbox", { name: "Shared TV + phone controllers" })
-    .check();
-  await openPlayOptions(host);
-  await host.getByRole("button", { name: "CREATE ROOM", exact: true }).click();
+  await host.getByRole("button", { name: "Host room", exact: true }).click();
   await host.waitForURL(/room=/);
   const code = new URL(host.url()).searchParams.get("room")!;
-  await host.getByPlaceholder("Your name").fill("Ada");
-  await host.getByRole("button", { name: "Join", exact: true }).click();
+  await takeHostSeat(host, "Ada");
   await peer.goto(new URL(`fuse-drivers/?room=${code}&mute`, origin).href);
-  await peer.getByPlaceholder("Your name").fill("Bo");
-  await peer.getByRole("button", { name: "Join", exact: true }).click();
+  await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
-  const displayUrl = await host
-    .getByRole("link", { name: "OPEN TV DISPLAY" })
-    .getAttribute("href");
-  await tv.goto(`${displayUrl!}&mute`);
+  // Shared TV is the room's choice: the host ticks it in the room, and the button beside it opens the screen.
+  await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await host
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
+  await tv.goto(
+    new URL(`fuse-drivers/?room=${code}&display=1&mute`, origin).href,
+  );
   await host.screenshot({ path: "artifacts/fuse-drivers/room-lobby.png" });
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
   await Promise.all(

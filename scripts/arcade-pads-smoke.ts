@@ -30,7 +30,7 @@ try {
     })
     .click();
   await openPlayOptions(host);
-  await host.getByRole("button", { name: "CREATE ROOM", exact: true }).click();
+  await host.getByRole("button", { name: "Host room", exact: true }).click();
   await host.waitForURL(/room=/);
   const invite = new URL(host.url());
   invite.searchParams.set("mute", "1");
@@ -58,7 +58,10 @@ try {
   );
   await phone.goto(invite.href);
   await phone.locator(".online-join").waitFor({ state: "hidden" });
-  await host.getByRole("button", { name: /^Add AI$/i, exact: true }).click();
+  await host
+    .getByRole("button", { name: /^Add AI$/i, exact: true })
+    .first()
+    .click();
   await readyRoom(host);
   await phone.locator(".mobile-play.controller-only").waitFor();
 
@@ -211,7 +214,7 @@ try {
     path: `artifacts/arcade-landscape-settings-${kind}.png`,
   });
   await phone.getByLabel("Landscape bomb side").selectOption("left");
-  await phone.getByRole("button", { name: "CLOSE", exact: true }).click();
+  await phone.getByRole("button", { name: "Back", exact: true }).click();
   if (await phone.locator(".mobile-tools-open").count())
     await phone.locator(".mobile-tools-toggle").click();
   await layout(false, "left");

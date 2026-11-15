@@ -84,12 +84,25 @@ try {
   console.log(`continued with ${clock} s left`);
   // The second fall in the stage ends the run at once.
   await page.locator('main[data-card="defeat"]').waitFor({ timeout: 150_000 });
-  assert.match(await card.textContent(), /GAME OVER/);
-  assert.match(await card.textContent(), /STAGE 1 OF 1 · ASHEN VILLAGE/);
-  assert.match(await page.locator(".fa-tally").textContent(), /RHEA/);
+  const results = page.locator(".fui-results:not([hidden])");
+  await results.waitFor({ timeout: 5_000 });
+  assert.match(
+    await results.locator(".fui-results-victory h2").textContent(),
+    /GAME OVER/,
+  );
+  assert.match(
+    await results.locator(".fui-results-victory").textContent(),
+    /STAGE 1 OF 1 · ASHEN VILLAGE/,
+  );
+  assert.match(
+    await results.locator(".fui-results-standings").textContent(),
+    /RHEA/,
+  );
   await page.waitForTimeout(500);
   await snap(page, "game-over");
-  await page.getByRole("button", { name: "REMATCH" }).click();
+  await page
+    .locator('.fui-results-actions button[data-action="rematch"]')
+    .click();
   await page.locator('main[data-card=""]').waitFor({ timeout: 5_000 });
   assert.equal(
     await page.locator("main").getAttribute("data-stage"),

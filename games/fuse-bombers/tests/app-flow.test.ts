@@ -15,6 +15,7 @@ import {
 import { InputHub, type Command, type DeviceId } from "../src/app/input/hub.js";
 import type { TouchPadStyle } from "../src/app/input/index.js";
 import { createPlayMetrics } from "fuse-ui/play-metrics";
+import type { Result } from "../src/app/result-report.js";
 import {
   attachKeyboard,
   type KeyEventLike,
@@ -244,6 +245,7 @@ function fakeFlow(touch = false) {
   const uiStates: { countdown: boolean; round: number }[] = [];
   let keyListener: ((event: KeyboardEvent) => void) | undefined;
   const metricEvents: string[] = [];
+  let result: Result | null = null;
   const flow = new Flow({
     uiState: (state) => uiStates.push(state),
     playMetrics: createPlayMetrics(
@@ -265,6 +267,9 @@ function fakeFlow(touch = false) {
       },
     },
     show: () => undefined,
+    result: (next) => {
+      result = next;
+    },
     seed: 1,
   });
   /** Poll the pads (as the round scene's frame does) with these buttons down, `ms` later. */
@@ -299,6 +304,7 @@ function fakeFlow(touch = false) {
     pads,
     uiStates,
     metricEvents,
+    result: () => result,
     ...touchPads,
   };
 }
@@ -553,7 +559,8 @@ test("the touch pads stay off the results screen and come back with the next rou
 });
 
 test("the touch pads stay off the winner screen, and the lobby brings them back", () => {
-  const { flow, zones, frame, click, tap, metricEvents } = fakeFlow(true);
+  const { flow, zones, frame, click, tap, metricEvents, root, result } =
+    fakeFlow(true);
   assert.deepEqual(metricEvents, [], "the attract scene is not play");
   const shown = () => zones.at(-1)?.map((z) => z !== undefined);
   tap(0, "fire");
@@ -562,22 +569,43 @@ test("the touch pads stay off the winner screen, and the lobby brings them back"
   for (let i = 0; i < 40000 && flow.screen.kind !== "winner"; i++)
     frame(undefined, 100);
   assert.equal(flow.screen.kind, "winner", "one round win takes the match");
+  // The match's result goes to the page's shared results screen: the overlay keeps the badges only.
+  assert.doesNotMatch(root.innerHTML, /class="panel"/);
+  const won = result()!;
+  assert.match(won.title, /^(RED|BLUE|GREEN|YELLOW) WINS$/);
+  assert.deepEqual([won.rounds, won.target, won.host], [1, 1, true]);
+  assert.deepEqual(
+    won.rows.map((row) => [row.place, row.wins, row.you]),
+    [
+      [1, 1, false],
+      [2, 0, false],
+      [2, 0, false],
+      [2, 0, false],
+    ],
+  );
+  const human = won.rows.find((row) => row.id === "seat:0")!;
+  assert.deepEqual([human.tag, human.bot], ["TOUCH 1", false]);
+  assert.ok(won.rows.every((row) => row === human || row.bot));
   assert.deepEqual(metricEvents, [
     "Seat Taken",
     "Match Started",
+    "Round Started",
+    "Round Ended",
     "Match Ended",
   ]);
   frame(undefined, 100);
   assert.equal(
     metricEvents.length,
-    3,
+    5,
     "repeated winner frames do not repeat results",
   );
-  assert.deepEqual(shown(), [false, false], "no pad over PLAY AGAIN");
-  click("lobby");
+  assert.deepEqual(shown(), [false, false], "no pad over REMATCH");
+  flow.choose("lobby"); // the results screen's Back to lobby
+  frame(undefined, 16);
+  assert.equal(result(), null, "the result goes with the match");
   assert.equal(
     metricEvents.length,
-    3,
+    5,
     "returning to attract play sends nothing",
   );
   assert.deepEqual(shown(), [true, true], "the lobby's JOIN pads");

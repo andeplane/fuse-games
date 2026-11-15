@@ -87,6 +87,9 @@ try {
       );
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.getByRole("button", { name: "Play", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Host room", exact: true })
+        .click();
       step = "empty room and QR";
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
@@ -103,11 +106,12 @@ try {
         const modes = room.locator(".fui-room-modes");
         await modes.waitFor();
         const buttons = modes.getByRole("button");
-        assert.equal(await buttons.count(), game === "fuse-volley" ? 2 : 3);
+        // Fuse Volley: DUEL, 2 V 2, 3 V 3 and 2 V 2 V 2; the others have three. Every last mode seats six.
+        assert.equal(await buttons.count(), game === "fuse-volley" ? 4 : 3);
         await buttons.last().click();
         await room
           .locator(".fui-room-count")
-          .filter({ hasText: game === "fuse-volley" ? "0 / 4" : "0 / 6" })
+          .filter({ hasText: "0 / 6" })
           .waitFor();
         await buttons.first().click();
         await room
@@ -202,7 +206,24 @@ try {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       results.push({ game, error: `${step}: ${message}` });
-      console.error(`FAIL ${game}: ${message.slice(0, 350)}`);
+      // What the page was showing: a room that fell back to its menu or reported an error says so here, not in the timeout.
+      const showing = await page
+        .evaluate(() =>
+          [
+            document.body.className,
+            ...[
+              ...document.querySelectorAll<HTMLElement>(
+                '[data-state="error"], [role="alert"], [role="status"]',
+              ),
+            ].map((node) => node.textContent?.trim().slice(0, 120)),
+          ]
+            .filter(Boolean)
+            .join(" | "),
+        )
+        .catch(() => "page gone");
+      console.error(
+        `FAIL ${game} at ${step}: ${message.slice(0, 350)}\n  page: ${showing}`,
+      );
     } finally {
       await context.close();
     }

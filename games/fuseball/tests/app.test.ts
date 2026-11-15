@@ -146,6 +146,9 @@ test("the lobby: the host picks the arena, adds a bot and starts; a guest waits;
   assert.deepEqual(
     two.lobby.maps.map((m) => [m.id, m.name, m.selected]),
     [
+      ["quadcore", "Quad Core", false],
+      ["bitstream", "Bitstream", false],
+      ["memoryleak", "Memory Leak", false],
       ["gridlock", "Gridlock", true],
       ["downlink", "Downlink", false],
       ["halo", "Halo", false],
@@ -161,7 +164,7 @@ test("the lobby: the host picks the arena, adds a bot and starts; a guest waits;
       ["random", "Random", false],
     ],
   );
-  assert.equal(two.lobby.maps[2]!.blurb, MAP_BLURBS.halo);
+  assert.equal(two.lobby.maps[5]!.blurb, MAP_BLURBS.halo);
   assert.equal(two.mapName, "Gridlock");
   assert.deepEqual(two.sides, []);
   assert.equal(two.names, undefined);
@@ -175,7 +178,7 @@ test("the lobby: the host picks the arena, adds a bot and starts; a guest waits;
   assert.equal(alone.lobby.canStart, true, "a start seats a bot");
   assert.equal(alone.lobby.canAddBot, true);
   assert.match(alone.lobby.note, /filled with bots/);
-  assert.equal(alone.lobby.maps[2]!.selected, true);
+  assert.equal(alone.lobby.maps[5]!.selected, true);
 
   const bots = present(
     room("lobby", (r) => {
@@ -394,10 +397,32 @@ test("the match result: the winner, the score, each rider's numbers, and who can
   assert.equal(winner.status, "YOU WIN!");
   assert.deepEqual(winner.result, {
     title: "YOU WIN!",
-    lines: [
-      "Ada 3 – 1 Bo",
-      "Ada: 2 goals, 0 own goals, 7 bubbles",
-      "Bo: 1 goal, 1 own goal, 1 bubble",
+    score: "Ada 3 – 1 Bo",
+    rows: [
+      {
+        id: "a",
+        slot: 0,
+        teamName: "",
+        name: "Ada",
+        you: true,
+        bot: false,
+        place: 1,
+        goals: 2,
+        ownGoals: 0,
+        bubbles: 7,
+      },
+      {
+        id: "b",
+        slot: 1,
+        teamName: "",
+        name: "Bo",
+        you: false,
+        bot: false,
+        place: 2,
+        goals: 1,
+        ownGoals: 1,
+        bubbles: 1,
+      },
     ],
     host: true,
     waiting: "",

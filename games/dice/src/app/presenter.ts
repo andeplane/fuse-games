@@ -49,9 +49,28 @@ export interface DieModel {
   key: string;
   by: string;
 }
+/** One player's line of the final standings. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for the winner; equal round wins and points share a place. */
+  place: number;
+  roundWins: number;
+  rolls: number;
+  bestTurn: number;
+  busts: number;
+}
 export interface ResultModel {
   title: string;
-  lines: string[];
+  /** Rounds the match took. */
+  rounds: number;
+  /** Best first. */
+  rows: ResultRow[];
+  /** The winner's seat, or -1 when they are no longer seated. */
+  winnerSlot: number;
   /** This device may start the rematch or return to the lobby. */
   host: boolean;
   waiting: string;
@@ -232,17 +251,36 @@ export function presentTable(view: DiceView, viewer: Viewer): TableModel {
             view.winnerId === viewer.me && seated
               ? "YOU WIN!"
               : `${name(view.winnerId).toUpperCase()} WINS`,
-          lines: [...view.players]
+          rounds: view.round,
+          rows: [...view.players]
             .sort(
               (a, b) =>
                 b.roundWins - a.roundWins ||
                 b.score - a.score ||
                 a.slot - b.slot,
             )
-            .map(
-              (player) =>
-                `${player.name}: ${player.roundWins} round${player.roundWins === 1 ? "" : "s"}, best turn ${player.bestTurn}, ${player.busts} bust${player.busts === 1 ? "" : "s"}`,
-            ),
+            .map((player) => ({
+              id: player.id,
+              slot: player.slot,
+              name: player.name,
+              you: player.id === viewer.me,
+              bot: player.bot,
+              place:
+                1 +
+                view.players.filter(
+                  (other) =>
+                    other.roundWins > player.roundWins ||
+                    (other.roundWins === player.roundWins &&
+                      other.score > player.score),
+                ).length,
+              roundWins: player.roundWins,
+              rolls: player.rolls,
+              bestTurn: player.bestTurn,
+              busts: player.busts,
+            })),
+          winnerSlot:
+            view.players.find((player) => player.id === view.winnerId)?.slot ??
+            -1,
           host,
           waiting: host ? "" : "Waiting for the host to start a rematch",
         }

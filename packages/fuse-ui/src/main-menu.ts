@@ -1,3 +1,5 @@
+import { backOnEscape, createBackButton, createPageHeader } from "./back.js";
+import { menuKeys } from "./menu-keys.js";
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
 import { mountAttract, type AttractFactory } from "./attract.js";
@@ -20,8 +22,19 @@ export interface MainMenuOptions {
   play: HTMLElement;
   howToPlay?: readonly Node[];
   settings?: readonly Node[];
-  /** When supplied, Play creates a room directly. Other modes remain available below the menu. */
+  /** Host room invokes the game's existing room-creation command. */
   onPlay?: () => Promise<void> | void;
+  onSinglePlayer?: () => Promise<void> | void;
+  singlePlayerContent?: readonly Node[] | (() => readonly Node[]);
+  /**
+   * What starts the single-player game, and anything that goes with it: shown in the dialog's bar beside CLOSE
+   * while the single-player details are open, so it stays in reach however far the details scroll.
+   */
+  singlePlayerActions?: readonly Node[];
+  onJoinRoom?: () => void;
+  joinContent?: readonly Node[];
+  /** Existing shared-screen or local hosting preferences, without another default action. */
+  hostingOptions?: HTMLElement;
   onHowToPlay?: () => void;
   onSettings?: () => void;
   document?: Document;
@@ -45,11 +58,33 @@ export function createMainMenu(options: MainMenuOptions) {
   const how = button("How to play", "", doc);
   const about = button("About", "", doc);
   const settingsButton = button("Settings", "", doc);
-  const other = button(
-    "Join a room · Solo & local play",
-    "fui-main-menu-other",
-    doc,
-  );
+  const choices = el("nav", "", "fui-main-menu-nav fui-play-menu", doc);
+  choices.setAttribute("aria-label", "Choose how to play");
+  choices.hidden = true;
+  const singlePlayer = button("Single player", "", doc);
+  const hostRoom = button("Host room", "", doc);
+  const joinRoom = button("Join room", "", doc);
+  choices.append(singlePlayer, hostRoom, joinRoom);
+  // Back is the page's top-left control, as in every dialog; its bar keeps its place on the front door, where
+  // there is nowhere to go back to, so the menu under it does not move between the two.
+  const back = createBackButton({
+    className: "fui-play-menu-back",
+    document: doc,
+  });
+  const head = createPageHeader({ back, document: doc });
+  head.element.hidden = true;
+  const hosting = el("details", "", "fui-play-hosting", doc);
+  hosting.append(el("summary", "Hosting options", "", doc));
+  if (options.hostingOptions) hosting.append(options.hostingOptions);
+  hosting.hidden = true;
+  const HostingObserver = doc.defaultView?.MutationObserver;
+  if (HostingObserver && options.hostingOptions)
+    new HostingObserver(() => {
+      hosting.hidden = choices.hidden || options.hostingOptions!.hidden;
+    }).observe(options.hostingOptions, {
+      attributes: true,
+      attributeFilter: ["hidden"],
+    });
   const error = el("p", "", "fui-menu-error", doc);
   error.setAttribute("role", "alert");
   const help = el("div", "", "fui-menu-help", doc);
@@ -69,38 +104,142 @@ export function createMainMenu(options: MainMenuOptions) {
   dialog.dialog.classList.add("fui-menu-dialog");
   const parking = el("div", "", "fui-menu-parking", doc);
   parking.hidden = true;
-  parking.append(options.play, help, settings);
+  const owned = new Set<Node>([
+    options.play,
+    help,
+    settings,
+    ...(typeof options.singlePlayerContent === "function"
+      ? []
+      : (options.singlePlayerContent ?? [])),
+    ...(options.joinContent ?? []),
+  ]);
+  const singlePlayerContent = () =>
+    typeof options.singlePlayerContent === "function"
+      ? options.singlePlayerContent()
+      : (options.singlePlayerContent ?? []);
+  parking.append(...owned);
+  const barActions = options.singlePlayerActions ?? [];
   const park = () => {
+    for (const node of barActions) parking.append(node);
     for (const node of Array.from(dialog.body.childNodes)) {
-      if (node === options.play || node === help || node === settings)
-        parking.append(node);
+      if (owned.has(node)) parking.append(node);
       else node.remove();
     }
   };
-  dialog.dialog.addEventListener("close", park);
+  let returnFocus: HTMLElement = play;
+  dialog.dialog.addEventListener("close", () => {
+    park();
+    returnFocus.focus();
+  });
   const open = (name: string, nodes: readonly Node[]) => {
     park();
     dialog.show({ title: name, content: nodes });
   };
-  play.onclick = async () => {
-    if (!options.onPlay) return open("Play", [options.play]);
-    play.disabled = true;
-    play.textContent = "Creating room…";
+  let pending = false;
+  /** The first choice that can be taken is the page's primary action: it lands where Play was, at Play's size. */
+  const markPrimary = () => {
+    const first = singlePlayer.disabled ? hostRoom : singlePlayer;
+    for (const choice of [singlePlayer, hostRoom, joinRoom])
+      choice.classList.toggle("fui-menu-primary", choice === first);
+    return first;
+  };
+  const showPlayMenu = () => {
+    navigation.hidden = true;
+    choices.hidden = false;
+    head.element.hidden = false;
+    hosting.hidden = !options.hostingOptions || options.hostingOptions.hidden;
+    markPrimary().focus();
+  };
+  const showMainMenu = () => {
+    navigation.hidden = false;
+    choices.hidden = true;
+    head.element.hidden = true;
+    hosting.hidden = true;
+    error.textContent = "";
+    play.focus();
+  };
+  play.onclick = showPlayMenu;
+  back.onclick = showMainMenu;
+  const releaseEscape = backOnEscape(back, {
+    enabled: () => !pending,
+    document: doc,
+  });
+  // The arrows walk whichever column is showing: the front door's or Play's.
+  const releaseKeys = menuKeys(home, {
+    items: () => [
+      ...navigation.querySelectorAll<HTMLElement>(":scope > button"),
+      ...choices.querySelectorAll<HTMLElement>(":scope > button"),
+    ],
+    enabled: () => !pending,
+    document: doc,
+  });
+  const run = async (
+    action: () => Promise<void> | void,
+    trigger: HTMLButtonElement,
+    pendingLabel: string,
+    label: string,
+  ) => {
+    if (trigger.disabled) return;
+    pending = true;
+    for (const choice of [singlePlayer, hostRoom, joinRoom, back])
+      choice.disabled = true;
+    trigger.textContent = pendingLabel;
     error.textContent = "";
     try {
-      await options.onPlay();
+      await action();
     } catch (failure) {
       error.textContent =
         failure instanceof Error ? failure.message : String(failure);
     } finally {
-      play.disabled = false;
-      play.textContent = "Play";
+      pending = false;
+      for (const choice of [singlePlayer, hostRoom, joinRoom, back])
+        choice.disabled = false;
+      singlePlayer.disabled =
+        !options.onSinglePlayer && !singlePlayerContent().length;
+      trigger.textContent = label;
+      markPrimary();
     }
   };
-  other.onclick = () => open("More ways to play", [options.play]);
-  how.onclick = () =>
+  hostRoom.onclick = () => {
+    returnFocus = hostRoom;
+    if (options.onPlay)
+      void run(options.onPlay, hostRoom, "Creating room…", "Host room");
+    else open("Host room", [options.play]);
+  };
+  singlePlayer.disabled =
+    !options.onSinglePlayer && !singlePlayerContent().length;
+  if (singlePlayer.disabled)
+    singlePlayer.title = "This game has no single-player mode.";
+  singlePlayer.onclick = () => {
+    returnFocus = singlePlayer;
+    const content = singlePlayerContent();
+    if (content.length) {
+      content.forEach((node) => owned.add(node));
+      open("Single player", content);
+      dialog.actions.append(...barActions);
+      // Enter right after opening plays: the action that starts the game is the last in the bar.
+      const start = barActions[barActions.length - 1];
+      if (start instanceof (doc.defaultView?.HTMLElement ?? HTMLElement))
+        start.focus();
+    } else if (options.onSinglePlayer)
+      void run(
+        options.onSinglePlayer,
+        singlePlayer,
+        "Starting…",
+        "Single player",
+      );
+  };
+  joinRoom.onclick = () => {
+    returnFocus = joinRoom;
+    if (options.onJoinRoom) options.onJoinRoom();
+    else open("Join room", options.joinContent ?? [options.play]);
+  };
+  how.onclick = () => {
+    returnFocus = how;
     options.onHowToPlay ? options.onHowToPlay() : open("How to play", [help]);
+  };
   about.onclick = () => {
+    returnFocus = about;
     const credits = el("div", "", "fui-menu-credits", doc);
     credits.append(el("p", "Made by the vibe coding gang", "", doc));
     const names = el("ul", "", "", doc);
@@ -108,8 +247,10 @@ export function createMainMenu(options: MainMenuOptions) {
     credits.append(names);
     open("About", [credits]);
   };
-  settingsButton.onclick = () =>
+  settingsButton.onclick = () => {
+    returnFocus = settingsButton;
     options.onSettings ? options.onSettings() : open("Settings", [settings]);
+  };
   settingsButton.hidden = !options.onSettings;
   const addSettings = (...nodes: Node[]) => {
     settings.append(...nodes);
@@ -117,8 +258,16 @@ export function createMainMenu(options: MainMenuOptions) {
   };
   if (options.settings?.length) addSettings(...options.settings);
   navigation.append(play, how, about, settingsButton);
-  home.append(title, description, navigation, other, error);
-  element.append(home, dialog.dialog, parking);
+  /** A screen of the game's own on the front door, after Play: `label` is its button, `open` goes there. */
+  const addEntry = (label: string, open: () => void) => {
+    const entry = button(label, "", doc);
+    entry.onclick = () => open();
+    how.before(entry);
+    return entry;
+  };
+  markPrimary();
+  home.append(title, description, navigation, choices, hosting, error);
+  element.append(head.element, home, dialog.dialog, parking);
   let backgroundActive = false,
     stopBackground = () => {};
   const startBackground = () => {
@@ -131,6 +280,8 @@ export function createMainMenu(options: MainMenuOptions) {
   const dispose = () => {
     backgroundActive = false;
     stopBackground();
+    releaseEscape();
+    releaseKeys();
   };
   startBackground();
   return {
@@ -138,7 +289,12 @@ export function createMainMenu(options: MainMenuOptions) {
     help,
     settings,
     addSettings,
+    addEntry,
     play,
+    singlePlayer,
+    hostRoom,
+    joinRoom,
+    showPlayMenu,
     dialog: dialog.dialog,
     dispose,
     startBackground,

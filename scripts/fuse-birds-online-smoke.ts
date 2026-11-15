@@ -1,4 +1,4 @@
-import { openPlayOptions } from "./lib/main-menu.js";
+import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import type { Page } from "playwright";
 import { launchSelected } from "./lib/browser.js";
 import { mkdir } from "node:fs/promises";
@@ -59,8 +59,8 @@ async function waitForPlayControls(
       return (
         !document.hidden &&
         room.dataset.phase === "aiming" &&
-        document.querySelector<HTMLElement>("canvas")?.dataset.ready ===
-          "true" &&
+        document.querySelector<HTMLElement>("canvas[data-ready]")?.dataset
+          .ready === "true" &&
         !!pass &&
         !pass.disabled
       );
@@ -154,18 +154,18 @@ try {
     await wireProbe(second, output, "second");
   }
   await first.goto(`${base}/fuse-birds/?mute`);
-  await first.getByRole("button", { name: "Settings", exact: true }).click();
-  await first.getByLabel("Shared TV + phone controllers").check();
-  await first.keyboard.press("Escape");
   await openPlayOptions(first);
-  await first.getByRole("button", { name: "CREATE ROOM" }).click();
-  await first.locator(".fui-name-input").fill("SKYE");
-  await first.getByRole("button", { name: "Join" }).click();
-  const code = await first.locator(".birds-code").innerText();
+  await first.getByRole("button", { name: "Host room" }).click();
+  await takeHostSeat(first, "SKYE");
+  // The room's code is on its invitation and in the address; Shared TV is the host's choice in the room.
+  const code = new URL(first.url()).searchParams.get("room")!;
+  await first.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await first
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
   await second.goto(`${base}/fuse-birds/?room=${code}&mute`);
-  await second.locator(".fui-name-input").fill("EMBER");
-  await second.getByRole("button", { name: "Join" }).click();
-  await first.locator(".birds-roster").getByText("EMBER").waitFor();
+  await takeHostSeat(second, "EMBER");
+  await first.locator(".fui-room-players").getByText("EMBER").waitFor();
   const tv = await a.newPage();
   finishCoverage.push(await startGameCoverage(tv, { gameId: "fuse-birds" }));
   inspect(tv);
@@ -195,7 +195,7 @@ try {
       .getByRole("button", { name: "Scatter Bomb, 3 shots remaining" })
       .click();
     await first.getByRole("button", { name: "FULL MAP", exact: true }).click();
-    const box = await first.locator("canvas").boundingBox();
+    const box = await first.locator("canvas[data-ready]").boundingBox();
     assert.ok(box);
     const scale = Math.min(box.width / 1536, box.height / 768),
       x = box.x + box.width / 2 + (70 - 768) * scale,
@@ -213,7 +213,7 @@ try {
         .isVisible(),
     );
     await waitForOwnTurn(first, 10);
-    await first.locator("canvas").focus();
+    await first.locator("canvas[data-ready]").focus();
     await first.keyboard.press("i");
     await first.locator('canvas[data-gesture="keyboard-aim"]').waitFor();
     await first.screenshot({ path: `${output}/keyboard-aim.png` });
@@ -225,7 +225,7 @@ try {
         .isVisible(),
     );
     await waitForOwnTurn(first, 8);
-    await first.locator("canvas").focus();
+    await first.locator("canvas[data-ready]").focus();
     await first.keyboard.press("j");
     await first.locator('canvas[data-gesture="keyboard-aim"]').waitFor();
     const shot = await first.evaluate(() => {
@@ -296,8 +296,8 @@ try {
     // A recovered world can arrive before the manager has logged the returning seat.
     // Observe automatic admission before sending any play action; a rejected play must not be needed to repair it.
     await second
-      .locator(".birds-roster li")
-      .filter({ hasText: /^EMBER · YOU$/ })
+      .locator(".birds-lobby .fui-roster-name")
+      .filter({ hasText: /^EMBER \(you\)$/ })
       .waitFor({ state: "attached", timeout: 30_000 });
     await second.locator('canvas[data-ready="true"]').waitFor();
     // This public control gate also proves automatic current-generation admission, before any play is submitted.
@@ -366,8 +366,8 @@ try {
               seconds: Number(label.match(/(\d+)s/)?.[1] ?? 0),
               playable:
                 !document.hidden &&
-                document.querySelector<HTMLElement>("canvas")?.dataset.ready ===
-                  "true" &&
+                document.querySelector<HTMLElement>("canvas[data-ready]")
+                  ?.dataset.ready === "true" &&
                 !!pass &&
                 !pass.disabled,
             };
@@ -481,8 +481,9 @@ try {
     for (const p of [first, second, tv])
       await p.locator('.birds-room[data-phase="over"]').waitFor();
     await first.screenshot({ path: `${output}/result.png` });
+    await first.locator(".fui-results:not([hidden])").waitFor();
     await first
-      .getByRole("button", { name: "PLAY AGAIN", exact: true })
+      .locator('.fui-results-actions button[data-action="rematch"]')
       .click();
     for (const p of [first, second, tv]) {
       await p
@@ -505,7 +506,9 @@ try {
         "Control readiness",
         await page.evaluate(() => ({
           visibility: document.visibilityState,
-          ready: document.querySelector<HTMLElement>("canvas")?.dataset.ready,
+          ready:
+            document.querySelector<HTMLElement>("canvas[data-ready]")?.dataset
+              .ready,
           turn: document.querySelector<HTMLElement>(".birds-room")?.dataset
             .turn,
           phase:
@@ -514,7 +517,8 @@ try {
             .filter((button) => button.textContent === "PASS")
             .map((button) => ({ disabled: button.disabled })),
           hint: document.querySelector(".birds-hint")?.textContent,
-          roster: document.querySelector(".birds-roster")?.textContent,
+          roster: document.querySelector(".birds-lobby .fui-room-players")
+            ?.textContent,
         })),
       );
       console.error(

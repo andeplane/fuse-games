@@ -1,6 +1,6 @@
 import type { WorldView } from "../engine/view.js";
 import { keeperColor } from "../render/identity.js";
-import { botBadge } from "./roster.js";
+import { matchResult, resultBar, resultReport } from "./result-report.js";
 import "./match-shell.css";
 import {
   createInviteCard,
@@ -8,6 +8,7 @@ import {
   createRoomLayout,
   createRoster,
   button,
+  createResultsScreen,
   requestedRoomSlot,
 } from "fuse-ui";
 import QRCode from "qrcode";
@@ -17,6 +18,13 @@ export function createMatchShell(actions: {
   join(name: string, slot?: number): void;
   addAI(slot?: number): void;
   playerName?(): string | undefined;
+  /** Out of the room, as the menu's Leave does. */
+  leave(): void;
+  /** The account behind a seat, once known, and the friend button for it. */
+  friends: {
+    publicIdOfMember(memberId: string): string | undefined;
+    friendButton(publicId: string): HTMLElement;
+  };
 }) {
   const get = <T extends HTMLElement>(id: string) =>
     document.getElementById(id) as T;
@@ -84,7 +92,18 @@ export function createMatchShell(actions: {
     actions: [get("invitation")],
   });
   let inviteCode = "";
-  lounge.addEventListener("toggle", () => roomLayout.setActive(lounge.open));
+  // The room's background is a whole WebGL scene. Under the entrance menu nobody sees it, and it would draw beside
+  // the menu's own and the playground behind both: three scenes at once starve the page where WebGL has no GPU.
+  const syncBackground = () =>
+    roomLayout.setActive(
+      lounge.open && !document.body.classList.contains("at-entrance"),
+    );
+  lounge.addEventListener("toggle", syncBackground);
+  new MutationObserver(syncBackground).observe(document.body, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  syncBackground();
   const hud = document.createElement("section");
   hud.id = "match-hud";
   hud.setAttribute("aria-label", "Match scoreboard");
@@ -94,33 +113,51 @@ export function createMatchShell(actions: {
   const overlay = document.createElement("section");
   overlay.id = "match-overlay";
   overlay.hidden = true;
-  overlay.innerHTML = `<div id="countdown-card" role="status" hidden><span>GET READY</span><strong id="countdown-number"></strong></div><section id="result-card" aria-labelledby="result-title" hidden><p class="result-kicker">THE BELFRY REMEMBERS</p><h2 id="result-title"></h2><div id="winner-portraits" aria-hidden="true"></div><p id="result-detail" role="status"></p><ol id="result-tally" aria-label="Round tally"></ol><div class="result-actions"><button id="rematch">Play again</button><button id="result-free">Free play</button><button id="dismiss-results">View arena</button></div><p id="rematch-help"></p></section>`;
+  overlay.innerHTML = `<div id="countdown-card" role="status" hidden><span>GET READY</span><strong id="countdown-number"></strong></div>`;
   document.querySelector(".stage")!.append(overlay);
-  get("rematch").onclick = () => {
-    get<HTMLButtonElement>("restart-room").click();
-    get("scene").focus({ preventScroll: true });
-  };
-  get("result-free").onclick = () => {
-    get<HTMLSelectElement>("rules").value = "free";
-    get<HTMLFormElement>("tuning").requestSubmit();
-  };
   let dismissed = false;
-  get("dismiss-results").onclick = () => {
-    dismissed = true;
-    overlay.hidden = true;
-    get("show-results").hidden = false;
-    get("show-results").focus();
-  };
+  // The result: the shared results screen over the page, on the shared display too.
+  const results = createResultsScreen({
+    document,
+    onBack: actions.leave,
+    backText: "Leave",
+    onAction(id) {
+      if (id === "rematch") {
+        get<HTMLButtonElement>("restart-room").click();
+        // Movement keys are handled on the arena.
+        get("scene").focus({ preventScroll: true });
+      } else if (id === "free") {
+        get<HTMLSelectElement>("rules").value = "free";
+        get<HTMLFormElement>("tuning").requestSubmit();
+      } else {
+        dismissed = true;
+        results.hide();
+        get("show-results").focus();
+      }
+    },
+  });
+  document.querySelector("main")!.append(results.element);
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  // Only the primary on a first show: a held Space must not press View arena.
+  const focusResults = (any = false) =>
+    results.actions
+      .querySelector<HTMLButtonElement>(
+        any ? "button.is-primary, button" : "button.is-primary",
+      )
+      ?.focus();
   get("show-results").onclick = () => {
     dismissed = false;
-    overlay.hidden = false;
-    get("dismiss-results").focus();
+    results.element.hidden = false;
+    focusResults(true);
   };
   let previous = "",
     lastRound = -1;
   return {
     reset() {
       overlay.hidden = true;
+      results.hide();
+      shownResult = "";
       get("show-results").hidden = true;
       previous = "";
       lastRound = -1;
@@ -137,6 +174,36 @@ export function createMatchShell(actions: {
       const c = view.contest;
       if (round !== lastRound || c.phase !== "over") dismissed = false;
       lastRound = round;
+      const result = matchResult(view, selfId, manager && !display);
+      if (!result) {
+        if (results.open) results.hide();
+        shownResult = "";
+      } else {
+        // The bar's own fields do not rebuild the report; an account that turns up after the round gets its button.
+        const shown = JSON.stringify([
+          { ...result, host: false, waiting: "" },
+          result.rows.map((row) => actions.friends.publicIdOfMember(row.id)),
+        ]);
+        const first = !shownResult;
+        if (shown !== shownResult) {
+          shownResult = shown;
+          results.show(
+            resultReport(result, {
+              color: keeperColor,
+              friend: (id) => {
+                const publicId = actions.friends.publicIdOfMember(id);
+                return publicId
+                  ? actions.friends.friendButton(publicId)
+                  : undefined;
+              },
+            }),
+          );
+          // A keeper looking at the arena keeps looking at it.
+          if (dismissed) results.hide();
+        }
+        results.update(resultBar(result));
+        if (first) focusResults();
+      }
       const facts = JSON.stringify([
         c.phase,
         c.rules,
@@ -185,10 +252,6 @@ export function createMatchShell(actions: {
         display || view.keepers.some((keeper) => keeper.id === selfId);
       addAI.hidden = !manager || view.keepers.length >= 5;
       const local = view.keepers.find((k) => k.id === selfId);
-      const name = (id: string) => {
-        const entry = c.entries.find((e) => e.id === id);
-        return `P${(entry?.slot ?? 0) + 1} ${view.keepers.find((k) => k.id === id)?.name ?? "Keeper"}`;
-      };
       get("lounge-summary").textContent =
         `${code} · ${view.keepers.filter((k) => k.connected).length}/5 keepers`;
       get("room-authority").textContent = display
@@ -235,95 +298,11 @@ export function createMatchShell(actions: {
               : `P${local.slot + 1} · ${local.name}`;
       const countdown = c.rules !== "free" && c.phase === "countdown";
       const over = c.rules !== "free" && c.phase === "over";
-      overlay.hidden = !countdown && (!over || dismissed);
+      overlay.hidden = !countdown;
       overlay.dataset.phase = c.phase;
       get("countdown-card").hidden = !countdown;
       get("countdown-number").textContent = String(c.seconds);
-      get("result-card").hidden = !over;
       get("show-results").hidden = !over;
-      get<HTMLButtonElement>("rematch").disabled = !manager;
-      get<HTMLButtonElement>("result-free").disabled = !manager;
-      get("rematch-help").textContent = manager
-        ? "Same keepers. Another chance."
-        : "Waiting for the room manager to start the next round.";
-      if (over) {
-        get("result-title").textContent =
-          c.winners.length === 0
-            ? "No keeper left standing"
-            : c.winners.length > 1
-              ? "A shared victory"
-              : "A keeper stands tall";
-        const bot = (id: string) =>
-          !!view.keepers.find((k) => k.id === id)?.bot;
-        get("result-detail").textContent = c.winners.length
-          ? c.winners
-              .map((id) => `${name(id)}${bot(id) ? " (bot)" : ""}`)
-              .join(" & ")
-          : "The round ends in a draw.";
-        // Knockouts, self-knockouts, bombs thrown and how each keeper went down.
-        const bombs = view.bombMode !== "off";
-        const fate = (t: (typeof view.keepers)[number]["tally"]) =>
-          t.fate === "fall"
-            ? "fell"
-            : t.fate === "self"
-              ? "own bomb"
-              : t.fate === "bomb"
-                ? `bombed by ${name(t.by)}`
-                : t.fate === "hazard"
-                  ? t.by
-                    ? `pushed into a hazard by ${name(t.by)}`
-                    : "zapped"
-                  : "";
-        get("result-tally").replaceChildren(
-          ...c.entries.map((entry) => {
-            const k = view.keepers.find((k) => k.id === entry.id);
-            const li = document.createElement("li");
-            li.style.setProperty("--keeper-color", keeperColor(entry.slot));
-            const who = document.createElement("strong");
-            who.textContent = name(entry.id);
-            const facts: string[] = [];
-            if (k && bombs)
-              facts.push(
-                `${k.tally.knockouts} KO`,
-                `${k.tally.selfKnockouts} self`,
-                `${k.tally.thrown} bombs`,
-              );
-            if (k && view.powers.length)
-              facts.push(
-                `${k.tally.powerUps} power-up${k.tally.powerUps === 1 ? "" : "s"}`,
-              );
-            if (c.rules === "elimination")
-              facts.push(
-                entry.out
-                  ? `out · ${(k && fate(k.tally)) || "left"}`
-                  : "standing",
-              );
-            else if (k)
-              facts.push(
-                `${k.tally.falls} falls`,
-                ...(bombs ? [`${k.tally.bombed} bombed`] : []),
-                ...(k.tally.zapped ? [`${k.tally.zapped} zapped`] : []),
-                ...(k.tally.fate ? [`last: ${fate(k.tally)}`] : []),
-              );
-            const detail = document.createElement("span");
-            detail.textContent = facts.join(" · ");
-            if (k?.bot) li.append(botBadge());
-            li.append(who, " ", detail);
-            return li;
-          }),
-        );
-        get("winner-portraits").replaceChildren(
-          ...c.winners.map((id) => {
-            const p = document.createElement("span");
-            p.className = "keeper-portrait";
-            p.style.setProperty(
-              "--keeper-color",
-              keeperColor(c.entries.find((e) => e.id === id)?.slot ?? 0),
-            );
-            return p;
-          }),
-        );
-      }
     },
   };
 }

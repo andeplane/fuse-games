@@ -18,7 +18,10 @@ COPY packages/fuse-network-fe/package.json ./packages/fuse-network-fe/
 COPY packages/fuse-network-be/package.json ./packages/fuse-network-be/
 COPY packages/fuse-netcode/package.json ./packages/fuse-netcode/
 COPY packages/fuse-platform/package.json ./packages/fuse-platform/
+COPY packages/fuse-telemetry/package.json ./packages/fuse-telemetry/
 COPY packages/fuse-ui/package.json ./packages/fuse-ui/
+COPY packages/fuseos/package.json ./packages/fuseos/
+COPY packages/fuse-music/package.json ./packages/fuse-music/
 # Games are workspaces too: pnpm needs every manifest the lockfile lists, including browser-only experiments.
 COPY games/dice/package.json ./games/dice/
 COPY games/ball-bros/package.json ./games/ball-bros/
@@ -39,6 +42,7 @@ COPY games/fuse-volley/package.json ./games/fuse-volley/
 COPY games/killer-fuse/package.json ./games/killer-fuse/
 COPY games/elasto-fuse/package.json ./games/elasto-fuse/
 COPY games/fuse-surge/package.json ./games/fuse-surge/
+COPY games/fusemania/package.json ./games/fusemania/
 # node_modules hardlinks into the store, so removing the store afterwards keeps the installed files.
 RUN pnpm install --prod --frozen-lockfile && rm -rf "$(pnpm store path)"
 COPY --chown=node:node service ./service

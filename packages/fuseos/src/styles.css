@@ -1,0 +1,274 @@
+@import "tailwindcss";
+@import "98.css/dist/98.css" layer(base);
+/* The "delete SYSTEM32" gag (system32/): stage classes on the desktop root, the blue screen, the restart. */
+@import "./system32/system32.css" layer(components);
+
+/*
+ * Control Panel, Display, Font size: Small fonts / Large fonts scales the whole chrome from
+ * one custom property on <html>, so nothing else here needs editing per component. Set on
+ * <html> (DesktopUiProvider), not the desktop's own root, so it also reaches windows and
+ * menus that portal straight to document.body (ContextMenu). 1.25 matches the classic
+ * 96 -> 120 DPI "Large Fonts" ratio.
+ */
+:root {
+  --win98-font-scale: 1;
+}
+
+:root.large-fonts {
+  --win98-font-scale: 1.25;
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+}
+
+@layer components {
+  .win98 {
+    font-family: "Pixelated MS Sans Serif", Arial, sans-serif;
+    font-size: calc(11px * var(--win98-font-scale, 1));
+    -webkit-font-smoothing: none;
+    color: #222;
+    user-select: none;
+  }
+
+  /* 98.css sets these directly at 11px (not from .win98's inherited size); scale them the same way. */
+  .win98 button,
+  .win98 label,
+  .win98 input,
+  .win98 legend,
+  .win98 textarea,
+  .win98 select,
+  .win98 option,
+  .win98 table,
+  .win98 ul.tree-view,
+  .win98 .window,
+  .win98 .title-bar,
+  .win98 li[role="tab"] {
+    font-size: calc(11px * var(--win98-font-scale, 1));
+  }
+
+  /* Tailwind preflight makes img/svg block-level; Win98 chrome needs inline icons. */
+  .win98 :is(img, svg) {
+    display: inline-block;
+    vertical-align: middle;
+    shape-rendering: crispEdges;
+  }
+
+  .win98 button {
+    color: #222;
+    text-shadow: none;
+  }
+
+  .win98 button.toolbar-button,
+  .win98 button.flat {
+    background: transparent;
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
+    padding: 2px 4px;
+  }
+
+  .win98 button.toolbar-button:hover:not(:disabled) {
+    box-shadow:
+      inset -1px -1px #0a0a0a,
+      inset 1px 1px #fff;
+  }
+
+  .win98 button.toolbar-button:disabled {
+    color: grey;
+  }
+
+  .win98 button.toolbar-button.pressed {
+    box-shadow:
+      inset 1px 1px #0a0a0a,
+      inset -1px -1px #fff;
+    background: repeating-conic-gradient(#fff 0 25%, silver 0 50%) 0 0 / 2px 2px;
+  }
+
+  .desktop {
+    background: #008080;
+  }
+
+  .selected-label {
+    background: navy;
+    color: #fff;
+    outline: 1px dotted #fff;
+  }
+
+  .menu-item:hover,
+  .menu-item.open {
+    background: navy;
+    color: #fff;
+  }
+
+  .raised {
+    box-shadow:
+      inset -1px -1px #0a0a0a,
+      inset 1px 1px #fff,
+      inset -2px -2px grey,
+      inset 2px 2px #dfdfdf;
+  }
+
+  .sunken {
+    box-shadow:
+      inset -1px -1px #fff,
+      inset 1px 1px grey,
+      inset -2px -2px #dfdfdf,
+      inset 2px 2px #0a0a0a;
+  }
+
+  /* The Office Assistant's balloon: the classic yellow bubble with a tail pointing at the character. */
+  .assistant-balloon {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 300px;
+    max-height: 420px;
+    margin-bottom: 14px;
+    margin-right: 30px;
+    padding: 6px 8px 8px;
+    background: #ffffcc;
+    border: 1px solid #000;
+    border-radius: 8px;
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+    color: #000;
+  }
+
+  .assistant-balloon::before,
+  .assistant-balloon::after {
+    content: "";
+    position: absolute;
+    right: 28px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+  }
+
+  .assistant-balloon::before {
+    bottom: -14px;
+    border-width: 14px 0 0 14px;
+    border-color: #000 transparent transparent transparent;
+  }
+
+  .assistant-balloon::after {
+    bottom: -12px;
+    right: 29px;
+    border-width: 12px 0 0 12px;
+    border-color: #ffffcc transparent transparent transparent;
+  }
+
+  .assistant-speech {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .assistant-log {
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 4px;
+    background: #fff;
+    user-select: text;
+  }
+
+  .assistant-log > li + li {
+    margin-top: 4px;
+  }
+
+  .assistant-user {
+    color: navy;
+  }
+
+  .assistant-tool {
+    color: grey;
+    font-style: italic;
+  }
+
+  .assistant-tool::before {
+    content: "▸ ";
+  }
+
+  .assistant-tool-running {
+    color: #444;
+  }
+
+  .assistant-download {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px;
+    border: 1px dotted grey;
+    background: #ffffe8;
+  }
+
+  .assistant-download .progress-indicator {
+    height: 16px;
+  }
+
+  .start-banner {
+    background: linear-gradient(180deg, #1084d0, navy);
+    color: silver;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 1px;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+
+  /* Keyboard navigation of the Start menu highlights the focused item the way hover does. */
+  .menu-item:focus-visible {
+    background: navy;
+    color: #fff;
+    outline: none;
+  }
+}
+
+/* A game window's Pop out: a fourth title-bar button, the size and bevel of the others, with a glyph in place of an icon. */
+.win98 .title-bar-controls button.title-pop-out {
+  min-width: 16px;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+/*
+ * Touch screens: the chrome keeps its Windows 98 proportions but the targets grow to a
+ * finger's width (title bar buttons, taskbar, menu rows). Windows themselves open maximized
+ * below 900px (windows/windowManager.ts, COMPACT_MAX_WIDTH), so there is nothing to drag.
+ */
+@media (pointer: coarse) {
+  .win98 .title-bar {
+    padding: 4px 3px;
+  }
+
+  .win98 .title-bar-controls button {
+    min-width: 22px;
+    min-height: 20px;
+  }
+
+  .win98 .menu-item {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .win98 [role="menu"] [role="menuitem"] {
+    min-height: 32px;
+  }
+}
+
+/* Narrow screens: one icon column of room, a taskbar that does not spill, and a Start menu that scrolls. */
+@media (max-width: 899px) {
+  .win98 [data-start-menu] [role="menu"] {
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+}

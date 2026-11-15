@@ -1,11 +1,21 @@
+import { createTopBar } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -15,18 +25,28 @@ import {
   installRoomLifecycle,
   validRoomCode,
 } from "fuse-network-fe";
-import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
+  MAX_PACKET_BYTES,
+  createLeadClock,
+  ticksAhead,
+  uuid,
+} from "fuse-netcode";
+import {
+  backOnEscape,
   button,
   createAppPortal,
   createGameMenu,
   createInviteCard,
   createLandingCard,
-  createRoomLayout,
   createNameEntry,
   createNotice,
+  createPageMessage,
+  createRoomLayout,
   createRoster,
+  createResultsScreen,
+  createSharedTvOption,
   createRoundControls,
+  createSubPage,
   el,
 } from "fuse-ui";
 import {
@@ -42,8 +62,17 @@ import { freightGame, type View } from "../online/game.js";
 import { seatName } from "../online/names.js";
 import { FreightRuntime, type FreightCallbacks } from "../online/runtime.js";
 import { blend, fraction } from "../render/interpolate.js";
+import type { WorldView } from "../engine/index.js";
+import {
+  createCueLatch,
+  createSmoother,
+  forward,
+  forwardInputs,
+  memoBot,
+} from "./forward.js";
 import { createScene, effectKey, VIEW_H, VIEW_W } from "../render/scene.js";
 import { seatColor } from "../render/palette.js";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   RULES,
   createBays,
@@ -122,10 +151,14 @@ const names = keys(GAME);
 const query = new URLSearchParams(location.search);
 const muted = mutedByQuery(location.search);
 const autopilot = query.has("autopilot");
+/** `?lead=off` draws the old way, a tick behind the clock and blended, to compare the feel against. */
+const drawAhead = query.get("lead") !== "off";
+/** `?probe` publishes where this device's train was last drawn, for the press-to-picture measurement. */
+const probe = query.has("probe");
 const app = document.querySelector<HTMLElement>("#app")!;
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
-/** A link within the game that keeps this page's developer flags: `mute` and `autopilot`. */
-const DEV_FLAGS = ["mute", "autopilot"] as const;
+/** A link within the game that keeps this page's developer flags: `mute`, `autopilot`, `lead` and `probe`. */
+const DEV_FLAGS = ["mute", "autopilot", "lead", "probe"] as const;
 const withFlags = (path: string) => {
   const kept = DEV_FLAGS.filter((flag) => query.has(flag)).map((flag) =>
     query.get(flag) ? `${flag}=${encodeURIComponent(query.get(flag)!)}` : flag,
@@ -170,48 +203,6 @@ function onScreen(element: Element): () => boolean {
   return () => visible && element.isConnected;
 }
 
-/** The sound toggles; `prompt` adds a TAP FOR SOUND button until the browser lets the page play (the TV screen). */
-function soundToggles(prompt = false): HTMLElement {
-  const box = el("div", "", "ff-sound");
-  if (audio.silenced) {
-    const chip = el("span", "🔇 MUTED", "ff-sound-chip");
-    chip.title = "This page was opened with ?mute";
-    box.append(chip);
-    return box;
-  }
-  const music = button("", "ff-sound-button"),
-    effects = button("", "ff-sound-button");
-  const show = () => {
-    setText(music, audio.prefs.muted.music ? "♫ MUSIC OFF" : "♫ MUSIC ON");
-    setText(effects, audio.prefs.muted.effects ? "FX OFF" : "FX ON");
-    music.setAttribute("aria-pressed", String(!audio.prefs.muted.music));
-    effects.setAttribute("aria-pressed", String(!audio.prefs.muted.effects));
-  };
-  music.onclick = () => {
-    audio.setMuted("music", !audio.prefs.muted.music);
-    savePrefs(store, audio.prefs);
-    audio.resume();
-    show();
-  };
-  effects.onclick = () => {
-    audio.setMuted("effects", !audio.prefs.muted.effects);
-    savePrefs(store, audio.prefs);
-    audio.resume();
-    show();
-  };
-  show();
-  box.append(music, effects);
-  if (prompt) {
-    const tap = button("🔊 TAP FOR SOUND", "ff-sound-button ff-sound-tap");
-    tap.onclick = () => audio.resume();
-    box.prepend(tap);
-    animations.add(() => {
-      tap.hidden = audio.running();
-    });
-  }
-  return box;
-}
-
 // ---- shared pieces ----
 function logo(): HTMLElement {
   const brand = el("a", "", "ff-brand");
@@ -231,7 +222,21 @@ function header(extra: HTMLElement[] = []): HTMLElement {
     search: location.search,
   });
   bar.append(portal.element, logo(), social.element(), ...extra);
-  return bar;
+  return createTopBar({
+    element: bar,
+    gameId: GAME,
+    sound: {
+      enabled: () => !audio.prefs.muted.music || !audio.prefs.muted.effects,
+      forcedMute: audio.silenced,
+      setEnabled: (on) => {
+        if (audio.silenced) return;
+        audio.setMuted("music", !on);
+        audio.setMuted("effects", !on);
+        savePrefs(store, audio.prefs);
+        if (on) audio.resume();
+      },
+    },
+  });
 }
 
 /** Canvases that animate while shown: the splash's depot, the rules panels and the lobby's bays. */
@@ -312,13 +317,6 @@ function landing(): void {
   document.body.classList.add("ff-landing-page");
   audio.mood("menu");
   const splash = el("section", "", "ff-splash");
-  const shared = el("label", "", "ff-shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   const card = createLandingCard({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -345,16 +343,15 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
-  card.create.after(shared);
   card.menu.help.append(keyHelp());
-  const back = el("a", "← FUSE RIDERS", "ff-back");
+  const back = el("a", "All games", "ff-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const front = el("div", "", "ff-splash-front");
   front.append(card.element);
   splash.append(front);
   const menu = createGameMenu(controllerGuide);
   menu.update({ canLobby: false, touch: coarse() });
-  app.replaceChildren(header([soundToggles(), back, menu.element]), splash);
+  app.replaceChildren(header([back, menu.element]), splash);
   card.menu.help.append(howToPlay());
 }
 
@@ -369,6 +366,7 @@ function holdButton(
   const source = `pad:${className}:${label}`;
   let captured = false;
   const down = (event: PointerEvent) => {
+    if (playtestInputBlocked(document)) return;
     event.preventDefault();
     try {
       // Keeps the press while the thumb slides off the pad; a pointer the browser no longer tracks cannot be captured.
@@ -401,12 +399,15 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const back = el("a", "← BACK", "ff-back");
-    back.href = withFlags(endpoints.appUrl());
-    app.replaceChildren(
-      header([back]),
-      el("p", "That is not a room code: check it and try again.", "ff-error"),
-    );
+    const page = createSubPage({
+      title: "Join room",
+      backHref: withFlags(endpoints.appUrl()),
+      content: [
+        createPageMessage("That is not a room code: check it and try again."),
+      ],
+    });
+    app.replaceChildren(header(), page.element);
+    backOnEscape(page.back);
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -425,7 +426,22 @@ function room(solo: boolean): void {
   };
 
   // ---- the page ----
-  const status = createNotice({ className: "ff-status" });
+  // How the room is doing sits at the lobby's foot, and beside the menu while a match is on the screen (a link that
+  // is retrying or a driver who lags is said there, as it always was); what went wrong is said above the room.
+  const status = createNotice({ className: "ff-status" }),
+    live = createNotice({ className: "ff-live" }),
+    problem = createNotice({ className: "ff-alert" });
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
   // Returning to the lobby ends play for everyone, so keep an explicit second action.
   const lobbyConfirm = el("dialog", "", "ff-lobby-confirm");
   const cancelLobby = button("CANCEL"),
@@ -453,12 +469,21 @@ function room(solo: boolean): void {
     },
   });
   const roundControls = createRoundControls(controllerGuide);
-  const top = header([
-    el("strong", solo ? "SOLO" : code, "ff-code"),
-    status.element,
-    soundToggles(display),
-    menu.element,
-  ]);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a match is on.
+  const top = header([live.element, menu.element]);
+  createTopBar({
+    element: top,
+    onOpenChange: (open) => {
+      if (open) {
+        releaseAll();
+        captured.clear();
+      }
+    },
+  });
+  const modalOpen = () =>
+    playtestInputBlocked(document) ||
+    Boolean(document.querySelector("dialog[open]"));
 
   // Lobby.
   const lobby = el("section", "", "ff-lobby"),
@@ -467,8 +492,25 @@ function room(solo: boolean): void {
     roster = createRoster({ emptyText: "No drivers yet" }),
     addBot = button("+ ADD BOT", "ff-add-bot"),
     start = button("START THE TRAINS ▶", "fui-button-primary ff-start"),
-    lobbyNote = el("p", "", "fui-lobby-note"),
-    tvLink = button("OPEN TV SCREEN", "ff-tv");
+    lobbyNote = el("p", "", "fui-lobby-note");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates.
+  const sharedTv = createSharedTvOption({
+    className: "ff-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({
+        type: "settings",
+        settings: { ...settings, display },
+      });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
+        "_blank",
+      ),
+  });
   const bays = pictureCanvas(480, 190, "ff-bays");
   const bayPainter = createBays(bays.g, make);
   let bayState: { slot: number; taken: boolean; you: boolean }[] = [
@@ -517,11 +559,6 @@ function room(solo: boolean): void {
       slot: requestedRoomSlot(addBot),
     });
   start.onclick = () => runtime.command({ type: "action", action: "start" });
-  tvLink.onclick = () =>
-    window.open(
-      withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
-      "_blank",
-    );
 
   // Depot rules: the host's to change.
   let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -564,7 +601,7 @@ function room(solo: boolean): void {
     ROUND_SECONDS.map((seconds) => [seconds, `${seconds} seconds`] as const),
   );
   const lobbyActions = el("div", "", "ff-lobby-actions");
-  lobbyActions.append(tvLink, start);
+  lobbyActions.append(start);
   const depotRules = el("div", "", "ff-depot-rules");
   depotRules.append(
     el("h2", "DEPOT RULES", "fui-lobby-title"),
@@ -618,26 +655,24 @@ function room(solo: boolean): void {
     note,
     hint,
   );
-  const result = el("section", "", "ff-result"),
-    resultTitle = el("h2"),
-    resultLines = el("ol"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "ff-lobby-actions"),
-    rematch = button("REMATCH", "fui-button-primary"),
-    toLobby = button("LOBBY");
-  resultActions.append(toLobby, rematch);
-  result.append(
-    el("small", "MATCH OVER"),
-    resultTitle,
-    resultLines,
-    resultWaiting,
-    resultActions,
-  );
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  screen.append(canvas, hud, result);
+  // The result: the shared results screen over the page. A phone controller keeps its own card.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  screen.append(canvas, hud);
 
   // Touch buttons under or over the depot, and the phone controller for a shared screen.
   const controls = new HeldControls((bits) => runtime.input(bits));
@@ -700,6 +735,7 @@ function room(solo: boolean): void {
   const main = el("main", "", "ff-room");
   // The name form stands above every screen: a newcomer mid-match picks a name and drives from the next round.
   main.append(
+    problem.element,
     connecting,
     closed,
     nameEntry.form,
@@ -707,9 +743,12 @@ function room(solo: boolean): void {
     lobbyRules,
     stage,
     controller,
+    results.element,
   );
   screen.append(roundControls.element);
   app.replaceChildren(top, main, lobbyConfirm);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -717,11 +756,25 @@ function room(solo: boolean): void {
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     roster,
+    // ADD FRIEND on a player's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: 5,
     join: nameEntry.form,
+    // Seated already: any open seat is a move, and what the seat is (a team, a colour) follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     addAI: addBot,
     settings: [rules, lobbyRules],
-    actions: [lobbyNote, tvLink, start],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the drivers scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo
+      ? { compact: true, heading: "Solo vs bots" }
+      : { heading: "Room" }),
   });
   lobby.hidden = true;
   lobbyRules.hidden = true;
@@ -743,11 +796,62 @@ function room(solo: boolean): void {
   };
   new ResizeObserver(fit).observe(screen);
   let model: Model | undefined;
-  animations.add((now) => {
+  // ---- drawing: the newest folded world played forward to the clock, once per animation frame ----
+  const smoother = createSmoother(),
+    leadClock = createLeadClock(),
+    drawBot = memoBot(botInput),
+    latch = createCueLatch();
+  /** What to draw now: the forward run when the newest frame is the room's newest world, otherwise the two frames blended. */
+  const picture = (now: number): WorldView | undefined => {
     const timing = runtime.frameTiming();
-    if (!timing?.newer.world || stage.hidden) return;
-    const alpha = fraction(timing.older?.tick, timing.newer.tick, timing.tick);
-    const world = blend(timing.older?.world, timing.newer.world, alpha);
+    const newer = timing?.newer.world;
+    if (!timing || !newer) return undefined;
+    const state = runtime.roomState();
+    if (
+      !drawAhead ||
+      state?.stage !== "running" ||
+      !state.world ||
+      state.world.step !== newer.step
+    )
+      return blend(
+        timing.older?.world,
+        newer,
+        fraction(timing.older?.tick, timing.newer.tick, timing.tick),
+      );
+    const ahead = leadClock(ticksAhead(timing), timing.newer.logTick, now);
+    return latch(
+      smoother.apply(
+        forward(
+          state.world,
+          ahead,
+          forwardInputs(
+            state,
+            runtime.self,
+            runtime.heldNow,
+            // A bot answers the world it sees, and what this device holds changes that world ahead of the fold.
+            drawBot((timing.revision ?? 0) * 64 + runtime.heldNow),
+          ),
+        ),
+        timing.revision ?? 0,
+        newer.step,
+        { ...state.held },
+        now,
+        runtime.self,
+      ),
+    );
+  };
+  animations.add((now) => {
+    const world = stage.hidden ? undefined : picture(now);
+    if (!world) return;
+    if (probe) {
+      const mine = world.trains.find((t) => t.id === viewer.me);
+      Reflect.set(window, "__fuseFreightProbe", {
+        at: performance.now(),
+        step: world.step,
+        hx: mine?.hx,
+        hy: mine?.hy,
+      });
+    }
     g.setTransform(scale, 0, 0, scale, 0, 0);
     scene.draw({
       world,
@@ -821,6 +925,7 @@ function room(solo: boolean): void {
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
+    ownSeat = next.lobby.members.find((member) => member.you);
     connecting.hidden = true;
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
@@ -834,7 +939,8 @@ function room(solo: boolean): void {
       next.lobby.members.map((member) => ({
         id: member.id,
         slot: member.slot,
-        name: member.you ? `${member.name} (you)` : member.name,
+        // Alone with the bots there is nobody to tell apart from: the seat reads "You", not "You (you)".
+        name: member.you && !solo ? `${member.name} (you)` : member.name,
         color: seatColor(member.slot),
         status: member.bot
           ? "AI DRIVER"
@@ -864,12 +970,7 @@ function room(solo: boolean): void {
     start.disabled = !next.lobby.canStart;
     setText(lobbyNote, next.lobby.note);
     lobbyNote.hidden = !next.lobby.note;
-    tvLink.hidden = !(
-      view.settings.display &&
-      viewer.host &&
-      !display &&
-      !solo
-    );
+    sharedTv.update(view.settings.display, viewer.host && !display && !solo);
     showWins(view.settings.wins, next.lobby.editable);
     showSeconds(view.settings.seconds, next.lobby.editable);
     const touchGuide = coarse() || next.screen === "controller";
@@ -965,19 +1066,36 @@ function room(solo: boolean): void {
       controllerResultActions.hidden = !next.result.host;
     }
     // Result.
-    result.hidden = !next.result || next.screen === "controller";
-    if (next.result) {
-      setText(resultTitle, next.result.title);
-      const lines = next.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...next.result.lines.map((line) => el("li", line)),
+    const result = next.result;
+    if (!result || next.screen === "controller") {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: seatColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      setText(resultWaiting, next.result.waiting);
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 
@@ -1053,22 +1171,30 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: FreightCallbacks = {
     state(frame, roomSettings) {
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.stage === "running",
-        ended: frame.stage === "over",
-        round: frame.round,
-        playerCount: frame.seats.filter((seat) => !seat.watcher).length,
-        botCount: frame.seats.filter((seat) => seat.bot).length,
-        seated: frame.seats.some(
-          (seat) => seat.id === viewer.me && !seat.watcher,
-        ),
-        mode: solo ? "solo" : roomSettings.display ? "shared" : "online",
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => ({
+          matchId: frame.matchId,
+          roundActive: frame.world?.phase === "play",
+          roundEnded: frame.stage === "between" || frame.stage === "over",
+          active: frame.stage === "running",
+          ended: frame.stage === "over",
+          round: frame.round,
+          playerCount: frame.seats.filter((seat) => !seat.watcher).length,
+          botCount: frame.seats.filter((seat) => seat.bot).length,
+          seated: frame.seats.some(
+            (seat) => seat.id === viewer.me && !seat.watcher,
+          ),
+          mode: solo ? "solo" : roomSettings.display ? "shared" : "online",
+        }),
+      );
       settings = roomSettings;
       const next = present(frame, viewer);
       main.dataset.round = String(frame.round);
-      if (next.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (next.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
@@ -1094,17 +1220,17 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     kicked() {
-      status.show("The host removed you from the room", "error");
+      say("The host removed you from the room", "error");
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
       over = true;
       controls.clear();
       for (const part of [
@@ -1121,7 +1247,7 @@ function room(solo: boolean): void {
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           if (roomFailure(String(body.error ?? "")) === NOT_OPEN)
-            status.show(NOT_OPEN, "error");
+            say(NOT_OPEN, "error");
         })
         .catch(() => {
           /* offline: "Room ended" stands */
@@ -1156,7 +1282,7 @@ function room(solo: boolean): void {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => {},
+    destroy: () => stopPlaytestInput(),
     reload: () => location.reload(),
   });
 
@@ -1171,6 +1297,7 @@ function room(solo: boolean): void {
   document.addEventListener("keydown", (event) => {
     if (
       menu.isOpen() ||
+      modalOpen() ||
       lobbyConfirm.open ||
       typing(event.target) ||
       event.metaKey ||
@@ -1178,6 +1305,12 @@ function room(solo: boolean): void {
       event.altKey
     )
       return;
+    // A repeat presses nothing new, but a held game key must stay swallowed
+    // or the page scrolls and a focused button fires under the player.
+    if (event.repeat) {
+      if (captured.has(event.code)) event.preventDefault();
+      return;
+    }
     if (controls.press(event.code)) {
       captured.add(event.code);
       event.preventDefault();
@@ -1193,6 +1326,9 @@ function room(solo: boolean): void {
     for (const pad of document.querySelectorAll(".ff-pad.held"))
       pad.classList.remove("held");
   };
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: releaseAll,
+  });
   window.addEventListener("blur", releaseAll);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) releaseAll();

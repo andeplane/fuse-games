@@ -61,28 +61,56 @@ body.elasto-fuse-page {
   color: var(--fui-cyan);
   font: 0.625rem var(--fui-font-pixel);
 }
-.ef-code {
-  padding: var(--fui-space-1) var(--fui-space-2);
-  color: var(--fui-ink);
-  background: var(--fui-yellow);
-  border-radius: var(--fui-radius-small);
-  font: 0.75rem var(--fui-font-pixel);
+/* What went wrong, said above the room wherever the rider is. */
+.ef-alert {
+  margin: var(--fui-space-3) auto 0;
+  padding: 0 var(--fui-space-4);
+  color: var(--fui-pink-soft);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: center;
 }
-.ef-status {
-  flex: 1 1 10rem;
-  /* One line, always laid out: a status that appears, changes or wraps must not move the buttons beside it. */
-  min-width: 0;
-  min-height: 1.25rem;
-  overflow: hidden;
+/* During a race it floats over the top of the track: a line that appears must not push the screen or the pads
+   out from under a thumb. */
+.ef-room:is([data-screen="play"], [data-screen="controller"]) > .ef-alert {
+  position: fixed;
+  z-index: var(--fui-z-overlay);
+  top: 4.25rem;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  margin: 0;
+  padding: var(--fui-space-2) var(--fui-space-4);
+  border: 1px solid currentColor;
+  border-radius: var(--fui-radius-small);
+  background: #08163af2;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+/* The room's state beside the menu while a race is on; in the lobby it is the line at the lobby's foot. */
+.ef-live {
+  max-width: 22rem;
+  color: var(--fui-text-muted);
   font-size: 0.75rem;
   line-height: 1.25rem;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.fui-app .ef-status[hidden] {
-  display: block !important;
-  visibility: hidden;
+body:has(.ef-lobby:not([hidden])) .ef-live {
+  display: none !important;
+}
+/* Where the bar has room, the line sits in the bar itself, before the buttons. */
+@media (min-width: 900px) {
+  .ef-top .fui-top-bar-context {
+    inset: 0 24.5rem 0 17.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .ef-live {
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 .ef-top .fui-game-menu {
   margin-left: auto;
@@ -109,19 +137,6 @@ body.elasto-fuse-page {
 .elasto-fuse-page .fui-landing-title {
   color: var(--fui-yellow);
 }
-.ef-shared {
-  display: flex;
-  align-items: center;
-  gap: var(--fui-space-2);
-  color: var(--fui-text-muted);
-  font-size: 0.8125rem;
-}
-.fui-app .ef-shared input {
-  width: 1.25rem;
-  height: 1.25rem;
-  margin: 0;
-  accent-color: var(--fui-cyan);
-}
 .ef-landing-rules {
   display: grid;
   gap: var(--fui-space-2);
@@ -144,6 +159,36 @@ body.elasto-fuse-page {
 }
 
 /* The level picker: on the landing page and in the lobby */
+.fui-room-modes > .ef-series-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fui-space-3);
+  margin-bottom: var(--fui-space-3);
+}
+.ef-level-picker {
+  display: grid;
+  gap: var(--fui-space-2);
+  width: 100%;
+  min-width: 0;
+  color: var(--fui-text-muted);
+}
+.ef-level-picker select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--fui-space-2);
+  color: var(--fui-text);
+  background: #06102a;
+  border: var(--fui-stroke) solid var(--fui-line);
+  font: inherit;
+  color-scheme: dark;
+}
+.ef-level-picker select:focus-visible {
+  outline: 2px solid var(--fui-cyan);
+  outline-offset: 2px;
+}
+.ef-level-picker select:disabled {
+  opacity: 0.65;
+}
 .ef-levels {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
@@ -291,7 +336,7 @@ body.ef-display .ef-lobby {
   padding-right: 2.5rem;
 }
 
-/* The table between two races and the result: one card over the race */
+/* The table between two races: one card over the race */
 .ef-card {
   /* Low in the picture: the bike rides at its middle and stays in view behind the card's top edge. */
   position: absolute;
@@ -350,30 +395,10 @@ body.ef-display .ef-lobby {
   color: var(--fui-yellow);
   font-style: normal;
 }
-.ef-lines {
-  display: grid;
-  gap: var(--fui-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fui-text-muted);
-  font-size: 0.8125rem;
-}
-.ef-lines li:first-child {
-  color: var(--fui-text-bright);
-  font: 0.75rem/1.6 var(--fui-font-pixel);
-}
-.ef-lines li.best {
-  color: var(--fui-yellow);
-  font: 0.625rem/1.6 var(--fui-font-pixel);
-}
 .ef-card-foot {
   margin: 0;
   color: var(--fui-cyan);
   font: 0.5625rem/1.6 var(--fui-font-pixel);
-}
-.ef-card .ef-actions {
-  justify-content: center;
 }
 
 /* Touch buttons: volts and TURN for the left thumb, BRAKE and GAS for the right, a small RESTART on top */
@@ -539,8 +564,8 @@ body.ef-display .ef-lobby {
 }
 /* A controller on its side has no room for the account buttons or the room's status. */
 @media (orientation: landscape) and (max-height: 32rem) {
-  body:has(.ef-room[data-screen="controller"]) .ef-top .fui-social,
-  body:has(.ef-room[data-screen="controller"]) .ef-top .ef-status {
+  body:has(.ef-room[data-screen="controller"]) .ef-top .fui-top-bar-account,
+  body:has(.ef-room[data-screen="controller"]) .ef-top .ef-live {
     display: none !important;
   }
   body:has(.ef-room[data-screen="controller"]) .ef-top {
@@ -548,28 +573,23 @@ body.ef-display .ef-lobby {
   }
 }
 
-/* On a phone the race needs the room: the account buttons wait in the lobby, and the status line folds away. */
+/* The race draws its clock in the screen's top corner, where the bar's brand is: the brand waits in the lobby. */
+body:has(.ef-room[data-screen="play"]) .ef-top .fui-top-bar-left {
+  visibility: hidden;
+}
+
+/* On a phone the race needs the room: the account button waits in the lobby, so RESTART is clear of the bar. */
 @media (max-width: 34rem) {
   body:has(.ef-room:is([data-screen="play"], [data-screen="controller"]))
     .ef-top
-    .fui-social {
+    .fui-top-bar-account {
     display: none;
-  }
-  body:has(.ef-room:is([data-screen="play"], [data-screen="controller"]))
-    .ef-top
-    .ef-status {
-    order: 0;
-    flex: 1 1 4rem;
   }
   .ef-top {
     gap: var(--fui-space-2);
   }
   .ef-brand {
     font-size: 1rem;
-  }
-  .ef-top .ef-status {
-    order: 5;
-    flex-basis: 100%;
   }
   .ef-card {
     padding: var(--fui-space-2);

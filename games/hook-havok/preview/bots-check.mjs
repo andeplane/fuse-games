@@ -135,14 +135,13 @@ try {
       });
     const c = await contest(),
       all = await keepers();
-    await page.locator("#result-card").waitFor();
+    await page.locator(".fui-results:not([hidden])").waitFor();
     assert.equal(
-      await page.locator("#result-tally .bot-badge").count(),
+      await page.locator(".fui-results-name small.is-tag").count(),
       4,
       "results mark the bots",
     );
-    await seconds(1.5); // the results card fades in
-    await page.locator(".stage").screenshot({ path: evidence(shot) });
+    await page.screenshot({ path: evidence(shot) });
     const thrown = all.reduce((n, k) => n + k.tally.thrown, 0),
       ko = all.reduce(
         (n, k) => n + k.tally.knockouts + k.tally.selfKnockouts,
@@ -157,7 +156,9 @@ try {
   await playRound("elimination", "normal", "bots-results");
   // Play again from the results: a second elimination round with the same bots.
   const beforeAgain = await round();
-  await page.locator("#rematch").click();
+  await page
+    .locator('.fui-results-actions button[data-action="rematch"]')
+    .click();
   await page.waitForFunction(
     (r) =>
       Number(document.querySelector("#scene").dataset.round) > r ||
@@ -174,9 +175,13 @@ try {
   );
   assert.equal((await bots()).length, 4, "the bots stay for another round");
   console.log("PASS a second elimination round with the same bots");
-  await page.locator("#dismiss-results").click();
+  await page
+    .locator('.fui-results-actions button[data-action="arena"]')
+    .click();
   await playRound("score", "hard", "bots-score");
-  await page.locator("#dismiss-results").click();
+  await page
+    .locator('.fui-results-actions button[data-action="arena"]')
+    .click();
 
   // Taking two away during a round, confirmed, restarts the room (a new
   // match) with two bots left.

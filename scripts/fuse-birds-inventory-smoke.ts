@@ -1,4 +1,4 @@
-import { openPlayOptions } from "./lib/main-menu.js";
+import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { chromium, type Page } from "playwright";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -36,14 +36,12 @@ try {
   });
   await first.goto(`${base}/fuse-birds/?mute`);
   await openPlayOptions(first);
-  await first.getByRole("button", { name: "CREATE ROOM" }).click();
-  await first.locator(".fui-name-input").fill("SKYE");
-  await first.getByRole("button", { name: "Join" }).click();
-  const code = await first.locator(".birds-code").innerText();
+  await first.getByRole("button", { name: "Host room" }).click();
+  await takeHostSeat(first, "SKYE");
+  const code = new URL(first.url()).searchParams.get("room")!;
   await second.goto(`${base}/fuse-birds/?room=${code}&mute`);
-  await second.locator(".fui-name-input").fill("EMBER");
-  await second.getByRole("button", { name: "Join" }).click();
-  await first.locator(".birds-roster").getByText("EMBER").waitFor();
+  await takeHostSeat(second, "EMBER");
+  await first.locator(".fui-room-players").getByText("EMBER").waitFor();
   await first.getByRole("button", { name: "START BATTLE" }).click();
   for (const page of pages)
     await page
@@ -93,7 +91,7 @@ try {
       })
       .click();
     await page.getByRole("button", { name: "FULL MAP", exact: true }).click();
-    const box = await page.locator("canvas").boundingBox();
+    const box = await page.locator("canvas[data-ready]").boundingBox();
     assert.ok(box);
     const scale = Math.min(box.width / 1536, box.height / 768),
       pull = Math.max(

@@ -108,7 +108,15 @@ test("a finished online match shows a seated player their own victory", () => {
     "only the host can send the room back to the lobby",
   );
   assert.equal(f.audioLocal(), "blue", "the result cue is the player's");
-  f.click('[data-action="toggle-report"]');
+  assert.match(
+    result.querySelector(".fui-results-status")!.textContent!,
+    /Waiting for the host/,
+  );
+  assert.equal(
+    result.querySelector(".fui-results-actions button"),
+    null,
+    "only the host gets the room's next steps",
+  );
   assert.match(
     f.root.querySelector(".report-findings")!.textContent!,
     /Ada held/,
@@ -124,7 +132,17 @@ test("a finished online match shows the loser a defeat", () => {
   const f = fixture({ online: { manager: true } });
   f.enterMatch();
   f.finish("coral");
-  assert.match(f.root.querySelector("#match-result")!.textContent!, /Defeat/);
+  const result = f.root.querySelector("#match-result")!;
+  assert.match(result.textContent!, /Defeat/);
+  assert.deepEqual(
+    Array.from(
+      result.querySelectorAll<HTMLElement>(".fui-results-actions button"),
+      (button) => button.dataset.action,
+    ),
+    ["lobby", "rematch"],
+  );
+  f.click('#match-result [data-action="lobby"]');
+  assert.ok(f.calls.includes("lobby"));
   assert.ok(
     Array.from(
       f.root.querySelectorAll<HTMLButtonElement>(".fui-game-menu-action"),
@@ -173,12 +191,16 @@ test("an online battlefield is labelled with the room's map", () => {
 
 test("the app portal stays first in the room lobby's header after updates", () => {
   const f = fixture({ online: { manager: true } });
-  const first = () => f.root.querySelector(".nd-header")?.firstElementChild;
-  assert.equal(first(), f.portal());
+  const first = () =>
+    f.root.querySelector(".nd-header .fui-top-bar-left")?.firstElementChild;
+  assert.ok(
+    first() === f.portal(),
+    "portal precedes the brand in the shared header",
+  );
   f.updateRoom((room) => {
     room.status = "Waiting for players";
   });
-  assert.equal(first(), f.portal());
+  assert.ok(first() === f.portal(), "room updates retain the same portal");
   assert.ok(
     f.root
       .querySelector('[data-action="start-room"]')!
@@ -417,6 +439,7 @@ function fixture(options: FixtureOptions = {}) {
     powerups: true,
   };
   const online: OnlineSession = {
+    confirmedView: () => ({ ...world, seats: room.seats }),
     code: "AB12",
     get localPlayerId() {
       return room.self;
@@ -472,7 +495,7 @@ function fixture(options: FixtureOptions = {}) {
     saveName() {},
   };
   const portal = document.createElement("nav");
-  portal.className = "portal-stub";
+  portal.className = "fui-portal portal-stub";
   const dependencies: AppDependencies = {
     maps: {
       async list() {

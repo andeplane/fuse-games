@@ -606,7 +606,7 @@
 .stats-dialog .match-recap-report :is(td, th) {
   overflow-wrap: normal;
 }
-.stats-dialog .match-recap-report .recap-victory h2 {
+.stats-dialog .match-recap-report .fui-results-victory h2 {
   font-size: clamp(1.1rem, 3.2vw, 2rem);
 }
 .online-app button.stats-finish {

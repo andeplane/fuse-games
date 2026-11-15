@@ -1,3 +1,5 @@
+import { createBackButton, createPageHeader } from "./back.js";
+import { menuKeys } from "./menu-keys.js";
 import { button, el } from "./dom.js";
 
 export interface ControlHint {
@@ -114,13 +116,20 @@ export function createGameMenu(options: GameMenuOptions): GameMenu {
     "fui-game-menu-action fui-game-menu-leave",
     doc,
   );
+  // A host that shows this menu inside its own modal (the shared top bar) dismisses that modal first on these, so
+  // the game's focus restoration in onOpenChange lands on the page rather than on inert content.
+  for (const action of [resume, lobby, leave])
+    action.dataset.fuiMenuDismiss = "";
   navigation.append(resume, controls, lobby, leave);
   const help = el("div", "", "fui-game-menu-controls", doc);
   help.hidden = true;
-  const back = button("← BACK", "fui-game-menu-action", doc);
-  const helpTitle = el("h3", "CONTROLS", "fui-game-menu-title", doc);
+  // A view inside the menu names where its Back returns to: the dialog around it already has a plain Back.
+  const back = createBackButton({ label: "Menu", document: doc });
+  const helpTitle = el("h3", "CONTROLS", "fui-page-title", doc);
+  const helpHead = createPageHeader({ back, document: doc });
+  helpHead.title.replaceWith(helpTitle);
   const helpContent = el("div", "", "", doc);
-  help.append(back, helpTitle, helpContent);
+  help.append(helpHead.element, helpContent);
   panel.append(heading, navigation, help);
   element.append(trigger, panel);
 
@@ -219,6 +228,7 @@ export function createGameMenu(options: GameMenuOptions): GameMenu {
     renderControls();
   };
   update(state);
+  const releaseKeys = menuKeys(navigation, { document: doc });
   return {
     element,
     update,
@@ -227,6 +237,7 @@ export function createGameMenu(options: GameMenuOptions): GameMenu {
     dispose() {
       close();
       disposed = true;
+      releaseKeys();
       doc.removeEventListener("keydown", onKey);
       doc.removeEventListener("pointerdown", onOutside);
       trigger.onclick = null;

@@ -9,6 +9,7 @@
   "branches": 85,
   "exclude": [
     "**/*.d.ts",
+    "packages/fuseos/**",
     "games/dice/src/app/main.ts",
     "games/killer-fuse/src/app/main.ts",
     "games/killer-fuse/src/render/hud.ts",
@@ -57,6 +58,8 @@
     "games/fuse-surge/src/render/three/set.ts",
     "games/fuse-surge/src/render/three/stage.ts",
     "games/fuse-surge/src/app/picture.ts",
+    "games/fusemania/src/app/main.ts",
+    "games/fusemania/src/render/scene.ts",
     "games/fuse-volley/src/app/main.ts",
     "games/fuse-volley/src/render/scene.ts",
     "games/fuseball/src/app/main.ts",

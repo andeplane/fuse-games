@@ -117,19 +117,17 @@ for (const { name, kind } of BOTH_ENGINES) {
       `${label}: lobby card`,
     );
     assert.equal(
-      await page.locator(".room-riders .room-rider").count(),
-      5,
+      await page.locator(".shared-lobby .room-rider").count(),
+      6,
       `${label}: riders listed`,
     );
     assert.equal(
-      await page
-        .locator("button:visible")
-        .filter({ hasText: /^(ROOM|EXIT|MENU|☰ MENU)$/ })
-        .count(),
+      await page.locator(".fui-top-bar-toggle:visible").count(),
       1,
       `${label}: one menu button`,
     );
-    for (const name of ["START RACE", "ADD AI", "ROOM SETTINGS"])
+    // The solo room is full, so its slots offer no Add AI; the shared room layout keeps the rest in reach.
+    for (const name of ["START RACE", "Game settings"])
       await onScreen(name, label);
   };
   try {
@@ -143,7 +141,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page
       .getByRole("button", { name: "BACK TO LOBBY", exact: true })
       .click();
-    await notice(/^Join your friends/);
+    await notice(/^Choose your rivals/);
     await lobbyScreen("landscape lobby");
     await page.screenshot({ path: `artifacts/mobile-phase-lobby-${name}.png` });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -173,7 +171,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     assert.equal(await hintsOpacity(), 0, "outlines disappear as play starts");
     seen.playing = await capture("playing");
     await notice(/MATCH COMPLETE/, 180000);
-    await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     assert.equal(
       await page.locator(".mobile-tools-open").count(),
@@ -182,7 +180,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     );
     assert.equal(
       await page.locator(".online-roster:visible>span").count(),
-      5,
+      6,
       "match results roster reachable behind MENU",
     );
     await page
@@ -208,7 +206,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page
       .getByRole("button", { name: "BACK TO LOBBY", exact: true })
       .click();
-    await notice(/^Join your friends/);
+    await notice(/^Choose your rivals/);
     await lobbyScreen("lobby after the match");
     assert.equal(
       (seen.countdown as unknown[]).length,

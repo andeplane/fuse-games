@@ -5,6 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { defaultRoomSettings } from "../games/fuse-riders/src/engine/room-settings.js";
 import { smokeTimeout } from "./smoke-timeout.js";
+import { openTopMenu } from "./lib/top-menu.js";
 /**
  * End-of-match recap evidence: a solo match plays to completion, the report opens only after the
  * final-round pause, shows standings and highlights with expandable statistics, closes, and reopens from RESULTS on a desktop
@@ -113,7 +114,7 @@ async function assertRecapLayout(page: Page): Promise<{
     "the actual arena stays visible behind results",
   );
   assert.equal(
-    await page.locator("canvas").count(),
+    await page.locator("canvas.online-arena, dialog[open] canvas").count(),
     1,
     "results use the existing scene, not a copied canvas",
   );
@@ -137,17 +138,22 @@ async function assertRecapLayout(page: Page): Promise<{
     "dialog body must not scroll horizontally",
   );
   await dialog.getByText("MATCH COMPLETE", { exact: true }).waitFor();
-  const champions = await page.locator(".recap-standings .is-champion").count();
+  const champions = await page
+    .locator(".fui-results-standings .is-champion")
+    .count();
   assert.ok(champions >= 1 && champions <= 5, `champions: ${champions}`);
-  assert.equal(await page.locator(".recap-standings tbody tr").count(), 5);
-  assert.equal(await page.locator(".recap-standings .is-you").count(), 1);
-  assert.ok(await page.locator(".recap-victory h2").textContent());
-  assert.ok((await page.locator(".recap-feature").count()) >= 1);
-  assert.equal(await page.locator(".recap-details").isVisible(), false);
+  assert.equal(
+    await page.locator(".fui-results-standings tbody tr").count(),
+    6,
+  );
+  assert.equal(await page.locator(".fui-results-standings .is-you").count(), 1);
+  assert.ok(await page.locator(".fui-results-victory h2").textContent());
+  assert.ok((await page.locator(".fui-results-feature").count()) >= 1);
+  assert.equal(await page.locator(".fui-results-details").isVisible(), false);
   await page
     .getByRole("button", { name: "View full stats ↗", exact: true })
     .click();
-  assert.equal(await page.locator(".recap-details").isVisible(), true);
+  assert.equal(await page.locator(".fui-results-details").isVisible(), true);
   assert.equal(
     await page.locator(".recap-stats-toggle").getAttribute("aria-expanded"),
     "true",
@@ -159,7 +165,7 @@ async function assertRecapLayout(page: Page): Promise<{
       .count();
   assert.ok(awards >= 1, "at least one award card");
   assert.equal(totals, 8, "gameplay totals strip");
-  assert.equal(rows, 5, "one comparison row per rider");
+  assert.equal(rows, 6, "one comparison row per rider");
   await page
     .locator(".comparison-header")
     .getByText("PTS", { exact: true })
@@ -175,7 +181,7 @@ async function assertRecapLayout(page: Page): Promise<{
   await page
     .getByRole("button", { name: "Hide full stats ↗", exact: true })
     .click();
-  assert.equal(await page.locator(".recap-details").isVisible(), false);
+  assert.equal(await page.locator(".fui-results-details").isVisible(), false);
   return { champions, awards, totals, rows, comparisonScrolls };
 }
 
@@ -288,7 +294,7 @@ try {
       if (!phone) {
         // The desktop run picks the shortest format through the real settings menu; a new length applies to the next match.
         await page
-          .getByRole("button", { name: "ROOM SETTINGS", exact: true })
+          .getByRole("button", { name: "Game settings", exact: true })
           .click();
         const dialog = page.getByRole("dialog");
         await dialog.waitFor({ state: "visible" });
@@ -297,7 +303,7 @@ try {
           .click();
         assert.equal(await page.getByLabel("Match length").inputValue(), "3");
         await page.getByLabel("Match length").fill("1"); // saves on input
-        await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+        await page.getByRole("button", { name: "Back", exact: true }).click();
         await dialog.waitFor({ state: "hidden" });
         await page
           .getByRole("button", { name: "BACK TO LOBBY", exact: true })
@@ -426,7 +432,7 @@ try {
       await inside(page, page.getByRole("button", { name: /full stats/ }));
       screenshots.push(`artifacts/match-recap-${tag}-scrolled.png`);
       await page.screenshot({ path: screenshots[1]! });
-      await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await page.getByRole("dialog").waitFor({ state: "hidden" });
       // Every menu is its own dialog (#255): none is left open, and the wide results variant is the results dialog's alone.
       await page.waitForFunction(() => {
@@ -444,11 +450,14 @@ try {
           wide[0]!.getAttribute("aria-label") === "Match results"
         );
       });
-      // A joined phone stays the landscape thirds controller in matchOver, so the header (and RESULTS) sits behind the ☰ MENU overlay.
+      // RESULTS is a bar action, so it is in the Game menu. A joined phone stays the landscape thirds controller in
+      // matchOver, where the bar itself sits behind the ☰ MENU overlay.
       const reopen = page.getByRole("button", { name: "RESULTS", exact: true });
-      if (phone && !(await reopen.isVisible()))
+      if (phone && !(await page.locator(".fui-top-bar-toggle").isVisible()))
         await page.locator(".mobile-tools-toggle").click();
+      await openTopMenu(page);
       await reopen.waitFor({ state: "visible" });
+      await reopen.scrollIntoViewIfNeeded(); // the Game menu scrolls on a short phone
       await inside(page, reopen);
       await reopen.click();
       await assertRecapLayout(page);

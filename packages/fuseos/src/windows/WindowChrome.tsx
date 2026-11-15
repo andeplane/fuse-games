@@ -1,0 +1,75 @@
+import type { ReactNode } from "react";
+
+import { useSystem32Title } from "../system32/System32Provider";
+import type { IconRef } from "../ui/icons";
+import { AppIcon } from "../ui/icons";
+
+export type WindowChromeProps = {
+  title: string;
+  icon: IconRef;
+  active: boolean;
+  maximized: boolean;
+  resizable?: boolean;
+  /** Whether the title bar has a Minimize button; a message box has only Close. */
+  minimizable?: boolean;
+  onMinimize: () => void;
+  onToggleMaximize: () => void;
+  onClose: () => void;
+  onActivate: () => void;
+  /** Extra title-bar buttons, drawn before Minimize in the same size and bevel (a game window's Pop out). */
+  extraTitleButtons?: ReactNode;
+  children: ReactNode;
+};
+
+/** Win98 window frame: title bar with controls and a body that fills the frame. */
+export function WindowChrome({
+  title,
+  icon,
+  active,
+  maximized,
+  resizable = true,
+  minimizable = true,
+  onMinimize,
+  onToggleMaximize,
+  onClose,
+  onActivate,
+  extraTitleButtons,
+  children,
+}: WindowChromeProps) {
+  // Misspelt while the OS folds (system32/); the plain title otherwise.
+  const shownTitle = useSystem32Title(title);
+  return (
+    <section
+      role="dialog"
+      aria-label={title}
+      className="window flex h-full w-full flex-col"
+      data-active={active ? "true" : "false"}
+      onMouseDown={onActivate}
+    >
+      <header
+        className={`title-bar shrink-0 ${active ? "" : "inactive"}`}
+        onDoubleClick={resizable ? onToggleMaximize : undefined}
+      >
+        <div className="title-bar-text flex items-center gap-1 overflow-hidden whitespace-nowrap">
+          <AppIcon icon={icon} />
+          <span className="truncate">{shownTitle}</span>
+        </div>
+        <div className="title-bar-controls">
+          {extraTitleButtons}
+          {minimizable ? (
+            <button type="button" aria-label="Minimize" onClick={onMinimize} />
+          ) : null}
+          {resizable ? (
+            <button
+              type="button"
+              aria-label={maximized ? "Restore" : "Maximize"}
+              onClick={onToggleMaximize}
+            />
+          ) : null}
+          <button type="button" aria-label="Close" onClick={onClose} />
+        </div>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+    </section>
+  );
+}
