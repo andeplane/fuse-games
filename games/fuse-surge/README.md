@@ -59,6 +59,12 @@ remembers the last one.
 
 The 3D looks need WebGL; a device without it shows PIXEL 2D.
 
+|                                          |                                           |
+| ---------------------------------------- | ----------------------------------------- |
+| ![Reactor](docs/images/look-reactor.jpg) | ![Sky Isle](docs/images/look-skyisle.jpg) |
+| ![Toy Box](docs/images/look-toybox.jpg)  | ![Glacier](docs/images/look-glacier.jpg)  |
+| ![Forge](docs/images/look-forge.jpg)     |                                           |
+
 ## Controls
 
 | Move | Keyboard                | Touch | Gamepad                                      |
