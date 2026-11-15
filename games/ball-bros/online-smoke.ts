@@ -79,6 +79,7 @@ try {
   await hostRoom(a).click();
   await a.waitForURL(/room=/);
   const code = new URL(a.url()).searchParams.get("room")!;
+  await a.locator(".fui-room-count", { hasText: "0 / 5" }).waitFor();
   await join(a, "Alice");
   await b.goto(url);
   await openPlayOptions(b, "join");
@@ -175,8 +176,10 @@ try {
   await a.getByLabel("Shared TV + phone controllers").check();
   await hostRoom(a).click();
   await a.waitForURL(/room=/);
-  // The creator takes a seat explicitly; a remembered guest below rejoins by itself.
-  await join(a, "Alice");
+  // Named viewers take a seat on arrival, including a returning room creator.
+  await a.locator(".fui-roster-name", { hasText: "Alice (you)" }).waitFor();
+  await a.locator(".fui-room-count", { hasText: "1 / 5" }).waitFor();
+  assert.equal(await a.locator(".fui-slot-admission[open]").isVisible(), false);
   const sharedCode = new URL(a.url()).searchParams.get("room")!;
   const tvUrl = await a
     .getByRole("link", { name: "OPEN TV SCREEN" })
@@ -246,9 +249,11 @@ try {
     .locator(".fui-roster-name", { hasText: "Sparks" })
     .waitFor();
   await fromGameMenu(privatePage, "RECONNECT");
-  // Alone in the room, the reconnect starts a fresh lobby. The creator still manages it and takes a seat again.
-  await privatePage.locator(".fui-room-count", { hasText: "0 / 5" }).waitFor();
-  await join(privatePage, "Private");
+  // Alone, reconnect starts a fresh lobby; the page-local name restores the creator's seat without storage.
+  await privatePage
+    .locator(".fui-roster-name", { hasText: "Private (you)" })
+    .waitFor();
+  await privatePage.locator(".fui-room-count", { hasText: "1 / 5" }).waitFor();
   assert.equal(
     await privatePage
       .getByRole("button", { name: "START MATCH", exact: true })
