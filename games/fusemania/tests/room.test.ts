@@ -150,7 +150,7 @@ test("the song ends for everyone together, the best rating wins, and a rematch i
     playerId: player.playerId.repeat(24),
   }));
   for (const player of reported)
-    assert.deepEqual(parseFusemaniaStats(player, 1), player);
+    assert.deepEqual(parseFusemaniaStats(player, 1, library), player);
   assert.ok(validFusemaniaField(reported));
   assert.equal(result.players[0]!.matchScoreUnits, FULL_RATING);
 

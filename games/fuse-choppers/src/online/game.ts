@@ -46,6 +46,12 @@ import {
   validMatchId,
   validName,
 } from "./names.js";
+import {
+  currentHistoryReceipts,
+  parsePastMatches,
+  retainPastMatches,
+} from "./history.js";
+import type { HistoryReceipt } from "fuse-ui/results-history";
 
 /**
  * Fuse Choppers behind the netcode's `RollbackGame`. The room keeps the seats, the match (crowns and round results)
@@ -80,6 +86,8 @@ export interface Placing {
 }
 export interface RoundResult {
   round: number;
+  tick: number;
+  finishers: string[];
   /** The round's winner, or "" when nobody won it. */
   winner: string;
   /** Best first. */
@@ -97,6 +105,7 @@ export interface Room extends ManagedRoom<Settings> {
   /** Crowns this match, by member id. */
   wins: Record<string, number>;
   results: RoundResult[];
+  pastMatches: HistoryReceipt[][];
   /** The match winner once `stage` is "over". */
   winner: string;
   /** The log tick the next round starts at, while `between`. */
@@ -130,6 +139,7 @@ export interface View {
   wins: Record<string, number>;
   winsNeeded: number;
   results: RoundResult[];
+  pastMatches: HistoryReceipt[][];
   winner: string;
   /** Log ticks until the next round, between rounds. */
   resumeIn: number;
@@ -179,6 +189,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     play: { ...settings },
     wins: {},
     results: [],
+    pastMatches: [],
     winner: "",
     resumeAt: 0,
     held: {},
@@ -213,6 +224,13 @@ function startRound(room: Room): void {
   );
 }
 function resetMatch(room: Room, matchId: string): void {
+  if (room.results.length)
+    room.pastMatches =
+      retainPastMatches(
+        room.pastMatches,
+        currentHistoryReceipts(room),
+        room.tick,
+      ) ?? room.pastMatches;
   room.matchId = matchId;
   room.play = { ...room.settings };
   room.round = 0;
@@ -316,6 +334,14 @@ function endRound(room: Room, tick: number): void {
   if (winner) room.wins[winner] = (room.wins[winner] ?? 0) + 1;
   room.results.push({
     round: room.round,
+    tick,
+    finishers: world.choppers
+      .filter((c) => {
+        const seat = room.seats.get(c.id);
+        return seat && !seat.bot && !seat.watcher;
+      })
+      .map((c) => c.id)
+      .sort(),
     winner,
     placings: placings(room, world),
   });
@@ -434,6 +460,8 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.wins),
     room.results.map((result) => ({
       round: result.round,
+      tick: result.tick,
+      finishers: [...result.finishers],
       winner: result.winner,
       placings: result.placings.map((p) => ({ ...p })),
     })),
@@ -442,6 +470,7 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.held),
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
+    structuredClone(room.pastMatches),
   ];
 }
 
@@ -526,7 +555,7 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 13 || !uint32(tick)) return;
+  if (fields.length !== 14 || !uint32(tick)) return;
   const [
     matchId,
     round,
@@ -541,9 +570,12 @@ export function decode(
     rawHeld,
     rawWorld,
     simulationTick,
+    rawPastMatches,
   ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
+  const pastMatches = parsePastMatches(rawPastMatches, tick);
+  if (!pastMatches) return;
   if (
     !validMatchId(matchId) ||
     !uint32(simulationTick) ||
@@ -583,17 +615,29 @@ export function decode(
   for (const raw of rawResults) {
     if (
       !plain(raw) ||
-      Object.keys(raw).length !== 3 ||
+      Object.keys(raw).length !== 5 ||
       !uint32(raw.round) ||
+      !uint32(raw.tick) ||
+      raw.tick > tick ||
+      !Array.isArray(raw.finishers) ||
+      raw.finishers.length > CAPACITY ||
+      new Set(raw.finishers).size !== raw.finishers.length ||
+      !raw.finishers.every((id) => typeof id === "string" && playerKey(id)) ||
       typeof raw.winner !== "string" ||
       !Array.isArray(raw.placings) ||
       raw.placings.length > CAPACITY
     )
       return;
     const placed = raw.placings.map(decodePlacing);
-    if (placed.some((p) => !p)) return;
+    if (
+      placed.some((p) => !p) ||
+      raw.finishers.some((id) => !placed.some((p) => p?.id === id && !p.bot))
+    )
+      return;
     results.push({
       round: raw.round,
+      tick: raw.tick,
+      finishers: [...raw.finishers] as string[],
       winner: raw.winner,
       placings: placed as Placing[],
     });
@@ -631,6 +675,7 @@ export function decode(
     play,
     wins,
     results,
+    pastMatches,
     winner,
     resumeAt,
     held,
@@ -681,8 +726,10 @@ export function view(room: Room): View {
     winsNeeded: room.play.wins,
     results: room.results.map((result) => ({
       ...result,
+      finishers: [...result.finishers],
       placings: result.placings.map((p) => ({ ...p })),
     })),
+    pastMatches: structuredClone(room.pastMatches),
     winner: room.winner,
     resumeIn:
       room.stage === "between" ? Math.max(0, room.resumeAt - room.tick) : 0,
@@ -692,7 +739,7 @@ export function view(room: Room): View {
 
 export const chopperGame: RollbackGame<Room, Entry, View, never, Settings> = {
   id: "fuse-choppers",
-  rules: `${RULES}-pilots-1`,
+  rules: `${RULES}-pilots-2`,
   isEntry,
   createRoom,
   createTicker: () => foldTick,

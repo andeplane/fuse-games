@@ -48,6 +48,17 @@ import {
   type WorldView,
 } from "../engine/index.js";
 import { MAP_IDS, mapById, mapChoice, resolveMap } from "./maps.js";
+import {
+  frontDecision,
+  parseFrontDecision,
+  type FrontDecision,
+} from "./result.js";
+import { frontResults, isFrontBot } from "./result.js";
+import {
+  parseHistoryPlayer,
+  parseHistoryReceipts,
+  type HistoryReceipt,
+} from "fuse-platform/history-api";
 
 /**
  * Fuse Front behind the netcode's `RollbackGame`. The room keeps the seats, the match and its world. Seats are slots
@@ -267,6 +278,8 @@ export interface Room extends ManagedRoom<Settings> {
   /** The log tick the match's first step runs on; 0 in the lobby. */
   startAt: number;
   world: World | null;
+  decided: FrontDecision | null;
+  history: HistoryReceipt[];
 }
 
 export function createRoom(matchId: string, settings: Settings): Room {
@@ -280,6 +293,8 @@ export function createRoom(matchId: string, settings: Settings): Room {
     play: structuredClone(valid),
     startAt: 0,
     world: null,
+    decided: null,
+    history: [],
   };
 }
 
@@ -296,8 +311,13 @@ export const ridden = (room: Room, slot: number) => {
 };
 
 function resetMatch(room: Room, matchId: string): void {
-  const { tick, seats, settings } = room;
-  Object.assign(room, { ...createRoom(matchId, settings), tick, seats });
+  const { tick, seats, settings, history } = room;
+  Object.assign(room, {
+    ...createRoom(matchId, settings),
+    tick,
+    seats,
+    history,
+  });
 }
 /** The map the room's match plays: `play.map`, fixed at its start (the size's default before one). */
 export const mapOf = (room: Pick<Room, "play">): GameMap =>
@@ -406,7 +426,14 @@ export function foldTick(
       for (const event of world.events) out.push({ step: world.step, event });
     }
     room.world = { ...world, events };
-    if (world.winner !== NO_WINNER) room.stage = "over";
+    if (world.winner !== NO_WINNER) {
+      if (!room.decided) {
+        room.decided = frontDecision(world, room.seats.values(), tick);
+        room.history.push(...frontResults(room.matchId, room.decided));
+        room.history = room.history.slice(-64);
+      }
+      room.stage = "over";
+    }
   }
   room.tick = tick;
   return structuredClone(out);
@@ -453,6 +480,8 @@ export function encode(room: Room): unknown[] {
     seatOrder(room.seats.values()).map(seatTuple),
     room.startAt,
     room.world && encodeWorld(room.world),
+    room.decided && structuredClone(room.decided),
+    structuredClone(room.history),
   ];
 }
 
@@ -465,9 +494,18 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 7 || !uint32(tick)) return;
-  const [matchId, stage, rawSettings, rawPlay, rawSeats, startAt, rawWorld] =
-    fields;
+  if (fields.length !== 9 || !uint32(tick)) return;
+  const [
+    matchId,
+    stage,
+    rawSettings,
+    rawPlay,
+    rawSeats,
+    startAt,
+    rawWorld,
+    rawDecided,
+    rawHistory,
+  ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
   if (!validMatchId(matchId) || !STAGES.includes(stage as Stage)) return;
@@ -487,10 +525,20 @@ export function decode(
   }
   if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
     return;
+  const history = parseHistoryReceipts(
+    rawHistory,
+    tick,
+    parseHistoryPlayer,
+    playerKey,
+    isFrontBot,
+  );
+  if (!history) return;
   // prettier-ignore
-  const room: Room = { tick, matchId, stage: stage as Stage, seats, settings, play, startAt, world: null };
+  const room: Room = { tick, matchId, stage: stage as Stage, seats, settings, play, startAt, world: null, decided: null, history };
   if (stage === "lobby")
-    return startAt === 0 && rawWorld === null ? room : undefined;
+    return startAt === 0 && rawWorld === null && rawDecided === null
+      ? room
+      : undefined;
   if (play.map === null) return;
   const world = decodeWorld(rawWorld, mapById(play.map));
   if (!world || world.players.length % 2 !== 0) return;
@@ -503,6 +551,9 @@ export function decode(
   if (world.step !== folded * STEPS_PER_TICK) return;
   if ((stage === "over") !== (world.winner !== NO_WINNER)) return;
   room.world = world;
+  const decided = parseFrontDecision(rawDecided, world, tick);
+  if (decided === undefined || (decided && decided.tick < startAt)) return;
+  room.decided = decided;
   return room;
 }
 
@@ -512,7 +563,17 @@ export function decode(
  * `events` are presentation and left out (`encodeWorld` skips them).
  */
 export function hash(room: Room): string {
-  const text = JSON.stringify([room.tick, ...encode(room)]);
+  const text = JSON.stringify(
+    [room.tick, ...encode(room)],
+    (_key, value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.entries(value).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            ),
+          )
+        : value,
+  );
   let a = 0x811c9dc5,
     b = 0x050c5d1f;
   for (let i = 0, j = text.length - 1; i < text.length; i++, j--) {
@@ -539,6 +600,8 @@ export interface View {
   /** `NO_WINNER`, the winning team, or `DRAW`. */
   winner: number;
   world: WorldView | null;
+  decided: FrontDecision | null;
+  history: HistoryReceipt[];
 }
 export function view(room: Room): View {
   const { world } = room;
@@ -556,13 +619,15 @@ export function view(room: Room): View {
       .map((p) => ({ slot: p.seat, difficulty: room.play.bots[p.seat]! })),
     winner: world?.winner ?? NO_WINNER,
     world: world && viewOf(mapOf(room), world),
+    decided: room.decided && structuredClone(room.decided),
+    history: structuredClone(room.history),
   };
 }
 
 export const frontGame: RollbackGame<Room, Entry, View, FrontEvent, Settings> =
   {
     id: "fuse-front",
-    rules: RULES,
+    rules: `${RULES}-history1`,
     isEntry,
     createRoom,
     createTicker: () => foldTick,

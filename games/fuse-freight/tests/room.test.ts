@@ -1,4 +1,5 @@
 import test from "node:test";
+import { historyReceipts } from "../src/online/history.js";
 import assert from "node:assert/strict";
 import {
   ACTION,
@@ -233,6 +234,28 @@ test("a match that ends level on round wins goes to the most wagons delivered, a
     ["a"],
     "level on wins, a delivered 9 to b's 6",
   );
+});
+
+test("immediate rematches preserve eight confirmed delivery outcomes through recovery", () => {
+  const room = started({ ...DEFAULT_SETTINGS, wins: 1 });
+  for (let i = 0; i < 10; i++) {
+    finish(room, { a: 1, b: 2 });
+    assert.equal(room.stage, "over");
+    const matchId = room.matchId;
+    fold(room, { a: [[ACTION, "rematch", `rapid-${i}`]] });
+    assert.equal(room.pastMatches.length, Math.min(i + 1, 8));
+    const restored = decode(encode(room), room.tick);
+    assert.ok(restored);
+    assert.equal(hash(restored), hash(room));
+    const reports = historyReceipts(view(restored)).filter(
+      (r) => r.result.matchId === matchId,
+    );
+    assert.equal(reports.length, 2);
+    assert.equal(reports.at(-1)!.result.winnerId, "b");
+  }
+  const fields = encode(room);
+  (fields[12] as unknown[]).push([]);
+  assert.equal(decode(fields, room.tick), undefined);
 });
 
 test("empty rounds: three in a row end a match of absent drivers with no winner; a delivery in between keeps it going", () => {

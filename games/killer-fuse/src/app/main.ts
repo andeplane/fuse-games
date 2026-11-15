@@ -1373,7 +1373,11 @@ function room(solo: boolean): void {
       });
       driver.feed(frame, next.layout === "arena");
       const state = runtime.roomState();
-      if (session.kind === "room" && role !== "display" && state)
+      if (
+        role !== "display" &&
+        state &&
+        (session.kind === "room" || social.isSignedIn())
+      )
         for (const report of dueReports(
           state,
           viewer.me,
@@ -1382,11 +1386,13 @@ function room(solo: boolean): void {
         )) {
           sent.add(report.key);
           void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
+            endpoints.apiUrl(
+              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
+            ),
             report,
             {
               fetch: social.reportFetch,
-              roomToken: session.token,
+              ...(session.kind === "room" ? { roomToken: session.token } : {}),
             },
           );
         }

@@ -39,6 +39,7 @@ import {
   type Settings,
 } from "../src/engine/index.js";
 import { LIFT } from "../src/engine/tuning.js";
+import { historyReceipts } from "../src/online/history.js";
 
 type Bodies = Record<string, readonly unknown[][]>;
 let seq = 0;
@@ -327,6 +328,39 @@ test("a match of nothing but draws ends at its round limit with no winner", () =
   assert.equal(room.stage, "over");
   assert.equal(room.winner, "");
   assert.equal(room.results.length, maxRounds(QUICK));
+});
+
+test("immediate rematches retain eight immutable outcomes through checkpoints before confirmation catches up", () => {
+  const room = started(QUICK);
+  for (let i = 0; i < 10; i++) {
+    run(room, Math.ceil(COUNTDOWN_STEPS / STEPS_PER_TICK) + 1);
+    crashAllBut(room, "b");
+    run(room, Math.ceil(OUTRO_STEPS / STEPS_PER_TICK) + 1);
+    assert.equal(room.stage, "over");
+    const matchId = room.matchId;
+    const finishedAt = room.results.at(-1)!.tick;
+    fold(room, { a: [[ACTION, "rematch", `rapid-${i}`]] });
+    assert.equal(
+      room.tick,
+      finishedAt + 1,
+      "rematch happens before a stride-four confirmed frame could observe the result",
+    );
+    assert.equal(room.pastMatches.length, Math.min(i + 1, 8));
+    const restored = decode(encode(room), room.tick);
+    assert.ok(restored);
+    assert.equal(hash(restored), hash(room));
+    const reports = historyReceipts(view(restored)).filter(
+      (r) => r.result.matchId === matchId,
+    );
+    assert.equal(reports.length, 2);
+    assert.equal(reports.at(-1)!.result.round, undefined);
+    assert.equal(reports.at(-1)!.result.winnerId, "b");
+  }
+  const fields = encode(room);
+  const groups = fields[13] as unknown[][];
+  const receipt = groups[0]![0] as { tick: number };
+  receipt.tick = room.tick + 1;
+  assert.equal(decode(fields, room.tick), undefined);
 });
 
 test("settings are the host's between matches; the match keeps the ones it started with", () => {

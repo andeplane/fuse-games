@@ -8,7 +8,85 @@ import {
   NO_JUDGMENT,
   LEAD_IN_MS,
   SOLO_LEAD_IN_MS,
+  createWorld,
+  stepWorld,
+  rating,
+  SCORE_MODE,
+  TICK_MS,
 } from "../src/engine/index.js";
+
+test("captured local input events replay to the actual result, including delayed/duplicated mesh delivery", () => {
+  const { mesh, host } = match();
+  lossy(mesh, 4812);
+  assert.deepEqual(host.scoreInputs(), []);
+  const play = fingers(host, 35);
+  let delayed = false,
+    furthest = -Infinity;
+  mesh.run(library.song("grid")!.endMs + LEAD_IN_MS + 4000, () => {
+    play();
+    const ms = host.songMs();
+    if (
+      !delayed &&
+      ms !== undefined &&
+      ms > library.song("grid")!.endMs - 100
+    ) {
+      // A key arrives after a 300ms browser-loop stall, before the next fold gets to run.
+      // Mesh.now is the injected public fake clock, not a runtime implementation field.
+      mesh.now += 300;
+      delayed = true;
+      host.key(0, true, ms);
+      furthest = Math.max(
+        furthest,
+        host.scoreInputs()?.at(-1)?.at ?? -Infinity,
+      );
+    }
+  });
+  const inputs = host.scoreInputs();
+  assert.ok(inputs && inputs.length > 100);
+  const room = host.roomState()!,
+    world = createWorld(
+      library,
+      "grid",
+      SCORE_MODE,
+      0,
+      [{ id: "host", bot: false, chart: 0 }],
+      LEAD_IN_MS,
+    )!;
+  assert.ok(
+    furthest > room.world!.ms,
+    "extra keys were scheduled beyond the actual final simulation tick",
+  );
+  assert.ok(inputs.every((input) => input.at <= room.world!.ms));
+  let next = 0;
+  while (world.phase !== "over") {
+    const due = [];
+    while (inputs[next]?.at === world.ms + TICK_MS) {
+      const input = inputs[next++]!;
+      due.push({ slot: 0, code: input.code, ms: input.ms });
+    }
+    stepWorld(library, world, due);
+  }
+  const own = room.world!.players.find((player) => player.id === host.self)!;
+  assert.equal(world.players[0]!.score, own.score);
+  assert.equal(
+    rating(library.steps("grid", 0)!, world.players[0]!.score),
+    mesh.frames
+      .get("host")!
+      .at(-1)!
+      .world!.players.find((player) => player.id === host.self)!.rating,
+  );
+  host.resync();
+  assert.equal(host.scoreInputs(), undefined);
+  assert.ok(host.command({ type: "action", action: "rematch" }));
+  mesh.run(300);
+  assert.deepEqual(host.scoreInputs(), []);
+});
+
+test("an input recording begun after the song starts is ineligible", () => {
+  const { mesh, host } = match();
+  mesh.run(6000);
+  assert.equal(host.scoreInputs(), undefined);
+});
 import { createFusemaniaGame } from "../src/online/game.js";
 import { FusemaniaRuntime } from "../src/online/runtime.js";
 import { Mesh, type TestRuntime } from "./fixtures/mesh.js";

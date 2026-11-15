@@ -173,17 +173,23 @@ function decodePlayer(
     return;
   const parsed: Effect[] = [];
   for (const effect of effects as unknown[]) {
-    if (!Array.isArray(effect) || effect.length !== 4) return;
-    const [kind, from, until, by] = effect as unknown[];
+    if (!Array.isArray(effect) || (effect.length !== 4 && effect.length !== 5))
+      return;
+    const [kind, from, until, by, intensity] = effect as unknown[];
     if (
       !int(kind, 1, ITEM_KINDS - 1) ||
       !time(from) ||
       !time(until) ||
       until < from ||
-      !int(by, 0, riders - 1)
+      !int(by, 0, riders - 1) ||
+      (effect.length === 5 && !int(intensity, 0, 1000))
     )
       return;
-    parsed.push([kind, from, until, by]);
+    parsed.push(
+      intensity === undefined
+        ? [kind, from, until, by]
+        : [kind, from, until, by, intensity as number],
+    );
   }
   return {
     id,

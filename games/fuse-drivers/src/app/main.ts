@@ -543,11 +543,16 @@ function room(solo: boolean): void {
   const reports = createReportDispatcher({
     now: () => performance.now(),
     send: (report) =>
-      session.kind === "room"
+      session.kind === "room" || social.isSignedIn()
         ? sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
+            endpoints.apiUrl(
+              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
+            ),
             report,
-            { fetch: social.reportFetch, roomToken: session.token },
+            {
+              fetch: social.reportFetch,
+              ...(session.kind === "room" ? { roomToken: session.token } : {}),
+            },
           )
         : Promise.resolve(true),
   });
@@ -659,7 +664,7 @@ function room(solo: boolean): void {
         frame: final && confirmedPlayFrame(final, runtime.self, mode),
       });
     }
-    if (room && session.kind === "room")
+    if (room && (session.kind === "room" || social.isSignedIn()))
       reports.tick(
         dueReports(
           room,

@@ -55,10 +55,12 @@ test("a session adds its songs up: the host picks each one, and the last ends it
   assert.equal(room.session, null);
   act(room, "start", "m1");
   assert.deepEqual(room.session, {
+    id: "m1",
     length: 3,
     done: 0,
     songs: ["grid"],
     scores: [],
+    records: [],
   });
   ace(room);
   assert.equal(room.stage, "over");
@@ -98,10 +100,12 @@ test("a session adds its songs up: the host picks each one, and the last ends it
   const again = structuredClone(room);
   act(again, "rematch", "m5");
   assert.deepEqual(again.session, {
+    id: "m5",
     length: 3,
     done: 0,
     songs: ["other"],
     scores: [],
+    records: [],
   });
   act(room, "lobby", "m5");
   assert.equal(room.session, null);
@@ -147,10 +151,12 @@ test("a song that is given up is not one of the session's", () => {
   run(room, 40);
   act(room, "lobby", "m2");
   assert.deepEqual(room.session, {
+    id: "m1",
     length: 3,
     done: 0,
     songs: [],
     scores: [],
+    records: [],
   });
   act(room, "start", "m3");
   assert.deepEqual(sessionOf(room).songs, ["grid"]);
@@ -232,6 +238,18 @@ test("a rider who joins in the middle gets a total, one who left keeps theirs, a
       wins: 0,
     }),
   );
+  sessionOf(full).records = sessionOf(full).scores.map((score) => ({
+    id: score.id,
+    bot: false,
+    roundsPlayed: 1,
+    earlyExits: 0,
+    combo: 0,
+    marvelous: 0,
+    perfect: 0,
+    great: 0,
+    steps: 0,
+    misses: 0,
+  }));
   finish(full);
   const ids = sessionOf(full).scores.map((score) => score.id);
   assert.equal(ids.length, SESSION_SCORES);
@@ -277,7 +295,25 @@ test("a checkpoint carries the session, and a doctored one is refused", () => {
     assert.deepEqual(game.view(restored), game.view(each));
   }
   const [running, over, lobby] = stages as [Room, Room, Room];
-  type Raw = [number, number, string[], [string, string, number, number][]];
+  type Raw = [
+    number,
+    number,
+    string[],
+    [string, string, number, number][],
+    string,
+    [
+      string,
+      boolean,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ][],
+  ];
   const doctored = (
     from: Room,
     change: (session: Raw, all: unknown[]) => void,
@@ -296,6 +332,17 @@ test("a checkpoint carries the session, and a doctored one is refused", () => {
     ["a total past what the songs give", running, (s) => (s[3][0]![2] = 9e6)],
     ["more wins than songs", running, (s) => (s[3][1]![3] = 1)],
     ["a rider twice", running, (s) => s[3].push([...s[3][0]!])],
+    ["a missing parent id", running, (s) => (s[4] = "")],
+    ["an invalid parent id", running, (s) => (s[4] = "parent\nmatch")],
+    ["missing aggregate evidence", running, (s) => s[5].pop()],
+    [
+      "aggregate evidence belongs to its rider",
+      running,
+      (s) => (s[5][0]![0] = "someone-else"),
+    ],
+    ["aggregate participation is bounded", running, (s) => (s[5][0]![2] = 4)],
+    ["aggregate counters are bounded", running, (s) => (s[5][0]![5] = 200_001)],
+    ["finished song judgments are retained", over, (s) => (s[5][0]![5] = 0)],
     ["a name that is none", running, (s) => (s[3][0]![1] = "")],
     ["a match of a session has one", running, (_s, all) => (all[10] = null)],
     ["a decided song is counted", over, (s) => (s[1] = 1)],
@@ -336,10 +383,12 @@ test("a start with nobody seated leaves a session that has not begun, and a chec
   act(room, "start", "m1");
   assert.equal(room.stage, "lobby");
   assert.deepEqual(room.session, {
+    id: "m1",
     length: 3,
     done: 0,
     songs: [],
     scores: [],
+    records: [],
   });
   const restored = game.checkpoint.decode(
     structuredClone(game.checkpoint.encode(room)),
