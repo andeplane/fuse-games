@@ -25,14 +25,27 @@ export async function openPlayOptions(
     await hosting.locator("summary").click();
 }
 
-/** Room creation leaves the host unseated until the explicit Join action. */
-export async function takeHostSeat(page: Page, name: string): Promise<void> {
+/** Remembered hosts seat themselves; otherwise use the room's explicit admission action. */
+export async function takeHostSeat(
+  page: Page,
+  name: string,
+  options: { autoSeat?: boolean } = {},
+): Promise<void> {
+  const seated = page
+    .locator(".fui-slot-occupied .fui-slot-occupant")
+    .getByText(name, { exact: true })
+    .first();
+  if (options.autoSeat || (await seated.isVisible())) {
+    await seated.waitFor({ state: "visible" });
+    return;
+  }
   const join = page.locator(".fui-slot-admission[open]");
   if (!(await join.isVisible())) {
     const count = await page.locator(".fui-room-count").innerText();
     await page
-      .locator(".fui-room-open-slot")
+      .locator(".fui-room-open-slot:visible")
       .getByRole("button", { name: "Join", exact: true })
+      .filter({ visible: true })
       .first()
       .click();
     if (!(await join.count())) {
@@ -59,4 +72,5 @@ export async function takeHostSeat(page: Page, name: string): Promise<void> {
     closed,
   ]);
   await closed;
+  await seated.waitFor({ state: "visible" });
 }

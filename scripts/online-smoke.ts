@@ -171,7 +171,7 @@ try {
     target.searchParams.set("renderer", "phaser-canvas");
   target.searchParams.set("benchmark", "1");
   await host.goto(target.href);
-  await takeHostSeat(host, "Host");
+  await takeHostSeat(host, "Host", { autoSeat: true });
   const url = host.url().replace(/&benchmark=1/, "");
   await rosterHas(host, "Host");
   assert.equal(
@@ -569,13 +569,17 @@ try {
   const leaver = riders.pop();
   if (leaver) {
     const name = `Rider ${riders.length + 2}`;
+    for (const page of [host, guest, ...riders])
+      await page
+        .locator(".fui-room-players .fui-slot-occupant")
+        .getByText(name, { exact: true })
+        .waitFor({ state: "visible" });
     await leaver.context().close();
-    await host.waitForFunction(
-      (gone) =>
-        !document.querySelector(".online-roster")?.textContent?.includes(gone),
-      name,
-      { timeout: smokeTimeout(20000) },
-    );
+    for (const page of [host, guest, ...riders])
+      await page
+        .locator(".fui-room-players .fui-slot-occupant")
+        .getByText(name, { exact: true })
+        .waitFor({ state: "hidden", timeout: smokeTimeout(20000) });
   }
   await host
     .getByRole("button", { name: /^Add AI$/i, exact: true })
@@ -589,6 +593,16 @@ try {
     /^Remove AI \w+$/,
     "AI roster names omit difficulty",
   );
+  const botName = (await host
+    .getByRole("button", { name: /Remove AI/ })
+    .getAttribute("aria-label"))!.slice("Remove ".length);
+  // Membership changes invalidate readiness. Every voter must see the replacement before anyone votes, rather
+  // than racing a late departure/join entry which correctly clears an earlier vote.
+  for (const page of [host, guest, ...riders])
+    await page
+      .locator(".fui-room-players .fui-slot-occupant")
+      .getByText(botName, { exact: true })
+      .waitFor({ state: "visible" });
   await readyRoom(host);
   await waitPhase(host, ["countdown", "playing"]);
   await waitPhase(guest, ["countdown", "playing"]);
