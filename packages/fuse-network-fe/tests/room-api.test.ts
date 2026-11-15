@@ -31,10 +31,13 @@ test("createRoom posts to the room service and returns validated credentials", a
       apiUrl,
       fetcher(
         calls,
-        Response.json({ code: "AB42", token: "t", extra: 1 }, { status: 201 }),
+        Response.json(
+          { code: "AB42AA", token: "t", extra: 1 },
+          { status: 201 },
+        ),
       ),
     ),
-    { code: "AB42", token: "t" },
+    { code: "AB42AA", token: "t" },
   );
   assert.deepEqual(
     calls.map((call) => [call.url, call.init?.method]),
@@ -67,12 +70,12 @@ test("endRoom authenticates with the creator token and keeps the caller's abort 
     signal = new AbortController().signal;
   await endRoom(
     apiUrl,
-    "AB42",
+    "AB42AA",
     "secret",
     { signal, keepalive: true },
     fetcher(calls, Response.json({ ok: true })),
   );
-  assert.equal(calls[0]!.url, "https://rooms.test/api/rooms/AB42/end");
+  assert.equal(calls[0]!.url, "https://rooms.test/api/rooms/AB42AA/end");
   assert.deepEqual(
     [
       calls[0]!.init?.method,
@@ -85,7 +88,7 @@ test("endRoom authenticates with the creator token and keeps the caller's abort 
   await assert.rejects(
     endRoom(
       apiUrl,
-      "AB42",
+      "AB42AA",
       "nope",
       {},
       fetcher(
@@ -134,7 +137,7 @@ test("the ICE list is fetched with a bearer header and a token-free URL", async 
   assert.deepEqual(
     await fetchIceServers(
       apiUrl,
-      "AB42",
+      "AB42AA",
       token,
       signal,
       fetcher(calls, Response.json({ iceServers: [] })),
@@ -142,7 +145,7 @@ test("the ICE list is fetched with a bearer header and a token-free URL", async 
     { iceServers: [] },
   );
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]!.url, "https://rooms.test/api/rooms/AB42/ice");
+  assert.equal(calls[0]!.url, "https://rooms.test/api/rooms/AB42AA/ice");
   assert.equal(calls[0]!.init?.signal, signal);
   assert.equal(
     new Headers(calls[0]!.init?.headers).get("authorization"),
@@ -155,7 +158,7 @@ test("an ICE request the service refuses is a refusal, not an empty list", async
     await ice.load((signal) =>
       fetchIceServers(
         apiUrl,
-        "AB42",
+        "AB42AA",
         memberToken(),
         signal,
         fetcher([], Response.json({ error: "Invalid identity" }, { status })),
@@ -169,7 +172,7 @@ test("an ICE request the service refuses is a refusal, not an empty list", async
   await invalid.load((signal) =>
     fetchIceServers(
       apiUrl,
-      "AB42",
+      "AB42AA",
       memberToken(),
       signal,
       fetcher([], Response.json({ iceServers: [] })),
@@ -182,7 +185,7 @@ test("an ICE request the service refuses is a refusal, not an empty list", async
   await assert.rejects(
     fetchIceServers(
       apiUrl,
-      "AB42",
+      "AB42AA",
       memberToken(),
       new AbortController().signal,
       fetcher([], Response.json({}, { status: 401 })),
@@ -196,7 +199,7 @@ test("a room is created and joined for one game, named in the query and the auth
     apiUrl,
     fetcher(
       calls,
-      Response.json({ code: "AB42", token: "t" }, { status: 201 }),
+      Response.json({ code: "AB42AA", token: "t" }, { status: 201 }),
     ),
     "dice",
   );
@@ -208,7 +211,7 @@ test("a room is created and joined for one game, named in the query and the auth
   const token = memberToken();
   const socket = openRoomSocket(
     apiUrl,
-    "AB42",
+    "AB42AA",
     token,
     (url) => new FakeSocket(url),
     "dice",
@@ -222,14 +225,14 @@ test("a room is created and joined for one game, named in the query and the auth
 test("the room socket authenticates with its first frame, never its URL", () => {
   const token = memberToken(),
     created: FakeSocket[] = [];
-  const socket = openRoomSocket(apiUrl, "AB42", token, (url) => {
+  const socket = openRoomSocket(apiUrl, "AB42AA", token, (url) => {
     const fake = new FakeSocket(url);
     created.push(fake);
     return fake;
   });
   assert.equal(created.length, 1);
   assert.equal(socket, created[0]);
-  assert.equal(socket.url, "wss://rooms.test/api/rooms/AB42/ws");
+  assert.equal(socket.url, "wss://rooms.test/api/rooms/AB42AA/ws");
   assert.equal(new URL(socket.url).search, "");
   assert.deepEqual(socket.sent, [], "nothing is sent before the socket opens");
   socket.open();
@@ -237,8 +240,8 @@ test("the room socket authenticates with its first frame, never its URL", () => 
   socket.open();
   assert.equal(socket.sent.length, 1, "one auth frame per socket");
   assert.equal(
-    roomSocketUrl((path) => `http://localhost:8787${path}`, "AB42"),
-    "ws://localhost:8787/api/rooms/AB42/ws",
+    roomSocketUrl((path) => `http://localhost:8787${path}`, "AB42AA"),
+    "ws://localhost:8787/api/rooms/AB42AA/ws",
   );
 });
 test("no URL the room client produces carries a token", async () => {
@@ -247,19 +250,19 @@ test("no URL the room client produces carries a token", async () => {
     urls: string[] = [];
   await endRoom(
     apiUrl,
-    "AB42",
+    "AB42AA",
     token,
     {},
     fetcher(calls, Response.json({ ok: true })),
   );
   await fetchIceServers(
     apiUrl,
-    "AB42",
+    "AB42AA",
     token,
     new AbortController().signal,
     fetcher(calls, Response.json({})),
   );
-  openRoomSocket(apiUrl, "AB42", token, (url) => {
+  openRoomSocket(apiUrl, "AB42AA", token, (url) => {
     urls.push(url);
     return new FakeSocket(url);
   });

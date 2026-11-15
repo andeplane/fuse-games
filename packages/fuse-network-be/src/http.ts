@@ -69,17 +69,17 @@ export interface RoomHttpOptions {
 }
 
 /**
- * `/ice` and `/end` read the room for any caller, member or not, so each address has a budget of each: 30 at once and
- * one more every two seconds. A page asks for ICE servers once per admission (never on a resumed socket) and ends a
+ * `/ice` and `/end` read the room for any caller, member or not, so each address has a budget of each: 12 at once and
+ * 30 per hour thereafter, per instance. A page asks for ICE servers once per admission and ends a
  * room once, so a whole room of devices behind one address joining together is well inside it. A refused `/ice`
  * costs the page nothing: it falls back to the same STUN servers this service would have named. The two are counted
  * apart, so a venue's worth of pages asking for ICE servers cannot keep a creator from ending their room.
  */
-export const ROOM_LOOKUP_BURST = 30,
-  ROOM_LOOKUP_PER_SECOND = 0.5;
+export const ROOM_LOOKUP_BURST = 12,
+  ROOM_LOOKUP_PER_SECOND = 30 / 3600;
 /** What `ws` reports for a socket that ended without a close frame. */
 const CLOSE_ABNORMAL = 1006;
-const ROOM_ROUTE = /^\/api\/rooms\/([A-Z]{2}[0-9]{2})\/(end|ice|ws)$/;
+const ROOM_ROUTE = /^\/api\/rooms\/([A-Z0-9]{6})\/(end|ice|ws)$/;
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
@@ -167,6 +167,15 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
     new AddressBudget(now, ROOM_LOOKUP_BURST, ROOM_LOOKUP_PER_SECOND);
   const iceLookups = lookup(),
     endLookups = lookup();
+  // Count only aggregate refusals, without room IDs or addresses. Emit one bounded record per 30 misses;
+  // log-based metrics can sum these across instances without a shared database write per request.
+  let lookupMisses = 0;
+  const recordLookupMiss = () => {
+    if (++lookupMisses >= 30) {
+      log({ kind: "room-lookup-misses", count: lookupMisses });
+      lookupMisses = 0;
+    }
+  };
   const handle = async (
     req: IncomingMessage,
     res: ServerResponse,
@@ -262,7 +271,19 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
         return;
       }
       if (route?.[2] === "end" && req.method === "POST") {
-        await store.end(route[1]!, bearer(req));
+        try {
+          await store.end(route[1]!, bearer(req));
+        } catch (error) {
+          if (
+            error instanceof RoomError &&
+            (error.status === 403 || error.status === 404)
+          ) {
+            recordLookupMiss();
+            json({ error: "Room expired or not found" }, 404);
+            return;
+          }
+          throw error;
+        }
         json({ ok: true });
         return;
       }
@@ -273,10 +294,21 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
           json({ error: "Invalid identity" }, 401);
           return;
         }
-        const room = await store.get(route[1]!),
-          member = room.members[peerId(token)];
+        let room;
+        try {
+          room = await store.get(route[1]!);
+        } catch (error) {
+          if (error instanceof RoomError && error.status === 404) {
+            recordLookupMiss();
+            json({ error: "Room expired or not found" }, 404);
+            return;
+          }
+          throw error;
+        }
+        const member = room.members[peerId(token)];
         if (!member || member.expiresAt <= now()) {
-          json({ error: "Join the room first" }, 403);
+          recordLookupMiss();
+          json({ error: "Room expired or not found" }, 404);
           return;
         }
         json({ iceServers: DEFAULT_ICE_SERVERS, relayConfigured: false });

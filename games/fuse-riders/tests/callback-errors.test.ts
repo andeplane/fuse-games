@@ -94,7 +94,7 @@ test("ended callback failure is reported after scheduling has been cancelled", (
   const failure = new Error("ended failed");
   const errors: unknown[] = [];
   const runtime = new RoomRuntime(
-    "AB42",
+    "AB42AA",
     defaultRoomSettings(),
     {
       ...quiet,
@@ -125,7 +125,7 @@ test("online consumer exceptions do not interrupt peer input delivery or converg
   const errors: (keyof Callbacks)[] = [];
   const settings = defaultRoomSettings();
   const host = new RoomRuntime(
-    "AB42",
+    "AB42AA",
     settings,
     {
       ...quiet,

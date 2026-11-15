@@ -220,7 +220,7 @@ test("malformed, foreign and oversized fast packets change nothing; the clock tr
     packMessage([1, roomHash("other"), HOST, 1, 5, 0, [], 1, 0, 0, 1, null]),
     packMessage([
       1,
-      roomHash("AB42:a-host"),
+      roomHash("AB42AA:a-host"),
       "someone",
       1,
       5,
@@ -236,7 +236,7 @@ test("malformed, foreign and oversized fast packets change nothing; the clock tr
     packMessage("junk"),
     packMessage([
       1,
-      roomHash("AB42:a-host"),
+      roomHash("AB42AA:a-host"),
       HOST,
       1,
       5,
@@ -964,7 +964,7 @@ test("an undecodable snapshot waits for the retry timer instead of asking again 
     type: "snapshot",
     tick: 0,
     rules: RULES,
-    room: roomHash(`AB42:${HOST}`),
+    room: roomHash(`AB42AA:${HOST}`),
     chunk: 0,
     total: 1,
     data: btoa(String.fromCharCode(...packMessage("nope"))),

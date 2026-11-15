@@ -451,34 +451,34 @@ test("the page's query decides landing, solo, creator, joiner or shared screen",
   assert.deepEqual(session("?mute"), { kind: "landing" });
   assert.deepEqual(session("?solo=1&mute"), { kind: "solo" });
   assert.deepEqual(session("?room=no!"), { kind: "invalid", code: "NO!" });
-  store.setItem(names.host("AB42"), "host-token");
+  store.setItem(names.host("AB42AA"), "host-token");
   assert.deepEqual(session("?room=ab42"), {
     kind: "room",
-    code: "AB42",
+    code: "AB42AA",
     role: "host",
     token: "host-token",
   });
-  const joiner = session("?room=CD12");
+  const joiner = session("?room=CD12AA");
   assert.deepEqual(joiner, {
     kind: "room",
-    code: "CD12",
+    code: "CD12AA",
     role: "joiner",
     token: "secret-1",
   });
   assert.deepEqual(
-    session("?room=CD12"),
+    session("?room=CD12AA"),
     joiner,
     "a refresh is the same member",
   );
-  assert.deepEqual(session("?room=AB42&display=1"), {
+  assert.deepEqual(session("?room=AB42AA&display=1"), {
     kind: "room",
-    code: "AB42",
+    code: "AB42AA",
     role: "display",
     token: "secret-2",
   });
   assert.notDeepEqual(
-    session("?room=AB42&display=1"),
-    session("?room=AB42&display=1"),
+    session("?room=AB42AA&display=1"),
+    session("?room=AB42AA&display=1"),
     "the shared screen takes a fresh token every load",
   );
   assert.equal(keys("dice").name, "dice-player-name");

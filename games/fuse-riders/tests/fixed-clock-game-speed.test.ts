@@ -780,7 +780,7 @@ test("a loop pass that throws after advancing still opens the next step budget: 
     net.transports.get("guest")!.events.fast(
       "host",
       encodePacket({
-        room: roomHash("AB42:host"),
+        room: roomHash("AB42AA:host"),
         from: "host",
         generation: 1,
         through: clock,

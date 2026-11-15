@@ -370,7 +370,7 @@ test("HTML room renderer shares the layout and respects map-dependent capacity",
   const { document } = page();
   const root = document.createElement("div");
   root.innerHTML = roomLayoutMarkup({
-    invite: "<strong>AB42</strong>",
+    invite: "<strong>AB42AA</strong>",
     players: "<ul></ul>",
     join: "<button>Join</button>",
     settings: "<select disabled></select>",
@@ -766,8 +766,8 @@ test("the friends system is the same in every room: ADD FRIEND on a matched play
   };
   const roster = createRoster({ document }),
     invite = createInviteCard({
-      code: "XD47",
-      link: "https://example.test/?room=XD47",
+      code: "XD47AA",
+      link: "https://example.test/?room=XD47AA",
       document,
     });
   createRoomLayout({
@@ -847,8 +847,8 @@ test("a room without the friends system has neither button", () => {
   document.body.append(root);
   const roster = createRoster({ document }),
     invite = createInviteCard({
-      code: "XD47",
-      link: "https://example.test/?room=XD47",
+      code: "XD47AA",
+      link: "https://example.test/?room=XD47AA",
       document,
     });
   createRoomLayout({

@@ -27,7 +27,7 @@ describe("CCBS results", () => {
     expect(findTournament("cc 3 2004")?.date).toBe("2004-05-23");
     expect(findTournament("reunion")?.name).toMatch(/Reunion/);
     expect(findTournament("nm05 single gutter")?.name).toBe(
-      "NM05 - Expert Single Gutter",
+      "NM05AA - Expert Single Gutter",
     );
     expect(findTournament("nothing like this")).toBeUndefined();
     expect(findTournament("  ")).toBeUndefined();

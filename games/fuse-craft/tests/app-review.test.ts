@@ -466,7 +466,7 @@ function fixture(options: FixtureOptions = {}) {
     dispose() {},
   });
   const room: RoomSnapshot = {
-    code: "AB12",
+    code: "AB12AA",
     stage: "lobby",
     seats: [
       { id: "blue", name: "Ada", slot: 0, bot: false, connected: true },
@@ -482,7 +482,7 @@ function fixture(options: FixtureOptions = {}) {
   };
   const online: OnlineSession = {
     confirmedView: () => ({ ...world, seats: room.seats }),
-    code: "AB12",
+    code: "AB12AA",
     get localPlayerId() {
       return room.self;
     },
@@ -520,9 +520,10 @@ function fixture(options: FixtureOptions = {}) {
   const onlineDependencies: OnlineDependencies = {
     createRoom() {
       calls.push("createRoom");
-      if (!options.online?.slowCreate) return Promise.resolve({ code: "AB12" });
+      if (!options.online?.slowCreate)
+        return Promise.resolve({ code: "AB12AA" });
       return new Promise((resolve) => {
-        resolveCreate = () => resolve({ code: "AB12" });
+        resolveCreate = () => resolve({ code: "AB12AA" });
       });
     },
     openRoom(code) {
@@ -584,7 +585,7 @@ function fixture(options: FixtureOptions = {}) {
     },
     ...(options.online ? { online: onlineDependencies } : {}),
     ...(options.online && !options.online.slowCreate
-      ? { initialRoom: "AB12" }
+      ? { initialRoom: "AB12AA" }
       : {}),
   };
   const app = mountFuseCraft(root, dependencies);

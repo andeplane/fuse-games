@@ -372,9 +372,9 @@ test("a presence claim is validated", async () => {
     { avatarId: "dog" },
     { room: {} },
     { room: { code: "bad", memberId: member(1) } },
-    { room: { code: "AB12", memberId: "short" } },
-    { room: { code: "AB12", memberId: member(1), gameId: "chess" } },
-    { room: { code: "AB12", memberId: member(1), extra: 1 } },
+    { room: { code: "AB12AA", memberId: "short" } },
+    { room: { code: "AB12AA", memberId: member(1), gameId: "chess" } },
+    { room: { code: "AB12AA", memberId: member(1), extra: 1 } },
     { extra: 1 },
     { passive: "yes" },
     { passive: 1 },
@@ -389,7 +389,7 @@ test("a presence claim is validated", async () => {
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
     { status: "x".repeat(MAX_STATUS_INPUT + 1) },
     // A passive page has no room of its own to claim.
-    { passive: true, room: { code: "AB12", memberId: member(1) } },
+    { passive: true, room: { code: "AB12AA", memberId: member(1) } },
   ])
     await assert.rejects(f.sync("alice", body), /Invalid presence/);
 });
@@ -727,7 +727,7 @@ test("the Firestore reader and the in-memory database agree on every presence re
     { ...base, at: 1.5 },
     { ...base, publicId: "nope" },
     { ...base, uid: "" },
-    { ...base, room: "AB12" },
+    { ...base, room: "AB12AA" },
     { ...base, room: { code, memberId: member(2), gameId: LEGACY_GAME_ID } },
   ])
     assert.throws(() => storedPresence(bad), /Stored presence is incompatible/);
@@ -753,7 +753,7 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
     { passive: "yes" },
     { status: 12 },
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
-    { passive: true, room: { code: "AB12", memberId: member(1) } },
+    { passive: true, room: { code: "AB12AA", memberId: member(1) } },
   ])
     assert.deepEqual(await post(body), {
       handled: true,
@@ -768,7 +768,7 @@ test("a room claim is proven by a live seat in that room, once per change", asyn
   const code = await f.room(1);
   // Not a room, not a member of one, a seat that is not in this room.
   await assert.rejects(
-    f.sync("alice", { room: { code: "ZZ99", memberId: member(1) } }),
+    f.sync("alice", { room: { code: "ZZ99AA", memberId: member(1) } }),
     /Join the room first/,
   );
   await assert.rejects(

@@ -6,33 +6,34 @@ import {
   validRoomCode,
   ROOM_CODE_SPACE,
 } from "../src/room-code.js";
-test("short codes map the full67600 space and reject biased random tail", () => {
+test("six-character codes uniformly map their full space and reject biased random tail", () => {
   assert.equal(
     generateRoomCode(() => 0),
-    "AA00",
+    "000000",
   );
   assert.equal(
     generateRoomCode(() => ROOM_CODE_SPACE - 1),
-    "ZZ99",
+    "ZZZZZZ",
   );
   let calls = 0;
   assert.equal(
     generateRoomCode(() => (++calls === 1 ? 2 ** 32 - 1 : 142)),
-    "AB42",
+    "00003Y",
   );
   assert.equal(calls, 2);
   assert.throws(() => generateRoomCode(() => -1), /Invalid random/);
   assert.throws(() => generateRoomCode(() => 2 ** 32 - 1), /rejection limit/);
 });
-test("room identities validate without making codes secrets", () => {
-  for (const code of ["AB42", "ZZ99"]) assert.equal(validRoomCode(code), true);
+test("room identities validate six uppercase alphanumeric characters", () => {
+  for (const code of ["AB42AA", "ZZ99AA"])
+    assert.equal(validRoomCode(code), true);
   for (const code of [
     "ab42",
     "A142",
     "ABC1",
     "1234",
     "AB420",
-    "AB42/",
+    "AB42AA/",
     "AABBCCDDEE",
   ])
     assert.equal(validRoomCode(code), false);
@@ -42,9 +43,9 @@ test("collision reservation is bounded and never masks noncollision failure", as
   assert.equal(
     await reserveRoomCode(
       async () => ++attempts === 3,
-      () => `AA0${attempts}`,
+      () => `AA00${attempts}A`,
     ),
-    "AA02",
+    "AA002A",
   );
   assert.equal(attempts, 3);
   attempts = 0;
@@ -54,7 +55,7 @@ test("collision reservation is bounded and never masks noncollision failure", as
         attempts++;
         return false;
       },
-      () => "AA00",
+      () => "AA00AA",
     ),
     undefined,
   );

@@ -90,7 +90,7 @@ function recorded(
   };
 }
 const ROOM = {
-  code: "AB12",
+  code: "AB12AA",
   memberId: "a".repeat(24),
   gameId: "fuse-riders",
   token: "secret",
@@ -103,7 +103,7 @@ test("a game's client sends what it always sent: no passive, away or status unle
   assert.deepEqual(bodies, [
     {
       name: "Bob",
-      room: { code: "AB12", memberId: "a".repeat(24), gameId: "fuse-riders" },
+      room: { code: "AB12AA", memberId: "a".repeat(24), gameId: "fuse-riders" },
     },
   ]);
   client.dispose();

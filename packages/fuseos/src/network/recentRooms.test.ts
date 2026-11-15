@@ -29,16 +29,20 @@ class FakeStorage {
 
 describe(parseRecentRooms.name, () => {
   it("keeps well-formed rooms and drops the rest", () => {
-    const good: RecentRoom = { gameId: "fuseball", code: "AB42", lastSeen: T0 };
+    const good: RecentRoom = {
+      gameId: "fuseball",
+      code: "AB42AA",
+      lastSeen: T0,
+    };
     expect(
       parseRecentRooms(
         JSON.stringify([
           good,
           { gameId: "fuseball", code: "ab42", lastSeen: T0 },
-          { gameId: "Fuseball", code: "AB42", lastSeen: T0 },
-          { gameId: "fuseball", code: "AB42", lastSeen: "yesterday" },
-          { gameId: "fuseball", code: "AB42" },
-          "AB42",
+          { gameId: "Fuseball", code: "AB42AA", lastSeen: T0 },
+          { gameId: "fuseball", code: "AB42AA", lastSeen: "yesterday" },
+          { gameId: "fuseball", code: "AB42AA" },
+          "AB42AA",
           null,
         ]),
       ),
@@ -59,33 +63,33 @@ describe(withRecordedRoom.name, () => {
     for (let index = 0; index < RECENT_ROOMS_MAX + 5; index += 1)
       rooms = withRecordedRoom(
         rooms,
-        { gameId: "fuseball", code: `AA${String(index).padStart(2, "0")}` },
+        { gameId: "fuseball", code: `AA${String(index).padStart(2, "0")}AA` },
         T0 + index,
       );
     expect(rooms).toHaveLength(RECENT_ROOMS_MAX);
     expect(rooms[0]).toEqual({
       gameId: "fuseball",
-      code: "AA24",
+      code: "AA24AA",
       lastSeen: T0 + 24,
     });
     const refreshed = withRecordedRoom(
       rooms,
-      { gameId: "fuseball", code: "AA10" },
+      { gameId: "fuseball", code: "AA10AA" },
       T0 + 100,
     );
     expect(refreshed).toHaveLength(RECENT_ROOMS_MAX);
     expect(refreshed[0]).toEqual({
       gameId: "fuseball",
-      code: "AA10",
+      code: "AA10AA",
       lastSeen: T0 + 100,
     });
-    expect(refreshed.filter((room) => room.code === "AA10")).toHaveLength(1);
+    expect(refreshed.filter((room) => room.code === "AA10AA")).toHaveLength(1);
   });
 
   it("tells the same code in two games apart", () => {
     const rooms = withRecordedRoom(
-      withRecordedRoom([], { gameId: "fuseball", code: "AB42" }, T0),
-      { gameId: "fuse-riders", code: "AB42" },
+      withRecordedRoom([], { gameId: "fuseball", code: "AB42AA" }, T0),
+      { gameId: "fuse-riders", code: "AB42AA" },
       T0 + 1,
     );
     expect(rooms.map((room) => room.gameId)).toEqual([
@@ -100,16 +104,16 @@ describe(MemoryRecentRoomsStore.name, () => {
     const store = new MemoryRecentRoomsStore();
     const listener = vi.fn();
     const unsubscribe = store.subscribe(listener);
-    store.record({ gameId: "fuseball", code: "AB42" }, T0);
-    store.record({ gameId: "fuse-riders", code: "CD07" }, T0 + 1);
-    expect(store.list().map((room) => room.code)).toEqual(["CD07", "AB42"]);
-    store.remove({ gameId: "fuseball", code: "AB42" });
-    expect(store.list().map((room) => room.code)).toEqual(["CD07"]);
+    store.record({ gameId: "fuseball", code: "AB42AA" }, T0);
+    store.record({ gameId: "fuse-riders", code: "CD07AA" }, T0 + 1);
+    expect(store.list().map((room) => room.code)).toEqual(["CD07AA", "AB42AA"]);
+    store.remove({ gameId: "fuseball", code: "AB42AA" });
+    expect(store.list().map((room) => room.code)).toEqual(["CD07AA"]);
     store.clear();
     expect(store.list()).toEqual([]);
     expect(listener).toHaveBeenCalledTimes(4);
     unsubscribe();
-    store.record({ gameId: "fuseball", code: "AB42" }, T0);
+    store.record({ gameId: "fuseball", code: "AB42AA" }, T0);
     expect(listener).toHaveBeenCalledTimes(4);
   });
 
@@ -127,14 +131,14 @@ describe(LocalStorageRecentRoomsStore.name, () => {
   it("round-trips through storage under its key and removes the key when empty", () => {
     const storage = new FakeStorage();
     const store = new LocalStorageRecentRoomsStore(storage);
-    store.record({ gameId: "fuseball", code: "AB42" }, T0);
+    store.record({ gameId: "fuseball", code: "AB42AA" }, T0);
     expect(parseRecentRooms(storage.getItem(RECENT_ROOMS_KEY))).toEqual([
-      { gameId: "fuseball", code: "AB42", lastSeen: T0 },
+      { gameId: "fuseball", code: "AB42AA", lastSeen: T0 },
     ]);
     expect(new LocalStorageRecentRoomsStore(storage).list()).toEqual([
-      { gameId: "fuseball", code: "AB42", lastSeen: T0 },
+      { gameId: "fuseball", code: "AB42AA", lastSeen: T0 },
     ]);
-    store.remove({ gameId: "fuseball", code: "AB42" });
+    store.remove({ gameId: "fuseball", code: "AB42AA" });
     expect(storage.getItem(RECENT_ROOMS_KEY)).toBeNull();
   });
 
@@ -142,7 +146,7 @@ describe(LocalStorageRecentRoomsStore.name, () => {
     const store = new LocalStorageRecentRoomsStore(new FakeStorage());
     const first = store.list();
     expect(store.list()).toBe(first);
-    store.record({ gameId: "fuseball", code: "AB42" }, T0);
+    store.record({ gameId: "fuseball", code: "AB42AA" }, T0);
     expect(store.list()).not.toBe(first);
   });
 
@@ -151,18 +155,18 @@ describe(LocalStorageRecentRoomsStore.name, () => {
     storage.failing = true;
     const store = new LocalStorageRecentRoomsStore(storage);
     expect(store.list()).toEqual([]);
-    store.record({ gameId: "fuseball", code: "AB42" }, T0);
-    expect(store.list().map((room) => room.code)).toEqual(["AB42"]);
+    store.record({ gameId: "fuseball", code: "AB42AA" }, T0);
+    expect(store.list().map((room) => room.code)).toEqual(["AB42AA"]);
     const absent = new LocalStorageRecentRoomsStore(undefined);
-    absent.record({ gameId: "fuseball", code: "AB42" }, T0);
-    expect(absent.list().map((room) => room.code)).toEqual(["AB42"]);
+    absent.record({ gameId: "fuseball", code: "AB42AA" }, T0);
+    expect(absent.list().map((room) => room.code)).toEqual(["AB42AA"]);
   });
 
   it("uses the browser's localStorage by default", () => {
     localStorage.removeItem(RECENT_ROOMS_KEY);
     const store = new LocalStorageRecentRoomsStore();
-    store.record({ gameId: "fuseball", code: "AB42" }, T0);
-    expect(localStorage.getItem(RECENT_ROOMS_KEY)).toContain("AB42");
+    store.record({ gameId: "fuseball", code: "AB42AA" }, T0);
+    expect(localStorage.getItem(RECENT_ROOMS_KEY)).toContain("AB42AA");
     localStorage.removeItem(RECENT_ROOMS_KEY);
   });
 });

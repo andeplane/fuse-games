@@ -67,7 +67,7 @@ describe("FriendsWindow", () => {
     expect(within(window).getByText("Away (1)")).toBeInTheDocument();
     expect(within(window).getByText("Offline (2)")).toBeInTheDocument();
     expect(
-      within(window).getByText("Playing Fuseball · room AB42"),
+      within(window).getByText("Playing Fuseball · room AB42AA"),
     ).toBeInTheDocument();
     expect(
       within(window).getByText("4 of 6 buddies online"),
@@ -82,7 +82,7 @@ describe("FriendsWindow", () => {
     const game = await screen.findByRole("dialog", { name: "Fuseball" });
     expect(within(game).getByTitle("Fuseball")).toHaveAttribute(
       "src",
-      "/fuse-riders/fuseball/?room=AB42",
+      "/fuse-riders/fuseball/?room=AB42AA",
     );
     // Joining the same room again brings that window forward rather than opening another.
     await user.click(within(window).getByRole("button", { name: "Join game" }));
@@ -188,7 +188,7 @@ describe("FriendsWindow", () => {
     expect(within(window).getByText("Online (3)")).toBeInTheDocument();
 
     const invites = within(window).getByRole("list", { name: "Invites" });
-    expect(invites).toHaveTextContent("invited you to fuse-volley (VB77)");
+    expect(invites).toHaveTextContent("invited you to fuse-volley (VB77AA)");
     await user.click(
       within(invites).getByRole("button", {
         name: "Dismiss invite from xXx_RocketMan_xXx",

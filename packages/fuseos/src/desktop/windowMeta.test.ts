@@ -46,21 +46,21 @@ describe(windowMeta.name, () => {
   it("names a room window after the game and the room, and the Network Neighborhood after itself", () => {
     expect(
       windowMeta(
-        window({ kind: "roomgame", gameId: "fuseball", code: "AB42" }),
+        window({ kind: "roomgame", gameId: "fuseball", code: "AB42AA" }),
         games,
       ),
     ).toEqual({
-      title: "Fuseball - Room AB42",
+      title: "Fuseball - Room AB42AA",
       icon: "network",
       resizable: true,
       size: FUSE_GAME_WINDOW_SIZE,
     });
     expect(
       windowMeta(
-        window({ kind: "roomgame", gameId: "gone", code: "AB42" }),
+        window({ kind: "roomgame", gameId: "gone", code: "AB42AA" }),
         games,
       ).title,
-    ).toBe("gone - Room AB42");
+    ).toBe("gone - Room AB42AA");
     expect(windowMeta(window({ kind: "network" }), games)).toEqual({
       title: "Network Neighborhood",
       icon: "network",

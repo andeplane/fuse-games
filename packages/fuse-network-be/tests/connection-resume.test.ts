@@ -24,7 +24,7 @@ import { LEASE_MS, authFrame } from "fuse-network-protocol";
 const HOST = "a".repeat(64),
   GUEST = "b".repeat(64),
   THIRD = "c".repeat(64),
-  CODE = "AB42";
+  CODE = "AB42AA";
 
 /** Routes a publish to whichever gateway on the same network it names. */
 class Bus implements RoomBus {

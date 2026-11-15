@@ -248,7 +248,7 @@ test("join by code: REJOIN the last room after JOIN", () => {
     onJoin: () => {},
     onInvalid: () => {},
     rejoin: {
-      code: "AB42",
+      code: "AB42AA",
       title: "Return to the room you were in last",
       onRejoin: (code) => rejoined.push(code),
     },
@@ -257,11 +257,11 @@ test("join by code: REJOIN the last room after JOIN", () => {
   });
   const rejoin = join.rejoin!;
   assert.deepEqual([...join.row.children], [join.input, join.button, rejoin]);
-  assert.equal(rejoin.textContent, "REJOIN AB42");
+  assert.equal(rejoin.textContent, "REJOIN AB42AA");
   assert.equal(rejoin.className, "landing-rejoin");
   assert.equal(rejoin.title, "Return to the room you were in last");
   rejoin.click();
-  assert.deepEqual(rejoined, ["AB42"]);
+  assert.deepEqual(rejoined, ["AB42AA"]);
   const fresh = createJoinByCode({
     valid: () => true,
     onJoin: () => {},

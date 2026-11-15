@@ -25,18 +25,22 @@ test("the query opens the landing, the local lobby, solo or a room, with one tok
   const room = (code: string, token: string, role: string) => ({
     ...{ kind: "room", code, token, role },
   });
-  eq(at("?room=ab12&touch"), room("AB12", "new", "joiner"));
-  equal(items.get(keys("g").peer("AB12")), "new", "the same member on reload");
+  eq(at("?room=ab12&touch"), room("AB12AA", "new", "joiner"));
+  equal(
+    items.get(keys("g").peer("AB12AA")),
+    "new",
+    "the same member on reload",
+  );
   const kept = keys("g");
   equal(
-    new Set([kept.shared, kept.sharedRoom("AB12"), kept.host("AB12")]).size,
+    new Set([kept.shared, kept.sharedRoom("AB12AA"), kept.host("AB12AA")]).size,
     3,
     "a room's own Shared TV choice is a key of its own",
   );
-  store.setItem(keys("g").host("CD34"), "made");
-  eq(at("?room=CD34"), room("CD34", "made", "host"));
+  store.setItem(keys("g").host("CD34AA"), "made");
+  eq(at("?room=CD34AA"), room("CD34AA", "made", "host"));
   const stored = items.size;
-  eq(at("?room=CD34&display=1"), room("CD34", "new", "display"));
+  eq(at("?room=CD34AA&display=1"), room("CD34AA", "new", "display"));
   equal(items.size, stored, "the TV keeps no token: it holds no seat");
   const blocked = safeStore(() => {
     throw new Error("blocked");
@@ -48,7 +52,7 @@ test("the query opens the landing, the local lobby, solo or a room, with one tok
 test("links to another page keep ?mute and ?calm as typed, and nothing else", () => {
   equal(carry("?mute&calm"), "mute&calm");
   equal(carry("?speed=4&seed=7", "local"), "local");
-  equal(carry("?mute=0&calm", "room=AB12"), "room=AB12&mute=0&calm");
+  equal(carry("?mute=0&calm", "room=AB12AA"), "room=AB12AA&mute=0&calm");
   equal(carry("", "solo=1"), "solo=1");
   equal(carry("?calm=a b&x=1"), "calm=a%20b");
 });

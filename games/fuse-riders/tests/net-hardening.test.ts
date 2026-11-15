@@ -478,7 +478,7 @@ test("a creator whose only peer is on different rules opens its own room and sen
   old.transport.sendFast(
     HOST,
     encodeNack({
-      room: roomHash(`AB42:${HOST}`),
+      room: roomHash(`AB42AA:${HOST}`),
       from: HOSTILE,
       firstMissingSeq: 1,
     }),

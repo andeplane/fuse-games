@@ -96,18 +96,18 @@ test("CREATE ROOM says what went wrong and comes back; JOIN takes a code in any 
   const code = dom.$<HTMLInputElement>(".fl-join input", s.root);
   code.value = "??";
   s.byText("JOIN").click();
-  assert.equal(error.textContent, "Type the room's code, for example AB42");
+  assert.equal(error.textContent, "Type the room's code, for example AB42AA");
   code.value = " ab42 ";
   s.byText("JOIN").click();
-  assert.deepEqual(s.joined, ["AB42"]);
+  assert.deepEqual(s.joined, ["AB42AA"]);
 });
 
 test("REJOIN goes back to the last room this device was in", () => {
   const { store } = memory({ [names.last]: "qx74" });
-  assert.equal(lastRoom(store, names.last, validRoomCode), "QX74");
+  assert.equal(lastRoom(store, names.last, validRoomCode), "QX74AA");
   const s = sheet(store);
-  s.byText("REJOIN QX74").click();
-  assert.deepEqual(s.joined, ["QX74"]);
+  s.byText("REJOIN QX74AA").click();
+  assert.deepEqual(s.joined, ["QX74AA"]);
   assert.equal(lastRoom(memory().store, names.last, validRoomCode), undefined);
   assert.equal(
     lastRoom(memory({ [names.last]: "!!" }).store, names.last, validRoomCode),
@@ -191,7 +191,7 @@ test("Play separates local setup and joining without losing their controls, and 
   const code = dom.$<HTMLInputElement>(".fl-join input", dialog);
   code.value = " ab42 ";
   press("JOIN");
-  assert.deepEqual(online.joined, ["AB42"]);
+  assert.deepEqual(online.joined, ["AB42AA"]);
   dialog.close();
   press("Back");
   assert.equal(choices.hidden, true);
@@ -237,8 +237,8 @@ test("the room's lobby: the shared room with faces, names and HOST, START on top
   status.textContent = "Connected";
   const lobby = createRoomLobby({
     art,
-    code: "AB42",
-    link: "https://example.test/fuse-lane/?room=AB42",
+    code: "AB42AA",
+    link: "https://example.test/fuse-lane/?room=AB42AA",
     qr: async () => "data:image/png;base64,",
     tv: false,
     status,

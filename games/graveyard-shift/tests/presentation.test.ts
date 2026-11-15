@@ -111,7 +111,7 @@ test("renderer draws live state labels, tanks, resistance, tug, emergence, pulse
 test("session routing fences tokens by game and displays get fresh identities", () => {
   const s = storage(),
     k = keys("graveyard-shift"),
-    valid = (v: string) => v === "AB42";
+    valid = (v: string) => v === "AB42AA";
   assert.deepEqual(
     sessionFor("", s, "graveyard-shift", valid, () => "secret"),
     { kind: "landing" },
@@ -132,23 +132,23 @@ test("session routing fences tokens by game and displays get fresh identities", 
     () => "secret",
   );
   assert.deepEqual(
-    sessionFor("?room=AB42", s, "graveyard-shift", valid, () => "new"),
+    sessionFor("?room=AB42AA", s, "graveyard-shift", valid, () => "new"),
     first,
   );
-  s.setItem(k.host("AB42"), "host");
+  s.setItem(k.host("AB42AA"), "host");
   assert.deepEqual(
-    sessionFor("?room=AB42", s, "graveyard-shift", valid, () => "new"),
-    { kind: "room", code: "AB42", role: "host", token: "host" },
+    sessionFor("?room=AB42AA", s, "graveyard-shift", valid, () => "new"),
+    { kind: "room", code: "AB42AA", role: "host", token: "host" },
   );
   assert.deepEqual(
     sessionFor(
-      "?room=AB42&display=1",
+      "?room=AB42AA&display=1",
       s,
       "graveyard-shift",
       valid,
       () => "new",
     ),
-    { kind: "room", code: "AB42", role: "display", token: "new" },
+    { kind: "room", code: "AB42AA", role: "display", token: "new" },
   );
   assert.equal(roomFailure("unknown game"), NOT_OPEN);
   assert.match(roomFailure("another game"), /another game/);

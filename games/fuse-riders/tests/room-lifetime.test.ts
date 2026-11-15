@@ -18,7 +18,7 @@ import { defaultRoomSettings } from "../src/engine/room-settings.js";
 
 const HOST = "a".repeat(64),
   GUEST = "b".repeat(64),
-  CODE = "AB42";
+  CODE = "AB42AA";
 class Socket implements GatewaySocket {
   bufferedAmount = 0;
   messages: Record<string, unknown>[] = [];

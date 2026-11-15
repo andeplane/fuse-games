@@ -281,7 +281,7 @@ test("history routes address a game by prefix and refuse an unknown game or a ro
     assert.equal(handled.message, message);
   };
   await refused(
-    call("POST", "/api/games/chess/rooms/AB12/results", {}, { result: 1 }),
+    call("POST", "/api/games/chess/rooms/AB12AA/results", {}, { result: 1 }),
     404,
     "Unknown game",
   );

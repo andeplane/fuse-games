@@ -109,10 +109,10 @@ test("a delayed room creation cannot navigate away from a newer screen", async (
   assert.equal(chosenMap(store), "crossfire");
   card.create.click();
   card.solo!.click();
-  complete({ code: "AB42", token: "stale" });
+  complete({ code: "AB42AA", token: "stale" });
   await flush();
   assert.equal(destination, "?solo=1");
-  assert.equal(store.getItem("ball-bros-host-AB42"), null);
+  assert.equal(store.getItem("ball-bros-host-AB42AA"), null);
 });
 function frame(
   stage: "lobby" | "running" | "over" = "lobby",
@@ -160,13 +160,13 @@ test("room identities are game-scoped, reloadable and never included in invites"
     session("?room=<script>", memory, () => "guest").kind,
     "invalid",
   );
-  rememberRoom(memory, "AB42", "host-secret");
-  rememberShared(memory, "AB42", true);
+  rememberRoom(memory, "AB42AA", "host-secret");
+  rememberShared(memory, "AB42AA", true);
   assert.deepEqual(
     session("?room=ab42", memory, () => "unused"),
     {
       kind: "room",
-      code: "AB42",
+      code: "AB42AA",
       token: "host-secret",
       display: false,
       shared: true,
@@ -174,15 +174,15 @@ test("room identities are game-scoped, reloadable and never included in invites"
   );
   assert.equal(
     (
-      session("?room=AB42&display=1", memory, () => "display-secret") as {
+      session("?room=AB42AA&display=1", memory, () => "display-secret") as {
         token: string;
       }
     ).token,
     "display-secret",
   );
-  const guest = session("?room=CD42", memory, () => "guest-secret");
+  const guest = session("?room=CD42AA", memory, () => "guest-secret");
   assert.deepEqual(
-    session("?room=CD42", memory, () => "replacement"),
+    session("?room=CD42AA", memory, () => "replacement"),
     guest,
   );
   const flaky = safeStore(() => ({
@@ -226,7 +226,7 @@ test("room identities are game-scoped, reloadable and never included in invites"
     },
     create: async () => {
       if (refuse) throw new Error("unknown game");
-      return { code: "EF42", token: "new-secret" };
+      return { code: "EF42AA", token: "new-secret" };
     },
   });
   card.create.click();
@@ -241,9 +241,9 @@ test("room identities are game-scoped, reloadable and never included in invites"
   );
   card.create.click();
   await flush();
-  assert.equal(navigated, "?room=EF42");
+  assert.equal(navigated, "?room=EF42AA");
   assert.equal(
-    (session("?room=EF42", memory, () => "unused") as { shared: boolean })
+    (session("?room=EF42AA", memory, () => "unused") as { shared: boolean })
       .shared,
     false,
   );
@@ -252,7 +252,7 @@ test("room identities are game-scoped, reloadable and never included in invites"
   assert.equal(navigated, "?solo=1");
   card.join.input.value = " ab42 ";
   card.join.button.click();
-  assert.equal(navigated, "?room=AB42");
+  assert.equal(navigated, "?room=AB42AA");
   card.join.input.value = "?";
   card.join.input.dispatchEvent(
     Object.assign(new window.Event("keydown"), { key: "Enter" }),
@@ -310,11 +310,11 @@ function screen(online = true, display = false, shared = false, fail = "") {
     observePlay: (observed) => metrics.push(observed),
     online: online
       ? {
-          code: "AB42",
+          code: "AB42AA",
           display,
           shared,
-          link: "http://game/ball-bros/?room=AB42",
-          displayLink: "http://game/ball-bros/?room=AB42&display=1",
+          link: "http://game/ball-bros/?room=AB42AA",
+          displayLink: "http://game/ball-bros/?room=AB42AA&display=1",
         }
       : undefined,
     store,
@@ -472,7 +472,7 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   );
   assert.equal(s.root.querySelector<HTMLElement>(".status")!.hidden, true);
   assert.equal(
-    s.root.querySelector(".topbar")!.textContent!.includes("AB42"),
+    s.root.querySelector(".topbar")!.textContent!.includes("AB42AA"),
     false,
     "the room's code is on its invitation only",
   );

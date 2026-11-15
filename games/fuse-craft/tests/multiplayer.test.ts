@@ -27,7 +27,7 @@ function fixture(
   const calls: string[] = [];
   const listeners = new Set<() => void>();
   const room: RoomSnapshot = {
-    code: "AB12",
+    code: "AB12AA",
     stage: "lobby",
     seats: [],
     self: world.players[0]!.id,
@@ -40,7 +40,7 @@ function fixture(
   };
   const session: OnlineSession = {
     confirmedView: () => ({ ...world, seats: room.seats }),
-    code: "AB12",
+    code: "AB12AA",
     localPlayerId: world.players[0]!.id,
     canControl: true,
     view: () => world,
@@ -68,7 +68,7 @@ function fixture(
   const online: OnlineDependencies = {
     async createRoom() {
       calls.push("createRoom");
-      return { code: "AB12" };
+      return { code: "AB12AA" };
     },
     openRoom(code) {
       calls.push(`openRoom:${code}`);
@@ -160,10 +160,10 @@ test("creating a room enters its lobby and a name takes a seat", async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(f.calls.slice(0, 3), [
     "createRoom",
-    "enterRoom:AB12",
-    "openRoom:AB12",
+    "enterRoom:AB12AA",
+    "openRoom:AB12AA",
   ]);
-  assert.equal(f.root.querySelector(".fui-room-code")?.textContent, "AB12");
+  assert.equal(f.root.querySelector(".fui-room-code")?.textContent, "AB12AA");
   f.change('[data-field="player-name"]', "Anders");
   f.click('[data-action="join-seat"]');
   assert.ok(f.calls.includes("join:Anders"));
@@ -179,8 +179,8 @@ test("joining needs a valid code", () => {
   assert.ok(!f.calls.some((call) => call.startsWith("openRoom")));
   f.change('[data-field="room-code"]', "ab12");
   f.click('[data-action="join-room"]');
-  assert.ok(f.calls.includes("enterRoom:AB12"));
-  assert.ok(f.calls.includes("openRoom:AB12"));
+  assert.ok(f.calls.includes("enterRoom:AB12AA"));
+  assert.ok(f.calls.includes("openRoom:AB12AA"));
   f.app.dispose();
 });
 
@@ -188,7 +188,7 @@ test("the room is the shared room: Back, Settings and Start in its head, HOST on
   const opened: string[] = [];
   const accounts = new Map([["guest", "acct-bo"]]);
   const f = fixture({
-    initialRoom: "AB12",
+    initialRoom: "AB12AA",
     friends: {
       publicIdOfMember: (id) => accounts.get(id),
       friendButton(publicId) {
@@ -242,7 +242,7 @@ test("the room is the shared room: Back, Settings and Start in its head, HOST on
     "Start is not under the QR code",
   );
   assert.equal(
-    f.root.textContent!.split("AB12").length - 1,
+    f.root.textContent!.split("AB12AA").length - 1,
     1,
     "the room's code is shown once",
   );
@@ -290,8 +290,11 @@ test("the room is the shared room: Back, Settings and Start in its head, HOST on
 });
 
 test("the manager changes rules, adds bots and starts once two players are ready", () => {
-  const f = fixture({ initialRoom: "AB12" });
-  assert.ok(f.calls.includes("openRoom:AB12"), "opens the room in the address");
+  const f = fixture({ initialRoom: "AB12AA" });
+  assert.ok(
+    f.calls.includes("openRoom:AB12AA"),
+    "opens the room in the address",
+  );
   f.update((room) => {
     room.seats = [
       {
@@ -335,7 +338,7 @@ test("the manager changes rules, adds bots and starts once two players are ready
 });
 
 test("players who do not manage the room cannot start it or change rules", () => {
-  const f = fixture({ manager: false, initialRoom: "AB12" });
+  const f = fixture({ manager: false, initialRoom: "AB12AA" });
   assert.equal(f.root.querySelector('[data-action="start-room"]'), null);
   assert.equal(f.root.querySelector('[data-action="add-bot"]'), null);
   assert.equal(
@@ -347,7 +350,7 @@ test("players who do not manage the room cannot start it or change rules", () =>
 });
 
 test("the room moves between its lobby and the battlefield, and leaving clears the address", () => {
-  const f = fixture({ initialRoom: "AB12" });
+  const f = fixture({ initialRoom: "AB12AA" });
   f.update((room) => {
     room.stage = "running";
   });
@@ -371,7 +374,7 @@ test("the room moves between its lobby and the battlefield, and leaving clears t
 });
 
 test("a closed room says why and returns to the menu", () => {
-  const f = fixture({ initialRoom: "AB12" });
+  const f = fixture({ initialRoom: "AB12AA" });
   f.update((room) => {
     room.closed = "kicked";
   });

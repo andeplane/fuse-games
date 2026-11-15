@@ -367,7 +367,7 @@ describe(isAppState.name, () => {
     expect(isAppState(window({ kind: "network" }))).toBe(true);
     expect(
       isAppState(
-        window({ kind: "roomgame", gameId: "fuseball", code: "AB42" }),
+        window({ kind: "roomgame", gameId: "fuseball", code: "AB42AA" }),
       ),
     ).toBe(true);
     expect(
@@ -376,7 +376,7 @@ describe(isAppState.name, () => {
       ),
     ).toBe(false);
     expect(
-      isAppState(window({ kind: "roomgame", gameId: "", code: "AB42" })),
+      isAppState(window({ kind: "roomgame", gameId: "", code: "AB42AA" })),
     ).toBe(false);
     expect(isAppState(window({ kind: "halloffame" }))).toBe(true);
     expect(isAppState(window({ kind: "halloffame", gameId: "fuseball" }))).toBe(

@@ -330,7 +330,7 @@ test("garbage, oversized, binary and wrong first frames are refused and charged 
     assert.equal(f.database.charged, before + 1);
     assert.equal(f.gateway.connections, 0);
     // A well-formed token the room has never seen is an ordinary guest; one for a missing room is charged as before.
-    const missing = f.open("ZZ99");
+    const missing = f.open("ZZ99AA");
     await missing.opened;
     missing.socket.send(authFrame("a".repeat(64)));
     assert.equal((await missing.closed).code, 4004);
@@ -463,7 +463,7 @@ test("a full room is not an admission failure: its own close code, no charge, ho
     }
     assert.equal(f.database.charged, 0);
     // A wrong code is still a guess, and still charged.
-    const missing = f.open("ZZ99");
+    const missing = f.open("ZZ99AA");
     await missing.opened;
     missing.socket.send(authFrame("c".repeat(64)));
     assert.equal((await missing.closed).code, 4004);

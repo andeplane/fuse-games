@@ -29,11 +29,11 @@ describe(liveFrameUrl.name, () => {
   it("reads the page's current address, which carries the room it entered", () => {
     const frame: GameFrame = {
       contentWindow: {
-        location: { href: "https://fuse.test/fuseball/?room=AB42" },
+        location: { href: "https://fuse.test/fuseball/?room=AB42AA" },
       },
     };
     expect(liveFrameUrl(frame, fallback)).toBe(
-      "https://fuse.test/fuseball/?room=AB42",
+      "https://fuse.test/fuseball/?room=AB42AA",
     );
   });
 

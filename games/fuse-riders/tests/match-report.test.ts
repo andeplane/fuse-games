@@ -163,7 +163,7 @@ test("credentials travel as headers, and a guest sends none", async () => {
     }) as typeof fetch;
   assert.equal(
     await sendMatchReport(
-      "https://api.example/api/rooms/AB42/results",
+      "https://api.example/api/rooms/AB42AA/results",
       report,
       {
         fetch: reply(200, { status: "confirmed", linked: true }),

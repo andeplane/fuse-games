@@ -70,14 +70,14 @@ test("the room lookups an outsider can ask for are bounded per address; other ro
         );
       assert.deepEqual(
         statuses,
-        [...Array.from({ length: ROOM_LOOKUP_BURST }, () => 403), 429, 429],
+        [...Array.from({ length: ROOM_LOOKUP_BURST }, () => 404), 429, 429],
         path,
       );
     }
     // Health and room creation are other budgets.
     assert.equal((await call("/api/health")).status, 200);
     assert.equal((await call("/api/rooms", { method: "POST" })).status, 201);
-    now += 2000;
+    now += 120_000;
     assert.equal(
       (
         await call(`/api/rooms/${room.code}/end`, {

@@ -28,17 +28,17 @@ test("no room and no solo run is the landing page", () => {
 test("an invited device is a joiner; the browser that created the room is its host", () => {
   assert.deepEqual(onlineRoute("?room=ab42", noTokens), {
     kind: "room",
-    code: "AB42",
+    code: "AB42AA",
     solo: false,
     displayOnly: false,
     role: "joiner",
     hostToken: null,
   });
   assert.deepEqual(
-    onlineRoute("?room=AB42&mute", tokens({ "fuse-room-AB42": "t0k" })),
+    onlineRoute("?room=AB42AA&mute", tokens({ "fuse-room-AB42AA": "t0k" })),
     {
       kind: "room",
-      code: "AB42",
+      code: "AB42AA",
       solo: false,
       displayOnly: false,
       role: "host",
@@ -46,10 +46,10 @@ test("an invited device is a joiner; the browser that created the room is its ho
     },
   );
   assert.equal(
-    onlineRoute("?room=AB42", tokens({ "fuse-room-AB42": "" })).kind ===
+    onlineRoute("?room=AB42AA", tokens({ "fuse-room-AB42AA": "" })).kind ===
       "room" &&
       (
-        onlineRoute("?room=AB42", tokens({ "fuse-room-AB42": "" })) as {
+        onlineRoute("?room=AB42AA", tokens({ "fuse-room-AB42AA": "" })) as {
           role: string;
         }
       ).role,
@@ -60,12 +60,12 @@ test("an invited device is a joiner; the browser that created the room is its ho
 
 test("TV VIEW is a display, even in the creator's browser", () => {
   const route = onlineRoute(
-    displayQuery("AB42"),
-    tokens({ "fuse-room-AB42": "t0k" }),
+    displayQuery("AB42AA"),
+    tokens({ "fuse-room-AB42AA": "t0k" }),
   );
   assert.deepEqual(route, {
     kind: "room",
-    code: "AB42",
+    code: "AB42AA",
     solo: false,
     displayOnly: true,
     role: "display",
@@ -74,11 +74,11 @@ test("TV VIEW is a display, even in the creator's browser", () => {
 });
 
 test("a solo run ignores any room or display in the query", () => {
-  for (const search of [SOLO_QUERY, "?solo=1&room=AB42", "?solo=1&display=1"])
+  for (const search of [SOLO_QUERY, "?solo=1&room=AB42AA", "?solo=1&display=1"])
     assert.deepEqual(
       onlineRoute(
         search,
-        tokens({ "fuse-room-SOLO": "x", "fuse-room-AB42": "y" }),
+        tokens({ "fuse-room-SOLO": "x", "fuse-room-AB42AA": "y" }),
       ),
       {
         kind: "room",
@@ -102,12 +102,12 @@ test("a code that is not a room code gets the invalid card, not a room", () => {
 });
 
 test("the room and display links", () => {
-  assert.equal(roomQuery("AB42"), "?room=AB42");
-  assert.equal(displayQuery("AB42"), "?room=AB42&display=1");
+  assert.equal(roomQuery("AB42AA"), "?room=AB42AA");
+  assert.equal(displayQuery("AB42AA"), "?room=AB42AA&display=1");
 });
 
 test("REJOIN offers only a stored room code", () => {
-  assert.equal(rejoinCode("AB42"), "AB42");
+  assert.equal(rejoinCode("AB42AA"), "AB42AA");
   assert.equal(rejoinCode(null), undefined);
   assert.equal(rejoinCode(""), undefined);
   assert.equal(rejoinCode("not a code"), undefined);

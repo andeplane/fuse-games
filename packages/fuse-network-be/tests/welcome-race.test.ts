@@ -82,7 +82,7 @@ class Socket implements GatewaySocket {
     return [...ids].sort();
   }
 }
-const CODE = "AB42",
+const CODE = "AB42AA",
   token = (i: number) => (i + 10).toString(16).repeat(64),
   HOST = token(0),
   FIRST = token(1),

@@ -79,7 +79,7 @@ export function createOnlineSheet(options: OnlineOptions): HTMLElement {
     onInvalid: fail,
     buttonText: "JOIN",
     placeholder: "Room code",
-    invalidMessage: "Type the room's code, for example AB42",
+    invalidMessage: "Type the room's code, for example AB42XY",
     ...(last
       ? {
           rejoin: {
