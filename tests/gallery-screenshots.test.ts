@@ -26,3 +26,34 @@ test("every game on the portal shows a gameplay capture, not its lettermark", ()
     "add a recipe to scripts/gallery-capture.ts, run `pnpm gallery:capture <id>` and set `screenshot` in portal.json",
   );
 });
+
+test("every portal game has three to five distinct, available carousel images", () => {
+  for (const id of readdirSync(gamesRoot)) {
+    const portal = new URL(`${id}/portal.json`, gamesRoot);
+    if (!existsSync(portal)) continue;
+    const entry = parsePortalEntry(JSON.parse(readFileSync(portal, "utf8")));
+    assert.ok(entry, `${id} has valid portal metadata`);
+    const paths = entry.screenshots;
+    assert.ok(paths, `${id} needs Fusteam carousel screenshots`);
+    assert.ok(paths.length >= 3 && paths.length <= 5, `${id} needs 3–5 images`);
+    assert.equal(
+      new Set(paths).size,
+      paths.length,
+      `${id} repeats an image path`,
+    );
+    assert.ok(
+      entry.screenshot && paths.includes(entry.screenshot),
+      `${id} includes its gameplay cover`,
+    );
+    const contents = paths.map((path) => {
+      const file = new URL(path, publicRoot);
+      assert.ok(existsSync(file), `${id} carousel image ${path} exists`);
+      return readFileSync(file).toString("base64");
+    });
+    assert.equal(
+      new Set(contents).size,
+      paths.length,
+      `${id} repeats an image under another filename`,
+    );
+  }
+});

@@ -124,6 +124,11 @@ test("DOM components stay self-contained; browser adapters use explicit shared b
         "radio.ts": ["fuse-music"],
         "top-bar.ts": ["fuse-music"],
         "friends-client.ts": ["fuse-platform/friends-api"],
+        // Messenger is a browser HTTP adapter over the same platform-owned wire contracts.
+        "messenger-client.ts": [
+          "fuse-platform/messages-api",
+          "fuse-platform/friends-api",
+        ],
         "friends-notify.ts": ["fuse-platform/friends-api"],
         "activity.ts": ["fuse-platform/activity-api"],
         "results-history.ts": ["fuse-platform/history-api"],

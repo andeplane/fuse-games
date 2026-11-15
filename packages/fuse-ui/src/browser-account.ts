@@ -1,6 +1,10 @@
 import { FIREBASE_WEB_CONFIG } from "./firebase-config.js";
 import { safeStorage } from "./safe-storage.js";
 import { validAccountName as validRiderName } from "./account-name.js";
+import {
+  ACCOUNT_REMEMBER_KEY,
+  watchRememberedAccount,
+} from "./account-sync.js";
 
 /**
  * Optional Google sign-in. A guest never downloads the Firebase SDK: it is imported on the first sign-in, and on later
@@ -14,11 +18,12 @@ export interface Account {
 }
 type Listener = (account: Account | undefined) => void;
 
-const REMEMBER_KEY = "fuse-riders-signed-in",
+const REMEMBER_KEY = ACCOUNT_REMEMBER_KEY,
   USERNAME_KEY = "fuse-riders-username";
 const storage = safeStorage(() => localStorage);
 const listeners = new Set<Listener>();
 let current: Account | undefined;
+let stopAccountSync: (() => void) | undefined;
 
 async function load() {
   const [{ initializeApp }, auth] = await Promise.all([
@@ -95,10 +100,32 @@ export const accountReady = async (): Promise<void> => {
 
 export function watchAccount(listener: Listener): () => void {
   listeners.add(listener);
+  if (!stopAccountSync && typeof window !== "undefined") {
+    stopAccountSync = watchRememberedAccount(
+      {
+        subscribe(onChange) {
+          window.addEventListener("storage", onChange);
+          return () => window.removeEventListener("storage", onChange);
+        },
+        storage() {
+          try {
+            return window.localStorage;
+          } catch {
+            return undefined;
+          }
+        },
+      },
+      warmAccount,
+    );
+  }
   if (remembersSignIn()) warmAccount();
   listener(current);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0) {
+      stopAccountSync?.();
+      stopAccountSync = undefined;
+    }
   };
 }
 

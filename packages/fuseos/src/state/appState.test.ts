@@ -47,6 +47,37 @@ describe("DEFAULT_STATE", () => {
 });
 
 describe(appStateReducer.name, () => {
+  it("focuses one transient chat per account and buddy while leaving contacts open", () => {
+    const content = {
+      kind: "im",
+      buddyId: "a".repeat(20),
+      accountId: "b".repeat(20),
+      name: "Private contact",
+    } as const;
+    let state = appStateReducer(DEFAULT_STATE, {
+      type: "open",
+      content: { kind: "friends" },
+    });
+    state = appStateReducer(state, { type: "open", content });
+    const id = activeWindowId(state)!;
+    state = appStateReducer(state, { type: "minimize", id });
+    state = appStateReducer(state, { type: "open", content });
+    expect(state.windows).toHaveLength(2);
+    expect(state.windows.at(-1)).toMatchObject({ id, minimized: false });
+    state = appStateReducer(state, {
+      type: "open",
+      content: { ...content, buddyId: "c".repeat(20) },
+    });
+    state = appStateReducer(state, {
+      type: "open",
+      content: { ...content, accountId: "d".repeat(20) },
+    });
+    expect(state.windows).toHaveLength(4);
+    const stored = serializeAppState(state);
+    expect(stored).not.toContain(content.name);
+    expect(stored).not.toContain(content.buddyId);
+    expect(parseAppState(stored).windows).toMatchObject([{ kind: "friends" }]);
+  });
   it("opens windows with incrementing ids and focuses the newest", () => {
     const state = open(open(DEFAULT_STATE, "paint"), "winamp");
     expect(state.windows.map((window) => window.id)).toEqual(["w1", "w2"]);

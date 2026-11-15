@@ -22,6 +22,10 @@ import { createSwitchablePresenceService } from "./friends/switchablePresenceSer
 import { createFuseGameRegistry, FuseGamesContext } from "./fusegames/registry";
 import { withLauncherOnBoot } from "./launcher/launcherBoot";
 import {
+  DialUpSessionContext,
+  LocalStorageDialUpSession,
+} from "./sounds/dialup/dialUpSession";
+import {
   effectiveGameLaunch,
   FuseOsPrefsStoreContext,
   LocalStorageFuseOsPrefsStore,
@@ -94,11 +98,13 @@ if (foldDemo)
   );
 const system32Deps: System32Deps = { ...defaultSystem32Deps, demo: foldDemo };
 
-// Winamp (queued, not playing) and Fusteam, the game launcher, open on every boot, Fusteam focused; the deep
-// link's windows land on top of them.
+// Winamp (queued, not playing), Fusteam and Messenger open on boot. The first completed dial-up is remembered.
+// Deep-link windows land above the startup programs.
+const dialUpSession = new LocalStorageDialUpSession();
 const store = withLauncherOnBoot(
   new LocalStorageStateStore(),
   defaultWindowsDeps.getViewport,
+  dialUpSession,
 );
 
 // Webamp ships its own React and the classic skin inlined; loaded only when Winamp opens.
@@ -157,7 +163,9 @@ export function mountFuseOs(container: HTMLElement): void {
                   <System32DepsContext.Provider value={system32Deps}>
                     <Y2kDepsContext.Provider value={y2kDeps}>
                       <MircDepsContext.Provider value={browserMircDeps()}>
-                        <App store={store} initialOpen={initialOpen} />
+                        <DialUpSessionContext.Provider value={dialUpSession}>
+                          <App store={store} initialOpen={initialOpen} />
+                        </DialUpSessionContext.Provider>
                       </MircDepsContext.Provider>
                     </Y2kDepsContext.Provider>
                   </System32DepsContext.Provider>

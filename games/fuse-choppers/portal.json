@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-choppers.jpg",
   "tagline": "Multiplayer cave chaos.",
   "mark": "FC",
-  "accent": "#b6ff4d"
+  "accent": "#b6ff4d",
+  "screenshots": [
+    "gallery/fuse-choppers.jpg",
+    "gallery/fuse-choppers-menu.jpg",
+    "gallery/fuse-choppers-controls.jpg"
+  ]
 }

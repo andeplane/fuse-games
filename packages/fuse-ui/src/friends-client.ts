@@ -1,5 +1,6 @@
 import {
   FRIENDS_POLL_MS,
+  validPublicId,
   type FriendInvite,
   type FriendsSyncBody,
   type FriendsView,
@@ -60,7 +61,10 @@ export interface FriendsClient {
   add(publicId: string): Promise<void>;
   remove(publicId: string): Promise<void>;
   /** Invite friends to the room this device is in; resolves with how many were invited. */
-  invite(publicIds: readonly string[]): Promise<number>;
+  invite(
+    publicIds: readonly string[],
+    expectedAccount?: string,
+  ): Promise<number>;
   dismissInvite(id: string): Promise<void>;
   /** Tell the service this device left its room, on a page that is going away. */
   leave(): void;
@@ -290,7 +294,9 @@ export function createFriendsClient(
     refresh,
     add: (publicId) => act(() => call("POST", "/api/friends", { publicId })),
     remove: (publicId) => act(() => call("DELETE", `/api/friends/${publicId}`)),
-    async invite(publicIds) {
+    async invite(publicIds, expectedAccount) {
+      if (expectedAccount !== undefined && !validPublicId(expectedAccount))
+        throw new Error("Invalid expected account");
       const where = room;
       if (!where) throw new Error("Join a room first");
       let sent = 0;
@@ -304,6 +310,9 @@ export function createFriendsClient(
             headers: {
               Authorization: `Bearer ${where.token}`,
               "X-Fuse-Identity": identity,
+              ...(expectedAccount === undefined
+                ? {}
+                : { "X-Fuse-Account": expectedAccount }),
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ to: publicIds }),

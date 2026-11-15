@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
+import { DesktopBridgeContext } from "../fusegames/DesktopBridgeProvider";
 
 export type IframeGameProps = {
   name: string;
+  gameId?: string;
   url: string;
   active: boolean;
   onActivate: () => void;
@@ -45,6 +47,7 @@ export function liveFrameUrl(
  */
 export function IframeGame({
   name,
+  gameId,
   url,
   active,
   onActivate,
@@ -52,6 +55,19 @@ export function IframeGame({
   onFrame,
 }: IframeGameProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
+  const bridge = useContext(DesktopBridgeContext);
+  const connection =
+    useRef<ReturnType<NonNullable<typeof bridge>["register"]>>();
+  useEffect(() => {
+    const peer = frame.current?.contentWindow;
+    if (!bridge || !gameId || !peer) return;
+    const registration = bridge.register(peer, gameId);
+    connection.current = registration;
+    return () => {
+      registration.dispose();
+      connection.current = undefined;
+    };
+  }, [bridge, gameId, url]);
   useEffect(() => {
     if (active) frame.current?.focus();
   }, [active]);
@@ -74,6 +90,7 @@ export function IframeGame({
           onFrame?.(element);
         }}
         title={name}
+        onLoad={() => connection.current?.reconnect()}
         src={url}
         className="block h-full w-full border-0"
         allow={GAME_IFRAME_ALLOW}

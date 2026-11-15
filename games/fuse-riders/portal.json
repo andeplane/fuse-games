@@ -4,5 +4,10 @@
   "tagline": "Tiny riders. Big trouble. A neon arena party game.",
   "mark": "FR",
   "accent": "#16e7ff",
-  "order": 1
+  "order": 1,
+  "screenshots": [
+    "gallery/fuse-riders.jpg",
+    "gallery/fuse-riders-menu.jpg",
+    "gallery/fuse-riders-controls.jpg"
+  ]
 }
