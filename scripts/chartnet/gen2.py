@@ -22,7 +22,7 @@ from bursts import burst_beats
 from guidance import forced_beats, has_taps, jump_beats, keep_locked, noted_opening, opening_beat, verdicts
 from feet import Feet
 from gen import FUSE_DIFFS, SNAP, mean_stats, place, ssc, stats, timing
-from onset import OnsetNet, chart_nps, f1, predict
+from onset import DEV, OnsetNet, chart_nps, f1, predict
 import repeats
 from simfile import DIFFS
 
@@ -217,7 +217,7 @@ def placement_model():
     cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {"n_in": 192, "wide": False}
     data.BANDS = cfg["n_in"] > 192  # the features the weights were trained on
     st = np.load(ROOT / cfg.get("stats", "feat_stats.npz"))  # the normalisation the weights were trained with
-    om = OnsetNet(cfg["n_in"], True, use_density=True, wide=cfg["wide"]).to("mps")
+    om = OnsetNet(cfg["n_in"], True, use_density=True, wide=cfg["wide"]).to(DEV)
     om.load_state_dict(torch.load(ROOT / f"{WEIGHTS[0]}.pt", map_location="cpu"))
     return (st["mean"], st["std"]), om, cfg
 
