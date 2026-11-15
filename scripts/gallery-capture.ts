@@ -60,6 +60,17 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  "fuse-liero": async (page) => {
+    await openPlayOptions(page, "single");
+    await page.locator('.liero-room[data-phase="running"]').waitFor();
+    await page.waitForFunction(() =>
+      document.querySelector(".liero-overlay")?.hasAttribute("hidden"),
+    );
+    await page.locator(".liero-arena canvas").click();
+    await page.keyboard.down("KeyF");
+    await hold(page, ["KeyD", "Space", "KeyW", "KeyR"], 700);
+    await page.keyboard.up("KeyF");
+  },
   "ball-bros": async (page) => {
     await openPlayOptions(page);
     await page

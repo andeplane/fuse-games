@@ -59,6 +59,9 @@ importers:
       fuse-lane:
         specifier: workspace:*
         version: link:games/fuse-lane
+      fuse-liero:
+        specifier: workspace:*
+        version: link:games/fuse-liero
       fuse-music:
         specifier: workspace:*
         version: link:packages/fuse-music
@@ -489,6 +492,28 @@ importers:
       '@fontsource-variable/nunito':
         specifier: ^5.3.0
         version: 5.3.0
+      '@fontsource/press-start-2p':
+        specifier: ^5.3.0
+        version: 5.3.0
+      fuse-network-fe:
+        specifier: workspace:*
+        version: link:../../packages/fuse-network-fe
+      fuse-ui:
+        specifier: workspace:*
+        version: link:../../packages/fuse-ui
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
+
+  games/fuse-liero:
+    dependencies:
+      fuse-netcode:
+        specifier: workspace:*
+        version: link:../../packages/fuse-netcode
+      fuse-platform:
+        specifier: workspace:*
+        version: link:../../packages/fuse-platform
+    devDependencies:
       '@fontsource/press-start-2p':
         specifier: ^5.3.0
         version: 5.3.0

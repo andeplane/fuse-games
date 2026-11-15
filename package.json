@@ -50,6 +50,7 @@
     "fuse-front": "workspace:*",
     "fuse-volley": "workspace:*",
     "fuse-lane": "workspace:*",
+    "fuse-liero": "workspace:*",
     "fuse-network-be": "workspace:*",
     "fuse-platform": "workspace:*",
     "fuse-telemetry": "workspace:*",

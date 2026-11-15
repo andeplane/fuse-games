@@ -1,0 +1,231 @@
+.liero-page {
+  --liero-lime: #b6ff4d;
+  background: #080917;
+  color: #ecf7ff;
+}
+.liero-room {
+  padding-top: 76px;
+}
+.liero-connection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  min-height: 24px;
+}
+.liero-connection .liero-code {
+  margin-left: 0;
+}
+.liero-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  padding: 8px 20px;
+}
+.liero-brand {
+  color: var(--liero-lime);
+  font-family: "Press Start 2P", monospace;
+  font-size: 16px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.liero-code {
+  color: #16e7ff;
+  margin-left: auto;
+  font:
+    12px "Press Start 2P",
+    monospace;
+}
+.liero-status {
+  font-size: 12px;
+  color: #b8cee2;
+}
+.liero-shared {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d8e9f0;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.liero-shared input {
+  accent-color: var(--liero-lime);
+}
+.liero-attract {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+.liero-play {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 12px 24px 24px;
+}
+.liero-hud {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: space-between;
+  min-height: 38px;
+  font:
+    11px "Press Start 2P",
+    monospace;
+}
+.liero-hud strong {
+  color: var(--liero-lime);
+}
+.liero-hud span:last-child {
+  color: #ffe46b;
+}
+.liero-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  padding: 8px 0 12px;
+  font: 13px monospace;
+}
+.liero-scores span {
+  color: var(--worm-color);
+}
+.liero-arena {
+  position: relative;
+  background: #080917;
+  border: 1px solid #614487;
+}
+.liero-arena canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  image-rendering: pixelated;
+}
+.liero-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  background: #080917b8;
+}
+.liero-overlay[hidden],
+.liero-actions[hidden],
+.liero-pad[hidden],
+.liero-play[hidden] {
+  display: none;
+}
+.liero-overlay h1 {
+  font:
+    clamp(18px, 3vw, 36px)/1.5 "Press Start 2P",
+    monospace;
+  color: var(--liero-lime);
+  max-width: 28ch;
+}
+.liero-overlay p {
+  color: #d8e9f0;
+  line-height: 1.5;
+  max-width: 50ch;
+}
+.liero-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+.liero-hints {
+  color: #c1d5e5;
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.6;
+}
+.liero-pad {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  max-width: 960px;
+  margin: 12px auto 0;
+  touch-action: none;
+  user-select: none;
+}
+.liero-pad button {
+  min-height: 58px;
+  padding: 8px;
+  font:
+    10px "Press Start 2P",
+    monospace;
+  border: 1px solid #5d6687;
+  background: #172038;
+  color: #e4f6ff;
+  touch-action: none;
+}
+.liero-pad button:active {
+  background: #334766;
+}
+.liero-pad .liero-fire {
+  border-color: #ff2e9d;
+  color: #ff9bd0;
+}
+.liero-page :focus-visible {
+  outline: 3px solid var(--liero-lime);
+  outline-offset: 3px;
+}
+.liero-page ::selection {
+  color: #080917;
+  background: var(--liero-lime);
+}
+@media (max-width: 720px) {
+  .liero-top {
+    padding: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .liero-brand {
+    font-size: 11px;
+  }
+  .liero-status {
+    max-width: 100%;
+  }
+  .liero-play {
+    padding: 8px;
+  }
+  .liero-hud {
+    gap: 8px;
+    font-size: 8px;
+    line-height: 1.7;
+    flex-wrap: wrap;
+  }
+  .liero-scores {
+    font-size: 11px;
+    gap: 6px 14px;
+  }
+  .liero-hints {
+    display: none;
+  }
+  .liero-pad {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .liero-pad button {
+    min-height: 56px;
+    font-size: 9px;
+  }
+  .liero-overlay {
+    padding: 12px;
+  }
+  .liero-overlay h1 {
+    font-size: 14px;
+  }
+  .liero-overlay p {
+    font-size: 12px;
+  }
+}
+@media (pointer: fine) and (min-width: 1100px) {
+  .liero-pad {
+    max-width: 800px;
+  }
+  .liero-pad button {
+    min-height: 42px;
+  }
+}
