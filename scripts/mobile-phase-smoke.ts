@@ -127,7 +127,7 @@ for (const { name, kind } of BOTH_ENGINES) {
       `${label}: one menu button`,
     );
     // The solo room is full, so its slots offer no Add AI; the shared room layout keeps the rest in reach.
-    for (const name of ["START RACE", "Game settings"])
+    for (const name of ["START RACE", "Room settings"])
       await onScreen(name, label);
   };
   try {

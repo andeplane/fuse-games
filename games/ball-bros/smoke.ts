@@ -21,7 +21,9 @@ try {
   // Preserve ephemeral mute when navigating from another game's landing.
   await page.goto(new URL("ball-bros/?mute", origin).href);
   // The arena lives under Settings, the avatar beside the hosting options of the Play menu.
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Room settings", exact: true })
+    .click();
   await page.getByRole("combobox", { name: "ARENA" }).selectOption("ricochet");
   await page.keyboard.press("Escape");
   await openPlayOptions(page);

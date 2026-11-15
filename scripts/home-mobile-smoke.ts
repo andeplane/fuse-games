@@ -268,10 +268,16 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           .getByRole("button", { name: "BACK TO LOBBY", exact: true })
           .click();
         await powerHud.waitFor({ state: "hidden" });
-        for (const name of ["Game settings", "SETTINGS", "AVATAR", "EXIT"]) {
+        for (const name of [
+          "Room settings",
+          "Player options",
+          "AVATAR",
+          "EXIT",
+        ]) {
           // SETTINGS and EXIT are the bar's; on a short viewport the bar is one ☰. ROOM SETTINGS and AVATAR are the
           // lobby's own, and the sheet would cover them, so it stays shut for those.
-          if (name === "SETTINGS" || name === "EXIT") await openTopMenu(page);
+          if (name === "Player options" || name === "EXIT")
+            await openTopMenu(page);
           await page.getByRole("button", { name, exact: true }).click();
           const dialog = page.getByRole("dialog");
           await dialog.waitFor({ state: "visible" });
@@ -282,7 +288,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
             "dialog body horizontal overflow",
           );
-          if (name === "Game settings") {
+          if (name === "Room settings") {
             assert.equal(
               await dialog.locator("select").count(),
               0,
@@ -407,7 +413,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .click();
             await dialog.waitFor({ state: "hidden" });
             await page
-              .getByRole("button", { name: "Game settings", exact: true })
+              .getByRole("button", { name: "Room settings", exact: true })
               .click();
             assert.equal(
               await page.getByLabel("Match length").inputValue(),
@@ -447,7 +453,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               );
             }
           }
-          if (name === "SETTINGS") {
+          if (name === "Player options") {
             await inside(
               page,
               page.getByRole("button", { name: "EFFECTS ON", exact: true }),
@@ -469,7 +475,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             page.getByRole("button", { name: "Back", exact: true }),
           );
           await page.screenshot({
-            path: `artifacts/menu-${tag}-${name === "SETTINGS" ? "audio" : name.replaceAll(" ", "-")}.png`,
+            path: `artifacts/menu-${tag}-${name === "Player options" ? "audio" : name.replaceAll(" ", "-")}.png`,
           });
           await page.getByRole("button", { name: "Back", exact: true }).click();
           await dialog.waitFor({ state: "hidden" });

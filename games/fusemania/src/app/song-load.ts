@@ -1,4 +1,5 @@
 import type { ClockedSong } from "fuse-ui/game-audio";
+import type { SongTransferProgress } from "./song-cache.js";
 
 /**
  * Which songs this device has the audio of. A song is played from a decoded copy, and a match must not begin on a
@@ -9,6 +10,11 @@ import type { ClockedSong } from "fuse-ui/game-audio";
  * have been downloaded is remembered for all of them, since their bytes stay in the browser's storage.
  */
 export type SongAudio = "none" | "loading" | "ready" | "failed";
+export interface SongLoadProgress {
+  readonly phase: "downloading" | "decoding" | "retrying";
+  readonly received: number;
+  readonly total?: number;
+}
 
 /** How often a song's audio is fetched again by itself before the page asks the player. */
 export const SONG_LOAD_TRIES = 3;
@@ -21,7 +27,10 @@ export interface SongLoaderDeps {
   /** Where a song's audio is, or undefined for a song the library does not have. */
   url(id: string): string | undefined;
   /** Fetches and decodes; undefined (or a rejection) when it could not. */
-  load(url: string): Promise<ClockedSong | undefined>;
+  load(
+    url: string,
+    progress: (value: SongTransferProgress) => void,
+  ): Promise<ClockedSong | undefined>;
   /** False where the page plays no songs at all (`?mute`): nothing is fetched and nothing is waited for. */
   enabled(): boolean;
   /** Whether the page has an audio clock. Without one a song cannot be decoded, which is not the file's fault. */
@@ -47,6 +56,8 @@ export interface SongLoader {
   retry(): void;
   /** These songs were downloaded before this page opened (their bytes are stored). */
   stored(ids: Iterable<string>): void;
+  /** Only the currently requested song's unfinished load, never a stale song's transfer. */
+  progress(id: string): SongLoadProgress | undefined;
 }
 
 export function createSongLoader(deps: SongLoaderDeps): SongLoader {
@@ -60,6 +71,8 @@ export function createSongLoader(deps: SongLoaderDeps): SongLoader {
         failures: number;
         /** A fetch came back with nothing while the page had no audio clock. */
         unheard: boolean;
+        progress?: SongLoadProgress;
+        attempt: number;
       }
     | undefined;
   const changed = () => deps.changed?.();
@@ -72,6 +85,7 @@ export function createSongLoader(deps: SongLoaderDeps): SongLoader {
           retryAt: 0,
           failures: 0,
           unheard: false,
+          attempt: 0,
         };
         changed();
       }
@@ -85,11 +99,31 @@ export function createSongLoader(deps: SongLoaderDeps): SongLoader {
       ) {
         const url = deps.url(id);
         mine.loading = true;
+        const attempt = ++mine.attempt;
+        mine.progress = { phase: "downloading", received: 0 };
         changed();
-        void (url ? deps.load(url) : Promise.resolve(undefined))
+        void (
+          url
+            ? deps.load(url, (value) => {
+                if (
+                  current !== mine ||
+                  !mine.loading ||
+                  mine.attempt !== attempt
+                )
+                  return;
+                mine.progress = {
+                  received: value.received,
+                  total: value.total,
+                  phase: value.complete ? "decoding" : "downloading",
+                };
+                changed();
+              })
+            : Promise.resolve(undefined)
+        )
           .catch(() => undefined)
           .then((song) => {
             mine.loading = false;
+            mine.progress = undefined;
             mine.unheard = false;
             if (song) {
               mine.song = song;
@@ -124,6 +158,20 @@ export function createSongLoader(deps: SongLoaderDeps): SongLoader {
       );
     },
     failures: () => current?.failures ?? 0,
+    progress(id) {
+      if (
+        !deps.enabled() ||
+        deps.local?.(id) ||
+        current?.id !== id ||
+        current.song ||
+        current.failures >= SONG_LOAD_TRIES
+      )
+        return undefined;
+      return (
+        current.progress ??
+        (current.failures > 0 ? { phase: "retrying", received: 0 } : undefined)
+      );
+    },
     retry() {
       if (!current) return;
       current.failures = current.retryAt = 0;

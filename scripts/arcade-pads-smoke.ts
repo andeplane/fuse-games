@@ -187,7 +187,9 @@ try {
   await phone.screenshot({
     path: `artifacts/arcade-landscape-menu-${kind}.png`,
   });
-  await phone.getByRole("button", { name: "SETTINGS", exact: true }).click();
+  await phone
+    .getByRole("button", { name: "Player options", exact: true })
+    .click();
   const sidePicker = phone.getByLabel("Landscape bomb side");
   await sidePicker.scrollIntoViewIfNeeded();
   const labelFits = await sidePicker.evaluate((element) => {

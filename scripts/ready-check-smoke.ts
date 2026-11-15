@@ -44,7 +44,7 @@ try {
   const invite = new URL(tv.url());
   invite.searchParams.set("mute", "1");
   invite.searchParams.set("benchmark", "1");
-  await tv.getByRole("button", { name: "Game settings", exact: true }).click();
+  await tv.getByRole("button", { name: "Room settings", exact: true }).click();
   await tv.getByLabel("Match length").fill("1"); // saves on input
   await tv.getByRole("button", { name: "Back", exact: true }).click();
   for (const [page, name] of [
