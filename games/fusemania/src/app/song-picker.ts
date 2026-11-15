@@ -77,7 +77,7 @@ export interface SongPickerOptions {
    */
   tools?: readonly Node[];
   /**
-   * Starts the selected song. Shows a PLAY button on the song's details (for the host) and makes Enter start it.
+   * Starts the selected song from its cover card or Enter (host only); the page header owns the explicit Start action.
    * Leave out for a picker that has no start of its own.
    */
   onPlay?(): void;
@@ -299,7 +299,9 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     element.addEventListener("click", (event) => {
       // A drag ends in a pointer's click; a key's (detail 0) is never part of one.
       if (dragged && event.detail !== 0) return;
-      if (shown?.host && shown.song !== info.id) options.onSong(info.id);
+      if (!shown?.host) return;
+      if (shown.song !== info.id) options.onSong(info.id);
+      else options.onPlay?.();
     });
     rows.set(info.id, {
       song: info,
@@ -563,13 +565,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     names = el("div", "", "fm-picker-names");
   names.append(packName, title, artist, facts);
   head.append(art, names);
-  const play = push("fm-picker-play");
-  play.textContent = "PLAY";
-  play.hidden = true;
-  play.addEventListener("click", () => {
-    if (shown?.host && rows.has(shown.song)) options.onPlay?.();
-  });
-  detail.append(head, ...(options.onPlay ? [play] : []), chartsLabel, charts);
+  detail.append(head, chartsLabel, charts);
   if (!hideMode) detail.append(modes);
   detail.append(note);
   root.append(wheel, detail);
@@ -708,7 +704,6 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       if (next.host) list.removeAttribute("aria-disabled");
       else list.setAttribute("aria-disabled", "true");
       before.disabled = after.disabled = slider.disabled = !next.host;
-      play.hidden = !next.host;
       for (const tab of packTabs) tab.element.disabled = !next.host;
       sorter.button.hidden = !next.host || order.length < 2;
       tools.hidden = !options.tools?.length && sorter.button.hidden;
