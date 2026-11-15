@@ -42,11 +42,12 @@ test("a rating reads as a grade, a percentage and a score", () => {
   assert.equal(grade(750_000), "B");
   assert.equal(grade(600_000), "C");
   assert.equal(grade(0), "D");
-  assert.equal(percent(942_199), "94.2%");
-  assert.equal(percent(FULL_RATING), "100.0%");
-  assert.equal(scoreText(1_000_000), "1,000,000");
-  assert.equal(scoreText(942), "942");
-  assert.equal(bestText(942_199), "AA 94.2%");
+  assert.equal(percent(942_199), "94.21%");
+  assert.equal(percent(999_999), "99.99%");
+  assert.equal(percent(FULL_RATING), "100.00%");
+  assert.equal(scoreText(1_000_000), "100.00%");
+  assert.equal(scoreText(942), "0.09%");
+  assert.equal(bestText(942_199), "AA 94.21%");
   assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21].map(ordinal), [
     "1ST",
     "2ND",
@@ -121,7 +122,7 @@ test("during a song a player gets the field, a phone on a shared screen the pads
   run(room, 4);
   assert.match(
     present(library, game.view(room), viewer("b")).status,
-    /^[\d,]+ · 1ST$/,
+    /^\d+\.\d{2}% · 1ST$/,
   );
 
   const shared = started({ ...SETTINGS, display: true });
@@ -158,20 +159,20 @@ test("the result ranks the players, says who won and what this device's best was
       [2, "Bo", false],
     ],
   );
-  assert.equal(winner.result!.rows[0]!.detail, "EASY 3 · 90.0%");
+  assert.equal(winner.result!.rows[0]!.detail, "EASY 3 · 90.00%");
   assert.equal(winner.result!.rows[0]!.combo, "MAX COMBO 64");
   assert.deepEqual(winner.result!.counts[1], ["PERFECT", "64"]);
-  assert.deepEqual(winner.result!.lines, ["NEW BEST! +400,000 (WAS 50.0%)"]);
+  assert.deepEqual(winner.result!.lines, ["NEW BEST! +40.00% (WAS 50.00%)"]);
   assert.deepEqual(winner.result!.own, {
     grade: "A",
-    score: "900,000",
-    detail: "EASY 3 · 90.0% · MAX COMBO 64",
+    score: "90.00%",
+    detail: "EASY 3 · 90.00% · MAX COMBO 64",
     badge: "FULL PERFECT COMBO",
   });
   assert.equal(winner.result!.host, true);
   const loser = present(library, view, viewer("b"), 990_000);
   assert.equal(loser.result!.title, "ADA WINS");
-  assert.deepEqual(loser.result!.lines, ["BEST AAA 99.0% · −990,000"]);
+  assert.deepEqual(loser.result!.lines, ["BEST AAA 99.00% · −99.00%"]);
   assert.equal(loser.result!.own!.badge, "");
   assert.equal(
     loser.result!.waiting,
@@ -269,10 +270,10 @@ test("a session counts its songs on the start button, the title and the result, 
         name: "Ada",
         you: true,
         slot: 0,
-        points: scoreText(rating),
+        points: scoreText(rating / 3),
         wins: "1 WIN",
       },
-      { place: 2, name: "Bo", you: false, slot: 1, points: "0", wins: "" },
+      { place: 2, name: "Bo", you: false, slot: 1, points: "0.00%", wins: "" },
     ],
   });
   // The host picks the next song in the song select; a guest waits for that.

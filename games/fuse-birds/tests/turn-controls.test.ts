@@ -9,6 +9,8 @@ import { canPlayTurn } from "../src/app/turn-controls.js";
 test("controls require runtime admission even when a recovered frame reports the old seat connected", () => {
   const world = getView(createMatch("match", 42, [{ id: "a", name: "Skye" }]));
   const frame: Frame<BirdsView> = {
+    decided: null,
+    history: [],
     tick: 3,
     logTick: 1,
     managerId: "a",

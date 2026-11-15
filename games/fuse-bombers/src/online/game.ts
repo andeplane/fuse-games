@@ -38,6 +38,14 @@ import {
   type TickEvent,
 } from "../engine/index.js";
 import { hashPlain } from "./hash.js";
+import type { PlayerResult } from "fuse-platform";
+import { parseHistoryPlayer } from "fuse-platform/history-api";
+import {
+  currentHistoryReceipts,
+  parsePastMatches,
+  retainPastMatches,
+} from "./history.js";
+import type { HistoryReceipt } from "fuse-ui/results-history";
 import * as names from "./names.js";
 
 /**
@@ -98,6 +106,9 @@ const DIRECTIONS = UP | DOWN | LEFT | RIGHT;
 
 export interface RoundRecord {
   round: number;
+  tick: number;
+  players: PlayerResult[];
+  finishers: string[];
   /** The round's winner, or "" for a draw. */
   winner: string;
   reason: RoundResult["reason"];
@@ -112,6 +123,7 @@ export interface Room extends ManagedRoom<Settings> {
   /** Crowns this match, by member id. */
   wins: Record<string, number>;
   results: RoundRecord[];
+  pastMatches: HistoryReceipt[][];
   /** The match winner once `stage` is "over" ("" when nobody won a round). */
   winner: string;
   /** The log tick the round's first step runs on: its countdown ends there. */
@@ -122,6 +134,7 @@ export interface Room extends ManagedRoom<Settings> {
   resumeAt: number;
   /** Who flies each gunship of the round: member ids by castle index. */
   ships: string[];
+  roster: { id: string; name: string; slot: number; bot: boolean }[];
   /** Each seat's held direction bits, from the latest entry it logged this round. */
   held: Record<string, number>;
   world: RoundState | null;
@@ -178,11 +191,13 @@ export function createRoom(matchId: string, settings: Settings): Room {
     play: { ...valid },
     wins: {},
     results: [],
+    pastMatches: [],
     winner: "",
     startAt: 0,
     endAt: 0,
     resumeAt: 0,
     ships: [],
+    roster: [],
     held: {},
     world: null,
   };
@@ -214,6 +229,12 @@ function startRound(room: Room): void {
   room.stage = "running";
   room.held = {};
   room.ships = seats.map((seat) => seat.id);
+  room.roster = seats.map(({ id, name, slot, bot }) => ({
+    id,
+    name,
+    slot,
+    bot,
+  }));
   room.startAt = room.tick + 1 + COUNTDOWN_TICKS;
   room.endAt = room.resumeAt = 0;
   // The engine plays the bot seats inside `step`, their memory in the round state (so hashed and rolled back with it).
@@ -228,7 +249,19 @@ function startRound(room: Room): void {
 /** A new match in the lobby: everything but the seats, the settings and the clock starts afresh. */
 function resetMatch(room: Room, matchId: string): void {
   const { tick, seats, settings } = room;
-  Object.assign(room, { ...createRoom(matchId, settings), tick, seats });
+  const pastMatches = room.results.length
+    ? (retainPastMatches(
+        room.pastMatches,
+        currentHistoryReceipts(room),
+        room.tick,
+      ) ?? room.pastMatches)
+    : room.pastMatches;
+  Object.assign(room, {
+    ...createRoom(matchId, settings),
+    tick,
+    seats,
+    pastMatches,
+  });
 }
 
 export const lifecycle: LifecycleHooks<Room, Settings> = {
@@ -399,7 +432,30 @@ function endRound(room: Room, tick: number): void {
     { wins, results } = room;
   const winner = result.winner === null ? "" : room.ships[result.winner]!;
   if (winner) wins[winner] = (wins[winner] ?? 0) + 1;
-  results.push({ round: room.round, winner, reason: result.reason });
+  const finishers = room.roster
+    .filter(
+      (p) => !p.bot && room.seats.has(p.id) && !room.seats.get(p.id)?.watcher,
+    )
+    .map((p) => p.id)
+    .sort();
+  const players: PlayerResult[] = room.roster.map((p) => ({
+    playerId: p.id,
+    name: p.name,
+    slot: p.slot,
+    roundsPlayed: 1,
+    roundWins: Number(p.id === winner),
+    matchScoreUnits: Number(p.id === winner),
+    matchPlacement: !winner || p.id === winner ? 1 : 2,
+    earlyExits: Number(!p.bot && !finishers.includes(p.id)),
+  }));
+  results.push({
+    round: room.round,
+    tick,
+    players,
+    finishers,
+    winner,
+    reason: result.reason,
+  });
   const decided = verdict(room);
   if (decided !== undefined) {
     room.stage = "over";
@@ -471,11 +527,20 @@ export function encode(room: Room): unknown[] {
     { ...room.settings },
     { ...room.play },
     [...room.seats.values()].map((seat) => ({ ...seat })),
-    room.results.map((r) => [r.round, r.winner, r.reason]),
+    room.results.map((r) => [
+      r.round,
+      r.winner,
+      r.reason,
+      r.tick,
+      r.players.map((p) => ({ ...p })),
+      [...r.finishers],
+    ]),
     room.startAt,
     [...room.ships],
     Object.entries(room.held),
     room.world && encodeRound(room.world),
+    room.roster.map((p) => ({ ...p })),
+    structuredClone(room.pastMatches),
   ];
 }
 
@@ -519,11 +584,13 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 11 || !uint32(tick)) return;
+  if (fields.length !== 13 || !uint32(tick)) return;
   // prettier-ignore
-  const [matchId, round, stage, rawSettings, rawPlay, rawSeats, rawResults, startAt, ships, rawHeld, rawWorld] = fields;
+  const [matchId, round, stage, rawSettings, rawPlay, rawSeats, rawResults, startAt, ships, rawHeld, rawWorld, rawRoster, rawPastMatches] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
+  const pastMatches = parsePastMatches(rawPastMatches, tick);
+  if (!pastMatches) return;
   if (
     !names.validMatchId(matchId) ||
     !uint32(round) ||
@@ -555,12 +622,63 @@ export function decode(
   const results: RoundRecord[] = [],
     wins: Record<string, number> = {};
   for (const [i, raw] of rawResults.entries()) {
-    if (!list(raw, 3) || raw.length !== 3) return;
-    const [number, winner, reason] = raw;
+    if (!list(raw, 6) || raw.length !== 6) return;
+    const [number, winner, reason, at, rawPlayers, rawFinishers] = raw;
     const kind = ROUND_REASONS.find((r) => r === reason);
     if (number !== i + 1 || !kind || typeof winner !== "string") return;
     if (winner !== "" && !names.playerKey(winner)) return;
-    results.push({ round: i + 1, winner, reason: kind });
+    if (
+      !uint32(at) ||
+      at > tick ||
+      !list(rawPlayers, CAPACITY) ||
+      !list(rawFinishers, CAPACITY)
+    )
+      return;
+    const players = rawPlayers.map((p) => parseHistoryPlayer(p, 1));
+    if (
+      !players.length ||
+      players.some(
+        (p) =>
+          !p ||
+          !names.playerKey(p.playerId) ||
+          !names.validName(p.name) ||
+          p.slot >= CAPACITY,
+      ) ||
+      new Set(players.map((p) => p!.playerId)).size !== players.length ||
+      new Set(players.map((p) => p!.slot)).size !== players.length ||
+      new Set(rawFinishers).size !== rawFinishers.length ||
+      !rawFinishers.every(
+        (id) =>
+          typeof id === "string" &&
+          players.some((p) => p?.playerId === id) &&
+          !id.startsWith(names.BOT_PREFIX),
+      )
+    )
+      return;
+    if (winner !== "" && !players.some((p) => p?.playerId === winner)) return;
+    if (
+      players.some(
+        (p) =>
+          p!.roundsPlayed !== 1 ||
+          p!.roundWins !== Number(p!.playerId === winner) ||
+          p!.matchScoreUnits !== Number(p!.playerId === winner) ||
+          p!.matchPlacement !== (!winner || p!.playerId === winner ? 1 : 2) ||
+          p!.earlyExits !==
+            Number(
+              !p!.playerId.startsWith(names.BOT_PREFIX) &&
+                !rawFinishers.includes(p!.playerId),
+            ),
+      )
+    )
+      return;
+    results.push({
+      round: i + 1,
+      tick: at,
+      players: players as PlayerResult[],
+      finishers: [...rawFinishers] as string[],
+      winner,
+      reason: kind,
+    });
     if (winner) wins[winner] = (wins[winner] ?? 0) + 1;
     const latest = i === rawResults.length - 1 && stage !== "running";
     if (!latest && verdict({ wins, results, round: i + 1, play }) !== undefined)
@@ -585,9 +703,33 @@ export function decode(
     ? startAt + Math.floor(result.tick / STEPS_PER_TICK) + OUTRO_TICKS
     : 0;
   const resumeAt = stage === "between" ? endAt + BETWEEN_TICKS : 0;
+  if (!list(rawRoster, CAPACITY) || rawRoster.length !== ships.length) return;
+  const roster: Room["roster"] = [];
+  for (const [i, raw] of rawRoster.entries()) {
+    if (
+      !raw ||
+      typeof raw !== "object" ||
+      Array.isArray(raw) ||
+      Object.keys(raw).length !== 4
+    )
+      return;
+    const { id, name, slot, bot } = raw as Record<string, unknown>;
+    if (
+      id !== ships[i] ||
+      !names.playerKey(id) ||
+      !names.validName(name) ||
+      !uint32(slot) ||
+      slot >= CAPACITY ||
+      typeof bot !== "boolean" ||
+      bot !== id.startsWith(names.BOT_PREFIX)
+    )
+      return;
+    roster.push({ id, name, slot, bot });
+  }
+  if (new Set(roster.map((p) => p.slot)).size !== roster.length) return;
   // prettier-ignore
   const room: Room = { tick, matchId, round, stage: stage as Stage, seats, settings, play, wins, results, winner: "",
-    startAt, endAt, resumeAt, ships: [...ships], held, world };
+    startAt, endAt, resumeAt, ships: [...ships], roster, held, world, pastMatches };
   if (stage === "lobby")
     return round === 0 && startAt === 0 && !world && !ships.length
       ? room

@@ -63,6 +63,25 @@ The download overlay shows received bytes and a progress bar, with a percentage 
 
 ## The result
 
+**Song highscores** in the main menu lists every bundled song, with the leading
+player and percentage for Easy, Medium, Hard and Challenge. Blank cells mean nobody
+has a verified score; select a cell to open that chart's leaderboard. Sign in and
+choose an account name before playing **Score** mode to save a result. The result
+screen shows whether saving succeeded and offers retry after a failed completion.
+Battle, custom files, spectators and runs recovered mid-song stay unranked.
+
+Song scores are displayed as percentages with two decimals. Session scores are
+percentages of the whole selected playlist's maximum: three perfect songs in a
+three-song session give 100%. Local browser bests remain available offline, but
+only server-replayed runs enter public boards. Scores belong to the exact chart
+and scoring version; changed charts start fresh boards.
+
+Verified completion events and their leaderboard projections use the shared
+first-party event database. The server checks a ticket, account ownership, elapsed
+time and the complete input replay against its own chart. This prevents fabricated
+totals, but cannot establish that inputs came from a human. See
+[song-score storage and verification](../../docs/design/fusemania-song-scores.md).
+
 The result shows this device's own run large: the grade, the score, the chart, the accuracy, the longest combo, a badge for a run that never broke its combo, the difference to this browser's best on the chart, and every judgment as a bar. Beside them is the **timing graph** (`src/app/timing-graph.ts`): one dot per step in its judgment's colour, from the song's start to its end, around a line at 0 ms with early above and late below; misses are red ticks on the floor; a histogram on the same scale shows the spread, a dashed line the mean; the combo runs under it on the same time axis. The numbers under it are the mean offset, the standard deviation, the mean distance from the note and how many steps were early or late outside a Marvelous. With other riders the ranking of everyone leads, and the breakdown is still this device's own.
 
 The graph is read from the picture frame by frame (`src/app/run-log.ts`), so it is this device's run only, a page reloaded on a finished song has none, and two steps hit in one frame with different judgments leave one without a dot.
@@ -71,7 +90,7 @@ Every key can be changed in Settings, up to four keys an arrow. WASD and IJKL ar
 
 ## Judging and scoring
 
-A step is judged by how far the press is from the note: Marvelous within 22 ms, Perfect 45, Great 90, Good 135, Boo 180, otherwise a Miss. The combo counts Marvelous to Great; a Good or worse breaks it. The combo number blinks in the colour of the worst judgment in it: white while every step was a Marvelous, yellow once a Perfect is in it, green once a Great is (the engine keeps that as `worst` beside the combo, so a device that recovers the match shows the same colour); with reduced motion it holds the colour without blinking. The score is a rating out of 1,000,000: the share of the chart's best possible points, so players on different levels compare. Grades run D to AAAA.
+A step is judged by how far the press is from the note: Marvelous within 22 ms, Perfect 45, Great 90, Good 135, Boo 180, otherwise a Miss. The combo counts Marvelous to Great; a Good or worse breaks it. The combo number blinks in the colour of the worst judgment in it: white while every step was a Marvelous, yellow once a Perfect is in it, green once a Great is (the engine keeps that as `worst` beside the combo, so a device that recovers the match shows the same colour); with reduced motion it holds the colour without blinking. The score is the percentage of the chart's best possible points, so players on different levels compare. Grades run D to AAAA.
 
 ## Battle mode
 

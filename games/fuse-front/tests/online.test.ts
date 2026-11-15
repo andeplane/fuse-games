@@ -29,11 +29,91 @@ import {
   type Settings,
 } from "../src/online/game.js";
 import { mapsFor } from "../src/online/maps.js";
+import { frontResults } from "../src/online/result.js";
 import { pickHero } from "../src/app/model.js";
 import { Mesh, type TestRuntime } from "./fixtures/mesh.js";
 
 /** Each member's whole stream; the fold reads the entries stamped with the tick it folds. */
 type Log = Map<string, unknown[][]>;
+
+test("confirmed history freezes the deciding roster and survives membership changes and checkpoints", () => {
+  const { room, entries } = match();
+  assert.deepEqual(frontResults(room.matchId, room.decided), []);
+  const map = mapOf(room);
+  room
+    .world!.buildings.filter((building) => {
+      const site = map.sites[building.id]!;
+      return site.kind === "fort"
+        ? site.seat % 2 === 1
+        : site.kind === "turret" && site.team === 1;
+    })
+    .forEach((building) => {
+      Object.assign(building, {
+        hp: 0,
+        cooldown: 0,
+        aimOf: -1,
+        aim: -1,
+        ramp: 0,
+      });
+    });
+  fold(room, entries, 1);
+  assert.equal(room.stage, "over");
+  const receipts = frontResults(room.matchId, room.decided);
+  assert.equal(receipts.length, 2);
+  assert.equal(receipts[0]!.result.round, 1);
+  assert.equal(receipts[1]!.result.players[0]!.name, "Host");
+  assert.equal(receipts[1]!.result.players[0]!.roundWins, 1);
+  assert.deepEqual(receipts[1]!.result.finishers, ["host"]);
+  const original = JSON.stringify(receipts);
+  log(room, entries, "host", LEAVE, "host");
+  fold(room, entries, 1);
+  const restored = decode(encode(room), room.tick);
+  assert.ok(restored);
+  assert.equal(
+    JSON.stringify(frontResults(restored.matchId, restored.decided)),
+    original,
+  );
+  const corrupt = encode(room);
+  corrupt[7] = { ...room.decided, tick: room.tick + 1 };
+  assert.equal(decode(corrupt, room.tick), undefined);
+  log(room, entries, "host", ACTION, "lobby", "next-lobby");
+  fold(room, entries, 1);
+  assert.equal(room.decided, null);
+  assert.deepEqual(room.history, receipts);
+  const lobby = decode(encode(room), room.tick);
+  assert.ok(lobby);
+  assert.deepEqual(lobby.history, receipts);
+});
+
+test("a lobby transition before the next confirmation stride preserves a completed match", () => {
+  const { room, entries } = match();
+  const map = mapOf(room);
+  room
+    .world!.buildings.filter((building) => {
+      const site = map.sites[building.id]!;
+      return site.kind === "fort"
+        ? site.seat % 2 === 1
+        : site.kind === "turret" && site.team === 1;
+    })
+    .forEach((building) => {
+      Object.assign(building, {
+        hp: 0,
+        cooldown: 0,
+        aimOf: -1,
+        aim: -1,
+        ramp: 0,
+      });
+    });
+  fold(room, entries, 1);
+  assert.notEqual(room.decided!.tick % 4, 0);
+  const retained = structuredClone(room.history);
+  log(room, entries, "host", ACTION, "lobby", "next");
+  fold(room, entries, 1);
+  assert.equal(room.tick % 4, 0);
+  assert.equal(room.stage, "lobby");
+  assert.deepEqual(view(room).history, retained);
+  assert.deepEqual(decode(encode(room), room.tick)!.history, retained);
+});
 function log(room: Room, entries: Log, id: string, ...body: unknown[]): void {
   if (!entries.has(id)) entries.set(id, []);
   const stream = entries.get(id)!;

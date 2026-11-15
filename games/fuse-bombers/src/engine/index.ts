@@ -5,7 +5,7 @@
  * The rules online peers compare (`<prefix>-<n>`): a change to how a logged room plays bumps `n` and re-records
  * the golden replay (`tests/online-golden.test.ts`) in the same commit.
  */
-export const RULES = "fuse-bombers-1";
+export const RULES = "fuse-bombers-2";
 
 export {
   CARDS,

@@ -1,5 +1,6 @@
 import type { MatchResult } from "fuse-platform";
 import { type FuseDriversRoom } from "./rules.js";
+import { isBotId } from "./basics.js";
 import type { FuseDriversStats } from "../platform.js";
 
 /**
@@ -45,6 +46,7 @@ export function matchResult(
   // One order for every peer, so equal results serialize to equal bytes.
   stats.sort((a, b) => a.slot - b.slot || (a.playerId < b.playerId ? -1 : 1));
   const finishers = [...stats]
+    .filter((player) => !isBotId(player.playerId))
     .sort((a, b) => a.matchPlacement - b.matchPlacement)
     .map((player) => player.playerId);
   const winner = stats.find((player) => player.matchPlacement === 1);

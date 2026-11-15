@@ -65,6 +65,12 @@ export const birdsRegistration: GameRegistration<
 > = {
   id: "fuse-birds",
   isBot: () => false,
+  activityPlayer(player) {
+    return {
+      label: "Health remaining",
+      stats: { health: player.matchScoreUnits },
+    };
+  },
   parseStats: parseBirdStats,
   emptyTotals: () => ({ totals: { matches: 0, wins: 0 } }),
   credit: (p) => ({ matches: 1, wins: p.roundWins }),

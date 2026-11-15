@@ -15,6 +15,8 @@ import {
 } from "fuse-platform/firestore";
 import { platform } from "./history.js";
 import { createProductionTelemetry } from "./telemetry.js";
+import { FirestoreTelemetryDatabase } from "fuse-telemetry/metrics-firestore";
+import { songScoresHttp } from "./song-scores.js";
 
 /**
  * The one deployed service: every registered game's rooms and its shared history, accounts and ratings
@@ -29,7 +31,11 @@ export function startService(authClient?: AuthClient): void {
     ...(authClient ? { authClient } : {}),
     httpExtension: ({ store, firestore, prefix, projectId }) => {
       const history = new FirestoreHistoryDatabase(platform, firestore, prefix);
+      const identity = createIdentityVerifier(
+        process.env.FIREBASE_PROJECT_ID ?? projectId,
+      );
       const platformHttp = createPlatformHttp({
+        activity: history.activity,
         history: new HistoryStore(platform, history, store, Date.now),
         friends: new FriendsStore(
           platform,
@@ -38,11 +44,16 @@ export function startService(authClient?: AuthClient): void {
           store,
           Date.now,
         ),
-        identity: createIdentityVerifier(
-          process.env.FIREBASE_PROJECT_ID ?? projectId,
-        ),
+        identity,
       });
       return composeHttp(
+        songScoresHttp(
+          new FirestoreTelemetryDatabase(firestore, prefix),
+          history,
+          identity,
+          process.env.TELEMETRY_RATE_LIMIT_KEY,
+          Date.now,
+        ),
         createProductionTelemetry({
           firestore,
           prefix,
