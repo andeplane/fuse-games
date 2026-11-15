@@ -751,7 +751,9 @@ const enterRoom = async () => {
     );
     el("invitation").hidden = false;
     let started = false,
-      roomShown = false;
+      roomShown = false,
+      wasRunning = false,
+      restarting = false;
     runtime = new HookRuntime(
       room.code,
       DEFAULT_TUNING,
@@ -811,8 +813,6 @@ const enterRoom = async () => {
               (runtime?.creator ||
                 roomManager(frame.seats, creatorId) === selfId);
           if (round !== frame.round) {
-            // The manager started a round: a seated keeper still in the room is taken into the arena with it.
-            if (round !== -1 && !manager && local) matchShell.open(false);
             round = frame.round;
             for (const key of Object.keys(TUNING_BOUNDS)) {
               const field = tuning.elements.namedItem(key) as HTMLInputElement;
@@ -832,6 +832,15 @@ const enterRoom = async () => {
           );
           paintBombButton(frame);
           if (frame.stage === "lobby") entrance.play();
+          // The manager's START takes the room through its lobby and back: a seated keeper still on the room page
+          // is taken into the arena with it. A changed setting restarts the round too, and leaves the room alone.
+          if (frame.stage === "lobby" && wasRunning) restarting = true;
+          if (frame.stage === "running") {
+            if (restarting && !manager && local && !local.watcher)
+              matchShell.open(false);
+            restarting = false;
+            wasRunning = true;
+          }
           // A room is entered through its room page; the shared display goes straight to the arena.
           if (!roomShown) {
             roomShown = true;
@@ -1330,7 +1339,12 @@ window.addEventListener("pageshow", (e) => {
 const matchShell = createMatchShell({
   playerName: () => social.playerName(undefined) ?? undefined,
   leave: () => el<HTMLButtonElement>("leave-room").click(),
-  start: () => el<HTMLButtonElement>("restart-room").click(),
+  start() {
+    const restart = el<HTMLButtonElement>("restart-room");
+    if (restart.disabled) return false;
+    restart.click();
+    return true;
+  },
   onOpenChange(open) {
     clear();
     refreshGuides();

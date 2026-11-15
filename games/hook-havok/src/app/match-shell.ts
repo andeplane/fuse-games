@@ -21,8 +21,8 @@ export function createMatchShell(actions: {
   playerName?(): string | undefined;
   /** Out of the room, as the menu's Leave does. */
   leave(): void;
-  /** The round starts again for the whole room: the manager's START. */
-  start(): void;
+  /** The round starts again for the whole room: the manager's START. False while the room cannot take it yet. */
+  start(): boolean;
   /** The room opened over the arena, or closed onto it. */
   onOpenChange(open: boolean): void;
   /** INVITE FRIENDS beside the invitation, ADD FRIEND on a seat and on a result row. */
@@ -100,21 +100,30 @@ export function createMatchShell(actions: {
   tv.append(openTv);
   let manages = false,
     entered = false;
-  const open = (value: boolean) => {
-    if (lounge.hidden === !value) return;
+  const show = (value: boolean) => {
     // A dialog left open inside a hidden room would keep the page inert.
     if (!value)
       for (const dialog of lounge.querySelectorAll("dialog[open]"))
         (dialog as HTMLDialogElement).close();
     lounge.hidden = !value;
     document.body.classList.toggle("in-room", value);
+    // The arena behind the room takes no keys, focus or taps: the round runs on without this keeper's hands.
+    for (const covered of document.querySelectorAll<HTMLElement>(
+      ".play-surface, #match-hud",
+    ))
+      covered.inert = value;
+    syncBackground();
+  };
+  const open = (value: boolean) => {
+    if (lounge.hidden === !value) return;
+    show(value);
     if (!value) entered = true;
     back.hidden = !manages || !entered;
-    syncBackground();
     actions.onOpenChange(value);
   };
   go.onclick = () => {
-    if (manages) actions.start();
+    // Before the room runs there is no round to start yet: the room stays until START can be heard.
+    if (manages && !actions.start()) return;
     open(false);
   };
   back.onclick = () => open(false);
@@ -175,6 +184,8 @@ export function createMatchShell(actions: {
     onBack: actions.leave,
     backText: "Leave",
     onAction(id) {
+      // Every answer to a result leads to the arena, also for a keeper who was in the room when the round ended.
+      open(false);
       if (id === "rematch") {
         get<HTMLButtonElement>("restart-room").click();
         // Movement keys are handled on the arena.
@@ -215,7 +226,8 @@ export function createMatchShell(actions: {
       status.textContent = text;
     },
     reset() {
-      open(false);
+      // Without the arena's focus and resize: the room is being left, not closed onto the arena.
+      show(false);
       entered = false;
       back.hidden = true;
       overlay.hidden = true;
@@ -320,16 +332,22 @@ export function createMatchShell(actions: {
       addAI.hidden = !manager || view.keepers.length >= 5;
       const local = view.keepers.find((k) => k.id === selfId);
       manages = manager;
-      go.textContent = manager ? "START" : "ENTER ARENA";
-      // A full room can still be watched from the arena.
-      go.disabled = !seated && view.keepers.length < 5;
+      go.textContent = manager
+        ? "START"
+        : seated
+          ? "ENTER ARENA"
+          : "WATCH ARENA";
+      // The manager starts from a seat; anybody else may walk in, or look on without one.
+      go.disabled = manager && !seated;
       back.hidden = !manager || !entered;
       tv.hidden = !manager;
       note.textContent = manager
         ? c.rules === "free"
           ? "Free play. Pick a round mode in Settings to compete."
           : "START begins the round for everyone."
-        : "The host picks the arena and starts the round. Enter the arena to explore meanwhile.";
+        : seated
+          ? "The host picks the arena and starts the round. Enter the arena to explore meanwhile."
+          : "Take a seat to play, or watch the arena.";
       get("match-map").textContent =
         view.map === "crossroads"
           ? "THE CROSSROADS"
