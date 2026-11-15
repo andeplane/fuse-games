@@ -374,6 +374,22 @@ export function stepWorm(
   // Native weapon selection clears controls without pausing existing momentum,
   // rope physics, gravity or friction. It also skips aim/input acceleration.
   if (!controlsEnabled) worm.input = 0;
+  return stepWormWithControls(worm, worms, terrain, controls, dtMs, config);
+}
+
+/**
+ * Common native simulation after either CWormHuman or CWormBot has produced
+ * its input state. Input-side rope actions and absolute aim/facing updates have
+ * already happened. Unlike human key handling, this does not detach on jump.
+ */
+export function stepWormWithControls(
+  worm: PhysicsWorm,
+  worms: readonly PhysicsWorm[],
+  terrain: PhysicsTerrainPort,
+  controls: ClassicControls,
+  dtMs = 11,
+  config: Readonly<ClassicPhysicsConfig> = CLASSIC_PHYSICS,
+): ClassicControls {
   if (!worm.alive) return controls;
   if (controls.carve) {
     const d = faceDirection({ aim: worm.aim, facing: worm.moveFacing });

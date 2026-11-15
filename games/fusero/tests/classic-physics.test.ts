@@ -22,6 +22,7 @@ import {
   SELECT_MOD,
   STRAFE,
   stepWorm,
+  stepWormWithControls,
   stepClassicControls,
   stepClassicMovement,
   stepClassicAim,
@@ -406,4 +407,54 @@ test("ground acceleration is conditional, not a hard momentum clamp, and zero HP
   stepClassicMovement(current, terrain, control);
   assert.ok(current.vx > 30);
   assert.ok(current.x > 100);
+});
+
+test("native bot controls share motion but jumping preserves its rope", () => {
+  const terrain = new Terrain(),
+    current = worm();
+  current.rope = {
+    x: 100,
+    y: 30,
+    vx: 0,
+    vy: 0,
+    state: "terrain",
+    attachedId: null,
+  };
+  const controls = {
+    move: false,
+    jump: true,
+    carve: false,
+    shoot: false,
+    weaponDelta: 0,
+    weaponSlot: null,
+  };
+  stepWormWithControls(current, [current], terrain, controls);
+  assert.ok(
+    current.rope,
+    "CWormBot::AI_Jump never performs human jump's rope Clear",
+  );
+  assert.ok(
+    current.vy < 0,
+    "shared ground/jump kernel still applies the native jump force",
+  );
+  const human = worm();
+  human.rope = {
+    x: 100,
+    y: 30,
+    vx: 0,
+    vy: 0,
+    state: "terrain",
+    attachedId: null,
+  };
+  stepWorm(human, [human], terrain, JUMP);
+  assert.equal(
+    human.rope,
+    null,
+    "CWormHuman detaches before the common motion kernel",
+  );
+  assert.equal(
+    current.aim,
+    0,
+    "no keyboard aim acceleration is introduced by shared motion",
+  );
 });

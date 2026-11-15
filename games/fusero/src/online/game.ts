@@ -21,6 +21,7 @@ import {
   OUTER_MS,
   RULES,
   validLoadout,
+  nativeBotArsenal,
   botInput,
   createWorld,
   decodeWorld,
@@ -44,10 +45,7 @@ import {
   validMatchId,
   validName,
 } from "./names.js";
-import {
-  randomLoadout,
-  defaultLoadout as nativeDefaultLoadout,
-} from "../engine/classic/match.js";
+import { defaultLoadout as nativeDefaultLoadout } from "../engine/classic/match.js";
 import { randomUnit, randomInt } from "../engine/classic/random.js";
 export type { Settings } from "../engine/index.js";
 
@@ -183,10 +181,10 @@ export function botLoadout(
   settings: Settings,
 ): Loadout {
   const state = { rng: seedOf(`${matchId}:${id}:loadout`) };
-  return randomLoadout(settings, {
+  return nativeBotArsenal(settings, {
     nextFloat: () => randomUnit(state),
     nextInt: (max) => randomInt(state, max),
-  });
+  }).loadout;
 }
 function resetMatch(room: Room, matchId: string): void {
   room.matchId = matchId;

@@ -54,7 +54,7 @@ import {
   resetPositionRecorder,
 } from "./history.js";
 
-export const RULES = "fusero-classic-2";
+export const RULES = "fusero-classic-3";
 export const CAPACITY = 5;
 export const WIDTH = CLASSIC_LEVEL_WIDTH;
 export const HEIGHT = CLASSIC_LEVEL_HEIGHT;

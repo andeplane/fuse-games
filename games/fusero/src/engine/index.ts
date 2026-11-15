@@ -2,6 +2,7 @@
 export * from "./classic/world.js";
 export * from "./classic/physics-types.js";
 export { botInput } from "./classic/bots.js";
+export { nativeBotArsenal } from "./classic/bot-arsenal.js";
 export {
   encodeWorld,
   decodeWorld,
