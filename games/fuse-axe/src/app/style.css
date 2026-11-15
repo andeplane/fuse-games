@@ -12,8 +12,7 @@
   --fui-menu-bg: var(--fa-panel);
   --fui-menu-accent: var(--fa-gold);
 }
-.fa-top .fui-game-menu-panel,
-#app > .fui-game-menu .fui-game-menu-panel {
+.fa-top .fui-game-menu-panel {
   border-color: var(--fa-edge);
   background: #140a22;
 }
@@ -726,7 +725,6 @@ body.fa-phone {
   padding: 0;
 }
 
-body.fa-phone #app:not(.fui-tools-open) > .fa-top,
 body.fa-phone .fa-note {
   display: none;
 }
@@ -784,6 +782,23 @@ body.fa-phone main[data-screen="controller"] ~ .fui-control-hints {
   top: calc(max(8px, env(safe-area-inset-top)) + 64px);
 }
 
+/* The round's controls card says the same in the same place: the hints stay out from under it. */
+body.fa-phone #app:has(> .fui-round-controls:not([hidden])) .fui-control-hints {
+  visibility: hidden;
+}
+
+/* The shared bar's sound and menu buttons lie over the right end of the controller's head: the seat's name and hero
+   stop short of them. The sound button carries its label from 601px. */
+body.fa-phone .fa-controller-head {
+  padding-right: 200px;
+}
+
+@media (max-width: 600px) {
+  body.fa-phone .fa-controller-head {
+    padding-right: 100px;
+  }
+}
+
 .fui-control-hints span::after {
   content: attr(data-hint);
 }
@@ -832,7 +847,6 @@ body.fa-phone #app.fui-tools-open > .fa-top {
     translate: none;
   }
 
-  body.fa-phone .fa-controller-head,
   body.fa-phone #app.fui-tools-open > .fa-top {
     padding-right: 100px;
   }

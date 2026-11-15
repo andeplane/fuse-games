@@ -6,7 +6,8 @@ body.fuseDrivers-page {
   display: grid;
   /* The column is the screen, never the widest unbreakable line in it: a phone must not scroll sideways. */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* One row, the room: the shared bar floats over the page and takes none. */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 100dvh;
   padding: 0 max(var(--fui-space-3), env(safe-area-inset-left))
     env(safe-area-inset-bottom);
