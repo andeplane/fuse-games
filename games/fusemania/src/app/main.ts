@@ -101,7 +101,6 @@ import { createOptionsMenu, createPlayOptions, speedLabel } from "./options.js";
 import { createLobbyBar } from "./lobby-bar.js";
 import {
   bestText,
-  holdText,
   present,
   type Model,
   type Row,
@@ -135,6 +134,7 @@ import {
 import { createSongClock } from "./song-clock.js";
 import { createSongStore } from "./song-cache.js";
 import { SONG_LOAD_TRIES, createSongLoader } from "./song-load.js";
+import { createSongHold } from "./song-hold.js";
 import { previewSong } from "./song-preview.js";
 import { RESUME_MS, createPauseClock, resumeCount } from "./pause.js";
 import {
@@ -248,7 +248,14 @@ const songs = createSongLoader({
     const info = songLibrary?.song(id);
     return info && songUrl(info.audio);
   },
-  load: (url) => audio.loadSong(url),
+  load: async (url, progress) => {
+    const unsubscribe = songStore.subscribe(url, progress);
+    try {
+      return await audio.loadSong(url);
+    } finally {
+      unsubscribe();
+    }
+  },
   enabled: () => !audio.forcedMute,
   hasClock: () => audio.clock() !== undefined,
   local: localSong,
@@ -1004,7 +1011,8 @@ function enterRoom(
     canvas = el("canvas", "", "fm-canvas"),
     note = el("p", "", "fm-note"),
     unlock = el("p", "TAP OR PRESS A KEY FOR SOUND", "fm-unlock"),
-    holdNote = el("p", "", "fm-unlock fm-hold"),
+    songHold = createSongHold(document),
+    holdNote = songHold.element,
     loadFailed = button("THE SONG DID NOT LOAD · RETRY", "fm-unlock fm-retry");
   // The result: the shared results screen, with this device's own run (judgments, timing graph) as a section of it.
   const results = createResultsScreen({
@@ -1060,7 +1068,6 @@ function enterRoom(
   cardTiming.append(timingText, timingApply, timingSkip);
   cardTiming.hidden = true;
   unlock.hidden = loadFailed.hidden = holdNote.hidden = true;
-  holdNote.setAttribute("role", "status");
   loadFailed.onclick = () => songs.retry();
   screen.append(
     canvas,
@@ -1526,7 +1533,11 @@ function enterRoom(
     const waiting = held;
     holdNote.hidden = !waiting || model.screen !== "play";
     if (waiting && !holdNote.hidden)
-      setText(holdNote, holdText(model.waiting, songs.settled(world.song)));
+      songHold.update(
+        model.waiting,
+        songs.settled(world.song),
+        songs.progress(world.song),
+      );
     const running = roomMs !== undefined;
     const silent =
       running &&
