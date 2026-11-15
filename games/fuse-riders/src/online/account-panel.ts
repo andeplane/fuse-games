@@ -50,7 +50,7 @@ export interface AccountPanelDependencies {
   /** GET the signed-in rider's history; `before` pages backwards from an `endedAt`. */
   historyUrl: (before?: number) => string;
   /** GET everyone's recent games; `before` pages backwards from a listed `endedAt`. */
-  matchesUrl: (before?: number) => string;
+  matchesUrl: (before?: string | number) => string;
   /** GET the profile, PUT `{ username }`. */
   profileUrl: string;
   leaderboardUrl: string;

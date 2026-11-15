@@ -1,5 +1,6 @@
 import {
   FieldValue,
+  FieldPath,
   Firestore,
   Timestamp,
   type DocumentReference,
@@ -16,7 +17,7 @@ import {
 } from "./friends.js";
 import { validPublicId } from "./friends-api.js";
 import { parseConversation, type FriendMessage } from "./messages-api.js";
-import type { HistoryDatabase } from "./history.js";
+import type { FeedCursor, FeedRow, HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
 import { activityOf } from "./activity.js";
 import { FirestoreActivityDatabase } from "./activity-firestore.js";
@@ -36,6 +37,56 @@ import {
   type HistoryMutation,
   type Profile,
 } from "./settlement.js";
+
+/** The subset of a collection query used by the feed, injectable for query-level tests. */
+export interface FeedQuery {
+  where(
+    field: string,
+    operation: "==" | ">=" | "<=" | "<",
+    value: string | number,
+  ): FeedQuery;
+  orderBy(field: string | FieldPath, direction: "desc"): FeedQuery;
+  startAfter(...values: (string | number)[]): FeedQuery;
+  limit(count: number): FeedQuery;
+  get(): Promise<{
+    docs: readonly {
+      id: string;
+      get(field: string): unknown;
+      data(): unknown;
+    }[];
+  }>;
+}
+
+export async function readFeedPage(
+  query: FeedQuery,
+  platform: Platform,
+  gameId: string,
+  before: FeedCursor | undefined,
+  limit: number,
+): Promise<FeedRow[]> {
+  query = query
+    .where("gameId", "==", gameId)
+    .where("feedAt", ">=", 0)
+    .where("feedAt", "<=", Number.MAX_VALUE);
+  if (before !== undefined && before.id === undefined)
+    query = query.where("feedAt", "<", before.at);
+  let ordered = query
+    .orderBy("feedAt", "desc")
+    .orderBy(FieldPath.documentId(), "desc");
+  if (before?.id !== undefined)
+    ordered = ordered.startAfter(before.at, before.id);
+  const docs = (await ordered.limit(limit).get()).docs;
+  return docs.map((doc) => {
+    const at = doc.get("feedAt");
+    if (typeof at !== "number" || !Number.isFinite(at) || at < 0)
+      throw new Error("Invalid feed cursor in storage");
+    const match = parseMatchRecord(platform, doc.data());
+    return {
+      cursor: { at, id: doc.id },
+      ...(match?.gameId === gameId ? { match } : {}),
+    };
+  });
+}
 
 /**
  * Match history, accounts and ratings of every game. Only this service reaches these collections: firestore.rules
@@ -180,21 +231,11 @@ export class FirestoreHistoryDatabase implements HistoryDatabase {
   }
   async recentMatches(
     gameId: string,
-    before: number | undefined,
+    before: FeedCursor | undefined,
     limit: number,
-  ): Promise<MatchRecord[]> {
+  ): Promise<FeedRow[]> {
     // `(gameId, feedAt desc)` on the matches collection; firestore.indexes.json carries it.
-    let query = this.matches().where("gameId", "==", gameId);
-    // Strictly older, exactly as MemoryHistoryDatabase pages: two games stamped in the same millisecond on a page
-    // boundary can cost one of them its listing (docs/design/PLAYER-STATS.md).
-    if (before !== undefined) query = query.where("feedAt", "<", before);
-    const docs = (await query.orderBy("feedAt", "desc").limit(limit).get())
-      .docs;
-    // One unreadable record must not hide the rest of the page.
-    return docs.flatMap((doc) => {
-      const match = parseMatchRecord(this.platform, doc.data());
-      return match?.gameId === gameId ? [match] : [];
-    });
+    return readFeedPage(this.matches(), this.platform, gameId, before, limit);
   }
   async matchesFor(
     gameId: string,

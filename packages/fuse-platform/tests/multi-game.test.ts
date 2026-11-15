@@ -639,8 +639,8 @@ test("solo rounds of different games never share a record or a rating scope", as
   );
   for (const gameId of [LEGACY_GAME_ID, "dice"])
     assert.equal(
-      (await f.store.game(gameId).profile("alice"))!.rating!.games,
-      1,
+      (await f.store.game(gameId).profile("alice"))?.rating,
+      undefined,
     );
 });
 

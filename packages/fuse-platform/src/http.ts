@@ -8,7 +8,7 @@ import {
 } from "fuse-network-be";
 import { LEGACY_GAME_ID } from "./game.js";
 import { publicIdOf, type FriendsStore } from "./friends.js";
-import type { HistoryStore } from "./history.js";
+import { parseFeedCursor, type HistoryStore } from "./history.js";
 import type { IdentityVerifier } from "./identity.js";
 import type { ActivityDatabase } from "./activity.js";
 import { createActivityHttp } from "./activity-http.js";
@@ -161,8 +161,10 @@ export function createHistoryHttp(
       }
       // Public like the leaderboard: no sign-in, and an optional one only names the caller's own seat.
       if (pathname === "/api/matches" && req.method === "GET") {
-        const cursor = pageCursor(url);
-        if (cursor === null) {
+        const rawCursor = url.searchParams.get("before");
+        const cursor =
+          rawCursor === null ? undefined : parseFeedCursor(rawCursor);
+        if (rawCursor !== null && cursor === undefined) {
           json({ error: "Invalid cursor" }, 400);
           return true;
         }

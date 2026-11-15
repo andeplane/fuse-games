@@ -5,7 +5,7 @@
  * from the record's own `endedAt`, exactly as confirmation stamps it, so a backfilled game sorts and pages like one
  * confirmed today and is still dated by when it ended.
  *
- * Only a confirmed whole game an account owns a seat in, or that two riders attested, is stamped — the same rule
+ * Only a confirmed whole game that two riders attested is stamped — the same rule
  * confirmation applies. A record that already has a `feedAt` is never touched, so this is safe to repeat.
  *
  * Run `scripts/backfill-match-game-id.ts` first if records from before games carry a game: the feed filters on

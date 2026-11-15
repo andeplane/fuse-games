@@ -244,6 +244,32 @@ test("account dialog: signed out, then stats with its own paged history", async 
   assert.equal(body.querySelector(".fui-account-matches"), null);
 });
 
+test("an empty filtered feed page can continue from the server cursor", async () => {
+  const f = panelFixture();
+  f.replies.feed = (url) =>
+    new Response(
+      JSON.stringify(
+        url.includes("before=")
+          ? {
+              matches: [{ id: "older", endedAt: 100, label: "Older match" }],
+              nextBefore: null,
+            }
+          : { matches: [], nextBefore: "cWzEyMywiYSJd" },
+      ),
+    );
+  f.panel.matchesButton.click();
+  await settle();
+  assert.equal(f.named("OLDER MATCHES")!.hidden, false);
+  f.named("OLDER MATCHES")!.click();
+  await settle();
+  assert.ok(f.requests.includes("GET /matches?before=cWzEyMywiYSJd"));
+  assert.equal(
+    f.body.querySelector(".row")!.textContent?.includes("Older match"),
+    true,
+  );
+  assert.equal(f.named("OLDER MATCHES")!.hidden, true);
+});
+
 test("matches: everyone by default, yours on demand, each row opening its results", async () => {
   const f = panelFixture();
   const { panel, body } = f;
