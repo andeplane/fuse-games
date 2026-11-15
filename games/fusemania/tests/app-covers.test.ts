@@ -35,13 +35,7 @@ test("every song is in exactly one pack, and the first pack is the Fuse soundtra
   // The packs to come have their place in the order already.
   assert.deepEqual(
     PACKS.map((pack) => pack.id),
-    [
-      "fusemania",
-      "ddr-jazz-mix",
-      "itg-jazz-mix",
-      "dukamok-originals",
-      "dsp-rhythm",
-    ],
+    ["fusemania", "ddr-jazz-mix", "itg-jazz-mix", "dukamok-originals"],
   );
 });
 

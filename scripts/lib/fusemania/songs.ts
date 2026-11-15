@@ -35,7 +35,6 @@ export const PACKS: readonly { readonly id: string; readonly name: string }[] =
     { id: "ddr-jazz-mix", name: "DDR JAZZ MIX" },
     { id: "itg-jazz-mix", name: "ITG JAZZ MIX" },
     { id: "dukamok-originals", name: "DUKAMOK ORIGINALS" },
-    { id: "dsp-rhythm", name: "DSP RHYTHM + CHARTNET" },
   ];
 const FUSE_PACK = "fusemania";
 

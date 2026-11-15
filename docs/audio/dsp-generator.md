@@ -1,5 +1,8 @@
 # DSP rhythm with learned step patterns
 
+The bundled rollout covers all 36 first-party songs (144 charts). DukAmok's 47 authored songs retain their original
+steps; experimental duplicate entries are not included in the song picker.
+
 The experimental generator uses non-AI rhythm extraction for step times on every song it generates. The learned
 placement network is not loaded. Spectral attacks from the lab's fine spectrum supply candidate events. Pitch
 motion is a separate descriptor: it cannot create a step by itself. An experimental phrase selector follows

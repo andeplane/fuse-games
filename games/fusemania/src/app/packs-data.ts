@@ -114,17 +114,6 @@ export const PACKS_DATA: readonly {
       "dukamok-xuxa",
     ],
   },
-  {
-    id: "dsp-rhythm",
-    name: "DSP RHYTHM + CHARTNET",
-    songs: [
-      "dsp-dukamok-beyond-abilities-v2",
-      "dsp-dukamok-big-blue",
-      "dsp-dukamok-holy-orders-v2",
-      "dsp-dukamok-return-of-salieri",
-      "dsp-dukamok-salieri-strikes-back",
-    ],
-  },
 ];
 
 /** The songs with a cover image at `music/covers/<id>.jpg`. */

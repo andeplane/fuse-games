@@ -1605,15 +1605,321 @@ export const RHYTHM_POLICIES: Record<
   "snaky-blue": {
     ladder: {
       Easy: {
+        targetNps: 2.5,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 8,
+        subdivisions: [1],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+    },
+    requestHash:
+      "8d06804a904f38d6d4cef2ef55560bbe1d6f551cfcfb84c2e8c145df8024b1a0",
+  },
+  "final-chase": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 16,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "d5bff6f2ff4ac68905984fe5d0467afdf2debb21ce757de248ce52afdfe8ba81",
+  },
+  "arcade-blues": {
+    ladder: {
+      Easy: {
         targetNps: 2,
         peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "4f50a88d04df536a48e54dc89af7bf79a391135eefd0db3b1c68a7cf6616f22d",
+  },
+  "pixel-sax-parade": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 3,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+    },
+    requestHash:
+      "3bdab9ff0b231536486fc5427440e540cb03eea7abdaacb4f73e211e4aed37d9",
+  },
+  "snaky-jazz": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 7,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "a49cbaabea0c0c9f8ceae8c126ce7b34517eb7f9e9d44a8076d9d8e2025fc7df",
+  },
+  candy: {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 2,
         subdivisions: [1],
         maxStreamBeats: 2,
         recoveryBeats: 8,
       },
       Medium: {
-        targetNps: 4,
+        targetNps: 2.5,
+        peakNps2s: 4,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 2.5,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 3,
+        peakNps2s: 8,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "de0444f6f033d520f8d7ff0c1a2abe245dffd0effe6369845f2eb82f19f492b9",
+  },
+  "coin-op-swing": {
+    ladder: {
+      Easy: {
+        targetNps: 2.5,
+        peakNps2s: 6,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
         peakNps2s: 10,
+        subdivisions: [1, 2, 3, 4, 6],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3, 4, 6],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "a78d248e99b687b969beda45c9138110f71d0994f9d514d8926db3359557a72c",
+  },
+  "arcade-adventure": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 5,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+    },
+    requestHash:
+      "93ee8384819b54da3a572442b74d8056bce79f813c4f2ad9117e34fd68174d41",
+  },
+  "sandy-rally": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 6,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "b531efe87e321d486e4818a8f0752385e01af20668d2c1b25b784c40249affc5",
+  },
+  "electro-tuned": {
+    ladder: {
+      Easy: {
+        targetNps: 1.5,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 8,
         subdivisions: [1, 2],
         maxStreamBeats: 4,
         recoveryBeats: 4,
@@ -1634,9 +1940,757 @@ export const RHYTHM_POLICIES: Record<
       },
     },
     requestHash:
-      "c8c57929068d84d02d1d0508857ac26c2fa3177eca4e82d87042e71e529eb05e",
+      "2e4de35ef2efba1e495e23cb5c102ef1e3e8139672f2383d3ba213b32a18ca5a",
   },
-  "final-chase": {
+  "jelly-beach-bounce": {
+    ladder: {
+      Easy: {
+        targetNps: 2.5,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 6,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "a336bdb8a89aeeee19629bbed4639febfcd3dfc44cb40aff1d3bf34535ee3543",
+  },
+  "forest-job": {
+    ladder: {
+      Easy: {
+        targetNps: 2.5,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 7,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "ba7a74ab6caa2c9f4a4f86b2741ca42755a86059c49dd5a7ea2b562ce70e5042",
+  },
+  "exotic-ethnic": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 6,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+    },
+    requestHash:
+      "f9d94b5759b3c3d2a84c43c5c5ed932ba344b0c80daf9394e5b2c0ebe4b9aa4c",
+  },
+  "neon-grid-chase": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "1d7c0af271492c2494263eda709a55948329ac83967938cebcef8afeabed2eca",
+  },
+  "neon-kickoff": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "3d541f71edcaefd884608ce7a8b50cea5da7d788b545789a2dfc7725e1b2aed0",
+  },
+  "paranoia-survivor-max": {
+    ladder: {
+      Easy: {
+        targetNps: 4,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "4e496618cabcfcac831075a51c9e16f3f203d2ea31cd6c4541a35a123e667faa",
+  },
+  "gadget-overdrive": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "3c1fefffb554ad3dec45a74787cd820ffea96a2f0f13fd9d1d7dbb3d38bb21cc",
+  },
+  "sudden-death": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "1a65b305e16c300484c99b20a35f182b9fe418731617c8bd9bc230629dfda5d4",
+  },
+  "rain-of-sorrow": {
+    ladder: {
+      Easy: {
+        targetNps: 1.5,
+        peakNps2s: 2,
+        subdivisions: [1],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "995c4a5f47b0d1568b636d08a503b1dbc9cb04620a28128382e0b0ce961b4bf9",
+  },
+  "reduced-noise-orchestra": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 2,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 5,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+    },
+    requestHash:
+      "d39e526fe611e1b43c691a2b8f9352150275f5b769c08a3b1e6d2e8761fcbddf",
+  },
+  "rain-of-sorrow-night-mix": {
+    ladder: {
+      Easy: {
+        targetNps: 2.5,
+        peakNps2s: 2.5,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "250f3d13fe519e35c7144a2fc058ce626205d18d0e7e47fbb8e1d1e2b70479ad",
+  },
+  "the-least-100sec": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "f8728f8bcd025e31f4d8e3a7e38f9fbf1f478b3e8cc7ec06ba65939a602977c9",
+  },
+  "match-day": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "6fb4433f617d7e75e42ec30a4c7f79d43ac7d6efdfc8b5074778f5110277629c",
+  },
+  "midnight-run": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "3155b52d6cde92e783c2fb97626b38b88f15f153755095d20da5131cad812a54",
+  },
+  victory: {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "79cda9051f5f5e858a71e94b5941ca481d8d101ace8ab34a636a295d6be53f3f",
+  },
+  "fast-frontier-run": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 5,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 8,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 8,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "c0e7d9feca7e1845c82a8311c73354806ea1db38683a036d034e912a657f9baa",
+  },
+  afronova: {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 6,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "036c2db1835431fe7154e3ea618ffb094053dbb07bb7fd9197e6e64be893a3d4",
+  },
+  xenon: {
+    ladder: {
+      Easy: {
+        targetNps: 2.5,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "7c462d5f48826dcdf0c40b8694db5b51bf7ebbe12639c9df403e9cdea66b40f0",
+  },
+  "afronova-radio-edit": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 6,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 2,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "4e162524a68fb2a6e1bf17a84261f51eb90fca23d238f4f7d90c8429d4ae6c34",
+  },
+  "the-legend-of-max": {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "143a47897b04080e764bd08643a0b42c8602f54d1ad1d9883a7b181cb9f73d8d",
+  },
+  determinator: {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "8d7d09e03e18b4cd962033f4f92e39c95b3e72678498e5c6d7e1fe122718c1a6",
+  },
+  "snabby-jazz": {
+    ladder: {
+      Easy: {
+        targetNps: 3,
+        peakNps2s: 4,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 4,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 12,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "1ba856c66a69bfff74dcadf18527fec73292ca51f38eed6921f2b9a469dc619b",
+  },
+  "burning-heat": {
     ladder: {
       Easy: {
         targetNps: 4,
@@ -1655,41 +2709,41 @@ export const RHYTHM_POLICIES: Record<
       Hard: {
         targetNps: 6,
         peakNps2s: 12,
-        subdivisions: [1, 2, 4],
+        subdivisions: [1, 2, 3],
         maxStreamBeats: 8,
         recoveryBeats: 2,
       },
       Challenge: {
         targetNps: 6,
         peakNps2s: 12,
-        subdivisions: [1, 2, 4],
+        subdivisions: [1, 2, 3, 4],
         maxStreamBeats: 8,
         recoveryBeats: 2,
       },
     },
     requestHash:
-      "db2263010d3760602e8f258a2a18612ba50b5bb08becbbb168caf338bc2bcc66",
+      "ceaf529892a1480ce5093c64fbfffea743b2d8936a8d25a7f76c4de533fb76ef",
   },
-  "arcade-blues": {
+  "cant-stop-fallin-in-love": {
     ladder: {
       Easy: {
-        targetNps: 3,
+        targetNps: 2,
         peakNps2s: 3,
         subdivisions: [1],
         maxStreamBeats: 8,
-        recoveryBeats: 8,
+        recoveryBeats: 4,
       },
       Medium: {
-        targetNps: 6,
-        peakNps2s: 6,
+        targetNps: 4,
+        peakNps2s: 8,
         subdivisions: [1, 2],
         maxStreamBeats: 8,
-        recoveryBeats: 4,
+        recoveryBeats: 2,
       },
       Hard: {
         targetNps: 6,
         peakNps2s: 10,
-        subdivisions: [1, 2, 3, 4],
+        subdivisions: [1, 2],
         maxStreamBeats: 8,
         recoveryBeats: 2,
       },
@@ -1702,6 +2756,74 @@ export const RHYTHM_POLICIES: Record<
       },
     },
     requestHash:
-      "2fccdb979eb981341c6abd3f1016278c19c8a99f0a49860bf99902176d5051a1",
+      "c0010c94cf74cf266e7bf64a654484367ecc5656b5c693c9b3d70a474c469420",
+  },
+  "temple-of-boom": {
+    ladder: {
+      Easy: {
+        targetNps: 2.5,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 2,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 5,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 4,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 6,
+        peakNps2s: 8,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 10,
+        subdivisions: [1, 2, 3, 4],
+        maxStreamBeats: 8,
+        recoveryBeats: 2,
+      },
+    },
+    requestHash:
+      "b9d0e3f4ca82864c29cdc1b5574ef3766a38cdcbfb88adbbbd51c2f8413f25c4",
+  },
+  monolith: {
+    ladder: {
+      Easy: {
+        targetNps: 2,
+        peakNps2s: 3,
+        subdivisions: [1],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Medium: {
+        targetNps: 3,
+        peakNps2s: 4,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Hard: {
+        targetNps: 4,
+        peakNps2s: 6,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+      Challenge: {
+        targetNps: 6,
+        peakNps2s: 7,
+        subdivisions: [1, 2],
+        maxStreamBeats: 8,
+        recoveryBeats: 4,
+      },
+    },
+    requestHash:
+      "4c187a4e295b6699dc6788ac50b6f91d20613733ffb1acc2545d516c1f5e2f91",
   },
 };
