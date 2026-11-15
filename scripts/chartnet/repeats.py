@@ -85,7 +85,8 @@ def consistency(beats: list[float], feats: np.ndarray, tm: Timing, n_frames: int
     sim = similarity(feats, tm, which)
     steps: dict[int, set[int]] = {}
     for b in beats:
-        steps.setdefault(int(b // 4), set()).add(int(round((b % 4) * 12)))  # 48ths: sixteenths and triplets
+        slot = int(round(b * 12))  # 48ths of a bar: sixteenths and triplets
+        steps.setdefault(slot // 48, set()).add(slot % 48)
     total, pairs = 0.0, 0
     for a, i in enumerate(which):
         if a == 0:

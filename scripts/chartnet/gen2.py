@@ -32,6 +32,11 @@ ROOT = Path(os.environ.get("CHARTNET_WORK", Path.home() / "projects/personal/fus
 FUSE_NPS = {"Easy": 1.8, "Medium": 3.2, "Hard": 7.0, "Challenge": 10.0}
 # The difficulty the models are asked for: a Fuse Hard is written the way the packs write a Challenge.
 MODEL_DIFF = {"Easy": "Easy", "Medium": "Medium", "Hard": "Challenge", "Challenge": "Challenge"}
+# Where a span judged good in the chart lab takes its rows from: the chart of the same name in games/fusemania/charts.
+# CHARTNET_LOCK_FROM="Hard=Challenge,Challenge=" is for the one regeneration that moves the ladder (a Hard that was a
+# Challenge keeps the spans judged good on that chart; the new Challenge has nothing to keep).
+LOCK_FROM = {d: d for d in ("Easy", "Medium", "Hard", "Challenge")} | dict(
+    pair.split("=") for pair in os.environ.get("CHARTNET_LOCK_FROM", "").split(",") if pair)
 # A cover's Hard is its original's hardest chart; its Challenge is at most this many times busier.
 COVER_STEP = 1.75
 # A Hard is at most this share of what its song's Challenge reached, in steps a second.
@@ -84,9 +89,13 @@ def set_meters(paths: list[str]) -> None:
         text = Path(path).read_text()
         sim = parse(text)
         head, *blocks = text.split("#NOTEDATA:")
+        if len(blocks) != len(sim.charts):  # a chart the parser skips would shift every meter after it
+            raise ValueError(f"{path}: {len(blocks)} charts in the file, {len(sim.charts)} parsed")
         last = 0
         for i, chart in enumerate(sim.charts):
             times = sorted({sim.timing.beat_to_time(b) for b, r in chart.rows if any(c in "124" for c in r)})
+            if len(times) < 2:
+                continue
             last = max(last, meter_for((len(times) - 1) / max(times[-1] - times[0], 1.0)))
             blocks[i] = re.sub(r"#METER:\d+;", f"#METER:{last};", blocks[i], count=1)
         Path(path).write_text("#NOTEDATA:".join([head, *blocks]))
@@ -286,7 +295,8 @@ def place_eval(keys_file="test_keys.json"):
     print("   busy where the human chart is busy (correlation per chart):",
           " ".join(f"{d}={np.mean(v):.2f}" for d, v in corr.items()))
     print(f"   same rhythm on bars that sound alike (Hard and Challenge, sharing {repeats.SHARE}):",
-          " ".join(f"{n}={v[0] / max(v[1], 1):.3f}" for n, v in same.items()), f"({same['gen'][1]} bar pairs)")
+          " ".join(f"{n}={v[0] / max(v[1], 1):.3f}" for n, v in same.items()),
+          f"({same.get('gen', [0.0, 0])[1]} bar pairs)")
     for d in ("Hard", "Challenge"):
         print("  ", d, " ".join(f"{n}: 16th-stream share {streams[d, n][0] / streams[d, n][1]:.3f}, longest run "
                                 f"{streams[d, n][2] / streams[d, n][3]:.1f};" for n in ("gen", "human") if (d, n) in streams))
@@ -419,8 +429,9 @@ def fuse():
                 beats = [b for b in beats if b >= noted - 1e-6]
             if bursts and d == "Challenge" and BURSTS in ("rule", "both"):  # where the music itself moves at 24th speed
                 beats, n_burst = with_bursts(beats, burst_beats(s.onset, tm, beats[0], beats[-1]))
-                bursts_[s.key] = n_burst
-            if bursts and d == "Challenge" and BURSTS == "learned":
+                if g == "Challenge":  # the count printed at the end is the top chart's
+                    bursts_[s.key] = n_burst
+            if bursts and g == "Challenge" and BURSTS == "learned":
                 bursts_[s.key] = len({int(b) for b in beats if abs(b * 6 - round(b * 6)) < 1e-6 and round(b * 6) % 6 in (1, 5)})
             return beats
 
