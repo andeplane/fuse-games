@@ -54,6 +54,14 @@ export function rememberRoom(
   store.setItem(hostKey(code), token);
   store.setItem(`ball-bros-shared-${code}`, shared ? "1" : "0");
 }
+/** The room's Shared TV choice as this device last saw the room take it: what a reload starts the room with. */
+export function rememberShared(
+  store: Store,
+  code: string,
+  shared: boolean,
+): void {
+  store.setItem(`ball-bros-shared-${code}`, shared ? "1" : "0");
+}
 export function safeStore(open: () => Store): Store {
   const memory = new Map<string, string>();
   let backing: Store | undefined;
