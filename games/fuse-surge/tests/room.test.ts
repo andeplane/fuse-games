@@ -76,6 +76,10 @@ test("settings are exactly their checked fields", () => {
     { ...DEFAULT_SETTINGS, seconds: 5 },
     { ...DEFAULT_SETTINGS, seconds: 601 },
     { ...DEFAULT_SETTINGS, seconds: -1 },
+    // Negative zero compares equal to zero and is not the same number in a checkpoint: it is no setting.
+    { ...DEFAULT_SETTINGS, seconds: -0 },
+    { ...DEFAULT_SETTINGS, pace: -0 },
+    { ...DEFAULT_SETTINGS, bot: -0 },
     { ...DEFAULT_SETTINGS, double: 1 },
     { ...DEFAULT_SETTINGS, tall: "on" },
     { ...DEFAULT_SETTINGS, boss: null },

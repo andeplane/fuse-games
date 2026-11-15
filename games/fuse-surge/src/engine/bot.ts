@@ -24,7 +24,7 @@ import {
 export type BotLevel = 0 | 1 | 2;
 export const BOT_LEVELS: readonly BotLevel[] = [0, 1, 2];
 export const isBotLevel = (value: unknown): value is BotLevel =>
-  value === 0 || value === 1 || value === 2;
+  Object.is(value, 0) || value === 1 || value === 2;
 
 /** A bot is asked once a tick: it jumps this many steps ahead of a low surge so it is over it in time. */
 const JUMP_LEAD = 14;
@@ -123,8 +123,8 @@ export function planInput(world: World, slot: number): number {
   }
   if (kind === TALL) {
     if (!air) return eta <= TALL_LEAD ? JUMP : 0;
-    // In the air with the surge still far off: come down first, the jumps are for later.
-    if (eta > TALL_LEAD) return 0;
+    // In the air with the surge still far off: dive to the deck, so both jumps start from it.
+    if (eta > TALL_LEAD) return DUCK;
     // The second jump is up: hold it over the surge.
     if (rider.jumps > 0) return JUMP;
     if (rider.vy > TALL_TURN) return JUMP;

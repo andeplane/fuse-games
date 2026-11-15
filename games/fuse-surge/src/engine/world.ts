@@ -17,8 +17,9 @@ export const REASONS = ["none", "last", "time", "wipe"] as const;
 export type Reason = (typeof REASONS)[number];
 export type Pace = 0 | 1 | 2;
 export const PACES: readonly Pace[] = [0, 1, 2];
+/** Negative zero is no pace: it would compare equal here and differ in a checkpoint. */
 export const isPace = (value: unknown): value is Pace =>
-  value === 0 || value === 1 || value === 2;
+  Object.is(value, 0) || value === 1 || value === 2;
 export const LOW = 0,
   HIGH = 1,
   TALL = 2;
@@ -54,7 +55,7 @@ const whole = (value: unknown, low: number, high: number): value is number =>
 export const isHits = (value: unknown): value is number =>
   whole(value, T.MIN_HITS, T.MAX_HITS);
 export const isSeconds = (value: unknown): value is number =>
-  value === T.ENDLESS || whole(value, T.MIN_SECONDS, T.MAX_SECONDS);
+  Object.is(value, T.ENDLESS) || whole(value, T.MIN_SECONDS, T.MAX_SECONDS);
 export const isTarget = (value: unknown): value is number =>
   whole(value, T.MIN_TARGET, T.MAX_TARGET);
 export const DEFAULT_RULES: Rules = {

@@ -259,13 +259,21 @@ test("the Warden's volleys and the tall surges come only where their rules are o
     const index = tall.sent.indexOf(each);
     const before = tall.sent[index - 1]!,
       after = tall.sent[index + 1];
-    // Announced from the moment the spawn before it left the arch, with clear deck before it and after it.
+    // Announced from the moment the spawn before it left the arch, with clear deck before it and after it (the
+    // spawns are seen once a tick here, so to within a tick).
     const waiting = tall.announced.filter(
       (tick) => tick.step > before.step && tick.step < each.step,
     );
     assert.ok(waiting.length >= 20 && waiting.every((tick) => tick.next));
-    assert.ok(each.step - before.step >= T.TALL_REST, "clear deck before");
-    if (after) assert.ok(after.step - each.step >= T.TALL_REST, "and after");
+    assert.ok(
+      each.step - before.step >= T.TALL_REST - T.STEPS_PER_TICK,
+      "clear deck before",
+    );
+    if (after)
+      assert.ok(
+        after.step - each.step >= T.TALL_REST - T.STEPS_PER_TICK,
+        "and after",
+      );
     assert.equal(each.lane, -1);
   }
   assert.equal(

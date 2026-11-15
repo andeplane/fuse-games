@@ -80,6 +80,10 @@ test("a page starts with what the browser last chose, and a link's values go on 
     settingsFrom("?boss=yes&glide=2&double=", null),
     DEFAULT_SETTINGS,
   );
+  // A link's "-0" is not zero: it is dropped like any value that is no setting.
+  const negative = settingsFrom("?seconds=-0&pace=-0&bot=-0", null);
+  assert.deepEqual(negative, DEFAULT_SETTINGS);
+  assert.ok(!Object.is(negative.seconds, -0) && !Object.is(negative.pace, -0));
   // What an older version of the game saved has fewer fields: it is dropped whole, not half-read.
   assert.deepEqual(
     settingsFrom(

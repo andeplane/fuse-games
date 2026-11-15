@@ -120,8 +120,12 @@ export const FLIP_CHANCE_MAX = 35;
 /** From this curve step on some surges are tall (the tall rule, which needs the double jump). */
 export const TALL_FROM = 25 * STEPS_PER_SECOND;
 export const TALL_CHANCE_MAX = 22;
-/** A tall surge has at least this many steps of clear deck before it and after it. */
-export const TALL_REST = 150;
+/**
+ * A tall surge has at least this many steps of clear deck before it and after it. It is measured where surges
+ * leave the arch; a rider walking forward to a foothold it won back meets them closer together than that, by up to
+ * nearly half at the slowest speeds, and still needs time to land and take two jumps.
+ */
+export const TALL_REST = 220;
 /** From this curve step on the Warden answers some spawns with a volley of lane bolts (the boss rule). */
 export const BOSS_FROM = 12 * STEPS_PER_SECOND;
 export const BOSS_CHANCE_MAX = 34;

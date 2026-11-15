@@ -478,6 +478,36 @@ test("sound play is never struck: every pattern the deck sends can be cleared, a
         );
         assert.ok(world.riders[0]!.dodges > 15, label);
       }
+  // Riders spread over the footholds win them back and walk forward while surges come, so they meet the surges
+  // closer together than the arch sent them, and each at its own moment. Short rounds climb fastest, which is where
+  // that bites: a tall surge once came too soon after the surge before it for a walking rider to set up two jumps.
+  for (const seconds of [10, 30, 120])
+    for (const pace of [0, 1, 2] as Pace[])
+      for (const glide of [false, true])
+        for (const seed of [314187, 837832, 942561]) {
+          const hits = 3;
+          const world = fresh(
+            { pace, seconds, hits, target: 1, recover: true, glide },
+            seed,
+            ["a", "b", "c", "d", "e"],
+          );
+          world.riders.forEach((rider, slot) => {
+            rider.hits = slot % hits;
+            rider.x = footholdX(rider.hits, hits);
+          });
+          const label = `walking, ${seconds} s, pace ${pace}, glide ${glide}, seed ${seed}`;
+          ticks(world, 3000, planInput, (w) => w.phase === "break");
+          assert.equal(world.lastReason, "time", label);
+          assert.deepEqual(
+            world.riders.map((rider) => rider.taken),
+            [0, 0, 0, 0, 0],
+            label,
+          );
+          assert.ok(
+            world.riders.some((rider, slot) => rider.hits < slot % hits),
+            `${label}: somebody won a foothold back and walked`,
+          );
+        }
   // An endless round climbs past where a timed one ends, to the ceilings: five minutes of it, with everything on.
   for (const pace of [0, 1, 2] as Pace[]) {
     const world = fresh(
