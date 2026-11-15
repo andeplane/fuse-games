@@ -111,7 +111,14 @@ const stepsOf = (chart: SimChart): ChartNote[] =>
 const rowsOf = (chart: SimChart): number[] =>
   [...new Set(stepsOf(chart).map((note) => note.beat))].sort((a, b) => a - b);
 
-const songs = SONGS_DATA.map((data) => ({ data, sim: parseSimfile(data.ssc) }));
+const allSongs = SONGS_DATA.map((data) => ({
+  data,
+  sim: parseSimfile(data.ssc),
+}));
+/** Density and footwork limits below describe generated charts, not imported authors' charts. */
+const songs = allSongs.filter(
+  ({ data }) => !SONGS.find((song) => song.id === data.id)?.simfile,
+);
 /** Charts ChartNet wrote (`scripts/chartnet`): a learned model's, with conventions of their own (tested below). */
 const isChartNet = (data: { ssc: string }): boolean =>
   data.ssc.includes("#CREDIT:ChartNet;");
@@ -121,13 +128,13 @@ const ruleSongs = songs.filter(({ data }) => !isChartNet(data));
 test("the bundle is every song of the portfolio, once, with audio that exists", () => {
   assert.equal(SONGS_DATA.length, SONGS.length);
   assert.equal(new Set(SONGS_DATA.map((song) => song.id)).size, SONGS.length);
-  const titles = songs.map(({ sim }) => sim.title);
+  const titles = allSongs.map(({ sim }) => sim.title);
   assert.deepEqual(
     titles,
     [...titles].sort((a, b) => a.localeCompare(b, "en")),
     "sorted by title",
   );
-  for (const { data, sim } of songs) {
+  for (const { data, sim } of allSongs) {
     const spec = SONGS.find((song) => song.id === data.id);
     assert.ok(spec, `${data.id}: not a song of scripts/lib/fusemania/songs.ts`);
     assert.equal(data.audio, spec.audio);
@@ -135,13 +142,24 @@ test("the bundle is every song of the portfolio, once, with audio that exists", 
       !data.audio.startsWith("/"),
       `${data.id}: audio is site-relative`,
     );
-    assert.ok(existsSync(`${repo}${spec.file}`), `${spec.file} is missing`);
+    if (spec.file)
+      assert.ok(existsSync(`${repo}${spec.file}`), `${spec.file} is missing`);
+    else {
+      const remote = new URL(spec.audio);
+      assert.equal(remote.protocol, "https:");
+      assert.match(remote.pathname, /\.(mp3|ogg)$/i);
+      assert.ok(spec.audioIntegrity && spec.audioIntegrity.bytes > 0);
+      assert.match(spec.audioIntegrity.sha256, /^[a-f0-9]{64}$/);
+    }
     assert.equal(sim.title, spec.title);
     assert.equal(sim.artist, spec.artist);
-    assert.equal(sim.music, data.audio.slice(data.audio.lastIndexOf("/") + 1));
+    assert.equal(
+      sim.music,
+      decodeURIComponent(data.audio.slice(data.audio.lastIndexOf("/") + 1)),
+    );
     assert.equal(
       data.ssc,
-      read(`games/fusemania/charts/${data.id}.ssc`),
+      read(spec.simfile ?? `games/fusemania/charts/${data.id}.ssc`),
       `${data.id}: the bundle is stale; run scripts/fusemania-charts.ts bundle`,
     );
   }

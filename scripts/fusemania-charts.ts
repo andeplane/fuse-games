@@ -67,6 +67,8 @@ const readAnalysis = (id: string): Analysis =>
   parseAnalysis(readFileSync(analysisPath(id), "utf8"));
 
 async function analyze(song: SongSpec): Promise<void> {
+  if (!song.file)
+    throw new Error(`${song.id}: analysis needs a local audio file`);
   const started = Date.now();
   const analysis = analyzeFile(song.id, song.file);
   mkdirSync(ANALYSIS, { recursive: true });
@@ -86,6 +88,10 @@ const isChartNet = (id: string): boolean =>
   readFileSync(chartPath(id), "utf8").includes("#CREDIT:ChartNet;");
 
 function generate(song: SongSpec): void {
+  if (song.simfile) {
+    console.log(`kept original charts for ${song.id}`);
+    return;
+  }
   if (isChartNet(song.id)) {
     console.log(`kept ChartNet's charts for ${song.id}`);
     return;
@@ -95,9 +101,12 @@ function generate(song: SongSpec): void {
 }
 
 function bundle(): void {
-  const songs = SONGS.filter((song) => existsSync(chartPath(song.id))).map(
-    (song) => ({ song, ssc: readFileSync(chartPath(song.id), "utf8") }),
-  );
+  const songs = SONGS.filter((song) =>
+    existsSync(song.simfile ?? chartPath(song.id)),
+  ).map((song) => ({
+    song,
+    ssc: readFileSync(song.simfile ?? chartPath(song.id), "utf8"),
+  }));
   const strays = readdirSync(CHARTS)
     .filter((name) => name.endsWith(".ssc"))
     .filter((name) => !songById(name.slice(0, -4)));
@@ -200,10 +209,14 @@ if (command !== undefined && !commands.includes(command)) {
 }
 const chosen =
   ids.length === 0
-    ? SONGS
+    ? SONGS.filter((song) => !song.simfile)
     : ids.map((id) => {
         const song = songById(id);
         if (!song) throw new Error(`no song "${id}"`);
+        if (song.simfile && command !== "bundle")
+          throw new Error(
+            `"${id}" has original charts; do not regenerate them`,
+          );
         return song;
       });
 if (command === "analyze-one") for (const song of chosen) await analyze(song);
