@@ -1,6 +1,6 @@
 # Fusteam
 
-Fusteam is FuseOS's game launcher: a window in the olive "green skin" of the 2003–2006 Steam client. Every boot opens Winamp (queued and silent), Fusteam and MSN Messenger, in that order, including on a phone. The first visit adds Dial-Up Networking above Messenger; a completed handshake is remembered in `fuseos.network.connected`. Fusteam lives under `packages/fuseos/src/launcher/` and is reached again from its desktop icon, Start > Programs > Fusteam, or `?open=fusteam`.
+Fusteam is FuseOS's game launcher: a window in the olive "green skin" of the 2003–2006 Steam client. Every Windows desktop boot opens Winamp (queued and silent), Fusteam and MSN Messenger, in that order, including when that desktop is resized to phone width. The site's separate phone launcher remains unchanged. The first visit adds Dial-Up Networking above Messenger; a completed handshake is remembered in `fuseos.network.connected`. Fusteam lives under `packages/fuseos/src/launcher/` and is reached again from its desktop icon, Start > Programs > Fusteam, or `?open=fusteam`.
 
 ## What it shows
 
