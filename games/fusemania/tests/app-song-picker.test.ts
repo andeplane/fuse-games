@@ -799,8 +799,8 @@ test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/P
   assert.deepEqual(f.calls, ["song e", "song e", "song e"], "two packs wrap");
   f.calls.length = 0;
   f.picker.update(state({ song: "d" }));
-  f.one<HTMLButtonElement>(".fm-picker-pack-prev").click();
-  f.one<HTMLButtonElement>(".fm-picker-pack-next").click();
+  f.one(".fm-picker-pack-prev").click();
+  f.one(".fm-picker-pack-next").click();
   assert.deepEqual(f.calls, ["song e", "song e"], "the arrows step and wrap");
   f.calls.length = 0;
   tabs()[1]!.click();
@@ -816,8 +816,11 @@ test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/P
   f.calls.length = 0;
   f.picker.update(state({ song: "b", host: false }));
   assert.equal(tabs()[1]!.disabled, true);
-  assert.equal(f.one<HTMLButtonElement>(".fm-picker-pack").disabled, true);
-  assert.equal(f.one<HTMLButtonElement>(".fm-picker-pack-next").disabled, true);
+  assert.equal((f.one(".fm-picker-pack") as HTMLButtonElement).disabled, true);
+  assert.equal(
+    (f.one(".fm-picker-pack-next") as HTMLButtonElement).disabled,
+    true,
+  );
   tabs()[1]!.click();
   assert.equal(f.picker.key("PageDown"), false);
   assert.deepEqual(f.calls, []);
