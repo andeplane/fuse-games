@@ -110,6 +110,12 @@
   margin-left: auto;
 }
 @media (max-width: 640px) {
+  .fm-picker-top {
+    flex-wrap: wrap;
+  }
+  .fm-picker-top .fm-picker-packs {
+    flex-basis: 100%;
+  }
   /* A phone's row has room for the pack and RANDOM, not for the second word. */
   .fm-option-random-more {
     display: none;
