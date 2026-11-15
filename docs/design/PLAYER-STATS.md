@@ -3,7 +3,7 @@
 Stacked on #249. The stats dialog puts current Elo and its per-entry Elo graph first, followed by four career totals, results, rivalries, combat and records. Detailed counters are collapsible. The dialog has three tabs, STATS, MATCHES and LEADERBOARD, and the landing page's rating and leaderboard buttons open the matching one. MATCHES lists recent finished games, everyone's by default or only your own, grouped by day; opening one shows the post-match results report (standings, awards, full stats) rebuilt from the stored record. Highlight moments are not stored, so a past match has no replays. STATS' recent-finish chips open the same view. The landing page shows the signed-in rider's rating and global rank; the public leaderboard exposes only rider names, avatars, rounded Elo and rated-result counts, never account IDs.
 
 Elo starts at 1000, K=32. It now settles after each individual round from the frozen, confirmed round standings,
-comparing signed-in human finishers only. Guests and bots are removed before pairwise calculations, and a lone signed-in human records a zero-change round. Each round's mean pairwise updates use the pre-round ratings simultaneously. A player
+comparing signed-in human finishers only. Guests and bots are removed before pairwise calculations. A round with fewer than two human finishers is retained as a receipt but does not create a competitive rating. Each round's mean pairwise updates use the pre-round ratings simultaneously. A player
 can join between rounds or leave before the game ends without losing completed rounds' ratings. A mid-round departure
 is excluded from that round. Settlement waits for all frozen human finishers' reports so delivery ordering does not
 exclude a signed-in finisher. A missing report can delay settlement. Late sign-in can complete an unsettled round;
@@ -38,10 +38,11 @@ hour, and never carries a room code, an account id or a round receipt; a signed-
 their own seat, and nobody else's. Guests appear: a game between guests is public once the riders themselves vouch
 for it.
 
-Confirmation requires the existing majority of finishers and at least two distinct human seat reports of the same
-whole-game result. A single human playing against bots, including solo play, stays pending and expires; a departed
-player can still corroborate by reporting the same result. A pending result gives no career credit and does not enter
-the feed. Room tokens do not prove independent people, so colluding or self-controlled seats can still invent results.
+For a multi-human whole-game result, confirmation requires the existing majority of finishers and at least two distinct
+human seat reports of the same result. A departed player can still corroborate by reporting the same result. A pending
+result gives no career credit and does not enter the feed. A declared one-human game, including solo or a room with bots,
+credits the reporting account's personal history and career but does not enter the feed. This is self-reported progress,
+not proof that no other humans played. Room tokens do not prove independent people, so colluding or self-controlled seats can still invent results.
 Whole-match links are limited to 30 per account per hour and submissions to 240 per address per hour, separately from
 round receipt budgets. Older one-seat confirmations are hidden from the public feed, but their already credited career
 totals are not automatically reversed; those totals require a separate migration or reconciliation.

@@ -760,12 +760,17 @@ test("a lone room game credits only its signed-in player and stays off the feed"
   );
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
-  assert.equal((await f.history.profile("alice"))!.totals.matches, 1);
+  const credited = (await f.history.profile("alice"))!;
+  assert.equal(credited.totals.matches, 1);
+  assert.equal(credited.career!.practice.matches, 1);
+  assert.equal(credited.career!.practice.rounds, 5);
+  assert.equal(credited.career!.practice.roundWins, 3);
   assert.equal((await f.history.history("alice", undefined)).matches.length, 1);
   const listed = (await f.history.feed("viewer", undefined, undefined)).matches;
   assert.deepEqual(listed, []);
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
+  assert.deepEqual((await f.history.profile("alice"))!.career, credited.career);
   assert.equal(
     (await f.history.feed("viewer", undefined, undefined)).matches.length,
     0,
@@ -1430,7 +1435,13 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
         headers: { origin, authorization: `Bearer id:${uid}` },
       })
     ).json()) as {
-      profile: { rating: Rating; totals: { matches: number } } | null;
+      profile: {
+        rating?: Rating;
+        totals: { matches: number };
+        career?: {
+          practice: { matches: number; rounds: number; roundWins: number };
+        };
+      } | null;
     };
   try {
     assert.equal((await report({ result })).status, 401);
@@ -1472,6 +1483,7 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
     assert.equal(history.matches.length, 0);
     const whole = structuredClone(result);
     delete whole.round;
+    whole.players[0]!.roundWins = 1;
     const finish = (candidate: unknown, identity?: string) =>
       fetch(`${origin}/api/me/results`, {
         method: "POST",
@@ -1500,6 +1512,9 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
       assert.equal((await finish(whole, "id:a")).status, 200);
     const after = (await profile("a")).profile!;
     assert.equal(after.totals.matches, 1);
+    assert.equal(after.career!.practice.matches, 1);
+    assert.equal(after.career!.practice.rounds, 1);
+    assert.equal(after.career!.practice.roundWins, 1);
     assert.deepEqual(
       after.rating,
       undefined,
@@ -1522,6 +1537,7 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
     // Exhausting account links must not silently turn authenticated solo games into unlisted guest records.
     for (let retry = 2; retry < 30; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
+    assert.deepEqual((await profile("a")).profile!.career, after.career);
     assert.equal(
       (await finish({ ...whole, matchId: "over-budget" }, "id:a")).status,
       429,
