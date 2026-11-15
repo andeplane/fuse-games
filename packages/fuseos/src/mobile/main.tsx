@@ -31,6 +31,8 @@ if (container) {
         player.renderInto = async (node) => {
           const parent = node.parentElement!;
           const fit = () => {
+            // A minimized player remains mounted for audio but has no layout box.
+            if (!parent.clientWidth || !parent.clientHeight) return;
             const landscape = parent.clientWidth > parent.clientHeight;
             const scale = landscape
               ? Math.min(parent.clientWidth / 550, parent.clientHeight / 232)
