@@ -496,7 +496,6 @@ export function showRoom(
         { ...result, host: false, waiting: "" },
         result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
       ]);
-      const first = !shownResult;
       if (key !== shownResult) {
         shownResult = key;
         results.show(
@@ -512,10 +511,7 @@ export function showRoom(
         );
       }
       results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
+      // No focus on show: Space is a play key here, and a held one would press the primary button.
     }
     if (overlay.dataset.html !== next.overlay)
       overlay.innerHTML = overlay.dataset.html = next.overlay;

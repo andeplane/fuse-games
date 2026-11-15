@@ -93,7 +93,7 @@ const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
 /** The truck sprites' colours by grid slot (`TRUCK_COLORS` in the arena), as the page can paint them. */
-const TRUCK_HEX = ["#16e7ff", "#ff2e9d", "#b6ff4d", "#ff9f1c", "#a78bfa"];
+const TRUCK_HEX = ["#10e0f0", "#f050a0", "#a0f020", "#f09020", "#b050f0"];
 const truckColor = (truck: number): string =>
   TRUCK_HEX[truck % TRUCK_HEX.length] ?? "#ffffff";
 
@@ -389,7 +389,6 @@ function room(solo: boolean): void {
         { ...result, host: false, waiting: "" },
         result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
       ]);
-      const first = !shownResult;
       if (shown !== shownResult) {
         shownResult = shown;
         results.show(
@@ -405,10 +404,7 @@ function room(solo: boolean): void {
         );
       }
       results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
+      // No focus on show: Space is a play key here, and a held one would press the primary button.
     }
     // A phone that is only a controller has no room for the arena.
     pad.element.hidden = model.screen !== "race" || display;

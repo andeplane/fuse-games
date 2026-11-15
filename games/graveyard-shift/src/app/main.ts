@@ -534,7 +534,11 @@ function room() {
         tv.hidden = !host || !shared;
         ready.hidden = display || !mine;
         ready.textContent = frame.ready[self] ? "WAITING FOR CREW…" : "READY";
-        const result = shiftResult(frame, { self, host, solo });
+        // A newcomer without a seat still needs the name form, which the screen would cover.
+        const result =
+          !mine && !display && !solo
+            ? undefined
+            : shiftResult(frame, { self, host, solo });
         if (!result) {
           if (results.open) results.hide();
           shownResult = "";

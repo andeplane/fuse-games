@@ -2162,6 +2162,8 @@ export function mountFuseCraft(
   function onKeyDown(event: KeyboardEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
     if (gameMenu.isOpen()) return;
+    // The results screen covers the game: no camera or command key acts behind it.
+    if (results.open) return;
     // How to play is modal: no game shortcut acts behind it.
     if (helpOpen && screen === "game") return;
     if (pending) {
