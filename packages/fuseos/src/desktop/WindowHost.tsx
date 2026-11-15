@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { AboutDialog } from "../about/AboutDialog";
 import { DcppWindow } from "../dcpp/DcppWindow";
@@ -37,9 +37,9 @@ import { MessageBox } from "../windows/MessageBox";
 import { ModalDialogLayer } from "../windows/ModalDialogLayer";
 import { useWindowCommands } from "../windows/useWindowCommands";
 import { WindowChrome } from "../windows/WindowChrome";
+import { assignSlots, clampRect } from "../windows/windowManager";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 import { WindowsDepsContext } from "../windows/windowsDepsContext";
-import { clampRect } from "../windows/windowManager";
 
 import { DisplayViewportContext } from "./displayViewportContext";
 import { FRIENDS_WINDOW_SIZE, windowMeta } from "./windowMeta";
@@ -172,21 +172,44 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
     useContext(WindowManagerContext);
   const commands = useWindowCommands();
   // Each game window's iframe, so the title bar's Pop out can read where the game has navigated to.
-  const frames = useRef(new Map<string, HTMLIFrameElement>());
+  const gameFrames = useRef(new Map<string, HTMLIFrameElement>());
   const setGameFrame = useCallback(
     (windowId: string, element: HTMLIFrameElement | null) => {
-      if (element) frames.current.set(windowId, element);
-      else frames.current.delete(windowId);
+      if (element) gameFrames.current.set(windowId, element);
+      else gameFrames.current.delete(windowId);
     },
     [],
   );
   const frameFor = useCallback(
-    (windowId: string) => frames.current.get(windowId) ?? null,
+    (windowId: string) => gameFrames.current.get(windowId) ?? null,
     [],
   );
   const popOut = useGamePopOut(frameFor);
   const winampIndex = windows.findIndex((window) => window.kind === "winamp");
   const winamp = windows[winampIndex];
+  // Where an undragged window sits is fixed when it opens, not read off the stacking order (`assignSlots`).
+  // Derived during render, so a new window is placed on its first paint.
+  const [storedSlots, setStoredSlots] = useState(() =>
+    assignSlots(
+      {},
+      windows.map((window) => window.id),
+    ),
+  );
+  const slots = assignSlots(
+    storedSlots,
+    windows.map((window) => window.id),
+  );
+  if (slots !== storedSlots) setStoredSlots(slots);
+  // Frames are drawn in the order of their steps, which a focus never changes, and stacked by `zIndex` alone.
+  // Drawn in stacking order, raising a window moved its element in the document: the browser drops the click
+  // of a press whose target was moved (so Close on a background window did nothing), and a moved iframe loads
+  // its page again, a game out of the room it was in.
+  const frames = windows
+    .map((window, index) => ({ window, index }))
+    .sort(
+      (a, b) =>
+        (slots[a.window.id] ?? a.index) - (slots[b.window.id] ?? b.index),
+    );
   // Window ids are reused after a close; forget the old rectangle so the next window with that id opens at its own size.
   useEffect(
     () => pruneRects(windows.map((window) => window.id)),
@@ -203,7 +226,7 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
 
   return (
     <>
-      {windows.map((window, index) => {
+      {frames.map(({ window, index }) => {
         if (
           (window.minimized && window.kind !== "im") ||
           window.kind === "winamp" ||
@@ -219,7 +242,12 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
         // alone so the window floats again where there is room (a rotated tablet, a desktop).
         const maximized = meta.resizable && (window.maximized || compact);
         const resizable = meta.resizable && !compact;
-        let rect = rectFor(window.id, index, meta.size, !meta.resizable);
+        let rect = rectFor(
+          window.id,
+          slots[window.id] ?? index,
+          meta.size,
+          !meta.resizable,
+        );
         if (window.kind === "im" && !compact && !rects[window.id]) {
           const contactIndex = windows.findIndex(
             (entry) => entry.kind === "friends",
@@ -228,7 +256,7 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
           if (contacts) {
             const list = rectFor(
               contacts.id,
-              contactIndex,
+              slots[contacts.id] ?? contactIndex,
               FRIENDS_WINDOW_SIZE,
             );
             rect = clampRect(

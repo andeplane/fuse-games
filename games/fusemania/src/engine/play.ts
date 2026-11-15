@@ -16,6 +16,7 @@ import {
   ITEM_GAP_FULL_PCT,
   ITEM_POWER,
   ITEM_TILT,
+  ITEM_SCALABLE,
   MARVELOUS,
   MAX_EFFECTS,
   MINED,
@@ -54,7 +55,40 @@ export const KEPT = -1,
 export const NO_JUDGMENT = -1;
 
 /** A power-up a rider is under: notes (or the picture) from `from` until `until`, thrown by the rider in slot `by`. */
-export type Effect = [kind: number, from: number, until: number, by: number];
+export type Effect = [
+  kind: number,
+  from: number,
+  until: number,
+  by: number,
+  intensity?: number,
+];
+
+/** Stored thousandths; old fixture effects represent full strength. */
+export const effectIntensity = (effect: Effect): number =>
+  ITEM_SCALABLE[effect[0]] ? (effect[4] ?? 1000) : 1000;
+
+/** Snapshot target-relative pressure. Ties are mild; a clear leader occasionally gets full strength. */
+export function attackIntensity(
+  ratings: readonly number[],
+  slot: number,
+  roll: number,
+): number {
+  const top = Math.max(ITEM_GAP_FLOOR, ...ratings);
+  const own = ratings[slot] ?? 0;
+  const gap = Math.min(
+    1000,
+    Math.max(
+      0,
+      Math.trunc(
+        ((Math.max(...ratings) - own) * 100_000) / (top * ITEM_GAP_FULL_PCT),
+      ),
+    ),
+  );
+  const rival = Math.max(0, ...ratings.filter((_, other) => other !== slot));
+  if (own > rival && (own - rival) * 100 >= top * 5 && roll % 4 === 0)
+    return 1000;
+  return 600 - Math.trunc((gap * 400) / 1000);
+}
 
 export interface Player {
   id: string;
@@ -178,8 +212,14 @@ export function turnedMine(
   return (
     note.kind === TAP &&
     !items?.has(id) &&
-    under(effects, MINES, note.ms) &&
-    hash(seed, id, 0x4d1e) % 100 < MINE_SHARE
+    effects.some(
+      (effect) =>
+        effect[0] === MINES &&
+        effect[1] <= note.ms &&
+        note.ms < effect[2] &&
+        (hash(seed, id, 0x4d1e) % 100) * 1000 <
+          MINE_SHARE * effectIntensity(effect),
+    )
   );
 }
 
@@ -199,16 +239,26 @@ export function addEffect(
   from: number,
   until: number,
   by: number,
+  intensity = 1000,
 ): void {
   for (const effect of player.effects)
-    if (effect[0] === kind && effect[1] <= until && from <= effect[2]) {
+    if (
+      effect[0] === kind &&
+      effectIntensity(effect) === intensity &&
+      effect[1] <= until &&
+      from <= effect[2]
+    ) {
       effect[1] = Math.min(effect[1], from);
       effect[2] = Math.max(effect[2], until);
       effect[3] = by;
       return;
     }
   if (player.effects.length < MAX_EFFECTS)
-    player.effects.push([kind, from, until, by]);
+    player.effects.push(
+      intensity === 1000
+        ? [kind, from, until, by]
+        : [kind, from, until, by, intensity],
+    );
 }
 
 /**

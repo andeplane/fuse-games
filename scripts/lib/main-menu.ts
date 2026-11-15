@@ -26,15 +26,23 @@ export async function openPlayOptions(
 }
 
 /** A remembered host may already be seated; otherwise take its seat through the visible admission UI. */
-export async function takeHostSeat(page: Page, name: string): Promise<void> {
+export async function takeHostSeat(
+  page: Page,
+  name: string,
+  options: { autoSeat?: boolean } = {},
+): Promise<void> {
   const join = page.locator(".fui-slot-admission[open]");
   // This action belongs to this device: a watcher sees SWAP TO PLAYER instead.
   // A roster count alone cannot prove the host took a seat; another peer may be listed.
   const seated = page
     .locator("button.room-switch")
     .filter({ hasText: /^SWAP TO SPECTATOR$/ });
+  if (options.autoSeat) {
+    await seated.waitFor({ state: "visible" });
+    return;
+  }
   const takeSeat = page
-    .locator(".fui-room-open-slot")
+    .locator(".fui-room-open-slot:visible")
     .getByRole("button", { name: "Join", exact: true })
     .filter({ visible: true })
     .first();

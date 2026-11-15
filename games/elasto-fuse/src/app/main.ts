@@ -655,6 +655,7 @@ function room(solo: boolean): void {
       if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
     },
     settings: [keyHelp()],
+    layout: "configuration",
     modes: [mapTitle, seriesOptions, levelPicker.element],
     actions: [lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation and the riders scroll under them.
