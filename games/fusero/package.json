@@ -1,0 +1,27 @@
+{
+  "name": "fusero",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Neon worms, destructible caves and ninja ropes on Fuse multiplayer.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "exports": {
+    ".": "./src/online/game.ts",
+    "./platform": "./src/platform.ts"
+  },
+  "dependencies": {
+    "@stdlib/math-base-special-atan2": "0.3.1",
+    "@stdlib/math-base-special-cos": "0.3.1",
+    "@stdlib/math-base-special-sin": "0.3.1",
+    "fuse-netcode": "workspace:*",
+    "fuse-platform": "workspace:*"
+  },
+  "devDependencies": {
+    "@fontsource/press-start-2p": "^5.3.0",
+    "fuse-network-fe": "workspace:*",
+    "fuse-ui": "workspace:*",
+    "qrcode": "^1.5.4"
+  }
+}

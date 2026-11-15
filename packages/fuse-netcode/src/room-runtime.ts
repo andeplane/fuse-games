@@ -141,6 +141,8 @@ export interface RuntimeOptions {
   displayOnly?: boolean;
   humanName?: string;
   humanAvatar?: string;
+  /** Automatically start solo play (default true). False keeps the lobby open for preparation such as choosing a loadout. */
+  autoStartSolo?: boolean;
   /** Fixed human roster on this browser, without a transport. The remaining solo seats are AI. */
   localPlayers?: readonly string[];
   dependencies?: RuntimeDependencies;
@@ -419,7 +421,8 @@ export class RoomRuntime<
         index++
       )
         this.command({ type: "bot", action: "add" });
-      this.command({ type: "action", action: "start" });
+      if (this.options.autoStartSolo !== false)
+        this.command({ type: "action", action: "start" });
       this.world!.refill(Infinity);
       this.world!.advance(this.recorder.tick); // The first frame already seats everyone; the clock catches up within a tick.
       this.publish();

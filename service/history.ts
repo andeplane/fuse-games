@@ -1,5 +1,5 @@
 import { diceRegistration } from "dice/platform";
-import { lieroRegistration } from "fuse-liero/platform";
+import { lieroRegistration } from "fusero/platform";
 import { fuseDriversRegistration } from "fuse-drivers/platform";
 import { birdsRegistration } from "fuse-birds-game/platform";
 import { hookRegistration } from "hook-havok/platform";

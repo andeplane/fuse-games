@@ -60,8 +60,11 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
-  "fuse-liero": async (page) => {
+  fusero: async (page) => {
     await openPlayOptions(page, "single");
+    await page
+      .getByRole("button", { name: "START MATCH", exact: true })
+      .click();
     await page.locator('.liero-room[data-phase="running"]').waitFor();
     await page.waitForFunction(() =>
       document.querySelector(".liero-overlay")?.hasAttribute("hidden"),

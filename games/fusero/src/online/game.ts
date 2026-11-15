@@ -1,0 +1,649 @@
+import {
+  ACTION,
+  BOT,
+  PRESENCE,
+  SPECTATOR,
+  applyManagementTick,
+  defaultText,
+  isManagementEntry,
+  uint32,
+  type LifecycleHooks,
+  type ManagedRoom,
+  type ManagementEntry,
+  type RollbackGame,
+  type SeatRecord,
+  type Stage,
+  type StreamEntries,
+} from "fuse-netcode";
+import {
+  CAPACITY,
+  INPUT_MASK,
+  OUTER_MS,
+  RULES,
+  validLoadout,
+  botInput,
+  createWorld,
+  decodeWorld,
+  encodeWorld,
+  isInput,
+  parseSettings,
+  seedOf,
+  stepWorld,
+  toView,
+  type Settings,
+  type World,
+  type WorldView,
+} from "../engine/index.js";
+import {
+  AVATAR,
+  BOT_NAMES,
+  BOT_PREFIX,
+  isAvatar,
+  playerKey,
+  seatName,
+  validMatchId,
+  validName,
+} from "./names.js";
+import {
+  randomLoadout,
+  defaultLoadout as nativeDefaultLoadout,
+} from "../engine/classic/match.js";
+import { randomUnit, randomInt } from "../engine/classic/random.js";
+export type { Settings } from "../engine/index.js";
+
+export const PLAY = 0;
+export const LOADOUT = 1;
+export const BEGIN_LOADOUT = 2;
+export const MAX_WATCHERS = 5;
+const LOG_TICK_MS = 50;
+export type Loadout = [number, number, number, number, number];
+export type PlayEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof PLAY,
+  matchId: string,
+  round: number,
+  bits: number,
+];
+export type LoadoutEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof LOADOUT,
+  matchId: string,
+  round: 0 | 1,
+  weapons: Loadout,
+];
+export type BeginLoadoutEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof BEGIN_LOADOUT,
+  matchId: string,
+  round: 1,
+];
+export type Entry =
+  ManagementEntry<Settings> | PlayEntry | LoadoutEntry | BeginLoadoutEntry;
+
+/** A Fuse log tick runs five native 10ms outer frames; the world owns its internal physics clocks. */
+export interface Room extends ManagedRoom<Settings> {
+  tick: number;
+  simulationTick: number;
+  matchId: string;
+  round: number;
+  stage: Stage;
+  play: Settings;
+  held: Record<string, number>;
+  loadouts: Record<string, Loadout>;
+  winner: string;
+  world: World | null;
+}
+export interface SeatView {
+  id: string;
+  name: string;
+  avatarId: string;
+  slot: number;
+  bot: boolean;
+  connected: boolean;
+  away: boolean;
+  watcher: boolean;
+}
+export interface View {
+  tick: number;
+  logTick: number;
+  stage: Stage;
+  matchId: string;
+  round: number;
+  settings: Settings;
+  play: Settings;
+  seats: SeatView[];
+  loadouts: Record<string, Loadout>;
+  winner: string;
+  world: WorldView | null;
+}
+const payloads = {
+  name: validName,
+  avatar: isAvatar,
+  settings: (raw: unknown) => parseSettings(raw) !== undefined,
+  capacity: CAPACITY,
+};
+const shapeLoadout = (raw: unknown): raw is Loadout =>
+  Array.isArray(raw) &&
+  raw.length === 5 &&
+  raw.every((id) => uint32(id) && id < 38);
+export function isEntry(raw: unknown): raw is Entry {
+  if (isManagementEntry(raw, payloads)) {
+    if (raw[2] === ACTION) return validMatchId(raw[4]);
+    const index =
+      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
+    return index < 0 || playerKey((raw as unknown[])[index]);
+  }
+  return (
+    Array.isArray(raw) &&
+    (raw.length === 5 || raw.length === 6) &&
+    uint32(raw[0]) &&
+    raw[0] > 0 &&
+    uint32(raw[1]) &&
+    raw[1] > 0 &&
+    validMatchId(raw[3]) &&
+    (raw[2] === PLAY
+      ? raw.length === 6 && uint32(raw[4]) && isInput(raw[5])
+      : raw[2] === LOADOUT
+        ? raw.length === 6 &&
+          (raw[4] === 0 || raw[4] === 1) &&
+          shapeLoadout(raw[5])
+        : raw[2] === BEGIN_LOADOUT && raw.length === 5 && raw[4] === 1)
+  );
+}
+export function createRoom(matchId: string, settings: Settings): Room {
+  return {
+    tick: 0,
+    simulationTick: 0,
+    matchId,
+    round: 0,
+    stage: "lobby",
+    seats: new Map(),
+    settings: { ...settings },
+    play: { ...settings },
+    held: {},
+    loadouts: {},
+    winner: "",
+    world: null,
+  };
+}
+export const riders = (room: Room): SeatRecord[] =>
+  [...room.seats.values()]
+    .filter((seat) => !seat.watcher)
+    .sort((a, b) => a.slot - b.slot);
+const entrants = (room: Room) =>
+  riders(room).filter((seat) => seat.connected || seat.away || seat.bot);
+
+/** Pure choice from the match seed; every chosen slot obeys the source restriction preset. */
+export function botLoadout(
+  matchId: string,
+  id: string,
+  settings: Settings,
+): Loadout {
+  const state = { rng: seedOf(`${matchId}:${id}:loadout`) };
+  return randomLoadout(settings, {
+    nextFloat: () => randomUnit(state),
+    nextInt: (max) => randomInt(state, max),
+  });
+}
+function resetMatch(room: Room, matchId: string): void {
+  room.matchId = matchId;
+  room.round = 0;
+  room.stage = "lobby";
+  room.play = { ...room.settings };
+  room.held = {};
+  room.winner = "";
+  room.world = null;
+  reconcileLoadouts(room);
+}
+function start(room: Room, matchId: string): void {
+  const seats = entrants(room);
+  if (!seats.length) return;
+  resetMatch(room, matchId);
+  room.round = 1;
+  room.stage = "running";
+  room.world = createWorld(
+    seedOf(matchId),
+    seats.map((seat) => {
+      const chosen = seat.bot ? undefined : room.loadouts[seat.id];
+      const loadout =
+        chosen && validLoadout(chosen, room.play)
+          ? chosen
+          : seat.bot
+            ? botLoadout(matchId, seat.id, room.play)
+            : nativeDefaultLoadout(room.play);
+      room.loadouts[seat.id] = [...loadout];
+      return { id: seat.id, slot: seat.slot, loadout };
+    }),
+    room.play,
+  );
+}
+export const lifecycle: LifecycleHooks<Room, Settings> = {
+  stage: (room) => room.stage,
+  maxWatchers: MAX_WATCHERS,
+  parseSettings,
+  botAvatar: AVATAR,
+  start,
+  rematch: start,
+  lobby(room, matchId) {
+    resetMatch(room, matchId);
+  },
+};
+
+/** Seat generations fence controls and loadouts against a page's old connection. */
+function ownEntries(
+  room: Room,
+  seat: SeatRecord,
+  streams: ReadonlyMap<string, StreamEntries<Entry>>,
+  tick: number,
+): Entry[] {
+  const stream = streams.get(seat.id);
+  const source =
+    stream?.generation === seat.generation
+      ? stream
+      : stream?.retired?.find((old) => old.generation === seat.generation);
+  return (source?.entries ?? [])
+    .filter((entry) => entry[1] === tick)
+    .sort((a, b) => a[0] - b[0]);
+}
+function reconcileLoadouts(room: Room): void {
+  const settings = room.stage === "lobby" ? room.settings : room.play;
+  for (const [id, weapons] of Object.entries(room.loadouts)) {
+    const seat = room.seats.get(id);
+    if (!seat || seat.watcher || !validLoadout(weapons, settings))
+      delete room.loadouts[id];
+  }
+}
+/** Native outer scheduling divides Fuse's 50ms log tick without a room-level remainder. */
+export const stepsPerTick = (): number => LOG_TICK_MS / OUTER_MS;
+export const MAX_STEPS_PER_TICK = LOG_TICK_MS / OUTER_MS;
+export function foldTick(
+  room: Room,
+  creatorId: string,
+  streams: ReadonlyMap<string, StreamEntries<Entry>>,
+): never[] {
+  const tick = room.tick + 1;
+  const count = stepsPerTick();
+  // Loadout selection belongs to the lobby as seen before a same-tick START, so the selected weapons enter that match.
+  if (room.stage === "lobby")
+    for (const seat of riders(room)) {
+      if (seat.bot || !seat.connected) continue;
+      for (const entry of ownEntries(room, seat, streams, tick)) {
+        if (
+          entry[2] === LOADOUT &&
+          entry[3] === room.matchId &&
+          entry[4] === 0 &&
+          validLoadout(entry[5], room.settings)
+        )
+          room.loadouts[seat.id] = [...entry[5]];
+      }
+    }
+  applyManagementTick(room, tick, creatorId, streams, lifecycle);
+  reconcileLoadouts(room);
+  const world = room.world;
+  if (room.stage === "running" && world) {
+    const selectionSequence = new Map<string, number>();
+    for (const seat of riders(room)) {
+      if (seat.bot || !seat.connected) continue;
+      const worm = world.worms.find((candidate) => candidate.id === seat.id);
+      if (!worm) continue;
+      for (const entry of ownEntries(room, seat, streams, tick)) {
+        if (
+          (entry[2] !== BEGIN_LOADOUT && entry[2] !== LOADOUT) ||
+          entry[3] !== room.matchId ||
+          entry[4] !== room.round
+        )
+          continue;
+        if (entry[2] === BEGIN_LOADOUT) worm.weaponsReady = false;
+        else {
+          if (worm.weaponsReady || !validLoadout(entry[5], room.play)) continue;
+          for (let slot = 0; slot < 5; slot++)
+            worm.slots[slot]!.weaponId = entry[5][slot]!;
+          room.loadouts[seat.id] = [...entry[5]];
+          worm.weaponsReady = true;
+        }
+        for (const slot of worm.slots) {
+          slot.charge = 1;
+          slot.reloading = false;
+          slot.lastFire = 0;
+        }
+        worm.weapon = 0;
+        worm.input = 0;
+        delete room.held[seat.id];
+        selectionSequence.set(seat.id, entry[0]);
+      }
+    }
+    const held = new Map<string, number>(),
+      first = new Map<string, number>();
+    for (const worm of world.worms) {
+      const seat = room.seats.get(worm.id);
+      let bits = 0,
+        tapped = 0;
+      if (seat?.bot) bits = botInput(world, worm);
+      else if (seat?.connected && !seat.watcher && worm.weaponsReady) {
+        bits = room.held[worm.id] ?? 0;
+        for (const entry of ownEntries(room, seat, streams, tick))
+          if (
+            entry[2] === PLAY &&
+            entry[0] > (selectionSequence.get(worm.id) ?? 0) &&
+            entry[3] === room.matchId &&
+            entry[4] === room.round
+          ) {
+            tapped |= entry[5] & INPUT_MASK;
+            bits = entry[5] & INPUT_MASK;
+          }
+      }
+      if (bits && !seat?.bot) room.held[worm.id] = bits;
+      else delete room.held[worm.id];
+      held.set(worm.id, bits);
+      first.set(worm.id, bits | tapped);
+    }
+    let firstPhysicsPulse = true;
+    for (let step = 0; step < count; step++) {
+      if (step > 0)
+        for (const worm of world.worms)
+          if (room.seats.get(worm.id)?.bot)
+            held.set(worm.id, botInput(world, worm));
+      const previousPhysicsMs = world.lastClientPhysicsMs;
+      stepWorld(world, firstPhysicsPulse ? first : held);
+      if (world.lastClientPhysicsMs !== previousPhysicsMs)
+        firstPhysicsPulse = false;
+    }
+    if (world.phase === "done") {
+      room.stage = "over";
+      room.winner = world.winner ?? "";
+      room.held = {};
+    }
+  }
+  room.tick = tick;
+  room.simulationTick += count;
+  return [];
+}
+
+const plain = (raw: unknown): raw is Record<string, unknown> =>
+  !!raw && typeof raw === "object" && !Array.isArray(raw);
+const sortedEntries = <T>(record: Record<string, T>): [string, T][] =>
+  Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+const SEAT_KEYS = [
+  "id",
+  "name",
+  "slot",
+  "avatarId",
+  "connected",
+  "bot",
+  "watcher",
+  "generation",
+  "away",
+];
+export function encode(room: Room): unknown[] {
+  return [
+    room.matchId,
+    room.round,
+    room.stage,
+    { ...room.settings },
+    [...room.seats.values()]
+      .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
+      .map((seat) => ({ ...seat })),
+    { ...room.play },
+    sortedEntries(room.held),
+    sortedEntries(room.loadouts).map(([id, weapons]) => [id, [...weapons]]),
+    room.world ? encodeWorld(room.world) : null,
+    room.simulationTick,
+  ];
+}
+function decodeSeat(raw: unknown): SeatRecord | undefined {
+  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
+    return;
+  const {
+    id,
+    name,
+    slot,
+    avatarId,
+    connected,
+    bot,
+    watcher,
+    generation,
+    away,
+  } = raw;
+  if (
+    !playerKey(id) ||
+    !validName(name) ||
+    typeof connected !== "boolean" ||
+    typeof bot !== "boolean" ||
+    (watcher !== undefined && watcher !== true) ||
+    (away !== undefined && away !== true) ||
+    (away === true && connected) ||
+    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
+    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
+    (bot ? generation !== undefined || watcher === true : !uint32(generation))
+  )
+    return;
+  return {
+    id,
+    name,
+    slot: slot as number,
+    avatarId: avatarId as string,
+    connected,
+    bot,
+    ...(watcher ? { watcher: true } : {}),
+    ...(generation !== undefined ? { generation: generation as number } : {}),
+    ...(away ? { away: true } : {}),
+  };
+}
+export function decode(
+  fields: readonly unknown[],
+  tick: number,
+): Room | undefined {
+  if (fields.length !== 10 || !uint32(tick)) return;
+  const [
+    matchId,
+    round,
+    stage,
+    rawSettings,
+    rawSeats,
+    rawPlay,
+    rawHeld,
+    rawLoadouts,
+    rawWorld,
+    simulationTick,
+  ] = fields;
+  const settings = parseSettings(rawSettings),
+    play = parseSettings(rawPlay);
+  if (
+    !validMatchId(matchId) ||
+    (round !== 0 && round !== 1) ||
+    (stage !== "lobby" && stage !== "running" && stage !== "over") ||
+    !settings ||
+    !play ||
+    !Array.isArray(rawSeats) ||
+    rawSeats.length > CAPACITY + MAX_WATCHERS ||
+    !uint32(simulationTick) ||
+    simulationTick !== (tick * LOG_TICK_MS) / OUTER_MS ||
+    !Array.isArray(rawHeld) ||
+    rawHeld.length > CAPACITY ||
+    !Array.isArray(rawLoadouts) ||
+    rawLoadouts.length > CAPACITY
+  )
+    return;
+  const seats = new Map<string, SeatRecord>();
+  for (const raw of rawSeats) {
+    const seat = decodeSeat(raw);
+    if (
+      !seat ||
+      seats.has(seat.id) ||
+      (!seat.watcher &&
+        [...seats.values()].some(
+          (other) => !other.watcher && other.slot === seat.slot,
+        ))
+    )
+      return;
+    seats.set(seat.id, seat);
+  }
+  if ([...seats.values()].filter((seat) => seat.watcher).length > MAX_WATCHERS)
+    return;
+  const held: Record<string, number> = {},
+    loadouts: Record<string, Loadout> = {};
+  for (const pair of rawHeld) {
+    if (
+      !Array.isArray(pair) ||
+      pair.length !== 2 ||
+      !playerKey(pair[0]) ||
+      Object.hasOwn(held, pair[0]) ||
+      !isInput(pair[1]) ||
+      pair[1] === 0
+    )
+      return;
+    held[pair[0]] = pair[1];
+  }
+  for (const pair of rawLoadouts) {
+    if (
+      !Array.isArray(pair) ||
+      pair.length !== 2 ||
+      !playerKey(pair[0]) ||
+      Object.hasOwn(loadouts, pair[0]) ||
+      !seats.has(pair[0]) ||
+      seats.get(pair[0])!.watcher ||
+      !validLoadout(pair[1], stage === "lobby" ? settings : play)
+    )
+      return;
+    loadouts[pair[0]] = [...pair[1]];
+  }
+  const world = rawWorld === null ? null : decodeWorld(rawWorld);
+  if (
+    world === undefined ||
+    (stage === "lobby") !== (round === 0) ||
+    (stage === "lobby") !== (world === null) ||
+    (world &&
+      ((stage === "over") !== (world.phase === "done") ||
+        world.seed !== seedOf(matchId) ||
+        world.elapsedMs > simulationTick * OUTER_MS ||
+        Object.entries(play).some(
+          ([key, value]) =>
+            Object.entries(world.settings).find(
+              ([name]) => name === key,
+            )?.[1] !== value,
+        ))) ||
+    Object.keys(held).some(
+      (id) =>
+        stage !== "running" ||
+        !world?.worms.some((worm) => worm.id === id) ||
+        !seats.get(id)?.connected ||
+        seats.get(id)?.bot ||
+        seats.get(id)?.watcher,
+    )
+  )
+    return;
+  return {
+    tick,
+    simulationTick,
+    matchId,
+    round,
+    stage,
+    seats,
+    settings,
+    play,
+    held,
+    loadouts,
+    winner: world?.winner ?? "",
+    world,
+  };
+}
+export function hash(room: Room): string {
+  const text = JSON.stringify(
+    [room.tick, ...encode(room)],
+    (_key, value: unknown) =>
+      plain(value)
+        ? Object.fromEntries(
+            Object.entries(value).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            ),
+          )
+        : value,
+  );
+  let a = 0x811c9dc5,
+    b = 0x9747b28c;
+  for (let i = 0; i < text.length; i++) {
+    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
+    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
+    b = (b ^ (b >>> 13)) >>> 0;
+  }
+  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+}
+export function view(room: Room): View {
+  return {
+    tick: room.simulationTick,
+    logTick: room.tick,
+    stage: room.stage,
+    matchId: room.matchId,
+    round: room.round,
+    settings: { ...room.settings },
+    play: { ...room.play },
+    seats: [...room.seats.values()]
+      .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
+      .map((seat) => ({
+        id: seat.id,
+        name: seat.name,
+        avatarId: seat.avatarId,
+        slot: seat.slot,
+        bot: seat.bot,
+        connected: seat.connected,
+        away: seat.away === true,
+        watcher: seat.watcher === true,
+      })),
+    loadouts: Object.fromEntries(
+      sortedEntries(room.loadouts).map(([id, loadout]) => [id, [...loadout]]),
+    ),
+    winner: room.winner,
+    world: room.world ? toView(room.world) : null,
+  };
+}
+export const fuseroGame: RollbackGame<Room, Entry, View, never, Settings> = {
+  id: "fusero",
+  rules: `${RULES}-room-2`,
+  isEntry,
+  createRoom,
+  createTicker: () => foldTick,
+  scope: (room) => ({ matchId: room.matchId, round: room.round }),
+  clock: (room) => room.simulationTick,
+  steps: stepsPerTick,
+  maxSteps: MAX_STEPS_PER_TICK,
+  view,
+  hash,
+  checkpoint: { leading: 5, encode, decode },
+  members: (room) =>
+    [...room.seats.values()].sort(
+      (a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1),
+    ),
+  seat: (room, id) => room.seats.get(id),
+  stage: (room) => room.stage,
+  settings: (room) => room.settings,
+  matchSettings: (room) => room.play,
+  seating: {
+    capacity: CAPACITY,
+    minPlayers: 1,
+    maxWatchers: MAX_WATCHERS,
+    seatName,
+    isAvatar,
+    defaultAvatar: AVATAR,
+    parseSettings,
+    soloSettings: (settings) => ({ ...settings, display: false }),
+    sharedScreen: (settings) => settings.display,
+    botId(room, pending) {
+      let number = 1;
+      while (
+        room.seats.has(`${BOT_PREFIX}${number}`) ||
+        pending.has(`${BOT_PREFIX}${number}`)
+      )
+        number++;
+      return `${BOT_PREFIX}${number}`;
+    },
+    botName: (slot) => BOT_NAMES[slot % BOT_NAMES.length]!,
+    solo: { name: "You", bots: 3 },
+  },
+  text: {
+    ...defaultText,
+    needTwo: "At least one worm must be seated to start.",
+  },
+};
