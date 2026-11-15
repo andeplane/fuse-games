@@ -654,6 +654,26 @@ test("a viewer with a name is seated on arriving, once, in whichever seat is fre
   nameless.layout.update(0);
   assert.deepEqual(nameless.joins, []);
 
+  const typing = build("");
+  typing.root.hidden = false;
+  typing.form.hidden = false;
+  typing.layout.update(0);
+  const field = typing.form.querySelector("input")!;
+  field.value = "A";
+  field.dispatchEvent(
+    new typing.root.ownerDocument.defaultView!.Event("input", {
+      bubbles: true,
+    }),
+  );
+  typing.layout.update(0);
+  field.value = "Anders";
+  typing.layout.update(0);
+  assert.deepEqual(
+    typing.joins,
+    [],
+    "a name being typed is the player's to submit, not seated under its first letter",
+  );
+
   const optedOut = build("Anders", false);
   optedOut.root.hidden = false;
   optedOut.form.hidden = false;
