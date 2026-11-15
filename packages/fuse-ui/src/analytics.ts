@@ -61,6 +61,7 @@ export interface AnalyticsEnvironment extends DeliveryEnvironment {
   onStorage?(listener: (key: string | null) => void): void;
   onFlush?(listener: () => void): void;
   onActivity?(listener: () => void): void;
+  clearAdmission?(): void;
 }
 export interface Analytics {
   start(superProperties: Record<string, unknown>): void;
@@ -101,8 +102,10 @@ export function createAnalytics(
     });
   };
   const sync = () => {
-    if (status() !== "on") delivery.clear();
-    else if (started) delivery.flush();
+    if (status() !== "on") {
+      environment.clearAdmission?.();
+      delivery.clear();
+    } else if (started) delivery.flush();
     for (const listener of listeners) {
       try {
         listener();
@@ -130,7 +133,10 @@ export function createAnalytics(
       started = true;
       superProperties = { ...superProperties, ...clean(properties) };
       if (status() === "on") delivery.flush();
-      else delivery.clear();
+      else {
+        environment.clearAdmission?.();
+        delivery.clear();
+      }
     },
     track(event, properties, localScope) {
       if (started && status() === "on")
@@ -170,9 +176,11 @@ export function createAnalytics(
 }
 export function createBrowserAnalytics(gameId: string): Analytics {
   const storage = safeStorage(() => localStorage);
-  let session: string | undefined;
+  const admissionStorage = safeStorage(() => sessionStorage);
+  const admissionKey = "fuse-metrics-admission";
   return createAnalytics(gameId, {
     storage,
+    clearAdmission: () => admissionStorage.removeItem(admissionKey),
     now: () => Date.now(),
     uuid: () => crypto.randomUUID(),
     schedule: (callback, delay) => {
@@ -184,12 +192,19 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         return await navigator.locks.request("fuse-analytics", operation);
       return await operation();
     },
-    send: async (events) => {
+    send: async (events, enabled) => {
       const endpoints = createEndpoints(
         { basePath: "/", apiOrigin: import.meta.env.VITE_API_ORIGIN },
         location.origin,
       );
-      if (!session) {
+      let session = admissionStorage.getItem(admissionKey) ?? undefined;
+      const expires = Number(session?.split(".")[0]);
+      if (
+        !session ||
+        !Number.isSafeInteger(expires) ||
+        expires <= Date.now() ||
+        expires > Date.now() + 3900_000
+      ) {
         const admission = await fetch(
           endpoints.apiUrl("/api/telemetry/session"),
           { method: "POST" },
@@ -205,7 +220,10 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         )
           throw new Error("Invalid metrics admission");
         session = body.token;
+        if (!enabled()) return [];
+        admissionStorage.setItem(admissionKey, session);
       }
+      if (!enabled()) return [];
       const response = await fetch(endpoints.apiUrl("/api/telemetry/events"), {
         method: "POST",
         headers: {
@@ -216,7 +234,7 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         keepalive: true,
       });
       if (response.status === 401) {
-        session = undefined;
+        admissionStorage.removeItem(admissionKey);
         throw new Error("Metrics session expired");
       }
       // A batch the service refuses outright will be refused again: retrying

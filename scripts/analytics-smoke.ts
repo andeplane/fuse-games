@@ -114,26 +114,30 @@ await page.waitForFunction(
 await page.getByRole("dialog").waitFor({ timeout: 180000 });
 await page
   .getByRole("dialog")
-  .getByRole("button", { name: /^(CLOSE|BACK TO LOBBY)$/ })
+  .getByRole("button", { name: /^Back$/ })
   .first()
   .click();
-await page.getByRole("button", { name: "RESULTS", exact: true }).click();
+const openResults = async () => {
+  await page.getByRole("button", { name: "Open game menu" }).click();
+  await page.getByRole("button", { name: "RESULTS", exact: true }).click();
+};
+await openResults();
 await page.waitForFunction(
   () => document.querySelectorAll("dialog[open]").length > 0,
 );
+const closeDialog = () =>
+  page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^Back$/ })
+    .first()
+    .click();
+await closeDialog();
 await page.waitForTimeout(6000);
 
 // What the solo match reported, before the second tab below adds an App Opened of its own.
 const soloReported = [...reported];
 
 // Switching analytics off clears queued events in every tab, and survives a reload.
-const closeDialog = () =>
-  page
-    .getByRole("dialog")
-    .getByRole("button", { name: /^(CLOSE|BACK TO LOBBY)$/ })
-    .first()
-    .click();
-await closeDialog();
 // Tab B: the landing page in the same browser, analytics on (the `?analytics=1` override is sticky).
 const other = await context.newPage();
 await other.goto(`${base}?mute`);
@@ -154,7 +158,7 @@ await other.locator("details.settings-privacy > summary").click();
 const otherToggle = other.locator("details.settings-privacy > button");
 assert.equal(await otherToggle.textContent(), "ANALYTICS ON");
 // Tab A queues an event in its own client batch, and tab B opts out before A's five-second flush.
-await page.getByRole("button", { name: "RESULTS", exact: true }).click();
+await openResults();
 await otherToggle.focus();
 await other.keyboard.press("Enter");
 assert.equal(await otherToggle.textContent(), "ANALYTICS OFF");
@@ -168,6 +172,7 @@ assert.equal(
 await other.close();
 // Tab A's own row heard about it, and works by keyboard in both directions without sending anything itself.
 await closeDialog();
+await page.getByRole("button", { name: "Open game menu" }).click();
 await page.getByRole("button", { name: "Player options", exact: true }).click();
 const analyticsToggle = page.locator(".settings-privacy > button");
 assert.equal(
@@ -181,13 +186,14 @@ assert.equal(await analyticsToggle.textContent(), "ANALYTICS ON");
 await page.keyboard.press("Enter");
 assert.equal(await analyticsToggle.textContent(), "ANALYTICS OFF");
 await closeDialog();
-await page.getByRole("button", { name: "RESULTS", exact: true }).click(); // would be another Recap Reopened
+await openResults(); // would be another Recap Reopened
 await page.waitForTimeout(6000);
 const sdkFetches: string[] = [];
 page.on("request", (request) => {
   if (/mixpanel/i.test(request.url())) sdkFetches.push(request.url());
 });
 await page.reload();
+await page.getByRole("button", { name: "Open game menu" }).click();
 await page.getByRole("button", { name: "Player options", exact: true }).click();
 assert.equal(
   await page.locator(".settings-privacy > button").textContent(),

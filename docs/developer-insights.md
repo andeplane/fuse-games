@@ -196,6 +196,70 @@ not immediate at the expiry time; application reads deny expired records.
 Verify the policies and their execution in the target project. These external
 policies are required for physical deletion and are not installed by deploy.
 
+### Preparing cleanup and alerts
+
+The following commands are an operator-reviewed change, not part of deploy.
+Substitute the real project, bucket, Firestore prefix, service, notification
+channel and billing account. Set a monthly budget in the billing account's
+currency and tune the example volume thresholds in
+`docs/operations/telemetry-alert-policy.json` to observed traffic. Cloud Billing
+notifications can lag usage; they are not a hard spend limit.
+
+```sh
+telemetry_project='PROJECT_ID'
+telemetry_bucket='PRIVATE_BUCKET_NAME'
+telemetry_prefix='FIRESTORE_PREFIX'
+telemetry_service='fuse-riders-gateway'
+telemetry_channel='projects/PROJECT_ID/notificationChannels/CHANNEL_ID'
+telemetry_billing='BILLING_ACCOUNT_ID'
+telemetry_budget='100USD'
+
+# Preserve all existing lifecycle rules. Review the merged JSON before applying:
+gcloud storage buckets describe "gs://${telemetry_bucket}" --project "$telemetry_project" --raw --format=json > /tmp/telemetry-bucket.json
+jq --slurpfile rule docs/operations/telemetry-anonymous-lifecycle-rule.json \
+  '(.lifecycle // {rule: []}) | .rule = ((.rule // []) + $rule | unique)' \
+  /tmp/telemetry-bucket.json > /tmp/telemetry-lifecycle.json
+cat /tmp/telemetry-lifecycle.json
+gcloud storage buckets update "gs://${telemetry_bucket}" --project "$telemetry_project" --lifecycle-file=/tmp/telemetry-lifecycle.json
+
+# Each collection group owns a cleanupAt timestamp. Enable the default database TTLs.
+for suffix in reports recordings recording-segments limits events memberships rollups actions action-tokens; do
+  gcloud firestore fields ttls update cleanupAt --project "$telemetry_project" \
+    --collection-group="${telemetry_prefix}-telemetry-${suffix}" --enable-ttl
+done
+
+# Log counters use request counts (a request can contain a batch), plus the
+# exact shared-budget rejection log; these do not include private report text.
+gcloud logging metrics create fuse_telemetry_reports --project "$telemetry_project" \
+  --log-filter="resource.type=cloud_run_revision AND resource.labels.service_name=\"${telemetry_service}\" AND httpRequest.requestUrl=~\"/api/telemetry/reports(\\\\?|$)\""
+gcloud logging metrics create fuse_telemetry_events --project "$telemetry_project" \
+  --log-filter="resource.type=cloud_run_revision AND resource.labels.service_name=\"${telemetry_service}\" AND httpRequest.requestUrl=~\"/api/telemetry/events(\\\\?|$)\""
+gcloud logging metrics create fuse_telemetry_quota --project "$telemetry_project" \
+  --log-filter="resource.type=cloud_run_revision AND resource.labels.service_name=\"${telemetry_service}\" AND (textPayload:\"Telemetry quota exceeded\" OR textPayload:\"Telemetry global report budget exceeded\")"
+gcloud monitoring policies create --project "$telemetry_project" \
+  --policy-from-file=docs/operations/telemetry-alert-policy.json --notification-channels="$telemetry_channel"
+gcloud billing budgets create --billing-account="$telemetry_billing" --display-name='Fuse project monthly spend' \
+  --filter-projects="projects/${telemetry_project}" --budget-amount="$telemetry_budget" \
+  --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 \
+  --threshold-rule=percent=1.0 --notifications-rule-monitoring-notification-channels="$telemetry_channel"
+
+# Verify the effective policies, TTL state, log metrics, alert and budget.
+gcloud storage buckets describe "gs://${telemetry_bucket}" --project "$telemetry_project" --raw --format='json(lifecycle)'
+gcloud firestore fields ttls list --project "$telemetry_project"
+gcloud logging metrics list --project "$telemetry_project" --filter='name:fuse_telemetry_'
+gcloud monitoring policies list --project "$telemetry_project" --filter='displayName="Fuse telemetry intake and quota"'
+gcloud billing budgets list --billing-account="$telemetry_billing"
+```
+
+Metrics and policy creation commands are for a first installation; inspect and
+update existing resources instead of creating duplicates. Verify a test object
+is removed after the asynchronous lifecycle window and send a controlled test
+alert through the chosen channel. The sample thresholds count HTTP requests,
+including refused requests, not the number of events within each batch.
+Also inspect bucket object versioning and soft-delete settings: lifecycle
+deletion can leave noncurrent or soft-deleted copies billable beyond two days.
+Choose and verify their retention separately before claiming physical deletion.
+
 The worker validates reserved object ownership/generation, uses fenced leases
 for duplicate/concurrent deliveries and persists transcripts and extraction
 before acknowledging. Delivery retries transient failures; inspect visible
