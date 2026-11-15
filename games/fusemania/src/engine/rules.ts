@@ -82,6 +82,25 @@ export const NO_ITEM = 0,
   FADE = 14,
   PINGPONG = 15;
 export const ITEM_KINDS = 16;
+/** Continuous amplitude versus an on/off rule. Flip never leaves lanes halfway swapped. */
+export const ITEM_SCALABLE: readonly boolean[] = [
+  false,
+  true,
+  true,
+  true,
+  true,
+  true,
+  false,
+  true,
+  true,
+  true,
+  true,
+  false,
+  false,
+  false,
+  true,
+  true,
+];
 /** Whether an item is thrown at the others (true) or used on its holder. */
 export const isAttack = (item: number): boolean =>
   (item >= DRUNK && item <= LAG) || item === FADE || item === PINGPONG;

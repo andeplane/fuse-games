@@ -24,6 +24,7 @@ import { chosenMap, safeStore, session, NAME_KEY } from "./session.js";
 import { installLifecycle } from "./lifecycle.js";
 import { chosenAvatar } from "./avatars.js";
 import { createRadio } from "./radio.js";
+import { createResultsHistory } from "fuse-ui/results-history";
 
 const root = document.querySelector<HTMLElement>("#app")!;
 const analytics = startGameAnalytics("ball-bros");
@@ -104,7 +105,17 @@ function render() {
       display: online?.shared ?? false,
       mapId: chosenMap(store),
     };
-    destroy = mountGame(root, {
+    let historyPlayer = "";
+    const history = createResultsHistory({
+      fetch: social.reportFetch,
+      apiUrl: endpoints.apiUrl,
+      gameId: "ball-bros",
+      ...(online ? { room: { code: online.code, token: online.token } } : {}),
+      signedIn: social.isSignedIn,
+      playerId: () => historyPlayer,
+      now: () => performance.now(),
+    });
+    const stop = mountGame(root, {
       online: online && {
         ...online,
         link: link(`?room=${online.code}`),
@@ -125,7 +136,13 @@ function render() {
       renderer: (parent) => createRenderer(parent, import.meta.env.BASE_URL),
       runtime: (callbacks) =>
         new BallRuntime(
-          callbacks,
+          {
+            ...callbacks,
+            ready(id, hostId) {
+              historyPlayer = id;
+              callbacks.ready(id, hostId);
+            },
+          },
           online
             ? {
                 displayOnly: online.display,
@@ -156,7 +173,16 @@ function render() {
       base: import.meta.env.BASE_URL,
       search: location.search,
       observePlay,
+      history(snapshot) {
+        if (online?.display) return;
+        history.observe(snapshot.receipts, snapshot.confirmedTick);
+      },
+      closeHistory: history.close,
     });
+    destroy = () => {
+      stop();
+      history.dispose();
+    };
     activeRadio?.setMuted(!soundEnabled);
   }
   root.querySelector("header")?.append(social.element());

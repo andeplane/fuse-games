@@ -16,7 +16,7 @@ import {
   sessionFor,
   type Store,
 } from "../src/app/session.js";
-import { fold, runTo, started } from "./fixtures/fuseDrivers.js";
+import { addBot, fold, runTo, started } from "./fixtures/fuseDrivers.js";
 import { defined } from "./fixtures/defined.js";
 
 /** A Store backed by a Map, so the session tests never touch real storage. */
@@ -200,6 +200,25 @@ test("a device owes its report once the race is confirmed, and owes it once", ()
     [],
     "a device that did not race owes nothing",
   );
+});
+
+test("bots remain in race standings but never attest either result", () => {
+  const room = started(undefined, [addBot("bot:1", 2)]);
+  const race = defined(room.race, "race");
+  room.race = {
+    ...race,
+    phase: "finished",
+    trucks: race.trucks.map((truck) => ({ ...truck, finishedTick: race.tick })),
+  };
+  fold(room);
+  const reports = dueReports(room, "a", room.finishTick, new Set());
+  assert.equal(reports.length, 2);
+  for (const report of reports) {
+    assert.ok(
+      report.result.players.some((player) => player.playerId === "bot:1"),
+    );
+    assert.deepEqual([...report.result.finishers].sort(), ["a", "b"]);
+  }
 });
 
 test("the page's query decides landing, solo, creator, joiner or shared screen", () => {

@@ -5,6 +5,7 @@ import {
 } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
 import "fuse-ui/social.css";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
@@ -55,6 +56,7 @@ import type { WorldView } from "../engine/view.js";
 import { createSmoother, forward, forwardInputs, memoBot } from "./forward.js";
 import { GraveyardRuntime } from "../online/runtime.js";
 import type { View } from "../online/game.js";
+import { readShiftHistory } from "./history.js";
 import { seatName } from "../online/names.js";
 import { draw, COLORS } from "../render/scene.js";
 import {
@@ -113,7 +115,7 @@ function navigate(search = "") {
   audio.stop();
   location.href = url(search);
 }
-function header(extra: HTMLElement[] = []) {
+function header(extra: HTMLElement[] = [], leave?: () => void) {
   const h = el("header", "", "top"),
     portal = createAppPortal({
       document,
@@ -123,6 +125,19 @@ function header(extra: HTMLElement[] = []) {
     }),
     brand = el("a", "GRAVEYARD SHIFT", "brand");
   brand.href = url();
+  if (leave)
+    brand.onclick = (event) => {
+      if (
+        event.button ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      event.preventDefault();
+      leave();
+    };
   h.append(portal.element, brand, social.element(), ...extra);
   return createTopBar({
     element: h,
@@ -250,6 +265,28 @@ function room() {
   const solo = session.kind === "solo",
     code = session.kind === "room" ? session.code : "SOLO",
     display = session.kind === "room" && session.role === "display";
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code: session.code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => self,
+    now: () => performance.now(),
+  });
+  const leave = () => {
+    const leavingRuntime = runtime;
+    history.close(
+      () => readShiftHistory(leavingRuntime),
+      () => {
+        leavingRuntime?.stop();
+        audio.stop();
+        location.href = url();
+      },
+    );
+  };
   let host = solo,
     shared = false;
   // The room's state is one line: at the room's foot while it waits, in the bar during a shift. What went wrong is
@@ -276,10 +313,10 @@ function room() {
   const exit = button("LEAVE"),
     retry = button("RECONNECT", "retry"),
     menu = el("div", "", "gs-menu");
-  exit.onclick = () => navigate();
+  exit.onclick = leave;
   retry.onclick = () => location.reload();
   menu.append(exit, retry);
-  app.append(header([live.element, menu]));
+  app.append(header([live.element, menu], leave));
   const main = el("main", "", "room"),
     lobby = el("section", "", "lobby"),
     roster = createRoster({ emptyText: "Waiting for the night crew" }),
@@ -467,7 +504,7 @@ function room() {
   // The result: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({
     document,
-    onBack: () => navigate(),
+    onBack: leave,
     backText: "Leave",
     onAction: (id) => {
       if (id === "rematch") runtime?.readyUp();
@@ -524,6 +561,10 @@ function room() {
         host = solo || frame.managerId === self;
         shared = settings.display;
         runtime?.flush();
+        if (!display) {
+          const snapshot = readShiftHistory(runtime);
+          history.observe(snapshot.receipts, snapshot.confirmedTick);
+        }
         const mine = frame.seats.find((s) => s.id === self && !s.watcher);
         ownSeat = frame.stage === "lobby" ? mine : undefined;
         observeConfirmedPlay(
@@ -716,6 +757,7 @@ function room() {
       runtime?.stop();
     },
     destroy: () => {
+      history.dispose();
       modalInput.dispose();
       stopPlaytestInput();
       alive = false;

@@ -20,7 +20,43 @@ import {
   type TransportEvents,
 } from "fuse-network-fe";
 import type { NotificationApi } from "./friends-notify.js";
-import { newRating, type Rating } from "fuse-platform/rating";
+import {
+  newRating,
+  SOLO_RATING_PLAYER_ID,
+  type Rating,
+} from "fuse-platform/rating";
+
+/** Translate the runtime's local seat only at the authenticated solo HTTP boundary. */
+export function soloReportBody(body: string): string {
+  const raw: unknown = JSON.parse(body);
+  const record = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
+  if (!record(raw) || !record(raw.result)) return body;
+  const result = raw.result;
+  const id = (value: unknown) =>
+    value === "solo" ? SOLO_RATING_PLAYER_ID : value;
+  return JSON.stringify({
+    ...raw,
+    result: {
+      ...result,
+      ...(Object.hasOwn(result, "winnerId")
+        ? { winnerId: id(result.winnerId) }
+        : {}),
+      ...(Array.isArray(result.finishers)
+        ? { finishers: result.finishers.map(id) }
+        : {}),
+      ...(Array.isArray(result.players)
+        ? {
+            players: result.players.map((player) =>
+              record(player)
+                ? { ...player, playerId: id(player.playerId) }
+                : player,
+            ),
+          }
+        : {}),
+    },
+  });
+}
 
 interface Player {
   playerId: string;
@@ -214,6 +250,7 @@ export function createGameSocial(options: GameSocialOptions) {
       ),
     profileUrl: endpoints.apiUrl(`${gamePath}/me`),
     leaderboardUrl: endpoints.apiUrl(`${gamePath}/leaderboard`),
+    activityApiUrl: endpoints.apiUrl("/api/activity"),
     localName,
     track: options.track,
     names: {
@@ -250,15 +287,21 @@ export function createGameSocial(options: GameSocialOptions) {
       return row;
     },
     matchDetail: players,
-    leaderboard: (entries) => {
+    leaderboard: (entries, handlers) => {
       const list = node("ol", "", "fui-social-results");
       for (const player of entries) {
         const row = node("li");
+        const open = node("button", player.name, "fui-button");
+        open.type = "button";
+        open.onclick = () => {
+          if (player.publicId)
+            handlers.openPlayer(player.publicId, player.name);
+        };
+        open.disabled = !player.publicId;
         row.append(
-          node(
-            "span",
-            `#${player.rank} · ${player.name} · ${Math.round(player.elo)} ELO`,
-          ),
+          node("span", `#${player.rank} · `),
+          open,
+          node("span", ` · ${Math.round(player.elo)} ELO`),
         );
         if (player.publicId) row.append(friends.friendButton(player.publicId));
         list.append(row);
@@ -336,6 +379,9 @@ export function createGameSocial(options: GameSocialOptions) {
   return {
     /** Move these controls into the current header when a game's page is rebuilt. */
     element: () => controls,
+    openPlayer: (publicId: string, name: string) =>
+      profile.openPlayer(publicId, name),
+    isSignedIn: () => signedIn,
     playerName: (fallback: string | null | undefined) =>
       localName() ?? fallback,
     friends,
@@ -344,6 +390,7 @@ export function createGameSocial(options: GameSocialOptions) {
       const url = new URL(String(input), win.location.href);
       const expected = new URL(endpoints.apiUrl(`${gamePath}/me`));
       const headers = new Headers(init?.headers);
+      let body = init?.body;
       if (
         url.origin === expected.origin &&
         url.pathname.startsWith(gamePath + "/") &&
@@ -355,8 +402,18 @@ export function createGameSocial(options: GameSocialOptions) {
         if (signedIn && !token)
           throw new Error("Sign-in unavailable; retry report");
         if (token) headers.set("X-Fuse-Identity", token);
+        if (
+          url.pathname === `${gamePath}/me/results` ||
+          url.pathname === `${gamePath}/me/round-results`
+        ) {
+          if (typeof body === "string") body = soloReportBody(body);
+        }
       }
-      return options.fetch(input, { ...init, headers });
+      return options.fetch(input, {
+        ...init,
+        headers,
+        ...(body === undefined ? {} : { body }),
+      });
     }) as typeof fetch,
     /** Wrap admission/close without putting account data in the mesh or changing the room runtime. */
     transport(

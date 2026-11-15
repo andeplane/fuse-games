@@ -155,6 +155,7 @@ export function settleHistory<T>(
   // than the rest; one who reports as a guest is then left out too.
   const humans = stayed.filter((p) => match.uidByPlayer[p.playerId]);
   const eligible =
+    game.ratesRounds !== false &&
     match.result.round !== undefined &&
     game.minRatedRoundTicks !== undefined &&
     match.result.roundDuration !== undefined &&

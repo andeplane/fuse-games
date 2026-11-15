@@ -38,6 +38,7 @@ import {
 import { createAppPortal } from "fuse-ui/portal";
 import { createTopBar } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import {
   createPlayMetrics,
@@ -234,6 +235,18 @@ function landing(): void {
   app.replaceChildren(page);
 }
 function room(code: string, display: boolean, practice = false): void {
+  const historyToken = practice
+    ? undefined
+    : roomToken(store, code, display, secret);
+  const resultsHistory = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(historyToken ? { room: { code, token: historyToken } } : {}),
+    signedIn: () => social.isSignedIn(),
+    playerId: () => me,
+    now: () => performance.now(),
+  });
   const metricsScope = practice ? crypto.randomUUID() : code;
   const observePlay = createPlayMetrics(analytics.track, () =>
     performance.now(),
@@ -685,6 +698,9 @@ function room(code: string, display: boolean, practice = false): void {
             roomScope: metricsScope,
           }),
       );
+      const confirmed = runtime.confirmedFrame?.();
+      if (!display && !practice && confirmed)
+        resultsHistory.observe(confirmed.history, confirmed.logTick);
       ownSeat = frame.seats.find((s) => s.id === me && !s.watcher);
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
@@ -850,7 +866,7 @@ function room(code: string, display: boolean, practice = false): void {
         {
           displayOnly: display,
           transport: (events) => {
-            const token = roomToken(store, code, display, secret);
+            const token = historyToken!;
             return social.transport(
               code,
               token,
@@ -866,6 +882,7 @@ function room(code: string, display: boolean, practice = false): void {
         },
       );
   const stop = () => {
+    resultsHistory.dispose();
     stopped = true;
     cancel();
     modalInput.dispose();
@@ -876,8 +893,16 @@ function room(code: string, display: boolean, practice = false): void {
     audio.destroy();
   };
   leave.onclick = () => {
-    stop();
-    location.href = endpoints.appUrl();
+    resultsHistory.close(
+      () => ({
+        receipts: currentFrame?.history ?? [],
+        confirmedTick: runtime.confirmedFrame?.()?.logTick ?? -1,
+      }),
+      () => {
+        stop();
+        location.href = endpoints.appUrl();
+      },
+    );
   };
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
