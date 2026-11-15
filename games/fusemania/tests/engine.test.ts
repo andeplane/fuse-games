@@ -411,6 +411,7 @@ test("an attack lands on the others after its warning; a shield swallows it", ()
       thrown + ATTACK_LEAD_MS,
       thrown + ATTACK_LEAD_MS + ITEM_MS[DRUNK]!,
       0,
+      600,
     ],
   ]);
   assert.deepEqual(state.players[2]!.effects, []);

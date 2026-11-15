@@ -39,10 +39,47 @@ export function dueReports(
     : [];
 }
 
+/** A one-human local match has no rollback or room capability. Shared sign-in transport owns the final solo ID. */
+export function localReports(
+  room: FuseLaneRoom,
+  humans: readonly string[],
+  signedIn: boolean,
+  sent: ReadonlySet<string>,
+): DueReport[] {
+  if (!signedIn || humans.length !== 1) return [];
+  const me = humans[0]!;
+  const id = (value: string) => (value === me ? "solo" : value);
+  return dueReports(room, me, room.tick, sent).flatMap((report) => {
+    // Other people in pass-and-play cannot be claimed by this browser's one signed-in account.
+    if (
+      report.result.players.some(
+        (player) => player.playerId !== me && !isBotId(player.playerId),
+      )
+    )
+      return [];
+    return [
+      {
+        ...report,
+        result: {
+          ...report.result,
+          ...(report.result.winnerId === undefined
+            ? {}
+            : { winnerId: id(report.result.winnerId) }),
+          finishers: report.result.finishers.map(id),
+          players: report.result.players.map((player) => ({
+            ...player,
+            playerId: id(player.playerId),
+          })),
+        },
+      },
+    ];
+  });
+}
+
 export interface ReportTransport {
   fetch: typeof fetch;
   /** The room capability that proves which seat is reporting. */
-  roomToken: string;
+  roomToken?: string;
   wait?: (ms: number) => Promise<void>;
 }
 
@@ -69,7 +106,9 @@ export async function sendReport(
         keepalive: true,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${transport.roomToken}`,
+          ...(transport.roomToken === undefined
+            ? {}
+            : { Authorization: `Bearer ${transport.roomToken}` }),
         },
       });
       if (response.ok) {
