@@ -453,7 +453,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               );
             }
           }
-          if (name === "SETTINGS") {
+          if (name === "Player options") {
             await inside(
               page,
               page.getByRole("button", { name: "EFFECTS ON", exact: true }),
@@ -475,7 +475,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             page.getByRole("button", { name: "Back", exact: true }),
           );
           await page.screenshot({
-            path: `artifacts/menu-${tag}-${name === "SETTINGS" ? "audio" : name.replaceAll(" ", "-")}.png`,
+            path: `artifacts/menu-${tag}-${name === "Player options" ? "audio" : name.replaceAll(" ", "-")}.png`,
           });
           await page.getByRole("button", { name: "Back", exact: true }).click();
           await dialog.waitFor({ state: "hidden" });
