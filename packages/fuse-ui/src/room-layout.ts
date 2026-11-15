@@ -248,6 +248,13 @@ export function createRoomLayout(options: RoomLayoutOptions) {
    * name: no seat is named, so the room gives the first free one, and "Sit here" moves the player from there.
    */
   let autoSeated = options.autoSeat === false;
+  // A name being typed is the player's to submit. Without this the room would seat a newcomer on its next update,
+  // under the first letter typed.
+  const typedIsTheirs = (form: HTMLElement | undefined) =>
+    form?.addEventListener("input", () => {
+      autoSeated = true;
+    });
+  typedIsTheirs(admission);
   const autoSeat = () => {
     if (autoSeated || !built || root.hidden || !admission || admission.hidden)
       return;
@@ -504,6 +511,7 @@ export function createRoomLayout(options: RoomLayoutOptions) {
     },
     attachJoin(form: HTMLFormElement) {
       admission = form;
+      typedIsTheirs(form);
       joinHome = doc.createComment("Late join form");
       form.before(joinHome);
       observer?.observe(form, {

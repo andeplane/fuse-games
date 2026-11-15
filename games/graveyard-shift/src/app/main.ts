@@ -36,6 +36,7 @@ import {
   createNotice,
   createRoster,
   createResultsScreen,
+  createSharedTvOption,
   el,
 } from "fuse-ui";
 import {
@@ -112,7 +113,7 @@ function navigate(search = "") {
   audio.stop();
   location.href = url(search);
 }
-function header() {
+function header(extra: HTMLElement[] = []) {
   const h = el("header", "", "top"),
     portal = createAppPortal({
       document,
@@ -122,12 +123,7 @@ function header() {
     }),
     brand = el("a", "GRAVEYARD SHIFT", "brand");
   brand.href = url();
-  h.append(
-    portal.element,
-    brand,
-    social.element(),
-    el("span", "A FUSE GAME", "eyebrow"),
-  );
+  h.append(portal.element, brand, social.element(), ...extra);
   return createTopBar({
     element: h,
     gameId: GAME,
@@ -191,13 +187,12 @@ function canvas() {
   );
   return c;
 }
-const top = header();
-app.append(top);
 document.addEventListener("pointerdown", () => audio.resume());
 document.addEventListener("keydown", () => audio.resume());
 if (!query.has("room") && query.get("solo") !== "1") landing();
 else room();
 function landing() {
+  app.append(header());
   const hero = el("main", "", "landing"),
     art = el("section", "", "hero"),
     c = canvas();
@@ -215,13 +210,6 @@ function landing() {
   title.remove();
   hero.classList.add("fui-menu-stage");
   art.classList.add("fui-menu-scene");
-  const shared = el("label", "", "shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV + phone controllers"));
   const card = createLandingCard({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -238,7 +226,6 @@ function landing() {
     valid: validRoomCode,
     onJoin: (code) => navigate(`?room=${code}`),
   });
-  card.create.after(shared);
   const guide = button("HOW TO PLAY", "guide");
   guide.onclick = handbook;
   card.menu.help.append(
@@ -257,7 +244,7 @@ function room() {
     () => uuid().replaceAll("-", "") + uuid().replaceAll("-", ""),
   );
   if (session.kind === "invalid" || session.kind === "landing") {
-    app.append(el("p", "Invalid room code. Return to the menu."));
+    app.append(header(), el("p", "Invalid room code. Return to the menu."));
     return;
   }
   const solo = session.kind === "solo",
@@ -265,18 +252,60 @@ function room() {
     display = session.kind === "room" && session.role === "display";
   let host = solo,
     shared = false;
-  const status = createNotice({ className: "status" }),
-    exit = button("LEAVE");
+  // The room's state is one line: at the room's foot while it waits, in the bar during a shift. What went wrong is
+  // said apart from it, above the room. The room's code is on its invitation.
+  const status = createNotice({ className: "gs-status" }),
+    live = createNotice({ className: "gs-live" }),
+    problem = createNotice({ className: "gs-alert" });
+  // The room gone: nothing that arrives afterwards may take that off the screen.
+  let over = false;
+  const say = (text: string, tone: "info" | "error", last = false) => {
+    if (over) return;
+    over = last;
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
+  // Leaving and reconnecting are the bar's menu's: the room has Back, a shift has only the bar.
+  const exit = button("LEAVE"),
+    retry = button("RECONNECT", "retry"),
+    menu = el("div", "", "gs-menu");
   exit.onclick = () => navigate();
-  top.append(el("b", code, "room-code"), status.element, exit);
+  retry.onclick = () => location.reload();
+  menu.append(exit, retry);
+  app.append(header([live.element, menu]));
   const main = el("main", "", "room"),
     lobby = el("section", "", "lobby"),
     roster = createRoster({ emptyText: "Waiting for the night crew" }),
     add = button("+ ADD BOT"),
     ready = button("READY", "primary"),
-    tv = button("OPEN TV"),
     help = button("HOW TO PLAY");
   help.onclick = handbook;
+  const lobbyNote = el(
+      "p",
+      "Every human hunter presses READY. Bots are always ready.",
+      "fui-lobby-note",
+    ),
+    rules = el("p", "90 seconds. Two shrines. Only banked energy counts.");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates, once the room has taken it.
+  const sharedTv = createSharedTvOption({
+    className: "gs-tv-option",
+    onChange: (display) => {
+      const sent =
+        runtime?.command({ type: "settings", settings: { display } }) ?? false;
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(url(`?room=${code}&display=1`), "_blank", "noopener"),
+  });
   add.onclick = () =>
     runtime?.command({
       type: "bot",
@@ -284,7 +313,6 @@ function room() {
       slot: requestedRoomSlot(add),
     });
   ready.onclick = () => runtime?.readyUp();
-  tv.onclick = () => window.open(url(`?room=${code}&display=1`), "_blank");
   if (!solo) {
     const invite = createInviteCard({
       code,
@@ -311,15 +339,6 @@ function room() {
       admission.submit(v);
     },
   });
-  const actions = el("div", "", "actions");
-  actions.append(add, ready, tv, help);
-  lobby.append(
-    el("p", "NIGHT CREW", "eyebrow"),
-    el("h1", "The gates are open."),
-    roster.element,
-    el("p", "Every human hunter presses READY. Bots are always ready."),
-    actions,
-  );
   const play = el("section", "", "play"),
     hud = el("div", "", "hud"),
     timer = el("strong", "01:30", "clock"),
@@ -457,10 +476,9 @@ function room() {
   });
   /** What the results screen last showed: it is rebuilt only when the result itself changed. */
   let shownResult = "";
-  main.append(name.form, lobby, play, results.element);
+  main.append(problem.element, name.form, lobby, play, results.element);
   ready.hidden = true;
   add.hidden = true;
-  tv.hidden = true;
   play.hidden = true;
   name.form.hidden = true;
   app.append(main);
@@ -478,10 +496,17 @@ function room() {
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     roster,
+    friends: social.friends,
     capacity: 5,
     join: name.form,
     addAI: add,
-    actions: [ready, tv, help],
+    settings: [rules, help],
+    actions: [lobbyNote],
+    actionsInHeader: true,
+    status: status.element,
+    ...(solo
+      ? { compact: true, heading: "Solo shift" }
+      : { heading: "Room", extras: [sharedTv.element] }),
   });
   let previous: World | undefined;
   runtime = new GraveyardRuntime(
@@ -521,6 +546,7 @@ function room() {
           },
         );
         main.dataset.phase = frame.stage;
+        main.dataset.screen = frame.stage === "lobby" ? "lobby" : "play";
         main.dataset.tick = String(frame.tick);
         main.dataset.layout =
           shared && !display && !!mine ? "controller" : "arena";
@@ -531,7 +557,10 @@ function room() {
         c.hidden = shared && !display && !!mine;
         personal.hidden = display;
         add.hidden = !host || frame.seats.filter((s) => !s.watcher).length >= 5;
-        tv.hidden = !host || !shared;
+        sharedTv.update(
+          shared,
+          host && !display && !solo && frame.stage === "lobby",
+        );
         ready.hidden = display || !mine;
         ready.textContent = frame.ready[self] ? "WAITING FOR CREW…" : "READY";
         // A newcomer without a seat still needs the name form, which the screen would cover.
@@ -576,11 +605,16 @@ function room() {
             .map((s) => ({
               id: s.id,
               slot: s.slot,
-              name:
-                s.name +
-                (s.bot ? " / BOT" : frame.ready[s.id] ? " / READY" : ""),
+              name: s.name,
+              status: s.bot
+                ? "BOT"
+                : !s.connected
+                  ? "AWAY"
+                  : frame.ready[s.id]
+                    ? "READY"
+                    : "NOT READY",
               color: COLORS[s.slot]!,
-              connected: s.connected,
+              host: s.id === frame.managerId,
             })),
         );
         for (const [id, row] of roster.entries()) {
@@ -643,16 +677,18 @@ function room() {
       },
       event() {},
       status: (s) => {
-        status.show(roomFailure(s), "info");
+        const shown = roomFailure(s);
+        say(shown, shown === s ? "info" : "error");
       },
       ready(id, isHost) {
         self = id;
         host = isHost;
       },
       ended() {
-        status.show(
+        say(
           "Room ended. Return to the menu to create a new shift.",
           "error",
+          true,
         );
       },
     },
@@ -674,9 +710,6 @@ function room() {
         }
       : { humanName: social.playerName(store.getItem(names.name)) ?? "Hunter" },
   );
-  const retry = button("RECONNECT", "retry");
-  retry.onclick = () => location.reload();
-  top.append(retry);
   installRoomLifecycle(window, {
     stop: () => {
       clear();
