@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-lane.jpg",
   "tagline": "Live a week in a harbour town. Inspired by Jones in the Fast Lane.",
   "mark": "FT",
-  "accent": "#3ddc84"
+  "accent": "#3ddc84",
+  "screenshots": [
+    "gallery/fuse-lane.jpg",
+    "gallery/fuse-lane-menu.jpg",
+    "gallery/fuse-lane-controls.jpg"
+  ]
 }

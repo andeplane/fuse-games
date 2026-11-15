@@ -18,6 +18,7 @@ import {
   createInviteNotifier,
   type NotificationApi,
 } from "./friends-notify.js";
+import { browserGameBridge, type GameDesktopBridge } from "./desktop-bridge.js";
 
 /**
  * Fuse Riders' friends panel: fuse-ui's dialog over the polling client, the account's sign-in state and invite
@@ -55,6 +56,11 @@ export interface FriendsPanelDependencies {
   };
   /** The poll interval; smokes shorten it. */
   pollMs?: number;
+  gameId?: string;
+  /** Optional explicit desktop surface for composed tests. */
+  desktopBridge?: (
+    invite: (publicId: string, accountId: string) => Promise<unknown>,
+  ) => GameDesktopBridge;
 }
 export interface FriendsPanelHandle {
   button: HTMLButtonElement;
@@ -90,6 +96,17 @@ export function createFriendsPanel(
     ...(dependencies.clock ? { clock: dependencies.clock } : {}),
     ...(dependencies.pollMs ? { pollMs: dependencies.pollMs } : {}),
   });
+  const inviteFromDesktop = async (id: string, accountId: string) => {
+    const sent = await client.invite([id], accountId);
+    if (sent < 1) throw new Error("Invitation not delivered");
+  };
+  const bridge =
+    dependencies.desktopBridge?.(inviteFromDesktop) ??
+    browserGameBridge(
+      doc.defaultView,
+      dependencies.gameId ?? "fuse-riders",
+      inviteFromDesktop,
+    );
   const notifier = createInviteNotifier({
     notifications:
       "notifications" in dependencies
@@ -151,6 +168,15 @@ export function createFriendsPanel(
   panel.button.classList.add("friends-button");
   panel.dialog.classList.add("friends-dialog");
   panel.button.title = "Friends: who is online, requests and invites";
+  const openDesktopFriends = (event: Event) => {
+    if (bridge.openFriends()) {
+      const menu = panel.button.closest("dialog");
+      if (menu?.open) menu.close();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+  panel.button.addEventListener("click", openDesktopFriends, { capture: true });
   const render = () => {
     const { view, loading, error } = client.state();
     const state: FriendsPanelState = {
@@ -185,6 +211,10 @@ export function createFriendsPanel(
     stopWatching();
     stopInvites();
     stopAccount();
+    bridge.dispose();
+    panel.button.removeEventListener("click", openDesktopFriends, {
+      capture: true,
+    });
     client.dispose();
   };
   win.addEventListener(
@@ -203,6 +233,7 @@ export function createFriendsPanel(
     friendButton: panel.friendButton,
     setRoom: (room) => {
       client.setRoom(room);
+      bridge.setRoom(room?.code);
       render();
     },
     publicIdOfMember: (memberId) =>

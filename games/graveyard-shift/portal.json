@@ -3,5 +3,10 @@
   "screenshot": "gallery/graveyard-shift.jpg",
   "tagline": "Catch. Carry. Contain.",
   "mark": "GS",
-  "accent": "#7cf3cc"
+  "accent": "#7cf3cc",
+  "screenshots": [
+    "gallery/graveyard-shift.jpg",
+    "gallery/graveyard-shift-menu.jpg",
+    "gallery/graveyard-shift-controls.jpg"
+  ]
 }

@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-freight.jpg",
   "tagline": "Collect, steal, deliver.",
   "mark": "FF",
-  "accent": "#ffe46b"
+  "accent": "#ffe46b",
+  "screenshots": [
+    "gallery/fuse-freight.jpg",
+    "gallery/fuse-freight-menu.jpg",
+    "gallery/fuse-freight-controls.jpg"
+  ]
 }

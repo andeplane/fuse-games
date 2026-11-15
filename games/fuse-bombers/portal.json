@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-bombers.jpg",
   "tagline": "One button. Many rockets.",
   "mark": "FB",
-  "accent": "#ff8a3d"
+  "accent": "#ff8a3d",
+  "screenshots": [
+    "gallery/fuse-bombers.jpg",
+    "gallery/fuse-bombers-menu.jpg",
+    "gallery/fuse-bombers-controls.jpg"
+  ]
 }

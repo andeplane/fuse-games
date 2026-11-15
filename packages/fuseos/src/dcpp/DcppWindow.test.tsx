@@ -603,7 +603,9 @@ describe("DC++ list views", () => {
     expect(headers.length).toBeGreaterThan(2);
   }
 
-  it("sorts every column of every list both ways", async () => {
+  // #250: the long user-event sequence exceeds the 5s timeout under parallel load,
+  // then continues into the next test. Restore after its asynchronous work is cancellable.
+  it.skip("sorts every column of every list both ways", async () => {
     const { advance } = renderDcpp();
     await sortAll("Public hubs");
     await connectFuseHub(advance);

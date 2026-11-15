@@ -3,5 +3,10 @@
   "tagline": "Arrows on the beat",
   "mark": "FM",
   "accent": "#ff4fd8",
-  "screenshot": "gallery/fusemania.jpg"
+  "screenshot": "gallery/fusemania.jpg",
+  "screenshots": [
+    "gallery/fusemania.jpg",
+    "gallery/fusemania-menu.jpg",
+    "gallery/fusemania-controls.jpg"
+  ]
 }

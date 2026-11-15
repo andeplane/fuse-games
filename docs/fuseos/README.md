@@ -21,7 +21,14 @@ pnpm fuseos:sync            # refresh js-dos and Clippy under public/fuseos from
 Useful URLs: `?open=fuseball` boots straight into a game window
 (`?open=fuseball,paint` opens several; also `winamp`, `settings` and the retro
 ids), `?mute` carries into every embedded game (what agents preview with), and
-the state of the desktop lives under the `fuseos.state` key in `localStorage`.
+the state of the desktop lives under the `fuseos.state.v1` key in `localStorage`.
+
+Startup opens Winamp, Fusteam and MSN Messenger. First-run Dial-Up Networking
+remembers a completed connection across reloads; Cancel skips it for this page only.
+Messenger signs in to the shared Fuse account, adds friends, chats and invites
+them into an embedded game's room. See [desktop communication](desktop-bridge.md)
+and [Messenger](friends-design.md). Fusteam shows three captures per game and
+opens each game's Hall of Fame from its Leaderboard action.
 
 ## What is where
 
