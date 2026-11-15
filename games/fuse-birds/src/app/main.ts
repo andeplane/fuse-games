@@ -248,11 +248,16 @@ function room(code: string, display: boolean, practice = false): void {
   status.classList.add("birds-status");
   problem.setAttribute("role", "alert");
   problem.hidden = true;
+  // Removed from the room or the room gone: nothing that arrives afterwards may take that off the screen.
+  let over = false;
   const say = (text: string) => {
+    if (over) return;
     problem.hidden = true;
     message.textContent = status.textContent = text;
   };
-  const fail = (text: string) => {
+  const fail = (text: string, last = false) => {
+    if (over) return;
+    over = last;
     message.textContent = status.textContent = "";
     problem.textContent = text;
     problem.hidden = false;
@@ -275,7 +280,7 @@ function room(code: string, display: boolean, practice = false): void {
     gameId: GAME,
     sound: masterSound,
   });
-  const lobby = el("section", "", "birds-lobby birds-card"),
+  const lobby = el("section", "", "birds-lobby"),
     roster = createRoster({ emptyText: "No birds yet" }),
     start = button("START BATTLE", "fui-button-primary");
   roster.element.classList.add("birds-roster");
@@ -632,12 +637,16 @@ function room(code: string, display: boolean, practice = false): void {
       else fail(shown);
     },
     kicked() {
-      fail("You were removed from this room. Leave to create or join another.");
+      fail(
+        "You were removed from this room. Leave to create or join another.",
+        true,
+      );
       cancel();
     },
     ended() {
       fail(
         "Room connection ended. Retry to reconnect, or leave to start another room.",
+        true,
       );
       cancel();
     },
