@@ -18,7 +18,10 @@ beside the player and equalizer. Home, Back and Winamp's minimize action retain
 playback. The active game iframe also survives visits to Home, Games, About
 and Winamp; choosing a different game replaces that iframe.
 
-The welcome dialog appears once per browser, with a versioned local preference.
+The phone-only welcome fills the screen with three swipeable highlights: the
+vibe-coded game collection, its shared multiplayer libraries, and an invitation
+to play. Continue and page dots provide alternatives to swiping; Skip dismisses
+the introduction at any point. It appears once per browser, with a versioned local preference.
 If storage is unavailable, it can still be dismissed for the current visit.
 About explains navigation and playback and can reopen the welcome dialog.
 

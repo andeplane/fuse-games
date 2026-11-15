@@ -114,6 +114,18 @@ it("dismisses first-visit welcome durably and makes it available in About", () =
   };
   const first = render(<Phone {...props()} welcomePreference={preference} />);
   expect(screen.getByRole("dialog")).toBeVisible();
+  expect(screen.getByText(/collection of vibe-coded games/)).toBeVisible();
+  const announcement = screen
+    .getByText(/collection of vibe-coded games/)
+    .closest("[aria-live]");
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(screen.getByText(/Shared libraries power multiplayer/)).toBeVisible();
+  expect(
+    screen
+      .getByText(/Shared libraries power multiplayer/)
+      .closest("[aria-live]"),
+  ).toBe(announcement);
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
   fireEvent.click(screen.getByRole("button", { name: "Let’s play" }));
   expect(seen).toBe(true);
   first.unmount();
@@ -122,6 +134,39 @@ it("dismisses first-visit welcome durably and makes it available in About", () =
   fireEvent.click(screen.getByRole("button", { name: "About" }));
   fireEvent.click(screen.getByRole("button", { name: "Show welcome again" }));
   expect(screen.getByRole("dialog")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Highlight 1" })).toHaveAttribute(
+    "aria-current",
+    "step",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("swipes welcome highlights without dismissing or treating vertical scrolling as a swipe", () => {
+  const dismiss = vi.fn();
+  render(
+    <Phone {...props()} welcomePreference={{ seen: () => false, dismiss }} />,
+  );
+  const content = screen
+    .getByText(/collection of vibe-coded games/)
+    .closest(".welcome-content")!;
+  fireEvent.touchStart(content, { touches: [{ clientX: 280, clientY: 200 }] });
+  fireEvent.touchEnd(content, {
+    changedTouches: [{ clientX: 80, clientY: 210 }],
+  });
+  expect(screen.getByText(/Shared libraries power multiplayer/)).toBeVisible();
+  fireEvent.touchStart(content, { touches: [{ clientX: 280, clientY: 200 }] });
+  fireEvent.touchEnd(content, {
+    changedTouches: [{ clientX: 220, clientY: 350 }],
+  });
+  expect(screen.getByRole("button", { name: "Highlight 2" })).toHaveAttribute(
+    "aria-current",
+    "step",
+  );
+  expect(dismiss).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Highlight 3" }));
+  fireEvent.click(screen.getByRole("button", { name: "Let’s play" }));
+  expect(dismiss).toHaveBeenCalledOnce();
 });
 
 it("opens Winamp directly from its URL and retains it through browser navigation", async () => {

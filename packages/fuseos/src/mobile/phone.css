@@ -403,8 +403,7 @@ button:focus-visible {
   margin: 0 0 20px;
 }
 .phone-play,
-.phone-about button,
-.phone-welcome button {
+.phone-about button {
   min-height: 48px;
   border: 0;
   border-radius: 10px;
@@ -457,37 +456,6 @@ button:focus-visible {
   color: #b6cce3;
   max-width: 65ch;
 }
-.phone-welcome {
-  width: min(360px, calc(100% - 32px));
-  border: 0;
-  border-radius: 20px;
-  background: #f1f5ff;
-  color: #142443;
-  padding: 28px;
-  box-shadow: 0 20px 60px #0006;
-}
-.phone-welcome::backdrop {
-  background: #020715b8;
-}
-.phone-welcome h1 {
-  margin: 0 0 12px;
-  font-size: 28px;
-}
-.phone-welcome ul {
-  padding-left: 20px;
-}
-.phone-welcome li + li {
-  margin-top: 12px;
-}
-.phone-welcome button {
-  width: 100%;
-  background: #244fc2;
-  color: white;
-}
-.phone-welcome > p:last-child {
-  font-size: 13px;
-  margin-bottom: 0;
-}
 @media (prefers-reduced-motion: reduce) {
   .phone-pages {
     scroll-behavior: auto;
@@ -537,8 +505,5 @@ button:focus-visible {
   }
   .phone-play {
     width: auto;
-  }
-  .phone-welcome {
-    max-height: calc(100dvh - 24px);
   }
 }

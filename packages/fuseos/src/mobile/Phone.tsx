@@ -3,6 +3,7 @@ import type { PortalGame } from "fuse-ui/portal";
 import { fuseSoundtrack } from "../winamp/fuseTracks";
 import type { WebampPlayer } from "../winamp/webampPlayer";
 import type { PhoneNavigation, WelcomePreference } from "./phoneNavigation";
+import { PhoneWelcome } from "./PhoneWelcome";
 
 export interface PhoneProps {
   games: readonly PortalGame[];
@@ -51,7 +52,6 @@ export function Phone({
   const [welcome, setWelcome] = useState(() =>
     welcomePreference ? !welcomePreference.seen() : false,
   );
-  const dialog = useRef<HTMLDialogElement>(null);
   const pages = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   useLayoutEffect(() => {
@@ -79,9 +79,6 @@ export function Phone({
     welcomePreference?.dismiss();
     setWelcome(false);
   };
-  useEffect(() => {
-    if (welcome) dialog.current?.showModal();
-  }, [welcome]);
   useEffect(
     () =>
       navigation?.subscribe(() => {
@@ -393,8 +390,8 @@ export function Phone({
         <main className="phone-about">
           <h1>About Fuse Games</h1>
           <p>
-            A pocket arcade for games with friends, with a little nostalgia
-            built in.
+            A collection of vibe-coded games, built on shared libraries for
+            multiplayer, rooms and accounts.
           </p>
           <h2>Every game on Home</h2>
           <p>
@@ -445,27 +442,7 @@ export function Phone({
           </button>
         ) : null}
       </nav>
-      {welcome ? (
-        <dialog
-          className="phone-welcome"
-          ref={dialog}
-          onCancel={dismissWelcome}
-          aria-labelledby="phone-welcome-title"
-        >
-          <h1 id="phone-welcome-title">Welcome to Fuse</h1>
-          <p>Your games and music, together.</p>
-          <ul>
-            <li>Swipe Home to find every app.</li>
-            <li>Open Games to browse big screenshots.</li>
-            <li>Play music in Winamp. It keeps playing when you go Home.</li>
-            <li>Use Back to return to the previous screen.</li>
-          </ul>
-          <button autoFocus onClick={dismissWelcome}>
-            Let’s play
-          </button>
-          <p>You can find this guide again in About.</p>
-        </dialog>
-      ) : null}
+      {welcome ? <PhoneWelcome dismiss={dismissWelcome} /> : null}
     </div>
   );
 }
