@@ -46,6 +46,10 @@ Whole-match links are limited to 30 per account per hour and submissions to 240 
 round receipt budgets. Older one-seat confirmations are hidden from the public feed, but their already credited career
 totals are not automatically reversed; those totals require a separate migration or reconciliation.
 
+The public feed scans at most 200 stored rows per request to skip hidden legacy records, and returns `nextBefore`
+when more storage may remain. Callers use this cursor even when the visible page is empty. It is a timestamp cursor,
+so the same-millisecond boundary limitation below also applies to scan batches.
+
 Confirmation stamps a whole game with `feedAt`, and only then. A
 round receipt never gets a `feedAt` at all, and the storage parser refuses a record that claims one while pending or
 while carrying a round. `feedAt` is stamped from `endedAt`, which is what makes a listed `endedAt` a usable page

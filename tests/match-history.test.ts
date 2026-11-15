@@ -805,6 +805,44 @@ test("legacy one-seat confirmations cannot be republished by the same seat", asy
   );
 });
 
+test("feed scans past hidden legacy rows and exposes a bounded continuation cursor", async () => {
+  const f = await room(2),
+    result = parseMatchResult(resultOf(f.ids, "legacy-pages"))!;
+  const record: MatchRecord = {
+    gameId: GAME_ID,
+    version: 1,
+    id: "a".repeat(40),
+    roomCode: f.code,
+    status: "confirmed",
+    result,
+    attesters: [f.ids[0]!],
+    uidByPlayer: {},
+    avatars: {},
+    participantUids: [],
+    createdAt: 1,
+    endedAt: 1,
+    feedAt: 1,
+  };
+  for (let index = 0; index < 205; index++) {
+    const id = index.toString(16).padStart(40, "0");
+    await f.matches.transactMatch(GAME_ID, id, () => ({
+      match: { ...record, id, feedAt: 1000 - index },
+      result: undefined,
+    }));
+  }
+  await f.matches.transactMatch(GAME_ID, record.id, () => ({
+    match: { ...record, attesters: f.ids, feedAt: 700 },
+    result: undefined,
+  }));
+  const first = await f.history.feed("viewer", undefined, undefined);
+  assert.deepEqual(first.matches, []);
+  assert.equal(first.nextBefore, 801);
+  const second = await f.history.feed("viewer", undefined, first.nextBefore!);
+  assert.equal(second.matches.length, 1);
+  assert.equal(second.matches[0]!.id, record.id);
+  assert.equal(second.nextBefore, null);
+});
+
 test("a listed game is dated when it ended, not when it became public", async () => {
   const f = await room(2),
     result = parseMatchResult(resultOf([f.ids[0]!, "bot:1"], "dated"))!;

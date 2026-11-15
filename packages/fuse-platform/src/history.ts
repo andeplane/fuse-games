@@ -534,7 +534,7 @@ export class GameHistory<
     address: string,
     uid: string | undefined,
     before: number | undefined,
-  ): Promise<{ matches: FeedEntry<P>[] }> {
+  ): Promise<{ matches: FeedEntry<P>[]; nextBefore: number | null }> {
     if (
       !(await this.rooms.database.allowance(
         this.limit(`feed:${address}`),
@@ -543,39 +543,47 @@ export class GameHistory<
       ))
     )
       throw new RoomError(429, "Too many requests; try later");
-    const records = await this.database.recentMatches(
-      this.game.id,
-      before,
-      HISTORY_PAGE,
-    );
-    return {
-      matches: records.flatMap((record) => {
+    const matches: FeedEntry<P>[] = [];
+    let cursor = before;
+    // Bound work per request, but return the scan cursor even if all scanned rows
+    // were hidden, so the caller can continue to older corroborated matches.
+    for (let batch = 0; batch < 10; batch++) {
+      const records = await this.database.recentMatches(
+        this.game.id,
+        cursor,
+        HISTORY_PAGE,
+      );
+      for (const record of records) {
+        cursor = record.feedAt;
         // A record the storage layer ordered by `feedAt` still has to earn its place here.
         if (
           record.feedAt === undefined ||
           record.result.round !== undefined ||
           new Set(record.attesters).size < 2
         )
-          return [];
+          continue;
         const you =
           uid === undefined
             ? undefined
             : Object.entries(record.uidByPlayer).find(
                 ([, account]) => account === uid,
               )?.[0];
-        return [
-          {
-            id: record.id,
-            // When the game ended, not when it became public: `feedAt` orders the feed, `endedAt` dates the row.
-            endedAt: record.endedAt ?? record.createdAt,
-            ...(you ? { you } : {}),
-            avatars: record.avatars,
-            accounts: publicSeats(record),
-            result: record.result as MatchResult<P>,
-          },
-        ];
-      }),
-    };
+        matches.push({
+          id: record.id,
+          // When the game ended, not when it became public: `feedAt` orders the feed, `endedAt` dates the row.
+          endedAt: record.endedAt ?? record.createdAt,
+          ...(you ? { you } : {}),
+          avatars: record.avatars,
+          accounts: publicSeats(record),
+          result: record.result as MatchResult<P>,
+        });
+        if (matches.length === HISTORY_PAGE)
+          return { matches, nextBefore: cursor ?? null };
+      }
+      if (records.length < HISTORY_PAGE || cursor === undefined)
+        return { matches, nextBefore: null };
+    }
+    return { matches, nextBefore: cursor ?? null };
   }
 
   async leaderboard(
