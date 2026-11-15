@@ -181,10 +181,15 @@ export function createAppPortal(options: AppPortalOptions): AppPortal {
       close();
   };
   const onKey = (event: Event) => {
-    if ((event as KeyboardEvent).key !== "Escape") return;
+    if (!isOpen || (event as KeyboardEvent).key !== "Escape") return;
+    // This Escape closed the grid: it is not a page's Back or a match's pause as well.
+    event.preventDefault();
     close();
     toggle.focus();
   };
+  // In an app's top bar a key pressed with the focus on the button never reaches the document (the bar keeps its
+  // keys from the game under it), so the portal hears its own keys too.
+  element.addEventListener("keydown", onKey);
   function open() {
     if (isOpen || games.length === 0) return;
     isOpen = true;

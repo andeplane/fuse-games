@@ -10,7 +10,13 @@ import type {
   RoomSnapshot,
 } from "../src/app/contracts.js";
 
-function fixture(options: { manager?: boolean; initialRoom?: string } = {}) {
+function fixture(
+  options: {
+    manager?: boolean;
+    initialRoom?: string;
+    friends?: AppDependencies["friends"];
+  } = {},
+) {
   const { document: dom } = parseHTML(
     '<html><body><div id="app"></div></body></html>',
   );
@@ -104,6 +110,7 @@ function fixture(options: { manager?: boolean; initialRoom?: string } = {}) {
     cancelFrame() {},
     online,
     ...(options.initialRoom ? { initialRoom: options.initialRoom } : {}),
+    ...(options.friends ? { friends: options.friends } : {}),
   };
   const app = mountFuseCraft(root, dependencies);
   const click = (selector: string) => {
@@ -174,6 +181,111 @@ test("joining needs a valid code", () => {
   f.click('[data-action="join-room"]');
   assert.ok(f.calls.includes("enterRoom:AB12"));
   assert.ok(f.calls.includes("openRoom:AB12"));
+  f.app.dispose();
+});
+
+test("the room is the shared room: Back, Settings and Start in its head, HOST on a row, the code once", () => {
+  const opened: string[] = [];
+  const accounts = new Map([["guest", "acct-bo"]]);
+  const f = fixture({
+    initialRoom: "AB12",
+    friends: {
+      publicIdOfMember: (id) => accounts.get(id),
+      friendButton(publicId) {
+        const button = f.root.ownerDocument.createElement("button");
+        button.textContent = `ADD FRIEND ${publicId}`;
+        return button;
+      },
+      open: () => opened.push("friends"),
+    },
+  });
+  f.update((room) => {
+    room.managerId = room.self;
+    room.mapId = "cortex-crossing";
+    room.status = "Connected · direct game link";
+    room.seats = [
+      {
+        id: room.self,
+        name: "Anders",
+        slot: 0,
+        bot: false,
+        connected: true,
+        watcher: false,
+      },
+      {
+        id: "guest",
+        name: "Bo",
+        slot: 1,
+        bot: false,
+        connected: false,
+        watcher: false,
+      },
+      {
+        id: "bot-1",
+        name: "Bot 3",
+        slot: 2,
+        bot: true,
+        connected: true,
+        watcher: false,
+      },
+    ];
+  });
+  const head = f.root.querySelector(".fui-room-head")!;
+  assert.deepEqual(
+    [...head.querySelectorAll("button")].map((button) => button.textContent),
+    ["Back", "Settings", "START MATCH"],
+  );
+  assert.equal(head.querySelector(".fui-page-title")?.textContent, "Room");
+  assert.equal(
+    f.root.querySelector(".fui-room-invitation [data-action='start-room']"),
+    null,
+    "Start is not under the QR code",
+  );
+  assert.equal(
+    f.root.textContent!.split("AB12").length - 1,
+    1,
+    "the room's code is shown once",
+  );
+  const rows = [...f.root.querySelectorAll(".fui-roster-row")].map((row) => [
+    row.querySelector(".fui-roster-name")?.textContent,
+    row.querySelector(".fui-roster-host")?.textContent ?? "",
+    row.querySelector(".fui-roster-status")?.textContent,
+  ]);
+  assert.deepEqual(rows, [
+    ["Anders (you)", "HOST", ""],
+    ["Bo", "", "Away"],
+    ["Bot 3", "", "AI"],
+  ]);
+  assert.equal(
+    f.root.querySelector(".fui-room-layout > .fui-room-status")?.textContent,
+    "Connected · direct game link",
+  );
+  // ADD FRIEND sits on the row of a seat the room has matched to an account, and survives the room's re-renders.
+  const friend = () => f.root.querySelector(".fui-roster-friend");
+  assert.equal(friend()?.textContent, "ADD FRIEND acct-bo");
+  assert.equal(
+    friend()?.closest(".fui-roster-row")?.querySelector(".fui-roster-name")
+      ?.textContent,
+    "Bo",
+  );
+  const before = friend();
+  f.update((room) => {
+    room.status = "Connected · Bo lagging";
+  });
+  assert.equal(friend(), before, "the same button, not a new one each frame");
+  // The matched player leaves: the button goes with the row, not onto the neighbour's.
+  f.update((room) => {
+    room.seats = room.seats.filter((seat) => seat.id !== "guest");
+  });
+  assert.equal(friend(), null, "no ADD FRIEND left on another player's row");
+  assert.deepEqual(
+    [...f.root.querySelectorAll(".fui-roster-name")].map(
+      (name) => name.textContent,
+    ),
+    ["Anders (you)", "Bot 3"],
+  );
+  f.click('[data-action="invite-friends"]');
+  assert.deepEqual(opened, ["friends"]);
   f.app.dispose();
 });
 

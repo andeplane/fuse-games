@@ -2,8 +2,11 @@ import {
   button,
   createInviteCard,
   createRoomLayout,
+  createRoster,
+  createSharedTvOption,
   el,
   requestedRoomSlot,
+  type RoomFriends,
 } from "fuse-ui";
 import { LEVELS, WEEK_SECONDS } from "../game/index.js";
 import type { Art } from "./art.js";
@@ -12,9 +15,10 @@ import type { LobbyModel } from "./presenter.js";
 import { text } from "./screen.js";
 
 /**
- * An online room's lobby in Fusetown's paper look: the invitation (QR, code, link), who is in (face, name, how they
- * are), the goals you play for, and for the host the AI and the week's length and START. Every choice goes back as a
- * command through `actions`; what shows is always the last frame's model.
+ * An online room's lobby, the shared `fuse-ui` room: Back, Settings and START in its header, the invitation (QR, code,
+ * link) with INVITE FRIENDS and Shared TV under it, who is in (face, name, how they are, HOST), and the connection
+ * line at its foot. Settings holds the goals you play for and, for the host, the AI's level and the week's length.
+ * Every choice goes back as a command through `actions`; what shows is always the last frame's model.
  */
 export interface LobbyActions {
   playerName?(): string | undefined;
@@ -27,6 +31,10 @@ export interface LobbyActions {
   goal(goal: number): void;
   level(level: number): void;
   weekSeconds(seconds: number): void;
+  /** The host's Shared TV tick; false when the room did not take it, and the box goes back. */
+  shared(display: boolean): boolean;
+  /** Opens the room's TV screen on another screen. */
+  openTv(): void;
 }
 
 export interface RoomLobbyOptions {
@@ -34,11 +42,13 @@ export interface RoomLobbyOptions {
   code: string;
   link: string;
   qr(value: string): Promise<string>;
-  /** A shared-screen room: this screen is the TV, and phones join. */
+  /** This screen is the room's TV (`?display=1`): phones join from its code. */
   tv: boolean;
   actions: LobbyActions;
-  /** Extra buttons beside START (e.g. OPEN TV SCREEN). */
-  extra?: HTMLElement[];
+  /** The room's line (connection, failures), shown at the room's foot. */
+  status: HTMLElement;
+  /** INVITE FRIENDS beside the invitation and ADD FRIEND on a seat, where the page has accounts. */
+  friends?: RoomFriends;
 }
 
 /** The preset all four of these goals match, or 0 when they were set one by one. */
@@ -52,38 +62,20 @@ export function presetOf(goals: readonly number[]): number {
 
 export function createRoomLobby(options: RoomLobbyOptions) {
   const { art, actions } = options;
-  const element = el("section", "", "fl-lobby fl-sheet");
+  const element = el("section", "", "fl-lobby");
   element.classList.toggle("tv", options.tv);
   const invite = createInviteCard({
     code: options.code,
     link: options.link,
     qr: options.qr,
     caption: options.tv ? "SCAN WITH YOUR PHONE TO PLAY" : "SCAN TO JOIN",
-    classes: {
-      root: "fl-invite",
-      qr: "fl-invite-qr",
-      caption: "fl-invite-caption",
-      code: "fl-invite-code",
-      link: "fl-invite-link",
-      url: "fl-invite-url",
-      copy: "fl-invite-copy",
-    },
   });
   const title = (words: string) => el("h2", words, "fl-menu-title");
 
-  const roster = el("div", "", "fl-roster");
-  roster.setAttribute("aria-label", "Players");
-  const rows = new Map<
-    string,
-    {
-      root: HTMLElement;
-      face: HTMLElement;
-      name: HTMLElement;
-      status: HTMLElement;
-      remove: HTMLButtonElement;
-    }
-  >();
-  const empty = el("p", "Nobody has joined yet", "fl-roster-empty");
+  const roster = createRoster({
+    emptyText: "Nobody has joined yet",
+    avatar: (key) => art.element(`avatar-${key}-portrait`, 40),
+  });
 
   const segmented = <T>(
     choices: readonly { label: string; value: T }[],
@@ -154,16 +146,12 @@ export function createRoomLobby(options: RoomLobbyOptions) {
     start = button("START MATCH", "fui-button-primary fl-start");
   addBot.onclick = () => actions.addBot(requestedRoomSlot(addBot));
   start.onclick = () => actions.start();
-  const buttons = el("div", "", "fl-actions");
-  buttons.append(...(options.extra ?? []), addBot, start);
-
-  const who = el("div", "", "fl-field fl-who");
-  who.append(title("PLAYERS"), roster, empty);
-  const side = el("div", "", "fl-lobby-side");
-  side.append(invite.element);
-  const body = el("div", "", "fl-lobby-body");
-  body.append(who, goalsBlock, levelBlock, weekBlock, note, buttons);
-  element.append(side, body);
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  const sharedTv = createSharedTvOption({
+    className: "fl-shared-tv",
+    onChange: (display) => actions.shared(display),
+    onOpenScreen: () => actions.openTv(),
+  });
   /** This device's own seat, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   const layout = createRoomLayout({
@@ -185,13 +173,19 @@ export function createRoomLobby(options: RoomLobbyOptions) {
     capacity: 5,
     addAI: addBot,
     settings: [goalsBlock, levelBlock, weekBlock],
-    actions: [note, start, ...(options.extra ?? [])],
+    actions: [note],
+    actionsInHeader: true,
+    heading: "Room",
+    status: options.status,
+    extras: [sharedTv.element],
+    ...(options.friends ? { friends: options.friends } : {}),
   });
 
   return {
     element,
     attachJoin: layout.attachJoin,
-    render(model: LobbyModel, tvHost: boolean): void {
+    /** `managerId` is the member who holds START: its row carries HOST. */
+    render(model: LobbyModel, managerId: string): void {
       ownSeat = model.own;
       layout.update(
         model.members.length,
@@ -200,60 +194,37 @@ export function createRoomLobby(options: RoomLobbyOptions) {
           member.slot === undefined ? [] : [member.slot],
         ),
       );
-      for (const [id, row] of rows)
-        if (!model.members.some((member) => member.id === id)) {
-          row.root.remove();
-          rows.delete(id);
+      roster.update(
+        model.members.map((member) => ({
+          ...member,
+          host: member.id === managerId,
+          status:
+            member.status === "BOT"
+              ? `AI · ${LEVELS[model.level] ?? ""}`
+              : member.status === "AWAY"
+                ? "Away"
+                : "Ready",
+        })),
+      );
+      for (const [id, row] of roster.entries()) {
+        let remove = row.querySelector<HTMLButtonElement>(".fl-remove");
+        if (!remove) {
+          remove = button("REMOVE", "fl-remove");
+          remove.onclick = () => actions.removeBot(id);
+          row.append(remove);
         }
-      model.members.forEach((member, index) => {
-        let row = rows.get(member.id);
-        if (!row) {
-          const root = el("div", "", "fl-roster-row"),
-            face = el("span", "", "fl-roster-face"),
-            words = el("span", "", "fl-roster-words"),
-            name = el("strong", "", "fl-roster-name"),
-            status = el("small", "", "fl-roster-status"),
-            remove = button("×", "fl-remove");
-          remove.onclick = () => actions.removeBot(member.id);
-          words.append(name, status);
-          root.append(face, words, remove);
-          row = { root, face, name, status, remove };
-          rows.set(member.id, row);
-        }
-        if (roster.children[index] !== row.root)
-          roster.insertBefore(row.root, roster.children[index] ?? null);
-        row.root.style.setProperty("--player", member.color ?? "#8d99ae");
-        if (member.slot !== undefined)
-          row.root.dataset.slot = String(member.slot);
-        const avatar = member.avatar ?? "robot";
-        if (row.face.dataset.avatar !== avatar) {
-          row.face.dataset.avatar = avatar;
-          row.face.replaceChildren(
-            art.element(`avatar-${avatar}-portrait`, 40),
-          );
-        }
-        text(row.name, member.name);
-        text(
-          row.status,
-          member.status === "BOT"
-            ? `AI · ${LEVELS[model.level] ?? ""}`
-            : member.status === "AWAY"
-              ? "Away"
-              : "Ready",
-        );
-        row.root.classList.toggle("away", member.status === "AWAY");
-        const removable = model.removable.includes(member.id);
-        row.remove.hidden = !removable;
-        row.remove.setAttribute("aria-label", `Remove ${member.name}`);
-      });
-      empty.hidden = model.members.length > 0;
+        const member = model.members.find((member) => member.id === id);
+        row.classList.toggle("away", member?.status === "AWAY");
+        remove.hidden = !model.removable.includes(id);
+        remove.setAttribute("aria-label", `Remove ${member?.name ?? "AI"}`);
+      }
+      sharedTv.update(model.shared, model.canShare);
       goalsBlock.hidden = !model.canPickGoals;
       goals.render(presetOf(model.goals), model.canPickGoals);
       const bots = model.members.some((member) => member.status === "BOT");
       levelBlock.hidden = !bots || !model.canSetLevel;
       level.render(model.level, model.canSetLevel);
       week.render(model.weekSeconds, model.canSetWeek);
-      weekBlock.hidden = !model.canSetWeek && tvHost;
       addBot.hidden = !model.canAddBot;
       start.hidden = !model.showStart;
       start.disabled = !model.canStart;

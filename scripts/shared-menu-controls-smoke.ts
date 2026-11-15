@@ -77,6 +77,10 @@ async function start(page: Page, game: GameFlow): Promise<void> {
     await takeHostSeat(page, "Menu smoke");
     // The room is a page over the arena: START begins the round and shows the arena.
     await page.getByRole("button", { name: "START", exact: true }).click();
+  } else if (game.id === "fuse-lane") {
+    // A game on this device: Single player's setup, then its START.
+    await openPlayOptions(page, "single");
+    await page.locator(".fl-start-game").click();
   } else if (game.start) {
     const button = page.getByRole("button", { name: game.start, exact: true });
     const guide = page.locator(".fui-round-controls:visible");

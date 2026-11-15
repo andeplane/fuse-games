@@ -474,15 +474,10 @@ export function createMenu(options: MenuOptions): HTMLElement {
   form.hidden = false;
   root.querySelector(".fl-mode-tabs")?.remove();
   if (options.online) options.online.sheet.hidden = true;
-  const hostingOptions = options.online ? el("div") : undefined;
   const onlineError =
     options.online?.sheet.querySelector<HTMLElement>(".fl-online-error");
   const joinField =
     options.online?.sheet.querySelector<HTMLElement>(".fl-join")?.parentElement;
-  if (hostingOptions && options.online) {
-    const fields = [...options.online.sheet.children];
-    hostingOptions.append(fields[0]!, fields[1]!);
-  }
   const menu = createMainMenu({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -491,7 +486,6 @@ export function createMenu(options: MenuOptions): HTMLElement {
       "Work, study, shop and invest. First to reach all four goals wins.",
     play: root,
     singlePlayerContent: [root],
-    hostingOptions,
     ...(joinField
       ? { joinContent: onlineError ? [joinField, onlineError] : [joinField] }
       : {}),

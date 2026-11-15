@@ -41,7 +41,13 @@ import {
 
 import { hiddenAtStart, parseShown } from "../src/lab/shown.js";
 
-import { bandMix, coversAll, dragSpan, grabAt } from "../src/lab/band.js";
+import {
+  coversAll,
+  dragSpan,
+  grabAt,
+  partAt,
+  partsMix,
+} from "../src/lab/band.js";
 
 import { parseNotesUpload, writeNotesUpload } from "../src/lab/notes-upload.js";
 import {
@@ -54,6 +60,8 @@ import { join } from "node:path";
 
 import {
   addTap,
+  gridStep,
+  moveTap,
   parseTaps,
   removeSpan,
   removeTap,
@@ -392,11 +400,41 @@ test("chart lab: a box over the whole axis turns nothing down", () => {
   assert.equal(coversAll({ from: 0, to: 380 }, 0, 400), false);
 });
 
-test("chart lab: outside the band the song keeps a tenth of its level", () => {
-  assert.deepEqual(bandMix(false), { dry: 1, band: 0 });
-  const mix = bandMix(true);
-  assert.equal(mix.dry, 0.1);
-  assert.equal(mix.dry + mix.band, 1);
+test("chart lab: a click on the axis names the part under it", () => {
+  const span = { from: 100, to: 200 };
+  assert.equal(partAt(span, 40), "below");
+  assert.equal(partAt(span, 100), "band");
+  assert.equal(partAt(span, 150), "band");
+  assert.equal(partAt(span, 201), "above");
+});
+
+test("chart lab: each of the three parts of the spectrum can be muted", () => {
+  const all = { below: true, band: true, above: true };
+  const untouched = { dry: 1, below: 0, band: 0, above: 0 };
+  // No band, or everything heard: the song as it is, through no filter.
+  assert.deepEqual(
+    partsMix(false, { below: false, band: true, above: false }),
+    untouched,
+  );
+  assert.deepEqual(partsMix(true, all), untouched);
+  // The band alone: what is outside it is silent.
+  assert.deepEqual(partsMix(true, { below: false, band: true, above: false }), {
+    dry: 0,
+    below: 0,
+    band: 1,
+    above: 0,
+  });
+  // The band muted, the rest heard.
+  assert.deepEqual(partsMix(true, { below: true, band: false, above: true }), {
+    dry: 0,
+    below: 1,
+    band: 0,
+    above: 1,
+  });
+  assert.deepEqual(
+    partsMix(true, { below: false, band: false, above: false }),
+    { dry: 0, below: 0, band: 0, above: 0 },
+  );
 });
 
 /** The smallest PNG: its signature and nothing else, which is all the upload checks. */
@@ -629,4 +667,30 @@ test("chart lab: a tapped beat reads as 4ths, 8ths, 16ths, triplets, 24ths or 32
   near(4.17, 4 + 1 / 6); // a 24th
   near(4.12, 4.125); // a 32nd
   near(4.875, 4.875);
+});
+
+test("chart lab: a tap moves to another moment and keeps its lane", () => {
+  const taps = [
+    { time: 1, beat: 2, column: 0 },
+    { time: 2, beat: 4, column: 3 },
+    { time: 3, beat: 6, column: 1 },
+  ];
+  const { taps: after, moved } = moveTap(taps, taps[1]!, 3.5004, 7.0004);
+  assert.deepEqual(moved, { time: 3.5, beat: 7, column: 3 });
+  assert.deepEqual(
+    after.map((tap) => tap.time),
+    [1, 3, 3.5],
+  );
+  assert.equal(taps.length, 3, "the list it was given is untouched");
+  // Never before the start of the song.
+  assert.equal(moveTap(taps, taps[0]!, -0.4, -1).moved.time, 0);
+});
+
+test("chart lab: a step along the grid goes to the next line in that direction", () => {
+  assert.equal(gridStep(2, 4, 1), 2.25);
+  assert.equal(gridStep(2, 4, -1), 1.75);
+  // Between two lines: the nearer line that way, not a whole step past it.
+  assert.equal(gridStep(2.1, 4, 1), 2.25);
+  assert.equal(gridStep(2.1, 4, -1), 2);
+  assert.equal(gridStep(1, 3, 1), 4 / 3);
 });

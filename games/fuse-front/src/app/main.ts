@@ -26,6 +26,7 @@ import {
   createLandingCard,
   createLobbyShell,
   createRoomLayout,
+  createRoster,
   el,
 } from "fuse-ui";
 import QRCode from "qrcode";
@@ -38,7 +39,12 @@ import {
   PeerTransport,
   validRoomCode,
 } from "fuse-network-fe";
-import { MAX_PACKET_BYTES, createLeadClock, ticksAhead } from "fuse-netcode";
+import {
+  MAX_PACKET_BYTES,
+  createLeadClock,
+  ticksAhead,
+  type Frame,
+} from "fuse-netcode";
 import { DRAW, TILE, teamOf, type WorldView } from "../engine/index.js";
 import { createForward, createSmoother, ordersOf } from "./forward.js";
 import { DEFAULT_SETTINGS, type View } from "../online/game.js";
@@ -74,6 +80,7 @@ import {
   heroCards,
   mapOptions,
   pickHero,
+  roomKey,
   slotsOf,
   type SlotView,
 } from "./model.js";
@@ -183,11 +190,6 @@ function header(): HTMLElement {
 
 function landing(error = ""): void {
   audio.scene({ kind: "menu" });
-  const name = el("input", "", "ff-name");
-  name.placeholder = "Your name";
-  name.maxLength = 18;
-  name.value = store.getItem(keys.name) ?? "";
-  name.oninput = () => store.setItem(keys.name, name.value.trim());
   const card = createLandingCard({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -212,7 +214,6 @@ function landing(error = ""): void {
     onJoin: (code) => navigate(`?room=${code}`),
   });
   card.error.textContent = error;
-  card.create.before(name);
   app.replaceChildren(
     header(),
     card.element,
@@ -322,15 +323,19 @@ function room(code: string, token: string | undefined, display: boolean): void {
   play.append(hud.top, stage, hud.bottom, hint);
   play.hidden = true;
   app.replaceChildren(header(), status, lobby, play, results.element);
-  const name = () => store.getItem(keys.name) || "Commander";
+  // The name this device knows: the account's, or the one typed in a room before.
+  const known = () =>
+    social.playerName(store.getItem(keys.name))?.trim() || undefined;
   const online = token !== undefined;
   const runtime = new FrontRuntime(
     code,
     DEFAULT_SETTINGS,
     {
       ready: () => {
-        if (online && !display && !store.getItem(keys.host(code)))
-          runtime.command({ type: "join", name: name() });
+        // A guest this device has a name for is seated at once; anyone else is asked by the room's seat dialog.
+        const who = known();
+        if (online && !display && !store.getItem(keys.host(code)) && who)
+          runtime.command({ type: "join", name: who });
       },
       state: (frame) => show(frame),
       event: (event, matchId) => {
@@ -366,13 +371,15 @@ function room(code: string, token: string | undefined, display: boolean): void {
               maxFastBytes: MAX_PACKET_BYTES,
             }),
         }
-      : { humanName: name() },
+      : { humanName: known() ?? "Commander" },
   );
   let lobbyKey = "";
   // The seat whose hero the lobby's cards show: this device's, or one the host chose from the team chips.
   let picking = -1;
+  // The row's HERO button that opened Settings: it has the focus back when Settings closes.
+  let heroOpener: string | undefined;
   let wasLobby = true;
-  function show(view: View): void {
+  function show(view: Frame<View>): void {
     observeConfirmedPlay(
       reportPlay,
       view,
@@ -380,6 +387,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
       (view) => frontPlayFrame(view, runtime.self, display, online),
     );
     const inLobby = view.stage === "lobby";
+    // The room's line is at the room's foot; in a match it is the line under the page's header again.
+    if (!inLobby && status.parentElement !== app) lobby.before(status);
+    if (inLobby && !wasLobby) lobbyKey = "";
     lobby.hidden = !inLobby;
     currentLobby?.setActive(inLobby);
     play.hidden = inLobby;
@@ -406,14 +416,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
       const slots = slotsOf(view, runtime.self);
       if (!slots.some((s) => s.slot === picking))
         picking = slots.find((s) => s.self)?.slot ?? 0;
-      const key = JSON.stringify([
+      const key = roomKey(
+        view,
         slots,
-        view.seats,
         picking,
-        view.settings.size,
-        view.settings.map,
         runtime.creator,
-      ]);
+        view.managerId,
+      );
       if (key !== lobbyKey) {
         lobbyKey = key;
         renderLobby(view);
@@ -480,9 +489,14 @@ function room(code: string, token: string | undefined, display: boolean): void {
         .querySelector<HTMLButtonElement>("button.is-primary")
         ?.focus();
   }
-  function renderLobby(view: View): void {
-    const settingsWereOpen = currentLobby?.settings.open ?? false;
+  function renderLobby(view: Frame<View>, openSettings = false): void {
+    const settingsWereOpen =
+      openSettings || (currentLobby?.settings.open ?? false);
     const focused = document.activeElement;
+    const focusedAction =
+      focused instanceof HTMLElement && lobby.contains(focused)
+        ? focused.dataset.roomAction
+        : undefined;
     const focusedLabel = focused?.getAttribute("aria-label");
     const focusedText = focused?.textContent;
     const host = runtime.creator || runtime.solo;
@@ -518,9 +532,15 @@ function room(code: string, token: string | undefined, display: boolean): void {
         });
       maps.append(choice);
     }
-    // Team panels of seat chips; the host clicks a chip to pick that seat's hero on the cards above.
+    // Settings: team panels of seat chips; the host clicks a chip to pick that seat's hero on the cards under them.
     const teams = el("div", "", "ff-teams");
     const slots = slotsOf(view, runtime.self);
+    // The host looks at another seat's hero: the room is redrawn for it now, and not again by the next frame.
+    const pick = (slot: number, openSettings = false) => {
+      picking = slot;
+      lobbyKey = roomKey(view, slots, picking, runtime.creator, view.managerId);
+      renderLobby(view, openSettings);
+    };
     for (const team of [0, 1]) {
       const column = el("div", "", `ff-team ff-t${team}`);
       const seats = el("div", "", "ff-seats");
@@ -535,7 +555,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
         const name = el("button", `${who} · ${slot.hero}`, "ff-seat-pick");
         name.disabled = !host;
         name.setAttribute("aria-pressed", String(slot.slot === picking));
-        name.onclick = () => ((picking = slot.slot), renderLobby(view));
+        name.onclick = () => pick(slot.slot);
         chip.classList.toggle("ff-own", slot.self);
         chip.classList.toggle("ff-on", slot.slot === picking);
         chip.append(name);
@@ -554,10 +574,26 @@ function room(code: string, token: string | undefined, display: boolean): void {
       }
       teams.append(column);
     }
-    const roster = el("div", "", "ff-roster");
-    roster.append(teams);
-    const start = el("button", "START", "fui-button ff-start");
+    // The room's players: the shared roster, each seat with its hero's face, its hero as the status and HOST on
+    // whoever holds START. The host's HERO opens Settings on that seat's cards; an AI's level cycles in place.
+    const faces = new Map<string, SlotView>();
+    const roster = createRoster({
+      emptyText: "Nobody has joined yet",
+      avatar: (key) => {
+        const face = faces.get(key);
+        return face ? heroPortrait(face.hero, face.team) : el("span");
+      },
+    });
+    const seated = view.seats.filter((seat) => !seat.watcher);
+    const title = (word: string) => word[0]!.toUpperCase() + word.slice(1);
+    const start = el("button", "START", "fui-button-primary");
     start.onclick = () => runtime.command({ type: "action", action: "start" });
+    const note = el(
+      "p",
+      host ? "" : "Waiting for the host to start…",
+      "ff-room-note",
+    );
+    note.hidden = host;
     const shell = createLobbyShell({
       label: `Room ${code}`,
       intro: [
@@ -575,8 +611,8 @@ function room(code: string, token: string | undefined, display: boolean): void {
             }).element,
           }
         : {}),
-      roster,
-      footer: [host ? start : el("p", "Waiting for the host to start…")],
+      roster: roster.element,
+      footer: [note],
     });
     lobby.replaceChildren(shell.element);
     const join = el("form");
@@ -626,15 +662,89 @@ function room(code: string, token: string | undefined, display: boolean): void {
       modes: [sizes],
       playerName: () => social.playerName(undefined) ?? undefined,
       addAI,
-      settings: [maps, el("h2", "Heroes"), heroPicker(view, slots, host)],
-      actions: [host ? start : el("p", "Waiting for the host to start…")],
+      settings: [
+        maps,
+        el("h2", "Heroes"),
+        teams,
+        heroPicker(view, slots, host),
+      ],
+      actions: [note],
+      actionsInHeader: true,
+      heading: "Room",
+      status,
+      friends: social.friends,
     });
     layout.update(
       view.seats.filter((seat) => !seat.watcher).length,
       2 * view.settings.size,
       view.seats.filter((seat) => !seat.watcher).map((seat) => seat.slot),
     );
+    // The layout seats the roster's rows as they change: the players go in once it exists.
+    roster.update(
+      seated.flatMap((seat) => {
+        const slot = slots.find((s) => s.slot === seat.slot);
+        if (!slot) return [];
+        const face = `${slot.hero}:${slot.team}`;
+        faces.set(face, slot);
+        return [
+          {
+            id: seat.id,
+            slot: seat.slot,
+            name: slot.self ? `${slot.name} (you)` : slot.name,
+            // An AI's name already says its level.
+            status: title(slot.hero),
+            color: teamColor(slot.team),
+            avatar: face,
+            host: seat.id === view.managerId,
+          },
+        ];
+      }),
+    );
+    if (host)
+      for (const [id, row] of roster.entries()) {
+        const seat = seated.find((s) => s.id === id);
+        const slot = slots.find((s) => s.slot === seat?.slot);
+        if (!slot) continue;
+        const tools = el("span", "", "ff-row-tools");
+        if (slot.bot) {
+          const level = el("button", "LEVEL", "ff-row-action");
+          level.setAttribute(
+            "aria-label",
+            `Change ${slot.name}'s level (${slot.difficulty})`,
+          );
+          level.dataset.roomAction = `level:${slot.slot}`;
+          level.onclick = () =>
+            runtime.command({
+              type: "settings",
+              settings: cycleDifficulty(view.settings, slot.slot),
+            });
+          tools.append(level);
+        }
+        const hero = el("button", "HERO", "ff-row-action");
+        hero.setAttribute("aria-label", `Pick ${slot.name}'s hero`);
+        hero.dataset.roomAction = `hero:${slot.slot}`;
+        hero.onclick = () => {
+          heroOpener = hero.dataset.roomAction;
+          pick(slot.slot, true);
+        };
+        tools.append(hero);
+        row.append(tools);
+      }
     currentLobby = layout;
+    // Settings closed: its cards are this device's seat again, and a row's HERO that opened it has the focus back.
+    layout.settings.addEventListener("close", () => {
+      const opener = heroOpener;
+      heroOpener = undefined;
+      const own = slots.find((s) => s.self)?.slot ?? 0;
+      const redrawn = picking !== own;
+      if (redrawn) pick(own);
+      if (opener)
+        [...lobby.querySelectorAll<HTMLElement>("[data-room-action]")]
+          .find((node) => node.dataset.roomAction === opener)
+          ?.focus();
+      else if (redrawn)
+        lobby.querySelector<HTMLElement>(".fui-room-configure")?.focus();
+    });
     if (settingsWereOpen) {
       layout.settings.showModal();
       const candidates = [
@@ -648,6 +758,11 @@ function room(code: string, token: string | undefined, display: boolean): void {
           : node.textContent === focusedText,
       );
       replacement?.focus();
+    } else if (focusedAction) {
+      // The room is rebuilt on every change: a row's button keeps the keyboard's place (an AI's LEVEL cycles).
+      [...lobby.querySelectorAll<HTMLElement>("[data-room-action]")]
+        .find((node) => node.dataset.roomAction === focusedAction)
+        ?.focus();
     }
   }
   /** The picking seat's hero cards, its hero lit; the host picks by clicking one (each hero once a team). */

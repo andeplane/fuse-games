@@ -50,6 +50,37 @@ export function removeTap(taps: readonly Tap[], tap: Tap): Tap[] {
   return index < 0 ? [...taps] : taps.filter((_, i) => i !== index);
 }
 
+/** The taps with `tap` moved to another moment (same lane), in time order, and the moved tap itself. */
+export function moveTap(
+  taps: readonly Tap[],
+  tap: Tap,
+  time: number,
+  beat: number,
+): { taps: Tap[]; moved: Tap } {
+  const moved: Tap = {
+    time: Number(Math.max(0, time).toFixed(3)),
+    beat: Number(beat.toFixed(3)),
+    column: tap.column,
+  };
+  return { taps: addTap(removeTap(taps, tap), moved), moved };
+}
+
+/**
+ * The grid line a step away from `beat`, with `perBeat` lines to the beat: the next one later (`direction` 1) or
+ * earlier (-1). A tap that sits between two lines lands on the nearer one in that direction.
+ */
+export function gridStep(
+  beat: number,
+  perBeat: number,
+  direction: 1 | -1,
+): number {
+  const at = beat * perBeat;
+  return (
+    (direction > 0 ? Math.floor(at + 1e-6) + 1 : Math.ceil(at - 1e-6) - 1) /
+    perBeat
+  );
+}
+
 /** The taps outside the time span `[start, end]`: what is left after deleting a selection. */
 export function removeSpan(
   taps: readonly Tap[],
