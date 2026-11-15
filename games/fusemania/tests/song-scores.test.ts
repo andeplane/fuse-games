@@ -176,6 +176,7 @@ test("duplicate/concurrent completion is idempotent, lower scores cannot overwri
     s.scores.complete("ada", run.id, body),
   ]);
   assert.ok(results.every((row) => row.rating === 1_000_000));
+  assert.equal((await s.scores.catalog())[0]!.plays, 1);
   assert.equal((await s.scores.leaderboard("grid", 0)).length, 1);
   assert.equal(
     (await s.scores.complete("ada", run.id, { inputs: [], rating: 0 })).rating,
@@ -184,10 +185,12 @@ test("duplicate/concurrent completion is idempotent, lower scores cannot overwri
   const lower = await s.start();
   s.advance();
   await s.scores.complete("ada", lower.id, { inputs: [], rating: 0 });
+  assert.equal((await s.scores.catalog())[0]!.plays, 2);
   assert.equal((await s.scores.leaderboard("grid", 0))[0]!.rating, 1_000_000);
   const tied = await s.start("bo");
   s.advance();
   await s.scores.complete("bo", tied.id, body);
+  assert.equal((await s.scores.catalog())[0]!.plays, 3);
   assert.deepEqual(
     (await s.scores.leaderboard("grid", 0)).map((row) => row.name),
     ["Ada", "Bo"],
@@ -204,7 +207,27 @@ test("a new scoring/chart version gets empty boards while retaining old evidence
   });
   const changed = new SongScores({ ...s.options, rules: "test-2" });
   assert.deepEqual(await changed.leaderboard("grid", 0), []);
+  assert.equal((await changed.catalog())[0]!.plays, 0);
   assert.ok((await s.database.readMany([`telemetry-song-runs/${run.id}`]))[0]);
+});
+
+test("legacy boards retain their scores without inventing historical plays; corrupt counts fail safely", async () => {
+  const s = setup();
+  const version = (await s.scores.catalog())[0]!.charts[0]!.version;
+  const key = `telemetry-song-boards/${version}_0`;
+  await s.database.transact(async (tx) => {
+    tx.set(key, {
+      players: [{ uid: "ada", name: "Ada", rating: 900_000, endedAt: 10 }],
+    });
+  });
+  s.advance();
+  assert.equal((await s.scores.catalog())[0]!.plays, 0);
+  assert.equal((await s.scores.catalog())[0]!.charts[0]!.top!.rating, 900_000);
+  await s.database.transact(async (tx) => {
+    tx.set(key, { players: [], plays: -1 });
+  });
+  s.advance();
+  await assert.rejects(s.scores.catalog(), /play count is invalid/);
 });
 
 test("corrupt stored tickets fail safely without replaying or overwriting records", async () => {

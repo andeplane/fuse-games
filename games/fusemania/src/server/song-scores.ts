@@ -168,16 +168,27 @@ export class SongScores {
     return songs.map((song) => ({
       song: song.id,
       title: song.title,
+      plays: stored
+        .slice(index, index + song.charts.length)
+        .reduce<number>((sum, board) => sum + this.plays(board), 0),
       charts: song.charts.map((chart, i) => {
         const data = this.entries(stored[index++]);
         return {
           chart: i,
           difficulty: chart.name,
+          meter: chart.meter,
           version: this.versions.get(song.id)!,
           ...(data[0] ? { top: publicEntry(data[0]) } : {}),
         };
       }),
     }));
+  }
+  private plays(value: unknown): number {
+    const plays = record(value)?.plays;
+    if (plays === undefined) return 0;
+    if (!integer(plays) || plays < 0 || plays >= Number.MAX_SAFE_INTEGER)
+      throw new Error("Stored song play count is invalid");
+    return plays;
   }
   private entries(value: unknown): RankedEntry[] {
     if (value === undefined) return [];
@@ -365,8 +376,9 @@ export class SongScores {
           : this.entries({ players: [personal] })[0];
       if (previous && previous.uid !== uid)
         throw new Error("Stored personal best has the wrong owner");
+      let players = this.entries(board);
       if (!previous || Number(previous.rating) < result) {
-        const players = this.entries(board).filter((row) => row.uid !== uid);
+        players = players.filter((row) => row.uid !== uid);
         players.push(entry);
         players.sort(
           (a, b) =>
@@ -374,9 +386,12 @@ export class SongScores {
             a.endedAt - b.endedAt ||
             a.uid.localeCompare(b.uid),
         );
-        tx.set(selected.key, { players: players.slice(0, 100) });
         tx.set(personalKey, entry);
       }
+      tx.set(selected.key, {
+        players: players.slice(0, 100),
+        plays: this.plays(board) + 1,
+      });
       tx.set(key, {
         ...ticket,
         status: "completed",
