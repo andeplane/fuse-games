@@ -172,8 +172,7 @@ const SYNCS_PER_HOUR = 400,
   ADDS_PER_HOUR = 30,
   INVITES_PER_HOUR = 60,
   EDGE_LIMIT = 2 * MAX_FRIENDS + 50,
-  INVITE_LIMIT = 20,
-  ROOM_PRESENCE_LIMIT = 12;
+  INVITE_LIMIT = 20;
 
 export class FriendsStore {
   constructor(
@@ -401,16 +400,27 @@ export class FriendsStore {
       await this.database.setPresence(next);
     // The room's signed-in members are for the page in the room; a passive poll does not pay for that query.
     const here = passive ? undefined : room;
-    // Three lists, then two batches: one of presence records and one of accounts for everyone they name, so the
-    // poll's cost is a handful of requests however many friends there are.
+    // Resolve only current live seat owners. Room capacity bounds these lookups; stale presence rows
+    // from previous sessions or room incarnations cannot consume a limited query page.
+    const owners =
+      here && liveRoom
+        ? [
+            ...new Set(
+              Object.values(liveRoom.members)
+                .filter((member) => member.expiresAt > now && member.presence)
+                .map((member) => member.presence!.owner),
+            ),
+          ]
+        : [];
+    const ownerUids = (
+      await Promise.all(owners.map((id) => this.database.resolve(id)))
+    ).filter((id): id is string => id !== undefined);
     const [edges, pending, seated] = await Promise.all([
       this.database.edges(uid, EDGE_LIMIT),
       this.database
         .invites(uid, INVITE_LIMIT)
         .then((invites) => invites.filter((i) => i.expiresAt > now)),
-      here
-        ? this.database.roomPresences(here.code, ROOM_PRESENCE_LIMIT)
-        : Promise.resolve([] as PresenceRecord[]),
+      this.database.presences(ownerUids),
     ]);
     const others = edges.map((edge) =>
       edge.uids[0] === uid ? edge.uids[1] : edge.uids[0],

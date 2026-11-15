@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRoomDatabase, RoomStore, peerId } from "fuse-network-be";
+import {
+  MemoryRoomDatabase,
+  RoomStore,
+  peerId,
+  parseRoomRecord,
+} from "fuse-network-be";
 import {
   FriendsStore,
   MemoryFriendsDatabase,
@@ -124,6 +129,47 @@ test("F-07: possession, live membership and unambiguous room players", async () 
   await assert.rejects(
     friends.sync("carol", { room: { ...claim(1), session: "4".repeat(32) } }),
     /Presence session replaced/,
+  );
+  // Old sessions, old incarnations and expired records cannot crowd out a current owner.
+  for (let i = 0; i < 16; i++) {
+    const session = (100 + i).toString(16).padStart(32, "0");
+    await friends.sync(`owner${i}`, { room: { ...claim(1), session } });
+  }
+  for (let i = 0; i < 16; i++) {
+    await database.setPresence({
+      uid: `stale${i}`,
+      publicId: publicIdOf(`stale${i}`),
+      at: now - 200000,
+      room: {
+        code,
+        memberId: claim(1).memberId,
+        gameId: LEGACY_GAME_ID,
+        incarnation: "old-incarnation",
+        proven: true,
+        session: "f".repeat(32),
+      },
+    });
+  }
+  const latest = await friends.sync("bob", { room: claim(2) });
+  assert.deepEqual(
+    latest.roomPlayers.map((p) => p.publicId).sort(),
+    [publicIdOf("bob"), publicIdOf("owner15")].sort(),
+  );
+  const record = await rooms.get(code);
+  const seat = record.members[claim(1).memberId]!;
+  assert.ok(parseRoomRecord(record));
+  assert.equal(
+    parseRoomRecord({
+      ...record,
+      members: {
+        ...record.members,
+        [seat.id]: {
+          ...seat,
+          presence: { ...seat.presence, session: ["b".repeat(32)] },
+        },
+      },
+    }),
+    undefined,
   );
   const stored = await database.presence("bob");
   assert.ok(!JSON.stringify(stored).includes(token(2)));

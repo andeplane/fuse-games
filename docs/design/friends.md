@@ -27,7 +27,7 @@ after every action.
 A friend is online while its last sync is younger than `ONLINE_WINDOW_MS` (120 s), and in a room while it last said so
 and is online. The presence document is rewritten only when something in it changed or it is `PRESENCE_REFRESH_MS`
 (60 s) old, the rule [heartbeat-write-cost.md](heartbeat-write-cost.md) sets for rooms: an idle poll costs reads alone
-(one edges query, one invites query, in a room one presence query, then one batch of presence documents and one
+(one edges query, one invites query, in a room bounded lookups for the live seats’ current owners, then one batch of presence documents and one
 batch of user documents for names, whatever the number of friends). A page that unloads sends one last keepalive sync without a room, so friends see it leave sooner
 than the window would tell them. Presence documents are kept: they are what a public id resolves through.
 

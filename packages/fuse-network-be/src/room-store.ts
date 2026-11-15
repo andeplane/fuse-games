@@ -543,6 +543,8 @@ export function parseRoomRecord(
           !/^[a-f0-9]{20}$/.test(
             (m.presence as NonNullable<Member["presence"]>).owner,
           ) ||
+          typeof (m.presence as NonNullable<Member["presence"]>).session !==
+            "string" ||
           !/^[a-f0-9]{32}$/.test(
             (m.presence as NonNullable<Member["presence"]>).session,
           ) ||
