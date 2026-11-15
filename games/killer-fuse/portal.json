@@ -4,5 +4,10 @@
   "tagline": "Berries. Snail. Queen.",
   "mark": "KF",
   "accent": "#ffc93c",
-  "order": 2
+  "order": 2,
+  "screenshots": [
+    "gallery/killer-fuse.jpg",
+    "gallery/killer-fuse-menu.jpg",
+    "gallery/killer-fuse-controls.jpg"
+  ]
 }

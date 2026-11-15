@@ -1,5 +1,11 @@
 import type { KeyboardEvent } from "react";
-import { useContext, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { AppIcon } from "../ui/icons";
 import { WindowManagerContext } from "../windows/windowManagerContext";
@@ -28,14 +34,80 @@ function GameRowIcon({ game }: { game: LauncherGame }) {
 }
 
 function Screenshot({ game }: { game: LauncherGame }) {
-  if (game.screenshotUrl)
+  const [index, setIndex] = useState(0);
+  const [failed, setFailed] = useState<string[]>([]);
+  const images = game.screenshotUrls;
+  const url = images[index];
+  const move = (direction: number) =>
+    setIndex(
+      (current) => (current + direction + images.length) % images.length,
+    );
+  if (url)
     return (
-      <img
-        className="fst-shot-image"
-        src={game.screenshotUrl}
-        alt={`${game.name} screenshot`}
-        draggable={false}
-      />
+      <div
+        className="fst-carousel"
+        role="region"
+        aria-label={`${game.name} screenshots`}
+        aria-roledescription="carousel"
+      >
+        <button
+          type="button"
+          className="fst-shot"
+          aria-label={`Next ${game.name} screenshot`}
+          onClick={() => move(1)}
+        >
+          {failed.includes(url) ? (
+            <span className="fst-shot-error">
+              Screenshot unavailable. Choose another below.
+            </span>
+          ) : (
+            <img
+              className="fst-shot-image"
+              src={url}
+              alt={`${game.name} screenshot ${index + 1} of ${images.length}`}
+              draggable={false}
+              onError={() => setFailed((current) => [...current, url])}
+            />
+          )}
+        </button>
+        {images.length > 1 ? (
+          <div className="fst-carousel-controls">
+            <button
+              type="button"
+              className="fst-button"
+              aria-label="Previous screenshot"
+              onClick={() => move(-1)}
+            >
+              ‹
+            </button>
+            <div className="fst-thumbnails" aria-label="Choose screenshot">
+              {images.map((image, number) => (
+                <button
+                  type="button"
+                  key={image}
+                  className="fst-thumbnail"
+                  aria-label={`Show ${game.name} screenshot ${number + 1}`}
+                  aria-pressed={index === number}
+                  onClick={() => setIndex(number)}
+                >
+                  <img src={image} alt="" loading="lazy" draggable={false} />
+                </button>
+              ))}
+            </div>
+            <span className="fst-shot-count" role="status">
+              {index + 1} / {images.length}
+            </span>
+            <button
+              type="button"
+              className="fst-button"
+              aria-label="Next screenshot"
+              onClick={() => move(1)}
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
+      </div>
     );
   return (
     <div
@@ -131,9 +203,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
       </section>
       {selected && details ? (
         <section className="fst-detail" aria-label={`${selected.name} details`}>
-          <div className="fst-shot">
-            <Screenshot game={selected} />
-          </div>
+          <Screenshot key={selected.id} game={selected} />
           <h3 className="fst-name">{selected.name}</h3>
           <p className="fst-tagline">{selected.tagline}</p>
           <div className="fst-detail-row">
@@ -167,32 +237,20 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
             </div>
             <nav className="fst-links" aria-label="Links">
               <h4 className="fst-heading">Links</h4>
-              <a
+              <button
+                type="button"
                 className="fst-link"
-                href={selected.url}
-                target="_blank"
-                rel="noopener"
-              >
-                Open in new tab
-              </a>
-              <a
-                className="fst-link"
-                href={selected.url}
-                target="_blank"
-                rel="noopener"
+                onClick={vm.openLeaderboard}
               >
                 Leaderboard
-              </a>
-              <a
+              </button>
+              <button
+                type="button"
                 className="fst-link"
-                href="#"
-                onClick={(event) => {
-                  event.preventDefault();
-                  vm.openFriends();
-                }}
+                onClick={vm.openFriends}
               >
                 Friends
-              </a>
+              </button>
             </nav>
           </div>
         </section>

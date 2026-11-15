@@ -90,6 +90,7 @@ export function FuseGameWindow({
   }
   return (
     <IframeGame
+      gameId={gameId}
       name={game.name}
       url={withRoom(registry.embedUrl(game), room)}
       backdropUrl={registry.screenshotUrl(game)}

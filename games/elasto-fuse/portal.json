@@ -3,5 +3,10 @@
   "tagline": "Springy bike trials",
   "mark": "EF",
   "accent": "#ffe46b",
-  "screenshot": "gallery/elasto-fuse.jpg"
+  "screenshot": "gallery/elasto-fuse.jpg",
+  "screenshots": [
+    "gallery/elasto-fuse.jpg",
+    "gallery/elasto-fuse-menu.jpg",
+    "gallery/elasto-fuse-controls.jpg"
+  ]
 }

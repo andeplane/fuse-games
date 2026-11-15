@@ -1,6 +1,7 @@
 import test from "node:test";
 import { Readable } from "node:stream";
 import assert from "node:assert/strict";
+import { MESSAGE_HISTORY_MS } from "../src/messages-api.js";
 import {
   MemoryRoomDatabase,
   RoomError,
@@ -167,6 +168,209 @@ async function handle(
 }
 
 const names = (cards: readonly { name: string }[]) => cards.map((c) => c.name);
+
+test("private messages require accepted friends and are shared with exactly the two accounts", async () => {
+  const f = fixture();
+  const alice = publicIdOf("alice"),
+    bob = publicIdOf("bob"),
+    eve = publicIdOf("eve");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.sync("eve");
+  const path = `/api/friends/${bob}/messages`;
+  const send = { id: "a".repeat(32), text: "Hello <b>Bob</b>" };
+  assert.equal((await handle(f.http, "POST", path, {}, send)).status, 401);
+  assert.equal(
+    (
+      await handle(
+        f.http,
+        "POST",
+        path,
+        { authorization: "Bearer id:alice", "x-fuse-account": alice },
+        send,
+      )
+    ).status,
+    403,
+  );
+  await f.store.add("alice", { publicId: bob });
+  await assert.rejects(
+    f.store.conversation("alice", bob, send),
+    /accepted friends/,
+  );
+  await f.store.add("bob", { publicId: alice });
+  const sent = await f.store.conversation("alice", bob, send);
+  assert.equal(
+    (
+      await handle(f.http, "GET", path, {
+        authorization: "Bearer id:alice",
+        "x-fuse-account": alice,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await handle(
+        f.http,
+        "POST",
+        path,
+        { authorization: "Bearer id:bob", "x-fuse-account": alice },
+        send,
+      )
+    ).status,
+    403,
+    "a draft from the old account cannot be sent by the new account",
+  );
+  assert.equal(sent.messages.length, 1);
+  assert.deepEqual(
+    (await f.store.conversation("bob", alice)).messages,
+    sent.messages,
+  );
+  assert.equal(
+    sent.messages[0]!.text,
+    "Hello <b>Bob</b>",
+    "plain text is not interpreted or rewritten as markup",
+  );
+  assert.equal(sent.messages[0]!.from, alice);
+  await assert.rejects(f.store.conversation("eve", bob), /accepted friends/);
+  await assert.rejects(f.store.conversation("alice", eve), /accepted friends/);
+});
+
+test("message retries are idempotent, concurrent sends survive, invalid data is refused and unfriend clears history", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const message = { id: "1".repeat(32), text: "hi" };
+  await Promise.all([
+    f.store.conversation("alice", bob, message),
+    f.store.conversation("alice", bob, message),
+    f.store.conversation("bob", alice, { id: "2".repeat(32), text: "hello" }),
+  ]);
+  assert.equal((await f.store.conversation("alice", bob)).messages.length, 2);
+  await assert.rejects(
+    f.store.conversation("alice", bob, { ...message, text: "changed" }),
+    /already sent/,
+  );
+  for (const invalid of [
+    { id: "bad", text: "hey" },
+    { ...message, text: " " },
+    { ...message, text: "a".repeat(1001) },
+    { ...message, text: "\u0000" },
+    { ...message, extra: 1 },
+  ])
+    await assert.rejects(
+      f.store.conversation("alice", bob, invalid),
+      /plain-text/,
+    );
+  await f.store.remove("alice", bob);
+  await assert.rejects(f.store.conversation("bob", alice), /accepted friends/);
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  assert.deepEqual((await f.store.conversation("alice", bob)).messages, []);
+});
+
+test("the buddy list's poll says who sent the newest message and when, so a closed chat can pop up", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const lastFrom = async (uid: string, friend: string) =>
+    (await f.sync(uid)).friends.find((x) => x.publicId === friend)?.lastMessage;
+  assert.equal(await lastFrom("bob", alice), undefined);
+  const sentAt = f.now();
+  await f.store.conversation("alice", bob, { id: "1".repeat(32), text: "hi" });
+  // Both see it, by public id; the account id never leaves the service.
+  assert.deepEqual(await lastFrom("bob", alice), { from: alice, at: sentAt });
+  assert.deepEqual(await lastFrom("alice", bob), { from: alice, at: sentAt });
+  f.tick(1_000);
+  // Reading and retrying the same message change nothing.
+  await f.store.conversation("bob", alice);
+  await f.store.conversation("alice", bob, { id: "1".repeat(32), text: "hi" });
+  assert.deepEqual(await lastFrom("bob", alice), { from: alice, at: sentAt });
+  await f.store.conversation("bob", alice, { id: "2".repeat(32), text: "yo" });
+  assert.deepEqual(await lastFrom("alice", bob), {
+    from: bob,
+    at: sentAt + 1_000,
+  });
+  // A friend who is offline still carries the marker, so the chat opens when they come back.
+  f.tick(ONLINE_WINDOW_MS + 1);
+  assert.deepEqual(await lastFrom("alice", bob), {
+    from: bob,
+    at: sentAt + 1_000,
+  });
+});
+
+test("an interleaved retry at the same clock time preserves the newest message's sender", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const original = { id: "1".repeat(32), text: "hi" };
+  await f.store.conversation("alice", bob, original);
+  await f.store.conversation("bob", alice, {
+    id: "2".repeat(32),
+    text: "hello",
+  });
+  // Both sends and the retry deliberately share a timestamp. A retry is not a new send.
+  await f.store.conversation("alice", bob, original);
+  assert.deepEqual(
+    (await f.sync("alice")).friends.find((friend) => friend.publicId === bob)
+      ?.lastMessage,
+    { from: bob, at: f.now() },
+  );
+  assert.deepEqual(
+    (await f.store.conversation("alice", bob)).messages.map(
+      (message) => message.text,
+    ),
+    ["hi", "hello"],
+  );
+});
+
+test("message history is bounded and expires from both friends' views", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  for (let n = 0; n < 85; n++)
+    await f.store.conversation("alice", bob, {
+      id: n.toString(16).padStart(32, "0"),
+      text: `message ${n}`,
+    });
+  const messages = (await f.store.conversation("bob", alice)).messages;
+  assert.equal(messages.length, 80);
+  assert.equal(messages[0]!.text, "message 5");
+  f.tick(MESSAGE_HISTORY_MS - 1);
+  assert.deepEqual(
+    (await f.sync("bob")).friends.find((friend) => friend.publicId === alice)
+      ?.lastMessage,
+    { from: alice, at: f.now() - MESSAGE_HISTORY_MS + 1 },
+  );
+  f.tick(1);
+  for (const [uid, friend] of [
+    ["alice", bob],
+    ["bob", alice],
+  ] as const) {
+    assert.equal(
+      (await f.sync(uid)).friends.find((entry) => entry.publicId === friend)
+        ?.lastMessage,
+      undefined,
+    );
+  }
+  assert.deepEqual((await f.store.conversation("bob", alice)).messages, []);
+});
 
 test("a public id is stable, opaque and not the account", () => {
   assert.equal(publicIdOf("alice"), publicIdOf("alice"));
@@ -1033,7 +1237,64 @@ test("every friends route needs a sign-in and the room invite is proven by the r
     false,
   );
   assert.deepEqual(f.http.methods, ["PUT", "DELETE"]);
-  assert.deepEqual(f.http.headers, ["X-Fuse-Identity"]);
+  assert.deepEqual(f.http.headers, ["X-Fuse-Identity", "X-Fuse-Account"]);
+});
+
+test("Messenger invites are bound to the expected account before reading a body or writing an invite", async () => {
+  const f = fixture();
+  const alice = (await f.sync("alice")).me.publicId,
+    bob = (await f.sync("bob")).me.publicId;
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const code = await f.room(1);
+  const headers = {
+    authorization: `Bearer ${token(1)}`,
+    "x-fuse-identity": "id:alice",
+  };
+  const wrongAccount = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    { ...headers, "x-fuse-account": bob },
+    { malformed: true },
+  );
+  assert.equal(
+    wrongAccount.status,
+    403,
+    "account mismatch is rejected before the malformed body is parsed",
+  );
+  assert.deepEqual(
+    (await f.sync("bob")).invites,
+    [],
+    "a stale Messenger cannot send from a different iframe account",
+  );
+  const matching = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    { ...headers, "x-fuse-account": alice },
+    { to: [bob] },
+  );
+  assert.deepEqual(matching.json, { sent: 1 });
+  const invite = (await f.sync("bob")).invites[0]!;
+  await f.store.dismissInvite("bob", invite.id);
+  const legacy = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    headers,
+    { to: [bob] },
+  );
+  assert.deepEqual(
+    legacy.json,
+    { sent: 1 },
+    "existing in-game invites remain compatible without expected-account binding",
+  );
+  assert.equal((await f.sync("bob")).invites.length, 1);
+  assert.deepEqual(createFriendsHttp(f.store, async () => "alice").headers, [
+    "X-Fuse-Identity",
+    "X-Fuse-Account",
+  ]);
 });
 
 test("createPlatformHttp serves history and friends behind one extension", async () => {

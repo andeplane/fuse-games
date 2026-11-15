@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-craft.jpg",
   "tagline": "Grow a brain. Take the map.",
   "mark": "FCR",
-  "accent": "#ff5fa8"
+  "accent": "#ff5fa8",
+  "screenshots": [
+    "gallery/fuse-craft.jpg",
+    "gallery/fuse-craft-menu.jpg",
+    "gallery/fuse-craft-controls.jpg"
+  ]
 }

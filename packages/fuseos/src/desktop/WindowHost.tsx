@@ -8,6 +8,7 @@ import { ControlPanelWindow } from "../controlpanel/ControlPanelWindow";
 import { ExplorerWindow } from "../explorer/ExplorerWindow";
 import { WallpaperWindow } from "../controlpanel/WallpaperWindow";
 import { FriendsWindow } from "../friends/FriendsWindow";
+import { InstantMessageWindow } from "../friends/InstantMessageWindow";
 import {
   FuseGameWindow,
   POP_OUT_HINT,
@@ -36,12 +37,12 @@ import { MessageBox } from "../windows/MessageBox";
 import { ModalDialogLayer } from "../windows/ModalDialogLayer";
 import { useWindowCommands } from "../windows/useWindowCommands";
 import { WindowChrome } from "../windows/WindowChrome";
-import { assignSlots } from "../windows/windowManager";
+import { assignSlots, clampRect } from "../windows/windowManager";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 import { WindowsDepsContext } from "../windows/windowsDepsContext";
 
 import { DisplayViewportContext } from "./displayViewportContext";
-import { windowMeta } from "./windowMeta";
+import { FRIENDS_WINDOW_SIZE, windowMeta } from "./windowMeta";
 
 function WindowContent({
   window,
@@ -131,6 +132,16 @@ function WindowContent({
       return <DialUpWindow windowId={window.id} then={window.then} />;
     case "friends":
       return <FriendsWindow windowId={window.id} />;
+    case "im":
+      return (
+        <InstantMessageWindow
+          windowId={window.id}
+          accountId={window.accountId}
+          visible={!window.minimized}
+          buddyId={window.buddyId}
+          name={window.name}
+        />
+      );
     case "defrag":
       return <DefragWindow windowId={window.id} />;
     case "halloffame":
@@ -157,7 +168,7 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
   const display = useContext(DisplayViewportContext);
   const games = useContext(FuseGamesContext);
   const { WindowFrame } = useContext(WindowsDepsContext);
-  const { rectFor, setRect, pruneRects, compact } =
+  const { rectFor, setRect, pruneRects, compact, rects, viewport } =
     useContext(WindowManagerContext);
   const commands = useWindowCommands();
   // Each game window's iframe, so the title bar's Pop out can read where the game has navigated to.
@@ -217,7 +228,7 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
     <>
       {frames.map(({ window, index }) => {
         if (
-          window.minimized ||
+          (window.minimized && window.kind !== "im") ||
           window.kind === "winamp" ||
           window.kind === "dialog"
         )
@@ -231,16 +242,34 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
         // alone so the window floats again where there is room (a rotated tablet, a desktop).
         const maximized = meta.resizable && (window.maximized || compact);
         const resizable = meta.resizable && !compact;
-        return (
+        let rect = rectFor(
+          window.id,
+          slots[window.id] ?? index,
+          meta.size,
+          !meta.resizable,
+        );
+        if (window.kind === "im" && !compact && !rects[window.id]) {
+          const contactIndex = windows.findIndex(
+            (entry) => entry.kind === "friends",
+          );
+          const contacts = windows[contactIndex];
+          if (contacts) {
+            const list = rectFor(
+              contacts.id,
+              slots[contacts.id] ?? contactIndex,
+              FRIENDS_WINDOW_SIZE,
+            );
+            rect = clampRect(
+              { ...rect, x: list.x + list.width + 8, y: list.y },
+              viewport,
+            );
+          }
+        }
+        const frame = (
           <WindowFrame
             key={window.id}
             id={window.id}
-            rect={rectFor(
-              window.id,
-              slots[window.id] ?? index,
-              meta.size,
-              !meta.resizable,
-            )}
+            rect={rect}
             maximized={maximized}
             resizable={resizable}
             scale={display?.scale ?? 1}
@@ -280,6 +309,19 @@ export function WindowHost({ windows, activeId }: WindowHostProps) {
               />
             </WindowChrome>
           </WindowFrame>
+        );
+        // Keep private drafts and account guards alive while minimized. react-rnd's
+        // bounds="parent" needs a real desktop-sized box, including after restore.
+        return window.kind === "im" ? (
+          <div
+            key={window.id}
+            className="pointer-events-none absolute inset-0"
+            style={{ display: window.minimized ? "none" : undefined }}
+          >
+            {frame}
+          </div>
+        ) : (
+          frame
         );
       })}
       {dialogs.map((dialog, index) => (

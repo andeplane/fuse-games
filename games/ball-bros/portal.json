@@ -3,5 +3,10 @@
   "screenshot": "gallery/ball-bros.jpg",
   "tagline": "Orbit, reach and ricochet. Protect your core.",
   "mark": "BB",
-  "accent": "#65e8f5"
+  "accent": "#65e8f5",
+  "screenshots": [
+    "gallery/ball-bros.jpg",
+    "gallery/ball-bros-menu.jpg",
+    "gallery/ball-bros-controls.jpg"
+  ]
 }
