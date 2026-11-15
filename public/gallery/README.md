@@ -1,6 +1,6 @@
 # Gallery captures
 
-These JPEGs are resized copies of existing browser gameplay captures in the repository, rather than concept art. They illustrate the games and are not evidence of the current deployment. Images are limited to 1200 pixels wide (JPEG quality 84) to keep the catalog light.
+The gameplay covers include resized copies of existing browser captures in the repository; the carousel also includes direct menu and controls captures. These illustrate the games and are not evidence of the current deployment. JPEG encoding at quality 84 keeps the catalog light.
 
 | Image             | Source                                                                       |
 | ----------------- | ---------------------------------------------------------------------------- |
