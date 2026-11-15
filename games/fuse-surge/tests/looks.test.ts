@@ -227,7 +227,13 @@ interface FakeLayer extends Layer {
 }
 function page() {
   const layers: FakeLayer[] = [];
-  const stages: { themes: Theme[]; draws: number; destroyed: boolean }[] = [];
+  const stages: {
+    themes: Theme[];
+    draws: number;
+    destroyed: boolean;
+    /** What the picture gave the renderer to call when the GPU takes its canvas away. */
+    loseContext: () => void;
+  }[] = [];
   let resolve!: (factory: StageFactory<FakeLayer>) => void,
     reject!: (error: unknown) => void;
   const fetched = new Promise<StageFactory<FakeLayer>>((yes, no) => {
@@ -236,9 +242,19 @@ function page() {
   });
   let loads = 0,
     broken: unknown;
-  const factory: StageFactory<FakeLayer> = (_world, _overlay, theme) => {
+  const factory: StageFactory<FakeLayer> = (
+    _world,
+    _overlay,
+    theme,
+    options,
+  ) => {
     if (broken) throw broken;
-    const record = { themes: [theme], draws: 0, destroyed: false };
+    const record = {
+      themes: [theme],
+      draws: 0,
+      destroyed: false,
+      loseContext: () => options.onContextLost?.(),
+    };
     stages.push(record);
     const stage: Stage = {
       resize() {},
@@ -380,4 +396,34 @@ test("a device that cannot draw 3D shows the flat look and says so", async () =>
   createShow(plain.options("classic"));
   assert.deepEqual(plain.live(), ["flat"]);
   assert.equal(plain.loads(), 0);
+  // Looks changed twice while the fetch was out, and it failed: the page hears of it once.
+  const twice = page();
+  const waiting = createShow(twice.options("reactor"));
+  waiting.setLook("forge");
+  waiting.setLook("glacier");
+  twice.fail(new Error("offline"));
+  await settle();
+  assert.deepEqual(twice.fallbacks, ["classic"]);
+  assert.deepEqual(twice.live(), ["flat"]);
+});
+
+test("a 3D picture whose GPU context is taken away gives way to the flat look", async () => {
+  const fake = page();
+  const show = createShow(fake.options("toybox"));
+  fake.arrive();
+  await settle();
+  assert.deepEqual(fake.live(), ["world", "overlay"]);
+  fake.stages[0]!.loseContext();
+  assert.equal(show.look(), "classic");
+  assert.deepEqual(fake.fallbacks, ["classic"]);
+  assert.equal(fake.stages[0]!.destroyed, true);
+  assert.deepEqual(fake.live(), ["flat"]);
+  // The context of a picture already taken off the page says nothing more.
+  fake.stages[0]!.loseContext();
+  assert.deepEqual(fake.fallbacks, ["classic"]);
+  // Choosing a 3D look again starts a new renderer.
+  show.setLook("toybox");
+  await settle();
+  assert.deepEqual(fake.live(), ["world", "overlay"]);
+  assert.equal(fake.stages.length, 2);
 });

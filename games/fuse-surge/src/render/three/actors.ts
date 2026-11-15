@@ -239,7 +239,8 @@ export function buildRider(slot: number, theme: Theme): RiderActor {
       easeJoints(
         joints,
         jointsOf(stance, t, slot),
-        placed ? 1 - Math.exp(-dtMs / 55) : 1,
+        // A duck folds at once: the rules clear a high surge on the tick, so the figure must not lag under it.
+        placed ? 1 - Math.exp(-dtMs / (stance === "duck" ? 22 : 55)) : 1,
       );
       placed = true;
       const x = each.x * UNIT,
@@ -655,10 +656,16 @@ function buildHanger(theme: Theme, doc: Document): THREE.Group {
   return made;
 }
 
-interface SurgeActor {
+interface SurgeParts {
+  model: THREE.Group;
+  /** What turns as a low surge rolls, what sways under a high one, and a veil's running texture. */
+  wheel: THREE.Object3D | undefined;
+  hung: THREE.Object3D | undefined;
+  scroll: THREE.Texture | undefined;
+}
+interface SurgeActor extends SurgeParts {
   root: THREE.Group;
   kind: number;
-  model: THREE.Group;
   marker: THREE.Mesh;
   seen: number;
 }
@@ -679,14 +686,35 @@ export function buildSurges(theme: Theme, doc: Document): SurgeCrew {
   const flipShape = new THREE.OctahedronGeometry(0.2, 0);
   const near = new THREE.Vector3();
   let frame = 0;
-  let shown: { surge: SurgeView; x: number; y: number; dim: number }[] = [];
-  const model = (kind: number) =>
-    kind === HIGH ? buildHanger(theme, doc) : buildRoller(theme, doc);
+  const shown: { surge: SurgeView; x: number; y: number; dim: number }[] = [];
+  // Every marker shares one shape and one lamp; this hidden one keeps them in the scene, so they are freed with it
+  // even when no surge is on the deck.
+  const keeper = mesh(flipShape, flipLamp, [0, 0, 0], "none");
+  keeper.visible = false;
+  group.add(keeper);
+  /** A model for a kind, with the parts that move found once. */
+  const parts = (kind: number): SurgeParts => {
+    const model =
+      kind === HIGH ? buildHanger(theme, doc) : buildRoller(theme, doc);
+    let scroll: THREE.Texture | undefined;
+    model.traverse((node) => {
+      const material = (node as Partial<THREE.Mesh>).material;
+      const map =
+        material instanceof THREE.MeshBasicMaterial ? material.map : null;
+      if (map?.name === "scroll") scroll = map;
+    });
+    return {
+      model,
+      wheel: model.getObjectByName("wheel"),
+      hung: model.getObjectByName("hung"),
+      scroll,
+    };
+  };
   return {
     group,
     show(view, nowMs, live) {
       frame++;
-      shown = [];
+      shown.length = 0;
       const t = nowMs / 1000;
       for (const surge of view.surges) {
         let actor = actors.get(surge.id);
@@ -696,9 +724,9 @@ export function buildSurges(theme: Theme, doc: Document): SurgeCrew {
           actor = {
             root,
             kind: surge.kind,
-            model: model(surge.kind),
             marker,
             seen: 0,
+            ...parts(surge.kind),
           };
           root.add(actor.model, marker);
           group.add(root);
@@ -708,7 +736,7 @@ export function buildSurges(theme: Theme, doc: Document): SurgeCrew {
           actor.root.remove(actor.model);
           release(actor.model);
           actor.kind = surge.kind;
-          actor.model = model(surge.kind);
+          Object.assign(actor, parts(surge.kind));
           actor.root.add(actor.model);
         }
         actor.seen = frame;
@@ -725,11 +753,12 @@ export function buildSurges(theme: Theme, doc: Document): SurgeCrew {
         const size = Math.max(0.001, live) * grown;
         actor.root.scale.set(size, size, 1);
         actor.root.visible = live > 0.02;
-        const wheel = actor.model.getObjectByName("wheel");
-        if (wheel)
-          wheel.rotation.z = (-x / ((LOW_TOP * UNIT) / 2)) % (Math.PI * 2);
-        const hung = actor.model.getObjectByName("hung");
-        if (hung) hung.rotation.z = Math.sin(t * 3 + surge.id) * 0.035;
+        if (actor.wheel)
+          actor.wheel.rotation.z =
+            (-x / ((LOW_TOP * UNIT) / 2)) % (Math.PI * 2);
+        if (actor.hung)
+          actor.hung.rotation.z = Math.sin(t * 3 + surge.id) * 0.035;
+        if (actor.scroll) actor.scroll.offset.x = t * 0.6;
         actor.marker.visible = surge.flips;
         actor.marker.rotation.y = t * 4;
         actor.marker.position.y =
@@ -747,13 +776,6 @@ export function buildSurges(theme: Theme, doc: Document): SurgeCrew {
           release(actor.model);
           actors.delete(id);
         }
-      // The veil of a field runs downward.
-      group.traverse((node) => {
-        const map = (
-          (node as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined
-        )?.map;
-        if (map?.name === "scroll") map.offset.x = t * 0.6;
-      });
     },
     each(visit) {
       for (const item of shown)

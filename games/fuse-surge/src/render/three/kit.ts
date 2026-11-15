@@ -99,10 +99,20 @@ export const bar = (
     Math.PI / 2,
   );
 
-/** Frees everything under `root` that holds GPU memory. */
+/**
+ * Frees everything under `root` that holds GPU memory: geometry, materials and their textures, the instance
+ * buffers of an instanced mesh, and the shadow map of a lamp that casts one.
+ */
 export function release(root: THREE.Object3D): void {
   const seen = new Set<THREE.Material>();
   root.traverse((node) => {
+    if (node instanceof THREE.InstancedMesh) node.dispose();
+    if (
+      node instanceof THREE.DirectionalLight ||
+      node instanceof THREE.PointLight ||
+      node instanceof THREE.SpotLight
+    )
+      node.shadow.dispose();
     const held = node as Partial<THREE.Mesh>;
     held.geometry?.dispose();
     const materials = Array.isArray(held.material)

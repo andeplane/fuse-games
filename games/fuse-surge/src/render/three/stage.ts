@@ -32,6 +32,8 @@ export interface Stage3d extends Scene {
 export interface StageOptions extends SceneOptions {
   /** Without the board the picture fills the canvas and shows no scores (the menu's demo). */
   board?: boolean;
+  /** The GPU took the canvas's context away (a backgrounded phone, a driver reset): nothing more can be drawn on it. */
+  onContextLost?: () => void;
 }
 /** The canvas the world is drawn on: a real one, since WebGL needs it. */
 export type GlCanvas = HTMLCanvasElement;
@@ -119,6 +121,14 @@ export function createStage3d(
   let surges: SurgeCrew;
   let riders: RiderActor[] = [];
   let composer: EffectComposer | undefined;
+  /** The post chain's passes: the composer frees its own targets, not theirs. */
+  let passes: (RenderPass | UnrealBloomPass | OutputPass)[] = [];
+  const dropComposer = () => {
+    for (const pass of passes) pass.dispose();
+    passes = [];
+    composer?.dispose();
+    composer = undefined;
+  };
   let sparks: THREE.InstancedMesh;
   const flying: {
     x: number;
@@ -133,7 +143,10 @@ export function createStage3d(
     size: number;
     spin: number;
   }[] = [];
-  let nextSpark = 0;
+  /** Sparks still in the air, and whether the last frame had any (their last matrices still need sending). */
+  let nextSpark = 0,
+    alive = 0,
+    settling = false;
   const placing = new THREE.Object3D();
   let box_ = { w: -1, h: -1, r: -1 };
 
@@ -151,6 +164,7 @@ export function createStage3d(
     sparks.frustumCulled = false;
     sparks.setColorAt(0, new THREE.Color(0xffffff));
     flying.length = 0;
+    alive = 0;
     for (let i = 0; i < SPARKS; i++) {
       placing.scale.setScalar(0);
       placing.updateMatrix();
@@ -162,19 +176,19 @@ export function createStage3d(
         ? THREE.ACESFilmicToneMapping
         : THREE.NeutralToneMapping;
     renderer.toneMappingExposure = theme.exposure;
-    composer?.dispose();
-    composer = undefined;
+    dropComposer();
     if (theme.bloom > 0) {
       const target = new THREE.WebGLRenderTarget(1, 1, {
         type: THREE.HalfFloatType,
         samples: 4,
       });
       composer = new EffectComposer(renderer, target);
-      composer.addPass(new RenderPass(scene, camera));
-      composer.addPass(
+      passes = [
+        new RenderPass(scene, camera),
         new UnrealBloomPass(new THREE.Vector2(1, 1), theme.bloom, 0.45, 1),
-      );
-      composer.addPass(new OutputPass());
+        new OutputPass(),
+      ];
+      for (const pass of passes) composer.addPass(pass);
     }
     hud.setSkin(skinOf(theme));
     box_ = { w: -1, h: -1, r: -1 };
@@ -234,6 +248,8 @@ export function createStage3d(
         tilt = (random() - 0.5) * Math.PI,
         v = speed * (0.35 + random() * 0.65);
       const index = nextSpark++ % SPARKS;
+      const before = flying[index];
+      if (!before || before.life >= before.ms) alive++;
       flying[index] = {
         x,
         y,
@@ -364,10 +380,11 @@ export function createStage3d(
         );
     }
     // Sparks.
-    for (let index = 0; index < flying.length; index++) {
+    for (let index = 0; alive > 0 && index < flying.length; index++) {
       const p = flying[index];
-      if (!p) continue;
+      if (!p || p.life >= p.ms) continue;
       p.life += dtMs;
+      if (p.life >= p.ms) alive--;
       const dt = dtMs / 1000;
       p.vy -= p.gravity * dt;
       p.x += p.vx * dt;
@@ -380,7 +397,8 @@ export function createStage3d(
       placing.updateMatrix();
       sparks.setMatrixAt(index, placing.matrix);
     }
-    sparks.instanceMatrix.needsUpdate = true;
+    if (alive > 0 || settling) sparks.instanceMatrix.needsUpdate = true;
+    settling = alive > 0;
     set.update(
       nowMs,
       dtMs,
@@ -424,7 +442,28 @@ export function createStage3d(
     return cues;
   };
 
-  build();
+  // A context taken away cannot be drawn on again here: say so, and whoever owns the picture shows another.
+  const lost = (event: Event) => {
+    if (destroyed) return;
+    event.preventDefault();
+    options.onContextLost?.();
+  };
+  canvas.addEventListener("webglcontextlost", lost);
+  const shutDown = () => {
+    canvas.removeEventListener("webglcontextlost", lost);
+    demolish();
+    dropComposer();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  };
+  try {
+    build();
+  } catch (error) {
+    // A look that cannot be built must not leave a context behind: the 2D look takes over.
+    destroyed = true;
+    shutDown();
+    throw error;
+  }
   return {
     resize,
     draw,
@@ -436,10 +475,7 @@ export function createStage3d(
     destroy() {
       if (destroyed) return;
       destroyed = true;
-      demolish();
-      composer?.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
+      shutDown();
     },
   };
 }

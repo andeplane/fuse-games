@@ -161,9 +161,10 @@ const debug = query.has("debug");
 let look: LookId = lookFrom(location.search, store.getItem(lookKey));
 if (parseLook(query.get("look"))) store.setItem(lookKey, look);
 const lookWatchers = new Set<(id: LookId) => void>();
-function setLook(id: LookId): void {
+/** Shows a look everywhere on the page. A choice is remembered; a look forced by a failure is not. */
+function setLook(id: LookId, remember = true): void {
   look = id;
-  store.setItem(lookKey, id);
+  if (remember) store.setItem(lookKey, id);
   for (const watcher of lookWatchers) watcher(id);
 }
 /** The looks as a row of small buttons, lit on the one in use. */
@@ -653,13 +654,15 @@ function room(solo: boolean): void {
   const scene = createPicture(canvas, {
     look,
     reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
-    // A device that cannot draw 3D shows the 2D look, and the menus say so.
-    onFallback: (id) => setLook(id),
+    // A device that cannot draw 3D right now shows the 2D look and the menus say so, but the look it chose stays
+    // saved: a chunk that failed to load once must not turn 3D off for good.
+    onFallback: (id) => setLook(id, false),
   });
-  lookWatchers.add((id) => {
+  const followLook = (id: LookId) => {
     scene.setLook(id);
     setText(lookButton, `LOOK: ${lookOf(id).title}`);
-  });
+  };
+  lookWatchers.add(followLook);
   const smoother = createSmoother();
   const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
     controls.hold("gamepad", bits),
@@ -972,6 +975,7 @@ function room(solo: boolean): void {
     stop: () => runtime.stop(),
     destroy: () => {
       menu.dispose();
+      lookWatchers.delete(followLook);
       scene.destroy();
     },
     reload: () => location.reload(),

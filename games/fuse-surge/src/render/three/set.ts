@@ -488,6 +488,8 @@ export function buildSet(theme: Theme, doc: Document): StageSet {
 
   // The flip gate's posts.
   const gateLamp = lamp(theme.flip, 1);
+  gateLamp.toneMapped = false;
+  const gateColor = tint(theme.flip);
   for (const side of [-1, 1]) {
     group.add(
       mesh(
@@ -1111,9 +1113,8 @@ export function buildSet(theme: Theme, doc: Document): StageSet {
         }
       runners.instanceMatrix.needsUpdate = true;
       gateLamp.color
-        .copy(tint(theme.flip))
+        .copy(gateColor)
         .multiplyScalar(flipping ? 1.6 + 1.2 * Math.sin(nowMs / 70) : 0.9);
-      gateLamp.toneMapped = false;
     },
   };
 }

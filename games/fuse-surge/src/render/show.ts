@@ -26,7 +26,7 @@ export type StageFactory<C> = (
   world: C,
   overlay: C,
   theme: Theme,
-  options: SceneOptions & { board?: boolean },
+  options: SceneOptions & { board?: boolean; onContextLost?: () => void },
 ) => Stage;
 /** A canvas the picture puts in its host and takes out again. */
 export interface Layer extends SceneCanvas {
@@ -87,8 +87,8 @@ export function createShow<C extends Layer>(options: ShowOptions<C>): Show {
     const theme = lookOf(wanted).theme;
     if (!theme) return showFlat();
     if (stage) return stage.made.setTheme(theme);
-    fetching ??= options.load();
-    fetching.then(
+    const fetch = (fetching ??= options.load());
+    fetch.then(
       (factory) => {
         // The look may have changed, or the page gone, while the renderer was on its way.
         const now = lookOf(wanted).theme;
@@ -99,7 +99,14 @@ export function createShow<C extends Layer>(options: ShowOptions<C>): Show {
         const world = options.layer("world"),
           overlay = options.layer("overlay");
         try {
-          const made = factory(world, overlay, now, options);
+          const made = factory(world, overlay, now, {
+            ...options,
+            // The GPU dropped the canvas: the flat look takes over, as on a device that never had 3D.
+            onContextLost: () => {
+              if (stage?.world === world)
+                fallBack(new Error("the 3D picture lost its GPU context"));
+            },
+          });
           dropFlat();
           stage = { made, world, overlay };
           scene = made;
@@ -111,6 +118,8 @@ export function createShow<C extends Layer>(options: ShowOptions<C>): Show {
         }
       },
       (error: unknown) => {
+        // Several look changes may wait on one fetch: only the first to hear of its failure acts on it.
+        if (fetching !== fetch) return;
         fetching = undefined;
         if (!destroyed && lookOf(wanted).theme) fallBack(error);
       },
