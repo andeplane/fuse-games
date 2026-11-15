@@ -72,3 +72,26 @@ export function sortSongs<T extends SongInfo>(
     return sign * (x - y) || text(a.title, b.title) || rank(a) - rank(b);
   });
 }
+
+/**
+ * What the song slider's badge says for `song` under `sort`: the title's first letter, the pack's name, the BPM
+ * (the top of a tempo range, as the order uses) or the meter of that difficulty, "-" for a song without one.
+ */
+export function badgeText(
+  song: SongInfo,
+  sort: SongSort,
+  packName: string | undefined,
+): string {
+  switch (sort.key) {
+    case "title": {
+      const first = song.title.trim().charAt(0).toUpperCase();
+      return /[A-Z]/.test(first) ? first : first ? "#" : "-";
+    }
+    case "pack":
+      return packName ?? "-";
+    case "bpm":
+      return String(Math.round(song.bpm[1]));
+    default:
+      return String(meterOf(song, sort.key) ?? "-");
+  }
+}

@@ -7,6 +7,7 @@ import {
 } from "../engine/index.js";
 import {
   DEFAULT_SORT,
+  badgeText,
   SORT_CHOICES,
   sortLabel,
   sortSongs,
@@ -75,6 +76,11 @@ export interface SongPickerOptions {
    * the levels.
    */
   tools?: readonly Node[];
+  /**
+   * Starts the selected song. Shows a PLAY button on the song's details (for the host) and makes Enter start it.
+   * Leave out for a picker that has no start of its own.
+   */
+  onPlay?(): void;
 }
 export interface SongPicker {
   element: HTMLElement;
@@ -205,6 +211,9 @@ interface Chip {
   best: HTMLElement;
   bestText: string;
 }
+
+const isButton = (node: unknown): node is HTMLElement =>
+  !!node && (node as Element).tagName === "BUTTON";
 
 export function createSongPicker(options: SongPickerOptions): SongPicker {
   const { songs } = options;
@@ -349,7 +358,63 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
   sorter.button.hidden = true;
   tools.hidden = !options.tools?.length;
   top.append(tabs, tools);
-  wheel.append(top, before, list, after);
+
+  // The slider under the carousel: one stop for each song in the carousel's order, and a badge over the thumb with
+  // what the order is by (the title's letter, a meter, a BPM, a pack). Dragging it turns the carousel.
+  const scrub = el("div", "", "fm-picker-scrub");
+  const slider = el("input", "", "fm-picker-slider") as HTMLInputElement;
+  slider.type = "range";
+  slider.min = "0";
+  slider.step = "1";
+  slider.setAttribute("aria-label", "Song position");
+  const badge = el("span", "", "fm-picker-badge");
+  badge.setAttribute("aria-hidden", "true");
+  scrub.append(slider, badge);
+  slider.addEventListener("input", () => {
+    if (!shown?.host) return;
+    const id = order[Number(slider.value)]?.song.id;
+    if (id && id !== shown.song) options.onSong(id);
+    // Until the choice comes back the thumb stays where the drag put it; the badge follows it.
+    syncScrub(Number(slider.value));
+  });
+  // A button that was clicked or tapped does not keep the focus ring: the keys are the carousel's, Enter plays.
+  root.addEventListener("click", (event) => {
+    const target = event.target;
+    if (event.detail > 0 && isButton(target)) target.blur();
+  });
+  // The slider is for a finger or a mouse: the keys are the carousel's, so it never keeps the focus.
+  slider.tabIndex = -1;
+  const release = () => {
+    slider.blur();
+    // Whatever the room made of the drag, the thumb ends on the song that is selected.
+    syncScrub();
+  };
+  slider.addEventListener("pointerup", release);
+  slider.addEventListener("pointercancel", release);
+  /** Puts the thumb and the badge on `index` of the carousel's order, or on the selected song. */
+  function syncScrub(index?: number) {
+    const at =
+      index ??
+      (shown ? order.findIndex((row) => row.song.id === shown!.song) : -1);
+    const last = Math.max(0, order.length - 1);
+    const clamped = Math.min(Math.max(at, 0), last);
+    slider.max = String(last);
+    if (slider.value !== String(clamped)) slider.value = String(clamped);
+    const row = order[clamped];
+    if (row) {
+      const text = badgeText(row.song, sorter.current(), packs[row.pack]?.name);
+      write(badge, text);
+      slider.setAttribute(
+        "aria-valuetext",
+        `${clamped + 1} of ${order.length}, ${row.song.title}`,
+      );
+    }
+    scrub.style.setProperty(
+      "--fm-scrub",
+      String(last === 0 ? 0 : clamped / last),
+    );
+  }
+  wheel.append(top, before, list, after, scrub);
 
   // A swipe or a sideways scroll turns the carousel, one song for each stretch of the drag.
   let dragFrom: { id: number; x: number } | undefined;
@@ -506,7 +571,13 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     names = el("div", "", "fm-picker-names");
   names.append(packName, title, artist, facts);
   head.append(art, names);
-  detail.append(head, chartsLabel, charts);
+  const play = push("fm-picker-play");
+  play.textContent = "PLAY";
+  play.hidden = true;
+  play.addEventListener("click", () => {
+    if (shown?.host && rows.has(shown.song)) options.onPlay?.();
+  });
+  detail.append(head, ...(options.onPlay ? [play] : []), chartsLabel, charts);
   if (!hideMode) detail.append(modes);
   detail.append(note);
   root.append(wheel, detail);
@@ -614,6 +685,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       row?.element.setAttribute("aria-selected", "true");
       showSong(row?.song);
       place(next.song);
+      syncScrub();
       for (const tab of packTabs) {
         const selected = String(tab.index === row?.pack);
         if (tab.element.getAttribute("aria-selected") !== selected)
@@ -643,7 +715,8 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       root.dataset.host = String(next.host);
       if (next.host) list.removeAttribute("aria-disabled");
       else list.setAttribute("aria-disabled", "true");
-      before.disabled = after.disabled = !next.host;
+      before.disabled = after.disabled = slider.disabled = !next.host;
+      play.hidden = !next.host;
       for (const tab of packTabs) tab.element.disabled = !next.host;
       sorter.button.hidden = !next.host || order.length < 2;
       tools.hidden = !options.tools?.length && sorter.button.hidden;
@@ -732,18 +805,26 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       const sorted = sortSongs(packed, sort);
       order = sorted.map((song) => rows.get(song.id)!);
       list.append(...order.map((row) => row.element));
+      syncScrub();
       if (shown) {
         place(shown.song);
         if (shown.host) fetchNear();
       }
       show();
     }
+    /** Whether the dialog was opened from the keyboard: only then does the focus go back to SORT when it closes. */
+    let byKeyboard = false;
     function close() {
       if (shell.dialog.open) shell.dialog.close();
-      trigger.focus();
     }
-    trigger.addEventListener("click", () => {
+    shell.dialog.addEventListener("close", () => {
+      // After a mouse or a touch SORT is not left lit: Enter then starts the song, not SORT again.
+      if (byKeyboard) trigger.focus();
+      else trigger.blur();
+    });
+    trigger.addEventListener("click", (event) => {
       if (!shown?.host) return;
+      byKeyboard = event.detail === 0;
       show();
       const dialog = shell.dialog;
       if (typeof dialog.showModal === "function") dialog.showModal();
@@ -781,6 +862,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     return {
       button: trigger,
       close,
+      current: () => sort,
       isOpen: () => shell.dialog.open,
     };
   }
@@ -858,6 +940,20 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
         case "Tab":
         case "KeyM":
           return toggleMode();
+        case "Enter": {
+          if (!options.onPlay || !shown?.host || !rows.has(shown.song))
+            return false;
+          // Whatever button or link has the keyboard focus keeps its own Enter; a cover and the page do not.
+          const focus = options.document?.activeElement as HTMLElement | null;
+          const tag = focus?.tagName;
+          if (
+            (tag === "BUTTON" || tag === "A" || tag === "SUMMARY") &&
+            !focus?.classList.contains("fm-picker-row")
+          )
+            return false;
+          options.onPlay();
+          return true;
+        }
         default:
           return false;
       }

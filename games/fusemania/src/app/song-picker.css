@@ -357,6 +357,97 @@
 .fm-picker-next::before {
   transform: translateX(-0.125rem) rotate(225deg);
 }
+/* PLAY on the selected song: the same primary button as the bar's, so the song can start from where it is shown. */
+.fm-picker.fm-picker .fm-picker-play {
+  justify-self: center;
+  width: auto;
+  min-width: 12rem;
+  color: var(--fui-primary-text, #031b29);
+  background: var(--fui-primary-fill, #18dbeb);
+  border-color: var(--fui-primary-fill, #18dbeb);
+}
+.fm-picker-play[hidden] {
+  display: none;
+}
+
+/* The slider under the carousel: a track the whole width, and a badge over the thumb saying where in the order it is. */
+.fm-picker-scrub {
+  --fm-thumb: 1.5rem;
+  position: relative;
+  padding: 1.75rem var(--fui-space-4) var(--fui-space-3);
+}
+.fm-picker.fm-picker .fm-picker-slider {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  height: var(--fm-thumb);
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  /* A sideways drag on the slider is the slider's, never the page's. */
+  touch-action: none;
+}
+.fm-picker-slider::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  background: color-mix(in srgb, var(--fui-cyan) 30%, transparent);
+  border-radius: 999px;
+}
+.fm-picker-slider::-moz-range-track {
+  height: 0.375rem;
+  background: color-mix(in srgb, var(--fui-cyan) 30%, transparent);
+  border-radius: 999px;
+}
+.fm-picker-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--fm-thumb);
+  height: var(--fm-thumb);
+  margin-top: calc((0.375rem - var(--fm-thumb)) / 2);
+  background: var(--fui-cyan);
+  border: 2px solid var(--fui-white);
+  border-radius: 50%;
+  box-shadow: 0 0 0.75rem var(--fui-cyan);
+}
+.fm-picker-slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--fm-thumb);
+  height: var(--fm-thumb);
+  background: var(--fui-cyan);
+  border: 2px solid var(--fui-white);
+  border-radius: 50%;
+  box-shadow: 0 0 0.75rem var(--fui-cyan);
+}
+.fm-picker-slider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.fm-picker-badge {
+  position: absolute;
+  top: 0.25rem;
+  /* The thumb's centre: the track is the width less the padding and a thumb's width. */
+  left: calc(
+    var(--fui-space-4) + var(--fm-thumb) / 2 + var(--fm-scrub, 0) *
+      (100% - 2 * var(--fui-space-4) - var(--fm-thumb))
+  );
+  transform: translateX(-50%);
+  min-width: 1.5rem;
+  max-width: 14rem;
+  padding: 0.25rem 0.5rem;
+  overflow: hidden;
+  color: var(--fui-black, #000);
+  background: var(--fui-cyan);
+  border-radius: var(--fui-radius-small);
+  font: 0.75rem/1 var(--fui-font-pixel);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* The carousel is the host's: everyone else sees the chosen song as one card, below. */
 .fm-picker[data-host="false"] .fm-picker-wheel {
   display: none;

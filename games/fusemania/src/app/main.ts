@@ -512,6 +512,10 @@ function landing(): void {
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
     tools: [options.random],
+    onPlay: () => {
+      leaveLanding();
+      startSolo(library, choice);
+    },
   });
   const show = (next: Choice) => {
     if (next.song !== choice.song || next.chart !== choice.chart) sfx.blip();
@@ -966,6 +970,7 @@ function enterRoom(
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
     tools: [options.random],
+    onPlay: () => start.click(),
   });
   const showOptions = () =>
     options.update({
