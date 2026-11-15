@@ -218,6 +218,11 @@ try {
   await menu.getByText("WASD / ARROWS + K", { exact: true }).waitFor();
   await menu.getByText("MOUSE + RIGHT CLICK", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
+  // Native dialog dismissal queues its close event. The top bar collapses the
+  // embedded game menu and restores arena focus from that event, after Escape.
+  await page
+    .locator('.fui-game-menu-trigger[aria-expanded="false"]')
+    .waitFor({ state: "attached" });
   assert.equal(
     await page
       .locator("#scene")
