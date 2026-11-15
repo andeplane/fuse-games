@@ -32,6 +32,26 @@ test("each address has its own allowance, refilled over time, and idle addresses
   );
 });
 
+test("F-04: a full address table evicts refilled buckets without resetting spent budgets", () => {
+  let now = 0;
+  const budget = new AddressBudget(() => now, 14, 30 / 3600, 3);
+  for (let i = 0; i < 14; i++) assert.equal(budget.take("exhausted"), true);
+  assert.equal(budget.take("exhausted"), false);
+  assert.equal(budget.take("once-a"), true);
+  assert.equal(budget.take("once-b"), true);
+  assert.equal(budget.take("new"), false);
+  now = 120_000;
+  assert.equal(budget.take("new"), true, "one-use bucket has fully refilled");
+  assert.equal(budget.size, 3);
+  assert.equal(budget.take("exhausted"), true, "one token refilled");
+  assert.equal(
+    budget.take("exhausted"),
+    false,
+    "remaining debt was not erased",
+  );
+  assert.equal(budget.size, 3);
+});
+
 test("the room lookups an outsider can ask for are bounded per address; other routes keep their own budgets", async () => {
   let now = 1_000_000;
   const service = createDevRoomService({ now: () => now, log: () => {} });
