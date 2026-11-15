@@ -86,7 +86,8 @@ phones as controllers. See [games/fuse-volley/README.md](games/fuse-volley/READM
 **http://localhost:8787/fuse-surge/**): surges sweep a deck over a plasma pit, faster and faster; jump the low ones,
 duck the high ones, and every hit throws you a foothold closer to the edge. It has solo against bots at three levels,
 rooms with a QR invite, hits, round length, pace, rounds to win and the comeback rule chosen in the lobby, keyboard,
-touch and gamepad controls, and a shared TV with phones as controllers. See
+touch and gamepad controls, a shared TV with phones as controllers, and six looks to draw it in (five in 3D), chosen
+per device. See
 [games/fuse-surge/README.md](games/fuse-surge/README.md).
 
 ## Elasto Fuse

@@ -54,7 +54,15 @@ import {
 } from "../online/runtime.js";
 import { createCueWatch, type Cue } from "../render/cues.js";
 import { laneColor, laneName } from "../render/palette.js";
-import { createScene } from "../render/scene.js";
+import {
+  LOOKS,
+  lookFrom,
+  lookOf,
+  nextLook,
+  parseLook,
+  type LookId,
+} from "../render/looks.js";
+import { createPicture } from "./picture.js";
 import { createSmoother } from "../render/smooth.js";
 import { createSfx } from "./audio.js";
 import {
@@ -124,6 +132,7 @@ const social = createGameSocial({
 const store = safeStore(() => localStorage);
 const names = keys(GAME);
 const settingsKey = `${GAME}-settings`;
+const lookKey = `${GAME}-look`;
 const query = new URLSearchParams(location.search);
 const muted = query.has("mute");
 /** One sound bus for the page: the mute and volumes are remembered across games, `?mute` keeps a preview silent. */
@@ -141,6 +150,53 @@ const autopilot = query.has("autopilot");
 const localLead = query.get("lead") === "local";
 /** `?debug` puts the room's view and a settings setter on `window.fuseSurge`, for tuning a match by hand. */
 const debug = query.has("debug");
+/**
+ * The look this device draws a match in: its own and cosmetic, remembered by the browser, never the room's. A link's
+ * `look=` picks one and is remembered like a choice from the menu.
+ */
+let look: LookId = lookFrom(location.search, store.getItem(lookKey));
+if (parseLook(query.get("look"))) store.setItem(lookKey, look);
+const lookWatchers = new Set<(id: LookId) => void>();
+function setLook(id: LookId): void {
+  look = id;
+  store.setItem(lookKey, id);
+  for (const watcher of lookWatchers) watcher(id);
+}
+/** The looks as a row of small buttons, lit on the one in use. */
+function createLookPicker(): HTMLElement {
+  const line = el("div", "", "fs-setting fs-look-row"),
+    group = el("div", "", "fs-levels");
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", "LOOK");
+  const buttons = LOOKS.map((each) => {
+    const node = button(each.title, "fs-level");
+    node.dataset.look = each.id;
+    node.title = each.blurb;
+    node.onclick = () => setLook(each.id);
+    group.append(node);
+    return node;
+  });
+  const show = (id: LookId) =>
+    buttons.forEach((node, index) =>
+      node.setAttribute("aria-pressed", String(LOOKS[index]!.id === id)),
+    );
+  show(look);
+  lookWatchers.add(show);
+  line.append(el("span", "LOOK"), group);
+  return line;
+}
+/** The demo behind the menus, in the look in use. */
+async function attractIn(host: HTMLElement) {
+  const made = (await import("./attract.js")).createAttract(host, look);
+  lookWatchers.add(made.setLook);
+  return {
+    ...made,
+    dispose() {
+      lookWatchers.delete(made.setLook);
+      made.dispose();
+    },
+  };
+}
 /** A link within the game that keeps this page's developer flags. */
 const withFlags = (path: string) => {
   const kept = ["mute", "autopilot", "debug"].filter((flag) => query.has(flag));
@@ -292,8 +348,7 @@ function landing(): void {
   shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   let chosen = chosenSettings();
   const card = createLandingCard({
-    background: async (host) =>
-      (await import("./attract.js")).createAttract(host),
+    background: attractIn,
     title: "FUSE SURGE",
     tagline:
       "Surges sweep the deck, faster and faster. Jump the low ones, duck the high ones: every hit throws you a step toward the pit. Two to five riders: friends online, on one TV with phones as pads, or bots.",
@@ -327,7 +382,12 @@ function landing(): void {
   });
   picker.update(chosen, true);
   const rules = el("section", "", "fs-landing-rules");
-  rules.append(el("h2", "MATCH", "fui-lobby-title"), picker.element);
+  rules.append(
+    el("h2", "MATCH", "fui-lobby-title"),
+    picker.element,
+    el("h2", "LOOK", "fui-lobby-title"),
+    createLookPicker(),
+  );
   card.menu.addSettings(rules);
   card.menu.help.append(keyHelp());
   const back = el("a", "← ALL GAMES", "fs-back");
@@ -391,9 +451,17 @@ function room(solo: boolean): void {
     },
   });
   const roundControls = createRoundControls(QUICK_GUIDE);
+  /** The next look, at a press: the quick way to compare them mid-match (L does the same). */
+  const lookButton = button(`LOOK: ${lookOf(look).title}`, "fs-look");
+  lookButton.title = "Change how the match is drawn (L)";
+  lookButton.onclick = () => {
+    setLook(nextLook(look));
+    lookButton.blur();
+  };
   const top = header([
     el("strong", solo ? "SOLO" : code, "fs-code"),
     status.element,
+    lookButton,
     menu.element,
   ]);
 
@@ -453,11 +521,14 @@ function room(solo: boolean): void {
       settings: { ...next, display: settings.display },
     });
   });
+  /** How this device draws the match: its own choice, so every rider can change it, host or not. */
+  const lookPicker = createLookPicker();
   const lobbyActions = el("div", "", "fs-actions");
   lobbyActions.append(tvLink, start);
   lobbySide.append(
     el("h2", "MATCH", "fui-lobby-title"),
     picker.element,
+    lookPicker,
     lobbyNote,
     lobbyActions,
     keyHelp(),
@@ -467,7 +538,7 @@ function room(solo: boolean): void {
   // The deck: the canvas, the result card and a line for a device that is not playing.
   const stage = el("section", "", "fs-stage"),
     screen = el("div", "", "fs-screen"),
-    canvas = el("canvas", "", "fs-canvas"),
+    canvas = el("div", "", "fs-canvas"),
     note = el("p", "", "fs-note");
   const result = el("section", "", "fs-result"),
     resultTitle = el("h2"),
@@ -558,15 +629,14 @@ function room(solo: boolean): void {
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor: (slot) => laneColor(slot),
     slotLabel: (slot) => `${laneName(slot)} · Lane ${slot + 1}`,
-    background: async (host) =>
-      (await import("./attract.js")).createAttract(host),
+    background: attractIn,
     element: lobby,
     roster,
     capacity: CAPACITY,
     join: nameEntry.form,
     addAI: addBot,
     modes: [],
-    settings: [picker.element],
+    settings: [picker.element, lookPicker],
     actions: [lobbyNote, tvLink, start],
   });
   lobby.hidden = true;
@@ -576,8 +646,15 @@ function room(solo: boolean): void {
   let over = false;
 
   // ---- drawing: the newest folded world played forward to the clock, once per animation frame ----
-  const scene = createScene(canvas, {
+  const scene = createPicture(canvas, {
+    look,
     reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    // A device that cannot draw 3D shows the 2D look, and the menus say so.
+    onFallback: (id) => setLook(id),
+  });
+  lookWatchers.add((id) => {
+    scene.setLook(id);
+    setText(lookButton, `LOOK: ${lookOf(id).title}`);
   });
   const smoother = createSmoother();
   const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
@@ -891,6 +968,16 @@ function room(solo: boolean): void {
     (target instanceof HTMLButtonElement && !model?.riding);
   const captured = new Set<string>();
   document.addEventListener("keydown", (event) => {
+    if (
+      event.code === "KeyL" &&
+      !event.repeat &&
+      !menu.isOpen() &&
+      !(event.target instanceof HTMLInputElement) &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    )
+      setLook(nextLook(look));
     if (
       menu.isOpen() ||
       typing(event.target) ||

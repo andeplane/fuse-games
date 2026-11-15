@@ -307,6 +307,19 @@ body.fs-display .fs-lobby {
   width: 100%;
   height: 100%;
 }
+/* The picture's layers: the world, and the flat layer of names and scores over it. */
+.fs-canvas canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.fui-app .fs-look {
+  padding: var(--fui-space-1) var(--fui-space-2);
+  font: 0.5rem/1.6 var(--fui-font-pixel);
+  white-space: nowrap;
+}
 .fs-note {
   margin: 0;
   color: var(--fui-text-muted);
@@ -581,4 +594,8 @@ body.fs-display .fs-screen {
 .fs-setting .fs-levels {
   margin: 0;
   grid-template-columns: repeat(auto-fit, minmax(3.25rem, 1fr));
+}
+/* Six looks: two rows of three, so every name fits. */
+.fs-setting.fs-look-row .fs-levels {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }

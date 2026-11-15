@@ -106,7 +106,8 @@ const RECIPES: Record<string, Recipe> = {
     await page
       .locator('.fs-room[data-phase="play"]')
       .waitFor({ timeout: 30_000 });
-    await page.locator("canvas").click({ position: { x: 20, y: 20 } });
+    // The picture is two canvases in a 3D look (the world and the flat layer over it): click their box.
+    await page.locator(".fs-canvas").click({ position: { x: 20, y: 20 } });
     // Two surges in: the rider nobody is steering has been thrown back to the last foothold, by the pit, and hops
     // there while the third bears down; the bots are still up the deck.
     await page.waitForTimeout(5200);
