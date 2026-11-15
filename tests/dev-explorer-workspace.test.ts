@@ -475,14 +475,14 @@ test("complete activity summaries survive raw paging and are not reused for prop
   to.dispatchEvent(
     new window.Event("input", { bubbles: true }) as unknown as Event,
   );
-  root.querySelector("form.filters")!.requestSubmit();
+  root.querySelector<HTMLFormElement>("form.filters")!.requestSubmit();
   await settled(() => measure("MAU") === "—");
   assert.equal(summaryRequests, 2);
   to.value = "2026-11-15";
   to.dispatchEvent(
     new window.Event("input", { bubbles: true }) as unknown as Event,
   );
-  root.querySelector("form.filters")!.requestSubmit();
+  root.querySelector<HTMLFormElement>("form.filters")!.requestSubmit();
   await settled(() => measure("MAU") === "29");
   root.querySelector<HTMLDetailsElement>(".filter-builder")!.open = true;
   click(root, "Add constraint");
