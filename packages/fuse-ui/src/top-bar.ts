@@ -232,8 +232,14 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   // behind them. Keyup still reaches the game so previously held keys release.
   // The context is the game's own content, lent to the bar (a roster, the host's actions): a key pressed with
   // focus left there after a click is still the game's, or Space would press that button again instead of the bomb.
+  // So is a game menu the game keeps in the bar itself rather than in the dialog: Escape closes it and the arrows
+  // walk it from the document, where it listens.
   root.addEventListener("keydown", (event) => {
-    if (!context.contains(event.target as Node | null)) event.stopPropagation();
+    const target = event.target as Element | null;
+    const games =
+      context.contains(target) ||
+      (!menu.dialog.contains(target) && !!target?.closest?.(".fui-game-menu"));
+    if (!games) event.stopPropagation();
   });
   toggle.onclick = () => {
     renderSound();
