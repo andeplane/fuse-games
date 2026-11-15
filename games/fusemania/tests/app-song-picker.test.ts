@@ -770,7 +770,7 @@ test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/P
       .map((tab) => tab.querySelector(".fm-picker-pack-name")?.textContent);
   assert.deepEqual(
     tabs().map((tab) => tab.textContent),
-    ["JAZZ MIX2 SONGS", "FUSE2 SONGS"],
+    ["JAZZ MIX", "FUSE"],
   );
   assert.deepEqual(lit(), []);
 
