@@ -1,7 +1,9 @@
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
+import { menuKeys } from "./menu-keys.js";
 import { ALL_SONGS, type Song, type MusicMedia } from "fuse-music";
 import { createRadio } from "./radio.js";
+import { browserPlaytestFor } from "./playtest.js";
 
 export interface TopBarOptions {
   element: HTMLElement;
@@ -31,6 +33,9 @@ const bindings = new WeakMap<HTMLElement, () => void>();
 const radios = new WeakMap<Document, ReturnType<typeof createRadio>>();
 
 /** Shared overlay navigation. Existing game/account controls retain their handlers and game-specific data. */
+/** The keys that press a focused button. */
+const PRESSES = new Set([" ", "Enter"]);
+
 export function createTopBar(options: TopBarOptions): HTMLElement {
   const root = options.element;
   const previous = installed.get(root);
@@ -90,13 +95,11 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   toggle.setAttribute("aria-expanded", "false");
   toggle.innerHTML =
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-  const menu = createDialog({
-    title: "Game menu",
-    closeText: "Close",
-    document: doc,
-  });
+  const menu = createDialog({ title: "Game menu", document: doc });
   menu.dialog.classList.add("fui-top-bar-menu");
   menu.body.classList.add("fui-top-bar-actions");
+  // Heard on the dialog: the bar keeps its keys from the page, and a modal holds the focus in here anyway.
+  menuKeys(menu.body, { scope: menu.dialog, document: doc });
   const owned = new Set<Node>([left, right, context, menu.dialog]);
   let source: HTMLElement | undefined;
   let soundControl: TopBarSound | undefined;
@@ -117,6 +120,8 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       : "Toggle music and sound effects";
   };
   let onOpenChange = options.onOpenChange;
+  let report: HTMLButtonElement | undefined;
+  let recording: HTMLButtonElement | undefined;
   let releaseAccount: (() => void) | undefined;
   const refresh = (next: TopBarOptions) => {
     onOpenChange = next.onOpenChange;
@@ -184,6 +189,39 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
     root.classList.add("fui-top-bar");
     root.dataset.fuiPreserve = "true";
     if (next.gameId) root.dataset.gameId = next.gameId;
+    if (next.gameId && !report) {
+      const playtest = browserPlaytestFor(doc, next.gameId);
+      report = button("Report · Ctrl+X", "fui-playtest-trigger", doc);
+      report.onclick = () => {
+        if (menu.dialog.open) menu.dialog.close();
+        playtest?.openReport();
+      };
+      menu.body.append(report);
+      if (playtest) {
+        recording = button(
+          "Start recording",
+          "fui-playtest-recording-toggle",
+          doc,
+        );
+        recording.hidden = true;
+        recording.onclick = () => {
+          if (menu.dialog.open) menu.dialog.close();
+          playtest.toggleRecording();
+        };
+        playtest.watchRecording((state) => {
+          if (!recording) return;
+          recording.hidden = !state.available;
+          recording.disabled = state.busy;
+          recording.textContent = state.busy
+            ? "Recording…"
+            : state.active
+              ? "Stop recording"
+              : "Start recording";
+          recording.setAttribute("aria-pressed", String(state.active));
+        });
+        menu.body.append(recording);
+      }
+    }
     for (const trigger of menu.body.querySelectorAll<HTMLElement>(
       ".fui-game-menu-trigger",
     ))
@@ -197,8 +235,17 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   // behind them. Keyup still reaches the game so previously held keys release.
   // The context is the game's own content, lent to the bar (a roster, the host's actions): a key pressed with
   // focus left there after a click is still the game's, or Space would press that button again instead of the bomb.
+  // So is a game menu the game keeps in the bar itself rather than in the dialog: Escape closes it and the arrows
+  // walk it from the document, where it listens. Space and Enter press the focused button and stay here, or they
+  // would fire in the match as well.
   root.addEventListener("keydown", (event) => {
-    if (!context.contains(event.target as Node | null)) event.stopPropagation();
+    const target = event.target as Element | null;
+    const games =
+      context.contains(target) ||
+      (!PRESSES.has(event.key) &&
+        !menu.dialog.contains(target) &&
+        !!target?.closest?.(".fui-game-menu"));
+    if (!games) event.stopPropagation();
   });
   toggle.onclick = () => {
     renderSound();

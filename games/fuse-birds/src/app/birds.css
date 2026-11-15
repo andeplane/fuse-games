@@ -6,37 +6,13 @@
 body.fui-app {
   padding: 0;
 }
-.birds-menu {
-  position: relative;
-  flex-shrink: 0;
-  z-index: 10;
-}
+/* The battle's own choices sit in the bar's menu, in the open. */
 .birds-menu summary {
-  cursor: pointer;
-  list-style: none;
-  border: 1px solid #42738a;
-  border-radius: 7px;
-  padding: 10px;
-  color: #baffef;
-  font:
-    9px "Press Start 2P",
-    monospace;
-}
-.birds-menu summary::-webkit-details-marker {
   display: none;
 }
 .birds-menu-items {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 9px);
   display: grid;
   gap: 9px;
-  padding: 12px;
-  min-width: 160px;
-  background: #07152af5;
-  border: 1px solid #37637b;
-  border-radius: 9px;
-  box-shadow: 0 10px 30px #0008;
 }
 .birds-controls .birds-weapon {
   border-radius: 5px;
@@ -132,13 +108,6 @@ canvas:focus-visible {
   width: 100%;
   margin-top: 12px;
 }
-.birds-shared {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  margin: 20px 0;
-}
 .birds-join {
   display: flex;
   gap: 10px;
@@ -169,55 +138,58 @@ canvas:focus-visible {
   flex-direction: column;
   overflow: hidden;
 }
-.birds-top {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 12px max(18px, env(safe-area-inset-right)) 12px
-    max(18px, env(safe-area-inset-left));
-  border-bottom: 1px solid #23475b;
-  background: #030b1df5;
-  flex-shrink: 0;
-}
+/* The room's line during a battle: one line under the bar, and in the bar itself where there is room. */
 .birds-top .birds-notice {
-  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (min-width: 900px) {
+  .birds-top .fui-top-bar-context {
+    inset: 0 24.5rem 0 17.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+}
+/* In the room the line is at the room's foot; the bar holds it only during a battle. */
+.birds-room:has(.birds-lobby:not([hidden])) .birds-top .birds-notice {
+  display: none !important;
+}
+/* What went wrong, said above the room wherever the player is. */
+.birds-alert {
+  margin: 76px auto 0;
+  padding: 0 16px;
+  color: var(--bird-pink);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+/* During a battle it floats over the top of the field: a line that appears must not move the board. */
+.birds-room[data-screen="battle"] > .birds-alert {
+  position: fixed;
+  z-index: 30;
+  top: 68px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: #07152af2;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 .birds-top button {
   font-size: 9px;
   padding: 8px;
   min-height: 34px;
 }
-.birds-code {
-  color: #8bf5e5;
-  letter-spacing: 2px;
-  font-family: monospace;
-}
 .birds-lobby {
   overflow: auto;
   margin: 25px auto;
   width: min(720px, 95%);
-}
-.birds-lobby h1 {
-  font-size: 18px;
-}
-.birds-roster {
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.birds-roster li {
-  padding: 12px;
-  border: 1px solid currentColor;
-  border-radius: 7px;
-  font-family: monospace;
-}
-.birds-lobby .fui-button {
-  margin: 12px 12px 0 0;
-}
-.birds-lobby .fui-invite {
-  margin-bottom: 18px;
 }
 .birds-board {
   position: relative;
@@ -225,6 +197,16 @@ canvas:focus-visible {
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+/* The shared bar lies over the top of the page, so a battle starts under it: the scoreboard is never behind the
+   brand or the bar's buttons, however many birds are on it. Below 900px the room's line has a row of its own. */
+.birds-room[data-screen="battle"] .birds-board {
+  padding-top: 88px;
+}
+@media (min-width: 900px) {
+  .birds-room[data-screen="battle"] .birds-board {
+    padding-top: 64px;
+  }
 }
 .birds-scorebar {
   display: flex;
@@ -416,21 +398,11 @@ canvas:focus-visible {
   display: none;
 }
 @media (max-width: 700px) {
-  .birds-top {
-    gap: 9px;
-    padding: 9px 12px;
-    flex-wrap: wrap;
-  }
   .birds-brand {
     font-size: 16px;
   }
   .birds-top .birds-notice {
-    order: 5;
-    flex-basis: 100%;
     font-size: 10px;
-  }
-  .birds-top .birds-code {
-    margin-left: auto;
   }
   .birds-top button {
     font-size: 8px;
@@ -480,23 +452,33 @@ canvas:focus-visible {
   .birds-lobby {
     margin: 12px auto;
   }
-  .birds-lobby h1 {
-    font-size: 14px;
-  }
 }
 @media (max-height: 550px) and (min-width: 600px) {
-  .birds-top {
-    padding: 6px 12px;
-  }
   .birds-top .birds-brand {
     font-size: 15px;
+  }
+  /* A phone on its side has no height to give the bar: the field keeps the whole screen, the scoreboard lies
+     over its top beside the bar's sound and menu buttons, and the brand and the account button step aside. */
+  .birds-room[data-screen="battle"] .birds-board {
+    padding-top: 0;
+  }
+  .birds-room[data-screen="battle"] .birds-top .fui-top-bar-left {
+    visibility: hidden;
+  }
+  .birds-room[data-screen="battle"] .birds-top .fui-top-bar-account {
+    display: none !important;
+  }
+  .birds-top .fui-top-bar-context {
+    inset: 56px 0 auto;
+    display: block;
   }
   .birds-scorebar {
     position: absolute;
     top: 5px;
     left: 0;
     right: 0;
-    padding: 0 15px;
+    justify-content: flex-start;
+    padding: 0 130px 0 15px;
     background: transparent;
     pointer-events: none;
   }

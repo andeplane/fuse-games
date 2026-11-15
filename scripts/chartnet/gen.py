@@ -34,25 +34,149 @@ def timing(meta) -> Timing:
     return Timing(meta["offset"], [tuple(x) for x in meta["bpms"]], [tuple(x) for x in meta.get("stops", [])])
 
 
-def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None = None, swing: bool = False):
-    """Peaks of the step probability → snapped beats (respecting the difficulty's grid and minimum gap)."""
+BUSY_POWER = float(os.environ.get("CHARTNET_BUSY_POWER", "1"))
+BUSY_HOP = 0.5  # seconds between frames of the busy-ness profile
+RUN_BONUS = float(os.environ.get("CHARTNET_RUN_BONUS", "1"))
+RUN_SHARE = {"Challenge": float(os.environ.get("CHARTNET_RUN_SHARE", "0.05"))}
+
+
+def only_24th(b: float) -> bool:
+    """A beat position on the 24th grid that is neither an 8th, a 12th nor a 16th: k + 1/6 or k + 5/6."""
+    six = b * 6
+    return abs(six - round(six)) < 1e-6 and round(six) % 6 in (1, 5)
+
+
+def keep_24th_runs(beats: list[float], need: int = 5) -> list[float]:
+    """24ths only as bursts: a 1/6 or 5/6 step stays when its beat carries at least `need` of its six 24ths."""
+    have = set(round(b * 6) for b in beats if abs(b * 6 - round(b * 6)) < 1e-6)
+    out = []
+    for b in beats:
+        if only_24th(b):
+            k = math.floor(b + 1e-6)
+            if sum((k * 6 + j) in have for j in range(6)) < need:
+                continue
+        out.append(b)
+    return out
+
+
+END_MARGIN = 0.5  # seconds before the end of the audio where the last step may fall
+QUOTA_SECONDS = 2.0  # the window the busy-ness profile and the tapped counts are spent in
+
+
+def _select(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None, swing: bool, snap24: bool,
+            forced: list[float] | None, quota: np.ndarray | None) -> list[float]:
+    """Peaks of the step probability, strongest first, snapped to the difficulty's grid and kept apart by its
+    minimum gap. With `quota` (steps allowed per QUOTA_SECONDS window) a full window takes no more."""
     cand = peaks(prob, thr if n_target is None else 0.0)
     cand = cand[np.argsort(-prob[cand])]
     chosen: dict[float, float] = {}
     times: list[float] = []
+    used: dict[int, int] = {}
+
+    def add(best: float, t: float) -> None:
+        chosen[best] = 1.0
+        times.append(t)
+        w = max(int(t // QUOTA_SECONDS), 0)
+        used[w] = used.get(w, 0) + 1
+
+    for b in forced or []:
+        t = tm.beat_to_time(b)
+        if b >= 0 and not any(abs(t - u) < MIN_GAP[diff] for u in times):
+            add(b, t)
+    subs = SNAP[diff] + ([3] if swing and diff in ("Medium", "Hard", "Challenge") else []) + ([6] if snap24 else [])
+    snapped: list[tuple[float, float]] = []  # (beat, probability), strongest first
+    last = len(prob) / FPS - END_MARGIN  # snapping must not carry a step past the end of the audio
     for f in cand:
         b = tm.time_to_beat(f / FPS)
-        best = min((round(b * s) / s for s in SNAP[diff] + ([3] if swing and diff in ("Medium", "Hard", "Challenge") else [])), key=lambda x: abs(x - b))
-        if abs(best - b) > 0.2 or best in chosen or best < 0:
-            continue
+        best = min((round(b * s) / s for s in subs), key=lambda x: abs(x - b))
+        if abs(best - b) <= 0.2 and best >= 0 and tm.beat_to_time(best) < last:
+            snapped.append((best, float(prob[f])))
+
+    def take(best: float) -> bool:
+        if best in chosen:
+            return False
         t = tm.beat_to_time(best)
+        w = max(int(t // QUOTA_SECONDS), 0)
+        if quota is not None and w < len(quota) and used.get(w, 0) >= quota[w]:
+            return False
         if any(abs(t - u) < MIN_GAP[diff] for u in times):
+            return False
+        add(best, t)
+        return True
+
+    # Streams: human charts put their sixteenths in runs. The strongest peaks go in first; the last share of the
+    # steps (RUN_SHARE) prefers positions a sixteenth from a step already there, so near-runs close up into runs.
+    share = RUN_SHARE.get(diff, 0.0) if n_target is not None else 0.0
+    first = n_target if n_target is None else int(round(n_target * (1 - share)))
+    rest = []
+    for best, p in snapped:
+        if first is not None and len(chosen) >= first:
+            rest.append((best, p))
             continue
-        chosen[best] = prob[f]
-        times.append(t)
-        if n_target is not None and len(chosen) >= n_target:
+        take(best)
+    while n_target is not None and len(chosen) < n_target and rest:
+        def score(item: tuple[float, float]) -> float:
+            b, p = item
+            return p * (1 + RUN_BONUS * ((b - 0.25) in chosen) + RUN_BONUS * ((b + 0.25) in chosen))
+        i = max(range(len(rest)), key=lambda j: score(rest[j]))
+        take(rest.pop(i)[0])
+    if not snap24:
+        return sorted(chosen)
+    # isolated 24ths go again; the steps they took are handed to the strongest peaks left on the ordinary grid
+    kept = keep_24th_runs(sorted(chosen))
+    for b in set(chosen) - set(kept):
+        t = tm.beat_to_time(b)
+        times.remove(t)
+        used[max(int(t // QUOTA_SECONDS), 0)] -= 1
+        del chosen[b]
+    for best, _ in snapped:
+        if n_target is None or len(chosen) >= n_target:
             break
+        if not only_24th(best):
+            take(best)
     return sorted(chosen)
+
+
+def _whole(shares: np.ndarray, total: int) -> np.ndarray:
+    """`shares` scaled to whole numbers that add up to `total` (largest remainders get the leftovers)."""
+    if shares.sum() <= 0:
+        return np.zeros(len(shares), int)
+    exact = shares * total / shares.sum()
+    out = np.floor(exact).astype(int)
+    for i in np.argsort(-(exact - out))[: total - out.sum()]:
+        out[i] += 1
+    return out
+
+
+def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None = None, swing: bool = False,
+          snap24: bool = False, forced: list[float] | None = None, busy: np.ndarray | None = None,
+          scale: list[tuple[float, float, float]] | None = None):
+    """Peaks of the step probability → snapped beats (respecting the difficulty's grid and minimum gap).
+    `snap24` lets steps land on the 24th grid too; isolated ones are dropped again (`keep_24th_runs`).
+    `scale` is a list of (start s, end s, factor): the windows in that span get that many times their steps.
+
+    `busy` (`density.py`: local density over the chart's average, every half second) and `forced` beats (review
+    material, `guidance.py`) shape where the steps go without taking any stretch's steps away: the model first
+    spreads the steps its own way, then every QUOTA_SECONDS window's share is scaled by the profile there, and a
+    window with forced beats gets at least those on top."""
+    steer = busy is not None and BUSY_POWER > 0
+    if n_target is None or not (steer or forced or scale):
+        return _select(prob, tm, diff, thr, n_target, swing, snap24, forced, None)
+    own = _select(prob, tm, diff, thr, n_target, swing, snap24, None, None)
+    n_win = int(len(prob) / FPS // QUOTA_SECONDS) + 1
+    window = lambda b: max(0, min(int(tm.beat_to_time(b) // QUOTA_SECONDS), n_win - 1))  # noqa: E731
+    count = np.bincount([window(b) for b in own], minlength=n_win).astype(float)
+    if steer:
+        per = int(round(QUOTA_SECONDS / BUSY_HOP))
+        prof = np.array([busy[w * per:(w + 1) * per].mean() if w * per < len(busy) else 1.0 for w in range(n_win)])
+        count = count * np.clip(prof, 0.05, 4.0) ** BUSY_POWER
+    quota = _whole(count, len(own))
+    for start, end, factor in scale or []:
+        for w in range(max(int(start // QUOTA_SECONDS), 0), min(int(end // QUOTA_SECONDS) + 1, n_win)):
+            quota[w] = int(round(quota[w] * factor))
+    if forced:
+        quota = np.maximum(quota, np.bincount([window(b) for b in forced if b >= 0], minlength=n_win))
+    return _select(prob, tm, diff, thr, int(quota.sum()), swing, snap24, forced, quota)
 
 
 @torch.no_grad()

@@ -1,4 +1,9 @@
-import { elementsFor } from "fuse-ui";
+import {
+  elementsFor,
+  renderResults,
+  type ResultsHighlight,
+  type ResultsReport,
+} from "fuse-ui";
 import type { MatchPlayerStats } from "../engine/match-stats.js";
 import type { Moment } from "../engine/moments.js";
 import {
@@ -9,7 +14,10 @@ import {
   buildMatchRecap,
 } from "../engine/match-recap.js";
 
-/** Presentation only: placements, points, awards and moments come from the recorded match. */
+/**
+ * Presentation only: placements, points, awards and moments come from the recorded match. The report is the shared
+ * results report (`fuse-ui`), with the full statistics as its details.
+ */
 export function renderMatchRecap(
   stats: ReadonlyArray<MatchPlayerStats>,
   moments: ReadonlyArray<Moment>,
@@ -29,93 +37,23 @@ export function renderMatchRecap(
   const node = elementsFor(document);
 
   const recap = buildMatchRecap(stats, moments);
-  const root = node("section", "", "match-recap-report");
-  const heading = node("header", "", "recap-masthead");
-  const context = node("div", "", "recap-context");
   const rounds = Math.max(0, ...stats.map((entry) => entry.roundsPlayed));
-  context.append(
-    node("span", options.kicker ?? "MATCH COMPLETE"),
-    node(
-      "small",
-      `${rounds} ${rounds === 1 ? "round" : "rounds"} / ${stats.length} ${stats.length === 1 ? "rider" : "riders"}`,
-    ),
-  );
-  heading.append(node("strong", "FUSE RIDERS", "recap-brand"), context);
-  root.append(heading);
-  if (!recap.comparison.length) {
-    root.append(node("p", RECAP_EMPTY_MESSAGE, "recap-empty"));
+  const masthead = {
+    game: "FUSE RIDERS",
+    kicker: options.kicker ?? "MATCH COMPLETE",
+    context: `${rounds} ${rounds === 1 ? "round" : "rounds"} / ${stats.length} ${stats.length === 1 ? "rider" : "riders"}`,
+  };
+  const finish = (report: ResultsReport): HTMLElement => {
+    const root = renderResults(report, document);
+    root.classList.add("match-recap-report");
+    const details = root.querySelector<HTMLElement>(".fui-results-details");
+    if (details) details.id = "match-full-stats";
     return root;
-  }
+  };
+  if (!recap.comparison.length)
+    return finish({ ...masthead, headline: "", empty: RECAP_EMPTY_MESSAGE });
   const champions = recap.comparison.filter((entry) => entry.placement === 1);
   const champion = champions[0];
-  const hero = node("section", "", "recap-victory");
-  hero.style.setProperty(
-    "--winner-color",
-    champions.length === 1 ? champion!.color : "#ba8cff",
-  );
-  const crown = node("span", "", "recap-crown");
-  crown.setAttribute("aria-hidden", "true");
-  hero.append(
-    crown,
-    node(
-      "h2",
-      champions.length === 1 ? `${champion!.name} WINS` : "SHARED VICTORY",
-    ),
-  );
-  hero.append(
-    node(
-      "p",
-      champions.length === 1
-        ? `${champion!.points} points · ${champion!.wins} round ${champion!.wins === "1" ? "win" : "wins"}`
-        : champions.map((entry) => entry.name).join(" + "),
-    ),
-  );
-  root.append(hero);
-  const overview = node("div", "", "recap-overview");
-  const standings = node("section", "", "recap-standings");
-  standings.append(node("h3", "FINAL STANDINGS"));
-  const table = node("table");
-  table.setAttribute("aria-label", "Final standings");
-  const head = node("thead"),
-    labels = node("tr");
-  for (const label of ["#", "RIDER", "POINTS", "WINS"]) {
-    const cell = node("th", label);
-    cell.scope = "col";
-    labels.append(cell);
-  }
-  head.append(labels);
-  const rows = node("tbody");
-  for (const entry of recap.comparison) {
-    const row = node(
-      "tr",
-      "",
-      `${entry.placement === 1 ? "is-champion" : ""}${entry.playerId === options.playerId ? " is-you" : ""}`,
-    );
-    row.style.setProperty("--player-color", entry.color);
-    const rider = node("th");
-    rider.scope = "row";
-    const name = node("span", "", "recap-rider-name");
-    const diamond = node("i");
-    diamond.setAttribute("aria-hidden", "true");
-    name.append(diamond, node("span", entry.name));
-    if (
-      entry.playerId === options.playerId &&
-      entry.name.toUpperCase() !== "YOU"
-    )
-      name.append(node("small", "YOU"));
-    const add = options.friendButton?.(entry.playerId);
-    if (add) name.append(add);
-    rider.append(name);
-    row.append(
-      node("td", String(entry.placement).padStart(2, "0")),
-      rider,
-      node("td", entry.points),
-      node("td", entry.wins),
-    );
-    rows.append(row);
-  }
-  table.append(head, rows);
-  standings.append(table);
   const tiedPoints = recap.comparison.some((entry, index, entries) =>
     entries
       .slice(index + 1)
@@ -123,56 +61,30 @@ export function renderMatchRecap(
         (other) => other.points === entry.points && other.wins !== entry.wins,
       ),
   );
-  if (champions.length > 1 || tiedPoints)
-    standings.append(
-      node(
-        "p",
-        champions.length > 1
-          ? "Equal points and round wins · shared victory"
-          : "Tied on points · decided by round wins",
-        "recap-tie-note",
-      ),
-    );
-  const featured = node("aside", "", "recap-featured");
-  featured.append(node("h3", "MATCH HIGHLIGHTS"));
-  const feature = (
-    icon: string,
-    title: string,
-    winners: ReadonlyArray<{ name: string; color: string }>,
-    detail: string,
-  ) => {
-    const card = node("article", "", "recap-feature");
-    const symbol = node("span", icon, "recap-feature-icon");
-    symbol.setAttribute("aria-hidden", "true");
-    symbol.style.color = winners[0]?.color ?? "#c6a1ff";
-    const text = node("div");
-    text.append(node("h4", title));
-    const names = node("p", "", "recap-feature-names");
-    winners.forEach((winner, index) => {
-      if (index) names.append(" + ");
-      const name = node("span", winner.name);
-      name.style.color = winner.color;
-      names.append(name);
-    });
-    text.append(names, node("small", detail));
-    card.append(symbol, text);
-    featured.append(card);
-  };
+  const note =
+    champions.length > 1
+      ? "Equal points and round wins · shared victory"
+      : tiedPoints
+        ? "Tied on points · decided by round wins"
+        : undefined;
+  const cards: ResultsHighlight[] = [];
   const moment = recap.highlights[0];
-  if (moment) feature(moment.icon, moment.title, [moment], moment.copy);
+  if (moment)
+    cards.push({
+      icon: moment.icon,
+      title: moment.title,
+      winners: [moment],
+      detail: moment.copy,
+    });
   const travel = recap.awards.find((award) => award.id === "trailblazer");
   const award = travel ?? recap.awards[0];
-  if (award) feature(award.icon, award.title, award.winners, award.detail);
-  if (!moment && !award)
-    featured.append(
-      node("p", "The standings tell the story this time.", "recap-tie-note"),
-    );
-  overview.append(standings, featured);
-  root.append(overview);
-  const details = node("section", "", "recap-details");
-  details.id = "match-full-stats";
-  details.hidden = !options.expanded;
-  details.append(node("h3", "FULL MATCH STATS"));
+  if (award)
+    cards.push({
+      icon: award.icon,
+      title: award.title,
+      winners: award.winners,
+      detail: award.detail,
+    });
   const totals = node("div", "", "recap-totals");
   for (const total of recap.totals) {
     const cell = node("div", "", "recap-total");
@@ -248,10 +160,41 @@ export function renderMatchRecap(
       );
     comparison.append(row);
   }
-  details.append(totals);
-  if (recap.highlights.length) details.append(reel);
-  if (recap.awards.length) details.append(awards);
-  details.append(comparison);
-  root.append(details);
-  return root;
+  return finish({
+    ...masthead,
+    headline:
+      champions.length === 1 ? `${champion!.name} WINS` : "SHARED VICTORY",
+    summary:
+      champions.length === 1
+        ? `${champion!.points} points · ${champion!.wins} round ${champion!.wins === "1" ? "win" : "wins"}`
+        : champions.map((entry) => entry.name).join(" + "),
+    ...(champions.length === 1 ? { accent: champion!.color } : {}),
+    standings: {
+      nameLabel: "RIDER",
+      columns: ["POINTS", "WINS"],
+      rows: recap.comparison.map((entry) => ({
+        id: entry.playerId,
+        placement: entry.placement,
+        name: entry.name,
+        color: entry.color,
+        you: entry.playerId === options.playerId,
+        friend: options.friendButton?.(entry.playerId),
+        values: [entry.points, entry.wins],
+      })),
+      ...(note ? { note } : {}),
+    },
+    highlights: {
+      cards,
+      empty: "The standings tell the story this time.",
+    },
+    details: {
+      content: [
+        totals,
+        ...(recap.highlights.length ? [reel] : []),
+        ...(recap.awards.length ? [awards] : []),
+        comparison,
+      ],
+      ...(options.expanded ? { expanded: true } : {}),
+    },
+  });
 }

@@ -221,6 +221,50 @@ test("a key pressed in the bar's own controls stays there; one in the game's len
   );
 });
 
+test("a game menu the game keeps in the bar itself hears its keys; one taken into the bar's menu does not leak them", () => {
+  const { document, window } = page();
+  const heard: (EventTarget | null)[] = [];
+  document.addEventListener("keydown", (event) => heard.push(event.target));
+  const press = (target: Element) =>
+    target.dispatchEvent(new window.Event("keydown", { bubbles: true }));
+  const menu = () => {
+    const element = document.createElement("div");
+    element.className = "fui-game-menu";
+    const resume = document.createElement("button");
+    element.append(resume);
+    return { element, resume };
+  };
+  const taken = menu();
+  const root = document.createElement("header");
+  root.append(taken.element);
+  document.body.append(root);
+  createTopBar({ element: root, music: false, gameId: "test-game" });
+  const kept = menu();
+  root.append(kept.element);
+  press(taken.resume);
+  assert.deepEqual(heard, [], "the dialog closes on Escape by itself");
+  const key = (target: Element, name: string) =>
+    target.dispatchEvent(
+      Object.assign(new window.Event("keydown", { bubbles: true }), {
+        key: name,
+      }),
+    );
+  key(kept.resume, "Escape");
+  key(kept.resume, "ArrowDown");
+  assert.deepEqual(
+    heard,
+    [kept.resume, kept.resume],
+    "Escape and the arrows reach the menu's document listeners",
+  );
+  key(kept.resume, " ");
+  key(kept.resume, "Enter");
+  assert.equal(
+    heard.length,
+    2,
+    "Space and Enter press the focused button, and must not fire in the match too",
+  );
+});
+
 test("a game's own menu in the header dialog closes that dialog when it resumes, and collapses when the dialog closes", () => {
   const { document, window } = page(),
     root = document.createElement("header"),
@@ -256,7 +300,11 @@ test("a game's own menu in the header dialog closes that dialog when it resumes,
 
   trigger.click();
   action("CONTROLS").click();
-  action("← BACK").click();
+  const back = dialog.querySelector<HTMLButtonElement>(
+    ".fui-game-menu .fui-back",
+  )!;
+  assert.equal(back.textContent, "Menu");
+  back.click();
   assert.deepEqual(log, ["menu open"], "reading the controls keeps both open");
   action("BACK TO GAME").click();
   // linkedom runs capture listeners in bubble order, so only a browser shows the dialog closing first

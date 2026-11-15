@@ -190,15 +190,19 @@ try {
   assert.equal(hostEnd, guestEnd, "host and guest agree on the round");
   await snap(host, "online-outro");
   // One round win takes the match: the result card, then a rematch and back to the lobby.
-  await host.locator(".ff-result").waitFor({ timeout: 20_000 });
-  await guest.locator(".ff-result").waitFor({ timeout: 20_000 });
+  await host.locator(".fui-results:not([hidden])").waitFor({ timeout: 20_000 });
+  await guest
+    .locator(".fui-results:not([hidden])")
+    .waitFor({ timeout: 20_000 });
   const [hostResult, guestResult] = await Promise.all(
-    [host, guest].map((page) => page.locator(".ff-result h2").textContent()),
+    [host, guest].map((page) =>
+      page.locator(".fui-results-victory h2").textContent(),
+    ),
   );
   assert.equal(hostResult, guestResult, "one result on both pages");
   assert.ok(
     await guest
-      .locator(".ff-result")
+      .locator(".fui-results")
       .getByText("Waiting for the host to start a rematch")
       .isVisible(),
   );
@@ -235,16 +239,15 @@ try {
     isMobile: true,
   };
   const sharedHost = await open("fuse-freight/?mute&autopilot");
-  await sharedHost.locator(".ff-shared input").check();
   await sharedHost.getByRole("button", { name: "CREATE ROOM" }).click();
   await sharedHost.waitForURL(/room=[A-Z0-9]+/);
   const sharedCode = new URL(sharedHost.url()).searchParams.get("room");
   await seat(sharedHost, "Host");
-  assert.ok(
-    await sharedHost
-      .getByRole("button", { name: "OPEN TV SCREEN" })
-      .isVisible(),
-  );
+  // Shared TV is the host's choice in the room, under the invitation.
+  await sharedHost.getByRole("checkbox", { name: /Shared TV/ }).check();
+  await sharedHost
+    .getByRole("button", { name: "OPEN TV SCREEN" })
+    .waitFor({ timeout: 5_000 });
   const tv = await open(`fuse-freight/?room=${sharedCode}&display=1&mute`, {
     viewport: { width: 1600, height: 900 },
   });

@@ -1,7 +1,15 @@
 import { requestedRoomSlot } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
@@ -14,6 +22,7 @@ import {
 } from "fuse-ui/game-audio";
 import "fuse-ui/game-audio.css";
 import { safeStorage } from "fuse-ui/safe-storage";
+import "fuse-ui/results.css";
 import "./elasto-fuse.css";
 import QRCode from "qrcode";
 import { createTopBar } from "fuse-ui";
@@ -26,16 +35,21 @@ import {
 } from "fuse-network-fe";
 import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
+  backOnEscape,
   button,
   createAppPortal,
   createGameMenu,
   createInviteCard,
   createLandingCard,
-  createRoomLayout,
   createNameEntry,
   createNotice,
+  createPageMessage,
+  createResultsScreen,
+  createRoomLayout,
   createRoster,
   createRoundControls,
+  createSharedTvOption,
+  createSubPage,
   el,
 } from "fuse-ui";
 import { GAS, RESTART } from "../engine/input.js";
@@ -74,6 +88,7 @@ import {
   type Viewer,
 } from "./presenter.js";
 import { dueReports, sendReport } from "./reports.js";
+import { resultBar, resultReport } from "./result-report.js";
 import {
   NOT_OPEN,
   bestTime,
@@ -249,13 +264,6 @@ function createLevelPicker(room: boolean, onPick: (level: number) => void) {
 }
 
 function landing(): void {
-  const shared = el("label", "", "ef-shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   let level = soloLevel();
   const card = createLandingCard({
     background: async (host) =>
@@ -284,7 +292,6 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
-  card.create.after(shared);
   const picker = createLevelPicker(false, (picked) => {
     level = picked;
     store.setItem(names.level, String(picked));
@@ -295,7 +302,7 @@ function landing(): void {
   rules.append(picker.element);
   card.solo?.before(rules);
   card.menu.help.append(keyHelp());
-  const back = el("a", "← ALL GAMES", "ef-back");
+  const back = el("a", "All games", "ef-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(GUIDE);
   menu.update({ canLobby: false, canLeave: false, touch: coarse() });
@@ -312,7 +319,10 @@ function surface(node: HTMLElement): PadSurface {
           ? ["pointerdown"]
           : ["pointerup", "pointercancel", "lostpointercapture"];
       for (const type of types)
-        node.addEventListener(type, (event) => listener(event as PointerEvent));
+        node.addEventListener(type, (event) => {
+          if (kind === "down" && playtestInputBlocked(document)) return;
+          listener(event as PointerEvent);
+        });
     },
     capture: (pointerId) => node.setPointerCapture(pointerId),
     show: (held) => node.classList.toggle("held", held),
@@ -324,12 +334,15 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const back = el("a", "← BACK", "ef-back");
-    back.href = withFlags(endpoints.appUrl());
-    app.replaceChildren(
-      header([back]),
-      el("p", "That is not a room code: check it and try again.", "ef-error"),
-    );
+    const page = createSubPage({
+      title: "Join room",
+      backHref: withFlags(endpoints.appUrl()),
+      content: [
+        createPageMessage("That is not a room code: check it and try again."),
+      ],
+    });
+    app.replaceChildren(header(), page.element);
+    backOnEscape(page.back);
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -344,7 +357,22 @@ function room(solo: boolean): void {
   };
 
   // ---- the page ----
-  const status = createNotice({ className: "ef-status" });
+  // How the room is doing sits at the lobby's foot, and beside the menu while a race is on the screen (a link that
+  // is retrying is said there, as it always was); what went wrong is said above the room.
+  const status = createNotice({ className: "ef-status" }),
+    live = createNotice({ className: "ef-live" }),
+    problem = createNotice({ className: "ef-alert" });
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
   const controls = new HeldControls((bits) => runtime.input(bits));
   /** Lets go of every key, button and pad: a menu opened, or the page lost focus. */
   let letGoAll = () => controls.clear();
@@ -354,14 +382,13 @@ function room(solo: boolean): void {
     onLeave: leave,
     onOpenChange: (open) => {
       if (open) letGoAll();
+      else if (model?.riding) main.focus({ preventScroll: true });
     },
   });
   const roundControls = createRoundControls(QUICK_GUIDE);
-  const top = header([
-    el("strong", solo ? "SOLO" : code, "ef-code"),
-    status.element,
-    menu.element,
-  ]);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a race is on.
+  const top = header([live.element, menu.element]);
   createTopBar({
     music: ELASTO_SONGS,
     element: top,
@@ -370,10 +397,12 @@ function room(solo: boolean): void {
         letGoAll();
         gamepads.letGo();
         captured.clear();
-      }
+      } else if (model?.riding) main.focus({ preventScroll: true });
     },
   });
-  const modalOpen = () => Boolean(document.querySelector("dialog[open]"));
+  const modalOpen = () =>
+    playtestInputBlocked(document) ||
+    Boolean(document.querySelector("dialog[open]"));
 
   // Lobby: the invitation and the riders on one side, the level and START on the other.
   let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -381,8 +410,25 @@ function room(solo: boolean): void {
     lobbyMain = el("div", "", "ef-panel"),
     roster = createRoster({ emptyText: "No riders yet" }),
     start = button("START RACE", "fui-button-primary ef-start"),
-    lobbyNote = el("p", "", "fui-lobby-note"),
-    tvLink = button("OPEN TV SCREEN", "ef-tv");
+    lobbyNote = el("p", "", "fui-lobby-note");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates.
+  const sharedTv = createSharedTvOption({
+    className: "ef-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({
+        type: "settings",
+        settings: { ...settings, display },
+      });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
+        "_blank",
+      ),
+  });
   let inviteCard: HTMLElement | undefined;
   if (!solo) {
     const invite = createInviteCard({
@@ -409,11 +455,6 @@ function room(solo: boolean): void {
   });
   lobbyMain.append(el("h2", "RIDERS", "fui-lobby-title"), roster.element);
   start.onclick = () => runtime.command({ type: "action", action: "start" });
-  tvLink.onclick = () =>
-    window.open(
-      withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
-      "_blank",
-    );
   const levelPicker = createLevelPicker(true, (level) => {
     store.setItem(roomLevelKey, String(level));
     runtime.command({ type: "settings", settings: { ...settings, level } });
@@ -455,12 +496,10 @@ function room(solo: boolean): void {
       type: "settings",
       settings: { ...settings, order: orderPicker.value as Settings["order"] },
     });
-  const lobbyActions = el("div", "", "ef-actions");
-  lobbyActions.append(tvLink, start);
   const mapTitle = el("h2", "MAP", "fui-lobby-title");
   lobby.append(lobbyMain);
 
-  // The race: the canvas, the card over it (the table between two races, the result) and the touch buttons.
+  // The race: the canvas, the table over it between two races, and the touch buttons.
   const stage = el("section", "", "ef-stage"),
     screen = el("div", "", "ef-screen"),
     canvas = el("canvas", "", "ef-canvas"),
@@ -468,23 +507,12 @@ function room(solo: boolean): void {
   const card = el("section", "", "ef-card"),
     cardTitle = el("h2"),
     cardRows = el("ol", "", "ef-rows"),
-    cardLines = el("ul", "", "ef-lines"),
-    cardFoot = el("p", "", "ef-card-foot"),
-    cardActions = el("div", "", "ef-actions"),
-    rematch = button("REMATCH", "fui-button-primary ef-rematch"),
-    toLobby = button("LOBBY", "ef-to-lobby"),
-    nextMap = button("NEXT MAP", "ef-next-map"),
-    toMenu = button("MENU", "ef-to-menu");
-  cardActions.append(toMenu, toLobby, rematch, nextMap);
-  card.append(cardTitle, cardRows, cardLines, cardFoot, cardActions);
+    cardFoot = el("p", "", "ef-card-foot");
+  card.append(cardTitle, cardRows, cardFoot);
   card.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  toMenu.onclick = leave;
-  /** The result's main button: NEXT MAP after a solo map ridden home, otherwise another go. */
-  const mainAction = () => (model?.result?.solo?.finished ? nextMap : rematch);
-  nextMap.onclick = () => {
+  const rematch = () => runtime.command({ type: "action", action: "rematch" }),
+    toLobby = () => runtime.command({ type: "action", action: "lobby" });
+  const nextMap = () => {
     const next = model?.result?.solo?.next;
     if (next === undefined) return;
     // The next level, then a rematch: both fold on the same tick, in this order.
@@ -500,6 +528,26 @@ function room(solo: boolean): void {
       withFlags(endpoints.appUrl(`?solo=1&level=${next}`)),
     );
   };
+  /** The result's main button: NEXT MAP after a solo map ridden home, otherwise another go. */
+  const mainAction = () =>
+    model?.result?.solo?.finished ? nextMap() : rematch();
+  // The result: the shared results screen over the page. A phone controller keeps its own two buttons.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: leave,
+    backText: "Leave",
+    onAction: (id) =>
+      id === "menu"
+        ? leave()
+        : id === "next"
+          ? nextMap()
+          : id === "lobby"
+            ? toLobby()
+            : rematch(),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -544,8 +592,8 @@ function room(solo: boolean): void {
   const controllerResult = el("div", "", "ef-actions ef-controller-result"),
     controllerRematch = button("REMATCH", "fui-button-primary"),
     controllerLobby = button("LOBBY");
-  controllerRematch.onclick = rematch.onclick;
-  controllerLobby.onclick = toLobby.onclick;
+  controllerRematch.onclick = rematch;
+  controllerLobby.onclick = toLobby;
   controllerResult.append(controllerLobby, controllerRematch);
   controller.append(controllerHead, controllerResult, controllerPads.row);
 
@@ -571,8 +619,22 @@ function room(solo: boolean): void {
   );
   closed.hidden = true;
   const main = el("main", "", "ef-room");
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  // Resuming a ride returns keyboard input here, outside the header's own keyboard controls.
+  main.tabIndex = -1;
+  main.setAttribute("aria-label", "Elasto Fuse play area");
+  main.append(
+    problem.element,
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+    results.element,
+  );
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -583,11 +645,23 @@ function room(solo: boolean): void {
     element: lobby,
     ...(inviteCard ? { invite: inviteCard } : {}),
     roster,
+    // ADD FRIEND on a rider's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: CAPACITY,
     join: nameEntry.form,
+    // Seated already: any open seat is a move, and what the seat is (a team, a colour) follows it.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     settings: [keyHelp()],
     modes: [mapTitle, seriesOptions, levelPicker.element],
-    actions: [lobbyNote, lobbyActions],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the riders scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo ? { compact: true, heading: "Solo ride" } : { heading: "Room" }),
   });
   lobby.hidden = true;
   stage.hidden = true;
@@ -608,7 +682,8 @@ function room(solo: boolean): void {
     const fresh = bits & ~padBits & (GAS | RESTART);
     padBits = bits;
     if (fresh && !model?.riding && model?.result?.host)
-      (fresh & RESTART ? rematch : mainAction()).click();
+      if (fresh & RESTART) rematch();
+      else mainAction();
     controls.hold("gamepad", bits);
   });
   let model: Model | undefined;
@@ -747,6 +822,7 @@ function room(solo: boolean): void {
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
+    ownSeat = next.lobby.members.find((member) => member.you);
     connecting.hidden = true;
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
@@ -763,7 +839,8 @@ function room(solo: boolean): void {
       next.lobby.members.map((member) => ({
         id: member.id,
         slot: member.slot,
-        name: member.you ? `${member.name} (you)` : member.name,
+        // Alone there is nobody to tell apart from: the seat reads "You", not "You (you)".
+        name: member.you && !solo ? `${member.name} (you)` : member.name,
         color: slotColor(member.slot),
         status: member.connected ? slotName(member.slot) : "OFFLINE",
       })),
@@ -772,12 +849,7 @@ function room(solo: boolean): void {
     start.disabled = !next.lobby.canStart;
     setText(lobbyNote, next.lobby.note);
     lobbyNote.hidden = !next.lobby.note;
-    tvLink.hidden = !(
-      view.settings.display &&
-      viewer.host &&
-      !display &&
-      !solo
-    );
+    sharedTv.update(view.settings.display, viewer.host && !display && !solo);
     levelPicker.update(
       view.settings.level,
       next.lobby.editable && view.settings.order === "consecutive",
@@ -825,40 +897,49 @@ function room(solo: boolean): void {
     }
     setText(controllerState, next.status);
     controllerResult.hidden = !(next.result && next.result.host);
-    // The card: the table between two races, or the result.
-    const shown = next.result ?? next.table;
-    card.hidden = !shown || next.screen === "controller";
-    card.dataset.kind = next.result ? "result" : next.table ? "table" : "";
-    if (shown) {
-      setText(cardTitle, shown.title);
-      const rows = JSON.stringify(shown.rows);
+    // The card: the table between two races.
+    const table = next.screen === "controller" ? null : next.table;
+    card.hidden = !table;
+    if (table) {
+      setText(cardTitle, table.title);
+      const rows = JSON.stringify(table.rows);
       if (cardRows.dataset.rows !== rows) {
         cardRows.dataset.rows = rows;
-        cardRows.replaceChildren(...shown.rows.map(rowNode));
+        cardRows.replaceChildren(...table.rows.map(rowNode));
       }
-      cardRows.hidden = !shown.rows.length;
-      const lines = next.result?.lines ?? [];
-      const joined = lines.join("\n");
-      if (cardLines.dataset.lines !== joined) {
-        cardLines.dataset.lines = joined;
-        cardLines.replaceChildren(
-          ...lines.map((line) =>
-            el("li", line, /^(NEW )?BEST/.test(line) ? "best" : ""),
-          ),
+      setText(cardFoot, table.next);
+    }
+    // The result.
+    const result = next.screen === "controller" ? null : next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: slotColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      cardLines.hidden = !lines.length;
-      setText(cardFoot, next.table?.next ?? next.result?.waiting ?? "");
-      cardFoot.hidden = !cardFoot.textContent;
-      const alone = !!next.result?.solo;
-      cardActions.hidden = !next.result?.host;
-      setText(rematch, alone ? "RETRY" : "REMATCH");
-      // A map ridden home goes on to the next: NEXT MAP is the main button then, and RETRY the other.
-      const onward = !!next.result?.solo?.finished;
-      nextMap.classList.toggle("fui-button-primary", onward);
-      rematch.classList.toggle("fui-button-primary", !onward);
-      nextMap.hidden = toMenu.hidden = !alone;
-      toLobby.hidden = alone;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 
@@ -872,22 +953,31 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: ElastoFuseCallbacks = {
     state(frame, roomSettings) {
-      const players =
-        frame.stage === "lobby"
-          ? frame.seats.filter((seat) => !seat.watcher)
-          : frame.roster;
       const mode = solo ? "solo" : roomSettings.display ? "shared" : "online";
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.stage === "running" || frame.stage === "between",
-        ended: frame.stage === "over",
-        playerCount: players.length,
-        botCount: 0,
-        seated: players.some((player) => player.id === viewer.me),
-        mode,
-        // A device that opens a tour midway joined a match; it did not start one.
-        round: frame.round + 1,
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => {
+          const players =
+            frame.stage === "lobby"
+              ? frame.seats.filter((seat) => !seat.watcher)
+              : frame.roster;
+          return {
+            matchId: frame.matchId,
+            roundActive: frame.world?.phase === "racing",
+            roundEnded: frame.world?.phase === "over",
+            active: frame.stage === "running" || frame.stage === "between",
+            ended: frame.stage === "over",
+            playerCount: players.length,
+            botCount: 0,
+            seated: players.some((player) => player.id === viewer.me),
+            mode,
+            // A device that opens a tour midway joined a match; it did not start one.
+            round: frame.round + 1,
+          };
+        },
+      );
       for (const finish of finishes(frame, viewer.me))
         analytics.track("Race Finished", { ...finish, mode });
       settings = roomSettings;
@@ -903,7 +993,8 @@ function room(solo: boolean): void {
         );
       }
       const next = present(frame, viewer, bestBefore);
-      if (next.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (next.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
@@ -935,17 +1026,17 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     kicked() {
-      status.show("The host removed you from the room", "error");
+      say("The host removed you from the room", "error");
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
       over = true;
       // The frames stop here, so nothing else would let the engine go.
       sfx.engine(0, false, false);
@@ -957,7 +1048,7 @@ function room(solo: boolean): void {
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           if (roomFailure(String(body.error ?? "")) === NOT_OPEN)
-            status.show(NOT_OPEN, "error");
+            say(NOT_OPEN, "error");
         })
         .catch(() => {
           /* offline: "Room ended" stands */
@@ -998,6 +1089,7 @@ function room(solo: boolean): void {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      stopPlaytestInput();
       menu.dispose();
       scene.destroy();
     },
@@ -1009,35 +1101,43 @@ function room(solo: boolean): void {
   });
 
   // Keys: while this device rides, ours are swallowed so Space never scrolls or presses a focused button.
-  const typing = (target: EventTarget | null) =>
+  const field = (target: EventTarget | null) =>
     target instanceof HTMLInputElement ||
     target instanceof HTMLSelectElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLButtonElement && !model?.riding);
+    target instanceof HTMLTextAreaElement;
   const captured = new Set<string>();
   document.addEventListener("keydown", (event) => {
     if (
       menu.isOpen() ||
       modalOpen() ||
-      typing(event.target) ||
+      field(event.target) ||
       event.metaKey ||
       event.ctrlKey ||
       event.altKey
     )
       return;
+    const onButton = event.target instanceof HTMLButtonElement;
     // A result that offers another go takes Enter as its main button and R as a retry, without the mouse.
+    // The results screen focuses its main button, so R must work from a button; Enter there is the button's own.
     if (
       !model?.riding &&
       model?.result?.host &&
       !event.repeat &&
-      (event.code === "Enter" || event.code === "KeyR")
+      (event.code === "KeyR" || (event.code === "Enter" && !onButton))
     ) {
       event.preventDefault();
-      (event.code === "KeyR" ? rematch : mainAction()).click();
+      if (event.code === "KeyR") rematch();
+      else mainAction();
       return;
     }
     // Only a race swallows keys: in the lobby Space and the arrows scroll and press as usual.
     if (!model?.riding) return;
+    // A repeat presses nothing new, but a held game key must stay swallowed
+    // or the page scrolls and a focused button fires under the player.
+    if (event.repeat) {
+      if (captured.has(event.code)) event.preventDefault();
+      return;
+    }
     if (controls.press(event.code)) {
       captured.add(event.code);
       event.preventDefault();
@@ -1046,6 +1146,12 @@ function room(solo: boolean): void {
   document.addEventListener("keyup", (event) => {
     controls.release(event.code);
     if (captured.delete(event.code)) event.preventDefault();
+  });
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: () => {
+      letGoAll();
+      gamepads.letGo();
+    },
   });
   window.addEventListener("blur", () => {
     letGoAll();

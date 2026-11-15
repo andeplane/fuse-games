@@ -24,7 +24,12 @@ import {
   type Steps,
 } from "../engine/view-kit.js";
 import { covered, firstEndingAt, has, quantsOf } from "./chart.js";
-import { LEAD_BANNER, NO_BANNER, type RiderFeedback } from "./feedback.js";
+import {
+  LEAD_BANNER,
+  NO_BANNER,
+  placeLight,
+  type RiderFeedback,
+} from "./feedback.js";
 import {
   blit,
   countText,
@@ -62,6 +67,9 @@ import {
   RAINBOW,
   RED,
   SHIMMER,
+  COMBO_BLINK_DIM,
+  comboBlink,
+  comboColor,
   TEXT,
   WHITE,
   placeName,
@@ -95,6 +103,8 @@ export interface FieldInfo {
   gap: number;
   banner: number;
   bannerAt: number;
+  /** Light the lanes' edges with the rider's standing (`standing` below): its own field, or every field on a shared screen. */
+  standing: boolean;
 }
 
 /** How long a burst on a target, a mine's blast and its shake, and the judgment word last. */
@@ -116,6 +126,88 @@ const LANE = "#08132a",
   EDGE = "rgba(54,84,119,0.9)",
   DOUBLE_TINT = "rgba(255,228,107,0.1)",
   BODY_EDGE = "rgba(3,9,25,0.85)";
+/**
+ * The standing lights. A rider's place is a soft glow down both sides of its lanes: gold, silver, bronze, and violet
+ * from fourth down. Closing in on the place ahead is a green glow at the top of the lanes; somebody closing in
+ * from behind is a red one at the bottom. All of it is at the lanes' edges and under the notes, and fades and never
+ * flashes: it is read out of the corner of the eye.
+ */
+export const PLACE_GLOWS = [
+    "#ffd84a",
+    "#e6f1ff",
+    "#ff9a3d",
+    "#8a5cff",
+  ] as const,
+  CHASE_GLOW = "#3dff7a",
+  THREAT_GLOW = "#ff3b4f";
+export const placeGlow = (place: number): string =>
+  PLACE_GLOWS[placeLight(place)]!;
+/** A glow is this many bands, each fainter than the one outside it; how far in the sides and the ends reach, in columns; and how strong each is at the edge. */
+const GLOW_BANDS = 10,
+  SIDE_REACH = 0.5,
+  END_REACH = 1.1,
+  SIDE_ALPHA = 0.5,
+  END_ALPHA = 0.5;
+
+/** A glow in from one edge of the lanes: `across` true from the left or right edge inward, false from the top or bottom. */
+function glow(
+  g: Frame["pen"],
+  color: string,
+  alpha: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  across: boolean,
+  fromStart: boolean,
+): void {
+  if (alpha <= 0.01) return;
+  g.fillStyle = color;
+  const band = (across ? width : height) / GLOW_BANDS;
+  for (let i = 0; i < GLOW_BANDS; i++) {
+    const fade = 1 - i / GLOW_BANDS;
+    g.globalAlpha = alpha * fade * fade;
+    const at = fromStart ? i : GLOW_BANDS - 1 - i;
+    if (across) g.fillRect(x + at * band, y, band, height);
+    else g.fillRect(x, y + at * band, width, band);
+  }
+  g.globalAlpha = 1;
+}
+
+/** The standing lights of one field. */
+function standing(
+  frame: Frame,
+  state: RiderFeedback,
+  x: number,
+  top: number,
+  width: number,
+  height: number,
+  col: number,
+): void {
+  const g = frame.pen;
+  const side = Math.min(col * SIDE_REACH, width / 4),
+    end = Math.min(col * END_REACH, height / 4);
+  // The sides, in the place's colour; after an overtake the old colour goes out as the new comes in.
+  for (let light = 0; light < PLACE_GLOWS.length; light++) {
+    const alpha = SIDE_ALPHA * (state.lights[light] ?? 0),
+      color = PLACE_GLOWS[light]!;
+    glow(g, color, alpha, x, top, side, height, true, true);
+    glow(g, color, alpha, x + width - side, top, side, height, true, false);
+  }
+  glow(g, CHASE_GLOW, END_ALPHA * state.chase, x, top, width, end, false, true);
+  glow(
+    g,
+    THREAT_GLOW,
+    END_ALPHA * state.threat,
+    x,
+    top + height - end,
+    width,
+    end,
+    false,
+    false,
+  );
+}
+
 /** A hold's body and core, then a roll's: at rest and while it is being kept. */
 const HOLD_BODY = "rgba(22,201,235,0.62)",
   HOLD_LIVE = "rgba(140,246,255,0.95)",
@@ -274,6 +366,7 @@ export function drawField(
   g.fillStyle = GUIDE;
   for (let column = 1; column < COLUMNS; column++)
     g.fillRect(ox + column * col, top, thin, height);
+  if (info.standing) standing(frame, state, ox, top, width, height, col);
   if (doubled) {
     g.fillStyle = DOUBLE_TINT;
     g.fillRect(ox, top, width, height);
@@ -643,11 +736,13 @@ export function drawField(
         ? 1 + 0.25 * (1 - comboAge / 110)
         : 1;
     const flashing = !calm && flashAge >= 0 && flashAge < 500;
+    // The combo blinks in the colour of the worst judgment in it; with reduced motion it holds that colour.
+    const color = comboColor(player.worst);
     if (flashing) {
       g.globalCompositeOperation = "lighter";
       g.globalAlpha = 1 - flashAge / 500;
       g.drawImage(
-        set.glows[1]!.canvas,
+        (set.glows[player.worst] ?? set.glows[1]!).canvas,
         middle - col * 1.6,
         comboY - col * 0.8,
         col * 3.2,
@@ -656,15 +751,24 @@ export function drawField(
       g.globalCompositeOperation = "source-over";
       g.globalAlpha = 1;
     }
+    // Passing a hundred blinks faster for a moment.
+    g.globalAlpha = calm
+      ? 1
+      : flashing
+        ? Math.floor(flashAge / 60) % 2 === 0
+          ? 1
+          : COMBO_BLINK_DIM
+        : comboBlink(songMs);
     outlined(
       g,
       countText(info.texts.combo, "", player.combo),
       middle,
       comboY,
       col * 0.44 * bump * (flashing ? 1.15 : 1),
-      flashing && Math.floor(flashAge / 60) % 2 === 0 ? GOLD : WHITE,
+      color,
       width,
     );
+    g.globalAlpha = 1;
     outlined(g, "COMBO", middle, comboY + col * 0.42, col * 0.14, MUTED, width);
   }
   const brokenAge = songMs - state.brokenAt;

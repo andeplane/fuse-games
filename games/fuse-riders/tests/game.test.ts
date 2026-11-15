@@ -1165,7 +1165,7 @@ test("overtime inset updates before collision and a 90-second unresolved round d
 test("lifecycle commands enforce phase, capacity, identity, and connected-player guards", () => {
   assert.throws(() => createGame("", classicSettings()), /matchId/);
   const state = createGame("guards", classicSettings());
-  assert.throws(() => startMatch(state), /requires 2-5/);
+  assert.throws(() => startMatch(state), /requires 2-6/);
   addPlayer(state, { id: "a", name: "A", slot: 0, color: RIDER_COLORS[0] });
   assert.throws(
     () =>
@@ -1192,7 +1192,7 @@ test("lifecycle commands enforce phase, capacity, identity, and connected-player
     toView(state).players.find((player) => player.id === "b")!.connected,
     false,
   );
-  assert.throws(() => startMatch(state), /requires 2-5/);
+  assert.throws(() => startMatch(state), /requires 2-6/);
   setPlayerConnected(state, "b", true);
   assert.throws(
     () => setPlayerConnected(state, "missing", true),

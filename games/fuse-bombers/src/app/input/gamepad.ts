@@ -73,6 +73,7 @@ function padBits(pad: GamepadLike): number {
 
 /** Per pad: when its fire button went down (undefined while up), whether `hold` fired, and its menu buttons down. */
 interface PadState {
+  latched: boolean;
   since: number | undefined;
   held: boolean;
   menu: Set<number>;
@@ -92,9 +93,18 @@ export function attachGamepads(
   hold: (device: DeviceId, bits: number) => void,
   command: (device: DeviceId, command: Command) => void = () => undefined,
   now: () => number = () => performance.now(),
+  blocked: () => boolean = () => false,
 ): InputSource {
   const pads = new Map<number, PadState>();
   return {
+    cancel: () => {
+      for (const [index, state] of pads) {
+        state.latched = true;
+        state.since = undefined;
+        state.held = false;
+        hold(`pad:${index}`, 0);
+      }
+    },
     poll: () => {
       const present = new Set<number>();
       const time = now();
@@ -104,10 +114,28 @@ export function attachGamepads(
         const device: DeviceId = `pad:${pad.index}`;
         let state = pads.get(pad.index);
         if (!state) {
-          state = { since: undefined, held: false, menu: new Set() };
+          state = {
+            since: undefined,
+            held: false,
+            menu: new Set(),
+            latched: blocked(),
+          };
           pads.set(pad.index, state);
         }
         const bits = padBits(pad);
+        if (blocked()) state.latched = true;
+        if (state.latched) {
+          state.latched = bits !== 0 || pad.buttons.some(isDown);
+          state.since = undefined;
+          state.held = false;
+          hold(device, 0);
+          // Keep the menu buttons current without acting on them, so one let
+          // go while latched does not swallow its next press.
+          for (const [button] of MENU_BUTTONS)
+            if (isDown(pad.buttons[button])) state.menu.add(button);
+            else state.menu.delete(button);
+          continue;
+        }
         hold(device, bits);
         if (!(bits & FIRE)) state.since = undefined;
         else if (state.since === undefined) {

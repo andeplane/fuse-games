@@ -31,7 +31,6 @@ export function createRecapDialog(
     title: "MATCH RESULTS",
     label: "Match results",
     variant: "recap-dialog",
-    closeText: "✕",
     document: doc,
   });
   dialogs.add("recap", shell.dialog);
@@ -55,7 +54,7 @@ export function createRecapDialog(
   fullStats.hidden = true;
   fullStats.setAttribute("aria-controls", "match-full-stats");
   fullStats.onclick = () => {
-    const details = body.querySelector<HTMLElement>(".recap-details");
+    const details = body.querySelector<HTMLElement>(".fui-results-details");
     if (!details) return;
     details.hidden = !details.hidden;
     fullStats.setAttribute("aria-expanded", String(!details.hidden));

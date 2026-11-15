@@ -145,3 +145,33 @@ test("holding a key across a new match logs it again after the race clears contr
   assert.deepEqual(me.loggedControls(), [LEFT, LEFT]);
   assert.equal(me.roomState()!.controls.b, LEFT);
 });
+
+test("a lobby seat is a choice: a seated driver moves to any free seat, and a taken one is refused", () => {
+  const mesh = new FuseDriversMesh("a", SETTINGS);
+  const a = mesh.join("a"),
+    b = mesh.join("b");
+  const slots = (runtime: TestFuseDriversRuntime) =>
+    Object.fromEntries(
+      [...runtime.roomState()!.seats.values()].map((seat) => [
+        seat.id,
+        seat.slot,
+      ]),
+    );
+  mesh.run(300);
+  a.command({ type: "join", name: "Ada" });
+  b.command({ type: "join", name: "Bo", slot: 3 });
+  mesh.run(3000);
+  assert.deepEqual(slots(a), { a: 0, b: 3 });
+  assert.ok(b.command({ type: "join", name: "Bo", slot: 1 }));
+  mesh.run(3000);
+  assert.ok(a.command({ type: "join", name: "Ada", slot: 4 }));
+  mesh.run(800);
+  assert.deepEqual(slots(a), { a: 4, b: 1 });
+  assert.deepEqual(slots(b), slots(a));
+  b.command({ type: "join", name: "Bo", slot: 4 });
+  mesh.run(3000);
+  assert.deepEqual(slots(a), { a: 4, b: 1 });
+  assert.ok(a.command({ type: "action", action: "start" }));
+  mesh.run(COUNTDOWN_MS);
+  assert.equal(b.roomState()?.stage, "running", "the moved seats race");
+});

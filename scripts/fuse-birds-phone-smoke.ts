@@ -27,13 +27,15 @@ try {
   }
   const [first, second, tv] = pages as [Page, Page, Page];
   await first.goto(`${base}/fuse-birds/?mute`);
-  await first.getByRole("button", { name: "Settings", exact: true }).click();
-  await first.getByLabel("Shared TV + phone controllers").check();
-  await first.keyboard.press("Escape");
   await openPlayOptions(first);
   await first.getByRole("button", { name: "Host room" }).click();
   await takeHostSeat(first, "SKYE");
-  const code = await first.locator(".birds-code").innerText();
+  // The room's code is on its invitation and in the address; Shared TV is the host's choice in the room.
+  const code = new URL(first.url()).searchParams.get("room")!;
+  await first.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await first
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
   await second.goto(`${base}/fuse-birds/?room=${code}&mute`);
   await takeHostSeat(second, "EMBER");
   await first.locator(".fui-room-players").getByText("EMBER").waitFor();

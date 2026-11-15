@@ -154,13 +154,15 @@ try {
     await wireProbe(second, output, "second");
   }
   await first.goto(`${base}/fuse-birds/?mute`);
-  await first.getByRole("button", { name: "Settings", exact: true }).click();
-  await first.getByLabel("Shared TV + phone controllers").check();
-  await first.keyboard.press("Escape");
   await openPlayOptions(first);
   await first.getByRole("button", { name: "Host room" }).click();
   await takeHostSeat(first, "SKYE");
-  const code = await first.locator(".birds-code").innerText();
+  // The room's code is on its invitation and in the address; Shared TV is the host's choice in the room.
+  const code = new URL(first.url()).searchParams.get("room")!;
+  await first.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await first
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
   await second.goto(`${base}/fuse-birds/?room=${code}&mute`);
   await takeHostSeat(second, "EMBER");
   await first.locator(".fui-room-players").getByText("EMBER").waitFor();
@@ -294,8 +296,8 @@ try {
     // A recovered world can arrive before the manager has logged the returning seat.
     // Observe automatic admission before sending any play action; a rejected play must not be needed to repair it.
     await second
-      .locator(".birds-roster li")
-      .filter({ hasText: /^EMBER · YOU$/ })
+      .locator(".birds-lobby .fui-roster-name")
+      .filter({ hasText: /^EMBER \(you\)$/ })
       .waitFor({ state: "attached", timeout: 30_000 });
     await second.locator('canvas[data-ready="true"]').waitFor();
     // This public control gate also proves automatic current-generation admission, before any play is submitted.
@@ -479,8 +481,9 @@ try {
     for (const p of [first, second, tv])
       await p.locator('.birds-room[data-phase="over"]').waitFor();
     await first.screenshot({ path: `${output}/result.png` });
+    await first.locator(".fui-results:not([hidden])").waitFor();
     await first
-      .getByRole("button", { name: "PLAY AGAIN", exact: true })
+      .locator('.fui-results-actions button[data-action="rematch"]')
       .click();
     for (const p of [first, second, tv]) {
       await p
@@ -514,7 +517,8 @@ try {
             .filter((button) => button.textContent === "PASS")
             .map((button) => ({ disabled: button.disabled })),
           hint: document.querySelector(".birds-hint")?.textContent,
-          roster: document.querySelector(".birds-roster")?.textContent,
+          roster: document.querySelector(".birds-lobby .fui-room-players")
+            ?.textContent,
         })),
       );
       console.error(

@@ -48,6 +48,15 @@ export async function takeHostSeat(page: Page, name: string): Promise<void> {
     .locator('input:not([type="radio"]):not([type="checkbox"])')
     .first()
     .fill(name);
-  await join.getByRole("button", { name: /^Join(?: as player)?$/i }).click();
-  await join.waitFor({ state: "hidden" });
+  // A room seats a named viewer by itself, so the typed name can take the seat before the click lands: the
+  // dialog closing is the seat taken, whichever of the two did it.
+  const closed = join.waitFor({ state: "hidden" });
+  await Promise.race([
+    join
+      .getByRole("button", { name: /^Join(?: as player)?$/i })
+      .click()
+      .catch(() => closed),
+    closed,
+  ]);
+  await closed;
 }

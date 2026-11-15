@@ -38,6 +38,34 @@ export const SLIDE_MS = 350;
 export const BANNER_GAP_MS = 2000;
 /** No lead banners until somebody has this much rating: at the first notes the lead changes with every arrow. */
 const BANNER_MIN_RATING = 20_000;
+/** How long back a rider's scoring rate looks: the time over which a note's points stop counting toward it. */
+const RATE_MS = 4000;
+/** A place's light: one for each of first, second and third, and one for fourth and below. */
+export const PLACE_LIGHTS = 4;
+export const placeLight = (place: number): number =>
+  Math.max(1, Math.min(PLACE_LIGHTS, Math.trunc(place))) - 1;
+/** How quickly the lights of the place left and the place taken go out and come in: most of the way in half a second. */
+const PLACE_EASE_MS = 220;
+/** How quickly the chase and threat glows follow what they show: about a second to come in or go out. */
+const PRESSURE_EASE_MS = 450;
+/** An overtake this many seconds off at the current rates starts to show; one about to happen shows in full. */
+export const SOON_S = 20;
+/** Two riders this close in rating are neck and neck, whoever is gaining: it shows up to `NEAR_GLOW`. */
+export const NEAR_GAP = 5000,
+  NEAR_GLOW = 0.6;
+
+/**
+ * How much an overtake is in the air, from 0 to 1: `gap` is the rating between two riders next to each other in the
+ * standings and `closing` how fast it is shrinking, in rating a second (negative when it grows).
+ */
+export function pressure(gap: number, closing: number): number {
+  const apart = gap > 0 ? gap : 0;
+  const near = apart < NEAR_GAP ? (1 - apart / NEAR_GAP) * NEAR_GLOW : 0;
+  const eta = closing > 0 ? apart / closing : SOON_S;
+  const soon = eta < SOON_S ? 1 - eta / SOON_S : 0;
+  return near > soon ? near : soon;
+}
+
 /** How quickly a shown score closes on the real one: the time to cover about two thirds of the gap. */
 const SCORE_ROLL_MS = 110;
 
@@ -92,6 +120,14 @@ export interface RiderFeedback {
   passedAt: number;
   /** The score as shown: it rolls up to the rating. */
   score: number;
+  /** The rating last seen, and how fast it has been growing lately, in rating a second. */
+  rated: number;
+  rate: number;
+  /** From 0 to 1: how close this rider is to taking the place ahead, and to losing its own to the one behind. */
+  chase: number;
+  threat: number;
+  /** From 0 to 1, per place light (`placeLight`): how lit it is. The rider's place is on its way to 1, the rest to 0. */
+  lights: number[];
 }
 
 function createRider(): RiderFeedback {
@@ -137,6 +173,11 @@ function createRider(): RiderFeedback {
     roseAt: NEVER,
     passedAt: NEVER,
     score: 0,
+    rated: 0,
+    rate: 0,
+    chase: 0,
+    threat: 0,
+    lights: Array.from({ length: PLACE_LIGHTS }, () => 0),
   };
 }
 
@@ -392,7 +433,51 @@ export function createFeedback(): Feedback {
           rider = riders[slot]!;
         if (player.rating > best) best = player.rating;
         if (!rider.seen) adopt(rider, player, songMs);
-        else update(rider, player, steps[slot], songMs, roll);
+        else {
+          update(rider, player, steps[slot], songMs, roll);
+          // Each note's points count toward the rate for a while and then fade out of it.
+          rider.rate =
+            rider.rate * Math.exp(-passed / RATE_MS) +
+            ((player.rating - rider.rated) * 1000) / RATE_MS;
+        }
+        rider.rated = player.rating;
+      }
+      // The chase and the threat: how near an overtake is, with the rider a place ahead and with the one behind.
+      // Not at the first notes, where the places change with every arrow, and not once the song is over.
+      const live =
+        view.phase !== "over" &&
+        view.players.length > 1 &&
+        best >= BANNER_MIN_RATING;
+      // On the first frame of a match nothing fades in: the place's light is simply on.
+      const first = lastMs === NEVER;
+      const ease = first ? 0 : 1 - Math.exp(-passed / PRESSURE_EASE_MS),
+        turn = first ? 1 : 1 - Math.exp(-passed / PLACE_EASE_MS);
+      for (let slot = 0; slot < view.players.length; slot++) {
+        const player = view.players[slot]!,
+          rider = riders[slot]!;
+        let chase = 0,
+          threat = 0;
+        if (live)
+          for (let other = 0; other < view.players.length; other++) {
+            const rival = view.players[other]!,
+              theirs = riders[other]!;
+            if (rival.place === player.place - 1)
+              chase = pressure(
+                rival.rating - player.rating,
+                rider.rate - theirs.rate,
+              );
+            else if (rival.place === player.place + 1)
+              threat = pressure(
+                player.rating - rival.rating,
+                theirs.rate - rider.rate,
+              );
+          }
+        const lit = placeLight(player.place);
+        for (let light = 0; light < PLACE_LIGHTS; light++)
+          rider.lights[light]! +=
+            ((light === lit ? 1 : 0) - rider.lights[light]!) * turn;
+        rider.chase += (chase - rider.chase) * ease;
+        rider.threat += (threat - rider.threat) * ease;
       }
       const own = view.players[local];
       if (

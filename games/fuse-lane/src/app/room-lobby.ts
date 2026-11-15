@@ -18,6 +18,8 @@ import { text } from "./screen.js";
  */
 export interface LobbyActions {
   playerName?(): string | undefined;
+  /** A seated player asks for another open seat: the face and the goals are the player's and go along. */
+  move?(name: string, slot: number): void;
   addBot(slot?: number): void;
   removeBot(id: string): void;
   start(): void;
@@ -162,7 +164,17 @@ export function createRoomLobby(options: RoomLobbyOptions) {
   const body = el("div", "", "fl-lobby-body");
   body.append(who, goalsBlock, levelBlock, weekBlock, note, buttons);
   element.append(side, body);
+  /** This device's own seat, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   const layout = createRoomLayout({
+    ownSlot: () => ownSeat?.slot,
+    ...(actions.move
+      ? {
+          onMove: (slot: number) => {
+            if (ownSeat) actions.move?.(ownSeat.name, slot);
+          },
+        }
+      : {}),
     primaryAction: start,
     playerName: actions.playerName,
     background: async (host) =>
@@ -180,6 +192,7 @@ export function createRoomLobby(options: RoomLobbyOptions) {
     element,
     attachJoin: layout.attachJoin,
     render(model: LobbyModel, tvHost: boolean): void {
+      ownSeat = model.own;
       layout.update(
         model.members.length,
         5,

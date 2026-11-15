@@ -37,6 +37,13 @@
 .fb-status {
   flex: 1;
 }
+/* In the room and on a card the bar is the shared bar alone: the room has Back and its own line at its foot. LEAVE,
+   MENU and the line are the match's and the controller's. */
+.fb-online:is([data-screen="lobby"], [data-screen="card"])
+  .fb-bar
+  > :is(button, .fui-game-menu, .fb-status) {
+  display: none;
+}
 /* Mid-match the bar keeps only LEAVE, and the status while a link is being retried, clear of the HUD. */
 .fb-match .fb-bar {
   width: fit-content;
@@ -46,15 +53,6 @@
 .fb-match .fb-status:not([data-tone="error"]) {
   display: none;
 }
-.fb-lobby {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-  gap: var(--fui-space-3) var(--fui-space-6);
-  align-items: start;
-  max-width: 60rem;
-  margin: var(--fui-space-4) auto 0;
-}
-.fb-lobby > *,
 .fb-card {
   display: grid;
   gap: var(--fui-space-3);
@@ -64,12 +62,6 @@
   max-width: 30rem;
   margin: var(--fui-space-4) auto 0;
   text-align: center;
-}
-.fb-shared {
-  display: flex;
-  gap: var(--fui-space-2);
-  align-items: center;
-  font-size: 0.875rem;
 }
 
 /* The shared TV: a QR code to scan from the sofa, and badges to read across the room. */
@@ -149,16 +141,20 @@
 body.fb-controller > [data-input="touch-pads"] {
   z-index: calc(var(--fui-z-bar) + 1) !important;
 }
-/* A controller keeps its room code and LEAVE: the app portal and the brand lead out of the room mid-play. */
-.fb-controller .fb-bar > a,
-.fb-controller .fb-bar > .fui-portal,
+/* A controller keeps LEAVE and MENU alone, in the page's flow above its name and meters: the shared bar's own
+   controls (the app portal, the brand, sound, the account) lead out of the room mid-play and would lie over them. */
+.fb-controller .fb-bar.fui-top-bar {
+  position: static;
+  justify-content: flex-start;
+  height: auto;
+  min-height: 0;
+  padding-block: 4px;
+}
+.fb-controller .fb-bar > :is(.fui-top-bar-left, .fui-top-bar-right),
 .fb-controller .fb-status:not([data-tone="error"]) {
   display: none;
 }
 /* The bar and its LEAVE are slim: the pads below take 70% of the screen, the header the 30% above them. */
-.fb-controller .fb-bar {
-  padding-block: 4px;
-}
 .fb-controller .fb-bar button {
   min-height: 0;
   padding: 3px 10px;

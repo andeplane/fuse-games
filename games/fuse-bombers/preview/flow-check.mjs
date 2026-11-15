@@ -147,6 +147,17 @@ try {
   const wins = await flow(() => window.fuseBombers.flow.runner.match.wins);
   check(wins.includes(2), `match over: wins ${wins.join("/")}`);
   check(paused && rounds >= 1, `${rounds} results screens and one pause`);
+  check(
+    /WINS$/.test(
+      await page.textContent(
+        ".fui-results:not([hidden]) .fui-results-victory h2",
+      ),
+    ) &&
+      (await page.isVisible(
+        '.fui-results-actions button[data-action="rematch"]',
+      )),
+    "the shared results screen names the winner and offers a rematch",
+  );
 
   await page.keyboard.press("Enter"); // Play again.
   await waitFor("countdown", "playing");

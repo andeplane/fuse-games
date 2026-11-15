@@ -1,11 +1,20 @@
 import { requestedRoomSlot } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import {
   bindAudioInput,
   browserAudioDependencies,
@@ -29,17 +38,24 @@ import {
 } from "fuse-network-fe";
 import { MAX_PACKET_BYTES, browserDependencies, uuid } from "fuse-netcode";
 import {
+  backOnEscape,
   button,
   createAppPortal,
+  createBackLink,
   createGameMenu,
   createInviteCard,
   createLandingCard,
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createPageHeader,
+  createPageMessage,
   createRoster,
+  createResultsScreen,
   createRoundControls,
+  createSubPage,
   createTopBar,
+  menuKeys,
   el,
 } from "fuse-ui";
 import {
@@ -47,6 +63,7 @@ import {
   CAPACITY,
   COLUMNS,
   MAX_SIMFILE_BYTES,
+  RULES,
   SCORE_MODE,
   createLibrary,
   type Library,
@@ -80,9 +97,11 @@ import {
   savePrefs,
   type Prefs,
 } from "./prefs.js";
-import { createOptionsMenu, createPlayOptions } from "./options.js";
+import { createOptionsMenu, createPlayOptions, speedLabel } from "./options.js";
+import { createLobbyBar } from "./lobby-bar.js";
 import {
   bestText,
+  holdText,
   present,
   type Model,
   type Row,
@@ -114,7 +133,17 @@ import {
   type Proposal,
 } from "./timing-bias.js";
 import { createSongClock } from "./song-clock.js";
+import { createSongStore } from "./song-cache.js";
+import { SONG_LOAD_TRIES, createSongLoader } from "./song-load.js";
 import { RESUME_MS, createPauseClock, resumeCount } from "./pause.js";
+import {
+  SPEED_KEYS,
+  SPEED_KEYS_HINT,
+  createFlash,
+  createHostWatch,
+  createPlayMenu,
+  stepSpeed,
+} from "./play-menu.js";
 import {
   createRunLogger,
   runStats,
@@ -122,6 +151,7 @@ import {
   type RunLog,
 } from "./run-log.js";
 import { drawTimingGraph } from "./timing-graph.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { createSongPicker } from "./song-picker.js";
 import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
@@ -158,8 +188,19 @@ const pairedClock =
   new URLSearchParams(location.search).get("audioclock") !== "reported";
 const app = document.querySelector<HTMLElement>("#app")!;
 /** One sound bus for the page: the header's button, `M` and the remembered volumes are the shared module's. */
+/** The songs' files stay in the browser between visits, so a song is downloaded once. */
+const songStore = createSongStore({
+  caches: typeof caches === "undefined" ? undefined : caches,
+  fetch: (url) => fetch(url),
+  prefix: "fusemania-songs-",
+  version: RULES,
+  absolute: (url) => new URL(url, location.href).href,
+});
 const audio = createGameAudio(
-  browserAudioDependencies(safeStorage(() => localStorage)),
+  {
+    ...browserAudioDependencies(safeStorage(() => localStorage)),
+    fetchAudio: (url) => songStore.fetch(url),
+  },
   { forceMute: muted },
 );
 bindAudioInput(audio, document, window);
@@ -180,8 +221,6 @@ const setText = (node: HTMLElement, value: string) => {
 const coarse = () => matchMedia("(pointer: coarse)").matches;
 /** Keys the song select leaves alone: Tab is the browser's, and M is the shared mute. */
 const PAGE_KEYS: ReadonlySet<string> = new Set(["Tab", "KeyM"]);
-/** How often a song's audio is fetched again by itself before the page asks the player. */
-const SONG_LOAD_TRIES = 3;
 /** Where a song's audio is fetched from: the site's own files, or a file the player loaded. */
 const songUrl = (path: string) =>
   /^(blob:|https?:)/.test(path) ? path : `${BASE}${path}`;
@@ -195,6 +234,41 @@ const coverUrl = (song: { id: string }): string | undefined => {
 
 /** The id a loaded simfile's song goes by. */
 const CUSTOM = "custom";
+/** The landing select's wait before it fetches the song it stands on; a room starting cancels it. */
+let landingFetch: ReturnType<typeof setTimeout> | undefined;
+/** Called when what a song select shows about the songs' audio has changed. */
+const audioWatchers = new Set<() => void>();
+/** The library the songs on screen are from: the bundled one, or it with the player's own file. */
+let songLibrary: Library | undefined;
+/** Which songs this device has the audio of, for the page's whole life: the song selects and the room share it. */
+const songs = createSongLoader({
+  now: () => performance.now(),
+  url: (id) => {
+    const info = songLibrary?.song(id);
+    return info && songUrl(info.audio);
+  },
+  load: (url) => audio.loadSong(url),
+  enabled: () => !audio.forcedMute,
+  hasClock: () => audio.clock() !== undefined,
+  local: localSong,
+  changed: () => {
+    for (const watcher of audioWatchers) watcher();
+  },
+});
+/** The songs of `library` are the ones on screen: the ones downloaded on an earlier visit are marked so. */
+function useLibrary(library: Library): void {
+  songLibrary = library;
+  void songStore.stored().then((urls) => {
+    const have = new Set(urls);
+    songs.stored(
+      library.songs
+        .filter((info) =>
+          have.has(new URL(songUrl(info.audio), location.href).href),
+        )
+        .map((info) => info.id),
+    );
+  });
+}
 interface Choice {
   song: string;
   chart: number;
@@ -323,6 +397,8 @@ const guide = () => ({
       keys: prefs.keys.item.map(keyLabel).join(" / ") || "—",
       action: "Throw your power-up (battle)",
     },
+    SPEED_KEYS_HINT,
+    { keys: "Esc", action: "Pause, or a room's menu" },
   ],
   touchControls: [
     {
@@ -406,16 +482,10 @@ function settingsPanel(onChange?: () => void) {
 }
 
 function landing(): void {
+  useLibrary(LIBRARY);
   const library = LIBRARY;
   let choice = chosen(library);
   const preview = createPreview(library);
-  const shared = el("label", "", "fm-shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   // A solo select: this player's speed and a random song. Sessions are a room's.
   const options = createPlayOptions({
     document,
@@ -438,6 +508,7 @@ function landing(): void {
     onChart: (chart) => show({ ...choice, chart }),
     onMode: (mode) => show({ ...choice, mode }),
     best: bestLookup(library),
+    audio: songs.status,
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
     tools: [options.random],
@@ -448,6 +519,9 @@ function landing(): void {
     remember(choice);
     picker.update({ ...choice, host: true });
     preview.show(choice.song);
+    // Downloaded while the player chooses, so PLAY does not wait for it; a carousel being turned fetches nothing.
+    clearTimeout(landingFetch);
+    landingFetch = setTimeout(() => songs.song(choice.song), 350);
   };
   const showOptions = () =>
     options.update({
@@ -456,10 +530,12 @@ function landing(): void {
       songs: 1,
       random: false,
     });
-  const leaveLanding = () => {
-    preview.stop();
+  /** `keepMusic`: the room that opens next plays the same preview on, without a gap. */
+  const leaveLanding = (keepMusic = false) => {
+    if (!keepMusic) preview.stop();
     settings.dispose();
     card.menu.dispose();
+    menu.dispose();
     document.removeEventListener("keydown", onKey);
   };
   // PLAY and OPTIONS stay in the dialog's bar beside CLOSE: the select under them scrolls, they do not.
@@ -485,7 +561,18 @@ function landing(): void {
         },
       );
       store.setItem(names.host(room.code), room.token);
-      location.href = withFlags(endpoints.appUrl(`?room=${room.code}`));
+      // Into the room without leaving the page: the menu's music plays on into the lobby.
+      const url = withFlags(endpoints.appUrl(`?room=${room.code}`));
+      leaveLanding(true);
+      history.pushState(null, "", url);
+      window.addEventListener("popstate", () => location.reload());
+      audio.unlock();
+      try {
+        enterRoom(false, library, choice, preview);
+      } catch {
+        // The landing is gone and the room did not come up: the room's own address starts it afresh.
+        location.href = url;
+      }
     },
     onSolo: () => {
       leaveLanding();
@@ -496,21 +583,20 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
-  card.create.after(shared);
   // The Timing screen is on the front door: lining the game up with a device is not a setting to dig for.
   card.menu.addEntry("Sync timing", () => {
     leaveLanding();
     openTiming();
   });
 
-  // A player's own simfile: any 4-panel .sm or .ssc with its music, for a solo run on this device.
+  // A player's own simfile: any 4-panel .sm, .ssc or .dwi with its music, for a solo run on this device.
   const own = el("details", "", "fm-own"),
     ownChart = el("input"),
     ownAudio = el("input"),
     ownPlay = button("PLAY THIS SIMFILE", "fm-own-play"),
     ownError = el("p", "", "fm-own-error");
   ownChart.type = ownAudio.type = "file";
-  ownChart.accept = ".sm,.ssc,text/plain";
+  ownChart.accept = ".sm,.ssc,.dwi,text/plain";
   ownAudio.accept = "audio/*,.ogg,.mp3,.m4a,.wav";
   ownError.setAttribute("role", "alert");
   const field = (label: string, input: HTMLInputElement) => {
@@ -522,7 +608,7 @@ function landing(): void {
     el("summary", "PLAY YOUR OWN STEPMANIA FILE"),
     el(
       "p",
-      "Pick a simfile (.sm or .ssc) and its music. They stay on this device.",
+      "Pick a simfile (.sm, .ssc or .dwi) and its music. They stay on this device.",
     ),
     field("Simfile", ownChart),
     field("Music", ownAudio),
@@ -597,14 +683,17 @@ function landing(): void {
       event.preventDefault();
   };
   document.addEventListener("keydown", onKey);
-  const back = el("a", "← ALL GAMES", "fm-back");
-  back.href = BASE + (muted ? "?mute" : "");
+  const allGames = el("a", "All games", "fm-all-games");
+  allGames.href = BASE + (muted ? "?mute" : "");
   const menu = createGameMenu(guide());
   menu.update({ canLobby: false, canLeave: false, touch: coarse() });
-  app.replaceChildren(header([back, menu.element]), card.element);
+  app.replaceChildren(header([allGames, menu.element]), card.element);
   picker.update({ ...choice, host: true });
   showOptions();
   preview.show(choice.song);
+  landingFetch = setTimeout(() => songs.song(choice.song), 350);
+  // Until a room takes the page over (`room` clears the watchers and the timer).
+  audioWatchers.add(() => picker.update({ ...choice, host: true }));
 }
 
 /** From the menu into a solo song without leaving the page, so the click that asked for it is what lets sound out. */
@@ -622,7 +711,7 @@ function startSolo(library: Library, choice: Choice): void {
   );
   window.addEventListener("popstate", () => location.reload());
   audio.unlock();
-  room(true, library, choice);
+  enterRoom(true, library, choice);
 }
 
 /** From the menu to the Timing screen without leaving the page, so the click that asked for it lets the tick out. */
@@ -635,10 +724,13 @@ function openTiming(): void {
 
 /** The Timing screen ("sync"): thirty seconds of a steady tick, then what to set. No song, no room. */
 function timing(): void {
-  const back = el("a", "← BACK TO THE MENU", "fm-ts-back");
-  back.href = withFlags(endpoints.appUrl());
   const loading = el("p", "Loading…", "fm-connecting");
-  app.replaceChildren(header(), loading);
+  const page = createSubPage({
+    title: "Sync timing",
+    backHref: withFlags(endpoints.appUrl()),
+    content: [loading],
+  });
+  app.replaceChildren(header(), page.element);
   void import("./timing-screen.js").then(({ createTimingScreen }) => {
     const screen = createTimingScreen({
       doc: document,
@@ -654,10 +746,11 @@ function timing(): void {
       bpm: Number(new URLSearchParams(location.search).get("rate")),
       seconds: Number(new URLSearchParams(location.search).get("seconds")),
       details: debugTiming,
-      back,
       pairing: pairedClock,
     });
     loading.replaceWith(screen.element);
+    // After the screen's own keys: Escape stops a run first, and only then goes back.
+    backOnEscape(page.back);
     // For smokes and for an agent reading a session: what the panel shows, its log, and where the run is.
     Object.assign(window, {
       fusemania: {
@@ -669,17 +762,29 @@ function timing(): void {
   });
 }
 
-function room(solo: boolean, library: Library, first?: Choice): void {
+function enterRoom(
+  solo: boolean,
+  library: Library,
+  first?: Choice,
+  preview = createPreview(library),
+): void {
+  // The landing select is gone: its late fetch must not take the place of the song this room plays.
+  clearTimeout(landingFetch);
+  audioWatchers.clear();
+  useLibrary(library);
   const session = solo
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const back = el("a", "← BACK", "fm-back");
-    back.href = withFlags(endpoints.appUrl());
-    app.replaceChildren(
-      header([back]),
-      el("p", "That is not a room code: check it and try again.", "fm-error"),
-    );
+    const page = createSubPage({
+      title: "Join room",
+      backHref: withFlags(endpoints.appUrl()),
+      content: [
+        createPageMessage("That is not a room code: check it and try again."),
+      ],
+    });
+    app.replaceChildren(header(), page.element);
+    backOnEscape(page.back);
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -688,14 +793,25 @@ function room(solo: boolean, library: Library, first?: Choice): void {
   document.body.classList.toggle("fm-display", display);
   const viewer: Viewer = { me: "", host: solo, solo, display };
   const choice = first ?? chosen(library);
-  const preview = createPreview(library);
   const leave = () => {
     runtime.stop();
     location.href = withFlags(endpoints.appUrl());
   };
 
   // ---- the page ----
-  const status = createNotice({ className: "fm-status" });
+  // The quiet states sit at the lobby's foot; what went wrong is said over whatever the page shows.
+  const status = createNotice({ className: "fm-status" }),
+    problem = createNotice({ className: "fm-alert" });
+  problem.element.setAttribute("role", "alert");
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+    }
+  };
   /** Lets go of every key and pad: a menu opened, or the page lost focus. */
   let letGoAll = () => {};
   // ---- a solo song can be paused: its room clock is this one, and it stops ----
@@ -721,17 +837,16 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     onOpenChange: menuMoved,
   });
   const roundControls = createRoundControls(quickGuide());
-  const top = header([
-    el("strong", solo ? "SOLO" : code, "fm-code"),
-    status.element,
-    menu.element,
-  ]);
+  // The room's code is on its invitation and its state at the lobby's foot: the bar holds neither.
+  const top = header([menu.element]);
   createTopBar({
     music: false,
     element: top,
     onOpenChange: menuMoved,
   });
-  const modalOpen = () => Boolean(document.querySelector("dialog[open]"));
+  const modalOpen = () =>
+    playtestInputBlocked(document) ||
+    Boolean(document.querySelector("dialog[open]"));
 
   // Lobby: the invitation and the players on one side, the song select and START on the other.
   // A host's rooms start with the session it set last; a solo run is one song.
@@ -747,7 +862,24 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     addBot = button("+ ADD AI RIVAL", "fm-add-bot"),
     start = button("START", "fui-button-primary fm-start"),
     lobbyNote = el("p", "", "fui-lobby-note"),
-    tvLink = button("OPEN TV SCREEN", "fm-tv");
+    tvLink = button("OPEN TV SCREEN", "fui-button fm-tv"),
+    tvOption = el("div", "", "fui-room-extra fm-tv-option"),
+    tvLabel = el("label"),
+    tvToggle = el("input");
+  // The host's choice for this room, made in the room: phones become the controllers of one shared screen.
+  tvToggle.type = "checkbox";
+  tvLabel.append(tvToggle, el("span", "Shared TV: phones are the controllers"));
+  tvOption.append(tvLabel, tvLink);
+  tvOption.hidden = true;
+  tvToggle.onchange = () => {
+    const sent = runtime.command({
+      type: "settings",
+      settings: { ...settings, display: tvToggle.checked },
+    });
+    // Refused (the room is not up yet, or this is no longer the host): the box goes back to what the room has.
+    if (sent) store.setItem(names.shared, tvToggle.checked ? "1" : "0");
+    else tvToggle.checked = settings.display;
+  };
   let inviteCard: HTMLElement | undefined;
   if (!solo) {
     const invite = createInviteCard({
@@ -795,10 +927,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     ...(solo ? {} : { lengths: SESSION_LENGTHS }),
     onSpeed: (speed) => {
       sfx.blip();
-      prefs = { ...prefs, speed };
-      savePrefs(store, prefs);
-      panel.refresh();
-      showOptions();
+      setSpeed(speed);
     },
     onRandomSong: () => {
       const song = randomSong(library, settings.song);
@@ -833,11 +962,11 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     onMode: (mode) =>
       runtime.command({ type: "settings", settings: { ...settings, mode } }),
     best: bestLookup(library),
+    audio: songs.status,
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
     tools: [options.random],
   });
-  options.element.hidden = display;
   const showOptions = () =>
     options.update({
       speed: prefs.speed,
@@ -845,9 +974,23 @@ function room(solo: boolean, library: Library, first?: Choice): void {
       songs: settings.songs,
       random: settings.random,
     });
+  /** This device's own scroll speed, kept: from the lobby, the menu over a song, or the speed keys. */
+  const setSpeed = (speed: number) => {
+    prefs = { ...prefs, speed };
+    savePrefs(store, prefs);
+    panel.refresh();
+    showOptions();
+    playMenu.speed(speed);
+  };
   const lobbySession = sessionBlock();
-  const lobbyActions = el("div", "", "fm-actions");
-  lobbyActions.append(tvLink, start);
+  // OPTIONS, Settings and START across the room's top; the speeds are behind OPTIONS, never a row in the lobby.
+  const lobbyBar = createLobbyBar({
+    document,
+    picker: picker.element,
+    options: options.element,
+    session: lobbySession.element,
+  });
+  lobbyBar.menu.element.hidden = display;
   lobby.append(lobbyMain);
   const help = keyHelp();
   const panel = settingsPanel(() => {
@@ -861,86 +1004,71 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     canvas = el("canvas", "", "fm-canvas"),
     note = el("p", "", "fm-note"),
     unlock = el("p", "TAP OR PRESS A KEY FOR SOUND", "fm-unlock"),
+    holdNote = el("p", "", "fm-unlock fm-hold"),
     loadFailed = button("THE SONG DID NOT LOAD · RETRY", "fm-unlock fm-retry");
-  const card = el("section", "", "fm-card"),
-    cardTitle = el("h2"),
-    cardRows = el("ol", "", "fm-rows"),
-    cardSession = sessionBlock(),
-    cardReport = el("div", "", "fm-report"),
-    cardSide = el("div", "", "fm-report-side"),
-    cardOwn = el("div", "", "fm-own"),
-    ownGrade = el("strong", "", "fm-grade fm-own-grade"),
-    ownScore = el("em", "", "fm-own-score"),
-    ownDetail = el("small", "", "fm-own-detail"),
-    ownBadge = el("b", "", "fm-own-badge"),
-    cardCounts = el("dl", "", "fm-counts"),
-    cardLines = el("ul", "", "fm-lines"),
-    cardGraph = el("div", "", "fm-report-graph"),
-    graph = el("canvas", "", "fm-graph"),
-    graphStats = el("dl", "", "fm-graph-stats"),
-    cardFoot = el("p", "", "fm-card-foot"),
-    cardTiming = el("section", "", "fm-card-timing"),
-    timingText = el("p", ""),
-    timingApply = button("APPLY", "fui-button-primary fm-timing-apply"),
-    timingSkip = button("NO THANKS", "fm-timing-skip"),
-    cardActions = el("div", "", "fm-actions"),
-    rematch = button("PLAY AGAIN", "fui-button-primary fm-rematch"),
-    toLobby = button("SONG SELECT", "fm-to-lobby"),
-    toMenu = button("MENU", "fm-to-menu");
-  cardActions.append(toMenu, toLobby, rematch);
-  cardOwn.append(ownGrade, ownScore, ownDetail, ownBadge);
-  cardSide.append(cardOwn, cardCounts, cardLines);
-  graph.setAttribute("role", "img");
-  cardGraph.append(graph, graphStats, cardTiming);
-  cardGraph.hidden = true;
-  cardReport.append(cardSide, cardGraph);
-  card.append(
-    cardTitle,
-    cardRows,
-    cardSession.element,
-    cardReport,
-    cardFoot,
-    cardActions,
-  );
-  // The pause: over the field, with what a paused song can do next.
-  const pauseCard = el("section", "", "fm-pause"),
-    pauseTitle = el("h2", "PAUSED"),
-    pauseSong = el("p", "", "fm-pause-song"),
-    pauseCount = el("strong", "", "fm-pause-count"),
-    pauseActions = el("div", "", "fm-actions fm-pause-actions"),
-    pauseResume = button("RESUME", "fui-button-primary fm-pause-resume"),
-    pauseRestart = button("RESTART", "fm-pause-restart"),
-    pauseSelect = button("SONG SELECT", "fm-pause-select"),
-    pauseHint = el("p", "ESC RESUMES", "fm-pause-hint"),
-    pauseButton = button("II", "fm-pause-button");
-  pauseCard.setAttribute("role", "dialog");
-  pauseCard.setAttribute("aria-label", "Paused");
-  pauseButton.setAttribute("aria-label", "Pause");
-  pauseActions.append(pauseResume, pauseRestart, pauseSelect);
-  pauseCard.append(pauseTitle, pauseSong, pauseCount, pauseActions, pauseHint);
-  pauseCard.hidden = pauseButton.hidden = pauseCount.hidden = true;
-  timingText.setAttribute("role", "status");
-  cardTiming.append(timingText, timingApply, timingSkip);
-  cardTiming.hidden = true;
-  card.hidden = true;
-  unlock.hidden = loadFailed.hidden = true;
-  loadFailed.onclick = () => {
-    if (playing) playing.failures = playing.retryAt = 0;
-  };
-  // The result says what its buttons do: another go, a session's next song, or back to the song select.
-  rematch.onclick = () => {
+  // The result: the shared results screen, with this device's own run (judgments, timing graph) as a section of it.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => leave(),
+    backText: "Leave",
+    onAction: (id) => {
+      if (id === "menu") leave();
+      else if (id === "primary") resultPrimary();
+      else runtime.command({ type: "action", action: "lobby" });
+    },
+  });
+  const resultPrimary = () => {
     const action = model?.result?.primary.action;
     if (action) runtime.command({ type: "action", action });
   };
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  toMenu.onclick = leave;
+  const cardReport = el("div", "", "fm-report"),
+    cardCounts = el("dl", "", "fm-counts"),
+    cardGraph = el("div", "", "fm-report-graph"),
+    graph = el("canvas", "", "fm-graph"),
+    graphStats = el("dl", "", "fm-graph-stats"),
+    cardTiming = el("section", "", "fm-card-timing"),
+    timingText = el("p", ""),
+    timingApply = button("APPLY", "fui-button-primary fm-timing-apply"),
+    timingSkip = button("NO THANKS", "fui-button fm-timing-skip");
+  graph.setAttribute("role", "img");
+  cardGraph.append(graph, graphStats, cardTiming);
+  cardGraph.hidden = true;
+  cardReport.append(cardCounts, cardGraph);
+  // The menu over a song: a pause alone, a player's own menu in a room (`play-menu.ts`).
+  const playMenu = createPlayMenu({
+    document,
+    onResume: () => resume(),
+    onRestart: () => restartSong(),
+    onSelect: () => {
+      unpause(true);
+      runtime.command({ type: "action", action: "lobby" });
+    },
+    onLeave: leave,
+    onSpeed: (speed) => {
+      sfx.blip();
+      setSpeed(speed);
+    },
+  });
+  const pauseButton = button("II", "fm-pause-button");
+  pauseButton.setAttribute("aria-label", solo ? "Pause" : "Menu");
+  pauseButton.hidden = true;
+  /** The speed that was just set, or what the host just did, for a moment over the page. */
+  const flash = createFlash(document),
+    hostWatch = createHostWatch();
+  timingText.setAttribute("role", "status");
+  cardTiming.append(timingText, timingApply, timingSkip);
+  cardTiming.hidden = true;
+  unlock.hidden = loadFailed.hidden = holdNote.hidden = true;
+  holdNote.setAttribute("role", "status");
+  loadFailed.onclick = () => songs.retry();
   screen.append(
     canvas,
     unlock,
+    holdNote,
     loadFailed,
     pauseButton,
-    pauseCard,
-    card,
+    playMenu.element,
     roundControls.element,
   );
 
@@ -968,7 +1096,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
   const stamp = (at: number, now = performance.now()): number =>
     songClock.songMs(stamped(at, now) ? at : now) - prefs.offsetMs;
   const press = (column: number, source: string, at: number) => {
-    if (pauseClock.paused) return;
+    if (pauseClock.paused || playMenu.isOpen) return;
     const now = performance.now(),
       ms = stamp(at, now);
     probe.press(
@@ -998,7 +1126,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     runtime.key(column, false, stamp(at));
   };
   const throwItem = (at: number) => {
-    if (!pauseClock.paused) runtime.useItem(stamp(at));
+    if (!pauseClock.paused && !playMenu.isOpen) runtime.useItem(stamp(at));
   };
   const pads = (className: string) => {
     const row = el("div", "", className);
@@ -1010,6 +1138,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
       node.setAttribute("aria-label", `${COLUMN_ACTIONS[column]} arrow`);
       node.addEventListener("contextmenu", (event) => event.preventDefault());
       node.addEventListener("pointerdown", (event) => {
+        if (playtestInputBlocked(document)) return;
         event.preventDefault();
         node.setPointerCapture(event.pointerId);
         node.classList.add("held");
@@ -1032,6 +1161,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     item.setAttribute("aria-label", "Throw your power-up");
     item.addEventListener("contextmenu", (event) => event.preventDefault());
     item.addEventListener("pointerdown", (event) => {
+      if (playtestInputBlocked(document)) return;
       event.preventDefault();
       throwItem(event.timeStamp);
     });
@@ -1055,25 +1185,26 @@ function room(solo: boolean, library: Library, first?: Choice): void {
   controllerHead.append(controllerName, controllerState);
   const controllerResult = el("div", "", "fm-actions fm-controller-result"),
     controllerRematch = button("PLAY AGAIN", "fui-button-primary"),
-    controllerLobby = button("SONG SELECT");
-  controllerRematch.onclick = rematch.onclick;
-  controllerLobby.onclick = toLobby.onclick;
+    controllerLobby = button("SONG SELECT", "fui-button");
+  controllerRematch.onclick = resultPrimary;
+  controllerLobby.onclick = () =>
+    runtime.command({ type: "action", action: "lobby" });
   controllerResult.append(controllerLobby, controllerRematch);
   controller.append(controllerHead, controllerResult, controllerPads.row);
 
   const connecting = el("p", "Connecting to the room…", "fm-connecting"),
     closed = el("section", "", "fm-panel fm-closed"),
-    closedRetry = button("TRY AGAIN", "fm-retry"),
-    closedBack = el(
-      "a",
-      "BACK TO FUSEMANIA",
-      "fui-button-primary fm-closed-back",
-    );
+    closedRetry = button("TRY AGAIN", "fui-button fm-retry"),
+    closedBack = el("a", "MAIN MENU", "fui-button-primary fm-closed-back"),
+    closedHead = createPageHeader({
+      back: createBackLink({ href: withFlags(endpoints.appUrl()) }),
+    });
   closedBack.href = withFlags(endpoints.appUrl());
   closedRetry.onclick = () => location.reload();
   const closedActions = el("div", "", "fm-actions");
   closedActions.append(closedRetry, closedBack);
   closed.append(
+    closedHead.element,
     el("h2", "ROOM CLOSED", "fui-lobby-title"),
     el(
       "p",
@@ -1083,24 +1214,49 @@ function room(solo: boolean, library: Library, first?: Choice): void {
   );
   closed.hidden = true;
   const main = el("main", "", "fm-room");
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  main.append(
+    problem.element,
+    flash.element,
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+    results.element,
+  );
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor,
-    slotLabel: (slot) => `Player ${slot + 1}`,
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     ...(inviteCard ? { invite: inviteCard } : {}),
     roster,
+    // ADD FRIEND on a player's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: CAPACITY,
     join: nameEntry.form,
+    // Seated already: any open seat is a move, and the lane's colour follows the seat.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     addAI: addBot,
     settings: [panel.element, help],
-    modes: [picker.element, options.element, lobbySession.element],
-    actions: [lobbyNote, lobbyActions],
+    headerActions: lobbyBar.headerActions,
+    modes: lobbyBar.modes,
+    actions: [lobbyNote],
+    extras: [tvOption],
+    status: status.element,
+    // Alone, the room is the song select, as the menu's own: no invitation and no row of empty seats.
+    ...(solo
+      ? { compact: true, heading: "Single player" }
+      : { heading: "Room" }),
   });
   lobby.hidden = true;
   stage.hidden = true;
@@ -1114,41 +1270,8 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     createCanvas: browserCanvas,
   });
   let model: Model | undefined;
-  /** The song being played, decoded for the audio clock; the shared module keeps the last few. */
-  let playing:
-    | {
-        id: string;
-        song?: ClockedSong;
-        loading: boolean;
-        retryAt: number;
-        failures: number;
-      }
-    | undefined;
-  const songOf = (id: string, now: number): ClockedSong | undefined => {
-    if (playing?.id !== id)
-      playing = { id, loading: false, retryAt: 0, failures: 0 };
-    const mine = playing;
-    if (
-      !mine.song &&
-      !mine.loading &&
-      now >= mine.retryAt &&
-      mine.failures < SONG_LOAD_TRIES &&
-      !audio.forcedMute
-    ) {
-      const info = library.song(id);
-      mine.loading = true;
-      void (info ? audio.loadSong(songUrl(info.audio)) : Promise.resolve())
-        .catch(() => undefined)
-        .then((song) => {
-          mine.loading = false;
-          if (song) mine.song = song;
-          // No clock yet (no gesture) is not a failure of the file: ask again without counting it.
-          else if (audio.clock()) mine.failures++;
-          mine.retryAt = performance.now() + (song ? 0 : 5000);
-        });
-    }
-    return mine.song;
-  };
+  /** The song being played, decoded for the audio clock, once this device has it. */
+  const songOf = (id: string): ClockedSong | undefined => songs.song(id);
   let stepsKey = "",
     steps: Steps[] = [];
   const stepsOf = (view: WorldView): readonly Steps[] => {
@@ -1234,7 +1357,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     report = log && (log.steps.length || log.misses.length) ? log : undefined;
     reportEnd = endMs;
     cardGraph.hidden = !report;
-    card.classList.toggle("fm-card-graphed", !!report);
+    cardReport.classList.toggle("fm-report-graphed", !!report);
     if (!report) return;
     const stats = runStats(report.steps);
     graphStats.replaceChildren(
@@ -1259,6 +1382,22 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     resumeAt = 0;
   const pausable = () =>
     solo && !!model?.playing && runtime.songMs() !== undefined;
+  /** A room's song has a menu, not a pause: the song is everybody's and goes on behind it. */
+  const menuable = () =>
+    !solo && !display && model?.screen === "play" && lastStage === "running";
+  /** Whether the open room menu is the host's: the room can change hands under it. */
+  let menuHost = false;
+  const openRoomMenu = () => {
+    // A restart that is on its way is not asked for twice.
+    if (playMenu.isOpen || !menuable() || restarting) return;
+    letGoAll();
+    menuHost = viewer.host;
+    playMenu.open({
+      kind: menuHost ? "host" : "guest",
+      title: model?.title ?? "",
+      speed: prefs.speed,
+    });
+  };
   pause = () => {
     if (pauseClock.paused || !pausable()) return;
     letGoAll();
@@ -1268,31 +1407,39 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     // The song stops where it is; RESUME starts it again on the room's clock.
     songClock.stop();
     resumeAt = 0;
-    setText(pauseSong, model?.title ?? "");
-    pauseCount.hidden = true;
-    pauseActions.hidden = pauseHint.hidden = false;
-    pauseCard.hidden = false;
-    pauseResume.focus();
+    playMenu.open({
+      kind: "solo",
+      title: model?.title ?? "",
+      speed: prefs.speed,
+    });
   };
   unpause = (leaving = false) => {
     leavingSong = leaving && pauseClock.paused;
     resumeAt = 0;
-    pauseCard.hidden = true;
+    playMenu.close();
     pauseClock.resume();
   };
   /** Counts in, so the hands are back on the keys when the arrows move again. */
   const resume = () => {
-    if (!pauseClock.paused || resumeAt) return;
+    // A room's song never stopped: its menu just closes.
+    if (!pauseClock.paused) return playMenu.close();
+    if (resumeAt) return;
     resumeAt = performance.now() + RESUME_MS;
-    pauseActions.hidden = pauseHint.hidden = true;
-    pauseCount.hidden = false;
-    setText(pauseCount, resumeCount(RESUME_MS));
+    playMenu.count(resumeCount(RESUME_MS));
   };
-  pauseButton.onclick = () => pause();
-  pauseResume.onclick = resume;
-  pauseSelect.onclick = () => {
-    unpause(true);
-    runtime.command({ type: "action", action: "lobby" });
+  // Arrows walk a result's buttons, Enter presses the one in focus: no mouse needed. The menu over a song has its own.
+  menuKeys(results.actions, { enabled: () => !model?.playing });
+  /** Escape and the II button: a pause alone, the room's menu with others. */
+  const openMenu = () => (solo ? pause() : openRoomMenu());
+  pauseButton.onclick = openMenu;
+  /** One step slower or faster, from the keys while a song plays: said on screen, and kept. */
+  const nudgeSpeed = (direction: -1 | 1) => {
+    const speed = stepSpeed(prefs.speed, direction);
+    if (speed !== prefs.speed) {
+      sfx.blip();
+      setSpeed(speed);
+    }
+    flash.show(`SPEED ${speedLabel(speed)}`, performance.now());
   };
   const latencyBox = new URLSearchParams(location.search).has("latency")
     ? el("pre", "", "fm-latency")
@@ -1315,11 +1462,11 @@ function room(solo: boolean, library: Library, first?: Choice): void {
   let restarting = false,
     startedSilent = false,
     heardEpoch = -1;
-  pauseRestart.onclick = () => {
+  const restartSong = () => {
     unpause(true);
     // START is refused while the match runs: it is sent once the room is back at the song select.
-    runtime.command({ type: "action", action: "lobby" });
-    restarting = true;
+    // Refused itself (this is no longer the host), nothing is waited for.
+    restarting = runtime.command({ type: "action", action: "lobby" });
   };
   const frame = (now: number) => {
     // Asked first, so one bad frame cannot stop the drawing for good.
@@ -1337,20 +1484,34 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     // A phone that is a controller makes no music: the shared screen does.
     const song =
       world && roomMs !== undefined && model?.screen === "play"
-        ? songOf(world.song, now)
+        ? songOf(world.song)
         : undefined;
+    // A started song waits for every device's audio: this one says when it is done getting it, or needs none (a
+    // phone that is a pad makes no music).
+    const held = runtime.held();
+    if (held && world && model && model.screen !== "lobby")
+      if (model.screen !== "play" || songs.settled(world.song)) runtime.ready();
     const paused = pauseClock.paused;
     if (paused && !pausable()) unpause();
     else if (paused && resumeAt) {
       if (now >= resumeAt) unpause();
-      else setText(pauseCount, resumeCount(resumeAt - now));
+      else playMenu.count(resumeCount(resumeAt - now));
     }
+    // A room's menu goes with its song: the song ended, or the host took the room elsewhere.
+    if (!solo && playMenu.isOpen && !menuable()) playMenu.close();
+    // The room changed hands under the menu: it shows what this player may do now.
+    if (!solo && playMenu.isOpen && menuHost !== viewer.host) {
+      playMenu.close();
+      openRoomMenu();
+    }
+    flash.frame(performance.now());
     // A paused song is silent and stays where it stood: it is not followed until the clock runs again.
     if (leavingSong && state?.stage !== "running") leavingSong = false;
     const still = pauseClock.paused || leavingSong;
-    if (!still) songClock.follow(roomMs, song);
+    // Held, the song is silent at its first moment; it starts when the room lets it go.
+    if (!still) songClock.follow(roomMs, held ? undefined : song);
     pauseButton.hidden =
-      pauseClock.paused || !pausable() || !coarse() || display;
+      playMenu.isOpen || !(pausable() || menuable()) || !coarse() || display;
     if (restarting && state?.stage === "lobby") {
       restarting = false;
       // Should START be refused, the song select it was hidden behind is there again.
@@ -1359,9 +1520,13 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     }
     if (!model || model.screen === "lobby" || !world) {
       before = undefined;
-      unlock.hidden = loadFailed.hidden = true;
+      unlock.hidden = loadFailed.hidden = holdNote.hidden = true;
       return;
     }
+    const waiting = held;
+    holdNote.hidden = !waiting || model.screen !== "play";
+    if (waiting && !holdNote.hidden)
+      setText(holdNote, holdText(model.waiting, songs.settled(world.song)));
     const running = roomMs !== undefined;
     const silent =
       running &&
@@ -1369,9 +1534,9 @@ function room(solo: boolean, library: Library, first?: Choice): void {
       !audio.forcedMute &&
       !audio.prefs.muted &&
       audio.clock()?.running === false;
-    unlock.hidden = !silent;
+    unlock.hidden = !silent || !!waiting;
     loadFailed.hidden =
-      silent || !running || (playing?.failures ?? 0) < SONG_LOAD_TRIES;
+      silent || !running || !!waiting || songs.failures() < SONG_LOAD_TRIES;
     // Sound that has been heard in this match and stops for a moment (a tab left and returned to) restarts nothing.
     const epoch = state?.epoch ?? -1;
     if (!silent && running && audio.clock()?.running) heardEpoch = epoch;
@@ -1498,7 +1663,8 @@ function room(solo: boolean, library: Library, first?: Choice): void {
         heardMs: songClock.songMs(),
         roomMs: runtime.songMs(),
         latencyMs: (audio.clock()?.latency() ?? 0) * 1000,
-        loaded: !!playing?.song,
+        loaded: songs.settled(runtime.roomState()?.world?.song ?? ""),
+        held: runtime.held(),
       }),
       view: () => runtime.picture(songClock.songMs() - prefs.offsetMs),
       /** Press-to-handler and press-to-frame percentiles, the audio clock's figures and this run's hit errors. */
@@ -1521,26 +1687,13 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     },
   });
 
-  const rowNode = (row: Row) => {
-    const node = el("li", "", row.you ? "you" : "");
-    node.style.setProperty("--c", slotColor(row.slot));
-    const who = el("div", "", "fm-row-who");
-    who.append(
-      el("b", row.you ? `${row.name} (you)` : row.name),
-      el("small", `${row.detail} · ${row.combo}`),
-    );
-    node.append(
-      el("span", String(row.place), "fm-row-place"),
-      el("strong", row.grade, `fm-grade fm-grade-${row.grade.toLowerCase()}`),
-      who,
-      el("em", row.score),
-    );
-    return node;
-  };
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
   let lastStage = "";
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
+    ownSeat = next.lobby.members.find((member) => member.you);
     connecting.hidden = true;
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
@@ -1554,8 +1707,8 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     // The song select's music plays in the lobby only; a match's song is the audio clock's.
     if (next.screen === "lobby" && !display && !restarting) {
       preview.show(view.settings.song);
-      // Decoded while the players choose, so START never waits for it.
-      songOf(view.settings.song, performance.now());
+      // Decoded while the players choose, so START rarely waits for it.
+      songOf(view.settings.song);
     } else preview.stop();
     if (view.stage === "over" && lastStage === "running" && next.result)
       sfx.fanfare(
@@ -1576,12 +1729,17 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     // A calibration or a key capture left open takes every key: it ends when the room moves on.
     if (view.stage !== lastStage) panel.cancel();
     lastStage = view.stage;
+    // Whoever is not the host is told why their song stopped or began again.
+    const hostDid = hostWatch(view.stage, performance.now());
+    if (hostDid && !solo && !viewer.host && !display)
+      flash.show(hostDid, performance.now());
     // Lobby.
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
         slot: member.slot,
-        name: member.you ? `${member.name} (you)` : member.name,
+        // Alone there is nobody to tell apart from.
+        name: member.you && !solo ? `${member.name} (you)` : member.name,
         color: slotColor(member.slot),
         status: !member.connected
           ? "OFFLINE"
@@ -1610,12 +1768,10 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     showOptions();
     setText(lobbyNote, next.lobby.note);
     lobbyNote.hidden = !next.lobby.note;
-    tvLink.hidden = !(
-      view.settings.display &&
-      viewer.host &&
-      !display &&
-      !solo
-    );
+    tvOption.hidden = !(viewer.host && !display && !solo);
+    if (tvToggle.checked !== view.settings.display)
+      tvToggle.checked = view.settings.display;
+    tvLink.hidden = !view.settings.display;
     picker.update({
       song: view.settings.song,
       chart: next.chart,
@@ -1661,27 +1817,10 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     controllerResult.hidden = !(next.result && next.result.host);
     // The result.
     const result = next.result;
-    card.hidden = !result || next.screen === "controller";
-    if (result) {
-      setText(cardTitle, result.title);
-      const rows = JSON.stringify(result.rows);
-      if (cardRows.dataset.rows !== rows) {
-        cardRows.dataset.rows = rows;
-        cardRows.replaceChildren(...result.rows.map(rowNode));
-      }
-      // Alone, the one row says nothing the big grade does not.
-      cardRows.hidden = !!result.own && result.rows.length === 1;
-      cardOwn.hidden = !result.own;
-      card.classList.toggle("fm-card-own", !!result.own);
-      if (result.own) {
-        const own = result.own;
-        setText(ownGrade, own.grade);
-        ownGrade.className = `fm-grade fm-own-grade fm-grade-${own.grade.toLowerCase()}`;
-        setText(ownScore, own.score);
-        setText(ownDetail, own.detail);
-        setText(ownBadge, own.badge);
-        ownBadge.hidden = !own.badge;
-      }
+    if (!result || next.screen === "controller") {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
       const counts = JSON.stringify(result.counts);
       if (cardCounts.dataset.counts !== counts) {
         cardCounts.dataset.counts = counts;
@@ -1706,33 +1845,40 @@ function room(solo: boolean, library: Library, first?: Choice): void {
         );
       }
       cardCounts.hidden = !result.counts.length;
-      const joined = result.lines.join("\n");
-      if (cardLines.dataset.lines !== joined) {
-        cardLines.dataset.lines = joined;
-        cardLines.replaceChildren(
-          ...result.lines.map((line) =>
-            el("li", line, /^(NEW BEST|FIRST)/.test(line) ? "best" : ""),
-          ),
+      // The friend buttons are part of what is shown: an account that turns up after the song gets its button.
+      const friend = (id: string) => {
+        const publicId = social.friends.publicIdOfMember(id);
+        return publicId ? social.friends.friendButton(publicId) : undefined;
+      };
+      // The bar's own fields change while the result is read (who waits for what): they do not rebuild the report.
+      const shown = JSON.stringify([
+        { ...result, waiting: "", host: false, primary: null, secondary: null },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      if (shown !== shownResult) {
+        const first = !shownResult;
+        shownResult = shown;
+        const scroll = results.body.scrollTop;
+        results.show(
+          resultReport(result, {
+            color: slotColor,
+            friend,
+            run: result.own ? [cardReport] : [],
+          }),
         );
-      }
-      cardLines.hidden = !result.lines.length;
-      setText(cardFoot, result.waiting);
-      cardFoot.hidden = !result.waiting;
-      cardActions.hidden = !result.host;
-      toMenu.hidden = !result.solo;
-      // A session's standings: under the song's result, and above it once the session is over.
-      cardSession.update(result.session);
-      const anchor = result.final ? cardTitle : cardRows;
-      if (cardSession.element.previousElementSibling !== anchor)
-        anchor.after(cardSession.element);
-      for (const [main, other] of [
-        [rematch, toLobby],
-        [controllerRematch, controllerLobby],
-      ] as const) {
-        setText(main, result.primary.text);
-        other.hidden = !result.secondary;
-        if (result.secondary) setText(other, result.secondary.text);
-      }
+        if (!first) results.body.scrollTop = scroll;
+        // The graph's canvas has a size only now that it is on the page.
+        drawGraph();
+        results.update(resultBar(result));
+        // The main button takes the focus, so Enter and the arrows work without a click.
+        if (first)
+          results.actions
+            .querySelector<HTMLButtonElement>("button.is-primary")
+            ?.focus();
+      } else results.update(resultBar(result));
+      setText(controllerRematch, result.primary.text);
+      controllerLobby.hidden = !result.secondary;
+      if (result.secondary) setText(controllerLobby, result.secondary.text);
     }
   };
 
@@ -1747,21 +1893,34 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     pickSent = false;
   const callbacks: FusemaniaCallbacks = {
     state(frame, roomSettings) {
-      const players =
-        frame.stage === "lobby"
-          ? frame.seats.filter((seat) => !seat.watcher)
-          : frame.roster;
       const mode = solo ? "solo" : roomSettings.display ? "shared" : "online";
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.stage === "running",
-        ended: frame.stage === "over",
-        playerCount: players.length,
-        botCount: players.filter((player) => player.bot).length,
-        seated: players.some((player) => player.id === viewer.me),
-        mode,
-        round: 1,
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => {
+          const players =
+            frame.stage === "lobby"
+              ? frame.seats.filter((seat) => !seat.watcher)
+              : frame.roster;
+          return {
+            matchId: frame.matchId,
+            roundActive:
+              frame.stage === "running" &&
+              !!frame.world &&
+              frame.world.ms >= 0 &&
+              frame.world.phase === "playing",
+            roundEnded: frame.stage === "over",
+            active: frame.stage === "running",
+            ended: frame.stage === "over",
+            playerCount: players.length,
+            botCount: players.filter((player) => player.bot).length,
+            seated: players.some((player) => player.id === viewer.me),
+            mode,
+            round: 1,
+          };
+        },
+      );
       settings = roomSettings;
       // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
       let bestBefore: number | undefined;
@@ -1788,7 +1947,8 @@ function room(solo: boolean, library: Library, first?: Choice): void {
         }
       }
       const next = present(library, frame, viewer, bestBefore);
-      if (next.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (next.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
@@ -1825,17 +1985,17 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     kicked() {
-      status.show("The host removed you from the room", "error");
+      say("The host removed you from the room", "error");
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
       over = true;
       songClock.stop();
       preview.stop();
@@ -1846,7 +2006,7 @@ function room(solo: boolean, library: Library, first?: Choice): void {
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           if (roomFailure(String(body.error ?? "")) === NOT_OPEN)
-            status.show(NOT_OPEN, "error");
+            say(NOT_OPEN, "error");
         })
         .catch(() => {
           /* offline: "Room ended" stands */
@@ -1886,7 +2046,9 @@ function room(solo: boolean, library: Library, first?: Choice): void {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      stopPlaytestInput();
       menu.dispose();
+      playMenu.dispose();
       panel.dispose();
       songClock.stop();
       scene.destroy();
@@ -1918,16 +2080,20 @@ function room(solo: boolean, library: Library, first?: Choice): void {
       event.altKey
     )
       return;
-    // Escape pauses a solo song and takes the pause away again; the Escape that closed a menu does neither.
-    if (event.code === "Escape" && (pauseClock.paused || pausable())) {
+    // Escape pauses a solo song and takes the pause away again, and opens and closes a room's menu over its song;
+    // the Escape that closed another menu does neither.
+    if (
+      event.code === "Escape" &&
+      (playMenu.isOpen || pausable() || menuable())
+    ) {
       event.preventDefault();
       if (event.repeat || performance.now() - menuClosedAt < 100) return;
-      if (pauseClock.paused) resume();
-      else pause();
+      if (playMenu.isOpen) resume();
+      else openMenu();
       return;
     }
-    // A paused song takes no steps; its buttons keep Enter, Space and Tab.
-    if (pauseClock.paused) return;
+    // A paused song takes no steps, nor does one under its menu; the buttons keep Enter, Space and Tab.
+    if (pauseClock.paused || playMenu.isOpen) return;
     if (!model?.playing) {
       if (event.repeat) return;
       // A result that offers another go takes Enter as its main button, without the mouse.
@@ -1937,9 +2103,11 @@ function room(solo: boolean, library: Library, first?: Choice): void {
         !(event.target instanceof HTMLButtonElement)
       ) {
         event.preventDefault();
-        rematch.click();
+        resultPrimary();
       } else if (
         model?.screen === "lobby" &&
+        // The speeds are open over the select: their keys are not the carousel's.
+        lobbyBar.menu.panel.hidden &&
         // A cover, an arrow or a chip that was just clicked keeps the focus: the carousel's keys still turn it.
         (!typing(event.target) ||
           (event.target instanceof HTMLButtonElement &&
@@ -1953,6 +2121,14 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     }
     if (typing(event.target)) return;
     const action = actionOf(prefs, event.code);
+    // − and + change this device's speed in the middle of a song, unless the player made them step keys.
+    const nudge = action ? undefined : SPEED_KEYS[event.code];
+    if (nudge) {
+      event.preventDefault();
+      // One step a press: a held key does not run through every speed.
+      if (!event.repeat) nudgeSpeed(nudge);
+      return;
+    }
     if (!action) return;
     event.preventDefault();
     captured.add(event.code);
@@ -1964,6 +2140,9 @@ function room(solo: boolean, library: Library, first?: Choice): void {
     for (let column = 0; column < COLUMNS; column++)
       lift(column, event.code, event.timeStamp);
     if (captured.delete(event.code)) event.preventDefault();
+  });
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: () => letGoAll(),
   });
   window.addEventListener("blur", () => letGoAll());
   document.addEventListener("visibilitychange", () => {
@@ -1983,6 +2162,6 @@ function room(solo: boolean, library: Library, first?: Choice): void {
 
 const query = new URLSearchParams(location.search);
 if (query.has("timing") || query.has("sync")) timing();
-else if (query.get("solo") === "1") room(true, LIBRARY);
-else if (query.has("room")) room(false, LIBRARY);
+else if (query.get("solo") === "1") enterRoom(true, LIBRARY);
+else if (query.has("room")) enterRoom(false, LIBRARY);
 else landing();

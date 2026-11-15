@@ -1,11 +1,21 @@
-import { createTopBar } from "fuse-ui";
+import { createResultsScreen, createTopBar } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestCapture,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
-import { startGameAnalytics } from "fuse-ui/play-metrics";
+import {
+  createPlayMetrics,
+  startGameAnalytics,
+  observeConfirmedPlay,
+} from "fuse-ui/play-metrics";
 import "fuse-ui/social.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "@fontsource/oxanium/latin-700.css";
 import "@fontsource/oxanium/latin-800.css";
 import "@fontsource/barlow/latin-400.css";
@@ -60,7 +70,6 @@ import {
 import {
   SIZES,
   TEAMS,
-  banner,
   cycleDifficulty,
   heroCards,
   mapOptions,
@@ -71,10 +80,14 @@ import {
 import { GAME_ID, keys, roomFailure, sessionFor } from "./session.js";
 import { Radar, homeOf, minimapTile } from "./radar.js";
 import { createAudio } from "./audio/index.js";
+import { frontPlayFrame } from "./play-metrics.js";
+import { matchResult, resultBar, resultReport } from "./result-report.js";
+import { scoreOf } from "./scoreboard.js";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 const base = import.meta.env.BASE_URL;
 const analytics = startGameAnalytics(GAME_ID);
+const reportPlay = createPlayMetrics(analytics.track, () => performance.now());
 const social = createGameSocial({
   gameId: GAME_ID,
   base,
@@ -105,6 +118,8 @@ const link = (query = "") =>
     sticky.reduce((url, flag) => `${url}${url ? "&" : "?"}${flag}`, query),
   );
 let teardown = () => {};
+/** An army's colour: red, blue. */
+const teamColor = (team: number) => (team % 2 ? "#3a6ae0" : "#d8402a");
 // Sound: this browser's MUSIC and SFX choices, kept; `?mute` silences the page and leaves them alone.
 const sound = createAudio(store, keys.audio, params.has("mute"), app);
 const { audio } = sound;
@@ -217,13 +232,32 @@ function room(code: string, token: string | undefined, display: boolean): void {
   const lobby = el("section", "", "ff-lobby");
   const play = el("section", "", "ff-play");
   const hint = el("p", "", "ff-hud");
-  const end = el("div", "", "ff-end ff-frame");
-  const endText = el("strong", "");
-  const endNote = el("p", "");
-  const back = el("button", "BACK TO LOBBY", "fui-button fui-button-primary");
-  end.append(endText, endNote, back);
+  // The result: the shared results screen over the page.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's header: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = link();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  /** The match clock when the match was decided, so a clock that runs on does not rebuild the report. */
+  let decided = { matchId: "", time: "" };
   const stage = el("div", "", "ff-stage");
   const { field, canvas } = battlefield();
+  const stopPlaytestCapture = registerPlaytestCapture(document, async () =>
+    field instanceof Field3D && canvas.isConnected
+      ? new Map([[canvas, field.capture()]])
+      : new Map(),
+  );
   // Hero portraits come from the 3D models where the 3D battlefield runs; the pixel ones otherwise.
   if (field instanceof Field3D) loadPortraits();
   let shown: WorldView | undefined;
@@ -284,10 +318,10 @@ function room(code: string, token: string | undefined, display: boolean): void {
   /** Centres the camera on a point in tiles, if there is one. */
   const jump = (at: { x: number; y: number } | undefined) =>
     at && shown && field.lookAt(at.x / shown.width, at.y / shown.height, shown);
-  stage.append(canvas, hud.overlay, hud.shop.element, end);
+  stage.append(canvas, hud.overlay, hud.shop.element);
   play.append(hud.top, stage, hud.bottom, hint);
   play.hidden = true;
-  app.replaceChildren(header(), status, lobby, play);
+  app.replaceChildren(header(), status, lobby, play, results.element);
   const name = () => store.getItem(keys.name) || "Commander";
   const online = token !== undefined;
   const runtime = new FrontRuntime(
@@ -339,6 +373,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
   let picking = -1;
   let wasLobby = true;
   function show(view: View): void {
+    observeConfirmedPlay(
+      reportPlay,
+      view,
+      () => runtime.confirmedFrame(),
+      (view) => frontPlayFrame(view, runtime.self, display, online),
+    );
     const inLobby = view.stage === "lobby";
     lobby.hidden = !inLobby;
     currentLobby?.setActive(inLobby);
@@ -358,6 +398,10 @@ function room(code: string, token: string | undefined, display: boolean): void {
           ? { kind: "over", won }
           : { kind: "match", step: view.world?.step ?? 0 },
     );
+    if (view.stage !== "over") {
+      if (results.open) results.hide();
+      shownResult = "";
+    }
     if (inLobby) {
       const slots = slotsOf(view, runtime.self);
       if (!slots.some((s) => s.slot === picking))
@@ -378,7 +422,8 @@ function room(code: string, token: string | undefined, display: boolean): void {
     }
     const world = view.world!;
     const slot = runtime.slot();
-    hud.update(world, slot, slotsOf(view, runtime.self));
+    const slots = slotsOf(view, runtime.self);
+    hud.update(world, slot, slots);
     // Where this device's hero stands, for browser smokes to read that an order moved it.
     const mine = world.heroes.find((h) => h.seat === slot);
     canvas.dataset.hero = mine ? `${mine.x},${mine.y}` : "";
@@ -395,14 +440,45 @@ function room(code: string, token: string | undefined, display: boolean): void {
         ? `${TEAMS[slot % 2]} · right-click: move, or attack an enemy · A then click: attack-move · Shift + click queues · Q W E R: cast or aim, then click · 1–6 items · B shop · hold \` score · Esc cancels · Space or F follows · Z/X zoom · Home fort · Tab fight · right-click the minimap to move`
         : "Watching";
     if (hint.textContent !== text) hint.textContent = text;
-    const over = view.stage === "over";
-    end.hidden = !over;
-    if (!over) return;
-    const result = banner(view.winner, slot);
-    endText.textContent = result;
+    if (view.stage !== "over") return;
+    if (decided.matchId !== view.matchId)
+      decided = { matchId: view.matchId, time: hud.state.time };
     const { red, neutral, blue } = hud.state;
-    endNote.textContent = `${hud.state.time} · sectors ${red} red · ${neutral} neutral · ${blue} blue`;
-    back.hidden = !runtime.creator && !runtime.solo;
+    const result = matchResult(
+      scoreOf(world, slots, (seat) => hud.feed.tally(seat)),
+      slots,
+      {
+        winner: view.winner,
+        seat: slot,
+        time: decided.time,
+        sectors: { red, neutral, blue },
+        seats: view.seats.filter((seat) => !seat.watcher),
+        host: runtime.creator || runtime.solo,
+      },
+    );
+    // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+    const key = JSON.stringify([
+      { ...result, host: false, waiting: "" },
+      result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+    ]);
+    const first = !shownResult;
+    if (key !== shownResult) {
+      shownResult = key;
+      results.show(
+        resultReport(result, {
+          color: teamColor,
+          friend: (id) => {
+            const publicId = social.friends.publicIdOfMember(id);
+            return publicId ? social.friends.friendButton(publicId) : undefined;
+          },
+        }),
+      );
+    }
+    results.update(resultBar(result));
+    if (first)
+      results.actions
+        .querySelector<HTMLButtonElement>("button.is-primary")
+        ?.focus();
   }
   function renderLobby(view: View): void {
     const settingsWereOpen = currentLobby?.settings.open ?? false;
@@ -528,9 +604,18 @@ function room(code: string, token: string | undefined, display: boolean): void {
         action: "add",
         slot: requestedRoomSlot(addAI),
       });
+    const ownSeat = view.seats.find(
+      (seat) => seat.id === runtime.self && !seat.watcher,
+    );
     const layout = createRoomLayout({
+      // Seated already: any open seat is a move, and the army and the hero are the seat's.
+      ownSlot: () => ownSeat?.slot,
+      onMove: (slot) => {
+        if (ownSeat)
+          runtime.command({ type: "join", name: ownSeat.name, slot });
+      },
       primaryAction: host ? start : undefined,
-      slotColor: (slot) => (slot % 2 ? "#3a6ae0" : "#d8402a"),
+      slotColor: (slot) => teamColor(slot % 2),
       slotLabel: (slot) => `${slot % 2 ? "Blue" : "Red"} · Slot ${slot + 1}`,
       background: async (host) =>
         (await import("./attract.js")).createAttract(host),
@@ -598,7 +683,6 @@ function room(code: string, token: string | undefined, display: boolean): void {
     }
     return row;
   }
-  back.onclick = () => runtime.command({ type: "action", action: "lobby" });
   // The battlefield draws every animation frame from the runtime's newest frames; `show` only runs the DOM around it.
   let hover: { x: number; y: number } | undefined;
   let drag: { id: number; x: number; y: number; moved: boolean } | undefined;
@@ -725,6 +809,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
   canvas.addEventListener(
     "wheel",
     (event) => {
+      if (playtestInputBlocked(document)) return;
       event.preventDefault();
       // Lines (Firefox) and pages count as many pixels.
       const pixels = event.deltaY * [1, 16, 400][event.deltaMode]!;
@@ -734,6 +819,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
   );
   // A press that stays put is a MOVE order on release; one that travels drags the camera instead.
   canvas.addEventListener("pointerdown", (event) => {
+    if (playtestInputBlocked(document)) return;
     event.preventDefault();
     canvas.setPointerCapture?.(event.pointerId);
     if (event.pointerType === "touch")
@@ -833,6 +919,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
   });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   const keys123 = (event: KeyboardEvent) => {
+    // The results screen keeps the keyboard: Space and Enter press its focused button.
+    if (
+      playtestInputBlocked(document) ||
+      document.querySelector("dialog[open]") ||
+      results.open
+    )
+      return;
     const action = keyAction(event.key);
     const held = event.ctrlKey || event.metaKey || event.altKey;
     if (!action || !shown || event.repeat || held) return;
@@ -865,9 +958,20 @@ function room(code: string, token: string | undefined, display: boolean): void {
   window.addEventListener("keyup", keyUp);
   // A window left with ` still held never sees its keyup.
   const blurred = () => hud.showScore(false);
+  const stopPlaytestInput = registerPlaytestInput(document, {
+    cancel: () => {
+      hud.showScore(false);
+      drag = undefined;
+      touches.clear();
+      hover = cursor = undefined;
+      arm(IDLE);
+    },
+  });
   window.addEventListener("blur", blurred);
   runtime.start();
   teardown = () => {
+    stopPlaytestCapture();
+    stopPlaytestInput();
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", resized);
     window.removeEventListener("keydown", keys123);

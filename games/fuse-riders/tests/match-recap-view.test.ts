@@ -61,7 +61,7 @@ test("recap preserves shared placements and renders names as text", () => {
   const { root } = render(match());
   assert.equal(root.querySelector("h2")?.textContent, "SHARED VICTORY");
   assert.equal(
-    root.querySelector(".recap-victory p")?.textContent,
+    root.querySelector(".fui-results-victory p")?.textContent,
     "<Byte & friends> + Turing",
   );
   assert.deepEqual(
@@ -73,15 +73,15 @@ test("recap preserves shared placements and renders names as text", () => {
   assert.equal(root.querySelectorAll(".is-champion").length, 2);
   assert.equal(root.querySelector("byte"), null);
   assert.equal(
-    root.querySelector(".recap-standings .is-you th")?.textContent,
+    root.querySelector(".fui-results-standings .is-you th")?.textContent,
     "YOU",
   );
   assert.match(
-    root.querySelector(".recap-tie-note")!.textContent!,
+    root.querySelector(".fui-results-note")!.textContent!,
     /shared victory/,
   );
   assert.equal(
-    root.querySelector(".recap-details")?.hasAttribute("hidden"),
+    root.querySelector(".fui-results-details")?.hasAttribute("hidden"),
     true,
   );
   assert.equal(root.querySelectorAll(".recap-total").length, 8);
@@ -98,15 +98,15 @@ test("recap explains points tiebreak and keeps the local rider's name", () => {
   const { root } = render(state);
   assert.equal(root.querySelector("h2")?.textContent, "<Byte & friends> WINS");
   assert.equal(
-    root.querySelector(".recap-victory p")?.textContent,
+    root.querySelector(".fui-results-victory p")?.textContent,
     "16 points · 2 round wins",
   );
   assert.match(
-    root.querySelector(".recap-tie-note")!.textContent!,
+    root.querySelector(".fui-results-note")!.textContent!,
     /decided by round wins/,
   );
   assert.equal(
-    root.querySelector(".recap-standings .is-you th")?.textContent,
+    root.querySelector(".fui-results-standings .is-you th")?.textContent,
     "Local riderYOU",
   );
 });
@@ -115,12 +115,12 @@ test("recap keeps replay callbacks and all detailed awards", () => {
   const state = match();
   const { root, watched } = render(state, [moment], true);
   assert.equal(
-    root.querySelector(".recap-feature h4")?.textContent,
+    root.querySelector(".fui-results-feature h4")?.textContent,
     "BULLSEYE",
   );
-  assert.equal(root.querySelectorAll(".recap-feature").length, 2);
+  assert.equal(root.querySelectorAll(".fui-results-feature").length, 2);
   assert.equal(
-    root.querySelectorAll(".recap-feature-names")[1]?.textContent,
+    root.querySelectorAll(".fui-results-feature-names")[1]?.textContent,
     "<Byte & friends> + Turing + YOU",
   );
   root.querySelector<HTMLButtonElement>(".watch-again")!.click();
@@ -141,28 +141,28 @@ test("recap handles no highlights, a fallback award and empty stats", () => {
   }
   const { root } = render(state);
   assert.match(
-    root.querySelector(".recap-featured")!.textContent!,
+    root.querySelector(".fui-results-featured")!.textContent!,
     /standings tell the story/,
   );
   assert.equal(
-    root.querySelector(".recap-victory p")?.textContent,
+    root.querySelector(".fui-results-victory p")?.textContent,
     "5 points · 1 round win",
   );
   assert.equal(
-    root.querySelector(".recap-tie-note")?.textContent,
+    root.querySelector(".fui-results-note")?.textContent,
     "The standings tell the story this time.",
   );
   state.get("0")!.bombsExploded = 2;
   assert.equal(
-    render(state).root.querySelector(".recap-feature h4")?.textContent,
+    render(state).root.querySelector(".fui-results-feature h4")?.textContent,
     "DEMOLITION EXPERT",
   );
   const empty = render(new Map()).root;
-  assert.ok(empty.querySelector(".recap-empty"));
+  assert.ok(empty.querySelector(".fui-results-empty"));
   assert.equal(empty.querySelector("table"), null);
   const solo = render(new Map([["0", state.get("0")!]])).root;
   assert.equal(
-    solo.querySelector(".recap-context small")?.textContent,
+    solo.querySelector(".fui-results-context small")?.textContent,
     "1 round / 1 rider",
   );
 });

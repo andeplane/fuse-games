@@ -13,6 +13,7 @@ import {
   ACT,
   APPLY,
   END_WEEK,
+  GOALS,
   JOBHUB,
   JOBS,
   MONO,
@@ -255,4 +256,38 @@ test("three phones and a bot live two weeks over dropped, duplicated and reorder
   );
   for (const runtime of runtimes)
     assert.deepEqual(runtime.roomState()!.players, room.players);
+});
+
+test("a lobby seat is a choice: a seated player moves to any free seat, and the face and goals it picked go along", () => {
+  const mesh = new FuseLaneMesh("a", FAST);
+  const a = mesh.join("a"),
+    b = mesh.join("b");
+  mesh.run(300);
+  a.command({ type: "join", name: "Ada" });
+  b.command({ type: "join", name: "Bo", slot: 3, avatarId: "b" });
+  mesh.run(3000);
+  assert.ok(b.lobby(GOALS, 0, 80, 20, 60, 40));
+  mesh.run(300);
+  const seat = (id: string) => {
+    const room = a.roomState()!,
+      { slot, avatarId } = room.seats.get(id)!;
+    return { slot, avatarId, goals: room.goals[id] };
+  };
+  const before = seat("b");
+  assert.equal(before.slot, 3);
+  assert.deepEqual(before.goals, [80, 20, 60, 40]);
+  assert.ok(b.command({ type: "join", name: "Bo", slot: 1 }));
+  mesh.run(3000);
+  assert.deepEqual(seat("b"), { ...before, slot: 1 });
+  assert.ok(a.command({ type: "join", name: "Ada", slot: 4 }));
+  mesh.run(800);
+  assert.equal(seat("a").slot, 4);
+  // A seat somebody holds is not on offer, and asking for it moves nobody.
+  b.command({ type: "join", name: "Bo", slot: 4 });
+  mesh.run(3000);
+  assert.equal(seat("b").slot, 1);
+  assert.equal(b.roomState()!.seats.get("a")!.slot, 4);
+  assert.ok(a.command({ type: "action", action: "start" }));
+  mesh.run(300);
+  assert.equal(b.roomState()!.stage, "running", "the moved seats play");
 });

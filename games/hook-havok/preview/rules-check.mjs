@@ -71,7 +71,10 @@ try {
     path: "games/hook-havok/docs/evidence/elimination-result.png",
     fullPage: true,
   });
-  await host.locator("#restart-room").click();
+  // The results cover the page: the manager restarts from their bar.
+  await host
+    .locator('.fui-results-actions button[data-action="rematch"]')
+    .click();
   await phase(host, "countdown");
   await phase(host, "active");
   assert.equal((await contest(host)).entries.length, 3);

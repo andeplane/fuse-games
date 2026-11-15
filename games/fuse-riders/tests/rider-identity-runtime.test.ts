@@ -303,3 +303,39 @@ test("a rename the manager never heard is retried, rather than quietly snapping 
   assert.equal(hashes(net, [HOST, GUESTS[0]!]).size, 1);
   for (const runtime of net.runtimes.values()) runtime.stop();
 });
+
+test("a lobby seat is a choice: a seated rider moves to any free seat with its head, and takes back the colour it wore by asking again", () => {
+  const { net, join } = room();
+  const host = join(HOST, "Host");
+  net.step(200);
+  const guest = join(GUESTS[0]!, "Guest");
+  net.step(900);
+  assert.equal(guest.command({ type: "color", colorIndex: 9 }), true);
+  net.step(300);
+  const rider = (viewer: string, id: string) =>
+    net.frame(viewer)!.players.find((player) => player.id === id)!;
+  const before = rider(HOST, GUESTS[0]!);
+  assert.equal(before.slot, 1);
+  assert.equal(guest.command({ type: "join", name: "Guest", slot: 4 }), true);
+  net.step(900);
+  for (const viewer of [HOST, GUESTS[0]!]) {
+    const moved = rider(viewer, GUESTS[0]!);
+    assert.equal(moved.slot, 4);
+    assert.equal(moved.avatarId, before.avatarId);
+    assert.equal(moved.name, "Guest");
+  }
+  // The join gave the lowest free colour; the page asks for the one the rider wore, as it does on arriving.
+  assert.equal(guest.command({ type: "color", colorIndex: 9 }), true);
+  assert.equal(host.command({ type: "join", name: "Host", slot: 2 }), true);
+  net.step(900);
+  for (const viewer of [HOST, GUESTS[0]!]) {
+    assert.equal(colorOf(net, viewer, GUESTS[0]!), RIDER_COLORS[9]);
+    assert.equal(rider(viewer, HOST).slot, 2);
+  }
+  // A seat somebody holds is not on offer, and asking for it moves nobody.
+  guest.command({ type: "join", name: "Guest", slot: 2 });
+  net.step(900);
+  assert.equal(rider(HOST, GUESTS[0]!).slot, 4);
+  assert.equal(hashes(net, [HOST, GUESTS[0]!]).size, 1);
+  for (const runtime of net.runtimes.values()) runtime.stop();
+});

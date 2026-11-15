@@ -211,7 +211,7 @@ test("in a run: the game for every page, keys for a hero in the world, notes for
   assert.equal(over.note, "The run is over");
 });
 
-test("the stage flow's cards: a stage's tally, the countdown and its key, then victory or game over with REMATCH for the host", () => {
+test("the stage flow's cards: a stage's tally, the countdown and its key, then the run's result with the host's next steps", () => {
   const world = createWorld({
     seed: 1,
     heroes: [
@@ -250,7 +250,7 @@ test("the stage flow's cards: a stage's tally, the countdown and its key, then v
     ],
   );
   assert.deepEqual(clear.rows[0]!.color, SEAT_COLORS[0]);
-  assert.ok(!clear.canContinue && !clear.canRematch);
+  assert.ok(!clear.canContinue);
   // The last stage cleared: the run is won once its tally has shown.
   const last = present(
     frame("between", { world: fought, round: 4, until: 1, tally }),
@@ -290,42 +290,62 @@ test("the stage flow's cards: a stage's tally, the countdown and its key, then v
     ]),
   });
   assert.equal(present(away, host).card!.canContinue, false, "stepped away");
-  // The run's end: the run's numbers, Vorhal fallen and the Ember Axe whole (or the stage reached), and REMATCH or the
-  // lobby for the host alone.
-  const won = present(
+  // The run's end: no card, but the result: Vorhal fallen and the Ember Axe whole (or the stage reached), the run's
+  // numbers with the hardest hitter first, and the next steps for the host alone.
+  const over = present(
     frame("over", { world: fought, round: 4, outcome: "victory", tally }),
     host,
-  ).card!;
+  );
+  assert.equal(over.card, null);
+  const won = over.result!;
   assert.deepEqual(
-    [won.kind, won.title, won.line, won.seconds, won.hint, won.canRematch],
-    ["victory", "VICTORY", TEXT.restored, null, TEXT.hostChoice, true],
+    [won.kind, won.title, won.line, won.stages, won.host, won.waiting],
+    ["victory", "VICTORY", TEXT.restored, LAST_STAGE, true, ""],
   );
   assert.match(won.line, /Vorhal has fallen\. The Ember Axe is whole again/);
   assert.deepEqual(
-    won.rows.map((row) => [row.damage, row.knockdowns]),
+    won.rows.map((row) => [
+      row.place,
+      row.id,
+      row.slot,
+      row.name,
+      row.you,
+      row.bot,
+      row.hero,
+      row.damage,
+      row.knockdowns,
+    ]),
     [
-      [40, 3],
-      [50, 4],
+      [1, "b", 1, "B", false, false, "gorm", 50, 4],
+      [2, "a", 0, "A", true, false, "rhea", 40, 3],
     ],
   );
   const lost = frame("over", {
     outcome: "defeat",
-    tally,
+    tally: tally.map((row) => ({ ...row, damage: 7, knockdowns: 1 })),
     seats: new Map([seat("b", 1, "gorm")]),
   });
-  const theirs = present(lost, guest).card!;
+  const theirs = present(lost, guest).result!;
   assert.deepEqual(
-    [theirs.kind, theirs.title, theirs.hint, theirs.canRematch],
-    ["defeat", "GAME OVER", TEXT.waitHost, false],
+    [theirs.kind, theirs.title, theirs.host, theirs.waiting],
+    ["defeat", "GAME OVER", false, TEXT.waitHost],
   );
   assert.equal(
-    present(frame("over", { round: 4, outcome: "defeat", tally }), guest).card!
-      .line,
+    present(frame("over", { round: 4, outcome: "defeat", tally }), guest)
+      .result!.line,
     "STAGE 4 OF 4 · VORHAL'S KEEP",
   );
-  assert.equal(theirs.rows[0]!.name, "P1", "a seat that left shows its tag");
-  assert.equal(present(lost, tv).card!.canRematch, false);
-  assert.equal(present(frame("lobby"), host).card, null);
+  assert.deepEqual(
+    theirs.rows.map((row) => [row.place, row.id, row.name, row.you]),
+    [
+      [1, "seat:0", "P1", false],
+      [1, "b", "B", true],
+    ],
+    "equals share a place; a seat that left shows its tag",
+  );
+  const onTv = present(lost, tv).result!;
+  assert.ok(!onTv.host && !onTv.rows.some((row) => row.you));
+  assert.equal(present(frame("lobby"), host).result, null);
 });
 
 test("a shared screen: the host switches it on in the lobby, the TV shows the game and its QR code, each seat's page is a controller", () => {
@@ -399,7 +419,7 @@ test("a shared screen: the host switches it on in the lobby, the TV shows the ga
   });
   assert.equal(mine.phone, false, "a laptop's controller keeps its header");
   assert.equal(present(running, { ...host, touch: true }).phone, true);
-  // A controller stays one between stages and at the run's end, where the card shows on it.
+  // A controller stays one between stages, where the card shows on it, and at the run's end, under the result.
   const tally = [{ seat: 0, kind: "rhea" as const, damage: 1, knockdowns: 0 }];
   for (const stage of ["between", "over"] as const) {
     const later = present(
@@ -407,7 +427,7 @@ test("a shared screen: the host switches it on in the lobby, the TV shows the ga
       guest,
     );
     assert.deepEqual([later.screen, later.pads], ["controller", true], stage);
-    assert.ok(later.card, stage);
+    assert.ok(stage === "over" ? later.result : later.card, stage);
   }
   // A seat that joins mid-run holds a controller too; a watcher and a stranger see the game.
   const late = frame("running", {
@@ -697,7 +717,7 @@ test("camp is played: the hero's keys and pads are its own, and a small CAMP cap
     ["camp", TEXT.camp, TEXT.campLine, TEXT.onward],
   );
   assert.deepEqual([mine.card!.seconds, mine.card!.rows], [15, []]);
-  assert.ok(!mine.card!.canContinue && !mine.card!.canRematch);
+  assert.ok(!mine.card!.canContinue);
   assert.equal(present(shown, tv).playing, false, "the TV plays no hero");
   // Over the tally before it the keys are nobody's.
   const tally = frame("between", { until: CLEAR_TICKS });

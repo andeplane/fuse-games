@@ -1,4 +1,4 @@
-// HTML for the overlay screens (lobby, HUD badges, countdown, results, winner, pause). Pure string builders: the
+// HTML for the overlay screens (lobby, HUD badges, countdown, a round's results, pause). Pure string builders: the
 // flow decides which one shows and wires clicks through `data-action` attributes. All text is our own constants.
 
 import type { MatchState, RoundView } from "../engine/index.js";
@@ -120,17 +120,10 @@ function scoreboard(info: MatchInfo): string {
 const named = (seat: Seat | undefined): string =>
   seat ? `<span style="color:${css(seat.color)}">${seat.name}</span>` : "";
 
-/** Between rounds (`secondsLeft` until the next one) or, once the match has a winner, the match winner screen. */
+/** Between rounds: who won the last one, and `secondsLeft` until the next. The finished match is result-report.ts's. */
 export function resultsHtml(info: MatchInfo, secondsLeft: number): string {
   const { seats, match, view } = info;
   const rounds = match.history.length;
-  if (match.winner !== null)
-    return `<div class="panel">
-  <h1>${named(seats[match.winner])} WINS!</h1>
-  <p>MATCH OVER AFTER ${rounds} ROUNDS</p>
-  ${scoreboard(info)}
-  <div class="row">${button("again", "PLAY AGAIN", "ENTER", "start")}${button("lobby", "BACK TO LOBBY", "ESC")}</div>
-</div>`;
   const winner = view.result?.winner;
   const next = `NEXT ROUND IN ${Math.max(1, Math.ceil(secondsLeft))}`;
   return `<div class="panel">
@@ -141,24 +134,16 @@ export function resultsHtml(info: MatchInfo, secondsLeft: number): string {
 </div>`;
 }
 
-/** An online room between rounds or once `over` (names escaped by the presenter): `winner` (a seat, or a draw), a
- * line and the scoreboard; at the end REMATCH and LOBBY for the host, else a wait. */
+/** An online room between rounds (names escaped by the presenter): `winner` (a seat, or a draw), a line and the
+ * scoreboard. */
 export function roomResultsHtml(
   info: MatchInfo,
   winner: number | null,
   line: string,
-  over?: { host: boolean },
 ): string {
   const name = named(info.seats[winner ?? -1]);
-  const title = over
-    ? `<h1>${name ? `${name} WINS!` : "NO WINNER"}</h1>`
-    : `<h2>${name ? `${name} WINS THE ROUND` : "DRAW!"}</h2>`;
-  const actions = !over
-    ? ""
-    : over.host
-      ? `<div class="row">${button("rematch", "REMATCH", "", "start")}${button("lobby", "BACK TO LOBBY")}</div>`
-      : "<p>WAITING FOR THE HOST</p>";
-  return `<div class="panel">${title}<p>${line}</p>${scoreboard(info)}${actions}</div>`;
+  const title = `<h2>${name ? `${name} WINS THE ROUND` : "DRAW!"}</h2>`;
+  return `<div class="panel">${title}<p>${line}</p>${scoreboard(info)}</div>`;
 }
 
 export const pauseHtml = (): string => `<div class="panel">

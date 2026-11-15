@@ -12,6 +12,7 @@ import {
   type PortalGame,
 } from "./packages/fuse-ui/src/portal.ts";
 import { repoTree } from "./scripts/fuseos/repo-tree-plugin.ts";
+import { chartLabNotes } from "./scripts/lib/chart-lab-notes.ts";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 /** Every game with a page of its own (`games/<id>/index.html`); the root is the gallery. */
@@ -25,6 +26,8 @@ const games = readdirSync(new URL("games/", import.meta.url), {
   )
   .map((entry) => entry.name)
   .sort();
+/** A game's other built pages (`games/<id>/<page>.html`, served at `<base><id>/<page>.html`): developer tools. */
+const extraPages = ["fusemania/chart-lab.html"];
 
 /**
  * The app portal's games: every `games/<id>/portal.json`, ordered by `order` then name. A game without one (the
@@ -110,6 +113,17 @@ const gamePages = (): Plugin => {
         )
           page.source = page.source.replaceAll('"../../', '"../');
       }
+      for (const path of extraPages) {
+        const page = bundle[`games/${path}`];
+        if (!page) continue;
+        page.fileName = path;
+        if (
+          relative &&
+          page.type === "asset" &&
+          typeof page.source === "string"
+        )
+          page.source = page.source.replaceAll('"../../', '"../');
+      }
     },
   };
 };
@@ -172,8 +186,15 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: `${root}index.html`,
+        dev: `${root}dev/index.html`,
         ...Object.fromEntries(
           games.map((id) => [id, `${root}games/${id}/index.html`]),
+        ),
+        ...Object.fromEntries(
+          extraPages.map((path) => [
+            path.replace(/\W+/g, "-"),
+            `${root}games/${path}`,
+          ]),
         ),
       },
     },
@@ -181,6 +202,16 @@ export default defineConfig({
   define: { __FUSE_PORTAL_GAMES__: JSON.stringify(portalGames()) },
   // `gamePublic` first: its dev middleware must see a public URL before `gamePages` rewrites it. React and Tailwind
   // serve FuseOS (packages/fuseos), the root page; the games are plain TypeScript and their CSS is untouched.
-  plugins: [gamePublic(), gamePages(), react(), tailwindcss(), repoTree()],
+  plugins: [
+    gamePublic(),
+    gamePages(),
+    react(),
+    tailwindcss(),
+    repoTree(),
+    // The chart lab's review notes, kept out of git (`artifacts/` is ignored) where a person or an agent can read them.
+    chartLabNotes(
+      process.env.CHART_LAB_NOTES ?? `${root}artifacts/chart-lab-notes`,
+    ),
+  ],
   server: { host: "0.0.0.0" },
 });

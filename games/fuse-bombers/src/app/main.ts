@@ -2,12 +2,18 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/components.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import "./screens.css";
 import { validRoomCode } from "fuse-network-fe";
 import { uuid } from "fuse-netcode";
 import { createAppPortal, type AppPortal } from "fuse-ui/portal";
-import { createGameMenu, createRoundControls, createTopBar } from "fuse-ui";
+import {
+  createGameMenu,
+  createResultsScreen,
+  createRoundControls,
+  createTopBar,
+} from "fuse-ui";
 import Phaser from "phaser";
 import {
   RoundScene,
@@ -15,6 +21,7 @@ import {
   VIEW_WIDTH,
   type RoundSceneData,
 } from "../render/round-scene.js";
+import { css, playerColor } from "../render/palette.js";
 import { createAudio } from "./audio/index.js";
 import { Flow } from "./flow.js";
 import { createBrowserInput } from "./input/index.js";
@@ -26,6 +33,7 @@ import {
   showLanding,
   showRoom,
 } from "./online.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { carry, safeStore, sessionFor } from "./session.js";
 import { GOAL, ONLINE_CONTROLS } from "./controls.js";
 
@@ -84,31 +92,55 @@ async function boot(): Promise<void> {
   const brand = document.createElement("a");
   brand.textContent = "FUSE BOMBERS";
   brand.href = import.meta.env.BASE_URL;
-  top.append(brand, social.element());
-  createTopBar({ element: top, brand, gameId: GAME, sound: audio.master });
   let flow: Flow | undefined;
+  const leave = () =>
+    location.assign(
+      `${import.meta.env.BASE_URL}${GAME}/?${carry(location.search, "")}`,
+    );
+  // The finished match: the shared results screen. Nothing is focused, so Enter and Esc stay the flow's menu keys
+  // (and Space, a rider's fire key, presses nothing); `fui-app` gives its buttons the shared look.
+  const results = createResultsScreen({
+    document,
+    onBack: leave,
+    backText: "Leave",
+    onAction: (id) => flow?.choose(id === "rematch" ? "again" : "lobby"),
+  });
+  const resultsHost = document.createElement("div");
+  resultsHost.className = "fui-app fb-results-host";
+  resultsHost.append(results.element);
+  document.body.append(resultsHost);
+  let shownResult = "";
+  // The bar's menu and the game's own inside it pause the round alike: either one open owns the keys.
+  let barOpen = false;
+  const pause = () => {
+    const open = barOpen || menu.isOpen();
+    flow?.setSharedMenuOpen(open);
+    // Resume at the arena: Space on a control of the bar would press it again instead of firing.
+    if (!open && flow) {
+      game.canvas.tabIndex = -1;
+      game.canvas.focus({ preventScroll: true });
+    }
+  };
   const menu = createGameMenu({
     title: "FUSE BOMBERS",
     controls: ONLINE_CONTROLS,
     goal: GOAL,
     onLobby: () => flow?.returnToLobby(),
-    onLeave: () =>
-      location.assign(
-        `${import.meta.env.BASE_URL}${GAME}/?${carry(location.search, "")}`,
-      ),
+    onLeave: leave,
+    onOpenChange: pause,
+  });
+  // In the header before the bar takes it, the menu is the bar's "Game controls", as in every other game.
+  top.append(brand, social.element(), menu.element);
+  createTopBar({
+    element: top,
+    brand,
+    gameId: GAME,
+    sound: audio.master,
     onOpenChange: (open) => {
-      flow?.setSharedMenuOpen(open);
-      // Resume at the arena: Space on the menu trigger would reopen it instead of firing.
-      if (!open && flow) {
-        game.canvas.tabIndex = -1;
-        game.canvas.focus({ preventScroll: true });
-      }
+      barOpen = open;
+      pause();
     },
   });
-  const corner = document.createElement("div");
-  corner.className = "fb-local-menu";
-  corner.append(menu.element);
-  document.body.append(corner);
   const roundControls = createRoundControls({
     controls: ONLINE_CONTROLS,
     goal: GOAL,
@@ -142,6 +174,21 @@ async function boot(): Promise<void> {
       attachAudio();
     },
     music: (kind) => audio.music(kind),
+    result: (result) => {
+      if (!result) {
+        if (results.open) results.hide();
+        shownResult = "";
+        return;
+      }
+      const key = JSON.stringify(result);
+      if (key !== shownResult) {
+        shownResult = key;
+        results.show(
+          resultReport(result, { color: (slot) => css(playerColor(slot)) }),
+        );
+      }
+      results.update(resultBar(result));
+    },
   });
   if (params.has("debug"))
     Object.assign(window, { fuseBombers: { game, flow, runner: flow, audio } }); // `runner.view` for browser-check.mjs
@@ -149,8 +196,9 @@ async function boot(): Promise<void> {
 
 /**
  * The app portal (every Fuse game) in the top-left corner, after `#screen` so screens.css shows it in the lobby
- * only. Focused from the keyboard, it keeps Enter and Space (`pressesFocusedControl`); a mouse click leaves no
- * focus behind, so Enter starts the match again, as after the sound toggle.
+ * only; its corner becomes the shared bar. Focused from the keyboard, a control there keeps Enter and Space
+ * (`pressesFocusedControl`); a mouse click leaves no focus behind, so Enter starts the match again, as after the
+ * sound toggle.
  */
 function mountPortal(): AppPortal {
   const portal = createAppPortal({
@@ -163,7 +211,14 @@ function mountPortal(): AppPortal {
   corner.className = "portal-corner";
   corner.append(portal.element);
   corner.addEventListener("click", (event) => {
-    if (event.detail > 0 && document.activeElement instanceof HTMLElement)
+    // The bar's menu is a dialog, and focus inside it is its own: Escape must find it there to close it.
+    const inMenu =
+      event.target instanceof Element && event.target.closest("dialog");
+    if (
+      event.detail > 0 &&
+      !inMenu &&
+      document.activeElement instanceof HTMLElement
+    )
       document.activeElement.blur();
   });
   document.body.append(corner);

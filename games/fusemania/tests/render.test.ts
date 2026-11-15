@@ -29,13 +29,27 @@ import {
   type StepNote,
   type Steps,
 } from "../src/engine/view-kit.js";
-import { SLIDE_MS, createFeedback, rowOf } from "../src/render/feedback.js";
+import {
+  NEAR_GLOW,
+  SLIDE_MS,
+  createFeedback,
+  pressure,
+  rowOf,
+} from "../src/render/feedback.js";
+import {
+  CHASE_GLOW,
+  PLACE_GLOWS,
+  THREAT_GLOW,
+  placeGlow,
+} from "../src/render/field.js";
 import {
   boxX,
   boxY,
   laneOf,
   layoutFor,
   ownPlace,
+  raceBand,
+  type Race,
   type Field,
   type Layout,
 } from "../src/render/layout.js";
@@ -47,11 +61,16 @@ import {
   type LaneGeometry,
 } from "../src/render/mods.js";
 import {
+  COMBO_BLINK_DIM,
+  COMBO_BLINK_MS,
   CYAN,
   GOLD,
+  GREEN,
   JUDGMENT_COLORS,
+  MUTED,
   PINK,
   RED,
+  WHITE,
 } from "../src/render/palette.js";
 import type { Pen, SceneCanvas, SpriteCanvas } from "../src/render/pen.js";
 import {
@@ -335,6 +354,7 @@ function rider(slot: number, over: Partial<PlayerView> = {}): PlayerView {
     rating: 0,
     place: slot + 1,
     combo: 0,
+    worst: -1,
     best: 0,
     counts: Array.from({ length: 9 }, () => 0),
     next: each(0),
@@ -872,7 +892,7 @@ test("the judgment word pops in, holds and fades, with EARLY or LATE for anythin
 test("the combo shows from four, bumps on every step and flashes at each hundred", () => {
   const r = rig();
   const at = (combo: number) =>
-    world([struck(PERFECT, { combo, judgedAt: 0 })]);
+    world([struck(PERFECT, { combo, worst: PERFECT, judgedAt: 0 })]);
   const three = r.frame(at(3), shot(CHORD, 3000));
   assert.ok(!texts(three).includes("COMBO"));
   const four = r.frame(at(4), shot(CHORD, 3010));
@@ -890,12 +910,64 @@ test("the combo shows from four, bumps on every step and flashes at each hundred
   // A hundred.
   r.frame(at(99), shot(CHORD, 4000));
   const hundred = r.frame(at(100), shot(CHORD, 4016));
-  assert.equal(textAt(hundred, "100")?.fill, GOLD);
+  assert.equal(textAt(hundred, "100")?.fill, JUDGMENT_COLORS[PERFECT]);
   assert.ok(images(hundred, "glow:1").some((glow) => glow.lighter));
+  // It blinks faster for that moment.
+  assert.equal(textAt(hundred, "100")?.alpha, 1);
+  assert.equal(
+    textAt(r.frame(at(100), shot(CHORD, 4080)), "100")?.alpha,
+    COMBO_BLINK_DIM,
+  );
   // Lost: the old number falls away in red.
   const broken = r.frame(at(0), shot(CHORD, 5000));
   assert.equal(textAt(broken, "100")?.fill, RED);
   assert.ok(!texts(broken).includes("COMBO"));
+});
+
+test("the combo blinks in the colour of the worst judgment in it: white, yellow, green", () => {
+  const on = Math.ceil(3000 / COMBO_BLINK_MS) * COMBO_BLINK_MS,
+    off = on + COMBO_BLINK_MS / 2;
+  const combo = (worst: number, songMs: number, options = {}) =>
+    textAt(
+      rig(1366, 768, 1, options).frame(
+        world([struck(worst, { combo: 12, worst, judgedAt: 0 })]),
+        shot(CHORD, songMs),
+      ),
+      "12",
+    )!;
+  for (const [worst, color] of [
+    [MARVELOUS, WHITE],
+    [PERFECT, JUDGMENT_COLORS[PERFECT]],
+    [GREAT, JUDGMENT_COLORS[GREAT]],
+  ] as const) {
+    // Full for half a blink, dimmed for the other half, in the same colour.
+    assert.equal(combo(worst, on).fill, color);
+    assert.equal(combo(worst, on).alpha, 1);
+    assert.equal(combo(worst, off).fill, color);
+    assert.equal(combo(worst, off).alpha, COMBO_BLINK_DIM);
+    // With reduced motion it holds the colour.
+    assert.equal(combo(worst, off, { reducedMotion: true }).fill, color);
+    assert.equal(combo(worst, off, { reducedMotion: true }).alpha, 1);
+  }
+  assert.equal(JUDGMENT_COLORS[GREAT], GREEN);
+  // The label under it does not blink.
+  const frame = rig().frame(
+    world([struck(GREAT, { combo: 12, worst: GREAT, judgedAt: 0 })]),
+    shot(CHORD, off),
+  );
+  assert.equal(textAt(frame, "COMBO")?.alpha, 1);
+  // The others' boxes show their combos in the same colours.
+  const boxes = rig().frame(
+    world([
+      rider(0, { place: 1, combo: 12, worst: GREAT }),
+      rider(1, { place: 2, combo: 30, worst: MARVELOUS }),
+      rider(2, { place: 3, combo: 2, worst: PERFECT }),
+    ]),
+    shot(CHORD, on),
+  );
+  assert.equal(textAt(boxes, "x12")?.fill, JUDGMENT_COLORS[GREAT]);
+  assert.equal(textAt(boxes, "x30")?.fill, WHITE);
+  assert.equal(textAt(boxes, "x2")?.fill, MUTED);
 });
 
 test("the targets pulse on the beat, and press in and light up under a held key", () => {
@@ -1921,10 +1993,17 @@ test("the pace is the share of the full score that could be had by now", () => {
 });
 
 /** The markers on the race line of a frame: where each path starts (its tip), its size and its colour. */
-function markers(calls: readonly Call[], top: number) {
+const bandOf = (layout: Layout, local: number, down = false): Race =>
+  raceBand(layout, local, down, { x: 0, y: 0, width: 0, height: 0 })!;
+function markers(calls: readonly Call[], band: Race) {
   const found: { x: number; half: number; fill: string }[] = [];
   for (const [i, call] of calls.entries()) {
-    if (call.op !== "moveTo" || call.y < top) continue;
+    if (
+      call.op !== "moveTo" ||
+      call.y < band.y ||
+      call.y > band.y + band.height
+    )
+      continue;
     const back = calls[i + 1]!;
     const fill = calls.slice(i).find((next) => next.op === "fill")!;
     found.push({ x: call.x, half: call.y - back.y, fill: fill.fill });
@@ -1941,9 +2020,9 @@ test("the race line puts every rider at its share of the full score, the local r
     rider(2, { rating: 0, place: 3 }),
   ]);
   const calls = r.frame(view, shot(steps, 4500, { local: 0 }));
-  const race = layoutFor(1366, 768, 3, 0).race!;
+  const race = bandOf(layoutFor(1366, 768, 3, 0), 0);
   const track = raceTrack(race, 1, { left: 0, width: 0 });
-  const found = markers(calls, race.y);
+  const found = markers(calls, race);
   assert.deepEqual(
     found.map((marker) => marker.fill),
     [CYAN, GOLD, PINK],
@@ -1977,10 +2056,10 @@ test("the race line puts every rider at its share of the full score, the local r
 test("a rider alone has a race line too, and the shared screen draws every marker the same size", () => {
   const steps = stream(8, 1000, 1000);
   const solo = rig();
-  const race = layoutFor(1366, 768, 1, 0).race!;
+  const race = bandOf(layoutFor(1366, 768, 1, 0), 0);
   const alone = markers(
     solo.frame(world([rider(0, { rating: 1_000_000 })]), shot(steps, 9000)),
-    race.y,
+    race,
   );
   assert.equal(alone.length, 1);
   assert.equal(alone[0]!.half, OWN_MARKER);
@@ -1990,10 +2069,217 @@ test("a rider alone has a race line too, and the shared screen draws every marke
   const tv = rig(1920, 1080);
   const shared = markers(
     tv.frame(world([rider(0), rider(1)]), shot(steps, 2000, { local: -1 })),
-    layoutFor(1920, 1080, 2, -1).race!.y,
+    bandOf(layoutFor(1920, 1080, 2, -1), -1),
   );
   assert.deepEqual(
     shared.map((marker) => marker.half),
     [RIVAL_MARKER, RIVAL_MARKER],
   );
+});
+
+// ---- the standing lights ----
+
+test("an overtake shows the nearer it is: by how soon the gap closes, or by how small it is", () => {
+  assert.equal(pressure(100_000, 0), 0, "far apart and level");
+  assert.equal(pressure(100_000, -3000), 0, "falling further behind");
+  assert.equal(pressure(40_000, 2000), 0, "twenty seconds off");
+  assert.equal(pressure(20_000, 2000), 0.5, "ten seconds off");
+  assert.ok(pressure(2000, 2000) > 0.9, "a second off");
+  assert.equal(pressure(0, -500), NEAR_GLOW, "neck and neck, whoever gains");
+  assert.equal(pressure(-10, 0), NEAR_GLOW, "a tie on rating");
+  assert.ok(pressure(10_000, 2000) > pressure(20_000, 2000));
+  assert.ok(pressure(20_000, 4000) > pressure(20_000, 2000));
+});
+
+/** A two-rider match in which rider 1 trails rider 0 by `gap` and gains `gain` rating a second on it. */
+function chasing(gap: number, gain: number, seconds: number, over = false) {
+  const steps = stream(8, 600_000);
+  const feedback = createFeedback();
+  for (let ms = 0; ms <= seconds * 1000; ms += 50) {
+    const lead = 200_000 + ms * 5,
+      trail = lead - gap + (ms * gain) / 1000;
+    feedback.observe(
+      world(
+        [
+          rider(0, { rating: lead, place: lead >= trail ? 1 : 2 }),
+          rider(1, { rating: trail, place: lead >= trail ? 2 : 1 }),
+        ],
+        { phase: over ? "over" : "playing" },
+      ),
+      [steps, steps],
+      ms,
+      1,
+    );
+  }
+  return feedback.riders;
+}
+
+test("the rider gaining on the place ahead gets the chase, the one being caught the threat", () => {
+  const [lead, trail] = chasing(30_000, 2500, 6);
+  assert.ok(trail!.chase > 0.3, `chase ${trail!.chase}`);
+  assert.ok(lead!.threat > 0.3, `threat ${lead!.threat}`);
+  assert.ok(Math.abs(trail!.chase - lead!.threat) < 1e-9, "the same overtake");
+  assert.equal(trail!.threat, 0, "nobody behind the last rider");
+  assert.equal(lead!.chase, 0, "nobody ahead of the leader");
+  // It comes in over about a second, not at once: neck and neck from the first frame, the glow is still on its way
+  // a tenth of a second in and all there three seconds in.
+  const close = pressure(1000, 0);
+  assert.ok(chasing(1000, 0, 0.1)[1]!.chase < close / 2);
+  assert.ok(Math.abs(chasing(1000, 0, 3)[1]!.chase - close) < 0.01);
+
+  // Level pace a long way apart: nothing. Falling behind: nothing.
+  for (const rider of chasing(80_000, 0, 6)) {
+    assert.ok(rider.chase < 0.01);
+    assert.ok(rider.threat < 0.01);
+  }
+  assert.ok(chasing(30_000, -2500, 6)[1]!.chase < 0.01);
+  // And not once the song is over.
+  assert.equal(chasing(30_000, 2500, 6, true)[1]!.chase, 0);
+});
+
+test("no chase or threat at the first notes, where the places change with every arrow", () => {
+  const steps = stream(8, 600_000);
+  const feedback = createFeedback();
+  for (let ms = 0; ms <= 3000; ms += 50)
+    feedback.observe(
+      world([rider(0, { rating: 900 }), rider(1, { rating: 800 })]),
+      [steps, steps],
+      ms,
+      0,
+    );
+  assert.equal(feedback.riders[0]!.threat, 0);
+  assert.equal(feedback.riders[1]!.chase, 0);
+});
+
+const fillsOf = (calls: readonly Call[], color: string): Call[] =>
+  calls.filter((call) => call.op === "fillRect" && call.fill === color);
+
+test("a rider's lanes are lit at the sides in its place's colour, on its own field only", () => {
+  assert.deepEqual([1, 2, 3, 4, 5].map(placeGlow), [
+    PLACE_GLOWS[0],
+    PLACE_GLOWS[1],
+    PLACE_GLOWS[2],
+    PLACE_GLOWS[3],
+    PLACE_GLOWS[3],
+  ]);
+  const steps = stream(8, 600_000);
+  const r = rig();
+  const view = (place: number) =>
+    world([
+      rider(0, { rating: 300_000, place }),
+      rider(1, { rating: 500_000, place: place === 1 ? 2 : 1 }),
+      rider(2, { rating: 100_000, place: 3 }),
+    ]);
+  const layout = layoutFor(1366, 768, 3, 0);
+  const own = fieldOf(layout, 0);
+  let calls = r.frame(view(2), shot(steps, 1000));
+  const silver = fillsOf(calls, placeGlow(2));
+  assert.ok(silver.length > 0, "second place is silver");
+  for (const call of silver) {
+    // Inside the rider's own lanes, hugging one side or the other, and leaving the middle clear.
+    assert.ok(call.x >= own.x && call.x <= own.x + own.col * COLUMNS);
+    assert.ok(call.y >= own.laneTop && call.y <= own.laneBottom);
+    const fromSide = Math.min(
+      call.x - own.x,
+      own.x + own.col * COLUMNS - call.x,
+    );
+    assert.ok(fromSide <= own.col * 0.5, `at the side (${fromSide})`);
+    assert.ok(call.alpha <= 0.5, "soft");
+  }
+  assert.equal(fillsOf(calls, placeGlow(1)).length, 0);
+  assert.equal(fillsOf(calls, placeGlow(3)).length, 0, "not on rival fields");
+
+  // Taking the lead: silver goes out as gold comes in, and then it is gold alone.
+  const strongest = (color: string): number =>
+    Math.max(0, ...fillsOf(calls, color).map((call) => call.alpha));
+  const full = strongest(placeGlow(2));
+  calls = r.frame(view(1), shot(steps, 1050));
+  calls = r.frame(view(1), shot(steps, 1100));
+  assert.ok(strongest(placeGlow(1)) > 0 && strongest(placeGlow(1)) < full);
+  assert.ok(strongest(placeGlow(2)) > 0 && strongest(placeGlow(2)) < full);
+  // Overtaken again part way through: no colour jumps back to full, each goes on from where it was.
+  const gold = strongest(placeGlow(1)),
+    fading = strongest(placeGlow(2));
+  calls = r.frame(view(2), shot(steps, 1150));
+  assert.ok(strongest(placeGlow(1)) < gold);
+  assert.ok(strongest(placeGlow(2)) > fading && strongest(placeGlow(2)) < full);
+  for (let ms = 1200; ms <= 3200; ms += 50)
+    calls = r.frame(view(1), shot(steps, ms));
+  assert.ok(Math.abs(strongest(placeGlow(1)) - full) < 0.01);
+  assert.equal(fillsOf(calls, placeGlow(2)).length, 0);
+});
+
+test("alone there are no standing lights; a shared screen lights every field", () => {
+  const steps = stream(8, 600_000);
+  const solo = rig();
+  const alone = solo.frame(
+    world([rider(0, { rating: 300_000 })]),
+    shot(steps, 1000),
+  );
+  for (const color of [...PLACE_GLOWS, CHASE_GLOW, THREAT_GLOW])
+    assert.equal(fillsOf(alone, color).length, 0);
+
+  const tv = rig(1920, 1080);
+  const calls = tv.frame(
+    world([rider(0, { rating: 300_000 }), rider(1, { rating: 200_000 })]),
+    shot(steps, 1000, { local: -1 }),
+  );
+  const fields = layoutFor(1920, 1080, 2, -1).fields;
+  for (const [i, field] of fields.entries()) {
+    const lit = fillsOf(calls, placeGlow(i + 1)).filter(on(field));
+    assert.ok(lit.length > 0, `field ${i}`);
+  }
+});
+
+test("the chase is a green glow at the top of the lanes and the threat a red one at the bottom", () => {
+  const steps = stream(8, 600_000);
+  const r = rig();
+  const layout = layoutFor(1366, 768, 2, 1);
+  const own = fieldOf(layout, 1);
+  let calls: Call[] = [];
+  // Rider 1 trails by 20,000 and gains 3,000 a second.
+  for (let ms = 0; ms <= 4000; ms += 50) {
+    const lead = 200_000 + ms * 5,
+      trail = lead - 20_000 + ms * 3;
+    calls = r.frame(
+      world([
+        rider(0, { rating: lead, place: 1 }),
+        rider(1, { rating: trail, place: 2 }),
+      ]),
+      shot(steps, ms, { local: 1 }),
+    );
+  }
+  const green = fillsOf(calls, CHASE_GLOW);
+  assert.ok(green.length > 0, "closing in");
+  const middle = (own.laneTop + own.laneBottom) / 2;
+  for (const call of green) {
+    assert.ok(call.y > own.laneTop && call.y < middle, "at the top");
+    assert.ok(call.x >= own.x && call.x <= own.x + own.col * COLUMNS);
+    assert.ok(call.alpha <= 0.5);
+  }
+  assert.equal(fillsOf(calls, THREAT_GLOW).length, 0, "nobody behind");
+
+  // The leader's own device shows the same overtake as a threat, at the bottom.
+  const other = rig();
+  const leads = fieldOf(layoutFor(1366, 768, 2, 0), 0);
+  for (let ms = 0; ms <= 4000; ms += 50) {
+    const lead = 200_000 + ms * 5,
+      trail = lead - 20_000 + ms * 3;
+    calls = other.frame(
+      world([
+        rider(0, { rating: lead, place: 1 }),
+        rider(1, { rating: trail, place: 2 }),
+      ]),
+      shot(steps, ms, { local: 0 }),
+    );
+  }
+  const red = fillsOf(calls, THREAT_GLOW);
+  assert.ok(red.length > 0, "being caught");
+  for (const call of red)
+    assert.ok(
+      call.y > (leads.laneTop + leads.laneBottom) / 2 &&
+        call.y < leads.laneBottom,
+      "at the bottom",
+    );
+  assert.equal(fillsOf(calls, CHASE_GLOW).length, 0);
 });

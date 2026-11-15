@@ -148,13 +148,55 @@ test("between rounds the scoreboard counts down to the next; at the end the host
   let model = show(room);
   equal(model.screen, "between");
   match(model.overlay, /Baron<\/span> WINS THE ROUND.*NEXT ROUND IN 5/s);
+  equal(model.result, null, "a round's end is not the match's");
   while (room.stage === "between") fold(room);
   while (room.tick < room.startAt) fold(room);
   decide(room, "bot:1");
   model = show(room);
   equal(model.screen, "over");
-  match(model.overlay, /Baron<\/span> WINS!.*data-action="rematch"/s);
-  match(show(room, guest).overlay, /WAITING FOR THE HOST/);
+  ok(!model.overlay.includes("panel"), "the result is the shared screen's");
+  const result = model.result!;
+  eq(
+    [result.title, result.winnerSlot, result.rounds, result.target],
+    ["BARON WINS", 1, 2, 2],
+  );
+  eq(
+    result.rows.map((row) => [
+      row.id,
+      row.slot,
+      row.name,
+      row.you,
+      row.bot,
+      row.place,
+      row.wins,
+    ]),
+    [
+      ["bot:1", 1, "Baron", false, true, 1, 2],
+      ["a", 0, "<b>Ada</b>", true, false, 2, 0], // as typed: the screen writes names as text
+    ],
+  );
+  eq([result.host, result.waiting], [true, ""]);
+  const theirs = show(room, guest).result!;
+  eq([theirs.host, theirs.waiting], [false, "WAITING FOR THE HOST"]);
+  ok(theirs.rows.every((row) => !row.you));
+});
+
+test("a winner who left the room keeps a line in the result", () => {
+  const room = lobby(1);
+  start(room);
+  decide(room, "bot:1");
+  const frame = game.view(room);
+  frame.ships = ["a"];
+  frame.seats = frame.seats.filter((seat) => seat.id !== "bot:1");
+  const result = present(frame, host).result!;
+  equal(result.title, "GONE WINS");
+  eq(
+    result.rows.map((row) => [row.id, row.name, row.place, row.wins]),
+    [
+      ["bot:1", "GONE", 1, 1],
+      ["a", "<b>Ada</b>", 2, 0],
+    ],
+  );
 });
 
 test("a shared TV: the TV frames everyone and asks no name; each seated device is a controller", () => {
@@ -162,8 +204,7 @@ test("a shared TV: the TV frames everyone and asks no name; each seated device i
   room.settings.display = true;
   const tv: Viewer = { ...seen, me: "tv", host: false, display: true };
   match(show(room, tv).note, /Scan the code/);
-  ok(!show(room, tv).askName && !show(room, tv).openTv);
-  ok(show(room).openTv && !show(room, guest).openTv, "OPEN TV SCREEN: host");
+  ok(!show(room, tv).askName);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   const screen = show(room, tv);
   eq(
@@ -262,10 +303,7 @@ test("only a seated rider of a shared room is a controller: not in the lobby, a 
   const plain = lobby();
   fold(plain, { a: [[ACTION, "start", "m1"]] });
   const flat = show(plain);
-  eq(
-    [flat.screen, flat.controller, flat.openTv, flat.flying],
-    ["countdown", null, false, true],
-  );
+  eq([flat.screen, flat.controller, flat.flying], ["countdown", null, true]);
 
   const room = lobby();
   room.settings.display = true;

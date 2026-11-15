@@ -29,6 +29,14 @@ export class TestFuseLaneRuntime extends RoomRuntime<
     this.append(...body);
     return true;
   }
+  /** A lobby entry (goal picks), which `play` refuses: that one is for the running match. */
+  lobby(...body: unknown[]): boolean {
+    const room = this.world?.state;
+    if (!room || !this.player()?.connected || room.stage !== "lobby")
+      return false;
+    this.append(...body);
+    return true;
+  }
   roomState(): FuseLaneRoom | undefined {
     return this.world?.state;
   }

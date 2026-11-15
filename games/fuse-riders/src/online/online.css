@@ -233,12 +233,33 @@
 }
 .desktop-game > .online-header {
   position: relative;
+  /* The kit's bar is fixed, 20px in from each side of the window. In the game bar's flow that inset is an offset: it
+     pushed the bar 20px right, at the app's full width, and the menu button out of the window. The bar keeps the
+     kit's place instead, the app's own padding counted, so it does not move when a match starts. */
+  top: calc(max(12px, env(safe-area-inset-top)) - var(--fui-space-1));
+  left: calc(20px - var(--fui-space-1));
+  right: auto;
+  width: calc(100% - 2 * (20px - var(--fui-space-1)));
   flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 0.375rem;
-  padding: 0.125rem var(--fui-space-1) 0.375rem;
+  padding: 0.125rem 0 0.375rem;
   border-bottom: 0.0625rem solid #18305a;
   z-index: var(--fui-z-bar);
+}
+/* The connection's state sits in the bar itself, before its buttons (sound, account and menu: 370px and a gap):
+   the strip under the bar is the round label's, and the two read as one word when they shared it. */
+.desktop-game .fui-top-bar-context > .online-status {
+  position: absolute;
+  top: -56px;
+  right: 386px;
+  height: 48px;
+  max-width: calc(100% - 386px - 17rem);
+  justify-content: flex-end;
+  overflow: hidden;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-align: right;
 }
 .desktop-game .room-brand {
   font-size: clamp(0.75rem, 1.2vw, 1.25rem);
@@ -325,21 +346,6 @@
   pointer-events: none;
 }
 .desktop-game .online-notice:empty {
-  display: none;
-}
-/* Connection/authority notices remain readable without taking a permanent row. */
-.desktop-game .online-header > .online-status {
-  position: absolute;
-  top: calc(100% + 0.75rem);
-  left: 0.5rem;
-  max-width: 23%;
-  font-size: 0.625rem;
-  line-height: 1.5;
-  padding: 0.1875rem 0.375rem;
-  background: #030d1fcc;
-  pointer-events: none;
-}
-.desktop-game .online-header > .online-status:empty {
   display: none;
 }
 .online-shot-error {
@@ -1450,6 +1456,59 @@
 .room-lobby-footer .online-host {
   justify-content: flex-end;
 }
+/* The footer is the room's width whatever it holds, so its rule lines up with the seats above it. */
+.room-lobby .fui-room-actions > .room-lobby-footer {
+  width: 100%;
+  box-sizing: border-box;
+}
+/* "3 riders" is one phrase: it stays on one line beside the row of this rider's own choices. */
+.room-lobby-footer > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* A solo run's room is one column from its top: the card is as tall as what it holds (a room with an invitation
+   keeps a minimum height and centres its two columns). */
+.room-lobby.fui-room-layout.fui-room-compact {
+  grid-template-rows: auto;
+  align-items: start;
+  align-content: start;
+  min-height: 0;
+}
+/* Beside each other the seats are columns of one width, so a last seat alone on its row is not stretched. A phone
+   keeps the kit's one seat to a row. */
+@media (min-width: 641px) {
+  .room-lobby.fui-room-layout.fui-room-compact .fui-room-open-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  }
+}
+/* The room's foot is the connection's state with RETRY beside it when the line asks for one. */
+.room-lobby > .fui-room-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fui-space-2);
+}
+.room-lobby > .fui-room-status:has(> .online-status:empty) {
+  display: none;
+}
+/* In the room the notice is the line under the seats, where every game's room says what it is waiting for. */
+.room-lobby.fui-room-layout .fui-room-actions > .online-notice {
+  display: block;
+  /* A row of its own, as wide as the seats: a long line wraps instead of running off a phone. */
+  flex: 0 0 100%;
+  min-width: 0;
+  order: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-align: center;
+}
+.room-lobby.fui-room-layout .fui-room-actions > .online-notice:empty {
+  display: none;
+}
 .room-lobby-footer button {
   font-size: 0.6875rem;
   border-radius: var(--ui-radius);
@@ -1743,216 +1802,17 @@
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-.recap-masthead {
-  padding-right: var(--fui-space-6);
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: var(--fui-space-5);
-}
-.recap-brand {
-  color: #f4f0ff;
-  font:
-    clamp(0.75rem, 1.5vw, 1.25rem)/1.5 "Press Start 2P",
-    monospace;
-  text-shadow: 0 0 1rem #9b63ff70;
-}
-.recap-context {
-  display: grid;
-  gap: var(--fui-space-2);
-  text-align: right;
-  color: #a6bee7;
-}
-.recap-context > span {
-  font-size: 0.875rem;
-  letter-spacing: 0.24em;
-}
-.recap-context small {
-  font-size: 0.75rem;
-}
-.recap-victory {
-  display: grid;
-  justify-items: center;
-  text-align: center;
-  gap: 1.25rem;
-  padding: 1.75rem 0 3.5rem;
-}
-.recap-crown {
-  width: 3.5rem;
-  height: 2.75rem;
-  background: var(--winner-color);
-  clip-path: polygon(
-    0 20%,
-    14% 20%,
-    14% 40%,
-    28% 40%,
-    28% 20%,
-    42% 20%,
-    42% 0,
-    58% 0,
-    58% 20%,
-    72% 20%,
-    72% 40%,
-    86% 40%,
-    86% 20%,
-    100% 20%,
-    100% 60%,
-    90% 60%,
-    90% 82%,
-    10% 82%,
-    10% 60%,
-    0 60%
-  );
-  filter: drop-shadow(0 0 0.7rem var(--winner-color));
-}
-.match-recap-report .recap-victory h2 {
-  max-width: 100%;
+/* The dialogs' own `.dialog-body h2` would otherwise size the shared report's winner headline. */
+.match-recap-report .fui-results-victory h2 {
   margin: 0;
   font:
     clamp(1.3rem, 3.8vw, 3.5rem)/1.5 "Press Start 2P",
     monospace;
-  color: #f7f4ff;
-  text-transform: uppercase;
-  overflow-wrap: anywhere;
-  text-shadow:
-    0 0 0.2rem var(--winner-color),
-    0 0 2rem color-mix(in srgb, var(--winner-color) 45%, transparent);
 }
-.recap-victory p {
-  margin: 0;
-  color: #c5c4d9;
-  font-size: clamp(0.85rem, 1.5vw, 1.25rem);
-  overflow-wrap: anywhere;
-}
-.recap-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
-  gap: 2.5rem;
-}
-.match-recap-report h3 {
-  margin: 0 0 1.125rem;
-  color: #afc9ff;
-  font-size: 1rem;
-  letter-spacing: 0.19em;
-  line-height: 1.5;
-}
-.recap-standings table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 1rem;
-}
-.recap-standings th,
-.recap-standings td {
-  padding: 0.95rem var(--fui-space-3);
-  text-align: center;
-}
-.recap-standings thead th {
-  color: #92a6cb;
-  font-size: 0.75rem;
-  font-weight: 400;
-}
-.recap-standings th:first-child {
-  width: 3.5rem;
-}
-.recap-standings th:nth-child(2) {
-  width: auto;
-  text-align: left;
-}
-.recap-standings th:nth-child(n + 3) {
-  width: 5rem;
-}
-.recap-standings tbody tr {
-  border-bottom: 1px solid #24365c;
-}
-.recap-standings tbody td:first-child {
-  color: #9bb7e7;
-}
-.recap-standings .is-champion {
-  background: color-mix(in srgb, var(--player-color) 13%, transparent);
-  outline: 1px solid color-mix(in srgb, var(--player-color) 50%, transparent);
-  outline-offset: -1px;
-}
-.recap-standings .is-you {
-  background: color-mix(in srgb, var(--player-color) 12%, transparent);
-  box-shadow:
-    inset 0 1px color-mix(in srgb, var(--player-color) 50%, transparent),
-    inset 0 -1px color-mix(in srgb, var(--player-color) 50%, transparent);
-}
-.recap-rider-name {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  text-align: left;
-  text-transform: uppercase;
-}
-.recap-rider-name > span {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.recap-rider-name i {
-  width: 0.85rem;
-  height: 0.85rem;
-  flex: 0 0 0.85rem;
-  transform: rotate(45deg);
-  background: var(--player-color);
-  box-shadow: 0 0 1rem color-mix(in srgb, var(--player-color) 50%, transparent);
-}
-.recap-rider-name small {
-  font-size: 0.6rem;
-  color: var(--player-color);
-}
-.recap-standings .is-you .recap-rider-name {
-  color: var(--player-color);
-}
-.recap-tie-note {
-  margin: 1.25rem 0 0;
-  color: #94aacf;
-  font-size: 0.75rem;
-  line-height: 1.6;
-}
-.recap-featured {
-  border-left: 1px solid #253554;
-  padding-left: 2.5rem;
-  min-width: 0;
-}
-.recap-feature {
-  display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr);
-  align-items: center;
-  gap: var(--fui-space-5);
-  margin: 2.5rem 0;
-}
-.recap-feature-icon {
-  font-size: 3.5rem;
-  text-shadow: 0 0 1.5rem currentColor;
-  text-align: center;
-  line-height: 1;
-}
-.recap-feature h4 {
-  margin: 0 0 var(--fui-space-2);
-  font-size: 1rem;
-  letter-spacing: 0.04em;
-}
-.recap-feature-names {
-  margin: 0 0 var(--fui-space-2);
-  font-size: 1rem;
-}
-.recap-feature small {
-  color: #94aacf;
-  font-size: 0.75rem;
-  line-height: 1.7;
-}
-.recap-feature > div {
-  overflow-wrap: anywhere;
-}
-.recap-details:not([hidden]) {
-  display: grid;
-  gap: var(--fui-space-4);
-  padding-top: 3rem;
-}
-.recap-details {
-  scroll-margin-top: 1rem;
+@media (orientation: landscape) and (max-height: 550px) {
+  .match-recap-report .fui-results-victory h2 {
+    font-size: 1.5rem;
+  }
 }
 .online-app .recap-dialog .dialog-bar {
   order: 2;
@@ -2019,17 +1879,13 @@
 }
 .online-app .recap-dialog .dialog-bar .dialog-close {
   position: absolute;
-  top: max(0.25rem, env(safe-area-inset-top));
-  right: max(0.25rem, env(safe-area-inset-right));
+  /* Far enough from the corner for its focus ring (2px, 3px out) to be whole. */
+  top: max(0.5rem, env(safe-area-inset-top));
+  right: max(0.5rem, env(safe-area-inset-right));
   z-index: 2;
   min-width: 2.75rem;
   min-height: 2.75rem;
   padding: var(--fui-space-2);
-}
-.match-recap-report .recap-empty {
-  text-align: center;
-  padding: 4rem 0;
-  color: #94aacf;
 }
 .match-recap-report .recap-totals {
   display: grid;
@@ -2081,55 +1937,6 @@
   .recap-dialog .dialog-body {
     padding: max(1.25rem, env(safe-area-inset-top)) 1rem 1.5rem;
   }
-  .recap-context > span {
-    font-size: 0.625rem;
-    letter-spacing: 0.12em;
-  }
-  .recap-context small {
-    font-size: 0.625rem;
-  }
-  .recap-victory {
-    padding: var(--fui-space-6) 0;
-    gap: var(--fui-space-4);
-  }
-  .recap-overview {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--fui-space-6);
-  }
-  .recap-featured {
-    padding: var(--fui-space-5) 0 0;
-    border-left: 0;
-    border-top: 1px solid #253554;
-  }
-  .recap-feature {
-    margin: var(--fui-space-5) 0;
-  }
-  .recap-standings th,
-  .recap-standings td {
-    padding: 0.9rem 0.375rem;
-    font-size: 0.8125rem;
-  }
-  .recap-standings th:first-child {
-    width: 2rem;
-  }
-  .recap-standings th:nth-child(n + 3) {
-    width: 3.5rem;
-  }
-  .recap-rider-name {
-    gap: var(--fui-space-3);
-    flex-wrap: wrap;
-  }
-  .recap-rider-name > span {
-    flex: 1;
-  }
-  .recap-rider-name small {
-    flex-basis: 100%;
-  }
-  .recap-rider-name i {
-    width: 0.625rem;
-    height: 0.625rem;
-    flex-basis: 0.625rem;
-  }
   .online-app .recap-dialog .dialog-bar {
     margin: 0 var(--fui-space-4);
     flex-wrap: wrap;
@@ -2160,24 +1967,6 @@
 @media (orientation: landscape) and (max-height: 550px) {
   .recap-dialog .dialog-body {
     padding-top: var(--fui-space-4);
-  }
-  .recap-victory {
-    padding: var(--fui-space-4) 0 var(--fui-space-5);
-    gap: var(--fui-space-3);
-  }
-  .recap-crown {
-    width: 2rem;
-    height: 1.5rem;
-  }
-  .recap-dialog .dialog-body .recap-victory h2 {
-    font-size: 1.5rem;
-  }
-  .recap-featured {
-    padding-left: var(--fui-space-5);
-  }
-  .recap-feature {
-    gap: var(--fui-space-4);
-    margin: var(--fui-space-5) 0;
   }
   .online-app .recap-dialog .dialog-bar {
     padding-top: var(--fui-space-2);
@@ -2430,24 +2219,6 @@
 .online-app.phone-lobby .online-header .room-brand span {
   flex: 0 0 auto;
 }
-.online-app.phone-lobby .online-header > .online-status {
-  flex: 1 1 7.5rem;
-  order: 0;
-  min-width: 0;
-  font-size: 0.625rem;
-  letter-spacing: 0.0625rem;
-  color: #6f8aa8;
-  text-align: right;
-  overflow: hidden;
-  max-height: none;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.online-app.phone-lobby.booting .online-header > .online-status,
-.online-app.phone-lobby .online-header > .online-status:empty {
-  display: none;
-}
 .online-app.phone-lobby .online-header button {
   order: 1;
   flex: 1 1 auto;
@@ -2522,9 +2293,16 @@
   justify-self: stretch;
 }
 .online-app.phone-lobby .room-qr-card img {
-  grid-row: 1/4;
+  grid-row: 1/5;
   width: 6.75rem;
   max-width: none;
+}
+/* INVITE FRIENDS is the last line of the card's own column, under Copy link. */
+.online-app.phone-lobby .room-qr-card .fui-room-invite-friends {
+  grid-column: 2;
+  min-height: 2.5rem;
+  margin-top: var(--fui-space-2);
+  padding: 0.375rem 0.625rem;
 }
 .online-app.phone-lobby .room-lobby .room-qr-card p {
   margin: 0;
@@ -2896,13 +2674,6 @@
 .desktop-game .online-header > button,
 .desktop-game .online-header > .online-round {
   order: 4;
-}
-.desktop-game .online-header > .online-status {
-  position: static;
-  max-width: 30%;
-  padding: 0 0.375rem;
-  font-size: 0.6875rem;
-  background: none;
 }
 .desktop-game .online-host > button:first-child:not(:disabled) {
   background: var(--player-color);

@@ -369,10 +369,30 @@ export function scoreboardMarkup(
   return `<table class="report-table"><thead><tr><th scope="col">Player</th><th scope="col">Territory</th><th scope="col">Peak</th><th scope="col">Built</th><th scope="col">Lost</th><th scope="col">Damage</th><th scope="col">Biomass</th><th scope="col">Insight</th><th scope="col">Research</th><th scope="col">Powerups</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-export function reportMarkup(
+/** The highest territory a player ever held, from the timeline. */
+export function peakTerritory(world: Readonly<World>, id: string): number {
+  return Math.max(
+    world.players.find((p) => p.id === id)?.territory ?? 0,
+    ...world.timeline.map((sample) => sampleOf(sample, id)?.territory ?? 0),
+  );
+}
+
+/** Why the match went the way it did, as a list. */
+export function findingsMarkup(
   world: Readonly<World>,
   players: readonly ReportPlayer[],
   subjectId: string | null,
+): string {
+  const found = findings(world, players, subjectId)
+    .map((f) => `<li class="finding ${f.tone}">${escapeText(f.text)}</li>`)
+    .join("");
+  return `<ul class="report-findings">${found || '<li class="finding neutral">The match ended before anything decisive happened.</li>'}</ul>`;
+}
+
+/** The chart of one metric with its tabs, caption and legend. */
+export function chartPanelMarkup(
+  world: Readonly<World>,
+  players: readonly ReportPlayer[],
   metric: ReportMetric,
 ): string {
   const tabs = REPORT_METRICS.map(
@@ -390,9 +410,14 @@ export function reportMarkup(
         `<li><span class="report-swatch" style="--team:${p.color}"></span>${escapeText(p.name)}</li>`,
     )
     .join("");
-  const found = findings(world, players, subjectId)
-    .map((f) => `<li class="finding ${f.tone}">${escapeText(f.text)}</li>`)
-    .join("");
+  return `<div class="report-tabs" role="tablist">${tabs}</div><p class="report-caption">${description}</p>${chartMarkup(world, metric, players)}<ul class="report-legend">${legend}</ul>`;
+}
+
+/** The long breakdown: the scoreboard, every research path and the key moments. */
+export function breakdownMarkup(
+  world: Readonly<World>,
+  players: readonly ReportPlayer[],
+): string {
   const tech = players
     .map((p) => {
       const path = world.events
@@ -412,7 +437,17 @@ export function reportMarkup(
       return `<li><time>${clock(e.tick)}</time><span class="report-swatch" style="--team:${color}"></span>${escapeText(eventText(e, players))}</li>`;
     })
     .join("");
-  return `<section class="match-report" aria-label="Match report"><h3>What decided it</h3><ul class="report-findings">${found || '<li class="finding neutral">The match ended before anything decisive happened.</li>'}</ul><div class="report-tabs" role="tablist">${tabs}</div><p class="report-caption">${description}</p>${chartMarkup(world, metric, players)}<ul class="report-legend">${legend}</ul><h3>Scoreboard</h3><div class="report-scroll">${scoreboardMarkup(world, players)}</div><h3>Research paths</h3><ul class="report-tech">${tech}</ul><h3>Key moments</h3><ol class="report-moments">${moments || "<li>No key moments recorded.</li>"}</ol></section>`;
+  return `<h3>Scoreboard</h3><div class="report-scroll">${scoreboardMarkup(world, players)}</div><h3>Research paths</h3><ul class="report-tech">${tech}</ul><h3>Key moments</h3><ol class="report-moments">${moments || "<li>No key moments recorded.</li>"}</ol>`;
+}
+
+/** The whole report in one block, as the report lab shows it. */
+export function reportMarkup(
+  world: Readonly<World>,
+  players: readonly ReportPlayer[],
+  subjectId: string | null,
+  metric: ReportMetric,
+): string {
+  return `<section class="match-report" aria-label="Match report"><h3>What decided it</h3>${findingsMarkup(world, players, subjectId)}${chartPanelMarkup(world, players, metric)}${breakdownMarkup(world, players)}</section>`;
 }
 
 function escapeText(value: string): string {

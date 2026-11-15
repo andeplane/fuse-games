@@ -30,6 +30,8 @@ export function createAttract(host: HTMLElement) {
   const renderer = createScene(demoCanvas(host), {
     art: loadArt(import.meta.env.BASE_URL, browserImages, browserTint),
     createCanvas: browserCanvas,
+    // A clock behind a menu reads as the menu's own, and shows through beside the room's Back button.
+    hud: false,
   });
   let level = 0,
     ticks = 0,

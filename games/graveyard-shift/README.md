@@ -6,7 +6,7 @@ A playable ghost-catching proof of concept in St. Hollow Cemetery. Two to five h
 
 Run `pnpm install`, `pnpm build`, then `pnpm exec tsx service/dev.ts --port 8797` from the repository root. The service selects a free port if needed. Open its printed origin followed by `/graveyard-shift/?mute`. The portfolio menu also lists the game. `?mute` is temporary and never writes audio preferences.
 
-Create a room, join the crew, invite friends, and optionally add bots. Every connected human presses **READY**. For a shared screen, check **Shared TV + phone controllers** before creating the room, then open **OPEN TV** and join from phones using the invite. **RECONNECT** retries a failed connection or recovers a page from a peer. A late entrant participates in the next shift.
+Create a room, join the crew, invite friends, and optionally add bots. Every connected human presses **READY**. For a shared screen, the host ticks **Shared TV** in the room, under the invitation, opens **OPEN TV SCREEN** on the TV, and phones join using the invite. The room is the shared `fuse-ui` room: Back, Settings and READY lead it and the code is by the QR. **LEAVE** and **RECONNECT** are in the bar's menu; RECONNECT retries a failed connection or recovers a page from a peer. A late entrant participates in the next shift.
 
 | Action        | Keyboard / mouse                  | Phone         |
 | ------------- | --------------------------------- | ------------- |

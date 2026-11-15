@@ -1,4 +1,8 @@
-import { button, createRoundControls, el } from "fuse-ui";
+import { button, createResultsScreen, createRoundControls, el } from "fuse-ui";
+import {
+  playtestInputBlocked,
+  registerPlaytestInput,
+} from "fuse-ui/playtest-input";
 import { TOWN_CONTROLS, TOWN_GOAL } from "./control-guide.js";
 import {
   CITY,
@@ -28,6 +32,7 @@ import {
 } from "./layout.js";
 import {
   boardModel,
+  colorOf,
   sparkline,
   toastTracker,
   type Card,
@@ -37,6 +42,7 @@ import {
   type ScreenModel,
   type Viewer,
 } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { tourArea, tourFocus, type TourHud, type TourStep } from "./tour.js";
 
 /**
@@ -55,9 +61,16 @@ export interface Driver {
 }
 
 export interface ScreenHooks {
-  /** The result's buttons: what they say and do (online: REMATCH / LOBBY; on this device: PLAY AGAIN / MENU). */
-  again: { label: string; run(): void };
-  back: { label: string; run(): void };
+  /** The result's bar: REMATCH and Back to lobby online, PLAY AGAIN and MENU on this device. */
+  again(): void;
+  back(): void;
+  /** Leave on an online room's result, which covers the page's own LEAVE. */
+  leave?(): void;
+  /** The room's friends, for a friend button beside another player's name. */
+  friends?: {
+    publicIdOfMember(id: string): string | undefined;
+    friendButton(publicId: string): HTMLElement;
+  };
   /** Small buttons for the HUD's corner (pause, menu, leave). */
   controls?: HTMLElement[];
   /** The shared screen's line under its clock, e.g. how to join. */
@@ -245,7 +258,7 @@ export function createGameScreen(
   options: ScreenOptions = {},
 ) {
   const play = (body: readonly unknown[] | undefined) => {
-    if (body) driver().play(body);
+    if (body && !playtestInputBlocked(game.ownerDocument)) driver().play(body);
   };
   const game = el("section", "", "fl-game");
   const startupControls = createRoundControls({
@@ -467,21 +480,16 @@ export function createGameScreen(
   handoff.hidden = true;
   handoffGo.onclick = () => play(model?.readyEntry);
 
-  // Result.
-  const result = el("section", "", "fl-sheet fl-result"),
-    resultTitle = el("h2", "", "fl-banner fl-result-title"),
-    resultLines = el("ol", "", "fl-result-lines"),
-    again = button(hooks.again.label, "fl-primary"),
-    back = button(hooks.back.label),
-    resultWaiting = el("p", "", "fl-ready-note"),
-    resultActions = el("div", "", "fl-actions");
-  resultActions.append(back, again);
-  result.append(resultTitle, resultLines, resultWaiting, resultActions);
-  result.hidden = true;
-  again.onclick = () => hooks.again.run();
-  back.onclick = () => hooks.back.run();
+  // Result: the shared results screen over the page, on a phone controller and the TV too.
+  const results = createResultsScreen({
+    document,
+    ...(hooks.leave ? { onBack: hooks.leave, backText: "Leave" } : {}),
+    onAction: (id) => (id === "rematch" ? hooks.again() : hooks.back()),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
 
-  centre.append(panel, you, briefing, handoff, result);
+  centre.append(panel, you, briefing, handoff);
   const toast = el("div", "", "fl-toast");
   toast.hidden = true;
   // The "Getting started" checklist: a corner card that ticks itself off; a tap on a step walks you there.
@@ -1055,20 +1063,42 @@ export function createGameScreen(
         "Your clock starts when you tap. Hours you don't use are sleep.",
       );
     }
-    // Result.
-    result.hidden = !next.result;
-    if (next.result) {
-      text(resultTitle, next.result.title);
-      const lines = next.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...next.result.lines.map((line) => el("li", line)),
+    // Result. A newcomer who still owes the room a name keeps the page's name card in reach.
+    const result = next.askName ? undefined : next.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => hooks.friends?.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        const friends = hooks.friends;
+        results.show(
+          resultReport(result, {
+            color: colorOf,
+            ...(friends
+              ? {
+                  friend: (id: string) => {
+                    const publicId = friends.publicIdOfMember(id);
+                    return publicId
+                      ? friends.friendButton(publicId)
+                      : undefined;
+                  },
+                }
+              : {}),
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      text(resultWaiting, next.result.waiting);
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   }
 
@@ -1171,6 +1201,7 @@ export function createGameScreen(
     camera = clampCamera(view, { x: from.x + dx, y: from.y + dy });
   };
   canvas.addEventListener("pointerdown", (event) => {
+    if (playtestInputBlocked(game.ownerDocument)) return;
     if (press || !camera || (event.pointerType === "mouse" && event.button))
       return;
     press = {
@@ -1207,6 +1238,15 @@ export function createGameScreen(
     const at = pointer(event);
     if (at >= 0) walk(at);
   };
+  const stopPlaytestInput = registerPlaytestInput(game.ownerDocument, {
+    cancel: () => {
+      if (press && canvas.hasPointerCapture?.(press.id))
+        canvas.releasePointerCapture?.(press.id);
+      press = undefined;
+      hover = -1;
+      canvas.classList.remove("dragging");
+    },
+  });
   canvas.addEventListener("pointerup", (event) => release(event, false));
   canvas.addEventListener("pointercancel", (event) => release(event, true));
   canvas.addEventListener("pointerleave", (event) => {
@@ -1328,7 +1368,7 @@ export function createGameScreen(
 
   return {
     /** Everything the game adds to the page. */
-    elements: [game] as HTMLElement[],
+    elements: [game, results.element] as HTMLElement[],
     game,
     /** The middle of the board, where cards open (the page's own cards, like PAUSED, go here too). */
     centre,
@@ -1348,9 +1388,11 @@ export function createGameScreen(
     /** Whether the tour is up: the page's own keys and cards stand aside. */
     touring: () => tour !== undefined,
     destroy() {
+      stopPlaytestInput();
       running = false;
     },
     keydown(event: KeyboardEvent) {
+      if (playtestInputBlocked(game.ownerDocument)) return;
       if (tour) {
         if (event.key === "Escape") endTour();
         else if (event.key === "ArrowRight" || event.key === "Enter")

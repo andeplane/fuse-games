@@ -1062,9 +1062,9 @@ test("detached trail identity, schedule and ownership are validated before repla
   );
 });
 
-test("five riders at the total segment cap remain within checkpoint byte and parser budgets", () => {
+test("six riders at the total segment cap remain within checkpoint byte and parser budgets", () => {
   const game = createGame("max-trail-checkpoint", classicSettings());
-  for (let slot = 0; slot < 5; slot++)
+  for (let slot = 0; slot < 6; slot++)
     addPlayer(game, {
       id: `p${slot}`,
       name: `P${slot}`,
@@ -1073,7 +1073,7 @@ test("five riders at the total segment cap remain within checkpoint byte and par
     });
   startMatch(game);
   game.tick = 2200;
-  game.nextTrailPieceId = 6;
+  game.nextTrailPieceId = 7;
   for (const player of game.players.values())
     player.trail = Array.from({ length: MAX_CHECKPOINT_TRAILS }, (_, i) => ({
       x1: 100.12345678901234 + (i % 2),

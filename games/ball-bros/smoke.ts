@@ -150,10 +150,11 @@ try {
     (await page.locator(".power-status").textContent()) ?? "",
     /FUSE FRENZY · \d+ BALLS/,
   );
-  await page
-    .getByRole("button", { name: "PLAY AGAIN" })
-    .waitFor({ timeout: 135000 });
-  await page.getByRole("button", { name: "PLAY AGAIN" }).click();
+  const again = page.locator(
+    '.fui-results:not([hidden]) .fui-results-actions button[data-action="rematch"]',
+  );
+  await again.waitFor({ timeout: 135000 });
+  await again.click();
   await page.getByText("GET READY · 3", { exact: true }).waitFor();
   assert.ok(
     (await page.locator(".scorecard strong").allTextContents()).every(

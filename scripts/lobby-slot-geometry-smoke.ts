@@ -115,11 +115,18 @@ try {
             box.y >= 0 && box.y + box.height <= viewport.height,
             "main action is reachable before the slot list without scrolling",
           );
-          assert.equal(
-            await primary.evaluate((node) =>
-              node.nextElementSibling?.textContent?.trim(),
-            ),
-            "Game settings",
+          // Settings sits beside the main action: before it in the room's header, after it under the invitation.
+          assert.match(
+            (await primary.evaluate((node) => {
+              const beside = node.closest(".fui-room-head")
+                ? node.previousElementSibling
+                : node.nextElementSibling;
+              return (
+                beside?.getAttribute("aria-label") ??
+                beside?.textContent?.trim()
+              );
+            })) ?? "",
+            /^(Game settings|Settings)$/,
           );
         }
         await first.getByRole("button").click();

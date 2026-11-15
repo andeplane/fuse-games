@@ -506,12 +506,12 @@ test("a guest winning the round does not change the signed-in humans' pairwise E
 });
 test("round parser enforces its roster and single-round bounds at report and storage boundaries", () => {
   const tooMany = result(
-    Array.from({ length: 6 }, (_, i) => String(i + 1).repeat(24)),
+    Array.from({ length: 7 }, (_, i) => String(i + 1).repeat(24)),
   );
   tooMany.players.forEach((p, i) => {
-    p.slot = i % 5;
+    p.slot = i % 6;
   });
-  tooMany.finishers = tooMany.finishers.slice(0, 5);
+  tooMany.finishers = tooMany.finishers.slice(0, 6);
   assert.equal(parseMatchResult(tooMany), undefined);
   assert.equal(
     parseMatchResult({
@@ -633,7 +633,7 @@ test("round metadata preserves legacy rating history and rejects corrupt fields"
     { ...round, round: 1000001 },
     { ...round, opponents: undefined },
     { ...round, opponents: -1 },
-    { ...round, opponents: 5 },
+    { ...round, opponents: 6 },
     { ...round, opponents: 0.5 },
     { ...old, opponents: 0 },
   ])

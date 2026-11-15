@@ -37,22 +37,23 @@ await Promise.all(
       await page
         .locator("#match-result:not([hidden])")
         .waitFor({ state: "visible", timeout: 450_000 });
-      assert.match(await page.locator("#match-result").innerText(), /Defeat/);
-      const result = (await page.locator("#match-result").boundingBox())!;
-      const dock = (await page.locator(".command-dock").boundingBox())!;
-      assert.ok(
-        result.y + result.height <= dock.y,
-        "result stays above the landscape command dock",
+      // The shared results screen draws its title in capitals.
+      assert.match(
+        await page.locator("#match-result .fui-results-victory h2").innerText(),
+        /Defeat/i,
       );
-      for (const button of await page.locator("#match-result button").all()) {
+      const viewport = page.viewportSize()!;
+      for (const button of await page
+        .locator("#match-result .fui-results-actions button")
+        .all()) {
         const box = (await button.boundingBox())!;
         assert.ok(
-          box.y >= result.y && box.y + box.height <= result.y + result.height,
+          box.y >= 0 && box.y + box.height <= viewport.height,
           "result buttons remain reachable",
         );
       }
       await page.screenshot({ path: `${output}/${name}-defeat-landscape.png` });
-      await page.locator('#match-result [data-action="reset"]').click();
+      await page.locator('#match-result [data-action="rematch"]').click();
       assert.equal(
         await page.locator('[data-action="confirm-reset"]').count(),
         0,
@@ -62,7 +63,7 @@ await Promise.all(
       assert.equal(await page.locator(".structure-brain").count(), 2);
       assert.deepEqual(errors, []);
       console.log(
-        `${name}: normal-time defeat, landscape result geometry and rematch passed`,
+        `${name}: normal-time defeat, landscape result buttons and rematch passed`,
       );
     } finally {
       await browser.close();

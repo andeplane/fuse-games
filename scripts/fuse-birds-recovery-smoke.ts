@@ -65,24 +65,24 @@ try {
   await openPlayOptions(creator);
   await creator.getByRole("button", { name: "Host room" }).click();
   await takeHostSeat(creator, "SKYE");
-  const code = await creator.locator(".birds-code").innerText();
+  const code = new URL(creator.url()).searchParams.get("room")!;
   async function join(page: Page, name: string) {
     await page.goto(`${base}/fuse-birds/?room=${code}&mute`);
     await takeHostSeat(page, name);
     await page
-      .locator(".birds-roster")
-      .getByText(`${name} · YOU`, { exact: true })
+      .locator(".birds-lobby .fui-room-players")
+      .getByText(`${name} (you)`, { exact: true })
       .waitFor();
   }
   async function leave(page: Page) {
-    await page.locator("summary").filter({ hasText: "MENU" }).click();
+    await page.getByRole("button", { name: "Open game menu" }).click();
     await page.getByRole("button", { name: "LEAVE", exact: true }).click();
     await openPlayOptions(page);
     await page.getByRole("button", { name: "Host room" }).waitFor();
   }
   await join(successor, "EMBER");
   await creator
-    .locator(".birds-roster")
+    .locator(".birds-lobby .fui-room-players")
     .getByText("EMBER", { exact: true })
     .waitFor();
   await leave(creator);

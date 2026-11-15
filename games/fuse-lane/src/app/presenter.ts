@@ -58,6 +58,7 @@ import {
   buyCost,
   creditLeft,
   creditLine,
+  degrees,
   enrollFee,
   loanPayment,
   loanRate,
@@ -239,14 +240,38 @@ export interface HandoffModel {
   /** "Turn 2 of 3". */
   step: string;
 }
+/** One player in the final standings. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** 1 for a winner; players who tied for the win share it. */
+  place: number;
+  /** Goal progress in percent. */
+  goals: number;
+  /** The week every goal was met, or 0. */
+  finished: number;
+  netWorth: number;
+  degrees: number;
+  shifts: number;
+}
 export interface ResultModel {
   title: string;
-  lines: string[];
+  weeks: number;
+  rows: ResultRow[];
+  /** The winner's seat, or -1 when the win is shared. */
+  winnerSlot: number;
+  /** A match on this device: the bar says PLAY AGAIN and MENU. */
+  local: boolean;
   host: boolean;
   waiting: string;
 }
 export interface LobbyModel {
   members: RosterMember[];
+  /** This device's own seat, by its plain name: what a move to another open seat is asked with. */
+  own?: { name: string; slot: number };
   canStart: boolean;
   showStart: boolean;
   note: string;
@@ -297,7 +322,7 @@ export interface ScreenModel {
 }
 
 const unitsOf = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
-const money = (value: number) =>
+export const money = (value: number) =>
   `${value < 0 ? "-" : ""}$${Math.abs(Math.round(value)).toLocaleString("en-US")}`;
 const hours = (value: number) => `${value}h`;
 const GOAL_ICONS = ["ui-wealth", "ui-happiness", "ui-education", "ui-career"];
@@ -1145,8 +1170,12 @@ function lobby(view: FuseLaneView, viewer: Viewer): LobbyModel {
   const leader = players.find((player) => !player.bot && view.goals[player.id]);
   const mine = view.goals[viewer.me] ??
     (leader ? view.goals[leader.id] : undefined) ?? [50, 50, 50, 50];
-  const seated = players.some((player) => player.id === viewer.me);
+  const own = players.find((player) => player.id === viewer.me);
+  const seated = own !== undefined;
   return {
+    ...(own && !viewer.display
+      ? { own: { name: own.name, slot: own.slot } }
+      : {}),
     members: players.map((player) => ({
       id: player.id,
       slot: player.slot,
@@ -1348,11 +1377,33 @@ export function present(view: FuseLaneView, viewer: Viewer): ScreenModel {
             : won[0] === viewer.me && seated
               ? "YOU WIN!"
               : `${name(won[0]).toUpperCase()} WINS`,
-      lines: view.ranking.map((id, index) => {
-        const player = players.find((row) => row.id === id)!;
-        const finished = player.state.finished;
-        return `${index + 1}. ${player.name}: ${finished ? `all goals in week ${finished}` : `${Math.round(player.progress * 100)}% of goals`}, net worth ${money(player.netWorth)}`;
+      weeks: view.week,
+      rows: view.ranking.flatMap((id, index): ResultRow[] => {
+        const player = players.find((row) => row.id === id);
+        return player
+          ? [
+              {
+                id,
+                slot: player.slot,
+                name: player.name,
+                you: seated && id === viewer.me,
+                bot: player.bot,
+                place: view.winners.includes(id) ? 1 : index + 1,
+                goals: Math.round(player.progress * 100),
+                finished: player.state.finished,
+                netWorth: Math.round(player.netWorth),
+                degrees: degrees(player.state),
+                shifts: player.state.shifts,
+              },
+            ]
+          : [];
       }),
+      winnerSlot:
+        view.winners.length === 1
+          ? (players.find((player) => player.id === view.winners[0])?.slot ??
+            -1)
+          : -1,
+      local: viewer.local === true,
       host,
       waiting: host ? "" : "Waiting for the host to start a rematch",
     };

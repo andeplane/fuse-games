@@ -1,6 +1,7 @@
 import { createAccountDialog, el, type AccountMatchContext } from "fuse-ui";
 import type { AvatarId } from "../engine/avatar-id.js";
 import { createAvatarPortrait } from "../client/avatar-heads.js";
+import "fuse-ui/results.css";
 import "./account-panel.css";
 import {
   playerStats,
@@ -261,7 +262,7 @@ export function createAccountPanel(dependencies: AccountPanelDependencies): {
       bar: "fui-dialog-bar dialog-bar",
       title: "fui-dialog-title",
       actions: "fui-dialog-actions dialog-actions",
-      close: "dialog-close",
+      back: "dialog-close",
       body: "fui-dialog-body dialog-body account-panel",
     },
   });

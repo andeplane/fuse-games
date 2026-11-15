@@ -38,7 +38,7 @@ try {
   await openPlayOptions(first);
   await first.getByRole("button", { name: "Host room" }).click();
   await takeHostSeat(first, "SKYE");
-  const code = await first.locator(".birds-code").innerText();
+  const code = new URL(first.url()).searchParams.get("room")!;
   await second.goto(`${base}/fuse-birds/?room=${code}&mute`);
   await takeHostSeat(second, "EMBER");
   await first.locator(".fui-room-players").getByText("EMBER").waitFor();

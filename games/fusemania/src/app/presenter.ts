@@ -29,6 +29,17 @@ export interface Viewer {
   display: boolean;
 }
 
+/**
+ * What a song that waits for its audio says over the field: this device's own download first, then who else the
+ * room waits for.
+ */
+export function holdText(waiting: readonly string[], settled: boolean): string {
+  if (!settled) return "DOWNLOADING SONG…";
+  return waiting.length
+    ? `WAITING FOR ${waiting.join(", ").toUpperCase()} · DOWNLOADING SONG…`
+    : "GET READY…";
+}
+
 /** A rating as a letter grade and a percentage. */
 export function grade(rating: number): string {
   const share = rating / FULL_RATING;
@@ -59,10 +70,21 @@ export const ordinal = (place: number): string =>
 
 /** One line of the result table. */
 export interface Row {
+  /** The player's id in the room. */
+  id: string;
+  bot: boolean;
   place: number;
   slot: number;
   name: string;
   you: boolean;
+  /** The chart played: "HARD 9". */
+  chart: string;
+  /** "94.2%". */
+  accuracy: string;
+  /** The longest combo, as a number. */
+  maxCombo: string;
+  /** How many of each judgment, Marvelous first and Miss last. */
+  judgments: string[];
   grade: string;
   score: string;
   /** The chart played and the accuracy: "HARD 9 · 94.2%". */
@@ -77,7 +99,7 @@ export interface Own {
   score: string;
   /** "CHALLENGE 13 · 94.2% · MAX COMBO 212". */
   detail: string;
-  /** What a run with no broken combo earned ("FULL COMBO", "FULL PERFECT COMBO", ...), or "". */
+  /** What a run with no broken combo earned ("FULL GREAT COMBO", "FULL PERFECT COMBO", ...), or "". */
   badge: string;
 }
 /** One line of a session's standings. */
@@ -110,6 +132,11 @@ export interface Model {
   playing: boolean;
   /** This device's player slot in the match, or −1. */
   localSlot: number;
+  /**
+   * Who else the started song waits for while their devices download it, by name ("THE TV" for the shared
+   * screen), this device left out. Empty when the song is not held, or held for this device alone.
+   */
+  waiting: string[];
   lobby: {
     members: {
       id: string;
@@ -148,6 +175,8 @@ export interface Model {
   chart: number;
   result: {
     title: string;
+    /** The song that was played: "NEON KICKOFF". */
+    song: string;
     rows: Row[];
     /** This device's own run, large: null for a watcher and for the TV. */
     own: Own | null;
@@ -196,17 +225,16 @@ export const comboBadge = (counts: readonly number[]): string => {
   if (
     at(MISS) ||
     at(BOO) ||
+    at(GOOD) ||
     at(DROPPED) ||
-    at(MARVELOUS) + at(PERFECT) + at(GREAT) + at(GOOD) === 0
+    at(MARVELOUS) + at(PERFECT) + at(GREAT) === 0
   )
     return "";
-  return at(GOOD)
-    ? "FULL COMBO"
-    : at(GREAT)
-      ? "FULL GREAT COMBO"
-      : at(PERFECT)
-        ? "FULL PERFECT COMBO"
-        : "ALL MARVELOUS";
+  return at(GREAT)
+    ? "FULL GREAT COMBO"
+    : at(PERFECT)
+      ? "FULL PERFECT COMBO"
+      : "ALL MARVELOUS";
 };
 
 const standingRows = (
@@ -296,6 +324,14 @@ export function present(
     const rows: Row[] = [...world.players]
       .sort((a, b) => a.place - b.place)
       .map((each) => ({
+        id: each.id,
+        bot: each.bot,
+        chart: chartLabel(library, world.song, each.chart),
+        accuracy: percent(each.rating),
+        maxCombo: String(each.best),
+        judgments: [MARVELOUS, PERFECT, GREAT, GOOD, BOO, MISS].map((kind) =>
+          String(each.counts[kind]),
+        ),
         place: each.place,
         slot: each.slot,
         name: view.roster[each.slot]?.name ?? "",
@@ -349,6 +385,7 @@ export function present(
               : winner.id === viewer.me
                 ? "YOU WIN!"
                 : `${winner.name.toUpperCase()} WINS`,
+      song: songTitle,
       rows,
       own: player
         ? {
@@ -405,6 +442,15 @@ export function present(
     seated,
     playing,
     localSlot,
+    waiting: view.waiting
+      ? [
+          ...view.waiting.ids
+            .filter((id) => id !== viewer.me)
+            .map((id) => view.seats.find((seat) => seat.id === id)?.name ?? "")
+            .filter((name) => name !== ""),
+          ...(view.waiting.screen && !viewer.display ? ["THE TV"] : []),
+        ]
+      : [],
     lobby: {
       members: seats.map((seat) => ({
         id: seat.id,

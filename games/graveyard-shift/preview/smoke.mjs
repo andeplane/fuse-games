@@ -125,7 +125,10 @@ try {
   await guest.locator("form.fui-name-entry").waitFor({ state: "hidden" });
   await host.getByText("Bo", { exact: true }).waitFor();
   await addBot(host);
-  await host.getByText(/\/ BOT/).waitFor();
+  await host
+    .locator(".fui-room-players")
+    .getByText("BOT", { exact: true })
+    .waitFor();
   await host.getByRole("button", { name: "READY", exact: true }).click();
   await guest.getByRole("button", { name: "READY", exact: true }).click();
   await Promise.all([
@@ -139,11 +142,15 @@ try {
   console.log("PASS online readiness, mixed bots, peer checkpoint reload");
   const tvHost = await open("?mute");
   await openPlayOptions(tvHost);
-  await tvHost.getByRole("checkbox").check();
   await hostRoom(tvHost);
   await tvHost.waitForURL(/room=/);
   const tvCode = new URL(tvHost.url()).searchParams.get("room");
   await takeHostSeat(tvHost, "Cora");
+  // Shared TV is the host's choice in the room, with the screen's button beside it.
+  await tvHost.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await tvHost
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
   await addBot(tvHost);
   const tv = await open(`?room=${tvCode}&display=1&mute`);
   const phone = await open(`?room=${tvCode}&mute`, true);
@@ -202,15 +209,15 @@ try {
     guest.locator("[data-phase=over]").waitFor({ timeout: 110000 }),
   ]);
   assert.deepEqual(
-    await host.locator(".ranks").innerText(),
-    await guest.locator(".ranks").innerText(),
+    await host.locator(".fui-results:not([hidden]) tbody td").allInnerTexts(),
+    await guest.locator(".fui-results:not([hidden]) tbody td").allInnerTexts(),
   );
   await snap(host, "results");
   await host
-    .getByRole("button", { name: "READY FOR ANOTHER SHIFT", exact: true })
+    .locator('.fui-results-actions button[data-action="rematch"]')
     .click();
   await guest
-    .getByRole("button", { name: "READY FOR ANOTHER SHIFT", exact: true })
+    .locator('.fui-results-actions button[data-action="rematch"]')
     .click();
   await host.locator("[data-phase=running]").waitFor();
   await guest.locator("[data-phase=running]").waitFor();

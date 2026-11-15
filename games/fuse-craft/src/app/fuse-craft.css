@@ -1,4 +1,8 @@
 /* Shared Fuse UI owns typography, controls and palette; this file arranges Fuse Craft. */
+:root {
+  /* The subtitle under the brand: a page's Back starts below it. */
+  --fui-page-top: calc(96px + env(safe-area-inset-top));
+}
 html,
 body {
   margin: 0;
@@ -416,11 +420,6 @@ select {
   min-height: 1.4em;
   color: var(--fui-text-muted);
   font-size: 12px;
-}
-.room-wait {
-  color: var(--fui-text-muted);
-  font-size: 12px;
-  align-self: center;
 }
 .toggle-field {
   display: grid;
@@ -1439,45 +1438,6 @@ select {
 .supply-orbit {
   pointer-events: none;
 }
-.match-result:not([hidden]) {
-  position: absolute;
-  z-index: 8;
-  top: 65px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(360px, calc(100vw - 32px));
-  padding: 20px;
-  border: 1px solid #63cfff;
-  border-radius: 8px;
-  background: #091523ed;
-  box-shadow: 0 10px 40px #0009;
-  text-align: center;
-  max-height: calc(100dvh - 240px);
-  overflow-y: auto;
-}
-.match-result strong {
-  color: #8ce5ff;
-  font-size: 22px;
-}
-.match-result p {
-  margin: 12px 0;
-}
-.match-result .button-row {
-  justify-content: center;
-  margin-top: 14px;
-}
-/* The end-of-match report opens the result card into a wide panel. */
-.match-result.expanded:not([hidden]) {
-  width: min(760px, calc(100vw - 32px));
-  max-height: calc(100dvh - 96px);
-  text-align: left;
-}
-.match-result.expanded > strong,
-.match-result.expanded > p,
-.match-result.expanded > small {
-  display: block;
-  text-align: center;
-}
 .match-report h3 {
   margin: 18px 0 8px;
   color: #8ce5ff;
@@ -1643,7 +1603,7 @@ select {
   align-items: baseline;
   gap: 4px 8px;
 }
-.match-result .report-tech strong {
+.report-tech strong {
   min-width: 72px;
   color: #e6f4ff;
   font-size: 13px;
@@ -1657,23 +1617,6 @@ select {
   width: 44px;
   color: #7d97ad;
   font-variant-numeric: tabular-nums;
-}
-@media (max-height: 450px) {
-  .match-result:not([hidden]) {
-    top: 48px;
-    padding: 8px;
-    max-height: calc(100dvh - 170px);
-  }
-  .match-result strong {
-    font-size: 15px;
-    margin-right: 12px;
-  }
-  .match-result p {
-    display: none;
-  }
-  .match-result .button-row {
-    margin-top: 8px;
-  }
 }
 .particle-heavy .moving-glyph image {
   width: 22px;
@@ -1903,6 +1846,9 @@ select {
   }
   .header-subtitle {
     display: none;
+  }
+  :root {
+    --fui-page-top: calc(72px + env(safe-area-inset-top));
   }
   .debug-badge {
     margin-left: auto;
@@ -2354,17 +2300,4 @@ select {
 }
 .spore-stain {
   fill: #3f7a2a;
-}
-
-/* The AI openings, revealed when a match ends. */
-.match-result .result-openings {
-  margin: 6px 0 0;
-  font-size: 13px;
-}
-.result-openings span {
-  white-space: nowrap;
-}
-.match-result .result-openings strong {
-  color: var(--team);
-  font-size: 13px;
 }

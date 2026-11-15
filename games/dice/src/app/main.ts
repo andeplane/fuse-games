@@ -1,12 +1,18 @@
 import { createTopBar } from "fuse-ui";
+import { playtestInputBlocked } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  observeConfirmedPlay,
+  startGameAnalytics,
+  createPlayMetrics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./dice.css";
 import QRCode from "qrcode";
 import {
@@ -27,11 +33,18 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createResultsScreen,
   createRoster,
+  createSharedTvOption,
   createRoundControls,
   el,
 } from "fuse-ui";
-import { DEFAULT_SETTINGS, diceGame, seatName } from "../game/index.js";
+import {
+  DEFAULT_SETTINGS,
+  diceGame,
+  seatName,
+  type DiceSettings,
+} from "../game/index.js";
 import {
   createRoundControlGuide,
   presentTable,
@@ -39,6 +52,7 @@ import {
   type Viewer,
 } from "./presenter.js";
 import { dueReports, sendReport } from "./reports.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { DiceRuntime, type DiceCallbacks } from "./runtime.js";
 import {
   NOT_OPEN,
@@ -105,13 +119,6 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 }
 
 function landing(): void {
-  const shared = el("label", "", "dice-shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   const card = createLandingCard({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -138,8 +145,7 @@ function landing(): void {
       location.href = endpoints.appUrl(`?room=${code}`);
     },
   });
-  card.create.after(shared);
-  const back = el("a", "← FUSE RIDERS", "dice-back");
+  const back = el("a", "All games", "dice-back");
   back.href = import.meta.env.BASE_URL;
   app.replaceChildren(header([back]), card.element);
 }
@@ -194,8 +200,18 @@ function room(solo: boolean): void {
   };
 
   // ---- the page ----
-  const status = createNotice({ className: "dice-status" }),
+  // The room's line is at the room's foot; during a match the same words are in the bar. `say` writes both, and
+  // once the room is over nothing later replaces that.
+  const status = createNotice({ className: "dice-room-status" }),
+    live = createNotice({ className: "dice-status" }),
     toast = createNotice({ holdMs: 2200, className: "dice-toast" });
+  let over = false;
+  const say = (text: string, tone: "info" | "error", last = false) => {
+    if (over) return;
+    over = last;
+    status.show(text, tone);
+    live.show(text, tone);
+  };
   const menu = createGameMenu({
     controls: CONTROLS,
     touchControls: TOUCH_CONTROLS,
@@ -217,16 +233,33 @@ function room(solo: boolean): void {
     goal: GOAL,
   });
   const showRoundControls = createRoundControlGuide();
-  const codeChip = el("strong", solo ? "SOLO" : code, "dice-code");
-  const top = header([codeChip, status.element, menu.element]);
+  const top = header([live.element, menu.element]);
 
   // Lobby: invitation, roster with bot controls, name entry, start.
   const lobby = el("section", "", "dice-lobby"),
     roster = createRoster({ emptyText: "Nobody has joined yet" }),
     addBot = button("+ ADD BOT", "dice-add-bot"),
     start = button("START MATCH", "fui-button-primary dice-start"),
-    lobbyNote = el("p", "", "fui-lobby-note"),
-    tvLink = button("OPEN TV SCREEN", "dice-tv");
+    lobbyNote = el("p", "", "fui-lobby-note");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates, once the room has taken it.
+  const sharedTv = createSharedTvOption({
+    className: "dice-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({
+        type: "settings",
+        settings: { ...roomSettings, display },
+      });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        endpoints.appUrl(`?room=${code}&display=1`),
+        "_blank",
+        "noopener",
+      ),
+  });
   const link = endpoints.appUrl(`?room=${code}`);
   if (!solo) {
     const invite = createInviteCard({
@@ -250,14 +283,7 @@ function room(solo: boolean): void {
       });
     },
   });
-  const lobbyActions = el("div", "", "dice-lobby-actions");
-  lobbyActions.append(addBot, start);
-  lobby.append(
-    el("h2", "PLAYERS", "fui-lobby-title"),
-    roster.element,
-    lobbyNote,
-    lobbyActions,
-  );
+  lobby.append(roster.element);
   addBot.onclick = () =>
     runtime.command({
       type: "bot",
@@ -265,8 +291,6 @@ function room(solo: boolean): void {
       slot: requestedRoomSlot(addBot),
     });
   start.onclick = () => runtime.command({ type: "action", action: "start" });
-  tvLink.onclick = () =>
-    window.open(endpoints.appUrl(`?room=${code}&display=1`), "_blank");
 
   // Table: scores, the die, the turn total, the timer and the buttons.
   const table = el("section", "", "dice-table"),
@@ -318,25 +342,30 @@ function room(solo: boolean): void {
   );
   const cards = new Map<string, Record<string, HTMLElement>>();
 
-  // The result of a match.
-  const result = el("section", "", "dice-result"),
-    resultTitle = el("h2", "", "dice-result-title"),
-    resultLines = el("ol", "", "dice-result-lines"),
-    rematch = button("REMATCH", "fui-button-primary"),
-    toLobby = button("LOBBY"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "dice-lobby-actions");
-  resultActions.append(toLobby, rematch);
-  result.append(resultTitle, resultLines, resultWaiting, resultActions);
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
+  // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = endpoints.appUrl();
+    },
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "rematch" ? "rematch" : "lobby",
+      }),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
 
   const main = el("main", "", "dice-room");
   main.tabIndex = -1;
-  main.append(nameEntry.form, lobby, table, result);
+  main.append(nameEntry.form, lobby, table, results.element);
   app.replaceChildren(top, main);
+  /** This device's own seat in the lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
@@ -346,14 +375,27 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // Seated already: any open seat is a move.
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+    },
     addAI: addBot,
-    actions: [lobbyNote, tvLink, start],
+    friends: social.friends,
+    settings: [el("p", GOAL)],
+    actions: [lobbyNote],
+    actionsInHeader: true,
+    status: status.element,
+    ...(solo
+      ? { compact: true, heading: "Solo match" }
+      : { heading: "Room", extras: [sharedTv.element] }),
   });
   table.hidden = true;
   nameEntry.form.hidden = true;
 
-  const render = (model: TableModel) => {
+  const render = (model: TableModel, managerId: string) => {
     main.dataset.layout = model.layout;
+    main.dataset.screen = model.screen;
     lobby.hidden = model.screen !== "lobby";
     table.hidden = model.screen !== "table";
     nameEntry.form.hidden = !model.askName;
@@ -361,6 +403,7 @@ function room(solo: boolean): void {
     roster.update(
       model.lobby.members.map((member) => ({
         ...member,
+        host: member.id === managerId,
         color: COLORS[(member.slot ?? 0) % COLORS.length]!,
       })),
     );
@@ -381,9 +424,10 @@ function room(solo: boolean): void {
     start.disabled = !model.lobby.canStart;
     lobbyNote.textContent = model.lobby.note;
     lobbyNote.hidden = !model.lobby.note;
-    const offerTv = viewer.shared && viewer.host && !display && !solo;
-    if (offerTv && !tvLink.isConnected) lobbyActions.prepend(tvLink);
-    tvLink.hidden = !offerTv;
+    sharedTv.update(
+      viewer.shared,
+      viewer.host && !display && !solo && model.screen === "lobby",
+    );
     // Table.
     roundLine.textContent = model.round;
     headline.textContent = model.headline;
@@ -434,19 +478,36 @@ function room(solo: boolean): void {
     rollButton.disabled = !model.controls.roll;
     holdButton.disabled = !model.controls.hold;
     // Result.
-    result.hidden = !model.result;
-    if (model.result) {
-      resultTitle.textContent = model.result.title;
-      const lines = model.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...model.result.lines.map((line) => el("li", line)),
+    const result = model.result;
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: (slot) => COLORS[slot % COLORS.length]!,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !model.result.host;
-      resultWaiting.textContent = model.result.waiting;
-      resultWaiting.hidden = !model.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 
@@ -459,18 +520,30 @@ function room(solo: boolean): void {
     joinSent = false;
   const callbacks: DiceCallbacks = {
     state(frame, settings) {
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.phase === "running",
-        ended: frame.phase === "over",
-        round: frame.round,
-        playerCount: frame.players.length,
-        botCount: frame.players.filter((seat) => seat.bot).length,
-        seated: frame.players.some((seat) => seat.id === viewer.me),
-        mode: solo ? "solo" : settings.display ? "shared" : "online",
-      });
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (frame) => ({
+          matchId: frame.matchId,
+          roundActive: frame.phase === "running",
+          roundEnded: frame.phase === "between" || frame.phase === "over",
+          active: frame.phase === "running",
+          ended: frame.phase === "over",
+          round: frame.round,
+          playerCount: frame.players.length,
+          botCount: frame.players.filter((seat) => seat.bot).length,
+          seated: frame.players.some((seat) => seat.id === viewer.me),
+          mode: solo ? "solo" : settings.display ? "shared" : "online",
+        }),
+      );
       viewer.shared = settings.display;
+      roomSettings = settings;
       const model = presentTable(frame, viewer);
+      ownSeat =
+        frame.phase === "lobby"
+          ? frame.players.find((seat) => seat.id === viewer.me)
+          : undefined;
       const state = runtime.roomState();
       const touch =
         viewer.shared || window.matchMedia("(pointer: coarse)").matches;
@@ -495,7 +568,8 @@ function room(solo: boolean): void {
       lastDie = model.die?.key ?? "";
       // A page that loads into a room with a name remembered from before (a reload frees a lobby seat) joins under it
       // once; a name typed on this page joins only through JOIN.
-      if (model.askName && remembered && !joinSent && !viewer.host) {
+      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
+      if (model.askName && remembered && !joinSent) {
         joinSent = true;
         runtime.command({
           type: "join",
@@ -504,7 +578,7 @@ function room(solo: boolean): void {
         });
       }
       if (model.seated) joinSent = false;
-      render(model);
+      render(model, frame.managerId);
       if (session.kind === "room" && role !== "display" && state)
         for (const report of dueReports(
           state,
@@ -528,20 +602,23 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error", true);
       // A service that does not host this game closes the socket the same way: its game routes say which it was.
       void fetch(endpoints.apiUrl(`/api/games/${GAME}/leaderboard`))
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           const text = roomFailure(String(body.error ?? ""));
-          if (text === NOT_OPEN) status.show(text, "error");
+          if (text === NOT_OPEN) {
+            status.show(text, "error");
+            live.show(text, "error");
+          }
         })
         .catch(() => {
           /* offline: "Room ended" stands */
@@ -550,9 +627,11 @@ function room(solo: boolean): void {
   };
   const shared =
     !solo && role === "host" && store.getItem(names.shared) === "1";
+  /** The room's settings as the last frame had them: the Shared TV tick changes one of them and keeps the rest. */
+  let roomSettings: DiceSettings = { ...DEFAULT_SETTINGS, display: shared };
   const runtime = new DiceRuntime(
     code,
-    { ...DEFAULT_SETTINGS, display: shared },
+    roomSettings,
     callbacks,
     session.kind === "room"
       ? {
@@ -580,6 +659,11 @@ function room(solo: boolean): void {
     reload: () => location.reload(),
   });
   document.addEventListener("keydown", (event) => {
+    if (
+      playtestInputBlocked(document) ||
+      document.querySelector("dialog[open]")
+    )
+      return;
     // A focused control answers its own keys: Enter or Space on ROLL must not also HOLD, and Space must still press
     // START or REMATCH.
     if (
