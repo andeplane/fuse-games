@@ -38,6 +38,7 @@ import {
   createNameEntry,
   createNotice,
   createRoster,
+  createSharedTvOption,
   el,
 } from "fuse-ui";
 import { DEFAULT_SETTINGS, fuseDriversGame, seatName } from "../game/index.js";
@@ -90,7 +91,7 @@ const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
 
-function header(): HTMLElement {
+function header(extra: HTMLElement[] = []): HTMLElement {
   const bar = el("header", "", "fd-top");
   const brand = el("a", "FUSE DRIVERS", "fd-brand");
   (brand as HTMLAnchorElement).href = import.meta.env.BASE_URL;
@@ -103,16 +104,12 @@ function header(): HTMLElement {
     }).element,
     brand,
     social.element(),
+    ...extra,
   );
   return createTopBar({ element: bar, gameId: GAME });
 }
 
 function landing(): void {
-  const shared = document.createElement("input");
-  shared.type = "checkbox";
-  shared.checked = store.getItem(names.shared) === "1";
-  const choice = el("label", "", "fd-shared-choice");
-  choice.append(shared, el("span", "Shared TV + phone controllers"));
   const card = createLandingCard({
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
@@ -127,7 +124,6 @@ function landing(): void {
           );
         },
       );
-      store.setItem(names.shared, shared.checked ? "1" : "0");
       store.setItem(names.host(room.code), room.token);
       location.href = endpoints.appUrl(`?room=${room.code}`);
     },
@@ -139,7 +135,6 @@ function landing(): void {
       location.href = endpoints.appUrl(`?room=${code}`);
     },
   });
-  card.create.before(choice);
   card.menu.help.append(
     el(
       "p",
@@ -210,7 +205,23 @@ function room(solo: boolean): void {
     shared: false,
   };
 
-  const status = createNotice({ className: "fd-status" });
+  // The room's state is one line: at the lobby's foot while the room waits, beside the menu while a race is on.
+  // What went wrong is said apart from it, above the room, so a failure is never a quiet line at the foot.
+  const status = createNotice({ className: "fd-status" }),
+    live = createNotice({ className: "fd-live" }),
+    problem = createNotice({ className: "fd-alert" });
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
+  const lobbyNote = el("p", "", "fui-lobby-note");
   const roster = createRoster({ emptyText: "Nobody has joined yet" });
   const start = button("START RACE", "fui-button-primary");
   const addAI = button("Add AI");
@@ -242,13 +253,21 @@ function room(solo: boolean): void {
       }).element,
     );
   lobby.append(roster.element, start);
-  if (!solo) {
-    const tv = el("a", "OPEN TV DISPLAY", "fui-button");
-    (tv as HTMLAnchorElement).href = endpoints.appUrl(
-      `?room=${code}&display=1`,
-    );
-    lobby.append(tv);
-  }
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates.
+  const sharedTv = createSharedTvOption({
+    className: "fd-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({
+        type: "settings",
+        settings: { display, track: track.value },
+      });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(endpoints.appUrl(`?room=${code}&display=1`), "_blank"),
+  });
 
   const nameEntry = createNameEntry({
     normalize: (raw) => seatName(raw) ?? "",
@@ -318,8 +337,10 @@ function room(solo: boolean): void {
   race.hidden = true;
   results.hidden = true;
   start.hidden = true;
-  main.append(nameEntry.form, lobby, race, results);
-  app.replaceChildren(header(), status.element, main);
+  main.append(problem.element, nameEntry.form, lobby, race, results);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a race is on.
+  app.replaceChildren(header([live.element]), main);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
@@ -336,9 +357,16 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // ADD FRIEND on a driver's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     addAI,
     settings: [track],
-    actions: [...lobby.querySelectorAll<HTMLAnchorElement>("a"), start],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the drivers scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo ? { compact: true, heading: "Solo race" } : { heading: "Room" }),
   });
 
   const render = (model: TableModel) => {
@@ -355,7 +383,14 @@ function room(solo: boolean): void {
     if (track.value !== model.lobby.track) track.value = model.lobby.track;
     start.hidden = !model.lobby.showStart;
     start.disabled = !model.lobby.canStart;
-    if (model.lobby.note) status.show(model.lobby.note, "info");
+    if (lobbyNote.textContent !== model.lobby.note)
+      lobbyNote.textContent = model.lobby.note;
+    lobbyNote.hidden = !model.lobby.note;
+    main.dataset.screen = model.screen;
+    sharedTv.update(
+      viewer.shared,
+      viewer.host && !display && !solo && model.screen === "lobby",
+    );
     if (model.race)
       hud.textContent = `LAP ${String(model.race.lap)}/${String(model.race.laps)}   POS ${String(model.race.place)}/${String(model.race.drivers.length)}`;
     if (model.results)
@@ -399,14 +434,14 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
     },
   };
 
@@ -495,7 +530,7 @@ function room(solo: boolean): void {
         onError: (error: unknown) => {
           // The race keeps running without a picture; say so rather than leaving a black rectangle.
           console.error("arena", error);
-          status.show("The arena could not start", "error");
+          say("The arena could not start", "error");
         },
       });
     if (!display)

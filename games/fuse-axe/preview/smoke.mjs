@@ -457,7 +457,7 @@ try {
   await lead.waitForURL(/room=[A-Z0-9]+/);
   const shared = new URL(lead.url()).searchParams.get("room");
   await enter(lead, "Host");
-  await lead.locator(".fa-share input").check();
+  await lead.locator(".fa-tv-option input").check();
   await lead.getByRole("button", { name: "OPEN TV SCREEN" }).waitFor();
   assert.equal(
     await lead.evaluate(() => localStorage.getItem("fuse-axe-shared-screen")),

@@ -47,6 +47,7 @@ import {
   createRoomLayout,
   createRoster,
   createRoundControls,
+  createSharedTvOption,
   createSubPage,
   el,
 } from "fuse-ui";
@@ -274,7 +275,11 @@ function room(solo: boolean): void {
   const controls = new HeldControls((bits) => runtime.input(bits));
 
   // ---- the page ----
+  // The room's state is one line: at the lobby's foot while the room waits, beside the menu while a run is on.
+  // What went wrong is said apart from it, above the room, so a failure is never a quiet line at the foot.
   const status = createNotice({ className: "fa-status" }),
+    live = createNotice({ className: "fa-live" }),
+    problem = createNotice({ className: "fa-alert" }),
     tvInvite = el("div", "", "fa-tv-invite"),
     tvQr = el("img", "", "fa-tv-qr");
   tvQr.alt = `QR code to join room ${code}`;
@@ -287,6 +292,17 @@ function room(solo: boolean): void {
       // Without a code the header says nothing of it; the room's code beside it is still there to type.
       () => tvInvite.remove(),
     );
+  const say = (text: string, tone: "info" | "error") => {
+    if (tone === "error") {
+      status.clear();
+      live.clear();
+      problem.show(text, "error");
+    } else {
+      problem.clear();
+      status.show(text, "info");
+      live.show(text, "info");
+    }
+  };
   // The host can take the room back to the lobby, and its hero picker, from a run.
   const menu = createGameMenu({
     controls: AXE_CONTROLS,
@@ -324,12 +340,9 @@ function room(solo: boolean): void {
       capture: true,
       passive: true,
     });
-  const top = header([
-    el("strong", code, "fa-code"),
-    status.element,
-    tvInvite,
-    menu.element,
-  ]);
+  // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
+  // state only while a run is on.
+  const top = header([live.element, tvInvite, menu.element]);
 
   createTopBar({
     element: top,
@@ -380,30 +393,22 @@ function room(solo: boolean): void {
         qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 360 }),
       }).element,
     );
-  // The host's shared screen: the game on a TV (this room's `?display=1` page), every seat's phone its controller.
-  // This browser offers its last choice to the next room it creates.
-  const share = el("label", "", "fa-share"),
-    shareBox = el("input"),
-    tvLink = button("OPEN TV SCREEN", "fa-tv");
-  shareBox.type = "checkbox";
-  share.append(
-    shareBox,
-    el("span", "SHARED SCREEN"),
-    el("small", "The game on a TV, phones as controllers"),
-  );
-  shareBox.onchange = () => {
-    const wanted = shareBox.checked;
-    // The choice is kept only once the room has taken it; a room that did not (this device is not running it right
-    // now) goes on as it was, and so does the box.
-    if (runtime.command({ type: "settings", settings: { display: wanted } }))
-      store.setItem(names.shared, wanted ? "1" : "0");
-    else shareBox.checked = shownShared ?? false;
-  };
-  tvLink.onclick = () =>
-    window.open(
-      withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
-      "_blank",
-    );
+  // Shared TV is the room's choice, made in the room: the game on a TV (this room's `?display=1` page), every
+  // seat's phone its controller. The choice is kept only once the room has taken it, and this browser offers it to
+  // the next room it creates.
+  const sharedTv = createSharedTvOption({
+    className: "fa-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({ type: "settings", settings: { display } });
+      if (sent) store.setItem(names.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
+        "_blank",
+      ),
+  });
   // The host seats bot companions (solo too), each playing its seat's hero, and removes them before setting out.
   addBot.onclick = () =>
     runtime.command({
@@ -416,15 +421,7 @@ function room(solo: boolean): void {
     roster.element,
     addBot,
   );
-  lobbySide.append(
-    picker.element,
-    blurb,
-    share,
-    tvLink,
-    lobbyNote,
-    start,
-    keyHelp(),
-  );
+  lobbySide.append(picker.element, blurb, lobbyNote, start, keyHelp());
   lobby.append(lobbyMain, lobbySide);
   start.onclick = () => runtime.command({ type: "action", action: "start" });
 
@@ -542,7 +539,15 @@ function room(solo: boolean): void {
   });
   const main = el("main", "", "fa-room");
   main.tabIndex = -1;
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  main.append(
+    problem.element,
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+  );
   app.replaceChildren(top, main, roundControls.element);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
@@ -560,9 +565,16 @@ function room(solo: boolean): void {
     roster,
     capacity: 5,
     join: nameEntry.form,
+    // ADD FRIEND on a hero's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     addAI: addBot,
-    settings: [picker.element, blurb, share],
-    actions: [lobbyNote, tvLink, start],
+    settings: [picker.element, blurb],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the heroes scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status: status.element,
+    ...(solo ? { compact: true, heading: "Solo run" } : { heading: "Room" }),
   });
   for (const part of [
     closed,
@@ -582,7 +594,8 @@ function room(solo: boolean): void {
     letGoPads();
     gamepads.letGo();
   };
-  // A phone in play folds the header behind a MENU button, and shows the pads' hints as each stage begins.
+  // A phone in play shows the pads' hints as each stage begins. The game's own menu stays where the shared bar put
+  // it, in the bar's menu, on a phone as on a desktop: moved out, it lay over the bar's buttons and the room's Back.
   const phone = createPhoneLayout({
     root: app,
     clearControls: letGo,
@@ -594,8 +607,6 @@ function room(solo: boolean): void {
   const layOut = (resized: boolean) => {
     if (!model) return;
     document.body.classList.toggle("fa-phone", model.phone);
-    const menuHome = model.phone ? app : top;
-    if (menu.element.parentElement !== menuHome) menuHome.append(menu.element);
     phone.update(
       { active: model.phone, portrait: portrait.matches },
       phase,
@@ -604,8 +615,7 @@ function room(solo: boolean): void {
     );
   };
   window.addEventListener("resize", () => layOut(true));
-  let over = false,
-    shownShared: boolean | undefined;
+  let over = false;
   let model: Model | undefined;
   // The log tick of the newest frame, and the hero this device has picked that the seat has not yet answered.
   let tick = 0;
@@ -806,14 +816,8 @@ function room(solo: boolean): void {
       setText(line, next.note);
       line.hidden = !next.note;
     }
-    // The shared screen: the host's switch follows the room (only when the room changes it, so a click is not undone
-    // by a frame that has not folded it yet), the TV link, and the TV's QR code.
-    share.hidden = !next.canShare;
-    if (shownShared !== next.shared) {
-      shownShared = next.shared;
-      shareBox.checked = next.shared;
-    }
-    tvLink.hidden = !next.showTv;
+    // The shared screen: the host's choice follows the room, and the TV shows its QR code.
+    sharedTv.update(next.shared, next.canShare);
     tvInvite.hidden = !next.invite;
     controller.hidden = next.screen !== "controller";
     if (next.controller) {
@@ -919,17 +923,17 @@ function room(solo: boolean): void {
     },
     status(text) {
       const shown = roomFailure(text);
-      status.show(shown, shown === text ? "info" : "error");
+      say(shown, shown === text ? "info" : "error");
     },
     ready(id, host) {
       viewer.me = id;
       viewer.host = host;
     },
     kicked() {
-      status.show("The host removed you from the room", "error");
+      say("The host removed you from the room", "error");
     },
     ended() {
-      status.show("Room ended", "error");
+      say("Room ended", "error");
       over = true;
       audio.stop();
       controls.close();
@@ -951,7 +955,7 @@ function room(solo: boolean): void {
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           if (roomFailure(String(body.error ?? "")) === NOT_OPEN)
-            status.show(NOT_OPEN, "error");
+            say(NOT_OPEN, "error");
         })
         .catch(() => {
           /* offline: "Room ended" stands */

@@ -41,8 +41,8 @@ it, Down + Jump climbs off and Magic climbs off to charge or cast; a hard blow t
 
 On a touch screen the pads (`src/app/pad.ts`) sit over the game's corners while your hero fights; a thumb slides
 round the d-pad for the diagonals, and a double tap of left or right (a second tap, or a slide back through the
-centre and out again) is the same press, release, press as the keys. A **shared screen** is the host's switch in the
-lobby: **OPEN TV SCREEN** opens the room's `?room=CODE&display=1` page, which shows the game as large as it scales,
+centre and out again) is the same press, release, press as the keys. **Shared TV** is the host's choice in the
+room, under the invitation: **OPEN TV SCREEN** opens the room's `?room=CODE&display=1` page, which shows the game as large as it scales,
 with the room's QR code in its header; everyone joins on a phone, picks a hero in the lobby, and once the run starts
 the phone shows only its controller, in its seat's colour; the host's MENU on it still offers LOBBY. A phone in play
 folds the header behind a **MENU** button (between the pads when held sideways, in the top corner when upright, where
