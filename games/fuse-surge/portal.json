@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-surge.jpg",
   "tagline": "Jump it, duck it, stay on the deck",
   "mark": "FS",
-  "accent": "#ffe46b"
+  "accent": "#ffe46b",
+  "screenshots": [
+    "gallery/fuse-surge.jpg",
+    "gallery/fuse-surge-menu.jpg",
+    "gallery/fuse-surge-controls.jpg"
+  ]
 }
