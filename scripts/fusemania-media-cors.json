@@ -2,7 +2,14 @@
   {
     "origin": ["*"],
     "method": ["GET", "HEAD"],
-    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Cache-Control"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges",
+      "ETag",
+      "Cache-Control"
+    ],
     "maxAgeSeconds": 3600
   }
 ]

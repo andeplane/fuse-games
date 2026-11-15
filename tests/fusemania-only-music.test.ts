@@ -14,10 +14,18 @@ test("Fusemania's covers are never radio music", () => {
   assert.ok(covers.length > 0, "no Fusemania covers found");
   const radio = new Set<string>(ALL_SONGS.map((song) => song.path));
   for (const song of fusemaniaOnly)
-    assert.ok(!radio.has(song.audio.startsWith("https:") ? song.audio : `/${song.audio}`), `${song.id} is in the radio`);
+    assert.ok(
+      !radio.has(
+        song.audio.startsWith("https:") ? song.audio : `/${song.audio}`,
+      ),
+      `${song.id} is in the radio`,
+    );
   for (const song of ALL_SONGS)
     assert.ok(
-      !fusemaniaOnly.some((cover) => song.path === cover.audio || song.path.endsWith(`/${cover.audio}`)),
+      !fusemaniaOnly.some(
+        (cover) =>
+          song.path === cover.audio || song.path.endsWith(`/${cover.audio}`),
+      ),
       `${song.path} is a Fusemania cover in the radio`,
     );
 });

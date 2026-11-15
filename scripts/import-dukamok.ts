@@ -74,29 +74,30 @@ for (const entry of readdirSync(source, { withFileTypes: true }).sort((a, b) =>
   if (!cover) throw new Error(`Missing cover: ${folder}`);
   const coverPath = `public/music/covers/${id}.jpg`;
   for (const quality of [3, 5, 7, 10, 15]) {
-  const converted = spawnSync(
-    "ffmpeg",
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-i",
-      join(dir, cover),
-      "-vf",
-      "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2",
-      "-frames:v",
-      "1",
-      "-q:v",
-      String(quality),
-      coverPath,
-    ],
-    { encoding: "utf8" },
-  );
-  if (converted.status !== 0) throw new Error(converted.stderr);
-  if (statSync(coverPath).size < 120_000) break;
+    const converted = spawnSync(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        join(dir, cover),
+        "-vf",
+        "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2",
+        "-frames:v",
+        "1",
+        "-q:v",
+        String(quality),
+        coverPath,
+      ],
+      { encoding: "utf8" },
+    );
+    if (converted.status !== 0) throw new Error(converted.stderr);
+    if (statSync(coverPath).size < 120_000) break;
   }
-  if (statSync(coverPath).size >= 120_000) throw new Error(`${id}: cover exceeds the carousel's size limit`);
+  if (statSync(coverPath).size >= 120_000)
+    throw new Error(`${id}: cover exceeds the carousel's size limit`);
   songs.push({
     id,
     title: sim.title,

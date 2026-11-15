@@ -44,7 +44,10 @@ test("external song previews preserve HTTPS URLs under a deployment base", async
     const rig = createAudioRig("suspended");
     const audio = createGameAudio(rig.deps);
     const url = `https://storage.googleapis.com/media/song.${ext}`;
-    audio.setSongs([{ id: "external", title: "External", path: url }], "/games/");
+    audio.setSongs(
+      [{ id: "external", title: "External", path: url }],
+      "/games/",
+    );
     audio.startMusic();
     assert.equal(rig.elements.length, 0, "preview still waits for a gesture");
     audio.unlock();

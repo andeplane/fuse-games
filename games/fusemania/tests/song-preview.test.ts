@@ -9,7 +9,13 @@ test("DukAmok external songs are available to the carousel preview", () => {
   assert.match(song.audio, /^https:\/\/storage.googleapis.com\/.+\.ogg$/);
   assert.ok(previewSong(LIBRARY, "pixel-sax-parade"));
   assert.equal(previewSong(LIBRARY, "missing"), undefined);
-  for (const audio of ["blob:https://play.example/local", "data:audio/ogg;base64,AA=="]) {
-    assert.equal(previewSong({ song: () => ({ ...song, audio }) }, "local"), undefined);
+  for (const audio of [
+    "blob:https://play.example/local",
+    "data:audio/ogg;base64,AA==",
+  ]) {
+    assert.equal(
+      previewSong({ song: () => ({ ...song, audio }) }, "local"),
+      undefined,
+    );
   }
 });

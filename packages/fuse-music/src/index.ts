@@ -56,7 +56,9 @@ export function MusicPlayer(
       : (options.base ?? "/");
   const path = () => {
     const path = songs[index]!.path;
-    return /^https?:/.test(path) ? path : `${base.endsWith("/") ? base : `${base}/`}${path.replace(/^\//, "")}`;
+    return /^https?:/.test(path)
+      ? path
+      : `${base.endsWith("/") ? base : `${base}/`}${path.replace(/^\//, "")}`;
   };
   const pauseMedia = () => {
     attempt++;
