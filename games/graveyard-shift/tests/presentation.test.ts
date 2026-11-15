@@ -125,7 +125,7 @@ test("session routing fences tokens by game and displays get fresh identities", 
     "invalid",
   );
   const first = sessionFor(
-    "?room=ab42",
+    "?room=ab42aa",
     s,
     "graveyard-shift",
     valid,

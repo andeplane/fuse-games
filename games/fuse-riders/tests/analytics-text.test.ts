@@ -51,17 +51,20 @@ test("an Authorization header loses the credential, not the word Bearer", () => 
 
 test("percent-encoded separators and zero-width characters do not hide a credential", () => {
   assert.equal(
-    sanitizeText("redirect=%2Findex.html%3Froom%3DAB42%26display%3D1 failed", {
-      secrets: ["AB42AA"],
-    }),
+    sanitizeText(
+      "redirect=%2Findex.html%3Froom%3DAB42AA%26display%3D1 failed",
+      {
+        secrets: ["AB42AA"],
+      },
+    ),
     "redirect=/index.html[query] failed",
   );
   assert.equal(
-    sanitizeText("joining room%3DAB42", { secrets: ["AB42AA"] }),
+    sanitizeText("joining room%3DAB42AA", { secrets: ["AB42AA"] }),
     "joining room=[redacted]",
   );
   assert.equal(
-    sanitizeText("bad %3DAB42 value", { secrets: ["AB42AA"] }),
+    sanitizeText("bad %3DAB42AA value", { secrets: ["AB42AA"] }),
     "bad =[redacted] value",
     "the D of %3D no longer shields the code from the whole-word match",
   );
@@ -69,7 +72,7 @@ test("percent-encoded separators and zero-width characters do not hide a credent
   const split = `${ROOM_TOKEN.slice(0, 20)}${zeroWidth}${ROOM_TOKEN.slice(20)}`;
   assert.equal(sanitizeText(`peer ${split} gone`), "peer [token] gone");
   assert.equal(
-    sanitizeText(`Room A${zeroWidth}B42 is full`, { secrets: ["AB42AA"] }),
+    sanitizeText(`Room A${zeroWidth}B42AA is full`, { secrets: ["AB42AA"] }),
     "Room [redacted] is full",
   );
   assert.equal(
@@ -139,7 +142,7 @@ test("query strings, credential pairs, tokens, UUIDs, JWTs and e-mail addresses 
 
 test("a known secret is removed wherever it appears, as a whole word and whatever its case", () => {
   assert.equal(
-    sanitizeText("Room ab42 is full (AB42AA)", { secrets: ["AB42AA"] }),
+    sanitizeText("Room ab42aa is full (AB42AA)", { secrets: ["AB42AA"] }),
     "Room [redacted] is full ([redacted])",
   );
   assert.equal(

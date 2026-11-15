@@ -96,14 +96,14 @@ test("CREATE ROOM says what went wrong and comes back; JOIN takes a code in any 
   const code = dom.$<HTMLInputElement>(".fl-join input", s.root);
   code.value = "??";
   s.byText("JOIN").click();
-  assert.equal(error.textContent, "Type the room's code, for example AB42AA");
-  code.value = " ab42 ";
+  assert.equal(error.textContent, "Type the room's code, for example AB42XY");
+  code.value = " ab42aa ";
   s.byText("JOIN").click();
   assert.deepEqual(s.joined, ["AB42AA"]);
 });
 
 test("REJOIN goes back to the last room this device was in", () => {
-  const { store } = memory({ [names.last]: "qx74" });
+  const { store } = memory({ [names.last]: "qx74aa" });
   assert.equal(lastRoom(store, names.last, validRoomCode), "QX74AA");
   const s = sheet(store);
   s.byText("REJOIN QX74AA").click();
@@ -189,7 +189,7 @@ test("Play separates local setup and joining without losing their controls, and 
   assert.equal(dialog.open, true);
   assert.equal(dialog.querySelector(".fl-setup"), null);
   const code = dom.$<HTMLInputElement>(".fl-join input", dialog);
-  code.value = " ab42 ";
+  code.value = " ab42aa ";
   press("JOIN");
   assert.deepEqual(online.joined, ["AB42AA"]);
   dialog.close();

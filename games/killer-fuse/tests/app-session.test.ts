@@ -59,7 +59,7 @@ test("the page's query decides landing, solo, creator, joiner or shared screen",
   assert.deepEqual(session("?solo=1&mute"), { kind: "solo" });
   assert.deepEqual(session("?room=no!"), { kind: "invalid", code: "NO!" });
   store.setItem(names.host("AB42AA"), "host-token");
-  assert.deepEqual(session("?room=ab42"), {
+  assert.deepEqual(session("?room=ab42aa"), {
     kind: "room",
     code: "AB42AA",
     role: "host",

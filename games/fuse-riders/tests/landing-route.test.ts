@@ -26,7 +26,7 @@ test("no room and no solo run is the landing page", () => {
 });
 
 test("an invited device is a joiner; the browser that created the room is its host", () => {
-  assert.deepEqual(onlineRoute("?room=ab42", noTokens), {
+  assert.deepEqual(onlineRoute("?room=ab42aa", noTokens), {
     kind: "room",
     code: "AB42AA",
     solo: false,

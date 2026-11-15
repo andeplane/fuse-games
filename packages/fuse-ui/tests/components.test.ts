@@ -100,7 +100,7 @@ test("join by code: normalises, validates, and Enter presses JOIN", () => {
   const joined: string[] = [],
     refused: string[] = [];
   const join = createJoinByCode({
-    valid: (code) => /^[A-Z]{2}\d{2}$/.test(code),
+    valid: (code) => /^[A-Z0-9]{6}$/.test(code),
     onJoin: (code) => joined.push(code),
     onInvalid: (message) => refused.push(message),
     document,
@@ -109,12 +109,12 @@ test("join by code: normalises, validates, and Enter presses JOIN", () => {
   assert.equal(join.input.placeholder, "Room code");
   assert.equal(join.input.getAttribute("aria-label"), "Room code");
   assert.equal(join.input.maxLength, 10);
-  join.input.value = "  ab42 ";
+  join.input.value = "  ab42aa ";
   join.button.click();
   assert.deepEqual(joined, ["AB42AA"]);
   join.input.value = "nope";
   join.input.dispatchEvent(event(window, "keydown", { key: "Enter" }));
-  assert.deepEqual(refused, ["Enter a room code, for example AB42AA"]);
+  assert.deepEqual(refused, ["Enter a room code, for example AB42XY"]);
   join.input.dispatchEvent(event(window, "keydown", { key: "a" }));
   assert.equal(refused.length, 1, "only Enter presses JOIN");
 });
@@ -163,9 +163,9 @@ test("landing card: title, CREATE, JOIN and SOLO fire their callbacks; failures 
   landing.join.button.click();
   assert.equal(
     landing.error.textContent,
-    "Enter a room code, for example AB42AA",
+    "Enter a room code, for example AB42XY",
   );
-  landing.join.input.value = "ab42";
+  landing.join.input.value = "ab42aa";
   landing.join.button.click();
   assert.equal(landing.error.textContent, "");
   landing.solo!.click();
@@ -204,7 +204,7 @@ test("invite card: QR, caption, code, link and COPY LINK with its reset", async 
     document,
   });
   await invite.ready;
-  assert.equal(invite.qr.getAttribute("src"), "data:image/png;base64,31");
+  assert.equal(invite.qr.getAttribute("src"), "data:image/png;base64,33");
   assert.equal(invite.qr.alt, "Scan to join this room");
   assert.deepEqual(
     [...invite.element.children].map((child) => child.className),

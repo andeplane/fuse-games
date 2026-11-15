@@ -537,6 +537,33 @@ export function parseAppState(serialized: string | null | undefined): AppState {
   if (!serialized) return DEFAULT_STATE;
   try {
     const parsed: unknown = JSON.parse(serialized);
+    // Old room codes cannot be used after the protocol change. Remove just those references, retaining the
+    // rest of the desktop; malformed unrelated data still takes the normal validation failure path.
+    if (isRecord(parsed) && Array.isArray(parsed.windows)) {
+      const migrate = (content: unknown): unknown => {
+        if (!isRecord(content)) return content;
+        const legacy = (value: unknown) =>
+          typeof value === "string" && /^[A-Z]{2}[0-9]{2}$/.test(value);
+        if (content.kind === "roomgame" && legacy(content.code))
+          return undefined;
+        if (content.kind === "fusegame" && legacy(content.room)) {
+          const { room: _room, ...rest } = content;
+          return rest;
+        }
+        if (content.kind === "dialup" && content.then !== undefined) {
+          const then = migrate(content.then);
+          if (then === undefined) {
+            const { then: _then, ...rest } = content;
+            return rest;
+          }
+          return { ...content, then };
+        }
+        return content;
+      };
+      parsed.windows = parsed.windows
+        .map(migrate)
+        .filter((window) => window !== undefined);
+    }
     return isAppState(parsed) ? parsed : DEFAULT_STATE;
   } catch {
     return DEFAULT_STATE;

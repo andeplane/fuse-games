@@ -69,13 +69,13 @@ export interface RoomHttpOptions {
 }
 
 /**
- * `/ice` and `/end` read the room for any caller, member or not, so each address has a budget of each: 12 at once and
+ * `/ice` and `/end` read the room for any caller, member or not, so each address has a budget of each: 14 at once and
  * 30 per hour thereafter, per instance. A page asks for ICE servers once per admission and ends a
  * room once, so a whole room of devices behind one address joining together is well inside it. A refused `/ice`
  * costs the page nothing: it falls back to the same STUN servers this service would have named. The two are counted
  * apart, so a venue's worth of pages asking for ICE servers cannot keep a creator from ending their room.
  */
-export const ROOM_LOOKUP_BURST = 12,
+export const ROOM_LOOKUP_BURST = 14,
   ROOM_LOOKUP_PER_SECOND = 30 / 3600;
 /** What `ws` reports for a socket that ended without a close frame. */
 const CLOSE_ABNORMAL = 1006;

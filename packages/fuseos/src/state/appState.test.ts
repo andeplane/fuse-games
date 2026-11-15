@@ -292,6 +292,45 @@ describe(appStateReducer.name, () => {
 });
 
 describe(parseAppState.name, () => {
+  it("preserves the desktop while removing obsolete room references", () => {
+    const base = { minimized: false, maximized: false };
+    const saved = {
+      version: 1,
+      assistantHidden: true,
+      windows: [
+        { ...base, id: "paint", kind: "paint" },
+        {
+          ...base,
+          id: "game",
+          kind: "fusegame",
+          gameId: "fuseball",
+          room: "AB42",
+        },
+        {
+          ...base,
+          id: "room",
+          kind: "roomgame",
+          gameId: "fuseball",
+          code: "AB42",
+        },
+        {
+          ...base,
+          id: "dial",
+          kind: "dialup",
+          then: { kind: "roomgame", gameId: "fuseball", code: "AB42" },
+        },
+      ],
+    };
+    expect(parseAppState(JSON.stringify(saved))).toEqual({
+      version: 1,
+      assistantHidden: true,
+      windows: [
+        saved.windows[0],
+        { ...base, id: "game", kind: "fusegame", gameId: "fuseball" },
+        { ...base, id: "dial", kind: "dialup" },
+      ],
+    });
+  });
   it("returns the default for missing, malformed or invalid input", () => {
     expect(parseAppState(undefined)).toBe(DEFAULT_STATE);
     expect(parseAppState(null)).toBe(DEFAULT_STATE);

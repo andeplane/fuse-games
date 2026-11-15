@@ -13,7 +13,7 @@ test("the query opens the landing, the local lobby, solo or a room, with one tok
     getItem: (key) => items.get(key) ?? null,
     setItem: (key, value) => void items.set(key, value),
   }));
-  const valid = (code: string) => /^\w{4}$/.test(code);
+  const valid = (code: string) => /^\w{6}$/.test(code);
   const at = (query: string) =>
     sessionFor(query, store, "g", valid, () => "new");
   const queries = ["?mute", "?local", "?seed=7", "?solo=1"];
@@ -25,7 +25,7 @@ test("the query opens the landing, the local lobby, solo or a room, with one tok
   const room = (code: string, token: string, role: string) => ({
     ...{ kind: "room", code, token, role },
   });
-  eq(at("?room=ab12&touch"), room("AB12AA", "new", "joiner"));
+  eq(at("?room=ab12aa&touch"), room("AB12AA", "new", "joiner"));
   equal(
     items.get(keys("g").peer("AB12AA")),
     "new",

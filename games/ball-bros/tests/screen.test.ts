@@ -163,7 +163,7 @@ test("room identities are game-scoped, reloadable and never included in invites"
   rememberRoom(memory, "AB42AA", "host-secret");
   rememberShared(memory, "AB42AA", true);
   assert.deepEqual(
-    session("?room=ab42", memory, () => "unused"),
+    session("?room=ab42aa", memory, () => "unused"),
     {
       kind: "room",
       code: "AB42AA",
@@ -250,7 +250,7 @@ test("room identities are game-scoped, reloadable and never included in invites"
   assert.ok(!root.textContent!.includes("new-secret"));
   card.solo!.click();
   assert.equal(navigated, "?solo=1");
-  card.join.input.value = " ab42 ";
+  card.join.input.value = " ab42aa ";
   card.join.button.click();
   assert.equal(navigated, "?room=AB42AA");
   card.join.input.value = "?";

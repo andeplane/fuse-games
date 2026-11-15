@@ -74,7 +74,7 @@ function fixture(
       calls.push(`openRoom:${code}`);
       return session;
     },
-    validCode: (code) => /^[A-Z0-9]{4}$/.test(code),
+    validCode: (code) => /^[A-Z0-9]{6}$/.test(code),
     roomLink: (code) => `https://fuse.test/fuse-craft/?room=${code}`,
     enterRoom: (code) => calls.push(`enterRoom:${code}`),
     leaveRoom: () => calls.push("leaveRoom"),
@@ -177,7 +177,7 @@ test("joining needs a valid code", () => {
   f.click('[data-action="join-room"]');
   assert.ok(f.root.querySelector(".error-card"));
   assert.ok(!f.calls.some((call) => call.startsWith("openRoom")));
-  f.change('[data-field="room-code"]', "ab12");
+  f.change('[data-field="room-code"]', "ab12aa");
   f.click('[data-action="join-room"]');
   assert.ok(f.calls.includes("enterRoom:AB12AA"));
   assert.ok(f.calls.includes("openRoom:AB12AA"));

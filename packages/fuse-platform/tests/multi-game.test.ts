@@ -420,6 +420,15 @@ test("match history, totals and rivalries are per game; a record without a gameI
   const { gameId, ...legacyRecord } = stored;
   assert.equal(gameId, LEGACY_GAME_ID);
   assert.deepEqual(parseMatchRecord(platform, legacyRecord), stored);
+  await f.database.transactMatch(LEGACY_GAME_ID, stored.id, (current) => ({
+    match: { ...current!, roomCode: "AB42" },
+    result: undefined,
+  }));
+  assert.equal(
+    (await f.store.game(legacy).history("alice", undefined)).matches[0]
+      ?.roomCode,
+    "AB42",
+  );
   const diceRecord = (
     await f.database.matchesFor("dice", "alice", undefined, 20)
   )[0]!;
@@ -682,6 +691,12 @@ test("a record written by the platform re-parses to itself", async () => {
   assert.equal(stored.gameId, "dice");
   assert.ok(stored.ratings);
   assert.deepEqual(parseMatchRecord(platform, structuredClone(stored)), stored);
+  const oldRecord = { ...stored, roomCode: "AB42" };
+  assert.deepEqual(parseMatchRecord(platform, oldRecord), oldRecord);
+  assert.equal(
+    parseMatchRecord(platform, { ...stored, roomCode: "A142" }),
+    undefined,
+  );
 });
 
 /** Drives an HttpExtension with a minimal request (a readable body) and response. */

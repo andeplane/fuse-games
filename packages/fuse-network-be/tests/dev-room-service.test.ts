@@ -147,7 +147,7 @@ interface Reply {
   body: string;
   type: string | undefined;
 }
-async function fixture() {
+async function fixture(maxGuests?: number) {
   const root = await mkdtemp(path.join(tmpdir(), "fuse-dev-room-")),
     dist = path.join(root, "dist");
   await mkdir(path.join(dist, "assets"), { recursive: true });
@@ -157,6 +157,7 @@ async function fixture() {
   await writeFile(path.join(dist, "dice", "index.html"), "<main>dice</main>");
   await writeFile(path.join(root, "secret.txt"), "outside the build");
   const service = createDevRoomService({
+    maxGuests,
     staticDirectory: dist,
     allowedOrigins: ["https://preview.example"],
   });
@@ -240,6 +241,41 @@ async function fixture() {
     },
   };
 }
+
+test("F-04: fourteen room members behind one address can fetch ICE together", async () => {
+  const f = await fixture(13);
+  try {
+    const { code, token } = await f.create();
+    const tokens = [
+      token,
+      ...Array.from({ length: 13 }, (_, i) =>
+        (i + 1).toString(16).padStart(64, "0"),
+      ),
+    ];
+    for (const member of tokens) await f.connect(code, member);
+    const responses = await Promise.all(
+      tokens.map((member) =>
+        f.call(`/api/rooms/${code}/ice`, {
+          authorization: `Bearer ${member}`,
+        }),
+      ),
+    );
+    assert.deepEqual(
+      responses.map((response) => response.status),
+      Array(14).fill(200),
+    );
+    assert.equal(
+      (
+        await f.call(`/api/rooms/${code}/ice`, {
+          authorization: `Bearer ${token}`,
+        })
+      ).status,
+      429,
+    );
+  } finally {
+    await f.close();
+  }
+});
 
 test("dev room service creates rooms and admits sockets only for same-origin loopback pages", async () => {
   const f = await fixture();
