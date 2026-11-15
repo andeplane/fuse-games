@@ -163,36 +163,40 @@ body.fl-page input {
   font: 800 0.8rem var(--fl-font);
   text-decoration: none;
 }
-.fl-code {
-  padding: 0.25rem 0.6rem;
-  color: #fff;
-  background: var(--fl-forest);
-  border-radius: 0.5rem;
-  font: 900 0.85rem var(--fl-font);
-  letter-spacing: 0.08em;
+/*
+ * An online match fills the screen like a match on this device: the app's bar is away (the town's own bar has MENU),
+ * and the room's line is a small pill under it, shown only while it has something to say.
+ */
+body:has(.fl-room[data-phase]:not([data-phase="lobby"])) .fl-top.fui-top-bar {
+  display: none !important;
 }
 .fl-status {
-  flex: 1 1 10rem;
-  min-width: 0;
-  min-height: 1.25rem;
+  position: fixed;
+  z-index: 45;
+  top: calc(max(0.5rem, env(safe-area-inset-top)) + 4.75rem);
+  left: 50%;
+  max-width: calc(100% - 2rem);
+  padding: 0.3rem 0.8rem;
   overflow: hidden;
+  color: var(--fl-ink);
+  background: var(--fl-glass);
+  border-radius: 999px;
+  box-shadow: var(--fl-shadow-soft);
   font-size: 0.8rem;
+  font-weight: 800;
   line-height: 1.25rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transform: translateX(-50%);
 }
-.fui-app .fl-status[hidden] {
-  display: block !important;
-  visibility: hidden;
+.fl-status[data-tone="error"] {
+  color: #8a2a17;
+  background: #fde7e1;
 }
-.fl-top .fl-leave {
-  margin-left: auto;
-}
-@media (max-width: 34rem) {
-  .fl-status {
-    order: 1;
-    flex-basis: 100%;
-  }
+.fl-status[hidden],
+.fl-status.in-lobby,
+.fl-status.quiet {
+  display: none;
 }
 .fl-error {
   color: var(--fl-coral);
@@ -231,11 +235,48 @@ body.fl-page input {
   width: min(32rem, 100%);
   margin: 0 auto;
 }
-.fl-lobby {
-  display: grid;
-  gap: var(--fui-space-3);
-  width: min(34rem, 100%);
-  margin: 0 auto;
+/*
+ * The room is the shared fuse-ui room, in its own colours: Fusetown's paper theme stops at the room's edge, so a
+ * room here reads like a room in every other game, its Settings and seat dialogs included.
+ */
+.fl-lobby.fui-room-layout {
+  --fui-text: #eefaff;
+  --fui-text-bright: #effcff;
+  --fui-text-muted: #b6cce3;
+  --fui-text-dim: #7c93b8;
+  --fui-panel: rgba(5, 14, 37, 0.93);
+  --fui-surface: linear-gradient(180deg, #142640, #081327);
+  --fui-button-fill: linear-gradient(180deg, #2b4b78, #1b3154);
+  --fui-cyan: #16e7ff;
+  --fui-cyan-deep: #00d9ff;
+  --fui-yellow: #ffe46b;
+  --fui-pink-soft: #ff72b3;
+  --fui-line: #365477;
+  --fui-border: 0.0625rem solid #365477;
+  --fui-font-pixel: "Press Start 2P", ui-monospace, monospace;
+}
+.fl-lobby .fui-roster-row.away {
+  opacity: 0.6;
+}
+/* Fusetown's own choices (goals, AI level, week length) inside the room's Settings, on its dark panel. */
+.fl-lobby .fl-menu-title {
+  color: var(--fui-text-bright);
+}
+.fl-lobby .fl-hint {
+  color: var(--fui-text-muted);
+}
+.fl-lobby .fl-segmented {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+body.fl-page .fl-lobby .fl-segment {
+  color: var(--fui-text-muted);
+}
+body.fl-page .fl-lobby .fl-segment.on {
+  color: #030919;
+  background: var(--fui-primary-fill, #18dbeb);
+  border-color: transparent;
+  box-shadow: none;
 }
 .fl-hint {
   margin: -0.35rem 0 0;
@@ -2027,10 +2068,6 @@ body.fl-page .fl-mode-tabs .fl-segment {
 .fl-online .fl-person {
   grid-template-columns: auto minmax(0, 1fr);
 }
-body.fl-page .fl-online-mode .fl-segment {
-  white-space: normal;
-  line-height: 1.2;
-}
 body.fl-page .fl-create-room {
   width: 100%;
 }
@@ -2076,126 +2113,24 @@ body.fl-page .fl-join .fl-rejoin {
 .fl-join-card[hidden] {
   display: none;
 }
-.fl-join-card .fui-name-entry {
+/* The face, the name and JOIN on one row, in the mid-match card and in the room's seat dialog alike. */
+.fl-join-card .fui-name-entry,
+body.fl-page .fl-lobby.fui-room-layout form.fui-name-entry {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--fui-space-2);
 }
-.fl-join-card .fui-name-hint {
+.fl-join-card .fui-name-hint,
+.fl-lobby .fui-name-entry .fui-name-hint {
   grid-column: 1 / -1;
 }
-body.fl-page .fl-join-card .fui-name-input {
+body.fl-page .fl-join-card .fui-name-input,
+body.fl-page .fl-lobby .fui-name-entry .fui-name-input {
+  width: 100%;
   min-width: 0;
   font-weight: 700;
 }
-.fl-lobby {
-  width: min(34rem, 100%);
-}
-.fl-lobby-body,
-.fl-lobby-side {
-  display: grid;
-  align-content: start;
-  gap: var(--fui-space-3);
-}
-.fl-invite {
-  display: grid;
-  justify-items: center;
-  gap: var(--fui-space-2);
-  padding: var(--fui-space-3);
-  background: #fff;
-  border: 1px solid var(--fl-line);
-  border-radius: 1rem;
-}
-.fl-invite-qr {
-  width: min(48vw, 11rem);
-  height: auto;
-  border-radius: 0.5rem;
-  image-rendering: pixelated;
-}
-.fl-invite-caption {
-  margin: 0;
-  color: var(--fl-ink-soft);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-}
-.fl-invite-code {
-  color: var(--fl-forest);
-  font-size: clamp(2rem, 9vw, 3rem);
-  font-weight: 900;
-  letter-spacing: 0.18em;
-  line-height: 1;
-}
-.fl-invite-link {
-  display: flex;
-  align-items: center;
-  gap: var(--fui-space-2);
-  max-width: 100%;
-}
-.fl-invite-url {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--fl-ink-soft);
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-body.fl-page .fl-invite-copy {
-  flex: none;
-  min-height: 2.25rem;
-  padding: 0 0.8rem;
-  font-size: 0.78rem;
-}
-body.fl-page .fl-invite-copy.copied {
-  color: #fff;
-  background: var(--fl-green);
-}
-.fl-roster {
-  display: grid;
-  gap: 0.4rem;
-}
-.fl-roster-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
-  background: #fff;
-  border: 1px solid var(--fl-line);
-  border-left: 0.35rem solid var(--player);
-  border-radius: 0.9rem;
-}
-.fl-roster-row.away {
-  opacity: 0.6;
-}
-.fl-roster-face {
-  display: grid;
-  overflow: hidden;
-  background: radial-gradient(circle at 40% 30%, #fff, #ffd98a);
-  border-radius: 50%;
-}
-.fl-roster-words {
-  display: grid;
-  min-width: 0;
-}
-.fl-roster-name {
-  overflow: hidden;
-  color: var(--fl-ink);
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.fl-roster-status {
-  color: var(--fl-ink-soft);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-.fl-roster-empty {
-  margin: 0;
-  color: var(--fl-ink-soft);
-}
-.fl-roster-empty[hidden],
 .fl-lobby .fl-field[hidden],
 .fl-lobby-note[hidden] {
   display: none;
@@ -2209,19 +2144,6 @@ body.fl-page .fl-invite-copy.copied {
   font-weight: 800;
   text-align: center;
 }
-/* A wide screen (or the TV): the invitation beside the players. */
-@media (min-width: 52rem) {
-  .fl-lobby {
-    display: grid;
-    grid-template-columns: minmax(15rem, 0.8fr) minmax(0, 1.2fr);
-    gap: var(--fui-space-4);
-    width: min(56rem, 100%);
-  }
-  .fl-lobby.tv .fl-invite-qr {
-    width: 15rem;
-  }
-}
-
 /* ---- In a room: the waiting line, and the shared screen's clock ---- */
 .fl-waiting {
   position: absolute;

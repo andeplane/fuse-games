@@ -56,6 +56,7 @@ import {
 import { present, type Viewer } from "./presenter.js";
 import { createOnlineSheet, nextFace, storedFace } from "./online-menu.js";
 import { createRoomLobby } from "./room-lobby.js";
+import { createPendingSettings } from "./pending-settings.js";
 import { dueReports, sendReport } from "./reports.js";
 import { FuseLaneRuntime, type FuseLaneCallbacks } from "./runtime.js";
 import { markToured, owesTour, tourSteps } from "./tour.js";
@@ -216,11 +217,10 @@ function menu(): void {
       onDiscard: () => LocalRuntime.forget(store),
       online: {
         sheet: createOnlineSheet({
-          art,
           store,
           keys: names,
           valid: validRoomCode,
-          async onCreate(mode) {
+          async onCreate() {
             const room = await createRoom(endpoints.apiUrl, fetch, GAME).catch(
               (error: unknown) => {
                 throw new Error(
@@ -231,7 +231,6 @@ function menu(): void {
               },
             );
             store.setItem(names.host(room.code), room.token);
-            if (mode === "shared") store.setItem(names.tvRoom(room.code), "1");
             location.href = endpoints.appUrl(`?room=${room.code}`);
           },
           onJoin: (code) => {
@@ -491,9 +490,8 @@ function room(): void {
     display = role === "display";
   if (!display) store.setItem(names.last, code);
   document.body.classList.toggle("fl-display", display);
-  // A shared-screen room's creator is the TV: it seats nobody and keeps START and REMATCH.
-  const sharedHost =
-    role === "host" && store.getItem(names.tvRoom(code)) === "1";
+  // Shared TV is ticked in the room. What the room last had is remembered for its host, so a reload alone keeps it.
+  let shared = role === "host" && store.getItem(names.tvRoom(code)) === "1";
   const viewer: Viewer = {
     me: "",
     host: false,
@@ -501,28 +499,51 @@ function room(): void {
     display,
     shared: false,
   };
-  let settings: FuseLaneSettings = { ...DEFAULT_SETTINGS };
+  let settings: FuseLaneSettings = { ...DEFAULT_SETTINGS, display: shared };
+  // A settings command carries every setting: a choice the room has not answered yet rides along with the next one.
+  const pending = createPendingSettings<FuseLaneSettings>(() =>
+    performance.now(),
+  );
+  const change = (patch: Partial<FuseLaneSettings>): boolean => {
+    const sent = runtime.command({
+      type: "settings",
+      settings: pending.with(settings, patch),
+    });
+    if (sent) pending.sent(patch);
+    return sent;
+  };
 
-  const status = createNotice({ className: "fl-status" }),
-    leave = button("LEAVE", "fl-leave");
-  leave.onclick = () => {
+  // The room's line is at the room's foot. A match fills the screen and the bar is away, so there the same words
+  // are a small line under the town's own bar, and only while they say something other than the plain connected
+  // line (a lagging player or a wait for one still shows). `say` writes both, and once the room is over nothing
+  // later replaces that.
+  const status = createNotice({ className: "fl-room-status" }),
+    live = createNotice({ className: "fl-status" });
+  let over = false;
+  const say = (words: string, tone: "info" | "error", last = false) => {
+    if (over) return;
+    over = last;
+    status.show(words, tone);
+    live.show(words, tone);
+    live.element.classList.toggle(
+      "quiet",
+      tone === "info" && words === fuseLaneGame.text.connected,
+    );
+  };
+  const leave = () => {
     runtime.stop();
     location.href = endpoints.appUrl();
   };
-  const top = header([el("strong", code, "fl-code"), status.element, leave]);
+  const top = header();
 
-  const tvLink = button("OPEN A TV SCREEN", "fl-tv-link");
-  tvLink.title =
-    "The town on another screen: a TV or a laptop everyone can see";
-  tvLink.onclick = () =>
-    window.open(endpoints.appUrl(`?room=${code}&display=1`), "_blank");
   const lobby = createRoomLobby({
     art,
     code,
     link: endpoints.appUrl(`?room=${code}`),
     qr: (value) => QRCode.toDataURL(value, { margin: 1, width: 360 }),
-    tv: sharedHost || display,
-    extra: [tvLink],
+    tv: display,
+    status: status.element,
+    friends: social.friends,
     actions: {
       playerName: () => social.playerName(undefined) ?? undefined,
       move: (name, slot) => runtime.command({ type: "join", name, slot }),
@@ -530,13 +551,15 @@ function room(): void {
       removeBot: (id) => runtime.command({ type: "bot", action: "remove", id }),
       start: () => runtime.command({ type: "action", action: "start" }),
       goal: (goal) => runtime.setGoals([goal, goal, goal, goal]),
-      level: (level) =>
-        runtime.command({ type: "settings", settings: { ...settings, level } }),
-      weekSeconds: (weekSeconds) =>
-        runtime.command({
-          type: "settings",
-          settings: { ...settings, weekSeconds },
-        }),
+      level: (level) => change({ level }),
+      weekSeconds: (weekSeconds) => change({ weekSeconds }),
+      shared: (display) => change({ display }),
+      openTv: () =>
+        window.open(
+          endpoints.appUrl(`?room=${code}&display=1`),
+          "_blank",
+          "noopener",
+        ),
     },
   });
 
@@ -584,7 +607,7 @@ function room(): void {
     controls: TOWN_CONTROLS,
     touchControls: TOWN_CONTROLS,
     goal: TOWN_GOAL,
-    onLeave: () => leave.click(),
+    onLeave: leave,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
     onOpenChange(open) {
       if (!open && main.dataset.phase === "running") {
@@ -601,7 +624,7 @@ function room(): void {
       controls: [gameMenu.element],
       again: () => runtime.command({ type: "action", action: "rematch" }),
       back: () => runtime.command({ type: "action", action: "lobby" }),
-      leave: () => leave.click(),
+      leave,
       friends: social.friends,
       tvNote: `Join on your phone: ${endpoints.appUrl(`?room=${code}`).replace(/^https?:\/\//, "")}`,
     },
@@ -612,7 +635,13 @@ function room(): void {
   connecting.setAttribute("role", "status");
   joinCard.hidden = lobby.element.hidden = screen.game.hidden = true;
   const main = el("main", "", "fl-room");
-  main.append(connecting, joinCard, lobby.element, ...screen.elements);
+  main.append(
+    connecting,
+    joinCard,
+    lobby.element,
+    ...screen.elements,
+    live.element,
+  );
   lobby.attachJoin(nameEntry.form);
   app.replaceChildren(top, main);
 
@@ -641,12 +670,20 @@ function room(): void {
         }),
       );
       settings = roomSettings;
+      pending.answered(roomSettings);
       viewer.shared = roomSettings.display;
+      // The room's creator remembers what the room has, not what it asked for: a tick the room never took, or one
+      // changed while this device was away, does not come back with a reload.
+      if (role === "host" && viewer.host && roomSettings.display !== shared) {
+        shared = roomSettings.display;
+        if (shared) store.setItem(names.tvRoom(code), "1");
+        else store.removeItem(names.tvRoom(code));
+      }
       const model = present(frame, viewer);
       gameMenu.update({
         canLobby: viewer.host && frame.phase !== "lobby",
         spectator: !model.seated,
-        display: viewer.display || sharedHost,
+        display: model.layout === "tv",
       });
       main.dataset.phase = frame.phase;
       main.dataset.week = String(frame.week);
@@ -657,8 +694,8 @@ function room(): void {
       screen.game.hidden = model.screen === "lobby";
       joinCard.hidden = !model.askName || model.screen === "lobby";
       nameEntry.form.hidden = !model.askName;
-      lobby.render(model.lobby, sharedHost);
-      tvLink.hidden = !(viewer.host && !viewer.shared && !display);
+      lobby.render(model.lobby, frame.managerId);
+      live.element.classList.toggle("in-lobby", model.screen === "lobby");
       if (model.askName && remembered && !joinSent && !viewer.host) {
         joinSent = true;
         join(remembered);
@@ -689,7 +726,7 @@ function room(): void {
     },
     status(message) {
       const shown = roomFailure(message);
-      status.show(shown, shown === message ? "info" : "error");
+      say(shown, shown === message ? "info" : "error");
       if (shown !== message) connecting.hidden = true;
     },
     ready(id, host) {
@@ -700,38 +737,37 @@ function room(): void {
       connecting.hidden = true;
       // A room that ended is not one to go back to.
       if (store.getItem(names.last) === code) store.removeItem(names.last);
-      status.show("Room ended", "error");
+      say("Room ended", "error", true);
       void fetch(endpoints.apiUrl(`/api/games/${GAME}/leaderboard`))
         .then(async (response) => {
           const body = (await response.json()) as { error?: unknown };
           const shown = roomFailure(String(body.error ?? ""));
-          if (shown === NOT_OPEN) status.show(shown, "error");
+          if (shown === NOT_OPEN) {
+            status.show(shown, "error");
+            live.show(shown, "error");
+            live.element.classList.remove("quiet");
+          }
         })
         .catch(() => {
           /* offline: "Room ended" stands */
         });
     },
   };
-  const runtime = new FuseLaneRuntime(
-    code,
-    { ...DEFAULT_SETTINGS, display: sharedHost },
-    callbacks,
-    {
-      transport: (events) =>
-        social.transport(
-          code,
-          session.token,
-          events,
-          (events) =>
-            new PeerTransport(code, session.token, events, {
-              apiUrl: endpoints.apiUrl,
-              gameId: GAME,
-              maxFastBytes: MAX_PACKET_BYTES,
-            }),
-        ),
-      displayOnly: display,
-    },
-  );
+  const runtime = new FuseLaneRuntime(code, settings, callbacks, {
+    transport: (events) =>
+      social.transport(
+        code,
+        session.token,
+        events,
+        (events) =>
+          new PeerTransport(code, session.token, events, {
+            apiUrl: endpoints.apiUrl,
+            gameId: GAME,
+            maxFastBytes: MAX_PACKET_BYTES,
+          }),
+      ),
+    displayOnly: display,
+  });
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
