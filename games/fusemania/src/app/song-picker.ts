@@ -384,7 +384,11 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
   });
   // The slider is for a finger or a mouse: the keys are the carousel's, so it never keeps the focus.
   slider.tabIndex = -1;
-  const release = () => slider.blur();
+  const release = () => {
+    slider.blur();
+    // Whatever the room made of the drag, the thumb ends on the song that is selected.
+    syncScrub();
+  };
   slider.addEventListener("pointerup", release);
   slider.addEventListener("pointercancel", release);
   /** Puts the thumb and the badge on `index` of the carousel's order, or on the selected song. */
@@ -571,7 +575,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
   play.textContent = "PLAY";
   play.hidden = true;
   play.addEventListener("click", () => {
-    if (shown?.host) options.onPlay?.();
+    if (shown?.host && rows.has(shown.song)) options.onPlay?.();
   });
   detail.append(head, ...(options.onPlay ? [play] : []), chartsLabel, charts);
   if (!hideMode) detail.append(modes);
@@ -937,13 +941,14 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
         case "KeyM":
           return toggleMode();
         case "Enter": {
-          if (!options.onPlay || !shown?.host) return false;
-          // A button that has the keyboard focus keeps its own Enter; a cover and anything clicked do not.
-          const focus = options.document?.activeElement;
+          if (!options.onPlay || !shown?.host || !rows.has(shown.song))
+            return false;
+          // Whatever button or link has the keyboard focus keeps its own Enter; a cover and the page do not.
+          const focus = options.document?.activeElement as HTMLElement | null;
+          const tag = focus?.tagName;
           if (
-            isButton(focus) &&
-            root.contains(focus) &&
-            !focus.classList.contains("fm-picker-row")
+            (tag === "BUTTON" || tag === "A" || tag === "SUMMARY") &&
+            !focus?.classList.contains("fm-picker-row")
           )
             return false;
           options.onPlay();
