@@ -173,6 +173,7 @@ export const fuseballRegistration: GameRegistration<
   FuseballTotalsRecord
 > = {
   id: "fuseball",
+  minRatedRoundTicks: 120, // engine/tuning.ts STEPS_PER_SECOND
   isBot: isBotId,
   parseStats: parseFuseballStats,
   validField: validFuseballField,

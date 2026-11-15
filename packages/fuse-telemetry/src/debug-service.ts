@@ -178,6 +178,7 @@ export interface DebugServiceOptions {
   now: () => number;
 }
 export class DebugService {
+  private lastReportWarning = 0;
   readonly database: DebugDatabase;
   readonly objects: PrivateObjectStorage;
   constructor(private options: DebugServiceOptions) {
@@ -425,6 +426,7 @@ export class DebugService {
     owner: string | undefined,
     input: unknown,
     ownerGeneration = 0,
+    trusted = Boolean(owner),
   ) {
     debugAssert(
       plain(input) &&
@@ -485,6 +487,7 @@ export class DebugService {
     const now = this.now(),
       key = reportKey(body.id),
       day = `limit:report:${checksum(identity)}:${Math.floor(now / 86400_000)}`,
+      globalDay = `limit:report-global:${Math.floor(now / 86400_000)}`,
       fingerprint = checksum(
         JSON.stringify([
           body,
@@ -494,7 +497,7 @@ export class DebugService {
       ),
       rkey = body.recordingId ? recordingKey(body.recordingId) : undefined;
     const record = await this.database.transact(
-      [key, day, ...(rkey ? [rkey] : [])],
+      [key, day, globalDay, ...(rkey ? [rkey] : [])],
       (records) => {
         if (rkey) {
           const recording = ofKind(live(records.get(rkey), now), "recording");
@@ -519,24 +522,54 @@ export class DebugService {
         }
         const q = quota(records.get(day), now);
         debugAssert(
-          q.reports < L.dailyReports,
+          q.reports < (trusted ? L.dailyReports : L.dailyAnonymousReports),
           429,
           "Daily report limit reached",
         );
+        const global = quota(records.get(globalDay), now);
+        // Reserve space for metadata and indexes as well as submitted payload.
+        const bytes =
+          4096 +
+          Buffer.byteLength(JSON.stringify(body)) +
+          (screenshot?.length ?? 0);
+        if (
+          global.reports >= L.dailyGlobalReports ||
+          global.durationMs + bytes > L.dailyGlobalReportBytes
+        ) {
+          if (now - this.lastReportWarning >= 60_000) {
+            this.lastReportWarning = now;
+            console.error("Telemetry global report budget exceeded");
+          }
+          throw new RoomError(429, "Daily report budget reached");
+        }
         const value: ReportRecord = {
           kind: "report",
           ...body,
           fingerprint,
           receivedAt: now,
-          expiresAt: now + L.textRetentionMs,
-          mediaExpiresAt: now + L.mediaRetentionMs,
+          expiresAt:
+            now + (trusted ? L.textRetentionMs : L.anonymousRetentionMs),
+          mediaExpiresAt:
+            now + (trusted ? L.mediaRetentionMs : L.anonymousRetentionMs),
           ready: !screenshot,
-          ...(screenshot ? { screenshotKey: `screenshots/${body.id}` } : {}),
+          ...(screenshot
+            ? {
+                screenshotKey: `${trusted ? "screenshots" : "anonymous-screenshots"}/${body.id}`,
+              }
+            : {}),
         };
         return {
           writes: new Map<string, DebugRecord>([
             [key, value],
             [day, { ...q, reports: q.reports + 1 }],
+            [
+              globalDay,
+              {
+                ...global,
+                reports: global.reports + 1,
+                durationMs: global.durationMs + bytes,
+              },
+            ],
           ]),
           result: value,
         };

@@ -17,6 +17,7 @@ import {
 export interface DebugHttpOptions {
   service: DebugService;
   verifier: DeveloperVerifier;
+  identity?: (token: string) => Promise<string | undefined>;
   recordingEnabled?: boolean;
   security?: DeveloperSecurityStore;
   now?: () => number;
@@ -94,6 +95,12 @@ export function createDebugHttpExtension(
           }
           owner = principal.uid;
         }
+        const token =
+          req.headers.authorization?.match(/^Bearer ([^\s]+)$/)?.[1];
+        const trusted = Boolean(
+          owner ||
+          (token && options.identity && (await options.identity(token))),
+        );
         send(
           res,
           await service.submitReport(
@@ -101,6 +108,7 @@ export function createDebugHttpExtension(
             owner,
             input,
             ownerGeneration,
+            trusted,
           ),
         );
         return true;

@@ -80,6 +80,7 @@ export function roundResult(
   return {
     matchId: room.matchId,
     round,
+    roundDuration: { version: 1, ticks: record.durationTicks },
     length: 1,
     winnerId: record.winnerId,
     finishers: record.finishers.filter((id) =>

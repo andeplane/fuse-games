@@ -15,6 +15,10 @@ import {
 } from "./room-bus.js";
 import { validSignal } from "./signal.js";
 import { ROOM_PROTOCOL_VERSION, readLinkReport } from "fuse-network-protocol";
+import {
+  MAX_ADMITTED_SOCKETS,
+  MAX_SOCKETS_PER_ADDRESS,
+} from "./socket-capacity.js";
 export interface GatewaySocket {
   send(raw: string): void;
   close(code: number, reason: string): void;
@@ -28,6 +32,7 @@ export interface GatewayDependencies {
   schedule?: (callback: () => void, delayMs: number) => () => void;
 }
 interface Client {
+  releaseCapacity: () => void;
   room: string;
   incarnation: string;
   member: Member;
@@ -143,6 +148,8 @@ export type GatewayState =
 /** Local sockets only; Firestore owns membership and the addressed bus reaches other processes. */
 export class RoomGateway {
   private clients = new Map<string, Client>();
+  private capacityUsed = 0;
+  private addresses = new Map<string, number>();
   private views = new Map<string, View>();
   private lifecycle: Promise<void> = Promise.resolve();
   private stateValue: GatewayState = "idle";
@@ -163,6 +170,16 @@ export class RoomGateway {
   }
   get connections(): number {
     return this.clients.size;
+  }
+  get capacity() {
+    return {
+      admitted: this.connections,
+      reserved: this.capacityUsed,
+      limit: MAX_ADMITTED_SOCKETS,
+      addresses: this.addresses.size,
+      perAddressLimit: MAX_SOCKETS_PER_ADDRESS,
+      maxAddressUsage: Math.max(0, ...this.addresses.values()),
+    };
   }
   /** Rate-limiter entries held right now: signalling buckets of every connection, publish buckets, flood flags. */
   get limiterEntries(): number {
@@ -218,112 +235,146 @@ export class RoomGateway {
     socket: GatewaySocket,
     gameId?: string,
     resume?: string,
+    address = "unknown",
+    untilClosed?: Promise<void>,
   ): Promise<string> {
     if (this.stopping) throw new RoomError(503, "Service restarting");
-    return this.inRoom(code, async () => {
-      const generation = await this.serial(async () => {
-        if (this.stateValue === "failed") await this.drain();
-        if (this.stateValue !== "ready") {
-          this.stateValue = "starting";
-          try {
-            await this.bus.start(
-              (message) => this.deliver(message),
-              (error) => this.fail("bus", error),
-            );
-            this.stateValue = "ready";
-          } catch (error) {
-            this.stateValue = "failed";
-            throw error;
+    const key = digest(`socket:${address}`);
+    const count = this.addresses.get(key) ?? 0;
+    if (
+      this.capacityUsed >= MAX_ADMITTED_SOCKETS ||
+      count >= MAX_SOCKETS_PER_ADDRESS
+    )
+      throw new RoomError(503, "Socket capacity reached; retry later");
+    this.capacityUsed++;
+    this.addresses.set(key, count + 1);
+    let reserved = true;
+    const releaseCapacity = () => {
+      if (!reserved) return;
+      reserved = false;
+      const release = () => {
+        this.capacityUsed--;
+        const remaining = (this.addresses.get(key) ?? 1) - 1;
+        if (remaining) this.addresses.set(key, remaining);
+        else this.addresses.delete(key);
+      };
+      if (untilClosed) void untilClosed.then(release);
+      else release();
+    };
+    try {
+      return await this.inRoom(code, async () => {
+        const generation = await this.serial(async () => {
+          if (this.stateValue === "failed") await this.drain();
+          if (this.stateValue !== "ready") {
+            this.stateValue = "starting";
+            try {
+              await this.bus.start(
+                (message) => this.deliver(message),
+                (error) => this.fail("bus", error),
+              );
+              this.stateValue = "ready";
+            } catch (error) {
+              this.stateValue = "failed";
+              throw error;
+            }
           }
+          return this.busGeneration;
+        });
+        const priorIncarnation = this.views.get(code)?.room.incarnation;
+        const admission = await this.store.admit(
+          code,
+          token,
+          this.id,
+          gameId,
+          resume,
+        );
+        if (generation !== this.busGeneration || this.stateValue !== "ready") {
+          // A resumed seat is handed back as it was found: held, for the page's next attempt.
+          if (admission.resumed)
+            await this.store.detach(code, admission.member);
+          else await this.store.leave(code, admission.member);
+          throw new RoomError(503, "Room relay restarting");
         }
-        return this.busGeneration;
+        const currentView = this.views.get(code);
+        if (
+          priorIncarnation &&
+          currentView &&
+          currentView.room.incarnation !== priorIncarnation &&
+          admission.room.incarnation === priorIncarnation
+        )
+          throw new RoomError(404, "Room ended during admission");
+        const { room, member } = admission,
+          client: Client = {
+            releaseCapacity,
+            room: code,
+            incarnation: room.incarnation,
+            member,
+            socket,
+            window: this.deps.now(),
+            count: 0,
+            bytes: 0,
+            chain: Promise.resolve(),
+            pending: 0,
+            pendingBytes: 0,
+            signals: new Map(),
+            times: { tokens: TIME_BURST, at: this.deps.now() },
+            diagnostics: { tokens: 2, at: this.deps.now() },
+            refusals: {
+              tokens: FLOOD_BURST * membershipScale(room),
+              at: this.deps.now(),
+            },
+            refused: 0,
+            noticeAt: -Infinity,
+            flagged:
+              (this.flags.get(`${code}:${member.id}`) ?? 0) > this.deps.now(),
+            closed: false,
+          };
+        // The socket this page resumed from, when this instance still thought it open: it is the page's past.
+        const stale = this.clients.get(member.connectionId);
+        if (stale) {
+          stale.releaseCapacity();
+          this.retire(stale);
+        }
+        this.clients.set(member.connectionId, client);
+        this.send(client, {
+          type: "welcome",
+          protocol: ROOM_PROTOCOL_VERSION,
+          id: member.id,
+          hostId: room.hostId,
+          connectionId: member.connectionId,
+          resumed: admission.resumed,
+          peers: Object.values(room.members)
+            .filter(
+              (p) =>
+                p.connectionId !== member.connectionId &&
+                p.expiresAt > this.deps.now(),
+            )
+            .map((p) => ({ id: p.id, connectionId: p.connectionId })),
+          grant: room.grant,
+        });
+        const watched = this.views.get(code);
+        if (
+          watched &&
+          watched.room.incarnation === room.incarnation &&
+          watched.room.revision > room.revision
+        )
+          // The watch ran ahead of this admission: another instance changed the room between this admission's commit and
+          // its return, and that notification found no client here to tell. The welcome above is already out of date, so
+          // this client is brought up to the watched copy now; nothing later would repeat it.
+          this.reconcile(client, room, watched.room);
+        else if (watched) this.observe(code, room);
+        else {
+          const view: View = { room, stop: () => {}, seen: new Map() };
+          this.views.set(code, view);
+          this.watchView(code, view);
+          this.scheduleExpiry(code, view);
+        }
+        return member.connectionId;
       });
-      const priorIncarnation = this.views.get(code)?.room.incarnation;
-      const admission = await this.store.admit(
-        code,
-        token,
-        this.id,
-        gameId,
-        resume,
-      );
-      if (generation !== this.busGeneration || this.stateValue !== "ready") {
-        // A resumed seat is handed back as it was found: held, for the page's next attempt.
-        if (admission.resumed) await this.store.detach(code, admission.member);
-        else await this.store.leave(code, admission.member);
-        throw new RoomError(503, "Room relay restarting");
-      }
-      const currentView = this.views.get(code);
-      if (
-        priorIncarnation &&
-        currentView &&
-        currentView.room.incarnation !== priorIncarnation &&
-        admission.room.incarnation === priorIncarnation
-      )
-        throw new RoomError(404, "Room ended during admission");
-      const { room, member } = admission,
-        client: Client = {
-          room: code,
-          incarnation: room.incarnation,
-          member,
-          socket,
-          window: this.deps.now(),
-          count: 0,
-          bytes: 0,
-          chain: Promise.resolve(),
-          pending: 0,
-          pendingBytes: 0,
-          signals: new Map(),
-          times: { tokens: TIME_BURST, at: this.deps.now() },
-          diagnostics: { tokens: 2, at: this.deps.now() },
-          refusals: {
-            tokens: FLOOD_BURST * membershipScale(room),
-            at: this.deps.now(),
-          },
-          refused: 0,
-          noticeAt: -Infinity,
-          flagged:
-            (this.flags.get(`${code}:${member.id}`) ?? 0) > this.deps.now(),
-          closed: false,
-        };
-      // The socket this page resumed from, when this instance still thought it open: it is the page's past.
-      const stale = this.clients.get(member.connectionId);
-      if (stale) this.retire(stale);
-      this.clients.set(member.connectionId, client);
-      this.send(client, {
-        type: "welcome",
-        protocol: ROOM_PROTOCOL_VERSION,
-        id: member.id,
-        hostId: room.hostId,
-        connectionId: member.connectionId,
-        resumed: admission.resumed,
-        peers: Object.values(room.members)
-          .filter(
-            (p) =>
-              p.connectionId !== member.connectionId &&
-              p.expiresAt > this.deps.now(),
-          )
-          .map((p) => ({ id: p.id, connectionId: p.connectionId })),
-        grant: room.grant,
-      });
-      const watched = this.views.get(code);
-      if (
-        watched &&
-        watched.room.incarnation === room.incarnation &&
-        watched.room.revision > room.revision
-      )
-        // The watch ran ahead of this admission: another instance changed the room between this admission's commit and
-        // its return, and that notification found no client here to tell. The welcome above is already out of date, so
-        // this client is brought up to the watched copy now; nothing later would repeat it.
-        this.reconcile(client, room, watched.room);
-      else if (watched) this.observe(code, room);
-      else {
-        const view: View = { room, stop: () => {}, seen: new Map() };
-        this.views.set(code, view);
-        this.watchView(code, view);
-        this.scheduleExpiry(code, view);
-      }
-      return member.connectionId;
-    });
+    } catch (error) {
+      releaseCapacity();
+      throw error;
+    }
   }
   /** `socket`: the one the frame arrived on, so a socket whose connection was resumed elsewhere is not heard. */
   receive(
@@ -939,6 +990,7 @@ export class RoomGateway {
       // The same connection id may by now belong to the socket that resumed it.
       if (this.clients.get(connectionId) !== client) return;
       this.clients.delete(connectionId);
+      client.releaseCapacity();
       try {
         if (seat === "leave")
           await this.store.leave(client.room, client.member);

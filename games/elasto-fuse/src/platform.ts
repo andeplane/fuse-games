@@ -159,6 +159,7 @@ export const elastoFuseRegistration: GameRegistration<
   ElastoFuseTotalsRecord
 > = {
   id: "elasto-fuse",
+  minRatedRoundTicks: 80, // engine/tuning.ts STEPS_PER_SECOND
   isBot: isBotId,
   parseStats: parseElastoFuseStats,
   validField: validElastoFuseField,

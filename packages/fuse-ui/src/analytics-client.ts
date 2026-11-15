@@ -22,7 +22,7 @@ export interface DeliveryEnvironment {
   schedule(callback: () => void, delayMs: number): () => void;
   /** Serializes persisted mutations across same-origin tabs. Network requests never hold this lock. */
   exclusive<T>(operation: () => Promise<T>): Promise<T>;
-  send(events: TelemetryEvent[]): Promise<string[]>;
+  send(events: TelemetryEvent[], enabled: () => boolean): Promise<string[]>;
 }
 export function boundedProperties(
   properties: Record<string, unknown>,
@@ -159,7 +159,7 @@ export function createAnalyticsDelivery(
       .then(async (events) => {
         if (!events.length || !enabled()) return;
         try {
-          const acknowledged = new Set(await environment.send(events));
+          const acknowledged = new Set(await environment.send(events, enabled));
           locked(async () => {
             if (!enabled()) {
               storage.removeItem(ANALYTICS_QUEUE_KEY);

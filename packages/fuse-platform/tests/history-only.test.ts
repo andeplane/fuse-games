@@ -52,6 +52,7 @@ test("history-only outcomes never claim or change Elo even with eligible atteste
     result: {
       matchId: "m",
       round: 1,
+      roundDuration: { version: 1, ticks: 1 },
       length: 1,
       winnerId: player.playerId,
       finishers: [player.playerId, opponent.playerId],
@@ -80,7 +81,7 @@ test("history-only outcomes never claim or change Elo even with eligible atteste
   assert.equal(result.profiles.size, 0);
   const ranked = structuredClone(match);
   const control = settleHistory(
-    { ...game, ratesRounds: true },
+    { ...game, ratesRounds: true, minRatedRoundTicks: 1 },
     { match: ranked, result: undefined },
     profiles,
     2,

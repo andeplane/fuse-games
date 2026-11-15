@@ -8,6 +8,7 @@
     "./metrics": "./src/metrics.ts",
     "./metrics-database": "./src/metrics-database.ts",
     "./metrics-http": "./src/metrics-http.ts",
+    "./metrics-session": "./src/metrics-session.ts",
     "./metrics-memory": "./src/metrics-memory.ts",
     "./metrics-firestore": "./src/metrics-firestore.ts",
     "./limits": "./src/limits.ts",
