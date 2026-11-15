@@ -135,7 +135,8 @@ import {
 import { createSongClock } from "./song-clock.js";
 import { createSongStore } from "./song-cache.js";
 import { SONG_LOAD_TRIES, createSongLoader } from "./song-load.js";
-import { previewSong } from "./song-preview.js";
+import { createSongPreview } from "./song-preview.js";
+import { PREVIEW_CLIPS } from "./previews-data.js";
 import { RESUME_MS, createPauseClock, resumeCount } from "./pause.js";
 import {
   SPEED_KEYS,
@@ -235,8 +236,6 @@ const coverUrl = (song: { id: string }): string | undefined => {
 
 /** The id a loaded simfile's song goes by. */
 const CUSTOM = "custom";
-/** The landing select's wait before it fetches the song it stands on; a room starting cancels it. */
-let landingFetch: ReturnType<typeof setTimeout> | undefined;
 /** Called when what a song select shows about the songs' audio has changed. */
 const audioWatchers = new Set<() => void>();
 /** The library the songs on screen are from: the bundled one, or it with the player's own file. */
@@ -355,36 +354,24 @@ function sessionBlock() {
 
 /** The song select's music: the chosen song on the shared radio, a moment after the choice settles. */
 function createPreview(library: Library) {
-  let shown = "",
-    timer: ReturnType<typeof setTimeout> | undefined;
-  return {
-    show(id: string) {
-      if (id === shown) {
-        if (!timer) audio.startMusic();
-        return;
-      }
-      shown = id;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = undefined;
-        const info = previewSong(library, id);
-        if (!info) {
-          audio.setSongs([], BASE);
-          return;
-        }
-        audio.setSongs([{ id, title: info.title, path: info.audio }], BASE);
-        audio.startMusic();
-      }, 350);
+  return createSongPreview(library, {
+    clip: (id) => PREVIEW_CLIPS.find((clip) => clip.id === id)?.url,
+    enabled: () => !audio.forcedMute,
+    fetch: (url) => songStore.fetch(url),
+    objectUrl: (bytes) =>
+      URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" })),
+    revoke: (url) => URL.revokeObjectURL(url),
+    play: (song, url) => {
+      audio.setSongs([{ id: song.id, title: song.title, path: url }], BASE);
+      audio.startMusic();
     },
-    stop() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
-        shown = "";
-      }
-      audio.stopMusic();
+    resume: () => audio.startMusic(),
+    stop: () => audio.stopMusic(),
+    schedule: (run, ms) => {
+      const timer = setTimeout(run, ms);
+      return () => clearTimeout(timer);
     },
-  };
+  });
 }
 
 const guide = () => ({
@@ -519,9 +506,6 @@ function landing(): void {
     remember(choice);
     picker.update({ ...choice, host: true });
     preview.show(choice.song);
-    // Downloaded while the player chooses, so PLAY does not wait for it; a carousel being turned fetches nothing.
-    clearTimeout(landingFetch);
-    landingFetch = setTimeout(() => songs.song(choice.song), 350);
   };
   const showOptions = () =>
     options.update({
@@ -691,7 +675,6 @@ function landing(): void {
   picker.update({ ...choice, host: true });
   showOptions();
   preview.show(choice.song);
-  landingFetch = setTimeout(() => songs.song(choice.song), 350);
   // Until a room takes the page over (`room` clears the watchers and the timer).
   audioWatchers.add(() => picker.update({ ...choice, host: true }));
 }
@@ -768,8 +751,6 @@ function enterRoom(
   first?: Choice,
   preview = createPreview(library),
 ): void {
-  // The landing select is gone: its late fetch must not take the place of the song this room plays.
-  clearTimeout(landingFetch);
   audioWatchers.clear();
   useLibrary(library);
   const session = solo
@@ -1707,8 +1688,6 @@ function enterRoom(
     // The song select's music plays in the lobby only; a match's song is the audio clock's.
     if (next.screen === "lobby" && !display && !restarting) {
       preview.show(view.settings.song);
-      // Decoded while the players choose, so START rarely waits for it.
-      songOf(view.settings.song);
     } else preview.stop();
     if (view.stage === "over" && lastStage === "running" && next.result)
       sfx.fanfare(

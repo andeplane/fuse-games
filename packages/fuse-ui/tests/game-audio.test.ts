@@ -39,11 +39,14 @@ const songs = [
   { id: "b", title: "B", path: "music/g/b.mp3" },
 ];
 
-test("external song previews preserve HTTPS URLs under a deployment base", async () => {
-  for (const ext of ["ogg", "mp3"]) {
+test("external and cached song previews preserve their URLs under a deployment base", async () => {
+  for (const url of [
+    "https://storage.googleapis.com/media/song.ogg",
+    "https://storage.googleapis.com/media/song.mp3",
+    "blob:https://play.example/preview",
+  ]) {
     const rig = createAudioRig("suspended");
     const audio = createGameAudio(rig.deps);
-    const url = `https://storage.googleapis.com/media/song.${ext}`;
     audio.setSongs(
       [{ id: "external", title: "External", path: url }],
       "/games/",
