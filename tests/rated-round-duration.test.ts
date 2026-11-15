@@ -16,6 +16,8 @@ import { STEPS_PER_SECOND as ballHz } from "../games/fuseball/src/engine/tuning.
 import { fusemaniaRegistration } from "../games/fusemania/src/platform.js";
 import { killerFuseRegistration } from "../games/killer-fuse/src/platform.js";
 import { TICK_HZ as killerHz } from "../games/killer-fuse/src/engine/tuning.js";
+import { fuseSurgeRegistration } from "../games/fuse-surge/src/platform.js";
+import { STEPS_PER_SECOND as surgeHz } from "../games/fuse-surge/src/engine/tuning.js";
 
 test("F-06 each rated game uses one second in its own tick units", () => {
   for (const [registration, hz] of [
@@ -27,6 +29,7 @@ test("F-06 each rated game uses one second in its own tick units", () => {
     [fuseballRegistration, ballHz],
     [fusemaniaRegistration, 1000 / TICK_MS],
     [killerFuseRegistration, killerHz],
+    [fuseSurgeRegistration, surgeHz],
   ] as const)
     assert.equal(registration.minRatedRoundTicks, hz, registration.id);
 });
