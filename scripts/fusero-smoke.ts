@@ -17,7 +17,14 @@ const browser = await launchSelected("chrome", {
 const errors: string[] = [],
   audioRequests: string[] = [],
   reportRequests: string[] = [];
-const coverage: Array<() => Promise<void>> = [];
+const coverage = new Map<Page, () => Promise<void>>();
+let succeeded = false;
+async function checkpointCoverage(page: Page): Promise<void> {
+  const finish = coverage.get(page);
+  if (!finish) return;
+  await finish();
+  coverage.set(page, await startGameCoverage(page, { gameId: "fusero" }));
+}
 const contexts = await Promise.all([
   browser.newContext({ viewport: { width: 1280, height: 720 } }),
   browser.newContext({
@@ -317,7 +324,7 @@ try {
   );
   assert.ok(host && peer && tv);
   for (const page of [host, peer, tv]) {
-    coverage.push(await startGameCoverage(page, { gameId: "fusero" }));
+    coverage.set(page, await startGameCoverage(page, { gameId: "fusero" }));
     page.setDefaultTimeout(20_000);
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("request", (request) => {
@@ -335,6 +342,28 @@ try {
     /rope|weapon|carve/i,
   );
   await host.keyboard.press("Escape");
+  await openPlayOptions(host);
+  const sharedChoice = host.getByRole("checkbox", {
+    name: "Shared TV + phone controllers",
+  });
+  await sharedChoice.check();
+  await checkpointCoverage(host);
+  await host.reload();
+  await openPlayOptions(host);
+  assert.equal(
+    await sharedChoice.isChecked(),
+    true,
+    "TV preference survives reload",
+  );
+  await sharedChoice.uncheck();
+  await checkpointCoverage(host);
+  await host.reload();
+  await openPlayOptions(host);
+  assert.equal(
+    await sharedChoice.isChecked(),
+    false,
+    "individual play preference survives reload",
+  );
   await openPlayOptions(host, "single");
   await host.locator('.liero-room[data-phase="lobby"]').waitFor();
   const firstWeapon = host.getByRole("combobox", {
@@ -343,6 +372,36 @@ try {
   });
   await firstWeapon.waitFor();
   await configurationRoom(host, true);
+  const ownSlot = (await sample(host)).seats.find((seat) => !seat.bot)!.slot;
+  await host
+    .getByRole("button", { name: "Sit here", exact: true })
+    .first()
+    .click();
+  await host.waitForFunction(
+    `window.fusero.state().seats.some(s=>!s.bot&&!s.watcher&&s.slot!==${ownSlot})`,
+  );
+  await host
+    .locator(`.fui-room-open-slot[data-slot="${ownSlot}"]`)
+    .getByRole("button", { name: "Sit here", exact: true })
+    .click();
+  await host.waitForFunction(
+    `window.fusero.state().seats.some(s=>!s.bot&&!s.watcher&&s.slot===${ownSlot})`,
+  );
+  const botCount = (await sample(host)).seats.filter((seat) => seat.bot).length;
+  await host
+    .getByRole("button", { name: "Remove bot", exact: true })
+    .first()
+    .click();
+  await host.waitForFunction(
+    `window.fusero.state().seats.filter(s=>s.bot).length===${botCount - 1}`,
+  );
+  await host
+    .getByRole("button", { name: "Add AI", exact: true })
+    .first()
+    .click();
+  await host.waitForFunction(
+    `window.fusero.state().seats.filter(s=>s.bot).length===${botCount}`,
+  );
   assert.equal((await sample(host)).stage, "lobby", "solo waits for START");
   await host
     .getByRole("button", { name: "Room settings", exact: true })
@@ -359,6 +418,44 @@ try {
     "jail-break",
     "the larger source level is the default",
   );
+  const alternateLevel = CLASSIC_LEVELS.find(
+    (level) => level.id !== "jail-break",
+  )!;
+  await levelChoice.selectOption(alternateLevel.id);
+  await host.waitForFunction(
+    `window.fusero.state().settings.level===${JSON.stringify(alternateLevel.id)}`,
+  );
+  await levelChoice.selectOption("jail-break");
+  await host.waitForFunction(
+    "window.fusero.state().settings.level==='jail-break'",
+  );
+  const loading = host.getByRole("spinbutton", {
+    name: "Loading time %",
+    exact: true,
+  });
+  await loading.fill("90");
+  await loading.press("Tab");
+  await host.waitForFunction("window.fusero.state().settings.loadingTime===90");
+  await loading.fill("100");
+  await loading.press("Tab");
+  await host.waitForFunction(
+    "window.fusero.state().settings.loadingTime===100",
+  );
+  for (const [label, setting] of [
+    ["Health and weapon bonuses", "bonuses"],
+    ["Weapons can injure their owner", "selfInjure"],
+  ]) {
+    const checkbox = host.getByRole("checkbox", { name: label, exact: true });
+    const original = await checkbox.isChecked();
+    await checkbox.setChecked(!original);
+    await host.waitForFunction(
+      `window.fusero.state().settings.${setting}===${!original}`,
+    );
+    await checkbox.setChecked(original);
+    await host.waitForFunction(
+      `window.fusero.state().settings.${setting}===${original}`,
+    );
+  }
   await host.waitForFunction(
     "window.fusero.state().settings.restrictionPreset === 'all'",
   );
@@ -382,6 +479,18 @@ try {
   );
   await host.getByRole("button", { name: "START MATCH", exact: true }).click();
   await play(host);
+  const rightPad = host
+    .locator(".liero-pad")
+    .getByRole("button", { name: "RIGHT", exact: true });
+  await rightPad.focus();
+  await host.keyboard.down("Enter");
+  await host.waitForFunction(
+    `window.fusero.state().world.worms.find(w=>w.slot===${ownSlot}).input & 2`,
+  );
+  await host.keyboard.up("Enter");
+  await host.waitForFunction(
+    `window.fusero.state().world.worms.find(w=>w.slot===${ownSlot}).input===0`,
+  );
   await host.locator(".liero-arena canvas").click();
   const solo = await sample(host);
   const bots = solo.seats.filter((seat) => seat.bot);
@@ -503,6 +612,8 @@ try {
     "A real timed match shows shared results, standings and actions; REMATCH starts a new live match",
   );
 
+  // Save the completed solo flow before leaving its document for room creation.
+  await checkpointCoverage(host);
   await host.goto(new URL("fusero/?mute", base).href);
   await openPlayOptions(host);
   await host
@@ -742,6 +853,7 @@ try {
   await tv.setViewportSize({ width: 393, height: 852 });
   await cameraSize(tv, initial.terrain.width, initial.terrain.height);
   await tv.setViewportSize({ width: 1440, height: 900 });
+  await checkpointCoverage(peer);
   await peer.reload();
   await play(peer);
   await peer.waitForFunction(
@@ -771,10 +883,12 @@ try {
     "opening and closing a report never submits one",
   );
   assert.deepEqual(errors, [], "no browser runtime exceptions");
+  succeeded = true;
   console.log(
     "Fusero Classic smoke passed (solo preparation, two players and a display)",
   );
 } catch (error) {
+  console.error(error);
   for (const [index, context] of contexts.entries())
     for (const page of context.pages()) {
       console.error(`Fusero page ${index}: ${page.url()}`);
@@ -783,7 +897,15 @@ try {
   throw error;
 } finally {
   try {
-    for (const finish of coverage) await finish();
+    const collected = await Promise.allSettled(
+      [...coverage.values()].map((finish) => finish()),
+    );
+    const failures = collected.filter((result) => result.status === "rejected");
+    if (succeeded && failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        "Fusero coverage collection failed",
+      );
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
     await browser.close();
