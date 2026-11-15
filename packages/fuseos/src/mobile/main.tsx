@@ -3,6 +3,7 @@ import { PORTAL_GAMES } from "fuse-ui/portal";
 import { createBrowserAnalytics } from "fuse-ui/analytics";
 import { WEBAMP_OPTIONS } from "../winamp/webampLayout";
 import { Phone } from "./Phone";
+import { phoneHomeEdge } from "./phoneOrientation";
 import {
   browserPhoneNavigation,
   browserWelcomePreference,
@@ -13,6 +14,16 @@ const analytics = createBrowserAnalytics("fuseos");
 analytics.start({ role: "phone" });
 analytics.track("App Opened", { embedded: false });
 document.title = "Fuse Games";
+const updateOrientation = () => {
+  document.documentElement.dataset.phoneHomeEdge = phoneHomeEdge(
+    typeof window.orientation === "number"
+      ? window.orientation
+      : window.screen.orientation?.angle,
+  );
+};
+updateOrientation();
+window.addEventListener("orientationchange", updateOrientation);
+window.screen.orientation?.addEventListener("change", updateOrientation);
 const container = document.getElementById("app");
 if (container) {
   ReactDOM.createRoot(container).render(

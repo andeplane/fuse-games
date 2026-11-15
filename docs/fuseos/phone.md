@@ -11,6 +11,8 @@ The `open` query parameter identifies Home (absent), `games`, `winamp`, `about`
 or a portal game id. Navigation preserves other URL flags, including `mute`.
 Browser Back/Forward and reload restore this route. The phone shell has one
 round, classic iPhone-style Home button, with no Back or app-switching toolbar.
+It stays on the same physical edge: bottom in portrait and at the corresponding
+side in landscape. Browser previews without rotation data use the right side.
 Open an app's Home icon again to resume it. Reload restores
 the app, not a running match or audio playback position.
 
