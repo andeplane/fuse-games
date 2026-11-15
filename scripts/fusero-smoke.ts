@@ -288,7 +288,7 @@ try {
   await firstWeapon.waitFor();
   assert.equal((await sample(host)).stage, "lobby", "solo waits for START");
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .click();
   await host
     .getByRole("combobox", { name: "Weapons", exact: true })
@@ -327,6 +327,23 @@ try {
   await play(host);
   await host.locator(".liero-arena canvas").click();
   const solo = await sample(host);
+  const bots = solo.seats.filter((seat) => seat.bot);
+  assert.ok(bots.length, "solo starts with AI opponents");
+  const arsenal = [
+    "Super Shotgun",
+    "Napalm",
+    "Cannon",
+    "Doomsday",
+    "Chaingun",
+  ].map(weaponId);
+  for (const bot of bots)
+    assert.deepEqual(
+      solo.worms
+        .find((worm) => worm.id === bot.id)!
+        .slots.map((slot) => slot.weaponId),
+      arsenal,
+      "the real solo start uses the source 100lt bot arsenal",
+    );
   sourceTerrain(solo);
   assert.equal(solo.level, "jail-break");
   await cameraSize(host, 427, 240);
@@ -450,7 +467,7 @@ try {
   await takeHostSeat(peer, "Classic Bo");
   await host.locator(".fui-roster-name", { hasText: "Classic Bo" }).waitFor();
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .click();
   await host
     .getByRole("combobox", { name: "Weapons", exact: true })
