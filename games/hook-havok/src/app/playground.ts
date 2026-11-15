@@ -84,19 +84,6 @@ function setText(node: HTMLElement, value: string): void {
 const rulesPanel = document.createElement("section");
 document.body.classList.add("playground");
 document.querySelector("h1")!.textContent = "Hook Havok";
-const focusButton = document.createElement("button");
-focusButton.id = "arena-focus";
-focusButton.disabled = true;
-focusButton.textContent = "Focus arena";
-focusButton.setAttribute("aria-pressed", "false");
-document.querySelector("header")!.append(focusButton);
-focusButton.onclick = () => {
-  clear();
-  const focused = document.body.classList.toggle("arena-focused");
-  focusButton.textContent = focused ? "Show controls" : "Focus arena";
-  focusButton.setAttribute("aria-pressed", String(focused));
-  host.focus({ preventScroll: true });
-};
 const roster = document.createElement("div");
 roster.id = "roster";
 roster.setAttribute("aria-live", "polite");
@@ -583,9 +570,6 @@ function stopRoom() {
   roundControls.update({ round: "ended", visible: false });
   connecting = false;
   document.body.classList.remove("arena-focused");
-  focusButton.textContent = "Focus arena";
-  focusButton.setAttribute("aria-pressed", "false");
-  focusButton.disabled = true;
   effects.pause();
   radio.pause();
   scene?.resetFeedback();
@@ -620,9 +604,13 @@ function fail(message: string) {
   entrance.show();
   entrance.busy(false, graphicsReady);
 }
-// Under the entrance menu the arena cannot be seen, and the menu draws its own scene: this one rests until play.
+// Under the entrance menu or the room the arena cannot be seen, and each draws its own scene: this one rests until
+// play.
 const restScene = () =>
-  scene?.setAwake(!document.body.classList.contains("at-entrance"));
+  scene?.setAwake(
+    !document.body.classList.contains("at-entrance") &&
+      !document.body.classList.contains("in-room"),
+  );
 const entranceWatch = new MutationObserver(restScene);
 entranceWatch.observe(document.body, {
   attributes: true,
@@ -762,7 +750,8 @@ const enterRoom = async () => {
       true,
     );
     el("invitation").hidden = false;
-    let started = false;
+    let started = false,
+      roomShown = false;
     runtime = new HookRuntime(
       room.code,
       DEFAULT_TUNING,
@@ -773,6 +762,7 @@ const enterRoom = async () => {
         event() {},
         status: (text) => {
           status.textContent = text;
+          matchShell.say(text);
         },
         state(frame, settings) {
           observeConfirmedPlay(
@@ -821,6 +811,8 @@ const enterRoom = async () => {
               (runtime?.creator ||
                 roomManager(frame.seats, creatorId) === selfId);
           if (round !== frame.round) {
+            // The manager started a round: a seated keeper still in the room is taken into the arena with it.
+            if (round !== -1 && !manager && local) matchShell.open(false);
             round = frame.round;
             for (const key of Object.keys(TUNING_BOUNDS)) {
               const field = tuning.elements.namedItem(key) as HTMLInputElement;
@@ -840,6 +832,12 @@ const enterRoom = async () => {
           );
           paintBombButton(frame);
           if (frame.stage === "lobby") entrance.play();
+          // A room is entered through its room page; the shared display goes straight to the arena.
+          if (!roomShown) {
+            roomShown = true;
+            document.body.classList.add("arena-focused");
+            matchShell.open(!display);
+          }
           if (restartRequested && frame.stage === "lobby") {
             started = false;
             restartRequested = false;
@@ -868,7 +866,6 @@ const enterRoom = async () => {
             entrance.play();
             el<HTMLButtonElement>("new-room").disabled = false;
             el<HTMLButtonElement>("join-room").disabled = false;
-            focusButton.disabled = false;
             clearTimeout(roomDeadline);
             status.dataset.state =
               display || local?.connected ? "playing" : "joining";
@@ -965,6 +962,7 @@ const enterRoom = async () => {
             display,
             frame.round,
             room.code,
+            runtime?.creator ? selfId : roomManager(frame.seats, creatorId),
           );
           menu.update({
             canLobby: !display,
@@ -975,7 +973,11 @@ const enterRoom = async () => {
           });
           roundControls.update({
             round: frame.round,
-            visible: frame.stage === "running" && showHookRoundControls(frame),
+            // The card belongs to the arena: over the room it would cover the seats.
+            visible:
+              frame.stage === "running" &&
+              !matchShell.isOpen() &&
+              showHookRoundControls(frame),
             display,
             touch: display || touchToggle.checked,
             spectator: !display && !local?.connected,
@@ -1328,6 +1330,15 @@ window.addEventListener("pageshow", (e) => {
 const matchShell = createMatchShell({
   playerName: () => social.playerName(undefined) ?? undefined,
   leave: () => el<HTMLButtonElement>("leave-room").click(),
+  start: () => el<HTMLButtonElement>("restart-room").click(),
+  onOpenChange(open) {
+    clear();
+    refreshGuides();
+    if (open || !runtime) return;
+    // The arena was laid out behind the room: it measures itself again, and takes the keys.
+    window.dispatchEvent(new Event("resize"));
+    if (!display) host.focus({ preventScroll: true });
+  },
   friends: social.friends,
   join(name, slot) {
     el<HTMLInputElement>("keeper-name").value = name;
@@ -1347,14 +1358,7 @@ const menu = createGameMenu({
   touchControls: HOOK_TOUCH_CONTROLS,
   goal: HOOK_GOAL,
   onLobby() {
-    clear();
-    document.body.classList.remove("arena-focused");
-    focusButton.textContent = "Focus arena";
-    focusButton.setAttribute("aria-pressed", "false");
-    const lounge = el<HTMLDetailsElement>("room-lounge");
-    lounge.open = true;
-    lounge.scrollIntoView({ block: "start", behavior: "smooth" });
-    lounge.querySelector("summary")?.focus();
+    matchShell.open(true);
   },
   onLeave: () => el<HTMLButtonElement>("leave-room").click(),
   onOpenChange(open) {
@@ -1389,7 +1393,7 @@ function refreshGuides() {
   });
   roundControls.update({
     round,
-    visible: !!runtime && showHookRoundControls(latest),
+    visible: !!runtime && !matchShell.isOpen() && showHookRoundControls(latest),
     display,
     touch: display || touchToggle.checked,
   });

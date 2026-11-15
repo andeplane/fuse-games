@@ -59,10 +59,19 @@ Build with `pnpm build`, then run `node --import tsx service/dev.ts --port 8787`
 
 The **Art showcase** link opens the previous authored study at `?showcase=1&mute`.
 
-During play, **MENU** offers the shared game navigation: return to play, open **CONTROLS**, return to the room lounge,
-or leave the room. The lounge retains arena, round and personal settings. Controls appear throughout each competitive
-round countdown and for the opening five seconds of every free-play trial. Touch mode and shared displays show the
-two thumb-pad instructions. Opening the menu releases held input; the room keeps running.
+A room opens on its room page, the shared `fuse-ui` room: Back, **Settings** and the main action in its header, the
+invitation with **INVITE FRIENDS** and **OPEN TV SCREEN** beside the seats, HOST on the manager's seat and the
+connection line at its foot. The room code is shown once, by the QR code. The manager's **START** begins the round
+for the whole room and takes every seated keeper into the arena; another keeper's **ENTER ARENA** walks into the round
+as it is. **Settings** holds the arena, round mode, bots, personal controls, the radio and the **Development
+workshop**. The round keeps running behind the room, and the arena is the full-screen one with the match line under
+the bar; on a phone held sideways the bar keeps its menu button alone, so the arena gets the height.
+
+During play, the bar's menu offers **Game controls**: return to play, open **CONTROLS**, return to the room, or leave
+it. Back in the room, **RESUME** returns the manager to the round without restarting it. Controls appear throughout
+each competitive round countdown and for the opening five seconds of every free-play trial, in the arena only. Touch
+mode and shared displays show the two thumb-pad instructions. Opening the menu releases held input; the room keeps
+running.
 
 To hear the playground, remove `?mute` and interact with the page. Effects unlock on a key or pointer gesture; **Play radio** explicitly starts music. Music/effects have independent volume sliders and pause on focus loss. The muted preview does not change saved preferences.
 
