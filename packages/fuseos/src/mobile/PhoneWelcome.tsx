@@ -65,7 +65,7 @@ export function PhoneWelcome({ dismiss }: { dismiss: () => void }) {
         >
           <div className="welcome-art" aria-hidden="true">
             {page === 0 ? (
-              <span className="welcome-hello">hello.</span>
+              <span className="welcome-hello">vibe.</span>
             ) : page === 1 ? (
               <svg viewBox="0 0 240 180" fill="none">
                 <path
