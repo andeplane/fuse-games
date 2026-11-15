@@ -96,14 +96,7 @@ test("a battle's result: the winner, every player's grade, score, accuracy and c
     ]),
     [
       [1, "Ada", true, undefined, undefined, ["AA", "94.20%", "212"]],
-      [
-        2,
-        "Bo",
-        false,
-        undefined,
-        "+ ADD FRIEND b",
-        ["B", "70.00%", "250"],
-      ],
+      [2, "Bo", false, undefined, "+ ADD FRIEND b", ["B", "70.00%", "250"]],
       [3, "Bot", false, "AI", undefined, ["AA", "94.20%", "9"]],
     ],
   );

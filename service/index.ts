@@ -31,7 +31,9 @@ export function startService(authClient?: AuthClient): void {
     ...(authClient ? { authClient } : {}),
     httpExtension: ({ store, firestore, prefix, projectId }) => {
       const history = new FirestoreHistoryDatabase(platform, firestore, prefix);
-      const identity = createIdentityVerifier(process.env.FIREBASE_PROJECT_ID ?? projectId);
+      const identity = createIdentityVerifier(
+        process.env.FIREBASE_PROJECT_ID ?? projectId,
+      );
       const platformHttp = createPlatformHttp({
         history: new HistoryStore(platform, history, store, Date.now),
         friends: new FriendsStore(
@@ -44,7 +46,13 @@ export function startService(authClient?: AuthClient): void {
         identity,
       });
       return composeHttp(
-        songScoresHttp(new FirestoreTelemetryDatabase(firestore, prefix), history, identity, process.env.TELEMETRY_RATE_LIMIT_KEY, Date.now),
+        songScoresHttp(
+          new FirestoreTelemetryDatabase(firestore, prefix),
+          history,
+          identity,
+          process.env.TELEMETRY_RATE_LIMIT_KEY,
+          Date.now,
+        ),
         createProductionTelemetry({
           firestore,
           prefix,

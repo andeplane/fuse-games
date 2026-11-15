@@ -161,7 +161,11 @@ import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
 import { createSongLeaderboards } from "./song-leaderboards.js";
 import { RankedRun } from "./ranked-run.js";
-import { scoreSource, type SongBoard, type ScoreEntry } from "../song-scores.js";
+import {
+  scoreSource,
+  type SongBoard,
+  type ScoreEntry,
+} from "../song-scores.js";
 
 /**
  * The Fusemania page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -176,11 +180,28 @@ const endpoints = createEndpoints(
   { basePath: `${BASE}${GAME}/`, apiOrigin: import.meta.env.VITE_API_ORIGIN },
   location.origin,
 );
-const scoresUrl = (path = "") => endpoints.apiUrl(`/api/games/fusemania/song-scores${path}`);
-async function scoreRequest(path: string, token?: string, body?: unknown): Promise<unknown> {
-  const response = await fetch(scoresUrl(path), { method: body === undefined ? "GET" : "POST", headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+const scoresUrl = (path = "") =>
+  endpoints.apiUrl(`/api/games/fusemania/song-scores${path}`);
+async function scoreRequest(
+  path: string,
+  token?: string,
+  body?: unknown,
+): Promise<unknown> {
+  const response = await fetch(scoresUrl(path), {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
   const value = await response.json();
-  if (!response.ok) throw new Error(typeof value?.error === "string" ? value.error : "Song scores are unavailable");
+  if (!response.ok)
+    throw new Error(
+      typeof value?.error === "string"
+        ? value.error
+        : "Song scores are unavailable",
+    );
   return value;
 }
 const social = createGameSocial({
@@ -314,16 +335,24 @@ function remember(choice: Choice): void {
   store.setItem(names.chart, String(choice.chart));
   store.setItem(names.mode, String(choice.mode));
 }
-const localScoreVersions = new Map(SONGS_DATA.map(source => {
-  let hash = 2166136261;
-  for (const character of source.ssc) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  return [source.id, `${RULES}:${hash >>> 0}`] as const;
-}));
+const localScoreVersions = new Map(
+  SONGS_DATA.map((source) => {
+    let hash = 2166136261;
+    for (const character of source.ssc)
+      hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+    return [source.id, `${RULES}:${hash >>> 0}`] as const;
+  }),
+);
 const bestKey = (library: Library, song: string, chart: number) => {
   // A player's own file keeps no best: every loaded file would share the one key.
   const info = localSong(song) ? undefined : library.song(song)?.charts;
   const picked = info?.[Math.min(chart, info.length - 1)];
-  return picked ? names.best(song, `${picked.name.toLowerCase()}:${localScoreVersions.get(song)}`) : undefined;
+  return picked
+    ? names.best(
+        song,
+        `${picked.name.toLowerCase()}:${localScoreVersions.get(song)}`,
+      )
+    : undefined;
 };
 const bestLookup = (library: Library) => (song: string, chart: number) => {
   const key = bestKey(library, song, chart);
@@ -753,10 +782,20 @@ function openTiming(): void {
 
 function songHighscores(): void {
   const scores = createSongLeaderboards({
-    catalog: async () => (await scoreRequest("") as { songs: SongBoard[] }).songs,
-    leaderboard: async (song, chart) => (await scoreRequest(`?song=${encodeURIComponent(song)}&chart=${chart}`) as { players: ScoreEntry[] }).players,
+    catalog: async () =>
+      ((await scoreRequest("")) as { songs: SongBoard[] }).songs,
+    leaderboard: async (song, chart) =>
+      (
+        (await scoreRequest(
+          `?song=${encodeURIComponent(song)}&chart=${chart}`,
+        )) as { players: ScoreEntry[] }
+      ).players,
   });
-  const page = createSubPage({ title: "Song highscores", backHref: withFlags(endpoints.appUrl()), content: [scores.element] });
+  const page = createSubPage({
+    title: "Song highscores",
+    backHref: withFlags(endpoints.appUrl()),
+    content: [scores.element],
+  });
   app.replaceChildren(header(), page.element);
   backOnEscape(page.back);
   window.addEventListener("pagehide", scores.dispose, { once: true });
@@ -1076,20 +1115,29 @@ function enterRoom(
   cardGraph.append(graph, graphStats, cardTiming);
   cardGraph.hidden = true;
   cardReport.append(cardCounts, cardGraph);
-  const rankedStatus = el("p", "", "fm-ranked-status"), rankedRetry = button("RETRY SAVING SCORE");
+  const rankedStatus = el("p", "", "fm-ranked-status"),
+    rankedRetry = button("RETRY SAVING SCORE");
   rankedStatus.setAttribute("role", "status");
   rankedRetry.hidden = true;
   const rankedRun = new RankedRun({
     token: identityToken,
-    version: async song => {
-      const source = SONGS_DATA.find(source => source.id === song);
+    version: async (song) => {
+      const source = SONGS_DATA.find((source) => source.id === song);
       if (!source) throw new Error("Custom songs are unranked");
-      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(scoreSource(RULES, source.ssc, source.id)));
-      return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, "0")).join("");
+      const hash = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(scoreSource(RULES, source.ssc, source.id)),
+      );
+      return Array.from(new Uint8Array(hash), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
     },
     post: scoreRequest,
     inputs: () => runtime.scoreInputs(),
-    changed: () => { rankedStatus.textContent = rankedRun.status; rankedRetry.hidden = !rankedRun.canRetry; },
+    changed: () => {
+      rankedStatus.textContent = rankedRun.status;
+      rankedRetry.hidden = !rankedRun.canRetry;
+    },
   });
   rankedRetry.onclick = () => rankedRun.retry();
   // The menu over a song: a pause alone, a player's own menu in a room (`play-menu.ts`).
@@ -1985,7 +2033,20 @@ function enterRoom(
       const world = frame.world;
       const mine = world?.players.find((each) => each.id === viewer.me);
       if (world && mine && !mine.bot && !viewer.display) {
-        rankedRun.observe({ key: `${frame.matchId}:${runtime.roomState()?.epoch}`, song: world.song, chart: mine.chart, leadIn: world.players.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS, eligible: world.mode === SCORE_MODE && library === LIBRARY, beforeSong: world.ms < 0, finished: frame.stage === "over", confirmed: solo || (runtime.roomState()?.decided?.clock ?? Infinity) <= runtime.confirmedTick(), rating: mine.rating });
+        rankedRun.observe({
+          key: `${frame.matchId}:${runtime.roomState()?.epoch}`,
+          song: world.song,
+          chart: mine.chart,
+          leadIn: world.players.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS,
+          eligible: world.mode === SCORE_MODE && library === LIBRARY,
+          beforeSong: world.ms < 0,
+          finished: frame.stage === "over",
+          confirmed:
+            solo ||
+            (runtime.roomState()?.decided?.clock ?? Infinity) <=
+              runtime.confirmedTick(),
+          rating: mine.rating,
+        });
         rankedStatus.textContent = rankedRun.status;
         rankedRetry.hidden = !rankedRun.canRetry;
       }

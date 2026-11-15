@@ -133,8 +133,7 @@ export function totalText(memo: NumberText, value: number): string {
 export function gapText(memo: NumberText, value: number): string {
   if (memo.value !== value) {
     memo.value = value;
-    memo.text =
-      (value < 0 ? "-" : "+") + scorePercent(Math.abs(value));
+    memo.text = (value < 0 ? "-" : "+") + scorePercent(Math.abs(value));
   }
   return memo.text;
 }

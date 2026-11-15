@@ -297,7 +297,10 @@ function box(
     const base = info.totals[slot];
     const total =
       base !== undefined && chars >= 22
-        ? totalText(texts.boxTotal, (base + Math.round(rider.score)) / info.totalSongs)
+        ? totalText(
+            texts.boxTotal,
+            (base + Math.round(rider.score)) / info.totalSongs,
+          )
         : "";
     if (total)
       label(g, total, right, third, size, TEXT, "right", size * total.length);

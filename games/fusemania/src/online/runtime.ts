@@ -59,14 +59,22 @@ export class FusemaniaRuntime extends RoomRuntime<
   private said = { epoch: -1, at: Number.NEGATIVE_INFINITY };
   /** How much room the newest logged input had inside its tick's bounds, ms; negative when the fold will move it. */
   private slack: number | undefined;
-  private replay: { epoch: number; valid: boolean; inputs: SongInput[] } | undefined;
+  private replay:
+    { epoch: number; valid: boolean; inputs: SongInput[] } | undefined;
   /** Complete local input evidence. A late join, resync or overflowing log cannot submit a ranked score. */
   scoreInputs(): SongInput[] | undefined {
     const room = this.world?.state;
     if (!room?.world) return;
     if (this.replay?.epoch !== room.epoch)
       this.replay = { epoch: room.epoch, valid: room.world.ms < 0, inputs: [] };
-    return this.replay.valid ? this.replay.inputs.map(input => ({ ...input })) : undefined;
+    return this.replay.valid
+      ? this.replay.inputs
+          .filter(
+            (input) =>
+              room.world!.phase !== "over" || input.at <= room.world!.ms,
+          )
+          .map((input) => ({ ...input }))
+      : undefined;
   }
   constructor(
     code: string,
@@ -95,8 +103,14 @@ export class FusemaniaRuntime extends RoomRuntime<
     const tick = this.recorder.next();
     if (this.replay?.epoch !== room.epoch) this.scoreInputs();
     if (room.world && this.replay?.valid) {
-      if (this.replay.inputs.length >= MAX_RUN_INPUTS) this.replay.valid = false;
-      else this.replay.inputs.push({ at: room.world.ms + (tick - room.tick) * TICK_MS, code, ms: Math.max(MIN_SONG_MS, Math.min(MAX_SONG_MS, Math.round(ms))) });
+      if (this.replay.inputs.length >= MAX_RUN_INPUTS)
+        this.replay.valid = false;
+      else
+        this.replay.inputs.push({
+          at: room.world.ms + (tick - room.tick) * TICK_MS,
+          code,
+          ms: Math.max(MIN_SONG_MS, Math.min(MAX_SONG_MS, Math.round(ms))),
+        });
     }
     this.logged = this.logged.filter((entry) => entry.tick > room.tick);
     this.logged.push({ tick, epoch: room.epoch, code, ms });

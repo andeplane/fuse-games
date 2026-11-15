@@ -11,7 +11,8 @@ import {
  * Fusemania's part of the shared backend (`fuse-platform`): what a player's reported stats are and what a confirmed
  * match adds to an account. The room service registers it beside the other games' in `service/history.ts`;
  * attestation, settlement, Elo and storage are the platform's. It imports only `basics.ts`, so the service never
- * loads the engine, the charts or the netcode.
+ * loads no engine, charts or netcode through this registration. The separate verified song-score extension loads
+ * the canonical charts and engine to replay submitted input evidence.
  */
 
 /** One player's result as the platform stores it; the room's result module (`online/result.ts`) reports the same shape. */
