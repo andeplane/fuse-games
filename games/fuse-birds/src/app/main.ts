@@ -31,6 +31,8 @@ import {
   createMainMenu,
   createResultsScreen,
   createRoomLayout,
+  createRoster,
+  createSharedTvOption,
   el,
 } from "fuse-ui";
 import { createAppPortal } from "fuse-ui/portal";
@@ -146,27 +148,12 @@ function landing(): void {
   const joinForm = el("form", "", "birds-join");
   join.type = "submit";
   joinForm.append(code, join);
-  const shared = el("input");
-  shared.type = "checkbox";
-  shared.checked = store.get(storageKeys.shared) === "1";
-  const label = el("label", "", "birds-shared");
-  label.append(
-    shared,
-    document.createTextNode("Shared TV + phone controllers"),
-  );
-  shared.onchange = () =>
-    store.set(storageKeys.shared, shared.checked ? "1" : "0");
   const message = notice(""),
     back = el("a", "All games", "birds-back");
   back.href = import.meta.env.BASE_URL;
   create.onclick = async () => {
     if (create.disabled) return;
-    create.disabled =
-      practice.disabled =
-      join.disabled =
-      code.disabled =
-      shared.disabled =
-        true;
+    create.disabled = practice.disabled = join.disabled = code.disabled = true;
     message.textContent = "Creating your room…";
     try {
       const result = await createRoom(endpoints.apiUrl, fetch, GAME);
@@ -183,7 +170,6 @@ function landing(): void {
         practice.disabled =
         join.disabled =
         code.disabled =
-        shared.disabled =
           false;
     }
   };
@@ -217,7 +203,6 @@ function landing(): void {
     intro,
     create,
     practice,
-    label,
     joinForm,
     message,
     back,
@@ -244,7 +229,6 @@ function landing(): void {
         "Drag your bird backwards to aim, then release to fire. Drag elsewhere to pan. Pinch or scroll to zoom. Keyboard: I/K and J/L aim, Enter fires, Escape cancels. Be the last bird standing.",
       ),
     ],
-    settings: [label],
   });
   page.append(header, mainMenu.element);
   app.replaceChildren(page);
@@ -257,33 +241,54 @@ function room(code: string, display: boolean, practice = false): void {
   const page = el("main", "", "birds-room"),
     header = el("header", "", "birds-top"),
     message = notice("Connecting…");
+  // The room's state is one line: at the lobby's foot while the room waits, under the bar during a battle, where
+  // it also says what a turn did. What went wrong is said apart from it, above the room.
+  const status = notice("Connecting…"),
+    problem = el("p", "", "birds-alert");
+  status.classList.add("birds-status");
+  problem.setAttribute("role", "alert");
+  problem.hidden = true;
+  // Removed from the room or the room gone: nothing that arrives afterwards may take that off the screen.
+  let over = false;
+  const say = (text: string) => {
+    if (over) return;
+    problem.hidden = true;
+    message.textContent = status.textContent = text;
+  };
+  const fail = (text: string, last = false) => {
+    if (over) return;
+    over = last;
+    message.textContent = status.textContent = "";
+    problem.textContent = text;
+    problem.hidden = false;
+  };
   const retry = button("RETRY"),
-    leave = button("LEAVE"),
-    codeLabel = el("strong", code, "birds-code");
+    leave = button("LEAVE");
   retry.onclick = () => location.reload();
   const menu = el("details", "", "birds-menu"),
     menuTitle = el("summary", "MENU"),
     menuItems = el("div", "", "birds-menu-items");
   menuItems.append(social.element(), retry, leave);
   menu.append(menuTitle, menuItems);
-  menu.addEventListener("toggle", () => {
-    if (menu.open) cancel();
-  });
+  // The bar's menu holds these choices in the open, not behind a second MENU inside it.
+  menu.open = true;
   page.addEventListener("pointerdown", () => audio.unlock());
-  header.append(portal(), brand(), codeLabel, message, menu);
+  // The room's code is on its invitation: the bar holds the brand, the battle's line and the menu.
+  header.append(portal(), brand(), message, menu);
   createTopBar({
     element: header,
     gameId: GAME,
     sound: masterSound,
   });
-  const lobby = el("section", "", "birds-lobby birds-card"),
-    members = el("ul", "", "birds-roster"),
+  const lobby = el("section", "", "birds-lobby"),
+    roster = createRoster({ emptyText: "No birds yet" }),
     start = button("START BATTLE", "fui-button-primary");
-  const lobbyNote = notice("Invite at least one friend to start."),
-    tv = el("a", "OPEN TV SCREEN", "fui-button");
-  tv.href = endpoints.appUrl(`?room=${code}&display=1${muted ? "&mute" : ""}`);
-  tv.target = "_blank";
-  tv.rel = "noopener";
+  roster.element.classList.add("birds-roster");
+  const lobbyNote = el(
+    "p",
+    "Invite at least one friend to start.",
+    "fui-lobby-note",
+  );
   const invite = createInviteCard({
     code,
     link: endpoints.appUrl(`?room=${code}`),
@@ -305,13 +310,11 @@ function room(code: string, display: boolean, practice = false): void {
   });
   nameEntry.form.hidden = true;
   lobby.append(
-    el("h1", "ASSEMBLE YOUR FLOCK"),
     invite.element,
     nameEntry.form,
-    members,
+    roster.element,
     lobbyNote,
     start,
-    tv,
   );
   const board = el("section", "", "birds-board"),
     canvas = el("canvas"),
@@ -386,31 +389,31 @@ function room(code: string, display: boolean, practice = false): void {
   footer.append(weapons, turnActions, hint);
   board.append(scorebar, turn, sky, overlay, cameraBar, footer);
   board.hidden = true;
-  page.append(header, lobby, board, results.element);
+  page.append(header, problem, lobby, board, results.element);
   app.replaceChildren(page);
-  const addAI = button("Add AI");
-  addAI.disabled = true;
-  addAI.title =
-    "Multiplayer AI is not available in Fuse Birds. Use solo practice or invite a friend.";
-  const aiNote = el(
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates.
+  const sharedTv = createSharedTvOption({
+    className: "birds-tv-option",
+    onChange: (display) => {
+      const sent = runtime.command({ type: "settings", settings: { display } });
+      if (sent) store.set(storageKeys.shared, display ? "1" : "0");
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(
+        endpoints.appUrl(`?room=${code}&display=1${muted ? "&mute" : ""}`),
+        "_blank",
+        "noopener",
+      ),
+  });
+  const howToPlay = el(
     "p",
-    "Multiplayer Birds needs friends. Solo practice is available from the main menu.",
-  );
-  const screenSetting = el("label"),
-    sharedScreen = el("input");
-  sharedScreen.type = "checkbox";
-  sharedScreen.onchange = () =>
-    runtime.command({
-      type: "settings",
-      settings: { display: sharedScreen.checked },
-    });
-  screenSetting.append(
-    sharedScreen,
-    document.createTextNode("Shared TV + phone controllers"),
+    "Drag your bird backwards to aim, then release to fire. Drag elsewhere to pan. Pinch or scroll to zoom. Keyboard: I/K and J/L aim, Enter fires, Escape cancels. Be the last bird standing.",
   );
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
-  const roomLayout = createRoomLayout({
+  createRoomLayout({
     // Seated already: any open seat is a move, and the bird's colour follows it.
     ownSlot: () => ownSeat?.slot,
     onMove: (slot) => {
@@ -428,12 +431,18 @@ function room(code: string, display: boolean, practice = false): void {
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     invite: invite.element,
-    roster: members,
+    roster,
+    // ADD FRIEND on a bird's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
+    friends: social.friends,
     capacity: 5,
     join: nameEntry.form,
-    addAI,
-    settings: [screenSetting],
-    actions: [lobbyNote, aiNote, start, tv],
+    settings: [howToPlay],
+    actions: [lobbyNote],
+    // Back, Settings and START lead the room and stay there; the invitation and the birds scroll under them.
+    actionsInHeader: true,
+    extras: [sharedTv.element],
+    status,
+    heading: "Room",
   });
   page.classList.toggle("birds-tv", display);
   const gestures = createGestures({ x: 768, y: 384, zoom: 1 });
@@ -461,7 +470,7 @@ function room(code: string, display: boolean, practice = false): void {
       ready = true;
     })
     .catch((error) => {
-      message.textContent = roomFailure(error);
+      fail(roomFailure(error));
     });
   const viewport = () => ({
     width: Math.max(1, canvas.clientWidth),
@@ -496,8 +505,7 @@ function room(code: string, display: boolean, practice = false): void {
   const canAim = canPlay;
   const play = (action: Play) => {
     if (modalInput.blocked()) return;
-    if (!runtime.play(action))
-      message.textContent = "Wait for your turn before playing.";
+    if (!runtime.play(action)) say("Wait for your turn before playing.");
   };
   const select = (next: Weapon) => {
     cancel();
@@ -624,31 +632,37 @@ function room(code: string, display: boolean, practice = false): void {
       host = isHost;
     },
     status(text) {
-      message.textContent = roomFailure(text);
+      const shown = roomFailure(text);
+      if (shown === text) say(shown);
+      else fail(shown);
     },
     kicked() {
-      message.textContent =
-        "You were removed from this room. Leave to create or join another.";
+      fail(
+        "You were removed from this room. Leave to create or join another.",
+        true,
+      );
       cancel();
     },
     ended() {
-      message.textContent =
-        "Room connection ended. Retry to reconnect, or leave to start another room.";
+      fail(
+        "Room connection ended. Retry to reconnect, or leave to start another room.",
+        true,
+      );
       cancel();
     },
     event(fact, matchId, round) {
       arena.emit(fact, `${matchId}:${round}`, performance.now());
       audio.play(fact, performance.now());
       if (fact.type === "rejected" && fact.actor === me)
-        message.textContent = fact.reason ?? "That action was not accepted.";
+        say(fact.reason ?? "That action was not accepted.");
       if (fact.type === "pickup")
-        message.textContent = fact.amount
-          ? "Supply collected: +1 Scatter Bomb."
-          : "Supply collected. Scatter ammunition is already full.";
+        say(
+          fact.amount
+            ? "Supply collected: +1 Scatter Bomb."
+            : "Supply collected. Scatter ammunition is already full.",
+        );
     },
     state(frame, settings) {
-      sharedScreen.checked = settings.display;
-      sharedScreen.disabled = !host || display;
       currentFrame = frame;
       host = frame.managerId === me;
       view = frame.world;
@@ -675,30 +689,28 @@ function room(code: string, display: boolean, practice = false): void {
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
       nameEntry.form.hidden = display || seated || !inLobby;
-      roomLayout.update(
-        frame.seats.filter((s) => !s.watcher).length,
-        5,
-        frame.seats.filter((s) => !s.watcher).map((s) => s.slot),
-      );
-      members.replaceChildren(
-        ...frame.seats
+      page.dataset.screen = inLobby ? "lobby" : "battle";
+      roster.update(
+        frame.seats
           .filter((s) => !s.watcher)
-          .map((s) => {
-            const li = el(
-              "li",
-              `${s.name}${s.id === me ? " · YOU" : ""}${s.connected ? "" : " · away"}`,
-            );
-            li.style.color = COLORS[s.slot]!;
-            li.dataset.slot = String(s.slot);
-            return li;
-          }),
+          .map((s) => ({
+            id: s.id,
+            slot: s.slot,
+            name: s.id === me ? `${s.name} (you)` : s.name,
+            status: s.connected ? "READY" : "AWAY",
+            color: COLORS[s.slot]!,
+            host: s.id === frame.managerId,
+          })),
+      );
+      sharedTv.update(
+        settings.display,
+        host && !display && !practice && inLobby,
       );
       const present = frame.seats.filter(
         (s) => !s.watcher && s.connected,
       ).length;
       start.hidden = !host;
       start.disabled = present < 2;
-      tv.hidden = !host || display || !settings.display;
       lobbyNote.textContent = host
         ? `${present}/5 birds ready. ${present < 2 ? "Invite a friend to start." : "Start when your flock is ready."}`
         : "Waiting for the host to start.";
