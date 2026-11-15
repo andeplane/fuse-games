@@ -3,6 +3,7 @@ import type { Page } from "playwright";
 import { launchSelected } from "./lib/browser.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { startRoomService } from "./lib/server.js";
+import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import { CLASSIC_WEAPONS } from "../games/fusero/src/engine/classic/catalog.js";
 import { CLASSIC_LEVELS } from "../games/fusero/src/engine/classic/level.js";
 
@@ -16,6 +17,7 @@ const browser = await launchSelected("chrome", {
 const errors: string[] = [],
   audioRequests: string[] = [],
   reportRequests: string[] = [];
+const coverage: Array<() => Promise<void>> = [];
 const contexts = await Promise.all([
   browser.newContext({ viewport: { width: 1280, height: 720 } }),
   browser.newContext({
@@ -315,6 +317,7 @@ try {
   );
   assert.ok(host && peer && tv);
   for (const page of [host, peer, tv]) {
+    coverage.push(await startGameCoverage(page, { gameId: "fusero" }));
     page.setDefaultTimeout(20_000);
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("request", (request) => {
@@ -779,7 +782,11 @@ try {
     }
   throw error;
 } finally {
-  await Promise.all(contexts.map((context) => context.close()));
-  await browser.close();
-  await server?.stop();
+  try {
+    for (const finish of coverage) await finish();
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+    await browser.close();
+    await server?.stop();
+  }
 }
