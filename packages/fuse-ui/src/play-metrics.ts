@@ -2,6 +2,8 @@ import { createBrowserAnalytics, type Analytics } from "./analytics.js";
 import { isEmbeddedPage } from "./embedded.js";
 
 export interface PlayFrame {
+  /** Game-owned bounded dimensions such as song/chart; no player names or room identifiers. */
+  context?: Record<string, string | number | boolean | null>;
   /** Scope only; never transmitted. */
   matchId: string;
   active: boolean;
@@ -75,6 +77,7 @@ export function createPlayMetrics(
       startedAt = undefined;
     }
     const properties = {
+      ...frame.context,
       playerCount: frame.playerCount,
       botCount: frame.botCount,
       humanCount: frame.playerCount - frame.botCount,
@@ -100,21 +103,28 @@ export function createPlayMetrics(
     ) {
       started = true;
       startedAt = now();
-      track("Match Started", properties);
+      track("Match Started", properties, {
+        key: `match:${frame.matchId}`,
+        match: frame.matchId,
+      });
     }
     if (frame.ended && !ended) {
       ended = true;
-      track("Match Ended", {
-        ...properties,
-        ...(startedAt === undefined
-          ? {}
-          : {
-              durationSeconds: Math.max(
-                0,
-                Math.round((now() - startedAt) / 1000),
-              ),
-            }),
-      });
+      track(
+        "Match Ended",
+        {
+          ...properties,
+          ...(startedAt === undefined
+            ? {}
+            : {
+                durationSeconds: Math.max(
+                  0,
+                  Math.round((now() - startedAt) / 1000),
+                ),
+              }),
+        },
+        { key: `match:${frame.matchId}`, match: frame.matchId },
+      );
     }
   };
 }
@@ -146,6 +156,7 @@ export function createRoundMetrics(
     )
       return;
     const properties = {
+      ...frame.context,
       playerCount: frame.playerCount,
       botCount: frame.botCount,
       humanCount: frame.playerCount - frame.botCount,
@@ -153,12 +164,17 @@ export function createRoundMetrics(
       mode: frame.mode,
     };
     if (frame.roundActive && !starts.has(key)) {
-      track("Round Started", properties, { key });
+      track("Round Started", properties, { key, match: frame.matchId, round });
       starts.add(key);
       if (starts.size > 512) starts.delete(starts.values().next().value!);
     }
     if (frame.roundEnded && !ends.has(key)) {
-      track("Round Ended", properties, { key, requires: "Round Started" });
+      track("Round Ended", properties, {
+        key,
+        requires: "Round Started",
+        match: frame.matchId,
+        round,
+      });
       ends.add(key);
       if (ends.size > 512) ends.delete(ends.values().next().value!);
     }

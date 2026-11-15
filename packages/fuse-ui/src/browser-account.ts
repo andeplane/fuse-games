@@ -154,6 +154,25 @@ export async function signOut(): Promise<void> {
   await auth.signOut(instance);
 }
 
+/** Link provider access to this player. The caller immediately sends the token to the private server. */
+export async function connectGithub(): Promise<string> {
+  const { auth, instance } = await firebase();
+  const user = instance.currentUser;
+  if (!user) throw new Error("Sign in first");
+  const provider = new auth.GithubAuthProvider();
+  provider.addScope("public_repo");
+  const result = user.providerData.some(
+    (provider) => provider.providerId === "github.com",
+  )
+    ? await auth.reauthenticateWithPopup(user, provider)
+    : await auth.linkWithPopup(user, provider);
+  const token =
+    auth.GithubAuthProvider.credentialFromResult(result)?.accessToken;
+  if (!token) throw new Error("GitHub did not return access");
+  await user.getIdToken(true);
+  return token;
+}
+
 /** A fresh ID token for the room service, or undefined for a guest. Throws when a signed-in browser cannot get one just now. */
 export async function signedInToken(): Promise<string | undefined> {
   if (!remembersSignIn()) return undefined;

@@ -13,9 +13,14 @@ export const MAX_QUEUED_EVENTS = 200;
 const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Birds appends its semantic round to the shared runtime UUID.
+const SHARED_PLAY_SCOPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?::\d{1,8})?$/i;
 const FORBIDDEN =
   /^(?:gameId|userId|sessionId|room|roomCode|matchId|playerId|playerName|name|email|url|token|authorization|password)$/i;
 export interface DeliveryEnvironment {
+  /** One-way, domain-separated play correlation. Never returns the original simulation scope. */
+  correlate?(scope: string): Promise<string>;
   storage: SafeStorage;
   now(): number;
   uuid(): string;
@@ -190,7 +195,12 @@ export function createAnalyticsDelivery(
       gameId: string,
       name: string,
       properties: Record<string, unknown>,
-      localScope?: { key: string; requires?: string },
+      localScope?: {
+        key: string;
+        requires?: string;
+        match?: string;
+        round?: number;
+      },
     ) {
       if (
         !enabled() ||
@@ -230,6 +240,38 @@ export function createAnalyticsDelivery(
             JSON.stringify([...ledger, key].slice(-512)),
           );
         }
+        const context: Record<string, string> = {};
+        // Shared runtime IDs are random UUIDs. Seed-derived local IDs can recur across visits;
+        // correlating those would invent multiplayer participants from unrelated solo runs.
+        if (
+          localScope?.match &&
+          SHARED_PLAY_SCOPE.test(localScope.match) &&
+          environment.correlate
+        ) {
+          try {
+            context.matchRef = await environment.correlate(
+              JSON.stringify(["match", gameId, localScope.match]),
+            );
+            if (localScope.round !== undefined)
+              context.roundRef = await environment.correlate(
+                JSON.stringify([
+                  "round",
+                  gameId,
+                  localScope.match,
+                  localScope.round,
+                ]),
+              );
+          } catch {
+            /* Unsupported crypto must not suppress ordinary participation metrics. */
+          }
+        }
+        if (!enabled()) return;
+        const dimensions = Object.fromEntries(
+          Object.entries(boundedProperties(properties)).slice(
+            0,
+            24 - Object.keys(context).length,
+          ),
+        );
         write([
           ...read(),
           {
@@ -239,7 +281,7 @@ export function createAnalyticsDelivery(
             ...identity,
             name,
             occurredAt,
-            properties: boundedProperties(properties),
+            properties: { ...dimensions, ...context },
           },
         ]);
         schedule();

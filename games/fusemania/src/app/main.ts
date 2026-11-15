@@ -2094,11 +2094,20 @@ function enterRoom(
         reportPlay,
         frame,
         () => runtime.confirmedFrame(),
-        (frame) =>
-          fusemaniaPlayFrame(frame, {
+        (frame) => ({
+          ...fusemaniaPlayFrame(frame, {
             self: viewer.display ? "" : viewer.me,
             mode,
           }),
+          context: frame.world
+            ? {
+                song: frame.world.song === CUSTOM ? "custom" : frame.world.song,
+                chart:
+                  frame.world.players.find((player) => player.id === viewer.me)
+                    ?.chart ?? null,
+              }
+            : undefined,
+        }),
       );
       settings = roomSettings;
       // A song that is over settles this device's best on its chart once, and keeps saying what the best was.

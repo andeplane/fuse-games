@@ -12,6 +12,7 @@ import {
   type IdentityVerifier,
 } from "fuse-platform";
 import { MetricsStore } from "fuse-telemetry/metrics";
+import { createWorkspaceHttp } from "fuse-telemetry/workspace-http";
 import { createMetricsHttp } from "fuse-telemetry/metrics-http";
 import { MetricsSessions } from "fuse-telemetry/metrics-session";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
@@ -77,7 +78,7 @@ import { telemetryConfiguration } from "./telemetry-config.js";
 
 /** Namespaces owned by developer insights, leaving other /api/dev extensions alone. */
 const isDeveloperInsightsPath = (path: string): boolean =>
-  /^\/api\/dev\/(?:me|metrics|reports|recordings|actions|agent-tokens)(?:\/|$)/.test(
+  /^\/api\/dev\/(?:me|metrics|events|catalog|assistant|github|reports|recordings|actions|agent-tokens)(?:\/|$)/.test(
     path,
   );
 
@@ -97,6 +98,8 @@ export interface TelemetryServicesOptions {
   agentEmailAllowed?: (email: string) => boolean;
   privateAdmission?: TelemetryAdmission;
   uploadAdmission?: TelemetryAdmission;
+  assistantKey?: string;
+  request?: typeof fetch;
 }
 
 /** The same composition serves production, local previews and injected integration tests. */
@@ -188,6 +191,17 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     },
   });
   const privateRoutes = composeHttp(
+    createWorkspaceHttp({
+      database: options.metricsDatabase,
+      games,
+      developer: options.developer,
+      quota,
+      secret: options.rateLimitKey,
+      apiKey: options.assistantKey,
+      request: options.request ?? fetch,
+      now,
+      actions,
+    }),
     createDebugHttpExtension({
       service: debug,
       verifier: options.developer,
@@ -272,6 +286,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
             const at = now();
             const capability =
               path.startsWith("/api/dev/agent-tokens") ||
+              (path.startsWith("/api/dev/github") && req.method !== "GET") ||
               (path.startsWith("/api/dev/actions/") && req.method !== "GET")
                 ? "token"
                 : recordingRoute
@@ -292,6 +307,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
                 );
             } else {
               const stepUp =
+                (path === "/api/dev/github" && req.method === "POST") ||
                 (path === "/api/telemetry/recordings" &&
                   req.method === "POST") ||
                 (path === "/api/dev/agent-tokens" && req.method === "POST");
@@ -447,6 +463,7 @@ export function createProductionTelemetry(options: {
       googleStorageAuthorization(),
     ),
     rateLimitKey: config.rateLimitKey,
+    assistantKey: config.openaiKey,
     recordingEnabled: config.recordingEnabled,
     extractor: config.openaiKey
       ? createOpenAIActionExtractor({

@@ -68,7 +68,12 @@ export interface Analytics {
   track(
     event: string,
     properties?: Record<string, unknown>,
-    localScope?: { key: string; requires?: string },
+    localScope?: {
+      key: string;
+      requires?: string;
+      match?: string;
+      round?: number;
+    },
   ): void;
   status(): AnalyticsStatus;
   setOptOut(optedOut: boolean): void;
@@ -179,6 +184,20 @@ export function createBrowserAnalytics(gameId: string): Analytics {
   const admissionStorage = safeStorage(() => sessionStorage);
   const admissionKey = "fuse-metrics-admission";
   return createAnalytics(gameId, {
+    async correlate(scope) {
+      const bytes = new Uint8Array(
+        await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(`fuse-play-v1:${scope}`),
+        ),
+      );
+      return `p_${Array.from(bytes.slice(0, 16), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      )
+        .join("")
+        .match(/.{8}/g)!
+        .join("-")}`;
+    },
     storage,
     clearAdmission: () => admissionStorage.removeItem(admissionKey),
     now: () => Date.now(),

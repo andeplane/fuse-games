@@ -1,6 +1,4 @@
 import type {
-  MetricsResponse,
-  MetricsPeriod,
   RecordingsPage,
   ReportsPage,
   RecordingDetail,
@@ -14,7 +12,20 @@ import {
 } from "./api.js";
 import { createDom } from "./dom.js";
 import { defaultDateRange } from "./model.js";
-import { metricsQuery, renderMetrics, type MetricsFilters } from "./metrics.js";
+import { type MetricsFilters } from "./metrics.js";
+import {
+  baseEventFields,
+  isEventFilters,
+  type EventFilters,
+  type EventConstraint,
+  type ExplorerResult,
+} from "fuse-telemetry/explorer-contracts";
+import { constrain, filterEditor, gameAutocomplete } from "./filters.js";
+import { renderEvents, renderPlayerSessions } from "./events.js";
+import { renderOverview } from "./overview.js";
+import { createAssistant } from "./assistant.js";
+import { githubConnection, issueComposer } from "./github.js";
+import type { ActionItem } from "fuse-telemetry/contracts";
 import {
   createPrivateMedia,
   recordingDetail,
@@ -35,6 +46,7 @@ export interface WorkspaceAccount {
   signIn(): Promise<void>;
   signOut(): Promise<void>;
   reauthenticate?(): Promise<void>;
+  connectGithub?(): Promise<string>;
   failure(error: unknown): string;
 }
 export interface WorkspaceDependencies {
@@ -44,7 +56,8 @@ export interface WorkspaceDependencies {
   now(): Date;
   gamesUrl: string;
 }
-type View = "metrics" | "sessions" | "reports" | "actions";
+type View =
+  "metrics" | "events" | "players" | "sessions" | "reports" | "actions";
 
 export function mountWorkspace(
   root: HTMLElement,
@@ -83,6 +96,259 @@ export function mountWorkspace(
   let navigation: HTMLElement;
   let content: HTMLElement;
   let toolbar: HTMLElement;
+  let gameIds: string[] = [];
+  let eventFilters: EventFilters = { groups: [] };
+  let columns: string[] = [...baseEventFields];
+  let customColumns = false;
+  let availableFields: string[] = [...baseEventFields];
+  const filterHistory: {
+    eventFilters: EventFilters;
+    columns: string[];
+    customColumns: boolean;
+    filters: MetricsFilters;
+    view: View;
+  }[] = [];
+  function remember() {
+    filterHistory.push({
+      eventFilters: structuredClone(eventFilters),
+      columns: [...columns],
+      customColumns,
+      filters: { ...filters },
+      view: current,
+    });
+    if (filterHistory.length > 40) filterHistory.shift();
+  }
+  function undo() {
+    const previous = filterHistory.pop();
+    if (!previous) return;
+    eventFilters = previous.eventFilters;
+    columns = previous.columns;
+    customColumns = previous.customColumns;
+    Object.assign(filters, previous.filters);
+    current = previous.view;
+    shell();
+    void load();
+  }
+  const undoKey = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === "z" &&
+      !target?.closest('textarea,input:not([type="checkbox"])') &&
+      filterHistory.length
+    ) {
+      event.preventDefault();
+      undo();
+    }
+  };
+  root.addEventListener("keydown", undoKey);
+  let actionsPage: ActionsPage | undefined;
+  const assistant = createAssistant(dom, api, executeTool, screen);
+  let controlSequence = 0;
+  const screenControls = new Map<string, HTMLElement>();
+  function openIssue(
+    item: ActionItem,
+    draft?: { title: string; body: string },
+  ) {
+    content.querySelector(".issue-composer")?.remove();
+    const composer = issueComposer(
+      dom,
+      api,
+      controller.signal,
+      item,
+      () => composer.remove(),
+      draft,
+    );
+    content.prepend(composer);
+    composer.focus();
+    composer.scrollIntoView?.({ block: "start" });
+  }
+  function screen(includeControls = true): string {
+    screenControls.clear();
+    const controls: { id: string; label: string; value?: string }[] = [];
+    for (const element of main.querySelectorAll<HTMLElement>(
+      "button,input,select,summary",
+    )) {
+      if (
+        element.closest(
+          ".workspace-assistant,.token-tools,.issue-composer,[hidden]",
+        ) ||
+        (element.closest("details:not([open])") &&
+          element.tagName !== "SUMMARY") ||
+        element.hidden ||
+        element.matches(":disabled")
+      )
+        continue;
+      const label =
+        element.closest("label")?.querySelector(".field-label")?.textContent ??
+        element.getAttribute("aria-label") ??
+        element.textContent ??
+        "";
+      if (/sign (?:in|out)|connect github|credential|publish/i.test(label))
+        continue;
+      if (!element.dataset.agentControl)
+        element.dataset.agentControl = `control-${++controlSequence}`;
+      const id = element.dataset.agentControl;
+      screenControls.set(id, element);
+      controls.push({
+        id,
+        label: label.trim().slice(0, 120),
+        ...("value" in element
+          ? { value: String(element.value).slice(0, 200) }
+          : {}),
+      });
+    }
+    const clone = main.cloneNode(true) as HTMLElement;
+    for (const element of clone.querySelectorAll(
+      ".workspace-assistant, .token-tools, .issue-composer",
+    ))
+      element.remove();
+    return JSON.stringify({
+      view: current,
+      dates: { from: filters.from, to: filters.to },
+      gameId: filters.gameId,
+      filters: eventFilters,
+      columns,
+      availableFields,
+      ...(includeControls ? { controls: controls.slice(0, 30) } : {}),
+      visible: (clone.innerText || clone.textContent || "").slice(0, 3000),
+    }).slice(0, 8000);
+  }
+  function changeFilters(next: EventFilters) {
+    remember();
+    eventFilters = next;
+    buildToolbar();
+    void load();
+  }
+  function addFilter(rule: EventConstraint) {
+    changeFilters(constrain(eventFilters, rule));
+  }
+  function selectSession(player: string, sessionId: string) {
+    remember();
+    current = "events";
+    eventFilters = constrain(
+      constrain(eventFilters, {
+        field: "userId",
+        operator: "eq",
+        value: player,
+      }),
+      { field: "sessionId", operator: "eq", value: sessionId },
+    );
+    shell();
+    return load();
+  }
+  async function executeTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (name === "navigate") {
+      if (
+        ![
+          "metrics",
+          "events",
+          "players",
+          "sessions",
+          "reports",
+          "actions",
+        ].includes(String(args.view))
+      )
+        throw new Error();
+      current = args.view as View;
+      selectedRecording = undefined;
+      cursor = undefined;
+      shell();
+      await load();
+    } else if (name === "set_filters") {
+      if (
+        typeof args.from !== "string" ||
+        typeof args.to !== "string" ||
+        typeof args.gameId !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(args.from) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(args.to) ||
+        (args.gameId && !gameIds.includes(args.gameId))
+      )
+        throw new Error();
+      const next: unknown = args.filters;
+      if (!isEventFilters(next)) throw new Error();
+      remember();
+      filters.from = args.from;
+      filters.to = args.to;
+      filters.gameId = args.gameId;
+      eventFilters = next;
+      buildToolbar();
+      await load();
+    } else if (name === "set_columns") {
+      if (
+        !Array.isArray(args.columns) ||
+        args.columns.length > 24 ||
+        !args.columns.every(
+          (key) => typeof key === "string" && availableFields.includes(key),
+        )
+      )
+        throw new Error();
+      remember();
+      columns = [...new Set(["kind", ...(args.columns as string[])])];
+      customColumns = true;
+      if (current !== "events") {
+        current = "events";
+        shell();
+      }
+      await load();
+    } else if (name === "select_session") {
+      if (typeof args.player !== "string" || typeof args.sessionId !== "string")
+        throw new Error();
+      await selectSession(args.player, args.sessionId);
+    } else if (name === "open_recording") {
+      if (
+        typeof args.recordingId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,160}$/.test(args.recordingId)
+      )
+        throw new Error();
+      current = "sessions";
+      selectedRecording = args.recordingId;
+      shell();
+      await load();
+    } else if (name === "refresh") await load();
+    else if (name === "click_control" || name === "fill_control") {
+      const control =
+        typeof args.id === "string" ? screenControls.get(args.id) : undefined;
+      if (!control || !main.contains(control)) throw new Error();
+      if (name === "fill_control") {
+        if (
+          typeof args.value !== "string" ||
+          args.value.length > 200 ||
+          !(control.tagName === "INPUT" || control.tagName === "SELECT")
+        )
+          throw new Error();
+        (control as HTMLInputElement | HTMLSelectElement).value = args.value;
+        const Event = deps.document.defaultView?.Event;
+        if (Event) {
+          control.dispatchEvent(new Event("input", { bubbles: true }));
+          control.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      } else {
+        control.click();
+      }
+      // Wait for the same in-flight load used by the human control, when it started one.
+      await activeLoad;
+    } else if (name === "prepare_issue") {
+      if (
+        typeof args.actionId !== "string" ||
+        typeof args.title !== "string" ||
+        typeof args.body !== "string" ||
+        args.title.length > 140 ||
+        args.body.length > 6000
+      )
+        throw new Error();
+      const item = actionsPage?.actions.find(
+        (item) => item.id === args.actionId,
+      );
+      if (!item) throw new Error();
+      openIssue(item, { title: args.title, body: args.body });
+    } else if (name !== "inspect_screen") throw new Error();
+    return screen(false);
+  }
 
   const cancel = () => {
     controller.abort();
@@ -133,6 +399,10 @@ export function mountWorkspace(
   }
   function signedOut(message = "") {
     cancel();
+    assistant.clear();
+    actionsPage = undefined;
+    eventFilters = { groups: [] };
+    filterHistory.length = 0;
     tokens.length = 0;
     identity.replaceChildren();
     const panel = node("section", "auth-panel");
@@ -183,7 +453,9 @@ export function mountWorkspace(
     navigation = node("nav", "workspace-nav");
     navigation.setAttribute("aria-label", "Developer sections");
     for (const [id, text] of [
-      ["metrics", "Metrics"],
+      ["metrics", "Overview"],
+      ["events", "Raw Events"],
+      ["players", "Player Sessions"],
       ["sessions", "Playtest sessions"],
       ["reports", "Reports"],
       ["actions", "Action proposals"],
@@ -204,21 +476,13 @@ export function mountWorkspace(
     content = node("div", "view-content");
     content.setAttribute("aria-live", "polite");
     content.setAttribute("aria-atomic", "false");
-    main.replaceChildren(navigation, toolbar, content);
+    main.replaceChildren(navigation, assistant.element, toolbar, content);
     buildToolbar();
   }
   function buildToolbar() {
     toolbar.replaceChildren();
     const form = node("form", "filters");
-    if (current === "metrics") {
-      const period = select(
-        [
-          ["day", "Daily"],
-          ["week", "Weekly"],
-          ["month", "Monthly"],
-        ],
-        filters.period,
-      );
+    if (["metrics", "events", "players"].includes(current)) {
       const from = node("input");
       from.type = "date";
       from.value = filters.from;
@@ -227,15 +491,12 @@ export function mountWorkspace(
       to.type = "date";
       to.value = filters.to;
       to.required = true;
-      const game = node("input");
-      game.type = "search";
-      game.value = filters.gameId;
-      game.placeholder = "All games";
+      const gameControl = gameAutocomplete(dom, gameIds, filters.gameId),
+        game = gameControl.input;
       form.append(
-        field("Period", period),
         field("From · UTC", from),
         field("To · UTC", to),
-        field("Game ID", game),
+        field("Game ID", gameControl.element),
       );
       form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -247,7 +508,7 @@ export function mountWorkspace(
           return;
         }
         to.setCustomValidity("");
-        filters.period = period.value as MetricsPeriod;
+        remember();
         filters.from = from.value;
         filters.to = to.value;
         filters.gameId = game.value.trim();
@@ -257,11 +518,12 @@ export function mountWorkspace(
       from.addEventListener("input", () => to.setCustomValidity(""));
     } else if (current === "actions") {
       const status = select(actionStatuses, actionStatus);
-      const game = node("input");
-      game.type = "search";
-      game.value = actionGame;
-      game.placeholder = "All games";
-      form.append(field("Status", status), field("Game ID", game));
+      const gameControl = gameAutocomplete(dom, gameIds, actionGame),
+        game = gameControl.input;
+      form.append(
+        field("Status", status),
+        field("Game ID", gameControl.element),
+      );
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         actionStatus = status.value;
@@ -303,19 +565,29 @@ export function mountWorkspace(
     const apply = node(
       "button",
       "primary",
-      current === "metrics" || current === "actions"
+      ["metrics", "events", "players", "actions"].includes(current)
         ? "Apply filters"
         : "Refresh",
     );
     apply.type = "submit";
     form.append(apply);
-    if (current === "metrics" || current === "actions")
+    if (["metrics", "events", "players", "actions"].includes(current))
       form.append(
         button("Refresh", () => {
           void load();
         }),
       );
     toolbar.append(form);
+    if (["metrics", "events", "players"].includes(current)) {
+      toolbar.append(
+        filterEditor(dom, eventFilters, availableFields, changeFilters),
+      );
+      if (filterHistory.length) {
+        const control = button("Undo changes", undo, "quiet");
+        control.title = "Undo changes (Cmd/Ctrl+Z)";
+        toolbar.append(control);
+      }
+    }
   }
   function openRecording(id: string, reportId?: string, offsetMs?: number) {
     current = "sessions";
@@ -409,7 +681,12 @@ export function mountWorkspace(
         );
     }
   }
-  async function load() {
+  let activeLoad: Promise<void> = Promise.resolve();
+  function load(): Promise<void> {
+    activeLoad = loadView();
+    return activeLoad;
+  }
+  async function loadView() {
     const signal = cancel();
     content.replaceChildren(
       node("p", "loading-state", "Loading private data…"),
@@ -417,31 +694,124 @@ export function mountWorkspace(
     content.setAttribute("aria-busy", "true");
     const media = createPrivateMedia(api, signal, failure);
     try {
-      if (current === "metrics") {
-        const data = await api.json<MetricsResponse>(
-          metricsQuery(filters),
-          signal,
-        );
+      if (["metrics", "events", "players"].includes(current)) {
+        const query = async (
+          from = filters.from,
+          after?: string,
+        ): Promise<ExplorerResult> =>
+          api.json<ExplorerResult>("/api/dev/events", signal, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from,
+              to: filters.to,
+              gameId: filters.gameId,
+              filters: eventFilters,
+              ...(after ? { cursor: after } : {}),
+            }),
+          });
+        const data = await query();
         if (!isCurrent(signal)) return;
-        content.replaceChildren(
-          renderMetrics(dom, data, (gameId) => {
-            filters.gameId = gameId;
-            buildToolbar();
-            void load();
-          }),
-        );
-        if (filters.gameId)
-          content.prepend(
-            button(
-              "Show all games",
-              () => {
-                filters.gameId = "";
-                buildToolbar();
+        availableFields = [...new Set([...baseEventFields, ...data.fields])];
+        if (!customColumns)
+          columns = [
+            ...new Set([...baseEventFields, ...data.commonFields]),
+          ].slice(0, 24);
+        const show = (result: ExplorerResult) => {
+          if (!isCurrent(signal)) return;
+          if (current === "players")
+            content.replaceChildren(
+              renderPlayerSessions(
+                dom,
+                result,
+                addFilter,
+                (player, session) => {
+                  void selectSession(player, session);
+                },
+              ),
+            );
+          else {
+            const updateColumns = (next: string[]) => {
+              remember();
+              columns = next;
+              customColumns = true;
+              show(result);
+              buildToolbar();
+            };
+            const selectedSession = eventFilters.groups
+              .flat()
+              .find(
+                (rule) => rule.field === "sessionId" && rule.operator === "eq",
+              )?.value;
+            content.replaceChildren(
+              renderEvents(
+                dom,
+                result,
+                columns,
+                updateColumns,
+                addFilter,
+                typeof selectedSession === "string"
+                  ? selectedSession
+                  : undefined,
+              ),
+            );
+          }
+          if (result.nextCursor) {
+            const older = button("Load older events", () => {
+              older.disabled = true;
+              void query(filters.from, result.nextCursor)
+                .then((next) => {
+                  if (!isCurrent(signal)) return;
+                  availableFields = [
+                    ...new Set([...availableFields, ...next.fields]),
+                  ];
+                  show(next);
+                })
+                .catch((error) => {
+                  if (isCurrent(signal))
+                    failure(error, content, () => {
+                      void load();
+                    });
+                });
+            });
+            content.append(older);
+          }
+        };
+        if (current === "metrics") {
+          const monthFrom = `${filters.to.slice(0, 7)}-01`;
+          const month =
+            filters.from <= monthFrom
+              ? {
+                  ...data,
+                  events: data.events.filter(
+                    (event) =>
+                      event.occurredAt >= Date.parse(`${monthFrom}T00:00:00Z`),
+                  ),
+                }
+              : await query(monthFrom).catch((error) => {
+                  if (error instanceof WorkspaceError && error.status === 422)
+                    return { ...data, truncated: true };
+                  throw error;
+                });
+          if (!isCurrent(signal)) return;
+          content.replaceChildren(
+            renderOverview(
+              dom,
+              data,
+              month,
+              filters.from,
+              filters.to,
+              (rule) => {
+                remember();
+                current = "events";
+                if (rule) eventFilters = constrain(eventFilters, rule);
+                shell();
                 void load();
               },
-              "text-button",
             ),
           );
+        } else show(data);
+        buildToolbar();
       } else if (selectedRecording) {
         const data = await api.json<RecordingDetail>(
           `/api/dev/recordings/${encodeURIComponent(selectedRecording)}`,
@@ -520,8 +890,10 @@ export function mountWorkspace(
             "Explicit spoken development directives become proposals. Proposals do not start work automatically. Evidence links open the original session and related reports.",
           ),
           tokenTools(dom, api, signal, tokens, failure),
-          renderActions(dom, data, openRecording),
+          githubConnection(dom, api, signal, deps.account.connectGithub),
+          renderActions(dom, data, openRecording, openIssue),
         );
+        actionsPage = data;
         pagination(data.nextCursor);
       }
     } catch (error) {
@@ -540,6 +912,11 @@ export function mountWorkspace(
     );
     try {
       await api.json<{ uid: string; email: string }>("/api/dev/me", signal);
+      const catalog = await api.json<{ gameIds: string[] }>(
+        "/api/dev/catalog",
+        signal,
+      );
+      if (Array.isArray(catalog.gameIds)) gameIds = catalog.gameIds;
       if (!isCurrent(signal)) return;
       accountName = name;
       shell();
@@ -572,6 +949,8 @@ export function mountWorkspace(
     });
   return () => {
     disposed = true;
+    root.removeEventListener("keydown", undoKey);
+    assistant.clear();
     controller.abort();
     unwatch();
     root.replaceChildren();

@@ -10,7 +10,9 @@ import { MAX_EVENT_BODY_BYTES, type MetricsStore } from "./metrics.js";
 import type { MetricsSessions } from "./metrics-session.js";
 import type { DeveloperSecurityStore } from "./developer-security.js";
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+export async function readTelemetryBody(
+  req: IncomingMessage,
+): Promise<unknown> {
   const contentType = req.headers["content-type"]
     ?.split(";")[0]
     ?.trim()
@@ -83,7 +85,9 @@ export function createMetricsHttp(options: {
         if (url.pathname === "/api/telemetry/events") {
           if (req.method !== "POST") throw new RoomError(405, "Use POST");
           options.sessions.verify(req.headers.authorization);
-          json(await options.metrics.ingest(await readBody(req), address));
+          json(
+            await options.metrics.ingest(await readTelemetryBody(req), address),
+          );
           return;
         }
         if (req.method !== "GET") throw new RoomError(405, "Use GET");

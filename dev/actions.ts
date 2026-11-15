@@ -1,6 +1,7 @@
 import type {
   ActionsPage,
   ActionStatus,
+  ActionItem,
 } from "../packages/fuse-telemetry/src/action-contracts.js";
 import type { Dom } from "./dom.js";
 import { timestamp } from "./model.js";
@@ -21,6 +22,7 @@ export function renderActions(
   dom: Dom,
   page: ActionsPage,
   open: (recordingId: string, reportId?: string, offsetMs?: number) => void,
+  issue?: (item: ActionItem) => void,
 ): HTMLElement {
   const { node, button } = dom;
   const section = node("div", "action-list");
@@ -46,6 +48,8 @@ export function renderActions(
       node("p", "muted", `${item.gameId} · Updated ${utcDate(item.updatedAt)}`),
       node("p", "private-copy", item.detail),
     );
+    if (issue && item.status !== "retracted" && item.status !== "dismissed")
+      article.append(button("Create GitHub issue", () => issue(item), "quiet"));
     if (item.lease)
       article.append(
         node(
