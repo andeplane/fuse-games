@@ -272,7 +272,13 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
       );
       return;
     }
-    commands.open({ kind: "im", buddyId: buddy.publicId, name: buddy.name });
+    if (snapshot.account.kind !== "signed-in" || !snapshot.me) return;
+    commands.open({
+      kind: "im",
+      accountId: snapshot.me.publicId,
+      buddyId: buddy.publicId,
+      name: buddy.name,
+    });
   };
   const joinGame = (buddy: Buddy | undefined) => {
     if (buddy?.room) vm.joinRoom(buddy.room.gameId, buddy.room.code);

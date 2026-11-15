@@ -1,6 +1,7 @@
 /** Real Messenger UI and HTTP storage with two isolated browser accounts. Auth is an explicit typed fake; no production accounts/data. */
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { readFileSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
 import { createServer } from "vite";
 import { chromium, type Page } from "playwright";
 import { createDevRoomService } from "../service/dev.js";
@@ -21,7 +22,14 @@ await new Promise<void>((resolve) =>
   service.server.listen(0, "127.0.0.1", resolve),
 );
 const api = `http://127.0.0.1:${(service.server.address() as AddressInfo).port}`;
-const browser = await chromium.launch({ headless: true });
+const cdp = process.env.MESSENGER_SMOKE_CDP_PORT;
+const browser = await chromium.launch({
+  headless: true,
+  args: [
+    "--mute-audio",
+    ...(cdp ? [`--remote-debugging-port=${Number(cdp)}`] : []),
+  ],
+});
 
 async function mountMessenger(page: Page, user: string, name: string) {
   await page.addInitScript("window.__name = value => value");
@@ -254,10 +262,50 @@ try {
     .locator("#messenger-smoke")
     .getByText("Hello Bob, ready to play?", { exact: true })
     .waitFor();
+  const reopened = alice
+    .locator("#messenger-smoke")
+    .getByRole("dialog", { name: `${bobName} - Instant Message` });
+  const input = reopened.getByLabel(`Message to ${bobName}`);
+  await input.fill("Draft survives minimizing");
+  await reopened.getByRole("button", { name: "Minimize", exact: true }).click();
+  await alice
+    .locator("#messenger-smoke")
+    .getByRole("button", { name: `${bobName} - Instant Message`, exact: true })
+    .click();
+  assert.equal(await input.inputValue(), "Draft survives minimizing");
+  await input.fill("");
+  const beforeDrag = await reopened.boundingBox();
+  const title = await reopened.locator(".title-bar-text").boundingBox();
+  assert.ok(beforeDrag && title);
+  await alice.mouse.move(title.x + 50, title.y + 8);
+  await alice.mouse.down();
+  await alice.mouse.move(title.x + 180, title.y + 70, { steps: 8 });
+  await alice.mouse.up();
+  const afterDrag = await reopened.boundingBox();
+  assert.ok(
+    afterDrag && afterDrag.x > beforeDrag.x + 50,
+    "Chat window drags inside real desktop bounds",
+  );
   assert.deepEqual(errors, []);
   console.log(
     "PASS: two-account Fuse Messenger contact request/accept, Instant Message windows both ways (the reply pops up unopened), plain text, history after reopen; headless browsers, injected auth.",
   );
+  const hold = process.env.MESSENGER_SMOKE_HOLD_FILE;
+  if (hold) {
+    await alice.setViewportSize({ width: 1440, height: 1000 });
+    writeFileSync(hold, "hold");
+    console.log(
+      `EVIDENCE READY: CDP ${cdp}; write release to ${hold} to close all test processes.`,
+    );
+    await new Promise<void>((resolve) =>
+      watchFile(hold, { interval: 250 }, () => {
+        if (readFileSync(hold, "utf8").trim() === "release") {
+          unwatchFile(hold);
+          resolve();
+        }
+      }),
+    );
+  }
 } finally {
   await browser.close();
   await new Promise<void>((resolve, reject) =>

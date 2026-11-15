@@ -1,8 +1,9 @@
-# MSN Messenger in FuseOS
+# Fuse Messenger in FuseOS
 
-MSN Messenger is the desktop's account and friends app, under Start > Programs,
+Fuse Messenger is the desktop's account and friends app, under Start > Programs,
 `?open=friends`, and every Fusteam Friends action. Its buddy list, white
-conversation pane, menu strip and shared green/blue buddy icon use the existing
+separate Instant Message windows, menu strip and green/blue buddy art follow
+the original late-1990s MSN Messenger layout and use the existing
 Windows 98 chrome. The first-run desktop opens Winamp, Fusteam and Messenger.
 The desktop's completed dial-up handshake is remembered separately from sign-in.
 
@@ -33,8 +34,12 @@ the account without replacing the room claim made by the game. Opening a game
 does not suspend Messenger; friends and incoming invites remain available.
 Switching to demo mode still suspends the live client until switching back.
 
-Double-click a contact or press its Chat button to open a conversation.
-**Back to contacts** returns to the buddy list. **Join game** remains an explicit
+Double-click a contact, press Enter on it, or select it and choose **Send** to
+open its own Instant Message window. The buddy list stays open. Each chat has
+its own taskbar entry; minimizing preserves its draft. Closing clears the draft.
+Private chat titles and contact/account ids never enter saved window state.
+Signing out, changing accounts, removing a friend or entering demo mode closes
+the old account's chats. **Join game** remains an explicit
 action for a contact currently playing. In a conversation, **Invite to game**
 uses `MessengerGameContext`: FuseOS forwards the request to the embedded game
 that owns the selected active room. That game uses the existing invitation API
@@ -68,12 +73,20 @@ transcript. It is separate from the friendship document, so normal presence
 polling does not download message histories. Expired entries are removed on the
 next conversation read or write; this is a visibility limit, not a background
 TTL deletion guarantee. Unfriending deletes the child document immediately.
+Presence carries only the latest sender and timestamp, not message text. These
+markers expire after seven days too. Retrying a stored message never changes
+the newest-message marker.
 There is no new service, collection query, composite index, persistent socket,
 or gameplay relay.
 
-Only the open conversation polls, every 10 seconds, with the next poll scheduled
-after the previous request finishes. Returning to contacts or closing Messenger
-stops that timer. Errors retain the draft and provide Retry; a successful send
+Open conversations poll every 10 seconds, or every 3 seconds for 90 seconds
+after recent activity, with the next poll scheduled after the previous request
+finishes. A changed message marker refreshes the conversation immediately.
+An unseen incoming message opens its conversation, or shows a clickable tray
+notification while a game is in front. Minimized chats do not mark messages
+read; new incoming messages restore them or show the same game-safe notification.
+Read marks are bounded to 200 account/contact pairs and persist only timestamps.
+Closing a chat stops its polling. Errors retain the draft and provide Retry; a successful send
 updates the transcript without waiting for the next poll. Enter sends,
 Shift+Enter inserts a newline, and composing an IME does not send prematurely.
 Messages, contact ids and room details are never added to analytics.
@@ -81,7 +94,9 @@ Messages, contact ids and room details are never added to analytics.
 ## Implementation and verification
 
 - `src/friends/FriendsWindow.tsx`: contacts, requests, invites and sign-in.
-- `src/friends/MessengerConversation.tsx`: conversation, draft, polling and game invite.
+- `src/friends/InstantMessageWindow.tsx`: account-bound chat window, draft and menus.
+- `src/friends/useConversation.ts`: polling, idempotent sending and game invites.
+- `src/friends/FriendsTray.tsx` and `messengerRead.ts`: account-scoped incoming-message notifications/read marks.
 - `src/friends/MessengerChatContext.ts`: injected chat client and message ids.
 - `src/friends/MessengerGameContext.ts`: the desktop's active-room/invite capability.
 - `src/friends/realPresenceService.ts`: the existing account and friend adapters.
@@ -93,6 +108,7 @@ Messages, contact ids and room details are never added to analytics.
 `pnpm exec tsx scripts/messenger-smoke.ts` opens two isolated headless browser
 accounts against the real local HTTP service, with explicitly injected
 identities. It exercises adding/accepting contacts, bidirectional plain-text
-chat, history after reopening and the no-room invite state. It closes its
+chat, incoming-message popups, history after reopening, minimized drafts and
+dragging real OS windows. It closes its
 browsers and servers. This proves the local UI/API flow, not production
 deployment, Google popup authentication or physical-phone behavior.

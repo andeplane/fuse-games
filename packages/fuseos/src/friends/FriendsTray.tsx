@@ -35,7 +35,7 @@ const PLAYING_KINDS: ReadonlySet<WindowKind> = new Set([
   "retro",
 ]);
 
-type Toast = { id: number; event: PresenceEvent };
+type Toast = { id: number; event: PresenceEvent; owner: string };
 
 /** The toast's line, with the game named as the desktop knows it. */
 export function toastText(
@@ -87,37 +87,57 @@ export function FriendsTray() {
   const mountedAt = useRef(deps.now());
   /** The newest message per buddy this page already acted on, so one message opens its chat once. */
   const announced = useRef(new Map<string, number>());
+  const owner =
+    snapshot.mode === "demo" ? "demo" : (snapshot.me?.publicId ?? "signed-out");
   const windows = useRef(state.windows);
   windows.current = state.windows;
   useEffect(() => {
-    const events = presenceEvents(previous.current, snapshot);
+    const events =
+      previous.current.me?.publicId === snapshot.me?.publicId
+        ? presenceEvents(previous.current, snapshot)
+        : [];
     previous.current = snapshot;
     const me = snapshot.me?.publicId;
+    const contacts = new Set(
+      snapshot.buddies.map((buddy) => `${me}:${buddy.publicId}`),
+    );
+    for (const key of announced.current.keys())
+      if (!contacts.has(key)) announced.current.delete(key);
     if (
       me &&
       snapshot.mode === "live" &&
       snapshot.account.kind === "signed-in"
     ) {
       for (const buddy of snapshot.buddies) {
+        const key = `${me}:${buddy.publicId}`;
         const last = buddy.lastMessage;
         if (!last || last.from !== buddy.publicId) continue;
         const seen = Math.max(
           read.lastRead(me, buddy.publicId) ??
             mountedAt.current - INCOMING_GRACE_MS,
-          announced.current.get(buddy.publicId) ?? -1,
+          announced.current.get(key) ?? -1,
         );
         if (last.at <= seen) continue;
-        announced.current.set(buddy.publicId, last.at);
+        announced.current.set(key, last.at);
         const open = windows.current;
         // An open chat loads the new message itself (the buddy's marker changed).
-        if (open.some((w) => w.kind === "im" && w.buddyId === buddy.publicId))
+        if (
+          open.some(
+            (w) =>
+              w.kind === "im" &&
+              !w.minimized &&
+              w.accountId === me &&
+              w.buddyId === buddy.publicId,
+          )
+        )
           continue;
-        const front = open.at(-1);
+        const front = open.filter((window) => !window.minimized).at(-1);
         if (front && !front.minimized && PLAYING_KINDS.has(front.kind))
           events.push({ type: "message", buddy });
         else {
           commands.open({
             kind: "im",
+            accountId: me,
             buddyId: buddy.publicId,
             name: buddy.name,
           });
@@ -126,10 +146,14 @@ export function FriendsTray() {
       }
     }
     if (events.length === 0) return;
-    const fresh = events.map((event) => ({ id: nextId.current++, event }));
+    const fresh = events.map((event) => ({
+      id: nextId.current++,
+      event,
+      owner,
+    }));
     setToasts((current) => [...current, ...fresh].slice(-MAX_TOASTS));
     deps.playAlert();
-  }, [snapshot, deps, read, commands]);
+  }, [snapshot, deps, read, commands, owner]);
   useEffect(() => {
     if (toasts.length === 0) return undefined;
     const oldest = toasts[0]!;
@@ -146,6 +170,7 @@ export function FriendsTray() {
   const label = signedIn
     ? `Fuse Messenger: ${online} ${online === 1 ? "buddy" : "buddies"} online`
     : "Fuse Messenger: signed out";
+  const visibleToasts = toasts.filter((toast) => toast.owner === owner);
   return (
     <>
       <button
@@ -165,13 +190,13 @@ export function FriendsTray() {
           <span className="text-[10px] font-bold">{online}</span>
         ) : null}
       </button>
-      {toasts.length > 0 ? (
+      {visibleToasts.length > 0 ? (
         <div
           className="absolute bottom-full right-1 mb-1 flex w-64 flex-col gap-1"
           role="region"
           aria-label="Fuse Messenger notifications"
         >
-          {toasts.map(({ id, event }) => {
+          {visibleToasts.map(({ id, event }) => {
             const room = toastRoom(event);
             return (
               <div
@@ -187,9 +212,14 @@ export function FriendsTray() {
                   style={{ minWidth: 0, boxShadow: "none", padding: 0 }}
                   onClick={() => {
                     dismiss(id);
-                    if (event.type === "message")
+                    if (
+                      event.type === "message" &&
+                      snapshot.me &&
+                      snapshot.account.kind === "signed-in"
+                    )
                       commands.open({
                         kind: "im",
+                        accountId: snapshot.me.publicId,
                         buddyId: event.buddy.publicId,
                         name: event.buddy.name,
                       });

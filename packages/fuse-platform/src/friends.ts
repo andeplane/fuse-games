@@ -143,9 +143,15 @@ function lastMessageOf(
   edge: FriendEdge,
   uid: string,
   other: string,
+  now: number,
 ): Pick<Friend, "lastMessage"> {
   const last = edge.lastMessage;
-  if (!last || (last.from !== uid && last.from !== other)) return {};
+  if (
+    !last ||
+    last.at <= now - MESSAGE_HISTORY_MS ||
+    (last.from !== uid && last.from !== other)
+  )
+    return {};
   return { lastMessage: { from: publicIdOf(last.from), at: last.at } };
 }
 
@@ -431,13 +437,13 @@ export class FriendsStore {
                 ...(p.room
                   ? { room: { code: p.room.code, gameId: p.room.gameId } }
                   : {}),
-                ...lastMessageOf(edge, uid, other),
+                ...lastMessageOf(edge, uid, other, now),
               }
             : {
                 ...card,
                 online: false,
                 ...(p ? { lastSeen: lastSeenOf(p.at) } : {}),
-                ...lastMessageOf(edge, uid, other),
+                ...lastMessageOf(edge, uid, other, now),
               },
         );
         relations.set(other, "friend");
@@ -607,6 +613,7 @@ export class FriendsStore {
         const messages = stored.filter(
           (message) => message.at > now - MESSAGE_HISTORY_MS,
         );
+        let sent = false;
         if (body !== undefined) {
           // Validated above, before any storage operation.
           const input = body as { id: string; text: string };
@@ -619,16 +626,17 @@ export class FriendsStore {
               409,
               "That message was already sent with different text",
             );
-          if (!existing)
+          if (!existing) {
             messages.push({
               id: input.id,
               from,
               text: input.text.trim(),
               at: now,
             });
+            sent = true;
+          }
         }
         const recent = messages.slice(-MAX_CONVERSATION_MESSAGES);
-        const sent = body !== undefined && recent.at(-1)?.at === now;
         return {
           ...(body !== undefined || recent.length !== stored.length
             ? { messages: recent }

@@ -1,4 +1,10 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { MAX_MESSAGE_LENGTH } from "fuse-platform/messages-api";
 
 import type { MenuDef } from "../windows/MenuBar";
@@ -15,6 +21,9 @@ import { MessengerReadContext } from "./messengerRead";
 export type InstantMessageWindowProps = {
   windowId: string;
   buddyId: string;
+  /** The account that opened this private window; switching accounts closes it. */
+  accountId: string;
+  visible?: boolean;
   /** The name the window opened with, shown until the buddy list says otherwise. */
   name: string;
 };
@@ -35,6 +44,8 @@ function when(at: number): { time: string; date: string } {
 export function InstantMessageWindow({
   windowId,
   buddyId,
+  accountId,
+  visible = true,
   name,
 }: InstantMessageWindowProps) {
   const vm = useFriendsViewModel();
@@ -45,7 +56,11 @@ export function InstantMessageWindow({
   const me = snapshot.me;
   const signedIn = snapshot.account.kind === "signed-in";
   const demo = snapshot.mode === "demo";
-  const live = signedIn && !demo && me !== undefined && buddy !== undefined;
+  const live =
+    signedIn && !demo && me?.publicId === accountId && buddy !== undefined;
+  useLayoutEffect(() => {
+    if (!live) commands.close(windowId);
+  }, [live, commands, windowId]);
   const conversation = useConversation(
     buddyId,
     live ? me : undefined,
@@ -64,9 +79,9 @@ export function InstantMessageWindow({
   // What this window has shown counts as read: the incoming-message pop-up will not open it again for these.
   const newestAt = messages.at(-1)?.at;
   useEffect(() => {
-    if (me && newestAt !== undefined)
+    if (live && visible && me && newestAt !== undefined)
       read.markRead(me.publicId, buddyId, newestAt);
-  }, [read, me, buddyId, newestAt]);
+  }, [read, live, visible, me, buddyId, newestAt]);
   useEffect(() => {
     input.current?.focus({ preventScroll: true });
   }, []);
@@ -132,6 +147,10 @@ export function InstantMessageWindow({
       ],
     },
   ];
+
+  // Hide private content in the same render that rejects its owner/friendship;
+  // the layout effect removes its title and taskbar entry before paint.
+  if (!live) return null;
 
   return (
     <div
@@ -235,7 +254,7 @@ export function InstantMessageWindow({
           aria-label={`Message to ${shownName}`}
           value={draft}
           maxLength={MAX_MESSAGE_LENGTH}
-          disabled={!live}
+          disabled={!live || conversation.sending}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (

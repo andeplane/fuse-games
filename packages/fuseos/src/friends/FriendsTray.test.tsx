@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -8,7 +8,13 @@ import {
 import { Desktop } from "../desktop/Desktop";
 import { MemoryDialUpSession } from "../sounds/dialup/dialUpSession";
 
-import { createDemoPresenceService, DEMO_BUDDIES } from "./demoPresenceService";
+import {
+  createDemoPresenceService,
+  DEMO_BUDDIES,
+  DEMO_ME,
+} from "./demoPresenceService";
+import { SnapshotStore } from "./presenceService";
+import { MessengerChatContext } from "./MessengerChatContext";
 import { toastText, TOAST_MS } from "./FriendsTray";
 import type { PresenceEvent } from "./presenceEvents";
 
@@ -36,6 +42,121 @@ const notifications = () =>
   screen.queryByRole("region", { name: "Fuse Messenger notifications" });
 
 describe("FriendsTray", () => {
+  it("notifies instead of restoring a minimized chat over the active game", async () => {
+    const timers = createManualTimers();
+    const demo = createDemoPresenceService({ schedule: timers.schedule });
+    const buddy = DEMO_BUDDIES[1]!;
+    const snapshots = new SnapshotStore({ ...demo.snapshot(), mode: "live" });
+    renderWithProviders(<Desktop />, {
+      initialState: {
+        version: 1,
+        windows: [
+          {
+            kind: "fusegame",
+            gameId: "fuseball",
+            id: "game",
+            minimized: false,
+            maximized: false,
+          },
+          {
+            kind: "im",
+            id: "im",
+            accountId: DEMO_ME.publicId,
+            buddyId: buddy.publicId,
+            name: buddy.name,
+            minimized: true,
+            maximized: false,
+          },
+        ],
+      },
+      presence: {
+        ...demo,
+        snapshot: () => snapshots.get(),
+        subscribe: (listener) => snapshots.subscribe(listener),
+      },
+      friendsDeps: { now: () => 100_000, schedule: timers.schedule },
+    });
+    await act(async () =>
+      snapshots.patch({
+        buddies: [
+          { ...buddy, lastMessage: { from: buddy.publicId, at: 100_000 } },
+        ],
+      }),
+    );
+    expect(
+      await screen.findByTestId("friends-toast-message"),
+    ).toHaveTextContent(buddy.name);
+    expect(
+      screen.queryByRole("dialog", { name: `${buddy.name} - Instant Message` }),
+    ).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Fuseball" })).toBeVisible();
+  });
+  it("restores a minimized chat on new mail and scopes announcements to the current account", async () => {
+    const timers = createManualTimers();
+    const demo = createDemoPresenceService({ schedule: timers.schedule });
+    const buddy = DEMO_BUDDIES[1]!;
+    const snapshots = new SnapshotStore({ ...demo.snapshot(), mode: "live" });
+    const now = 100_000;
+    const { store } = renderWithProviders(
+      <MessengerChatContext.Provider
+        value={{
+          client: {
+            load: async () => ({ messages: [] }),
+            send: async () => ({ messages: [] }),
+          },
+          messageId: () => "1".repeat(32),
+        }}
+      >
+        <Desktop />
+      </MessengerChatContext.Provider>,
+      {
+        initialState: {
+          version: 1,
+          windows: [
+            {
+              kind: "im",
+              id: "im",
+              accountId: DEMO_ME.publicId,
+              buddyId: buddy.publicId,
+              name: buddy.name,
+              minimized: true,
+              maximized: false,
+            },
+          ],
+        },
+        presence: {
+          ...demo,
+          snapshot: () => snapshots.get(),
+          subscribe: (listener) => snapshots.subscribe(listener),
+        },
+        friendsDeps: { now: () => now, schedule: timers.schedule },
+      },
+    );
+    const incoming = {
+      ...buddy,
+      lastMessage: { from: buddy.publicId, at: now },
+    };
+    await act(async () => snapshots.patch({ buddies: [incoming] }));
+    expect(
+      await screen.findByRole("dialog", {
+        name: `${buddy.name} - Instant Message`,
+      }),
+    ).toBeVisible();
+    await act(async () =>
+      snapshots.patch({
+        me: { ...DEMO_ME, publicId: "e".repeat(20) },
+        buddies: [incoming],
+      }),
+    );
+    expect(
+      await screen.findByRole("dialog", {
+        name: `${buddy.name} - Instant Message`,
+      }),
+    ).toBeVisible();
+    const chat = store.load().windows.find((window) => window.kind === "im");
+    // Private chat metadata is excluded even from a subsequent store save.
+    expect(chat).toBeUndefined();
+  });
   it("shows the online count and opens Fuse Messenger on click", async () => {
     const { user } = renderTray();
     const tray = screen.getByTestId("friends-tray");

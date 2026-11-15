@@ -1,6 +1,7 @@
 import test from "node:test";
 import { Readable } from "node:stream";
 import assert from "node:assert/strict";
+import { MESSAGE_HISTORY_MS } from "../src/messages-api.js";
 import {
   MemoryRoomDatabase,
   RoomError,
@@ -306,6 +307,35 @@ test("the buddy list's poll says who sent the newest message and when, so a clos
   });
 });
 
+test("an interleaved retry at the same clock time preserves the newest message's sender", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const original = { id: "1".repeat(32), text: "hi" };
+  await f.store.conversation("alice", bob, original);
+  await f.store.conversation("bob", alice, {
+    id: "2".repeat(32),
+    text: "hello",
+  });
+  // Both sends and the retry deliberately share a timestamp. A retry is not a new send.
+  await f.store.conversation("alice", bob, original);
+  assert.deepEqual(
+    (await f.sync("alice")).friends.find((friend) => friend.publicId === bob)
+      ?.lastMessage,
+    { from: bob, at: f.now() },
+  );
+  assert.deepEqual(
+    (await f.store.conversation("alice", bob)).messages.map(
+      (message) => message.text,
+    ),
+    ["hi", "hello"],
+  );
+});
+
 test("message history is bounded and expires from both friends' views", async () => {
   const f = fixture(),
     alice = publicIdOf("alice"),
@@ -322,7 +352,23 @@ test("message history is bounded and expires from both friends' views", async ()
   const messages = (await f.store.conversation("bob", alice)).messages;
   assert.equal(messages.length, 80);
   assert.equal(messages[0]!.text, "message 5");
-  f.tick(7 * 24 * 60 * 60_000);
+  f.tick(MESSAGE_HISTORY_MS - 1);
+  assert.deepEqual(
+    (await f.sync("bob")).friends.find((friend) => friend.publicId === alice)
+      ?.lastMessage,
+    { from: alice, at: f.now() - MESSAGE_HISTORY_MS + 1 },
+  );
+  f.tick(1);
+  for (const [uid, friend] of [
+    ["alice", bob],
+    ["bob", alice],
+  ] as const) {
+    assert.equal(
+      (await f.sync(uid)).friends.find((entry) => entry.publicId === friend)
+        ?.lastMessage,
+      undefined,
+    );
+  }
   assert.deepEqual((await f.store.conversation("bob", alice)).messages, []);
 });
 

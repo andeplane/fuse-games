@@ -39,6 +39,7 @@ const imWindow = (buddy: Buddy = BUDDY): WindowState => ({
   minimized: false,
   maximized: false,
   buddyId: buddy.publicId,
+  accountId: DEMO_ME.publicId,
   name: buddy.name,
 });
 
@@ -76,7 +77,7 @@ function livePresence() {
           ),
       }),
     );
-  return { presence, setBuddy, timers };
+  return { presence, setBuddy, timers, snapshots: store };
 }
 
 function renderMessenger(options: {
@@ -116,6 +117,125 @@ function renderMessenger(options: {
 }
 
 describe("Instant Message window", () => {
+  for (const change of [
+    "sign-out",
+    "account-switch",
+    "unfriend",
+    "demo",
+  ] as const) {
+    for (const pending of ["load", "send"] as const) {
+      it(`closes private content on ${change} and ignores a late ${pending} result`, async () => {
+        let finish: ((value: FriendConversation) => void) | undefined;
+        const deferred = () =>
+          new Promise<FriendConversation>((resolve) => {
+            finish = resolve;
+          });
+        const load = vi.fn(
+          pending === "load" ? deferred : async () => ({ messages: [] }),
+        );
+        const send = vi.fn(deferred);
+        const { user, snapshots, timers } = renderMessenger({
+          windows: [friendsWindow, imWindow()],
+          client: { load, send },
+        });
+        const im = await screen.findByRole("dialog", {
+          name: `${BUDDY.name} - Instant Message`,
+        });
+        const input = within(im).getByLabelText(`Message to ${BUDDY.name}`);
+        await user.type(
+          input,
+          pending === "send"
+            ? "Old account draft{Enter}"
+            : "Private unsent draft",
+        );
+        expect(load).toHaveBeenCalledWith(BUDDY.publicId, DEMO_ME.publicId);
+        if (pending === "send") expect(send).toHaveBeenCalledTimes(1);
+        await act(async () => {
+          if (change === "sign-out")
+            snapshots.patch({
+              account: { kind: "signed-out" },
+              me: undefined,
+              buddies: [],
+            });
+          else if (change === "account-switch")
+            snapshots.patch({ me: { ...DEMO_ME, publicId: "f".repeat(20) } });
+          else if (change === "unfriend") snapshots.patch({ buddies: [] });
+          else snapshots.patch({ mode: "demo" });
+        });
+        expect(
+          screen.queryByRole("dialog", {
+            name: `${BUDDY.name} - Instant Message`,
+          }),
+        ).toBeNull();
+        expect(
+          screen.getByRole("dialog", { name: "Fuse Messenger" }),
+        ).toBeInTheDocument();
+        await act(async () => {
+          finish!({
+            messages: [message("9", BUDDY.publicId, "Private late response")],
+          });
+          timers.fire(10_000);
+        });
+        expect(screen.queryByText("Private late response")).toBeNull();
+        expect(
+          screen.queryByDisplayValue(/Private unsent draft|Old account draft/),
+        ).toBeNull();
+        expect(load).toHaveBeenCalledTimes(1);
+      });
+    }
+  }
+
+  it("keeps a minimized draft and prevents a pending send from erasing a newer draft", async () => {
+    let finish: ((value: FriendConversation) => void) | undefined;
+    const send = vi.fn(
+      () =>
+        new Promise<FriendConversation>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { user } = renderMessenger({
+      windows: [friendsWindow, imWindow()],
+      client: { load: async () => ({ messages: [] }), send },
+    });
+    const title = `${BUDDY.name} - Instant Message`;
+    const im = await screen.findByRole("dialog", { name: title });
+    const input = within(im).getByLabelText(`Message to ${BUDDY.name}`);
+    await user.type(input, "Unsent draft");
+    await user.click(within(im).getByRole("button", { name: "Minimize" }));
+    expect(im).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: title }));
+    expect(im).toBeVisible();
+    expect(input).toHaveValue("Unsent draft");
+    await user.click(within(im).getByRole("button", { name: "Send" }));
+    expect(input).toBeDisabled();
+    await user.type(input, "Cannot overwrite pending message");
+    expect(input).toHaveValue("Unsent draft");
+    await act(async () =>
+      finish!({ messages: [message("1", DEMO_ME.publicId, "Unsent draft")] }),
+    );
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue("");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mark a newly received message as read while minimized", async () => {
+    let messages: FriendMessage[] = [];
+    const read = createMessengerReadStore(undefined);
+    const { user, timers } = renderMessenger({
+      windows: [friendsWindow, imWindow()],
+      read,
+      client: { load: async () => ({ messages }), send: vi.fn() },
+    });
+    const title = `${BUDDY.name} - Instant Message`;
+    const im = await screen.findByRole("dialog", { name: title });
+    await user.click(within(im).getByRole("button", { name: "Minimize" }));
+    messages = [message("7", BUDDY.publicId, "Hidden incoming", NOW)];
+    await act(async () => timers.fire(10_000));
+    expect(read.lastRead(DEMO_ME.publicId, BUDDY.publicId)).toBeUndefined();
+    await user.click(screen.getByRole("button", { name: title }));
+    expect(await within(im).findByText("Hidden incoming")).toBeInTheDocument();
+    expect(read.lastRead(DEMO_ME.publicId, BUDDY.publicId)).toBe(NOW);
+  });
   it("opens from a double-click on a buddy, sends plain text, invites and ignores an older poll", async () => {
     let finishLoad: ((value: FriendConversation) => void) | undefined;
     const load = vi.fn(
@@ -298,7 +418,13 @@ describe("Instant Message window", () => {
   });
 
   it("stores only a well-formed window", () => {
-    const base = { id: "w1", minimized: false, maximized: false, kind: "im" };
+    const base = {
+      id: "w1",
+      minimized: false,
+      maximized: false,
+      kind: "im",
+      accountId: DEMO_ME.publicId,
+    };
     expect(
       isWindowState({ ...base, buddyId: BUDDY.publicId, name: BUDDY.name }),
     ).toBe(true);

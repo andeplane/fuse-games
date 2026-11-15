@@ -1,4 +1,11 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   MESSAGES_POLL_MS,
   type FriendMessage,
@@ -59,6 +66,25 @@ export function useConversation(
   const alive = useRef(true);
   const lastActivity = useRef(0);
   const myId = me?.publicId;
+  const session = useRef<object>();
+  useLayoutEffect(() => {
+    const current = {};
+    session.current = current;
+    pending.current = undefined;
+    revision.current++;
+    newestSeen.current = undefined;
+    lastActivity.current = 0;
+    setMessages([]);
+    setError(undefined);
+    setSendError(undefined);
+    setNotice(undefined);
+    setSending(false);
+    setInviting(false);
+    setLoading(true);
+    return () => {
+      if (session.current === current) session.current = undefined;
+    };
+  }, [buddyId, myId]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -131,6 +157,7 @@ export function useConversation(
   const send = async (raw: string): Promise<boolean> => {
     const text = raw.trim();
     if (!text || sending || !myId) return false;
+    const owner = session.current;
     const message =
       pending.current?.text === text
         ? pending.current
@@ -147,7 +174,7 @@ export function useConversation(
         message.text,
         myId,
       );
-      if (!alive.current) return true;
+      if (!alive.current || session.current !== owner) return false;
       revision.current++;
       accept(conversation.messages);
       lastActivity.current = now();
@@ -155,7 +182,7 @@ export function useConversation(
       pending.current = undefined;
       return true;
     } catch (failure) {
-      if (alive.current)
+      if (alive.current && session.current === owner)
         setSendError(
           failure instanceof Error
             ? failure.message
@@ -163,25 +190,27 @@ export function useConversation(
         );
       return false;
     } finally {
-      if (alive.current) setSending(false);
+      if (alive.current && session.current === owner) setSending(false);
     }
   };
   const invite = async () => {
     if (!myId) return;
+    const owner = session.current;
     setInviting(true);
     setNotice(undefined);
     try {
       await game.invite(buddyId, myId);
-      if (alive.current) setNotice("Game invitation sent.");
+      if (alive.current && session.current === owner)
+        setNotice("Game invitation sent.");
     } catch (failure) {
-      if (alive.current)
+      if (alive.current && session.current === owner)
         setNotice(
           failure instanceof Error
             ? failure.message
             : "Invitation not sent. Try again.",
         );
     } finally {
-      if (alive.current) setInviting(false);
+      if (alive.current && session.current === owner) setInviting(false);
     }
   };
   return {

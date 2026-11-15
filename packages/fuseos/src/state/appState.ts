@@ -26,6 +26,8 @@ export interface FriendsWindowContent {
 /** An Instant Message window with one buddy, opened from the buddy list or by an incoming message. One per buddy. */
 export interface InstantMessageWindowContent {
   kind: "im";
+  /** The public account that opened this transient private window. */
+  accountId: string;
   /** The buddy's public id (20 hex characters); never an account id. */
   buddyId: string;
   /** The buddy's name when the window opened, for the title until the list says otherwise. */
@@ -279,7 +281,11 @@ export function sameInstance(
     case "fusegame":
       return existing.kind === "fusegame" && existing.gameId === content.gameId;
     case "im":
-      return existing.kind === "im" && existing.buddyId === content.buddyId;
+      return (
+        existing.kind === "im" &&
+        existing.buddyId === content.buddyId &&
+        existing.accountId === content.accountId
+      );
     case "controlpanel":
       return (
         existing.kind === "controlpanel" && existing.applet === content.applet
@@ -532,6 +538,8 @@ function isWindowContent(
       return value.gameId === undefined || typeof value.gameId === "string";
     case "im":
       return (
+        typeof value.accountId === "string" &&
+        /^[0-9a-f]{20}$/.test(value.accountId) &&
         typeof value.buddyId === "string" &&
         /^[0-9a-f]{20}$/.test(value.buddyId) &&
         typeof value.name === "string" &&
@@ -574,10 +582,12 @@ export function parseAppState(serialized: string | null | undefined): AppState {
   }
 }
 
-/** Serializes the state for storage, dropping transient dialogs. */
+/** Private conversation metadata and dialogs never enter saved desktop state. */
 export function serializeAppState(state: AppState): string {
   return JSON.stringify({
     ...state,
-    windows: state.windows.filter((window) => window.kind !== "dialog"),
+    windows: state.windows.filter(
+      (window) => window.kind !== "dialog" && window.kind !== "im",
+    ),
   });
 }
