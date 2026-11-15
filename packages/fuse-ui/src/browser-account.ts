@@ -117,7 +117,7 @@ export async function reauthenticate(): Promise<void> {
   const user = instance.currentUser;
   if (!user) throw new Error("Sign in first.");
   const provider = new auth.GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "login" });
+  provider.setCustomParameters({ prompt: "select_account" });
   await auth.reauthenticateWithPopup(user, provider);
   await user.getIdToken(true);
 }
