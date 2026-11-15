@@ -95,6 +95,16 @@ try {
     .first()
     .click();
   await host.waitForFunction("window.fusero.state().seats.some(s=>s.bot)");
+  const longWeapon = CLASSIC_WEAPONS.find(
+    (weapon) => weapon.name === "Super Shotgun",
+  );
+  assert.ok(longWeapon);
+  await phone
+    .getByRole("combobox", { name: "Weapon slot 1", exact: true })
+    .selectOption(String(longWeapon.id));
+  await phone.waitForFunction(
+    `(()=>{const s=window.fusero.state(),p=s.seats.find(p=>p.name==='AI Peer');return p&&s.loadouts[p.id]?.[0]===${longWeapon.id};})()`,
+  );
   await tv.goto(new URL(`fusero/?room=${code}&display=1&mute`, base).href);
   await tv.waitForFunction("window.fusero?.state()?.seats.some(s=>s.bot)");
   await host.getByRole("button", { name: "START MATCH", exact: true }).click();
@@ -150,6 +160,56 @@ try {
   );
   console.log(
     `TV reload recovered native AI while the match continued; common hash tick ${await converge(pages)}`,
+  );
+  await phone.setViewportSize({ width: 844, height: 390 });
+  const landscape = await phone.evaluate(() => {
+    const arena = document
+      .querySelector(".liero-arena")!
+      .getBoundingClientRect();
+    const controls = Array.from(
+      document.querySelectorAll(".liero-pad button, .liero-weapon-bar button"),
+    ).map((button) => button.getBoundingClientRect().toJSON());
+    return {
+      arena: arena.toJSON(),
+      controls,
+      height: innerHeight,
+      width: innerWidth,
+    };
+  });
+  assert.ok(
+    landscape.arena.height >= 180,
+    "landscape keeps a usable cave height",
+  );
+  assert.equal(landscape.controls.length, 15);
+  for (const control of landscape.controls) {
+    assert.ok(control.width >= 44 && control.height >= 44);
+    assert.ok(control.x >= 0 && control.right <= landscape.width);
+    assert.ok(control.y >= 0 && control.bottom <= landscape.height);
+  }
+  assert.equal(
+    await phone.evaluate("window.fusero.camera().height"),
+    240,
+    "landscape layout preserves native camera geometry",
+  );
+  console.log(
+    "Phone landscape retains the cave, native camera and all 44px controls",
+  );
+  await phone.setViewportSize({ width: 520, height: 320 });
+  const narrow = await phone.evaluate(() => ({
+    hud: document.querySelector(".liero-hud")!.getBoundingClientRect().toJSON(),
+    scores: document
+      .querySelector(".liero-scores")!
+      .getBoundingClientRect()
+      .toJSON(),
+    arena: document
+      .querySelector(".liero-arena")!
+      .getBoundingClientRect()
+      .toJSON(),
+  }));
+  assert.ok(narrow.arena.height >= 120);
+  assert.ok(
+    narrow.hud.bottom <= narrow.scores.top,
+    "narrow landscape HUD never wraps into scores",
   );
   assert.deepEqual(errors, []);
   console.log("Fusero native AI room smoke passed");
