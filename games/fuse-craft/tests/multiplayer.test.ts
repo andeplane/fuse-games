@@ -39,7 +39,7 @@ function fixture(
     powerups: true,
   };
   const session: OnlineSession = {
-    confirmedView: () => ({ ...world, seats: room.seats }),
+    confirmedView: () => ({ ...world, seats: room.seats, decided: null }),
     code: "AB12",
     localPlayerId: world.players[0]!.id,
     canControl: true,

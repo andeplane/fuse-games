@@ -161,6 +161,7 @@ import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
 import { createSongLeaderboards } from "./song-leaderboards.js";
 import { RankedRun } from "./ranked-run.js";
+import { fusemaniaPlayFrame } from "./play-metrics.js";
 import {
   scoreSource,
   type SongBoard,
@@ -790,7 +791,7 @@ function songHighscores(): void {
           `?song=${encodeURIComponent(song)}&chart=${chart}`,
         )) as { players: ScoreEntry[] }
       ).players,
-  });
+  }, document, { openPlayer: social.openPlayer });
   const page = createSubPage({
     title: "Song highscores",
     backHref: withFlags(endpoints.appUrl()),
@@ -2004,28 +2005,7 @@ function enterRoom(
         reportPlay,
         frame,
         () => runtime.confirmedFrame(),
-        (frame) => {
-          const players =
-            frame.stage === "lobby"
-              ? frame.seats.filter((seat) => !seat.watcher)
-              : frame.roster;
-          return {
-            matchId: frame.matchId,
-            roundActive:
-              frame.stage === "running" &&
-              !!frame.world &&
-              frame.world.ms >= 0 &&
-              frame.world.phase === "playing",
-            roundEnded: frame.stage === "over",
-            active: frame.stage === "running",
-            ended: frame.stage === "over",
-            playerCount: players.length,
-            botCount: players.filter((player) => player.bot).length,
-            seated: players.some((player) => player.id === viewer.me),
-            mode,
-            round: 1,
-          };
-        },
+        (frame) => fusemaniaPlayFrame(frame, { self: viewer.display ? "" : viewer.me, mode }),
       );
       settings = roomSettings;
       // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
@@ -2088,7 +2068,7 @@ function enterRoom(
       }
       render(next, frame);
       const state = runtime.roomState();
-      if (session.kind === "room" && !display && state)
+      if (!display && state && library === LIBRARY && (session.kind === "room" || social.isSignedIn()))
         for (const report of dueReports(
           library,
           state,
@@ -2098,9 +2078,9 @@ function enterRoom(
         )) {
           sent.add(report.key);
           void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
+            endpoints.apiUrl(session.kind === "room" ? `/api/games/${GAME}/rooms/${code}/${report.path}` : `/api/games/${GAME}/me/${report.path}`),
             report,
-            { fetch: social.reportFetch, roomToken: session.token },
+            { fetch: social.reportFetch, ...(session.kind === "room" ? { roomToken: session.token } : {}) },
           );
         }
     },

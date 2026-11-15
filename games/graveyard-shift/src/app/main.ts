@@ -5,6 +5,7 @@ import {
 } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
 import "fuse-ui/social.css";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
@@ -55,6 +56,7 @@ import type { WorldView } from "../engine/view.js";
 import { createSmoother, forward, forwardInputs, memoBot } from "./forward.js";
 import { GraveyardRuntime } from "../online/runtime.js";
 import type { View } from "../online/game.js";
+import { shiftReceipts } from "../online/result.js";
 import { seatName } from "../online/names.js";
 import { draw, COLORS } from "../render/scene.js";
 import {
@@ -250,6 +252,15 @@ function room() {
   const solo = session.kind === "solo",
     code = session.kind === "room" ? session.code : "SOLO",
     display = session.kind === "room" && session.role === "display";
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room" ? { room: { code: session.code, token: session.token } } : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => self,
+    now: () => performance.now(),
+  });
   let host = solo,
     shared = false;
   // The room's state is one line: at the room's foot while it waits, in the bar during a shift. What went wrong is
@@ -524,6 +535,8 @@ function room() {
         host = solo || frame.managerId === self;
         shared = settings.display;
         runtime?.flush();
+        const room = runtime?.roomState();
+        if (!display && room) history.observe(shiftReceipts(room), runtime?.confirmedTick() ?? -1);
         const mine = frame.seats.find((s) => s.id === self && !s.watcher);
         ownSeat = frame.stage === "lobby" ? mine : undefined;
         observeConfirmedPlay(
@@ -716,6 +729,7 @@ function room() {
       runtime?.stop();
     },
     destroy: () => {
+      history.dispose();
       modalInput.dispose();
       stopPlaytestInput();
       alive = false;

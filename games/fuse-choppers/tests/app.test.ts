@@ -164,7 +164,7 @@ test("banners: the countdown, GO, a round's winner, a draw and the break between
   assert.equal(present(won, host).banner!.title, "NOBODY SURVIVED");
   const between = room("between", {
     resumeAt: 40,
-    results: [{ round: 1, winner: "a", placings: [] }],
+    results: [{ round: 1, tick: 1, finishers: [], winner: "a", placings: [] }],
     wins: { a: 1 },
   });
   const pause = present(between, guest).banner!;
@@ -172,7 +172,7 @@ test("banners: the countdown, GO, a round's winner, a draw and the break between
   assert.equal(pause.detail, "Round 2 in 2…");
   const drawn = room("between", {
     resumeAt: 20,
-    results: [{ round: 1, winner: "", placings: [] }],
+    results: [{ round: 1, tick: 1, finishers: [], winner: "", placings: [] }],
   });
   assert.equal(present(drawn, guest).banner!.title, "DRAW");
 });
@@ -272,6 +272,7 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
     results: [
       {
         round: 1,
+        tick: 1, finishers: ["a", "b"],
         winner: "b",
         placings: [
           placing("b", "escaped", 600),
@@ -281,6 +282,7 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
       },
       {
         round: 2,
+        tick: 2, finishers: ["a", "b"],
         winner: "b",
         placings: [
           placing("b", "escaped", 600),
@@ -318,6 +320,7 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
       results: [
         {
           round: 1,
+          tick: 1, finishers: ["z"],
           winner: "z",
           placings: [{ ...placing("z", "escaped", 60), name: "Zed", slot: 4 }],
         },

@@ -38,6 +38,8 @@ import {
 import { createAppPortal } from "fuse-ui/portal";
 import { createTopBar } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { birdsResults } from "../online/result.js";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import {
   createPlayMetrics,
@@ -234,6 +236,13 @@ function landing(): void {
   app.replaceChildren(page);
 }
 function room(code: string, display: boolean, practice = false): void {
+  const historyToken = practice ? undefined : roomToken(store, code, display, secret);
+  const resultsHistory = createResultsHistory({
+    fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME,
+    ...(historyToken ? { room: { code, token: historyToken } } : {}),
+    signedIn: () => social.isSignedIn(), playerId: () => me,
+    now: () => performance.now(),
+  });
   const metricsScope = practice ? crypto.randomUUID() : code;
   const observePlay = createPlayMetrics(analytics.track, () =>
     performance.now(),
@@ -685,6 +694,9 @@ function room(code: string, display: boolean, practice = false): void {
             roomScope: metricsScope,
           }),
       );
+      const confirmed = runtime.confirmedFrame?.();
+      if (!display && !practice && confirmed)
+        resultsHistory.observe(birdsResults(confirmed), Math.floor(confirmed.tick / 3));
       ownSeat = frame.seats.find((s) => s.id === me && !s.watcher);
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
@@ -850,7 +862,7 @@ function room(code: string, display: boolean, practice = false): void {
         {
           displayOnly: display,
           transport: (events) => {
-            const token = roomToken(store, code, display, secret);
+            const token = historyToken!;
             return social.transport(
               code,
               token,
@@ -866,6 +878,7 @@ function room(code: string, display: boolean, practice = false): void {
         },
       );
   const stop = () => {
+    resultsHistory.dispose();
     stopped = true;
     cancel();
     modalInput.dispose();

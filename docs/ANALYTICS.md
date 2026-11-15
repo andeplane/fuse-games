@@ -6,6 +6,14 @@ bounded event batches to the existing service's `POST /api/telemetry/events`.
 No third-party analytics SDK or analytics provider receives new events.
 Existing Mixpanel history is neither migrated nor deleted.
 
+Gameplay activity and verified highscores use this same first-party persistence
+infrastructure through authenticated, separately validated routes. They are not
+accepted through anonymous telemetry ingestion. Shared match/round activity is an
+indexed projection of accepted history; Fusemania song boards are projections of
+canonical input replays. See [gameplay activity](design/gameplay-activity.md) and
+[song scores](design/fusemania-song-scores.md). Analytics opt-out does not turn an
+anonymous event into an account-owned result or disable ordinary game history.
+
 ## Identity and sessions
 
 A user is one anonymous browser installation, identified by a random UUID saved on

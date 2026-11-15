@@ -53,6 +53,8 @@ import {
   validMatchId,
   validName,
 } from "./names.js";
+import { parseHistoryResult } from "fuse-platform/history-api";
+import { isHistoryBot, parseAxeHistoryPlayer, runResult, type AxeHistoryReceipt } from "./activity.js";
 
 /**
  * Fuse Axe behind the netcode's `RollbackGame`. The room keeps the seats and the run: the stage the party is on
@@ -170,6 +172,7 @@ export interface Room extends ManagedRoom<Settings> {
    * from its world when it is cleared or lost, so they outlive it. While a stage runs, its own are the world's.
    */
   tally: Tally[];
+  history: AxeHistoryReceipt[];
 }
 
 export interface SeatView {
@@ -213,6 +216,7 @@ export interface View {
   outcome: Outcome;
   /** Every hero of the run, in seat order; empty in the lobby. */
   tally: TallyView[];
+  history: AxeHistoryReceipt[];
 }
 
 const payloads = {
@@ -262,6 +266,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     continued: false,
     outcome: "",
     tally: [],
+    history: [],
   };
 }
 
@@ -293,6 +298,7 @@ function toLobby(room: Room, matchId: string): void {
   room.continued = false;
   room.outcome = "";
   room.tally = [];
+  room.history = [];
 }
 /**
  * Stage `round` of the run for `heroes`: that stage's world, seeded for the run and the stage
@@ -318,6 +324,7 @@ function startRun(room: Room, matchId: string): void {
   const heroes = seats.map((seat) => ({ seat: seat.slot, kind: heroOf(seat) }));
   room.matchId = matchId;
   room.outcome = "";
+  room.history = [];
   room.tally = heroes.map(({ seat, kind }) => ({
     seat,
     kind,
@@ -341,7 +348,7 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
 };
 
 /** Adds the stage's tallies, from its world, to the run's: once, as the stage ends. */
-function bank(room: Room, world: World): void {
+function bank(room: Room, world: World, tick: number, outcome: "clear" | "defeat"): void {
   room.tally = room.tally.map((row) => {
     const hero = world.heroes.find((each) => each.seat === row.seat);
     return hero
@@ -352,6 +359,20 @@ function bank(room: Room, world: World): void {
         }
       : row;
   });
+  const entrants = world.heroes.flatMap(hero => {
+    const seat = playerOf(room, hero.seat, hero.kind);
+    return seat ? [{ hero, seat }] : [];
+  });
+  const finishers = entrants.filter(({seat}) => !seat.bot && seat.connected).map(({seat}) => seat.id).sort();
+  if (entrants.length) room.history.push({ tick, result: {
+    matchId: room.matchId, round: room.round, length: 1, finishers,
+    players: entrants.map(({hero, seat}) => ({
+      playerId: seat.id, name: seat.name, slot: seat.slot, roundsPlayed: 1,
+      roundWins: 0, matchScoreUnits: outcome === "clear" ? 1 : 0,
+      matchPlacement: 1, earlyExits: seat.bot || finishers.includes(seat.id) ? 0 : 1,
+      damage: hero.damage, knockdowns: hero.knockdowns, outcome,
+    })),
+  } });
 }
 /** The run is over: nothing is held from here on, no clock runs, and the next run's heroes are picked. */
 function finish(room: Room, outcome: Outcome): void {
@@ -359,6 +380,11 @@ function finish(room: Room, outcome: Outcome): void {
   room.outcome = outcome;
   room.until = 0;
   room.held = {};
+  if (outcome === "victory" || outcome === "defeat") {
+    const finishers = [...room.seats.values()].filter(seat => !seat.bot && !seat.watcher && seat.connected).map(seat => seat.id);
+    const result = runResult(room.history, room.matchId, room.round, outcome, finishers);
+    if (result) room.history.push({ tick: room.tick + 1, result });
+  }
 }
 /**
  * The seat playing the hero in `slot` of `kind`: the slot's rider, if it plays that hero. In a run every hero has one
@@ -527,14 +553,14 @@ function runTick(
   }
   const world = (room.world = playTick(room, room.world!, streams, tick));
   if (stageCleared(world)) {
-    bank(room, world);
+    bank(room, world, tick, "clear");
     room.stage = "between";
     room.held = {};
     room.until = tick + CLEAR_TICKS;
   } else if (
     room.until > 0 ? tick >= room.until : defeated(world) && room.continued
   ) {
-    bank(room, world);
+    bank(room, world, tick, "defeat");
     finish(room, "defeat");
   } else if (room.until === 0 && defeated(world))
     room.until = tick + CONTINUE_TICKS;
@@ -579,7 +605,7 @@ export function foldTick(
 }
 
 // ---- checkpoint ----
-const FIELDS = 11;
+const FIELDS = 12;
 const SEAT_KEYS = [
   "id",
   "name",
@@ -608,6 +634,7 @@ export function encode(room: Room): unknown[] {
     room.continued,
     room.outcome,
     room.tally.map((row) => [row.seat, row.kind, row.damage, row.knockdowns]),
+    structuredClone(room.history),
   ];
 }
 
@@ -813,8 +840,19 @@ export function decode(
     continued,
     outcome,
     rawTally,
+    rawHistory,
   ] = fields;
   const settings = parseSettings(rawSettings);
+  if (!Array.isArray(rawHistory) || rawHistory.length > LAST_STAGE + 1) return;
+  const history: AxeHistoryReceipt[] = [];
+  for (const raw of rawHistory) {
+    if (!plain(raw) || Object.keys(raw).length !== 2 || !uint32(raw.tick) || raw.tick > tick) return;
+    const at = raw.tick;
+    if (history.some(receipt => receipt.tick > at)) return;
+    const result = parseHistoryResult(raw.result, parseAxeHistoryPlayer, playerKey, isHistoryBot);
+    if (!result || result.matchId !== matchId || (result.round !== undefined && (result.round > Number(round) || history.some(receipt => receipt.result.round === result.round))) || (result.round === undefined && history.some(receipt => receipt.result.round === undefined))) return;
+    history.push({ tick: raw.tick, result });
+  }
   if (
     !validMatchId(matchId) ||
     !uint32(round) ||
@@ -880,6 +918,7 @@ export function decode(
     continued,
     outcome: outcome as Outcome,
     tally,
+    history,
   };
   return consistent(room) ? room : undefined;
 }
@@ -930,6 +969,7 @@ export function view(room: Room): View {
         : 0,
     continued: room.continued,
     outcome: room.outcome,
+    history: structuredClone(room.history),
     tally: room.tally.map((row) => {
       const hero = room.world?.heroes.find((each) => each.seat === row.seat),
         stage = hero

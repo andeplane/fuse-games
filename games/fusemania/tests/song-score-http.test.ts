@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { publicIdOf } from "fuse-platform";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { RoomError } from "fuse-network-be";
@@ -91,7 +92,7 @@ test("HTTP runs require verified identity, bounded JSON, and known canonical cha
   assert.equal((await post(run, { inputs: [], rating: 0 })).status, 200);
   const board = await (await fetch(url + "?song=grid&chart=0")).json();
   assert.deepEqual(board, {
-    players: [{ name: "Ada", rating: 0, endedAt: now }],
+    players: [{ publicId: publicIdOf("ada"), name: "Ada", rating: 0, endedAt: now }],
   });
   assert.equal((await fetch(url + "?song=grid")).status, 400);
   assert.equal((await fetch(url, { method: "DELETE" })).status, 405);

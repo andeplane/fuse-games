@@ -35,6 +35,7 @@ export function startService(authClient?: AuthClient): void {
         process.env.FIREBASE_PROJECT_ID ?? projectId,
       );
       const platformHttp = createPlatformHttp({
+        activity: history.activity,
         history: new HistoryStore(platform, history, store, Date.now),
         friends: new FriendsStore(
           platform,

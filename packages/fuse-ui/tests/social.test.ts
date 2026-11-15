@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createGameSocial, friendRoomUrl } from "../src/social.js";
+import { SOLO_RATING_PLAYER_ID } from "fuse-platform/rating";
 import type { AccountAuth } from "../src/account.js";
 import { createMemoryStorage } from "../src/safe-storage.js";
 import type { RoomTransport, TransportEvents } from "fuse-network-fe";
@@ -218,6 +219,28 @@ test("result identity stays in headers and is restricted to this game's backend"
   f.change(false);
   await f.social.reportFetch(url, { method: "POST" });
   assert.equal(f.calls.at(-1)!.headers.get("X-Fuse-Identity"), null);
+  f.social.dispose();
+});
+
+test("solo HTTP reports normalize only the local seat without mutating runtime results", async () => {
+  const f = fixture();
+  f.change(true);
+  await settle();
+  f.calls.length = 0;
+  const result = { matchId: "game", winnerId: "solo", players: [{ playerId: "solo", name: "Ada" }, { playerId: "bot:1", name: "AI" }], finishers: ["solo"] };
+  const body = JSON.stringify({ result });
+  for (const kind of ["results", "round-results"]) {
+    await f.social.reportFetch(`https://api.example/api/games/fuse-craft/me/${kind}`, { method: "POST", body });
+    const call = f.calls.at(-1)!;
+    assert.equal(call.headers.get("X-Fuse-Identity"), "account-token");
+    assert.equal(call.headers.get("Authorization"), null);
+    assert.deepEqual(JSON.parse(call.body!), { result: { ...result, winnerId: SOLO_RATING_PLAYER_ID, players: [{ playerId: SOLO_RATING_PLAYER_ID, name: "Ada" }, result.players[1]], finishers: [SOLO_RATING_PLAYER_ID] } });
+  }
+  assert.equal(result.players[0]!.playerId, "solo");
+  await f.social.reportFetch("https://other.example/api/games/fuse-craft/me/results", { method: "POST", body });
+  assert.equal(f.calls.at(-1)!.body, body);
+  await f.social.reportFetch("https://api.example/api/games/fuse-craft/rooms/AB12/results", { method: "POST", body });
+  assert.equal(f.calls.at(-1)!.body, body);
   f.social.dispose();
 });
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { RoomError } from "fuse-network-be";
-import type { HistoryDatabase } from "fuse-platform";
+import { publicIdOf, type HistoryDatabase } from "fuse-platform";
 import {
   record,
   type TelemetryDatabase,
@@ -47,7 +47,8 @@ export interface SongScoreOptions {
   now(): number;
   id(): string;
 }
-const publicEntry = ({ name, rating, endedAt }: RankedEntry): ScoreEntry => ({
+const publicEntry = ({ uid, name, rating, endedAt }: RankedEntry): ScoreEntry => ({
+  publicId: publicIdOf(uid),
   name,
   rating,
   endedAt,

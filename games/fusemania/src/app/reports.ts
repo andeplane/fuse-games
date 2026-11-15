@@ -20,8 +20,9 @@ export interface DueReport {
  * The reports this device should send now. Every player still seated at the end reports what its own replica
  * computed, and the service keeps a result once enough of them agree, so only confirmed history goes in: nothing is
  * due until the confirmed log tick (`runtime.confirmedTick()`) reaches the tick the match was decided on, after
- * which no rollback can change it. A match is one round to the platform, so it is owed twice: as round 1, which the
- * platform rates, and as the whole match, which credits totals. A device that did not finish the match (the shared
+ * which no rollback can change it. Each song owes a numbered rating receipt under its session's parent id;
+ * the final song also owes the aggregate match, which credits career totals once. A single song owes both.
+ * A device that did not finish the song (the shared
  * screen, a watcher, a player who left, a bot id) owes nothing; `sent` holds the keys already sent.
  */
 export function dueReports(
@@ -44,19 +45,21 @@ export function dueReports(
   const due: DueReport[] = [];
   const round = roundResult(library, room),
     match = matchResult(library, room);
-  const roundKey = `${room.matchId}:1`,
-    matchKey = `${room.matchId}:match`;
-  if (round && !sent.has(roundKey))
-    due.push({ key: roundKey, path: "round-results", result: round });
-  if (match && !sent.has(matchKey))
-    due.push({ key: matchKey, path: "results", result: match });
+  if (round) {
+    const key = `${round.matchId}:${round.round}`;
+    if (!sent.has(key)) due.push({ key, path: "round-results", result: round });
+  }
+  if (match) {
+    const key = `${match.matchId}:match`;
+    if (!sent.has(key)) due.push({ key, path: "results", result: match });
+  }
   return due;
 }
 
 export interface ReportTransport {
   fetch: typeof fetch;
   /** The room capability that proves which seat is reporting. */
-  roomToken: string;
+  roomToken?: string;
   wait?: (ms: number) => Promise<void>;
 }
 
@@ -83,7 +86,7 @@ export async function sendReport(
         keepalive: true,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${transport.roomToken}`,
+          ...(transport.roomToken === undefined ? {} : { Authorization: `Bearer ${transport.roomToken}` }),
         },
       });
       if (response.ok) {

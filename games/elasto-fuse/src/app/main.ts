@@ -1006,7 +1006,7 @@ function room(solo: boolean): void {
       render(next, frame);
       const state = runtime.roomState();
       runtime.flush();
-      if (session.kind === "room" && !display && state)
+      if (!display && state && (session.kind === "room" || social.isSignedIn()))
         for (const report of dueReports(
           state,
           runtime.self,
@@ -1015,9 +1015,14 @@ function room(solo: boolean): void {
         )) {
           sent.add(report.key);
           void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
+            endpoints.apiUrl(
+              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
+            ),
             report,
-            { fetch: social.reportFetch, roomToken: session.token },
+            {
+              fetch: social.reportFetch,
+              ...(session.kind === "room" ? { roomToken: session.token } : {}),
+            },
           );
         }
     },

@@ -1,13 +1,7 @@
-import { RESERVED_KEYS, type GameRegistration } from "fuse-platform";
+import { historyOnlyRegistration } from "fuse-platform";
 
-/** Room admission only: this first version reports no results and credits no progression. */
-export const choppersRegistration: GameRegistration = {
+/** Outcomes and activity without introducing ranked play or progression. */
+export const choppersRegistration = historyOnlyRegistration({
   id: "fuse-choppers",
-  isBot: () => false,
-  parseStats: () => undefined,
-  emptyTotals: () => ({}),
-  credit: () => undefined,
-  addTotals: () => {},
-  parseTotals: (raw) =>
-    Object.keys(raw).every((key) => RESERVED_KEYS.has(key)) ? {} : undefined,
-};
+  isBot: id => /^bot:[1-9][0-9]*$/.test(id),
+});

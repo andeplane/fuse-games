@@ -5,6 +5,8 @@ import {
 } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { historyReceipts } from "../online/history.js";
 import { AVATAR_ATLAS } from "fuse-ui/assets";
 import { pilotPosition } from "../render/pilots.js";
 import "fuse-ui/social.css";
@@ -421,6 +423,7 @@ function room(solo: boolean): void {
     display = role === "display";
   document.body.classList.toggle("fc-display", display);
   const viewer: Viewer = { me: "", host: solo, solo, display };
+  const history = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME, ...(session.kind === "room" ? { room: {code:session.code,token:session.token} } : {}), signedIn:social.isSignedIn, playerId:()=>viewer.me, now:()=>performance.now() });
   const sfx = createSfx(muted);
   activeSfx = sfx;
   sfx.setMuted(!soundEnabled);
@@ -1119,6 +1122,7 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: ChopperCallbacks = {
     state(frame, roomSettings) {
+      if (!display) { const confirmed = runtime.confirmedFrame(); if (confirmed) history.observe(historyReceipts(confirmed),confirmed.logTick); }
       observeConfirmedPlay(
         reportPlay,
         frame,
@@ -1224,7 +1228,7 @@ function room(solo: boolean): void {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => stopPlaytestInput(),
+    destroy: () => { history.dispose(); stopPlaytestInput(); },
     reload: () => location.reload(),
   });
 

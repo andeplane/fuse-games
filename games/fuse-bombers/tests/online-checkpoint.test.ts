@@ -563,14 +563,24 @@ test("a match that was decided plays no further round", () => {
     ["bot:3", "bot:2", "bot:2"],
   );
   assert.ok(decode(crowned, tick("over")) === undefined, "crowned in round 2");
-  // A result names a member that can be a record key: not one of `Object.prototype`'s names.
-  assert.ok(decode(changed(over, [[6, 0, 1], "zz"]), tick("over")));
+  // A winner belongs to the frozen roster, and can never be a prototype key.
+  assert.equal(decode(changed(over, [[6, 0, 1], "zz"]), tick("over")), undefined);
   const proto = changed(over, [[6, 0, 1], "constructor"]);
   assert.ok(decode(proto, tick("over")) === undefined, "a winner called that");
   // Running: the round before it already gave bot:3 the wins the match needs.
   assert.ok(decode(running, tick("sudden death")));
   const done = changed(running, [[4], settle(1)]);
   assert.ok(decode(done, tick("sudden death")) === undefined, "crowned, on");
+});
+
+test("frozen history metadata rejects future ticks, invented finishers and corrupt roster stats",()=>{
+  const room=rooms.get("over")!;
+  const corrupt=(edit:(fields:unknown[])=>void)=>{const fields=wire(room);edit(fields);assert.equal(decode(fields,room.tick),undefined);};
+  assert.ok(restore(room));
+  corrupt(fields=>{const rounds=fields[6] as unknown[][];rounds[0]![3]=room.tick+1;});
+  corrupt(fields=>{const rounds=fields[6] as unknown[][];rounds[0]![5]=["not-a-finisher"];});
+  corrupt(fields=>{const rounds=fields[6] as unknown[][];const players=rounds[0]![4] as Record<string,unknown>[];players[0]!.matchScoreUnits=999;});
+  corrupt(fields=>{const roster=fields[11] as Record<string,unknown>[];roster[0]!.name="\u0000";});
 });
 
 test("a sparse array or a −0 from a source other than MessagePack does not get through", () => {

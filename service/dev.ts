@@ -59,6 +59,7 @@ export function createDevRoomService(
       const identity =
         options.identity ?? createIdentityVerifier(FIREBASE_PROJECT_ID);
       const http = createPlatformHttp({
+        activity: history.activity,
         history: new HistoryStore(games, history, store, now),
         friends: new FriendsStore(
           games,

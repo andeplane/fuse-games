@@ -48,6 +48,7 @@ import {
   type WorldView,
 } from "../engine/index.js";
 import { MAP_IDS, mapById, mapChoice, resolveMap } from "./maps.js";
+import { frontDecision, parseFrontDecision, type FrontDecision } from "./result.js";
 
 /**
  * Fuse Front behind the netcode's `RollbackGame`. The room keeps the seats, the match and its world. Seats are slots
@@ -267,6 +268,7 @@ export interface Room extends ManagedRoom<Settings> {
   /** The log tick the match's first step runs on; 0 in the lobby. */
   startAt: number;
   world: World | null;
+  decided: FrontDecision | null;
 }
 
 export function createRoom(matchId: string, settings: Settings): Room {
@@ -280,6 +282,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     play: structuredClone(valid),
     startAt: 0,
     world: null,
+    decided: null,
   };
 }
 
@@ -406,7 +409,10 @@ export function foldTick(
       for (const event of world.events) out.push({ step: world.step, event });
     }
     room.world = { ...world, events };
-    if (world.winner !== NO_WINNER) room.stage = "over";
+    if (world.winner !== NO_WINNER) {
+      if (!room.decided) room.decided = frontDecision(world, room.seats.values(), tick);
+      room.stage = "over";
+    }
   }
   room.tick = tick;
   return structuredClone(out);
@@ -453,6 +459,7 @@ export function encode(room: Room): unknown[] {
     seatOrder(room.seats.values()).map(seatTuple),
     room.startAt,
     room.world && encodeWorld(room.world),
+    room.decided && structuredClone(room.decided),
   ];
 }
 
@@ -465,8 +472,8 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 7 || !uint32(tick)) return;
-  const [matchId, stage, rawSettings, rawPlay, rawSeats, startAt, rawWorld] =
+  if (fields.length !== 8 || !uint32(tick)) return;
+  const [matchId, stage, rawSettings, rawPlay, rawSeats, startAt, rawWorld, rawDecided] =
     fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
@@ -488,9 +495,9 @@ export function decode(
   if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
     return;
   // prettier-ignore
-  const room: Room = { tick, matchId, stage: stage as Stage, seats, settings, play, startAt, world: null };
+  const room: Room = { tick, matchId, stage: stage as Stage, seats, settings, play, startAt, world: null, decided: null };
   if (stage === "lobby")
-    return startAt === 0 && rawWorld === null ? room : undefined;
+    return startAt === 0 && rawWorld === null && rawDecided === null ? room : undefined;
   if (play.map === null) return;
   const world = decodeWorld(rawWorld, mapById(play.map));
   if (!world || world.players.length % 2 !== 0) return;
@@ -503,6 +510,9 @@ export function decode(
   if (world.step !== folded * STEPS_PER_TICK) return;
   if ((stage === "over") !== (world.winner !== NO_WINNER)) return;
   room.world = world;
+  const decided = parseFrontDecision(rawDecided, world, tick);
+  if (decided === undefined || (decided && decided.tick < startAt)) return;
+  room.decided = decided;
   return room;
 }
 
@@ -539,6 +549,7 @@ export interface View {
   /** `NO_WINNER`, the winning team, or `DRAW`. */
   winner: number;
   world: WorldView | null;
+  decided: FrontDecision | null;
 }
 export function view(room: Room): View {
   const { world } = room;
@@ -556,13 +567,14 @@ export function view(room: Room): View {
       .map((p) => ({ slot: p.seat, difficulty: room.play.bots[p.seat]! })),
     winner: world?.winner ?? NO_WINNER,
     world: world && viewOf(mapOf(room), world),
+    decided: room.decided && structuredClone(room.decided),
   };
 }
 
 export const frontGame: RollbackGame<Room, Entry, View, FrontEvent, Settings> =
   {
     id: "fuse-front",
-    rules: RULES,
+    rules: `${RULES}-history1`,
     isEntry,
     createRoom,
     createTicker: () => foldTick,

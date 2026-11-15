@@ -1,13 +1,11 @@
-import { RESERVED_KEYS, type GameRegistration } from "fuse-platform";
+import { historyOnlyRegistration } from "fuse-platform";
+import { isCraftBot } from "./online/result.js";
 
-/** Room admission only: Fuse Craft's first online version reports no results and credits no progression. */
-export const craftRegistration: GameRegistration = {
+/** Confirmed outcomes enter shared history without introducing ranked progression. */
+export const craftRegistration = historyOnlyRegistration({
   id: "fuse-craft",
-  isBot: () => false,
-  parseStats: () => undefined,
-  emptyTotals: () => ({}),
-  credit: () => undefined,
-  addTotals: () => {},
-  parseTotals: (raw) =>
-    Object.keys(raw).every((key) => RESERVED_KEYS.has(key)) ? {} : undefined,
-};
+  isBot: isCraftBot,
+  activityPlayer(player) {
+    return { label: "Structures built", stats: { built: player.matchScoreUnits } };
+  },
+});

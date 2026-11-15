@@ -1,0 +1,38 @@
+import type { PlayerResult } from "./game.js";
+import type { MatchResult } from "./result.js";
+import { MAX_RATED_PLAYERS } from "./rating.js";
+
+const KEYS = ["playerId", "name", "slot", "roundsPlayed", "roundWins", "matchScoreUnits", "matchPlacement", "earlyExits"];
+/** Browser-safe strict base-player parser for frozen game checkpoints. Account/seat rules remain game-owned. */
+export function parseHistoryPlayer(raw: unknown, rounds: number): PlayerResult | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const value = raw as Record<string, unknown>;
+  if (Object.keys(value).length !== KEYS.length || !KEYS.every(key => Object.hasOwn(value, key))) return;
+  const {playerId, name, slot, roundsPlayed, roundWins, matchScoreUnits, matchPlacement, earlyExits} = value;
+  const count = (n: unknown, max: number): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 0 && n <= max;
+  if (typeof playerId !== "string" || typeof name !== "string" || !count(slot,127) || !count(roundsPlayed,rounds) || !count(roundWins,rounds) || !count(earlyExits,rounds) || !count(matchPlacement,128) || matchPlacement < 1 || typeof matchScoreUnits !== "number" || !Number.isFinite(matchScoreUnits) || matchScoreUnits < 0 || matchScoreUnits > Number.MAX_SAFE_INTEGER) return;
+  return {playerId,name,slot,roundsPlayed,roundWins,matchScoreUnits,matchPlacement,earlyExits};
+}
+
+/** Strict browser-safe checkpoint boundary; each game supplies its player, seat and bot rules. */
+export function parseHistoryResult<P extends PlayerResult>(
+  raw: unknown,
+  parsePlayer: (raw: unknown, rounds: number) => P | undefined,
+  validId: (id: unknown) => id is string,
+  isBot: (id: string) => boolean,
+): MatchResult<P> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const value = raw as Record<string, unknown>;
+  if (!Object.keys(value).every(key => ["matchId", "round", "length", "winnerId", "finishers", "players"].includes(key))) return;
+  const { matchId, round, length, winnerId, finishers, players: rawPlayers } = value;
+  if (typeof matchId !== "string" || !/^[\x21-\x7e]{1,128}$/.test(matchId) || typeof length !== "number" || !Number.isSafeInteger(length) || length < 1 || length > 99 || (round !== undefined && (typeof round !== "number" || !Number.isSafeInteger(round) || round < 1 || round > 1_000_000 || length !== 1)) || !Array.isArray(rawPlayers) || !rawPlayers.length || rawPlayers.length > 128 || (round !== undefined && rawPlayers.length > MAX_RATED_PLAYERS) || !Array.isArray(finishers) || finishers.length > MAX_RATED_PLAYERS) return;
+  const players: P[] = [];
+  for (const entry of rawPlayers) {
+    const player = parsePlayer(entry, length);
+    if (!player || !validId(player.playerId) || !player.name.length || player.name.length > 100 || /[\x00-\x1f\x7f]/.test(player.name) || player.matchPlacement > rawPlayers.length || players.some(other => other.playerId === player.playerId)) return;
+    players.push(player);
+  }
+  const ids = new Set(players.map(player => player.playerId));
+  if ((winnerId !== undefined && (typeof winnerId !== "string" || !ids.has(winnerId))) || new Set(finishers).size !== finishers.length || !finishers.every(id => typeof id === "string" && ids.has(id) && !isBot(id))) return;
+  return { matchId, ...(round === undefined ? {} : { round: round as number }), length, ...(winnerId === undefined ? {} : { winnerId: winnerId as string }), finishers: [...finishers].sort(), players: players.sort((a, b) => a.slot - b.slot || (a.playerId < b.playerId ? -1 : 1)) };
+}

@@ -39,6 +39,7 @@ import {
 } from "./names.js";
 import { decodeWorld } from "../engine/codec.js";
 import { toView, type WorldView } from "../engine/view.js";
+import { completeShift, parseShiftCompletion, type ShiftCompletion } from "./result.js";
 export const PLAY = 0,
   READY = 1,
   CANCEL = 2;
@@ -55,6 +56,7 @@ export interface Room extends ManagedRoom<Settings> {
   held: Record<string, number>;
   ready: Record<string, boolean>;
   world: World | null;
+  completion: ShiftCompletion | null;
 }
 export interface View {
   tick: number;
@@ -100,6 +102,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     held: {},
     ready: {},
     world: null,
+    completion: null,
   };
 }
 const seats = (r: Room) =>
@@ -117,6 +120,7 @@ function start(r: Room, id: string) {
   r.held = {};
   r.ready = {};
   r.world = createWorld(seedOf(id), players);
+  r.completion = null;
 }
 const hooks: LifecycleHooks<Room, Settings> = {
   stage: (r) => r.stage,
@@ -132,6 +136,7 @@ const hooks: LifecycleHooks<Room, Settings> = {
     r.held = {};
     r.ready = {};
     r.world = null;
+    r.completion = null;
   },
 };
 export function foldTick(
@@ -203,6 +208,7 @@ export function foldTick(
     stepWorld(r.world, inputs);
     if (r.world.tick >= DURATION) {
       r.stage = "over";
+      r.completion = completeShift(r, tick);
       r.ready = {};
       r.held = {};
     }
@@ -220,13 +226,14 @@ export function encode(r: Room): unknown[] {
     { ...r.held },
     { ...r.ready },
     r.world ? structuredClone(r.world) : null,
+    r.completion ? structuredClone(r.completion) : null,
   ];
 }
 const plain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 export function decode(a: readonly unknown[], tick: number): Room | undefined {
   if (
-    a.length !== 8 ||
+    a.length !== 9 ||
     !uint32(tick) ||
     !validMatchId(a[0]) ||
     (a[2] !== "lobby" && a[2] !== "running" && a[2] !== "over")
@@ -326,6 +333,14 @@ export function decode(a: readonly unknown[], tick: number): Room | undefined {
       return;
     r.world = w;
   } else if (r.stage !== "lobby") return;
+  if (r.stage === "over") {
+    const completion = parseShiftCompletion(a[8]);
+    if (!completion || completion.clock > tick || completion.result.matchId !== r.matchId || completion.result.players.length !== r.world!.hunters.length || completion.result.players.some(player => {
+      const hunter = r.world!.hunters.find(hunter => hunter.id === player.playerId);
+      return !hunter || hunter.slot !== player.slot || hunter.score !== player.matchScoreUnits;
+    })) return;
+    r.completion = completion;
+  } else if (a[8] !== null) return;
   return r;
 }
 export function hash(r: Room): string {
@@ -355,7 +370,7 @@ export const view = (r: Room): View => ({
 });
 export const graveyardGame: RollbackGame<Room, Entry, View, never, Settings> = {
   id: "graveyard-shift",
-  rules: "graveyard-shift-2",
+  rules: "graveyard-shift-3",
   isEntry,
   createRoom,
   createTicker: () => foldTick,

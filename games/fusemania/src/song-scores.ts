@@ -13,6 +13,8 @@ export interface SongInput {
   ms: number;
 }
 export interface ScoreEntry {
+  /** The platform's opaque public player ID, for shared player activity. */
+  publicId?: string;
   name: string;
   rating: number;
   endedAt: number;

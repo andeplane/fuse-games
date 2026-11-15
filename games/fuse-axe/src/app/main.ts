@@ -63,6 +63,7 @@ import { VIEW_H, VIEW_W } from "../engine/view-kit.js";
 import { axeGame, type View } from "../online/game.js";
 import { DEFAULT_HERO, isHero, seatName } from "../online/names.js";
 import { AxeRuntime, type AxeCallbacks } from "../online/runtime.js";
+import { createResultsHistory } from "fuse-ui/results-history";
 import { createScene } from "../render/scene.js";
 import { SEAT_COLORS } from "../render/seat-colors.js";
 import type { MakeSurface } from "../render/surface.js";
@@ -899,8 +900,13 @@ function room(solo: boolean): void {
     adopted = false;
   // Solo sets out at once; this page opens on the hero picker, so its first frames never show (see `SoloOpening`).
   const opening = solo ? new SoloOpening() : undefined;
+  const resultsHistory = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME,
+    ...(session.kind === "room" ? { room: { code, token: session.token } } : {}),
+    signedIn: social.isSignedIn, playerId: () => display ? "" : viewer.me, now: () => performance.now() });
   const callbacks: AxeCallbacks = {
     state(frame) {
+      const confirmed = runtime.confirmedFrame();
+      if (confirmed) resultsHistory.observe(confirmed.history, confirmed.logTick);
       if (
         opening?.holds(frame, () =>
           runtime.command({ type: "action", action: "lobby" }),
@@ -1037,7 +1043,7 @@ function room(solo: boolean): void {
         },
   );
   installRoomLifecycle(window, {
-    stop: () => runtime.stop(),
+    stop: () => { resultsHistory.dispose(); runtime.stop(); },
     destroy: () => stopPlaytestInput(),
     reload: () => location.reload(),
   });

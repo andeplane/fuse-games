@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createAccountDialog, dayLabel, type AccountAuth } from "fuse-ui";
 import { HOSTILE, page } from "./dom-fixture.js";
+import { Window } from "happy-dom";
 
 const settle = async () => {
   for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
@@ -53,8 +54,14 @@ function modal(dialog: HTMLDialogElement) {
 }
 
 /** The dialog's own harness: one document, one panel, and the fetches it is allowed to make. */
-function panelFixture(options: { pageSize?: number } = {}) {
-  const { document } = page();
+function panelFixture(
+  options: {
+    pageSize?: number;
+    activityApiUrl?: string;
+    document?: Document;
+  } = {},
+) {
+  const document = options.document ?? page().document;
   const { auth, remembered, signIn } = fakeAuth();
   const requests: string[] = [],
     puts: string[] = [];
@@ -87,6 +94,8 @@ function panelFixture(options: { pageSize?: number } = {}) {
     leaderboard: (): Response => new Response("", { status: 500 }),
     profile: (): Response =>
       new Response(JSON.stringify({ profile: { username: "Ada", rank: 3 } })),
+    activity: (_url: string): Response =>
+      new Response(JSON.stringify({ events: [] })),
   };
   const tracked: string[] = [];
   const panel = createAccountDialog<
@@ -103,6 +112,7 @@ function panelFixture(options: { pageSize?: number } = {}) {
       if (url.startsWith("/history")) return replies.history(url);
       if (url.startsWith("/matches")) return replies.feed(url);
       if (url === "/leaderboard") return replies.leaderboard();
+      if (url.startsWith("/activity")) return replies.activity(url);
       return replies.profile();
     },
     historyUrl: (before) =>
@@ -111,6 +121,9 @@ function panelFixture(options: { pageSize?: number } = {}) {
       `/matches${before === undefined ? "" : `?before=${before}`}`,
     profileUrl: "/me",
     leaderboardUrl: "/leaderboard",
+    ...(options.activityApiUrl
+      ? { activityApiUrl: options.activityApiUrl }
+      : {}),
     localName: () => null,
     track: (event) => tracked.push(event),
     names: {
@@ -148,7 +161,17 @@ function panelFixture(options: { pageSize?: number } = {}) {
       report.textContent = `${entry.label} · ${context.day}`;
       return report;
     },
-    leaderboard: () => document.createElement("ol"),
+    leaderboard: (players, handlers) => {
+      const list = document.createElement("ol");
+      for (const name of players) {
+        const link = document.createElement("button");
+        link.textContent = name;
+        link.onclick = () =>
+          handlers.openPlayer(`public-${name.toLowerCase()}`, name);
+        list.append(link);
+      }
+      return list;
+    },
     avatar: (id) => {
       const portrait = document.createElement("span");
       portrait.dataset.avatar = id;
@@ -453,4 +476,62 @@ test("settings: the username is saved, a refusal says so, and sign-out is offere
     "SIGN IN WITH GOOGLE",
     "signing out returns the dialog to its signed-out view",
   );
+});
+
+test("configured activity is lazy and the shared Matches entry opens it without fetching legacy matches", async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  const f = panelFixture({
+    activityApiUrl: "/activity",
+    document: window.document as unknown as Document,
+  });
+  assert.equal(f.requests.length, 0);
+  assert.ok(f.tab("ACTIVITY"));
+  f.panel.matchesButton.click();
+  await settle();
+  assert.equal(f.body.dataset.view, "activity");
+  assert.equal(f.tab("ACTIVITY")!.getAttribute("aria-current"), "page");
+  assert.deepEqual(f.requests, ["GET /activity?kind=match"]);
+  assert.match(f.body.textContent!, /No recorded activity/);
+  // The existing whole-match history remains explicitly accessible while new round history is introduced.
+  f.tab("MATCHES")!.click();
+  await settle();
+  assert.equal(f.body.dataset.view, "matches");
+  assert.ok(f.requests.some((request) => request === "GET /matches"));
+  f.panel.dispose();
+});
+
+test("a public player's activity opens from the dialog API and from leaderboard name handlers", async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  const f = panelFixture({
+    activityApiUrl: "/activity",
+    document: window.document as unknown as Document,
+  });
+  f.body.scrollTop = 900;
+  f.panel.openPlayer("public-bee", "Bee");
+  assert.equal(f.body.scrollTop, 0);
+  await settle();
+  assert.equal(f.panel.dialog.open, true);
+  assert.equal(f.body.dataset.view, "activity");
+  assert.match(f.body.textContent!, /Bee · RECENT ACTIVITY/);
+  assert.ok(
+    f.requests.some(
+      (request) => request === "GET /activity?player=public-bee&kind=round",
+    ),
+  );
+  f.replies.leaderboard = () =>
+    new Response(JSON.stringify({ players: ["Cass"] }));
+  f.panel.leaderboardButton.click();
+  await settle();
+  f.named("Cass")!.click();
+  await settle();
+  assert.equal(f.tab("ACTIVITY")!.getAttribute("aria-current"), "page");
+  assert.match(f.body.textContent!, /Cass · RECENT ACTIVITY/);
+  assert.ok(
+    f.requests.some(
+      (request) => request === "GET /activity?player=public-cass&kind=round",
+    ),
+  );
+  f.panel.dispose();
 });

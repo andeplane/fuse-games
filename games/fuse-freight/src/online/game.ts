@@ -85,6 +85,8 @@ export interface Placing {
 }
 export interface RoundResult {
   round: number;
+  tick: number;
+  finishers: string[];
   /** Everyone on the top score, sharing the round; none when nobody delivered. */
   winners: string[];
   /** Best first. */
@@ -338,7 +340,7 @@ function endRound(room: Room, tick: number): void {
   const winners =
     top > 0 ? placed.filter((p) => p.score === top).map((p) => p.id) : [];
   for (const id of winners) room.wins[id] = (room.wins[id] ?? 0) + 1;
-  room.results.push({ round: room.round, winners, placings: placed });
+  room.results.push({ round: room.round, tick, finishers: placed.filter(p => { const seat = room.seats.get(p.id); return seat && !seat.bot && !seat.watcher; }).map(p => p.id).sort(), winners, placings: placed });
   if (decided(room.wins, room.results, room.play)) {
     room.stage = "over";
     room.winners = leaders(room.wins, room.results);
@@ -424,6 +426,8 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.wins),
     room.results.map((result) => ({
       round: result.round,
+      tick: result.tick,
+      finishers: [...result.finishers],
       winners: [...result.winners],
       placings: result.placings.map((p) => ({ ...p })),
     })),
@@ -606,17 +610,20 @@ export function decode(
   for (const raw of rawResults) {
     if (
       !plain(raw) ||
-      Object.keys(raw).length !== 3 ||
+      Object.keys(raw).length !== 5 ||
       !uint32(raw.round) ||
+      !uint32(raw.tick) || raw.tick > tick ||
       !Array.isArray(raw.placings) ||
       raw.placings.length > CAPACITY
     )
       return;
     const placed = raw.placings.map(decodePlacing),
-      roundWinners = ids(raw.winners, CAPACITY);
-    if (placed.some((p) => !p) || !roundWinners) return;
+      roundWinners = ids(raw.winners, CAPACITY), finishers = ids(raw.finishers, CAPACITY);
+    if (placed.some((p) => !p) || !roundWinners || !finishers || finishers.some(id => !placed.some(p => p?.id === id && !p.bot))) return;
     const result = {
       round: raw.round,
+      tick: raw.tick,
+      finishers,
       winners: roundWinners,
       placings: placed as Placing[],
     };
@@ -721,6 +728,7 @@ export function view(room: Room): View {
     totals: totals(room.results),
     results: room.results.map((result) => ({
       ...result,
+      finishers: [...result.finishers],
       winners: [...result.winners],
       placings: result.placings.map((p) => ({ ...p })),
     })),
@@ -733,7 +741,7 @@ export function view(room: Room): View {
 
 export const freightGame: RollbackGame<Room, Entry, View, never, Settings> = {
   id: "fuse-freight",
-  rules: RULES,
+  rules: `${RULES}-history-1`,
   isEntry,
   createRoom,
   createTicker: () => foldTick,

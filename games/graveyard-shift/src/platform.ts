@@ -1,12 +1,8 @@
-import { RESERVED_KEYS, type GameRegistration } from "fuse-platform";
-/** POC room admission through the shared platform; persistent careers are deferred. */
-export const graveyardRegistration: GameRegistration = {
+import { historyOnlyRegistration } from "fuse-platform";
+import { isHunterBot } from "./online/result.js";
+/** Completed shifts use shared history without creating competitive ratings. */
+export const graveyardRegistration = historyOnlyRegistration({
   id: "graveyard-shift",
-  isBot: (id) => /^bot:[0-9]+$/.test(id),
-  parseStats: () => undefined,
-  emptyTotals: () => ({}),
-  credit: () => undefined,
-  addTotals: () => {},
-  parseTotals: (raw) =>
-    Object.keys(raw).every((k) => RESERVED_KEYS.has(k)) ? {} : undefined,
-};
+  isBot: isHunterBot,
+  activity: () => ({ title: "Shift complete", context: { scoreUnit: "energy" } }),
+});

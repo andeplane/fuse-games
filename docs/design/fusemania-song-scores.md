@@ -49,3 +49,10 @@ links to their empty leaderboard. Search filters titles; each chart opens up to 
 ranked players. Loading, unavailable service and failed leaderboard requests have
 visible states and retry controls. Local browser bests remain available offline and
 are versioned separately; they are never uploaded as verified records.
+
+Songs are grouped by pack. Title and all four difficulty-score columns sort within
+each pack; unplayed charts stay last in either score direction. Player names open
+the shared activity view. A playlist has a stable parent match and one numbered
+round per completed song; its summary appears only when all selected songs finish.
+The activity percentage divides the aggregate by the selected playlist length.
+Ordinary reported results do not update the replay-verified song leaderboard.

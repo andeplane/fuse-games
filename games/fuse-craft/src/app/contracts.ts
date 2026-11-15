@@ -6,6 +6,7 @@ import type {
   AiStrategy,
 } from "../engine/types.js";
 import { isAiStrategy } from "../engine/types.js";
+import type { CraftDecision } from "../online/result.js";
 
 export type GameMode = "sandbox" | "combat-lab" | "skirmish" | "watch";
 /** An AI opening to play, or "random": drawn when the match starts. */
@@ -49,6 +50,7 @@ export interface OnlineSession extends NeuralSession {
         seats: readonly (Pick<RoomSeat, "id" | "bot"> & {
           watcher?: boolean;
         })[];
+        decided: CraftDecision | null;
       })
     | undefined;
   readonly code: string;
@@ -80,9 +82,12 @@ export interface OnlineDependencies {
 }
 export interface SessionOptions {
   watchStrategies?: readonly [AiStrategy, AiStrategy];
+  humanName?: string;
 }
 
 export interface NeuralSession {
+  /** A local runtime's irreversible result; absent on injected display-only sessions. */
+  confirmedResult?(): { world: Readonly<World>; decided: CraftDecision | null } | undefined;
   readonly localPlayerId: string;
   readonly canControl: boolean;
   view(): Readonly<World>;

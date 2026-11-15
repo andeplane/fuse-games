@@ -49,6 +49,8 @@ export interface ScreenOptions {
   base?: string;
   search?: string;
   observePlay?: PlayObserver;
+  /** Called with confirmed state only; submission is supplied by the composition root. */
+  history?(frame: RoomView & { logTick: number }): void;
   online?: {
     code: string;
     display: boolean;
@@ -487,6 +489,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         state: (f, settings) => {
           activeSettings = settings;
           shared = settings.display;
+          const confirmed = runtime?.confirmedFrame();
+          if (confirmed) options.history?.(confirmed);
           if (options.observePlay)
             observeConfirmedPlay(
               options.observePlay,

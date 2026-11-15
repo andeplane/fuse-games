@@ -159,12 +159,16 @@ export function createSession(
         status() {},
         ready() {},
       },
-      { ...(dependencies ? { dependencies } : {}), humanName: "You" },
+      { ...(dependencies ? { dependencies } : {}), humanName: options.humanName ?? "You" },
     );
     runtime.start();
   };
   start();
   return {
+    confirmedResult: () => {
+      const frame = runtime.confirmedFrame();
+      return frame && { world: frame, decided: frame.decided };
+    },
     localPlayerId: "solo",
     canControl: mode !== "watch",
     view: () => view,

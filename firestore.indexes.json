@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "fuse-production-telemetry-activity",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "scopes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "endedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fuse-production-telemetry-activity",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "groupId", "order": "ASCENDING" },
+        { "fieldPath": "endedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "fuse-production-telemetry-reports",
       "queryScope": "COLLECTION",
       "fields": [
@@ -122,6 +138,9 @@
     }
   ],
   "fieldOverrides": [
+    { "collectionGroup": "fuse-production-telemetry-activity", "fieldPath": "cleanupAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "fuse-production-telemetry-activity", "fieldPath": "players", "indexes": [] },
+    { "collectionGroup": "fuse-production-telemetry-activity", "fieldPath": "context", "indexes": [] },
     {
       "collectionGroup": "fuse-production-telemetry-song-runs",
       "fieldPath": "cleanupAt",

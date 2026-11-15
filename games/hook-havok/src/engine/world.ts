@@ -1,7 +1,7 @@
 import { MAPS, type MapId } from "./maps.js";
 import { ALL_POWERS, DASH_KEEP } from "./power-rules.js";
 /** All authoritative lengths/velocities use integer subunits (1024 per world unit). */
-export const RULES = "hook-havok-17";
+export const RULES = "hook-havok-18";
 export const S = 1024;
 /** Lantern Belfry's size; every map carries its own (`MAPS[map].width`, `height`). */
 export const WIDTH = 1600,

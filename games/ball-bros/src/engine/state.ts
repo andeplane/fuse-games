@@ -1,7 +1,7 @@
 import { cos, sin, TAU, wrap } from "./math.js";
 import { ARENA_MAPS, type MapId } from "./maps.js";
 
-export const RULES = "ball-bros-6";
+export const RULES = "ball-bros-7";
 export const POWER_KINDS = [
   "shrink",
   "bomb",

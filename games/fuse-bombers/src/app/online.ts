@@ -1,5 +1,7 @@
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { historyReceipts } from "../online/history.js";
 import "fuse-ui/social.css";
 import "fuse-ui/components.css";
 import "fuse-ui/results.css";
@@ -166,6 +168,7 @@ export function showRoom(
   });
   const touch = input.touchEnabled,
     display = !solo && session.role === "display";
+  const history = createResultsHistory({fetch:social.reportFetch,apiUrl:endpoints.apiUrl,gameId:GAME,...(session.kind==="room"?{room:{code:session.code,token:session.token}}:{}),signedIn:social.isSignedIn,playerId:()=>viewer.me,now:()=>performance.now()});
   document.body.classList.toggle("fb-display", display);
   const viewer: Viewer = {
     me: "",
@@ -584,6 +587,7 @@ export function showRoom(
   const callbacks: BombersCallbacks = {
     state(next, roomSettings) {
       if (dead) return;
+      if(!display){const confirmed=runtime.confirmedFrame();if(confirmed)history.observe(historyReceipts(confirmed),confirmed.logTick);}
       observeConfirmedPlay(
         reportPlay,
         next,
@@ -757,6 +761,7 @@ export function showRoom(
   net.installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      history.dispose();
       input.hub.dispose();
       menu.dispose();
       clearTimeout(pending);

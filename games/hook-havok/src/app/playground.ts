@@ -1,4 +1,5 @@
 import { social } from "./social.js";
+import { createResultsHistory } from "fuse-ui/results-history";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import {
   playtestInputBlocked,
@@ -364,6 +365,7 @@ let runtime: HookRuntime | undefined,
   attempt = 0,
   disposed = false,
   roomAttempt = 0;
+let resultsHistory: ReturnType<typeof createResultsHistory> | undefined;
 let input: Input = { ...NEUTRAL };
 let touch: TouchControls | undefined;
 let mousePointer: number | undefined;
@@ -577,6 +579,8 @@ function stopRoom() {
   clearTimeout(roomDeadline);
   clear();
   runtime?.stop();
+  resultsHistory?.dispose();
+  resultsHistory = undefined;
   runtime = undefined;
   // A removal asked of this room must not land in the next one.
   botTarget = undefined;
@@ -754,6 +758,7 @@ const enterRoom = async () => {
       roomShown = false,
       wasRunning = false,
       restarting = false;
+    resultsHistory = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: "hook-havok", room: { code: room.code, token: room.token }, signedIn: social.isSignedIn, playerId: () => display ? "" : selfId, now: () => performance.now() });
     runtime = new HookRuntime(
       room.code,
       DEFAULT_TUNING,
@@ -767,6 +772,10 @@ const enterRoom = async () => {
           matchShell.say(text);
         },
         state(frame, settings) {
+          const confirmed = runtime?.confirmedFrame();
+          if (confirmed) resultsHistory?.observe(confirmed.history.flatMap(receipt => [
+            { tick: receipt.tick, result: { ...receipt.result, round: 1 } }, receipt,
+          ]), confirmed.logTick);
           observeConfirmedPlay(
             reportPlay,
             frame,

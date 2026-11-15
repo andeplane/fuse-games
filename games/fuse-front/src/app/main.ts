@@ -6,6 +6,8 @@ import {
 } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { frontResults } from "../online/result.js";
 import {
   createPlayMetrics,
   startGameAnalytics,
@@ -379,6 +381,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
   // The row's HERO button that opened Settings: it has the focus back when Settings closes.
   let heroOpener: string | undefined;
   let wasLobby = true;
+  const resultsHistory = createResultsHistory({
+    fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME_ID,
+    ...(token ? { room: { code, token } } : {}),
+    signedIn: () => social.isSignedIn(), playerId: () => runtime.self,
+    now: () => performance.now(),
+  });
   function show(view: Frame<View>): void {
     observeConfirmedPlay(
       reportPlay,
@@ -386,6 +394,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
       () => runtime.confirmedFrame(),
       (view) => frontPlayFrame(view, runtime.self, display, online),
     );
+    const confirmed = runtime.confirmedFrame();
+    if (!display && confirmed)
+      resultsHistory.observe(frontResults(confirmed.matchId, confirmed.decided), confirmed.logTick);
     const inLobby = view.stage === "lobby";
     // The room's line is at the room's foot; in a match it is the line under the page's header again.
     if (!inLobby && status.parentElement !== app) lobby.before(status);
@@ -1085,6 +1096,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
   window.addEventListener("blur", blurred);
   runtime.start();
   teardown = () => {
+    resultsHistory.dispose();
     stopPlaytestCapture();
     stopPlaytestInput();
     cancelAnimationFrame(raf);

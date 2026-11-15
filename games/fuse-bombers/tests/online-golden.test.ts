@@ -12,13 +12,13 @@ import * as online from "../src/online/game.js";
  * a regression to fix (docs/design/engine-safety-net.md, "When the golden fails").
  */
 const GOLDEN = {
-  rules: "fuse-bombers-1",
+  rules: "fuse-bombers-2",
   end: "over at 3650: bot:5:last-standing bot:5:last-standing → bot:5, shots 30,47",
   hashes: [
-    "3029bbe21a55ca67",
-    "3dd8e25eba878074",
-    "7454593783bcda08",
-    "ae149a0b586f7096",
+    "1f5f6eae69a82371",
+    "b7bb36280ee753ec",
+    "30779585be81f7f1",
+    "3fe6a58f1adc122d",
   ],
 };
 
