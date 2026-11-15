@@ -584,9 +584,15 @@ importers:
       fuse-netcode:
         specifier: workspace:*
         version: link:../../packages/fuse-netcode
+      fuse-network-be:
+        specifier: workspace:*
+        version: link:../../packages/fuse-network-be
       fuse-platform:
         specifier: workspace:*
         version: link:../../packages/fuse-platform
+      fuse-telemetry:
+        specifier: workspace:*
+        version: link:../../packages/fuse-telemetry
       fuse-ui:
         specifier: workspace:*
         version: link:../../packages/fuse-ui

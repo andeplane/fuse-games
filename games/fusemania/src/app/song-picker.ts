@@ -77,7 +77,7 @@ export interface SongPickerOptions {
    */
   tools?: readonly Node[];
   /**
-   * Starts the selected song. Shows a PLAY button on the song's details (for the host) and makes Enter start it.
+   * Starts the selected song from its cover card or Enter (host only); the page header owns the explicit Start action.
    * Leave out for a picker that has no start of its own.
    */
   onPlay?(): void;
@@ -299,7 +299,9 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     element.addEventListener("click", (event) => {
       // A drag ends in a pointer's click; a key's (detail 0) is never part of one.
       if (dragged && event.detail !== 0) return;
-      if (shown?.host && shown.song !== info.id) options.onSong(info.id);
+      if (!shown?.host) return;
+      if (shown.song !== info.id) options.onSong(info.id);
+      else options.onPlay?.();
     });
     rows.set(info.id, {
       song: info,
@@ -321,27 +323,92 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
   before.disabled = after.disabled = true;
   before.addEventListener("click", () => stepSong(-1));
   after.addEventListener("click", () => stepSong(1));
-  // The packs: a tab each, lit for the pack the selected song is in.
+  // The packs: one button with the current pack's name, an arrow on each side for the previous and next pack, and
+  // a list of every pack behind the button.
   const tabs = el("div", "", "fm-picker-packs");
-  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("role", "group");
   tabs.setAttribute("aria-label", "Song packs");
   let order = [...rows.values()];
   const packed = order.map((row) => row.song);
+  const packBefore = push("fm-picker-pack-step fm-picker-pack-prev"),
+    packAfter = push("fm-picker-pack-step fm-picker-pack-next"),
+    packButton = push("fm-picker-pack");
+  packBefore.setAttribute("aria-label", "Previous pack");
+  packAfter.setAttribute("aria-label", "Next pack");
+  packBefore.textContent = "\u25C0";
+  packAfter.textContent = "\u25B6";
+  packButton.setAttribute("aria-haspopup", "dialog");
+  const packLabel = el("span", "", "fm-picker-pack-name");
+  packButton.append(packLabel, el("span", "\u25BE", "fm-picker-pack-caret"));
+  const packShell = createDialog({
+    title: "SONG PACKS",
+    document: options.document,
+    classes: { root: "fui-dialog fm-sort-dialog fm-pack-dialog" },
+  });
+  const packGroup = el("div", "", "fm-sort-options");
+  packGroup.setAttribute("role", "radiogroup");
+  packGroup.setAttribute("aria-label", "Song pack");
+  packShell.body.append(packGroup);
+  root.append(packShell.dialog);
   const packTabs = packs.flatMap((pack, index) => {
     if (!order.some((row) => row.pack === index)) return [];
-    const element = push("fm-picker-pack");
-    element.setAttribute("role", "tab");
-    element.setAttribute("aria-selected", "false");
-    element.append(el("span", pack.name, "fm-picker-pack-name"));
+    const element = push("fm-sort-option fm-pack-option");
+    element.setAttribute("role", "radio");
+    element.setAttribute("aria-checked", "false");
+    element.textContent = pack.name;
     element.addEventListener("click", () => {
+      if (packShell.dialog.open) packShell.dialog.close();
       const first = order.find((row) => row.pack === index);
       if (first && shown?.host && rows.get(shown.song)?.pack !== index)
         options.onSong(first.song.id);
     });
-    tabs.append(element);
+    packGroup.append(element);
     return [{ index, name: pack.name, element }];
   });
+  // Opened by the keyboard, the focus goes back to the button; after a mouse or a touch nothing stays lit.
+  let packByKeyboard = false;
+  packShell.dialog.addEventListener("close", () => {
+    if (packByKeyboard) packButton.focus();
+    else packButton.blur();
+  });
+  packButton.addEventListener("click", (event) => {
+    if (!shown?.host) return;
+    packByKeyboard = event.detail === 0;
+    const dialog = packShell.dialog;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    const current = rows.get(shown.song)?.pack;
+    (
+      packTabs.find((tab) => tab.index === current) ?? packTabs[0]
+    )?.element.focus();
+  });
+  // The dialog owns every key while it is open: the carousel behind it must not turn.
+  packShell.dialog.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    const at = packTabs.findIndex((tab) => tab.element === event.target);
+    const by =
+      event.code === "ArrowUp" || event.code === "KeyW"
+        ? -1
+        : event.code === "ArrowDown" || event.code === "KeyS"
+          ? 1
+          : 0;
+    if (by === 0 || packTabs.length === 0) return;
+    packTabs[
+      (Math.max(at, 0) + by + packTabs.length) % packTabs.length
+    ]!.element.focus();
+    event.preventDefault();
+  });
+  // A click leaves no ring behind: Enter then starts the song, not the arrow again.
+  for (const step of [packBefore, packAfter])
+    step.addEventListener("click", (event) => {
+      stepPack(step === packBefore ? -1 : 1);
+      if (event.detail !== 0) step.blur();
+    });
+  tabs.append(packBefore, packButton, packAfter);
   tabs.hidden = packTabs.length === 0;
+  packBefore.hidden = packAfter.hidden = packTabs.length < 2;
+  write(packLabel, "PACKS");
+  packButton.disabled = packBefore.disabled = packAfter.disabled = true;
   const top = el("div", "", "fm-picker-top"),
     tools = el("div", "", "fm-picker-tools");
   const sorter = createSorter();
@@ -563,13 +630,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     names = el("div", "", "fm-picker-names");
   names.append(packName, title, artist, facts);
   head.append(art, names);
-  const play = push("fm-picker-play");
-  play.textContent = "PLAY";
-  play.hidden = true;
-  play.addEventListener("click", () => {
-    if (shown?.host && rows.has(shown.song)) options.onPlay?.();
-  });
-  detail.append(head, ...(options.onPlay ? [play] : []), chartsLabel, charts);
+  detail.append(head, chartsLabel, charts);
   if (!hideMode) detail.append(modes);
   detail.append(note);
   root.append(wheel, detail);
@@ -680,12 +741,15 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       syncScrub();
       for (const tab of packTabs) {
         const selected = String(tab.index === row?.pack);
-        if (tab.element.getAttribute("aria-selected") !== selected)
-          tab.element.setAttribute("aria-selected", selected);
+        if (tab.element.getAttribute("aria-checked") !== selected)
+          tab.element.setAttribute("aria-checked", selected);
       }
-      write(
-        packName,
-        packTabs.find((tab) => tab.index === row?.pack)?.name ?? "",
+      const packNow = packTabs.find((tab) => tab.index === row?.pack)?.name;
+      write(packName, packNow ?? "");
+      write(packLabel, packNow ?? "PACKS");
+      packButton.setAttribute(
+        "aria-label",
+        `Song pack${packNow ? `, now ${packNow}` : "s"}`,
       );
     }
     if (song && (songChanged || last?.chart !== next.chart)) {
@@ -708,11 +772,17 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       if (next.host) list.removeAttribute("aria-disabled");
       else list.setAttribute("aria-disabled", "true");
       before.disabled = after.disabled = slider.disabled = !next.host;
-      play.hidden = !next.host;
       for (const tab of packTabs) tab.element.disabled = !next.host;
+      packButton.disabled =
+        packBefore.disabled =
+        packAfter.disabled =
+          !next.host;
       sorter.button.hidden = !next.host || order.length < 2;
       tools.hidden = !options.tools?.length && sorter.button.hidden;
-      if (!next.host) sorter.close();
+      if (!next.host) {
+        sorter.close();
+        if (packShell.dialog.open) packShell.dialog.close();
+      }
       for (const button of modeButtons) button.element.disabled = !next.host;
       note.hidden = next.host;
     }
@@ -907,7 +977,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     update,
     key(code) {
       // The sort dialog is open over the carousel: its keys are the dialog's.
-      if (sorter.isOpen()) return true;
+      if (sorter.isOpen() || packShell.dialog.open) return true;
       switch (code) {
         case "ArrowLeft":
         case "KeyA":

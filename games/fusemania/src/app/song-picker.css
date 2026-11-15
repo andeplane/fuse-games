@@ -271,39 +271,62 @@
   text-align: right;
   white-space: nowrap;
 }
-/* The packs: a tab each over the carousel, lit for the pack the selected song is in. */
+/* The packs: one button with the pack's name between an arrow for the previous and one for the next pack. */
 .fm-picker-packs {
   display: flex;
-  flex-wrap: wrap;
+  align-items: stretch;
   gap: var(--fui-space-1);
   padding: var(--fui-space-2) var(--fui-space-2) 0;
 }
-.fm-picker.fm-picker .fm-picker-pack {
+.fm-picker-packs[hidden],
+.fm-picker.fm-picker .fm-picker-pack-step[hidden] {
+  display: none;
+}
+.fm-picker.fm-picker .fm-picker-pack,
+.fm-picker.fm-picker .fm-picker-pack-step {
   flex: 0 0 auto;
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: center;
   gap: var(--fui-space-2);
   width: auto;
   min-width: 0;
   min-height: 2.25rem;
   margin: 0;
   padding: var(--fui-space-1) var(--fui-space-3);
-  color: var(--fui-text-muted);
-  background: transparent;
-  border: var(--fui-stroke) solid var(--fui-line);
+  color: var(--fui-text-bright);
+  background: color-mix(in srgb, var(--fui-pink) 16%, transparent);
+  border: var(--fui-stroke) solid var(--fui-pink);
   border-radius: var(--fui-radius-small);
   box-shadow: none;
   cursor: pointer;
 }
-.fm-picker.fm-picker .fm-picker-pack[aria-selected="true"] {
-  color: var(--fui-text-bright);
-  background: color-mix(in srgb, var(--fui-pink) 16%, transparent);
-  border-color: var(--fui-pink);
+.fm-picker.fm-picker .fm-picker-pack {
+  flex: 1 1 auto;
+  max-width: 18rem;
+}
+.fm-picker.fm-picker .fm-picker-pack-step {
+  padding-inline: var(--fui-space-2);
+  min-width: 2.25rem;
+  color: var(--fui-text-muted);
+  background: transparent;
+  border-color: var(--fui-line);
+  font: 0.625rem/1 var(--fui-font-pixel);
+}
+.fm-picker.fm-picker .fm-picker-pack-step:disabled,
+.fm-picker.fm-picker .fm-picker-pack:disabled {
+  opacity: 0.45;
   cursor: default;
 }
 .fm-picker-pack-name {
   font: 0.625rem/1.4 var(--fui-font-pixel);
   letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-picker-pack-caret {
+  font-size: 0.625rem;
 }
 .fm-picker-pack-of {
   margin: 0;
@@ -353,19 +376,6 @@
 .fm-picker-next::before {
   transform: translateX(-0.125rem) rotate(225deg);
 }
-/* PLAY on the selected song: the same primary button as the bar's, so the song can start from where it is shown. */
-.fm-picker.fm-picker .fm-picker-play {
-  justify-self: center;
-  width: auto;
-  min-width: 12rem;
-  color: var(--fui-primary-text, #031b29);
-  background: var(--fui-primary-fill, #18dbeb);
-  border-color: var(--fui-primary-fill, #18dbeb);
-}
-.fm-picker-play[hidden] {
-  display: none;
-}
-
 /* The slider under the carousel: a track the whole width, and a badge over the thumb saying where in the order it is. */
 .fm-picker-scrub {
   --fm-thumb: 1.5rem;

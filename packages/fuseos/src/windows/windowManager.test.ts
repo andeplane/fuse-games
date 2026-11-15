@@ -3,6 +3,7 @@ import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
   TASKBAR_HEIGHT,
+  assignSlots,
   clampRect,
   defaultRect,
   isCompactViewport,
@@ -76,5 +77,38 @@ describe(isCompactViewport.name, () => {
       false,
     );
     expect(isCompactViewport({ width: 1280, height: 800 })).toBe(false);
+  });
+});
+
+describe(assignSlots.name, () => {
+  it("numbers the windows of a fresh desktop in the order they are stacked", () => {
+    expect(assignSlots({}, ["winamp", "launcher", "w1"])).toEqual({
+      winamp: 0,
+      launcher: 1,
+      w1: 2,
+    });
+  });
+
+  it("returns the same slots when the windows are only restacked", () => {
+    const slots = assignSlots({}, ["w1", "w2", "w3"]);
+    expect(assignSlots(slots, ["w3", "w1", "w2"])).toBe(slots);
+  });
+
+  it("frees the step of a closed window and hands the lowest free step to the next one, reused id or not", () => {
+    const slots = assignSlots({}, ["w1", "w2", "w3"]);
+    const closed = assignSlots(slots, ["w3", "w1"]);
+    expect(closed).toEqual({ w1: 0, w3: 2 });
+    expect(assignSlots(closed, ["w3", "w1", "w4"])).toEqual({
+      w1: 0,
+      w3: 2,
+      w4: 1,
+    });
+    // A window closed and another opened under its id between two renders still counts as the same step.
+    expect(assignSlots(slots, ["w1", "w3", "w2", "w5"])).toEqual({
+      w1: 0,
+      w2: 1,
+      w3: 2,
+      w5: 3,
+    });
   });
 });

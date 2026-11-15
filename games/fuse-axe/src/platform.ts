@@ -1,13 +1,38 @@
-import { RESERVED_KEYS, type GameRegistration } from "fuse-platform";
+import { historyOnlyRegistration, type MatchResult } from "fuse-platform";
+import {
+  isHistoryBot,
+  parseAxeHistoryPlayer,
+  type AxeHistoryPlayer,
+} from "./online/activity.js";
 
-/** Room admission only: this first version reports no results and credits no progression. */
-export const axeRegistration: GameRegistration = {
-  id: "fuse-axe",
-  isBot: () => false,
-  parseStats: () => undefined,
-  emptyTotals: () => ({}),
-  credit: () => undefined,
-  addTotals: () => {},
-  parseTotals: (raw) =>
-    Object.keys(raw).every((key) => RESERVED_KEYS.has(key)) ? {} : undefined,
+/** Cooperative stage/run history; no Elo or progression is awarded. */
+export const axeRegistration = {
+  ...historyOnlyRegistration({
+    id: "fuse-axe",
+    isBot: isHistoryBot,
+  }),
+  parseStats: parseAxeHistoryPlayer,
+  validField: (players: readonly AxeHistoryPlayer[]) =>
+    players.length <= 20 &&
+    players.every((player) => player.outcome === players[0]?.outcome),
+  activity: (result: MatchResult<AxeHistoryPlayer>) => ({
+    title:
+      result.round !== undefined
+        ? `Stage ${result.round} · ${result.players[0]?.outcome === "clear" ? "Party cleared" : "Party defeated"}`
+        : result.players[0]?.outcome === "victory"
+          ? "Party victory"
+          : "Party defeated",
+    context: {
+      playStyle: "Cooperative",
+      outcome: result.players[0]?.outcome ?? "defeat",
+    },
+  }),
+  activityPlayer: (player: AxeHistoryPlayer) => ({
+    label: "Party member",
+    stats: {
+      damage: player.damage,
+      knockdowns: player.knockdowns,
+      stagesPlayed: player.roundsPlayed,
+    },
+  }),
 };

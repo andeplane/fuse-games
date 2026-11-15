@@ -16,11 +16,11 @@ const row = (fields: Partial<Row>): Row => ({
   name: "Ada",
   you: false,
   chart: "HARD 9",
-  accuracy: "94.2%",
+  accuracy: "94.20%",
   maxCombo: "212",
   judgments: ["120", "64", "10", "2", "0", "1"],
   grade: "AA",
-  score: "942,000",
+  score: "94.20%",
   detail: "HARD 9 · 94.2%",
   combo: "MAX COMBO 212",
   ...fields,
@@ -36,8 +36,8 @@ const result = (fields: Partial<Result> = {}): Result => ({
       slot: 1,
       name: "Bo",
       grade: "B",
-      score: "700,000",
-      accuracy: "70.0%",
+      score: "70.00%",
+      accuracy: "70.00%",
       maxCombo: "250",
       judgments: ["40", "90", "40", "10", "5", "12"],
     }),
@@ -45,7 +45,7 @@ const result = (fields: Partial<Result> = {}): Result => ({
   ],
   own: {
     grade: "AA",
-    score: "942,000",
+    score: "94.20%",
     detail: "HARD 9 · 94.2% · MAX COMBO 212",
     badge: "",
   },
@@ -82,8 +82,7 @@ test("a battle's result: the winner, every player's grade, score, accuracy and c
   assert.equal(report.accent, COLORS[0]);
   assert.deepEqual(report.standings!.columns, [
     "GRADE",
-    "SCORE",
-    "ACCURACY",
+    "SCORE %",
     "MAX COMBO",
   ]);
   assert.deepEqual(
@@ -96,16 +95,9 @@ test("a battle's result: the winner, every player's grade, score, accuracy and c
       entry.values,
     ]),
     [
-      [1, "Ada", true, undefined, undefined, ["AA", "942,000", "94.2%", "212"]],
-      [
-        2,
-        "Bo",
-        false,
-        undefined,
-        "+ ADD FRIEND b",
-        ["B", "700,000", "70.0%", "250"],
-      ],
-      [3, "Bot", false, "AI", undefined, ["AA", "942,000", "94.2%", "9"]],
+      [1, "Ada", true, undefined, undefined, ["AA", "94.20%", "212"]],
+      [2, "Bo", false, undefined, "+ ADD FRIEND b", ["B", "70.00%", "250"]],
+      [3, "Bot", false, "AI", undefined, ["AA", "94.20%", "9"]],
     ],
   );
   // This device's new best, then the match's: the longest combo and the most Marvelous steps.
@@ -143,7 +135,7 @@ test("a solo run leads with its grade and has no full stats; a watcher has no ru
       solo: true,
       own: {
         grade: "AA",
-        score: "942,000",
+        score: "94.20%",
         detail: "",
         badge: "FULL GREAT COMBO",
       },
@@ -152,7 +144,7 @@ test("a solo run leads with its grade and has no full stats; a watcher has no ru
   );
   assert.equal(solo.headline, "GRID");
   assert.equal(solo.emblem, "AA");
-  assert.equal(solo.summary, "942,000 · 94.2% · HARD 9");
+  assert.equal(solo.summary, "94.20% · HARD 9");
   assert.equal(solo.context, "GRID · 1 player");
   assert.equal(solo.details, undefined);
   assert.equal(solo.standings!.rows[0]!.friend, undefined);
@@ -173,7 +165,7 @@ test("a session: its standings under each song, and leading the report once it i
         name: "Bo",
         you: false,
         slot: 1,
-        points: "1,900,000",
+        points: "63.33%",
         wins: "2 WINS",
       },
       {
@@ -181,7 +173,7 @@ test("a session: its standings under each song, and leading the report once it i
         name: "Ada",
         you: true,
         slot: 0,
-        points: "900,000",
+        points: "30.00%",
         wins: "",
       },
     ],
@@ -200,13 +192,13 @@ test("a session: its standings under each song, and leading the report once it i
   assert.equal(over.kicker, "SESSION COMPLETE");
   assert.equal(over.headline, "BO WINS THE SESSION");
   assert.equal(over.accent, COLORS[1]);
-  assert.equal(over.summary, "1,900,000 points · 2 wins");
-  assert.deepEqual(over.standings!.columns, ["POINTS", "WINS"]);
+  assert.equal(over.summary, "63.33% of the session maximum · 2 wins");
+  assert.deepEqual(over.standings!.columns, ["SESSION %", "WINS"]);
   assert.deepEqual(
     over.standings!.rows.map((entry) => [entry.name, entry.you, entry.values]),
     [
-      ["Bo", false, ["1,900,000", "2"]],
-      ["Ada", true, ["900,000", "0"]],
+      ["Bo", false, ["63.33%", "2"]],
+      ["Ada", true, ["30.00%", "0"]],
     ],
   );
   assert.equal(over.sections![0]!.title, "LAST SONG · GRID");
