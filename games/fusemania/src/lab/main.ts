@@ -195,7 +195,7 @@ const keyLegend = el(
   el("span", { className: "lab-keys-gap" }),
   key("↑"),
   key("↓"),
-  " scroll, or move the selected Custom arrow",
+  " scroll, or (also W S, paused) move the selected Custom arrow",
   el("span", { className: "lab-keys-gap" }),
   key("+"),
   key("−"),
@@ -1720,7 +1720,7 @@ canvas.addEventListener("pointerup", (event) => {
   if (dragged?.moved) {
     saveTaps();
     say(
-      `tap moved to ${dragged.tap.time.toFixed(2)} s: ↑ ↓ move it a line of the snap, ⇧↑ ⇧↓ by 10 ms`,
+      `tap moved to ${dragged.tap.time.toFixed(2)} s: W S or ↑ ↓ move it a line of the snap, with ⇧ by 10 ms`,
     );
     return;
   }
@@ -2331,6 +2331,17 @@ window.addEventListener("keydown", (event) => {
   ) {
     recordInput.checked = !recordInput.checked;
     recordInput.onchange?.(new Event("change"));
+  } else if (
+    pickedTap &&
+    !source &&
+    (event.key.toLowerCase() === "w" || event.key.toLowerCase() === "s") &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey
+  ) {
+    // With a Custom arrow selected and the song paused, W and S move it like ↑ and ↓ (while it plays they tap).
+    event.preventDefault();
+    nudgePickedTap(event.key.toLowerCase() === "s" ? 1 : -1, event.shiftKey);
   } else if (
     recordInput.checked &&
     tapColumn(event.key) !== undefined &&
