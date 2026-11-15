@@ -1,4 +1,5 @@
 import type {
+  MetricsResponse,
   RecordingsPage,
   ReportsPage,
   RecordingDetail,
@@ -12,7 +13,7 @@ import {
 } from "./api.js";
 import { createDom } from "./dom.js";
 import { defaultDateRange } from "./model.js";
-import { type MetricsFilters } from "./metrics.js";
+import { metricsQuery, type MetricsFilters } from "./metrics.js";
 import {
   baseEventFields,
   isEventFilters,
@@ -846,9 +847,46 @@ export function mountWorkspace(
           }
         };
         if (current === "metrics") {
+          let activeCounts: { daily: number; monthly: number } | undefined;
+          // Monthly summaries cover the whole aligned month. A historical mid-month
+          // end date needs raw events so later days cannot leak into its MAU.
+          const completeMonth =
+            new Date(
+              Date.parse(`${filters.to}T00:00:00Z`) + 86400_000,
+            ).getUTCDate() === 1;
+          if (
+            !eventFilters.groups.length &&
+            (filters.to === deps.now().toISOString().slice(0, 10) ||
+              completeMonth)
+          ) {
+            const activity = await Promise.allSettled(
+              (["day", "month"] as const).map((period) =>
+                api.json<MetricsResponse>(
+                  metricsQuery({
+                    ...filters,
+                    period,
+                    from: filters.to,
+                    to: filters.to,
+                  }),
+                  signal,
+                ),
+              ),
+            );
+            const daily =
+              activity[0]?.status === "fulfilled"
+                ? activity[0].value.series?.at(-1)?.users
+                : undefined;
+            const monthly =
+              activity[1]?.status === "fulfilled"
+                ? activity[1].value.series?.at(-1)?.users
+                : undefined;
+            if (Number.isSafeInteger(daily) && Number.isSafeInteger(monthly))
+              activeCounts = { daily: daily!, monthly: monthly! };
+          }
           const monthFrom = `${filters.to.slice(0, 7)}-01`;
-          const month =
-            filters.from <= monthFrom
+          const month = activeCounts
+            ? data
+            : filters.from <= monthFrom
               ? {
                   ...data,
                   events: data.events.filter(
@@ -876,6 +914,7 @@ export function mountWorkspace(
                 shell();
                 void load();
               },
+              activeCounts,
             ),
           );
         } else show(data);

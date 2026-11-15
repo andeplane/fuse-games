@@ -198,6 +198,8 @@ test("F-09: a recent-sign-in refusal offers reauthentication and retries the req
           return Response.json({ uid: "dev", email: "allowed@example.com" });
         if (path === "/api/dev/catalog")
           return Response.json({ gameIds: ["fuse-riders"] });
+        if (path === "/api/dev/metrics")
+          return Response.json({ series: [{ users: 3 }] });
         return confirmed
           ? Response.json(explorer)
           : Response.json({}, { status: 401 });
@@ -236,6 +238,8 @@ test("workspace authenticates, provides numbered charts and accessible daily val
         if (path === "/api/dev/catalog")
           return Response.json({ gameIds: ["fuse-riders"] });
         if (path === "/api/dev/events") return Response.json(explorer);
+        if (path === "/api/dev/metrics")
+          return Response.json({ series: [{ users: 3 }] });
         reportSignal = init?.signal;
         return new Promise<Response>((resolve) => {
           finishReports = resolve;

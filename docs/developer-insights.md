@@ -130,6 +130,11 @@ have older matches. Slice counts are labelled, overview lower bounds use `≥`,
 incomplete charts are withheld, and DAU/MAU are withheld when their full history
 cannot be read. DAU is the selected end date; MAU is that calendar month through
 the end date. Both count distinct anonymous browsers and use the same filters.
+For the current end date or a complete calendar month, date/game DAU/MAU use
+the complete existing rollups, so raw pagination cannot hide these headline
+figures. Historical partial months and property constraints require
+the matching raw month scan; incomplete coverage withholds those filtered
+uniques explicitly.
 Play totals require an explicit `played: true`: spectators/TV displays and
 legacy observations with unknown participation remain in raw events and active
 browser/session measures, but do not inflate round/match/game plays. The

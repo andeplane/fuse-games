@@ -400,3 +400,94 @@ test("overview keeps active browsers visible while excluding displays and unknow
   assert.equal(dice?.querySelectorAll("td")[4]?.textContent, "0");
   await window.happyDOM.close();
 });
+test("complete activity summaries survive raw paging and are not reused for property filters or historical partial months", async () => {
+  const window = new Window(),
+    document = window.document as unknown as Document,
+    root = document.createElement("div");
+  document.body.append(root);
+  const raw: ExplorerResult = {
+    events: [],
+    sessions: [],
+    fields: [],
+    commonFields: [],
+    gameIds: ["fusemania"],
+    scanned: 2000,
+    matched: 0,
+    truncated: true,
+    nextCursor: "cursor",
+    summary: {
+      players: 0,
+      sessions: 0,
+      roundPlays: 0,
+      completions: 0,
+      matchPlays: 0,
+      games: 0,
+      completionRate: null,
+    },
+  };
+  let summaryRequests = 0;
+  const account: WorkspaceAccount = {
+    ready: async () => {},
+    watch(fn) {
+      fn({ name: "Developer" });
+      return () => {};
+    },
+    signIn: async () => {},
+    signOut: async () => {},
+    failure: () => "failed",
+  };
+  const unmount = mountWorkspace(root, {
+    document,
+    account,
+    now: () => new Date("2026-11-15T12:00:00Z"),
+    gamesUrl: "/",
+    transport: {
+      origin: "https://test.example",
+      token: async () => "test",
+      request: async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname === "/api/dev/me")
+          return Response.json({ uid: "developer" });
+        if (url.pathname === "/api/dev/catalog")
+          return Response.json({ gameIds: ["fusemania"] });
+        if (url.pathname === "/api/dev/metrics") {
+          summaryRequests++;
+          return Response.json({
+            series: [
+              { users: url.searchParams.get("period") === "day" ? 7 : 29 },
+            ],
+          });
+        }
+        return Response.json(raw);
+      },
+    },
+  });
+  const measure = (label: string) =>
+    [...root.querySelectorAll("dt")]
+      .find((node) => node.textContent === label)
+      ?.parentElement?.querySelector("dd")?.textContent;
+  await settled(() => measure("MAU") === "29");
+  assert.equal(measure("DAU"), "7");
+  assert.equal(summaryRequests, 2);
+  assert.ok(root.textContent?.includes("complete deduplicated summaries"));
+  const to = root.querySelectorAll<HTMLInputElement>('input[type="date"]')[1]!;
+  to.value = "2026-11-14";
+  to.dispatchEvent(
+    new window.Event("input", { bubbles: true }) as unknown as Event,
+  );
+  root.querySelector("form.filters")!.requestSubmit();
+  await settled(() => measure("MAU") === "—");
+  assert.equal(summaryRequests, 2);
+  to.value = "2026-11-15";
+  to.dispatchEvent(
+    new window.Event("input", { bubbles: true }) as unknown as Event,
+  );
+  root.querySelector("form.filters")!.requestSubmit();
+  await settled(() => measure("MAU") === "29");
+  root.querySelector<HTMLDetailsElement>(".filter-builder")!.open = true;
+  click(root, "Add constraint");
+  await settled(() => measure("MAU") === "—");
+  assert.equal(summaryRequests, 4);
+  unmount();
+  await window.happyDOM.close();
+});

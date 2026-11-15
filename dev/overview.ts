@@ -20,6 +20,7 @@ export function renderOverview(
   from: string,
   to: string,
   drill: (rule?: EventConstraint) => void,
+  activeCounts?: { daily: number; monthly: number },
 ): HTMLElement {
   const { node, button } = dom;
   const section = node("section", "overview");
@@ -36,14 +37,20 @@ export function renderOverview(
   const measures = [
     [
       "DAU",
-      activeMonth.truncated ? "—" : String(unique(daily, "userId")),
+      activeCounts
+        ? String(activeCounts.daily)
+        : activeMonth.truncated
+          ? "—"
+          : String(unique(daily, "userId")),
       `Active browsers · ${to}`,
     ],
     [
       "MAU",
-      activeMonth.truncated
-        ? "—"
-        : String(unique(activeMonth.events, "userId")),
+      activeCounts
+        ? String(activeCounts.monthly)
+        : activeMonth.truncated
+          ? "—"
+          : String(unique(activeMonth.events, "userId")),
       `Active browsers · ${to.slice(0, 7)} to date`,
     ],
     [
@@ -85,7 +92,15 @@ export function renderOverview(
         `${data.summary.participationUnknown} legacy play observations have no participation flag. They remain in Raw Events and browser/session activity, but are excluded from play totals.`,
       ),
     );
-  if (activeMonth.truncated)
+  if (activeCounts && data.truncated)
+    section.append(
+      node(
+        "p",
+        "notice",
+        "DAU and MAU use complete deduplicated summaries. Other counts describe the loaded raw-event slice.",
+      ),
+    );
+  if (activeMonth.truncated && !activeCounts)
     section.append(
       node(
         "p",
