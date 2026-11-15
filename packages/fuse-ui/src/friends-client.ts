@@ -16,7 +16,7 @@ export interface FriendsRoom {
   code: string;
   memberId: string;
   gameId: string;
-  /** The room token, to prove membership when inviting; never sent anywhere but `POST /api/rooms/:code/invites`. */
+  /** The room token, to prove membership on sync and when inviting; never persisted or sent to other players. */
   token: string;
 }
 export interface FriendsClientDependencies {
@@ -37,6 +37,8 @@ export interface FriendsClientDependencies {
     now: () => number;
     schedule: (callback: () => void, delayMs: number) => () => void;
   };
+  /** Creates a fresh presence session after sign-in. */
+  presenceSession?: () => string;
   pollMs?: number;
 }
 export interface FriendsState {
@@ -105,6 +107,7 @@ export function createFriendsClient(
   let signedIn = false,
     generation = 0,
     room: FriendsRoom | undefined,
+    presenceSession = "",
     disposed = false,
     cancelPoll: (() => void) | undefined,
     lastPoll = 0,
@@ -173,6 +176,8 @@ export function createFriendsClient(
             room: {
               code: room.code,
               memberId: room.memberId,
+              token: room.token,
+              session: presenceSession,
               gameId: room.gameId,
             },
           }
@@ -275,6 +280,9 @@ export function createFriendsClient(
       signedIn = next;
       generation++;
       if (signedIn) {
+        presenceSession =
+          dependencies.presenceSession?.() ??
+          crypto.randomUUID().replaceAll("-", "");
         seen.clear();
         refresh();
       } else {
