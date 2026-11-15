@@ -182,7 +182,7 @@ const keyLegend = el(
   " record from here",
   el("span", { className: "lab-keys-gap" }),
   key("⌘Z"),
-  " undo tap",
+  " undo the last tap, move or delete",
   el("span", { className: "lab-keys-gap" }),
   key("⌫"),
   " delete the clicked tap, or the taps in a selection dragged over Custom",
@@ -195,7 +195,11 @@ const keyLegend = el(
   el("span", { className: "lab-keys-gap" }),
   key("↑"),
   key("↓"),
-  " scroll, or (also W S, paused) move the selected Custom arrow",
+  " scroll",
+  el("span", { className: "lab-keys-gap" }),
+  key("W"),
+  key("S"),
+  " move the selected Custom arrow (paused)",
   el("span", { className: "lab-keys-gap" }),
   key("+"),
   key("−"),
@@ -398,6 +402,12 @@ let tapDrag: { tap: Tap; y: number; moved: boolean } | undefined;
 let recordFrom: number | undefined;
 /** The taps of this visit in the order they were pressed: ⌘Z takes back the latest. */
 let tapHistory: Tap[] = [];
+/** The Custom taps as they were before each change (a tap, a move, a delete), newest last: what ⌘Z goes back to. */
+let tapUndo: (readonly Tap[])[] = [];
+const rememberTaps = (): void => {
+  tapUndo.push(taps);
+  if (tapUndo.length > 500) tapUndo.shift();
+};
 /** In local development the URL remembers the playhead (`#t=…`), so a reload carries on from there. */
 let resumeAt = import.meta.env.DEV ? parseResume(location.hash) : undefined;
 if (import.meta.env.DEV)
@@ -462,6 +472,7 @@ async function loadSong(id: string): Promise<void> {
   playhead = 0;
   topTime = -0.5;
   taps = [];
+  tapUndo = [];
   tapHistory = [];
   pickedTap = undefined;
   const tapped = load(TAPS_KEY(data.id));
@@ -1450,6 +1461,7 @@ function recordTap(column: number): void {
     column,
   };
   tapHistory.push(tap);
+  rememberTaps();
   taps = addTap(taps, tap);
   hidden.delete(TAPPED);
   rebuildCharts();
@@ -1466,6 +1478,19 @@ function saveTaps(): void {
 
 /** Takes back the tap pressed last (then the one before it, and so on). */
 function undoTap(): void {
+  // The last change made on this page, whatever it was: a tap, a move or a delete.
+  const before = tapUndo.pop();
+  if (before) {
+    taps = [...before];
+    tapHistory = tapHistory.filter((tap) => taps.includes(tap));
+    pickedTap = undefined;
+    tapDrag = undefined;
+    rebuildCharts();
+    saveTaps();
+    draw();
+    say(`undone: ${taps.length} tap${taps.length === 1 ? "" : "s"} again`);
+    return;
+  }
   // Nothing pressed since the page opened: the tap nearest the playhead, within a second, goes instead.
   const here = heardTime();
   const tap =
@@ -1509,6 +1534,7 @@ function nudgePickedTap(direction: 1 | -1, fine: boolean): void {
     : timing.timeAt(
         gridStep(pickedTap.beat, Number(snapSelect.value) || 4, direction),
       );
+  rememberTaps();
   const moved = retimeTap(pickedTap, time);
   say(
     `tap moved to ${moved.time.toFixed(2)} s (beat ${moved.beat.toFixed(2)})`,
@@ -1520,6 +1546,7 @@ function deleteSelectedTaps(): boolean {
   if (pickedTap) {
     const tap = pickedTap;
     pickedTap = undefined;
+    rememberTaps();
     taps = removeTap(taps, tap);
     tapHistory = tapHistory.filter((other) => other !== tap);
     rebuildCharts();
@@ -1531,6 +1558,7 @@ function deleteSelectedTaps(): boolean {
   if (!selection || selection.chart !== "Custom") return false;
   const left = removeSpan(taps, selection.start, selection.end);
   const gone = taps.length - left.length;
+  rememberTaps();
   taps = left;
   tapHistory = tapHistory.filter((tap) => left.includes(tap));
   selection = undefined;
@@ -1545,6 +1573,7 @@ function deleteSelectedTaps(): boolean {
 
 function clearTaps(): void {
   if (!taps.length) return;
+  rememberTaps();
   taps = [];
   tapHistory = [];
   rebuildCharts();
@@ -1672,6 +1701,7 @@ canvas.addEventListener("pointermove", (event) => {
   if (Math.abs(y - drag.y) < 4 && Math.abs(x - drag.x) < 4) return;
   if (tapDrag) {
     // The arrow follows the pointer, unsnapped; it is stored when the pointer lets go.
+    if (!tapDrag.moved) rememberTaps();
     tapDrag.moved = true;
     tapDrag.tap = retimeTap(tapDrag.tap, timeOf(y), false);
     return;
@@ -1720,7 +1750,7 @@ canvas.addEventListener("pointerup", (event) => {
   if (dragged?.moved) {
     saveTaps();
     say(
-      `tap moved to ${dragged.tap.time.toFixed(2)} s: W S or ↑ ↓ move it a line of the snap, with ⇧ by 10 ms`,
+      `tap moved to ${dragged.tap.time.toFixed(2)} s: W S move it a line of the snap, ⇧W ⇧S by 10 ms, ⌘Z undoes`,
     );
     return;
   }
@@ -1739,7 +1769,7 @@ canvas.addEventListener("pointerup", (event) => {
     if (picked) {
       pickedTap = picked;
       say(
-        `tap at ${picked.time.toFixed(2)} s selected: drag it or press ↑ ↓ to move it, delete removes it`,
+        `tap at ${picked.time.toFixed(2)} s selected: drag it or press W S to move it, delete removes it, ⌘Z undoes`,
       );
       draw();
       return;
@@ -2339,7 +2369,8 @@ window.addEventListener("keydown", (event) => {
     !event.ctrlKey &&
     !event.altKey
   ) {
-    // With a Custom arrow selected and the song paused, W and S move it like ↑ and ↓ (while it plays they tap).
+    // With a Custom arrow selected and the song paused, W and S move it earlier and later (while it plays they
+    // tap). The arrow keys never move it: they scroll.
     event.preventDefault();
     nudgePickedTap(event.key.toLowerCase() === "s" ? 1 : -1, event.shiftKey);
   } else if (
@@ -2368,14 +2399,7 @@ window.addEventListener("keydown", (event) => {
     seekBy(marker - heardTime());
   } else if (event.key === "+" || event.key === "=") zoom(1.25);
   else if (event.key === "-") zoom(0.8);
-  else if (
-    (event.key === "ArrowDown" || event.key === "ArrowUp") &&
-    pickedTap
-  ) {
-    // With a Custom arrow selected the keys move it: later is down the page.
-    event.preventDefault();
-    nudgePickedTap(event.key === "ArrowDown" ? 1 : -1, event.shiftKey);
-  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+  else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
     follow = false;
     topTime += (event.key === "ArrowDown" ? 1 : -1) * viewSeconds() * 0.15;
