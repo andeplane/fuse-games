@@ -72,5 +72,4 @@ export async function takeHostSeat(
     closed,
   ]);
   await closed;
-  await seated.waitFor({ state: "visible" });
 }
