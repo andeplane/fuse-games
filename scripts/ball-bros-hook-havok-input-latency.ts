@@ -46,15 +46,15 @@ const GAMES: Game[] = [
       await page
         .getByRole("button", { name: "Single player", exact: true })
         .click();
-      // Take slot 1 under a name, then close the room menu so keys reach the arena.
+      // Take slot 1 under a name, then START from the room so keys reach the arena.
       await page
         .locator("button:visible", { hasText: /^Join$/ })
         .first()
         .click();
       await page.keyboard.type("Probe");
       await page.keyboard.press("Enter");
+      await page.getByRole("button", { name: "START", exact: true }).click();
       await page.waitForTimeout(1500);
-      await page.keyboard.press("Escape");
       await page.locator("#scene").focus();
     },
   },

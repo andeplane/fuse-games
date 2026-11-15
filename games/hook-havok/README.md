@@ -6,6 +6,8 @@ The current combined build uses `hook-havok-17`, with thrown bombs, playable bot
 
 ## Development milestones
 
+The notes below are the history of each milestone. Where they say **Focus arena** or **Show controls**: the full-screen arena is now what a room's **START** shows, and the setup controls are in the room's **Settings**.
+
 Phase 11C adds [playable bots](docs/bots.md). **Room & match → Bots** seats up to four AI keepers in the free seats and **Bot level** makes them easy, normal or hard; only the room manager changes either, and new rooms have none. Bots run the same physics as you inside the shared simulation on every device: they climb with jumps, drops and the hook, chase a rival, take pads, pop orbs, throw bombs at you, hook you off ledges, dodge blasts and hook their way back from a fall, and they keep playing while they hold a power-up. They wear a BOT tag on their cards and in the results, and one person plus a bot is enough for a competitive round. Rules are `hook-havok-15`; refresh all clients and create a fresh room.
 
 Phase 11D adds [power-ups v2](docs/power-ups.md). Four pads per map, on ledge lips, corners and summits, each show a random power-up from the room's pool and return 10 s after pickup with a new one: **Triple jump** (two air jumps), **Shield** (survives one bomb blast, your own included), **Cluster bomb** (your next three bombs split into bomblets), **Harpoon** (your hook pulls a hit rival in) and **Dash bump** (your air jump dashes along your aim and knocks rivals away). You hold one at a time, for 8 s (a Cluster bomb for three throws within 15 s); the icon over your keeper and on your card shows what you hold and the time left. **Development workshop → Power-ups** picks all five (the default), off or any mix. Rules are `hook-havok-14`; refresh all clients and create a fresh room.
@@ -59,10 +61,19 @@ Build with `pnpm build`, then run `node --import tsx service/dev.ts --port 8787`
 
 The **Art showcase** link opens the previous authored study at `?showcase=1&mute`.
 
-During play, **MENU** offers the shared game navigation: return to play, open **CONTROLS**, return to the room lounge,
-or leave the room. The lounge retains arena, round and personal settings. Controls appear throughout each competitive
-round countdown and for the opening five seconds of every free-play trial. Touch mode and shared displays show the
-two thumb-pad instructions. Opening the menu releases held input; the room keeps running.
+A room opens on its room page, the shared `fuse-ui` room: Back, **Settings** and the main action in its header, the
+invitation with **INVITE FRIENDS** and **OPEN TV SCREEN** beside the seats, HOST on the manager's seat and the
+connection line at its foot. The room code is shown once, by the QR code. The manager's **START** begins the round
+for the whole room and takes every seated keeper into the arena; another keeper's **ENTER ARENA** walks into the round
+as it is. **Settings** holds the arena, round mode, bots, personal controls, the radio and the **Development
+workshop**. The round keeps running behind the room, and the arena is the full-screen one with the match line under
+the bar; on a phone held sideways the bar keeps its menu button alone, so the arena gets the height.
+
+During play, the bar's menu offers **Game controls**: return to play, open **CONTROLS**, return to the room, or leave
+it. Back in the room, **RESUME** returns the manager to the round without restarting it. Controls appear throughout
+each competitive round countdown and for the opening five seconds of every free-play trial, in the arena only. Touch
+mode and shared displays show the two thumb-pad instructions. Opening the menu releases held input; the room keeps
+running.
 
 To hear the playground, remove `?mute` and interact with the page. Effects unlock on a key or pointer gesture; **Play radio** explicitly starts music. Music/effects have independent volume sliders and pause on focus loss. The muted preview does not change saved preferences.
 

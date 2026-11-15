@@ -37,7 +37,7 @@ const BOUNDS = [
   },
   {
     name: "Medium",
-    meter: [5, 7],
+    meter: [4, 8],
     average: [1.5, 2.8],
     peak: [2.2, 3.7],
     gap: 0.16,
@@ -45,7 +45,7 @@ const BOUNDS = [
   },
   {
     name: "Hard",
-    meter: [8, 10],
+    meter: [7, 13],
     average: [2.2, 4.2],
     peak: [3.2, 5.6],
     gap: 0.095,
@@ -53,7 +53,7 @@ const BOUNDS = [
   },
   {
     name: "Challenge",
-    meter: [10, 13],
+    meter: [9, 17],
     average: [3.2, 6],
     peak: [4.8, 8.6],
     gap: 0.07,
@@ -61,7 +61,30 @@ const BOUNDS = [
   },
 ] as const;
 
-/** The covers' originals: the density and meter each cover's Challenge aims at (`charts/covers-challenge.json`). */
+/**
+ * The meter a chart of a given density carries: the pack meter whose median chart is as busy
+ * (`charts/pack-meters.json`, measured over the packs ChartNet learns from).
+ */
+const packMeter = (() => {
+  const parsed: unknown = JSON.parse(
+    read("games/fusemania/charts/pack-meters.json"),
+  );
+  const table: [number, number][] = [];
+  if (typeof parsed === "object" && parsed !== null && "nps" in parsed) {
+    const nps: unknown = parsed.nps;
+    if (typeof nps === "object" && nps !== null)
+      for (const [meter, value] of Object.entries(nps))
+        if (typeof value === "number") table.push([Number(meter), value]);
+  }
+  return (rowsPerSecond: number): number =>
+    table.reduce((best, entry) =>
+      Math.abs(entry[1] - rowsPerSecond) < Math.abs(best[1] - rowsPerSecond)
+        ? entry
+        : best,
+    )[0];
+})();
+
+/** The covers' originals: the density each cover's Hard aims at (`charts/covers-challenge.json`). */
 const coverTargets = (): Map<string, { nps: number; meter: number }> => {
   const parsed: unknown = JSON.parse(
     read("games/fusemania/charts/covers-challenge.json"),
@@ -81,8 +104,6 @@ const coverTargets = (): Map<string, { nps: number; meter: number }> => {
   return targets;
 };
 const COVERS = coverTargets();
-/** A cover's Challenge carries its original's meter, held to 11 to 15. */
-const COVER_CHALLENGE_METER = [11, 15] as const;
 
 const stepsOf = (chart: SimChart): ChartNote[] =>
   chart.notes.filter((note) => note.kind !== "mine");
@@ -157,22 +178,24 @@ test("every song has Easy, Medium, Hard and Challenge, each harder than the last
       const bound = BOUNDS[index]!;
       const where = `${data.id} ${chart.difficulty}`;
       assert.equal(chart.stepsType, "dance-single", where);
-      const cover = COVERS.get(data.id);
-      const meters =
-        cover && bound.name === "Challenge"
-          ? COVER_CHALLENGE_METER
-          : bound.meter;
       assert.ok(
-        chart.meter >= meters[0] && chart.meter <= meters[1],
+        chart.meter >= bound.meter[0] && chart.meter <= bound.meter[1],
         `${where}: meter ${chart.meter}`,
       );
-      if (cover && bound.name === "Challenge")
+      assert.ok(chart.meter >= meter, `${where}: meter falls`);
+      // A ChartNet chart carries the meter pack charts of its density carry (never below the chart before it).
+      if (isChartNet(data)) {
+        const timing = createTiming(sim.timing);
+        const times = rowsOf(chart).map((beat) => timing.timeAt(beat));
+        const density =
+          (times.length - 1) /
+          Math.max(times[times.length - 1]! - times[0]!, 1);
         assert.equal(
           chart.meter,
-          Math.min(15, Math.max(11, cover.meter)),
-          `${where}: not its original's meter`,
+          Math.max(meter, packMeter(density)),
+          `${where}: ${density.toFixed(2)} rows a second`,
         );
-      assert.ok(chart.meter >= meter, `${where}: meter falls`);
+      }
       const count = stepsOf(chart).length;
       assert.ok(count > notes, `${where}: ${count} notes after ${notes}`);
       notes = count;
@@ -428,13 +451,18 @@ test("each difficulty of the generated charts stays near what published charts o
   }
 });
 
-/** ChartNet's charts: busier than the generator's, up to its streams and 24th bursts. */
+/**
+ * ChartNet's charts: busier than the generator's. Its Hard is as busy as the packs' Challenge charts (meter 12),
+ * streams and 24th bursts included; its Challenge is as busy as their 15s where the song's tempo carries it.
+ */
 const CHARTNET_BOUNDS = {
   Easy: { average: [1.2, 2.4], peak: 4.5, gap: 0.3 },
-  Medium: { average: [1.8, 3.4], peak: 6, gap: 0.16 },
-  Hard: { average: [2.8, 5.2], peak: 10, gap: 0.09 },
-  Challenge: { average: [4, 8.5], peak: 15, gap: 0.05 },
+  Medium: { average: [1.8, 3.8], peak: 7, gap: 0.16 },
+  Hard: { average: [4, 8], peak: 15, gap: 0.05 },
+  Challenge: { average: [5.5, 10.5], peak: 16, gap: 0.05 },
 } as const;
+/** A Challenge is at least this many times as busy as the Hard below it. */
+const CHALLENGE_STEP = 1.2;
 
 test("ChartNet's charts end inside the song, keep a lead-in and keep to their difficulty's density", () => {
   for (const { data, sim } of songs.filter((song) => isChartNet(song.data))) {
@@ -442,6 +470,7 @@ test("ChartNet's charts end inside the song, keep a lead-in and keep to their di
     const analysis = parseAnalysis(
       read(`games/fusemania/charts/analysis/${data.id}.json`),
     );
+    const averages = new Map<string, number>();
     for (const chart of sim.charts) {
       const bound =
         CHARTNET_BOUNDS[chart.difficulty as keyof typeof CHARTNET_BOUNDS];
@@ -465,18 +494,31 @@ test("ChartNet's charts end inside the song, keep a lead-in and keep to their di
       }
       const average =
         (rows.length - 1) / (times[times.length - 1]! - times[0]!);
-      // A cover's Challenge is as busy as its original's hardest chart, which may be calmer than Fuse's own.
-      const cover =
-        chart.difficulty === "Challenge" ? COVERS.get(data.id) : undefined;
-      const least = cover
-        ? Math.min(bound.average[0], 0.85 * cover.nps)
-        : bound.average[0];
+      // A cover's Hard is as busy as its original's hardest chart, which may be calmer than Fuse's own, and its
+      // easier charts step down from there.
+      const cover = COVERS.get(data.id);
+      const least =
+        cover && chart.difficulty !== "Challenge"
+          ? Math.min(
+              bound.average[0],
+              (chart.difficulty === "Hard"
+                ? 0.8
+                : chart.difficulty === "Medium"
+                  ? 0.45
+                  : 0.28) * cover.nps,
+            )
+          : bound.average[0];
       assert.ok(
         average >= least && average <= bound.average[1],
         `${where}: ${average.toFixed(2)} rows a second on average`,
       );
       assert.ok(peak <= bound.peak, `${where}: ${peak} rows in one second`);
+      averages.set(chart.difficulty, average);
     }
+    assert.ok(
+      averages.get("Challenge")! >= CHALLENGE_STEP * averages.get("Hard")!,
+      `${data.id}: Challenge ${averages.get("Challenge")!.toFixed(2)} rows a second against Hard ${averages.get("Hard")!.toFixed(2)}`,
+    );
   }
 });
 

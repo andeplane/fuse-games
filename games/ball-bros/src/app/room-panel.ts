@@ -4,13 +4,15 @@ import {
   createNameEntry,
   createRoster,
   createRoomLayout,
+  createSharedTvOption,
+  type RoomFriends,
   elementsFor,
 } from "fuse-ui";
 import type { RoomCommand } from "fuse-netcode";
 import { ballGame, type Settings } from "../online/game.js";
 import { colorCss } from "../render/present.js";
 import { roomModel } from "./room-model.js";
-import { NAME_KEY, type Store } from "./session.js";
+import { NAME_KEY, rememberShared, type Store } from "./session.js";
 import { avatarChoice, chosenAvatar } from "./avatars.js";
 import { ARENA_MAPS, MAP_IDS, type MapId } from "../engine/maps.js";
 
@@ -23,7 +25,12 @@ export function roomPanel(
     display: boolean;
     store: Store;
     qr(link: string): Promise<string>;
-    command(command: RoomCommand<Settings>): void;
+    /** Whether the room took the command: a refused Shared TV tick goes back to what the room has. */
+    command(command: RoomCommand<Settings>): boolean;
+    /** The room's line (connection, failures), shown at the room's foot. */
+    status: HTMLElement;
+    /** INVITE FRIENDS beside the invitation and ADD FRIEND on a seat, where the page has accounts. */
+    friends?: RoomFriends;
   },
 ) {
   const document = root.ownerDocument,
@@ -60,12 +67,24 @@ export function roomPanel(
       action: "add",
       slot: requestedRoomSlot(add),
     });
-  const start = el("button", "START MATCH", "primary");
+  const start = el("button", "START MATCH", "primary fui-button-primary");
   start.onclick = () => options.command({ type: "action", action: "start" });
-  const tv = el("a", "OPEN TV SCREEN", "quiet-button");
-  tv.href = options.displayLink;
-  tv.target = "_blank";
-  tv.rel = "noopener";
+  // Shared TV is the room's choice, made in the room: the manager turns it on here and opens the screen beside it.
+  const sharedTv = createSharedTvOption({
+    document,
+    className: "shared-tv",
+    onChange: (display) => {
+      const sent = options.command({
+        type: "settings",
+        settings: { display, mapId: map.value as MapId },
+      });
+      if (sent) rememberShared(options.store, options.code, display);
+      return sent;
+    },
+    onOpenScreen: () =>
+      document.defaultView?.open(options.displayLink, "_blank", "noopener"),
+  });
+  const tvBox = sharedTv.element.querySelector("input");
   const note = el("p", "Connecting to the room…", "room-note");
   const map = el("select", "", "map-select");
   for (const mapId of MAP_IDS) {
@@ -78,19 +97,13 @@ export function roomPanel(
   map.onchange = () =>
     options.command({
       type: "settings",
-      settings: { display: lastDisplay, mapId: map.value as MapId },
+      // The box holds a Shared TV choice the room has not answered yet; the last frame would send the old one back.
+      settings: {
+        display: tvBox?.checked ?? lastDisplay,
+        mapId: map.value as MapId,
+      },
     });
-  const actions = el("div", "", "room-actions");
-  actions.append(add, start, tv);
-  element.append(
-    invite.element,
-    el("h2", "PLAYERS"),
-    name.form,
-    roster.element,
-    mapChoice,
-    note,
-    actions,
-  );
+  element.append(invite.element, name.form, roster.element);
   root.append(element);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
@@ -110,15 +123,24 @@ export function roomPanel(
     join: name.form,
     addAI: add,
     settings: [mapChoice],
-    actions: [note, start, tv],
+    actions: [note],
+    actionsInHeader: true,
+    heading: "Room",
+    status: options.status,
+    extras: [sharedTv.element],
+    ...(options.friends ? { friends: options.friends } : {}),
   });
   let key = "";
   let lastDisplay = false;
   name.form.hidden = true;
-  actions.hidden = true;
   return {
     element,
     render(model: ReturnType<typeof roomModel>) {
+      // Every frame, not only a changed one: a choice the room never answers has to fall back by itself.
+      sharedTv.update(
+        model.display,
+        model.manage && model.lobby && !options.display,
+      );
       const next = JSON.stringify(model);
       if (next === key) return;
       key = next;
@@ -130,11 +152,9 @@ export function roomPanel(
       });
       map.disabled = !model.manage;
       name.form.hidden = !model.askName;
-      actions.hidden = false;
       add.hidden = !model.canAdd;
       start.hidden = !model.manage;
       start.disabled = !model.canStart;
-      tv.hidden = options.display;
       note.textContent = model.note;
       roster.update(
         model.players.map((p) => ({ ...p, color: colorCss(p.color) })),

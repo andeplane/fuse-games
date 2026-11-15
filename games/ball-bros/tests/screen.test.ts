@@ -14,6 +14,7 @@ import {
   NAME_KEY,
   chosenMap,
   rememberRoom,
+  rememberShared,
   roomFailure,
   safeStore,
   session,
@@ -159,7 +160,8 @@ test("room identities are game-scoped, reloadable and never included in invites"
     session("?room=<script>", memory, () => "guest").kind,
     "invalid",
   );
-  rememberRoom(memory, "AB42", "host-secret", true);
+  rememberRoom(memory, "AB42", "host-secret");
+  rememberShared(memory, "AB42", true);
   assert.deepEqual(
     session("?room=ab42", memory, () => "unused"),
     {
@@ -232,10 +234,19 @@ test("room identities are game-scoped, reloadable and never included in invites"
   assert.match(card.error.textContent!, /solo/);
   assert.equal(card.create.disabled, false);
   refuse = false;
-  root.querySelector<HTMLInputElement>("input[type=checkbox]")!.checked = true;
+  assert.equal(
+    root.querySelector("input[type=checkbox]"),
+    null,
+    "Shared TV is chosen in the room, not on the first page",
+  );
   card.create.click();
   await flush();
   assert.equal(navigated, "?room=EF42");
+  assert.equal(
+    (session("?room=EF42", memory, () => "unused") as { shared: boolean })
+      .shared,
+    false,
+  );
   assert.ok(!root.textContent!.includes("new-secret"));
   card.solo!.click();
   assert.equal(navigated, "?solo=1");
@@ -454,6 +465,36 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   });
   s.update(frame(), { display: false, mapId: "ricochet" });
   assert.equal(map.value, "ricochet");
+  // While the room waits its line is at the room's foot; the match's own line is hidden with the arena.
+  assert.match(
+    s.root.querySelector(".room-foot-status")!.textContent!,
+    /Reconnect/,
+  );
+  assert.equal(s.root.querySelector<HTMLElement>(".status")!.hidden, true);
+  assert.equal(
+    s.root.querySelector(".topbar")!.textContent!.includes("AB42"),
+    false,
+    "the room's code is on its invitation only",
+  );
+  // Shared TV is the room's choice: the manager's tick asks the room, keeping the arena it has.
+  const tv = s.root.querySelector<HTMLInputElement>(
+    ".shared-tv input[type=checkbox]",
+  )!;
+  assert.equal(tv.closest<HTMLElement>(".shared-tv")!.hidden, false);
+  tv.checked = true;
+  tv.dispatchEvent(new s.window.Event("change"));
+  assert.deepEqual(s.commands.at(-1), {
+    type: "settings",
+    settings: { display: true, mapId: "ricochet" },
+  });
+  // The room has not answered yet: an arena chosen in between keeps the tick instead of sending the old value back.
+  map.querySelector<HTMLOptionElement>('option[value="classic"]')!.selected =
+    true;
+  map.dispatchEvent(new s.window.Event("change"));
+  assert.deepEqual(s.commands.at(-1), {
+    type: "settings",
+    settings: { display: true, mapId: "classic" },
+  });
   button(s.root, "START MATCH").click();
   assert.deepEqual(s.commands.at(-1), { type: "action", action: "start" });
   const lobby = frame();
@@ -639,6 +680,23 @@ test("name entry, remembered lobby rejoin, renderer failures and solo restart re
     avatarId: "fox",
   });
   s.destroy();
+  // A room whose arena stops keeps its failure in view: the next lobby frame must not hide both lines.
+  const stalled = screen(true, false, false, "paint");
+  await flush();
+  stalled.update(frame());
+  stalled.draw();
+  stalled.update(frame());
+  const line = stalled.root.querySelector<HTMLElement>(".status")!,
+    room = stalled.root.querySelector<HTMLElement>(".room-panel")!;
+  assert.equal(line.hidden, false);
+  assert.match(line.textContent!, /rendering stopped/);
+  assert.equal(room.hidden, true);
+  stalled.repair();
+  button(stalled.root, "RETRY ARENA").click();
+  await flush();
+  stalled.update(frame());
+  assert.equal(room.hidden, false, "the retry brings the room back");
+  stalled.destroy();
   for (const fault of ["ready", "paint"]) {
     const bad = screen(false, false, false, fault);
     await flush();
@@ -661,11 +719,21 @@ test("name entry, remembered lobby rejoin, renderer failures and solo restart re
     });
     bad.destroy();
   }
-  const model = roomModel(frame("running"), "late", false, false, false, {
-    display: false,
-    mapId: "classic",
-  });
+  const model = roomModel(
+    frame("running"),
+    "late",
+    false,
+    false,
+    false,
+    { display: false, mapId: "classic" },
+    "a",
+  );
   assert.equal(model.controls, false);
+  assert.deepEqual(
+    model.players.map((player) => player.host),
+    [true, false],
+    "the room's manager carries HOST",
+  );
   assert.match(model.note, /lobby/);
   assert.equal(
     roomModel(frame(), "late", false, false, false, {

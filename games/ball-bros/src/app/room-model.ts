@@ -7,6 +7,8 @@ export function roomModel(
   display: boolean,
   shared: boolean,
   settings: Settings,
+  /** Who runs the room in this frame: their seat carries HOST. */
+  managerId = "",
 ) {
   const seated = v.players.find((p) => p.id === me);
   const base = v.arena?.bases.find((b) => b.id === me);
@@ -49,6 +51,7 @@ export function roomModel(
       name: `${p.name}${p.id === me ? " (you)" : ""}`,
       color: p.slot,
       status: p.bot ? "BOT" : p.connected ? "HERE" : "AWAY",
+      host: p.id === managerId,
       removable: manage && lobby && p.bot,
     })),
   };

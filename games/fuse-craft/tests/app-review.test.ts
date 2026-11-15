@@ -263,6 +263,48 @@ test("a room change closes How to play", () => {
   f.app.dispose();
 });
 
+test("every page under the menu has Back at the top left, and New game has Start beside it", () => {
+  const f = fixture();
+  for (const [open, title] of [
+    ["settings", "Settings"],
+    ["guide", "How to play"],
+    ["new-game", "New game"],
+  ] as const) {
+    f.click(`[data-action="${open}"]`);
+    const head = f.root.querySelector(".screen-heading")!;
+    assert.equal(head.firstElementChild?.className, "fui-back", title);
+    assert.equal(head.querySelector(".fui-page-title")?.textContent, title);
+    assert.equal(
+      f.root.querySelectorAll('[data-action="back-menu"]').length,
+      1,
+      `${title} has one way back, in its head`,
+    );
+    if (open === "new-game")
+      assert.ok(
+        head.querySelector('.fui-page-actions [data-action="start"]'),
+        "Start is at the top",
+      );
+    f.click('[data-action="back-menu"]');
+    assert.ok(f.root.querySelector('[data-action="new-game"]'), "on the menu");
+  }
+  f.click('[data-action="settings"]');
+  // The app portal's open grid takes this Escape; so does a field being used.
+  const grid = f.root.ownerDocument.createElement("div");
+  grid.className = "fui-portal-panel";
+  f.root.ownerDocument.body.append(grid);
+  f.press("Escape", "body");
+  assert.ok(f.root.querySelector(".settings-panel"), "the portal is open");
+  grid.remove();
+  f.press("Escape", '[data-setting="volume"]');
+  assert.ok(f.root.querySelector(".settings-panel"), "a field has the key");
+  f.press("Escape", "body");
+  assert.ok(
+    f.root.querySelector('[data-action="new-game"]'),
+    "Escape is Back on a page",
+  );
+  f.app.dispose();
+});
+
 test("a slow room creation does not pull back someone who left", async () => {
   const f = fixture({ online: { manager: true, slowCreate: true } });
   f.click('[data-action="multiplayer"]');

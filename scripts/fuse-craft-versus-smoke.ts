@@ -25,6 +25,8 @@ const open = async (name: string) => {
   return page;
 };
 const join = async (page: Page, name: string) => {
+  // The name is asked by the seat's dialog: an open seat's Join opens it.
+  await page.locator('[data-action="take-slot"]').first().click();
   await page.locator("#player-name").fill(name);
   await page.locator('[data-action="join-seat"]').click();
 };

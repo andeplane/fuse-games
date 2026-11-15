@@ -143,6 +143,31 @@ test("two members share a Versus room: seats, rules, bots, a match and the lobby
   friend.dispose();
 });
 
+test("HOST and Start go together: on the creator, and on the next player when the creator leaves", () => {
+  const mesh = new Mesh("host");
+  const host = mesh.open("host");
+  const friend = mesh.open("friend");
+  mesh.until(
+    () => host.room().stage === "lobby" && friend.room().stage === "lobby",
+  );
+  // A guest seated before the creator: the creator's page still runs the room.
+  friend.join("Friend");
+  mesh.until(() => host.room().seats.some((s) => s.id === "friend"));
+  assert.equal(host.room().manager, true, "the creator's page, seated or not");
+  host.join("Host");
+  mesh.until(() => friend.room().seats.filter((s) => !s.watcher).length === 2);
+  mesh.until(() => friend.room().managerId === "host");
+  assert.equal(friend.room().manager, false);
+
+  mesh.leave("host");
+  mesh.until(() => friend.room().managerId === "friend", 20_000);
+  assert.equal(
+    friend.room().manager,
+    true,
+    "the player the room now names can start it",
+  );
+});
+
 test("the host removes bots, and cannot rematch before a match", () => {
   const mesh = new Mesh("host");
   const host = mesh.open("host");

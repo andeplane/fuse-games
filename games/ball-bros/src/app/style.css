@@ -33,18 +33,11 @@ button:disabled {
 [hidden] {
   display: none !important;
 }
+/* The shared bar is fixed over the page: everything starts under it, below a phone's notch. */
 #app {
   max-width: 1400px;
-  padding: 26px 48px 32px;
+  padding: calc(max(12px, env(safe-area-inset-top)) + 60px) 48px 32px;
   margin: auto;
-}
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #213345;
 }
 .back {
   color: #a1b6c9;
@@ -280,66 +273,20 @@ h1 {
   background: #255067;
   transform: translateY(2px);
 }
-.shared-choice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 14px;
-  margin: 12px 0;
-}
 .landing-help {
   text-align: center;
   color: #92adbf;
 }
-.room-panel {
-  max-width: 720px;
-  margin: 25px auto;
-  padding: 24px;
-  border: 1px solid #314557;
-  border-radius: 12px;
-  background: #0b1729;
-}
-.room-panel .fui-invite {
-  margin-bottom: 24px;
-  background: #10283b;
-  color: #eaf6ff;
-  border-width: 1px;
-}
-.room-panel .fui-invite .fui-room-code {
-  color: #eaf6ff;
-}
-.room-panel .fui-invite-copy {
-  background: #17394c;
-  color: #eaf6ff;
-  border: 1px solid #36556b;
-  padding: 8px 12px;
-  border-radius: 4px;
-}
-.room-panel a {
-  color: #9eeaff;
-  text-decoration: none;
-}
-.room-panel .fui-invite-qr {
-  max-width: 150px;
-}
-.room-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 20px;
-}
-.room-actions .primary {
-  margin: 0;
-}
-.room-note {
-  color: #92adbf;
-  font-size: 14px;
-}
+/* The room is the shared room: the kit lays it out. The match's own line sits above the arena. */
 .room-status {
-  margin: 12px 0 0;
+  margin: 0 0 12px;
   min-height: 20px;
+}
+.room-foot-status {
+  margin: 0;
+  color: #8cb1bf;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .controller-identity {
   text-align: center;
@@ -446,19 +393,9 @@ h1 {
   margin-left: auto;
   margin-right: auto;
 }
+/* The bar already names the game: a match gives the heading's rows to the arena. */
 .in-match .heading {
-  padding: 12px 0;
-}
-.in-match .heading h1 {
-  font-size: 34px;
-  margin: 0;
-}
-.in-match .heading p,
-.in-match .heading > .eyebrow {
   display: none;
-}
-.in-match .topbar {
-  padding-bottom: 12px;
 }
 .in-match .arena-wrap {
   max-width: min(850px, calc(100dvh - 325px));
@@ -497,21 +434,8 @@ h1 {
 }
 @media (max-width: 850px) {
   #app {
-    padding: 18px;
-  }
-  .topbar > .eyebrow {
-    display: none;
-  }
-  .topbar {
-    gap: 7px;
-    flex-wrap: wrap;
-  }
-  .topbar .quiet-button {
-    padding: 9px 7px;
-    font-size: 9px;
-  }
-  .room-panel {
-    padding: 14px;
+    padding-inline: 18px;
+    padding-bottom: 18px;
   }
   .layout {
     grid-template-columns: 1fr;
@@ -565,7 +489,8 @@ h1 {
 }
 @media (max-width: 420px) {
   #app {
-    padding: 12px;
+    padding-inline: 12px;
+    padding-bottom: 12px;
   }
   .heading p {
     font-size: 12px;
@@ -634,9 +559,6 @@ h1 {
   height: 36px;
   display: inline-block;
   background-size: 500% 300%;
-}
-.room-panel .fui-room-code {
-  color: #eaf6ff;
 }
 .fui-landing {
   padding: 28px;

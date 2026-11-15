@@ -1,4 +1,4 @@
-import { createResultsScreen, elementsFor } from "fuse-ui";
+import { createResultsScreen, elementsFor, type RoomFriends } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -66,6 +66,8 @@ export interface ScreenOptions {
     publicIdOfMember(memberId: string): string | undefined;
     friendButton(publicId: string): HTMLElement;
   };
+  /** The room's own friends controls: INVITE FRIENDS beside the invitation and ADD FRIEND on a seat. */
+  roomFriends?: RoomFriends;
   renderer(parent: HTMLElement): ArenaRenderer;
   runtime(callbacks: Callbacks<RoomView, Impact, Settings>): Client;
   now(): number;
@@ -91,11 +93,6 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const top = el("header", "", "topbar"),
     home = el("a", "All games", "back");
   home.href = "../";
-  const badge = el(
-    "span",
-    options.online ? `ROOM ${options.online.code}` : "SOLO + 4 BOTS",
-    "eyebrow",
-  );
   top.append(
     createAppPortal({
       document,
@@ -104,8 +101,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       search: options.search,
     }).element,
     home,
-    badge,
   );
+
   if (options.radio) top.append(options.radio.element);
   const retry = el("button", "RECONNECT", "quiet-button");
   retry.hidden = !options.online;
@@ -158,8 +155,15 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const side = el("aside", "", "sidebar");
   const clock = el("div", "02:00", "clock"),
     mapName = el("p", "CLASSIC CIRCUIT", "map-name"),
-    status = el("p", "Loading arena…", "status");
+    status = el("p", "Loading arena…", "status"),
+    // In a room the same words are at the room's foot while it waits; `status` is the match's line.
+    roomStatus = el("p", "Loading arena…", "room-foot-status");
   status.setAttribute("role", "status");
+  roomStatus.setAttribute("role", "status");
+  const say = (text: string) => {
+    status.textContent = text;
+    roomStatus.textContent = text;
+  };
   const instructions = el("div", "", "instructions");
   instructions.append(
     el("span", "HOW TO SURVIVE", "eyebrow"),
@@ -199,7 +203,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const controlsRow = el("div", "", "touch-controls");
   root.append(top, heading, scoreboard, layout, controlsRow);
   let renderer = options.renderer(canvasHost),
-    graphicsFailed = false;
+    graphicsFailed = false,
+    // A failed start or a stopped arena takes the room away for the retry; it stays away until the retry runs.
+    retrying = false;
   let runtime: Client | undefined,
     latest: BallView | undefined,
     frame = 0,
@@ -214,7 +220,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         ...options.online,
         store: options.store,
         qr: options.qr,
-        command: (command) => runtime?.command(command),
+        command: (command) => runtime?.command(command) ?? false,
+        status: roomStatus,
+        ...(options.roomFriends ? { friends: options.roomFriends } : {}),
       })
     : undefined;
   if (panel) {
@@ -372,9 +380,12 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         options.online.display,
         shared,
         activeSettings,
+        "managerId" in v && typeof v.managerId === "string" ? v.managerId : "",
       );
       panel!.render(m);
+      panel!.element.hidden = !m.lobby || retrying;
       heading.hidden = m.lobby;
+      status.hidden = m.lobby && !retrying;
       const remembered = options.store.getItem(NAME_KEY);
       if (m.askName && remembered && !joined && !runtime?.canManage) {
         joined = true;
@@ -408,7 +419,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         previousHud = "";
         return;
       }
-      if (m.note) status.textContent = m.note;
+      if (m.note) say(m.note);
     }
     const model = present(
       v,
@@ -439,7 +450,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     if (model.result) {
       playing = false;
       cancel();
-      status.textContent = "Round complete";
+      say("Round complete");
     }
   }
   async function begin(): Promise<void> {
@@ -448,6 +459,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       return;
     }
     start.disabled = true;
+    retrying = false;
     try {
       if (graphicsFailed) {
         renderer.destroy();
@@ -499,18 +511,18 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
           renderer.impact(e, options.now());
           audio.play(e);
         },
-        status: (text) => (status.textContent = roomFailure(text)),
+        status: (text) => say(roomFailure(text)),
         ended: () => {
           playing = false;
           cancel();
           controlsRow.hidden = true;
-          status.textContent = "Room ended. Leave to create another room.";
+          say("Room ended. Leave to create another room.");
         },
         kicked: () => {
           playing = false;
           cancel();
           controlsRow.hidden = true;
-          status.textContent = "You were removed from the room.";
+          say("You were removed from the room.");
         },
       });
       runtime.start();
@@ -521,9 +533,13 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
+      retrying = true;
       if (panel) panel.element.hidden = true;
+      status.hidden = false;
       start.hidden = false;
-      status.textContent = `Could not start: ${error instanceof Error ? error.message : String(error)}`;
+      say(
+        `Could not start: ${error instanceof Error ? error.message : String(error)}`,
+      );
       start.textContent = "RETRY ARENA";
     } finally {
       start.disabled = false;
@@ -532,10 +548,10 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   start.addEventListener("click", () => void begin(), { signal });
   restart.addEventListener("click", () => void begin(), { signal });
   void renderer.ready.then(
-    () => (status.textContent = "Ready for first contact"),
+    () => say("Ready for first contact"),
     () => {
       graphicsFailed = true;
-      status.textContent = "Arena could not load. Retry to play.";
+      say("Arena could not load. Retry to play.");
       start.textContent = "RETRY ARENA";
     },
   );
@@ -617,11 +633,12 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
+      retrying = true;
       if (panel) panel.element.hidden = true;
       start.hidden = false;
       start.textContent = "RETRY ARENA";
-      status.textContent =
-        "Arena rendering stopped. Retry to start a fresh round.";
+      status.hidden = false;
+      say("Arena rendering stopped. Retry to start a fresh round.");
     }
     frame = options.frame(paint);
   }

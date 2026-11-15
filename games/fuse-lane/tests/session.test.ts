@@ -41,7 +41,7 @@ class MemoryStorage implements Storage {
 test("storage keys are per game", () => {
   const names = keys("fuse-lane");
   assert.equal(names.name, "fuse-lane-player-name");
-  assert.equal(names.shared, "fuse-lane-shared-screen");
+  assert.equal(names.tvRoom("ABCD"), "fuse-lane-tv-ABCD");
   assert.equal(names.host("ABCD"), "fuse-lane-room-ABCD");
   assert.equal(names.peer("ABCD"), "fuse-lane-peer-ABCD");
   assert.notEqual(keys("dice").name, names.name);

@@ -125,8 +125,22 @@ export interface BackOnEscapeOptions {
 }
 
 /**
- * Escape presses `back`, as it closes a dialog. Not while a dialog is open (Escape is that dialog's), not while
- * Back is hidden or disabled, and not for a key something else already used. Returns what removes the listener.
+ * True when this Escape is somebody else's: a key something already used, an open dialog, the open game menu or
+ * the open app portal. Each of those closes on this press, and the next Escape is the page's.
+ */
+export function escapeIsTaken(event: KeyboardEvent, doc: Document): boolean {
+  return (
+    event.defaultPrevented ||
+    doc.querySelector(
+      "dialog[open], .fui-game-menu-panel:not([hidden]), .fui-portal-panel:not([hidden])",
+    ) !== null
+  );
+}
+
+/**
+ * Escape presses `back`, as it closes a dialog. Not while a dialog, the game menu or the app portal is open
+ * (Escape is theirs), not while Back is hidden or disabled, and not for a key something else already used.
+ * Returns what removes the listener.
  */
 export function backOnEscape(
   back: HTMLElement,
@@ -134,12 +148,9 @@ export function backOnEscape(
 ): () => void {
   const doc = options.document ?? back.ownerDocument;
   const onKey = (event: KeyboardEvent) => {
-    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (event.key !== "Escape" || escapeIsTaken(event, doc)) return;
     if (!back.isConnected || back.closest("[hidden]")) return;
     if (back.hasAttribute("disabled")) return;
-    if (doc.querySelector("dialog[open]")) return;
-    // An open game menu is on top of the page: this Escape closes it, and the next one goes back.
-    if (doc.querySelector(".fui-game-menu-panel:not([hidden])")) return;
     if (options.enabled && !options.enabled()) return;
     event.preventDefault();
     back.click();
