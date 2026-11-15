@@ -81,7 +81,9 @@ export async function sendReport(
         keepalive: true,
         headers: {
           "Content-Type": "application/json",
-          ...(transport.roomToken === undefined ? {} : { Authorization: `Bearer ${transport.roomToken}` }),
+          ...(transport.roomToken === undefined
+            ? {}
+            : { Authorization: `Bearer ${transport.roomToken}` }),
         },
       });
       if (response.ok) {

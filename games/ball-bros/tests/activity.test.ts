@@ -2,13 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createArena, COUNTDOWN, BALL_SPEED } from "../src/engine/state.js";
 import { activityResult } from "../src/online/activity.js";
-import { ballGame, createRoom, DEFAULT_SETTINGS, foldTick, encodeRoom, decodeRoom } from "../src/online/game.js";
+import {
+  ballGame,
+  createRoom,
+  DEFAULT_SETTINGS,
+  foldTick,
+  encodeRoom,
+  decodeRoom,
+} from "../src/online/game.js";
 import { ballBrosRegistration } from "../src/platform.js";
 import { ACTION, World } from "fuse-netcode";
 
 test("completed arena freezes deciding finishers, names and stats through checkpoint and later seat changes", () => {
   const room = createRoom("match", DEFAULT_SETTINGS);
-  const players = ["a", "b"].map((id, slot) => ({ id, slot, name: id === "a" ? "Ada" : "Bo", bot: false, connected: true, generation: 1, avatarId: "fox" }));
+  const players = ["a", "b"].map((id, slot) => ({
+    id,
+    slot,
+    name: id === "a" ? "Ada" : "Bo",
+    bot: false,
+    connected: true,
+    generation: 1,
+    avatarId: "fox",
+  }));
   for (const player of players) room.seats.set(player.id, player);
   room.stage = "running";
   room.arena = createArena(players);
@@ -16,7 +31,12 @@ test("completed arena freezes deciding finishers, names and stats through checkp
   for (let i = 0; i < COUNTDOWN; i++) foldTick(room, "a", new Map());
   room.arena.bases[1]!.alive = false;
   for (const block of room.arena.bases[1]!.blocks) block.alive = false;
-  for (const ball of room.arena.balls) { ball.owner = null; ball.held = null; ball.vx = BALL_SPEED; ball.vy = 0; }
+  for (const ball of room.arena.balls) {
+    ball.owner = null;
+    ball.held = null;
+    ball.vx = BALL_SPEED;
+    ball.vy = 0;
+  }
   room.arena.bases[0]!.saves = 9;
   foldTick(room, "a", new Map());
   const first = activityResult(ballGame.view(room))!;
@@ -33,8 +53,14 @@ test("completed arena freezes deciding finishers, names and stats through checkp
   corrupt[5] = ["a", "a"];
   assert.equal(decodeRoom(corrupt, room.tick), undefined);
   assert.equal(ballBrosRegistration.ratesRounds, false);
-  assert.deepEqual(ballBrosRegistration.parseStats(first.players[0], 1), first.players[0]);
-  assert.equal(ballBrosRegistration.parseStats({ ...first.players[0], unknown: 1 }, 1), undefined);
+  assert.deepEqual(
+    ballBrosRegistration.parseStats(first.players[0], 1),
+    first.players[0],
+  );
+  assert.equal(
+    ballBrosRegistration.parseStats({ ...first.players[0], unknown: 1 }, 1),
+    undefined,
+  );
   // Completion was tick 61, between stride-4 snapshots. A rematch at 63 must not erase its proof.
   restored.seats.get("b")!.connected = true;
   const world = new World(ballGame, restored, "a", "a");
@@ -45,6 +71,11 @@ test("completed arena freezes deciding finishers, names and stats through checkp
   world.advance(next + 48);
   const confirmed = world.confirmedFrame()!;
   assert.notEqual(confirmed.matchId, first.matchId);
-  assert.deepEqual(confirmed.history.map(receipt => receipt.result.matchId), ["match", "match"]);
-  assert.ok(confirmed.history.every(receipt => receipt.tick <= confirmed.logTick));
+  assert.deepEqual(
+    confirmed.history.map((receipt) => receipt.result.matchId),
+    ["match", "match"],
+  );
+  assert.ok(
+    confirmed.history.every((receipt) => receipt.tick <= confirmed.logTick),
+  );
 });

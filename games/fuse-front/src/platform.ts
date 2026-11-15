@@ -6,11 +6,18 @@ export const frontRegistration = historyOnlyRegistration({
   id: "fuse-front",
   isBot: isFrontBot,
   activityPlayer(player) {
-    return { label: `${player.slot % 2 === 0 ? "Blue" : "Red"} team · controller at match end`, stats: {} };
+    return {
+      label: `${player.slot % 2 === 0 ? "Blue" : "Red"} team · controller at match end`,
+      stats: {},
+    };
   },
   activity(result) {
-    const blue = result.players.find(player => player.slot % 2 === 0)?.roundWins;
-    const red = result.players.find(player => player.slot % 2 === 1)?.roundWins;
+    const blue = result.players.find(
+      (player) => player.slot % 2 === 0,
+    )?.roundWins;
+    const red = result.players.find(
+      (player) => player.slot % 2 === 1,
+    )?.roundWins;
     return { title: blue ? "Blue team won" : red ? "Red team won" : "Draw" };
   },
 });

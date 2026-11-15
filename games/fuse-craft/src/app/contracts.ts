@@ -92,7 +92,14 @@ export interface SessionOptions {
 export interface NeuralSession {
   historySnapshot?(): HistorySnapshot;
   /** A local runtime's irreversible result; absent on injected display-only sessions. */
-  confirmedResult?(): { world: Readonly<World>; decided: CraftDecision | null; history: readonly HistoryReceipt[]; logTick: number } | undefined;
+  confirmedResult?():
+    | {
+        world: Readonly<World>;
+        decided: CraftDecision | null;
+        history: readonly HistoryReceipt[];
+        logTick: number;
+      }
+    | undefined;
   readonly localPlayerId: string;
   readonly canControl: boolean;
   view(): Readonly<World>;

@@ -774,16 +774,20 @@ function openTiming(): void {
 }
 
 function songHighscores(): void {
-  const scores = createSongLeaderboards({
-    catalog: async () =>
-      ((await scoreRequest("")) as { songs: SongBoard[] }).songs,
-    leaderboard: async (song, chart) =>
-      (
-        (await scoreRequest(
-          `?song=${encodeURIComponent(song)}&chart=${chart}`,
-        )) as { players: ScoreEntry[] }
-      ).players,
-  }, document, { openPlayer: social.openPlayer });
+  const scores = createSongLeaderboards(
+    {
+      catalog: async () =>
+        ((await scoreRequest("")) as { songs: SongBoard[] }).songs,
+      leaderboard: async (song, chart) =>
+        (
+          (await scoreRequest(
+            `?song=${encodeURIComponent(song)}&chart=${chart}`,
+          )) as { players: ScoreEntry[] }
+        ).players,
+    },
+    document,
+    { openPlayer: social.openPlayer },
+  );
   const page = createSubPage({
     title: "Song highscores",
     backHref: withFlags(endpoints.appUrl()),
@@ -1995,15 +1999,20 @@ function enterRoom(
     fetch: social.reportFetch,
     apiUrl: endpoints.apiUrl,
     gameId: GAME,
-    ...(session.kind === "room" ? { room: { code, token: session.token } } : {}),
+    ...(session.kind === "room"
+      ? { room: { code, token: session.token } }
+      : {}),
     signedIn: social.isSignedIn,
-    playerId: () => display ? "" : runtime.self,
+    playerId: () => (display ? "" : runtime.self),
     now: () => performance.now(),
   });
   const historySnapshot = () => {
     const state = runtime.roomState();
     return {
-      receipts: !display && state && library === LIBRARY ? historyReceipts(library, state) : [],
+      receipts:
+        !display && state && library === LIBRARY
+          ? historyReceipts(library, state)
+          : [],
       confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
     };
   };
@@ -2021,7 +2030,11 @@ function enterRoom(
         reportPlay,
         frame,
         () => runtime.confirmedFrame(),
-        (frame) => fusemaniaPlayFrame(frame, { self: viewer.display ? "" : viewer.me, mode }),
+        (frame) =>
+          fusemaniaPlayFrame(frame, {
+            self: viewer.display ? "" : viewer.me,
+            mode,
+          }),
       );
       settings = roomSettings;
       // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
@@ -2151,7 +2164,10 @@ function enterRoom(
         },
   );
   installRoomLifecycle(window, {
-    stop: () => { history.dispose(); runtime.stop(); },
+    stop: () => {
+      history.dispose();
+      runtime.stop();
+    },
     destroy: () => {
       stopPlaytestInput();
       menu.dispose();

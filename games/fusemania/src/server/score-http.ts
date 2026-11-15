@@ -23,7 +23,8 @@ async function body(req: IncomingMessage): Promise<unknown> {
   try {
     for await (const chunk of req as AsyncIterable<Buffer>) {
       bytes += chunk.length;
-      if (bytes > MAX_SONG_SCORE_BODY_BYTES) throw new RoomError(413, "Input log too large");
+      if (bytes > MAX_SONG_SCORE_BODY_BYTES)
+        throw new RoomError(413, "Input log too large");
       chunks.push(chunk);
     }
   } finally {

@@ -167,7 +167,11 @@ export class HistoryStore {
     private now: () => number,
   ) {}
   async allowActivity(address: string): Promise<boolean> {
-    return this.rooms.database.allowance(digest(`activity:${rateLimitAddress(address)}`), this.now(), READS_PER_HOUR);
+    return this.rooms.database.allowance(
+      digest(`activity:${rateLimitAddress(address)}`),
+      this.now(),
+      READS_PER_HOUR,
+    );
   }
   /**
    * One game's history, by id or by the registration itself (which types the view). An unregistered game is refused
@@ -397,7 +401,12 @@ export class GameHistory<
         : {
             gameId: game.id,
             ...(reporter.mode === undefined ? {} : { playMode: reporter.mode }),
-            groupScope: createHash("sha256").update(JSON.stringify([game.id, reporter.incarnation, result.matchId])).digest("hex").slice(0, 40),
+            groupScope: createHash("sha256")
+              .update(
+                JSON.stringify([game.id, reporter.incarnation, result.matchId]),
+              )
+              .digest("hex")
+              .slice(0, 40),
             version: 1,
             ratingScope: createHash("sha256")
               .update(

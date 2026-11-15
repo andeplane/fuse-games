@@ -4,5 +4,8 @@ import { isHunterBot } from "./online/result.js";
 export const graveyardRegistration = historyOnlyRegistration({
   id: "graveyard-shift",
   isBot: isHunterBot,
-  activity: () => ({ title: "Shift complete", context: { scoreUnit: "energy" } }),
+  activity: () => ({
+    title: "Shift complete",
+    context: { scoreUnit: "energy" },
+  }),
 });

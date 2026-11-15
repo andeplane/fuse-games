@@ -47,7 +47,12 @@ import {
 } from "../engine/view.js";
 import { parseHistoryResult } from "fuse-platform/history-api";
 import type { MatchResult } from "fuse-platform";
-import { activityResult, isHistoryBot, parseHookHistoryPlayer, type HookHistoryPlayer } from "./activity.js";
+import {
+  activityResult,
+  isHistoryBot,
+  parseHookHistoryPlayer,
+  type HookHistoryPlayer,
+} from "./activity.js";
 export type Entry =
   ManagementEntry<Tuning> | [number, number, 0, string, number, Input];
 export interface Room {
@@ -328,11 +333,28 @@ export function decode(f: readonly unknown[], tick: number): Room | undefined {
   if (!Array.isArray(f[6]) || f[6].length > 8) return;
   const history: Room["history"] = [];
   for (const raw of f[6]) {
-    if (!plain(raw) || Object.keys(raw).length !== 2 || !uint32(raw.tick) || raw.tick > tick) return;
+    if (
+      !plain(raw) ||
+      Object.keys(raw).length !== 2 ||
+      !uint32(raw.tick) ||
+      raw.tick > tick
+    )
+      return;
     const at = raw.tick;
-    if (history.some(receipt => receipt.tick >= at)) return;
-    const result = parseHistoryResult(raw.result, parseHookHistoryPlayer, memberId, isHistoryBot);
-    if (!result || result.round !== undefined || !/:[1-9][0-9]*$/.test(result.matchId) || history.some(receipt => receipt.result.matchId === result.matchId)) return;
+    if (history.some((receipt) => receipt.tick >= at)) return;
+    const result = parseHistoryResult(
+      raw.result,
+      parseHookHistoryPlayer,
+      memberId,
+      isHistoryBot,
+    );
+    if (
+      !result ||
+      result.round !== undefined ||
+      !/:[1-9][0-9]*$/.test(result.matchId) ||
+      history.some((receipt) => receipt.result.matchId === result.matchId)
+    )
+      return;
     history.push({ tick: raw.tick, result });
   }
   const settings = parseTuning(f[3]),

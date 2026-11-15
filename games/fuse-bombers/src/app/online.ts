@@ -168,8 +168,33 @@ export function showRoom(
   });
   const touch = input.touchEnabled,
     display = !solo && session.role === "display";
-  const history = createResultsHistory({fetch:social.reportFetch,apiUrl:endpoints.apiUrl,gameId:GAME,...(session.kind==="room"?{room:{code:session.code,token:session.token}}:{}),signedIn:social.isSignedIn,playerId:()=>viewer.me,now:()=>performance.now()});
-  const leaveRoom=()=>{runtime.input(0);history.close(()=>{const state=runtime.roomState();return{receipts:state?historyReceipts(state):[],confirmedTick:runtime.confirmedFrame()?.logTick??-1};},()=>{runtime.stop();go();});};
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code: session.code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => viewer.me,
+    now: () => performance.now(),
+  });
+  const leaveRoom = () => {
+    runtime.input(0);
+    history.close(
+      () => {
+        const state = runtime.roomState();
+        return {
+          receipts: state ? historyReceipts(state) : [],
+          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+        };
+      },
+      () => {
+        runtime.stop();
+        go();
+      },
+    );
+  };
   document.body.classList.toggle("fb-display", display);
   const viewer: Viewer = {
     me: "",
@@ -579,7 +604,11 @@ export function showRoom(
   const callbacks: BombersCallbacks = {
     state(next, roomSettings) {
       if (dead) return;
-      if(!display){const confirmed=runtime.confirmedFrame();if(confirmed)history.observe(historyReceipts(confirmed),confirmed.logTick);}
+      if (!display) {
+        const confirmed = runtime.confirmedFrame();
+        if (confirmed)
+          history.observe(historyReceipts(confirmed), confirmed.logTick);
+      }
       observeConfirmedPlay(
         reportPlay,
         next,

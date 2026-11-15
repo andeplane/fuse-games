@@ -50,7 +50,12 @@ export interface SongScoreOptions {
   now(): number;
   id(): string;
 }
-const publicEntry = ({ uid, name, rating, endedAt }: RankedEntry): ScoreEntry => ({
+const publicEntry = ({
+  uid,
+  name,
+  rating,
+  endedAt,
+}: RankedEntry): ScoreEntry => ({
   publicId: publicIdOf(uid),
   name,
   rating,
@@ -98,7 +103,8 @@ export class SongScores {
   private versions = new Map<string, string>();
   private catalogGeneration = 0;
   private cachedCatalog: { until: number; songs: SongBoard[] } | undefined;
-  private pendingCatalog: { generation: number; promise: Promise<SongBoard[]> } | undefined;
+  private pendingCatalog:
+    { generation: number; promise: Promise<SongBoard[]> } | undefined;
   constructor(private options: SongScoreOptions) {
     for (const source of options.sources)
       this.versions.set(
@@ -126,19 +132,27 @@ export class SongScores {
       return structuredClone(this.cachedCatalog.songs);
     let pending = this.pendingCatalog;
     if (!pending || pending.generation !== generation) {
-      const promise = this.readCatalog().then(songs => {
-        if (generation === this.catalogGeneration)
-          this.cachedCatalog = { until: this.options.now() + CATALOG_CACHE_MS, songs };
-        return songs;
-      }).finally(() => {
-        if (this.pendingCatalog?.promise === promise) this.pendingCatalog = undefined;
-      });
+      const promise = this.readCatalog()
+        .then((songs) => {
+          if (generation === this.catalogGeneration)
+            this.cachedCatalog = {
+              until: this.options.now() + CATALOG_CACHE_MS,
+              songs,
+            };
+          return songs;
+        })
+        .finally(() => {
+          if (this.pendingCatalog?.promise === promise)
+            this.pendingCatalog = undefined;
+        });
       pending = { generation, promise };
       this.pendingCatalog = pending;
     }
     const songs = await pending.promise;
     // A completion invalidates an already in-flight read as well as a settled cache.
-    return generation === this.catalogGeneration ? structuredClone(songs) : this.catalog();
+    return generation === this.catalogGeneration
+      ? structuredClone(songs)
+      : this.catalog();
   }
   private invalidateCatalog(): void {
     this.catalogGeneration++;
@@ -314,7 +328,9 @@ export class SongScores {
     const entry: RankedEntry = { uid, name, rating: result, endedAt: now };
     // Canonicalize after validation and replay. The API never accepts client-compressed evidence.
     // A bytes field avoids Firestore's per-map overhead; the cap leaves >140KiB for bounded metadata.
-    const inputEvidence = deflateSync(Buffer.from(JSON.stringify(inputs), "utf8"));
+    const inputEvidence = deflateSync(
+      Buffer.from(JSON.stringify(inputs), "utf8"),
+    );
     if (inputEvidence.byteLength > MAX_EVIDENCE_BYTES)
       throw new RoomError(400, "Input evidence too large");
     const outcome = await this.options.database.transact(async (tx) => {

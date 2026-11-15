@@ -240,10 +240,16 @@ function room(code: string, token: string | undefined, display: boolean): void {
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
     onBack: () => {
-      resultsHistory.close(() => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }), () => {
-        runtime.stop();
-        location.href = link();
-      });
+      resultsHistory.close(
+        () => ({
+          receipts: runtime.roomState()?.history ?? [],
+          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+        }),
+        () => {
+          runtime.stop();
+          location.href = link();
+        },
+      );
     },
     backText: "Leave",
     onAction: (id) =>
@@ -341,7 +347,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
         if (online && !display && !store.getItem(keys.host(code)) && who)
           runtime.command({ type: "join", name: who });
       },
-      state: (frame) => { if (!detached) show(frame); },
+      state: (frame) => {
+        if (!detached) show(frame);
+      },
       event: (event, matchId) => {
         if (detached) return;
         field.event(matchId, event, performance.now());
@@ -385,9 +393,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
   let heroOpener: string | undefined;
   let wasLobby = true;
   const resultsHistory = createResultsHistory({
-    fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME_ID,
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME_ID,
     ...(token ? { room: { code, token } } : {}),
-    signedIn: () => social.isSignedIn(), playerId: () => runtime.self,
+    signedIn: () => social.isSignedIn(),
+    playerId: () => runtime.self,
     now: () => performance.now(),
   });
   function show(view: Frame<View>): void {
@@ -1107,7 +1118,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
     window.removeEventListener("keydown", keys123);
     window.removeEventListener("keyup", keyUp);
     window.removeEventListener("blur", blurred);
-    resultsHistory.close(() => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }), () => runtime.stop());
+    resultsHistory.close(
+      () => ({
+        receipts: runtime.roomState()?.history ?? [],
+        confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+      }),
+      () => runtime.stop(),
+    );
     field.dispose();
   };
 }

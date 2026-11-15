@@ -268,7 +268,11 @@ test("round and match details preserve score units, escape names, sort linked ro
   await settle();
   assert.equal(f.source.eventIds.at(-1), "round-1");
   f.named("BACK TO ACTIVITY").click();
-  assert.equal(f.document.activeElement, open, "linked detail retains its originating list control");
+  assert.equal(
+    f.document.activeElement,
+    open,
+    "linked detail retains its originating list control",
+  );
   assert.equal(
     f.browser.element.querySelector<HTMLElement>(".fui-activity-detail")!
       .hidden,
@@ -279,15 +283,25 @@ test("round and match details preserve score units, escape names, sort linked ro
 test("a deferred detail announces success through its existing live status", async (t) => {
   const f = fixture(t);
   let resolve: ((value: GameActivity) => void) | undefined;
-  f.source.eventReply = () => new Promise<GameActivity>(done => { resolve = done; });
+  f.source.eventReply = () =>
+    new Promise<GameActivity>((done) => {
+      resolve = done;
+    });
   f.browser.open();
   await settle();
-  f.browser.element.querySelector<HTMLButtonElement>(".fui-activity-open")!.click();
-  const live = f.browser.element.querySelector<HTMLElement>(".fui-activity-detail [role=status]")!;
+  f.browser.element
+    .querySelector<HTMLButtonElement>(".fui-activity-open")!
+    .click();
+  const live = f.browser.element.querySelector<HTMLElement>(
+    ".fui-activity-detail [role=status]",
+  )!;
   assert.equal(live.textContent, "Loading result…");
   resolve!(event());
   await settle();
-  assert.equal(f.browser.element.querySelector(".fui-activity-detail [role=status]"), live);
+  assert.equal(
+    f.browser.element.querySelector(".fui-activity-detail [role=status]"),
+    live,
+  );
   assert.match(live.textContent!, /Result loaded/);
 });
 

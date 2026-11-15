@@ -57,7 +57,7 @@ bots, what a confirmed match adds to an account (`credit`, `addTotals`, `parseTo
 | Route (`/api/games/:gameId` prefix, or none for `fuse-riders`) |                                                   |
 | -------------------------------------------------------------- | ------------------------------------------------- |
 | `POST /rooms/:code/results`, `/rooms/:code/round-results`      | a player's report, room token as bearer           |
-| `POST /me/results`, `/me/round-results`                         | a signed-in solo match or round                   |
+| `POST /me/results`, `/me/round-results`                        | a signed-in solo match or round                   |
 | `GET /leaderboard`                                             | the game's top 50                                 |
 | `GET /me`, `PUT /me`                                           | the account with this game's rating; the username |
 | `GET /me/matches?before=`                                      | the account's confirmed matches in this game      |

@@ -235,11 +235,16 @@ function landing(): void {
   app.replaceChildren(page);
 }
 function room(code: string, display: boolean, practice = false): void {
-  const historyToken = practice ? undefined : roomToken(store, code, display, secret);
+  const historyToken = practice
+    ? undefined
+    : roomToken(store, code, display, secret);
   const resultsHistory = createResultsHistory({
-    fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME,
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
     ...(historyToken ? { room: { code, token: historyToken } } : {}),
-    signedIn: () => social.isSignedIn(), playerId: () => me,
+    signedIn: () => social.isSignedIn(),
+    playerId: () => me,
     now: () => performance.now(),
   });
   const metricsScope = practice ? crypto.randomUUID() : code;
@@ -888,10 +893,16 @@ function room(code: string, display: boolean, practice = false): void {
     audio.destroy();
   };
   leave.onclick = () => {
-    resultsHistory.close(() => ({ receipts: currentFrame?.history ?? [], confirmedTick: runtime.confirmedFrame?.()?.logTick ?? -1 }), () => {
-      stop();
-      location.href = endpoints.appUrl();
-    });
+    resultsHistory.close(
+      () => ({
+        receipts: currentFrame?.history ?? [],
+        confirmedTick: runtime.confirmedFrame?.()?.logTick ?? -1,
+      }),
+      () => {
+        stop();
+        location.href = endpoints.appUrl();
+      },
+    );
   };
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),

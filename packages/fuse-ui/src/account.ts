@@ -230,7 +230,10 @@ export interface AccountDialogOptions<
   match(entry: Match, context: AccountMatchContext): Node;
   /** An opened match: its full results, as the post-match report shows them. */
   matchDetail(entry: Match, context: { now: number; day: string }): Node;
-  leaderboard(players: Player[], handlers: { openPlayer(publicId: string, name: string): void }): Node;
+  leaderboard(
+    players: Player[],
+    handlers: { openPlayer(publicId: string, name: string): void },
+  ): Node;
   /** The avatar beside the username. */
   avatar(id: string): HTMLElement;
   /** A full page; fewer means the list ended. Default 20. */
@@ -367,12 +370,19 @@ export function createAccountDialog<
     scope: AccountScope = "everyone",
     opened: Match | undefined,
     listScroll = 0;
-  const activity = options.activityApiUrl ? createActivityBrowser({
-    document: doc,
-    source: createActivitySource({ apiUrl: path => `${options.activityApiUrl}${path.slice("/api/activity".length)}`, fetch: options.fetch, token: () => auth.token() }),
-    signedIn: () => Boolean(account),
-    signIn: () => show("stats"),
-  }) : undefined;
+  const activity = options.activityApiUrl
+    ? createActivityBrowser({
+        document: doc,
+        source: createActivitySource({
+          apiUrl: (path) =>
+            `${options.activityApiUrl}${path.slice("/api/activity".length)}`,
+          fetch: options.fetch,
+          token: () => auth.token(),
+        }),
+        signedIn: () => Boolean(account),
+        signIn: () => show("stats"),
+      })
+    : undefined;
   // Read once per opening and kept while the dialog is up, so switching tabs never refetches.
   let session = 0,
     history:
@@ -831,7 +841,9 @@ export function createAccountDialog<
           false,
         );
         if (mine === generation)
-          body.replaceChildren(options.leaderboard(page.players, { openPlayer }));
+          body.replaceChildren(
+            options.leaderboard(page.players, { openPlayer }),
+          );
       } catch {
         if (mine === generation) {
           message.textContent = text.leaderboardFailed;

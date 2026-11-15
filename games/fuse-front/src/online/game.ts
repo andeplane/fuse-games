@@ -48,9 +48,17 @@ import {
   type WorldView,
 } from "../engine/index.js";
 import { MAP_IDS, mapById, mapChoice, resolveMap } from "./maps.js";
-import { frontDecision, parseFrontDecision, type FrontDecision } from "./result.js";
+import {
+  frontDecision,
+  parseFrontDecision,
+  type FrontDecision,
+} from "./result.js";
 import { frontResults, isFrontBot } from "./result.js";
-import { parseHistoryPlayer, parseHistoryReceipts, type HistoryReceipt } from "fuse-platform/history-api";
+import {
+  parseHistoryPlayer,
+  parseHistoryReceipts,
+  type HistoryReceipt,
+} from "fuse-platform/history-api";
 
 /**
  * Fuse Front behind the netcode's `RollbackGame`. The room keeps the seats, the match and its world. Seats are slots
@@ -304,7 +312,12 @@ export const ridden = (room: Room, slot: number) => {
 
 function resetMatch(room: Room, matchId: string): void {
   const { tick, seats, settings, history } = room;
-  Object.assign(room, { ...createRoom(matchId, settings), tick, seats, history });
+  Object.assign(room, {
+    ...createRoom(matchId, settings),
+    tick,
+    seats,
+    history,
+  });
 }
 /** The map the room's match plays: `play.map`, fixed at its start (the size's default before one). */
 export const mapOf = (room: Pick<Room, "play">): GameMap =>
@@ -482,8 +495,17 @@ export function decode(
   tick: number,
 ): Room | undefined {
   if (fields.length !== 9 || !uint32(tick)) return;
-  const [matchId, stage, rawSettings, rawPlay, rawSeats, startAt, rawWorld, rawDecided, rawHistory] =
-    fields;
+  const [
+    matchId,
+    stage,
+    rawSettings,
+    rawPlay,
+    rawSeats,
+    startAt,
+    rawWorld,
+    rawDecided,
+    rawHistory,
+  ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
   if (!validMatchId(matchId) || !STAGES.includes(stage as Stage)) return;
@@ -503,12 +525,20 @@ export function decode(
   }
   if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
     return;
-  const history = parseHistoryReceipts(rawHistory, tick, parseHistoryPlayer, playerKey, isFrontBot);
+  const history = parseHistoryReceipts(
+    rawHistory,
+    tick,
+    parseHistoryPlayer,
+    playerKey,
+    isFrontBot,
+  );
   if (!history) return;
   // prettier-ignore
   const room: Room = { tick, matchId, stage: stage as Stage, seats, settings, play, startAt, world: null, decided: null, history };
   if (stage === "lobby")
-    return startAt === 0 && rawWorld === null && rawDecided === null ? room : undefined;
+    return startAt === 0 && rawWorld === null && rawDecided === null
+      ? room
+      : undefined;
   if (play.map === null) return;
   const world = decodeWorld(rawWorld, mapById(play.map));
   if (!world || world.players.length % 2 !== 0) return;
@@ -533,7 +563,17 @@ export function decode(
  * `events` are presentation and left out (`encodeWorld` skips them).
  */
 export function hash(room: Room): string {
-  const text = JSON.stringify([room.tick, ...encode(room)], (_key, value: unknown) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
+  const text = JSON.stringify(
+    [room.tick, ...encode(room)],
+    (_key, value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.entries(value).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            ),
+          )
+        : value,
+  );
   let a = 0x811c9dc5,
     b = 0x050c5d1f;
   for (let i = 0, j = text.length - 1; i < text.length; i++, j--) {

@@ -159,16 +159,29 @@ export function createSession(
         status() {},
         ready() {},
       },
-      { ...(dependencies ? { dependencies } : {}), humanName: options.humanName ?? "You" },
+      {
+        ...(dependencies ? { dependencies } : {}),
+        humanName: options.humanName ?? "You",
+      },
     );
     runtime.start();
   };
   start();
   return {
-    historySnapshot: () => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }),
+    historySnapshot: () => ({
+      receipts: runtime.roomState()?.history ?? [],
+      confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+    }),
     confirmedResult: () => {
       const frame = runtime.confirmedFrame();
-      return frame && { world: frame, decided: frame.decided, history: frame.history, logTick: frame.logTick };
+      return (
+        frame && {
+          world: frame,
+          decided: frame.decided,
+          history: frame.history,
+          logTick: frame.logTick,
+        }
+      );
     },
     localPlayerId: "solo",
     canControl: mode !== "watch",
@@ -282,7 +295,10 @@ export function createOnlineSession(
   runtime.start();
   return {
     code,
-    historySnapshot: () => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }),
+    historySnapshot: () => ({
+      receipts: runtime.roomState()?.history ?? [],
+      confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+    }),
     get localPlayerId() {
       return runtime.self;
     },

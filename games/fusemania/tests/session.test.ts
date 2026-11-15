@@ -238,7 +238,18 @@ test("a rider who joins in the middle gets a total, one who left keeps theirs, a
       wins: 0,
     }),
   );
-  sessionOf(full).records = sessionOf(full).scores.map(score => ({ id: score.id, bot: false, roundsPlayed: 1, earlyExits: 0, combo: 0, marvelous: 0, perfect: 0, great: 0, steps: 0, misses: 0 }));
+  sessionOf(full).records = sessionOf(full).scores.map((score) => ({
+    id: score.id,
+    bot: false,
+    roundsPlayed: 1,
+    earlyExits: 0,
+    combo: 0,
+    marvelous: 0,
+    perfect: 0,
+    great: 0,
+    steps: 0,
+    misses: 0,
+  }));
   finish(full);
   const ids = sessionOf(full).scores.map((score) => score.id);
   assert.equal(ids.length, SESSION_SCORES);
@@ -284,7 +295,25 @@ test("a checkpoint carries the session, and a doctored one is refused", () => {
     assert.deepEqual(game.view(restored), game.view(each));
   }
   const [running, over, lobby] = stages as [Room, Room, Room];
-  type Raw = [number, number, string[], [string, string, number, number][], string, [string, boolean, number, number, number, number, number, number, number, number][]];
+  type Raw = [
+    number,
+    number,
+    string[],
+    [string, string, number, number][],
+    string,
+    [
+      string,
+      boolean,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ][],
+  ];
   const doctored = (
     from: Room,
     change: (session: Raw, all: unknown[]) => void,
@@ -306,7 +335,11 @@ test("a checkpoint carries the session, and a doctored one is refused", () => {
     ["a missing parent id", running, (s) => (s[4] = "")],
     ["an invalid parent id", running, (s) => (s[4] = "parent\nmatch")],
     ["missing aggregate evidence", running, (s) => s[5].pop()],
-    ["aggregate evidence belongs to its rider", running, (s) => (s[5][0]![0] = "someone-else")],
+    [
+      "aggregate evidence belongs to its rider",
+      running,
+      (s) => (s[5][0]![0] = "someone-else"),
+    ],
     ["aggregate participation is bounded", running, (s) => (s[5][0]![2] = 4)],
     ["aggregate counters are bounded", running, (s) => (s[5][0]![5] = 200_001)],
     ["finished song judgments are retained", over, (s) => (s[5][0]![5] = 0)],

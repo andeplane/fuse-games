@@ -284,7 +284,16 @@ export function createPlatformHttp(options: {
   activity?: ActivityDatabase;
 }): HttpExtension {
   return composeHttp(
-    ...(options.activity ? [createActivityHttp({ database: options.activity, platform: options.history.platform, identity: options.identity, allowRead: address => options.history.allowActivity(address) })] : []),
+    ...(options.activity
+      ? [
+          createActivityHttp({
+            database: options.activity,
+            platform: options.history.platform,
+            identity: options.identity,
+            allowRead: (address) => options.history.allowActivity(address),
+          }),
+        ]
+      : []),
     createHistoryHttp(options.history, options.identity),
     createFriendsHttp(options.friends, options.identity),
   );

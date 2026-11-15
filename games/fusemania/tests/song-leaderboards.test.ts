@@ -33,28 +33,97 @@ const doc = () =>
 const { window: dom } = parseHTML("<!doctype html><html></html>");
 
 test("groups songs by their real packs, sorts score columns in both directions and keeps empty charts last", async () => {
-  const extra: SongBoard = { song: "third", title: "Third", charts: [{ chart: 0, difficulty: "Easy", version: "v1", top: { name: "Bo", rating: 0, endedAt: 10 } }] };
-  const page = createSongLeaderboards({ catalog: async () => [...songs, extra], leaderboard: async () => [] }, doc(), { packs: [{ id: "first", name: "FIRST PACK", songs: ["grid", "third"] }, { id: "second", name: "SECOND PACK", songs: ["other"] }] });
+  const extra: SongBoard = {
+    song: "third",
+    title: "Third",
+    charts: [
+      {
+        chart: 0,
+        difficulty: "Easy",
+        version: "v1",
+        top: { name: "Bo", rating: 0, endedAt: 10 },
+      },
+    ],
+  };
+  const page = createSongLeaderboards(
+    { catalog: async () => [...songs, extra], leaderboard: async () => [] },
+    doc(),
+    {
+      packs: [
+        { id: "first", name: "FIRST PACK", songs: ["grid", "third"] },
+        { id: "second", name: "SECOND PACK", songs: ["other"] },
+      ],
+    },
+  );
   await flush();
-  assert.deepEqual([...page.element.querySelectorAll("tbody")].map(body => body.getAttribute("aria-label")), ["FIRST PACK", "SECOND PACK"]);
-  const sort = () => page.element.querySelectorAll<HTMLButtonElement>("thead button")[1]!.click();
+  assert.deepEqual(
+    [...page.element.querySelectorAll("tbody")].map((body) =>
+      body.getAttribute("aria-label"),
+    ),
+    ["FIRST PACK", "SECOND PACK"],
+  );
+  const sort = () =>
+    page.element
+      .querySelectorAll<HTMLButtonElement>("thead button")[1]!
+      .click();
   sort();
-  assert.equal(page.element.querySelectorAll("thead th")[1]!.getAttribute("aria-sort"), "descending");
-  assert.deepEqual([...page.element.querySelectorAll("tr[data-song]")].map(row => row.getAttribute("data-song")), ["grid", "third", "other"]);
+  assert.equal(
+    page.element.querySelectorAll("thead th")[1]!.getAttribute("aria-sort"),
+    "descending",
+  );
+  assert.deepEqual(
+    [...page.element.querySelectorAll("tr[data-song]")].map((row) =>
+      row.getAttribute("data-song"),
+    ),
+    ["grid", "third", "other"],
+  );
   sort();
-  assert.deepEqual([...page.element.querySelectorAll("tr[data-song]")].map(row => row.getAttribute("data-song")), ["third", "grid", "other"]);
-  assert.deepEqual(sortScoreSongs([...songs, extra], { column: "Easy", direction: "asc" }).map(song => song.song), ["third", "grid", "other"]);
-  const search = page.element.querySelector<HTMLInputElement>("input")!; search.value = "Another"; search.dispatchEvent(new dom.Event("input"));
+  assert.deepEqual(
+    [...page.element.querySelectorAll("tr[data-song]")].map((row) =>
+      row.getAttribute("data-song"),
+    ),
+    ["third", "grid", "other"],
+  );
+  assert.deepEqual(
+    sortScoreSongs([...songs, extra], { column: "Easy", direction: "asc" }).map(
+      (song) => song.song,
+    ),
+    ["third", "grid", "other"],
+  );
+  const search = page.element.querySelector<HTMLInputElement>("input")!;
+  search.value = "Another";
+  search.dispatchEvent(new dom.Event("input"));
   assert.equal(page.element.querySelectorAll("tbody").length, 1);
-  assert.equal(page.element.querySelector("tbody")!.getAttribute("aria-label"), "SECOND PACK");
+  assert.equal(
+    page.element.querySelector("tbody")!.getAttribute("aria-label"),
+    "SECOND PACK",
+  );
 });
 
 test("a named song leader opens shared player activity independently of the chart leaderboard", async () => {
   let opened: [string, string] | undefined;
-  const withPlayer: SongBoard = { ...songs[0]!, charts: [{ ...songs[0]!.charts[0]!, top: { ...songs[0]!.charts[0]!.top!, publicId: "a".repeat(20) } }] };
-  const page = createSongLeaderboards({ catalog: async () => [withPlayer], leaderboard: async () => [] }, doc(), { openPlayer: (id, name) => { opened = [id, name]; } });
+  const withPlayer: SongBoard = {
+    ...songs[0]!,
+    charts: [
+      {
+        ...songs[0]!.charts[0]!,
+        top: { ...songs[0]!.charts[0]!.top!, publicId: "a".repeat(20) },
+      },
+    ],
+  };
+  const page = createSongLeaderboards(
+    { catalog: async () => [withPlayer], leaderboard: async () => [] },
+    doc(),
+    {
+      openPlayer: (id, name) => {
+        opened = [id, name];
+      },
+    },
+  );
   await flush();
-  page.element.querySelector<HTMLButtonElement>(".fm-score-player-link")!.click();
+  page.element
+    .querySelector<HTMLButtonElement>(".fm-score-player-link")!
+    .click();
   assert.deepEqual(opened, ["a".repeat(20), "Ada"]);
 });
 

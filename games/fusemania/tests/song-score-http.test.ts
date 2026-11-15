@@ -6,7 +6,10 @@ import { once } from "node:events";
 import { RoomError } from "fuse-network-be";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { SharedTelemetryQuota } from "fuse-telemetry/limits";
-import { createSongScoresHttp, MAX_SONG_SCORE_BODY_BYTES } from "../src/server/score-http.js";
+import {
+  createSongScoresHttp,
+  MAX_SONG_SCORE_BODY_BYTES,
+} from "../src/server/score-http.js";
 import { SongScores } from "../src/server/song-scores.js";
 import { createLibrary, SOLO_LEAD_IN_MS } from "../src/engine/index.js";
 import { GRID_SSC } from "./fixtures/songs.js";
@@ -92,7 +95,9 @@ test("HTTP runs require verified identity, bounded JSON, and known canonical cha
   assert.equal((await post(run, { inputs: [], rating: 0 })).status, 200);
   const board = await (await fetch(url + "?song=grid&chart=0")).json();
   assert.deepEqual(board, {
-    players: [{ publicId: publicIdOf("ada"), name: "Ada", rating: 0, endedAt: now }],
+    players: [
+      { publicId: publicIdOf("ada"), name: "Ada", rating: 0, endedAt: now },
+    ],
   });
   assert.equal((await fetch(url + "?song=grid")).status, 400);
   assert.equal((await fetch(url, { method: "DELETE" })).status, 405);
@@ -109,5 +114,8 @@ test("HTTP runs require verified identity, bounded JSON, and known canonical cha
     ).status,
     400,
   );
-  assert.equal((await post("/runs", "x".repeat(MAX_SONG_SCORE_BODY_BYTES + 1))).status, 413);
+  assert.equal(
+    (await post("/runs", "x".repeat(MAX_SONG_SCORE_BODY_BYTES + 1))).status,
+    413,
+  );
 });

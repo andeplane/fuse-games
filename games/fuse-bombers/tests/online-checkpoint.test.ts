@@ -97,11 +97,33 @@ function record(): Map<string, Room> {
 const rooms = record();
 const battle = rooms.get("battle")!;
 
-test("an immediate rematch retains completed pilots and rounds before confirmation catches up",()=>{
-  const room=structuredClone(rooms.get("over")!);const oldMatch=room.matchId;const expected=historyReceipts(view(room));
-  fold(room,{a:[[ACTION,"rematch","rapid-next"]]});assert.equal(room.stage,"running");assert.equal(room.pastMatches.length,1);
-  const restored=restore(room);assert.ok(restored);assert.equal(hash(restored),hash(room));assert.deepEqual(historyReceipts(view(restored)).filter(r=>r.result.matchId===oldMatch),expected.map(r=>({...r,result:{...r.result,players:[...r.result.players].sort((a,b)=>a.slot-b.slot)}})));
-  const fields=wire(room);const groups=fields[12] as unknown[][];const item=groups[0]![0] as {tick:number};item.tick=room.tick+1;assert.equal(decode(fields,room.tick),undefined);
+test("an immediate rematch retains completed pilots and rounds before confirmation catches up", () => {
+  const room = structuredClone(rooms.get("over")!);
+  const oldMatch = room.matchId;
+  const expected = historyReceipts(view(room));
+  fold(room, { a: [[ACTION, "rematch", "rapid-next"]] });
+  assert.equal(room.stage, "running");
+  assert.equal(room.pastMatches.length, 1);
+  const restored = restore(room);
+  assert.ok(restored);
+  assert.equal(hash(restored), hash(room));
+  assert.deepEqual(
+    historyReceipts(view(restored)).filter(
+      (r) => r.result.matchId === oldMatch,
+    ),
+    expected.map((r) => ({
+      ...r,
+      result: {
+        ...r.result,
+        players: [...r.result.players].sort((a, b) => a.slot - b.slot),
+      },
+    })),
+  );
+  const fields = wire(room);
+  const groups = fields[12] as unknown[][];
+  const item = groups[0]![0] as { tick: number };
+  item.tick = room.tick + 1;
+  assert.equal(decode(fields, room.tick), undefined);
 });
 
 test("the checkpoint carries a room whole at every stage, and the restored room plays on bit for bit", () => {
@@ -573,7 +595,10 @@ test("a match that was decided plays no further round", () => {
   );
   assert.ok(decode(crowned, tick("over")) === undefined, "crowned in round 2");
   // A winner belongs to the frozen roster, and can never be a prototype key.
-  assert.equal(decode(changed(over, [[6, 0, 1], "zz"]), tick("over")), undefined);
+  assert.equal(
+    decode(changed(over, [[6, 0, 1], "zz"]), tick("over")),
+    undefined,
+  );
   const proto = changed(over, [[6, 0, 1], "constructor"]);
   assert.ok(decode(proto, tick("over")) === undefined, "a winner called that");
   // Running: the round before it already gave bot:3 the wins the match needs.
@@ -582,14 +607,31 @@ test("a match that was decided plays no further round", () => {
   assert.ok(decode(done, tick("sudden death")) === undefined, "crowned, on");
 });
 
-test("frozen history metadata rejects future ticks, invented finishers and corrupt roster stats",()=>{
-  const room=rooms.get("over")!;
-  const corrupt=(edit:(fields:unknown[])=>void)=>{const fields=wire(room);edit(fields);assert.equal(decode(fields,room.tick),undefined);};
+test("frozen history metadata rejects future ticks, invented finishers and corrupt roster stats", () => {
+  const room = rooms.get("over")!;
+  const corrupt = (edit: (fields: unknown[]) => void) => {
+    const fields = wire(room);
+    edit(fields);
+    assert.equal(decode(fields, room.tick), undefined);
+  };
   assert.ok(restore(room));
-  corrupt(fields=>{const rounds=fields[6] as unknown[][];rounds[0]![3]=room.tick+1;});
-  corrupt(fields=>{const rounds=fields[6] as unknown[][];rounds[0]![5]=["not-a-finisher"];});
-  corrupt(fields=>{const rounds=fields[6] as unknown[][];const players=rounds[0]![4] as Record<string,unknown>[];players[0]!.matchScoreUnits=999;});
-  corrupt(fields=>{const roster=fields[11] as Record<string,unknown>[];roster[0]!.name="\u0000";});
+  corrupt((fields) => {
+    const rounds = fields[6] as unknown[][];
+    rounds[0]![3] = room.tick + 1;
+  });
+  corrupt((fields) => {
+    const rounds = fields[6] as unknown[][];
+    rounds[0]![5] = ["not-a-finisher"];
+  });
+  corrupt((fields) => {
+    const rounds = fields[6] as unknown[][];
+    const players = rounds[0]![4] as Record<string, unknown>[];
+    players[0]!.matchScoreUnits = 999;
+  });
+  corrupt((fields) => {
+    const roster = fields[11] as Record<string, unknown>[];
+    roster[0]!.name = "\u0000";
+  });
 });
 
 test("a sparse array or a −0 from a source other than MessagePack does not get through", () => {

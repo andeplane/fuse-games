@@ -260,7 +260,13 @@ test("room identities are game-scoped, reloadable and never included in invites"
   assert.match(card.error.textContent!, /room code/);
 });
 
-function screen(online = true, display = false, shared = false, fail = "", closeHistory?: ScreenOptions["closeHistory"]) {
+function screen(
+  online = true,
+  display = false,
+  shared = false,
+  fail = "",
+  closeHistory?: ScreenOptions["closeHistory"],
+) {
   const { root, document, window } = dom();
   const inputs: [Steering, Steering, boolean][] = [],
     commands: RoomCommand<Settings>[] = [];
@@ -444,12 +450,40 @@ function screen(online = true, display = false, shared = false, fail = "", close
 }
 
 test("Leave holds the actual runtime until history closes and reads fresh corrected receipts", async () => {
-  let drain: { read: () => import("fuse-ui/results-history").HistorySnapshot; stop: () => void } | undefined;
-  const s = screen(true, false, false, "", (read, stop) => { drain = { read, stop }; });
+  let drain:
+    | {
+        read: () => import("fuse-ui/results-history").HistorySnapshot;
+        stop: () => void;
+      }
+    | undefined;
+  const s = screen(true, false, false, "", (read, stop) => {
+    drain = { read, stop };
+  });
   await flush();
   const predicted = frame("over");
   predicted.logTick = 5;
-  predicted.history = [{ tick: 7, result: { matchId: "old", length: 1, finishers: ["b"], players: [{ playerId: "b", name: "Bob", slot: 1, roundsPlayed: 1, roundWins: 1, matchScoreUnits: 1, matchPlacement: 1, earlyExits: 0 }] } }];
+  predicted.history = [
+    {
+      tick: 7,
+      result: {
+        matchId: "old",
+        length: 1,
+        finishers: ["b"],
+        players: [
+          {
+            playerId: "b",
+            name: "Bob",
+            slot: 1,
+            roundsPlayed: 1,
+            roundWins: 1,
+            matchScoreUnits: 1,
+            matchPlacement: 1,
+            earlyExits: 0,
+          },
+        ],
+      },
+    },
+  ];
   s.update(predicted);
   button(s.root, "Leave").click();
   assert.ok(drain);

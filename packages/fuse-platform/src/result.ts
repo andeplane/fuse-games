@@ -209,7 +209,15 @@ export function parseMatchRecord(
     typeof gameId === "string" ? platform.games.get(gameId) : undefined;
   if (!game) return;
   if (raw.status !== "pending" && raw.status !== "confirmed") return;
-  if ((raw.playMode !== undefined && raw.playMode !== "solo" && raw.playMode !== "multiplayer") || (raw.groupScope !== undefined && (typeof raw.groupScope !== "string" || !/^[a-f0-9]{40}$/.test(raw.groupScope)))) return;
+  if (
+    (raw.playMode !== undefined &&
+      raw.playMode !== "solo" &&
+      raw.playMode !== "multiplayer") ||
+    (raw.groupScope !== undefined &&
+      (typeof raw.groupScope !== "string" ||
+        !/^[a-f0-9]{40}$/.test(raw.groupScope)))
+  )
+    return;
   const result = parseMatchResult(game, platform.account, raw.result);
   if (
     !result ||
@@ -285,8 +293,12 @@ export function parseMatchRecord(
   // Rebuilt rather than passed through, so a storage-only field (Firestore's cleanupAt) never rides along into a rewrite.
   return {
     gameId: game.id,
-    ...(raw.playMode === undefined ? {} : { playMode: raw.playMode as "solo" | "multiplayer" }),
-    ...(raw.groupScope === undefined ? {} : { groupScope: raw.groupScope as string }),
+    ...(raw.playMode === undefined
+      ? {}
+      : { playMode: raw.playMode as "solo" | "multiplayer" }),
+    ...(raw.groupScope === undefined
+      ? {}
+      : { groupScope: raw.groupScope as string }),
     ...(raw.ratingScope ? { ratingScope: raw.ratingScope as string } : {}),
     ...(raw.ratings ? { ratings } : {}),
     ...(raw.rivalryPairs

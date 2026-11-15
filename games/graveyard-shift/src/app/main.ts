@@ -125,11 +125,19 @@ function header(extra: HTMLElement[] = [], leave?: () => void) {
     }),
     brand = el("a", "GRAVEYARD SHIFT", "brand");
   brand.href = url();
-  if (leave) brand.onclick = event => {
-    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    leave();
-  };
+  if (leave)
+    brand.onclick = (event) => {
+      if (
+        event.button ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      event.preventDefault();
+      leave();
+    };
   h.append(portal.element, brand, social.element(), ...extra);
   return createTopBar({
     element: h,
@@ -261,18 +269,23 @@ function room() {
     fetch: social.reportFetch,
     apiUrl: endpoints.apiUrl,
     gameId: GAME,
-    ...(session.kind === "room" ? { room: { code: session.code, token: session.token } } : {}),
+    ...(session.kind === "room"
+      ? { room: { code: session.code, token: session.token } }
+      : {}),
     signedIn: social.isSignedIn,
     playerId: () => self,
     now: () => performance.now(),
   });
   const leave = () => {
     const leavingRuntime = runtime;
-    history.close(() => readShiftHistory(leavingRuntime), () => {
-      leavingRuntime?.stop();
-      audio.stop();
-      location.href = url();
-    });
+    history.close(
+      () => readShiftHistory(leavingRuntime),
+      () => {
+        leavingRuntime?.stop();
+        audio.stop();
+        location.href = url();
+      },
+    );
   };
   let host = solo,
     shared = false;

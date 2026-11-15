@@ -423,8 +423,33 @@ function room(solo: boolean): void {
     display = role === "display";
   document.body.classList.toggle("fc-display", display);
   const viewer: Viewer = { me: "", host: solo, solo, display };
-  const history = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME, ...(session.kind === "room" ? { room: {code:session.code,token:session.token} } : {}), signedIn:social.isSignedIn, playerId:()=>viewer.me, now:()=>performance.now() });
-  const leaveRoom=()=>{controls.clear();history.close(()=>{const state=runtime.roomState();return{receipts:state?historyReceipts(state):[],confirmedTick:runtime.confirmedFrame()?.logTick??-1};},()=>{runtime.stop();location.href=withFlags(endpoints.appUrl());});};
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code: session.code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => viewer.me,
+    now: () => performance.now(),
+  });
+  const leaveRoom = () => {
+    controls.clear();
+    history.close(
+      () => {
+        const state = runtime.roomState();
+        return {
+          receipts: state ? historyReceipts(state) : [],
+          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+        };
+      },
+      () => {
+        runtime.stop();
+        location.href = withFlags(endpoints.appUrl());
+      },
+    );
+  };
   const sfx = createSfx(muted);
   activeSfx = sfx;
   sfx.setMuted(!soundEnabled);
@@ -1117,7 +1142,11 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: ChopperCallbacks = {
     state(frame, roomSettings) {
-      if (!display) { const confirmed = runtime.confirmedFrame(); if (confirmed) history.observe(historyReceipts(confirmed),confirmed.logTick); }
+      if (!display) {
+        const confirmed = runtime.confirmedFrame();
+        if (confirmed)
+          history.observe(historyReceipts(confirmed), confirmed.logTick);
+      }
       observeConfirmedPlay(
         reportPlay,
         frame,
@@ -1223,7 +1252,10 @@ function room(solo: boolean): void {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => { history.dispose(); stopPlaytestInput(); },
+    destroy: () => {
+      history.dispose();
+      stopPlaytestInput();
+    },
     reload: () => location.reload(),
   });
 

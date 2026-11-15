@@ -56,8 +56,15 @@ export interface GameRegistration<
   /** Checks that need the whole field, e.g. that stats naming other players name players of this match. */
   validField?(players: readonly P[]): boolean;
   /** Game-owned presentation of validated outcomes; history identity, grouping and storage stay platform-owned. */
-  activity?(result: MatchResult<P>): { title?: string; context?: GameActivity["context"] };
-  activityPlayer?(player: P): { label?: string; score?: number; stats?: Record<string, number> };
+  activity?(result: MatchResult<P>): {
+    title?: string;
+    context?: GameActivity["context"];
+  };
+  activityPlayer?(player: P): {
+    label?: string;
+    score?: number;
+    stats?: Record<string, number>;
+  };
   emptyTotals(): T;
   /** What one confirmed whole match adds to one account. Round receipts never credit totals. */
   credit(player: P, players: readonly P[]): C;

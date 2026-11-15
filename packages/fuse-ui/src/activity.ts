@@ -226,7 +226,8 @@ export function createActivityBrowser(options: ActivityBrowserOptions) {
         : "No recorded activity for these filters. Older full games are available under Matches.";
     }
     loading = false;
-    returnFocus = source ?? (detail.hidden ? heading : returnFocus ?? heading);
+    returnFocus =
+      source ?? (detail.hidden ? heading : (returnFocus ?? heading));
     overview.hidden = true;
     detail.hidden = false;
     const back = button("BACK TO ACTIVITY", goBack),
@@ -241,7 +242,8 @@ export function createActivityBrowser(options: ActivityBrowserOptions) {
       const event = await options.source.event(id);
       if (disposed || own !== generation) return;
       name.textContent = title(event);
-      message.textContent = "Result loaded. Standings and linked rounds are below.";
+      message.textContent =
+        "Result loaded. Standings and linked rounds are below.";
       detail.append(
         node(
           "p",

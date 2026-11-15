@@ -8,7 +8,9 @@ export interface ShiftHistoryRuntime {
 }
 
 /** Only a closed log snapshot proves old outcomes, including after a reporting peer leaves. */
-export function readShiftHistory(runtime: ShiftHistoryRuntime | undefined): HistorySnapshot {
+export function readShiftHistory(
+  runtime: ShiftHistoryRuntime | undefined,
+): HistorySnapshot {
   const room = runtime?.roomState();
   return {
     receipts: room ? shiftReceipts(room) : [],

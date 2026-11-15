@@ -32,16 +32,17 @@ export function dueReports(
   closedTick: number,
   sent: ReadonlySet<string>,
 ): DueReport[] {
-  if (
-    !me ||
-    isBotId(me)
-  )
-    return [];
+  if (!me || isBotId(me)) return [];
   const due: DueReport[] = [];
   for (const { tick, result } of historyReceipts(library, room)) {
     if (tick > closedTick || !result.finishers.includes(me)) continue;
     const key = `${result.matchId}:${result.round ?? "match"}`;
-    if (!sent.has(key)) due.push({ key, path: result.round === undefined ? "results" : "round-results", result });
+    if (!sent.has(key))
+      due.push({
+        key,
+        path: result.round === undefined ? "results" : "round-results",
+        result,
+      });
   }
   return due;
 }
@@ -76,7 +77,9 @@ export async function sendReport(
         keepalive: true,
         headers: {
           "Content-Type": "application/json",
-          ...(transport.roomToken === undefined ? {} : { Authorization: `Bearer ${transport.roomToken}` }),
+          ...(transport.roomToken === undefined
+            ? {}
+            : { Authorization: `Bearer ${transport.roomToken}` }),
         },
       });
       if (response.ok) {

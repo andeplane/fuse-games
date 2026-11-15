@@ -100,38 +100,54 @@ export function parseFusemaniaStats(
   rounds: number,
   library: Library = LIBRARY,
   validId: (value: unknown) => value is string = (value): value is string =>
-    typeof value === "string" && (/^[a-f0-9]{24}$/.test(value) || isBotId(value)),
+    typeof value === "string" &&
+    (/^[a-f0-9]{24}$/.test(value) || isBotId(value)),
 ): FusemaniaStats | undefined {
   if (!plain(raw) || ![1, 3, 5, 10].includes(rounds)) return;
   if (
-    !Object.keys(raw).every(key => (KEYS as readonly string[]).includes(key) || ["songId", "chart", "mode", "sessionLength"].includes(key)) ||
+    !Object.keys(raw).every(
+      (key) =>
+        (KEYS as readonly string[]).includes(key) ||
+        ["songId", "chart", "mode", "sessionLength"].includes(key),
+    ) ||
     !KEYS.every((key) => Object.hasOwn(raw, key))
   )
     return;
-  const hasContext = ["songId", "chart", "mode"].some(key => Object.hasOwn(raw, key));
+  const hasContext = ["songId", "chart", "mode"].some((key) =>
+    Object.hasOwn(raw, key),
+  );
   const sessionLength = raw.sessionLength;
-  if (sessionLength !== undefined && ![3, 5, 10].includes(sessionLength as number)) return;
-  if (rounds > 1 && (sessionLength !== rounds || hasContext)) return;
-  if (hasContext) {
-    const song = typeof raw.songId === "string" ? library.song(raw.songId) : undefined;
-    if (rounds !== 1 || !song || !count(raw.chart, song.charts.length - 1) || (raw.mode !== SCORE_MODE && raw.mode !== BATTLE_MODE)) return;
-  } else if (rounds === 1 && sessionLength !== undefined) return;
-  const { playerId, name } = raw;
   if (
-    !validId(playerId) ||
-    !validName(name)
+    sessionLength !== undefined &&
+    ![3, 5, 10].includes(sessionLength as number)
   )
     return;
+  if (rounds > 1 && (sessionLength !== rounds || hasContext)) return;
+  if (hasContext) {
+    const song =
+      typeof raw.songId === "string" ? library.song(raw.songId) : undefined;
+    if (
+      rounds !== 1 ||
+      !song ||
+      !count(raw.chart, song.charts.length - 1) ||
+      (raw.mode !== SCORE_MODE && raw.mode !== BATTLE_MODE)
+    )
+      return;
+  } else if (rounds === 1 && sessionLength !== undefined) return;
+  const { playerId, name } = raw;
+  if (!validId(playerId) || !validName(name)) return;
   if (!COUNTERS.every((key) => count(raw[key], MOST[key]))) return;
   const number = (key: Counter) => raw[key] as number;
   if (
-    number("roundsPlayed") < 1 || number("roundsPlayed") > rounds ||
+    number("roundsPlayed") < 1 ||
+    number("roundsPlayed") > rounds ||
     number("roundWins") > number("roundsPlayed") ||
     number("earlyExits") > number("roundsPlayed") ||
     number("slot") >= (rounds === 1 ? CAPACITY : 16) ||
     number("matchPlacement") < 1 ||
     number("matchPlacement") > (rounds === 1 ? CAPACITY : 16) ||
-    (rounds === 1 && number("roundWins") !== (number("matchPlacement") === 1 ? 1 : 0)) ||
+    (rounds === 1 &&
+      number("roundWins") !== (number("matchPlacement") === 1 ? 1 : 0)) ||
     number("matchScoreUnits") > number("roundsPlayed") * MOST_RATING ||
     number("rating") !== Math.floor(number("matchScoreUnits") / rounds) ||
     number("marvelous") + number("perfect") + number("great") >
@@ -156,8 +172,16 @@ export function parseFusemaniaStats(
     great: number("great"),
     steps: number("steps"),
     misses: number("misses"),
-    ...(hasContext ? { songId: raw.songId as string, chart: raw.chart as number, mode: raw.mode as number } : {}),
-    ...(sessionLength === undefined ? {} : { sessionLength: sessionLength as number }),
+    ...(hasContext
+      ? {
+          songId: raw.songId as string,
+          chart: raw.chart as number,
+          mode: raw.mode as number,
+        }
+      : {}),
+    ...(sessionLength === undefined
+      ? {}
+      : { sessionLength: sessionLength as number }),
   };
 }
 
@@ -167,9 +191,19 @@ export function validFusemaniaField(
 ): boolean {
   const first = players[0];
   if (!first) return false;
-  const aggregate = first?.sessionLength !== undefined && first.songId === undefined;
-  if (players.length < 1 || players.length > (aggregate ? 16 : CAPACITY)) return false;
-  if (players.some(player => player.songId !== first?.songId || player.mode !== first.mode || player.sessionLength !== first.sessionLength)) return false;
+  const aggregate =
+    first?.sessionLength !== undefined && first.songId === undefined;
+  if (players.length < 1 || players.length > (aggregate ? 16 : CAPACITY))
+    return false;
+  if (
+    players.some(
+      (player) =>
+        player.songId !== first?.songId ||
+        player.mode !== first.mode ||
+        player.sessionLength !== first.sessionLength,
+    )
+  )
+    return false;
   const slots = new Set(players.map((player) => player.slot)),
     places = new Set(players.map((player) => player.matchPlacement));
   if (
@@ -184,7 +218,8 @@ export function validFusemaniaField(
   );
   return ranked.every(
     (player, index) =>
-      index === 0 || player.matchScoreUnits <= ranked[index - 1]!.matchScoreUnits,
+      index === 0 ||
+      player.matchScoreUnits <= ranked[index - 1]!.matchScoreUnits,
   );
 }
 
@@ -205,14 +240,51 @@ export const fusemaniaRegistration: GameRegistration<
   isBot: isBotId,
   parseStats: parseFusemaniaStats,
   validField: validFusemaniaField,
-  activity(result): { title?: string; context?: Record<string, string | number | boolean> } {
-    if (result.length > 1) return { title: `${result.length}-song session`, context: { scoreUnit: "percent", scoreDivisor: result.length, sessionLength: result.length } };
-    const player = result.players[0], song = player?.songId ? LIBRARY.song(player.songId) : undefined;
-    return song ? { title: song.title, context: { songId: song.id, scoreUnit: "percent", playStyle: player?.mode === BATTLE_MODE ? "Battle" : "Score", ...(player?.sessionLength ? { sessionLength: player.sessionLength } : {}) } } : {};
+  activity(result): {
+    title?: string;
+    context?: Record<string, string | number | boolean>;
+  } {
+    if (result.length > 1)
+      return {
+        title: `${result.length}-song session`,
+        context: {
+          scoreUnit: "percent",
+          scoreDivisor: result.length,
+          sessionLength: result.length,
+        },
+      };
+    const player = result.players[0],
+      song = player?.songId ? LIBRARY.song(player.songId) : undefined;
+    return song
+      ? {
+          title: song.title,
+          context: {
+            songId: song.id,
+            scoreUnit: "percent",
+            playStyle: player?.mode === BATTLE_MODE ? "Battle" : "Score",
+            ...(player?.sessionLength
+              ? { sessionLength: player.sessionLength }
+              : {}),
+          },
+        }
+      : {};
   },
   activityPlayer(player) {
-    const chart = player.songId && player.chart !== undefined ? LIBRARY.song(player.songId)?.charts[player.chart] : undefined;
-    return { ...(chart ? { label: `${chart.name} ${chart.meter}` } : {}), stats: { combo: player.combo, marvelous: player.marvelous, perfect: player.perfect, great: player.great, steps: player.steps, misses: player.misses } };
+    const chart =
+      player.songId && player.chart !== undefined
+        ? LIBRARY.song(player.songId)?.charts[player.chart]
+        : undefined;
+    return {
+      ...(chart ? { label: `${chart.name} ${chart.meter}` } : {}),
+      stats: {
+        combo: player.combo,
+        marvelous: player.marvelous,
+        perfect: player.perfect,
+        great: player.great,
+        steps: player.steps,
+        misses: player.misses,
+      },
+    };
   },
   emptyTotals: () => ({ totals: emptyFusemaniaTotals() }),
   credit: (player) => ({

@@ -565,7 +565,8 @@ function localView(view: WorldView): WorldView {
   };
 }
 function stopRoom() {
-  const previous = runtime, reports = resultsHistory;
+  const previous = runtime,
+    reports = resultsHistory;
   runtime = undefined;
   resultsHistory = undefined;
   matchShell.reset();
@@ -602,12 +603,32 @@ function stopRoom() {
 }
 function closeRoom(next: () => void) {
   clear();
-  const previous = runtime, reports = resultsHistory;
-  if (!previous || !reports) { stopRoom(); next(); return; }
-  reports.close(() => ({ receipts: previous.historyReceipts().flatMap(receipt => [{ tick: receipt.tick, result: { ...receipt.result, round: 1 } }, receipt]), confirmedTick: previous.confirmedFrame()?.logTick ?? -1 }), () => {
-    if (runtime !== previous) { previous.stop(); return; }
-    stopRoom(); next();
-  });
+  const previous = runtime,
+    reports = resultsHistory;
+  if (!previous || !reports) {
+    stopRoom();
+    next();
+    return;
+  }
+  reports.close(
+    () => ({
+      receipts: previous
+        .historyReceipts()
+        .flatMap((receipt) => [
+          { tick: receipt.tick, result: { ...receipt.result, round: 1 } },
+          receipt,
+        ]),
+      confirmedTick: previous.confirmedFrame()?.logTick ?? -1,
+    }),
+    () => {
+      if (runtime !== previous) {
+        previous.stop();
+        return;
+      }
+      stopRoom();
+      next();
+    },
+  );
 }
 function fail(message: string) {
   stopRoom();
@@ -768,7 +789,15 @@ const enterRoom = async () => {
       roomShown = false,
       wasRunning = false,
       restarting = false;
-    resultsHistory = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: "hook-havok", room: { code: room.code, token: room.token }, signedIn: social.isSignedIn, playerId: () => display ? "" : selfId, now: () => performance.now() });
+    resultsHistory = createResultsHistory({
+      fetch: social.reportFetch,
+      apiUrl: endpoints.apiUrl,
+      gameId: "hook-havok",
+      room: { code: room.code, token: room.token },
+      signedIn: social.isSignedIn,
+      playerId: () => (display ? "" : selfId),
+      now: () => performance.now(),
+    });
     runtime = new HookRuntime(
       room.code,
       DEFAULT_TUNING,
@@ -783,9 +812,13 @@ const enterRoom = async () => {
         },
         state(frame, settings) {
           const confirmed = runtime?.confirmedFrame();
-          resultsHistory?.observe((runtime?.historyReceipts() ?? []).flatMap(receipt => [
-            { tick: receipt.tick, result: { ...receipt.result, round: 1 } }, receipt,
-          ]), confirmed?.logTick ?? -1);
+          resultsHistory?.observe(
+            (runtime?.historyReceipts() ?? []).flatMap((receipt) => [
+              { tick: receipt.tick, result: { ...receipt.result, round: 1 } },
+              receipt,
+            ]),
+            confirmed?.logTick ?? -1,
+          );
           observeConfirmedPlay(
             reportPlay,
             frame,
@@ -1092,15 +1125,20 @@ el("restart-room").onclick = () => {
 };
 el("leave-room").onclick = () => {
   closeRoom(() => {
-  roomCode = undefined;
-  display = false;
-  const url = new URL(location.href);
-  url.searchParams.delete("room");
-  url.searchParams.delete("display");
-  location.href = url.href;
+    roomCode = undefined;
+    display = false;
+    const url = new URL(location.href);
+    url.searchParams.delete("room");
+    url.searchParams.delete("display");
+    location.href = url.href;
   });
 };
-el<HTMLAnchorElement>("home").onclick = event => { event.preventDefault(); closeRoom(() => { location.href = el<HTMLAnchorElement>("home").href; }); };
+el<HTMLAnchorElement>("home").onclick = (event) => {
+  event.preventDefault();
+  closeRoom(() => {
+    location.href = el<HTMLAnchorElement>("home").href;
+  });
+};
 el("copy-invite").onclick = async () => {
   const field = el<HTMLInputElement>("invite-url");
   try {

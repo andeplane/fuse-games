@@ -6,6 +6,9 @@ export const craftRegistration = historyOnlyRegistration({
   id: "fuse-craft",
   isBot: isCraftBot,
   activityPlayer(player) {
-    return { label: "Structures built", stats: { built: player.matchScoreUnits } };
+    return {
+      label: "Structures built",
+      stats: { built: player.matchScoreUnits },
+    };
   },
 });

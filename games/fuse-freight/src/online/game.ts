@@ -48,7 +48,11 @@ import {
   validMatchId,
   validName,
 } from "./names.js";
-import { currentHistoryReceipts, parsePastMatches, retainPastMatches } from "./history.js";
+import {
+  currentHistoryReceipts,
+  parsePastMatches,
+  retainPastMatches,
+} from "./history.js";
 import type { HistoryReceipt } from "fuse-ui/results-history";
 
 /**
@@ -240,7 +244,13 @@ function startRound(room: Room): void {
   );
 }
 function resetMatch(room: Room, matchId: string): void {
-  if(room.results.length)room.pastMatches=retainPastMatches(room.pastMatches,currentHistoryReceipts(room),room.tick)??room.pastMatches;
+  if (room.results.length)
+    room.pastMatches =
+      retainPastMatches(
+        room.pastMatches,
+        currentHistoryReceipts(room),
+        room.tick,
+      ) ?? room.pastMatches;
   room.matchId = matchId;
   room.play = { ...room.settings };
   room.round = 0;
@@ -346,7 +356,19 @@ function endRound(room: Room, tick: number): void {
   const winners =
     top > 0 ? placed.filter((p) => p.score === top).map((p) => p.id) : [];
   for (const id of winners) room.wins[id] = (room.wins[id] ?? 0) + 1;
-  room.results.push({ round: room.round, tick, finishers: placed.filter(p => { const seat = room.seats.get(p.id); return seat && !seat.bot && !seat.watcher; }).map(p => p.id).sort(), winners, placings: placed });
+  room.results.push({
+    round: room.round,
+    tick,
+    finishers: placed
+      .filter((p) => {
+        const seat = room.seats.get(p.id);
+        return seat && !seat.bot && !seat.watcher;
+      })
+      .map((p) => p.id)
+      .sort(),
+    winners,
+    placings: placed,
+  });
   if (decided(room.wins, room.results, room.play)) {
     room.stage = "over";
     room.winners = leaders(room.wins, room.results);
@@ -577,8 +599,8 @@ export function decode(
   ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
-  const pastMatches=parsePastMatches(rawPastMatches,tick);
-  if(!pastMatches)return;
+  const pastMatches = parsePastMatches(rawPastMatches, tick);
+  if (!pastMatches) return;
   if (
     !validMatchId(matchId) ||
     !uint32(round) ||
@@ -622,14 +644,22 @@ export function decode(
       !plain(raw) ||
       Object.keys(raw).length !== 5 ||
       !uint32(raw.round) ||
-      !uint32(raw.tick) || raw.tick > tick ||
+      !uint32(raw.tick) ||
+      raw.tick > tick ||
       !Array.isArray(raw.placings) ||
       raw.placings.length > CAPACITY
     )
       return;
     const placed = raw.placings.map(decodePlacing),
-      roundWinners = ids(raw.winners, CAPACITY), finishers = ids(raw.finishers, CAPACITY);
-    if (placed.some((p) => !p) || !roundWinners || !finishers || finishers.some(id => !placed.some(p => p?.id === id && !p.bot))) return;
+      roundWinners = ids(raw.winners, CAPACITY),
+      finishers = ids(raw.finishers, CAPACITY);
+    if (
+      placed.some((p) => !p) ||
+      !roundWinners ||
+      !finishers ||
+      finishers.some((id) => !placed.some((p) => p?.id === id && !p.bot))
+    )
+      return;
     const result = {
       round: raw.round,
       tick: raw.tick,
@@ -743,7 +773,7 @@ export function view(room: Room): View {
       winners: [...result.winners],
       placings: result.placings.map((p) => ({ ...p })),
     })),
-    pastMatches:structuredClone(room.pastMatches),
+    pastMatches: structuredClone(room.pastMatches),
     winners: [...room.winners],
     resumeIn:
       room.stage === "between" ? Math.max(0, room.resumeAt - room.tick) : 0,

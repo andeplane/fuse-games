@@ -107,9 +107,12 @@ function render() {
     };
     let historyPlayer = "";
     const history = createResultsHistory({
-      fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: "ball-bros",
+      fetch: social.reportFetch,
+      apiUrl: endpoints.apiUrl,
+      gameId: "ball-bros",
       ...(online ? { room: { code: online.code, token: online.token } } : {}),
-      signedIn: social.isSignedIn, playerId: () => historyPlayer,
+      signedIn: social.isSignedIn,
+      playerId: () => historyPlayer,
       now: () => performance.now(),
     });
     const stop = mountGame(root, {
@@ -133,7 +136,13 @@ function render() {
       renderer: (parent) => createRenderer(parent, import.meta.env.BASE_URL),
       runtime: (callbacks) =>
         new BallRuntime(
-          { ...callbacks, ready(id, hostId) { historyPlayer = id; callbacks.ready(id, hostId); } },
+          {
+            ...callbacks,
+            ready(id, hostId) {
+              historyPlayer = id;
+              callbacks.ready(id, hostId);
+            },
+          },
           online
             ? {
                 displayOnly: online.display,
@@ -170,7 +179,10 @@ function render() {
       },
       closeHistory: history.close,
     });
-    destroy = () => { stop(); history.dispose(); };
+    destroy = () => {
+      stop();
+      history.dispose();
+    };
     activeRadio?.setMuted(!soundEnabled);
   }
   root.querySelector("header")?.append(social.element());

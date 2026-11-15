@@ -126,11 +126,21 @@ mountFuseCraft(root, {
   preferences: createPreferencesStore(localStorage),
   createSession: (map, slot, mode, settings, options) => {
     const session = observeLocalPlay(
-      createSession(map, slot, mode, settings, undefined, { ...options, humanName: social.playerName(store.get(`${GAME}-player-name`)) ?? "You" }),
+      createSession(map, slot, mode, settings, undefined, {
+        ...options,
+        humanName: social.playerName(store.get(`${GAME}-player-name`)) ?? "You",
+      }),
       mode,
       reportPlay,
     );
-    return observeCraftHistory(session, { fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME, signedIn: () => mode !== "watch" && social.isSignedIn(), playerId: () => session.localPlayerId, now: () => performance.now() });
+    return observeCraftHistory(session, {
+      fetch: social.reportFetch,
+      apiUrl: endpoints.apiUrl,
+      gameId: GAME,
+      signedIn: () => mode !== "watch" && social.isSignedIn(),
+      playerId: () => session.localPlayerId,
+      now: () => performance.now(),
+    });
   },
   online: {
     async createRoom() {
@@ -174,7 +184,15 @@ mountFuseCraft(root, {
         ),
         reportPlay,
       );
-      return observeCraftHistory(session, { fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME, room: { code, token: member }, signedIn: () => social.isSignedIn(), playerId: () => session.localPlayerId, now: () => performance.now() });
+      return observeCraftHistory(session, {
+        fetch: social.reportFetch,
+        apiUrl: endpoints.apiUrl,
+        gameId: GAME,
+        room: { code, token: member },
+        signedIn: () => social.isSignedIn(),
+        playerId: () => session.localPlayerId,
+        now: () => performance.now(),
+      });
     },
     validCode: validRoomCode,
     roomLink: (code) => endpoints.appUrl(`?room=${code}`),

@@ -574,7 +574,11 @@ export function leaderboardTable(
     row.dataset.you = String(!!p.you);
     const rider = element("td");
     if (openPlayer && p.publicId) {
-      const name = element("button", `${p.name}${p.you ? " (you)" : ""}`, "fui-button");
+      const name = element(
+        "button",
+        `${p.name}${p.you ? " (you)" : ""}`,
+        "fui-button",
+      );
       name.type = "button";
       name.onclick = () => openPlayer(p.publicId!, p.name);
       rider.append(name);

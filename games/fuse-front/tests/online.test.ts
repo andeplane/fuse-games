@@ -40,10 +40,22 @@ test("confirmed history freezes the deciding roster and survives membership chan
   const { room, entries } = match();
   assert.deepEqual(frontResults(room.matchId, room.decided), []);
   const map = mapOf(room);
-  room.world!.buildings.filter(building => {
-    const site = map.sites[building.id]!;
-    return site.kind === "fort" ? site.seat % 2 === 1 : site.kind === "turret" && site.team === 1;
-  }).forEach(building => { Object.assign(building, { hp: 0, cooldown: 0, aimOf: -1, aim: -1, ramp: 0 }); });
+  room
+    .world!.buildings.filter((building) => {
+      const site = map.sites[building.id]!;
+      return site.kind === "fort"
+        ? site.seat % 2 === 1
+        : site.kind === "turret" && site.team === 1;
+    })
+    .forEach((building) => {
+      Object.assign(building, {
+        hp: 0,
+        cooldown: 0,
+        aimOf: -1,
+        aim: -1,
+        ramp: 0,
+      });
+    });
   fold(room, entries, 1);
   assert.equal(room.stage, "over");
   const receipts = frontResults(room.matchId, room.decided);
@@ -57,7 +69,10 @@ test("confirmed history freezes the deciding roster and survives membership chan
   fold(room, entries, 1);
   const restored = decode(encode(room), room.tick);
   assert.ok(restored);
-  assert.equal(JSON.stringify(frontResults(restored.matchId, restored.decided)), original);
+  assert.equal(
+    JSON.stringify(frontResults(restored.matchId, restored.decided)),
+    original,
+  );
   const corrupt = encode(room);
   corrupt[7] = { ...room.decided, tick: room.tick + 1 };
   assert.equal(decode(corrupt, room.tick), undefined);
@@ -73,10 +88,22 @@ test("confirmed history freezes the deciding roster and survives membership chan
 test("a lobby transition before the next confirmation stride preserves a completed match", () => {
   const { room, entries } = match();
   const map = mapOf(room);
-  room.world!.buildings.filter(building => {
-    const site = map.sites[building.id]!;
-    return site.kind === "fort" ? site.seat % 2 === 1 : site.kind === "turret" && site.team === 1;
-  }).forEach(building => { Object.assign(building, { hp: 0, cooldown: 0, aimOf: -1, aim: -1, ramp: 0 }); });
+  room
+    .world!.buildings.filter((building) => {
+      const site = map.sites[building.id]!;
+      return site.kind === "fort"
+        ? site.seat % 2 === 1
+        : site.kind === "turret" && site.team === 1;
+    })
+    .forEach((building) => {
+      Object.assign(building, {
+        hp: 0,
+        cooldown: 0,
+        aimOf: -1,
+        aim: -1,
+        ramp: 0,
+      });
+    });
   fold(room, entries, 1);
   assert.notEqual(room.decided!.tick % 4, 0);
   const retained = structuredClone(room.history);

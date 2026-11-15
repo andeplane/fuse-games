@@ -1,7 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { JOIN, ACTION, World, type StreamEntries } from "fuse-netcode";
-import { createRoom, foldTick, encode, decode, hash, hookGame, type Entry, type Room } from "../src/online/game.js";
+import {
+  createRoom,
+  foldTick,
+  encode,
+  decode,
+  hash,
+  hookGame,
+  type Entry,
+  type Room,
+} from "../src/online/game.js";
 import { CLASSIC_TUNING } from "../src/engine/world.js";
 import { ROUND_TICKS } from "../src/engine/contest.js";
 import { hookRegistration } from "../src/platform.js";
@@ -13,7 +22,10 @@ function fold(room: Room, entries: Entry[] = []) {
 }
 function started(rules: "score" | "free") {
   const room = createRoom("lobby", { ...CLASSIC_TUNING, rules });
-  fold(room, [[1, 1, JOIN, "a", "Ada", 0, "keeper", 1], [2, 1, JOIN, "b", "Bo", 1, "keeper", 1]]);
+  fold(room, [
+    [1, 1, JOIN, "a", "Ada", 0, "keeper", 1],
+    [2, 1, JOIN, "b", "Bo", 1, "keeper", 1],
+  ]);
   fold(room, [[3, 2, ACTION, "start", "match"]]);
   return room;
 }
@@ -39,12 +51,25 @@ test("only competitive contests create frozen score history, including negative 
   assert.ok(restored);
   assert.equal(hash(restored), hash(room));
   const corrupt = encode(room);
-  corrupt[6] = [{ tick: room.tick, result: { ...result, players: [result.players[0], result.players[0]] } }];
+  corrupt[6] = [
+    {
+      tick: room.tick,
+      result: { ...result, players: [result.players[0], result.players[0]] },
+    },
+  ];
   assert.equal(decode(corrupt, room.tick), undefined);
   assert.equal(hookRegistration.ratesRounds, false);
-  assert.equal(hookRegistration.parseStats({ ...result.players[0], points: Infinity }, 1), undefined);
-  assert.notEqual(restored.tick % 4, 0, "completion/recap lies between materialized snapshots");
-  const world = new World(hookGame, restored, "a", "a"), next = restored.tick + 1;
+  assert.equal(
+    hookRegistration.parseStats({ ...result.players[0], points: Infinity }, 1),
+    undefined,
+  );
+  assert.notEqual(
+    restored.tick % 4,
+    0,
+    "completion/recap lies between materialized snapshots",
+  );
+  const world = new World(hookGame, restored, "a", "a"),
+    next = restored.tick + 1;
   const stream = world.stream("a", 1);
   stream.append(next, [ACTION, "lobby", "next-lobby"]);
   stream.append(next + 1, [ACTION, "start", "next-match"]);

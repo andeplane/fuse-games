@@ -122,11 +122,26 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     leaving = true;
     cancel();
     const previous = runtime;
-    const stop = () => { previous?.stop(); if (!stopped && leaving) navigate(); };
-    if (options.closeHistory) options.closeHistory(() => ({ receipts: previous?.historyReceipts?.() ?? [], confirmedTick: previous?.confirmedFrame()?.logTick ?? -1 }), stop);
+    const stop = () => {
+      previous?.stop();
+      if (!stopped && leaving) navigate();
+    };
+    if (options.closeHistory)
+      options.closeHistory(
+        () => ({
+          receipts: previous?.historyReceipts?.() ?? [],
+          confirmedTick: previous?.confirmedFrame()?.logTick ?? -1,
+        }),
+        stop,
+      );
     else stop();
   };
-  home.onclick = event => { event.preventDefault(); exit(() => { document.defaultView!.location.href = home.href; }); };
+  home.onclick = (event) => {
+    event.preventDefault();
+    exit(() => {
+      document.defaultView!.location.href = home.href;
+    });
+  };
   const leave = el("button", "LEAVE", "quiet-button");
   leave.onclick = () => exit();
   top.append(retry, leave);
@@ -499,7 +514,10 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
           activeSettings = settings;
           shared = settings.display;
           const confirmed = runtime?.confirmedFrame();
-          options.history?.({ receipts: runtime?.historyReceipts?.() ?? [], confirmedTick: confirmed?.logTick ?? -1 });
+          options.history?.({
+            receipts: runtime?.historyReceipts?.() ?? [],
+            confirmedTick: confirmed?.logTick ?? -1,
+          });
           if (options.observePlay)
             observeConfirmedPlay(
               options.observePlay,

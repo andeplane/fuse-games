@@ -3,9 +3,17 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
-import { record, type TelemetryDatabase } from "fuse-telemetry/metrics-database";
+import {
+  record,
+  type TelemetryDatabase,
+} from "fuse-telemetry/metrics-database";
 import { SongScores } from "../src/server/song-scores.js";
-import { createLibrary, SOLO_LEAD_IN_MS, MINE, RULES } from "../src/engine/index.js";
+import {
+  createLibrary,
+  SOLO_LEAD_IN_MS,
+  MINE,
+  RULES,
+} from "../src/engine/index.js";
 import { LIBRARY, SONGS_DATA } from "../src/songs.js";
 import { GRID_SSC } from "./fixtures/songs.js";
 import { MAX_RUN_INPUTS, type SongInput } from "../src/song-scores.js";
@@ -264,23 +272,47 @@ test("maximum input capacity uses bounded private compressed evidence and reject
     s.scores.complete("ada", run.id, { inputs, rating: 0 }),
     /Invalid input log/,
   );
-  const full = inputs.slice(0, MAX_RUN_INPUTS).map(input => ({ ...input, code: 4 }));
+  const full = inputs
+    .slice(0, MAX_RUN_INPUTS)
+    .map((input) => ({ ...input, code: 4 }));
   await s.scores.complete("ada", run.id, { inputs: full, rating: 0 });
-  const event = record((await s.database.readMany([`telemetry-song-runs/${run.id}`]))[0])!;
+  const event = record(
+    (await s.database.readMany([`telemetry-song-runs/${run.id}`]))[0],
+  )!;
   assert.equal(event.inputEncoding, "json+deflate");
   assert.equal(event.inputCount, MAX_RUN_INPUTS);
   assert.equal(event.inputs, undefined);
   assert.ok(event.inputEvidence instanceof Uint8Array);
   assert.ok(event.inputEvidence.byteLength <= 900_000);
   assert.ok(event.inputEvidence.byteLength + 65_536 < 1_048_576);
-  assert.deepEqual(JSON.parse(inflateSync(event.inputEvidence, { maxOutputLength: 1_500_000 }).toString("utf8")), full);
+  assert.deepEqual(
+    JSON.parse(
+      inflateSync(event.inputEvidence, { maxOutputLength: 1_500_000 }).toString(
+        "utf8",
+      ),
+    ),
+    full,
+  );
   const publicRows = JSON.stringify(await s.scores.catalog());
-  for (const field of ["inputEvidence", "inputEncoding", "inputCount", "inputs", "uid"])
+  for (const field of [
+    "inputEvidence",
+    "inputEncoding",
+    "inputCount",
+    "inputs",
+    "uid",
+  ])
     assert.ok(!publicRows.includes(`"${field}"`));
-  await assert.rejects(s.scores.complete("bo", run.id, { inputs: full, rating: 0 }), /Run not found/);
+  await assert.rejects(
+    s.scores.complete("bo", run.id, { inputs: full, rating: 0 }),
+    /Run not found/,
+  );
   const before = event.inputEvidence;
   await s.scores.complete("ada", run.id, { inputs: [], rating: 1_000_000 });
-  assert.deepEqual(record((await s.database.readMany([`telemetry-song-runs/${run.id}`]))[0])!.inputEvidence, before);
+  assert.deepEqual(
+    record((await s.database.readMany([`telemetry-song-runs/${run.id}`]))[0])!
+      .inputEvidence,
+    before,
+  );
 });
 
 test("The Glass Prison's 6000-note canonical chart plus off-beat taps fits and stores a full valid replay", async () => {
@@ -288,61 +320,151 @@ test("The Glass Prison's 6000-note canonical chart plus off-beat taps fits and s
   assert.ok(song);
   const steps = LIBRARY.steps(song.id, 0)!;
   assert.equal(steps.steps, 6000);
-  const inputs: SongInput[] = steps.notes.filter(note => note.kind !== MINE).flatMap(note => {
-    const release = Math.max(note.ms + 1, note.endMs + 1);
-    return [{ at: Math.ceil(note.ms / 50) * 50, code: note.column, ms: note.ms }, { at: Math.ceil(release / 50) * 50, code: note.column + 4, ms: release }];
-  });
-  inputs.push({ at: -1500, ms: -1500, code: 0 }, { at: -1450, ms: -1450, code: 4 });
+  const inputs: SongInput[] = steps.notes
+    .filter((note) => note.kind !== MINE)
+    .flatMap((note) => {
+      const release = Math.max(note.ms + 1, note.endMs + 1);
+      return [
+        { at: Math.ceil(note.ms / 50) * 50, code: note.column, ms: note.ms },
+        {
+          at: Math.ceil(release / 50) * 50,
+          code: note.column + 4,
+          ms: release,
+        },
+      ];
+    });
+  inputs.push(
+    { at: -1500, ms: -1500, code: 0 },
+    { at: -1450, ms: -1450, code: 4 },
+  );
   inputs.sort((a, b) => a.at - b.at || a.ms - b.ms || a.code - b.code);
   assert.ok(inputs.length > 12_000 && inputs.length < MAX_RUN_INPUTS);
   const database = new MemoryTelemetryDatabase();
   let now = 10_000;
-  const scores = new SongScores({ database, library: LIBRARY, sources: SONGS_DATA, rules: RULES, now: () => now, id: () => "f".repeat(32), accounts: { accounts: async uids => new Map(uids.map(uid => [uid, { username: "Ada", updatedAt: 0 }])) } });
-  const version = (await scores.catalog()).find(row => row.song === song.id)!.charts[0]!.version;
-  const run = await scores.start("ada", { song: song.id, chart: 0, version, leadIn: SOLO_LEAD_IN_MS });
+  const scores = new SongScores({
+    database,
+    library: LIBRARY,
+    sources: SONGS_DATA,
+    rules: RULES,
+    now: () => now,
+    id: () => "f".repeat(32),
+    accounts: {
+      accounts: async (uids) =>
+        new Map(uids.map((uid) => [uid, { username: "Ada", updatedAt: 0 }])),
+    },
+  });
+  const version = (await scores.catalog()).find((row) => row.song === song.id)!
+    .charts[0]!.version;
+  const run = await scores.start("ada", {
+    song: song.id,
+    chart: 0,
+    version,
+    leadIn: SOLO_LEAD_IN_MS,
+  });
   now += song.endMs + 4000;
-  assert.deepEqual(await scores.complete("ada", run.id, { inputs, rating: 1_000_000 }), { rating: 1_000_000, saved: true });
-  const event = record((await database.readMany([`telemetry-song-runs/${run.id}`]))[0])!;
+  assert.deepEqual(
+    await scores.complete("ada", run.id, { inputs, rating: 1_000_000 }),
+    { rating: 1_000_000, saved: true },
+  );
+  const event = record(
+    (await database.readMany([`telemetry-song-runs/${run.id}`]))[0],
+  )!;
   assert.equal(event.inputCount, inputs.length);
   assert.ok(event.inputEvidence instanceof Uint8Array);
   assert.ok(event.inputEvidence.byteLength + 65_536 < 1_048_576);
-  assert.deepEqual(JSON.parse(inflateSync(event.inputEvidence, { maxOutputLength: 1_500_000 }).toString("utf8")), inputs);
+  assert.deepEqual(
+    JSON.parse(
+      inflateSync(event.inputEvidence, { maxOutputLength: 1_500_000 }).toString(
+        "utf8",
+      ),
+    ),
+    inputs,
+  );
 });
 
 test("catalog coalesces reads for 15 seconds, avoids caching failures and leaves chart reads fresh", async () => {
   const memory = new MemoryTelemetryDatabase();
-  let reads = 0, fail = false;
-  const database: TelemetryDatabase = { transact: operation => memory.transact(operation), readMany: async keys => { reads++; if (fail) { fail = false; throw new Error("Unavailable"); } return memory.readMany(keys); } };
+  let reads = 0,
+    fail = false;
+  const database: TelemetryDatabase = {
+    transact: (operation) => memory.transact(operation),
+    readMany: async (keys) => {
+      reads++;
+      if (fail) {
+        fail = false;
+        throw new Error("Unavailable");
+      }
+      return memory.readMany(keys);
+    },
+  };
   const s = setup(database);
-  const copies = await Promise.all([s.scores.catalog(), s.scores.catalog(), s.scores.catalog()]);
+  const copies = await Promise.all([
+    s.scores.catalog(),
+    s.scores.catalog(),
+    s.scores.catalog(),
+  ]);
   assert.equal(reads, 1);
   copies[0]![0]!.title = "Caller mutation";
   assert.equal((await s.scores.catalog())[0]!.title, "Grid");
-  s.advance(14_999); await s.scores.catalog(); assert.equal(reads, 1);
-  s.advance(1); await s.scores.catalog(); assert.equal(reads, 2);
-  s.advance(15_000); fail = true;
-  await assert.rejects(s.scores.catalog(), /Unavailable/);
-  await s.scores.catalog(); assert.equal(reads, 4);
-  await s.scores.leaderboard("grid", 0); await s.scores.leaderboard("grid", 0); assert.equal(reads, 6);
-  const run = await s.start(); s.advance();
+  s.advance(14_999);
   await s.scores.catalog();
-  await s.scores.complete("ada", run.id, { inputs: s.inputs, rating: 1_000_000 });
+  assert.equal(reads, 1);
+  s.advance(1);
+  await s.scores.catalog();
+  assert.equal(reads, 2);
+  s.advance(15_000);
+  fail = true;
+  await assert.rejects(s.scores.catalog(), /Unavailable/);
+  await s.scores.catalog();
+  assert.equal(reads, 4);
+  await s.scores.leaderboard("grid", 0);
+  await s.scores.leaderboard("grid", 0);
+  assert.equal(reads, 6);
+  const run = await s.start();
+  s.advance();
+  await s.scores.catalog();
+  await s.scores.complete("ada", run.id, {
+    inputs: s.inputs,
+    rating: 1_000_000,
+  });
   assert.equal((await s.scores.catalog())[0]!.charts[0]!.top!.name, "Ada");
 });
 
 test("a completion invalidates a catalog read already in flight", async () => {
   const memory = new MemoryTelemetryDatabase();
-  let hold = false, release!: () => void, started!: () => void;
-  const waiting = new Promise<void>(resolve => { started = resolve; });
-  const database: TelemetryDatabase = { transact: operation => memory.transact(operation), readMany: async keys => {
-    const result = await memory.readMany(keys);
-    if (hold && keys.some(key => key.startsWith("telemetry-song-boards/"))) { hold = false; started(); await new Promise<void>(resolve => { release = resolve; }); }
-    return result;
-  } };
-  const s = setup(database), run = await s.start(); s.advance();
+  let hold = false,
+    release!: () => void,
+    started!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const database: TelemetryDatabase = {
+    transact: (operation) => memory.transact(operation),
+    readMany: async (keys) => {
+      const result = await memory.readMany(keys);
+      if (
+        hold &&
+        keys.some((key) => key.startsWith("telemetry-song-boards/"))
+      ) {
+        hold = false;
+        started();
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return result;
+    },
+  };
+  const s = setup(database),
+    run = await s.start();
+  s.advance();
   hold = true;
-  const oldRead = s.scores.catalog(); await waiting;
-  await s.scores.complete("ada", run.id, { inputs: s.inputs, rating: 1_000_000 });
+  const oldRead = s.scores.catalog();
+  await waiting;
+  await s.scores.complete("ada", run.id, {
+    inputs: s.inputs,
+    rating: 1_000_000,
+  });
   release();
   assert.equal((await oldRead)[0]!.charts[0]!.top!.name, "Ada");
   assert.equal((await s.scores.catalog())[0]!.charts[0]!.top!.name, "Ada");

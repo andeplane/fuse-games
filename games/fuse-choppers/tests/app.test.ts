@@ -273,7 +273,8 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
     results: [
       {
         round: 1,
-        tick: 1, finishers: ["a", "b"],
+        tick: 1,
+        finishers: ["a", "b"],
         winner: "b",
         placings: [
           placing("b", "escaped", 600),
@@ -283,7 +284,8 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
       },
       {
         round: 2,
-        tick: 2, finishers: ["a", "b"],
+        tick: 2,
+        finishers: ["a", "b"],
         winner: "b",
         placings: [
           placing("b", "escaped", 600),
@@ -321,7 +323,8 @@ test("the match result: the winner, the crowns, and who can rematch", () => {
       results: [
         {
           round: 1,
-          tick: 1, finishers: ["z"],
+          tick: 1,
+          finishers: ["z"],
           winner: "z",
           placings: [{ ...placing("z", "escaped", 60), name: "Zed", slot: 4 }],
         },

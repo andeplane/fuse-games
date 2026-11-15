@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ACTION, BOT, JOIN, World, type StreamEntries } from "fuse-netcode";
-import { axeGame, createRoom, DEFAULT_SETTINGS, foldTick, encode, decode, hash, type Room, type Entry } from "../src/online/game.js";
+import {
+  axeGame,
+  createRoom,
+  DEFAULT_SETTINGS,
+  foldTick,
+  encode,
+  decode,
+  hash,
+  type Room,
+  type Entry,
+} from "../src/online/game.js";
 import { wiped, cleared } from "./fixtures/stage.js";
 import { axeRegistration } from "../src/platform.js";
 import { runResult } from "../src/online/activity.js";
@@ -13,7 +23,11 @@ function fold(room: Room, entries: Entry[] = []) {
 }
 function started() {
   const room = createRoom("lobby", DEFAULT_SETTINGS);
-  fold(room, [[1, 1, JOIN, "a", "Ada", 0, "rhea", 1], [2, 1, JOIN, "b", "Bo", 1, "brakka", 1], [3, 1, BOT, "add", "bot:1", "Ironhide", 2]]);
+  fold(room, [
+    [1, 1, JOIN, "a", "Ada", 0, "rhea", 1],
+    [2, 1, JOIN, "b", "Bo", 1, "brakka", 1],
+    [3, 1, BOT, "add", "bot:1", "Ironhide", 2],
+  ]);
   fold(room, [[4, 2, ACTION, "start", "match"]]);
   return room;
 }
@@ -24,12 +38,19 @@ test("cooperative defeat stores a stage and run with no invented individual winn
   fold(room);
   assert.equal(room.stage, "over");
   assert.equal(room.history.length, 2);
-  const [round, match] = room.history.map(receipt => receipt.result);
+  const [round, match] = room.history.map((receipt) => receipt.result);
   assert.equal(round!.round, 1);
   assert.equal(match!.round, undefined);
   assert.equal(match!.winnerId, undefined);
   assert.deepEqual(match!.finishers, ["a", "b"]);
-  assert.ok(match!.players.every(player => player.matchPlacement === 1 && player.roundWins === 0 && player.outcome === "defeat"));
+  assert.ok(
+    match!.players.every(
+      (player) =>
+        player.matchPlacement === 1 &&
+        player.roundWins === 0 &&
+        player.outcome === "defeat",
+    ),
+  );
   assert.match(axeRegistration.activity(match!).title, /Party defeated/);
   const restored = decode(encode(room), room.tick)!;
   assert.ok(restored);
@@ -42,7 +63,8 @@ test("cooperative defeat stores a stage and run with no invented individual winn
   assert.equal(decode(corrupt, room.tick), undefined);
   assert.equal(axeRegistration.ratesRounds, false);
   assert.equal(restored.tick % 4, 3);
-  const world = new World(axeGame, restored, "a", "a"), next = restored.tick + 1;
+  const world = new World(axeGame, restored, "a", "a"),
+    next = restored.tick + 1;
   const stream = world.stream("a", 1);
   stream.append(next, [ACTION, "rematch", "next-match"]);
   stream.through = next + 100;
@@ -50,8 +72,13 @@ test("cooperative defeat stores a stage and run with no invented individual winn
   world.advance(next + 48);
   const confirmed = world.confirmedFrame()!;
   assert.equal(confirmed.matchId, "next-match");
-  assert.deepEqual(confirmed.history.map(receipt => receipt.result.matchId), ["match", "match"]);
-  assert.ok(confirmed.history.every(receipt => receipt.tick <= confirmed.logTick));
+  assert.deepEqual(
+    confirmed.history.map((receipt) => receipt.result.matchId),
+    ["match", "match"],
+  );
+  assert.ok(
+    confirmed.history.every((receipt) => receipt.tick <= confirmed.logTick),
+  );
 });
 test("stage clears appear before a run summary and accumulate party participation honestly", () => {
   const room = started();
@@ -59,8 +86,18 @@ test("stage clears appear before a run summary and accumulate party participatio
   fold(room);
   assert.equal(room.history.length, 1);
   assert.equal(room.history[0]!.result.round, 1);
-  assert.ok(room.history[0]!.result.players.every(player => player.outcome === "clear"));
-  assert.equal(runResult(room.history, "match", 1, "victory", ["a", "b"])!.winnerId, undefined);
+  assert.ok(
+    room.history[0]!.result.players.every(
+      (player) => player.outcome === "clear",
+    ),
+  );
+  assert.equal(
+    runResult(room.history, "match", 1, "victory", ["a", "b"])!.winnerId,
+    undefined,
+  );
   const raw = room.history[0]!.result.players[0]!;
-  assert.equal(axeRegistration.parseStats({ ...raw, damage: -1 }, 1), undefined);
+  assert.equal(
+    axeRegistration.parseStats({ ...raw, damage: -1 }, 1),
+    undefined,
+  );
 });

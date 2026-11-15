@@ -12,7 +12,11 @@ import {
   type RivalCredit,
 } from "./settlement.js";
 import { ratingDocumentId, splitProfile } from "./profile.js";
-import { activityOf, MemoryActivityDatabase, type StoredActivity } from "./activity.js";
+import {
+  activityOf,
+  MemoryActivityDatabase,
+  type StoredActivity,
+} from "./activity.js";
 
 /**
  * Single-process HistoryDatabase with FirestoreHistoryDatabase's contract; history disappears when the process exits.
@@ -22,7 +26,12 @@ export class MemoryHistoryDatabase implements HistoryDatabase {
   constructor(
     private platform: Platform,
     private now: () => number = Date.now,
-  ) { this.activity = new MemoryActivityDatabase(async () => [...this.activities.values()], now); }
+  ) {
+    this.activity = new MemoryActivityDatabase(
+      async () => [...this.activities.values()],
+      now,
+    );
+  }
   private matches = new Map<string, MatchRecord>();
   private activities = new Map<string, StoredActivity>();
   readonly activity: MemoryActivityDatabase;

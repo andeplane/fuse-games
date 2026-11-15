@@ -53,7 +53,9 @@ export class FirestoreHistoryDatabase implements HistoryDatabase {
     private platform: Platform,
     private firestore: Firestore,
     private prefix: string,
-  ) { this.activity = new FirestoreActivityDatabase(firestore, prefix); }
+  ) {
+    this.activity = new FirestoreActivityDatabase(firestore, prefix);
+  }
   readonly activity: FirestoreActivityDatabase;
   private matches() {
     return this.firestore.collection(`${this.prefix}-matches`);

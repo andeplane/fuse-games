@@ -978,9 +978,14 @@ function room(solo: boolean): void {
         )) {
           sent.add(report.key);
           void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`),
+            endpoints.apiUrl(
+              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
+            ),
             report,
-            { fetch: social.reportFetch, ...(session.kind === "room" ? { roomToken: session.token } : {}) },
+            {
+              fetch: social.reportFetch,
+              ...(session.kind === "room" ? { roomToken: session.token } : {}),
+            },
           );
         }
     },

@@ -39,7 +39,11 @@ import {
 } from "./names.js";
 import { decodeWorld } from "../engine/codec.js";
 import { toView, type WorldView } from "../engine/view.js";
-import { completeShift, parseShiftCompletion, type ShiftCompletion } from "./result.js";
+import {
+  completeShift,
+  parseShiftCompletion,
+  type ShiftCompletion,
+} from "./result.js";
 export const PLAY = 0,
   READY = 1,
   CANCEL = 2;
@@ -232,7 +236,7 @@ export function encode(r: Room): unknown[] {
     { ...r.ready },
     r.world ? structuredClone(r.world) : null,
     r.completion ? structuredClone(r.completion) : null,
-    r.completions.map(completion => structuredClone(completion)),
+    r.completions.map((completion) => structuredClone(completion)),
   ];
 }
 const plain = (v: unknown): v is Record<string, unknown> =>
@@ -341,19 +345,41 @@ export function decode(a: readonly unknown[], tick: number): Room | undefined {
   } else if (r.stage !== "lobby") return;
   if (r.stage === "over") {
     const completion = parseShiftCompletion(a[8]);
-    if (!completion || completion.clock > tick || completion.result.matchId !== r.matchId || completion.result.players.length !== r.world!.hunters.length || completion.result.players.some(player => {
-      const hunter = r.world!.hunters.find(hunter => hunter.id === player.playerId);
-      return !hunter || hunter.slot !== player.slot || hunter.score !== player.matchScoreUnits;
-    })) return;
+    if (
+      !completion ||
+      completion.clock > tick ||
+      completion.result.matchId !== r.matchId ||
+      completion.result.players.length !== r.world!.hunters.length ||
+      completion.result.players.some((player) => {
+        const hunter = r.world!.hunters.find(
+          (hunter) => hunter.id === player.playerId,
+        );
+        return (
+          !hunter ||
+          hunter.slot !== player.slot ||
+          hunter.score !== player.matchScoreUnits
+        );
+      })
+    )
+      return;
     r.completion = completion;
   } else if (a[8] !== null) return;
   if (!Array.isArray(a[9]) || a[9].length > 8) return;
   for (const raw of a[9]) {
     const completion = parseShiftCompletion(raw);
-    if (!completion || completion.clock > tick || (r.completions.at(-1)?.clock ?? 0) >= completion.clock) return;
+    if (
+      !completion ||
+      completion.clock > tick ||
+      (r.completions.at(-1)?.clock ?? 0) >= completion.clock
+    )
+      return;
     r.completions.push(completion);
   }
-  if (r.completion && JSON.stringify(r.completion) !== JSON.stringify(r.completions.at(-1))) return;
+  if (
+    r.completion &&
+    JSON.stringify(r.completion) !== JSON.stringify(r.completions.at(-1))
+  )
+    return;
   return r;
 }
 export function hash(r: Room): string {

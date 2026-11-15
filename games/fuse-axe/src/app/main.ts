@@ -894,21 +894,38 @@ function room(solo: boolean): void {
     adopted = false;
   // Solo sets out at once; this page opens on the hero picker, so its first frames never show (see `SoloOpening`).
   const opening = solo ? new SoloOpening() : undefined;
-  const resultsHistory = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME,
-    ...(session.kind === "room" ? { room: { code, token: session.token } } : {}),
-    signedIn: social.isSignedIn, playerId: () => display ? "" : viewer.me, now: () => performance.now() });
+  const resultsHistory = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => (display ? "" : viewer.me),
+    now: () => performance.now(),
+  });
   let forceStop = false;
   function leaveRoom() {
     letGo();
-    resultsHistory.close(() => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }), () => {
-      runtime.stop();
-      if (!forceStop) location.href = withFlags(endpoints.appUrl());
-    });
+    resultsHistory.close(
+      () => ({
+        receipts: runtime.roomState()?.history ?? [],
+        confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+      }),
+      () => {
+        runtime.stop();
+        if (!forceStop) location.href = withFlags(endpoints.appUrl());
+      },
+    );
   }
   const callbacks: AxeCallbacks = {
     state(frame) {
       const confirmed = runtime.confirmedFrame();
-      resultsHistory.observe(runtime.roomState()?.history ?? [], confirmed?.logTick ?? -1);
+      resultsHistory.observe(
+        runtime.roomState()?.history ?? [],
+        confirmed?.logTick ?? -1,
+      );
       if (
         opening?.holds(frame, () =>
           runtime.command({ type: "action", action: "lobby" }),
@@ -1045,7 +1062,11 @@ function room(solo: boolean): void {
         },
   );
   installRoomLifecycle(window, {
-    stop: () => { forceStop = true; resultsHistory.dispose(); runtime.stop(); },
+    stop: () => {
+      forceStop = true;
+      resultsHistory.dispose();
+      runtime.stop();
+    },
     destroy: () => stopPlaytestInput(),
     reload: () => location.reload(),
   });

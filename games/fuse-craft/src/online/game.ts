@@ -25,9 +25,17 @@ import { prepareCombatLab, labCommands } from "./combat-lab.js";
 import { aiCommands, randomOpening } from "../engine/ai.js";
 import { isAiStrategy, RULES, type AiStrategy } from "../engine/types.js";
 import { ROOM_MAPS, bundledMap } from "./maps.js";
-import { craftDecision, parseCraftDecision, type CraftDecision } from "./result.js";
+import {
+  craftDecision,
+  parseCraftDecision,
+  type CraftDecision,
+} from "./result.js";
 import { craftResults, isCraftBot } from "./result.js";
-import { parseHistoryReceipts, parseHistoryPlayer, type HistoryReceipt } from "fuse-platform/history-api";
+import {
+  parseHistoryReceipts,
+  parseHistoryPlayer,
+  type HistoryReceipt,
+} from "fuse-platform/history-api";
 
 export type NeuralMode =
   "sandbox" | "combat-lab" | "skirmish" | "watch" | "versus";
@@ -627,7 +635,13 @@ export const neuralGame: RollbackGame<
         }
         const decided = parseCraftDecision(raw.decided, world, tick);
         if (decided === undefined) return;
-        const history = parseHistoryReceipts(raw.history, tick, parseHistoryPlayer, (id): id is string => typeof id === "string" && ROSTER_ID.test(id), isCraftBot);
+        const history = parseHistoryReceipts(
+          raw.history,
+          tick,
+          parseHistoryPlayer,
+          (id): id is string => typeof id === "string" && ROSTER_ID.test(id),
+          isCraftBot,
+        );
         if (!history) return;
         return {
           tick,
