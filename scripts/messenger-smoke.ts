@@ -25,8 +25,13 @@ const browser = await chromium.launch({ headless: true });
 
 async function mountMessenger(page: Page, user: string, name: string) {
   await page.addInitScript("window.__name = value => value");
+  // Select the Windows desktop at boot, then exercise Messenger at the requested
+  // width. A fresh narrow site visit intentionally selects the separate phone launcher.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${origin}/?mute`);
   await page.locator('[data-testid="display-surface"]').waitFor();
+  if (viewport) await page.setViewportSize(viewport);
   await page.evaluate(
     async ({ api, user, name }) => {
       const reactPath = "/node_modules/.vite/deps/react.js";
