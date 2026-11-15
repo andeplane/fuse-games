@@ -1,7 +1,7 @@
 import { createContext } from "react";
 
 /**
- * What MSN Messenger (the buddy list) depends on: one service that says who the player is, who their friends
+ * What Fuse Messenger (the buddy list) depends on: one service that says who the player is, who their friends
  * are and where each one is right now. The desktop never talks to the room service directly; the real
  * implementation (`realPresenceService.ts`) composes fuse-ui's polling client and browser sign-in, the demo
  * one (`demoPresenceService.ts`) plays a script. See docs/fuseos/friends-design.md.
@@ -30,6 +30,8 @@ export interface Buddy extends PlayerCard {
   statusLine?: string;
   /** For an offline buddy: when it was last online (ms since the epoch, rounded to the hour by the service). */
   lastSeen?: number;
+  /** The newest chat message between you two: who sent it (a public id) and when. Opens a closed chat. */
+  lastMessage?: { from: string; at: number };
 }
 
 export interface RoomInvite {

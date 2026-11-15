@@ -60,8 +60,11 @@ export const RUN_WINDOW_SIZE: Size = { width: 360, height: 176 };
 export const DIAL_UP_WINDOW_SIZE: Size = { width: 400, height: 260 };
 /** Room for the tree pane, a few rows of rooms and the status bar. */
 export const NETWORK_WINDOW_SIZE: Size = { width: 640, height: 420 };
-/** A tall narrow buddy list, as ICQ and MSN Messenger were laid out. */
+/** A tall narrow buddy list, as ICQ and Fuse Messenger were laid out. */
 export const FRIENDS_WINDOW_SIZE: Size = { width: 320, height: 540 };
+
+/** An Instant Message window: toolbar, the To: line, a transcript, the compose box and its Send button. */
+export const INSTANT_MESSAGE_WINDOW_SIZE: Size = { width: 420, height: 400 };
 
 /** Room for the game picker, a dozen rows of the list and the status bar. */
 export const HALL_OF_FAME_WINDOW_SIZE: Size = { width: 560, height: 420 };
@@ -232,10 +235,17 @@ export function windowMeta(
       };
     case "friends":
       return {
-        title: "MSN Messenger",
+        title: "Fuse Messenger",
         icon: "messenger",
         resizable: true,
         size: FRIENDS_WINDOW_SIZE,
+      };
+    case "im":
+      return {
+        title: `${window.name} - Instant Message`,
+        icon: "messenger",
+        resizable: true,
+        size: INSTANT_MESSAGE_WINDOW_SIZE,
       };
     case "halloffame":
       return {

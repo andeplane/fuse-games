@@ -12,7 +12,7 @@ import type {
   PresenceService,
   PresenceSnapshot,
 } from "./presenceService";
-import { EMPTY_SNAPSHOT, SnapshotStore } from "./presenceService";
+import { EMPTY_SNAPSHOT, isPublicId, SnapshotStore } from "./presenceService";
 
 /**
  * The live service: fuse-ui's polling friends client over the browser's Google sign-in, both injected so a test
@@ -81,6 +81,21 @@ export function apiUrlFor(
  * away. The status line and last-seen time are kept when the service sends them; an older service leaves them
  * out and the list looks as it did.
  */
+/** The view is JSON from the network: a last-message marker counts only when it is the shape the service sends. */
+function validLastMessage(
+  value: unknown,
+): value is { from: string; at: number } {
+  if (typeof value !== "object" || value === null) return false;
+  const { from, at } = value as Record<string, unknown>;
+  return (
+    typeof from === "string" &&
+    isPublicId(from) &&
+    typeof at === "number" &&
+    Number.isSafeInteger(at) &&
+    at >= 0
+  );
+}
+
 export function buddyFrom(friend: FriendsView["friends"][number]): Buddy {
   const status = friend.online
     ? friend.room
@@ -102,6 +117,14 @@ export function buddyFrom(friend: FriendsView["friends"][number]): Buddy {
       : {}),
     ...(!friend.online && typeof friend.lastSeen === "number"
       ? { lastSeen: friend.lastSeen }
+      : {}),
+    ...(validLastMessage(friend.lastMessage)
+      ? {
+          lastMessage: {
+            from: friend.lastMessage.from,
+            at: friend.lastMessage.at,
+          },
+        }
       : {}),
   };
 }

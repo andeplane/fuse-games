@@ -125,6 +125,8 @@ export interface FriendEdge {
   requestedBy: string;
   status: "pending" | "accepted";
   at: number;
+  /** The newest chat message's sender (an account id, never sent to clients) and time. */
+  lastMessage?: { from: string; at: number };
 }
 export interface InviteRecord {
   id: string;
@@ -136,6 +138,17 @@ export interface InviteRecord {
   expiresAt: number;
 }
 
+/** The friendship's newest chat message as a client sees it: sender by public id, inside the history window. */
+function lastMessageOf(
+  edge: FriendEdge,
+  uid: string,
+  other: string,
+): Pick<Friend, "lastMessage"> {
+  const last = edge.lastMessage;
+  if (!last || (last.from !== uid && last.from !== other)) return {};
+  return { lastMessage: { from: publicIdOf(last.from), at: last.at } };
+}
+
 export interface FriendsDatabase {
   /** The friendship and its bounded transcript are read atomically, so unfriending immediately revokes chat. */
   transactConversation<T>(
@@ -145,6 +158,8 @@ export interface FriendsDatabase {
       messages: FriendMessage[],
     ) => {
       messages?: FriendMessage[];
+      /** The friendship as it should be stored after the operation, when it changed. */
+      edge?: FriendEdge;
       result: T;
     },
   ): Promise<T>;
@@ -416,11 +431,13 @@ export class FriendsStore {
                 ...(p.room
                   ? { room: { code: p.room.code, gameId: p.room.gameId } }
                   : {}),
+                ...lastMessageOf(edge, uid, other),
               }
             : {
                 ...card,
                 online: false,
                 ...(p ? { lastSeen: lastSeenOf(p.at) } : {}),
+                ...lastMessageOf(edge, uid, other),
               },
         );
         relations.set(other, "friend");
@@ -611,9 +628,14 @@ export class FriendsStore {
             });
         }
         const recent = messages.slice(-MAX_CONVERSATION_MESSAGES);
+        const sent = body !== undefined && recent.at(-1)?.at === now;
         return {
           ...(body !== undefined || recent.length !== stored.length
             ? { messages: recent }
+            : {}),
+          // The buddy list's poll reads the friendship anyway: marking it here lets a closed chat pop up for free.
+          ...(sent
+            ? { edge: { ...edge, lastMessage: { from: uid, at: now } } }
             : {}),
           result: { messages: recent },
         };
@@ -745,6 +767,7 @@ export class MemoryFriendsDatabase implements FriendsDatabase {
       messages: FriendMessage[],
     ) => {
       messages?: FriendMessage[];
+      edge?: FriendEdge;
       result: T;
     },
   ): Promise<T> {
@@ -755,6 +778,8 @@ export class MemoryFriendsDatabase implements FriendsDatabase {
       );
       if (next.messages)
         this.conversations.set(id, structuredClone(next.messages));
+      if (next.edge && this.edgesById.has(id))
+        this.edgesById.set(id, structuredClone(next.edge));
       return next.result;
     });
     this.chain = work.catch(() => undefined);

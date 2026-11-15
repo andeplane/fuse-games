@@ -388,6 +388,16 @@ export class FirestoreFriendsDatabase implements FriendsDatabase {
       requestedBy: value.requestedBy,
       status: value.status,
       at: value.at as number,
+      ...(plain(value.lastMessage) &&
+      validUid(value.lastMessage.from) &&
+      Number.isSafeInteger(value.lastMessage.at)
+        ? {
+            lastMessage: {
+              from: value.lastMessage.from,
+              at: value.lastMessage.at as number,
+            },
+          }
+        : {}),
     };
   }
   private static inviteOf(value: unknown): InviteRecord | undefined {
@@ -504,6 +514,7 @@ export class FirestoreFriendsDatabase implements FriendsDatabase {
       messages: FriendMessage[],
     ) => {
       messages?: FriendMessage[];
+      edge?: FriendEdge;
       result: T;
     },
   ): Promise<T> {
@@ -519,6 +530,10 @@ export class FirestoreFriendsDatabase implements FriendsDatabase {
         );
         if (next.messages)
           transaction.set(conversation, { messages: next.messages });
+        if (next.edge && edge!.exists)
+          transaction.update(friendship, {
+            lastMessage: next.edge.lastMessage,
+          });
         return next.result;
       },
       { maxAttempts: 5 },

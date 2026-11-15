@@ -21,6 +21,8 @@ export interface Friend extends FriendCard {
   room?: { code: string; gameId: string };
   /** For an offline friend: when it last synced, rounded down to the hour so it is not a tracking signal. */
   lastSeen?: number;
+  /** Who sent the newest chat message between the two (a public id) and when, so a closed chat can pop up. */
+  lastMessage?: { from: string; at: number };
 }
 export interface FriendInvite {
   id: string;

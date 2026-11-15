@@ -22,8 +22,8 @@ import {
 import { deepLinkContents } from "../state/deepLink";
 import type { WindowCommands } from "../windows/useWindowCommands";
 
-/** The desktop seams MSN Messenger registers through: window kind, meta, deep link, Start menu and the room field. */
-describe("MSN Messenger registration", () => {
+/** The desktop seams Fuse Messenger registers through: window kind, meta, deep link, Start menu and the room field. */
+describe("Fuse Messenger registration", () => {
   const games = createTestGames();
   const window = (content: Partial<WindowState>): unknown => ({
     id: "w1",
@@ -32,7 +32,7 @@ describe("MSN Messenger registration", () => {
     ...content,
   });
 
-  it("is a window kind that survives storage, titled MSN Messenger with the messenger icon", () => {
+  it("is a window kind that survives storage, titled Fuse Messenger with the messenger icon", () => {
     expect(isWindowState(window({ kind: "friends" }))).toBe(true);
     const state: AppState = {
       ...DEFAULT_STATE,
@@ -52,7 +52,7 @@ describe("MSN Messenger registration", () => {
         games,
       ),
     ).toEqual({
-      title: "MSN Messenger",
+      title: "Fuse Messenger",
       icon: "messenger",
       resizable: true,
       size: FRIENDS_WINDOW_SIZE,
@@ -115,7 +115,7 @@ describe("MSN Messenger registration", () => {
     const entry = START_MENU_REGISTRATIONS.find((e) => e.id === "friends")!;
     expect(entry).toMatchObject({
       slot: "programs",
-      label: "MSN Messenger",
+      label: "Fuse Messenger",
       icon: "messenger",
     });
     const open = vi.fn();
@@ -142,10 +142,10 @@ describe("MSN Messenger registration", () => {
       },
     });
     expect(
-      await screen.findByRole("dialog", { name: "MSN Messenger" }),
+      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("friends-tray")).toHaveAccessibleName(
-      "MSN Messenger: signed out",
+      "Fuse Messenger: signed out",
     );
   });
 });

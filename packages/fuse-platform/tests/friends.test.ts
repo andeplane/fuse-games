@@ -272,6 +272,40 @@ test("message retries are idempotent, concurrent sends survive, invalid data is 
   assert.deepEqual((await f.store.conversation("alice", bob)).messages, []);
 });
 
+test("the buddy list's poll says who sent the newest message and when, so a closed chat can pop up", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const lastFrom = async (uid: string, friend: string) =>
+    (await f.sync(uid)).friends.find((x) => x.publicId === friend)?.lastMessage;
+  assert.equal(await lastFrom("bob", alice), undefined);
+  const sentAt = f.now();
+  await f.store.conversation("alice", bob, { id: "1".repeat(32), text: "hi" });
+  // Both see it, by public id; the account id never leaves the service.
+  assert.deepEqual(await lastFrom("bob", alice), { from: alice, at: sentAt });
+  assert.deepEqual(await lastFrom("alice", bob), { from: alice, at: sentAt });
+  f.tick(1_000);
+  // Reading and retrying the same message change nothing.
+  await f.store.conversation("bob", alice);
+  await f.store.conversation("alice", bob, { id: "1".repeat(32), text: "hi" });
+  assert.deepEqual(await lastFrom("bob", alice), { from: alice, at: sentAt });
+  await f.store.conversation("bob", alice, { id: "2".repeat(32), text: "yo" });
+  assert.deepEqual(await lastFrom("alice", bob), {
+    from: bob,
+    at: sentAt + 1_000,
+  });
+  // A friend who is offline still carries the marker, so the chat opens when they come back.
+  f.tick(ONLINE_WINDOW_MS + 1);
+  assert.deepEqual(await lastFrom("alice", bob), {
+    from: bob,
+    at: sentAt + 1_000,
+  });
+});
+
 test("message history is bounded and expires from both friends' views", async () => {
   const f = fixture(),
     alice = publicIdOf("alice"),

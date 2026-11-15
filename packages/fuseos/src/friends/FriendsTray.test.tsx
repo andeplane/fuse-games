@@ -21,7 +21,7 @@ function renderTray() {
     schedule: timers.schedule,
     beatMs: BEAT_MS,
   });
-  // Already online: the tray opens MSN Messenger without Dial-Up Networking in front of it.
+  // Already online: the tray opens Fuse Messenger without Dial-Up Networking in front of it.
   const dialUpSession = new MemoryDialUpSession();
   dialUpSession.markConnected();
   const result = renderWithProviders(<Desktop />, {
@@ -33,21 +33,21 @@ function renderTray() {
 }
 
 const notifications = () =>
-  screen.queryByRole("region", { name: "MSN Messenger notifications" });
+  screen.queryByRole("region", { name: "Fuse Messenger notifications" });
 
 describe("FriendsTray", () => {
-  it("shows the online count and opens MSN Messenger on click", async () => {
+  it("shows the online count and opens Fuse Messenger on click", async () => {
     const { user } = renderTray();
     const tray = screen.getByTestId("friends-tray");
-    expect(tray).toHaveAccessibleName("MSN Messenger: 4 buddies online");
+    expect(tray).toHaveAccessibleName("Fuse Messenger: 4 buddies online");
     expect(tray).toHaveTextContent("4");
     await user.click(tray);
     expect(
-      await screen.findByRole("dialog", { name: "MSN Messenger" }),
+      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
     ).toBeInTheDocument();
     await user.click(tray);
     expect(
-      screen.getAllByRole("dialog", { name: "MSN Messenger" }),
+      screen.getAllByRole("dialog", { name: "Fuse Messenger" }),
     ).toHaveLength(1);
   });
 
@@ -56,14 +56,14 @@ describe("FriendsTray", () => {
     expect(notifications()).not.toBeInTheDocument();
     timers.fire(BEAT_MS);
     const region = await screen.findByRole("region", {
-      name: "MSN Messenger notifications",
+      name: "Fuse Messenger notifications",
     });
     expect(
       within(region).getByTestId("friends-toast-signed-in"),
     ).toHaveTextContent("xXx_RocketMan_xXx has just signed in.");
     expect(friendsDeps.playAlert).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("friends-tray")).toHaveAccessibleName(
-      "MSN Messenger: 5 buddies online",
+      "Fuse Messenger: 5 buddies online",
     );
 
     timers.fire(BEAT_MS);
@@ -88,7 +88,7 @@ describe("FriendsTray", () => {
     const { user, timers } = renderTray();
     timers.fire(BEAT_MS);
     const region = await screen.findByRole("region", {
-      name: "MSN Messenger notifications",
+      name: "Fuse Messenger notifications",
     });
     expect(timers.pending()).toBe(2); // the next demo beat and the toast's timer
     timers.fire(TOAST_MS);
@@ -114,7 +114,7 @@ describe("FriendsTray", () => {
       within(request).getByText("PigChampion wants to be your friend."),
     );
     expect(
-      await screen.findByRole("dialog", { name: "MSN Messenger" }),
+      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByTestId("friends-toast-request"),

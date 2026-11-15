@@ -23,6 +23,15 @@ export interface FriendsWindowContent {
   kind: "friends";
 }
 
+/** An Instant Message window with one buddy, opened from the buddy list or by an incoming message. One per buddy. */
+export interface InstantMessageWindowContent {
+  kind: "im";
+  /** The buddy's public id (20 hex characters); never an account id. */
+  buddyId: string;
+  /** The buddy's name when the window opened, for the title until the list says otherwise. */
+  name: string;
+}
+
 /** One of the retro games under Start > Programs > Games (DOS bundles, vendored web games, Minesweeper, Solitaire). */
 export interface RetroGameWindowContent {
   kind: "retro";
@@ -176,6 +185,7 @@ export type WindowContent =
   | RunWindowContent
   | DialUpWindowContent
   | FriendsWindowContent
+  | InstantMessageWindowContent
   | DefragWindowContent
   | HallOfFameWindowContent
   | TaskManagerWindowContent
@@ -268,6 +278,8 @@ export function sameInstance(
       return existing.kind === "retro" && existing.game === content.game;
     case "fusegame":
       return existing.kind === "fusegame" && existing.gameId === content.gameId;
+    case "im":
+      return existing.kind === "im" && existing.buddyId === content.buddyId;
     case "controlpanel":
       return (
         existing.kind === "controlpanel" && existing.applet === content.applet
@@ -518,6 +530,13 @@ function isWindowContent(
       );
     case "halloffame":
       return value.gameId === undefined || typeof value.gameId === "string";
+    case "im":
+      return (
+        typeof value.buddyId === "string" &&
+        /^[0-9a-f]{20}$/.test(value.buddyId) &&
+        typeof value.name === "string" &&
+        value.name.length <= 80
+      );
     default:
       return false;
   }

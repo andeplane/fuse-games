@@ -34,45 +34,47 @@ async function mountMessenger(page: Page, user: string, name: string) {
   if (viewport) await page.setViewportSize(viewport);
   await page.evaluate(
     async ({ api, user, name }) => {
-      const reactPath = "/node_modules/.vite/deps/react.js";
-      const domPath = "/node_modules/.vite/deps/react-dom_client.js";
-      const friendsPath = "/packages/fuseos/src/friends/FriendsWindow.tsx";
-      const presencePath = "/packages/fuseos/src/friends/presenceService.ts";
-      const realPath = "/packages/fuseos/src/friends/realPresenceService.ts";
-      const chatPath = "/packages/fuseos/src/friends/MessengerChatContext.ts";
-      const clientPath = "/packages/fuse-ui/src/messenger-client.ts";
-      const depsPath = "/packages/fuseos/src/friends/friendsDepsContext.ts";
+      const load = async <T>(path: string): Promise<T> =>
+        (await import(path)) as T;
       const { createElement: h } = (
-        (await import(reactPath)) as { default: typeof import("react") }
+        await load<{ default: typeof import("react") }>(
+          "/node_modules/.vite/deps/react.js",
+        )
       ).default;
       const { createRoot } = (
-        (await import(domPath)) as {
-          default: typeof import("react-dom/client");
-        }
+        await load<{ default: typeof import("react-dom/client") }>(
+          "/node_modules/.vite/deps/react-dom_client.js",
+        )
       ).default;
-      const { FriendsWindow } = (await import(
-        friendsPath
-      )) as typeof import("../packages/fuseos/src/friends/FriendsWindow.js");
-      const { PresenceServiceContext } = (await import(
-        presencePath
-      )) as typeof import("../packages/fuseos/src/friends/presenceService.js");
-      const { createRealPresenceService } = (await import(
-        realPath
-      )) as typeof import("../packages/fuseos/src/friends/realPresenceService.js");
-      const { MessengerChatContext } = (await import(
-        chatPath
-      )) as typeof import("../packages/fuseos/src/friends/MessengerChatContext.js");
-      const { createMessengerClient } = (await import(
-        clientPath
-      )) as typeof import("../packages/fuse-ui/src/messenger-client.js");
-      const { FriendsDepsContext, defaultFriendsDeps } = (await import(
-        depsPath
-      )) as typeof import("../packages/fuseos/src/friends/friendsDepsContext.js");
+      const { App } = await load<
+        typeof import("../packages/fuseos/src/App.js")
+      >("/packages/fuseos/src/App.tsx");
+      const { MemoryStateStore } = await load<
+        typeof import("../packages/fuseos/src/state/stateStore.js")
+      >("/packages/fuseos/src/state/stateStore.ts");
+      const { PresenceServiceContext } = await load<
+        typeof import("../packages/fuseos/src/friends/presenceService.js")
+      >("/packages/fuseos/src/friends/presenceService.ts");
+      const { createRealPresenceService } = await load<
+        typeof import("../packages/fuseos/src/friends/realPresenceService.js")
+      >("/packages/fuseos/src/friends/realPresenceService.ts");
+      const { MessengerChatContext } = await load<
+        typeof import("../packages/fuseos/src/friends/MessengerChatContext.js")
+      >("/packages/fuseos/src/friends/MessengerChatContext.ts");
+      const { createMessengerClient } = await load<
+        typeof import("../packages/fuse-ui/src/messenger-client.js")
+      >("/packages/fuse-ui/src/messenger-client.ts");
+      const { FriendsDepsContext, defaultFriendsDeps } = await load<
+        typeof import("../packages/fuseos/src/friends/friendsDepsContext.js")
+      >("/packages/fuseos/src/friends/friendsDepsContext.ts");
+      const { DialUpSessionContext, MemoryDialUpSession } = await load<
+        typeof import("../packages/fuseos/src/sounds/dialup/dialUpSession.js")
+      >("/packages/fuseos/src/sounds/dialup/dialUpSession.ts");
       const token = async () => `messenger-smoke:${user}`;
       const presence = createRealPresenceService({
         fetch: window.fetch.bind(window),
         apiUrl: (path) => api + path,
-        pollMs: 200,
+        pollMs: 300,
         auth: {
           watch: (listener) => {
             listener({ name });
@@ -87,11 +89,21 @@ async function mountMessenger(page: Page, user: string, name: string) {
           failure: () => "Sign-in failed",
         },
       });
+      const store = new MemoryStateStore({
+        version: 1,
+        windows: [
+          {
+            id: "friends",
+            kind: "friends",
+            minimized: false,
+            maximized: false,
+          },
+        ],
+      });
       const container = document.createElement("div");
       container.id = "messenger-smoke";
-      container.className = "win98";
       container.style.cssText =
-        "position:fixed;inset:0;z-index:2147483647;background:#c0c0c0;display:flex;flex-direction:column;padding:8px";
+        "position:fixed;inset:0;z-index:2147483647;display:flex";
       document.body.append(container);
       createRoot(container).render(
         h(
@@ -102,25 +114,36 @@ async function mountMessenger(page: Page, user: string, name: string) {
             {
               value: {
                 ...defaultFriendsDeps,
+                // Every wait is short here: the conversation and its poll run in a fraction of a second.
                 schedule: (run: () => void) => {
-                  const id = window.setTimeout(run, 200);
+                  const id = window.setTimeout(run, 300);
                   return () => window.clearTimeout(id);
                 },
               },
             },
             h(
-              MessengerChatContext.Provider,
+              DialUpSessionContext.Provider,
               {
-                value: {
-                  client: createMessengerClient({
-                    fetch: window.fetch.bind(window),
-                    token,
-                    apiUrl: (path) => api + path,
-                  }),
-                  messageId: () => crypto.randomUUID().replaceAll("-", ""),
-                },
+                value: (() => {
+                  const session = new MemoryDialUpSession();
+                  session.markConnected();
+                  return session;
+                })(),
               },
-              h(FriendsWindow, { windowId: "friends" }),
+              h(
+                MessengerChatContext.Provider,
+                {
+                  value: {
+                    client: createMessengerClient({
+                      fetch: window.fetch.bind(window),
+                      token,
+                      apiUrl: (path) => api + path,
+                    }),
+                    messageId: () => crypto.randomUUID().replaceAll("-", ""),
+                  },
+                },
+                h(App, { store, initialOpen: [] }),
+              ),
             ),
           ),
         ),
@@ -133,15 +156,17 @@ async function mountMessenger(page: Page, user: string, name: string) {
 
 try {
   const alice = await browser.newPage({
-    viewport: { width: 360, height: 780 },
+    viewport: { width: 1000, height: 700 },
+    deviceScaleFactor: process.env.MESSENGER_SHOTS ? 2 : 1,
   });
-  const bob = await browser.newPage({ viewport: { width: 900, height: 650 } });
+  const bob = await browser.newPage({
+    viewport: { width: 1000, height: 700 },
+    deviceScaleFactor: process.env.MESSENGER_SHOTS ? 2 : 1,
+  });
   const errors: string[] = [];
   for (const page of [alice, bob])
     page.on("pageerror", (error) => errors.push(error.message));
-  await mountMessenger(alice, "alice", "Alice");
-  await mountMessenger(bob, "bob", "Bob");
-  const sync = async (user: string) =>
+  const sync = async (user: string, body: object = {}) =>
     (await (
       await fetch(`${api}/api/friends/sync`, {
         method: "POST",
@@ -150,9 +175,14 @@ try {
           Authorization: `Bearer messenger-smoke:${user}`,
           "Content-Type": "application/json",
         },
-        body: "{}",
+        body: JSON.stringify(body),
       })
     ).json()) as FriendsView;
+  // The names friends see; the desktop's own polls never send one.
+  await sync("alice", { name: "Alice" });
+  await sync("bob", { name: "Bob" });
+  await mountMessenger(alice, "alice", "Alice");
+  await mountMessenger(bob, "bob", "Bob");
   const aliceCard = (await sync("alice")).me,
     bobCard = (await sync("bob")).me;
   const aliceName = aliceCard.name,
@@ -160,42 +190,73 @@ try {
     bobId = bobCard.publicId;
   const aliceApp = alice.locator("#messenger-smoke"),
     bobApp = bob.locator("#messenger-smoke");
-  await aliceApp.getByLabel("Add:", { exact: true }).fill(bobId);
+  const shots = process.env.MESSENGER_SHOTS;
+  // Add a Contact from the big toolbar, accept on the other side.
   await aliceApp.getByRole("button", { name: "Add", exact: true }).click();
+  await aliceApp.getByLabel("Add a Contact by player id:").fill(bobId);
+  await aliceApp
+    .getByRole("form", { name: "Add a Contact" })
+    .getByRole("button", { name: "Add", exact: true })
+    .click();
   await bobApp.getByRole("button", { name: `Accept ${aliceName}` }).click();
-  await aliceApp.getByRole("button", { name: `Chat with ${bobName}` }).click();
-  await bobApp.getByRole("button", { name: `Chat with ${aliceName}` }).click();
-  const aliceInput = aliceApp.getByLabel(`Message to ${bobName}`),
-    bobInput = bobApp.getByLabel(`Message to ${aliceName}`);
-  await aliceInput.fill("Hello Bob, ready to play?");
-  await aliceApp.getByRole("button", { name: "Send", exact: true }).click();
-  await bobApp
-    .getByText("Hello Bob, ready to play?", { exact: true })
-    .waitFor();
+  // Double-click the buddy: an Instant Message window of its own.
+  const buddyRow = aliceApp.getByTestId(`buddy-${bobId}`);
+  await buddyRow.waitFor();
+  if (shots)
+    await aliceApp
+      .getByRole("dialog", { name: "Fuse Messenger", exact: true })
+      .screenshot({ path: `${shots}/buddy-list-live.png` });
+  await buddyRow.dblclick();
+  const aliceIm = aliceApp.getByRole("dialog", {
+    name: `${bobName} - Instant Message`,
+  });
+  await aliceIm
+    .getByLabel(`Message to ${bobName}`)
+    .fill("Hello Bob, ready to play?");
+  await aliceIm.getByRole("button", { name: "Send", exact: true }).click();
+  // Bob never opened the chat: it pops up when the message arrives.
+  const bobIm = bobApp.getByRole("dialog", {
+    name: `${aliceName} - Instant Message`,
+  });
+  await bobIm.getByText("Hello Bob, ready to play?", { exact: true }).waitFor();
+  const bobInput = bobIm.getByLabel(`Message to ${aliceName}`);
   await bobInput.fill("Yes! <script>plain text</script>");
   await bobInput.press("Enter");
-  await aliceApp
+  await aliceIm
     .getByText("Yes! <script>plain text</script>", { exact: true })
     .waitFor();
-  assert.equal(await aliceApp.locator(".msn-message").count(), 2);
-  assert.equal(await aliceApp.locator(".msn-transcript script").count(), 0);
-  assert.equal(
-    await aliceApp.getByRole("button", { name: "Invite to game" }).isDisabled(),
-    true,
-  );
+  assert.equal(await aliceIm.locator(".msn-message").count(), 2);
+  assert.equal(await aliceIm.locator(".msn-transcript script").count(), 0);
+  await aliceIm
+    .getByTestId("im-status")
+    .getByText(/Last message received at/)
+    .waitFor();
+  if (shots) {
+    await alice.screenshot({ path: `${shots}/im-desktop-alice.png` });
+    await bob.screenshot({ path: `${shots}/im-desktop-bob.png` });
+    for (const [label, size] of [
+      ["phone-portrait", { width: 360, height: 780 }],
+      ["phone-landscape", { width: 844, height: 390 }],
+    ] as const) {
+      await bob.setViewportSize(size);
+      await bob.waitForTimeout(400);
+      await bob.screenshot({ path: `${shots}/im-${label}.png` });
+    }
+    await bob.setViewportSize({ width: 1000, height: 700 });
+  }
   await alice.reload();
   await mountMessenger(alice, "alice", "Alice");
   await alice
     .locator("#messenger-smoke")
-    .getByRole("button", { name: `Chat with ${bobName}` })
-    .click();
+    .getByTestId(`buddy-${bobId}`)
+    .dblclick();
   await alice
     .locator("#messenger-smoke")
     .getByText("Hello Bob, ready to play?", { exact: true })
     .waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: two-account MSN contact request/accept, bidirectional plain-text chat, persisted history after reopen, no-room invite state; headless 360px/900px browsers, injected auth.",
+    "PASS: two-account Fuse Messenger contact request/accept, Instant Message windows both ways (the reply pops up unopened), plain text, history after reopen; headless browsers, injected auth.",
   );
 } finally {
   await browser.close();

@@ -8,6 +8,7 @@ import { ControlPanelWindow } from "../controlpanel/ControlPanelWindow";
 import { ExplorerWindow } from "../explorer/ExplorerWindow";
 import { WallpaperWindow } from "../controlpanel/WallpaperWindow";
 import { FriendsWindow } from "../friends/FriendsWindow";
+import { InstantMessageWindow } from "../friends/InstantMessageWindow";
 import {
   FuseGameWindow,
   POP_OUT_HINT,
@@ -130,6 +131,14 @@ function WindowContent({
       return <DialUpWindow windowId={window.id} then={window.then} />;
     case "friends":
       return <FriendsWindow windowId={window.id} />;
+    case "im":
+      return (
+        <InstantMessageWindow
+          windowId={window.id}
+          buddyId={window.buddyId}
+          name={window.name}
+        />
+      );
     case "defrag":
       return <DefragWindow windowId={window.id} />;
     case "halloffame":

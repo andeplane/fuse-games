@@ -329,7 +329,7 @@ describe("LauncherWindow", () => {
     );
     expect(dialUpSession.connected).toBe(true);
     expect(
-      await screen.findByRole("dialog", { name: "MSN Messenger" }),
+      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
     ).toBeInTheDocument();
     await user.click(inside.getByRole("tab", { name: "Servers" }));
     expect(
@@ -410,10 +410,10 @@ describe("LauncherWindow", () => {
     const { inside } = renderLauncher({ dialUpSession });
     await user.click(inside.getByRole("button", { name: "FRIENDS & CHAT" }));
     const messenger = await screen.findByRole("dialog", {
-      name: "MSN Messenger",
+      name: "Fuse Messenger",
     });
     await user.click(within(messenger).getByRole("button", { name: /close/i }));
-    expect(screen.queryByRole("dialog", { name: "MSN Messenger" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Fuse Messenger" })).toBeNull();
     await user.click(
       within(inside.getByRole("navigation", { name: "Links" })).getByRole(
         "button",
@@ -421,7 +421,7 @@ describe("LauncherWindow", () => {
       ),
     );
     expect(
-      await screen.findByRole("dialog", { name: "MSN Messenger" }),
+      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
     ).toBeInTheDocument();
     await user.click(inside.getByRole("button", { name: "ADD A GAME..." }));
     // The message box is titled after the launcher, so two dialogs carry the name.

@@ -13,7 +13,9 @@ export type PresenceEvent =
   | { type: "signed-in"; buddy: Buddy }
   | { type: "playing"; buddy: Buddy }
   | { type: "invite"; invite: RoomInvite }
-  | { type: "request"; from: PlayerCard };
+  | { type: "request"; from: PlayerCard }
+  /** A buddy wrote while their chat was closed and a game was in front; the tray offers to open the chat. */
+  | { type: "message"; buddy: Buddy };
 
 const present = (buddy: Buddy) =>
   buddy.status === "online" ||

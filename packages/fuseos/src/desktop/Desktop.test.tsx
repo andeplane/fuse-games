@@ -256,7 +256,7 @@ describe(Desktop.name, () => {
       "untitled - Paint",
       "Winamp",
       "Fusteam",
-      "MSN Messenger",
+      "Fuse Messenger",
       "About FuseOS",
     ]);
   });

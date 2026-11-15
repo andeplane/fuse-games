@@ -75,7 +75,7 @@ export function useJoinRoom(): (gameId: string, code: string) => void {
   );
 }
 
-/** Open MSN Messenger, or bring it to the front: one window, always the same id. */
+/** Open Fuse Messenger, or bring it to the front: one window, always the same id. */
 export function useOpenFriends(): () => void {
   // Dials in first when nothing has connected yet this session (Dial-Up Networking).
   const commands = useDialUpCommands();
@@ -161,7 +161,7 @@ export function useFriendsViewModel(): FriendsViewModel {
       const id = publicId.trim().toLowerCase();
       if (!isPublicId(id)) {
         setActionError(
-          "A player id is 20 letters and digits; friends find theirs at the top of their own MSN Messenger.",
+          "A player id is 20 letters and digits; friends find theirs at the top of their own Fuse Messenger.",
         );
         return false;
       }

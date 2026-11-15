@@ -21,7 +21,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`${origin}/?mute`);
   await page.getByRole("dialog", { name: "Connect To", exact: true }).waitFor();
-  for (const title of ["Fusteam", "MSN Messenger"])
+  for (const title of ["Fusteam", "Fuse Messenger"])
     assert.equal(
       await page.getByRole("dialog", { name: title, exact: true }).count(),
       1,
@@ -40,7 +40,7 @@ try {
   );
   await page.reload();
   await page
-    .getByRole("dialog", { name: "MSN Messenger", exact: true })
+    .getByRole("dialog", { name: "Fuse Messenger", exact: true })
     .waitFor();
   assert.equal(
     await page.getByRole("dialog", { name: "Connect To", exact: true }).count(),
@@ -88,7 +88,7 @@ try {
     await friends.first().waitFor();
     await friends.first().click();
     const messenger = gamePage.getByRole("dialog", {
-      name: "MSN Messenger",
+      name: "Fuse Messenger",
       exact: true,
     });
     await messenger.waitFor();
@@ -103,7 +103,7 @@ try {
       0,
       `${game.id} handed friends to desktop`,
     );
-    console.log(`PASS ${game.id}: iframe Friends opens MSN Messenger`);
+    console.log(`PASS ${game.id}: iframe Friends opens Fuse Messenger`);
   }
   await frames.close();
   assert.deepEqual(errors, []);

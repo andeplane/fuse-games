@@ -52,7 +52,7 @@ function renderFriends(
   return { ...result, presence, timers, user: userEvent.setup() };
 }
 
-const dialog = () => screen.findByRole("dialog", { name: "MSN Messenger" });
+const dialog = () => screen.findByRole("dialog", { name: "Fuse Messenger" });
 
 describe("FriendsWindow", () => {
   it("shows the buddy list grouped by state with the player's own id, and joins a buddy's game", async () => {
@@ -62,30 +62,44 @@ describe("FriendsWindow", () => {
     expect(within(window).getByTestId("my-public-id")).toHaveTextContent(
       DEMO_ME.publicId,
     );
-    expect(within(window).getByText("Playing (1)")).toBeInTheDocument();
-    expect(within(window).getByText("Online (2)")).toBeInTheDocument();
-    expect(within(window).getByText("Away (1)")).toBeInTheDocument();
-    expect(within(window).getByText("Offline (2)")).toBeInTheDocument();
+    // The 1999 grouping: everyone signed in under Online, with "(Away)" or the game after the name.
+    expect(within(window).getByText("Online (4)")).toBeInTheDocument();
+    expect(within(window).getByText("Not Online (2)")).toBeInTheDocument();
+    expect(within(window).getByText("(Playing Fuseball)")).toBeInTheDocument();
+    expect(within(window).getByText("(Away)")).toBeInTheDocument();
     expect(
       within(window).getByText("Playing Fuseball · room AB42"),
     ).toBeInTheDocument();
+    for (const name of ["Add", "Send", "Invite", "Join"])
+      expect(
+        within(
+          within(window).getByRole("toolbar", { name: "Messenger" }),
+        ).getByRole("button", { name }),
+      ).toBeInTheDocument();
     expect(
-      within(window).getByText("4 of 6 buddies online"),
+      within(window).getByRole("button", { name: "My status: Online" }),
+    ).toBeInTheDocument();
+    expect(
+      within(window).getByRole("region", { name: "I want to" }),
+    ).toHaveTextContent("Send an Instant Message");
+    expect(
+      within(window).getByText("Online · 4 of 6 buddies online"),
     ).toBeInTheDocument();
     // A buddy's own status line (#665), as plain text.
     expect(within(window).getByText("brb, lag spike")).toBeInTheDocument();
-    expect(within(window).getAllByRole("img", { name: "Online" })).toHaveLength(
-      3, // two buddies and the player's own status
-    );
 
-    await user.click(within(window).getByRole("button", { name: "Join game" }));
+    // Select the playing buddy, then the toolbar's Join.
+    await user.click(
+      within(window).getByTestId(`buddy-${DEMO_BUDDIES[0]!.publicId}`),
+    );
+    await user.click(within(window).getByRole("button", { name: "Join" }));
     const game = await screen.findByRole("dialog", { name: "Fuseball" });
     expect(within(game).getByTitle("Fuseball")).toHaveAttribute(
       "src",
       "/fuse-riders/fuseball/?room=AB42",
     );
     // Joining the same room again brings that window forward rather than opening another.
-    await user.click(within(window).getByRole("button", { name: "Join game" }));
+    await user.click(within(window).getByRole("button", { name: "Join" }));
     expect(screen.getAllByRole("dialog", { name: "Fuseball" })).toHaveLength(1);
   });
 
@@ -122,15 +136,15 @@ describe("FriendsWindow", () => {
     const window = await dialog();
     expect(within(window).getByText("Signed out")).toBeInTheDocument();
     expect(screen.getByTestId("friends-tray")).toHaveAccessibleName(
-      "MSN Messenger: signed out",
+      "Fuse Messenger: signed out",
     );
     await user.click(
       within(window).getByRole("button", { name: "Sign in to Fuse world" }),
     );
-    expect(await within(window).findByText("Playing (1)")).toBeInTheDocument();
+    expect(await within(window).findByText("Online (4)")).toBeInTheDocument();
     expect(presence.snapshot().account.kind).toBe("signed-in");
     expect(screen.getByTestId("friends-tray")).toHaveAccessibleName(
-      "MSN Messenger: 4 buddies online",
+      "Fuse Messenger: 4 buddies online",
     );
 
     await user.click(within(window).getByRole("menuitem", { name: "File" }));
@@ -147,8 +161,11 @@ describe("FriendsWindow", () => {
   it("validates a player id before adding, then shows the request waiting", async () => {
     const { user } = renderFriends();
     const window = await dialog();
-    const input = within(window).getByLabelText("Add:");
-    const add = within(window).getByRole("button", { name: "Add" });
+    await user.click(within(window).getByRole("button", { name: "Add" }));
+    const form = within(window).getByRole("form", { name: "Add a Contact" });
+    const input = within(form).getByLabelText("Add a Contact by player id:");
+    expect(input).toHaveFocus();
+    const add = within(form).getByRole("button", { name: "Add" });
     expect(add).toBeDisabled();
     await user.type(input, "not-an-id");
     await user.click(add);
@@ -163,7 +180,8 @@ describe("FriendsWindow", () => {
       await within(window).findByText("Player abcdef"),
     ).toBeInTheDocument();
     expect(within(window).queryByRole("alert")).not.toBeInTheDocument();
-    expect(input).toHaveValue("");
+    // A sent request closes the Add a Contact box.
+    expect(input).not.toBeInTheDocument();
     await user.click(
       within(window).getByRole("button", {
         name: "Cancel request to Player abcdef",
@@ -185,7 +203,7 @@ describe("FriendsWindow", () => {
       within(window).getByRole("button", { name: "Accept PigChampion" }),
     );
     expect(within(window).queryByText("Requests")).not.toBeInTheDocument();
-    expect(within(window).getByText("Online (3)")).toBeInTheDocument();
+    expect(within(window).getByText("Online (6)")).toBeInTheDocument();
 
     const invites = within(window).getByRole("list", { name: "Invites" });
     expect(invites).toHaveTextContent("invited you to fuse-volley (VB77)");
@@ -243,7 +261,7 @@ describe("FriendsWindow", () => {
     expect(
       within(window).queryByText("LAN_party_Lars"),
     ).not.toBeInTheDocument();
-    expect(within(window).getByText("Offline (1)")).toBeInTheDocument();
+    expect(within(window).getByText("Not Online (1)")).toBeInTheDocument();
   });
 
   it("keeps contacts available while a game window is open", async () => {
@@ -261,7 +279,9 @@ describe("FriendsWindow", () => {
     });
     const window = await dialog();
     expect(presence.snapshot().suspended).toBe(false);
-    expect(within(window).getByText("Online · demo")).toBeInTheDocument();
+    expect(
+      within(window).getByRole("button", { name: "My status: Online" }),
+    ).toHaveTextContent("(Online, demo)");
   });
 
   it("switches to the demo buddies and back from the sign-in screen and the File menu", async () => {
@@ -278,8 +298,8 @@ describe("FriendsWindow", () => {
       }),
     );
     expect(
-      await within(window).findByText("Online · demo"),
-    ).toBeInTheDocument();
+      await within(window).findByRole("button", { name: "My status: Online" }),
+    ).toHaveTextContent("(Online, demo)");
     await user.click(within(window).getByRole("menuitem", { name: "File" }));
     const demoItem = within(window).getByRole("menuitemcheckbox", {
       name: "Demo buddies",
@@ -329,7 +349,7 @@ describe("FriendsWindow", () => {
       }),
     );
     expect(within(window).queryByText("Requests")).not.toBeInTheDocument();
-    expect(within(window).getByText("Online (2)")).toBeInTheDocument();
+    expect(within(window).getByText("Online (5)")).toBeInTheDocument();
   });
 
   it("has Help > About and File > Close", async () => {
@@ -338,18 +358,18 @@ describe("FriendsWindow", () => {
     await user.click(within(window).getByRole("menuitem", { name: "Help" }));
     await user.click(
       within(window).getByRole("menuitemcheckbox", {
-        name: "About MSN Messenger",
+        name: "About Fuse Messenger",
       }),
     );
     expect(
-      await screen.findByRole("dialog", { name: "About MSN Messenger" }),
+      await screen.findByRole("dialog", { name: "About Fuse Messenger" }),
     ).toBeInTheDocument();
     await user.click(within(window).getByRole("menuitem", { name: "File" }));
     await user.click(
       within(window).getByRole("menuitemcheckbox", { name: "Close" }),
     );
     expect(
-      screen.queryByRole("dialog", { name: "MSN Messenger" }),
+      screen.queryByRole("dialog", { name: "Fuse Messenger" }),
     ).not.toBeInTheDocument();
   });
 });
