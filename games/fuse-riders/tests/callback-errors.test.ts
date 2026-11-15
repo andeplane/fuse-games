@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { RoomRuntime, type Callbacks } from "../src/online/room-runtime.js";
 import { defaultRoomSettings } from "../src/engine/room-settings.js";
 import { presentFrames } from "../src/render/time/present.js";
-import { FakeNetwork, FakeTransport } from "./fixtures/fake-room.js";
+import {
+  FAKE_ROOM_CODE,
+  FakeNetwork,
+  FakeTransport,
+} from "./fixtures/fake-room.js";
 
 function solo(callbacks: Callbacks) {
   const net = new FakeNetwork("solo", {
@@ -94,7 +98,7 @@ test("ended callback failure is reported after scheduling has been cancelled", (
   const failure = new Error("ended failed");
   const errors: unknown[] = [];
   const runtime = new RoomRuntime(
-    "AB42AA",
+    FAKE_ROOM_CODE,
     defaultRoomSettings(),
     {
       ...quiet,
@@ -125,7 +129,7 @@ test("online consumer exceptions do not interrupt peer input delivery or converg
   const errors: (keyof Callbacks)[] = [];
   const settings = defaultRoomSettings();
   const host = new RoomRuntime(
-    "AB42AA",
+    FAKE_ROOM_CODE,
     settings,
     {
       ...quiet,

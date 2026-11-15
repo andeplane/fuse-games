@@ -1,4 +1,4 @@
-import { FakeNetwork, FakeTransport } from "./fake-room.js";
+import { FAKE_ROOM_CODE, FakeNetwork, FakeTransport } from "./fake-room.js";
 import {
   decodePacket,
   encodePacket,
@@ -45,7 +45,7 @@ export class ScriptedPeer {
     readonly id: string,
     private readonly options: { generation?: number; rules?: string } = {},
   ) {
-    this.room = roomHash(`AB42:${net.hostId}`);
+    this.room = roomHash(`${FAKE_ROOM_CODE}:${net.hostId}`);
     this.transport = new FakeTransport(net, id, {
       welcome: () => {},
       peer: (peer, online) => {

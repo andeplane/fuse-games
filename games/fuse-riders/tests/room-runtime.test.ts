@@ -13,7 +13,11 @@ import {
 } from "fuse-netcode";
 import { RoomRuntime } from "../src/online/room-runtime.js";
 import assert from "node:assert/strict";
-import { FakeNetwork, type NetworkOptions } from "./fixtures/fake-room.js";
+import {
+  FAKE_ROOM_CODE,
+  FakeNetwork,
+  type NetworkOptions,
+} from "./fixtures/fake-room.js";
 import { defaultRoomSettings } from "../src/engine/room-settings.js";
 import { COUNTDOWN_TICKS, RIDER_COLORS } from "../src/engine/game.js";
 import { validRiderName } from "../src/engine/rider-name.js";
@@ -220,7 +224,7 @@ test("malformed, foreign and oversized fast packets change nothing; the clock tr
     packMessage([1, roomHash("other"), HOST, 1, 5, 0, [], 1, 0, 0, 1, null]),
     packMessage([
       1,
-      roomHash("AB42AA:a-host"),
+      roomHash(`${FAKE_ROOM_CODE}:a-host`),
       "someone",
       1,
       5,
@@ -236,7 +240,7 @@ test("malformed, foreign and oversized fast packets change nothing; the clock tr
     packMessage("junk"),
     packMessage([
       1,
-      roomHash("AB42AA:a-host"),
+      roomHash(`${FAKE_ROOM_CODE}:a-host`),
       HOST,
       1,
       5,
@@ -964,7 +968,7 @@ test("an undecodable snapshot waits for the retry timer instead of asking again 
     type: "snapshot",
     tick: 0,
     rules: RULES,
-    room: roomHash(`AB42AA:${HOST}`),
+    room: roomHash(`${FAKE_ROOM_CODE}:${HOST}`),
     chunk: 0,
     total: 1,
     data: btoa(String.fromCharCode(...packMessage("nope"))),

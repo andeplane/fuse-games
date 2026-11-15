@@ -637,7 +637,7 @@ test("ICE and ending a room take the token from Authorization only, behind an ex
         "guest",
         `${base}/end`,
         { Authorization: `Bearer ${"c".repeat(64)}` },
-        403,
+        404,
       ],
     ] as const)
       assert.equal(
