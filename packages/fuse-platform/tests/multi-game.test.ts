@@ -461,7 +461,7 @@ test("a record cannot change games: the same record id reported to another game 
   );
   assert.equal(
     (await legacyHistory.history("alice", undefined)).matches.length,
-    0,
+    1,
   );
   assert.deepEqual((await diceHistory.history("alice", undefined)).matches, []);
 });
@@ -572,8 +572,8 @@ test("solo rounds of different games never share a record or a rating scope", as
   );
   for (const gameId of [LEGACY_GAME_ID, "dice"])
     assert.equal(
-      (await f.store.game(gameId).profile("alice"))!.rating!.games,
-      1,
+      (await f.store.game(gameId).profile("alice"))?.rating,
+      undefined,
     );
 });
 

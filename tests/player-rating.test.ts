@@ -201,8 +201,8 @@ test("human Elo settles exactly once, graph and public rank agree, AI positions 
   assert.equal(history.matches.length, 0);
   const onlyAI = result([f.ids[0]!, "bot:1"], "ai-game");
   await f.report(0, onlyAI);
-  assert.equal((await f.history.profile("user0"))!.rating!.games, 2);
-  assert.equal((await f.history.profile("user0"))!.rating!.rounds, 2);
+  assert.equal((await f.history.profile("user0"))!.rating!.games, 1);
+  assert.equal((await f.history.profile("user0"))!.rating!.rounds, 1);
   assert.equal((await f.history.profile("user0"))!.rating!.value, 1016);
   assert.equal((await f.history.profile("user0"))!.career, undefined);
   await f.history.rename("user0", { username: "New name" });
@@ -231,8 +231,7 @@ test("one signed-in human records a zero-change round; late sign-in cannot rewri
     else m.players[1]!.roundsPlayed = 0;
     await g.report(0, m);
     await g.report(1, m);
-    assert.equal((await g.history.profile("user0"))!.rating!.value, 1000);
-    assert.equal((await g.history.profile("user0"))!.rating!.rounds, 1);
+    assert.equal((await g.history.profile("user0"))?.rating, undefined);
   }
 });
 
@@ -649,9 +648,8 @@ test("solo round records retain an existing competitive Elo", async () => {
   await f.history.submitSolo(reporter, { result: solo }, "user0");
   const rating = (await f.history.profile("user0"))!.rating!;
   assert.equal(rating.value, 1016);
-  assert.equal(rating.rounds, 2);
-  assert.equal(rating.points[1]!.before, rating.points[1]!.after);
-  assert.equal(rating.points[1]!.opponents, 0);
+  assert.equal(rating.rounds, 1);
+  assert.equal(rating.points.length, 1);
   await assert.rejects(
     f.history.submitSolo(reporter, { result: solo }, "other-user"),
     { status: 400 },

@@ -379,9 +379,14 @@ export class GameHistory<
       avatarId = body.avatarId as string | undefined;
     if (!result) throw new RoomError(400, "Invalid match result");
     const humans = humansOf(game, result);
+    // A one-human result is self-reported personal progress, not proof that a
+    // room had no other players. Only corroborated results enter the feed.
+    const solo = humans.length === 1;
     const needed =
       result.round === undefined
-        ? Math.max(2, attestationsNeeded(result))
+        ? solo
+          ? 1
+          : Math.max(2, attestationsNeeded(result))
         : attestationsNeeded(result);
     if (!humans.includes(rider))
       throw new RoomError(403, "Only a rider in the match can report it");
@@ -461,6 +466,7 @@ export class GameHistory<
       // create new credits or publish one until another seat has corroborated it.
       if (
         result.round === undefined &&
+        !solo &&
         match.status === "confirmed" &&
         match.attesters.length < 2
       )
@@ -476,7 +482,7 @@ export class GameHistory<
         match.status === "pending" &&
         match.attesters.filter((id) => result.finishers.includes(id)).length >=
           attestationsNeeded(result) &&
-        (result.round !== undefined || match.attesters.length >= 2)
+        (result.round !== undefined || solo || match.attesters.length >= 2)
       ) {
         match.status = "confirmed";
         match.endedAt = now;
@@ -506,7 +512,7 @@ export class GameHistory<
         const hasAccounts = match.participantUids.length > 0;
         // Round receipts remain durable and idempotent, but do not appear as career games or in the public feed.
         if (result.round !== undefined) match.participantUids = [];
-        else match.feedAt ??= match.endedAt;
+        else if (!solo) match.feedAt ??= match.endedAt;
         if (hasAccounts) delete match.expiresAt;
         else match.expiresAt = (match.endedAt ?? now) + GUEST_MATCH_TTL_MS;
       }

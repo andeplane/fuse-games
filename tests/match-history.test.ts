@@ -653,7 +653,7 @@ test("corroborated history pages newest first, and reporting is rate limited", a
       { result: resultOf([f.ids[0]!, "bot:1"], "match-30") },
       "alice",
     ),
-    { status: "pending", attestations: 1, needed: 2, linked: false },
+    { status: "confirmed", attestations: 1, needed: 1, linked: false },
   );
   for (let index = 31; index < 40; index++)
     await f.report(
@@ -747,12 +747,12 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   });
 });
 
-test("a lone guest's game stays pending even after signing in", async () => {
+test("a lone room game credits only its signed-in player and stays off the feed", async () => {
   const f = await room(2),
     result = resultOf([f.ids[0]!, "bot:1"], "lone");
   assert.equal(
     (await f.report(f.tokens[0]!, { result }, undefined)).status,
-    "pending",
+    "confirmed",
   );
   assert.deepEqual(
     (await f.history.feed("viewer", undefined, undefined)).matches,
@@ -760,6 +760,8 @@ test("a lone guest's game stays pending even after signing in", async () => {
   );
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
+  assert.equal((await f.history.profile("alice"))!.totals.matches, 1);
+  assert.equal((await f.history.history("alice", undefined)).matches.length, 1);
   const listed = (await f.history.feed("viewer", undefined, undefined)).matches;
   assert.deepEqual(listed, []);
   f.advance(1000);
@@ -1397,7 +1399,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
   }
 });
 
-test("solo HTTP rounds authenticate and finished games stay pending without corroboration", async () => {
+test("solo HTTP rounds are receipts and finished games credit only personal progress", async () => {
   const service = createDevRoomService({
     identity: async (value) =>
       value.startsWith("id:") ? value.slice(3) : undefined,
@@ -1445,11 +1447,7 @@ test("solo HTTP rounds authenticate and finished games stay pending without corr
       assert.equal((await report({ result: invalid }, "id:a")).status, 400);
     assert.equal((await report({ result, uid: "other" }, "id:a")).status, 400);
     assert.equal((await report({ result }, "id:a")).status, 200);
-    const first = (await profile("a")).profile!;
-    assert.equal(first.rating.value, 1000);
-    assert.equal(first.rating.rounds, 1);
-    assert.equal(first.rating.points[0]!.opponents, 0);
-    assert.equal(first.totals.matches, 0);
+    assert.equal((await profile("a")).profile, null);
     for (const candidate of [
       result,
       {
@@ -1458,15 +1456,14 @@ test("solo HTTP rounds authenticate and finished games stay pending without corr
       },
     ])
       assert.equal((await report({ result: candidate }, "id:a")).status, 200);
-    assert.deepEqual((await profile("a")).profile!.rating, first.rating);
+    assert.equal((await profile("a")).profile, null);
     assert.equal((await report({ result }, "id:b")).status, 200);
-    assert.equal((await profile("b")).profile!.rating.rounds, 1);
+    assert.equal((await profile("b")).profile, null);
     assert.equal(
       (await report({ result: { ...result, round: 2 } }, "id:a")).status,
       200,
     );
-    assert.equal((await profile("a")).profile!.rating.rounds, 2);
-    assert.equal((await profile("a")).profile!.rating.value, 1000);
+    assert.equal((await profile("a")).profile, null);
     const history = (await (
       await fetch(`${origin}/api/me/matches`, {
         headers: { origin, authorization: "Bearer id:a" },
@@ -1499,14 +1496,13 @@ test("solo HTTP rounds authenticate and finished games stay pending without corr
       (await finish({ ...whole, finishers: [] }, "id:a")).status,
       400,
     );
-    const ratingBefore = (await profile("a")).profile!.rating;
     for (let retry = 0; retry < 2; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
     const after = (await profile("a")).profile!;
-    assert.equal(after.totals.matches, 0);
+    assert.equal(after.totals.matches, 1);
     assert.deepEqual(
       after.rating,
-      ratingBefore,
+      undefined,
       "whole games cannot award Elo or a second round receipt",
     );
     const personal = (await (
@@ -1514,11 +1510,15 @@ test("solo HTTP rounds authenticate and finished games stay pending without corr
         headers: { origin, authorization: "Bearer id:a" },
       })
     ).json()) as { matches: { result: MatchResult }[] };
-    assert.equal(personal.matches.length, 0);
+    assert.equal(personal.matches.length, 1);
     const feed = (await (
       await fetch(`${origin}/api/matches`, { headers: { origin } })
     ).json()) as { matches: unknown[] };
     assert.equal(feed.matches.length, 0);
+    const leaderboard = (await (
+      await fetch(`${origin}/api/leaderboard`, { headers: { origin } })
+    ).json()) as { players: unknown[] };
+    assert.deepEqual(leaderboard.players, []);
     // Exhausting account links must not silently turn authenticated solo games into unlisted guest records.
     for (let retry = 2; retry < 30; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
@@ -1526,15 +1526,15 @@ test("solo HTTP rounds authenticate and finished games stay pending without corr
       (await finish({ ...whole, matchId: "over-budget" }, "id:a")).status,
       429,
     );
-    assert.equal((await profile("a")).profile!.totals.matches, 0);
+    assert.equal((await profile("a")).profile!.totals.matches, 1);
     assert.equal(
       (await report({ result: { ...result, round: 3 } }, "id:a")).status,
       200,
       "round reports have their own budget",
     );
     assert.equal(
-      (await profile("b")).profile!.totals.matches,
-      0,
+      (await profile("b")).profile,
+      null,
       "only the authenticated caller gets career credit",
     );
   } finally {
