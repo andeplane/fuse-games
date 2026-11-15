@@ -7,7 +7,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
 import { openTopMenu } from "./lib/top-menu.js";
 import { ridersPageUrl } from "./lib/riders-url.js";
-const base = ridersPageUrl(process.env.HOME_URL ?? "http://127.0.0.1:4188/");
+const home = new URL(
+  ridersPageUrl(process.env.HOME_URL ?? "http://127.0.0.1:4188/"),
+);
+home.searchParams.set("mute", "");
+const base = home.href;
 // WebKit on the CI runner sometimes reports a same-origin sprite XHR as an access-control failure; Phaser retries and the page is fine.
 const results: object[] = [];
 await mkdir("artifacts", { recursive: true });
@@ -456,7 +460,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           if (name === "Player options") {
             await inside(
               page,
-              page.getByRole("button", { name: "EFFECTS ON", exact: true }),
+              page.getByRole("button", { name: "EFFECTS OFF", exact: true }),
             );
             await dialog
               .getByRole("button", { name: "♫ RADIO", exact: true })
@@ -485,7 +489,8 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
         await ready(page);
         assert.equal(await page.locator(".online-roster>span").count(), 6);
         const solo = new URL(base);
-        solo.search = "?solo=1&display=1";
+        solo.searchParams.set("solo", "1");
+        solo.searchParams.set("display", "1");
         await page.goto(solo.href);
         await page.locator(".online-controls").waitFor({ state: "visible" });
         await ready(page);
