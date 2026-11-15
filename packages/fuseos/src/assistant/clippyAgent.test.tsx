@@ -27,10 +27,10 @@ function log() {
 }
 
 async function ask(user: ReturnType<typeof userEvent.setup>, text: string) {
-  await user.type(
-    within(balloon()).getByRole("textbox", { name: "Ask Clippy" }),
-    `${text}{Enter}`,
-  );
+  const input = within(balloon()).getByRole("textbox", { name: "Ask Clippy" });
+  // A reply can render before the previous turn's cleanup re-enables the input.
+  await waitFor(() => expect(input).toBeEnabled());
+  await user.type(input, `${text}{Enter}`);
 }
 
 function call(tool: string, args: Record<string, unknown> = {}): string {
