@@ -354,3 +354,23 @@
   outline: 0.125rem solid var(--fui-yellow, #ffd84a);
   outline-offset: 0.125rem;
 }
+
+/* SHARE sits with RANDOM SONG at the carousel's top: it copies a link to the selected song and level. */
+.fm-picker.fm-picker .fm-option-link {
+  --fm-option: var(--fui-cyan, #5ad7e6);
+  flex: 0 0 auto;
+  width: auto;
+  /* Wide enough for COPIED, so the row does not shift when the button answers. */
+  min-width: 5.5rem;
+  min-height: 2.25rem;
+  margin: 0;
+  padding: var(--fui-space-2) var(--fui-space-3);
+  color: var(--fm-option);
+  border-color: color-mix(in srgb, var(--fm-option) 60%, transparent);
+  font: 0.6875rem/1 var(--fui-font-pixel);
+}
+@media (max-width: 640px) {
+  .fm-picker.fm-picker .fm-option-link {
+    padding-inline: var(--fui-space-2);
+  }
+}
