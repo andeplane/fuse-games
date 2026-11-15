@@ -25,16 +25,29 @@ export async function openPlayOptions(
     await hosting.locator("summary").click();
 }
 
-/** Room creation leaves the host unseated until the explicit Join action. */
+/** A remembered host may already be seated; otherwise take its seat through the visible admission UI. */
 export async function takeHostSeat(page: Page, name: string): Promise<void> {
   const join = page.locator(".fui-slot-admission[open]");
+  // This action belongs to this device: a watcher sees SWAP TO PLAYER instead.
+  // A roster count alone cannot prove the host took a seat; another peer may be listed.
+  const seated = page
+    .locator("button.room-switch")
+    .filter({ hasText: /^SWAP TO SPECTATOR$/ });
+  const takeSeat = page
+    .locator(".fui-room-open-slot")
+    .getByRole("button", { name: "Join", exact: true })
+    .filter({ visible: true })
+    .first();
+  await seated
+    .or(join)
+    .or(takeSeat)
+    .filter({ visible: true })
+    .first()
+    .waitFor();
+  if (await seated.isVisible()) return;
   if (!(await join.isVisible())) {
     const count = await page.locator(".fui-room-count").innerText();
-    await page
-      .locator(".fui-room-open-slot")
-      .getByRole("button", { name: "Join", exact: true })
-      .first()
-      .click();
+    await takeSeat.click();
     if (!(await join.count())) {
       await page.waitForFunction(
         (before) =>

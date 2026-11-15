@@ -312,16 +312,12 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .filter({ hasText: "Power" })
               .locator("input");
             await power.fill("42");
-            await inside(
-              page,
-              page.getByRole("button", { name: "Back", exact: true }),
-            );
-            await page
-              .getByRole("button", {
-                name: "Room settings",
-                exact: true,
-              })
-              .click();
+            const roomSettingsBack = dialog.getByRole("button", {
+              name: "Room settings",
+              exact: true,
+            });
+            await inside(page, roomSettingsBack);
+            await roomSettingsBack.click();
             assert.equal(
               await page.getByLabel("Match length").inputValue(),
               "7",
@@ -336,7 +332,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
               .click();
             assert.equal(await power.inputValue(), "42");
-            await page
+            await dialog
               .getByRole("button", {
                 name: "Room settings",
                 exact: true,
@@ -378,12 +374,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
             await page
               .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
               .click();
-            await page
-              .getByRole("button", {
-                name: "Room settings",
-                exact: true,
-              })
-              .click();
+            await roomSettingsBack.click();
             assert.equal(
               await aim.inputValue(),
               "0.37",
@@ -408,7 +399,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .getByText("Choose", { exact: false })
               .waitFor({ state: "hidden" });
             assert.equal((await stored()).bombChargeTicks, 24);
-            await page
+            await dialog
               .getByRole("button", { name: "Back", exact: true })
               .click();
             await dialog.waitFor({ state: "hidden" });
@@ -428,12 +419,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
               .click();
             assert.equal(await power.inputValue(), "42");
-            await page
-              .getByRole("button", {
-                name: "Room settings",
-                exact: true,
-              })
-              .click();
+            await roomSettingsBack.click();
           }
           if (name === "AVATAR") {
             for (const option of await dialog.locator(".avatar-option").all()) {
@@ -472,12 +458,14 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           });
           await inside(
             page,
-            page.getByRole("button", { name: "Back", exact: true }),
+            dialog.getByRole("button", { name: "Back", exact: true }),
           );
           await page.screenshot({
             path: `artifacts/menu-${tag}-${name === "Player options" ? "audio" : name.replaceAll(" ", "-")}.png`,
           });
-          await page.getByRole("button", { name: "Back", exact: true }).click();
+          await dialog
+            .getByRole("button", { name: "Back", exact: true })
+            .click();
           await dialog.waitFor({ state: "hidden" });
         }
         await page.reload();
