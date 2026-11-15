@@ -6,7 +6,7 @@ import { once } from "node:events";
 import { RoomError } from "fuse-network-be";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { SharedTelemetryQuota } from "fuse-telemetry/limits";
-import { createSongScoresHttp } from "../src/server/score-http.js";
+import { createSongScoresHttp, MAX_SONG_SCORE_BODY_BYTES } from "../src/server/score-http.js";
 import { SongScores } from "../src/server/song-scores.js";
 import { createLibrary, SOLO_LEAD_IN_MS } from "../src/engine/index.js";
 import { GRID_SSC } from "./fixtures/songs.js";
@@ -109,5 +109,5 @@ test("HTTP runs require verified identity, bounded JSON, and known canonical cha
     ).status,
     400,
   );
-  assert.equal((await post("/runs", "x".repeat(750_001))).status, 413);
+  assert.equal((await post("/runs", "x".repeat(MAX_SONG_SCORE_BODY_BYTES + 1))).status, 413);
 });

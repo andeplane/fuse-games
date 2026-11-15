@@ -7,7 +7,6 @@ import {
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import { createResultsHistory } from "fuse-ui/results-history";
-import { frontResults } from "../online/result.js";
 import {
   createPlayMetrics,
   startGameAnalytics,
@@ -231,6 +230,7 @@ function landing(error = ""): void {
 
 function room(code: string, token: string | undefined, display: boolean): void {
   const status = el("p", "Connecting…", "ff-status");
+  let detached = false;
   status.setAttribute("role", "status");
   const lobby = el("section", "", "ff-lobby");
   const play = el("section", "", "ff-play");
@@ -240,8 +240,10 @@ function room(code: string, token: string | undefined, display: boolean): void {
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
     onBack: () => {
-      runtime.stop();
-      location.href = link();
+      resultsHistory.close(() => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }), () => {
+        runtime.stop();
+        location.href = link();
+      });
     },
     backText: "Leave",
     onAction: (id) =>
@@ -339,8 +341,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
         if (online && !display && !store.getItem(keys.host(code)) && who)
           runtime.command({ type: "join", name: who });
       },
-      state: (frame) => show(frame),
+      state: (frame) => { if (!detached) show(frame); },
       event: (event, matchId) => {
+        if (detached) return;
         field.event(matchId, event, performance.now());
         audio.event(matchId, event, shown, runtime.slot());
         const ping = radar.event(matchId, event, shown, runtime.slot());
@@ -396,7 +399,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
     );
     const confirmed = runtime.confirmedFrame();
     if (!display && confirmed)
-      resultsHistory.observe(frontResults(confirmed.matchId, confirmed.decided), confirmed.logTick);
+      resultsHistory.observe(confirmed.history, confirmed.logTick);
     const inLobby = view.stage === "lobby";
     // The room's line is at the room's foot; in a match it is the line under the page's header again.
     if (!inLobby && status.parentElement !== app) lobby.before(status);
@@ -1096,7 +1099,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
   window.addEventListener("blur", blurred);
   runtime.start();
   teardown = () => {
-    resultsHistory.dispose();
+    detached = true;
     stopPlaytestCapture();
     stopPlaytestInput();
     cancelAnimationFrame(raf);
@@ -1104,7 +1107,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
     window.removeEventListener("keydown", keys123);
     window.removeEventListener("keyup", keyUp);
     window.removeEventListener("blur", blurred);
-    runtime.stop();
+    resultsHistory.close(() => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }), () => runtime.stop());
     field.dispose();
   };
 }

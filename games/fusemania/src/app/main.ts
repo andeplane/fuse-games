@@ -4,6 +4,7 @@ import {
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
 import { identityToken } from "fuse-ui/browser-account";
 import "fuse-ui/social.css";
 import {
@@ -111,7 +112,7 @@ import {
   type SessionModel,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { historyReceipts } from "../online/result.js";
 import {
   NOT_OPEN,
   bestRating,
@@ -863,8 +864,10 @@ function enterRoom(
   const viewer: Viewer = { me: "", host: solo, solo, display };
   const choice = first ?? chosen(library);
   const leave = () => {
-    runtime.stop();
-    location.href = withFlags(endpoints.appUrl());
+    history.close(historySnapshot, () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    });
   };
 
   // ---- the page ----
@@ -1988,7 +1991,22 @@ function enterRoom(
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room" ? { room: { code, token: session.token } } : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => display ? "" : runtime.self,
+    now: () => performance.now(),
+  });
+  const historySnapshot = () => {
+    const state = runtime.roomState();
+    return {
+      receipts: !display && state && library === LIBRARY ? historyReceipts(library, state) : [],
+      confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+    };
+  };
   const bests = createBests(store);
   let finished = "";
   const remembered = seatName(
@@ -2065,22 +2083,8 @@ function enterRoom(
         if (next.chart !== choice.chart) runtime.pick(choice.chart);
       }
       render(next, frame);
-      const state = runtime.roomState();
-      if (!display && state && library === LIBRARY && (session.kind === "room" || social.isSignedIn()))
-        for (const report of dueReports(
-          library,
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(session.kind === "room" ? `/api/games/${GAME}/rooms/${code}/${report.path}` : `/api/games/${GAME}/me/${report.path}`),
-            report,
-            { fetch: social.reportFetch, ...(session.kind === "room" ? { roomToken: session.token } : {}) },
-          );
-        }
+      const snapshot = historySnapshot();
+      history.observe(snapshot.receipts, snapshot.confirmedTick);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.
@@ -2147,7 +2151,7 @@ function enterRoom(
         },
   );
   installRoomLifecycle(window, {
-    stop: () => runtime.stop(),
+    stop: () => { history.dispose(); runtime.stop(); },
     destroy: () => {
       stopPlaytestInput();
       menu.dispose();

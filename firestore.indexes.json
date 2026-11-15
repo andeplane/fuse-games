@@ -155,7 +155,7 @@
     },
     {
       "collectionGroup": "fuse-production-telemetry-song-runs",
-      "fieldPath": "inputs",
+      "fieldPath": "inputEvidence",
       "indexes": []
     },
     {

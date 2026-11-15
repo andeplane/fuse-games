@@ -39,7 +39,6 @@ import { createAppPortal } from "fuse-ui/portal";
 import { createTopBar } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import { createResultsHistory } from "fuse-ui/results-history";
-import { birdsResults } from "../online/result.js";
 import { createModalInputGate } from "fuse-ui/modal-input";
 import {
   createPlayMetrics,
@@ -696,7 +695,7 @@ function room(code: string, display: boolean, practice = false): void {
       );
       const confirmed = runtime.confirmedFrame?.();
       if (!display && !practice && confirmed)
-        resultsHistory.observe(birdsResults(confirmed), Math.floor(confirmed.tick / 3));
+        resultsHistory.observe(confirmed.history, confirmed.logTick);
       ownSeat = frame.seats.find((s) => s.id === me && !s.watcher);
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
@@ -889,8 +888,10 @@ function room(code: string, display: boolean, practice = false): void {
     audio.destroy();
   };
   leave.onclick = () => {
-    stop();
-    location.href = endpoints.appUrl();
+    resultsHistory.close(() => ({ receipts: currentFrame?.history ?? [], confirmedTick: runtime.confirmedFrame?.()?.logTick ?? -1 }), () => {
+      stop();
+      location.href = endpoints.appUrl();
+    });
   };
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),

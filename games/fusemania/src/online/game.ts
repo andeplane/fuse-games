@@ -55,6 +55,7 @@ import {
   seatName,
   validMatchId,
 } from "./names.js";
+import { captureHistoryReceipts, currentHistoryReceipts, parseRecentResults, type FusemaniaReceipt } from "./result.js";
 
 /**
  * Fusemania behind the netcode's `RollbackGame`. The room keeps the seats, the lobby's settings (the song, the mode
@@ -224,6 +225,8 @@ export interface Room extends ManagedRoom<Settings> {
   session: Session | null;
   /** The running song waits for its devices to have the audio; null once it moves, and outside a match. */
   hold: Hold | null;
+  /** Up to eight recent parents, each with at most ten song receipts and its final aggregate. */
+  recentResults: FusemaniaReceipt[][];
 }
 
 export interface SeatView {
@@ -289,7 +292,7 @@ const SEAT_KEYS = [
   "away",
 ];
 const STAGES: readonly RoomStage[] = ["lobby", "running", "over"];
-const FIELDS = 12;
+const FIELDS = 13;
 const seatOrder = (a: SeatRecord, b: SeatRecord) =>
   a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -592,6 +595,7 @@ export function createFusemaniaGame(
       world: null,
       session: null,
       hold: null,
+      recentResults: [],
     };
   }
 
@@ -868,6 +872,7 @@ export function createFusemaniaGame(
             .sort(),
         };
         settle(room, world, room.decided.winner);
+        captureHistoryReceipts(library, room);
       }
     }
     room.tick = tick;
@@ -911,6 +916,7 @@ export function createFusemaniaGame(
       room.hold
         ? [room.hold.ticks, [...room.hold.ready], room.hold.screen]
         : null,
+      structuredClone(room.recentResults),
     ];
   }
 
@@ -933,11 +939,13 @@ export function createFusemaniaGame(
       epoch,
       rawSession,
       rawHold,
+      rawRecentResults,
     ] = fields;
     const settings = parseSettings(rawSettings),
       play = parseSettings(rawPlay),
       seats = decodeSeats(rawSeats),
       roster = decodeRoster(rawRoster);
+    const recentResults = parseRecentResults(rawRecentResults, tick, library);
     if (
       !validMatchId(id) ||
       !STAGES.some((known) => known === stage) ||
@@ -945,6 +953,7 @@ export function createFusemaniaGame(
       !play ||
       !seats ||
       !roster ||
+      !recentResults ||
       !uint32(epoch) ||
       epoch > tick
     )
@@ -1057,7 +1066,7 @@ export function createFusemaniaGame(
         return;
       hold = { ticks: rawHold[0], ready: [...ready], screen: rawHold[2] };
     }
-    return {
+    const room: Room = {
       tick,
       matchId: id,
       epoch,
@@ -1071,7 +1080,14 @@ export function createFusemaniaGame(
       world,
       session,
       hold,
+      recentResults,
     };
+    if (stage === "over") {
+      const retained = recentResults.at(-1) ?? [];
+      const signature = (receipt: FusemaniaReceipt) => JSON.stringify(receipt, (_key, value) => plain(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : 1)) : value);
+      if (currentHistoryReceipts(library, room).some(expected => !retained.some(receipt => signature(receipt) === signature(expected)))) return;
+    }
+    return room;
   }
 
   function hash(room: Room): string {

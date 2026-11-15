@@ -23,6 +23,28 @@ only bounded known-chart document reads; it does not scan raw events. Ties retai
 earlier result, then sort by stable account ID internally. New chart versions have
 new boards; old numeric bests cannot be safely migrated without replay evidence.
 
+Runs accept at most 24,000 input events, including releases and extra taps. This
+leaves room above The Glass Prison's 6,000 notes (12,000 ordinary press/releases).
+The JSON request is bounded to 1,500,000 bytes while streaming, with at most 16
+concurrent admitted score requests and four per address. After validating and
+replaying the normalized events, the server serializes that array to UTF-8 JSON
+and compresses it with zlib DEFLATE. The private completion document stores the
+bytes as `inputEvidence`, `inputEncoding: "json+deflate"`, and `inputCount`.
+Compressed evidence is capped at 900,000 bytes, leaving more than 140 KiB below
+Firestore's 1 MiB document limit for the bounded metadata. It is written in the
+same transaction as the immutable completion and both score projections.
+The API never accepts compressed input or exposes evidence in public reads.
+Internal inspection must bound inflation to 1,500,000 bytes before parsing; no
+evidence-decompression API is introduced. Legacy events may still contain their
+original uncompressed `inputs` array until their retention expires.
+
+The all-song catalog coalesces concurrent reads and caches successful results for
+15 seconds per service instance. A successful completion invalidates that instance's
+cache and any older in-flight catalog read; an unsuccessful completion does not.
+Other instances can show their previously cached catalog for up to 15 seconds.
+Failed catalog reads are not cached. A specific chart's leaderboard always reads
+the backing projection directly, so opening a chart does not wait for cache expiry.
+
 Tickets expire after an hour. Each account has one active ticket; a newer start
 replaces the previous attempt across service instances. Submission checks ownership,
 elapsed song duration and bounded, ordered input data, with account/address quotas
@@ -56,3 +78,14 @@ the shared activity view. A playlist has a stable parent match and one numbered
 round per completed song; its summary appears only when all selected songs finish.
 The activity percentage divides the aggregate by the selected playlist length.
 Ordinary reported results do not update the replay-verified song leaderboard.
+
+Song receipts are frozen on their deciding tick in the rollback-owned room state,
+before a lobby or rematch replaces the current world. The checkpoint retains eight
+recent parent matches, with at most ten numbered song receipts and one aggregate
+per parent (88 receipts total). Strict decoding checks counter bounds, chart/song
+context, parent identity, chronological deciding ticks, contiguous round ordinals,
+the final aggregate and agreement with the currently finished world. Submission
+waits for the closed snapshot's `logTick` to cover each deciding tick; an input-ACK
+frontier alone is insufficient. This preserves a song or final playlist result
+when the next song starts before the closed snapshot catches up. Shared result
+transport handles deduplication, retries and a bounded confirmation drain on leave.

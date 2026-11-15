@@ -169,6 +169,7 @@ export function showRoom(
   const touch = input.touchEnabled,
     display = !solo && session.role === "display";
   const history = createResultsHistory({fetch:social.reportFetch,apiUrl:endpoints.apiUrl,gameId:GAME,...(session.kind==="room"?{room:{code:session.code,token:session.token}}:{}),signedIn:social.isSignedIn,playerId:()=>viewer.me,now:()=>performance.now()});
+  const leaveRoom=()=>{runtime.input(0);history.close(()=>{const state=runtime.roomState();return{receipts:state?historyReceipts(state):[],confirmedTick:runtime.confirmedFrame()?.logTick??-1};},()=>{runtime.stop();go();});};
   document.body.classList.toggle("fb-display", display);
   const viewer: Viewer = {
     me: "",
@@ -190,10 +191,7 @@ export function showRoom(
     cardTitle = el("h2", "CONNECTING", "fui-lobby-title"),
     cardText = el("p", "Connecting to the room…"),
     back = button("BACK", "fui-button-primary");
-  leave.onclick = back.onclick = () => {
-    runtime.stop();
-    go();
-  };
+  leave.onclick = back.onclick = leaveRoom;
   card.append(cardTitle, cardText, back);
   const nameEntry = ui.createNameEntry({
     normalize: (raw) => seatName(raw) ?? "",
@@ -313,10 +311,7 @@ export function showRoom(
     touchControls: TOUCH_CONTROLS,
     goal: GOAL,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onLeave: () => {
-      runtime.stop();
-      go();
-    },
+    onLeave: leaveRoom,
     onOpenChange: (open) => {
       if (dead) return;
       if (open) runtime.input(0);
@@ -344,10 +339,7 @@ export function showRoom(
   const results = ui.createResultsScreen({
     document,
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      runtime.stop();
-      go();
-    },
+    onBack: leaveRoom,
     backText: "Leave",
     onAction: (id) =>
       runtime.command({

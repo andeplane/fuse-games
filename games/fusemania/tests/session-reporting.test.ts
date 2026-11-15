@@ -4,11 +4,11 @@ import { ACTION, BOT, JOIN, LEAVE, SETTINGS as SETTINGS_ENTRY } from "fuse-netco
 import { activityId, activityOf, parseMatchResult, type AccountRules, type MatchRecord, type MatchResult } from "fuse-platform";
 import { FULL_RATING } from "../src/engine/index.js";
 import { validName } from "../src/basics.js";
-import { PLAY, type Room } from "../src/online/game.js";
-import { matchResult, roundResult } from "../src/online/result.js";
+import { PLAY, READY, type Room } from "../src/online/game.js";
+import { captureHistoryReceipts, historyReceipts, matchResult, roundResult, RESULT_PARENTS, type FusemaniaReceipt } from "../src/online/result.js";
 import { dueReports } from "../src/app/reports.js";
 import { fusemaniaRegistration, parseFusemaniaStats, validFusemaniaField, type FusemaniaStats } from "../src/platform.js";
-import { SETTINGS, fold, game, library, runTo, started } from "./fixtures/room.js";
+import { SETTINGS, fold, game, library, run, runTo, seated, started } from "./fixtures/room.js";
 
 const finish = (room: Room) => { while (room.stage === "running") fold(room); };
 function ace(room: Room) {
@@ -129,4 +129,82 @@ test("aggregate parser enforces playlist bounds, context, averages and field siz
     assert.equal(parseFusemaniaStats({ ...player, ...patch }, 3, library), undefined, JSON.stringify(patch));
   assert.equal(validFusemaniaField([{ ...player, sessionLength: 3 }, { ...result.players[1]!, sessionLength: 5 }]), false);
   assert.equal(parseFusemaniaStats(player, 4, library), undefined);
+});
+
+test("song and aggregate receipts survive rematch before a non-checkpoint completion tick becomes closed", () => {
+  let room = started({ ...SETTINGS, songs: 3 }); finish(room);
+  if (room.tick % 4 === 0) {
+    room = seated({ ...SETTINGS, songs: 3 }); fold(room);
+    fold(room, { a: [[ACTION, "start", "m1"], [READY, 1]], b: [[READY, 1]] });
+    finish(room);
+  }
+  const firstTick = room.decided!.clock;
+  assert.notEqual(firstTick % 4, 0);
+  const sent = new Set<string>();
+  assert.deepEqual(dueReports(library, room, "a", Math.floor((firstTick - 40) / 4) * 4, sent), []);
+  fold(room, { a: [[ACTION, "rematch", "song-2"]] });
+  assert.equal(room.decided, null);
+  run(room, 44);
+  const closed = Math.floor((room.tick - 40) / 4) * 4;
+  assert.ok(closed >= firstTick);
+  const prior = dueReports(library, room, "a", closed, sent);
+  assert.deepEqual(prior.map(report => report.key), ["m1:1"]);
+  prior.forEach(report => sent.add(report.key));
+  finish(room);
+  const second = dueReports(library, room, "a", room.tick, sent);
+  assert.deepEqual(second.map(report => report.key), ["m1:2"]);
+  second.forEach(report => sent.add(report.key));
+  fold(room, { a: [[ACTION, "rematch", "song-3"]] }); finish(room);
+  const finalTick = room.decided!.clock;
+  fold(room, { a: [[ACTION, "rematch", "new-parent"]] });
+  run(room, 44);
+  const finalClosed = Math.floor((room.tick - 40) / 4) * 4;
+  assert.ok(finalClosed >= finalTick);
+  assert.deepEqual(dueReports(library, room, "a", finalClosed, sent).map(report => report.key), ["m1:3", "m1:match"]);
+  const checkpoint = game.checkpoint.encode(room), restored = game.checkpoint.decode(checkpoint, room.tick)!;
+  assert.ok(restored);
+  assert.equal(game.hash(restored), game.hash(room));
+  assert.deepEqual(historyReceipts(library, restored), historyReceipts(library, room));
+});
+
+test("reused host parent ids replace closed groups without growing or corrupting checkpoint history", () => {
+  const room = started(); finish(room);
+  captureHistoryReceipts(library, room);
+  assert.equal(historyReceipts(library, room).length, 2, "capturing a deciding tick is idempotent");
+  for (const id of ["m1", "other-parent", "m1", "m1"]) {
+    fold(room, { a: [[ACTION, "rematch", id]] }); finish(room);
+    assert.equal(new Set(room.recentResults.map(group => group[0]!.result.matchId)).size, room.recentResults.length);
+    assert.ok(room.recentResults.every(group => group.length === 2));
+    assert.ok(game.checkpoint.decode(game.checkpoint.encode(room), room.tick));
+  }
+});
+
+test("retained receipts are bounded by parent, detached and strictly validated at the checkpoint boundary", () => {
+  const room = started(); finish(room);
+  for (let i = 1; i < RESULT_PARENTS + 2; i++) {
+    fold(room, { a: [[ACTION, "rematch", `parent-${i}`]] }); finish(room);
+  }
+  assert.equal(room.recentResults.length, RESULT_PARENTS);
+  assert.ok(room.recentResults.every(group => group.length === 2));
+  const detached = historyReceipts(library, room);
+  detached[0]!.result.players[0]!.name = "Changed copy";
+  assert.notEqual(historyReceipts(library, room)[0]!.result.players[0]!.name, "Changed copy");
+  const original = game.checkpoint.encode(room);
+  assert.ok(game.checkpoint.decode(original, room.tick));
+  for (const corrupt of [
+    (groups: FusemaniaReceipt[][]) => { groups.push(structuredClone(groups[0]!)); },
+    (groups: FusemaniaReceipt[][]) => { groups[0]![0]!.tick = room.tick + 1; },
+    (groups: FusemaniaReceipt[][]) => { groups[0]!.push(structuredClone(groups[0]![0]!)); },
+    (groups: FusemaniaReceipt[][]) => { groups[0]![0]!.result.players[0]!.rating++; },
+    (groups: FusemaniaReceipt[][]) => { groups[0]![0]!.result.round = 2; },
+    (groups: FusemaniaReceipt[][]) => { groups.at(-1)!.pop(); },
+    (groups: FusemaniaReceipt[][]) => { groups[0]!.pop(); },
+    (groups: FusemaniaReceipt[][]) => { groups[0]![0]!.result.players = []; },
+  ]) {
+    const fields = structuredClone(original);
+    corrupt(fields[12] as FusemaniaReceipt[][]);
+    assert.equal(game.checkpoint.decode(fields, room.tick), undefined);
+  }
+  assert.deepEqual(dueReports(library, room, "watcher", room.tick, new Set()), []);
+  assert.deepEqual(dueReports(library, room, "bot:1", room.tick, new Set()), []);
 });

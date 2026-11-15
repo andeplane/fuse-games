@@ -2,6 +2,27 @@ import type { PlayerResult } from "./game.js";
 import type { MatchResult } from "./result.js";
 import { MAX_RATED_PLAYERS } from "./rating.js";
 
+/** The shared account display contract, applied to game receipts without changing runtime seat names. */
+export function historyPlayerName(name: string): string {
+  return Array.from(name.replace(/[\u0000-\u001f\u007f]|\p{Cs}/gu, "").trim()).slice(0, 18).join("").trim() || "Player";
+}
+
+export interface HistoryReceipt<P extends PlayerResult = PlayerResult> { tick: number; result: MatchResult<P> }
+/** Retained irreversible outcomes are checkpoint data; predictions never enter this array. */
+export function parseHistoryReceipts<P extends PlayerResult>(raw: unknown, tick: number, parsePlayer: (raw: unknown, rounds: number) => P | undefined, validId: (id: unknown) => id is string, isBot: (id: string) => boolean, max = 64): HistoryReceipt<P>[] | undefined {
+  if (!Array.isArray(raw) || raw.length > max) return;
+  const receipts: HistoryReceipt<P>[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const data = item as Record<string, unknown>;
+    if (Object.keys(data).sort().join() !== "result,tick" || !Number.isSafeInteger(data.tick) || Number(data.tick) < 1 || Number(data.tick) > tick || (receipts.length > 0 && Number(data.tick) < receipts[receipts.length - 1]!.tick)) return;
+    const result = parseHistoryResult(data.result, parsePlayer, validId, isBot);
+    if (!result) return;
+    receipts.push({ tick: Number(data.tick), result });
+  }
+  return receipts;
+}
+
 const KEYS = ["playerId", "name", "slot", "roundsPlayed", "roundWins", "matchScoreUnits", "matchPlacement", "earlyExits"];
 /** Browser-safe strict base-player parser for frozen game checkpoints. Account/seat rules remain game-owned. */
 export function parseHistoryPlayer(raw: unknown, rounds: number): PlayerResult | undefined {

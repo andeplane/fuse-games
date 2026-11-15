@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { deflateSync } from "node:zlib";
 import { RoomError } from "fuse-network-be";
 import { publicIdOf, type HistoryDatabase } from "fuse-platform";
 import {
@@ -25,6 +26,8 @@ import {
 } from "../song-scores.js";
 
 const HOUR = 3_600_000;
+const MAX_EVIDENCE_BYTES = 900_000;
+const CATALOG_CACHE_MS = 15_000;
 interface RankedEntry extends ScoreEntry {
   uid: string;
 }
@@ -93,6 +96,9 @@ function parseTicket(value: unknown): Ticket {
  * They never pass through the anonymous analytics ingestion endpoint. */
 export class SongScores {
   private versions = new Map<string, string>();
+  private catalogGeneration = 0;
+  private cachedCatalog: { until: number; songs: SongBoard[] } | undefined;
+  private pendingCatalog: { generation: number; promise: Promise<SongBoard[]> } | undefined;
   constructor(private options: SongScoreOptions) {
     for (const source of options.sources)
       this.versions.set(
@@ -115,6 +121,30 @@ export class SongScores {
     };
   }
   async catalog(): Promise<SongBoard[]> {
+    const generation = this.catalogGeneration;
+    if (this.cachedCatalog && this.cachedCatalog.until > this.options.now())
+      return structuredClone(this.cachedCatalog.songs);
+    let pending = this.pendingCatalog;
+    if (!pending || pending.generation !== generation) {
+      const promise = this.readCatalog().then(songs => {
+        if (generation === this.catalogGeneration)
+          this.cachedCatalog = { until: this.options.now() + CATALOG_CACHE_MS, songs };
+        return songs;
+      }).finally(() => {
+        if (this.pendingCatalog?.promise === promise) this.pendingCatalog = undefined;
+      });
+      pending = { generation, promise };
+      this.pendingCatalog = pending;
+    }
+    const songs = await pending.promise;
+    // A completion invalidates an already in-flight read as well as a settled cache.
+    return generation === this.catalogGeneration ? structuredClone(songs) : this.catalog();
+  }
+  private invalidateCatalog(): void {
+    this.catalogGeneration++;
+    this.cachedCatalog = undefined;
+  }
+  private async readCatalog(): Promise<SongBoard[]> {
     const songs = this.options.library.songs;
     const keys = songs.flatMap((song) =>
       song.charts.map((_, i) => this.chart(song.id, i).key),
@@ -210,8 +240,10 @@ export class SongScores {
     if (ticket.version !== selected.version)
       throw new RoomError(409, "The chart changed; replay the song");
     // A completed event is immutable: retries return the original result, never re-run caller-supplied evidence.
-    if (ticket.status === "completed")
+    if (ticket.status === "completed") {
+      this.invalidateCatalog();
       return { rating: initial.rating, saved: true };
+    }
     const now = this.options.now();
     if (ticket.expiresAt <= now)
       throw new RoomError(410, "Run expired; replay the song");
@@ -280,7 +312,12 @@ export class SongScores {
         "Choose your account name before saving a highscore",
       );
     const entry: RankedEntry = { uid, name, rating: result, endedAt: now };
-    return this.options.database.transact(async (tx) => {
+    // Canonicalize after validation and replay. The API never accepts client-compressed evidence.
+    // A bytes field avoids Firestore's per-map overhead; the cap leaves >140KiB for bounded metadata.
+    const inputEvidence = deflateSync(Buffer.from(JSON.stringify(inputs), "utf8"));
+    if (inputEvidence.byteLength > MAX_EVIDENCE_BYTES)
+      throw new RoomError(400, "Input evidence too large");
+    const outcome = await this.options.database.transact(async (tx) => {
       const personalKey = `telemetry-song-bests/${digest(`${uid}:${selected.key}`)}`;
       const activeKey = `telemetry-song-active/${digest(uid)}`;
       const [stored, board, personal, active] = await tx.getMany([
@@ -333,10 +370,14 @@ export class SongScores {
         rating: result,
         percent: result / 10_000,
         endedAt: now,
-        inputs,
+        inputEvidence,
+        inputEncoding: "json+deflate",
+        inputCount: inputs.length,
         expiresAt: now + 90 * 24 * HOUR,
       });
       return { rating: result, saved: true };
     });
+    this.invalidateCatalog();
+    return outcome;
   }
 }

@@ -10,6 +10,7 @@ test("controls require runtime admission even when a recovered frame reports the
   const world = getView(createMatch("match", 42, [{ id: "a", name: "Skye" }]));
   const frame: Frame<BirdsView> = {
     decided: null,
+    history: [],
     tick: 3,
     logTick: 1,
     managerId: "a",

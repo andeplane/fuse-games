@@ -17,6 +17,7 @@ const context: MetricsContext = {
 };
 const frame: Frame<BirdsView> = {
   decided: null,
+  history: [],
   tick: 1,
   logTick: 1,
   matchId: "lobby-scope",

@@ -56,7 +56,7 @@ import type { WorldView } from "../engine/view.js";
 import { createSmoother, forward, forwardInputs, memoBot } from "./forward.js";
 import { GraveyardRuntime } from "../online/runtime.js";
 import type { View } from "../online/game.js";
-import { shiftReceipts } from "../online/result.js";
+import { readShiftHistory } from "./history.js";
 import { seatName } from "../online/names.js";
 import { draw, COLORS } from "../render/scene.js";
 import {
@@ -115,7 +115,7 @@ function navigate(search = "") {
   audio.stop();
   location.href = url(search);
 }
-function header(extra: HTMLElement[] = []) {
+function header(extra: HTMLElement[] = [], leave?: () => void) {
   const h = el("header", "", "top"),
     portal = createAppPortal({
       document,
@@ -125,6 +125,11 @@ function header(extra: HTMLElement[] = []) {
     }),
     brand = el("a", "GRAVEYARD SHIFT", "brand");
   brand.href = url();
+  if (leave) brand.onclick = event => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    leave();
+  };
   h.append(portal.element, brand, social.element(), ...extra);
   return createTopBar({
     element: h,
@@ -261,6 +266,14 @@ function room() {
     playerId: () => self,
     now: () => performance.now(),
   });
+  const leave = () => {
+    const leavingRuntime = runtime;
+    history.close(() => readShiftHistory(leavingRuntime), () => {
+      leavingRuntime?.stop();
+      audio.stop();
+      location.href = url();
+    });
+  };
   let host = solo,
     shared = false;
   // The room's state is one line: at the room's foot while it waits, in the bar during a shift. What went wrong is
@@ -287,10 +300,10 @@ function room() {
   const exit = button("LEAVE"),
     retry = button("RECONNECT", "retry"),
     menu = el("div", "", "gs-menu");
-  exit.onclick = () => navigate();
+  exit.onclick = leave;
   retry.onclick = () => location.reload();
   menu.append(exit, retry);
-  app.append(header([live.element, menu]));
+  app.append(header([live.element, menu], leave));
   const main = el("main", "", "room"),
     lobby = el("section", "", "lobby"),
     roster = createRoster({ emptyText: "Waiting for the night crew" }),
@@ -478,7 +491,7 @@ function room() {
   // The result: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({
     document,
-    onBack: () => navigate(),
+    onBack: leave,
     backText: "Leave",
     onAction: (id) => {
       if (id === "rematch") runtime?.readyUp();
@@ -535,8 +548,10 @@ function room() {
         host = solo || frame.managerId === self;
         shared = settings.display;
         runtime?.flush();
-        const room = runtime?.roomState();
-        if (!display && room) history.observe(shiftReceipts(room), runtime?.confirmedTick() ?? -1);
+        if (!display) {
+          const snapshot = readShiftHistory(runtime);
+          history.observe(snapshot.receipts, snapshot.confirmedTick);
+        }
         const mine = frame.seats.find((s) => s.id === self && !s.watcher);
         ownSeat = frame.stage === "lobby" ? mine : undefined;
         observeConfirmedPlay(

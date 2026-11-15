@@ -118,6 +118,7 @@ export class PracticeRuntime implements Session {
         stage: "running",
         world,
         decided: null,
+        history: [],
         seats: [
           {
             id: player.id,

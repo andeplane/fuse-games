@@ -57,6 +57,8 @@ export interface Room extends ManagedRoom<Settings> {
   ready: Record<string, boolean>;
   world: World | null;
   completion: ShiftCompletion | null;
+  /** Rollback-owned recent results survive fast lobby/rematch transitions until confirmation catches up. */
+  completions: ShiftCompletion[];
 }
 export interface View {
   tick: number;
@@ -103,6 +105,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     ready: {},
     world: null,
     completion: null,
+    completions: [],
   };
 }
 const seats = (r: Room) =>
@@ -209,6 +212,8 @@ export function foldTick(
     if (r.world.tick >= DURATION) {
       r.stage = "over";
       r.completion = completeShift(r, tick);
+      r.completions.push(r.completion);
+      if (r.completions.length > 8) r.completions.shift();
       r.ready = {};
       r.held = {};
     }
@@ -227,13 +232,14 @@ export function encode(r: Room): unknown[] {
     { ...r.ready },
     r.world ? structuredClone(r.world) : null,
     r.completion ? structuredClone(r.completion) : null,
+    r.completions.map(completion => structuredClone(completion)),
   ];
 }
 const plain = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 export function decode(a: readonly unknown[], tick: number): Room | undefined {
   if (
-    a.length !== 9 ||
+    a.length !== 10 ||
     !uint32(tick) ||
     !validMatchId(a[0]) ||
     (a[2] !== "lobby" && a[2] !== "running" && a[2] !== "over")
@@ -341,6 +347,13 @@ export function decode(a: readonly unknown[], tick: number): Room | undefined {
     })) return;
     r.completion = completion;
   } else if (a[8] !== null) return;
+  if (!Array.isArray(a[9]) || a[9].length > 8) return;
+  for (const raw of a[9]) {
+    const completion = parseShiftCompletion(raw);
+    if (!completion || completion.clock > tick || (r.completions.at(-1)?.clock ?? 0) >= completion.clock) return;
+    r.completions.push(completion);
+  }
+  if (r.completion && JSON.stringify(r.completion) !== JSON.stringify(r.completions.at(-1))) return;
   return r;
 }
 export function hash(r: Room): string {

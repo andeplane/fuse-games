@@ -4,9 +4,16 @@ import { DURATION, createWorld } from "../src/engine/world.js";
 import { createRoom, decode, encode, foldTick, hash } from "../src/online/game.js";
 import { isHunterBot, parseShiftCompletion, shiftReceipts } from "../src/online/result.js";
 import { createResultsHistory } from "fuse-ui/results-history";
+import { readShiftHistory } from "../src/app/history.js";
+import { ACTION, type StreamEntries } from "fuse-netcode";
+import type { Entry, Room } from "../src/online/game.js";
 import { graveyardRegistration } from "../src/platform.js";
 
 const A = "a".repeat(24), B = "b".repeat(24);
+function act(room: Room, action: "lobby" | "start" | "rematch", id: string) {
+  const streams = new Map<string, StreamEntries<Entry>>([[A, { generation: 1, entries: [[1, room.tick + 1, ACTION, action, id]] }]]);
+  foldTick(room, A, streams);
+}
 function finalTick() {
   const room = createRoom("shift:1", { display: false });
   for (const [slot, id, name] of [[0, A, "Ada"], [1, B, "Bo"], [2, "bot:2", "Misty Mae"]] as const) {
@@ -105,7 +112,7 @@ test("the game adapter sends one round and match only after confirmation, from a
   spectator.dispose();
 });
 
-test("a signed-out solo shift stays reportable after signing in", () => {
+test("a signed-out solo shift stays reportable after signing in", async () => {
   const room = finalTick(), calls: string[] = [];
   let signedIn = false;
   const seat = room.seats.get(A)!;
@@ -121,9 +128,101 @@ test("a signed-out solo shift stays reportable after signing in", () => {
     return Response.json({ status: "confirmed" });
   } });
   history.observe(shiftReceipts(room), room.tick);
-  assert.deepEqual(calls, []);
+  assert.equal(calls.length, 0);
   signedIn = true;
   history.observe(shiftReceipts(room), room.tick);
+  await new Promise<void>(resolve => setImmediate(resolve));
   assert.deepEqual(calls, ["/api/games/graveyard-shift/me/round-results", "/api/games/graveyard-shift/me/results"]);
   history.dispose();
+});
+
+test("a fast lobby/rematch retains rollback-corrected results until confirmation passes the deciding tick", async () => {
+  const predicted = finalTick(), before = decode(encode(predicted), predicted.tick)!;
+  const calls: { result: { players: { matchScoreUnits: number }[] } }[] = [];
+  const history = createResultsHistory({ gameId: "graveyard-shift", apiUrl: path => path, room: { code: "AB12", token: "capability" }, signedIn: () => false, playerId: () => A, now: () => 0, fetch: async (_url, init) => {
+    calls.push(JSON.parse(String(init?.body)));
+    return Response.json({ status: "confirmed" });
+  } });
+  foldTick(predicted, A, new Map());
+  assert.equal(predicted.completion!.clock % 4, 1);
+  history.observe(shiftReceipts(predicted), predicted.tick - 1);
+  assert.equal(calls.length, 0);
+  // A replay correction replaces the speculative receipt in authoritative room state.
+  before.world!.hunters[0]!.score = 9;
+  foldTick(before, A, new Map());
+  const decidingTick = before.tick;
+  act(before, "lobby", "next-lobby");
+  act(before, "start", "next-shift");
+  assert.equal(before.completion, null);
+  const recovered = decode(encode(before), before.tick)!;
+  assert.ok(recovered);
+  assert.equal(recovered.completions[0]!.clock, decidingTick);
+  history.observe(shiftReceipts(recovered), decidingTick - 1);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 0);
+  history.observe(shiftReceipts(recovered), decidingTick);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.result.players[0]!.matchScoreUnits === 9));
+  history.observe(shiftReceipts(recovered), recovered.tick);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+  history.dispose();
+});
+
+test("retained shift history stays bounded and rejects corrupt checkpoint lists", () => {
+  const room = finalTick();
+  foldTick(room, A, new Map());
+  for (let index = 0; index < 9; index++) {
+    act(room, "rematch", `again-${index}`);
+    room.world!.tick = DURATION - 1;
+    foldTick(room, A, new Map());
+  }
+  assert.equal(room.completions.length, 8);
+  assert.equal(shiftReceipts(room).length, 16);
+  assert.ok(decode(encode(room), room.tick));
+  const encoded = encode(room);
+  encoded[9] = [...room.completions, room.completions[0]];
+  assert.equal(decode(encoded, room.tick), undefined);
+  encoded[9] = [room.completions[0], room.completions[0]];
+  assert.equal(decode(encoded, room.tick), undefined);
+  encoded[9] = room.completions.slice(0, -1);
+  assert.equal(decode(encoded, room.tick), undefined);
+});
+
+test("ordinary leave drains fresh outcomes against the closed log snapshot before stopping", async () => {
+  let room = finalTick(), closedLogTick: number | undefined, stopped = 0, now = 0;
+  const calls: { result: { players: { matchScoreUnits: number }[] } }[] = [];
+  const polls = new Set<() => void>();
+  const runtime = {
+    roomState: () => room,
+    confirmedFrame: () => closedLogTick === undefined ? undefined : { logTick: closedLogTick },
+    // The live game clock is insufficient proof; the composition helper must ignore it.
+    confirmedTick: () => room.tick,
+  };
+  const history = createResultsHistory({ gameId: "graveyard-shift", apiUrl: path => path, room: { code: "AB12", token: "capability" }, signedIn: () => false, playerId: () => A, now: () => now, schedule: callback => { polls.add(callback); return () => polls.delete(callback); }, fetch: async (_url, init) => {
+    calls.push(JSON.parse(String(init?.body)));
+    return Response.json({ status: "confirmed" });
+  } });
+  const before = decode(encode(room), room.tick)!;
+  foldTick(room, A, new Map());
+  assert.equal(readShiftHistory(runtime).confirmedTick, -1);
+  history.close(() => readShiftHistory(runtime), () => { stopped++; });
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 0);
+  assert.equal(stopped, 0);
+  // Confirmation polling reads the corrected rollback state, never the result seen on Back.
+  room = before;
+  room.world!.hunters[0]!.score = 11;
+  foldTick(room, A, new Map());
+  closedLogTick = room.tick;
+  now = 50;
+  for (const callback of [...polls]) callback();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.result.players[0]!.matchScoreUnits === 11));
+  assert.equal(stopped, 1);
+  assert.equal(polls.size, 0);
+  history.dispose();
+  assert.equal(stopped, 1);
 });

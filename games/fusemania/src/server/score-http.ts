@@ -8,6 +8,8 @@ import type { IdentityVerifier } from "fuse-platform";
 import { TelemetryAdmission, type TelemetryQuota } from "fuse-telemetry/limits";
 import type { SongScores } from "./song-scores.js";
 
+export const MAX_SONG_SCORE_BODY_BYTES = 1_500_000;
+
 async function body(req: IncomingMessage): Promise<unknown> {
   if (req.headers["content-type"]?.split(";")[0]?.trim() !== "application/json")
     throw new RoomError(415, "Expected application/json");
@@ -21,7 +23,7 @@ async function body(req: IncomingMessage): Promise<unknown> {
   try {
     for await (const chunk of req as AsyncIterable<Buffer>) {
       bytes += chunk.length;
-      if (bytes > 750_000) throw new RoomError(413, "Input log too large");
+      if (bytes > MAX_SONG_SCORE_BODY_BYTES) throw new RoomError(413, "Input log too large");
       chunks.push(chunk);
     }
   } finally {
@@ -40,7 +42,8 @@ export function createSongScoresHttp(options: {
   quota: TelemetryQuota;
   now(): number;
 }): HttpExtension {
-  const admission = new TelemetryAdmission(options.now);
+  // Larger replay bodies have a tighter concurrent memory budget than the small analytics batches.
+  const admission = new TelemetryAdmission(options.now, 16, 4);
   return {
     async handle(req, res, address) {
       const url = new URL(req.url ?? "/", "http://scores");

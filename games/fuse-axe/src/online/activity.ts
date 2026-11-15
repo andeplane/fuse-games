@@ -21,7 +21,7 @@ export interface AxeHistoryReceipt { tick: number; result: MatchResult<AxeHistor
 export function runResult(history: readonly AxeHistoryReceipt[], matchId: string, rounds: number, outcome: "victory" | "defeat", finishers: readonly string[]): MatchResult<AxeHistoryPlayer> | undefined {
   const players = new Map<string, AxeHistoryPlayer>();
   for (const receipt of history) {
-    if (receipt.result.round === undefined) continue;
+    if (receipt.result.round === undefined || receipt.result.matchId !== matchId) continue;
     for (const row of receipt.result.players) {
       const old = players.get(row.playerId);
       players.set(row.playerId, {

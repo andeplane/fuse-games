@@ -424,6 +424,7 @@ function room(solo: boolean): void {
   document.body.classList.toggle("fc-display", display);
   const viewer: Viewer = { me: "", host: solo, solo, display };
   const history = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME, ...(session.kind === "room" ? { room: {code:session.code,token:session.token} } : {}), signedIn:social.isSignedIn, playerId:()=>viewer.me, now:()=>performance.now() });
+  const leaveRoom=()=>{controls.clear();history.close(()=>{const state=runtime.roomState();return{receipts:state?historyReceipts(state):[],confirmedTick:runtime.confirmedFrame()?.logTick??-1};},()=>{runtime.stop();location.href=withFlags(endpoints.appUrl());});};
   const sfx = createSfx(muted);
   activeSfx = sfx;
   sfx.setMuted(!soundEnabled);
@@ -449,10 +450,7 @@ function room(solo: boolean): void {
   const menu = createGameMenu({
     ...controllerGuide,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onLeave: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onLeave: leaveRoom,
     onOpenChange: (open) => {
       if (open) controls.clear();
     },
@@ -653,10 +651,7 @@ function room(solo: boolean): void {
   const results = createResultsScreen({
     document,
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onBack: leaveRoom,
     backText: "Leave",
     onAction: (id) =>
       runtime.command({

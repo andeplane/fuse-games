@@ -29,6 +29,8 @@ import {
 } from "../engine/index.js";
 import type { WorldView } from "../engine/view.js";
 import { encodeMatch, decodeMatch } from "./terrain-wire.js";
+import { birdsResults } from "./result.js";
+import { parseHistoryReceipts, parseHistoryPlayer, type HistoryReceipt } from "fuse-platform/history-api";
 
 export interface BirdsSettings {
   display: boolean;
@@ -42,6 +44,7 @@ export interface BirdsRoom extends ManagedRoom<BirdsSettings> {
   match: Match | null;
   /** Frozen at the deciding tick; later lobby membership cannot rewrite a receipt. */
   decided: { tick: number; finishers: string[] } | null;
+  history: HistoryReceipt[];
 }
 export type PlayEntry = [
   seq: number,
@@ -57,6 +60,7 @@ export interface BirdsView {
   world: WorldView | null;
   seats: SeatRecord[];
   decided: BirdsRoom["decided"];
+  history: readonly HistoryReceipt[];
 }
 const validId = (x: unknown): x is string =>
   typeof x === "string" && /^[\w:-]{1,64}$/.test(x);
@@ -169,11 +173,14 @@ export function foldTick(
       }
   }
   const facts = room.match ? advance(room.match, actions) : [];
-  if (room.match?.phase === "over" && !room.decided)
+  if (room.match?.phase === "over" && !room.decided) {
     room.decided = { tick, finishers: room.match.players.filter(player => {
       const seat = room.seats.get(player.id);
       return seat?.connected && !seat.watcher && !seat.bot;
     }).map(player => player.id).sort() };
+    room.history.push(...birdsResults({ tick: tick * 3, stage: "over", world: getView(room.match), seats: [], decided: room.decided, history: [] }));
+    room.history = room.history.slice(-64);
+  }
   if (room.match?.phase === "over" || room.match?.phase === "fault")
     room.stage = "over";
   room.tick = tick;
@@ -181,7 +188,7 @@ export function foldTick(
 }
 function roomFields(room: BirdsRoom): unknown[] {
   return [
-    [room.matchId, room.stage, room.startedAt, room.decided && [room.decided.tick, [...room.decided.finishers]]],
+    [room.matchId, room.stage, room.startedAt, room.decided && [room.decided.tick, [...room.decided.finishers]], structuredClone(room.history)],
     orderedSeats(room).map((s) => [
       s.id,
       s.name,
@@ -206,7 +213,7 @@ export function decodeRoom(
   const [head, rawSeats, rawSettings, rawMatch] = fields;
   if (
     !Array.isArray(head) ||
-    head.length !== 4 ||
+    head.length !== 5 ||
     !validId(head[0]) ||
     !["lobby", "running", "over"].includes(head[1]) ||
     !uint32(head[2]) ||
@@ -261,6 +268,11 @@ export function decodeRoom(
     decided = { tick: rawDecided[0], finishers: [...rawDecided[1]] };
   }
   if ((match?.phase === "over") !== (decided !== null)) return;
+  const history = parseHistoryReceipts(head[4], tick, (raw, rounds) => {
+    const player = parseHistoryPlayer(raw, rounds);
+    return player && rounds === 1 && player.roundsPlayed === 1 && player.slot < 5 && player.matchScoreUnits <= 100 ? player : undefined;
+  }, validId, () => false);
+  if (!history) return;
   if (head[1] === "lobby") {
     if (match !== null || head[2] !== 0) return;
   } else {
@@ -296,6 +308,7 @@ export function decodeRoom(
     seats,
     match,
     decided,
+    history,
   };
 }
 export function hashRoom(room: BirdsRoom): string {
@@ -303,7 +316,7 @@ export function hashRoom(room: BirdsRoom): string {
     ...roomFields(room),
     room.match ? hashState(room.match) : null,
   ];
-  const value = JSON.stringify([room.tick, ...encoded]);
+  const value = JSON.stringify([room.tick, ...encoded], (_key, value: unknown) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
   let a = 2166136261,
     b = 0x9e3779b9;
   for (let i = 0; i < value.length; i++) {
@@ -334,6 +347,7 @@ export const birdsGame: RollbackGame<
     stage: "lobby",
     match: null,
     decided: null,
+    history: [],
   }),
   createTicker: () => foldTick,
   scope: (room) => ({ matchId: room.matchId, round: room.match?.round ?? 1 }),
@@ -346,6 +360,7 @@ export const birdsGame: RollbackGame<
     world: room.match ? getView(room.match) : null,
     seats: orderedSeats(room).map((s) => ({ ...s })),
     decided: room.decided && structuredClone(room.decided),
+    history: structuredClone(room.history),
   }),
   hash: hashRoom,
   checkpoint: { leading: 3, encode: encodeRoom, decode: decodeRoom },

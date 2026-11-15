@@ -298,7 +298,6 @@ function toLobby(room: Room, matchId: string): void {
   room.continued = false;
   room.outcome = "";
   room.tally = [];
-  room.history = [];
 }
 /**
  * Stage `round` of the run for `heroes`: that stage's world, seeded for the run and the stage
@@ -324,7 +323,6 @@ function startRun(room: Room, matchId: string): void {
   const heroes = seats.map((seat) => ({ seat: seat.slot, kind: heroOf(seat) }));
   room.matchId = matchId;
   room.outcome = "";
-  room.history = [];
   room.tally = heroes.map(({ seat, kind }) => ({
     seat,
     kind,
@@ -373,6 +371,7 @@ function bank(room: Room, world: World, tick: number, outcome: "clear" | "defeat
       damage: hero.damage, knockdowns: hero.knockdowns, outcome,
     })),
   } });
+  room.history = room.history.slice(-45);
 }
 /** The run is over: nothing is held from here on, no clock runs, and the next run's heroes are picked. */
 function finish(room: Room, outcome: Outcome): void {
@@ -384,6 +383,7 @@ function finish(room: Room, outcome: Outcome): void {
     const finishers = [...room.seats.values()].filter(seat => !seat.bot && !seat.watcher && seat.connected).map(seat => seat.id);
     const result = runResult(room.history, room.matchId, room.round, outcome, finishers);
     if (result) room.history.push({ tick: room.tick + 1, result });
+    room.history = room.history.slice(-45);
   }
 }
 /**
@@ -843,14 +843,14 @@ export function decode(
     rawHistory,
   ] = fields;
   const settings = parseSettings(rawSettings);
-  if (!Array.isArray(rawHistory) || rawHistory.length > LAST_STAGE + 1) return;
+  if (!Array.isArray(rawHistory) || rawHistory.length > 45) return;
   const history: AxeHistoryReceipt[] = [];
   for (const raw of rawHistory) {
     if (!plain(raw) || Object.keys(raw).length !== 2 || !uint32(raw.tick) || raw.tick > tick) return;
     const at = raw.tick;
     if (history.some(receipt => receipt.tick > at)) return;
     const result = parseHistoryResult(raw.result, parseAxeHistoryPlayer, playerKey, isHistoryBot);
-    if (!result || result.matchId !== matchId || (result.round !== undefined && (result.round > Number(round) || history.some(receipt => receipt.result.round === result.round))) || (result.round === undefined && history.some(receipt => receipt.result.round === undefined))) return;
+    if (!result || result.round !== undefined && result.round > LAST_STAGE || history.some(receipt => receipt.result.matchId === result.matchId && receipt.result.round === result.round)) return;
     history.push({ tick: raw.tick, result });
   }
   if (

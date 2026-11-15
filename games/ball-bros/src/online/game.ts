@@ -32,6 +32,10 @@ import {
 } from "../engine/codec.js";
 import { view, type BallView } from "../engine/view.js";
 import { isMapId, type MapId } from "../engine/maps.js";
+import { parseHistoryResult } from "fuse-platform/history-api";
+import type { MatchResult } from "fuse-platform";
+import { activityResult, parseBallHistoryPlayer } from "./activity.js";
+export interface BallHistoryReceipt { tick: number; result: MatchResult }
 
 export interface Settings {
   display: boolean;
@@ -45,11 +49,13 @@ export interface BallRoom extends ManagedRoom<Settings> {
   arena: ArenaState | null;
   /** Human seats present at the deciding tick, frozen across later joins/leaves. */
   finishers: string[] | null;
+  history: BallHistoryReceipt[];
 }
 export interface RoomView extends BallView {
   stage: Stage;
   players: SeatRecord[];
   finishers: string[] | null;
+  history: BallHistoryReceipt[];
 }
 export type PlayEntry = [
   seq: number,
@@ -116,6 +122,7 @@ export function createRoom(id: string, settings: Settings): BallRoom {
     seats: new Map(),
     arena: null,
     finishers: null,
+    history: [],
   };
 }
 function start(room: BallRoom, id: string): void {
@@ -190,6 +197,8 @@ export function foldTick(
     if (arena.phase === "over") {
       room.stage = "over";
       room.finishers = arena.bases.filter(base => !base.bot && room.seats.get(base.id)?.connected).map(base => base.id).sort();
+      const result = activityResult(ballGame.view(room));
+      if (result) room.history = [...room.history, { tick, result: { ...result, round: 1 } }, { tick, result }].slice(-18);
     }
   }
   room.tick = tick;
@@ -212,14 +221,15 @@ export function encodeRoom(room: BallRoom): unknown[] {
     ]),
     room.arena ? encodeArena(room.arena) : null,
     room.finishers,
+    structuredClone(room.history),
   ];
 }
 export function decodeRoom(
   fields: readonly unknown[],
   tick: number,
 ): BallRoom | undefined {
-  if (fields.length !== 6 || !uint32(tick)) return;
-  const [id, stage, rawSettings, rawSeats, rawArena, rawFinishers] = fields;
+  if (fields.length !== 7 || !uint32(tick)) return;
+  const [id, stage, rawSettings, rawSeats, rawArena, rawFinishers, rawHistory] = fields;
   const settings = parseSettings(rawSettings);
   if (
     !matchId(id) ||
@@ -232,6 +242,14 @@ export function decodeRoom(
   const room = createRoom(id, settings);
   room.tick = tick;
   room.stage = stage;
+  if (!Array.isArray(rawHistory) || rawHistory.length > 18) return;
+  for (const raw of rawHistory) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).length !== 2 || !("tick" in raw) || !uint32(raw.tick) || raw.tick > tick || !("result" in raw)) return;
+    const at = raw.tick;
+    const result = parseHistoryResult(raw.result, parseBallHistoryPlayer, validId, id => /^bot-[1-9][0-9]*$/.test(id));
+    if (!result || room.history.some(receipt => receipt.tick > at || receipt.result.matchId === result.matchId && receipt.result.round === result.round)) return;
+    room.history.push({ tick: at, result });
+  }
   const slots = new Set<number>();
   for (const s of rawSeats) {
     if (
@@ -319,9 +337,10 @@ export const ballGame: RollbackGame<
     stage: r.stage,
     players: seats(r).map((s) => ({ ...s })),
     finishers: r.finishers ? [...r.finishers] : null,
+    history: structuredClone(r.history),
   }),
   hash: hashRoom,
-  checkpoint: { leading: 6, encode: encodeRoom, decode: decodeRoom },
+  checkpoint: { leading: 7, encode: encodeRoom, decode: decodeRoom },
   members: seats,
   seat: (r, id) => r.seats.get(id),
   stage: (r) => r.stage,

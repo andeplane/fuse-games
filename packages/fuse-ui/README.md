@@ -132,6 +132,24 @@ and Volley songs. `createTopBar` supplies radio controls by default; pass
 `music: chosenSongs` for a game's selection, or `music: false` for a custom radio
 UI backed by the same player. See [Fuse Music](../fuse-music/README.md).
 
+## Gameplay activity
+
+The account dialog's Activity tab is a shared global, personal or public-player
+feed with game, solo/multiplayer and match/round filters. Supply `activityApiUrl`
+to `createAccountDialog`; `createGameSocial` supplies it automatically. Leaderboard
+names use the provided `openPlayer` handler. Specialized game boards can call the
+same handler without implementing another player-history view.
+
+New outcome adapters use `createResultsHistory` from `fuse-ui/results-history`.
+Feed it immutable, checkpointed receipts and a rollback-closed **log tick** from
+`runtime.confirmedFrame()?.logTick`, not a prediction or a different game clock.
+Retain recent receipts across lobby/rematch transitions. Inject fetch, endpoints,
+identity state and clock; the shared social fetch attaches verified account identity
+and translates the local solo seat only at the authenticated HTTP boundary.
+`close(readFreshState, stop)` drains confirmation and initial HTTP attempts within
+three seconds before ordinary Back navigation; explicit forced disposal remains
+available for page teardown. See [gameplay activity](../../docs/design/gameplay-activity.md).
+
 ## Tests
 
 `packages/fuse-ui/tests/` runs in `pnpm test` on `linkedom`: structure, hostile names rendered as text, and callbacks. Its boundary check permits only explicit shared browser capabilities, including `fuse-music`.

@@ -5,8 +5,8 @@ export const SCORE_DIFFICULTIES = [
   "Hard",
   "Challenge",
 ] as const;
-/** Firestore map entries cost more than their JSON encoding; 12k leaves >200KiB below its 1MiB document limit. */
-export const MAX_RUN_INPUTS = 12_000;
+/** Room for the largest bundled charts' press/releases plus extra taps; private server evidence is compressed. */
+export const MAX_RUN_INPUTS = 24_000;
 export interface SongInput {
   at: number;
   code: number;

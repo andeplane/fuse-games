@@ -216,4 +216,6 @@ test("a rematch resets inventory and rotates the opening player", () => {
   assert.equal(room.match!.active, 1);
   assert.ok(room.match!.players.every((p) => p.ammo === 3 && p.hp === 100));
   assert.ok(decodeRoom(encodeRoom(room), room.tick));
+  assert.deepEqual(birdsGame.view(room).history, receipts, "rematch keeps the completed battle until a later confirmed frame reads it");
+  assert.deepEqual(decodeRoom(encodeRoom(room), room.tick)!.history, receipts);
 });

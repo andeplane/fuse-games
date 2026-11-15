@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { JOIN, ACTION, type StreamEntries } from "fuse-netcode";
-import { createRoom, foldTick, encode, decode, hash, type Entry, type Room } from "../src/online/game.js";
+import { JOIN, ACTION, World, type StreamEntries } from "fuse-netcode";
+import { createRoom, foldTick, encode, decode, hash, hookGame, type Entry, type Room } from "../src/online/game.js";
 import { CLASSIC_TUNING } from "../src/engine/world.js";
 import { ROUND_TICKS } from "../src/engine/contest.js";
 import { hookRegistration } from "../src/platform.js";
@@ -43,4 +43,16 @@ test("only competitive contests create frozen score history, including negative 
   assert.equal(decode(corrupt, room.tick), undefined);
   assert.equal(hookRegistration.ratesRounds, false);
   assert.equal(hookRegistration.parseStats({ ...result.players[0], points: Infinity }, 1), undefined);
+  assert.notEqual(restored.tick % 4, 0, "completion/recap lies between materialized snapshots");
+  const world = new World(hookGame, restored, "a", "a"), next = restored.tick + 1;
+  const stream = world.stream("a", 1);
+  stream.append(next, [ACTION, "lobby", "next-lobby"]);
+  stream.append(next + 1, [ACTION, "start", "next-match"]);
+  stream.through = next + 100;
+  world.stream("b", 1).through = next + 100;
+  world.advance(next + 48);
+  const confirmed = world.confirmedFrame()!;
+  assert.equal(confirmed.matchId, "next-match");
+  assert.deepEqual(confirmed.history[0]!.result, result);
+  assert.ok(confirmed.history[0]!.tick <= confirmed.logTick);
 });

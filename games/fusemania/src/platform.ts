@@ -99,6 +99,8 @@ export function parseFusemaniaStats(
   raw: unknown,
   rounds: number,
   library: Library = LIBRARY,
+  validId: (value: unknown) => value is string = (value): value is string =>
+    typeof value === "string" && (/^[a-f0-9]{24}$/.test(value) || isBotId(value)),
 ): FusemaniaStats | undefined {
   if (!plain(raw) || ![1, 3, 5, 10].includes(rounds)) return;
   if (
@@ -116,8 +118,7 @@ export function parseFusemaniaStats(
   } else if (rounds === 1 && sessionLength !== undefined) return;
   const { playerId, name } = raw;
   if (
-    typeof playerId !== "string" ||
-    !(/^[a-f0-9]{24}$/.test(playerId) || isBotId(playerId)) ||
+    !validId(playerId) ||
     !validName(name)
   )
     return;

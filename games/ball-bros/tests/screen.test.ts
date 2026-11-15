@@ -260,7 +260,7 @@ test("room identities are game-scoped, reloadable and never included in invites"
   assert.match(card.error.textContent!, /room code/);
 });
 
-function screen(online = true, display = false, shared = false, fail = "") {
+function screen(online = true, display = false, shared = false, fail = "", closeHistory?: ScreenOptions["closeHistory"]) {
   const { root, document, window } = dom();
   const inputs: [Steering, Steering, boolean][] = [],
     commands: RoomCommand<Settings>[] = [];
@@ -305,8 +305,10 @@ function screen(online = true, display = false, shared = false, fail = "") {
     },
     frameTiming: () => ({ newer: current, tick: current.tick, lead: 0 }),
     confirmedFrame: () => current,
+    historyReceipts: () => current.history,
   };
   const options: ScreenOptions = {
+    ...(closeHistory ? { closeHistory } : {}),
     observePlay: (observed) => metrics.push(observed),
     online: online
       ? {
@@ -440,6 +442,30 @@ function screen(online = true, display = false, shared = false, fail = "") {
     }),
   };
 }
+
+test("Leave holds the actual runtime until history closes and reads fresh corrected receipts", async () => {
+  let drain: { read: () => import("fuse-ui/results-history").HistorySnapshot; stop: () => void } | undefined;
+  const s = screen(true, false, false, "", (read, stop) => { drain = { read, stop }; });
+  await flush();
+  const predicted = frame("over");
+  predicted.logTick = 5;
+  predicted.history = [{ tick: 7, result: { matchId: "old", length: 1, finishers: ["b"], players: [{ playerId: "b", name: "Bob", slot: 1, roundsPlayed: 1, roundWins: 1, matchScoreUnits: 1, matchPlacement: 1, earlyExits: 0 }] } }];
+  s.update(predicted);
+  button(s.root, "Leave").click();
+  assert.ok(drain);
+  assert.equal(s.counters().homes, 0);
+  assert.equal(s.counters().stopped, 0);
+  assert.equal(drain.read().confirmedTick, 5);
+  assert.equal(drain.read().receipts[0]!.tick, 7);
+  const corrected = frame("running", "next");
+  corrected.logTick = 8;
+  s.update(corrected);
+  assert.deepEqual(drain.read(), { receipts: [], confirmedTick: 8 });
+  drain.stop();
+  assert.equal(s.counters().homes, 1);
+  assert.equal(s.counters().stopped, 1);
+  s.destroy();
+});
 
 test("room screen follows lobby, own identity, controls, corrected results, rematch and leaving", async () => {
   const s = screen();

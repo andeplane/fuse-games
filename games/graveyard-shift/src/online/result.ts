@@ -9,11 +9,10 @@ export interface ShiftCompletion {
 }
 export const isHunterBot = (id: string) => /^bot:[0-9]+$/.test(id);
 export function shiftReceipts(room: Room): { tick: number; result: MatchResult }[] {
-  const completion = room.completion;
-  return completion ? [
+  return room.completions.flatMap(completion => [
     { tick: completion.clock, result: { ...completion.result, round: 1 } },
     { tick: completion.clock, result: completion.result },
-  ] : [];
+  ]);
 }
 
 /** Freeze the shift once, before recap joins, renames or ready votes can change it. */

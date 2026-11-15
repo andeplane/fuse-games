@@ -1,4 +1,5 @@
 import type { MatchResult, PlayerResult } from "fuse-platform";
+import { historyPlayerName } from "fuse-platform/history-api";
 import type { SeatRecord } from "fuse-netcode";
 import type { World } from "../engine/index.js";
 
@@ -22,6 +23,7 @@ export function craftResults(world: Readonly<World>, decided: CraftDecision | nu
   if (!world.finished || !decided) return [];
   const lasted = (id: string, alive: boolean) => id === world.winnerId ? Number.MAX_SAFE_INTEGER : alive ? world.tick + 1 : world.events.find(event => event.type === "eliminated" && event.playerId === id)?.tick ?? world.tick;
   const ranks = world.players.map(player => ({ player, survival: lasted(player.id, player.alive) }));
-  const result: MatchResult = { matchId: world.matchId, length: 1, ...(world.winnerId === null ? {} : { winnerId: world.winnerId }), finishers: [...decided.finishers], players: ranks.map(({ player, survival }) => ({ playerId: player.id, name: decided.names[player.id]!, slot: player.slot, roundsPlayed: 1, roundWins: player.id === world.winnerId ? 1 : 0, matchScoreUnits: player.statistics.built, matchPlacement: 1 + ranks.filter(other => other.survival > survival).length, earlyExits: isCraftBot(player.id) || decided.finishers.includes(player.id) ? 0 : 1 })) };
+  const result: MatchResult = { matchId: world.matchId, length: 1, ...(world.winnerId === null ? {} : { winnerId: world.winnerId }), finishers: [...decided.finishers], players: ranks.map(({ player, survival }) => ({ playerId: player.id, name: historyPlayerName(decided.names[player.id]!), slot: player.slot, roundsPlayed: 1, roundWins: player.id === world.winnerId ? 1 : 0, matchScoreUnits: player.statistics.built, matchPlacement: 1 + ranks.filter(other => other.survival > survival).length, earlyExits: isCraftBot(player.id) || decided.finishers.includes(player.id) ? 0 : 1 })) };
+  result.players.sort((a, b) => a.slot - b.slot || a.playerId.localeCompare(b.playerId));
   return [{ tick: decided.tick, result: { ...result, round: 1 } }, { tick: decided.tick, result }];
 }

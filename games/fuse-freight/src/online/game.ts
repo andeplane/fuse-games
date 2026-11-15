@@ -48,6 +48,8 @@ import {
   validMatchId,
   validName,
 } from "./names.js";
+import { currentHistoryReceipts, parsePastMatches, retainPastMatches } from "./history.js";
+import type { HistoryReceipt } from "fuse-ui/results-history";
 
 /**
  * Fuse Freight behind the netcode's `RollbackGame`. The room keeps the seats, the match (round wins and round
@@ -103,6 +105,7 @@ export interface Room extends ManagedRoom<Settings> {
   /** Round wins this match, by member id. */
   wins: Record<string, number>;
   results: RoundResult[];
+  pastMatches: HistoryReceipt[][];
   /** The match's winners once `stage` is "over": more than one when they finish level. */
   winners: string[];
   /** The log tick the next round starts at, while `between`. */
@@ -137,6 +140,7 @@ export interface View {
   /** Wagons delivered over the match's finished rounds, by id. */
   totals: Record<string, number>;
   results: RoundResult[];
+  pastMatches: HistoryReceipt[][];
   winners: string[];
   /** Log ticks until the next round, between rounds. */
   resumeIn: number;
@@ -201,6 +205,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     play: { ...settings },
     wins: {},
     results: [],
+    pastMatches: [],
     winners: [],
     resumeAt: 0,
     held: {},
@@ -235,6 +240,7 @@ function startRound(room: Room): void {
   );
 }
 function resetMatch(room: Room, matchId: string): void {
+  if(room.results.length)room.pastMatches=retainPastMatches(room.pastMatches,currentHistoryReceipts(room),room.tick)??room.pastMatches;
   room.matchId = matchId;
   room.play = { ...room.settings };
   room.round = 0;
@@ -435,6 +441,7 @@ export function encode(room: Room): unknown[] {
     room.resumeAt,
     sortedEntries(room.held),
     room.world ? encodeWorld(room.world) : null,
+    structuredClone(room.pastMatches),
   ];
 }
 
@@ -552,7 +559,7 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 12 || !uint32(tick)) return;
+  if (fields.length !== 13 || !uint32(tick)) return;
   const [
     matchId,
     round,
@@ -566,9 +573,12 @@ export function decode(
     resumeAt,
     rawHeld,
     rawWorld,
+    rawPastMatches,
   ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
+  const pastMatches=parsePastMatches(rawPastMatches,tick);
+  if(!pastMatches)return;
   if (
     !validMatchId(matchId) ||
     !uint32(round) ||
@@ -678,6 +688,7 @@ export function decode(
     play,
     wins,
     results,
+    pastMatches,
     winners,
     resumeAt,
     held,
@@ -732,6 +743,7 @@ export function view(room: Room): View {
       winners: [...result.winners],
       placings: result.placings.map((p) => ({ ...p })),
     })),
+    pastMatches:structuredClone(room.pastMatches),
     winners: [...room.winners],
     resumeIn:
       room.stage === "between" ? Math.max(0, room.resumeAt - room.tick) : 0,

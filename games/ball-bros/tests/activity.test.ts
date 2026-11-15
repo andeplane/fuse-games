@@ -4,6 +4,7 @@ import { createArena, COUNTDOWN, BALL_SPEED } from "../src/engine/state.js";
 import { activityResult } from "../src/online/activity.js";
 import { ballGame, createRoom, DEFAULT_SETTINGS, foldTick, encodeRoom, decodeRoom } from "../src/online/game.js";
 import { ballBrosRegistration } from "../src/platform.js";
+import { ACTION, World } from "fuse-netcode";
 
 test("completed arena freezes deciding finishers, names and stats through checkpoint and later seat changes", () => {
   const room = createRoom("match", DEFAULT_SETTINGS);
@@ -34,4 +35,16 @@ test("completed arena freezes deciding finishers, names and stats through checkp
   assert.equal(ballBrosRegistration.ratesRounds, false);
   assert.deepEqual(ballBrosRegistration.parseStats(first.players[0], 1), first.players[0]);
   assert.equal(ballBrosRegistration.parseStats({ ...first.players[0], unknown: 1 }, 1), undefined);
+  // Completion was tick 61, between stride-4 snapshots. A rematch at 63 must not erase its proof.
+  restored.seats.get("b")!.connected = true;
+  const world = new World(ballGame, restored, "a", "a");
+  const next = restored.tick + 1;
+  world.stream("a", 1).append(next, [ACTION, "rematch", "next"]);
+  world.stream("a", 1).through = next + 100;
+  world.stream("b", 1).through = next + 100;
+  world.advance(next + 48);
+  const confirmed = world.confirmedFrame()!;
+  assert.notEqual(confirmed.matchId, first.matchId);
+  assert.deepEqual(confirmed.history.map(receipt => receipt.result.matchId), ["match", "match"]);
+  assert.ok(confirmed.history.every(receipt => receipt.tick <= confirmed.logTick));
 });

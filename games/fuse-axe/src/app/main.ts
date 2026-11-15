@@ -314,10 +314,7 @@ function room(solo: boolean): void {
     touchControls: AXE_TOUCH_CONTROLS,
     goal: AXE_GOAL,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onLeave: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onLeave: () => leaveRoom(),
     onOpenChange: (open) => {
       letGo();
       if (
@@ -455,10 +452,7 @@ function room(solo: boolean): void {
   const results = createResultsScreen({
     document,
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onBack: () => leaveRoom(),
     backText: "Leave",
     onAction: (id) =>
       runtime.command({
@@ -903,10 +897,18 @@ function room(solo: boolean): void {
   const resultsHistory = createResultsHistory({ fetch: social.reportFetch, apiUrl: endpoints.apiUrl, gameId: GAME,
     ...(session.kind === "room" ? { room: { code, token: session.token } } : {}),
     signedIn: social.isSignedIn, playerId: () => display ? "" : viewer.me, now: () => performance.now() });
+  let forceStop = false;
+  function leaveRoom() {
+    letGo();
+    resultsHistory.close(() => ({ receipts: runtime.roomState()?.history ?? [], confirmedTick: runtime.confirmedFrame()?.logTick ?? -1 }), () => {
+      runtime.stop();
+      if (!forceStop) location.href = withFlags(endpoints.appUrl());
+    });
+  }
   const callbacks: AxeCallbacks = {
     state(frame) {
       const confirmed = runtime.confirmedFrame();
-      if (confirmed) resultsHistory.observe(confirmed.history, confirmed.logTick);
+      resultsHistory.observe(runtime.roomState()?.history ?? [], confirmed?.logTick ?? -1);
       if (
         opening?.holds(frame, () =>
           runtime.command({ type: "action", action: "lobby" }),
@@ -1043,7 +1045,7 @@ function room(solo: boolean): void {
         },
   );
   installRoomLifecycle(window, {
-    stop: () => { resultsHistory.dispose(); runtime.stop(); },
+    stop: () => { forceStop = true; resultsHistory.dispose(); runtime.stop(); },
     destroy: () => stopPlaytestInput(),
     reload: () => location.reload(),
   });

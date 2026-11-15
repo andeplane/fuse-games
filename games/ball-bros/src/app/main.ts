@@ -25,7 +25,6 @@ import { installLifecycle } from "./lifecycle.js";
 import { chosenAvatar } from "./avatars.js";
 import { createRadio } from "./radio.js";
 import { createResultsHistory } from "fuse-ui/results-history";
-import { activityResult } from "../online/activity.js";
 
 const root = document.querySelector<HTMLElement>("#app")!;
 const analytics = startGameAnalytics("ball-bros");
@@ -165,13 +164,13 @@ function render() {
       base: import.meta.env.BASE_URL,
       search: location.search,
       observePlay,
-      history(frame) {
+      history(snapshot) {
         if (online?.display) return;
-        const result = activityResult(frame);
-        if (result) history.observe([{ tick: frame.logTick, result: { ...result, round: 1 } }, { tick: frame.logTick, result }], frame.logTick);
+        history.observe(snapshot.receipts, snapshot.confirmedTick);
       },
+      closeHistory: history.close,
     });
-    destroy = () => { history.dispose(); stop(); };
+    destroy = () => { stop(); history.dispose(); };
     activeRadio?.setMuted(!soundEnabled);
   }
   root.querySelector("header")?.append(social.element());

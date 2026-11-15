@@ -22,6 +22,8 @@ import {
 } from "../src/online/game.js";
 import { bombersGame as game, createRoom } from "../src/online/game.js";
 import { foldTick, hash, type Entry, type Room } from "../src/online/game.js";
+import { historyReceipts } from "../src/online/history.js";
+import { view } from "../src/online/game.js";
 
 const { encode, decode } = game.checkpoint;
 /** The fields as a peer reads them: through MessagePack and its limits (−0 arrives as 0). */
@@ -94,6 +96,13 @@ function record(): Map<string, Room> {
 }
 const rooms = record();
 const battle = rooms.get("battle")!;
+
+test("an immediate rematch retains completed pilots and rounds before confirmation catches up",()=>{
+  const room=structuredClone(rooms.get("over")!);const oldMatch=room.matchId;const expected=historyReceipts(view(room));
+  fold(room,{a:[[ACTION,"rematch","rapid-next"]]});assert.equal(room.stage,"running");assert.equal(room.pastMatches.length,1);
+  const restored=restore(room);assert.ok(restored);assert.equal(hash(restored),hash(room));assert.deepEqual(historyReceipts(view(restored)).filter(r=>r.result.matchId===oldMatch),expected.map(r=>({...r,result:{...r.result,players:[...r.result.players].sort((a,b)=>a.slot-b.slot)}})));
+  const fields=wire(room);const groups=fields[12] as unknown[][];const item=groups[0]![0] as {tick:number};item.tick=room.tick+1;assert.equal(decode(fields,room.tick),undefined);
+});
 
 test("the checkpoint carries a room whole at every stage, and the restored room plays on bit for bit", () => {
   // prettier-ignore

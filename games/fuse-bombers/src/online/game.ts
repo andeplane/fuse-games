@@ -40,6 +40,8 @@ import {
 import { hashPlain } from "./hash.js";
 import type { PlayerResult } from "fuse-platform";
 import { parseHistoryPlayer } from "fuse-platform/history-api";
+import { currentHistoryReceipts, parsePastMatches, retainPastMatches } from "./history.js";
+import type { HistoryReceipt } from "fuse-ui/results-history";
 import * as names from "./names.js";
 
 /**
@@ -117,6 +119,7 @@ export interface Room extends ManagedRoom<Settings> {
   /** Crowns this match, by member id. */
   wins: Record<string, number>;
   results: RoundRecord[];
+  pastMatches: HistoryReceipt[][];
   /** The match winner once `stage` is "over" ("" when nobody won a round). */
   winner: string;
   /** The log tick the round's first step runs on: its countdown ends there. */
@@ -184,6 +187,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     play: { ...valid },
     wins: {},
     results: [],
+    pastMatches: [],
     winner: "",
     startAt: 0,
     endAt: 0,
@@ -236,7 +240,8 @@ function startRound(room: Room): void {
 /** A new match in the lobby: everything but the seats, the settings and the clock starts afresh. */
 function resetMatch(room: Room, matchId: string): void {
   const { tick, seats, settings } = room;
-  Object.assign(room, { ...createRoom(matchId, settings), tick, seats });
+  const pastMatches=room.results.length?(retainPastMatches(room.pastMatches,currentHistoryReceipts(room),room.tick)??room.pastMatches):room.pastMatches;
+  Object.assign(room, { ...createRoom(matchId, settings), tick, seats, pastMatches });
 }
 
 export const lifecycle: LifecycleHooks<Room, Settings> = {
@@ -487,6 +492,7 @@ export function encode(room: Room): unknown[] {
     Object.entries(room.held),
     room.world && encodeRound(room.world),
     room.roster.map(p=>({...p})),
+    structuredClone(room.pastMatches),
   ];
 }
 
@@ -530,11 +536,13 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 12 || !uint32(tick)) return;
+  if (fields.length !== 13 || !uint32(tick)) return;
   // prettier-ignore
-  const [matchId, round, stage, rawSettings, rawPlay, rawSeats, rawResults, startAt, ships, rawHeld, rawWorld, rawRoster] = fields;
+  const [matchId, round, stage, rawSettings, rawPlay, rawSeats, rawResults, startAt, ships, rawHeld, rawWorld, rawRoster, rawPastMatches] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
+  const pastMatches=parsePastMatches(rawPastMatches,tick);
+  if(!pastMatches)return;
   if (
     !names.validMatchId(matchId) ||
     !uint32(round) ||
@@ -612,7 +620,7 @@ export function decode(
   if(new Set(roster.map(p=>p.slot)).size!==roster.length)return;
   // prettier-ignore
   const room: Room = { tick, matchId, round, stage: stage as Stage, seats, settings, play, wins, results, winner: "",
-    startAt, endAt, resumeAt, ships: [...ships], roster, held, world };
+    startAt, endAt, resumeAt, ships: [...ships], roster, held, world, pastMatches };
   if (stage === "lobby")
     return round === 0 && startAt === 0 && !world && !ships.length
       ? room

@@ -7,6 +7,8 @@ import type {
 } from "../engine/types.js";
 import { isAiStrategy } from "../engine/types.js";
 import type { CraftDecision } from "../online/result.js";
+import type { HistoryReceipt } from "fuse-platform/history-api";
+import type { HistorySnapshot } from "fuse-ui/results-history";
 
 export type GameMode = "sandbox" | "combat-lab" | "skirmish" | "watch";
 /** An AI opening to play, or "random": drawn when the match starts. */
@@ -51,6 +53,8 @@ export interface OnlineSession extends NeuralSession {
           watcher?: boolean;
         })[];
         decided: CraftDecision | null;
+        history: readonly HistoryReceipt[];
+        logTick: number;
       })
     | undefined;
   readonly code: string;
@@ -86,8 +90,9 @@ export interface SessionOptions {
 }
 
 export interface NeuralSession {
+  historySnapshot?(): HistorySnapshot;
   /** A local runtime's irreversible result; absent on injected display-only sessions. */
-  confirmedResult?(): { world: Readonly<World>; decided: CraftDecision | null } | undefined;
+  confirmedResult?(): { world: Readonly<World>; decided: CraftDecision | null; history: readonly HistoryReceipt[]; logTick: number } | undefined;
   readonly localPlayerId: string;
   readonly canControl: boolean;
   view(): Readonly<World>;

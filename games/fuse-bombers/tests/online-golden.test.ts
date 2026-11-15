@@ -15,10 +15,10 @@ const GOLDEN = {
   rules: "fuse-bombers-2",
   end: "over at 3650: bot:5:last-standing bot:5:last-standing → bot:5, shots 30,47",
   hashes: [
-    "1f5f6eae69a82371",
-    "b7bb36280ee753ec",
-    "30779585be81f7f1",
-    "3fe6a58f1adc122d",
+    "a6adff7eb596cddc",
+    "06d5d0f8d79e95ce",
+    "07bf2e55fc052be2",
+    "2c9a93bf1bc6a4c6",
   ],
 };
 

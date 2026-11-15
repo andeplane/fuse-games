@@ -1,4 +1,5 @@
 import type { MatchResult, PlayerResult } from "fuse-platform";
+import { historyPlayerName } from "fuse-platform/history-api";
 import type { BirdsView } from "./game.js";
 
 /** A battle is one round. Faulted preparation and local practice produce no ordinary game receipt. */
@@ -11,7 +12,7 @@ export function birdsResults(view: BirdsView): { tick: number; result: MatchResu
     ...(world.winner === null ? {} : { winnerId: world.winner }),
     finishers: [...decided.finishers],
     players: world.players.map(player => ({
-      playerId: player.id, name: player.name, slot: player.slot,
+      playerId: player.id, name: historyPlayerName(player.name), slot: player.slot,
       roundsPlayed: 1, roundWins: player.id === world.winner ? 1 : 0,
       matchScoreUnits: player.hp,
       matchPlacement: world.winner === null || player.id === world.winner ? 1 : 2,

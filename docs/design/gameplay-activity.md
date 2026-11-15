@@ -61,6 +61,33 @@ Games without outcome reporting need explicit adapters; an empty feed is not pro
 that those games report. Track actual reporting coverage and test solo/multiplayer
 adoption rather than claiming universal coverage from a shared API alone.
 
+The current 20 registered games report completed outcomes through this shared
+projection. Riders, Pig, Drivers, Birds, Fuseball, Volley, Killer, Elasto, Lane,
+Surge and Fusemania keep their existing game-specific statistics and rating rules.
+Ball Bros, Hook Havok, Axe, Bombers, Choppers, Craft, Freight, Front and Graveyard
+explicitly use history-only registrations: recording results does not enable Elo.
+The new-game scaffold copies Pig and inherits its reporting integration.
+
+Round units remain game-owned: a song in Fusemania, a stage in cooperative Axe, a
+full battle in Birds, a race in Drivers and a configured run in Elasto. Fusemania
+playlists retain one parent ID across song selection; three completed songs yield
+three round records and one playlist summary. Axe's cooperative stages and run
+summary do not invent an individual winner.
+
+Lane's single-human local mode is supported; local pass-and-play with several
+humans requires a separate admission contract and is not relabeled as solo.
+Birds practice and Hook free play have no completed competitive outcome. Spectators
+and Craft watch mode do not report. Front attributes each slot's result to its
+controller at match end, labels that explicitly, and does not claim whole-match
+participation for departed controllers.
+
+Recently completed immutable receipts survive lobby/rematch transitions in bounded
+checkpoint history until confirmation can reach them. The shared transport only
+sends results from the rollback-closed prefix, retries temporary refusals and can
+drain confirmation plus first HTTP attempts for up to three seconds on ordinary
+Back navigation. Forced unload or losing the browser process still cannot guarantee
+delivery; an acknowledged API response is the evidence of storage.
+
 ## Existing records and rollout
 
 New accepted reports populate activity immediately. Existing stored history can be

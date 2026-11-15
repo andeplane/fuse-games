@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ACTION, BOT, JOIN, type StreamEntries } from "fuse-netcode";
-import { createRoom, DEFAULT_SETTINGS, foldTick, encode, decode, hash, type Room, type Entry } from "../src/online/game.js";
+import { ACTION, BOT, JOIN, World, type StreamEntries } from "fuse-netcode";
+import { axeGame, createRoom, DEFAULT_SETTINGS, foldTick, encode, decode, hash, type Room, type Entry } from "../src/online/game.js";
 import { wiped, cleared } from "./fixtures/stage.js";
 import { axeRegistration } from "../src/platform.js";
 import { runResult } from "../src/online/activity.js";
@@ -41,6 +41,17 @@ test("cooperative defeat stores a stage and run with no invented individual winn
   corrupt[11] = [{ tick: room.tick + 1, result: match }];
   assert.equal(decode(corrupt, room.tick), undefined);
   assert.equal(axeRegistration.ratesRounds, false);
+  assert.equal(restored.tick % 4, 3);
+  const world = new World(axeGame, restored, "a", "a"), next = restored.tick + 1;
+  const stream = world.stream("a", 1);
+  stream.append(next, [ACTION, "rematch", "next-match"]);
+  stream.through = next + 100;
+  world.stream("b", 1).through = next + 100;
+  world.advance(next + 48);
+  const confirmed = world.confirmedFrame()!;
+  assert.equal(confirmed.matchId, "next-match");
+  assert.deepEqual(confirmed.history.map(receipt => receipt.result.matchId), ["match", "match"]);
+  assert.ok(confirmed.history.every(receipt => receipt.tick <= confirmed.logTick));
 });
 test("stage clears appear before a run summary and accumulate party participation honestly", () => {
   const room = started();

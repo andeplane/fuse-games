@@ -153,7 +153,6 @@ const lifecycle: LifecycleHooks<Room, Tuning> = {
     r.round = 1;
     r.stage = "running";
     r.simulation = freshArena(r);
-    r.history = [];
   },
   rematch() {},
   lobby(r, id) {
@@ -161,7 +160,6 @@ const lifecycle: LifecycleHooks<Room, Tuning> = {
     r.matchId = id;
     r.round = 0;
     r.simulation = freshArena(r);
-    r.history = [];
   },
 };
 /**
@@ -334,7 +332,7 @@ export function decode(f: readonly unknown[], tick: number): Room | undefined {
     const at = raw.tick;
     if (history.some(receipt => receipt.tick >= at)) return;
     const result = parseHistoryResult(raw.result, parseHookHistoryPlayer, memberId, isHistoryBot);
-    if (!result || result.round !== undefined || !result.matchId.startsWith(`${f[0]}:`) || !/^[1-9][0-9]*$/.test(result.matchId.slice(String(f[0]).length + 1)) || Number(result.matchId.slice(String(f[0]).length + 1)) > Number(f[1]) || history.some(receipt => receipt.result.matchId === result.matchId)) return;
+    if (!result || result.round !== undefined || !/:[1-9][0-9]*$/.test(result.matchId) || history.some(receipt => receipt.result.matchId === result.matchId)) return;
     history.push({ tick: raw.tick, result });
   }
   const settings = parseTuning(f[3]),

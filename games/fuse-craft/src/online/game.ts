@@ -26,6 +26,8 @@ import { aiCommands, randomOpening } from "../engine/ai.js";
 import { isAiStrategy, RULES, type AiStrategy } from "../engine/types.js";
 import { ROOM_MAPS, bundledMap } from "./maps.js";
 import { craftDecision, parseCraftDecision, type CraftDecision } from "./result.js";
+import { craftResults, isCraftBot } from "./result.js";
+import { parseHistoryReceipts, parseHistoryPlayer, type HistoryReceipt } from "fuse-platform/history-api";
 
 export type NeuralMode =
   "sandbox" | "combat-lab" | "skirmish" | "watch" | "versus";
@@ -59,6 +61,7 @@ export interface NeuralRoom {
   settings: NeuralSettings;
   world: World;
   decided: CraftDecision | null;
+  history: HistoryReceipt[];
 }
 export type PlayEntry = [number, number, 1, string, Action];
 export type NeuralEntry = ManagementEntry<NeuralSettings> | PlayEntry;
@@ -149,6 +152,7 @@ function roomHash(room: NeuralRoom): string {
       ),
       world: encodeState(room.world),
       decided: room.decided,
+      history: room.history,
     }),
   );
   let hash = 0xcbf29ce484222325n;
@@ -347,6 +351,7 @@ export const COMMANDS_PER_SEAT = 16;
 export interface NeuralView extends World {
   seats: SeatRecord[];
   decided: CraftDecision | null;
+  history: HistoryReceipt[];
 }
 export const neuralGame: RollbackGame<
   NeuralRoom,
@@ -366,6 +371,7 @@ export const neuralGame: RollbackGame<
     settings,
     world: initial(settings, matchId),
     decided: null,
+    history: [],
   }),
   createTicker: () => (room, creator, streams) => {
     const tick = room.tick + 1;
@@ -450,6 +456,8 @@ export const neuralGame: RollbackGame<
       room.world = step(room.world, commands.slice(0, 256));
       if (room.world.finished) {
         room.decided = craftDecision(room.world, room.seats, tick);
+        room.history.push(...craftResults(room.world, room.decided));
+        room.history = room.history.slice(-64);
         room.stage = "over";
       }
     }
@@ -464,6 +472,7 @@ export const neuralGame: RollbackGame<
     ...r.world,
     seats: [...r.seats.values()].map((seat) => ({ ...seat })),
     decided: r.decided && structuredClone(r.decided),
+    history: structuredClone(r.history),
   }),
   hash: roomHash,
   checkpoint: {
@@ -477,6 +486,7 @@ export const neuralGame: RollbackGame<
         settings: r.settings,
         world: encodeState(r.world),
         decided: r.decided,
+        history: r.history,
       }),
     ],
     decode: (fields, tick) => {
@@ -617,6 +627,8 @@ export const neuralGame: RollbackGame<
         }
         const decided = parseCraftDecision(raw.decided, world, tick);
         if (decided === undefined) return;
+        const history = parseHistoryReceipts(raw.history, tick, parseHistoryPlayer, (id): id is string => typeof id === "string" && ROSTER_ID.test(id), isCraftBot);
+        if (!history) return;
         return {
           tick,
           matchId: raw.matchId,
@@ -625,6 +637,7 @@ export const neuralGame: RollbackGame<
           settings,
           world,
           decided,
+          history,
         };
       } catch {
         return;
