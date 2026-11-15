@@ -117,7 +117,7 @@ for (const { name, kind } of BOTH_ENGINES) {
             phone.getByRole("button", { name: "COPY LINK", exact: true }),
           );
           // Every open slot offers Add AI; the first is as good as any.
-          for (const action of ["Game settings", "Add AI"])
+          for (const action of ["Room settings", "Add AI"])
             await onScreen(
               action,
               phone.getByRole("button", { name: action, exact: true }).first(),
@@ -174,7 +174,7 @@ for (const { name, kind } of BOTH_ENGINES) {
           );
           await openTopMenu(phone);
           await phone
-            .getByRole("button", { name: "SETTINGS", exact: true })
+            .getByRole("button", { name: "Player options", exact: true })
             .click();
           assert.equal(
             await phone

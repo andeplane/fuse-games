@@ -1946,3 +1946,66 @@ a.fui-button-danger {
     display: none;
   }
 }
+
+/* Explicit scope, the same icons and disclosure behavior in every game. */
+.fui-settings-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.fui-settings-icon {
+  flex: 0 0 1.25rem;
+}
+.fui-player-options {
+  display: flex;
+}
+.fui-player-options-toggle {
+  width: 100%;
+}
+.fui-app .fui-player-options .fui-player-options-toggle {
+  min-height: var(--fui-control-height);
+  padding: 0 var(--fui-space-4);
+  font: var(--fui-control-font);
+  letter-spacing: var(--fui-control-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.fui-player-options-toggle[aria-expanded="true"] {
+  border-color: var(--fui-cyan);
+  color: var(--fui-cyan);
+}
+.fui-player-options-panel {
+  position: absolute;
+  top: 100%;
+  right: var(--fui-space-3);
+  z-index: 3;
+  box-sizing: border-box;
+  width: min(34rem, calc(100% - 2 * var(--fui-space-3)));
+  max-height: 65dvh;
+  overflow: auto;
+  padding: var(--fui-space-3);
+  background: #101f35;
+  border: var(--fui-border);
+  border-color: var(--fui-cyan);
+  box-shadow: 0 0.75rem 2rem #000a;
+  text-align: left;
+}
+.fui-player-options-panel[hidden] {
+  display: none;
+}
+@media (max-width: 640px) {
+  .fui-room-layout.fui-room-layout.fui-room-actions-top
+    > .fui-room-head
+    > .fui-page-actions
+    > .fui-settings-action,
+  .fui-app .fui-room-head .fui-player-options .fui-player-options-toggle {
+    white-space: normal;
+    line-height: 1.15;
+    padding-inline: var(--fui-space-2);
+    overflow: visible;
+  }
+  .fui-room-head .fui-settings-action span {
+    max-width: 5rem;
+  }
+}

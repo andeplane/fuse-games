@@ -266,7 +266,7 @@ test("a room change closes How to play", () => {
 test("every page under the menu has Back at the top left, and New game has Start beside it", () => {
   const f = fixture();
   for (const [open, title] of [
-    ["settings", "Settings"],
+    ["settings", "Player options"],
     ["guide", "How to play"],
     ["new-game", "New game"],
   ] as const) {

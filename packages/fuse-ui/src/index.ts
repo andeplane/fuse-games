@@ -198,3 +198,11 @@ export {
   type SharedTvOption,
   type SharedTvOptionOptions,
 } from "./shared-tv.js";
+
+export {
+  createPlayerOptions,
+  labelSettingsAction,
+  settingsActionMarkup,
+  settingsLabel,
+  type SettingsScope,
+} from "./settings-actions.js";

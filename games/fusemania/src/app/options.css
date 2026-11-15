@@ -110,6 +110,12 @@
   margin-left: auto;
 }
 @media (max-width: 640px) {
+  .fm-picker-top {
+    flex-wrap: wrap;
+  }
+  .fm-picker-top .fm-picker-packs {
+    flex-basis: 100%;
+  }
   /* A phone's row has room for the pack and RANDOM, not for the second word. */
   .fm-option-random-more {
     display: none;
@@ -138,10 +144,10 @@
 }
 
 /* The solo select's bar: Back at the left, OPTIONS and PLAY at the right, in reach however far the select scrolls. */
-.fm-options-menu {
+.fui-player-options {
   display: flex;
 }
-.fui-app .fui-menu-dialog .fui-dialog-actions .fm-options-toggle,
+.fui-app .fui-menu-dialog .fui-dialog-actions .fui-player-options-toggle,
 .fui-app .fui-menu-dialog .fui-dialog-actions .fm-solo-play {
   width: auto;
   white-space: nowrap;
@@ -149,11 +155,11 @@
 .fui-app .fui-menu-dialog .fui-dialog-actions .fm-solo-play {
   min-width: 7.5rem;
 }
-.fm-options-toggle[aria-expanded="true"] {
+.fui-player-options-toggle[aria-expanded="true"] {
   border-color: var(--fui-cyan);
   color: var(--fui-cyan);
 }
-.fm-options-panel {
+.fui-player-options-panel {
   position: absolute;
   top: 100%;
   right: var(--fui-space-3);
@@ -166,10 +172,10 @@
   box-shadow: 0 0.75rem 2rem #000a;
   text-align: left;
 }
-.fm-options-panel[hidden] {
+.fui-player-options-panel[hidden] {
   display: none;
 }
-.fm-options-panel .fm-options {
+.fui-player-options-panel .fm-options {
   margin-top: 0;
 }
 @media (max-width: 640px) {
@@ -253,7 +259,7 @@
   padding-inline: 0;
   white-space: nowrap;
 }
-.fm-options-panel {
+.fui-player-options-panel {
   width: min(34rem, calc(100% - 2 * var(--fui-space-3)));
 }
 @media (max-width: 640px) {
@@ -265,7 +271,7 @@
   }
 }
 /* In a room's header OPTIONS is one of three across a phone: it fills its share and no more. */
-.fui-room-head .fm-options-menu .fm-options-toggle {
+.fui-room-head .fui-player-options .fui-player-options-toggle {
   width: 100%;
 }
 @media (max-width: 640px) {

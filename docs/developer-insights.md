@@ -9,7 +9,8 @@ and schema rationale are in [design/developer-insights.md](design/developer-insi
 
 Sign in with Google. The server validates the signed Google identity, verified
 email and code-owned allowlist in
-`packages/fuse-telemetry/src/developer-access.ts`: `andersullnass@gmail.com`,
+`packages/fuse-telemetry/src/developer-access.ts`: `andershaf@gmail.com`,
+`andersullnass@gmail.com`,
 `andreas@bonito.no`, `andreassolbra@gmail.com`, `aasmund.eldhuset@gmail.com`,
 `richard.rormark@gmail.com`, `sindre@scrimba.com`.
 

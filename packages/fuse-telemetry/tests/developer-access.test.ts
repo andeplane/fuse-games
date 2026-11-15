@@ -38,6 +38,10 @@ test("developer access requires signed Google provider and verified allowlisted 
     uid: "google-user",
     email: "andersullnass@gmail.com",
   });
+  assert.equal(
+    (await verify(await token({ email: "andershaf@gmail.com" })))?.email,
+    "andershaf@gmail.com",
+  );
   for (const email of DEVELOPER_EMAILS)
     assert.equal((await verify(await token({ email })))?.email, email);
   for (const claims of [

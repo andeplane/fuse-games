@@ -17,7 +17,7 @@ import { createAccountPanel } from "./account-panel.js";
 import { createFriendsPanel } from "./friends-panel.js";
 import { isRiderAvatarId } from "../engine/avatar-id.js";
 import { validRiderName } from "../engine/rider-name.js";
-import { createTopBar } from "fuse-ui";
+import { labelSettingsAction, createTopBar } from "fuse-ui";
 import { requestedRoomSlot } from "fuse-ui";
 import {
   accountUsername,
@@ -793,7 +793,8 @@ export async function startOnline(): Promise<void> {
     share = node("button", "TV VIEW"),
     addAI = node("button", "ADD AI");
   // The same name wherever the button sits: "Settings" in the room's header, "Game settings" among the host's buttons.
-  settingsButton.setAttribute("aria-label", "Game settings");
+  labelSettingsAction(settingsButton, "room");
+  labelSettingsAction(prefsButton, "player");
   const readyButton = node("button", "READY");
   const primaryPlay = node("div", "", "room-primary-play");
   readyButton.type = "button";
@@ -1034,8 +1035,7 @@ export async function startOnline(): Promise<void> {
     if (settingsParent && settingsButton.parentElement !== settingsParent) {
       if (settingsParent === roomActions) roomActions.prepend(settingsButton);
       else settingsParent.append(settingsButton);
-      settingsButton.textContent =
-        settingsParent === roomActions ? "Settings" : "Game settings";
+      labelSettingsAction(settingsButton, "room");
     }
     // The connection's state: the line at the room's foot, and in the game bar once a match is on.
     const statusParent = screen.lobbyCard
@@ -2138,7 +2138,7 @@ export async function startOnline(): Promise<void> {
   ];
   hud.after(...dialogElements);
   settingsButton.onclick = () => openSettings();
-  settingsButton.textContent = "Game settings";
+  labelSettingsAction(settingsButton, "room");
   createRoomLayout({
     // Seated already: any open seat is a move. The head goes along, and the colour is asked for again (`movedColor`).
     ownSlot: () => ownSeat?.slot,

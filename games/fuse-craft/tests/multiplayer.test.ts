@@ -233,7 +233,7 @@ test("the room is the shared room: Back, Settings and Start in its head, HOST on
   const head = f.root.querySelector(".fui-room-head")!;
   assert.deepEqual(
     [...head.querySelectorAll("button")].map((button) => button.textContent),
-    ["Back", "Settings", "START MATCH"],
+    ["Back", "Room settings", "START MATCH"],
   );
   assert.equal(head.querySelector(".fui-page-title")?.textContent, "Room");
   assert.equal(

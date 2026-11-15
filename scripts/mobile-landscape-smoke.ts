@@ -404,7 +404,7 @@ for (const { name, kind } of BOTH_ENGINES) {
       );
     };
     // The shared layout preference is reachable in arena play as well as TV controller mode.
-    await clickInTools("SETTINGS", true);
+    await clickInTools("Player options", true);
     await page.getByLabel("Landscape bomb side").selectOption("left");
     await page.getByRole("button", { name: "Back", exact: true }).click();
     if (await page.locator(".mobile-tools-open").count())
