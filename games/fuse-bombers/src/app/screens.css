@@ -13,17 +13,6 @@
   line-height: 1.5;
 }
 
-/* The same menu actions as every game, retaining Bombers' pixel/neon appearance. */
-.fb-local-menu {
-  position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
-  z-index: calc(var(--fui-z-overlay) + 2);
-}
-.fb-local-menu .fui-game-menu-panel {
-  left: auto;
-  right: 0;
-}
 .fb-round-controls {
   position: fixed;
   bottom: auto;
@@ -328,8 +317,13 @@ kbd {
   left: max(8px, env(safe-area-inset-left));
   z-index: var(--fui-z-menu);
 }
-#screen:not([data-screen="lobby"]) ~ .portal-corner {
-  display: none;
+.portal-corner a {
+  color: var(--fui-yellow);
+}
+/* A match keeps the bar's sound, account and menu (the game's own controls are in that menu); the portal and the
+   name are the lobby's. */
+#screen:not([data-screen="lobby"]) ~ .portal-corner .fui-top-bar-left {
+  visibility: hidden;
 }
 
 /* The sound toggle is for the lobby and menus; mid-round the HUD owns the bottom edge (pause to reach it). */
