@@ -470,6 +470,9 @@ body:has(.lobby:not([hidden])) .gs-live {
   .room {
     padding: 7px;
   }
+  .room[data-screen="play"] {
+    padding-top: 62px;
+  }
   .arena {
     max-height: 65vh;
   }
@@ -492,10 +495,6 @@ body:has(.lobby:not([hidden])) .gs-live {
     display: flex;
     flex-direction: column;
     height: 100dvh;
-  }
-  #app:has(> [data-layout="arena"]) .top {
-    flex-shrink: 0;
-    flex-wrap: wrap;
   }
   [data-layout="arena"].room {
     flex: 1;

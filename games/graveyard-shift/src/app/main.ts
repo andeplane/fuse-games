@@ -257,7 +257,11 @@ function room() {
   const status = createNotice({ className: "gs-status" }),
     live = createNotice({ className: "gs-live" }),
     problem = createNotice({ className: "gs-alert" });
-  const say = (text: string, tone: "info" | "error") => {
+  // The room gone: nothing that arrives afterwards may take that off the screen.
+  let over = false;
+  const say = (text: string, tone: "info" | "error", last = false) => {
+    if (over) return;
+    over = last;
     if (tone === "error") {
       status.clear();
       live.clear();
@@ -681,7 +685,11 @@ function room() {
         host = isHost;
       },
       ended() {
-        say("Room ended. Return to the menu to create a new shift.", "error");
+        say(
+          "Room ended. Return to the menu to create a new shift.",
+          "error",
+          true,
+        );
       },
     },
     session.kind === "room"

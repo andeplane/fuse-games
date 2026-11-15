@@ -674,6 +674,27 @@ test("a viewer with a name is seated on arriving, once, in whichever seat is fre
     "a name being typed is the player's to submit, not seated under its first letter",
   );
 
+  // A form the game attaches later (Fuse Lane) is held to the same rule.
+  const late = build("");
+  const lateForm = late.root.ownerDocument.createElement("form"),
+    lateField = late.root.ownerDocument.createElement("input"),
+    lateSubmit = late.root.ownerDocument.createElement("button");
+  lateSubmit.type = "submit";
+  lateForm.append(lateField, lateSubmit);
+  late.root.ownerDocument.body.append(lateForm);
+  let lateJoins = 0;
+  lateForm.requestSubmit = () => {
+    lateJoins++;
+  };
+  late.root.hidden = false;
+  late.layout.attachJoin(lateForm);
+  lateField.value = "A";
+  lateField.dispatchEvent(
+    new late.root.ownerDocument.defaultView!.Event("input", { bubbles: true }),
+  );
+  late.layout.update(0);
+  assert.equal(lateJoins, 0, "nor in a join form attached after the room");
+
   const optedOut = build("Anders", false);
   optedOut.root.hidden = false;
   optedOut.form.hidden = false;
