@@ -11,12 +11,13 @@ import type { Theme } from "../looks.js";
 import { laneColor, laneLight } from "../palette.js";
 import type { Scene, SceneCanvas, SceneOptions } from "../scene.js";
 import { UNIT, frame, laneZ, type Vec3, type Window } from "../stage-kit.js";
+import { buildRider, type RiderActor } from "./actors.js";
 import {
-  buildRider,
   buildSurges,
-  type RiderActor,
+  buildWarden,
   type SurgeCrew,
-} from "./actors.js";
+  type Warden,
+} from "./surges.js";
 import { box, release, tint } from "./kit.js";
 import { ARCH_X, PIT_Y, buildSet, type StageSet } from "./set.js";
 
@@ -52,8 +53,9 @@ const HOLD: readonly Vec3[] = [
   [ARCH_X + 0.3, 0, 2.9],
   [ARCH_X + 0.3, 0, -2.9],
   [ARCH_X, 2.5, -2.9],
-  [0.4, 2.5, -2.6],
-  [6.2, 2.5, -2.6],
+  // A double jump lifts a rider's feet to about 2.6 and its head a body higher.
+  [0.4, 3.3, -2.6],
+  [6.2, 3.3, -2.6],
 ];
 const WITH_BOARD: Window = { left: -0.97, right: 0.97, bottom: -0.7, top: 0.8 },
   BARE: Window = { left: -0.8, right: 0.8, bottom: -0.75, top: 0.75 };
@@ -61,8 +63,8 @@ const SPARKS = 320;
 
 export const skinOf = (theme: Theme): HudSkin => ({
   low: theme.low.color,
-  // A slab is dark steel: the arrow takes the colour of its hot edge.
-  high: theme.high.style === "slab" ? theme.high.accent : theme.high.color,
+  high: theme.high.color,
+  tall: theme.tall,
   flip: theme.flip,
   accent: theme.deck.trim,
 });
@@ -119,6 +121,7 @@ export function createStage3d(
   let scene = new THREE.Scene();
   let set: StageSet;
   let surges: SurgeCrew;
+  let warden: Warden;
   let riders: RiderActor[] = [];
   let composer: EffectComposer | undefined;
   /** The post chain's passes: the composer frees its own targets, not theirs. */
@@ -157,6 +160,8 @@ export function createStage3d(
     scene.add(set.group);
     surges = buildSurges(theme, doc);
     scene.add(surges.group);
+    warden = buildWarden(theme);
+    scene.add(warden.group);
     riders = [];
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
     material.toneMapped = false;
@@ -297,6 +302,26 @@ export function createStage3d(
         case "jump":
           if (actor) actor.squash = -0.8;
           break;
+        case "double": {
+          // The second jump kicks off thin air: a stretch and a puff where the feet were.
+          if (actor) actor.squash = -0.9;
+          const p = at(cue.slot);
+          burst(p.x, p.y, p.z, 10, "#ffffff", 1.4, -0.6, 2, 0.045);
+          break;
+        }
+        case "volley":
+          warden.hurl();
+          for (const lane of cue.lanes)
+            burst(
+              ARCH_X - 0.1,
+              0.5,
+              laneZ(lane, lanes),
+              8,
+              theme.danger,
+              2,
+              0.8,
+            );
+          break;
         case "hit": {
           const p = at(cue.slot);
           if (actor) actor.flash = 1;
@@ -362,6 +387,7 @@ export function createStage3d(
     live +=
       ((view.phase === "play" ? 1 : 0) - live) * Math.min(1, dtMs / 160 || 1);
     surges.show(view, nowMs, live);
+    warden.show(view.boss, nowMs, dtMs);
     tags.length = 0;
     for (const each of view.riders) {
       const rider = riders[each.slot]!;

@@ -1,5 +1,6 @@
 import {
   DEFAULT_SETTINGS,
+  SWITCHES,
   parseSettings,
   type Settings,
 } from "../online/game.js";
@@ -113,6 +114,8 @@ export function roomFailure(message: string): string {
 
 /** The match settings a link may carry as numbers; the way to try values the lobby's buttons do not offer. */
 const SETTING_PARAMS = ["hits", "seconds", "pace", "target", "bot"] as const;
+/** The ones a link carries as 0 or 1. */
+const SWITCH_PARAMS = ["recover", ...SWITCHES] as const;
 
 /**
  * The settings a page starts with: what this browser last chose (`saved`, as `settingsToSave` wrote it), with
@@ -136,9 +139,11 @@ export function settingsFrom(search: string, saved: string | null): Settings {
     if (raw === null || raw.trim() === "") continue;
     settings = parseSettings({ ...settings, [key]: Number(raw) }) ?? settings;
   }
-  const recover = query.get("recover");
-  if (recover === "0" || recover === "1")
-    settings = { ...settings, recover: recover === "1" };
+  for (const key of SWITCH_PARAMS) {
+    const raw = query.get(key);
+    if (raw === "0" || raw === "1")
+      settings = { ...settings, [key]: raw === "1" };
+  }
   return settings;
 }
 /** What the store keeps of a choice: everything but the shared screen, which belongs to a room, not a browser. */
@@ -146,4 +151,7 @@ export const settingsToSave = (settings: Settings): string =>
   JSON.stringify({ ...settings, display: false });
 /** The settings as the query a solo link carries them in. */
 export const settingsQuery = (settings: Settings): string =>
-  `hits=${settings.hits}&seconds=${settings.seconds}&pace=${settings.pace}&target=${settings.target}&recover=${settings.recover ? 1 : 0}&bot=${settings.bot}`;
+  [
+    ...SETTING_PARAMS.map((key) => `${key}=${settings[key]}`),
+    ...SWITCH_PARAMS.map((key) => `${key}=${settings[key] ? 1 : 0}`),
+  ].join("&");

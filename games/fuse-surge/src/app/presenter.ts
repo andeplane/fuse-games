@@ -1,6 +1,10 @@
 import { CAPACITY, MIN_RIDERS } from "../basics.js";
 import type { Reason } from "../engine/index.js";
-import { BREAK_STEPS, secondsLeft } from "../engine/view-kit.js";
+import {
+  BREAK_STEPS,
+  STEPS_PER_SECOND,
+  secondsLeft,
+} from "../engine/view-kit.js";
 import type { View } from "../online/game.js";
 
 /**
@@ -23,11 +27,13 @@ export const HIT_CHOICES = [
   { value: 4, title: "4" },
   { value: 5, title: "5" },
 ] as const;
+/** A round's length; 0 is endless, played until one rider is left. */
 export const TIME_CHOICES = [
-  { value: 30, title: "30 S" },
-  { value: 60, title: "60 S" },
-  { value: 90, title: "90 S" },
+  { value: 60, title: "1 MIN" },
   { value: 120, title: "2 MIN" },
+  { value: 180, title: "3 MIN" },
+  { value: 300, title: "5 MIN" },
+  { value: 0, title: "ENDLESS" },
 ] as const;
 export const PACE_CHOICES = [
   { value: 0, title: "CHILL" },
@@ -40,10 +46,11 @@ export const TARGET_CHOICES = [
   { value: 3, title: "3" },
   { value: 5, title: "5" },
 ] as const;
-export const RECOVER_CHOICES = [
+export const ON_OFF_CHOICES = [
   { value: true, title: "ON" },
   { value: false, title: "OFF" },
 ] as const;
+export const RECOVER_CHOICES = ON_OFF_CHOICES;
 export const BOT_CHOICES = [
   { value: 0, title: "EASY" },
   { value: 1, title: "NORMAL" },
@@ -175,7 +182,11 @@ export function present(view: View, viewer: Viewer): Model {
     else if (me.out) status = "KNOCKED OFF";
     else {
       const left = world.maxHits - me.hits;
-      status = `${plural(left, "HIT", "HITS")} LEFT · ${secondsLeft(world.clock)} S`;
+      // An endless round counts up: there is no clock to run out.
+      const seconds = world.endless
+        ? Math.floor(world.elapsed / STEPS_PER_SECOND)
+        : secondsLeft(world.clock);
+      status = `${plural(left, "HIT", "HITS")} LEFT · ${seconds} S`;
     }
   }
 

@@ -850,14 +850,14 @@ export function buildSet(theme: Theme, doc: Document): StageSet {
     }
     case "toys": {
       const paints = [
-        "#ff5fa2",
-        "#7fd8ff",
-        "#ffd23f",
-        "#8fe36f",
-        "#7b5cff",
-        "#ff8a3d",
+        "#e58a7a",
+        "#8fb8d9",
+        "#f0c36a",
+        "#a9cf8f",
+        "#a99ad6",
+        "#f0a56b",
       ];
-      const toy = (color: string) => surface({ color, rough: 0.25 });
+      const toy = (color: string) => surface({ color, rough: 0.55 });
       onLedge(9, (x, z) => {
         const stack = new THREE.Group();
         const kind = random();

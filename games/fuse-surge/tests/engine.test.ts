@@ -26,6 +26,7 @@ import {
   toView,
   winnersOf,
   type Pace,
+  type Rules,
 } from "../src/engine/index.js";
 import * as T from "../src/engine/tuning.js";
 import * as basics from "../src/basics.js";
@@ -92,7 +93,8 @@ test("a match opens on a three second countdown with everyone on the start line"
 });
 
 test("a held jump peaks near 145 px, a tap is a hop, and a press just before landing still jumps", () => {
-  const world = fresh();
+  // Without the double jump, so a press in the air waits for the deck.
+  const world = fresh({ double: false });
   let peak = 0;
   const flight = until(
     world,
@@ -237,7 +239,8 @@ test("the last hit knocks a rider off the edge and into the pit", () => {
 
 test("five clean dodges in a row win a foothold back, unless the match turned that off", () => {
   for (const recover of [true, false]) {
-    const world = playing({ hits: 3, recover });
+    // At the frantic pace a surge is off the deck before the rider has walked its foothold back.
+    const world = playing({ hits: 3, recover, pace: 2 });
     const rider = world.riders[0]!;
     rider.hits = 1;
     rider.x = footholdX(1, 3);
@@ -273,15 +276,27 @@ test("a flipping surge changes height at the gate, before it reaches anyone", ()
   assert.equal(toView(world).surges[0]!.flips, false);
 });
 
-test("surges speed up and close up as a round goes on, by pace, up to a ceiling", () => {
+test("surges speed up and close up along one curve: a round of any length ends equally hard, an endless one climbs to the ceilings", () => {
   for (const pace of [0, 1, 2] as Pace[]) {
-    assert.ok(speedAt(7200, pace) > speedAt(0, pace) * 1.8);
-    assert.ok(gapAt(7200, pace) < gapAt(0, pace));
-    assert.equal(gapAt(1_000_000, pace), T.GAP_MIN[pace]);
-    assert.equal(speedAt(1_000_000, pace), T.SPEED_MAX);
+    const two = { ...DEFAULT_RULES, pace, seconds: 120 },
+      one = { ...two, seconds: 60 },
+      endless = { ...two, seconds: 0 };
+    assert.ok(speedAt(14400, two) > speedAt(0, two) * 2.3);
+    assert.ok(gapAt(14400, two) < gapAt(0, two));
+    // Half-way through any round is the same place on the curve, and so is its end.
+    assert.equal(speedAt(3600, one), speedAt(7200, two));
+    assert.equal(speedAt(7200, one), speedAt(14400, two));
+    assert.equal(gapAt(7200, one), gapAt(14400, two));
+    // An endless round runs the two-minute curve in real steps, and on past its end up to the ceilings.
+    assert.equal(speedAt(7200, endless), speedAt(7200, two));
+    assert.ok(speedAt(20000, endless) > speedAt(14400, two));
+    assert.equal(gapAt(1_000_000, endless), T.GAP_MIN[pace]);
+    assert.equal(speedAt(1_000_000, endless), T.SPEED_MAX);
+    assert.equal(limitOf(endless), T.ENDLESS_STEPS);
   }
-  assert.ok(speedAt(0, 2) > speedAt(0, 1) && speedAt(0, 1) > speedAt(0, 0));
-  const world = fresh({ pace: 1 });
+  const at = (pace: Pace) => speedAt(0, { ...DEFAULT_RULES, pace });
+  assert.ok(at(2) > at(1) && at(1) > at(0));
+  const world = fresh({ pace: 1, hits: 9, boss: false, tall: false });
   steps(world, T.READY_STEPS);
   const early = toView(world);
   assert.equal(early.speed, early.speedStart);
@@ -307,7 +322,7 @@ test("the round's surges come from the match's seed: the same seed replays, anot
   assert.equal(run(7), run(7));
   assert.notEqual(run(7), run(8));
   // Never more than three of one height in a row, counting a flip as what it strikes as.
-  const world = fresh({ seconds: 300 }, 99, [A, B]);
+  const world = fresh({ seconds: 300, boss: false, tall: false }, 99, [A, B]);
   const kinds: number[] = [];
   let last = 0;
   ticks(world, 3000, planInput, (w) => {
@@ -431,22 +446,55 @@ test("the match goes to whoever first has the target's wins", () => {
   assert.equal(world.riders[1]!.taken, 4);
 });
 
-test("sound play is never struck: every pattern the deck sends can be cleared, at every pace", () => {
+test("sound play is never struck: every pattern the deck sends can be cleared, at every pace and with any of the switchable rules", () => {
+  const off = { double: false, tall: false, boss: false, glide: false };
+  const variants: { name: string; rules: Partial<Rules> }[] = [
+    { name: "plain", rules: off },
+    {
+      name: "everything",
+      rules: { double: true, tall: true, boss: true, glide: true },
+    },
+    { name: "the defaults", rules: {} },
+    { name: "tall surges", rules: { ...off, double: true, tall: true } },
+    { name: "the Warden", rules: { ...off, boss: true } },
+    { name: "glide", rules: { ...off, glide: true } },
+    { name: "a short round", rules: { seconds: 30 } },
+    { name: "a long round", rules: { seconds: 300 } },
+  ];
   for (const pace of [0, 1, 2] as Pace[])
-    for (let seed = 1; seed <= 8; seed++) {
-      const world = fresh(
-        { pace, seconds: 120, hits: 9, target: 1, recover: false },
-        seed * 7919,
-      );
-      ticks(world, 4000, planInput, (w) => w.phase === "break");
-      assert.equal(world.lastReason, "time", `pace ${pace} seed ${seed}`);
-      assert.deepEqual(
-        world.riders.map((rider) => rider.taken),
-        [0, 0],
-        `pace ${pace} seed ${seed}`,
-      );
-      assert.ok(world.riders[0]!.dodges > 60);
-    }
+    for (const { name, rules } of variants)
+      for (let seed = 1; seed <= 3; seed++) {
+        const world = fresh(
+          { pace, seconds: 120, hits: 9, target: 1, recover: false, ...rules },
+          seed * 7919,
+        );
+        const label = `${name}, pace ${pace}, seed ${seed}`;
+        ticks(world, 7000, planInput, (w) => w.phase === "break");
+        assert.equal(world.lastReason, "time", label);
+        assert.deepEqual(
+          world.riders.map((rider) => rider.taken),
+          [0, 0],
+          label,
+        );
+        assert.ok(world.riders[0]!.dodges > 15, label);
+      }
+  // An endless round climbs past where a timed one ends, to the ceilings: five minutes of it, with everything on.
+  for (const pace of [0, 1, 2] as Pace[]) {
+    const world = fresh(
+      { pace, seconds: 0, hits: 9, target: 1, recover: false, glide: true },
+      pace + 404,
+    );
+    ticks(world, 6000, planInput, (w) => w.phase === "break");
+    assert.equal(world.phase, "play", `endless, pace ${pace}`);
+    assert.deepEqual(
+      world.riders.map((rider) => rider.taken),
+      [0, 0],
+      `endless, pace ${pace}`,
+    );
+    assert.ok(
+      speedAt(world.clock, world.rules) > speedAt(T.CURVE_STEPS, world.rules),
+    );
+  }
 });
 
 test("the view is the world in pixels, and a clone shares nothing with it", () => {
@@ -461,7 +509,8 @@ test("the view is the world in pixels, and a clone shares nothing with it", () =
   assert.equal(view.maxHits, 4);
   assert.equal(view.streakFor, T.STREAK_FOR_STEP);
   assert.equal(view.surges[0]!.kind, HIGH);
-  assert.equal(view.limit, 60 * T.STEPS_PER_SECOND);
+  assert.equal(view.limit, T.DEFAULT_SECONDS * T.STEPS_PER_SECOND);
+  assert.equal(T.DEFAULT_SECONDS, 120);
   const copy = cloneWorld(world);
   steps(copy, 30, JUMP, JUMP);
   assert.notDeepEqual(copy, world);

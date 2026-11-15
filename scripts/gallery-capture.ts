@@ -144,10 +144,7 @@ const RECIPES: Record<string, Recipe> = {
     await page.waitForTimeout(700);
   },
   "fuse-surge": async (page) => {
-    await openPlayOptions(page);
-    await page
-      .getByRole("button", { name: "PLAY SOLO VS BOTS", exact: true })
-      .click();
+    await openPlayOptions(page, "single");
     await page
       .locator('.fs-room[data-phase="play"]')
       .waitFor({ timeout: 30_000 });

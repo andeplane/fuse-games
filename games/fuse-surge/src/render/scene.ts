@@ -4,9 +4,12 @@ import {
   GATE_X,
   HIGH,
   HIGH_BOTTOM,
+  HIGH_TOP,
   LOW_TOP,
   STAND_H,
   STEPS_PER_SECOND,
+  TALL,
+  TALL_TOP,
   footholds,
   secondsLeft,
 } from "../engine/view-kit.js";
@@ -25,6 +28,7 @@ import {
   SURGE_CORE,
   SURGE_HIGH,
   SURGE_LOW,
+  SURGE_TALL,
   TEXT,
   TEXT_DIM,
   WHITE,
@@ -430,11 +434,15 @@ export function createScene(
   };
 
   // ---- a surge: a wall of charge across every lane ----
+  /** What a surge strikes, bottom to top: a low one on the deck, a high one floating, a tall one from the deck up. */
   const band = (kind: number): [number, number] =>
     kind === HIGH
-      ? [HIGH_BOTTOM * Y_SCALE, HIGH_BOTTOM * Y_SCALE + 30]
-      : [3, LOW_TOP * Y_SCALE - 2];
+      ? [HIGH_BOTTOM * Y_SCALE, HIGH_TOP * Y_SCALE]
+      : kind === TALL
+        ? [3, TALL_TOP * Y_SCALE]
+        : [3, LOW_TOP * Y_SCALE - 2];
   const surgeColor = (surge: SurgeView, now: number) => {
+    if (surge.kind === TALL) return SURGE_TALL;
     const own = surge.kind === HIGH ? SURGE_HIGH : SURGE_LOW;
     if (!surge.flips) return own;
     // About to flip: it flickers toward the colour it will be.
@@ -725,8 +733,11 @@ export function createScene(
     local: number,
     names: readonly string[],
   ) => {
-    const seconds = secondsLeft(view.clock);
-    const urgent = view.phase === "play" && seconds <= 10;
+    // An endless round has no clock to run out: it shows how long it has lasted.
+    const seconds = view.endless
+      ? Math.floor(view.elapsed / STEPS_PER_SECOND)
+      : secondsLeft(view.clock);
+    const urgent = view.phase === "play" && !view.endless && seconds <= 10;
     c.textAlign = "center";
     c.font = `28px ${PIXEL_FONT}`;
     c.fillStyle = urgent ? hexA(DANGER, 0.7 + 0.3 * Math.sin(now / 90)) : TEXT;
@@ -763,6 +774,18 @@ export function createScene(
     c.fillRect(24, 40, 14, 8);
     c.fillStyle = TEXT_DIM;
     c.fillText("HIGH: DUCK", 46, 48);
+    if (view.tall) {
+      c.fillStyle = SURGE_TALL;
+      c.fillRect(24, 58, 14, 8);
+      c.fillStyle = TEXT_DIM;
+      c.fillText("TALL: DOUBLE JUMP", 46, 66);
+    }
+    if (view.tallSoon && Math.floor(now / 160) % 2 === 0) {
+      c.textAlign = "right";
+      c.fillStyle = SURGE_TALL;
+      c.fillText("TALL NEXT: DOUBLE JUMP", W - 24, 84);
+      c.textAlign = "left";
+    }
     // The cards.
     const count = view.riders.length,
       width = Math.min(176, (W - 48 - (count - 1) * 10) / count),
@@ -843,12 +866,15 @@ export function createScene(
     // Surges are spent once a round is over, and burn out as they leave the deck for the pit.
     const spent = view.phase === "play" ? 1 : 0.35;
     const dim = (surge: SurgeView) => spent * clamp01(1 + surge.x / 110);
-    for (const surge of view.surges) surgeTrim(g, surge, nowMs, dim(surge));
+    // A bolt runs down one lane and has no carriages on the rails.
+    for (const surge of view.surges)
+      if (surge.lane < 0) surgeTrim(g, surge, nowMs, dim(surge));
     for (let lane = 0; lane < lanes; lane++) {
       const y0 = BACK_Y + (DEPTH * lane) / lanes,
         y1 = BACK_Y + (DEPTH * (lane + 1)) / lanes;
       for (const surge of view.surges)
-        surgeSlice(g, surge, y0, y1, nowMs, dim(surge));
+        if (surge.lane < 0 || surge.lane === lane)
+          surgeSlice(g, surge, y0, y1, nowMs, dim(surge));
       const each = view.riders[lane]!;
       rider(
         g,

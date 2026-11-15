@@ -32,6 +32,8 @@ export const DECK_FACE = "#081233";
 /** A low surge (jump it) and a high one (duck it). */
 export const SURGE_LOW = "#ff5b4a";
 export const SURGE_HIGH = "#a98bff";
+/** A tall surge: only a double jump clears it. */
+export const SURGE_TALL = "#ffe46b";
 export const SURGE_CORE = "#fff6ea";
 export const PIT = "#ff2e9d";
 export const PIT_DEEP = "#3b0f6b";

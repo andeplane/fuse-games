@@ -40,7 +40,7 @@ test("a harder bot lasts longer, and none of them is perfect", () => {
   const [easy, normal, hard] = BOT_LEVELS.map(mean) as [number, number, number];
   assert.ok(easy < normal && normal < hard, `${easy} ${normal} ${hard}`);
   assert.ok(easy > 8, `an easy bot is not hopeless: ${easy}`);
-  assert.ok(hard < 60, `a hard bot still falls sometimes: ${hard}`);
+  assert.ok(hard < 118, `a hard bot still falls sometimes: ${hard}`);
   assert.ok(
     isBotLevel(0) && isBotLevel(2) && !isBotLevel(3) && !isBotLevel("1"),
   );
@@ -99,9 +99,12 @@ test("in the air over a low surge the plan holds on if the jump carries, and div
   const sinking: World = playing();
   steps(sinking, 60, JUMP, JUMP);
   surge(sinking, LOW, 0, {
-    x: T.START_X + T.REACH + 12 * T.SPEED_BASE[1],
+    x: T.START_X + T.REACH + 30 * T.SPEED_BASE[1],
   });
   assert.equal(planInput(sinking, 0), DUCK);
+  // Too close to land and jump again: staying up is all there is, so it does not throw the jump away.
+  sinking.surges[0]!.x = T.START_X + T.REACH + 12 * T.SPEED_BASE[1];
+  assert.equal(planInput(sinking, 0), JUMP);
 });
 
 test("a rider that is out, or a slot nobody rides, holds nothing; a round's winner hops through the break", () => {

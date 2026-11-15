@@ -300,7 +300,7 @@ test("in a match each rider gets its line; on a shared screen a phone becomes a 
   run(room, T.READY_STEPS / STEPS_PER_TICK);
   mine = present(view(room), host);
   assert.equal(mine.controlsVisible, false);
-  assert.equal(mine.status, "3 HITS LEFT · 60 S");
+  assert.equal(mine.status, "3 HITS LEFT · 120 S");
   room.world!.riders[0]!.hits = 2;
   assert.match(present(view(room), host).status, /^1 HIT LEFT/);
   // A watcher, a seat for the next match and a stranger each get a line under the deck; the TV gets none.
@@ -410,7 +410,7 @@ test("each round is reported once, by a device that rode it, after its end has s
   assert.deepEqual(mine(view(room), "a"), [], "not settled yet");
   run(room, ROUND_SETTLE_STEPS / STEPS_PER_TICK + 1);
   assert.deepEqual(mine(view(room), "a"), [
-    { round: 1, reason: "last", won: true, riders: 2, seconds: 60, hits: 3 },
+    { round: 1, reason: "last", won: true, riders: 2, seconds: 120, hits: 3 },
   ]);
   assert.deepEqual(mine(view(room), "a"), [], "once");
   assert.deepEqual(watcher(view(room), "z"), [], "a watcher rode nothing");

@@ -1,5 +1,10 @@
 import type { WorldView } from "../engine/view.js";
-import { HIGH, secondsLeft } from "../engine/view-kit.js";
+import {
+  HIGH,
+  STEPS_PER_SECOND,
+  TALL,
+  secondsLeft,
+} from "../engine/view-kit.js";
 import type { Cue } from "./cues.js";
 import {
   DANGER,
@@ -20,9 +25,10 @@ import type { SceneCanvas } from "./scene.js";
  * 960 × 540 board scaled to fit, and takes the places of things in the world as fractions of the picture.
  */
 export interface HudSkin {
-  /** A low surge's colour and a high one's, for the legend and the arrows. */
+  /** A low surge's colour, a high one's and a tall one's, for the legend and the arrows. */
   low: string;
   high: string;
+  tall: string;
   flip: string;
   accent: string;
 }
@@ -185,8 +191,11 @@ export function createHud(
     local: number,
     names: readonly string[],
   ) => {
-    const seconds = secondsLeft(view.clock);
-    const urgent = view.phase === "play" && seconds <= 10;
+    // An endless round has no clock to run out: it shows how long it has lasted.
+    const seconds = view.endless
+      ? Math.floor(view.elapsed / STEPS_PER_SECOND)
+      : secondsLeft(view.clock);
+    const urgent = view.phase === "play" && !view.endless && seconds <= 10;
     // The clock and the round.
     plate(c, W / 2 - 118, 12, 236, 64);
     c.textAlign = "center";
@@ -199,13 +208,17 @@ export function createHud(
     );
     c.font = `9px ${PIXEL_FONT}`;
     c.fillStyle = TEXT_DIM;
-    c.fillText(
+    const round =
       view.target > 1
         ? `ROUND ${view.round} · FIRST TO ${view.target}`
-        : `ROUND ${view.round}`,
-      W / 2,
-      67,
-    );
+        : `ROUND ${view.round}`;
+    c.fillText(view.endless ? `${round} · ENDLESS` : round, W / 2, 67);
+    // A tall surge is next out of the arch: say so while there is still time to get ready.
+    if (view.tallSoon && Math.floor(now / 160) % 2 === 0) {
+      c.textAlign = "right";
+      ink(c, "TALL NEXT: DOUBLE JUMP", W - 24, 96, skin.tall);
+      c.textAlign = "center";
+    }
     // The surge speed, as a bar that fills and a multiple of where the round began.
     const times = view.speedStart > 0 ? view.speed / view.speedStart : 1;
     const fill = clamp01((times - 1) / 2);
@@ -220,7 +233,7 @@ export function createHud(
     c.fillStyle = TEXT;
     c.fillText(`x${times.toFixed(1)}`, W - 24, 66);
     // A legend, so what to do about each kind never needs guessing.
-    plate(c, 12, 12, 158, 64);
+    plate(c, 12, 12, view.tall ? 214 : 158, view.tall ? 88 : 64);
     c.textAlign = "left";
     const legend = (y: number, color: string, up: boolean, text: string) => {
       c.fillStyle = color;
@@ -235,6 +248,7 @@ export function createHud(
     };
     legend(32, skin.low, true, "LOW: JUMP");
     legend(56, skin.high, false, "HIGH: DUCK");
+    if (view.tall) legend(80, skin.tall, true, "TALL: DOUBLE JUMP");
     // The cards.
     const count = view.riders.length,
       width = Math.min(176, (W - 48 - (count - 1) * 10) / count),
@@ -299,7 +313,7 @@ export function createHud(
       const x = hint.x * pw,
         y = hint.y * ph + 16,
         up = hint.kind !== HIGH;
-      const color = up ? skin.low : skin.high;
+      const color = hint.kind === TALL ? skin.tall : up ? skin.low : skin.high;
       g.globalAlpha = clamp01(hint.dim);
       g.fillStyle = hexA(INK, 0.7);
       g.beginPath();
@@ -312,6 +326,15 @@ export function createHud(
       g.lineTo(x - 8, y + (up ? 5 : -5));
       g.closePath();
       g.fill();
+      if (hint.kind === TALL) {
+        // Two arrows: it takes two jumps.
+        g.beginPath();
+        g.moveTo(x, y - 17);
+        g.lineTo(x + 8, y - 6);
+        g.lineTo(x - 8, y - 6);
+        g.closePath();
+        g.fill();
+      }
       if (hint.flips) {
         g.font = `8px ${PIXEL_FONT}`;
         ink(g, "FLIP", x, y + 28, skin.flip);

@@ -54,6 +54,7 @@
     "games/fuse-surge/src/render/scene.ts",
     "games/fuse-surge/src/render/hud.ts",
     "games/fuse-surge/src/render/three/actors.ts",
+    "games/fuse-surge/src/render/three/surges.ts",
     "games/fuse-surge/src/render/three/kit.ts",
     "games/fuse-surge/src/render/three/set.ts",
     "games/fuse-surge/src/render/three/stage.ts",

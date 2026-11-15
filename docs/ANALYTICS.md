@@ -124,7 +124,7 @@ Existing game-specific events use the same namespace and privacy boundary:
 Riders' funnel/settings/graphics events and confirmed human-owned `Kill`/`Miss`,
 Killer Fuse's decided `Game Ended`, Fuseball's `Goal Scored`, Volley's
 `Point Scored`, Elasto's `Race Finished` and Fuse Surge's `Round Decided` (how a round
-ended: `reason`, `won`, `riders`, `seconds`, `hits`). No per-tick stream is added.
+ended: `reason`, `won`, `riders`, `seconds` with 0 for an endless round, `hits`). No per-tick stream is added.
 Riders weapon credit follows the authoritative decided shot log, not speculative
 rendered explosions; the shooter reports its own shots and bots have no user identity.
 

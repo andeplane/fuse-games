@@ -3,6 +3,7 @@ import * as T from "./tuning.js";
 import {
   footholdX,
   limitOf,
+  sendsTall,
   slotsOf,
   speedAt,
   type Kind,
@@ -29,6 +30,8 @@ export interface RiderView {
   hits: number;
   foothold: number;
   out: boolean;
+  /** It has made its air jump and not landed since. */
+  doubled: boolean;
   /** Being thrown back right now. */
   reeling: boolean;
   /** Nothing can strike it: reeling, or just after. */
@@ -43,6 +46,8 @@ export interface SurgeView {
   kind: Kind;
   /** It will change height at the gate. */
   flips: boolean;
+  /** The one lane (rider slot) a bolt runs down; −1 for a surge across the deck. */
+  lane: number;
   x: number;
 }
 export interface WorldView {
@@ -54,6 +59,16 @@ export interface WorldView {
   /** Steps of the round's clock left, and its whole length. */
   clock: number;
   limit: number;
+  /** The round has no clock: it is played until one rider is left. `elapsed` is the steps it has played. */
+  endless: boolean;
+  elapsed: number;
+  /** Which of the switchable rules this match plays by. */
+  double: boolean;
+  tall: boolean;
+  boss: boolean;
+  glide: boolean;
+  /** A tall surge is the next thing out of the arch. */
+  tallSoon: boolean;
   /** The surges' speed now and at the start of a round, px per step. */
   speed: number;
   speedStart: number;
@@ -81,8 +96,15 @@ export function toView(world: World): WorldView {
     remaining: world.phaseSteps,
     clock: limit - world.clock,
     limit,
-    speed: speedAt(world.clock, world.rules.pace) / T.U,
-    speedStart: speedAt(0, world.rules.pace) / T.U,
+    endless: world.rules.seconds === T.ENDLESS,
+    elapsed: world.clock,
+    double: world.rules.double,
+    tall: sendsTall(world.rules),
+    boss: world.rules.boss,
+    glide: world.rules.glide,
+    tallSoon: world.phase === "play" && world.tallNext,
+    speed: speedAt(world.clock, world.rules) / T.U,
+    speedStart: speedAt(0, world.rules) / T.U,
     maxHits: world.rules.hits,
     target: world.rules.target,
     recover: world.rules.recover,
@@ -95,6 +117,7 @@ export function toView(world: World): WorldView {
       vy: rider.vy / T.U,
       air: rider.y !== 0 || rider.vy !== 0,
       duck: rider.duck,
+      doubled: rider.jumps > 0,
       hits: rider.hits,
       foothold: footholdX(rider.hits, world.rules.hits) / T.U,
       out: rider.out,
@@ -109,6 +132,7 @@ export function toView(world: World): WorldView {
       id: surge.id,
       kind: surge.kind,
       flips: surge.flip,
+      lane: surge.lane,
       x: surge.x / T.U,
     })),
     lastWinners: slotsOf(world.lastWinners, world.riders.length),

@@ -37,23 +37,31 @@ import { fold, finish, run, seated, started } from "./fixtures/room.js";
 const roundTrip = (room: Room): Room | undefined =>
   decode(JSON.parse(JSON.stringify(encode(room))) as unknown[], room.tick);
 
-test("settings are exactly seven checked fields", () => {
+test("settings are exactly their checked fields", () => {
   assert.deepEqual(parseSettings(DEFAULT_SETTINGS), DEFAULT_SETTINGS);
   assert.deepEqual(DEFAULT_SETTINGS, {
     display: false,
     hits: 3,
-    seconds: 60,
+    seconds: 120,
     pace: 1,
     target: 3,
     recover: true,
+    double: true,
+    tall: true,
+    boss: true,
+    glide: false,
     bot: 1,
   });
   assert.deepEqual(rulesOf(DEFAULT_SETTINGS), {
     hits: 3,
-    seconds: 60,
+    seconds: 120,
     pace: 1,
     target: 3,
     recover: true,
+    double: true,
+    tall: true,
+    boss: true,
+    glide: false,
   });
   const bad: unknown[] = [
     null,
@@ -66,7 +74,15 @@ test("settings are exactly seven checked fields", () => {
     { ...DEFAULT_SETTINGS, hits: 0 },
     { ...DEFAULT_SETTINGS, hits: 10 },
     { ...DEFAULT_SETTINGS, seconds: 5 },
-    { ...DEFAULT_SETTINGS, seconds: 301 },
+    { ...DEFAULT_SETTINGS, seconds: 601 },
+    { ...DEFAULT_SETTINGS, seconds: -1 },
+    { ...DEFAULT_SETTINGS, double: 1 },
+    { ...DEFAULT_SETTINGS, tall: "on" },
+    { ...DEFAULT_SETTINGS, boss: null },
+    { ...DEFAULT_SETTINGS, glide: 0 },
+    Object.fromEntries(
+      Object.entries(DEFAULT_SETTINGS).filter(([key]) => key !== "glide"),
+    ),
     { ...DEFAULT_SETTINGS, pace: 3 },
     { ...DEFAULT_SETTINGS, target: 0 },
     { ...DEFAULT_SETTINGS, bot: 5 },
@@ -74,6 +90,17 @@ test("settings are exactly seven checked fields", () => {
   for (const raw of bad) assert.equal(parseSettings(raw), undefined);
   // Anything inside the bounds is a match, whether or not the lobby offers it.
   assert.ok(parseSettings({ ...DEFAULT_SETTINGS, hits: 7, seconds: 45 }));
+  // No seconds at all is the endless round.
+  assert.equal(parseSettings({ ...DEFAULT_SETTINGS, seconds: 0 })?.seconds, 0);
+  assert.ok(
+    parseSettings({
+      ...DEFAULT_SETTINGS,
+      double: false,
+      tall: false,
+      boss: false,
+      glide: true,
+    }),
+  );
 });
 
 test("the log takes management entries and held bits for a match, and nothing else", () => {
@@ -125,6 +152,10 @@ test("a match needs two riders; once started it counts in with the room's settin
     pace: 2,
     target: 3,
     recover: true,
+    double: true,
+    tall: true,
+    boss: true,
+    glide: false,
   });
   assert.deepEqual(
     room.roster.map((entrant) => [entrant.id, entrant.name, entrant.slot]),

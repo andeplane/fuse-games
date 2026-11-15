@@ -2,11 +2,15 @@ import { DUCK, JUMP } from "./input.js";
 import { approach, div, xorshift } from "./math.js";
 import * as T from "./tuning.js";
 import {
+  EVERY_LANE,
   HIGH,
   LOW,
+  TALL,
+  curveAt,
   footholdX,
   gapAt,
   limitOf,
+  sendsTall,
   speedAt,
   startRound,
   type Kind,
@@ -22,24 +26,54 @@ import {
 
 const airborne = (rider: Rider): boolean => rider.y !== 0 || rider.vy !== 0;
 
-/** Gravity on a rider with the deck under it. */
-function fallOnDeck(rider: Rider, gravity: number): boolean {
-  rider.vy -= gravity;
-  if (rider.vy < -T.MAX_FALL_V) rider.vy = -T.MAX_FALL_V;
+/** Moves a rider by its speed; true when that put it on the deck, where it stops and has its air jump back. */
+function land(rider: Rider): boolean {
   rider.y += rider.vy;
   // No jump reaches this height: only a checkpoint that put a rider there could, and it stays a world that decodes.
   if (rider.y > T.MAX_Y) rider.y = T.MAX_Y;
   if (rider.y > 0) return false;
   rider.y = 0;
   rider.vy = 0;
+  rider.jumps = 0;
   return true;
+}
+
+/** Plain gravity on a rider with the deck under it. */
+function fallOnDeck(rider: Rider): boolean {
+  rider.vy -= T.GRAVITY;
+  if (rider.vy < -T.MAX_FALL_V) rider.vy = -T.MAX_FALL_V;
+  return land(rider);
+}
+
+/**
+ * A rider's vertical speed after one step in the air. Letting go of jump cuts a fast rise short; a duck without jump
+ * is a dive, which stops the rise and falls hard; and with the glide rule, holding jump while falling falls softly.
+ * While jump is held it wins, so a duck let go a moment late never swallows a jump.
+ */
+export function airSpeed(
+  vy: number,
+  jump: boolean,
+  duck: boolean,
+  glide: boolean,
+): number {
+  if (duck && !jump) {
+    const fall = (vy > 0 ? 0 : vy) - T.DIVE_GRAVITY;
+    return fall < -T.MAX_FALL_V ? -T.MAX_FALL_V : fall;
+  }
+  if (!jump && vy > T.JUMP_CUT) vy = T.JUMP_CUT;
+  if (glide && jump && vy <= 0) {
+    const soft = vy - T.GLIDE_GRAVITY;
+    return soft < -T.GLIDE_FALL_V ? -T.GLIDE_FALL_V : soft;
+  }
+  const fall = vy - T.GRAVITY;
+  return fall < -T.MAX_FALL_V ? -T.MAX_FALL_V : fall;
 }
 
 /** A rider knocked out tumbles to the edge and drops into the pit, where it rests. */
 function tumble(rider: Rider): void {
   rider.x = approach(rider.x, T.OUT_X, T.KNOCK_SPEED);
   if (rider.x >= T.EDGE_X) {
-    if (airborne(rider)) fallOnDeck(rider, T.GRAVITY);
+    if (airborne(rider)) fallOnDeck(rider);
     return;
   }
   if (rider.y <= -T.FALL_DEPTH) return;
@@ -64,12 +98,17 @@ function moveRider(world: World, rider: Rider, bits: number): void {
     rider.x = approach(rider.x, goal, T.KNOCK_SPEED);
     if (rider.reel > 1 || rider.x === goal) rider.reel--;
     if (rider.reel === 0) rider.grace = T.GRACE_STEPS;
-    if (airborne(rider)) fallOnDeck(rider, T.GRAVITY);
+    if (airborne(rider)) fallOnDeck(rider);
     return;
   }
   if (rider.grace > 0) rider.grace--;
   rider.x = approach(rider.x, goal, T.WALK_SPEED);
-  if (pressed) rider.buffer = T.JUMP_BUFFER;
+  if (pressed && world.rules.double && airborne(rider) && rider.jumps === 0) {
+    // A second jump, in the air. It takes the press, so nothing is left waiting for the deck.
+    rider.jumps = 1;
+    rider.buffer = 0;
+    rider.vy = T.DOUBLE_V;
+  } else if (pressed) rider.buffer = T.JUMP_BUFFER;
   else if (rider.buffer > 0) rider.buffer--;
   if (!airborne(rider)) {
     if (rider.buffer === 0) {
@@ -80,20 +119,22 @@ function moveRider(world: World, rider: Rider, bits: number): void {
     rider.duck = false;
     rider.vy = T.JUMP_V;
   }
-  // In the air: letting go of jump cuts the rise short, and a duck without jump is a dive. While jump is held it
-  // wins, so a duck let go a moment late never swallows a jump.
-  const dive = duck && !jump;
-  if (dive) {
-    if (rider.vy > 0) rider.vy = 0;
-  } else if (!jump && rider.vy > T.JUMP_CUT) rider.vy = T.JUMP_CUT;
-  if (fallOnDeck(rider, dive ? T.DIVE_GRAVITY : T.GRAVITY)) rider.duck = duck;
+  rider.vy = airSpeed(rider.vy, jump, duck, world.rules.glide);
+  if (land(rider)) rider.duck = duck;
 }
 
-/** Whether a rider's pose lets a surge of `kind` pass. */
+/**
+ * Whether a rider's pose lets a surge of `kind` pass. A low one passes under feet above it. A high one floats: it
+ * passes over a ducked head and under feet above its top. A tall one stands from the deck up, and passes only under
+ * feet above its top.
+ */
 export const clears = (rider: Rider, kind: Kind): boolean =>
   kind === LOW
     ? rider.y > T.LOW_TOP
-    : rider.y + (rider.duck ? T.DUCK_H : T.STAND_H) < T.HIGH_BOTTOM;
+    : kind === TALL
+      ? rider.y > T.TALL_TOP
+      : rider.y + (rider.duck ? T.DUCK_H : T.STAND_H) < T.HIGH_BOTTOM ||
+        rider.y > T.HIGH_TOP;
 
 function strike(world: World, rider: Rider): boolean {
   rider.hits++;
@@ -127,13 +168,17 @@ function dodged(world: World, rider: Rider): void {
   }
 }
 
-/** Settles every surge against every rider it has reached; returns the riders knocked out this step, a bit each. */
+/**
+ * Settles every surge against every rider it has reached; returns the riders knocked out this step, a bit each. A
+ * bolt is settled only against the rider whose lane it runs down: to everyone else it is not there.
+ */
 function sweep(world: World): number {
   let fallen = 0;
   for (const surge of world.surges)
     for (const [slot, rider] of world.riders.entries()) {
       const bit = 1 << slot;
       if (rider.out || surge.done & bit) continue;
+      if (surge.lane !== EVERY_LANE && surge.lane !== slot) continue;
       const gap = surge.x - rider.x;
       if (gap > T.REACH) continue;
       if (gap < -T.REACH) {
@@ -151,9 +196,10 @@ function sweep(world: World): number {
   return fallen;
 }
 
-const chance = (clock: number, from: number, most: number): number => {
-  if (clock < from) return 0;
-  const grown = 8 + div(clock - from, 120);
+/** A chance in a hundred that starts when the curve reaches `from` and grows to `most`. */
+const chance = (curve: number, from: number, most: number): number => {
+  if (curve < from) return 0;
+  const grown = 8 + div(curve - from, T.CHANCE_STEP);
   return grown > most ? most : grown;
 };
 
@@ -162,41 +208,86 @@ function spawn(world: World): void {
     world.nextSpawn--;
     return;
   }
-  const { pace } = world.rules;
-  world.rng = xorshift(world.rng);
-  let kind: Kind = world.rng & 1 ? HIGH : LOW;
-  if (world.run >= T.MAX_RUN && kind === world.runKind)
-    kind = kind === LOW ? HIGH : LOW;
-  world.run = kind === world.runKind ? world.run + 1 : 1;
-  world.runKind = kind;
-  world.rng = xorshift(world.rng);
-  const flip =
-    world.rng % 100 < chance(world.clock, T.FLIP_FROM, T.FLIP_CHANCE_MAX);
-  world.rng = xorshift(world.rng);
-  const pair =
-    world.rng % 100 < chance(world.clock, T.PAIR_FROM, T.PAIR_CHANCE_MAX);
-  world.rng = xorshift(world.rng);
-  // A flipping surge shows the other height until the gate; `kind` is what it strikes as.
-  world.surges.push({
-    id: world.nextId,
-    kind: flip ? (kind === LOW ? HIGH : LOW) : kind,
-    flip,
-    x: T.SPAWN_X,
-    done: 0,
-    hit: 0,
-  });
-  world.nextId = world.nextId >= 0x7fff_ffff ? 1 : world.nextId + 1;
+  const { rules } = world,
+    { pace } = rules;
+  const curve = curveAt(world.clock, rules);
+  const draw = (): number => (world.rng = xorshift(world.rng));
+  const send = (kind: Kind, flip: boolean, lane: number): void => {
+    world.surges.push({
+      id: world.nextId,
+      kind,
+      flip,
+      lane,
+      x: T.SPAWN_X,
+      done: 0,
+      hit: 0,
+    });
+    world.nextId = world.nextId >= 0x7fff_ffff ? 1 : world.nextId + 1;
+  };
+  /** The least clear deck after this spawn, and whether the next one follows as a tight pair. */
+  let rest = 0,
+    pair = false;
+  if (world.tallNext) {
+    // Decided at the spawn before, which left the deck clear ahead of it.
+    world.tallNext = false;
+    world.run = 0;
+    send(TALL, false, EVERY_LANE);
+    rest = T.TALL_REST;
+  } else if (
+    rules.boss &&
+    draw() % 100 < chance(curve, T.BOSS_FROM, T.BOSS_CHANCE_MAX)
+  ) {
+    // The Warden's volley: a bolt down some of the lanes that still have a rider, low or high each on its own.
+    let sent = 0;
+    const standing: number[] = [];
+    for (const [slot, rider] of world.riders.entries()) {
+      if (rider.out) continue;
+      standing.push(slot);
+      const roll = draw();
+      if (roll % 100 >= T.BOLT_CHANCE) continue;
+      send((roll >>> 8) & 1 ? HIGH : LOW, false, slot);
+      sent++;
+    }
+    if (!sent && standing.length) {
+      const roll = draw();
+      send(
+        (roll >>> 8) & 1 ? HIGH : LOW,
+        false,
+        standing[(roll >>> 9) % standing.length]!,
+      );
+    }
+  } else {
+    let kind: Kind = draw() & 1 ? HIGH : LOW;
+    if (world.run >= T.MAX_RUN && kind === world.runKind)
+      kind = kind === LOW ? HIGH : LOW;
+    world.run = kind === world.runKind ? world.run + 1 : 1;
+    world.runKind = kind;
+    const flip = draw() % 100 < chance(curve, T.FLIP_FROM, T.FLIP_CHANCE_MAX);
+    pair = draw() % 100 < chance(curve, T.PAIR_FROM, T.PAIR_CHANCE_MAX);
+    // A flipping surge shows the other height until the gate; `kind` is what it strikes as.
+    send(flip ? (kind === LOW ? HIGH : LOW) : kind, flip, EVERY_LANE);
+  }
+  // A tall surge is chosen one spawn early and never as the second of a pair: the deck is clear before it.
+  if (
+    sendsTall(rules) &&
+    !pair &&
+    draw() % 100 < chance(curve, T.TALL_FROM, T.TALL_CHANCE_MAX)
+  ) {
+    world.tallNext = true;
+    rest = T.TALL_REST;
+  }
   // A pair comes as close as surges ever do; otherwise the gap is jittered a quarter either way, down to its floor.
-  const gap = div(gapAt(world.clock, pace) * (192 + (world.rng % 129)), 256);
-  world.nextSpawn = pair
+  const gap = div(gapAt(world.clock, rules) * (192 + (draw() % 129)), 256);
+  const next = pair
     ? T.PAIR_GAP[pace]
     : gap < T.GAP_MIN[pace]
       ? T.GAP_MIN[pace]
       : gap;
+  world.nextSpawn = next < rest ? rest : next;
 }
 
 function moveSurges(world: World): void {
-  const speed = speedAt(world.clock, world.rules.pace);
+  const speed = speedAt(world.clock, world.rules);
   let kept = 0;
   for (const surge of world.surges) {
     surge.x -= speed;

@@ -2,17 +2,20 @@
  * Fuse Surge's engine: deterministic integer rules with no imports from outside this folder. A change to what any of
  * it does must bump `RULES` and re-record the golden (`tests/golden.test.ts`) in the same commit.
  */
-export const RULES = "fuse-surge-1";
+export const RULES = "fuse-surge-2";
 export * from "./input.js";
 export {
   DEFAULT_RULES,
+  EVERY_LANE,
   HIGH,
   LOW,
   PACES,
   PHASES,
   REASONS,
+  TALL,
   cloneWorld,
   createWorld,
+  curveAt,
   footholdX,
   gapAt,
   isHits,
@@ -21,6 +24,7 @@ export {
   isSeconds,
   isTarget,
   limitOf,
+  sendsTall,
   slotsOf,
   speedAt,
   startRound,
@@ -33,7 +37,7 @@ export {
   type Surge,
   type World,
 } from "./world.js";
-export { clears, stepWorld, winnersOf } from "./step.js";
+export { airSpeed, clears, stepWorld, winnersOf } from "./step.js";
 export {
   BOT_LEVELS,
   botInput,
@@ -55,6 +59,7 @@ export {
   DEFAULT_HITS,
   DEFAULT_SECONDS,
   DEFAULT_TARGET,
+  ENDLESS,
   MAX_HITS,
   MAX_ROUNDS,
   MAX_SECONDS,

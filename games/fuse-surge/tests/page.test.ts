@@ -53,7 +53,7 @@ test("a page starts with what the browser last chose, and a link's values go on 
   // A solo link carries a choice whole.
   assert.equal(
     settingsQuery(chosen),
-    "hits=5&seconds=60&pace=2&target=3&recover=1&bot=0",
+    "hits=5&seconds=120&pace=2&target=3&bot=0&recover=1&double=1&tall=1&boss=1&glide=0",
   );
   assert.deepEqual(
     settingsFrom(`?solo=1&${settingsQuery(chosen)}`, null),
@@ -64,6 +64,38 @@ test("a page starts with what the browser last chose, and a link's values go on 
     { ...chosen, recover: false },
   );
   assert.ok(parseSettings(settingsFrom("?hits=1&seconds=300&target=5", null)));
+  // The switchable rules and the endless round travel in a link too, each on its own.
+  assert.deepEqual(
+    settingsFrom("?seconds=0&double=0&tall=0&boss=0&glide=1", null),
+    {
+      ...DEFAULT_SETTINGS,
+      seconds: 0,
+      double: false,
+      tall: false,
+      boss: false,
+      glide: true,
+    },
+  );
+  assert.deepEqual(
+    settingsFrom("?boss=yes&glide=2&double=", null),
+    DEFAULT_SETTINGS,
+  );
+  // What an older version of the game saved has fewer fields: it is dropped whole, not half-read.
+  assert.deepEqual(
+    settingsFrom(
+      "",
+      JSON.stringify({
+        display: false,
+        hits: 5,
+        seconds: 60,
+        pace: 1,
+        target: 3,
+        recover: true,
+        bot: 1,
+      }),
+    ),
+    DEFAULT_SETTINGS,
+  );
 });
 
 test("cues survive a rewind: a corrected prediction replayed says nothing twice", () => {

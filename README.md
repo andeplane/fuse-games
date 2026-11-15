@@ -85,7 +85,9 @@ phones as controllers. See [games/fuse-volley/README.md](games/fuse-volley/READM
 **Fuse Surge** is a last-rider-standing dodge game for two to five at `/fuse-surge/` (locally
 **http://localhost:8787/fuse-surge/**): surges sweep a deck over a plasma pit, faster and faster; jump the low ones,
 duck the high ones, and every hit throws you a foothold closer to the edge. It has solo against bots at three levels,
-rooms with a QR invite, hits, round length, pace, rounds to win and the comeback rule chosen in the lobby, keyboard,
+rooms with a QR invite, hits, round length (one to five minutes, or endless), pace, rounds to win, the comeback rule
+and four switchable experiments (a double jump, tall surges, a glide, and a boss that throws bolts down single lanes)
+chosen in the lobby, keyboard,
 touch and gamepad controls, a shared TV with phones as controllers, and six looks to draw it in (five in 3D), chosen
 per device. See
 [games/fuse-surge/README.md](games/fuse-surge/README.md).

@@ -89,6 +89,7 @@ import {
   BOT_CHOICES,
   HIT_CHOICES,
   PACE_CHOICES,
+  ON_OFF_CHOICES,
   RECOVER_CHOICES,
   TARGET_CHOICES,
   TIME_CHOICES,
@@ -294,6 +295,12 @@ const SETTING_ROWS: readonly {
   key: SettingKey;
   label: string;
   choices: readonly Choice<number | boolean>[];
+  /** A heading over this row, starting a group. */
+  heading?: string;
+  /** What the row does, as a tooltip. */
+  about?: string;
+  /** The row only counts while this other setting is on. */
+  needs?: SettingKey;
 }[] = [
   { key: "hits", label: "HITS", choices: HIT_CHOICES },
   { key: "seconds", label: "ROUND", choices: TIME_CHOICES },
@@ -301,6 +308,34 @@ const SETTING_ROWS: readonly {
   { key: "target", label: "FIRST TO", choices: TARGET_CHOICES },
   { key: "recover", label: "COMEBACK", choices: RECOVER_CHOICES },
   { key: "bot", label: "BOTS", choices: BOT_CHOICES },
+  {
+    key: "double",
+    label: "DOUBLE JUMP",
+    choices: ON_OFF_CHOICES,
+    heading: "EXPERIMENTS",
+    about: "Press jump again in the air for a second jump",
+  },
+  {
+    key: "tall",
+    label: "TALL SURGES",
+    choices: ON_OFF_CHOICES,
+    about:
+      "Stacks too tall to jump and with no gap to duck: only a double jump clears them",
+    needs: "double",
+  },
+  {
+    key: "boss",
+    label: "WARDEN",
+    choices: ON_OFF_CHOICES,
+    about:
+      "A boss on the arch throws bolts down single lanes: each rider reads their own",
+  },
+  {
+    key: "glide",
+    label: "GLIDE",
+    choices: ON_OFF_CHOICES,
+    about: "Hold jump while falling to come down slowly",
+  },
 ];
 
 /** The match settings as rows of small buttons; `onPick` hears the settings a press asks for, `update` shows the room's. */
@@ -311,6 +346,9 @@ function createSettingsPicker(onPick: (settings: Settings) => void) {
     const line = el("div", "", "fs-setting"),
       group = el("div", "", "fs-levels");
     line.dataset.setting = row.key;
+    if (row.about) line.title = row.about;
+    if (row.heading)
+      element.append(el("h3", row.heading, "fs-settings-heading"));
     group.setAttribute("role", "group");
     group.setAttribute("aria-label", row.label);
     const buttons = row.choices.map((choice) => {
@@ -333,6 +371,10 @@ function createSettingsPicker(onPick: (settings: Settings) => void) {
       current = settings;
       for (const { row, line, buttons } of rows) {
         line.hidden = row.key === "bot" && !bots;
+        // A rule that needs another shows as idle while that one is off.
+        line.dataset.idle = String(
+          !!row.needs && settings[row.needs] === false,
+        );
         buttons.forEach((node, index) => {
           const mine = row.choices[index]!.value === settings[row.key];
           node.setAttribute("aria-pressed", String(mine));

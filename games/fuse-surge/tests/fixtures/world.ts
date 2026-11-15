@@ -66,6 +66,7 @@ export function surge(
     id: world.nextId++,
     kind,
     flip: false,
+    lane: -1,
     x: T.START_X + ahead * T.U,
     done: 0,
     hit: 0,

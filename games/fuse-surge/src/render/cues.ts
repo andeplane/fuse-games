@@ -9,6 +9,8 @@ import { secondsLeft } from "../engine/view-kit.js";
 export type Cue =
   /** A rider left the deck by its own jump. */
   | { kind: "jump"; slot: number }
+  /** A rider jumped again in the air. */
+  | { kind: "double"; slot: number }
   /** A rider came down on the deck. */
   | { kind: "land"; slot: number }
   /** A rider dropped into a duck. */
@@ -21,6 +23,10 @@ export type Cue =
   | { kind: "recover"; slot: number }
   /** A surge changed height at the gate. */
   | { kind: "flip"; id: number }
+  /** The Warden threw a volley of bolts, down these lanes. */
+  | { kind: "volley"; lanes: number[] }
+  /** A tall surge is the next thing out of the arch. */
+  | { kind: "tall" }
   /** The countdown before a round reached `seconds` (3, 2, 1). */
   | { kind: "count"; seconds: number }
   /** A round began. */
@@ -52,6 +58,7 @@ export function cuesBetween(
       cues.push({ kind: "dodge", slot, streak: now.streak });
     if (now.out || now.reeling) continue;
     if (!was.air && now.air) cues.push({ kind: "jump", slot });
+    if (!was.doubled && now.doubled) cues.push({ kind: "double", slot });
     if (was.air && !now.air) cues.push({ kind: "land", slot });
     if (!was.duck && now.duck) cues.push({ kind: "duck", slot });
   }
@@ -61,6 +68,16 @@ export function cuesBetween(
       after.surges.some((each) => each.id === surge.id && !each.flips)
     )
       cues.push({ kind: "flip", id: surge.id });
+  // Bolts that were not there before: one volley, however many lanes it took.
+  const lanes = after.surges
+    .filter(
+      (surge) =>
+        surge.lane >= 0 && !before.surges.some((each) => each.id === surge.id),
+    )
+    .map((surge) => surge.lane);
+  if (lanes.length && after.phase === "play")
+    cues.push({ kind: "volley", lanes });
+  if (after.tallSoon && !before.tallSoon) cues.push({ kind: "tall" });
   if (after.phase === "ready") {
     const seconds = secondsLeft(after.remaining);
     if (before.phase !== "ready" || secondsLeft(before.remaining) !== seconds)
@@ -71,6 +88,7 @@ export function cuesBetween(
     const seconds = secondsLeft(after.clock);
     if (
       before.phase === "play" &&
+      !after.endless &&
       seconds <= LAST_SECONDS &&
       seconds > 0 &&
       secondsLeft(before.clock) !== seconds

@@ -16,7 +16,9 @@ export const REACH = T.REACH / T.U,
   STAND_H = T.STAND_H / T.U,
   DUCK_H = T.DUCK_H / T.U,
   LOW_TOP = T.LOW_TOP / T.U,
-  HIGH_BOTTOM = T.HIGH_BOTTOM / T.U;
+  HIGH_BOTTOM = T.HIGH_BOTTOM / T.U,
+  HIGH_TOP = T.HIGH_TOP / T.U,
+  TALL_TOP = T.TALL_TOP / T.U;
 export const GRAVITY = T.GRAVITY / T.U,
   DIVE_GRAVITY = T.DIVE_GRAVITY / T.U;
 export const CAPACITY = T.CAPACITY,
@@ -25,7 +27,10 @@ export const CAPACITY = T.CAPACITY,
   READY_STEPS = T.READY_STEPS,
   BREAK_STEPS = T.BREAK_STEPS;
 export const LOW = 0,
-  HIGH = 1;
+  HIGH = 1,
+  TALL = 2;
+/** A surge's `lane` when it spans the deck rather than running down one lane. */
+export const EVERY_LANE = -1;
 /** Every foothold of a match that takes `maxHits` hits, px, from the start line back. */
 export const footholds = (maxHits: number): number[] =>
   Array.from({ length: maxHits }, (_, hits) => footholdX(hits, maxHits) / T.U);

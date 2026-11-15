@@ -37,6 +37,32 @@ export function createSfx(audio: GameAudio): Sfx {
               slide: 0.55,
             });
           break;
+        case "double":
+          // The second jump, a note above the first.
+          if (mine(cue.slot))
+            tone({
+              frequency: 620,
+              duration: 0.1,
+              type: "square",
+              volume: 0.045,
+              slide: 1.5,
+            });
+          break;
+        case "volley":
+          // The Warden throws.
+          noise({ duration: 0.09, volume: 0.07, cutoff: 5200 });
+          tone({
+            frequency: 300,
+            duration: 0.16,
+            type: "sawtooth",
+            volume: 0.05,
+            slide: 0.5,
+          });
+          break;
+        case "tall":
+          // A tall surge is coming: two rising notes, for the two jumps it takes.
+          audio.jingle([392, 587], 90, { type: "square", volume: 0.045 });
+          break;
         case "land":
           if (mine(cue.slot))
             tone({ frequency: 95, duration: 0.07, volume: 0.05, slide: 0.7 });

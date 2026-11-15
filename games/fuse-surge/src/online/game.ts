@@ -63,7 +63,7 @@ export interface Settings {
   display: boolean;
   /** Hits that put a rider in the pit. */
   hits: number;
-  /** A round's clock, seconds; riders still standing when it runs out draw the round. */
+  /** A round's clock, seconds; riders still standing when it runs out draw the round. 0 is endless. */
   seconds: number;
   /** How fast surges come and speed up: 0 chill, 1 standard, 2 frantic. */
   pace: Pace;
@@ -71,9 +71,17 @@ export interface Settings {
   target: number;
   /** Five clean dodges in a row win a foothold back. */
   recover: boolean;
+  /** The switchable rules: a jump in the air, tall surges, the Warden's lane bolts, a glide while jump is held. */
+  double: boolean;
+  tall: boolean;
+  boss: boolean;
+  glide: boolean;
   /** How well bots play: 0 easy, 1 normal, 2 hard. */
   bot: BotLevel;
 }
+/** The rules that are plain switches, in the order the menus show them. */
+export const SWITCHES = ["double", "tall", "boss", "glide"] as const;
+export type Switch = (typeof SWITCHES)[number];
 export const DEFAULT_SETTINGS: Settings = {
   display: false,
   ...DEFAULT_RULES,
@@ -86,6 +94,7 @@ const SETTING_KEYS = [
   "pace",
   "target",
   "recover",
+  ...SWITCHES,
   "bot",
 ];
 /** What the engine plays by, out of the room's settings. */
@@ -95,8 +104,12 @@ export const rulesOf = (settings: Settings): Rules => ({
   pace: settings.pace,
   target: settings.target,
   recover: settings.recover,
+  double: settings.double,
+  tall: settings.tall,
+  boss: settings.boss,
+  glide: settings.glide,
 });
-/** The settings boundary, for a logged entry, a command and a checkpoint alike: exactly the seven fields, each checked. */
+/** The settings boundary, for a logged entry, a command and a checkpoint alike: exactly these fields, each checked. */
 export function parseSettings(raw: unknown): Settings | undefined {
   if (!plain(raw)) return;
   const keys = Object.keys(raw);
@@ -106,9 +119,14 @@ export function parseSettings(raw: unknown): Settings | undefined {
   )
     return;
   const { display, hits, seconds, pace, target, recover, bot } = raw;
+  const { double, tall, boss, glide } = raw;
   if (
     typeof display !== "boolean" ||
     typeof recover !== "boolean" ||
+    typeof double !== "boolean" ||
+    typeof tall !== "boolean" ||
+    typeof boss !== "boolean" ||
+    typeof glide !== "boolean" ||
     !isHits(hits) ||
     !isSeconds(seconds) ||
     !isPace(pace) ||
@@ -116,7 +134,19 @@ export function parseSettings(raw: unknown): Settings | undefined {
     !isBotLevel(bot)
   )
     return;
-  return { display, hits, seconds, pace, target, recover, bot };
+  return {
+    display,
+    hits,
+    seconds,
+    pace,
+    target,
+    recover,
+    double,
+    tall,
+    boss,
+    glide,
+    bot,
+  };
 }
 
 export const PLAY = 0;
@@ -568,7 +598,11 @@ const sameRules = (a: Rules, b: Rules): boolean =>
   a.seconds === b.seconds &&
   a.pace === b.pace &&
   a.target === b.target &&
-  a.recover === b.recover;
+  a.recover === b.recover &&
+  a.double === b.double &&
+  a.tall === b.tall &&
+  a.boss === b.boss &&
+  a.glide === b.glide;
 
 /**
  * The room a checkpoint describes, or nothing: every field is checked on its own and against the others, and the

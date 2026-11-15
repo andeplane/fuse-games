@@ -6,6 +6,9 @@ import * as T from "./tuning.js";
  * the edge. A low surge is jumped, a high one ducked; a hit throws a rider one foothold back, and the last foothold
  * is the pit. A match is rounds: the last rider standing takes one, riders still up when the clock runs out share
  * it, and the first to `target` wins takes the match.
+ *
+ * Four rules can be switched on top, each on its own: a second jump in the air, a glide while jump is held, tall
+ * surges only a double jump clears, and the Warden, whose bolts each run down one rider's lane.
  */
 export const PHASES = ["ready", "play", "break", "over"] as const;
 export type Phase = (typeof PHASES)[number];
@@ -17,20 +20,31 @@ export const PACES: readonly Pace[] = [0, 1, 2];
 export const isPace = (value: unknown): value is Pace =>
   value === 0 || value === 1 || value === 2;
 export const LOW = 0,
-  HIGH = 1;
-export type Kind = typeof LOW | typeof HIGH;
+  HIGH = 1,
+  TALL = 2;
+export type Kind = typeof LOW | typeof HIGH | typeof TALL;
+/** A surge that spans every lane, as opposed to a bolt in one. */
+export const EVERY_LANE = -1;
 
 /** What a match plays by, fixed when it starts. */
 export interface Rules {
   /** Hits that put a rider in the pit. */
   hits: number;
-  /** A round's clock, seconds. */
+  /** A round's clock, seconds; `ENDLESS` (0) plays until one rider is left. */
   seconds: number;
   pace: Pace;
   /** Round wins that take the match. */
   target: number;
   /** Five clean dodges in a row win a foothold back. */
   recover: boolean;
+  /** A jump pressed in the air jumps again, once until landing. */
+  double: boolean;
+  /** Tall surges come too; they count only with the double jump, the one thing that clears them. */
+  tall: boolean;
+  /** The Warden answers some spawns with a volley of bolts, each in one rider's lane. */
+  boss: boolean;
+  /** Holding jump while falling falls softly. */
+  glide: boolean;
 }
 const whole = (value: unknown, low: number, high: number): value is number =>
   typeof value === "number" &&
@@ -40,7 +54,7 @@ const whole = (value: unknown, low: number, high: number): value is number =>
 export const isHits = (value: unknown): value is number =>
   whole(value, T.MIN_HITS, T.MAX_HITS);
 export const isSeconds = (value: unknown): value is number =>
-  whole(value, T.MIN_SECONDS, T.MAX_SECONDS);
+  value === T.ENDLESS || whole(value, T.MIN_SECONDS, T.MAX_SECONDS);
 export const isTarget = (value: unknown): value is number =>
   whole(value, T.MIN_TARGET, T.MAX_TARGET);
 export const DEFAULT_RULES: Rules = {
@@ -49,7 +63,13 @@ export const DEFAULT_RULES: Rules = {
   pace: 1,
   target: T.DEFAULT_TARGET,
   recover: true,
+  double: true,
+  tall: true,
+  boss: true,
+  glide: false,
 };
+/** Tall surges are sent only where they can be cleared. */
+export const sendsTall = (rules: Rules): boolean => rules.tall && rules.double;
 
 export interface Rider {
   id: string;
@@ -62,6 +82,8 @@ export interface Rider {
   jumpHeld: boolean;
   /** Steps a jump press still waits for the deck. */
   buffer: number;
+  /** Jumps made in the air since it last stood on the deck: 0 or 1. */
+  jumps: number;
   /** Hits taken this round: the foothold it stands on. */
   hits: number;
   /** Knocked into the pit this round. */
@@ -83,6 +105,8 @@ export interface Surge {
   kind: Kind;
   /** It changes height when it crosses the gate. */
   flip: boolean;
+  /** The one lane (rider slot) a bolt runs down, or `EVERY_LANE` for a surge across the deck. */
+  lane: number;
   x: number;
   /** Bit per rider slot: it is settled for that rider, and it struck that rider. */
   done: number;
@@ -107,6 +131,8 @@ export interface World {
   /** The height of the last surge spawned and how many of it came in a row. */
   runKind: Kind;
   run: number;
+  /** The next spawn is a tall surge: it is decided one spawn early, so the deck is clear before it and it can be announced. */
+  tallNext: boolean;
   riders: Rider[];
   surges: Surge[];
   /** The last round's winners, a bit per slot, and how it ended. */
@@ -128,19 +154,33 @@ export function footholdX(hits: number, maxHits: number): number {
   return T.START_X - div(hits * (T.START_X - T.LAST_X), maxHits - 1);
 }
 
+/** A round's clock in steps; an endless round's is a bound nobody plays to. */
+export const limitOf = (rules: Rules): number =>
+  rules.seconds === T.ENDLESS
+    ? T.ENDLESS_STEPS
+    : rules.seconds * T.STEPS_PER_SECOND;
+/**
+ * How far along the difficulty curve a round is `clock` steps in: a round with a clock runs the whole curve over
+ * its own length, an endless one runs it in real steps and on past its end.
+ */
+export const curveAt = (clock: number, rules: Rules): number =>
+  rules.seconds === T.ENDLESS
+    ? clock
+    : div(clock * T.CURVE_STEPS, limitOf(rules));
 /** The surges' speed, units per step, `clock` steps into a round. */
-export const speedAt = (clock: number, pace: Pace): number => {
-  const speed = T.SPEED_BASE[pace] + div(clock * T.SPEED_RAMP[pace], 1000);
+export const speedAt = (clock: number, rules: Rules): number => {
+  const speed =
+    T.SPEED_BASE[rules.pace] +
+    div(curveAt(clock, rules) * T.SPEED_RAMP[rules.pace], 1000);
   return speed > T.SPEED_MAX ? T.SPEED_MAX : speed;
 };
 /** Steps between surges `clock` steps into a round, before the jitter. */
-export const gapAt = (clock: number, pace: Pace): number => {
-  const gap = T.GAP_BASE[pace] - div(clock * T.GAP_SHRINK[pace], 1000);
-  return gap < T.GAP_MIN[pace] ? T.GAP_MIN[pace] : gap;
+export const gapAt = (clock: number, rules: Rules): number => {
+  const gap =
+    T.GAP_BASE[rules.pace] -
+    div(curveAt(clock, rules) * T.GAP_SHRINK[rules.pace], 1000);
+  return gap < T.GAP_MIN[rules.pace] ? T.GAP_MIN[rules.pace] : gap;
 };
-/** A round's clock in steps. */
-export const limitOf = (rules: Rules): number =>
-  rules.seconds * T.STEPS_PER_SECOND;
 
 const freshRider = (id: string): Rider => ({
   id,
@@ -150,6 +190,7 @@ const freshRider = (id: string): Rider => ({
   duck: false,
   jumpHeld: false,
   buffer: 0,
+  jumps: 0,
   hits: 0,
   out: false,
   reel: 0,
@@ -169,6 +210,7 @@ export function startRound(world: World, round: number): void {
   world.nextSpawn = T.FIRST_SPAWN;
   world.run = 0;
   world.runKind = LOW;
+  world.tallNext = false;
   world.surges = [];
   for (const rider of world.riders) {
     rider.x = T.START_X;
@@ -176,6 +218,7 @@ export function startRound(world: World, round: number): void {
     rider.vy = 0;
     rider.duck = false;
     rider.buffer = 0;
+    rider.jumps = 0;
     rider.hits = 0;
     rider.out = false;
     rider.reel = 0;
@@ -205,6 +248,7 @@ export function createWorld(
     nextId: 1,
     runKind: LOW,
     run: 0,
+    tallNext: false,
     riders: ids.map(freshRider),
     surges: [],
     lastWinners: 0,

@@ -14,9 +14,8 @@ export const LOOK_IDS = [
 export type LookId = (typeof LOOK_IDS)[number];
 export const DEFAULT_LOOK: LookId = "reactor";
 
-/** How a low surge (jump it) and a high one (duck it) are built. */
+/** What a look's rollers are made of: a low surge, a high one and a tall one are all this, placed differently. */
 export type RollerStyle = "coil" | "log" | "candy" | "prism" | "ingot";
-export type HangerStyle = "field" | "slats" | "icicles" | "slab";
 
 /** What a 3D look is made of: colours as `#rrggbb`, lengths in world units (a hundredth of a deck pixel). */
 export interface Theme {
@@ -62,7 +61,9 @@ export interface Theme {
     scale: number;
   };
   low: { style: RollerStyle; color: string; accent: string; glow: number };
-  high: { style: HangerStyle; color: string; accent: string; glow: number };
+  /** A high surge is the same roller, floating, in this colour; a tall one a stack of them in `tall`. */
+  high: { color: string; accent: string; glow: number };
+  tall: string;
   /** The flip gate, and danger (the edge, the last foothold). */
   flip: string;
   danger: string;
@@ -122,7 +123,8 @@ const REACTOR: Theme = {
     scale: 0.3,
   },
   low: { style: "coil", color: "#ff5b4a", accent: "#ffd0c4", glow: 1.25 },
-  high: { style: "field", color: "#a98bff", accent: "#efe6ff", glow: 1.35 },
+  high: { color: "#9a78ff", accent: "#d9ccff", glow: 0.95 },
+  tall: "#ffe46b",
   flip: "#7df2c8",
   danger: "#ff4d5e",
   rider: { rough: 0.4, metal: 0.15, glow: 0.3 },
@@ -171,7 +173,8 @@ const SKY_ISLE: Theme = {
     scale: 0.11,
   },
   low: { style: "log", color: "#9a6a3c", accent: "#e8c894", glow: 0 },
-  high: { style: "slats", color: "#3f8fd6", accent: "#f1e2c2", glow: 0 },
+  high: { color: "#3f8fd6", accent: "#f1e2c2", glow: 0 },
+  tall: "#d9483b",
   flip: "#16a37f",
   danger: "#e5484d",
   rider: { rough: 0.6, metal: 0, glow: 0 },
@@ -187,51 +190,53 @@ const SKY_ISLE: Theme = {
 };
 
 const TOY_BOX: Theme = {
-  sky: { top: "#6f58f0", mid: "#ff9ad5", low: "#ffe9a8" },
-  fog: { color: "#cdbfff", near: 30, far: 110 },
-  hemi: { sky: "#ffffff", ground: "#ffb6d9", power: 1.35 },
-  sun: { color: "#ffffff", power: 2.7, from: [-3, 10, 6] },
-  under: { color: "#8f7bff", power: 8 },
+  // A playroom at dusk: cream and wood, a warm lamp, a soft indigo rug far below.
+  sky: { top: "#2b2a4a", mid: "#4a4470", low: "#8a6f8f" },
+  fog: { color: "#3a3760", near: 30, far: 110 },
+  hemi: { sky: "#fff1dc", ground: "#c99a7e", power: 1.05 },
+  sun: { color: "#ffe2b8", power: 2.5, from: [-3, 10, 6] },
+  under: { color: "#8f86c8", power: 6 },
   tone: "neutral",
   exposure: 1,
   bloom: 0,
   deck: {
     pattern: "checker",
-    base: "#fff4d6",
-    alt: "#7fd8ff",
-    seam: "#ffffff",
-    side: "#ff5fa2",
-    trim: "#ffd23f",
-    ledge: "#8fe36f",
-    line: "#3b2a6b",
+    base: "#f3e6cf",
+    alt: "#e4cba8",
+    seam: "#fff6e6",
+    side: "#c98b6b",
+    trim: "#f0c36a",
+    ledge: "#b9cfa3",
+    line: "#6b5a7a",
     glow: 0,
-    rough: 0.28,
+    rough: 0.55,
     metal: 0,
     under: "pylons",
-    underColor: "#7b5cff",
+    underColor: "#8e6f8f",
   },
   pit: {
-    a: "#3a1fa6",
-    b: "#6a4cff",
-    c: "#b9a6ff",
-    crust: 0.15,
+    a: "#25244a",
+    b: "#3a3870",
+    c: "#5d59a0",
+    crust: 0.1,
     glow: 1,
-    speed: 0.03,
-    scale: 0.25,
+    speed: 0.02,
+    scale: 0.22,
   },
-  low: { style: "candy", color: "#ff3b3b", accent: "#ffffff", glow: 0 },
-  high: { style: "slats", color: "#7b5cff", accent: "#ffd23f", glow: 0 },
-  flip: "#12b89a",
-  danger: "#ff3b3b",
-  rider: { rough: 0.22, metal: 0, glow: 0 },
+  low: { style: "candy", color: "#e0604d", accent: "#fff3e0", glow: 0 },
+  high: { color: "#6f9bd1", accent: "#fff3e0", glow: 0 },
+  tall: "#a678c8",
+  flip: "#3fb59a",
+  danger: "#e0604d",
+  rider: { rough: 0.4, metal: 0, glow: 0 },
   props: "toys",
   motes: {
-    color: "#ffd23f",
-    count: 60,
-    rise: -0.22,
-    drift: 0.35,
-    size: 0.08,
-    glow: false,
+    color: "#ffe2a8",
+    count: 40,
+    rise: 0.08,
+    drift: 0.25,
+    size: 0.06,
+    glow: true,
   },
 };
 
@@ -269,7 +274,8 @@ const GLACIER: Theme = {
     scale: 0.3,
   },
   low: { style: "prism", color: "#1fb4f2", accent: "#ffffff", glow: 0.8 },
-  high: { style: "icicles", color: "#d8f6ff", accent: "#8fe8ff", glow: 0.25 },
+  high: { color: "#e6fbff", accent: "#ffffff", glow: 0.5 },
+  tall: "#ff8fd0",
   flip: "#7dffb0",
   danger: "#ff5f7a",
   rider: { rough: 0.4, metal: 0, glow: 0.12 },
@@ -318,7 +324,8 @@ const FORGE: Theme = {
     scale: 0.3,
   },
   low: { style: "ingot", color: "#ff5a1a", accent: "#ffb347", glow: 1.3 },
-  high: { style: "slab", color: "#565b65", accent: "#ffd23f", glow: 1.5 },
+  high: { color: "#ffc531", accent: "#fff1c9", glow: 1.3 },
+  tall: "#fff1c9",
   flip: "#5fe0c0",
   danger: "#ff3b2f",
   rider: { rough: 0.45, metal: 0.1, glow: 0.18 },
@@ -349,7 +356,7 @@ export const LOOKS: readonly Look[] = [
   {
     id: "toybox",
     title: "TOY BOX",
-    blurb: "Glossy blocks and candy rollers",
+    blurb: "A cozy playroom of wooden blocks",
     theme: TOY_BOX,
   },
   {

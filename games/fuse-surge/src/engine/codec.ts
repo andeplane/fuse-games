@@ -1,13 +1,16 @@
 import * as T from "./tuning.js";
 import {
+  EVERY_LANE,
   PHASES,
   REASONS,
+  TALL,
   isHits,
   isPace,
   isPlayerCount,
   isSeconds,
   isTarget,
   limitOf,
+  sendsTall,
   type Kind,
   type Rider,
   type Rules,
@@ -20,12 +23,12 @@ import {
  * decoder that checks every one against the bounds and the consistency the simulation keeps. `decodeWorld` returns
  * a whole new world or nothing; it never changes what it was given and never returns a half-checked one.
  */
-const VERSION = 1;
-const RIDER_FIELDS = 15,
-  SURGE_FIELDS = 6,
-  RULE_FIELDS = 5,
+const VERSION = 2;
+const RIDER_FIELDS = 16,
+  SURGE_FIELDS = 7,
+  RULE_FIELDS = 9,
   /** The world's own fields; one more for each rider after them. */
-  HEAD_FIELDS = 18;
+  HEAD_FIELDS = 19;
 /** Steps to the next surge never exceed the widest gap with its jitter. */
 const MOST_GAP = 256;
 
@@ -51,6 +54,7 @@ const encodeRider = (r: Rider): unknown[] => [
   r.duck ? 1 : 0,
   r.jumpHeld ? 1 : 0,
   r.buffer,
+  r.jumps,
   r.hits,
   r.out ? 1 : 0,
   r.reel,
@@ -64,6 +68,7 @@ const encodeSurge = (s: Surge): unknown[] => [
   s.id,
   s.kind,
   s.flip ? 1 : 0,
+  s.lane,
   s.x,
   s.done,
   s.hit,
@@ -85,12 +90,17 @@ export function encodeWorld(world: World): unknown[] {
       rules.pace,
       rules.target,
       rules.recover ? 1 : 0,
+      rules.double ? 1 : 0,
+      rules.tall ? 1 : 0,
+      rules.boss ? 1 : 0,
+      rules.glide ? 1 : 0,
     ],
     world.rng,
     world.nextSpawn,
     world.nextId,
     world.runKind,
     world.run,
+    world.tallNext ? 1 : 0,
     world.lastWinners,
     REASONS.indexOf(world.lastReason),
     world.winners,
@@ -102,16 +112,30 @@ export function encodeWorld(world: World): unknown[] {
 
 function decodeRules(raw: unknown): Rules | undefined {
   if (!tuple(raw, RULE_FIELDS)) return;
-  const [hits, seconds, pace, target, recover] = raw;
+  const [hits, seconds, pace, target, recover, double, tall, boss, glide] = raw;
   if (
     !isHits(hits) ||
     !isSeconds(seconds) ||
     !isPace(pace) ||
     !isTarget(target) ||
-    !flag(recover)
+    !flag(recover) ||
+    !flag(double) ||
+    !flag(tall) ||
+    !flag(boss) ||
+    !flag(glide)
   )
     return;
-  return { hits, seconds, pace, target, recover: recover === 1 };
+  return {
+    hits,
+    seconds,
+    pace,
+    target,
+    recover: recover === 1,
+    double: double === 1,
+    tall: tall === 1,
+    boss: boss === 1,
+    glide: glide === 1,
+  };
 }
 
 function decodeRider(raw: unknown, rules: Rules): Rider | undefined {
@@ -124,6 +148,7 @@ function decodeRider(raw: unknown, rules: Rules): Rider | undefined {
     duck,
     jumpHeld,
     buffer,
+    jumps,
     hits,
     out,
     reel,
@@ -141,6 +166,7 @@ function decodeRider(raw: unknown, rules: Rules): Rider | undefined {
     !flag(duck) ||
     !flag(jumpHeld) ||
     !int(buffer, 0, T.JUMP_BUFFER) ||
+    !flag(jumps) ||
     !int(hits, 0, rules.hits) ||
     !flag(out) ||
     !int(reel, 0, T.REEL_STEPS) ||
@@ -160,6 +186,8 @@ function decodeRider(raw: unknown, rules: Rules): Rider | undefined {
   if (y < 0 && x >= T.EDGE_X) return;
   if (duck === 1 && (y !== 0 || vy !== 0)) return;
   if (reel > 0 && grace > 0) return;
+  // An air jump is spent only in the air, and only where the rule allows one.
+  if (jumps === 1 && (!rules.double || (y === 0 && vy === 0))) return;
   return {
     id,
     x,
@@ -168,6 +196,7 @@ function decodeRider(raw: unknown, rules: Rules): Rider | undefined {
     duck: duck === 1,
     jumpHeld: jumpHeld === 1,
     buffer,
+    jumps,
     hits,
     out: gone,
     reel,
@@ -179,32 +208,55 @@ function decodeRider(raw: unknown, rules: Rules): Rider | undefined {
   };
 }
 
-function decodeSurge(raw: unknown, riders: number): Surge | undefined {
+function decodeSurge(
+  raw: unknown,
+  riders: number,
+  rules: Rules,
+): Surge | undefined {
   if (!tuple(raw, SURGE_FIELDS)) return;
-  const [id, kind, flip, x, done, hit] = raw;
-  const masks = (1 << riders) - 1;
+  const [id, kind, flip, lane, x, done, hit] = raw;
+  if (!int(lane, EVERY_LANE, riders - 1)) return;
+  // A surge across the deck is settled rider by rider; a bolt only with the rider whose lane it runs down.
+  const masks = lane === EVERY_LANE ? (1 << riders) - 1 : 1 << lane;
   if (
     !int(id, 1, 0x7fff_ffff) ||
-    !flag(kind) ||
+    !int(kind, 0, TALL) ||
     !flag(flip) ||
     !int(x, T.EXIT_X + 1, T.SPAWN_X) ||
     !int(done, 0, masks) ||
     !int(hit, 0, masks) ||
+    (done & ~masks) !== 0 ||
     (hit & ~done) !== 0 ||
     // A surge flips at the gate, so none past it still has a flip to make.
-    (flip === 1 && x <= T.GATE_X)
+    (flip === 1 && x <= T.GATE_X) ||
+    // A tall surge spans the deck, never flips, and comes only where it can be cleared; bolts are the Warden's.
+    (kind === TALL &&
+      (lane !== EVERY_LANE || flip === 1 || !sendsTall(rules))) ||
+    (lane !== EVERY_LANE && (flip === 1 || !rules.boss))
   )
     return;
-  return { id, kind: kind as Kind, flip: flip === 1, x, done, hit };
+  return { id, kind: kind as Kind, flip: flip === 1, lane, x, done, hit };
 }
 
-function decodeSurges(raw: unknown, riders: number): Surge[] | undefined {
+function decodeSurges(
+  raw: unknown,
+  riders: number,
+  rules: Rules,
+): Surge[] | undefined {
   if (!Array.isArray(raw) || raw.length > T.MAX_SURGES) return;
   const surges: Surge[] = [];
   for (const item of raw) {
-    const surge = decodeSurge(item, riders);
-    // In the order they were sent out: each one is behind the one before it.
-    if (!surge || (surges.length && surges[surges.length - 1]!.x >= surge.x))
+    const surge = decodeSurge(item, riders, rules);
+    if (!surge) return;
+    // In the order they were sent out: each one is behind the one before it, except a volley's bolts, which run
+    // abreast in lane order.
+    const last = surges[surges.length - 1];
+    if (
+      last &&
+      (last.x > surge.x ||
+        (last.x === surge.x &&
+          (last.lane === EVERY_LANE || surge.lane <= last.lane)))
+    )
       return;
     if (surges.some((known) => known.id === surge.id)) return;
     surges.push(surge);
@@ -230,6 +282,7 @@ export function decodeWorld(raw: unknown): World | undefined {
     nextId,
     runKind,
     run,
+    tallNext,
     lastWinners,
     reasonIndex,
     winners,
@@ -251,6 +304,8 @@ export function decodeWorld(raw: unknown): World | undefined {
     !int(nextId, 1, 0x7fff_ffff) ||
     !flag(runKind) ||
     !int(run, 0, T.MAX_RUN) ||
+    !flag(tallNext) ||
+    (tallNext === 1 && !sendsTall(rules)) ||
     !int(lastWinners, 0, masks) ||
     !int(reasonIndex, 0, REASONS.length - 1) ||
     !int(winners, 0, masks) ||
@@ -268,7 +323,7 @@ export function decodeWorld(raw: unknown): World | undefined {
     )
   )
     return;
-  const surges = decodeSurges(rawSurges, count);
+  const surges = decodeSurges(rawSurges, count, rules);
   if (!surges) return;
   const riders: Rider[] = [];
   for (const item of (raw as unknown[]).slice(HEAD_FIELDS)) {
@@ -285,7 +340,7 @@ export function decodeWorld(raw: unknown): World | undefined {
   if (
     // A countdown has played nothing yet; a round being played still has two riders and time on its clock.
     (phase === "ready" &&
-      (clock !== 0 || surges.length || standing !== count)) ||
+      (clock !== 0 || surges.length || standing !== count || tallNext === 1)) ||
     (phase === "play" && (standing < 2 || clock >= limitOf(rules))) ||
     // Only the round that just ended can have reached the target; a finished match names exactly its leaders.
     (!settled && best >= rules.target) ||
@@ -309,6 +364,7 @@ export function decodeWorld(raw: unknown): World | undefined {
     nextId,
     runKind: runKind as Kind,
     run,
+    tallNext: tallNext === 1,
     riders,
     surges,
     lastWinners,

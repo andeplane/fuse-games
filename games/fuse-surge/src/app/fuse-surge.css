@@ -599,3 +599,13 @@ body.fs-display .fs-screen {
 .fs-setting.fs-look-row .fs-levels {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+/* A group of settings, and a rule that waits on another being switched on. */
+.fs-settings-heading {
+  margin: var(--fui-space-2) 0 0;
+  color: var(--fui-yellow);
+  font: 0.5625rem/1.4 var(--fui-font-pixel);
+  letter-spacing: 0.0625rem;
+}
+.fs-setting[data-idle="true"] {
+  opacity: 0.45;
+}
