@@ -2,7 +2,7 @@
 
 Fusero is being built as a close clone of OpenLieroX Classic gameplay, with Fuse's neon presentation, menus and multiplayer. The requirement is source-derived mechanics, rather than a similar-feeling ruleset. **The integrated port is still under verification; mechanical parity and release readiness are not yet established.** The earlier three-weapon prototype is superseded.
 
-The baseline is OpenLieroX release `20260717.2`, commit `0a20c6d0a10ed63b28a15f05c771913c294efbf6`, its packaged Classic mod, and the native default **Dirt Level**. [SOURCE-PARITY.md](SOURCE-PARITY.md) records source contracts, comparisons and outstanding verification. [CREDITS.md](CREDITS.md) and [upstream/SOURCE.md](upstream/SOURCE.md) retain source and asset provenance.
+The mechanics baseline is OpenLieroX release `20260717.2`, commit `0a20c6d0a10ed63b28a15f05c771913c294efbf6`, and its packaged Classic mod. Fusero now defaults to the native **JailBreak** arena in response to the user's larger-map request; native **Castle Strike**, **Factory** and the original startup **Dirt Level** remain selectable. [SOURCE-PARITY.md](SOURCE-PARITY.md) records source contracts, comparisons and outstanding verification. [CREDITS.md](CREDITS.md) and [upstream/SOURCE.md](upstream/SOURCE.md) retain source and asset provenance.
 
 ## Gameplay baseline
 
@@ -12,24 +12,32 @@ Classic deathmatch defaults are 15 kills, six minutes and unlimited lives. The d
 
 Movement, aim, collision, carving and ninja rope use source-derived kernels. A rope press launches or relaunches the hook. Releasing that button leaves the rope active; jumping releases it. Hook flight, falling, terrain and worm attachment, and the native constant pull are distinct states. Terrain is per pixel. Explosions and dirt placement use the original physical masks and projectile actions; displayed neon blast effects do not determine damage or digging geometry.
 
-The default level retains all **504×350 native physical pixels**. OpenLieroX renders those world units at twice their size. Fusero's corresponding personal view is 320×180 world units on desktop and a closer 192×144 on a narrow phone. Each player follows their own worm, with a minimap. A TV display or unseated spectator sees the whole level. The physical level is never enlarged to create the appearance of a larger world.
+The default JailBreak level retains **1200×600 native physical pixels**, with open passages and destructible dirt. Game settings also offer Castle Strike at **1350×550**, Factory at **1200×480** and Dirt Level at **504×350**. Their physical pixels are not scaled up.
+
+OpenLieroX uses a fixed 480-high logical render surface with **two logical pixels per world pixel**. Its personal view is therefore **240 world pixels high**: **427×240** for local 16:9 play, **160×240** for portrait local play, and a fixed **320×240** for fair network play. Each player follows their own worm, with a minimap. A TV display or unseated spectator sees the whole selected level. Neon worm art, including the gun, stays inside the native **10×9-world-pixel** envelope. Pixel bullets are 1×1 world pixel; the crosshair is 3×3 at a distance of 16 world pixels.
+
+The previous 320×180/192×144 camera description and oversized sprite presentation were wrong. The user's playtest exposed that mismatch despite passing mechanics tests. Those checks were not proof of the original's visual scale or feel.
 
 ## Local play and controls
 
-Run `pnpm dev`, then open the printed URL plus `/fusero/?mute`. The intended flow is **PLAY → SINGLE PLAYER** for a match with Fuse-controlled bots, or **HOST ROOM** for an online room. Take a seat, choose the five weapons in the lobby, invite friends or add AI, then **START MATCH**. Room settings expose weapon restrictions, limits, loading time, bonuses and owner injury.
+Run `pnpm dev`, then open the printed URL plus `/fusero/?mute`. The intended flow is **PLAY → SINGLE PLAYER** for a match with Fuse-controlled bots, or **HOST ROOM** for an online room. Take a seat, choose the five weapons on the room page, invite friends or add AI, then **START MATCH**. Game settings expose the level, weapon restrictions, limits, loading time, bonuses and owner injury.
 
-| Keyboard              | Action                                    |
-| --------------------- | ----------------------------------------- |
-| A / D or left / right | Move; walking sets facing unless strafing |
-| W / S or up / down    | Aim                                       |
-| Space                 | Jump and release an active rope           |
-| F / J                 | Fire                                      |
-| R / K                 | Launch or relaunch the ninja rope         |
-| Q / E                 | Previous or next weapon slot              |
-| 1–5                   | Select a weapon slot                      |
-| G / C / Ctrl          | Carve nearby dirt                         |
-| Shift + A / D         | Select a weapon without walking           |
-| Alt + A / D           | Strafe while retaining facing             |
+The default **Original PC** keyboard preset uses the original primary-player bindings from the pinned `Options.cpp`, matching the official WebAssembly build even when played on a Mac. **Original Mac** is available under **MENU → GAME CONTROLS → Keyboard preset**. The choice is a local keyboard preference, not a room or gameplay setting.
+
+| Action                                    | PC                                                             | Mac                 |
+| ----------------------------------------- | -------------------------------------------------------------- | ------------------- |
+| Move                                      | Left / right arrows                                            | Left / right arrows |
+| Aim                                       | Up / down arrows                                               | Up / down arrows    |
+| Fire                                      | Left Ctrl                                                      | Left Option         |
+| Jump; release rope                        | Left Alt                                                       | Left Command        |
+| Launch / relaunch rope                    | X                                                              | X                   |
+| Previous / next weapon                    | A / S                                                          | A / S               |
+| Weapon modifier, with left / right arrows | Left Shift                                                     | Space               |
+| Strafe while retaining facing             | Z                                                              | C                   |
+| Direct weapon slot                        | 1–5                                                            | 1–5                 |
+| Dig                                       | Press the opposite direction while holding a walking direction | Same chord          |
+
+The earlier WASD movement, F/J fire, R/K rope and Space jump bindings were substitutions and did not match the native defaults.
 
 Phones provide movement, aim, jump, rope, fire, carve and five weapon-slot controls. Touch walking records the native periodic auto-carve input. OPEN TV SCREEN opens a separate window so the source page remains visible while the display recovers its world. A TV on another device can open the display URL. Hidden source tabs are excluded from snapshot recovery by Fuse's existing visibility policy.
 
@@ -55,4 +63,6 @@ The source-data checks verify the packaged binary, descriptors and native materi
 
 `ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fusero-smoke.ts` exercises solo preparation, five-slot charge/reload, two players and a shared TV, native controls, terrain changes, phone reload recovery and full-state convergence. It passed against the composed source-derived engine. `pnpm gallery:capture fusero` refreshes the gallery from real play after a successful build. Earlier prototype results do not validate this replacement engine.
 
-Human gameplay comparison and physical-phone checks remain outstanding. The open PR is not merge or deployment authorization.
+The official OpenLieroX WebAssembly build has also been played through its UI with native PC fire, dig, aim and rope inputs. Reference play visibly produced explosions, health changing from 100 to 84 and weapon charge changing from 100 to 66. This is evidence of actual reference interaction, not a whole-session or bit-perfect equivalence proof. The latest repair has 164 passing game tests and a passing browser smoke for native controls, zoom, multiplayer and recovery; broader repository results belong in the PR.
+
+The user's acceptance of gameplay feel and physical-phone checks remain outstanding. The open PR is not merge or deployment authorization.

@@ -4,7 +4,10 @@
  * Derived from OpenLieroX 0a20c6d0a10ed63b28a15f05c771913c294efbf6; code under LGPL.
  * See CGameMode.cpp, CServer_Game.cpp, CWorm.cpp, CGameObject.cpp and FeatureList.cpp.
  */
+import type { ClassicLevelId } from "./level-types.js";
+
 export interface ClassicSettings {
+  level: ClassicLevelId;
   display: boolean;
   killLimit: number;
   timeLimitMs: number;
@@ -23,6 +26,8 @@ export interface ClassicSettings {
 export type ClassicLoadout = [number, number, number, number, number];
 
 export const DEFAULT_SETTINGS: ClassicSettings = {
+  // User-requested larger native arena; Dirt remains the original startup map option.
+  level: "jail-break",
   display: false,
   killLimit: 15,
   timeLimitMs: 360_000,

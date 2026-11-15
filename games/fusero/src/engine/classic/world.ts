@@ -54,7 +54,7 @@ import {
   resetPositionRecorder,
 } from "./history.js";
 
-export const RULES = "fusero-classic-1";
+export const RULES = "fusero-classic-2";
 export const CAPACITY = 5;
 export const WIDTH = CLASSIC_LEVEL_WIDTH;
 export const HEIGHT = CLASSIC_LEVEL_HEIGHT;
@@ -144,7 +144,7 @@ export function createWorld(
     phase: "play",
     winner: null,
     settings,
-    terrain: createClassicLevel(),
+    terrain: createClassicLevel(settings.level),
     worms: [],
     projectiles: [],
     effects: [],

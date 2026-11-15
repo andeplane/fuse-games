@@ -281,6 +281,22 @@ body.liero-page {
   outline: 3px solid var(--liero-lime);
   outline-offset: 3px;
 }
+.liero-keyboard-preset {
+  display: grid;
+  gap: 8px;
+  color: #d8e9f0;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+}
+.liero-keyboard-preset select {
+  min-height: 44px;
+  padding: 8px;
+  color: #ecf7ff;
+  background: #172038;
+  border: 1px solid #5d6687;
+  border-radius: 8px;
+}
 .liero-page ::selection {
   color: #080917;
   background: var(--liero-lime);

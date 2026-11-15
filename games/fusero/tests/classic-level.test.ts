@@ -7,6 +7,7 @@ import {
   decodeLxl,
   generateClassicLevel,
   materialFromLxFlag,
+  NATIVE_LEVEL_SOURCES,
   CLASSIC_LEVEL_SHA256,
   CLASSIC_LEVEL_FLAGS_SHA256,
 } from "../../../scripts/fusero-decode-level.js";
@@ -14,8 +15,16 @@ import { CLASSIC_LEVEL_DATA } from "../src/engine/classic/level-data.js";
 import {
   CLASSIC_LEVEL_HEIGHT,
   CLASSIC_LEVEL_WIDTH,
+  CLASSIC_LEVELS,
   createClassicLevel,
+  isClassicLevelId,
 } from "../src/engine/classic/level.js";
+import {
+  DEFAULT_SETTINGS,
+  parseSettings,
+} from "../src/engine/classic/match.js";
+import { createWorld } from "../src/engine/classic/world.js";
+import { encodeWorld, decodeWorld } from "../src/engine/classic/codec.js";
 import {
   AIR,
   DIRT,
@@ -139,4 +148,107 @@ test("malformed source metadata and compressed data are rejected before installi
 
 test("the baked native level regenerates byte-for-byte from its pinned source", async () => {
   await generateClassicLevel(true);
+});
+
+test("larger native arenas preserve every physical material pixel and their original dimensions", () => {
+  const expectedDimensions = {
+    "castle-strike": [1350, 550],
+    "liero-factory": [1200, 480],
+    "jail-break": [1200, 600],
+  } as const;
+  for (const level of CLASSIC_LEVELS.filter(
+    (candidate) => candidate.id !== "dirt",
+  )) {
+    const nativeNames = {
+      "castle-strike": "CastleStrike.lxl",
+      "liero-factory": "Liero Factory.lxl",
+      "jail-break": "JailBreak.lxl",
+    } as const;
+    const sourceMeta = NATIVE_LEVEL_SOURCES.find((candidate) =>
+      candidate.path.endsWith(
+        nativeNames[level.id as keyof typeof nativeNames],
+      ),
+    )!;
+    const source = readFileSync(
+      new URL(`../upstream/${sourceMeta.file}`, import.meta.url),
+    );
+    assert.equal(
+      createHash("sha256").update(source).digest("hex"),
+      sourceMeta.sha256,
+    );
+    assert.deepEqual(
+      [level.width, level.height],
+      expectedDimensions[level.id as keyof typeof expectedDimensions],
+    );
+    const pixels = level.width * level.height;
+    const payload = inflateSync(
+      source.subarray(156, 156 + source.readUInt32LE(148)),
+    );
+    const flags = payload.subarray(pixels * 6, pixels * 7);
+    assert.equal(
+      createHash("sha256").update(flags).digest("hex"),
+      sourceMeta.flagsSha256,
+    );
+    const installed = createClassicLevel(level.id);
+    for (let y = 0; y < level.height; y++) {
+      const expected = Uint8Array.from(
+        flags.subarray(y * level.width, (y + 1) * level.width),
+        (flag) => (flag & 4 ? ROCK : flag & 2 ? DIRT : AIR),
+      );
+      assert.deepEqual(
+        decodeTerrainRow(installed.rows[y]!, level.width),
+        expected,
+        `${level.name} physical row ${y}`,
+      );
+    }
+    const another = createClassicLevel(level.id);
+    setMaterial(installed, 20, 20, AIR);
+    setMaterial(installed, 21, 20, ROCK);
+    assert.notDeepEqual(
+      installed.rows,
+      another.rows,
+      "world terrain containers are independent",
+    );
+  }
+});
+
+test("native arena selection is strict settings data and survives world checkpoints", () => {
+  assert.equal(DEFAULT_SETTINGS.level, "jail-break");
+  for (const level of CLASSIC_LEVELS) {
+    assert.equal(isClassicLevelId(level.id), true);
+    const settings = { ...DEFAULT_SETTINGS, level: level.id };
+    assert.deepEqual(parseSettings(settings), settings);
+    const world = createWorld(17, [{ id: "a", slot: 0 }], settings);
+    assert.equal(world.settings.level, level.id);
+    assert.deepEqual(
+      [world.terrain.width, world.terrain.height],
+      [level.width, level.height],
+    );
+    const restored = decodeWorld(encodeWorld(world));
+    assert.ok(restored);
+    assert.deepEqual(restored, world);
+    assert.equal(
+      decodeWorld({
+        ...world,
+        settings: { ...settings, level: "unknown-arena" },
+      }),
+      undefined,
+      "an unknown arena cannot enter through a peer checkpoint",
+    );
+  }
+  for (const level of [
+    "custom-map",
+    "constructor",
+    "__proto__",
+    null,
+    0,
+    {},
+    ["dirt"],
+  ]) {
+    assert.equal(isClassicLevelId(level), false);
+    assert.equal(parseSettings({ ...DEFAULT_SETTINGS, level }), undefined);
+  }
+  const { level: omitted, ...missing } = DEFAULT_SETTINGS;
+  assert.ok(omitted);
+  assert.equal(parseSettings(missing), undefined);
 });

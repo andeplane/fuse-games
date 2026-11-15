@@ -4,6 +4,7 @@ import { launchSelected } from "./lib/browser.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { startRoomService } from "./lib/server.js";
 import { CLASSIC_WEAPONS } from "../games/fusero/src/engine/classic/catalog.js";
+import { CLASSIC_LEVELS } from "../games/fusero/src/engine/classic/level.js";
 
 /** Native Classic behavior through real menus and controls; the app hook is read-only. */
 const server = process.env.ONLINE_URL ? undefined : await startRoomService();
@@ -15,9 +16,9 @@ const browser = await launchSelected("chrome", {
 const errors: string[] = [],
   audioRequests: string[] = [];
 const contexts = await Promise.all([
-  browser.newContext({ viewport: { width: 1440, height: 900 } }),
+  browser.newContext({ viewport: { width: 1280, height: 720 } }),
   browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: 393, height: 852 },
     hasTouch: true,
     isMobile: true,
   }),
@@ -60,6 +61,7 @@ interface Sample {
   elapsedMs: number;
   nextId: number;
   terrain: { width: number; height: number; rowCount: number };
+  level: string;
   camera: Camera;
   audio: { enabled: boolean; loaded: number; voices: number };
 }
@@ -71,6 +73,7 @@ const sample = (page: Page): Promise<Sample> =>
       ({id,slot,x,y,aim,weapon,input,health,alive,rope:rope?{state:rope.state}:null,slots}))??[],
     elapsedMs:w?.elapsedMs??0,nextId:w?.nextId??0,
     terrain:{width:w?.terrain.width??0,height:w?.terrain.height??0,rowCount:w?.terrain.rows.length??0},
+    level:w?.settings.level??s.settings.level,
     camera:hook.camera(),audio:hook.audio()};
 })()`);
 const weaponId = (name: string): number => {
@@ -103,6 +106,84 @@ async function cameraSize(
 ): Promise<void> {
   await page.waitForFunction(
     `(() => {const c=window.fusero?.camera();return c?.width===${width}&&c?.height===${height};})()`,
+  );
+}
+async function nativeScale(page: Page): Promise<void> {
+  const scale = await page.evaluate<{
+    render: {
+      worldPixelsPerNativePixel: number;
+      worm: { width: number; height: number };
+      crosshair: { distance: number; width: number; height: number };
+      pixelProjectile: { width: number; height: number };
+    };
+    canvasWidth: number;
+    canvasHeight: number;
+    camera: Camera;
+  }>(`(() => {
+    const c=document.querySelector('.liero-arena canvas');
+    const camera=window.fusero.camera();
+    return {render:window.fusero.scale(),canvasWidth:c.width,canvasHeight:c.height,camera};
+  })()`);
+  assert.deepEqual(scale.render, {
+    worldPixelsPerNativePixel: 0.5,
+    worm: { width: 10, height: 9 },
+    crosshair: { distance: 16, width: 3, height: 3 },
+    pixelProjectile: { width: 1, height: 1 },
+  });
+  assert.equal(scale.canvasWidth, scale.camera.width * 2);
+  assert.equal(scale.canvasHeight, scale.camera.height * 2);
+}
+function sourceTerrain(s: Sample): void {
+  const level = CLASSIC_LEVELS.find((level) => level.id === s.level);
+  assert.ok(level, `selected source level ${s.level} exists`);
+  assert.deepEqual(s.terrain, {
+    width: level.width,
+    height: level.height,
+    rowCount: level.height,
+  });
+}
+async function nativeKeys(
+  page: Page,
+): Promise<{ fire: string; jump: string; mac: boolean }> {
+  const mac = await page.evaluate<boolean>(
+    "window.fusero.keyboard().platform === 'mac'",
+  );
+  return {
+    mac,
+    fire: mac ? "AltLeft" : "ControlLeft",
+    jump: mac ? "MetaLeft" : "AltLeft",
+  };
+}
+async function keyboardPreset(
+  page: Page,
+  platform: "pc" | "mac",
+): Promise<void> {
+  await page
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  assert.equal(
+    await page.getByRole("button", { name: /^Report · Ctrl\+X$/i }).count(),
+    1,
+    "the explicit reporting action remains available in the menu",
+  );
+  await page.getByRole("button", { name: /^game controls$/i }).click();
+  await page
+    .getByRole("combobox", { name: "Keyboard preset", exact: true })
+    .selectOption(platform);
+  await page.waitForFunction(
+    `window.fusero.keyboard().platform === ${JSON.stringify(platform)}`,
+  );
+  await page.getByRole("button", { name: "CONTROLS", exact: true }).click();
+  for (const label of platform === "mac"
+    ? ["Left Option", "Left Command"]
+    : ["Left Ctrl", "Left Alt"])
+    await page.waitForFunction(
+      `document.querySelector('.fui-game-menu-controls')?.textContent.includes(${JSON.stringify(label)})`,
+    );
+  await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await page.getByRole("button", { name: "BACK TO GAME", exact: true }).click();
+  await page.waitForFunction(
+    () => document.activeElement?.tagName === "CANVAS",
   );
 }
 async function chooseWeapons(
@@ -152,12 +233,13 @@ function cameraContains(camera: Camera, worm: Worm): boolean {
 }
 async function ropeAndJump(page: Page, slot: number): Promise<void> {
   // Classic aims continuously, casts a travelling hook and retains it on key release.
-  await page.keyboard.down("KeyS");
+  const keys = await nativeKeys(page);
+  await page.keyboard.down("ArrowDown");
   await page.waitForFunction(
     `window.fusero.state().world.worms.find(w=>w.slot===${slot}).aim >= 50`,
   );
-  await page.keyboard.up("KeyS");
-  await page.keyboard.press("KeyR", { delay: 60 });
+  await page.keyboard.up("ArrowDown");
+  await page.keyboard.press("KeyX", { delay: 60 });
   await page.waitForFunction(
     `window.fusero.state().world.worms.find(w=>w.slot===${slot}).rope !== null`,
   );
@@ -167,7 +249,7 @@ async function ropeAndJump(page: Page, slot: number): Promise<void> {
     null,
     "releasing the rope key retains the native rope",
   );
-  await page.keyboard.press("Space", { delay: 60 });
+  await page.keyboard.press(keys.jump, { delay: 60 });
   await page.waitForFunction(
     `window.fusero.state().world.worms.find(w=>w.slot===${slot}).rope === null`,
   );
@@ -205,7 +287,18 @@ try {
   await host
     .getByRole("button", { name: "Game settings", exact: true })
     .click();
-  await host.locator("dialog[open] .liero-settings select").selectOption("all");
+  await host
+    .getByRole("combobox", { name: "Weapons", exact: true })
+    .selectOption("all");
+  const levelChoice = host.getByRole("combobox", {
+    name: "Level",
+    exact: true,
+  });
+  assert.equal(
+    await levelChoice.inputValue(),
+    "jail-break",
+    "the larger source level is the default",
+  );
   await host.waitForFunction(
     "window.fusero.state().settings.restrictionPreset === 'all'",
   );
@@ -218,21 +311,31 @@ try {
   await play(host);
   await host.locator(".liero-arena canvas").click();
   const solo = await sample(host);
-  assert.deepEqual(
-    solo.terrain,
-    { width: 504, height: 350, rowCount: 350 },
-    "source Dirt Level geometry is retained",
-  );
+  sourceTerrain(solo);
+  assert.equal(solo.level, "jail-break");
+  await cameraSize(host, 427, 240);
+  await nativeScale(host);
+  await host.setViewportSize({ width: 393, height: 852 });
+  await cameraSize(host, 160, 240);
+  await nativeScale(host);
+  await host.setViewportSize({ width: 1280, height: 720 });
+  await cameraSize(host, 427, 240);
   const soloWorm = solo.worms.find((worm) =>
     solo.seats.some((seat) => seat.id === worm.id && !seat.bot),
   );
   assert.ok(soloWorm);
   assert.equal(soloWorm.slots.length, 5);
-  await host.keyboard.down("KeyF");
+  const keys = await nativeKeys(host);
+  assert.equal(
+    keys.mac,
+    false,
+    "new browser sessions use the original PC/web controls",
+  );
+  await host.keyboard.down(keys.fire);
   await host.waitForFunction(
     `window.fusero.state().world.worms.find(w=>w.id===${JSON.stringify(soloWorm.id)}).slots[0].reloading`,
   );
-  await host.keyboard.up("KeyF");
+  await host.keyboard.up(keys.fire);
   await host.keyboard.press("Digit2", { delay: 60 });
   await host.waitForFunction(
     `window.fusero.state().world.worms.find(w=>w.id===${JSON.stringify(soloWorm.id)}).weapon===1`,
@@ -246,6 +349,14 @@ try {
       .slots[0]!.charge,
     paused,
     "switching away pauses native reload",
+  );
+  await host.keyboard.press("KeyA", { delay: 60 });
+  await host.waitForFunction(
+    `window.fusero.state().world.worms.find(w=>w.id===${JSON.stringify(soloWorm.id)}).weapon===0`,
+  );
+  await host.keyboard.press("KeyS", { delay: 60 });
+  await host.waitForFunction(
+    `window.fusero.state().world.worms.find(w=>w.id===${JSON.stringify(soloWorm.id)}).weapon===1`,
   );
   console.log(
     "Solo preparation, source map, five weapons, firing and paused reload passed",
@@ -274,7 +385,9 @@ try {
   await host
     .getByRole("button", { name: "Game settings", exact: true })
     .click();
-  await host.locator("dialog[open] .liero-settings select").selectOption("all");
+  await host
+    .getByRole("combobox", { name: "Weapons", exact: true })
+    .selectOption("all");
   await Promise.all(
     [host, peer].map((page) =>
       page.waitForFunction(
@@ -318,14 +431,15 @@ try {
   await host.waitForFunction(
     () => document.activeElement?.tagName === "CANVAS",
   );
-  await Promise.all([
-    cameraSize(host, 320, 180),
-    cameraSize(peer, 192, 144),
-    cameraSize(tv, 504, 350),
-  ]);
+  await Promise.all([cameraSize(host, 320, 240), cameraSize(peer, 320, 240)]);
   const initial = await sample(host),
-    phone = await sample(peer),
-    overview = await sample(tv);
+    phone = await sample(peer);
+  await cameraSize(tv, initial.terrain.width, initial.terrain.height);
+  const overview = await sample(tv);
+  sourceTerrain(initial);
+  sourceTerrain(phone);
+  sourceTerrain(overview);
+  await Promise.all([host, peer, tv].map(nativeScale));
   assert.equal(initial.worms.length, 2, "TV holds no player seat");
   assert.deepEqual(
     initial.seats
@@ -351,23 +465,27 @@ try {
   assert.deepEqual(overview.camera, {
     x: 0,
     y: 0,
-    width: 504,
-    height: 350,
+    width: initial.terrain.width,
+    height: initial.terrain.height,
     overview: true,
   });
   await tv.locator(".liero-pad").waitFor({ state: "hidden" });
   await tv.locator(".liero-weapon-bar").waitFor({ state: "hidden" });
 
-  await host.keyboard.down("KeyD");
+  await host.keyboard.down("ArrowRight");
   await peer.waitForFunction(
     "window.fusero.state().world.worms.find(w=>w.slot===0).input & 2",
   );
   // Native carving is a press edge, not continuously held tunnel digging.
   for (let press = 0; press < 6; press++) {
-    await host.keyboard.press("KeyG", { delay: 60 });
+    await host.keyboard.down("ArrowLeft");
+    await peer.waitForFunction(
+      "(window.fusero.state().world.worms.find(w=>w.slot===0).input & 3) === 3",
+    );
+    await host.keyboard.up("ArrowLeft");
     await ticks(host, 2);
   }
-  await host.keyboard.up("KeyD");
+  await host.keyboard.up("ArrowRight");
   await peer.waitForFunction(
     "window.fusero.state().world.worms.find(w=>w.slot===0).input === 0",
   );
@@ -381,17 +499,63 @@ try {
     cameraContains(moved.camera, bySlot(moved, 0)),
     "follow camera retains the moving worm",
   );
-  await host.keyboard.down("KeyF");
+  await host.keyboard.down(keys.fire);
   await host.waitForFunction(
     "window.fusero.state().world.worms.find(w=>w.slot===0).slots[0].reloading",
   );
-  await host.keyboard.up("KeyF");
+  await host.keyboard.up(keys.fire);
   await peer.waitForFunction(
     "window.fusero.state().world.worms.find(w=>w.slot===0).slots[0].reloading",
   );
   await ropeAndJump(host, 0);
+  // Original PC fire + rope is Ctrl+X, which must reach the game rather than
+  // the platform's report shortcut while this player owns the controls.
+  await host.keyboard.down("ControlLeft");
+  await host.keyboard.down("KeyX");
+  await peer.waitForFunction(
+    "(window.fusero.state().world.worms.find(w=>w.slot===0).input & 96) === 96",
+  );
+  assert.equal(
+    await host.locator("dialog[open]").count(),
+    0,
+    "firing and throwing the rope must not open a report dialog",
+  );
+  await host.keyboard.up("KeyX");
+  await peer.waitForFunction(
+    "window.fusero.state().world.worms.find(w=>w.slot===0).input === 32",
+  );
+  await ticks(host, 3);
+  assert.notEqual(
+    bySlot(await sample(host), 0).rope,
+    null,
+    "the rope persists after X is released while firing",
+  );
+  await host.keyboard.up("ControlLeft");
+  await peer.waitForFunction(
+    "window.fusero.state().world.worms.find(w=>w.slot===0).input === 0",
+  );
+  assert.equal(await host.locator("dialog[open]").count(), 0);
+  await keyboardPreset(host, "mac");
+  const macKeys = await nativeKeys(host);
+  assert.equal(macKeys.mac, true);
+  await host.keyboard.down(macKeys.fire);
+  await peer.waitForFunction(
+    "window.fusero.state().world.worms.find(w=>w.slot===0).input & 32",
+  );
+  await host.keyboard.up(macKeys.fire);
+  // Browsers can omit an arrow keyup while Command is held. Releasing native
+  // Mac jump must clear the chord rather than leave a stale walking input.
+  await host.keyboard.down("ArrowRight");
+  await host.keyboard.down(macKeys.jump);
+  await host.keyboard.up("ArrowRight");
+  await host.keyboard.up(macKeys.jump);
+  await peer.waitForFunction(
+    "window.fusero.state().world.worms.find(w=>w.slot===0).input === 0",
+  );
+  await keyboardPreset(host, "pc");
+  assert.equal((await nativeKeys(host)).mac, false);
   console.log(
-    `Native controls, rope persistence/jump release and inventory replicated; common hash tick ${await convergence([host, peer, tv])}`,
+    `Native PC/Mac presets, rope persistence/jump release and inventory replicated; common hash tick ${await convergence([host, peer, tv])}`,
   );
 
   assert.ok(
@@ -421,29 +585,25 @@ try {
     "window.fusero.state().world.worms.find(w=>w.slot===1).slots[1].charge<1",
   );
   await peer.setViewportSize({ width: 844, height: 390 });
-  await cameraSize(peer, 320, 180);
-  await peer.setViewportSize({ width: 390, height: 844 });
-  await cameraSize(peer, 192, 144);
-  await tv.setViewportSize({ width: 390, height: 844 });
-  await cameraSize(tv, 504, 350);
+  await cameraSize(peer, 320, 240);
+  await peer.setViewportSize({ width: 393, height: 852 });
+  await cameraSize(peer, 320, 240);
+  await tv.setViewportSize({ width: 393, height: 852 });
+  await cameraSize(tv, initial.terrain.width, initial.terrain.height);
   await tv.setViewportSize({ width: 1440, height: 900 });
   await peer.reload();
   await play(peer);
   await peer.waitForFunction(
     "window.fusero.state().seats.filter(s=>s.name==='Classic Bo'&&!s.watcher&&s.connected).length===1",
   );
-  await cameraSize(peer, 192, 144);
+  await cameraSize(peer, 320, 240);
   await peer.locator(".liero-pad").waitFor({ state: "visible" });
   const recovered = await sample(peer);
   assert.ok(
     cameraContains(recovered.camera, bySlot(recovered, 1)),
     "recovered phone follows the same player",
   );
-  assert.deepEqual(recovered.terrain, {
-    width: 504,
-    height: 350,
-    rowCount: 350,
-  });
+  assert.deepEqual(recovered.terrain, initial.terrain);
   console.log(
     `Touch controls, resize, source-terrain reload and seat recovery passed; common hash tick ${await convergence([host, peer, tv])}`,
   );

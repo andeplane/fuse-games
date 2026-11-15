@@ -12,8 +12,12 @@ Friends playing real-time worm combat inside Fuse, on individual browsers or a s
 
 ## Capabilities and constraints
 
-Close-clone gameplay parity with OpenLieroX's Classic engine and weapon data is required; the original simplified prototype is not acceptable as the finished game. Fuse's networking, input-log rollback and room recovery stay. Graphics may differ. Following user playtest feedback, the world is larger than each player's viewport: personal cameras follow the player's worm; shared TVs retain the full-world overview. No always-running simulation service. Browser controls must work on keyboards and touch screens. Stop at a reviewed PR for human playtesting after source parity is verified.
+Close-clone gameplay, controls and feel with OpenLieroX's Classic engine and weapon data are required; the original simplified prototype is not acceptable as the finished game. Fuse's networking, input-log rollback and room recovery stay. Graphics may differ, while preserving native visual scale. The user's playtest rejected the previous map/camera/worm presentation as unplayable; automated mechanics tests did not establish its feel.
+
+The default arena is the native JailBreak level (1200×600), with open routes and destructible dirt. Native Castle Strike (1350×550), Factory (1200×480) and the original startup Dirt Level (504×350) are also selectable in Game settings. Their physical pixels are retained without enlargement. Personal cameras follow the worm at a fixed 240-world-pixel height: local 16:9 is 427×240, portrait local is 160×240, and network play keeps the native fair 320×240 view. Shared TVs retain the full-world overview. Worm artwork, including its gun, fits the native 10×9-world-pixel envelope.
+
+No always-running simulation service. Browser keyboard controls offer exact Original PC and Original Mac presets. Original PC is the default, matching the official WebAssembly reference; Original Mac is available in GAME CONTROLS as a local preference. Touch controls feed the same native actions. Keep the reviewed PR open for human playtesting. Source comparisons and browser tests support readiness, but do not establish accepted gameplay feel.
 
 ## Brand commitments
 
-Fusero, with the existing Fuse menus, room layout, portal and neon/pixel aesthetic. Original artwork and implementation; credit the reference without implying OpenLieroX compatibility.
+Fusero, with the existing Fuse menus, room layout, portal and neon/pixel aesthetic. Original neon artwork over an attributed source-derived engine; do not imply OpenLieroX protocol or arbitrary-mod compatibility. Keep five-weapon selection visible on the room page.

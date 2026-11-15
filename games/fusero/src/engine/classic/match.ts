@@ -18,6 +18,7 @@ import {
 } from "./match-types.js";
 import { CLASSIC_WEAPONS } from "./catalog.js";
 import type { PhysicsTerrainPort } from "./physics-types.js";
+import { isClassicLevelId } from "./level.js";
 
 export { DEFAULT_SETTINGS } from "./match-types.js";
 export type { ClassicSettings, MatchState, MatchWorm } from "./match-types.js";
@@ -114,6 +115,7 @@ export function parseSettings(raw: unknown): ClassicSettings | undefined {
   )
     return;
   if (
+    !isClassicLevelId(value.level) ||
     typeof value.display !== "boolean" ||
     !integer(value.killLimit, -1, 150) ||
     !integer(value.timeLimitMs, -1, 1_200_000) ||

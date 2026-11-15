@@ -70,9 +70,17 @@ const RECIPES: Record<string, Recipe> = {
       document.querySelector(".liero-overlay")?.hasAttribute("hidden"),
     );
     await page.locator(".liero-arena canvas").click();
-    await page.keyboard.down("KeyF");
-    await hold(page, ["KeyD", "Space", "KeyW", "KeyR"], 700);
-    await page.keyboard.up("KeyF");
+    const mac = await page.evaluate<boolean>(
+      "window.fusero.keyboard().platform === 'mac'",
+    );
+    const fire = mac ? "AltLeft" : "ControlLeft";
+    const jump = mac ? "MetaLeft" : "AltLeft";
+    await page.keyboard.press(jump, { delay: 80 });
+    await page.keyboard.down(fire);
+    await page.keyboard.down("ArrowRight");
+    await hold(page, ["ArrowLeft", "ArrowUp", "KeyX"], 700);
+    await page.keyboard.up("ArrowRight");
+    await page.keyboard.up(fire);
   },
   "ball-bros": async (page) => {
     await openPlayOptions(page);

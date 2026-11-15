@@ -6,6 +6,20 @@ import { AIR, ROCK } from "../engine/classic/terrain-types.js";
 import { faceDirection } from "../engine/classic/physics-types.js";
 import { cameraFor, type Camera } from "./camera.js";
 
+/** Native art is drawn in logical screen pixels: two of those per world pixel. */
+export const NATIVE_DRAW_SCALE = Object.freeze({
+  worldPixelsPerNativePixel: 0.5,
+  worm: Object.freeze({ width: 10, height: 9 }),
+  crosshair: Object.freeze({ distance: 16, width: 3, height: 3 }),
+  pixelProjectile: Object.freeze({ width: 1, height: 1 }),
+});
+
+export interface ArenaDisplay {
+  readonly wideScreen: boolean;
+  viewport(): { width: number; height: number };
+  touchControls(): boolean;
+}
+
 export const COLORS = ["#b6ff4d", "#16e7ff", "#ff2e9d", "#ffe46b", "#a78bfa"];
 const ROCK_COLOR = [56, 80, 105] as const;
 const EDGE_COLOR = [143, 87, 190] as const;
@@ -67,7 +81,7 @@ export function interpolateArena(
 }
 
 /** Canvas reads source-derived state. Art never supplies collision geometry or advances the world. */
-export function createArena(canvas: HTMLCanvasElement) {
+export function createArena(canvas: HTMLCanvasElement, display: ArenaDisplay) {
   const ctx = canvas.getContext("2d")!;
   const terrain = document.createElement("canvas"),
     ground = terrain.getContext("2d")!;
@@ -126,22 +140,24 @@ export function createArena(canvas: HTMLCanvasElement) {
         ground.putImageData(pixels, 0, y);
       }
       oldRows = rows.slice();
-      camera = cameraFor(
-        world,
-        self,
-        canvas.clientWidth > 0 && canvas.clientWidth < 720,
-        matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0,
-      );
-      if (canvas.width !== camera.width || canvas.height !== camera.height) {
-        canvas.width = camera.width;
-        canvas.height = camera.height;
+      camera = cameraFor(world, self, display.viewport(), {
+        wideScreen: display.wideScreen,
+        touchControls: display.touchControls(),
+      });
+      if (
+        canvas.width !== camera.width * 2 ||
+        canvas.height !== camera.height * 2
+      ) {
+        canvas.width = camera.width * 2;
+        canvas.height = camera.height * 2;
       }
       canvas.dataset.camera = camera.overview ? "overview" : "follow";
       canvas.dataset.cameraX = String(camera.x);
       canvas.dataset.cameraY = String(camera.y);
       ctx.imageSmoothingEnabled = false;
+      ctx.setTransform(2, 0, 0, 2, 0, 0);
       ctx.fillStyle = "#080917";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, camera.width, camera.height);
       ctx.save();
       ctx.translate(-camera.x, -camera.y);
       for (let i = 0; i < 300; i++) {
@@ -156,12 +172,17 @@ export function createArena(canvas: HTMLCanvasElement) {
       ctx.drawImage(terrain, 0, 0);
       for (const bonus of world.bonuses) {
         ctx.fillStyle = bonus.type === "health" ? "#b6ff4d" : "#ffe46b";
-        ctx.fillRect(Math.round(bonus.x) - 5, Math.round(bonus.y) - 5, 10, 10);
+        ctx.fillRect(
+          Math.round(bonus.x) - 2.5,
+          Math.round(bonus.y) - 2.5,
+          5,
+          5,
+        );
         ctx.fillStyle = "#101524";
         if (bonus.type === "health") {
-          ctx.fillRect(bonus.x - 1, bonus.y - 4, 2, 8);
-          ctx.fillRect(bonus.x - 4, bonus.y - 1, 8, 2);
-        } else ctx.fillRect(bonus.x - 3, bonus.y - 1, 7, 3);
+          ctx.fillRect(bonus.x - 0.5, bonus.y - 2, 1, 4);
+          ctx.fillRect(bonus.x - 2, bonus.y - 0.5, 4, 1);
+        } else ctx.fillRect(bonus.x - 1.5, bonus.y - 0.5, 3.5, 1.5);
       }
       for (const shot of world.projectiles) {
         if (!shot.used) continue;
@@ -174,11 +195,15 @@ export function createArena(canvas: HTMLCanvasElement) {
               (world.worms.find((w) => w.id === shot.owner)?.slot ?? 0) %
                 COLORS.length
             ]!;
+        const size =
+          descriptor?.type === "image"
+            ? (descriptor.bitmap?.height ?? descriptor.width) / 2
+            : NATIVE_DRAW_SCALE.pixelProjectile.width;
         ctx.fillRect(
-          Math.round(shot.x) - 1,
-          Math.round(shot.y) - 1,
-          descriptor?.type === "image" ? 4 : 2,
-          2,
+          Math.round(shot.x) - size / 2,
+          Math.round(shot.y) - size / 2,
+          size,
+          size,
         );
         if (descriptor?.type === "image") {
           ctx.strokeStyle = ctx.fillStyle;
@@ -235,38 +260,46 @@ export function createArena(canvas: HTMLCanvasElement) {
           ctx.lineTo(worm.rope.x, worm.rope.y);
           ctx.stroke();
           ctx.fillStyle = worm.rope.state === "falling" ? "#ffe46b" : "#ffffff";
-          ctx.fillRect(worm.rope.x - 1, worm.rope.y - 1, 3, 3);
+          ctx.fillRect(worm.rope.x - 0.5, worm.rope.y - 0.5, 1, 1);
         }
         ctx.fillStyle = "#02040a";
-        ctx.fillRect(x - 5, y - 6, 11, 13);
+        ctx.fillRect(
+          x - 4,
+          y - NATIVE_DRAW_SCALE.worm.height / 2,
+          8,
+          NATIVE_DRAW_SCALE.worm.height,
+        );
         ctx.fillStyle = color;
-        ctx.fillRect(x - 4, y - 5, 8, 10);
-        ctx.fillRect(x - 6, y + 3, 10, 3);
+        ctx.fillRect(x - 3, y - 3.5, 5, 7);
+        ctx.fillRect(x - 4, y + 2.5, 7, 1);
         ctx.fillStyle = "#f5fff5";
-        ctx.fillRect(x + (worm.facing === 1 ? 0 : -4), y - 3, 4, 3);
+        ctx.fillRect(x + (worm.facing === 1 ? 0 : -2), y - 2.5, 2, 1.5);
         ctx.fillStyle = "#111620";
-        ctx.fillRect(x + (worm.facing === 1 ? 2 : -4), y - 3, 1, 2);
+        ctx.fillRect(x + (worm.facing === 1 ? 1 : -2), y - 2.5, 0.5, 1);
         ctx.strokeStyle = "#dee8f7";
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, y);
-        ctx.lineTo(x + dir.x * 10, y + dir.y * 10);
+        ctx.lineTo(
+          x + dir.x * (NATIVE_DRAW_SCALE.worm.width / 2 - 0.5),
+          y + dir.y * 4,
+        );
         ctx.stroke();
         if (worm.id === self) {
-          const ax = x + dir.x * 27,
-            ay = y + dir.y * 27;
+          const ax = x + dir.x * NATIVE_DRAW_SCALE.crosshair.distance,
+            ay = y + dir.y * NATIVE_DRAW_SCALE.crosshair.distance;
           ctx.strokeStyle = color;
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 0.5;
           ctx.beginPath();
-          ctx.moveTo(ax - 3, ay);
-          ctx.lineTo(ax + 3, ay);
-          ctx.moveTo(ax, ay - 3);
-          ctx.lineTo(ax, ay + 3);
+          ctx.moveTo(ax - NATIVE_DRAW_SCALE.crosshair.width / 2, ay);
+          ctx.lineTo(ax + NATIVE_DRAW_SCALE.crosshair.width / 2, ay);
+          ctx.moveTo(ax, ay - NATIVE_DRAW_SCALE.crosshair.height / 2);
+          ctx.lineTo(ax, ay + NATIVE_DRAW_SCALE.crosshair.height / 2);
           ctx.stroke();
         }
         const label = names.get(worm.id) ?? "Worm",
-          labelY = Math.max(8, y - 11);
-        ctx.font = "bold 5px monospace";
+          labelY = Math.max(8, y - 8);
+        ctx.font = "4px monospace";
         ctx.textAlign = "center";
         ctx.fillStyle = "#080917";
         ctx.fillRect(
@@ -278,16 +311,16 @@ export function createArena(canvas: HTMLCanvasElement) {
         ctx.fillStyle = color;
         ctx.fillText(label, x, labelY);
         ctx.fillStyle = "#111620";
-        ctx.fillRect(x - 7, y - 8, 14, 1);
+        ctx.fillRect(x - 5, y - 5.5, 10, 0.5);
         ctx.fillStyle = color;
-        ctx.fillRect(x - 7, y - 8, Math.max(0, worm.health) * 0.14, 1);
+        ctx.fillRect(x - 5, y - 5.5, Math.max(0, worm.health) * 0.1, 0.5);
       }
       ctx.restore();
       if (!camera.overview) {
-        const mapWidth = canvas.width <= 192 ? 48 : 72,
+        const mapWidth = Math.min(60, camera.width * 0.2),
           mapHeight = (mapWidth * height) / width,
           own = world.worms.find((w) => w.id === self);
-        const right = canvas.width - mapWidth - 5,
+        const right = camera.width - mapWidth - 5,
           x =
             own &&
             own.x - camera.x > right - 8 &&

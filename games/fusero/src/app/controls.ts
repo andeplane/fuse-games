@@ -18,37 +18,47 @@ import {
   STRAFE,
 } from "../engine/classic/physics-types.js";
 
-export const KEY_BITS: Readonly<Record<string, number>> = {
+/** OpenLieroX Options.cpp:44–51, primary player's defaults at the pinned source revision. */
+const COMMON_KEYS: Readonly<Record<string, number>> = {
   ArrowLeft: LEFT,
-  KeyA: LEFT,
   ArrowRight: RIGHT,
-  KeyD: RIGHT,
   ArrowUp: UP,
-  KeyW: UP,
   ArrowDown: DOWN,
-  KeyS: DOWN,
-  Space: JUMP,
-  KeyF: FIRE,
-  KeyJ: FIRE,
-  KeyR: ROPE,
-  KeyK: ROPE,
-  KeyQ: PREV,
-  KeyE: NEXT,
-  KeyG: CARVE,
-  KeyC: CARVE,
-  ControlLeft: CARVE,
-  ControlRight: CARVE,
-  ShiftLeft: SELECT_MOD,
-  ShiftRight: SELECT_MOD,
-  AltLeft: STRAFE,
-  AltRight: STRAFE,
+  KeyX: ROPE,
+  KeyA: PREV,
+  KeyS: NEXT,
   Digit1: SLOT1,
   Digit2: SLOT2,
   Digit3: SLOT3,
   Digit4: SLOT4,
   Digit5: SLOT5,
-  Enter: FIRE,
 };
+
+const PC_KEYS: Readonly<Record<string, number>> = Object.freeze({
+  ...COMMON_KEYS,
+  ControlLeft: FIRE,
+  AltLeft: JUMP,
+  KeyZ: STRAFE,
+  ShiftLeft: SELECT_MOD,
+});
+
+const MAC_KEYS: Readonly<Record<string, number>> = Object.freeze({
+  ...COMMON_KEYS,
+  AltLeft: FIRE,
+  MetaLeft: JUMP,
+  KeyC: STRAFE,
+  Space: SELECT_MOD,
+});
+
+/** Platform selection belongs to the browser composition root; tests pass the same explicit choice. */
+export function keyboardBindings(
+  platform: "pc" | "mac",
+): Readonly<Record<string, number>> {
+  return platform === "mac" ? MAC_KEYS : PC_KEYS;
+}
+
+/** Non-Apple native defaults, retained for callers that do not choose a platform. */
+export const KEY_BITS: Readonly<Record<string, number>> = PC_KEYS;
 
 /** Track sources separately: releasing one finger must not release another finger or a held key. */
 export class HeldControls {

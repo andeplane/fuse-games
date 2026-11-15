@@ -111,3 +111,30 @@ Source material and decoder notices are retained under the distribution's
 existing `COPYING.LIB` and original source-release license records. No separate
 embedded level-author notice was present in this binary; provenance is the
 unmodified file in the pinned upstream distribution.
+
+## Larger native arenas
+
+`castle-strike.lxl`, `liero-factory.lxl` and `jail-break.lxl` are byte-for-byte native levels from
+the same pinned release's `share/gamedir/levels/` directory. Their bytes were
+also checked against `OpenLieroX.app/Contents/Resources/gamedir/levels/` in the
+official `openlierox_20260717.2_macos.zip` distribution. These are original
+arenas, not enlarged copies of Dirt Level; their material planes and physical
+world-pixel sizes are retained.
+
+Fusero now starts on Jail Break in response to the user's explicit request
+for a larger arena with substantial destructible dirt. Dirt Level remains selectable and retains the upstream
+startup-default provenance described above; the Fusero content-default change
+does not rescale or retune any native level.
+
+| Fixture             | Native path                | World pixels | SHA-256                                                            |
+| ------------------- | -------------------------- | ------------ | ------------------------------------------------------------------ |
+| `castle-strike.lxl` | `levels/CastleStrike.lxl`  | 1350 × 550   | `9b26d3f417e3a9a0c61909bf3b1d841831a1a492f37e2d45869e8f92d0d37517` |
+| `liero-factory.lxl` | `levels/Liero Factory.lxl` | 1200 × 480   | `25289df1b4561101a8cb1405acb75e9901755ee36200744c48622cb424ca171d` |
+| `jail-break.lxl`    | `levels/JailBreak.lxl`     | 1200 × 600   | `8c03fb4b89ed8f6a414ac25569fffc32c219d9e29f32ad34ea2af62fa2e2aa56` |
+
+The same `scripts/fusero-decode-level.ts` generator extracts all four levels.
+It verifies both source-file and physical-flag-plane digests and emits compact,
+immutable material rows. `--check` verifies every generated arena. Native
+foreground/background colours do not decide collision materials. Focused level
+tests compare every material pixel of all larger arenas with their original
+flag planes and exercise selected-level checkpoint recovery.

@@ -21,7 +21,10 @@ import {
   requestedRoomSlot,
 } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
-import { playtestInputBlocked } from "fuse-ui/playtest-input";
+import {
+  playtestInputBlocked,
+  isEditableReportTarget,
+} from "fuse-ui/playtest-input";
 import {
   createPlayMetrics,
   observeConfirmedPlay,
@@ -67,8 +70,14 @@ import { fuseroGame, type View } from "../online/game.js";
 import { seatName } from "../online/names.js";
 import { FuseroRuntime, type FuseroCallbacks } from "../online/runtime.js";
 import { keys, safeStore, sessionFor, roomFailure } from "./session.js";
-import { createArena, interpolateArena, COLORS } from "./arena.js";
-import { HeldControls, KEY_BITS } from "./controls.js";
+import {
+  createArena,
+  interpolateArena,
+  COLORS,
+  NATIVE_DRAW_SCALE,
+} from "./arena.js";
+import { HeldControls, keyboardBindings } from "./controls.js";
+import { CLASSIC_LEVELS } from "../engine/classic/level.js";
 import { createFuseroAudio, createWebAudioSurface } from "./audio.js";
 
 const GAME = fuseroGame.id;
@@ -126,17 +135,43 @@ document.addEventListener("visibilitychange", () =>
 window.addEventListener("pagehide", () => audio.dispose(), { once: true });
 const url = (query = "") =>
   endpoints.appUrl(query + (muted ? `${query ? "&" : "?"}mute` : ""));
-const CONTROLS = [
-  { keys: "A D / ← →", action: "Move" },
-  { keys: "W S / ↑ ↓", action: "Aim" },
-  { keys: "Space", action: "Jump" },
-  { keys: "F / J", action: "Fire" },
-  { keys: "R / K", action: "Launch or relaunch ninja rope; jump releases it" },
-  { keys: "Q / E / 1–5", action: "Previous, next or select weapon slot" },
-  { keys: "G / Ctrl", action: "Carve dirt in front of your worm" },
-  { keys: "Shift + A / D", action: "Change weapon without walking" },
-  { keys: "Alt + A / D", action: "Strafe while keeping your facing direction" },
-];
+// The original web build uses PC defaults; native Mac defaults remain selectable locally.
+let keyboardPlatform: "pc" | "mac" =
+  store.getItem(`${GAME}-keyboard`) === "mac" ? "mac" : "pc";
+let KEY_BITS = keyboardBindings(keyboardPlatform);
+const controlLabels = () => ({
+  fireKey: keyboardPlatform === "mac" ? "Left Option" : "Left Ctrl",
+  jumpKey: keyboardPlatform === "mac" ? "Left Command" : "Left Alt",
+  selectKey: keyboardPlatform === "mac" ? "Space" : "Left Shift",
+  strafeKey: keyboardPlatform === "mac" ? "C" : "Z",
+});
+const controlHints = () => {
+  const { fireKey, jumpKey, selectKey, strafeKey } = controlLabels();
+  return [
+    { keys: "← →", action: "Move" },
+    { keys: "↑ ↓", action: "Aim" },
+    { keys: jumpKey, action: "Jump; detach ninja rope" },
+    { keys: fireKey, action: "Fire" },
+    { keys: "X", action: "Launch or relaunch ninja rope; jump releases it" },
+    { keys: "A / S / 1–5", action: "Previous, next or select weapon slot" },
+    { keys: "Hold ← and tap → (or the reverse)", action: "Dig while walking" },
+    { keys: `${selectKey} + ← / →`, action: "Change weapon without walking" },
+    {
+      keys: `${strafeKey} + ← / →`,
+      action: "Strafe while keeping your facing direction",
+    },
+  ];
+};
+const keyboardHint = () => {
+  const { fireKey, jumpKey } = controlLabels();
+  return `← → move · ↑ ↓ aim · ${jumpKey} jump / release rope · ${fireKey} fire · X rope · A S / 1–5 weapons · opposite arrow digs`;
+};
+const arenaDisplay = (wideScreen: boolean) => ({
+  wideScreen,
+  viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  touchControls: () =>
+    matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0,
+});
 const TOUCH = [
   { keys: "LEFT / RIGHT", action: "Move" },
   { keys: "AIM ↑ / ↓", action: "Aim" },
@@ -179,7 +214,7 @@ function attract(host: HTMLElement) {
   const canvas = el("canvas", "", "liero-attract");
   canvas.setAttribute("aria-hidden", "true");
   host.append(canvas);
-  const arena = createArena(canvas);
+  const arena = createArena(canvas, arenaDisplay(true));
   const world = createWorld(
     713,
     [
@@ -279,7 +314,7 @@ function room(solo: boolean) {
     () => performance.now(),
   );
   const menu = createGameMenu({
-    controls: CONTROLS,
+    controls: controlHints(),
     touchControls: TOUCH,
     goal: GOAL,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
@@ -307,6 +342,30 @@ function room(solo: boolean) {
   menu.element
     .querySelector(".fui-game-menu-navigation")!
     .append(changeWeapons);
+  const keyboardChoice = el("select");
+  keyboardChoice.setAttribute("aria-label", "Keyboard preset");
+  for (const [value, label] of [
+    ["pc", "Original PC / web"],
+    ["mac", "Original Mac"],
+  ]) {
+    const option = el("option", label);
+    option.value = value!;
+    keyboardChoice.append(option);
+  }
+  keyboardChoice.value = keyboardPlatform;
+  keyboardChoice.onchange = () => {
+    controls.release();
+    keyboardHeld.clear();
+    keyboardPlatform = keyboardChoice.value === "mac" ? "mac" : "pc";
+    KEY_BITS = keyboardBindings(keyboardPlatform);
+    store.setItem(`${GAME}-keyboard`, keyboardPlatform);
+    hints.textContent = keyboardHint();
+  };
+  const keyboardLabel = el("label", "Keyboard", "liero-keyboard-preset");
+  keyboardLabel.append(keyboardChoice);
+  menu.element
+    .querySelector(".fui-game-menu-navigation")!
+    .append(keyboardLabel);
   const top = header([menu.element], (open) => {
     if (open) controls.release();
     else if (last?.stage === "running") canvas.focus({ preventScroll: true });
@@ -408,6 +467,21 @@ function room(solo: boolean) {
     label.append(el("span", name), control);
     settingsPanel.append(label);
   };
+  const levelChoice = el("select");
+  levelChoice.setAttribute("aria-label", "Level");
+  for (const level of CLASSIC_LEVELS) {
+    const option = el(
+      "option",
+      `${level.name} · ${level.width} × ${level.height}`,
+    );
+    option.value = level.id;
+    levelChoice.append(option);
+  }
+  levelChoice.onchange = () => {
+    const level = CLASSIC_LEVELS.find((item) => item.id === levelChoice.value);
+    if (level) patchSettings({ level: level.id });
+  };
+  settingLabel("Level", levelChoice);
   const restrictions = el("select");
   for (const [value, name] of [
     ["standard-100lt", "Standard 100lt"],
@@ -506,12 +580,8 @@ function room(solo: boolean) {
   actions.append(rematch, backLobby, chooseAgain);
   overlay.append(banner, message, actions);
   arenaWrap.append(canvas, overlay);
-  const arena = createArena(canvas),
-    hints = el(
-      "p",
-      "A D move · W S aim · Space jump / release rope · F fire · R launch rope · G carve · Q E / 1–5 weapons",
-      "liero-hints",
-    ),
+  const arena = createArena(canvas, arenaDisplay(solo)),
+    hints = el("p", keyboardHint(), "liero-hints"),
     pad = el("div", "", "liero-pad");
   for (const [label, bits] of [
     ["LEFT", LEFT],
@@ -747,6 +817,7 @@ function room(solo: boolean) {
         field.disabled =
           (!inLobby && !liveLoadout.dialog.open) || !own || display;
       for (const control of [
+        levelChoice,
         restrictions,
         killLimit,
         timeLimit,
@@ -755,6 +826,8 @@ function room(solo: boolean) {
         selfInjure,
       ])
         control.disabled = !host || !inLobby || display;
+      if (document.activeElement !== levelChoice)
+        levelChoice.value = settings.level;
       if (document.activeElement !== restrictions) restrictions.value = preset;
       if (document.activeElement !== killLimit)
         killLimit.value = String(frame.settings.killLimit);
@@ -771,6 +844,7 @@ function room(solo: boolean) {
       if (document.activeElement !== selfInjure)
         selfInjure.checked = frame.settings.selfInjure;
       menu.update({
+        controls: controlHints(),
         canLobby: host && !inLobby && !display,
         display,
         touch: matchMedia("(pointer: coarse)").matches,
@@ -919,6 +993,29 @@ function room(solo: boolean) {
         }
       : { humanName: remembered ?? undefined, autoStartSolo: false },
   );
+  const keyboardHeld = new Set<string>();
+  // Native PC fire+rope is Ctrl+X. While the arena owns input, it must reach the game
+  // before the document-level report shortcut; reporting remains available in the menu.
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (
+        keyboardPlatform !== "pc" ||
+        event.code !== "KeyX" ||
+        !event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        isEditableReportTarget(event.target) ||
+        !canControl()
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      keyboardHeld.add(event.code);
+      controls.set(event.code, KEY_BITS[event.code]!);
+    },
+    true,
+  );
   document.addEventListener("keydown", (event) => {
     const bits = KEY_BITS[event.code];
     if (
@@ -932,10 +1029,19 @@ function room(solo: boolean) {
     )
       return;
     event.preventDefault();
+    keyboardHeld.add(event.code);
     controls.set(event.code, bits);
   });
   document.addEventListener("keyup", (event) => {
-    if (KEY_BITS[event.code]) controls.set(event.code, 0);
+    if (KEY_BITS[event.code]) {
+      keyboardHeld.delete(event.code);
+      controls.set(event.code, 0);
+    }
+    // Chromium may swallow other key-up events while native Mac Command-jump is held.
+    if (keyboardPlatform === "mac" && event.code === "MetaLeft") {
+      for (const code of keyboardHeld) controls.set(code, 0);
+      keyboardHeld.clear();
+    }
   });
   window.addEventListener("blur", () => controls.release());
   document.addEventListener("visibilitychange", () => {
@@ -987,6 +1093,11 @@ function room(solo: boolean) {
       },
       fps: () => fps,
       camera: () => arena.camera(),
+      scale: () => NATIVE_DRAW_SCALE,
+      keyboard: () => ({
+        platform: keyboardPlatform,
+        bindings: { ...KEY_BITS },
+      }),
       audio: () => audio.snapshot(),
     },
   });
