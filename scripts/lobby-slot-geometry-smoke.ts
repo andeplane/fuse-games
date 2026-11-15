@@ -126,7 +126,7 @@ try {
                 beside?.textContent?.trim()
               );
             })) ?? "",
-            /^(Room settings|Settings)$/,
+            /^Room settings$/,
           );
         }
         await first.getByRole("button").click();

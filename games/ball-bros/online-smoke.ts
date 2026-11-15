@@ -173,7 +173,6 @@ try {
   await b.locator(".fui-main-menu").waitFor();
 
   await openPlayOptions(a);
-  await a.getByLabel("Shared TV + phone controllers").check();
   await hostRoom(a).click();
   await a.waitForURL(/room=/);
   // Named viewers take a seat on arrival, including a returning room creator.
@@ -181,10 +180,14 @@ try {
   await a.locator(".fui-room-count", { hasText: "1 / 5" }).waitFor();
   assert.equal(await a.locator(".fui-slot-admission[open]").isVisible(), false);
   const sharedCode = new URL(a.url()).searchParams.get("room")!;
-  const tvUrl = await a
-    .getByRole("link", { name: "OPEN TV SCREEN" })
-    .getAttribute("href");
+  await a.getByLabel("Shared TV: phones are the controllers").check();
+  const openedScreen = contexts[0]!.waitForEvent("page");
+  await a.getByRole("button", { name: "OPEN TV SCREEN" }).click();
+  const screen = await openedScreen;
+  await screen.waitForURL(/display=1/);
+  const tvUrl = screen.url();
   assert.ok(tvUrl && !tvUrl.includes("token"));
+  await screen.close();
   await display.goto(tvUrl!);
   await display.locator(".fui-roster-name", { hasText: "Alice" }).waitFor();
   assert.equal(await display.getByPlaceholder("Your name").isVisible(), false);
