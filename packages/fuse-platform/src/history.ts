@@ -49,6 +49,50 @@ import { publicIdOf } from "./friends.js";
  * pending and expires.
  */
 
+export interface FeedCursor {
+  at: number;
+  id?: string;
+}
+export interface FeedRow {
+  cursor: FeedCursor;
+  match?: MatchRecord;
+}
+
+/** A bounded, URL-safe cursor. A numeric cursor remains accepted for already-open clients. */
+export function parseFeedCursor(value: string): FeedCursor | undefined {
+  if (/^\d+$/.test(value)) {
+    const at = Number(value);
+    return Number.isSafeInteger(at) ? { at } : undefined;
+  }
+  const parts = /^c([A-Za-z0-9_-]{1,13000})$/.exec(value);
+  if (!parts) return;
+  try {
+    const bytes = Buffer.from(parts[1]!, "base64url");
+    if (bytes.toString("base64url") !== parts[1]) return;
+    const pair: unknown = JSON.parse(bytes.toString("utf8"));
+    if (!Array.isArray(pair) || pair.length !== 2) return;
+    const [at, id]: unknown[] = pair;
+    if (
+      typeof at !== "number" ||
+      !Number.isFinite(at) ||
+      at < 0 ||
+      typeof id !== "string" ||
+      !id ||
+      id.includes("/") ||
+      Buffer.byteLength(id) > 1500
+    )
+      return;
+    return { at, id };
+  } catch {
+    return;
+  }
+}
+export function formatFeedCursor(cursor: FeedCursor): string {
+  return cursor.id === undefined
+    ? String(cursor.at)
+    : `c${Buffer.from(JSON.stringify([cursor.at, cursor.id])).toString("base64url")}`;
+}
+
 export interface HistoryDatabase {
   /**
    * Like RoomDatabase.transact: the operation is pure and may be retried. Credits commit atomically with the match,
@@ -60,17 +104,13 @@ export interface HistoryDatabase {
     operation: (current: MatchRecord | undefined) => HistoryMutation<T>,
   ): Promise<T>;
   /**
-   * Confirmed whole games of one game, every player's, newest first and strictly before `before`.
-   *
-   * `before` is a `feedAt` in milliseconds, so two games confirmed in the same millisecond on a page boundary can
-   * cost one of them its listing. A tie-proof cursor would have to page on `(feedAt, document id)`, which no test
-   * here can exercise against Firestore; see docs/design/PLAYER-STATS.md.
+   * Raw ordered rows, including unreadable records, with their storage cursors.
    */
   recentMatches(
     gameId: string,
-    before: number | undefined,
+    before: FeedCursor | undefined,
     limit: number,
-  ): Promise<MatchRecord[]>;
+  ): Promise<FeedRow[]>;
   /** Confirmed matches of an account in one game, newest first. */
   matchesFor(
     gameId: string,
@@ -149,6 +189,39 @@ const publicSeats = (record: MatchRecord): Record<string, string> =>
       publicIdOf(owner),
     ]),
   );
+
+/** Replace live seat identifiers throughout a match response, including game-specific nested stats. */
+function publicMatch<P extends PlayerResult>(record: MatchRecord<P>) {
+  const ids = new Map(
+    record.result.players.map(({ playerId }) => [
+      playerId,
+      /^[a-f0-9]{24}$/.test(playerId)
+        ? createHash("sha256")
+            .update(`match-seat:${record.id}:${playerId}`)
+            .digest("hex")
+            .slice(0, 24)
+        : playerId,
+    ]),
+  );
+  const remap = (value: unknown): unknown => {
+    if (typeof value === "string") return ids.get(value) ?? value;
+    if (Array.isArray(value)) return value.map(remap);
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          ids.get(key) ?? key,
+          remap(item),
+        ]),
+      );
+    return value;
+  };
+  return {
+    id: (seat: string) => ids.get(seat) ?? seat,
+    avatars: remap(record.avatars) as Record<string, string>,
+    accounts: remap(publicSeats(record)) as Record<string, string>,
+    result: remap(record.result) as MatchResult<P>,
+  };
+}
 
 /**
  * Solo play has no room, so no incarnation; the account stands in for one. The legacy game keeps the form it always
@@ -349,8 +422,17 @@ export class GameHistory<
     const result = this.parseResult(body.result),
       avatarId = body.avatarId as string | undefined;
     if (!result) throw new RoomError(400, "Invalid match result");
-    const needed = attestationsNeeded(result);
-    if (!humansOf(game, result).includes(rider))
+    const humans = humansOf(game, result);
+    // A one-human result is self-reported personal progress, not proof that a
+    // room had no other players. Only corroborated results enter the feed.
+    const solo = humans.length === 1;
+    const needed =
+      result.round === undefined
+        ? solo
+          ? 1
+          : Math.max(2, attestationsNeeded(result))
+        : attestationsNeeded(result);
+    if (!humans.includes(rider))
       throw new RoomError(403, "Only a rider in the match can report it");
     // Only an account makes a record permanent, and fresh room tokens are free, so the per-rider limit above cannot
     // bound permanent storage. This one can: past it a report still counts, as a guest's, and the record expires.
@@ -431,6 +513,15 @@ export class GameHistory<
           };
       const credits: Credit[] = [];
       if (!match.attesters.includes(rider)) match.attesters.push(rider);
+      // Older records could be confirmed by one seat. Do not let a repeat report
+      // create new credits or publish one until another seat has corroborated it.
+      if (
+        result.round === undefined &&
+        !solo &&
+        match.status === "confirmed" &&
+        match.attesters.length < 2
+      )
+        throw new RoomError(409, "Match needs another player's report");
       if (avatarId !== undefined) match.avatars[rider] = avatarId;
       // One account per seat and one seat per account: a second device on the same account reports, but is not credited twice.
       const linking =
@@ -441,7 +532,8 @@ export class GameHistory<
       if (
         match.status === "pending" &&
         match.attesters.filter((id) => result.finishers.includes(id)).length >=
-          needed
+          attestationsNeeded(result) &&
+        (result.round !== undefined || solo || match.attesters.length >= 2)
       ) {
         match.status = "confirmed";
         match.endedAt = now;
@@ -471,10 +563,7 @@ export class GameHistory<
         const hasAccounts = match.participantUids.length > 0;
         // Round receipts remain durable and idempotent, but do not appear as career games or in the public feed.
         if (result.round !== undefined) match.participantUids = [];
-        // A lone guest confirms their own game, so it is public only once a second player vouches or an account (whose
-        // links are rate limited) owns a seat: otherwise free room tokens could fill everyone's feed with inventions.
-        else if (hasAccounts || match.attesters.length >= 2)
-          match.feedAt ??= match.endedAt;
+        else if (!solo) match.feedAt ??= match.endedAt;
         if (hasAccounts) delete match.expiresAt;
         else match.expiresAt = (match.endedAt ?? now) + GUEST_MATCH_TTL_MS;
       }
@@ -503,6 +592,7 @@ export class GameHistory<
       throw new RoomError(429, "Too many requests; try later");
     const profile = (await this.database.profile(this.game.id, uid)) as
       Profile<T> | undefined;
+    if (profile) delete profile.ratingGuard;
     if (profile?.rating?.games)
       profile.rank = await this.database.rank(
         this.game.id,
@@ -541,8 +631,8 @@ export class GameHistory<
   async feed(
     address: string,
     uid: string | undefined,
-    before: number | undefined,
-  ): Promise<{ matches: FeedEntry<P>[] }> {
+    before: number | FeedCursor | undefined,
+  ): Promise<{ matches: FeedEntry<P>[]; nextBefore: string | null }> {
     if (
       !(await this.rooms.database.allowance(
         this.limit(`feed:${address}`),
@@ -551,35 +641,50 @@ export class GameHistory<
       ))
     )
       throw new RoomError(429, "Too many requests; try later");
-    const records = await this.database.recentMatches(
-      this.game.id,
-      before,
-      HISTORY_PAGE,
-    );
-    return {
-      matches: records.flatMap((record) => {
+    const matches: FeedEntry<P>[] = [];
+    let cursor = typeof before === "number" ? { at: before } : before;
+    // Bound work per request, but return the scan cursor even if all scanned rows
+    // were hidden, so the caller can continue to older corroborated matches.
+    for (let batch = 0; batch < 10; batch++) {
+      const records = await this.database.recentMatches(
+        this.game.id,
+        cursor,
+        HISTORY_PAGE,
+      );
+      for (const row of records) {
+        cursor = row.cursor;
+        const record = row.match;
         // A record the storage layer ordered by `feedAt` still has to earn its place here.
-        if (record.feedAt === undefined || record.result.round !== undefined)
-          return [];
+        if (
+          !record ||
+          record.feedAt === undefined ||
+          record.result.round !== undefined ||
+          new Set(record.attesters).size < 2
+        )
+          continue;
         const you =
           uid === undefined
             ? undefined
             : Object.entries(record.uidByPlayer).find(
                 ([, account]) => account === uid,
               )?.[0];
-        return [
-          {
-            id: record.id,
-            // When the game ended, not when it became public: `feedAt` orders the feed, `endedAt` dates the row.
-            endedAt: record.endedAt ?? record.createdAt,
-            ...(you ? { you } : {}),
-            avatars: record.avatars,
-            accounts: publicSeats(record),
-            result: record.result as MatchResult<P>,
-          },
-        ];
-      }),
-    };
+        const safe = publicMatch(record);
+        matches.push({
+          id: record.id,
+          // When the game ended, not when it became public: `feedAt` orders the feed, `endedAt` dates the row.
+          endedAt: record.endedAt ?? record.createdAt,
+          ...(you ? { you: safe.id(you) } : {}),
+          avatars: safe.avatars,
+          accounts: safe.accounts,
+          result: safe.result as MatchResult<P>,
+        });
+        if (matches.length === HISTORY_PAGE)
+          return { matches, nextBefore: formatFeedCursor(cursor) };
+      }
+      if (records.length < HISTORY_PAGE || cursor === undefined)
+        return { matches, nextBefore: null };
+    }
+    return { matches, nextBefore: cursor ? formatFeedCursor(cursor) : null };
   }
 
   async leaderboard(
@@ -625,6 +730,7 @@ export class GameHistory<
         const you = Object.entries(record.uidByPlayer).find(
           ([, account]) => account === uid,
         )?.[0];
+        const safe = publicMatch(record);
         return {
           ...(you && record.ratings?.[you]
             ? { rating: record.ratings[you] }
@@ -632,11 +738,11 @@ export class GameHistory<
           id: record.id,
           endedAt: record.endedAt ?? record.createdAt,
           roomCode: record.roomCode,
-          ...(you ? { you } : {}),
+          ...(you ? { you: safe.id(you) } : {}),
           attestations: record.attesters.length,
-          avatars: record.avatars,
-          accounts: publicSeats(record),
-          result: record.result as MatchResult<P>,
+          avatars: safe.avatars,
+          accounts: safe.accounts,
+          result: safe.result as MatchResult<P>,
         };
       }),
     };

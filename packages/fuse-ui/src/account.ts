@@ -202,7 +202,7 @@ export interface AccountDialogOptions<
   /** GET the signed-in player's history; `before` pages backwards from an `endedAt`. */
   historyUrl(before?: number): string;
   /** GET everyone's recent games; `before` pages backwards from a listed `endedAt`. */
-  matchesUrl(before?: number): string;
+  matchesUrl(before?: string | number): string;
   /** GET the profile, PUT `{ username }`. */
   profileUrl: string;
   /** GET `{ players }`. */
@@ -265,11 +265,14 @@ export interface AccountDialog {
 interface Feed<Match> {
   matches: Match[];
   more: boolean;
+  cursor?: string | number;
+  loaded: boolean;
   state: "idle" | "loading" | "failed";
 }
 const emptyFeed = <Match>(): Feed<Match> => ({
   matches: [],
   more: true,
+  loaded: false,
   state: "idle",
 });
 
@@ -548,22 +551,30 @@ export function createAccountDialog<
           : undefined;
     if (!feed || feed.state === "loading") return;
     const mine = session,
-      before = feed.matches.at(-1)?.endedAt;
+      before =
+        which === "everyone" ? feed.cursor : feed.matches.at(-1)?.endedAt;
     feed.state = "loading";
     redrawList();
     try {
-      const page =
+      const response =
         which === "everyone"
-          ? (await get<{ matches: Match[] }>(options.matchesUrl(before), false))
-              .matches
-          : (
-              await get<AccountPage<Profile, Match>>(
-                options.historyUrl(before),
-                true,
-              )
-            ).matches;
+          ? await get<{
+              matches: Match[];
+              nextBefore?: string | number | null;
+            }>(options.matchesUrl(before), false)
+          : await get<AccountPage<Profile, Match>>(
+              options.historyUrl(feed.matches.at(-1)?.endedAt),
+              true,
+            );
       if (mine !== session) return;
-      extend(feed, page);
+      extend(feed, response.matches);
+      if (which === "everyone") {
+        if ("nextBefore" in response) {
+          feed.cursor = response.nextBefore ?? undefined;
+          feed.more = response.nextBefore != null;
+        } else feed.cursor = response.matches.at(-1)?.endedAt;
+      }
+      feed.loaded = true;
       feed.state = "idle";
     } catch {
       if (mine !== session) return;
@@ -760,7 +771,7 @@ export function createAccountDialog<
     // Only a feed never read yet loads by itself; an empty first page sets `more` false, so it is not asked again.
     if (
       scope === "everyone" &&
-      !feed.matches.length &&
+      !feed.loaded &&
       feed.state === "idle" &&
       feed.more
     )
@@ -791,7 +802,7 @@ export function createAccountDialog<
         ? text.loadingOlder
         : text.loadingMatches;
     else if (feed.state === "failed") note.textContent = text.matchesFailed;
-    else if (!feed.matches.length)
+    else if (!feed.matches.length && !feed.more)
       note.textContent = scope === "everyone" ? text.emptyEveryone : text.empty;
     const more = plainButton(
       feed.state === "failed"
@@ -807,7 +818,7 @@ export function createAccountDialog<
     more.hidden =
       feed.state === "loading"
         ? !feed.matches.length
-        : feed.state === "idle" && (!feed.more || !feed.matches.length);
+        : feed.state === "idle" && !feed.more;
     more.onclick = () => void loadMatches(scope);
     body.replaceChildren(filter, intro, list, note, more);
   }

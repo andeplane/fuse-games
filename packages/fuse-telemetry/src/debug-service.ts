@@ -178,6 +178,7 @@ export interface DebugServiceOptions {
   now: () => number;
 }
 export class DebugService {
+  private lastReportWarning = 0;
   readonly database: DebugDatabase;
   readonly objects: PrivateObjectStorage;
   constructor(private options: DebugServiceOptions) {
@@ -198,6 +199,7 @@ export class DebugService {
   async createRecording(
     owner: string,
     input: unknown,
+    ownerGeneration = 0,
   ): Promise<RecordingSummary> {
     debugAssert(
       plain(input) &&
@@ -218,7 +220,9 @@ export class DebugService {
       const current = ofKind(records.get(key), "recording");
       if (current) {
         debugAssert(
-          current.owner === owner && current.fingerprint === fingerprint,
+          current.owner === owner &&
+            (current.ownerGeneration ?? 0) === ownerGeneration &&
+            current.fingerprint === fingerprint,
           409,
           "Recording id conflict",
         );
@@ -235,6 +239,7 @@ export class DebugService {
         kind: "recording",
         ...body,
         owner,
+        ownerGeneration,
         fingerprint,
         lastUploadAt: now,
         status: "recording",
@@ -268,6 +273,7 @@ export class DebugService {
     startMs: number,
     bytes: Uint8Array,
     gameId?: string,
+    ownerGeneration = 0,
   ) {
     debugAssert(
       debugUuid(id) &&
@@ -299,6 +305,11 @@ export class DebugService {
           recording && recording.owner === owner,
           403,
           "Recording owner required",
+        );
+        debugAssert(
+          (recording.ownerGeneration ?? 0) === ownerGeneration,
+          412,
+          "Recording access changed",
         );
         debugAssert(
           recording.mediaExpiresAt > now,
@@ -386,7 +397,11 @@ export class DebugService {
     });
     return { sequence, startMs, endMs, saved: true as const };
   }
-  async finish(owner: string, id: string): Promise<RecordingSummary> {
+  async finish(
+    owner: string,
+    id: string,
+    ownerGeneration = 0,
+  ): Promise<RecordingSummary> {
     debugAssert(debugUuid(id));
     const key = recordingKey(id),
       now = this.now();
@@ -397,6 +412,11 @@ export class DebugService {
         403,
         "Recording owner required",
       );
+      debugAssert(
+        (record.ownerGeneration ?? 0) === ownerGeneration,
+        412,
+        "Recording access changed",
+      );
       const next: RecordingRecord = { ...record, status: "finished" };
       return { writes: new Map([[key, next]]), result: recordingSummary(next) };
     });
@@ -405,6 +425,8 @@ export class DebugService {
     identity: string,
     owner: string | undefined,
     input: unknown,
+    ownerGeneration = 0,
+    trusted = Boolean(owner),
   ) {
     debugAssert(
       plain(input) &&
@@ -465,6 +487,7 @@ export class DebugService {
     const now = this.now(),
       key = reportKey(body.id),
       day = `limit:report:${checksum(identity)}:${Math.floor(now / 86400_000)}`,
+      globalDay = `limit:report-global:${Math.floor(now / 86400_000)}`,
       fingerprint = checksum(
         JSON.stringify([
           body,
@@ -474,12 +497,15 @@ export class DebugService {
       ),
       rkey = body.recordingId ? recordingKey(body.recordingId) : undefined;
     const record = await this.database.transact(
-      [key, day, ...(rkey ? [rkey] : [])],
+      [key, day, globalDay, ...(rkey ? [rkey] : [])],
       (records) => {
         if (rkey) {
           const recording = ofKind(live(records.get(rkey), now), "recording");
           debugAssert(
-            recording && owner && recording.owner === owner,
+            recording &&
+              owner &&
+              recording.owner === owner &&
+              (recording.ownerGeneration ?? 0) === ownerGeneration,
             403,
             "Recording owner required",
           );
@@ -496,24 +522,54 @@ export class DebugService {
         }
         const q = quota(records.get(day), now);
         debugAssert(
-          q.reports < L.dailyReports,
+          q.reports < (trusted ? L.dailyReports : L.dailyAnonymousReports),
           429,
           "Daily report limit reached",
         );
+        const global = quota(records.get(globalDay), now);
+        // Reserve space for metadata and indexes as well as submitted payload.
+        const bytes =
+          4096 +
+          Buffer.byteLength(JSON.stringify(body)) +
+          (screenshot?.length ?? 0);
+        if (
+          global.reports >= L.dailyGlobalReports ||
+          global.durationMs + bytes > L.dailyGlobalReportBytes
+        ) {
+          if (now - this.lastReportWarning >= 60_000) {
+            this.lastReportWarning = now;
+            console.error("Telemetry global report budget exceeded");
+          }
+          throw new RoomError(429, "Daily report budget reached");
+        }
         const value: ReportRecord = {
           kind: "report",
           ...body,
           fingerprint,
           receivedAt: now,
-          expiresAt: now + L.textRetentionMs,
-          mediaExpiresAt: now + L.mediaRetentionMs,
+          expiresAt:
+            now + (trusted ? L.textRetentionMs : L.anonymousRetentionMs),
+          mediaExpiresAt:
+            now + (trusted ? L.mediaRetentionMs : L.anonymousRetentionMs),
           ready: !screenshot,
-          ...(screenshot ? { screenshotKey: `screenshots/${body.id}` } : {}),
+          ...(screenshot
+            ? {
+                screenshotKey: `${trusted ? "screenshots" : "anonymous-screenshots"}/${body.id}`,
+              }
+            : {}),
         };
         return {
           writes: new Map<string, DebugRecord>([
             [key, value],
             [day, { ...q, reports: q.reports + 1 }],
+            [
+              globalDay,
+              {
+                ...global,
+                reports: global.reports + 1,
+                durationMs: global.durationMs + bytes,
+              },
+            ],
           ]),
           result: value,
         };

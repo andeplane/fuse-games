@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FakeNetwork, type NetworkOptions } from "./fixtures/fake-room.js";
+import {
+  FAKE_ROOM_CODE,
+  FakeNetwork,
+  type NetworkOptions,
+} from "./fixtures/fake-room.js";
 import { classicSettings } from "./fixtures/classic-settings.js";
 import {
   RULES,
@@ -363,7 +367,7 @@ test("a snapshot carries both counters, and the guard refuses a game clock the l
     "more steps than the log ticks could run",
   );
   assert.equal(withTick(game + 1), undefined, "fewer steps than log ticks");
-  assert.equal(RULES, "fuse-p2p-58");
+  assert.equal(RULES, "fuse-p2p-59");
   assert.equal(MAX_STEPS_PER_TICK, BOTS_ONLY_MAX_STEPS_PER_TICK);
 });
 
@@ -780,7 +784,7 @@ test("a loop pass that throws after advancing still opens the next step budget: 
     net.transports.get("guest")!.events.fast(
       "host",
       encodePacket({
-        room: roomHash("AB42:host"),
+        room: roomHash(`${FAKE_ROOM_CODE}:host`),
         from: "host",
         generation: 1,
         through: clock,

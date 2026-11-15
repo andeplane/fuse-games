@@ -57,6 +57,7 @@ function recorded(
     bodies: unknown[] = [];
   const client = createFriendsClient({
     ...options,
+    presenceSession: () => "f".repeat(32),
     token: async () => "token",
     apiUrl: (path) => path,
     identity: () => ({ name: "Bob" }),
@@ -90,7 +91,7 @@ function recorded(
   };
 }
 const ROOM = {
-  code: "AB12",
+  code: "AB12AA",
   memberId: "a".repeat(24),
   gameId: "fuse-riders",
   token: "secret",
@@ -103,7 +104,13 @@ test("a game's client sends what it always sent: no passive, away or status unle
   assert.deepEqual(bodies, [
     {
       name: "Bob",
-      room: { code: "AB12", memberId: "a".repeat(24), gameId: "fuse-riders" },
+      room: {
+        code: "AB12AA",
+        memberId: "a".repeat(24),
+        token: "secret",
+        session: "f".repeat(32),
+        gameId: "fuse-riders",
+      },
     },
   ]);
   client.dispose();

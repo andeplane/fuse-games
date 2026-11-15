@@ -19,6 +19,7 @@ import {
   createRecordingUploader,
   indexedDbPlaytestOutbox,
   PermanentUploadError,
+  StaleUploadError,
   type StoredRecording,
   type StoredSegment,
   type PlaytestOutbox,
@@ -41,7 +42,8 @@ export interface BrowserPlaytestOptions {
 export type PlaytestAccount = Pick<
   typeof account,
   "signedInToken" | "watchAccount" | "accountReady" | "signIn" | "signInFailure"
->;
+> &
+  Partial<Pick<typeof account, "reauthenticate">>;
 export interface PlaytestRecordingState {
   available: boolean;
   active: boolean;
@@ -179,6 +181,7 @@ export function installBrowserPlaytest(
     path: string,
     init: RequestInit = {},
     authorized = false,
+    optionalIdentity = false,
   ): Promise<unknown> {
     const requestGeneration = accessGeneration;
     const headers = new Headers(init.headers);
@@ -191,6 +194,10 @@ export function installBrowserPlaytest(
       if (requestGeneration !== accessGeneration)
         throw new Error("Account changed. Retry after sign-in.");
       headers.set("Authorization", `Bearer ${token}`);
+    } else if (optionalIdentity) {
+      const token = await identity.signedInToken();
+      if (token && requestGeneration === accessGeneration)
+        headers.set("Authorization", `Bearer ${token}`);
     }
     const controller = new AbortController();
     const cancel = schedule(() => controller.abort(), 20000);
@@ -214,7 +221,10 @@ export function installBrowserPlaytest(
           if (path !== "/api/dev/me") await checkAccess(requestGeneration);
         }
         if (response.status === 401)
-          throw new PlaytestRequestError("Sign in again, then retry.", 401);
+          throw new PlaytestRequestError(
+            "Confirm your Google sign-in, then retry.",
+            401,
+          );
         if (response.status === 403)
           throw new PlaytestRequestError(
             "Microphone recording is restricted to approved developer accounts.",
@@ -224,6 +234,11 @@ export function installBrowserPlaytest(
           throw new PlaytestRequestError(
             "This attachment is too large. Capture a smaller screenshot and retry.",
             413,
+          );
+        if (response.status === 412)
+          throw new PlaytestRequestError(
+            "Recording access changed. Unsent audio remains on this device.",
+            412,
           );
         if (response.status === 429)
           throw new Error(
@@ -319,6 +334,13 @@ export function installBrowserPlaytest(
           return;
         }
         approvedUid = principal.uid;
+        if (
+          Array.isArray(principal.capabilities) &&
+          !principal.capabilities.includes("record")
+        ) {
+          revokeAccess(generation);
+          return;
+        }
         publishRecording({ available: true });
         retryUploads?.();
       })
@@ -586,6 +608,7 @@ export function installBrowserPlaytest(
       "/api/telemetry/reports",
       json(reportPayload),
       Boolean(reportContext),
+      true,
     )
       .then((acknowledgement) => {
         const ack = object(acknowledgement);
@@ -767,14 +790,24 @@ export function installBrowserPlaytest(
       detail = node("p");
     status.setAttribute("role", "status");
     detail.textContent =
-      "Saved uploads survive closing this page. Queued audio retries when you return; an unfinished chunk may be lost.";
+      "Saved uploads survive closing this page. Queued audio retries when you return unless recording access changed; an unfinished chunk may be lost.";
     const controls = node("div");
     controls.className = "fui-playtest-actions";
     const signIn = button("Sign in", () => {
-      void identity.signIn().catch((error: unknown) => {
-        status.textContent =
-          identity.signInFailure(error) || "Sign-in cancelled.";
-      });
+      void (
+        signedIn && identity.reauthenticate
+          ? identity.reauthenticate()
+          : identity.signIn()
+      )
+        .then(() => {
+          stoppedReason =
+            "Sign-in confirmed. Try starting the recording again.";
+          render();
+        })
+        .catch((error: unknown) => {
+          status.textContent =
+            identity.signInFailure(error) || "Sign-in cancelled.";
+        });
     });
     signIn.disabled = true;
     const start = button("Start recording", () => {
@@ -809,7 +842,7 @@ export function installBrowserPlaytest(
           "Sign-in could not load. Reload the page to retry.";
       });
     identity.watchAccount((user) => {
-      signIn.textContent = user ? `Signed in: ${user.name}` : "Sign in";
+      signIn.textContent = user ? "Confirm Google sign-in" : "Sign in";
       if (!user && microphone) {
         stoppedReason =
           "Signed out. Recording stopped; sign in to retry pending audio.";
@@ -851,6 +884,18 @@ export function installBrowserPlaytest(
     // the service rejects as such will be rejected again.
     const uploadRequest: typeof request = (...input) =>
       request(...input).catch((error: unknown) => {
+        if (error instanceof PlaytestRequestError && error.status === 412) {
+          if (
+            recording &&
+            input[0].startsWith(`/api/telemetry/recordings/${recording.id}/`)
+          ) {
+            stoppedReason =
+              "Recording access changed. Recording stopped; unsent audio remains on this device.";
+            void stopRecording();
+            render();
+          }
+          throw new StaleUploadError(error.message);
+        }
         if (
           error instanceof PlaytestRequestError &&
           [400, 404, 410, 413, 422].includes(error.status)

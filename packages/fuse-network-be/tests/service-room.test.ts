@@ -133,7 +133,7 @@ class Socket implements GatewaySocket {
 }
 const HOST = "a".repeat(64),
   GUEST = "b".repeat(64),
-  CODE = "AB42";
+  CODE = "AB42AA";
 function fixture(
   makeStore: (
     database: RoomDatabase,
@@ -569,63 +569,63 @@ test("failed bus is drained before a queued new connection can mark it ready", a
 
 test("short-code transactional collisions preserve the live room and retry only bounded conflicts", async () => {
   const f = fixture();
-  await f.store.create("AB42", HOST);
-  const original = await f.store.get("AB42");
+  await f.store.create("AB42AA", HOST);
+  const original = await f.store.get("AB42AA");
   let attempts = 0;
   assert.equal(
     await f.store.createAvailable(GUEST, () =>
-      ++attempts === 1 ? "AB42" : "CD34",
+      ++attempts === 1 ? "AB42AA" : "CD34AA",
     ),
-    "CD34",
+    "CD34AA",
   );
   assert.equal(attempts, 2);
-  assert.deepEqual(await f.store.get("AB42"), original);
+  assert.deepEqual(await f.store.get("AB42AA"), original);
   attempts = 0;
   await assert.rejects(
     f.store.createAvailable(GUEST, () => {
       attempts++;
-      return "AB42";
+      return "AB42AA";
     }),
     (error) => error instanceof RoomError && error.status === 503,
   );
   assert.equal(attempts, 12);
-  assert.deepEqual(await f.store.get("AB42"), original);
+  assert.deepEqual(await f.store.get("AB42AA"), original);
 });
 test("guest keepalives extend room lifetime and exact final expiry rejects admission", async () => {
   const f = fixture();
-  await f.store.create("AB42", HOST);
-  await f.store.admit("AB42", HOST, "a");
-  const guest = await f.store.admit("AB42", GUEST, "b");
+  await f.store.create("AB42AA", HOST);
+  await f.store.admit("AB42AA", HOST, "a");
+  const guest = await f.store.admit("AB42AA", GUEST, "b");
   let deadline = guest.room.expiresAt;
   for (let i = 0; i < 6; i++) {
     f.advance(20_000);
-    const renewed = await f.store.time("AB42", guest.member, undefined);
+    const renewed = await f.store.time("AB42AA", guest.member, undefined);
     assert.equal(renewed.expiresAt, deadline + 20_000);
     deadline = renewed.expiresAt;
   }
   f.advance(90_000);
-  await assert.rejects(f.store.get("AB42"), /expired/);
+  await assert.rejects(f.store.get("AB42AA"), /expired/);
   await assert.rejects(
-    f.store.time("AB42", guest.member, undefined),
+    f.store.time("AB42AA", guest.member, undefined),
     /expired/,
   );
-  await assert.rejects(f.store.admit("AB42", HOST, "a"), /expired/);
+  await assert.rejects(f.store.admit("AB42AA", HOST, "a"), /expired/);
 });
 test("current host extends reconnect grace and replacement close cannot shorten it", async () => {
   const f = fixture();
-  await f.store.create("AB42", HOST);
-  const first = await f.store.admit("AB42", HOST, "a");
+  await f.store.create("AB42AA", HOST);
+  const first = await f.store.admit("AB42AA", HOST, "a");
   f.advance(20_000);
-  const renewed = await f.store.time("AB42", first.member, first.room.grant);
+  const renewed = await f.store.time("AB42AA", first.member, first.room.grant);
   assert.equal(renewed.expiresAt, 111_000);
   f.advance(5000);
-  await f.store.leave("AB42", first.member);
-  assert.equal((await f.store.get("AB42")).expiresAt, 116_000);
+  await f.store.leave("AB42AA", first.member);
+  assert.equal((await f.store.get("AB42AA")).expiresAt, 116_000);
   f.advance(5000);
-  const next = await f.store.admit("AB42", HOST, "b");
+  const next = await f.store.admit("AB42AA", HOST, "b");
   assert.equal(next.room.expiresAt, 121_000);
-  await f.store.leave("AB42", first.member);
-  assert.equal((await f.store.get("AB42")).expiresAt, 121_000);
+  await f.store.leave("AB42AA", first.member);
+  assert.equal((await f.store.get("AB42AA")).expiresAt, 121_000);
 });
 test("host end is authorized, immediate and cannot end a reused code with an old capability", async () => {
   const f = fixture();
@@ -678,7 +678,7 @@ test("gateway expiry timer closes silent sockets without depending on TTL deleti
     now: () => now,
     id: () => crypto.randomUUID(),
   });
-  await store.create("AB42", HOST);
+  await store.create("AB42AA", HOST);
   const gateway = new RoomGateway("timed", store, f.bBus, {
     now: () => now,
     id: () => crypto.randomUUID(),
@@ -693,7 +693,7 @@ test("gateway expiry timer closes silent sockets without depending on TTL deleti
     },
   });
   const socket = new Socket();
-  await gateway.connect("AB42", HOST, socket);
+  await gateway.connect("AB42AA", HOST, socket);
   now = 91_000;
   callback();
   await new Promise((resolve) => setImmediate(resolve));
@@ -921,11 +921,11 @@ test("bus dedupe overflow drops only that room's frames; local and other-room si
   const localConnection = await f.b.connect(CODE, localToken, local);
   await f.b.receive(localConnection, signal(peerId(GUEST), guestConnection));
   assert.equal(guest.frames("signal").length, 513);
-  await f.store.create("CD34", HOST);
+  await f.store.create("CD34AA", HOST);
   const otherHost = new Socket(),
     otherGuest = new Socket();
-  const otherHostConnection = await f.a.connect("CD34", HOST, otherHost);
-  const otherGuestConnection = await f.b.connect("CD34", GUEST, otherGuest);
+  const otherHostConnection = await f.a.connect("CD34AA", HOST, otherHost);
+  const otherGuestConnection = await f.b.connect("CD34AA", GUEST, otherGuest);
   f.aBus.delayed = false;
   await f.a.receive(
     otherHostConnection,
@@ -1155,11 +1155,11 @@ test("a sustained flood ends only that connection, and the member reconnects wit
   const f = fixture(),
     room = await fullRoom(f),
     [host, victim] = room as [RoomMember, RoomMember];
-  await f.store.create("CD34", HOST);
+  await f.store.create("CD34AA", HOST);
   const otherHost = new Socket(),
     otherGuest = new Socket();
-  const otherHostConnection = await f.a.connect("CD34", HOST, otherHost),
-    otherGuestConnection = await f.b.connect("CD34", GUEST, otherGuest);
+  const otherHostConnection = await f.a.connect("CD34AA", HOST, otherHost),
+    otherGuestConnection = await f.b.connect("CD34AA", GUEST, otherGuest);
   // Refused frames are tolerated for a while: ten times the refill for five seconds is throttled, not closed.
   for (let second = 0; second < 5; second++) {
     await burst(
@@ -1471,10 +1471,10 @@ test(
     }
     const f = fixture((database, deps) => new SlowStore(database, deps));
     await f.store.create(CODE, HOST);
-    await f.store.create("CD34", HOST);
+    await f.store.create("CD34AA", HOST);
     const slow = f.a.connect(CODE, HOST, new Socket());
     await admissionStarted;
-    const other = await f.a.connect("CD34", HOST, new Socket());
+    const other = await f.a.connect("CD34AA", HOST, new Socket());
     assert.equal(f.a.connections, 1);
     releaseAdmission();
     const first = await slow;
@@ -1483,7 +1483,7 @@ test(
     await departureStarted;
     await f.a.disconnect(other);
     assert.equal(f.a.state, "ready", "pending work keeps the shared bus alive");
-    const next = await f.a.connect("CD34", GUEST, new Socket());
+    const next = await f.a.connect("CD34AA", GUEST, new Socket());
     releaseDeparture();
     await leaving;
     blockDeparture = false;
@@ -1519,9 +1519,9 @@ test("a bus restart fences an admission already waiting on its database result",
     joining = f.a.connect(CODE, lateToken, late);
   await waiting;
   f.aBus.failed?.(new Error("restart"));
-  await f.store.create("CD34", HOST);
+  await f.store.create("CD34AA", HOST);
   const healthy = new Socket();
-  await f.a.connect("CD34", HOST, healthy);
+  await f.a.connect("CD34AA", HOST, healthy);
   release();
   await assert.rejects(joining, /relay restarting/);
   assert.equal(late.frames("welcome").length, 0);

@@ -39,14 +39,14 @@ test("embedded game bridge validates origin, source, session and room; duplicate
   receive(connect, {}, origin);
   receive(connect, parent, "https://evil.test");
   assert.equal(bridge.openFriends(), false);
-  bridge.setRoom("AB42");
+  bridge.setRoom("AB42AA");
   receive(connect);
   assert.deepEqual(sent.pop(), {
     channel: DESKTOP_CHANNEL,
     type: "status",
     session: "one",
     gameId: "fuseball",
-    room: "AB42",
+    room: "AB42AA",
   });
   assert.equal(bridge.openFriends(), true);
   const invite = {
@@ -56,11 +56,11 @@ test("embedded game bridge validates origin, source, session and room; duplicate
     requestId: "invite-1",
     publicId,
     accountId: publicId,
-    room: "AB42",
+    room: "AB42AA",
   };
   receive({ ...invite, session: "old" });
   receive({ ...invite, publicId: "bad" });
-  receive({ ...invite, room: "CD43" });
+  receive({ ...invite, room: "CD43AA" });
   assert.equal(invited.length, 0);
   receive(invite);
   receive(invite);

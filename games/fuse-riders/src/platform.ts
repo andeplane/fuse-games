@@ -76,7 +76,7 @@ export type HistoryEntry = Omit<
 
 /**
  * Nothing can check a stat against the match that produced it, so these only keep a forged report from being absurd:
- * a rider who reports alone is believed, and what they can inflate is their own totals, by this much per report.
+ * corroborating players can still agree on invented stats, bounded by these limits.
  */
 const MAX_TICKS = 2_000_000,
   MAX_DISTANCE = 100_000_000,
@@ -216,6 +216,7 @@ export const fuseRiders: GameRegistration<
   FuseCredit
 > = {
   id: GAME_ID,
+  minRatedRoundTicks: 20, // engine/tuning.ts TICK_HZ
   isBot,
   parseStats: parsePlayer,
   // Kills and deaths may only name other riders of the same match.

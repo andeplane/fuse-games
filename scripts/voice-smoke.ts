@@ -117,6 +117,8 @@ const audioReceived = (page: Page, count = 1, peer?: string) =>
   );
 async function voice(page: Page) {
   // VOICE sits in the room bar, which the 844x390 display collapses behind ☰ MENU (top-menu.css).
+  // Source-loaded pages can finish navigation before mounting the room header.
+  await page.locator(".fui-top-bar").waitFor({ state: "visible" });
   await openTopMenu(page);
   await page.locator(".voice-toggle").click();
   await page.getByRole("region", { name: "Voice chat" }).waitFor();

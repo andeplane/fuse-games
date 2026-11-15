@@ -216,6 +216,7 @@ export const fuseVolleyRegistration: GameRegistration<
   FuseVolleyTotalsRecord
 > = {
   id: "fuse-volley",
+  minRatedRoundTicks: 120, // engine/tuning.ts STEPS_PER_SECOND
   isBot: isBotId,
   parseStats: parseFuseVolleyStats,
   validField: validFuseVolleyField,

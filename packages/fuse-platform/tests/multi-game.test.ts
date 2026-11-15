@@ -54,6 +54,7 @@ const KEYS = [
 function fakeGame(id: string): GameRegistration<Seat, Totals, number> {
   return {
     id,
+    minRatedRoundTicks: 20,
     isBot: (playerId) => /^bot:[0-9]{1,6}$/.test(playerId),
     parseStats(raw) {
       if (!raw || typeof raw !== "object") return;
@@ -190,6 +191,7 @@ async function fixture(sameIncarnation = false) {
 const round = (ids: string[], winner: number, matchId = "m1") => ({
   matchId,
   round: 1,
+  roundDuration: { version: 1, ticks: 20 },
   length: 1,
   finishers: ids,
   winnerId: ids[winner],
@@ -281,7 +283,7 @@ test("history routes address a game by prefix and refuse an unknown game or a ro
     assert.equal(handled.message, message);
   };
   await refused(
-    call("POST", "/api/games/chess/rooms/AB12/results", {}, { result: 1 }),
+    call("POST", "/api/games/chess/rooms/AB12AA/results", {}, { result: 1 }),
     404,
     "Unknown game",
   );
@@ -335,9 +337,9 @@ test("ratings and leaderboards are per game, while the account is shared", async
 
   const legacyHistory = f.store.game(LEGACY_GAME_ID),
     diceHistory = f.store.game("dice");
-  assert.equal((await legacyHistory.profile("alice"))!.rating!.value, 1016);
-  assert.equal((await diceHistory.profile("alice"))!.rating!.value, 984);
-  assert.equal((await diceHistory.profile("bob"))!.rating!.value, 1016);
+  assert.equal((await legacyHistory.profile("alice"))!.rating!.value, 1004);
+  assert.equal((await diceHistory.profile("alice"))!.rating!.value, 996);
+  assert.equal((await diceHistory.profile("bob"))!.rating!.value, 1004);
   assert.equal((await legacyHistory.profile("alice"))!.rank, 1);
   assert.equal((await diceHistory.profile("alice"))!.rank, 2);
   const top = async (gameId: string) =>
@@ -345,15 +347,15 @@ test("ratings and leaderboards are per game, while the account is shared", async
       (entry) => `${entry.name}:${entry.elo}${entry.you ? "*" : ""}`,
     );
   assert.deepEqual(await top(LEGACY_GAME_ID), [
-    "Player 1:1016",
-    "Player 2:984*",
+    "Player 1:1004",
+    "Player 2:996*",
   ]);
-  assert.deepEqual(await top("dice"), ["Player 2:1016*", "Player 1:984"]);
+  assert.deepEqual(await top("dice"), ["Player 2:1004*", "Player 1:996"]);
 
   // One rename, seen in both games: the username is the account's.
   await diceHistory.rename("alice", { username: "Ace" });
-  assert.deepEqual(await top(LEGACY_GAME_ID), ["Ace:1016", "Player 2:984*"]);
-  assert.deepEqual(await top("dice"), ["Player 2:1016*", "Ace:984"]);
+  assert.deepEqual(await top(LEGACY_GAME_ID), ["Ace:1004", "Player 2:996*"]);
+  assert.deepEqual(await top("dice"), ["Player 2:1004*", "Ace:996"]);
   assert.equal((await legacyHistory.profile("alice"))!.username, "Ace");
   await assert.rejects(diceHistory.rename("alice", { username: "" }), {
     status: 400,
@@ -365,6 +367,70 @@ test("ratings and leaderboards are per game, while the account is shared", async
   await f.play("dice", solo, round(solo.ids, 0, "m2"), ["carol", "dave"], true);
   assert.equal((await legacyHistory.profile("carol"))?.rating, undefined);
   assert.equal((await diceHistory.profile("carol"))!.rating!.games, 1);
+});
+
+test("F-06 concurrent distinct rounds share the same stored pair budget", async () => {
+  const f = await fixture();
+  const table = await f.room("dice", 70);
+  await Promise.all(
+    Array.from({ length: 205 }, (_, index) =>
+      f.play(
+        "dice",
+        table,
+        round(table.ids, 0, `concurrent-${index}`),
+        ["alice", "bob"],
+        true,
+      ),
+    ),
+  );
+  const alice = await f.database.profile("dice", "alice");
+  const bob = await f.database.profile("dice", "bob");
+  assert.equal(alice!.rating!.rounds, 205);
+  assert.equal(Object.values(alice!.ratingGuard!.opponents)[0]!.rounds, 200);
+  assert.equal(Object.values(bob!.ratingGuard!.opponents)[0]!.rounds, 200);
+  assert.ok(Math.abs(alice!.rating!.value + bob!.rating!.value - 2000) < 1e-8);
+  assert.equal(
+    (await f.store.game("dice").profile("alice"))!.ratingGuard,
+    undefined,
+  );
+});
+
+test("F-06 a missing or sub-minimum duration cannot settle a rated round", async () => {
+  const f = await fixture();
+  const table = await f.room("dice", 80);
+  const base = round(table.ids, 0, "too-short");
+  await f.play(
+    "dice",
+    table,
+    { ...base, matchId: "zero", roundDuration: { version: 1, ticks: 0 } },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating, undefined);
+  await f.play(
+    "dice",
+    table,
+    { ...base, roundDuration: { version: 1, ticks: 19 } },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating, undefined);
+  await f.play(
+    "dice",
+    table,
+    { ...base, matchId: "old-client", roundDuration: undefined },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating, undefined);
+  await f.play(
+    "dice",
+    table,
+    { ...base, matchId: "long-enough" },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating?.games, 1);
 });
 
 test("match history, totals and rivalries are per game; a record without a gameId is the legacy game's", async () => {
@@ -420,6 +486,15 @@ test("match history, totals and rivalries are per game; a record without a gameI
   const { gameId, ...legacyRecord } = stored;
   assert.equal(gameId, LEGACY_GAME_ID);
   assert.deepEqual(parseMatchRecord(platform, legacyRecord), stored);
+  await f.database.transactMatch(LEGACY_GAME_ID, stored.id, (current) => ({
+    match: { ...current!, roomCode: "AB42" },
+    result: undefined,
+  }));
+  assert.equal(
+    (await f.store.game(legacy).history("alice", undefined)).matches[0]
+      ?.roomCode,
+    "AB42",
+  );
   const diceRecord = (
     await f.database.matchesFor("dice", "alice", undefined, 20)
   )[0]!;
@@ -542,6 +617,7 @@ test("solo rounds of different games never share a record or a rating scope", as
   const solo = {
     matchId: "solo-1",
     round: 1,
+    roundDuration: { version: 1, ticks: 20 },
     length: 1,
     finishers: ["0".repeat(24)],
     players: [seat("0".repeat(24), 0, 1), seat("bot:1", 1, 2)],
@@ -572,8 +648,8 @@ test("solo rounds of different games never share a record or a rating scope", as
   );
   for (const gameId of [LEGACY_GAME_ID, "dice"])
     assert.equal(
-      (await f.store.game(gameId).profile("alice"))!.rating!.games,
-      1,
+      (await f.store.game(gameId).profile("alice"))?.rating,
+      undefined,
     );
 });
 
@@ -682,6 +758,12 @@ test("a record written by the platform re-parses to itself", async () => {
   assert.equal(stored.gameId, "dice");
   assert.ok(stored.ratings);
   assert.deepEqual(parseMatchRecord(platform, structuredClone(stored)), stored);
+  const oldRecord = { ...stored, roomCode: "AB42" };
+  assert.deepEqual(parseMatchRecord(platform, oldRecord), oldRecord);
+  assert.equal(
+    parseMatchRecord(platform, { ...stored, roomCode: "A142" }),
+    undefined,
+  );
 });
 
 /** Drives an HttpExtension with a minimal request (a readable body) and response. */

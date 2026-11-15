@@ -26,6 +26,88 @@ reports, audio, transcripts and extracted actions are private. Keep them out
 of public issues, PR descriptions, screenshots, logs and fixtures. Link private
 entry IDs and use a minimal redacted reproduction when reporting a bug.
 
+### Capabilities, audit and access review
+
+The code-owned email allowlist remains the outer identity gate. A durable policy
+per Firebase UID then grants `read` (private reports, recordings, transcripts,
+media and metrics), `record` (create, upload and finish owned recordings), and
+`token` (mint/revoke agent credentials and mutate proposed actions). A UID with
+no policy has no capabilities, even when its email is allowlisted. This prevents
+a recreated Firebase account from silently inheriting a revoked person's access.
+An explicit empty policy also denies all developer access. A valid Google ID token
+must have an `auth_time` within 15 minutes to start a recording or mint a token.
+The workspace and recording panel offer Google reauthentication; refreshing an
+ID token alone does not change `auth_time`. Ongoing uploads and finishing do not
+require a fresh sign-in, but still require the record capability and ownership.
+
+Every developer private-route attempt is appended before a response or mutation
+to `${prefix}-developer-audit`, with verified UID, verified email, server time,
+operation and resource ID/path; list responses also log the returned report or
+recording IDs. Minted credential IDs are logged before disclosure. The log stores
+neither bearer tokens, query strings, reports nor transcripts. A failed audit
+write fails the private request closed. These are attempts, not proof a mutation
+succeeded. The service only creates audit documents; this is application-level
+append-only behavior, not protection against an IAM principal able to modify
+Firestore directly. Restrict IAM and configure independent Cloud Audit Logs,
+retention and alerts; this change does not configure them. Local development
+uses `.fuse-insights/security/audit.jsonl` and an atomic policy file.
+
+The service owner (Anders) reviews the allowlist and UID policies monthly and
+after departures or suspected compromise. Record the date, reviewer, every
+person's purpose and minimum capabilities, and removals in a private access
+review record. Do not put private UID/email inventories in public issues. Use
+the production GCP project, named Firestore database and deployment's prefix, with authorized
+Application Default Credentials, to inspect or change one UID without a deploy:
+
+```sh
+pnpm exec tsx scripts/developer-access.ts show PROJECT DATABASE PREFIX UID
+pnpm exec tsx scripts/developer-access.ts set PROJECT DATABASE PREFIX UID read,record
+pnpm exec tsx scripts/developer-access.ts revoke PROJECT DATABASE PREFIX UID
+```
+
+**Before deploying this access change**, the owner must inventory the Firebase
+Authentication users in the intended project, verify each person's UID and
+verified allowlisted email through the Firebase console or authorized Admin SDK,
+decide their minimum capabilities, and run `set` for each approved UID using
+the actual production database and prefix. Review each result with `show` and
+record the review privately. Until these policies are created, all developer
+workspace access and recording requests are denied after rollout; do not assume
+the email allowlist bootstraps them. A newly created or recreated UID likewise
+requires explicit review and a grant, even when it has the same email as a revoked
+UID. Do not grant a replacement UID merely because the address matches. After a
+grant, the person must sign in again. Existing agent credentials must be reminted.
+No bootstrap is performed by this change or by deployment.
+
+`set` replaces the complete capability list; every change advances the UID's
+generation and permanently invalidates credentials minted under older
+generations, even if access is later restored. Recording sessions have a separate
+generation that advances when recording access is removed: old sessions cannot
+accept further uploads after that, even if access is restored; their unsent
+browser chunks remain on the device and are not retried. An obsolete session
+stops its microphone when the server rejects the next upload, without blocking
+later sessions. Changes to other capabilities leave an
+authorized recording running. Restoring a removed capability requires a Google
+sign-in after it was restored. `revoke` installs an empty policy
+first, blocking subsequent developer requests and agent-token verification,
+then marks that owner's active recording records finished. The command may be
+retried if the finishing scan fails; inspect its exit status. Already in-flight
+requests may finish, and an offline browser cannot be remotely commanded to stop
+its microphone; connected recording clients stop when a subsequent upload detects
+the revoked access. Local queued chunks remain private on that browser. The
+operator command records the target and attempted change in the same audit log,
+but its actor is not verified by the application: use GCP's separately configured
+IAM audit logs to identify the operator. Reinstatement requires an explicit
+`set`, a fresh Google sign-in after the policy change, and rechecking the
+code-owned allowlist. Agent credentials minted before this change lack the
+verified email needed for attribution and must be replaced.
+Firebase timestamps have one-second resolution; if confirmation occurs in the
+same second as the policy change, wait a second and confirm sign-in again.
+
+Prefer managed-domain accounts with enforced MFA for recording and token access.
+This code verifies Firebase's Google provider and recent authentication only; it
+does not establish a managed domain, require MFA, or prove an MFA challenge.
+Those controls and their verification belong to the identity administrator.
+
 Metrics use anonymous browser installation IDs and inactivity-based sessions,
 not verified people. Weekly/monthly unique counts use membership sets rather
 than summed daily totals. Round plays count participating browsers at actual
@@ -40,6 +122,11 @@ with the process. Local microphone recording stays disabled until a durable
 production-equivalent upload/worker path is configured. A local preview does
 not pretend to have transcribed speech or a live action queue. Unit tests
 inject explicit fake transcription/extraction adapters.
+To enable local private insights for an approved test UID, stop the local
+service, run `pnpm exec tsx scripts/developer-access.ts set-local .fuse-insights/security UID read,record,token`,
+then restart it and sign in again. `show-local` and `revoke-local` use the same
+directory and UID arguments; local policy edits take effect on restart. Local
+recording remains disabled regardless of this grant.
 
 ## Private HTTP API
 
@@ -169,11 +256,96 @@ resource names, verification and remaining acceptance checks. A release requires
   and a dead-letter topic. A failed or missing predecessor transcript blocks
   subsequent action extraction until repaired; it does not silently turn later
   speech into tasks without its context. Review failed segments and dead letters.
-- Raw events: 90 days. Audio/screenshots: 30 days. Report text, transcripts,
+- Raw events: 90 days. Audio/trusted screenshots: 30 days. Anonymous report text
+  and screenshots expire after two days; screenshots use the separate
+  `anonymous-screenshots/` prefix. Report text, transcripts,
   action records and metric aggregates: 365 days. Configure Firestore TTL and
   bucket lifecycle cleanup; server-side expiry checks must independently deny
   reads because background deletion is asynchronous. No Mixpanel history is
   migrated or deleted.
+
+The shared Firestore transactions admit at most 100,000 metric events, 500
+reports and 100 MiB of report text and screenshots per UTC day; anonymous
+addresses may submit five reports daily. Metrics require a one-hour bearer
+issued by `/api/telemetry/session`, limited to 50 issues per address and 10,000
+globally per day. This capability is an admission signal, not proof of a real
+installation or protection against distributed automation. Quota rejections
+emit `Telemetry quota exceeded` or `Telemetry global report budget exceeded`.
+Create log-based alerts for these messages and report/event volume, and a
+Cloud Billing budget alert; no alert or budget is provisioned by this code.
+The caps are conservative: retries and failed writes can consume admission.
+
+Before enabling this version, configure bucket lifecycle deletion of objects
+under `anonymous-screenshots/` at age two days and retain the existing 30-day
+deletion for `screenshots/` and `recordings/`; configure Firestore TTL on
+`cleanupAt`. GCS lifecycle and Firestore TTL are asynchronous, so deletion is
+not immediate at the expiry time; application reads deny expired records.
+Verify the policies and their execution in the target project. These external
+policies are required for physical deletion and are not installed by deploy.
+
+### Preparing cleanup and alerts
+
+The following commands are an operator-reviewed change, not part of deploy.
+Substitute the real project, bucket, Firestore prefix, service, notification
+channel and billing account. Set a monthly budget in the billing account's
+currency and tune the example volume thresholds in
+`docs/operations/telemetry-alert-policy.json` to observed traffic. Cloud Billing
+notifications can lag usage; they are not a hard spend limit.
+
+```sh
+telemetry_project='PROJECT_ID'
+telemetry_bucket='PRIVATE_BUCKET_NAME'
+telemetry_prefix='FIRESTORE_PREFIX'
+telemetry_service='fuse-riders-gateway'
+telemetry_channel='projects/PROJECT_ID/notificationChannels/CHANNEL_ID'
+telemetry_billing='BILLING_ACCOUNT_ID'
+telemetry_budget='100USD'
+
+# Preserve all existing lifecycle rules. Review the merged JSON before applying:
+gcloud storage buckets describe "gs://${telemetry_bucket}" --project "$telemetry_project" --raw --format=json > /tmp/telemetry-bucket.json
+jq --slurpfile rule docs/operations/telemetry-anonymous-lifecycle-rule.json \
+  '(.lifecycle // {rule: []}) | .rule = ((.rule // []) + $rule | unique)' \
+  /tmp/telemetry-bucket.json > /tmp/telemetry-lifecycle.json
+cat /tmp/telemetry-lifecycle.json
+gcloud storage buckets update "gs://${telemetry_bucket}" --project "$telemetry_project" --lifecycle-file=/tmp/telemetry-lifecycle.json
+
+# Each collection group owns a cleanupAt timestamp. Enable the default database TTLs.
+for suffix in reports recordings recording-segments limits events memberships rollups actions action-tokens; do
+  gcloud firestore fields ttls update cleanupAt --project "$telemetry_project" \
+    --collection-group="${telemetry_prefix}-telemetry-${suffix}" --enable-ttl
+done
+
+# Log counters use request counts (a request can contain a batch), plus the
+# exact shared-budget rejection log; these do not include private report text.
+gcloud logging metrics create fuse_telemetry_reports --project "$telemetry_project" \
+  --log-filter="resource.type=cloud_run_revision AND resource.labels.service_name=\"${telemetry_service}\" AND httpRequest.requestUrl=~\"/api/telemetry/reports(\\\\?|$)\""
+gcloud logging metrics create fuse_telemetry_events --project "$telemetry_project" \
+  --log-filter="resource.type=cloud_run_revision AND resource.labels.service_name=\"${telemetry_service}\" AND httpRequest.requestUrl=~\"/api/telemetry/events(\\\\?|$)\""
+gcloud logging metrics create fuse_telemetry_quota --project "$telemetry_project" \
+  --log-filter="resource.type=cloud_run_revision AND resource.labels.service_name=\"${telemetry_service}\" AND (textPayload:\"Telemetry quota exceeded\" OR textPayload:\"Telemetry global report budget exceeded\")"
+gcloud monitoring policies create --project "$telemetry_project" \
+  --policy-from-file=docs/operations/telemetry-alert-policy.json --notification-channels="$telemetry_channel"
+gcloud billing budgets create --billing-account="$telemetry_billing" --display-name='Fuse project monthly spend' \
+  --filter-projects="projects/${telemetry_project}" --budget-amount="$telemetry_budget" \
+  --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 \
+  --threshold-rule=percent=1.0 --notifications-rule-monitoring-notification-channels="$telemetry_channel"
+
+# Verify the effective policies, TTL state, log metrics, alert and budget.
+gcloud storage buckets describe "gs://${telemetry_bucket}" --project "$telemetry_project" --raw --format='json(lifecycle)'
+gcloud firestore fields ttls list --project "$telemetry_project"
+gcloud logging metrics list --project "$telemetry_project" --filter='name:fuse_telemetry_'
+gcloud monitoring policies list --project "$telemetry_project" --filter='displayName="Fuse telemetry intake and quota"'
+gcloud billing budgets list --billing-account="$telemetry_billing"
+```
+
+Metrics and policy creation commands are for a first installation; inspect and
+update existing resources instead of creating duplicates. Verify a test object
+is removed after the asynchronous lifecycle window and send a controlled test
+alert through the chosen channel. The sample thresholds count HTTP requests,
+including refused requests, not the number of events within each batch.
+Also inspect bucket object versioning and soft-delete settings: lifecycle
+deletion can leave noncurrent or soft-deleted copies billable beyond two days.
+Choose and verify their retention separately before claiming physical deletion.
 
 The worker validates reserved object ownership/generation, uses fenced leases
 for duplicate/concurrent deliveries and persists transcripts and extraction

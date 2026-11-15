@@ -111,20 +111,20 @@ test("only 1 and 0 override the address, so a plausible-looking opt-out cannot s
 test("the override sticks for the browser, because appUrl drops the query on the way into a room", () => {
   const storage = fakeStorage();
   assert.equal(analyticsOverride("?analytics=0", storage), "0");
-  // CREATE ROOM lands on `?room=AB42`: appUrl replaces the query string, so the flag is gone from the URL.
+  // CREATE ROOM lands on `?room=AB42AA`: appUrl replaces the query string, so the flag is gone from the URL.
   assert.equal(
-    analyticsOverride("?room=AB42", storage),
+    analyticsOverride("?room=AB42AA", storage),
     "0",
     "the opt-out must outlive the navigation that drops it",
   );
   assert.equal(
-    analyticsEnabled(analyticsOverride("?room=AB42", storage), ""),
+    analyticsEnabled(analyticsOverride("?room=AB42AA", storage), ""),
     false,
   );
   // ...and the same in reverse, so ?analytics=1 can verify the room half of the funnel, not just the landing page.
   assert.equal(analyticsOverride("?analytics=1", storage), "1");
   assert.equal(
-    analyticsEnabled(analyticsOverride("?room=AB42", storage), "5173"),
+    analyticsEnabled(analyticsOverride("?room=AB42AA", storage), "5173"),
     true,
   );
 });
@@ -155,7 +155,7 @@ test("a browser that refuses storage still honours the flag in the address", () 
   };
   assert.equal(analyticsOverride("?analytics=0", sealed), "0");
   assert.equal(
-    analyticsOverride("?room=AB42", sealed),
+    analyticsOverride("?room=AB42AA", sealed),
     null,
     "without storage it cannot stick, and must not throw",
   );

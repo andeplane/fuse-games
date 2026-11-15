@@ -93,7 +93,7 @@ function renderMessenger(options: {
   const result = renderWithProviders(
     <MessengerGameContext.Provider
       value={{
-        currentGame: { gameId: "fuseball", code: "AB42" },
+        currentGame: { gameId: "fuseball", code: "AB42AA" },
         invite: options.invite ?? (async () => undefined),
       }}
     >

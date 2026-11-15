@@ -163,7 +163,7 @@ test("credentials travel as headers, and a guest sends none", async () => {
     }) as typeof fetch;
   assert.equal(
     await sendMatchReport(
-      "https://api.example/api/rooms/AB42/results",
+      "https://api.example/api/rooms/AB42AA/results",
       report,
       {
         fetch: reply(200, { status: "confirmed", linked: true }),
@@ -313,6 +313,10 @@ test("round reports use frozen confirmed standings, survive the next round and e
   const report = buildRoundReport(decided, RIDER, decided.tick)!;
   assert.ok(parseMatchResult(report.result));
   assert.equal(report.result.round, 1);
+  assert.deepEqual(report.result.roundDuration, {
+    version: 1,
+    ticks: decided.tick - game.roundStartedTick!,
+  });
   assert.equal(report.result.length, 1);
   assert.equal(
     report.result.players.find((p) => p.playerId === RIDER)!.roundsPlayed,
@@ -372,6 +376,7 @@ test("solo round reporting normalizes the local seat consistently for the authen
     tick: 500,
     shots: [],
     rating: {
+      durationTicks: 100,
       finishers: ["solo"],
       standings: [
         {

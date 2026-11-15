@@ -213,6 +213,10 @@ test("a played-out match is decided the same everywhere, reported once, and a re
     ["round-results", "results"],
   );
   assert.deepEqual(fromGuest, fromHost);
+  assert.deepEqual(fromHost[0]!.result.roundDuration, {
+    version: 1,
+    ticks: over.world!.step,
+  });
   assert.deepEqual(fromHost[1]!.result, matchResult(over));
   for (const report of fromHost) sent.add(report.key);
   assert.deepEqual(dueReports(over, "host", host.confirmedTick(), sent), []);

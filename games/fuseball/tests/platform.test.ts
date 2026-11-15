@@ -152,7 +152,11 @@ test("a finished match reports goals, own goals, bubbles and pops, and the platf
   assert.equal(attestationsNeeded(result), 2);
   // The same match as the round the platform rates.
   const receipt = roundResult(room)!;
-  assert.deepEqual(receipt, { ...result, round: 1 });
+  assert.deepEqual(receipt, {
+    ...result,
+    round: 1,
+    roundDuration: { version: 1, ticks: room.world!.step },
+  });
   assert.deepEqual(
     parseMatchResult(
       fuseballRegistration,

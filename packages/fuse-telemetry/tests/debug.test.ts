@@ -256,7 +256,7 @@ test("report enum fields reject coercible arrays and objects before any write", 
   assert.equal(stored.kind, "report");
   assert.equal((await service.listReports()).reports[0]?.category, "bug");
   assert.equal(
-    (await objects.get(`screenshots/${reportId}`))?.mime,
+    (await objects.get(`anonymous-screenshots/${reportId}`))?.mime,
     "image/jpeg",
   );
 });

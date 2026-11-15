@@ -265,6 +265,52 @@ test("resource denials recheck account access before stopping approved capture",
   }
 });
 
+test("F-09: an obsolete recording stops capture and retains chunks without blocking a new session", async () => {
+  const f = fixture();
+  try {
+    f.user(true);
+    await f.flush();
+    f.toggle.click();
+    await f.flush();
+    f.deferSegment(Promise.resolve(Response.json({}, { status: 412 })));
+    f.chunk();
+    await f.flush();
+    await f.flush();
+    assert.equal(f.stops(), 1);
+    assert.ok(
+      [...f.items.values()].some(
+        (item) => item.kind === "recording" && item.blocked,
+      ),
+    );
+    assert.equal(
+      [...f.items.values()].filter((item) => item.kind === "segment").length,
+      1,
+    );
+    assert.ok(
+      f.doc.body.textContent
+        ?.toLowerCase()
+        .includes("unsent audio remains on this device"),
+    );
+    f.deferSegment(
+      Promise.resolve(
+        Response.json({ saved: true, sequence: 0, startMs: 0, endMs: 1000 }),
+      ),
+    );
+    f.toggle.click();
+    await f.flush();
+    f.chunk();
+    await f.flush();
+    await f.flush();
+    assert.equal(f.starts(), 2);
+    assert.equal(
+      [...f.items.values()].filter((item) => item.kind === "segment").length,
+      1,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
 test("another developer's durable backlog does not upload or block current capture", async () => {
   const f = fixture();
   try {

@@ -141,17 +141,17 @@ test("cross-game joins use the target game and site base, preserving mute only",
       "https://games.example/arcade/fuse-riders/?mute&display=1&token=secret",
     games,
   };
-  const url = new URL(friendRoomUrl(options, "AB12", "fuse-craft"));
+  const url = new URL(friendRoomUrl(options, "AB12AA", "fuse-craft"));
   assert.equal(url.pathname, "/arcade/fuse-craft/");
-  assert.equal(url.searchParams.get("room"), "AB12");
+  assert.equal(url.searchParams.get("room"), "AB12AA");
   assert.deepEqual([...url.searchParams.keys()], ["room", "mute"]);
   assert.equal(
-    new URL(friendRoomUrl({ ...options, base: "./" }, "CD34", "fuse-lane"))
+    new URL(friendRoomUrl({ ...options, base: "./" }, "CD34AA", "fuse-lane"))
       .pathname,
     "/arcade/fuse-lane/",
   );
   assert.throws(
-    () => friendRoomUrl(options, "AB12", "unknown"),
+    () => friendRoomUrl(options, "AB12AA", "unknown"),
     /Unknown game/,
   );
   assert.throws(
@@ -162,7 +162,7 @@ test("cross-game joins use the target game and site base, preserving mute only",
     () =>
       friendRoomUrl(
         { ...options, base: "https://evil/" },
-        "AB12",
+        "AB12AA",
         "fuse-craft",
       ),
     /Invalid game origin/,
@@ -197,7 +197,7 @@ test("result identity stays in headers and is restricted to this game's backend"
   f.change(true);
   await settle();
   f.calls.length = 0;
-  const url = "https://api.example/api/games/fuse-craft/rooms/AB12/results";
+  const url = "https://api.example/api/games/fuse-craft/rooms/AB12AA/results";
   await f.social.reportFetch(url, {
     method: "POST",
     headers: { Authorization: "Bearer room-token" },
@@ -207,7 +207,7 @@ test("result identity stays in headers and is restricted to this game's backend"
   assert.equal(f.calls[0]!.headers.get("Authorization"), "Bearer room-token");
   assert.equal(f.calls[0]!.body, '{"result":{}}');
   await f.social.reportFetch(
-    "https://other.example/api/games/fuse-craft/rooms/AB12/results",
+    "https://other.example/api/games/fuse-craft/rooms/AB12AA/results",
     { method: "POST" },
   );
   assert.equal(f.calls[1]!.headers.get("X-Fuse-Identity"), null);
@@ -344,14 +344,19 @@ test("presence starts at admission, follows replacement membership and clears on
     ended() {},
     terminated() {},
   };
-  const bound = f.social.transport("AB12", "room-token", events, (received) => {
-    callbacks = received;
-    return transport;
-  });
+  const bound = f.social.transport(
+    "AB12AA",
+    "room-token",
+    events,
+    (received) => {
+      callbacks = received;
+      return transport;
+    },
+  );
   assert.equal(f.social.friends.client.room(), undefined);
   callbacks!.welcome("member1", "host");
   assert.deepEqual(f.social.friends.client.room(), {
-    code: "AB12",
+    code: "AB12AA",
     memberId: "member1",
     gameId: "fuse-craft",
     token: "room-token",

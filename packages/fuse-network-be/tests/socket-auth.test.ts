@@ -60,11 +60,9 @@ interface Peer {
   closed: Promise<{ code: number; reason: string }>;
 }
 
-async function fixture(
-  options: { legacyQueryToken?: boolean; maxGuests?: number } = {},
-) {
+async function fixture(options: { maxGuests?: number } = {}) {
   let now = 1_000_000;
-  const { maxGuests, ...httpOptions } = options;
+  const { maxGuests } = options;
   const database = new CountingDatabase(),
     store = new RoomStore(database, {
       now: () => now,
@@ -103,7 +101,6 @@ async function fixture(
       };
     },
     log: (entry) => logs.push(entry),
-    ...httpOptions,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
@@ -273,23 +270,23 @@ test("a token in the query string does not authenticate a socket", async () => {
     // A page built before the change: token in the URL, then the first heartbeat, never an auth frame.
     const old = f.open(code, `?token=${token}`);
     await old.opened;
+    const oldCharge = f.database.nextCharge();
     old.socket.send(JSON.stringify({ type: "time", id: 1, sentAt: 5 }));
     assert.deepEqual(await old.closed, {
       code: CLOSE_UNAUTHENTICATED,
       reason: "Authentication required",
     });
+    await oldCharge;
     assert.deepEqual(old.frames, []);
     // The same page staying silent instead meets the deadline.
     const silent = f.open(code, `?token=${token}`);
     await silent.opened;
+    const silentCharge = f.database.nextCharge();
     f.deadlines().at(-1)!.callback();
     assert.equal((await silent.closed).code, CLOSE_UNAUTHENTICATED);
+    await silentCharge;
     assert.equal(f.database.charged, 2);
     assert.equal(f.gateway.connections, 0);
-    assert.deepEqual(
-      f.logs.filter((entry) => entry.kind === "deprecated-query-token"),
-      [],
-    );
   } finally {
     await f.close();
   }
@@ -313,8 +310,10 @@ test("garbage, oversized, binary and wrong first frames are refused and charged 
       const before = f.database.charged,
         peer = f.open(code);
       await peer.opened;
+      const charged = f.database.nextCharge();
       peer.socket.send(first);
       assert.equal((await peer.closed).code, CLOSE_UNAUTHENTICATED, name);
+      await charged;
       assert.deepEqual(peer.frames, [], name);
       assert.equal(f.database.charged, before + 1, name);
       assert.equal(f.deadlines().at(-1)!.cancelled, true, name);
@@ -330,10 +329,12 @@ test("garbage, oversized, binary and wrong first frames are refused and charged 
     assert.equal(f.database.charged, before + 1);
     assert.equal(f.gateway.connections, 0);
     // A well-formed token the room has never seen is an ordinary guest; one for a missing room is charged as before.
-    const missing = f.open("ZZ99");
+    const missing = f.open("ZZ99AA");
     await missing.opened;
+    const missingCharge = f.database.nextCharge();
     missing.socket.send(authFrame("a".repeat(64)));
     assert.equal((await missing.closed).code, 4004);
+    await missingCharge;
     assert.equal(f.database.charged, attempts.length + 2);
   } finally {
     await f.close();
@@ -346,11 +347,13 @@ test("frames before authentication are never processed and close the socket", as
     const { code, token } = await f.create();
     const peer = f.open(code);
     await peer.opened;
+    const charged = f.database.nextCharge();
     // A valid auth frame arriving second does not rescue the socket.
     peer.socket.send(JSON.stringify({ type: "time", id: 1, sentAt: 5 }));
     peer.socket.send(authFrame(token));
     peer.socket.send(JSON.stringify({ type: "time", id: 2, sentAt: 6 }));
     assert.equal((await peer.closed).code, CLOSE_UNAUTHENTICATED);
+    await charged;
     assert.deepEqual(peer.frames, [], "no welcome and no time reply");
     assert.equal(f.gateway.connections, 0);
     assert.equal(f.database.charged, 1);
@@ -463,10 +466,12 @@ test("a full room is not an admission failure: its own close code, no charge, ho
     }
     assert.equal(f.database.charged, 0);
     // A wrong code is still a guess, and still charged.
-    const missing = f.open("ZZ99");
+    const missing = f.open("ZZ99AA");
     await missing.opened;
+    const charged = f.database.nextCharge();
     missing.socket.send(authFrame("c".repeat(64)));
     assert.equal((await missing.closed).code, 4004);
+    await charged;
     assert.equal(f.database.charged, 1);
   } finally {
     await f.close();
@@ -637,7 +642,7 @@ test("ICE and ending a room take the token from Authorization only, behind an ex
         "guest",
         `${base}/end`,
         { Authorization: `Bearer ${"c".repeat(64)}` },
-        403,
+        404,
       ],
     ] as const)
       assert.equal(
@@ -661,45 +666,6 @@ test("ICE and ending a room take the token from Authorization only, behind an ex
       200,
     );
     assert.equal((await peer.closed).code, 4004);
-  } finally {
-    await f.close();
-  }
-});
-
-// LEGACY-QUERY-TOKEN: DEPRECATED rollout window — delete with `legacyQueryToken`, and the fixture option with it.
-test("the rollout window admits the old query form, says so at most once a minute, and never logs the token", async () => {
-  const f = await fixture({ legacyQueryToken: true });
-  try {
-    const { code, token } = await f.create();
-    const guest = "d".repeat(64);
-    const old = f.open(code, `?token=${token}`);
-    assert.equal((await old.frame()).type, "welcome");
-    assert.equal(f.scheduled.length, 0, "no auth frame is expected of it");
-    const second = f.open(code, `?token=${guest}`);
-    assert.equal((await second.frame()).type, "welcome");
-    assert.deepEqual(f.logs, [
-      { kind: "deprecated-query-token", severity: "WARNING", uses: 1 },
-    ]);
-    f.advance(60_000);
-    second.socket.close();
-    await second.closed;
-    assert.equal(
-      (await f.open(code, `?token=${guest}`).frame()).type,
-      "welcome",
-    );
-    assert.deepEqual(f.logs.at(-1), {
-      kind: "deprecated-query-token",
-      severity: "WARNING",
-      uses: 2,
-    });
-    assert.equal(JSON.stringify(f.logs).includes(guest), false);
-    await assert.rejects(f.open(code, "?token=nope").opened, /HTTP 403/);
-    // A current page is unaffected by the window.
-    const current = f.open(code);
-    await current.opened;
-    current.socket.send(authFrame("e".repeat(64)));
-    assert.equal((await current.frame()).type, "welcome");
-    assert.equal(f.database.charged, 0);
   } finally {
     await f.close();
   }

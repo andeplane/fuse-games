@@ -17,7 +17,7 @@ import type { RoutedMessage } from "../src/room-bus.js";
 
 const room = (revision: number): RoomRecord => ({
   version: 2,
-  code: "AB42",
+  code: "AB42AA",
   incarnation: "one",
   hostHash: "hash",
   hostId: "host",
@@ -29,12 +29,12 @@ const room = (revision: number): RoomRecord => ({
 test("memory database serializes transactions, notifies watchers and hands out private copies", async () => {
   const database = new MemoryRoomDatabase(),
     seen: number[] = [];
-  const stop = database.watch("AB42", (current) => {
+  const stop = database.watch("AB42AA", (current) => {
     seen.push(current!.revision);
   });
   await Promise.all(
     [1, 2, 3].map(() =>
-      database.transact("AB42", (current) => ({
+      database.transact("AB42AA", (current) => ({
         room: room((current?.revision ?? 0) + 1),
         result: undefined,
       })),
@@ -45,25 +45,28 @@ test("memory database serializes transactions, notifies watchers and hands out p
     [1, 2, 3],
     "concurrent transactions each saw the previous commit",
   );
-  const copy = await database.read("AB42");
+  const copy = await database.read("AB42AA");
   copy!.revision = 99;
-  assert.equal((await database.read("AB42"))?.revision, 3);
+  assert.equal((await database.read("AB42AA"))?.revision, 3);
   stop();
-  await database.transact("AB42", () => ({ room: room(4), result: undefined }));
+  await database.transact("AB42AA", () => ({
+    room: room(4),
+    result: undefined,
+  }));
   assert.deepEqual(seen, [1, 2, 3], "a stopped watcher is not called");
-  assert.equal(await database.read("ZZ99"), undefined);
+  assert.equal(await database.read("ZZ99AA"), undefined);
 });
 
 test("memory database keeps serving after a failed transaction", async () => {
   const database = new MemoryRoomDatabase();
   await assert.rejects(
-    database.transact("AB42", () => {
+    database.transact("AB42AA", () => {
       throw new Error("boom");
     }),
     /boom/,
   );
   assert.equal(
-    await database.transact("AB42", (current) => ({
+    await database.transact("AB42AA", (current) => ({
       result: current === undefined,
     })),
     true,
@@ -92,7 +95,7 @@ test("a failing watcher never fails the committed write or starves other watcher
     failures: string[] = [],
     seen: number[] = [];
   database.watch(
-    "AB42",
+    "AB42AA",
     () => {
       throw new Error("observer broke");
     },
@@ -100,11 +103,11 @@ test("a failing watcher never fails the committed write or starves other watcher
       failures.push(error.message);
     },
   );
-  database.watch("AB42", (current) => {
+  database.watch("AB42AA", (current) => {
     seen.push(current!.revision);
   });
   assert.equal(
-    await database.transact("AB42", () => ({
+    await database.transact("AB42AA", () => ({
       room: room(1),
       result: "committed",
     })),
@@ -112,7 +115,7 @@ test("a failing watcher never fails the committed write or starves other watcher
   );
   assert.deepEqual(failures, ["observer broke"]);
   assert.deepEqual(seen, [1]);
-  assert.equal((await database.read("AB42"))?.revision, 1);
+  assert.equal((await database.read("AB42AA"))?.revision, 1);
 });
 
 test("local bus refuses to route beyond its single gateway", async () => {
@@ -125,7 +128,7 @@ test("local bus refuses to route beyond its single gateway", async () => {
   };
   const message: RoutedMessage = {
     id: "m",
-    code: "AB42",
+    code: "AB42AA",
     incarnation: "one",
     destination: "elsewhere",
     from: member,
@@ -144,7 +147,7 @@ interface Reply {
   body: string;
   type: string | undefined;
 }
-async function fixture() {
+async function fixture(maxGuests?: number) {
   const root = await mkdtemp(path.join(tmpdir(), "fuse-dev-room-")),
     dist = path.join(root, "dist");
   await mkdir(path.join(dist, "assets"), { recursive: true });
@@ -154,6 +157,7 @@ async function fixture() {
   await writeFile(path.join(dist, "dice", "index.html"), "<main>dice</main>");
   await writeFile(path.join(root, "secret.txt"), "outside the build");
   const service = createDevRoomService({
+    maxGuests,
     staticDirectory: dist,
     allowedOrigins: ["https://preview.example"],
   });
@@ -238,11 +242,46 @@ async function fixture() {
   };
 }
 
+test("F-04: fourteen room members behind one address can fetch ICE together", async () => {
+  const f = await fixture(13);
+  try {
+    const { code, token } = await f.create();
+    const tokens = [
+      token,
+      ...Array.from({ length: 13 }, (_, i) =>
+        (i + 1).toString(16).padStart(64, "0"),
+      ),
+    ];
+    for (const member of tokens) await f.connect(code, member);
+    const responses = await Promise.all(
+      tokens.map((member) =>
+        f.call(`/api/rooms/${code}/ice`, {
+          authorization: `Bearer ${member}`,
+        }),
+      ),
+    );
+    assert.deepEqual(
+      responses.map((response) => response.status),
+      Array(14).fill(200),
+    );
+    assert.equal(
+      (
+        await f.call(`/api/rooms/${code}/ice`, {
+          authorization: `Bearer ${token}`,
+        })
+      ).status,
+      429,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
 test("dev room service creates rooms and admits sockets only for same-origin loopback pages", async () => {
   const f = await fixture();
   try {
     const { code, token } = await f.create();
-    assert.match(code, /^[A-Z]{2}[0-9]{2}$/);
+    assert.match(code, /^[A-Z0-9]{6}$/);
     assert.match(token, /^[a-f0-9]{64}$/);
     assert.equal(
       (
@@ -304,7 +343,7 @@ test("dev room service creates rooms and admits sockets only for same-origin loo
           authorization: `Bearer ${"c".repeat(64)}`,
         })
       ).status,
-      403,
+      404,
       "ICE needs membership",
     );
     assert.equal(
@@ -334,7 +373,7 @@ test("dev room service creates rooms and admits sockets only for same-origin loo
           authorization: `Bearer ${"c".repeat(64)}`,
         })
       ).status,
-      403,
+      404,
       "only the host capability ends a room",
     );
     const closed = new Promise<number>((resolve) =>
@@ -362,13 +401,16 @@ test("dev room service serves the build with app-shell fallback and never outsid
     const shell = await f.call("/");
     assert.equal(shell.status, 200);
     assert.equal(shell.body, "<main>app shell</main>");
-    assert.equal((await f.call("/?room=AB42")).body, "<main>app shell</main>");
+    assert.equal(
+      (await f.call("/?room=AB42AA")).body,
+      "<main>app shell</main>",
+    );
     assert.equal(
       (await f.call("/display")).body,
       "<main>app shell</main>",
       "navigations fall back to the app shell",
     );
-    for (const page of ["/dice/", "/dice", "/dice/?room=AB42"])
+    for (const page of ["/dice/", "/dice", "/dice/?room=AB42AA"])
       assert.equal(
         (await f.call(page)).body,
         "<main>dice</main>",
@@ -475,9 +517,12 @@ test("WebSocket admission failures are throttled before upgrade without spending
   try {
     const attempt = () =>
       new Promise<number>((resolve, reject) => {
-        const ws = new WebSocket(`ws://127.0.0.1:${f.port}/api/rooms/ZZ99/ws`, {
-          origin: f.origin,
-        });
+        const ws = new WebSocket(
+          `ws://127.0.0.1:${f.port}/api/rooms/ZZ99AA/ws`,
+          {
+            origin: f.origin,
+          },
+        );
         ws.once("open", () => ws.send(authFrame("a".repeat(64))));
         ws.on("error", reject);
         ws.once("close", (code) => resolve(code));
@@ -491,7 +536,7 @@ test("WebSocket admission failures are throttled before upgrade without spending
     assert.equal(await attempt(), 429);
     assert.equal(await attempt(), 429);
     const room = await f.create();
-    assert.match(room.code, /^[A-Z]{2}[0-9]{2}$/);
+    assert.match(room.code, /^[A-Z0-9]{6}$/);
   } finally {
     await f.close();
   }

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FakeNetwork, type NetworkOptions } from "./fixtures/fake-room.js";
+import {
+  FAKE_ROOM_CODE,
+  FakeNetwork,
+  type NetworkOptions,
+} from "./fixtures/fake-room.js";
 import { ScriptedPeer } from "./fixtures/scripted-peer.js";
 import {
   DISCONNECT_MS,
@@ -478,7 +482,7 @@ test("a creator whose only peer is on different rules opens its own room and sen
   old.transport.sendFast(
     HOST,
     encodeNack({
-      room: roomHash(`AB42:${HOST}`),
+      room: roomHash(`${FAKE_ROOM_CODE}:${HOST}`),
       from: HOSTILE,
       firstMissingSeq: 1,
     }),

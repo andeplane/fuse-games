@@ -119,6 +119,7 @@ export const diceRegistration: GameRegistration<
   DiceTotalsRecord
 > = {
   id: "dice",
+  minRatedRoundTicks: 20, // rules.ts TICKS_PER_SECOND
   isBot: isBotId,
   parseStats: parseDiceStats,
   emptyTotals: () => ({ totals: emptyDiceTotals() }),

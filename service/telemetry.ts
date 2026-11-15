@@ -6,9 +6,14 @@ import {
   rateLimitAddress,
   type HttpExtension,
 } from "fuse-network-be";
-import { composeHttp } from "fuse-platform";
+import {
+  composeHttp,
+  createIdentityVerifier,
+  type IdentityVerifier,
+} from "fuse-platform";
 import { MetricsStore } from "fuse-telemetry/metrics";
 import { createMetricsHttp } from "fuse-telemetry/metrics-http";
+import { MetricsSessions } from "fuse-telemetry/metrics-session";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { FirestoreTelemetryDatabase } from "fuse-telemetry/metrics-firestore";
 import {
@@ -18,8 +23,19 @@ import {
 import type { TelemetryDatabase } from "fuse-telemetry/metrics-database";
 import {
   createDeveloperVerifier,
+  DEVELOPER_EMAILS,
+  developerBearer,
+  requireDeveloper,
   type DeveloperVerifier,
 } from "fuse-telemetry/developer-access";
+import {
+  auditDeveloper,
+  authorizeDeveloper,
+  FileDeveloperSecurityStore,
+  FirestoreDeveloperSecurityStore,
+  MemoryDeveloperSecurityStore,
+  type DeveloperSecurityStore,
+} from "fuse-telemetry/developer-security";
 import { DebugService } from "fuse-telemetry/debug-service";
 import { createDebugHttpExtension } from "fuse-telemetry/debug-http";
 import {
@@ -59,9 +75,16 @@ import type { ActionDatabase } from "fuse-telemetry/action-store";
 import type { TranscriptActionSegment } from "fuse-telemetry/action-contracts";
 import { telemetryConfiguration } from "./telemetry-config.js";
 
+/** Namespaces owned by developer insights, leaving other /api/dev extensions alone. */
+const isDeveloperInsightsPath = (path: string): boolean =>
+  /^\/api\/dev\/(?:me|metrics|reports|recordings|actions|agent-tokens)(?:\/|$)/.test(
+    path,
+  );
+
 export interface TelemetryServicesOptions {
   gameIds: readonly string[];
   developer: DeveloperVerifier;
+  identity?: IdentityVerifier;
   metricsDatabase: TelemetryDatabase;
   debugDatabase: DebugDatabase;
   actionDatabase: ActionDatabase;
@@ -70,11 +93,16 @@ export interface TelemetryServicesOptions {
   recordingEnabled?: boolean;
   extractor: ActionExtractor;
   now?: () => number;
+  security?: DeveloperSecurityStore;
+  agentEmailAllowed?: (email: string) => boolean;
+  privateAdmission?: TelemetryAdmission;
+  uploadAdmission?: TelemetryAdmission;
 }
 
 /** The same composition serves production, local previews and injected integration tests. */
 export function createTelemetryServices(options: TelemetryServicesOptions) {
   const now = options.now ?? Date.now;
+  const security = options.security ?? new MemoryDeveloperSecurityStore();
   const games = new Set([...options.gameIds, "fuseos"]);
   const quota = new SharedTelemetryQuota(
     options.metricsDatabase,
@@ -97,6 +125,16 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     database: options.actionDatabase,
     extractor: options.extractor,
     now,
+    async ownerPolicy(uid, email) {
+      const policy = await security.policy(uid);
+      return {
+        generation: policy.generation,
+        tokenAllowed:
+          policy.capabilities.includes("token") &&
+          (!options.agentEmailAllowed ||
+            (email !== undefined && options.agentEmailAllowed(email))),
+      };
+    },
     async readFailed(recordingId, sequence) {
       const segment = await options.debugDatabase.read(
         segmentKey(recordingId, sequence),
@@ -153,19 +191,26 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     createDebugHttpExtension({
       service: debug,
       verifier: options.developer,
+      identity: options.identity,
       recordingEnabled: options.recordingEnabled ?? false,
+      security,
+      now,
       reportIdentity: (_request, address) =>
         createHmac("sha256", options.rateLimitKey)
           .update(rateLimitAddress(address))
           .digest("hex"),
     }),
-    createActionHttp(actions, options.developer),
+    createActionHttp(actions, options.developer, security, now),
   );
-  const admission = new TelemetryAdmission(now);
+  const admission = options.privateAdmission ?? new TelemetryAdmission(now);
   // Screenshot reports and audio chunks buffer megabytes each, and reports
   // are anonymous. The instance also holds every room's signalling sockets,
   // so far fewer of these may be in flight than of the small requests.
-  const uploads = new TelemetryAdmission(now, 8, 2);
+  const uploads = options.uploadAdmission ?? new TelemetryAdmission(now, 8, 2);
+  const isGuarded = (path: string) =>
+    isDeveloperInsightsPath(path) ||
+    path === "/api/telemetry/recordings" ||
+    path.startsWith("/api/telemetry/recordings/");
   const protectedRoutes: HttpExtension = {
     methods: privateRoutes.methods,
     headers: privateRoutes.headers,
@@ -173,10 +218,12 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
       const path = new URL(req.url ?? "/", "http://telemetry").pathname;
       if (!path.startsWith("/api/telemetry/") && !path.startsWith("/api/dev/"))
         return false;
+      if (path.startsWith("/api/dev/") && !isDeveloperInsightsPath(path))
+        return false;
       const heavy =
         req.method === "PUT" ||
         (req.method === "POST" && path === "/api/telemetry/reports");
-      return (heavy ? uploads : admission).run(address, async () => {
+      const execute = async () => {
         await quota.consume([
           {
             dimension: "private-api",
@@ -187,17 +234,97 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
           },
         ]);
         return privateRoutes.handle(req, res, address);
-      });
+      };
+      return isGuarded(path)
+        ? execute()
+        : (heavy ? uploads : admission).run(address, execute);
+    },
+  };
+  const routes = composeHttp(
+    createMetricsHttp({
+      metrics,
+      developer: options.developer,
+      sessions: new MetricsSessions(options.rateLimitKey, quota, now),
+      security,
+      developerPreAdmitted: true,
+    }),
+    protectedRoutes,
+  );
+  const securedRoutes: HttpExtension = {
+    methods: routes.methods,
+    headers: routes.headers,
+    async handle(req, res, address) {
+      const path = new URL(req.url ?? "/", "http://telemetry").pathname;
+      const developerRoute = isDeveloperInsightsPath(path);
+      const recordingRoute =
+        path === "/api/telemetry/recordings" ||
+        path.startsWith("/api/telemetry/recordings/");
+      const agent =
+        (path === "/api/dev/actions" || path.startsWith("/api/dev/actions/")) &&
+        developerBearer(req).startsWith("fa1.");
+      if (!developerRoute && !recordingRoute)
+        return routes.handle(req, res, address);
+      return (req.method === "PUT" ? uploads : admission).run(
+        address,
+        async () => {
+          if (!agent) {
+            const principal = await requireDeveloper(req, options.developer);
+            const at = now();
+            const capability =
+              path.startsWith("/api/dev/agent-tokens") ||
+              (path.startsWith("/api/dev/actions/") && req.method !== "GET")
+                ? "token"
+                : recordingRoute
+                  ? "record"
+                  : "read";
+            if (path === "/api/dev/me") {
+              const policy = await security.policy(principal.uid);
+              if (!policy.capabilities.length)
+                throw new RoomError(403, "Developer access revoked");
+              if (
+                policy.notBefore &&
+                (principal.authTime === undefined ||
+                  principal.authTime < policy.notBefore)
+              )
+                throw new RoomError(
+                  401,
+                  "Sign in again after your access changed",
+                );
+            } else {
+              const stepUp =
+                (path === "/api/telemetry/recordings" &&
+                  req.method === "POST") ||
+                (path === "/api/dev/agent-tokens" && req.method === "POST");
+              await authorizeDeveloper(
+                security,
+                principal,
+                capability,
+                at,
+                stepUp,
+              );
+            }
+            const resource =
+              path.length <= 240 && /^\/[A-Za-z0-9_/-]+$/.test(path)
+                ? path
+                : "invalid-path";
+            await auditDeveloper(
+              security,
+              principal,
+              `${req.method ?? "UNKNOWN"} ${capability}`,
+              resource,
+              at,
+            );
+          }
+          return routes.handle(req, res, address);
+        },
+      );
     },
   };
   return {
     metrics,
     debug,
     actions,
-    http: composeHttp(
-      createMetricsHttp({ metrics, developer: options.developer }),
-      protectedRoutes,
-    ),
+    http: securedRoutes,
   };
 }
 
@@ -241,6 +368,9 @@ export async function createLocalTelemetry(options: {
     actionDatabase: await FileActionDatabase.open(
       join(options.directory, "actions.json"),
     ),
+    security: await FileDeveloperSecurityStore.open(
+      join(options.directory, "security"),
+    ),
     objects: new FilePrivateObjectStorage(join(options.directory, "objects")),
     rateLimitKey: randomBytes(32).toString("hex"),
     recordingEnabled: false,
@@ -254,7 +384,7 @@ export const telemetryUnavailable: HttpExtension = {
     // Every player's browser posts here. Until insights are configured that
     // is an expected, quiet "not here" that clients drop, not a logged
     // failure they retry.
-    if (path === "/api/telemetry/events") {
+    if (path === "/api/telemetry/events" || path === "/api/telemetry/session") {
       res.writeHead(404, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
@@ -264,7 +394,7 @@ export const telemetryUnavailable: HttpExtension = {
     }
     if (
       path.startsWith("/api/telemetry/") ||
-      path.startsWith("/api/dev/") ||
+      isDeveloperInsightsPath(path) ||
       path === "/api/internal/transcription"
     )
       throw new RoomError(
@@ -292,6 +422,10 @@ export function createProductionTelemetry(options: {
     developer: createDeveloperVerifier(
       options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
     ),
+    identity: createIdentityVerifier(
+      options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
+    ),
+    agentEmailAllowed: (email) => DEVELOPER_EMAILS.has(email),
     metricsDatabase: new FirestoreTelemetryDatabase(
       options.firestore,
       options.prefix,
@@ -301,6 +435,10 @@ export function createProductionTelemetry(options: {
       options.prefix,
     ),
     actionDatabase: new FirestoreActionDatabase(
+      options.firestore,
+      options.prefix,
+    ),
+    security: new FirestoreDeveloperSecurityStore(
       options.firestore,
       options.prefix,
     ),

@@ -7,7 +7,7 @@ import { WebSocket } from "ws";
 import { SOLO_RATING_PLAYER_ID, type Rating } from "fuse-platform/rating";
 import { AVATARS } from "../games/fuse-riders/src/shared/avatars.js";
 import { createDevRoomService } from "../service/dev.js";
-import { createIdentityVerifier } from "fuse-platform";
+import { createIdentityVerifier, publicIdOf } from "fuse-platform";
 import { GAME_ID } from "../games/fuse-riders/src/shared/game-id.js";
 import {
   GUEST_MATCH_TTL_MS,
@@ -15,6 +15,9 @@ import {
   PENDING_TTL_MS,
   feedlessMatchStamps,
   matchRecordId,
+  parseFeedCursor,
+  type FeedCursor,
+  type FeedRow,
 } from "fuse-platform";
 import {
   parseMatchResult,
@@ -78,6 +81,38 @@ const resultOf = (ids: string[], matchId = "match-1"): MatchResult => ({
   winnerId: ids[0]!,
   players: ids.map((id, slot) => player(id, slot, slot + 1)),
 });
+/** Assert the public result retains all stats and remaps every player reference consistently. */
+function assertPublishedResult(
+  actual: MatchResult,
+  original: MatchResult,
+): void {
+  assert.equal(actual.matchId, original.matchId);
+  assert.equal(actual.length, original.length);
+  assert.equal(actual.round, original.round);
+  assert.equal(actual.players.length, original.players.length);
+  const ids = new Map<string, string>();
+  for (const [index, expected] of original.players.entries()) {
+    const shown = actual.players[index]!;
+    ids.set(expected.playerId, shown.playerId);
+    if (/^[a-f0-9]{24}$/.test(expected.playerId)) {
+      assert.notEqual(shown.playerId, expected.playerId);
+      assert.equal(JSON.stringify(actual).includes(expected.playerId), false);
+    } else assert.equal(shown.playerId, expected.playerId);
+    const { playerId: _shownId, ...shownStats } = shown;
+    const { playerId: _expectedId, ...expectedStats } = expected;
+    assert.deepEqual(shownStats, expectedStats);
+  }
+  assert.equal(new Set(ids.values()).size, ids.size);
+  assert.equal(
+    actual.winnerId,
+    original.winnerId === undefined ? undefined : ids.get(original.winnerId),
+  );
+  assert.deepEqual(
+    [...actual.finishers].sort(),
+    original.finishers.map((id) => ids.get(id)!).sort(),
+  );
+}
+
 const token = () => randomBytes(32).toString("hex");
 
 // ---- sign-in verification ----
@@ -317,7 +352,7 @@ test("a stored record is re-validated and sheds storage-only fields", () => {
     gameId: GAME_ID,
     version: 1,
     id,
-    roomCode: "AB42",
+    roomCode: "AB42AA",
     status: "confirmed",
     result,
     attesters: [a],
@@ -358,13 +393,15 @@ test("a stored record is re-validated and sheds storage-only fields", () => {
 
 // ---- results: the store ----
 
-async function room(riders: number) {
+async function room(
+  riders: number,
+  matches = new MemoryHistoryDatabase(platform),
+) {
   let now = 1_000_000;
   const rooms = new RoomStore(new MemoryRoomDatabase(), {
-      now: () => now,
-      id: () => randomBytes(8).toString("hex"),
-    }),
-    matches = new MemoryHistoryDatabase(platform);
+    now: () => now,
+    id: () => randomBytes(8).toString("hex"),
+  });
   const history = new HistoryStore(platform, matches, rooms, () => now).game(
       fuseRiders,
     ),
@@ -423,8 +460,15 @@ test("a match is kept once a majority of its riders report the same result, and 
   );
   const alice = await f.history.history("alice", undefined);
   assert.equal(alice.matches.length, 1);
-  assert.equal(alice.matches[0]!.you, f.ids[0]);
-  assert.deepEqual(alice.matches[0]!.result, result);
+  assertPublishedResult(alice.matches[0]!.result, result);
+  assert.equal(
+    alice.matches[0]!.you,
+    alice.matches[0]!.result.players[0]!.playerId,
+  );
+  assert.equal(
+    alice.matches[0]!.accounts[alice.matches[0]!.you!],
+    publicIdOf("alice"),
+  );
   assert.equal(
     JSON.stringify(alice).includes("uidByPlayer"),
     false,
@@ -534,25 +578,30 @@ test("a forged result cannot displace or block the honest one", async () => {
     "one vote of three never confirms",
   );
   assert.deepEqual((await f.history.history("mallory", undefined)).matches, []);
-  assert.equal(
-    (await f.history.history("alice", undefined)).matches[0]!.result.winnerId,
-    f.ids[0],
-  );
+  const published = (await f.history.history("alice", undefined)).matches[0]!
+    .result;
+  assertPublishedResult(published, honest);
+  assert.equal(published.winnerId, published.players[0]!.playerId);
 });
 
-test("a rider who quit mid-match is not waited for, and an address is limited as well as a seat", async () => {
+test("a rider who quit can corroborate, and an address is limited as well as a seat", async () => {
   const f = await room(2),
     result = resultOf(f.ids);
   result.finishers = [f.ids[0]!];
   assert.deepEqual(await f.report(f.tokens[0]!, { result }, "alice"), {
-    status: "confirmed",
+    status: "pending",
     attestations: 1,
-    needed: 1,
+    needed: 2,
     linked: true,
   });
   assert.deepEqual(
+    (await f.history.feed("viewer", undefined, undefined)).matches,
+    [],
+  );
+  assert.equal((await f.history.profile("alice"))?.totals.matches ?? 0, 0);
+  assert.deepEqual(
     await f.report(f.tokens[1]!, { result }, "bob"),
-    { status: "confirmed", attestations: 2, needed: 1, linked: true },
+    { status: "confirmed", attestations: 2, needed: 2, linked: true },
     "a leaver who came back may still report",
   );
   // Room tokens are free to mint, so one address cannot report without limit by rotating them.
@@ -586,15 +635,22 @@ test("pending and guest-only matches expire; a match an account owns does not", 
   assert.equal((await stored())!.status, "confirmed");
 });
 
-test("a solo rider with bots confirms alone, history pages newest first, and reporting is rate limited", async () => {
-  const f = await room(1);
+test("corroborated history pages newest first, and reporting is rate limited", async () => {
+  const f = await room(2);
   for (let index = 0; index < 25; index++) {
     f.advance(1000);
+    await f.report(
+      f.tokens[1]!,
+      { result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"], `match-${index}`) },
+      undefined,
+    );
     assert.equal(
       (
         await f.report(
           f.tokens[0]!,
-          { result: resultOf([f.ids[0]!, "bot:1"], `match-${index}`) },
+          {
+            result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"], `match-${index}`),
+          },
           "alice",
         )
       ).status,
@@ -680,6 +736,7 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   const round: MatchResult = {
     ...signedIn,
     round: 1,
+    roundDuration: { version: 1, ticks: 20 },
     length: 1,
     players: signedIn.players.map((p) => ({
       ...p,
@@ -711,11 +768,20 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   for (const secret of [f.code, "alice", "bob", "uidByPlayer", "roomCode"])
     assert.equal(text.includes(secret), false, `${secret} stays private`);
   const alice = await f.history.feed("viewer", "alice", undefined);
-  assert.deepEqual(
-    alice.matches.map((entry) => entry.you),
-    [f.ids[0], undefined],
+  assert.equal(
+    alice.matches[0]!.you,
+    alice.matches[0]!.result.players[0]!.playerId,
+  );
+  assert.equal(
+    alice.matches[0]!.accounts[alice.matches[0]!.you!],
+    publicIdOf("alice"),
+  );
+  assert.equal(
+    alice.matches[1]!.you,
+    undefined,
     "a signed-in viewer sees only their own seat",
   );
+  assert.notEqual(alice.matches[0]!.you, f.ids[0]);
   assert.deepEqual(
     (
       await f.history.feed("viewer", undefined, guest.matches[0]!.endedAt)
@@ -730,7 +796,7 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   });
 });
 
-test("a lone guest's game stays out of the public feed until a second rider or an account vouches for it", async () => {
+test("a lone room game credits only its signed-in player and stays off the feed", async () => {
   const f = await room(2),
     result = resultOf([f.ids[0]!, "bot:1"], "lone");
   assert.equal(
@@ -743,19 +809,167 @@ test("a lone guest's game stays out of the public feed until a second rider or a
   );
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
+  const credited = (await f.history.profile("alice"))!;
+  assert.equal(credited.totals.matches, 1);
+  assert.equal(credited.career!.practice.matches, 1);
+  assert.equal(credited.career!.practice.rounds, 5);
+  assert.equal(credited.career!.practice.roundWins, 3);
+  assert.equal((await f.history.history("alice", undefined)).matches.length, 1);
   const listed = (await f.history.feed("viewer", undefined, undefined)).matches;
-  assert.deepEqual(
-    listed.map((entry) => entry.result.matchId),
-    ["lone"],
-    "a late sign-in makes it public",
-  );
-  assert.equal(listed[0]!.endedAt, f.now() - 1000, "listed at when it ended");
+  assert.deepEqual(listed, []);
   f.advance(1000);
   await f.report(f.tokens[0]!, { result }, "alice");
+  assert.deepEqual((await f.history.profile("alice"))!.career, credited.career);
   assert.equal(
-    (await f.history.feed("viewer", undefined, undefined)).matches[0]!.endedAt,
-    f.now() - 2000,
-    "a rewrite keeps its place",
+    (await f.history.feed("viewer", undefined, undefined)).matches.length,
+    0,
+    "a repeat report cannot publish it",
+  );
+});
+
+test("legacy one-seat confirmations cannot be republished by the same seat", async () => {
+  const f = await room(2),
+    result = parseMatchResult(resultOf(f.ids, "legacy"))!;
+  const id = matchRecordId((await f.rooms.get(f.code)).incarnation, result);
+  await f.matches.transactMatch(GAME_ID, id, () => ({
+    match: {
+      gameId: GAME_ID,
+      version: 1,
+      id,
+      roomCode: f.code,
+      status: "confirmed",
+      result,
+      attesters: [f.ids[0]!],
+      uidByPlayer: { [f.ids[0]!]: "alice" },
+      avatars: {},
+      participantUids: ["alice"],
+      createdAt: 1,
+      endedAt: 2,
+      feedAt: 2,
+    },
+    result: undefined,
+  }));
+  assert.deepEqual(
+    (await f.history.feed("viewer", undefined, undefined)).matches,
+    [],
+  );
+  await assert.rejects(f.report(f.tokens[0]!, { result }, "alice"), {
+    status: 409,
+  });
+  assert.equal(
+    (await f.report(f.tokens[1]!, { result }, undefined)).status,
+    "confirmed",
+  );
+  assert.equal(
+    (await f.history.feed("viewer", undefined, undefined)).matches.length,
+    1,
+  );
+});
+
+test("feed scans past hidden legacy rows and exposes a bounded continuation cursor", async () => {
+  const f = await room(2),
+    result = parseMatchResult(resultOf(f.ids, "legacy-pages"))!;
+  const record: MatchRecord = {
+    gameId: GAME_ID,
+    version: 1,
+    id: "a".repeat(40),
+    roomCode: f.code,
+    status: "confirmed",
+    result,
+    attesters: [f.ids[0]!],
+    uidByPlayer: {},
+    avatars: {},
+    participantUids: [],
+    createdAt: 1,
+    endedAt: 1,
+    feedAt: 1,
+  };
+  for (let index = 0; index < 205; index++) {
+    const id = index.toString(16).padStart(40, "0");
+    await f.matches.transactMatch(GAME_ID, id, () => ({
+      match: { ...record, id, feedAt: 1000 - index },
+      result: undefined,
+    }));
+  }
+  await f.matches.transactMatch(GAME_ID, record.id, () => ({
+    match: { ...record, attesters: f.ids, feedAt: 700 },
+    result: undefined,
+  }));
+  const first = await f.history.feed("viewer", undefined, undefined);
+  assert.deepEqual(first.matches, []);
+  assert.equal(parseFeedCursor(first.nextBefore!)?.at, 801);
+  const second = await f.history.feed(
+    "viewer",
+    undefined,
+    parseFeedCursor(first.nextBefore!)!,
+  );
+  assert.equal(second.matches.length, 1);
+  assert.equal(second.matches[0]!.id, record.id);
+  assert.equal(second.nextBefore, null);
+});
+
+test("feed scans unreadable rows and preserves ties across internal and output pages", async () => {
+  class PartlyUnreadableDatabase extends MemoryHistoryDatabase {
+    override async recentMatches(
+      gameId: string,
+      before: FeedCursor | undefined,
+      limit: number,
+    ): Promise<FeedRow[]> {
+      return (await super.recentMatches(gameId, before, limit)).map((row) =>
+        row.cursor.id === "z-invalid" ? { cursor: row.cursor } : row,
+      );
+    }
+  }
+  const f = await room(2, new PartlyUnreadableDatabase(platform));
+  const result = parseMatchResult(resultOf(f.ids, "tied"))!;
+  const record: MatchRecord = {
+    gameId: GAME_ID,
+    version: 1,
+    id: "",
+    roomCode: f.code,
+    status: "confirmed",
+    result,
+    attesters: f.ids,
+    uidByPlayer: {},
+    avatars: {},
+    participantUids: [],
+    createdAt: 1,
+    endedAt: 500,
+    feedAt: 500,
+  };
+  // One unreadable row, 20 filtered rows, and 22 eligible rows all share the exact timestamp.
+  const ids = [
+    "z-invalid",
+    ...Array.from({ length: 20 }, (_, i) => `y-${String(i).padStart(2, "0")}`),
+    ...Array.from({ length: 22 }, (_, i) => `x-${String(i).padStart(2, "0")}`),
+  ];
+  for (const id of ids)
+    await f.matches.transactMatch(GAME_ID, id, () => ({
+      match: {
+        ...record,
+        id,
+        attesters: id.startsWith("y-") ? [f.ids[0]!] : f.ids,
+      },
+      result: undefined,
+    }));
+  await f.matches.transactMatch(GAME_ID, "infinite", () => ({
+    match: { ...record, id: "infinite", feedAt: Infinity },
+    result: undefined,
+  }));
+  const first = await f.history.feed("viewer", undefined, undefined);
+  assert.equal(first.matches.length, 20);
+  assert.ok(first.nextBefore);
+  const second = await f.history.feed(
+    "viewer",
+    undefined,
+    parseFeedCursor(first.nextBefore!)!,
+  );
+  assert.equal(second.matches.length, 2);
+  assert.equal(second.nextBefore, null);
+  assert.equal(
+    new Set([...first.matches, ...second.matches].map((entry) => entry.id))
+      .size,
+    22,
   );
 });
 
@@ -855,7 +1069,7 @@ test("only a confirmed whole game can carry a feed time", () => {
     gameId: GAME_ID,
     version: 1,
     id: "f".repeat(40),
-    roomCode: "AB12",
+    roomCode: "AB12AA",
     status: "confirmed",
     result,
     attesters: [],
@@ -879,7 +1093,7 @@ test("only a confirmed whole game can carry a feed time", () => {
 });
 
 test("an account chooses its username; it is not unique, and totals survive a rename", async () => {
-  const f = await room(1);
+  const f = await room(2);
   assert.equal(
     await f.history.profile("alice"),
     undefined,
@@ -892,8 +1106,13 @@ test("an account chooses its username; it is not unique, and totals survive a re
   assert.equal((await f.history.profile("alice"))!.totals.matches, 0);
   await f.report(
     f.tokens[0]!,
-    { result: resultOf([f.ids[0]!, "bot:1"]) },
+    { result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"]) },
     "alice",
+  );
+  await f.report(
+    f.tokens[1]!,
+    { result: resultOf([f.ids[0]!, f.ids[1]!, "bot:1"]) },
+    undefined,
   );
   await f.history.rename("alice", { username: "Ace 2" });
   const renamed = (await f.history.history("alice", undefined)).profile!;
@@ -1101,16 +1320,26 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
       })
     ).json()) as {
       profile: { totals: { wins: number } };
-      matches: { you: string; avatars: Record<string, string> }[];
+      matches: {
+        you: string;
+        avatars: Record<string, string>;
+        accounts: Record<string, string>;
+        result: MatchResult;
+      }[];
     };
     assert.equal(mine.matches.length, 1);
-    assert.equal(mine.matches[0]!.you, peerId(created.token));
-    assert.deepEqual(mine.matches[0]!.avatars, {
-      [peerId(created.token)]: AVATARS[0]!.id,
-      [peerId(guest)]: AVATARS[0]!.id,
+    const listed = mine.matches[0]!;
+    assertPublishedResult(listed.result, result);
+    assert.equal(listed.you, listed.result.players[0]!.playerId);
+    assert.equal(listed.accounts[listed.you], publicIdOf("alice"));
+    assert.deepEqual(listed.avatars, {
+      [listed.result.players[0]!.playerId]: AVATARS[0]!.id,
+      [listed.result.players[1]!.playerId]: AVATARS[0]!.id,
     });
     assert.equal(mine.profile.totals.wins, 1);
     assert.equal((await call("/api/matches?before=-1")).status, 400);
+    assert.equal((await call("/api/matches?before=cnot-valid")).status, 400);
+    assert.equal((await call("/api/matches?before=")).status, 400);
     const feed = async (authorization?: string) =>
       (await (
         await call("/api/matches", {
@@ -1121,10 +1350,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     assert.equal(everyone.matches.length, 1, "the feed needs no sign-in");
     assert.equal(everyone.matches[0]!.you, undefined);
     assert.equal(JSON.stringify(everyone).includes(created.code), false);
-    assert.equal(
-      (await feed("Bearer id:alice")).matches[0]!.you,
-      peerId(created.token),
-    );
+    assert.equal((await feed("Bearer id:alice")).matches[0]!.you, listed.you);
     assert.equal((await feed("Bearer forged")).matches[0]!.you, undefined);
     assert.deepEqual(
       await (
@@ -1147,6 +1373,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     const roundResult = {
       ...result,
       round: 1,
+      roundDuration: { version: 1, ticks: 20 },
       length: 1,
       players: result.players.map((p) => ({
         ...p,
@@ -1188,8 +1415,8 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     assert.deepEqual(
       board.players.map((p) => [p.rank, p.elo]),
       [
-        [1, 1016],
-        [2, 984],
+        [1, 1004],
+        [2, 996],
       ],
     );
     assert.equal(board.players[0]!.you, true);
@@ -1232,7 +1459,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
   }
 });
 
-test("solo HTTP rounds and finished games authenticate, isolate accounts and credit history once", async () => {
+test("solo HTTP rounds are receipts and finished games credit only personal progress", async () => {
   const service = createDevRoomService({
     identity: async (value) =>
       value.startsWith("id:") ? value.slice(3) : undefined,
@@ -1243,6 +1470,7 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
   const origin = `http://127.0.0.1:${(service.server.address() as AddressInfo).port}`;
   const result = resultOf([SOLO_RATING_PLAYER_ID, "bot:1"]);
   result.round = 1;
+  result.roundDuration = { version: 1, ticks: 20 };
   result.length = 1;
   result.players = result.players.map((p) => ({
     ...p,
@@ -1263,7 +1491,13 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
         headers: { origin, authorization: `Bearer id:${uid}` },
       })
     ).json()) as {
-      profile: { rating: Rating; totals: { matches: number } } | null;
+      profile: {
+        rating?: Rating;
+        totals: { matches: number };
+        career?: {
+          practice: { matches: number; rounds: number; roundWins: number };
+        };
+      } | null;
     };
   try {
     assert.equal((await report({ result })).status, 401);
@@ -1280,11 +1514,7 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
       assert.equal((await report({ result: invalid }, "id:a")).status, 400);
     assert.equal((await report({ result, uid: "other" }, "id:a")).status, 400);
     assert.equal((await report({ result }, "id:a")).status, 200);
-    const first = (await profile("a")).profile!;
-    assert.equal(first.rating.value, 1000);
-    assert.equal(first.rating.rounds, 1);
-    assert.equal(first.rating.points[0]!.opponents, 0);
-    assert.equal(first.totals.matches, 0);
+    assert.equal((await profile("a")).profile, null);
     for (const candidate of [
       result,
       {
@@ -1293,15 +1523,14 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
       },
     ])
       assert.equal((await report({ result: candidate }, "id:a")).status, 200);
-    assert.deepEqual((await profile("a")).profile!.rating, first.rating);
+    assert.equal((await profile("a")).profile, null);
     assert.equal((await report({ result }, "id:b")).status, 200);
-    assert.equal((await profile("b")).profile!.rating.rounds, 1);
+    assert.equal((await profile("b")).profile, null);
     assert.equal(
       (await report({ result: { ...result, round: 2 } }, "id:a")).status,
       200,
     );
-    assert.equal((await profile("a")).profile!.rating.rounds, 2);
-    assert.equal((await profile("a")).profile!.rating.value, 1000);
+    assert.equal((await profile("a")).profile, null);
     const history = (await (
       await fetch(`${origin}/api/me/matches`, {
         headers: { origin, authorization: "Bearer id:a" },
@@ -1310,6 +1539,8 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
     assert.equal(history.matches.length, 0);
     const whole = structuredClone(result);
     delete whole.round;
+    whole.players[0]!.roundWins = 1;
+    delete whole.roundDuration;
     const finish = (candidate: unknown, identity?: string) =>
       fetch(`${origin}/api/me/results`, {
         method: "POST",
@@ -1334,30 +1565,51 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
       (await finish({ ...whole, finishers: [] }, "id:a")).status,
       400,
     );
-    const ratingBefore = (await profile("a")).profile!.rating;
     for (let retry = 0; retry < 2; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
     const after = (await profile("a")).profile!;
     assert.equal(after.totals.matches, 1);
+    assert.equal(after.career!.practice.matches, 1);
+    assert.equal(after.career!.practice.rounds, 1);
+    assert.equal(after.career!.practice.roundWins, 1);
     assert.deepEqual(
       after.rating,
-      ratingBefore,
+      undefined,
       "whole games cannot award Elo or a second round receipt",
     );
     const personal = (await (
       await fetch(`${origin}/api/me/matches`, {
         headers: { origin, authorization: "Bearer id:a" },
       })
-    ).json()) as { matches: { result: MatchResult }[] };
+    ).json()) as {
+      matches: {
+        you: string;
+        accounts: Record<string, string>;
+        result: MatchResult;
+      }[];
+    };
     assert.equal(personal.matches.length, 1);
-    assert.deepEqual(personal.matches[0]!.result, whole);
+    assertPublishedResult(personal.matches[0]!.result, whole);
+    assert.equal(
+      personal.matches[0]!.you,
+      personal.matches[0]!.result.players[0]!.playerId,
+    );
+    assert.equal(
+      personal.matches[0]!.accounts[personal.matches[0]!.you],
+      publicIdOf("a"),
+    );
     const feed = (await (
       await fetch(`${origin}/api/matches`, { headers: { origin } })
     ).json()) as { matches: unknown[] };
-    assert.equal(feed.matches.length, 1);
+    assert.equal(feed.matches.length, 0);
+    const leaderboard = (await (
+      await fetch(`${origin}/api/leaderboard`, { headers: { origin } })
+    ).json()) as { players: unknown[] };
+    assert.deepEqual(leaderboard.players, []);
     // Exhausting account links must not silently turn authenticated solo games into unlisted guest records.
     for (let retry = 2; retry < 30; retry++)
       assert.equal((await finish(whole, "id:a")).status, 200);
+    assert.deepEqual((await profile("a")).profile!.career, after.career);
     assert.equal(
       (await finish({ ...whole, matchId: "over-budget" }, "id:a")).status,
       429,
@@ -1369,8 +1621,8 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
       "round reports have their own budget",
     );
     assert.equal(
-      (await profile("b")).profile!.totals.matches,
-      0,
+      (await profile("b")).profile,
+      null,
       "only the authenticated caller gets career credit",
     );
   } finally {

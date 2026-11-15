@@ -8,6 +8,7 @@ import { createMetricsHttp } from "../src/metrics-http.js";
 import { MetricsStore } from "../src/metrics.js";
 import { MemoryTelemetryDatabase } from "../src/metrics-memory.js";
 import { SharedTelemetryQuota } from "../src/limits.js";
+import { MetricsSessions } from "../src/metrics-session.js";
 
 test("HTTP requires developer authentication for reads and bounds anonymous ingestion", async (context) => {
   const now = Date.parse("2026-11-14T12:00:00Z"),
@@ -24,6 +25,15 @@ test("HTTP requires developer authentication for reads and bounds anonymous inge
   );
   const http = createMetricsHttp({
     metrics,
+    sessions: new MetricsSessions(
+      "test-only-key-longer-than-32-bytes",
+      new SharedTelemetryQuota(
+        db,
+        "test-only-key-longer-than-32-bytes",
+        () => now,
+      ),
+      () => now,
+    ),
     developer: async (token) =>
       token === "verified"
         ? { uid: "dev", email: "dev@example.org" }
@@ -77,9 +87,21 @@ test("HTTP requires developer authentication for reads and bounds anonymous inge
   const post = (body: string, contentType = "application/json") =>
     fetch(base + "/api/telemetry/events", {
       method: "POST",
-      headers: { "Content-Type": contentType },
+      headers: {
+        "Content-Type": contentType,
+        Authorization: `Bearer ${token}`,
+      },
       body,
     });
+  assert.equal(
+    (await fetch(base + "/api/telemetry/events", { method: "POST" })).status,
+    401,
+  );
+  const token = (
+    await (
+      await fetch(base + "/api/telemetry/session", { method: "POST" })
+    ).json()
+  ).token as string;
   const response = await post(JSON.stringify({ events: [e] }));
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { acknowledgedIds: [e.id] });

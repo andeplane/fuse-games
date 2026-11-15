@@ -41,7 +41,7 @@ class Socket implements GatewaySocket {
     this.closes.push(code);
   }
 }
-const CODE = "AB42",
+const CODE = "AB42AA",
   token = (n: number) => n.toString(16).padStart(64, "0");
 
 /** A room of `members` on two instances, alternating, so half of every member's links cross the bus. */

@@ -96,7 +96,7 @@ class Socket implements GatewaySocket {
     return this.messages.filter((m) => m.type === "time");
   }
 }
-const CODE = "AB42",
+const CODE = "AB42AA",
   token = (i: number) => (i + 10).toString(16).repeat(64),
   HOST = token(0),
   GUEST = token(1);
@@ -454,7 +454,7 @@ test("a stale watched copy is answered without a write and refused by the next d
   );
   // A copy of another room, or one that already shows the seat gone, is never trusted.
   await assert.rejects(
-    store.time(CODE, old.member, undefined, { ...stale, code: "ZZ99" }),
+    store.time(CODE, old.member, undefined, { ...stale, code: "ZZ99AA" }),
     (error) => error instanceof RoomError && error.status === 409,
   );
 });

@@ -2,16 +2,25 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { RoomError, type HttpExtension } from "fuse-network-be";
 import {
   requireDeveloper,
+  type DeveloperPrincipal,
   type DeveloperVerifier,
 } from "./developer-access.js";
 import { DEBUG_LIMITS } from "./debug-contracts.js";
 import { DebugService, debugAssert } from "./debug-service.js";
 import { readDebugBody } from "./worker.js";
+import {
+  auditDeveloper,
+  authorizeDeveloper,
+  type DeveloperSecurityStore,
+} from "./developer-security.js";
 
 export interface DebugHttpOptions {
   service: DebugService;
   verifier: DeveloperVerifier;
+  identity?: (token: string) => Promise<string | undefined>;
   recordingEnabled?: boolean;
+  security?: DeveloperSecurityStore;
+  now?: () => number;
   /** HMAC-derived identity; never raw IP. */ reportIdentity: (
     req: IncomingMessage,
     address: string,
@@ -41,6 +50,21 @@ export function createDebugHttpExtension(
   options: DebugHttpOptions,
 ): HttpExtension {
   const { service, verifier } = options;
+  const recordGeneration = async (
+    principal: DeveloperPrincipal,
+    stepUp = false,
+  ) =>
+    options.security
+      ? (
+          await authorizeDeveloper(
+            options.security,
+            principal,
+            "record",
+            (options.now ?? Date.now)(),
+            stepUp,
+          )
+        ).recordingGeneration
+      : 0;
   return {
     methods: ["GET", "POST", "PUT"],
     headers: [
@@ -56,29 +80,58 @@ export function createDebugHttpExtension(
       if (method === "POST" && path === "/api/telemetry/reports") {
         const input = await json(req, 3 * 1024 * 1024);
         let owner: string | undefined;
-        if (input && typeof input === "object" && "recordingId" in input)
-          owner = (await requireDeveloper(req, verifier)).uid;
+        let ownerGeneration = 0;
+        if (input && typeof input === "object" && "recordingId" in input) {
+          const principal = await requireDeveloper(req, verifier);
+          if (options.security) {
+            ownerGeneration = await recordGeneration(principal);
+            await auditDeveloper(
+              options.security,
+              principal,
+              "report.attach",
+              "/api/telemetry/reports",
+              (options.now ?? Date.now)(),
+            );
+          }
+          owner = principal.uid;
+        }
+        const token =
+          req.headers.authorization?.match(/^Bearer ([^\s]+)$/)?.[1];
+        const trusted = Boolean(
+          owner ||
+          (token && options.identity && (await options.identity(token))),
+        );
         send(
           res,
           await service.submitReport(
             options.reportIdentity(req, address),
             owner,
             input,
+            ownerGeneration,
+            trusted,
           ),
         );
         return true;
       }
       if (method === "POST" && path === "/api/telemetry/recordings") {
         const principal = await requireDeveloper(req, verifier);
+        const generation = await recordGeneration(principal, true);
         debugAssert(
           options.recordingEnabled !== false,
           503,
           "Recording is not configured",
         );
+        const input = await json(req);
+        debugAssert(
+          (await recordGeneration(principal, true)) === generation,
+          412,
+          "Recording access changed",
+        );
         send(res, {
           recording: await service.createRecording(
             principal.uid,
-            await json(req),
+            input,
+            generation,
           ),
         });
         return true;
@@ -87,6 +140,7 @@ export function createDebugHttpExtension(
         /^\/api\/telemetry\/recordings\/([^/]+)\/segments\/(\d+)$/.exec(path);
       if (method === "PUT" && upload) {
         const principal = await requireDeveloper(req, verifier);
+        const generation = await recordGeneration(principal);
         debugAssert(
           options.recordingEnabled !== false,
           503,
@@ -99,6 +153,12 @@ export function createDebugHttpExtension(
         );
         const offset = req.headers["x-recording-start-ms"];
         debugAssert(typeof offset === "string" && /^\d{1,8}$/.test(offset));
+        const bytes = await readDebugBody(req, DEBUG_LIMITS.segmentBytes);
+        debugAssert(
+          (await recordGeneration(principal)) === generation,
+          412,
+          "Recording access changed",
+        );
         send(
           res,
           await service.upload(
@@ -106,10 +166,11 @@ export function createDebugHttpExtension(
             upload[1]!,
             Number(upload[2]),
             Number(offset),
-            await readDebugBody(req, DEBUG_LIMITS.segmentBytes),
+            bytes,
             typeof req.headers["x-recording-game-id"] === "string"
               ? req.headers["x-recording-game-id"]
               : undefined,
+            generation,
           ),
         );
         return true;
@@ -119,8 +180,13 @@ export function createDebugHttpExtension(
       );
       if (method === "POST" && finish) {
         const principal = await requireDeveloper(req, verifier);
+        const generation = await recordGeneration(principal);
         send(res, {
-          recording: await service.finish(principal.uid, finish[1]!),
+          recording: await service.finish(
+            principal.uid,
+            finish[1]!,
+            generation,
+          ),
         });
         return true;
       }
@@ -132,23 +198,40 @@ export function createDebugHttpExtension(
         )
       )
         return false;
-      await requireDeveloper(req, verifier);
+      const developer = await requireDeveloper(req, verifier);
+      const auditResults = async (kind: string, ids: string[]) => {
+        if (options.security && ids.length)
+          await auditDeveloper(
+            options.security,
+            developer,
+            kind,
+            ids.join(","),
+            (options.now ?? Date.now)(),
+          );
+      };
       debugAssert(method === "GET", 405);
       const cursor = url.searchParams.get("cursor") ?? undefined,
         limit = Number(url.searchParams.get("limit") ?? 25);
       if (path === "/api/dev/reports") {
-        send(
-          res,
-          await service.listReports(
-            limit,
-            cursor,
-            url.searchParams.get("recordingId") ?? undefined,
-          ),
+        const page = await service.listReports(
+          limit,
+          cursor,
+          url.searchParams.get("recordingId") ?? undefined,
         );
+        await auditResults(
+          "reports.read",
+          page.reports.map((report) => report.id),
+        );
+        send(res, page);
         return true;
       }
       if (path === "/api/dev/recordings") {
-        send(res, await service.listRecordings(limit, cursor));
+        const page = await service.listRecordings(limit, cursor);
+        await auditResults(
+          "recordings.read",
+          page.recordings.map((recording) => recording.id),
+        );
+        send(res, page);
         return true;
       }
       const detail = /^\/api\/dev\/recordings\/([^/]+)$/.exec(path);
@@ -158,7 +241,12 @@ export function createDebugHttpExtension(
         return true;
       }
       if (detail) {
-        send(res, await service.detail(detail[1]!));
+        const result = await service.detail(detail[1]!);
+        await auditResults(
+          "reports.read",
+          result.reports.map((report) => report.id),
+        );
+        send(res, result);
         return true;
       }
       const audio =

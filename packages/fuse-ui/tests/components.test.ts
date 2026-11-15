@@ -100,7 +100,7 @@ test("join by code: normalises, validates, and Enter presses JOIN", () => {
   const joined: string[] = [],
     refused: string[] = [];
   const join = createJoinByCode({
-    valid: (code) => /^[A-Z]{2}\d{2}$/.test(code),
+    valid: (code) => /^[A-Z0-9]{6}$/.test(code),
     onJoin: (code) => joined.push(code),
     onInvalid: (message) => refused.push(message),
     document,
@@ -109,12 +109,12 @@ test("join by code: normalises, validates, and Enter presses JOIN", () => {
   assert.equal(join.input.placeholder, "Room code");
   assert.equal(join.input.getAttribute("aria-label"), "Room code");
   assert.equal(join.input.maxLength, 10);
-  join.input.value = "  ab42 ";
+  join.input.value = "  ab42aa ";
   join.button.click();
-  assert.deepEqual(joined, ["AB42"]);
+  assert.deepEqual(joined, ["AB42AA"]);
   join.input.value = "nope";
   join.input.dispatchEvent(event(window, "keydown", { key: "Enter" }));
-  assert.deepEqual(refused, ["Enter a room code, for example AB42"]);
+  assert.deepEqual(refused, ["Enter a room code, for example AB42XY"]);
   join.input.dispatchEvent(event(window, "keydown", { key: "a" }));
   assert.equal(refused.length, 1, "only Enter presses JOIN");
 });
@@ -131,7 +131,7 @@ test("landing card: title, CREATE, JOIN and SOLO fire their callbacks; failures 
       if (fail) throw fail;
     },
     onSolo: () => calls.push("solo"),
-    valid: (code) => code === "AB42",
+    valid: (code) => code === "AB42AA",
     onJoin: (code) => calls.push(`join ${code}`),
     document,
   });
@@ -163,13 +163,13 @@ test("landing card: title, CREATE, JOIN and SOLO fire their callbacks; failures 
   landing.join.button.click();
   assert.equal(
     landing.error.textContent,
-    "Enter a room code, for example AB42",
+    "Enter a room code, for example AB42XY",
   );
-  landing.join.input.value = "ab42";
+  landing.join.input.value = "ab42aa";
   landing.join.button.click();
   assert.equal(landing.error.textContent, "");
   landing.solo!.click();
-  assert.deepEqual(calls, ["create", "create", "join AB42", "solo"]);
+  assert.deepEqual(calls, ["create", "create", "join AB42AA", "solo"]);
 
   const noSolo = createLandingCard({
     title: "PIG",
@@ -193,8 +193,8 @@ test("invite card: QR, caption, code, link and COPY LINK with its reset", async 
   const copies: string[] = [];
   let copyWorks = true;
   const invite = createInviteCard({
-    code: "AB42",
-    link: "https://play.example/?room=AB42",
+    code: "AB42AA",
+    link: "https://play.example/?room=AB42AA",
     qr: async (link) => `data:image/png;base64,${link.length}`,
     copy: async (text) => {
       copies.push(text);
@@ -204,7 +204,7 @@ test("invite card: QR, caption, code, link and COPY LINK with its reset", async 
     document,
   });
   await invite.ready;
-  assert.equal(invite.qr.getAttribute("src"), "data:image/png;base64,31");
+  assert.equal(invite.qr.getAttribute("src"), "data:image/png;base64,33");
   assert.equal(invite.qr.alt, "Scan to join this room");
   assert.deepEqual(
     [...invite.element.children].map((child) => child.className),
@@ -212,11 +212,11 @@ test("invite card: QR, caption, code, link and COPY LINK with its reset", async 
   );
   assert.equal(
     invite.element.querySelector(".fui-invite-url")?.textContent,
-    "https://play.example/?room=AB42",
+    "https://play.example/?room=AB42AA",
   );
   invite.copy.click();
   await settle();
-  assert.deepEqual(copies, ["https://play.example/?room=AB42"]);
+  assert.deepEqual(copies, ["https://play.example/?room=AB42AA"]);
   assert.equal(invite.copy.textContent, "COPIED");
   assert.ok(invite.copy.classList.contains("copied"));
   copyWorks = false;
@@ -233,7 +233,7 @@ test("invite card: QR, caption, code, link and COPY LINK with its reset", async 
   assert.equal(invite.copy.classList.contains("copied"), false);
 
   const failed = createInviteCard({
-    code: "AB42",
+    code: "AB42AA",
     link: "x",
     qr: () => Promise.reject(new Error("no canvas")),
     showLink: false,
@@ -242,7 +242,7 @@ test("invite card: QR, caption, code, link and COPY LINK with its reset", async 
   await failed.ready;
   assert.equal(failed.qr.hidden, true);
   assert.equal(failed.element.querySelector(".fui-invite-link"), null);
-  const none = createInviteCard({ code: "AB42", link: "x", document });
+  const none = createInviteCard({ code: "AB42AA", link: "x", document });
   await none.ready;
   assert.equal(none.qr.hidden, true);
 });
@@ -340,22 +340,22 @@ test("lobby: code, invite, roster, and START only for whoever may start", () => 
   const { document } = page();
   let started = 0;
   const lobby = createLobby({
-    code: "AB42",
-    link: "https://play.example/?room=AB42",
+    code: "AB42AA",
+    link: "https://play.example/?room=AB42AA",
     title: "PIG // FIRST TO 50",
     startText: "START GAME",
     onStart: () => started++,
     roster: { emptyText: "Share the code" },
     document,
   });
-  assert.equal(lobby.element.getAttribute("aria-label"), "Room AB42");
+  assert.equal(lobby.element.getAttribute("aria-label"), "Room AB42AA");
   assert.equal(
     lobby.element.querySelector("h2")?.textContent,
     "PIG // FIRST TO 50",
   );
   assert.equal(
     lobby.element.querySelector(".fui-room-code")?.textContent,
-    "AB42",
+    "AB42AA",
   );
   assert.equal(lobby.start.hidden, true);
   lobby.update({
@@ -386,7 +386,7 @@ test("lobby: code, invite, roster, and START only for whoever may start", () => 
   assert.equal(lobby.start.hidden, true, "a guest never sees START");
 
   const untitled = createLobby({
-    code: "CD34",
+    code: "CD34AA",
     link: "y",
     onStart: () => {},
     document,

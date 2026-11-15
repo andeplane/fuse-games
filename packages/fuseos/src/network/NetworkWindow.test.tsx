@@ -38,8 +38,8 @@ function address(): string {
 describe(NetworkWindow.name, () => {
   it("starts at the neighborhood with Entire Network and the recent rooms as neighbours", () => {
     const recentRooms = new MemoryRecentRoomsStore();
-    recentRooms.record({ gameId: "fuseball", code: "AB42" }, NOW - 60_000);
-    recentRooms.record({ gameId: "fuse-riders", code: "CD07" }, NOW);
+    recentRooms.record({ gameId: "fuseball", code: "AB42AA" }, NOW - 60_000);
+    recentRooms.record({ gameId: "fuse-riders", code: "CD07AA" }, NOW);
     renderWithProviders(<NetworkWindow windowId="w1" />, { recentRooms });
     expect(address()).toBe("Network Neighborhood");
     expect(
@@ -48,8 +48,8 @@ describe(NetworkWindow.name, () => {
         .map((option) => option.getAttribute("aria-label")),
     ).toEqual([
       "Entire Network",
-      "Fuse Riders room CD07",
-      "Fuseball room AB42",
+      "Fuse Riders room CD07AA",
+      "Fuseball room AB42AA",
     ]);
     expect(screen.getByRole("status")).toHaveTextContent("3 object(s)");
     expect(screen.getByRole("button", { name: "Up one level" })).toBeDisabled();
@@ -89,28 +89,28 @@ describe(NetworkWindow.name, () => {
   it("joins a recent room on double click and the selected one on Enter", async () => {
     const user = userEvent.setup();
     const recentRooms = new MemoryRecentRoomsStore();
-    recentRooms.record({ gameId: "fuseball", code: "AB42" }, NOW);
+    recentRooms.record({ gameId: "fuseball", code: "AB42AA" }, NOW);
     const launcher = recordingLauncher();
     renderWithProviders(<NetworkWindow windowId="w1" />, {
       recentRooms,
       roomLauncher: launcher,
     });
     await user.dblClick(
-      items().getByRole("option", { name: "Fuseball room AB42" }),
+      items().getByRole("option", { name: "Fuseball room AB42AA" }),
     );
-    expect(launcher.joined).toEqual(["fuseball:AB42"]);
+    expect(launcher.joined).toEqual(["fuseball:AB42AA"]);
     await user.click(
-      items().getByRole("option", { name: "Fuseball room AB42" }),
+      items().getByRole("option", { name: "Fuseball room AB42AA" }),
     );
     expect(screen.getByRole("status")).toHaveTextContent("Recent room");
     await user.keyboard("{Enter}");
-    expect(launcher.joined).toEqual(["fuseball:AB42", "fuseball:AB42"]);
+    expect(launcher.joined).toEqual(["fuseball:AB42AA", "fuseball:AB42AA"]);
   });
 
   it("opens, forgets and switches views from the menus", async () => {
     const user = userEvent.setup();
     const recentRooms = new MemoryRecentRoomsStore();
-    recentRooms.record({ gameId: "fuseball", code: "AB42" }, NOW);
+    recentRooms.record({ gameId: "fuseball", code: "AB42AA" }, NOW);
     const launcher = recordingLauncher();
     renderWithProviders(<NetworkWindow windowId="w1" />, {
       recentRooms,
@@ -125,11 +125,11 @@ describe(NetworkWindow.name, () => {
     ).toBeDisabled();
     await user.keyboard("{Escape}");
     await user.click(
-      items().getByRole("option", { name: "Fuseball room AB42" }),
+      items().getByRole("option", { name: "Fuseball room AB42AA" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "File" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "Open" }));
-    expect(launcher.joined).toEqual(["fuseball:AB42"]);
+    expect(launcher.joined).toEqual(["fuseball:AB42AA"]);
     await user.click(screen.getByRole("menuitem", { name: "File" }));
     await user.click(
       screen.getByRole("menuitemcheckbox", { name: "Join room..." }),
@@ -137,7 +137,7 @@ describe(NetworkWindow.name, () => {
     expect(screen.getByRole("dialog", { name: "Join room" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Close" }));
     await user.click(
-      items().getByRole("option", { name: "Fuseball room AB42" }),
+      items().getByRole("option", { name: "Fuseball room AB42AA" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "File" }));
     await user.click(
@@ -158,14 +158,14 @@ describe(NetworkWindow.name, () => {
   it("forgets a recent room with Delete and all of them from the File menu", async () => {
     const user = userEvent.setup();
     const recentRooms = new MemoryRecentRoomsStore();
-    recentRooms.record({ gameId: "fuseball", code: "AB42" }, NOW);
-    recentRooms.record({ gameId: "fuseball", code: "CD07" }, NOW);
+    recentRooms.record({ gameId: "fuseball", code: "AB42AA" }, NOW);
+    recentRooms.record({ gameId: "fuseball", code: "CD07AA" }, NOW);
     renderWithProviders(<NetworkWindow windowId="w1" />, { recentRooms });
     await user.click(
-      items().getByRole("option", { name: "Fuseball room AB42" }),
+      items().getByRole("option", { name: "Fuseball room AB42AA" }),
     );
     await user.keyboard("{Delete}");
-    expect(recentRooms.list().map((room) => room.code)).toEqual(["CD07"]);
+    expect(recentRooms.list().map((room) => room.code)).toEqual(["CD07AA"]);
     await user.click(screen.getByRole("menuitem", { name: "File" }));
     await user.click(
       screen.getByRole("menuitemcheckbox", { name: "Forget all recent rooms" }),
@@ -190,14 +190,14 @@ describe(NetworkWindow.name, () => {
     await user.click(dialog.getByRole("button", { name: "Join" }));
     expect(dialog.getByRole("alert")).toHaveTextContent(INVALID_CODE_MESSAGE);
     expect(launcher.joined).toEqual([]);
-    await user.type(dialog.getByRole("textbox", { name: "Room code" }), "2");
+    await user.type(dialog.getByRole("textbox", { name: "Room code" }), "2aa");
     expect(dialog.queryByRole("alert")).toBeNull();
     await user.keyboard("{Enter}");
-    expect(launcher.joined).toEqual(["fuse-riders:AB42"]);
+    expect(launcher.joined).toEqual(["fuse-riders:AB42AA"]);
     expect(screen.queryByRole("dialog", { name: "Join room" })).toBeNull();
   });
 
-  it("preselects the workgroup's game, caps the code at four characters and can be cancelled", async () => {
+  it("preselects the workgroup's game, caps the code at six characters and can be cancelled", async () => {
     const user = userEvent.setup();
     const launcher = recordingLauncher();
     renderWithProviders(<NetworkWindow windowId="w1" />, {
@@ -214,10 +214,10 @@ describe(NetworkWindow.name, () => {
     );
     await user.type(
       dialog.getByRole("textbox", { name: "Room code" }),
-      "xy99zz",
+      "xy99zzaa",
     );
     expect(dialog.getByRole("textbox", { name: "Room code" })).toHaveValue(
-      "XY99",
+      "XY99ZZ",
     );
     await user.click(dialog.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Join room" })).toBeNull();
@@ -243,7 +243,10 @@ describe(NetworkWindow.name, () => {
     });
     await user.click(screen.getByRole("button", { name: "Join room..." }));
     const dialog = within(screen.getByRole("dialog", { name: "Join room" }));
-    await user.type(dialog.getByRole("textbox", { name: "Room code" }), "AB42");
+    await user.type(
+      dialog.getByRole("textbox", { name: "Room code" }),
+      "AB42AA",
+    );
     await user.click(dialog.getByRole("button", { name: "Join" }));
     expect(dialog.getByRole("alert")).toHaveTextContent(
       'The game "pong" is not installed',
@@ -253,14 +256,14 @@ describe(NetworkWindow.name, () => {
   it("lists the rooms a directory knows, after the recent ones, and refreshes on request", async () => {
     const user = userEvent.setup();
     const recentRooms = new MemoryRecentRoomsStore();
-    recentRooms.record({ gameId: "fuseball", code: "AB42" }, NOW);
+    recentRooms.record({ gameId: "fuseball", code: "AB42AA" }, NOW);
     const directory = new MemoryRoomDirectory({
       fuseball: {
         kind: "rooms",
         rooms: [
-          { gameId: "fuseball", code: "AB42", members: 3 },
-          { gameId: "fuseball", code: "EF11", members: 2 },
-          { gameId: "fuseball", code: "GH22" },
+          { gameId: "fuseball", code: "AB42AA", members: 3 },
+          { gameId: "fuseball", code: "EF11AA", members: 2 },
+          { gameId: "fuseball", code: "GH22AA" },
         ],
       },
     });
@@ -281,17 +284,15 @@ describe(NetworkWindow.name, () => {
       items()
         .getAllByRole("option")
         .map((option) => option.getAttribute("aria-label")),
-    ).toEqual(["Join room...", "Room AB42", "Room EF11", "Room GH22"]);
-    expect(items().getByRole("option", { name: "Room EF11" })).toHaveAttribute(
-      "title",
-      "Open room, 2 playing",
-    );
-    expect(items().getByRole("option", { name: "Room GH22" })).toHaveAttribute(
-      "title",
-      "Open room",
-    );
-    await user.dblClick(items().getByRole("option", { name: "Room EF11" }));
-    expect(launcher.joined).toEqual(["fuseball:EF11"]);
+    ).toEqual(["Join room...", "Room AB42AA", "Room EF11AA", "Room GH22AA"]);
+    expect(
+      items().getByRole("option", { name: "Room EF11AA" }),
+    ).toHaveAttribute("title", "Open room, 2 playing");
+    expect(
+      items().getByRole("option", { name: "Room GH22AA" }),
+    ).toHaveAttribute("title", "Open room");
+    await user.dblClick(items().getByRole("option", { name: "Room EF11AA" }));
+    expect(launcher.joined).toEqual(["fuseball:EF11AA"]);
     await user.click(screen.getByRole("menuitem", { name: "View" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "Refresh" }));
     await waitFor(() =>
@@ -319,7 +320,7 @@ describe(NetworkWindow.name, () => {
   it("switches to Details with the last-played column", async () => {
     const user = userEvent.setup();
     const recentRooms = new MemoryRecentRoomsStore();
-    recentRooms.record({ gameId: "fuseball", code: "AB42" }, NOW - 60_000);
+    recentRooms.record({ gameId: "fuseball", code: "AB42AA" }, NOW - 60_000);
     const launcher = recordingLauncher();
     renderWithProviders(<NetworkWindow windowId="w1" />, {
       recentRooms,
@@ -328,13 +329,13 @@ describe(NetworkWindow.name, () => {
     await user.click(screen.getByRole("menuitem", { name: "View" }));
     await user.click(screen.getByRole("menuitemcheckbox", { name: "Details" }));
     const table = within(screen.getByRole("table", { name: "Network items" }));
-    const row = table.getByRole("row", { name: "Fuseball room AB42" });
+    const row = table.getByRole("row", { name: "Fuseball room AB42AA" });
     expect(row).toHaveTextContent("Recent room");
     expect(row).toHaveTextContent(/Today \d\d:\d\d/);
     await user.click(row);
     expect(row).toHaveAttribute("aria-selected", "true");
     await user.dblClick(row);
-    expect(launcher.joined).toEqual(["fuseball:AB42"]);
+    expect(launcher.joined).toEqual(["fuseball:AB42AA"]);
   });
 
   it("explains itself from Help and closes from File", async () => {
@@ -428,14 +429,17 @@ describe("Network Neighborhood on the desktop", () => {
     ).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Join room..." }));
     const dialog = within(screen.getByRole("dialog", { name: "Join room" }));
-    await user.type(dialog.getByRole("textbox", { name: "Room code" }), "AB42");
+    await user.type(
+      dialog.getByRole("textbox", { name: "Room code" }),
+      "AB42AA",
+    );
     await user.click(dialog.getByRole("button", { name: "Join" }));
     expect(
-      await screen.findByRole("dialog", { name: "Fuseball - Room AB42" }),
+      await screen.findByRole("dialog", { name: "Fuseball - Room AB42AA" }),
     ).toBeInTheDocument();
-    expect(screen.getByTitle("Fuseball room AB42")).toHaveAttribute(
+    expect(screen.getByTitle("Fuseball room AB42AA")).toHaveAttribute(
       "src",
-      "/fuse-riders/fuseball/?room=AB42",
+      "/fuse-riders/fuseball/?room=AB42AA",
     );
     expect(
       store.load().windows.map((window) => [window.kind, window.id]),
