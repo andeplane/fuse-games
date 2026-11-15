@@ -22,7 +22,7 @@ export function createPendingSettings<Settings extends object>(
       for (const entry of pending) next[entry.key] = entry.value;
       return { ...next, ...patch };
     },
-    /** The room took the command that carried `patch`. */
+    /** The local command accepted `patch` for delivery; `answered` confirms its application. */
     sent(patch: Partial<Settings>): void {
       const time = now();
       for (const key of Object.keys(patch) as (keyof Settings)[]) {
@@ -37,6 +37,10 @@ export function createPendingSettings<Settings extends object>(
     /** A frame's settings: every choice it shows is answered. */
     answered(settings: Settings): void {
       pending = pending.filter((entry) => settings[entry.key] !== entry.value);
+    },
+    /** A changed room/phase/authority cancels choices that have not been answered. */
+    clear(): void {
+      pending = [];
     },
   };
 }

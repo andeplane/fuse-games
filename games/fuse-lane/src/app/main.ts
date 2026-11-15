@@ -56,7 +56,7 @@ import {
 import { present, type Viewer } from "./presenter.js";
 import { createOnlineSheet, nextFace, storedFace } from "./online-menu.js";
 import { createRoomLobby } from "./room-lobby.js";
-import { createPendingSettings } from "./pending-settings.js";
+import { createPendingSettings } from "fuse-ui";
 import { dueReports, sendReport } from "./reports.js";
 import { FuseLaneRuntime, type FuseLaneCallbacks } from "./runtime.js";
 import { markToured, owesTour, tourSteps } from "./tour.js";

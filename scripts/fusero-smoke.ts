@@ -14,7 +14,8 @@ const browser = await launchSelected("chrome", {
   args: ["--mute-audio"],
 });
 const errors: string[] = [],
-  audioRequests: string[] = [];
+  audioRequests: string[] = [],
+  reportRequests: string[] = [];
 const contexts = await Promise.all([
   browser.newContext({ viewport: { width: 1280, height: 720 } }),
   browser.newContext({
@@ -266,6 +267,8 @@ try {
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.includes("/fusero/audio/"))
         audioRequests.push(request.url());
+      if (new URL(request.url()).pathname === "/api/telemetry/reports")
+        reportRequests.push(request.url());
     });
   }
   // Single player now prepares a loadout before an explicit start.
@@ -301,6 +304,19 @@ try {
   );
   await host.waitForFunction(
     "window.fusero.state().settings.restrictionPreset === 'all'",
+  );
+  await host
+    .getByRole("spinbutton", { name: "Minutes (−1: unlimited)", exact: true })
+    .fill("0.5");
+  await host
+    .getByRole("spinbutton", {
+      name: "Kill limit (−1: unlimited)",
+      exact: true,
+    })
+    .fill("-1");
+  await host.keyboard.press("Tab");
+  await host.waitForFunction(
+    "window.fusero.state().settings.timeLimitMs === 30000 && window.fusero.state().settings.killLimit === -1",
   );
   await host.keyboard.press("Escape");
   await firstWeapon.selectOption(String(weaponId("Rifle")));
@@ -360,6 +376,57 @@ try {
   );
   console.log(
     "Solo preparation, source map, five weapons, firing and paused reload passed",
+  );
+
+  // Exercise the actual public end-of-match UI after an ordinary 30-second
+  // timed match. No debug hook writes or synthetic simulation clock advances.
+  const completedMatch = await host.evaluate<string>(
+    "window.fusero.state().matchId",
+  );
+  const results = host.getByRole("dialog", {
+    name: "Match results",
+    exact: true,
+  });
+  await results.waitFor({ state: "visible", timeout: 45_000 });
+  assert.equal(
+    await host.evaluate(() =>
+      Boolean(document.activeElement?.closest(".fui-results")),
+    ),
+    true,
+    "match completion moves keyboard focus into the shared results",
+  );
+  const completed = await sample(host);
+  assert.equal(completed.stage, "over");
+  assert.equal(completed.phase, "done");
+  assert.ok(completed.elapsedMs >= 30_000 && completed.elapsedMs < 31_000);
+  assert.equal(
+    await results.locator(".fui-results-brand").innerText(),
+    "FUSERO",
+  );
+  for (const name of ["KILLS", "DEATHS", "SCORE"])
+    assert.equal(
+      await results.getByRole("columnheader", { name, exact: true }).count(),
+      1,
+    );
+  assert.equal(
+    await results
+      .getByRole("button", { name: "LOBBY", exact: true })
+      .isVisible(),
+    true,
+  );
+  await results.getByRole("button", { name: /^REMATCH\b/ }).click();
+  await play(host);
+  await host.waitForFunction(
+    `window.fusero.state().matchId !== ${JSON.stringify(completedMatch)}`,
+  );
+  await results.waitFor({ state: "hidden" });
+  assert.equal(
+    await host.evaluate(() => document.activeElement?.tagName),
+    "CANVAS",
+    "rematch returns keyboard focus to the game",
+  );
+  console.log(
+    "A real timed match shows shared results, standings and actions; REMATCH starts a new live match",
   );
 
   await host.goto(new URL("fusero/?mute", base).href);
@@ -535,6 +602,15 @@ try {
     "window.fusero.state().world.worms.find(w=>w.slot===0).input === 0",
   );
   assert.equal(await host.locator("dialog[open]").count(), 0);
+  await host
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  await host.getByRole("button", { name: /^Report · Ctrl\+X$/i }).click();
+  const report = host.getByRole("dialog", { name: "Report", exact: true });
+  await report.waitFor({ state: "visible" });
+  await report.getByRole("button", { name: /^back$/i }).click();
+  await report.waitFor({ state: "hidden" });
+  await host.locator(".liero-arena canvas").click();
   await keyboardPreset(host, "mac");
   const macKeys = await nativeKeys(host);
   assert.equal(macKeys.mac, true);
@@ -614,6 +690,11 @@ try {
     assert.equal(s.audio.voices, 0);
   }
   assert.deepEqual(audioRequests, [], "muted previews never request samples");
+  assert.deepEqual(
+    reportRequests,
+    [],
+    "opening and closing a report never submits one",
+  );
   assert.deepEqual(errors, [], "no browser runtime exceptions");
   console.log(
     "Fusero Classic smoke passed (solo preparation, two players and a display)",

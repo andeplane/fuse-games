@@ -198,3 +198,4 @@ export {
   type SharedTvOption,
   type SharedTvOptionOptions,
 } from "./shared-tv.js";
+export { createPendingSettings } from "./pending-settings.js";

@@ -3,6 +3,7 @@ import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/social.css";
+import "fuse-ui/results.css";
 import "./style.css";
 import QRCode from "qrcode";
 import {
@@ -15,6 +16,8 @@ import {
   createNameEntry,
   createNotice,
   createRoomLayout,
+  createResultsScreen,
+  createPendingSettings,
   createRoster,
   createTopBar,
   el,
@@ -455,12 +458,18 @@ function room(solo: boolean) {
   });
   loadoutPanel.append(loadoutFields);
   const settingsPanel = el("div", "", "liero-settings");
+  const pendingSettings = createPendingSettings<typeof DEFAULT_SETTINGS>(() =>
+    performance.now(),
+  );
   const patchSettings = (patch: Partial<typeof DEFAULT_SETTINGS>) => {
     if (host && last?.stage === "lobby")
-      runtime.command({
-        type: "settings",
-        settings: { ...last.settings, ...patch },
-      });
+      if (
+        runtime.command({
+          type: "settings",
+          settings: pendingSettings.with(last.settings, patch),
+        })
+      )
+        pendingSettings.sent(patch);
   };
   const settingLabel = (name: string, control: HTMLElement) => {
     const label = el("label");
@@ -569,15 +578,9 @@ function room(solo: boolean) {
     banner = el("h1"),
     message = el("p"),
     actions = el("div", "", "liero-actions");
-  const rematch = button("REMATCH", "fui-button-primary"),
-    backLobby = button("LOBBY");
   const chooseAgain = button("CHOOSE WEAPONS", "fui-button-primary");
   chooseAgain.onclick = openLiveLoadout;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  backLobby.onclick = () =>
-    runtime.command({ type: "action", action: "lobby" });
-  actions.append(rematch, backLobby, chooseAgain);
+  actions.append(chooseAgain);
   overlay.append(banner, message, actions);
   arenaWrap.append(canvas, overlay);
   const arena = createArena(canvas, arenaDisplay(solo)),
@@ -671,7 +674,19 @@ function room(solo: boolean) {
   play.append(hud, score, arenaWrap, weaponBar, hints, pad);
   play.hidden = true;
   main.append(connection, nameEntry.form, lobby, play, liveLoadout.dialog);
-  app.replaceChildren(top, main);
+  const results = createResultsScreen({
+    onAction: (action) =>
+      runtime.command({
+        type: "action",
+        action: action === "rematch" ? "rematch" : "lobby",
+      }),
+    onBack: () => {
+      runtime.stop();
+      location.href = url();
+    },
+    backText: "Leave",
+  });
+  app.replaceChildren(top, main, results.element);
   createRoomLayout({
     element: lobby,
     invite: invite?.element,
@@ -706,13 +721,18 @@ function room(solo: boolean) {
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
   );
-  let scoreKey = "",
+  let resultKey = "",
+    scoreKey = "",
     shownLoadout = "",
     shownPreset = "";
   const callbacks: FuseroCallbacks = {
     state(frame, settings) {
       const previousStage = last?.stage;
       last = frame;
+      if (frame.stage !== "over") {
+        results.hide();
+        resultKey = "";
+      }
       void audio.observe(frame.world?.effects ?? [], frame.matchId);
       if (previousStage !== frame.stage) controls.release();
       observeConfirmedPlay(
@@ -737,6 +757,8 @@ function room(solo: boolean) {
       const seats = frame.seats.filter((seat) => !seat.watcher),
         own = seats.find((seat) => seat.id === me),
         inLobby = frame.stage === "lobby";
+      if (!inLobby || !host) pendingSettings.clear();
+      else pendingSettings.answered(frame.settings);
       main.dataset.phase = frame.stage;
       main.dataset.round = String(frame.round);
       lobby.hidden = !inLobby;
@@ -916,7 +938,7 @@ function room(solo: boolean) {
       hints.hidden = display;
       const ended = frame.stage === "over",
         dead = !!worm && !worm.alive && !ended;
-      overlay.hidden = !ended && !dead && !selecting;
+      overlay.hidden = ended || (!dead && !selecting);
       const winner =
         frame.seats.find((seat) => seat.id === (frame.winner || world.winner))
           ?.name ?? "Nobody";
@@ -943,13 +965,90 @@ function room(solo: boolean) {
             ? "Watch the remaining worms fight it out."
             : frame.play.maxRespawnTimeMs === 0
               ? "You return automatically after the respawn delay."
-              : "Press FIRE or JUMP to return to the cave."
+              : "Press JUMP to return to the cave."
           : host
             ? "Play again, or return to the lobby."
             : "Waiting for the host. You can leave from the menu.";
-      rematch.hidden = backLobby.hidden = !ended || !host || display;
       chooseAgain.hidden = !selecting;
-      actions.hidden = (!ended || !host || display) && !selecting;
+      actions.hidden = !selecting;
+      if (ended) {
+        const firstResults = !results.open;
+        const completed = JSON.stringify([
+          frame.matchId,
+          world.winner,
+          world.worms.map((item) => [
+            item.id,
+            item.kills,
+            item.deaths,
+            classicScore(item, frame.play),
+          ]),
+        ]);
+        if (completed !== resultKey) {
+          resultKey = completed;
+          const standings = [...world.worms].sort((a, b) =>
+            a.id === world.winner
+              ? -1
+              : b.id === world.winner
+                ? 1
+                : classicScore(b, frame.play) - classicScore(a, frame.play) ||
+                  a.slot - b.slot,
+          );
+          const winningWorm = world.worms.find(
+            (item) => item.id === world.winner,
+          );
+          results.show({
+            game: "FUSERO",
+            context: `1 deathmatch / ${world.worms.length} players`,
+            headline: `${winner.toUpperCase()} WINS`,
+            summary: winningWorm
+              ? `${classicScore(winningWorm, frame.play)} points`
+              : undefined,
+            accent: winningWorm
+              ? COLORS[winningWorm.slot % COLORS.length]
+              : undefined,
+            standings: {
+              columns: ["KILLS", "DEATHS", "SCORE"],
+              rows: standings.map((item, index) => {
+                const seat = frame.seats.find(
+                  (member) => member.id === item.id,
+                );
+                return {
+                  id: item.id,
+                  placement: index + 1,
+                  name: seat?.name ?? "Worm",
+                  color: COLORS[item.slot % COLORS.length]!,
+                  you: item.id === me,
+                  tag: seat?.bot ? "AI" : undefined,
+                  values: [
+                    String(item.kills),
+                    String(item.deaths),
+                    String(classicScore(item, frame.play)),
+                  ],
+                };
+              }),
+            },
+          });
+        }
+        results.update({
+          status: host ? undefined : "Waiting for the host",
+          actions:
+            host && !display
+              ? [
+                  { id: "lobby", label: "LOBBY" },
+                  { id: "rematch", label: "REMATCH", primary: true },
+                ]
+              : [],
+        });
+        if (firstResults)
+          (
+            results.actions.querySelector<HTMLButtonElement>(
+              "button.is-primary",
+            ) ??
+            results.element.querySelector<HTMLButtonElement>(
+              ".fui-results-back",
+            )
+          )?.focus({ preventScroll: true });
+      }
       runtime.flush();
     },
     event() {},
