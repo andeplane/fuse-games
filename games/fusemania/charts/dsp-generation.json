@@ -1,0 +1,866 @@
+{
+  "dsp-dukamok-beyond-abilities-v2": {
+    "id": "dukamok-beyond-abilities-v2",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 399,
+        "fixedTimingVerified": true,
+        "seed": 2763783752,
+        "realizedNps": 2.6069668458781363,
+        "policy": {
+          "targetNps": 4,
+          "peakNps2s": 5,
+          "subdivisions": [1],
+          "maxStreamBeats": 2,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 712,
+        "fixedTimingVerified": true,
+        "seed": 2086882637,
+        "realizedNps": 4.6520310633213855,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 4,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 1156,
+        "fixedTimingVerified": true,
+        "seed": 2615576680,
+        "realizedNps": 7.553016726403823,
+        "policy": {
+          "targetNps": 8,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 1254,
+        "fixedTimingVerified": true,
+        "seed": 2349741715,
+        "realizedNps": 8.193324372759857,
+        "policy": {
+          "targetNps": 8,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 3, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "000a0ce426a63b274c308ce7ce64d5c0e63cb369f0ae607cf7ea95820e2febaa",
+    "duration": 153.05142857142857,
+    "sscSha256": "e769ff731e384da1ce8f13514908fa22ba74966823ed78fc03b0682bcf4bd07b",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "dsp-dukamok-big-blue": {
+    "id": "dukamok-big-blue",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 141,
+        "fixedTimingVerified": true,
+        "seed": 2363701257,
+        "realizedNps": 1.1136076439034455,
+        "policy": {
+          "targetNps": 2,
+          "peakNps2s": 3,
+          "subdivisions": [1],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 8
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 141,
+        "fixedTimingVerified": true,
+        "seed": 3875962068,
+        "realizedNps": 1.1136076439034455,
+        "policy": {
+          "targetNps": 3,
+          "peakNps2s": 5,
+          "subdivisions": [1],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 288,
+        "fixedTimingVerified": true,
+        "seed": 3015593513,
+        "realizedNps": 2.274602847121931,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 8,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 718,
+        "fixedTimingVerified": true,
+        "seed": 2236163858,
+        "realizedNps": 5.670711264699815,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "1d1a7c75a097e3040f5f217c9da226b5c770824820d108a83a6542deca7ea760",
+    "duration": 126.61551020408163,
+    "sscSha256": "793eb75f7d001a330b558b70cf7cffe33bde0c54fefda603e515bafb938bf9b4",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "dsp-dukamok-holy-orders-v2": {
+    "id": "dukamok-holy-orders-v2",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 382,
+        "fixedTimingVerified": true,
+        "seed": 3346226249,
+        "realizedNps": 1.4652742985971945,
+        "policy": {
+          "targetNps": 2.5,
+          "peakNps2s": 5,
+          "subdivisions": [1],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 740,
+        "fixedTimingVerified": true,
+        "seed": 1570823424,
+        "realizedNps": 2.838489478957916,
+        "policy": {
+          "targetNps": 4,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 740,
+        "fixedTimingVerified": true,
+        "seed": 4163775081,
+        "realizedNps": 2.838489478957916,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 1767,
+        "fixedTimingVerified": true,
+        "seed": 2271228209,
+        "realizedNps": 6.777852580160321,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "1e7b51fd8cd76388511019a13a5e0e4059d921622396c4f282710328db03c215",
+    "duration": 260.70204081632653,
+    "sscSha256": "46b9ad44af59c235e6fe1d74da239409da2423bddbd62298fb5eec8ea1719cbf",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "dsp-dukamok-return-of-salieri": {
+    "id": "dukamok-return-of-salieri",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 471,
+        "fixedTimingVerified": true,
+        "seed": 3291832006,
+        "realizedNps": 1.627130354675265,
+        "policy": {
+          "targetNps": 3,
+          "peakNps2s": 4,
+          "subdivisions": [1],
+          "maxStreamBeats": 2,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 862,
+        "fixedTimingVerified": true,
+        "seed": 263535598,
+        "realizedNps": 2.9778903730999544,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 4,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 1603,
+        "fixedTimingVerified": true,
+        "seed": 4217907430,
+        "realizedNps": 5.537770612620912,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 2002,
+        "fixedTimingVerified": true,
+        "seed": 1105558600,
+        "realizedNps": 6.91616766467066,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "90d284aa57fb1e7b06b083523243714b567cc185413b3b2f0f7556355376d72e",
+    "duration": 289.46666666666664,
+    "sscSha256": "3e2476280abe5c2641636148e6aa55111b27cb6c8f11e146df093874017c62c8",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "dsp-dukamok-salieri-strikes-back": {
+    "id": "dukamok-salieri-strikes-back",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 871,
+        "fixedTimingVerified": true,
+        "seed": 3759351422,
+        "realizedNps": 2.7292272038962104,
+        "policy": {
+          "targetNps": 3,
+          "peakNps2s": 5,
+          "subdivisions": [1],
+          "maxStreamBeats": 2,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 1491,
+        "fixedTimingVerified": true,
+        "seed": 2105000566,
+        "realizedNps": 4.671960690022101,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 4,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 2459,
+        "fixedTimingVerified": true,
+        "seed": 3746451550,
+        "realizedNps": 7.705131681263813,
+        "policy": {
+          "targetNps": 8,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 3, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 2539,
+        "fixedTimingVerified": true,
+        "seed": 49376282,
+        "realizedNps": 7.955806969796186,
+        "policy": {
+          "targetNps": 8,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 3, 4],
+          "maxStreamBeats": 16,
+          "recoveryBeats": 2
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "ba09bb992cde9fa7bd7382fe6a94d62a70fcdf0a4cb1972741bce145571541c5",
+    "duration": 319.13795918367344,
+    "sscSha256": "8f759c3814be155e53df1b98287fe441a4acc96cc019bbeaa00fd108ae4cdc85",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "snaky-blue": {
+    "id": "snaky-blue",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 165,
+        "fixedTimingVerified": true,
+        "seed": 2052919076,
+        "realizedNps": 1.3794427858734746,
+        "policy": {
+          "targetNps": 2,
+          "peakNps2s": 3,
+          "subdivisions": [1],
+          "maxStreamBeats": 2,
+          "recoveryBeats": 8
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 303,
+        "fixedTimingVerified": true,
+        "seed": 2140239242,
+        "realizedNps": 2.533158570422199,
+        "policy": {
+          "targetNps": 4,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 4,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 354,
+        "fixedTimingVerified": true,
+        "seed": 1157658884,
+        "realizedNps": 2.9595317951467273,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 810,
+        "fixedTimingVerified": true,
+        "seed": 1556257182,
+        "realizedNps": 6.771810039742512,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "352928c05ac8969be65fbe880bd8a2851f379474400fdf5ddab4d48a28e30570",
+    "duration": 119.61351473922902,
+    "sscSha256": "98b85e4a06a0e22ccdf323cf203eccf584f7fce288fb0b38626f0f4973ed041b",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "final-chase": {
+    "id": "final-chase",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 296,
+        "fixedTimingVerified": true,
+        "seed": 1998566259,
+        "realizedNps": 1.9896014456526776,
+        "policy": {
+          "targetNps": 4,
+          "peakNps2s": 4,
+          "subdivisions": [1],
+          "maxStreamBeats": 4,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 440,
+        "fixedTimingVerified": true,
+        "seed": 1220300028,
+        "realizedNps": 2.9575156624566827,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 4,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 865,
+        "fixedTimingVerified": true,
+        "seed": 1212335443,
+        "realizedNps": 5.814206927329615,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 1102,
+        "fixedTimingVerified": true,
+        "seed": 1206213764,
+        "realizedNps": 7.407232409152874,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 12,
+          "subdivisions": [1, 2, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "a31d50a807b0756b3c49e787a37b7c977a78f590001e5b090e5cebd4d33569e6",
+    "duration": 148.77351473922903,
+    "sscSha256": "c34e2d25a1d022e5b164cada16103b488d42797e457bbec8f7a1bb70d61d0911",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  },
+  "arcade-blues": {
+    "id": "arcade-blues",
+    "charts": [
+      {
+        "level": "Easy",
+        "rows": 277,
+        "fixedTimingVerified": true,
+        "seed": 1923025258,
+        "realizedNps": 2.3165665122756764,
+        "policy": {
+          "targetNps": 3,
+          "peakNps2s": 3,
+          "subdivisions": [1],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 8
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 3],
+          "maxPanels": 1,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Medium",
+        "rows": 400,
+        "fixedTimingVerified": true,
+        "seed": 4161321718,
+        "realizedNps": 3.345222400398089,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 6,
+          "subdivisions": [1, 2],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 4
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Hard",
+        "rows": 716,
+        "fixedTimingVerified": true,
+        "seed": 1304592202,
+        "realizedNps": 5.9879480967125795,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2, 3, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "ai-policy",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      },
+      {
+        "level": "Challenge",
+        "rows": 833,
+        "fixedTimingVerified": true,
+        "seed": 3298355276,
+        "realizedNps": 6.966425648829021,
+        "policy": {
+          "targetNps": 6,
+          "peakNps2s": 10,
+          "subdivisions": [1, 2, 3, 4],
+          "maxStreamBeats": 8,
+          "recoveryBeats": 2
+        },
+        "selection": "complete-dsp",
+        "pattern": {
+          "allowedPanels": [0, 1, 2, 3],
+          "maxPanels": 2,
+          "allowCrossovers": false,
+          "allowHolds": false
+        },
+        "finalPatternVerified": true
+      }
+    ],
+    "weightsSha256": "18aa81e4d9d0eed72a93966e97c3746f03b78b7e483d1bbeb24e4cc460fa8cd8",
+    "torch": "2.9.0+cpu",
+    "candidates": 6,
+    "audioSha256": "c2d94a740a39e681e36ed1a494bb30406212256db16b756ca70b7a4bd5164677",
+    "duration": 119.57351473922903,
+    "sscSha256": "5c2a0cc303966abcf991c59667b9119b513ba8b6134ff5f27fa7e4db4e26b397",
+    "generatorSources": {
+      "dsp_patterns.py": "88d750cc8273470c6ec670b085fd00444330dc6aa0b9621b644ec3d54b4bb338",
+      "arrows.py": "94a3fe64a196e512a0ddbd90da5e76119c5c371cdaa879c85056325d1e4c01b1",
+      "gen.py": "3735c243a5ad98f56a73135724515ca72b7b82c503b127c1232bf7e6cc087033",
+      "data.py": "252355b55d58e593c3981b632b056dc9dd946071f564babee36c3a2306f3041c",
+      "features.py": "4291601a6fd53fdcdf908ba049212aabe5ed70d5be56a6d7809106b8137eb2aa",
+      "feet.py": "66275b0e7148f2a45b67936d4e976144bc73da6937aca7420c0d16f31e1406f9",
+      "steps.py": "ec24efc0474649b9931c5ed531c79c9d5c44a05c5da3e10c90d25aa3a7cebcc7"
+    }
+  }
+}

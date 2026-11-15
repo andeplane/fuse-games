@@ -107,7 +107,7 @@ const configs = [
     lowHz: 200,
     highHz: 3000,
     sensitivity: 0.6,
-    minGap: 0.08,
+    minGapBeats: 1 / 4,
   },
   {
     id: "melody-fast",
@@ -115,7 +115,7 @@ const configs = [
     lowHz: 200,
     highHz: 3000,
     sensitivity: 0.8,
-    minGap: 0.04,
+    minGapBeats: 1 / 8,
   },
   {
     id: "melody-wide",
@@ -123,7 +123,7 @@ const configs = [
     lowHz: 80,
     highHz: 5000,
     sensitivity: 0.8,
-    minGap: 0.04,
+    minGapBeats: 1 / 8,
   },
   {
     id: "melody-high",
@@ -131,7 +131,7 @@ const configs = [
     lowHz: 400,
     highHz: 4000,
     sensitivity: 0.9,
-    minGap: 0.04,
+    minGapBeats: 1 / 8,
   },
   {
     id: "attacks",
@@ -139,7 +139,7 @@ const configs = [
     lowHz: 80,
     highHz: 8000,
     sensitivity: 0.6,
-    minGap: 0.06,
+    minGapBeats: 1 / 6,
   },
   {
     id: "attacks-fast",
@@ -147,7 +147,7 @@ const configs = [
     lowHz: 200,
     highHz: 5000,
     sensitivity: 0.9,
-    minGap: 0.04,
+    minGapBeats: 1 / 8,
   },
   {
     id: "attacks-high",
@@ -155,7 +155,7 @@ const configs = [
     lowHz: 400,
     highHz: 4000,
     sensitivity: 0.8,
-    minGap: 0.04,
+    minGapBeats: 1 / 8,
   },
   {
     id: "attacks-full",
@@ -163,9 +163,11 @@ const configs = [
     lowHz: 32.7,
     highHz: 11000,
     sensitivity: 0.8,
-    minGap: 0.04,
+    minGapBeats: 1 / 8,
   },
-] satisfies (Omit<RhythmOptions, "start" | "end"> & { id: string })[];
+] satisfies (Omit<RhythmOptions, "start" | "end" | "timing"> & {
+  id: string;
+})[];
 const manifestHash = hash(readFileSync(manifest));
 const benchmarkHash = hash(readFileSync(new URL(import.meta.url)));
 const scorerHash = hash(
@@ -343,6 +345,7 @@ async function analyse(song: Song) {
       ...config,
       start: 0,
       end: duration,
+      timing: sim.timing,
     });
     const times = result.events.map((e) => e.time);
     return {

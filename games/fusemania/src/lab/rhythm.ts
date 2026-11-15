@@ -6,6 +6,8 @@ import {
   FRAMES_PER_SECOND as FPS,
   type Spectra,
 } from "./spectrum.js";
+import { createTiming } from "../engine/timing.js";
+import type { TimingData } from "../engine/simfile.js";
 
 export interface RhythmRegion {
   start: number;
@@ -14,10 +16,13 @@ export interface RhythmRegion {
   highHz: number;
 }
 export interface RhythmOptions extends RhythmRegion {
+  layer?: "auto";
   mode: "melody" | "attacks";
   /** 0: strong changes only; 1: include quiet changes. */
   sensitivity: number;
-  minGap: number;
+  /** Closest candidate spacing in quarter-note beats; evaluated against the local tempo. */
+  minGapBeats: number;
+  timing: TimingData;
 }
 export interface RhythmEvent {
   time: number;
@@ -33,7 +38,15 @@ export interface RhythmResult {
   pitch: Float32Array;
   /** Positive spectral change in dB, before peak picking. */
   novelty: Float32Array;
+  /** Pitch motion is a descriptor, never sufficient evidence for a new step. */
+  pitchChanges: { time: number; hz: number }[];
   events: RhythmEvent[];
+  layers?: {
+    start: number;
+    end: number;
+    layer: "lead" | "bass";
+    confidence: number;
+  }[];
 }
 
 interface Peak {
@@ -69,7 +82,7 @@ export function detectRhythm(
       options.lowHz,
       options.highHz,
       options.sensitivity,
-      options.minGap,
+      options.minGapBeats,
     ].every(Number.isFinite) ||
     (options.mode !== "melody" && options.mode !== "attacks") ||
     options.start < 0 ||
@@ -78,15 +91,32 @@ export function detectRhythm(
     options.highHz <= options.lowHz ||
     options.sensitivity < 0 ||
     options.sensitivity > 1 ||
-    options.minGap < 0.03 ||
-    options.minGap > 1
+    options.minGapBeats < 1 / 32 ||
+    options.minGapBeats > 2 ||
+    !options.timing ||
+    !Number.isFinite(options.timing.offset) ||
+    !Array.isArray(options.timing.bpms) ||
+    !options.timing.bpms.length ||
+    options.timing.bpms.some(
+      ([beat, bpm]) =>
+        !Number.isFinite(beat) || !Number.isFinite(bpm) || bpm <= 0,
+    )
   )
     throw new Error(
       "Choose a valid time span, frequency band and detection settings.",
     );
+  const timing = createTiming(options.timing);
+  const gapAt = (time: number) =>
+    (options.minGapBeats * 60) / timing.bpmAt(timing.beatAt(time));
 
-  const from = Math.max(0, Math.floor(options.start * FPS) - 20);
-  const to = Math.min(spectra.frames, Math.ceil(options.end * FPS) + 20);
+  const from = Math.max(
+    0,
+    Math.floor(timing.timeAt(timing.beatAt(options.start) - 4) * FPS) - 2,
+  );
+  const to = Math.min(
+    spectra.frames,
+    Math.ceil(timing.timeAt(timing.beatAt(options.end) + 4) * FPS) + 2,
+  );
   const count = Math.max(0, to - from);
   const low = Math.max(0, Math.ceil(detailBinAt(options.lowHz)));
   const high = Math.min(
@@ -98,6 +128,7 @@ export function detectRhythm(
     fromFrame: from,
     pitch: new Float32Array(count),
     novelty: new Float32Array(count),
+    pitchChanges: [],
     events: [],
   };
   if (!count || high < low) return result;
@@ -214,7 +245,8 @@ export function detectRhythm(
   for (let i = 2; i < count - 2; i++)
     result.pitch[i] = median(Array.from(rawPitch.slice(i - 2, i + 3)));
 
-  for (let i = 2; i < count; i++) {
+  const bandEnergy = new Float64Array(count);
+  for (let i = 0; i < count; i++) {
     const frame = from + i;
     const pitchBin = result.pitch[i]! > 0 ? detailBinAt(result.pitch[i]!) : -1;
     let sum = 0,
@@ -225,6 +257,9 @@ export function detectRhythm(
         : high;
     for (let bin = low; bin <= attackHigh; bin++) {
       const value = db(frame, bin);
+      // All bins, before the changing harmonic mask: otherwise an equal-energy note change looks like a release.
+      bandEnergy[i]! += 10 ** (value / 10) * detailHz(bin);
+      if (i < 2) continue;
       if (value <= floor || value < maxima[i]! - 24) continue;
       if (options.mode === "melody") {
         if (pitchBin < 0) continue;
@@ -250,7 +285,8 @@ export function detectRhythm(
   }
   const candidates: RhythmEvent[] = [];
   const attackTime = (index: number, hz: number): number => {
-    if (!hz || options.mode !== "melody") return (from + index) / FPS;
+    if (!hz || (options.mode !== "melody" && options.highHz > 500))
+      return (from + index) / FPS;
     const pitchBin = detailBinAt(hz);
     const amplitude = (i: number): number => {
       let sum = 0;
@@ -281,15 +317,43 @@ export function detectRhythm(
     }
     return (from + index) / FPS;
   };
-  const threshold = 1.5 + (1 - options.sensitivity) * 6;
+  const scaleByBeat = new Map<number, number>();
+  const thresholdAt = (index: number): number => {
+    const beat = timing.beatAt((from + index) / FPS),
+      key = Math.floor(beat);
+    let scale = scaleByBeat.get(key);
+    if (scale === undefined) {
+      const lo = Math.max(0, Math.floor(timing.timeAt(key - 4) * FPS) - from);
+      const hi = Math.min(
+        count,
+        Math.ceil(timing.timeAt(key + 4) * FPS) - from,
+      );
+      const values = Array.from(result.novelty.slice(lo, hi)).sort(
+        (a, b) => a - b,
+      );
+      scale = values[Math.floor(values.length * 0.9)] ?? 0;
+      scaleByBeat.set(key, scale);
+    }
+    return Math.max(0.75, scale * (0.1 + (1 - options.sensitivity) * 0.6));
+  };
   for (let i = 2; i < count - 2; i++) {
     const strength = result.novelty[i]!;
+    const threshold = thresholdAt(i);
+    const halfBeat = Math.max(
+      2,
+      Math.round((30 / timing.bpmAt(timing.beatAt((from + i) / FPS))) * FPS),
+    );
     const background = median(
       Array.from(
-        result.novelty.slice(Math.max(0, i - 15), Math.min(count, i + 16)),
+        result.novelty.slice(
+          Math.max(0, i - halfBeat),
+          Math.min(count, i + halfBeat + 1),
+        ),
       ),
     );
     if (
+      // A note-off can spread energy into new bins while its total energy is falling.
+      bandEnergy[i]! < bandEnergy[i - 2]! * 0.75 ||
       strength < background + threshold ||
       strength <= result.novelty[i - 1]! ||
       strength < result.novelty[i + 1]!
@@ -302,7 +366,7 @@ export function detectRhythm(
       strength,
     });
   }
-  if (options.mode === "melody") {
+  {
     let acceptedBin: number | undefined;
     for (let i = 0; i < count - 4; i++) {
       if (!result.pitch[i]) {
@@ -317,17 +381,21 @@ export function detectRhythm(
         Math.abs(next - acceptedBin) < BINS_PER_OCTAVE / 16
       )
         continue;
-      const future = Array.from(result.pitch.slice(i, i + 4));
+      const stableFrames = Math.max(
+        2,
+        Math.min(8, Math.round(gapAt((from + i) / FPS) * FPS * 0.6)),
+      );
+      const future = Array.from(result.pitch.slice(i, i + stableFrames));
       const stable = future.every(
         (hz) => hz > 0 && Math.abs(detailBinAt(hz) - next) < 1,
       );
       if (!stable) continue;
+      // A ridge can switch between existing harmonics, or bend continuously, without a new note.
+      // Pitch changes need independent spectral-change evidence; they do not create timestamps by themselves.
       if (acceptedBin !== undefined)
-        candidates.push({
+        result.pitchChanges.push({
           time: (from + i) / FPS,
           hz: result.pitch[i]!,
-          kind: "pitch",
-          strength: threshold,
         });
       acceptedBin = median(future.map(detailBinAt));
     }
@@ -344,7 +412,11 @@ export function detectRhythm(
     if (
       event.time < options.start ||
       event.time > options.end ||
-      kept.some((old) => Math.abs(old.time - event.time) < options.minGap)
+      kept.some(
+        (old) =>
+          Math.abs(timing.beatAt(old.time) - timing.beatAt(event.time)) <
+          options.minGapBeats,
+      )
     )
       continue;
     kept.push(event);

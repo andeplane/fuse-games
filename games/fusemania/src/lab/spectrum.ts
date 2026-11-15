@@ -167,13 +167,11 @@ class Stft {
   }
 }
 
-/** How each detail bin reads its power: from which window, over which FFT bins (or interpolated at one). */
+/** Fractional integration of linearly interpolated FFT power over one detail bin. */
 interface BinPlan {
   window: number;
-  low: number;
-  high: number;
-  /** When the bin is narrower than one FFT bin: interpolate at this fractional FFT bin. */
-  at: number;
+  from: number;
+  weights: Float64Array;
 }
 
 function detailPlan(rate: number): BinPlan[] {
@@ -185,12 +183,19 @@ function detailPlan(rate: number): BinPlan[] {
     const window =
       WINDOWS.find((n) => n >= need) ?? WINDOWS[WINDOWS.length - 1]!;
     const perBin = rate / window;
-    return {
-      window,
-      low: Math.ceil(hz / width / perBin),
-      high: Math.floor((hz * width) / perBin),
-      at: hz / perBin,
-    };
+    const left = hz / width / perBin,
+      right = Math.min(window / 2, (hz * width) / perBin);
+    if (left >= right) return { window, from: 0, weights: new Float64Array(0) };
+    const from = Math.floor(left);
+    const weights = new Float64Array(Math.ceil(right) - from + 1);
+    for (let k = from; k < right; k++) {
+      const a = Math.max(left, k),
+        b = Math.min(right, k + 1);
+      const slope = ((b - k) ** 2 - (a - k) ** 2) / 2;
+      weights[k - from]! += (b - a - slope) / (right - left);
+      weights[k - from + 1]! += slope / (right - left);
+    }
+    return { window, from, weights };
   });
 }
 
@@ -250,18 +255,14 @@ export function computeSpectra(
     const centre = Math.round(frame * hop);
     for (const stft of stfts.values()) stft.frame(samples, centre);
     for (let bin = 0; bin < DETAIL_BINS; bin++) {
-      const { window, low, high, at } = plan[bin]!;
+      const { window, from, weights } = plan[bin]!;
       const power = stfts.get(window)!.power;
-      let value: number;
-      if (high >= low) {
-        let sum = 0;
-        for (let k = low; k <= high; k++) sum += power[k]!;
-        value = sum / (high - low + 1);
-      } else {
-        const k = Math.min(power.length - 2, Math.floor(at));
-        const f = at - k;
-        value = power[k]! * (1 - f) + power[k + 1]! * f;
-      }
+      let value = 0;
+      for (let k = 0; k < weights.length; k++)
+        value += weights[k]! * power[from + k]!;
+      // Window-energy normalization alone leaves a pure tone proportional to FFT length.
+      // Equalise coherent-tone gain so changing resolution does not invent a 3 dB attack.
+      value *= MODEL_WINDOW / window;
       detail[frame * DETAIL_BINS + bin] = 10 * Math.log10(value + 1e-10);
     }
     const power = stfts.get(MODEL_WINDOW)!.power;

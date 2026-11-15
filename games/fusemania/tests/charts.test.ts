@@ -21,6 +21,9 @@ import { DIFFICULTIES } from "../../../scripts/lib/fusemania/generate.js";
 import { referenceFor } from "../../../scripts/lib/fusemania/reference.js";
 import { SONGS } from "../../../scripts/lib/fusemania/songs.js";
 import { sscText } from "../../../scripts/lib/fusemania/ssc.js";
+import { RHYTHM_POLICIES } from "../src/lab/rhythm-policies.js";
+import { rhythmStats } from "../src/lab/rhythm-policy.js";
+import { createHash } from "node:crypto";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const read = (file: string): string => readFileSync(`${repo}${file}`, "utf8");
@@ -122,8 +125,10 @@ const songs = allSongs.filter(
 /** Charts ChartNet wrote (`scripts/chartnet`): a learned model's, with conventions of their own (tested below). */
 const isChartNet = (data: { ssc: string }): boolean =>
   data.ssc.includes("#CREDIT:ChartNet;");
+const isDsp = (data: { ssc: string }): boolean =>
+  data.ssc.includes("#CREDIT:DSP rhythm + ChartNet patterns;");
 /** Songs whose charts the rule generator wrote, which keep to its conventions. */
-const ruleSongs = songs.filter(({ data }) => !isChartNet(data));
+const ruleSongs = songs.filter(({ data }) => !isChartNet(data) && !isDsp(data));
 
 test("the bundle is every song of the portfolio, once, with audio that exists", () => {
   assert.equal(SONGS_DATA.length, SONGS.length);
@@ -179,12 +184,14 @@ test("every song has Easy, Medium, Hard and Challenge, each harder than the last
       const where = `${data.id} ${chart.difficulty}`;
       assert.equal(chart.stepsType, "dance-single", where);
       assert.ok(
-        chart.meter >= bound.meter[0] && chart.meter <= bound.meter[1],
+        isDsp(data)
+          ? chart.meter >= 1 && chart.meter <= 30
+          : chart.meter >= bound.meter[0] && chart.meter <= bound.meter[1],
         `${where}: meter ${chart.meter}`,
       );
       assert.ok(chart.meter >= meter, `${where}: meter falls`);
       // A ChartNet chart carries the meter pack charts of its density carry (never below the chart before it).
-      if (isChartNet(data)) {
+      if (isChartNet(data) || isDsp(data)) {
         const timing = createTiming(sim.timing);
         const times = rowsOf(chart).map((beat) => timing.timeAt(beat));
         const density =
@@ -196,11 +203,104 @@ test("every song has Easy, Medium, Hard and Challenge, each harder than the last
           `${where}: ${density.toFixed(2)} rows a second`,
         );
       }
-      const count = stepsOf(chart).length;
-      assert.ok(count > notes, `${where}: ${count} notes after ${notes}`);
+      const count = isDsp(data) ? rowsOf(chart).length : stepsOf(chart).length;
+      assert.ok(
+        isDsp(data) ? count >= notes : count > notes,
+        `${where}: ${count} notes after ${notes}`,
+      );
       notes = count;
       meter = chart.meter;
     });
+  }
+});
+
+test("DSP charts match verified exports, stay inside audio, and enforce the new difficulty/panel contracts", () => {
+  const manifest = JSON.parse(
+    read("games/fusemania/charts/dsp-generation.json"),
+  ) as Record<
+    string,
+    {
+      duration: number;
+      sscSha256: string;
+      charts: {
+        level: string;
+        rows: number;
+        finalPatternVerified: boolean;
+        fixedTimingVerified: boolean;
+      }[];
+    }
+  >;
+  const generated = allSongs.filter(({ data }) => isDsp(data));
+  assert.ok(generated.length > 0);
+  assert.deepEqual(
+    Object.keys(manifest).sort(),
+    generated.map(({ data }) => data.id).sort(),
+  );
+  for (const { data, sim } of generated) {
+    const report = manifest[data.id]!;
+    assert.equal(
+      createHash("sha256").update(data.ssc).digest("hex"),
+      report.sscSha256,
+      data.id,
+    );
+    assert.ok(Number.isFinite(report.duration) && report.duration > 0, data.id);
+    assert.deepEqual(
+      sim.charts.map((c) => c.difficulty),
+      BOUNDS.map((b) => b.name),
+    );
+    const timing = createTiming(sim.timing);
+    const policies = RHYTHM_POLICIES[data.id.replace(/^dsp-/, "")]!.ladder;
+    for (const chart of sim.charts) {
+      const where = `${data.id}/${chart.difficulty}`;
+      const exported = report.charts.find((c) => c.level === chart.difficulty)!;
+      assert.ok(
+        exported.finalPatternVerified && exported.fixedTimingVerified,
+        where,
+      );
+      const rows = rowsOf(chart),
+        times = rows.map((beat) => timing.timeAt(beat));
+      assert.equal(rows.length, exported.rows, where);
+      assert.ok(
+        times.every((t) => t >= 0 && t <= report.duration),
+        where,
+      );
+      assert.ok(
+        rows.every((b) => Math.abs(b * 48 - Math.round(b * 48)) < 1e-6),
+        where,
+      );
+      assert.ok(
+        chart.notes.every((n) => n.kind === "tap"),
+        where,
+      );
+      const easy = chart.difficulty === "Easy";
+      for (const row of rows)
+        assert.ok(
+          chart.notes.filter((n) => n.beat === row).length <= (easy ? 1 : 2),
+          where,
+        );
+      if (easy)
+        assert.ok(
+          chart.notes.every((n) => n.column === 0 || n.column === 3),
+          where,
+        );
+      if (chart.difficulty !== "Challenge") {
+        const policy = policies[chart.difficulty as "Easy" | "Medium" | "Hard"];
+        assert.ok(
+          rows.length <= Math.floor(report.duration * policy.targetNps),
+          `${where}: budget`,
+        );
+        const stats = rhythmStats(
+          times.map((time) => ({ time, hz: 0, strength: 1, kind: "attack" })),
+          timing,
+          0,
+          report.duration,
+        );
+        assert.ok(
+          stats.rate2s.peak <= policy.peakNps2s,
+          `${where}: sliding peak`,
+        );
+      }
+    }
   }
 });
 

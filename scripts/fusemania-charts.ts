@@ -85,7 +85,9 @@ async function analyze(song: SongSpec): Promise<void> {
 /** A chart file ChartNet wrote (`scripts/chartnet/bundle.ts`), which `generate` leaves alone. */
 const isChartNet = (id: string): boolean =>
   existsSync(chartPath(id)) &&
-  readFileSync(chartPath(id), "utf8").includes("#CREDIT:ChartNet;");
+  /#CREDIT:(?:ChartNet|DSP rhythm \+ ChartNet patterns);/.test(
+    readFileSync(chartPath(id), "utf8"),
+  );
 
 function generate(song: SongSpec): void {
   if (song.simfile) {

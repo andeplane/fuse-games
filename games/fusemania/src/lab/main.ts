@@ -48,6 +48,14 @@ import {
 import type { SpectrumReply, SpectrumRequest } from "./spectrum-worker.js";
 import type { RhythmResult } from "./rhythm.js";
 import { scoreRhythm } from "./rhythm-score.js";
+import {
+  LEVELS,
+  mapReferences,
+  selectPolicyEvents,
+  type Level,
+} from "./rhythm-policy.js";
+import { RHYTHM_POLICIES } from "./rhythm-policies.js";
+import { completeRhythmEvents } from "./complete-rhythm.js";
 import type { RhythmRequest, RhythmReply } from "./rhythm-worker.js";
 import {
   parseResume,
@@ -272,30 +280,43 @@ const stage = el("div", { className: "lab-stage" }, canvas, overview);
 const selectionBox = el("section", { className: "lab-card" });
 const rhythmMode = el("select", { title: "Rhythm detection mode" });
 rhythmMode.append(
-  el("option", { value: "melody", textContent: "Melody changes + attacks" }),
-  el("option", { value: "attacks", textContent: "Band attacks only" }),
+  el("option", { value: "melody", textContent: "Harmonic note attacks" }),
+  el("option", { value: "attacks", textContent: "Band note attacks" }),
 );
+rhythmMode.value = "melody";
+const rhythmVoice = el("select", { title: "Rhythm layer / analysis band" });
+rhythmVoice.append(
+  el("option", { value: "auto", textContent: "Auto · lead phrases / bass" }),
+  el("option", { value: "lead", textContent: "Lead · 200–3000 Hz" }),
+  el("option", { value: "bass", textContent: "Bass · 40–250 Hz" }),
+  el("option", { value: "selected", textContent: "Selected / listening band" }),
+);
+rhythmMode.disabled = true;
 const rhythmSensitivity = el("input", {
   type: "range",
   min: "0",
   max: "1",
   step: "0.05",
-  value: "0.9",
+  value: "0.6",
   title: "Higher sensitivity includes quieter attacks",
 });
-const sensitivityValue = el("output", { textContent: "90%" });
+const sensitivityValue = el("output", { textContent: "60%" });
 const rhythmGap = el("select", {
-  title: "Minimum time between detected clicks",
+  title:
+    "Closest candidate spacing follows the song's local tempo, in quarter-note beats",
 });
-for (const ms of [40, 60, 80, 120, 180])
+for (const subdivision of [8, 12, 16, 24, 32, 48])
   rhythmGap.append(
-    el("option", { value: String(ms / 1000), textContent: `${ms} ms` }),
+    el("option", {
+      value: String(4 / subdivision),
+      textContent: `${subdivision}${subdivision === 32 ? "nds" : "ths"}`,
+    }),
   );
-rhythmGap.value = "0.04";
+rhythmGap.value = String(1 / 8);
 const detectButton = button(
   "Detect rhythm",
   () => runRhythm(),
-  "Analyse the selected phrase and band; otherwise the listening band or 400–4000 Hz over the song",
+  "Analyse the selected phrase using the chosen musical layer and tempo-relative spacing",
 );
 const listenButton = button(
   "Listen",
@@ -313,6 +334,9 @@ const eventsButton = button(
             version: 1,
             song: songId,
             experimental: true,
+            policy: policySelect.value
+              ? { level: policySelect.value, ...policiesForSong() }
+              : undefined,
             frameSeconds: 1 / FRAMES_PER_SECOND,
             ...rhythm,
             pitch: Array.from(rhythm.pitch),
@@ -334,6 +358,15 @@ rhythmStatus.setAttribute("role", "status");
 const referenceSelect = el("select", {
   title: "Reference chart for timing comparison",
 });
+const policySelect = el("select", { title: "Difficulty policy" });
+policySelect.append(
+  el("option", { value: "", textContent: "Raw detector" }),
+  ...LEVELS.map((level) => el("option", { value: level, textContent: level })),
+);
+const policyText = el("p", {
+  className: "lab-dim",
+  textContent: "Choose a difficulty to audition its Decisions policy.",
+});
 const comparisonText = el("p", {
   className: "lab-dim",
   textContent: "Detect rhythm to compare it with a chart.",
@@ -354,7 +387,7 @@ const rhythmBox = el(
   el("p", {
     className: "lab-dim",
     textContent:
-      "Select a phrase and frequency band, then detect. With no selection: listening band, or 400–4000 Hz over the song. Defaults were calibrated on DukAmok songs.",
+      "Auto follows articulated lead phrases and uses bass elsewhere. Choose Lead, Bass, or your selected band to compare. Closest spacing follows the local tempo.",
   }),
   el("label", { className: "lab-rhythm-control" }, "Follow ", rhythmMode),
   el(
@@ -364,7 +397,10 @@ const rhythmBox = el(
     rhythmSensitivity,
     sensitivityValue,
   ),
-  el("label", { className: "lab-rhythm-control" }, "Min gap ", rhythmGap),
+  el("label", { className: "lab-rhythm-control" }, "Layer ", rhythmVoice),
+  el("label", { className: "lab-rhythm-control" }, "Finest rhythm ", rhythmGap),
+  el("label", { className: "lab-rhythm-control" }, "Difficulty ", policySelect),
+  policyText,
   el(
     "div",
     { className: "lab-row" },
@@ -389,7 +425,7 @@ const rhythmBox = el(
   el("p", {
     className: "lab-dim",
     textContent:
-      "White trace: tracked pitch. Orange dots: attacks. Yellow squares: pitch changes. Times are unsnapped; charts and taps are unchanged.",
+      "White trace: estimated pitch. Orange dots: note attacks. Pitch changes are exported as features, separately from steps. Charts and your taps are unchanged.",
   }),
 );
 detectButton.disabled = listenButton.disabled = eventsButton.disabled = true;
@@ -497,6 +533,7 @@ let spectra: Spectra | undefined;
 let rhythm: RhythmResult | undefined;
 let rhythmWorker: Worker | undefined;
 let auditionEnd: number | undefined;
+let rawRhythm: RhythmResult | undefined;
 let auditionClicks: { start: number; end: number } | undefined;
 let tiles: { canvas: HTMLCanvasElement; from: number; frames: number }[] = [];
 let flux: Float32Array | undefined;
@@ -783,18 +820,23 @@ function rebuildCharts(): void {
     ? current
     : "";
   const previousReference = referenceSelect.value;
-  const references = charts.filter((c) => c.key !== TAPPED);
+  const references = charts;
+  const mapped = mapReferences(references.filter((c) => c.source === "song"));
   referenceSelect.replaceChildren(
+    el("option", { value: "", textContent: "No reference at this level" }),
     ...references.map((c) =>
       el("option", {
         value: c.key,
-        textContent: `${c.label} · ${c.chart.meter}`,
+        textContent:
+          c.key === TAPPED
+            ? "Your recorded taps"
+            : `${mapped.find((r) => r.chart.key === c.key)?.level ?? c.label} · source ${c.label} ${c.chart.meter}`,
       }),
     ),
   );
   referenceSelect.value = references.some((c) => c.key === previousReference)
     ? previousReference
-    : ([...references]
+    : ([...references.filter((c) => c.key !== TAPPED)]
         .sort((a, b) => {
           // Match the game library and benchmark: authored Edit follows Challenge.
           const order = [
@@ -813,6 +855,7 @@ function rebuildCharts(): void {
         })
         .at(-1)?.key ?? "");
   renderComparison();
+  applyDifficultyPolicy();
   renderChips();
 }
 
@@ -832,10 +875,14 @@ function rhythmComparison() {
 
 function renderComparison(): void {
   const comparison = rhythmComparison();
-  referenceListen.disabled = !comparison;
+  referenceListen.disabled = !comparison?.reference || Boolean(rhythmWorker);
   comparisonText.textContent = comparison
-    ? `${comparison.matched}/${comparison.reference} reference rows matched · ${comparison.reference - comparison.matched} missed · ${comparison.detected - comparison.matched} extra clicks (±40 ms). F1 ${comparison.f1.toFixed(2)}. This measures chart agreement.`
-    : "Detect rhythm to compare it with a chart.";
+    ? comparison.reference === 0
+      ? `No reference steps in this span. Record taps or choose a chart to compare ${comparison.detected} detected events.`
+      : `${comparison.matched}/${comparison.reference} reference rows matched · ${comparison.reference - comparison.matched} missed · ${comparison.detected - comparison.matched} extra clicks (±40 ms). F1 ${comparison.f1.toFixed(2)}. This measures chart agreement.`
+    : rhythm
+      ? "Choose an authored chart or your recorded taps above to compare."
+      : "Detect rhythm to compare it with a chart.";
 }
 
 function renderChips(): void {
@@ -881,13 +928,14 @@ function renderChips(): void {
 
 /** Run only on request. A later selection does not silently replace the result being auditioned. */
 function runRhythm(): void {
-  if (!spectra) return;
+  if (!spectra || !sim) return;
   rhythmWorker?.terminate();
   const token = loadToken;
   const worker = new Worker(new URL("./rhythm-worker.ts", import.meta.url), {
     type: "module",
   });
   rhythmWorker = worker;
+  policySelect.disabled = true;
   detectButton.disabled = true;
   listenButton.disabled = eventsButton.disabled = true;
   referenceListen.disabled = true;
@@ -896,6 +944,7 @@ function runRhythm(): void {
     worker.terminate();
     if (rhythmWorker !== worker || token !== loadToken) return false;
     rhythmWorker = undefined;
+    policySelect.disabled = false;
     detectButton.disabled = !spectra;
     listenButton.disabled = !rhythm?.events.length;
     eventsButton.disabled = !rhythm;
@@ -915,8 +964,10 @@ function runRhythm(): void {
     }
     const result = data.result;
     cancelTicks();
+    rawRhythm = result;
     rhythm = result;
-    const count = result.events.length;
+    applyDifficultyPolicy();
+    const count = rhythm.events.length;
     listenButton.disabled = !count;
     eventsButton.disabled = false;
     const option = tickSelect.querySelector<HTMLOptionElement>(
@@ -930,20 +981,26 @@ function runRhythm(): void {
   };
   try {
     const frequencies =
-      selection?.lowHz !== undefined && selection.highHz !== undefined
-        ? selection
-        : band;
+      rhythmVoice.value === "lead"
+        ? { lowHz: 200, highHz: 3000 }
+        : rhythmVoice.value === "bass"
+          ? { lowHz: 40, highHz: 250 }
+          : selection?.lowHz !== undefined && selection.highHz !== undefined
+            ? selection
+            : band;
     const options = {
+      ...(rhythmVoice.value === "auto" ? { layer: "auto" as const } : {}),
       start: Math.max(0, selection?.start ?? 0),
       end: Math.min(duration, selection?.end ?? duration),
-      lowHz: frequencies?.lowHz ?? 400,
-      highHz: frequencies?.highHz ?? 4000,
+      lowHz: frequencies?.lowHz ?? 200,
+      highHz: frequencies?.highHz ?? 3000,
       mode:
         rhythmMode.value === "attacks"
           ? ("attacks" as const)
           : ("melody" as const),
       sensitivity: Number(rhythmSensitivity.value),
-      minGap: Number(rhythmGap.value),
+      minGapBeats: Number(rhythmGap.value),
+      timing: sim.timing,
     };
     const detail = spectra.detail.slice();
     worker.postMessage(
@@ -967,6 +1024,8 @@ function runRhythm(): void {
 }
 
 function clearRhythm(): void {
+  policySelect.disabled = false;
+  rawRhythm = undefined;
   rhythmWorker?.terminate();
   rhythmWorker = undefined;
   detectButton.disabled = !spectra;
@@ -987,6 +1046,51 @@ function clearRhythm(): void {
 function listenToRhythm(): void {
   if (!rhythm?.events.length) return;
   audition(DETECTED, rhythm.options.start, rhythm.options.end);
+}
+
+function applyDifficultyPolicy(): void {
+  const level = policySelect.value as Level;
+  const policy = policiesForSong()?.ladder[level];
+  const timing = charts[0]?.timing;
+  for (const option of policySelect.options)
+    option.disabled = Boolean(option.value) && !policiesForSong();
+  if (!policy && level) policySelect.value = "";
+  policyText.textContent =
+    level === "Challenge" && policy
+      ? "Challenge keeps the full detected rhythm, with fine beat-grid timing and no density or stream suppression."
+      : policy
+        ? `Decisions: budget ${policy.targetNps} rows/s · peak ${policy.peakNps2s} rows/s over 2 s · subdivisions ${policy.subdivisions.join("/")} per beat · streams ≤${policy.maxStreamBeats} beats, recovery ${policy.recoveryBeats} beats. Clicks snap to the song's grid.`
+        : policiesForSong()
+          ? "Raw musical events. Choose Easy–Challenge to apply a Decisions policy."
+          : "No Decisions policy cached for this song yet. Raw detection is available.";
+  if (!rawRhythm || !timing || rhythmWorker) return;
+  cancelTicks();
+  const { start, end } = rawRhythm.options;
+  rhythm = {
+    ...rawRhythm,
+    events: policy
+      ? level === "Challenge"
+        ? completeRhythmEvents(rawRhythm.events, timing, start, end)
+        : selectPolicyEvents(rawRhythm.events, timing, start, end, policy)
+      : rawRhythm.events,
+  };
+  if (policy && referenceSelect.value !== TAPPED)
+    referenceSelect.value =
+      mapReferences(charts.filter((c) => c.source === "song")).find(
+        (r) => r.level === level,
+      )?.chart.key ?? "";
+  listenButton.disabled = !rhythm.events.length;
+  const detected = tickSelect.querySelector<HTMLOptionElement>(
+    `option[value="${DETECTED}"]`,
+  );
+  if (detected) detected.disabled = !rhythm.events.length;
+  rhythmStatus.textContent = `${rhythm.events.length} ${policy ? level + " policy" : "raw"} events · ${start.toFixed(2)}–${end.toFixed(2)} s.${muted ? " Muted preview." : ""}`;
+  renderComparison();
+  draw();
+}
+
+function policiesForSong() {
+  return RHYTHM_POLICIES[songId.replace(/^dsp-/, "")];
 }
 
 function audition(choice: string, start: number, end: number): void {
@@ -1109,6 +1213,9 @@ function buildTiles(): void {
 }
 
 function updateFlux(): void {
+  if (selection?.lowHz !== undefined && selection.highHz !== undefined)
+    rhythmVoice.value = "selected";
+  rhythmMode.disabled = rhythmVoice.value === "auto";
   if (
     !spectra ||
     selection?.lowHz === undefined ||
@@ -2736,11 +2843,14 @@ tickSelect.onchange = () => {
   draw();
 };
 referenceSelect.onchange = () => renderComparison();
+policySelect.onchange = () => applyDifficultyPolicy();
 rhythmSensitivity.oninput = () => {
   sensitivityValue.textContent = `${Math.round(Number(rhythmSensitivity.value) * 100)}%`;
 };
-for (const control of [rhythmMode, rhythmSensitivity, rhythmGap])
+for (const control of [rhythmMode, rhythmVoice, rhythmSensitivity, rhythmGap])
   control.onchange = () => {
+    rhythmMode.disabled = rhythmVoice.value === "auto";
+    if (rhythmMode.disabled) rhythmMode.value = "melody";
     clearRhythm();
     rhythmStatus.textContent =
       "Settings changed. Press Detect rhythm to analyse again.";

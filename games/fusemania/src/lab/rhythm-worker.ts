@@ -1,9 +1,6 @@
 /** On-demand detection, kept off the playback/rendering thread. Each request owns a disposable worker. */
-import {
-  detectRhythm,
-  type RhythmOptions,
-  type RhythmResult,
-} from "./rhythm.js";
+import { type RhythmOptions, type RhythmResult } from "./rhythm.js";
+import { detectRhythmLayers } from "./rhythm-layers.js";
 import type { Spectra } from "./spectrum.js";
 
 export interface RhythmRequest {
@@ -19,7 +16,7 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 scope.onmessage = ({ data }) => {
   try {
-    const result = detectRhythm(data.spectra, data.options);
+    const result = detectRhythmLayers(data.spectra, data.options);
     scope.postMessage({ kind: "done", result }, [
       result.pitch.buffer,
       result.novelty.buffer,

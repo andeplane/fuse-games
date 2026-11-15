@@ -215,9 +215,10 @@ class _Cand:
 
 
 def _costs(feet: Feet, toks: list[int], b: float, nxt: float, last: bool, diff: str, pen,
-           must_jump: bool = False) -> torch.Tensor:
+           must_jump: bool = False, allowed_cols=None, max_panels=None, allow_crossovers: bool = True,
+           allow_holds: bool = True) -> torch.Tensor:
     cost = torch.zeros(N_TOK)
-    cost[0] = 1e9
+    cost[0] = float("inf") if allowed_cols is not None or max_panels is not None or not allow_crossovers else 1e9
     if must_jump:  # a review note asks for a jump on this step
         for t in range(1, N_TOK):
             if len(TOK_COLS[t]) != 2:
@@ -225,7 +226,17 @@ def _costs(feet: Feet, toks: list[int], b: float, nxt: float, last: bool, diff: 
     bonus = FREEZE_BONUS[diff] if nxt >= 0.5 - 1e-6 or FREEZE_BONUS[diff] < 0 else 0.0
     for t in range(1, N_TOK):
         cols = TOK_COLS[t]
-        _, ev = feet.assign(cols, b)
+        if not allow_holds and 2 in kinds_of(t):
+            cost[t] = float("inf")
+            continue
+        if (allowed_cols is not None and any(c not in allowed_cols for c in cols)) or (max_panels is not None and len(cols) > max_panels):
+            cost[t] = float("inf")
+            continue
+        assigned, ev = feet.assign(cols, b)
+        crossed = any((foot == 0 and col == 3) or (foot == 1 and col == 0) for foot, col in zip(assigned, cols))
+        if not allow_crossovers and (ev["crossover"] or ev["hand"] or crossed):
+            cost[t] = float("inf")
+            continue
         cost[t] = sum(pen[k] * v for k, v in ev.items()) + (JUMP_COST[diff] if len(cols) >= 2 else 0.0)
         if 2 in kinds_of(t):
             # a freeze needs the next row to be a single step for the other foot; none in the last row
@@ -245,7 +256,8 @@ def _costs(feet: Feet, toks: list[int], b: float, nxt: float, last: bool, diff: 
 
 @torch.no_grad()
 def generate(model, song, beats, tm, diff: str, nps: float, temp: float = 1.0, seed: int = 0, penalty=None,
-             candidates: int | None = None, jumps: set[float] | None = None):
+             candidates: int | None = None, jumps: set[float] | None = None,
+             allowed_cols=None, max_panels=None, allow_crossovers: bool = True, allow_holds: bool = True):
     """Arrows and freezes for placed `beats`: [(beat, time, row string)] including freeze tails."""
     model.eval()
     g = torch.Generator().manual_seed(seed)
@@ -277,7 +289,10 @@ def generate(model, song, beats, tm, diff: str, nps: float, temp: float = 1.0, s
                            di1.expand(len(cands)), dn1.expand(len(cands)))
             logps = torch.log_softmax(logits[:, -1].float().cpu() / temp, -1)
             for c, logp in zip(cands, logps):
-                score = logp - _costs(c.feet, c.toks, b, nxt, i + 1 >= n, diff, pen, bool(jumps) and b in jumps)
+                score = logp - _costs(c.feet, c.toks, b, nxt, i + 1 >= n, diff, pen, bool(jumps) and b in jumps,
+                                       allowed_cols, max_panels, allow_crossovers, allow_holds)
+                if not torch.isfinite(score).any():
+                    raise ValueError(f"No legal pattern at fixed beat {b}")
                 tok = int(torch.multinomial(torch.softmax(score, -1), 1, generator=g))
                 c.score += float(score[tok])
                 c.toks.append(tok)

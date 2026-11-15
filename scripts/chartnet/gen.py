@@ -262,10 +262,10 @@ def mean_stats(lst):
 LEAD_IN = 1.0  # seconds before the first step
 
 
-def playable(rows, tm):
+def playable(rows, tm, lead_in: float = LEAD_IN):
     """Drop steps in the first second, and end a freeze before any row that would need a third arrow or its panel.
     A freeze left shorter than half a beat becomes a tap. `rows` are (beat, time, "0123"), tails included."""
-    rows = [(b, t, r) for b, t, r in rows if t >= LEAD_IN or not any(c in "124" for c in r)]
+    rows = [(b, t, r) for b, t, r in rows if t >= lead_in or not any(c in "124" for c in r)]
     grid = {b: list(r) for b, _, r in rows}
     beats = sorted(grid)
     for b in beats:
