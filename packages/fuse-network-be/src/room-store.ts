@@ -28,6 +28,8 @@ export interface Member {
    * checked against: an older socket of a resumed connection can neither heartbeat for the seat nor free it.
    */
   resumes?: number;
+  /** Current signed-in presence session and sessions fenced by a takeover, scoped to this seat. */
+  presence?: { owner: string; session: string; retired: string[] };
 }
 /** Whether `member`, as one gateway socket holds it, is the socket the stored seat belongs to. */
 export const sameAttachment = (
@@ -345,6 +347,7 @@ export class RoomStore {
           }
         : {
             id,
+            ...(held?.presence ? { presence: held.presence } : {}),
             connectionId,
             gatewayId,
             host,
@@ -532,6 +535,25 @@ export function parseRoomRecord(
       typeof m.expiresAt !== "number" ||
       !Number.isFinite(m.expiresAt) ||
       m.expiresAt < 0 ||
+      (m.presence !== undefined &&
+        (!m.presence ||
+          typeof m.presence !== "object" ||
+          Array.isArray(m.presence) ||
+          typeof (m.presence as Member["presence"])?.owner !== "string" ||
+          !/^[a-f0-9]{20}$/.test(
+            (m.presence as NonNullable<Member["presence"]>).owner,
+          ) ||
+          !/^[a-f0-9]{32}$/.test(
+            (m.presence as NonNullable<Member["presence"]>).session,
+          ) ||
+          !Array.isArray(
+            (m.presence as NonNullable<Member["presence"]>).retired,
+          ) ||
+          (m.presence as NonNullable<Member["presence"]>).retired.length >
+            128 ||
+          !(m.presence as NonNullable<Member["presence"]>).retired.every(
+            (id) => typeof id === "string" && /^[a-f0-9]{32}$/.test(id),
+          ))) ||
       (m.resumes !== undefined &&
         !(Number.isSafeInteger(m.resumes) && Number(m.resumes) >= 0))
     )

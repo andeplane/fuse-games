@@ -36,6 +36,8 @@ export interface FriendsClientDependencies {
     now: () => number;
     schedule: (callback: () => void, delayMs: number) => () => void;
   };
+  /** Creates a fresh presence session after sign-in. */
+  presenceSession?: () => string;
   pollMs?: number;
 }
 export interface FriendsState {
@@ -101,6 +103,7 @@ export function createFriendsClient(
   let signedIn = false,
     generation = 0,
     room: FriendsRoom | undefined,
+    presenceSession = "",
     disposed = false,
     cancelPoll: (() => void) | undefined,
     lastPoll = 0,
@@ -170,6 +173,7 @@ export function createFriendsClient(
               code: room.code,
               memberId: room.memberId,
               token: room.token,
+              session: presenceSession,
               gameId: room.gameId,
             },
           }
@@ -272,6 +276,9 @@ export function createFriendsClient(
       signedIn = next;
       generation++;
       if (signedIn) {
+        presenceSession =
+          dependencies.presenceSession?.() ??
+          crypto.randomUUID().replaceAll("-", "");
         seen.clear();
         refresh();
       } else {

@@ -53,6 +53,7 @@ test("F-07: possession, live membership and unambiguous room players", async () 
     code,
     memberId: peerId(token(n)),
     token: token(n),
+    session: String(n).repeat(32),
   });
   await friends.sync("alice", { room: claim(1) });
   await assert.rejects(
@@ -65,12 +66,20 @@ test("F-07: possession, live membership and unambiguous room players", async () 
   );
   assert.equal(await database.presence("mallory"), undefined);
   await friends.sync("bob", { room: claim(2) });
-  // Even if a token is shared, an ambiguous seat never identifies either account in the roster.
-  const duplicate = await friends.sync("mallory", { room: claim(1) });
+  // A new session takes over the seat and fences the prior session.
+  const duplicate = await friends.sync("mallory", {
+    room: { ...claim(1), session: "3".repeat(32) },
+  });
   assert.deepEqual(
-    duplicate.roomPlayers.map((p) => p.publicId),
-    [publicIdOf("bob")],
+    duplicate.roomPlayers.map((p) => p.publicId).sort(),
+    [publicIdOf("bob"), publicIdOf("mallory")].sort(),
   );
+  await assert.rejects(
+    friends.sync("alice", { room: claim(1) }),
+    /Presence session replaced/,
+  );
+  await friends.sync("alice", { passive: true });
+  assert.equal((await database.presence("alice"))?.room, undefined);
   const view = await friends.sync("bob", { room: claim(2) });
   assert.equal(
     new Set(view.roomPlayers.map((p) => p.memberId)).size,
@@ -96,10 +105,25 @@ test("F-07: possession, live membership and unambiguous room players", async () 
   assert.deepEqual(passive.roomPlayers, []);
   assert.equal((await database.presence("legacy"))?.room, undefined);
   assert.deepEqual(
-    (await friends.sync("bob", { room: claim(2) })).roomPlayers.map(
-      (p) => p.publicId,
-    ),
-    [publicIdOf("bob")],
+    (await friends.sync("bob", { room: claim(2) })).roomPlayers
+      .map((p) => p.publicId)
+      .sort(),
+    [publicIdOf("bob"), publicIdOf("mallory")].sort(),
+  );
+  // Concurrent first claims serialize to one owner; the losing session is fenced.
+  const concurrent = await Promise.allSettled([
+    friends.sync("carol", { room: { ...claim(1), session: "4".repeat(32) } }),
+    friends.sync("dave", { room: { ...claim(1), session: "5".repeat(32) } }),
+  ]);
+  assert.equal(concurrent.filter((r) => r.status === "fulfilled").length, 2);
+  const after = await friends.sync("bob", { room: claim(2) });
+  assert.equal(
+    after.roomPlayers.filter((p) => p.memberId === claim(1).memberId).length,
+    1,
+  );
+  await assert.rejects(
+    friends.sync("carol", { room: { ...claim(1), session: "4".repeat(32) } }),
+    /Presence session replaced/,
   );
   const stored = await database.presence("bob");
   assert.ok(!JSON.stringify(stored).includes(token(2)));

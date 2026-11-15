@@ -66,6 +66,7 @@ export interface PresenceRecord {
     incarnation: string;
     /** Claim was authenticated with the seat token. */
     proven?: true;
+    session?: string;
   };
 }
 /**
@@ -110,6 +111,10 @@ export function storedPresence(value: unknown): PresenceRecord | undefined {
             gameId: room.gameId as string,
             incarnation: room.incarnation as string,
             ...(room.proven === true ? { proven: true as const } : {}),
+            ...(typeof room.session === "string" &&
+            /^[a-f0-9]{32}$/.test(room.session)
+              ? { session: room.session }
+              : {}),
           },
         }),
   };
@@ -235,7 +240,7 @@ export class FriendsStore {
       if (
         !plain(room) ||
         !Object.keys(room).every((key) =>
-          ["code", "memberId", "gameId", "token"].includes(key),
+          ["code", "memberId", "gameId", "token", "session"].includes(key),
         ) ||
         typeof room.code !== "string" ||
         !validCode(room.code) ||
@@ -243,6 +248,8 @@ export class FriendsStore {
         !/^[a-f0-9]{24}$/.test(room.memberId) ||
         typeof room.token !== "string" ||
         !validToken(room.token) ||
+        typeof room.session !== "string" ||
+        !/^[a-f0-9]{32}$/.test(room.session) ||
         (room.gameId !== undefined &&
           (typeof room.gameId !== "string" ||
             !this.platform.gameIds.includes(room.gameId)))
@@ -265,7 +272,10 @@ export class FriendsStore {
       now = this.now();
     const current = await this.database.presence(uid);
     const passive = claim.passive === true,
-      stored = current?.room?.proven ? current.room : undefined,
+      stored =
+        current?.room?.proven && current.room.session
+          ? current.room
+          : undefined,
       due = !current || now - current.at >= PRESENCE_REFRESH_MS;
     // A passive poll (the desktop around an embedded game) makes no claim of its own: it carries the stored one
     // forward, so the two pages of one account do not overwrite each other's room every poll.
@@ -274,12 +284,14 @@ export class FriendsStore {
           code: stored.code,
           memberId: stored.memberId,
           gameId: stored.gameId,
+          session: stored.session!,
         }
       : claim.room
         ? {
             code: claim.room.code,
             memberId: claim.room.memberId,
             gameId: claim.room.gameId ?? LEGACY_GAME_ID,
+            session: claim.room.session,
           }
         : undefined;
     if (
@@ -288,34 +300,66 @@ export class FriendsStore {
       peerId(claim.room.token) !== claim.room.memberId
     )
       throw new RoomError(403, "Join the room first");
-    const sameClaim =
-      stored !== undefined &&
-      claimed !== undefined &&
-      stored.code === claimed.code &&
-      stored.memberId === claimed.memberId &&
-      stored.gameId === claimed.gameId;
     // An active page proves possession on every request. Passive pages can only carry a previously
     // proven claim, and periodically recheck the live seat and room incarnation.
     let room: PresenceRecord["room"];
     let liveRoom: RoomRecord | undefined;
-    if (claimed) {
-      if (!passive || !sameClaim || due) {
-        const record = await this.rooms
-            .get(claimed.code)
-            .catch(() => undefined),
-          seat = record?.members[claimed.memberId],
-          live =
-            record !== undefined &&
-            seat !== undefined &&
-            seat.expiresAt > now &&
-            roomGameId(record) === claimed.gameId &&
-            (!passive || record.incarnation === stored!.incarnation);
-        if (live) {
-          liveRoom = record;
+    if (claimed && !passive) {
+      liveRoom = await this.rooms.database.transact(
+        claimed.code,
+        (currentRoom) => {
+          const seat = currentRoom?.members[claimed.memberId];
+          if (
+            !currentRoom ||
+            currentRoom.expiresAt <= now ||
+            !seat ||
+            seat.expiresAt <= now ||
+            roomGameId(currentRoom) !== claimed.gameId
+          )
+            throw new RoomError(403, "Join the room first");
+          const owner = publicIdOf(uid),
+            previous = seat.presence;
+          if (
+            previous?.retired.includes(claimed.session) ||
+            (previous?.session === claimed.session && previous.owner !== owner)
+          )
+            throw new RoomError(
+              409,
+              "Presence session replaced; sign in again",
+            );
+          if (!previous || previous.session !== claimed.session) {
+            const retired = previous
+              ? [...previous.retired, previous.session]
+              : [];
+            if (retired.length > 128)
+              throw new RoomError(
+                409,
+                "Too many presence sessions; rejoin the room",
+              );
+            seat.presence = { owner, session: claimed.session, retired };
+            currentRoom.revision++;
+            return { room: currentRoom, result: currentRoom };
+          }
+          return { result: currentRoom };
+        },
+      );
+      room = { ...claimed, incarnation: liveRoom.incarnation, proven: true };
+    } else if (claimed && passive) {
+      try {
+        const record = await this.rooms.get(claimed.code);
+        const seat = record.members[claimed.memberId];
+        if (
+          record.incarnation === stored!.incarnation &&
+          roomGameId(record) === claimed.gameId &&
+          seat &&
+          seat.expiresAt > now &&
+          seat.presence?.owner === publicIdOf(uid) &&
+          seat.presence.session === claimed.session
+        )
           room = { ...claimed, incarnation: record.incarnation, proven: true };
-        } else if (!passive) throw new RoomError(403, "Join the room first");
-      } else
-        room = { ...claimed, incarnation: stored!.incarnation, proven: true };
+      } catch (error) {
+        if (!(error instanceof RoomError && error.status === 404)) throw error;
+      }
     }
     // A poll that names nothing keeps the name, head and status the player last showed up with.
     const name = claim.name ?? current?.name,
@@ -452,7 +496,10 @@ export class FriendsStore {
           p.room?.proven &&
           p.room.code === here.code &&
           p.room.incarnation === here.incarnation &&
-          (liveRoom?.members[p.room.memberId]?.expiresAt ?? 0) > now
+          (liveRoom?.members[p.room.memberId]?.expiresAt ?? 0) > now &&
+          liveRoom?.members[p.room.memberId]?.presence?.owner === p.publicId &&
+          liveRoom?.members[p.room.memberId]?.presence?.session ===
+            p.room.session
         )
           seatCounts.set(
             p.room.memberId,
@@ -464,6 +511,9 @@ export class FriendsStore {
           !online(p) ||
           !p.room?.proven ||
           seatCounts.get(p.room.memberId) !== 1 ||
+          liveRoom?.members[p.room.memberId]?.presence?.owner !== p.publicId ||
+          liveRoom?.members[p.room.memberId]?.presence?.session !==
+            p.room.session ||
           seenPublic.has(p.publicId) ||
           p.room.code !== here.code ||
           p.room.incarnation !== here.incarnation

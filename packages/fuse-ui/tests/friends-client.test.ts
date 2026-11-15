@@ -57,6 +57,7 @@ function recorded(
     bodies: unknown[] = [];
   const client = createFriendsClient({
     ...options,
+    presenceSession: () => "f".repeat(32),
     token: async () => "token",
     apiUrl: (path) => path,
     identity: () => ({ name: "Bob" }),
@@ -107,6 +108,7 @@ test("a game's client sends what it always sent: no passive, away or status unle
         code: "AB12",
         memberId: "a".repeat(24),
         token: "secret",
+        session: "f".repeat(32),
         gameId: "fuse-riders",
       },
     },

@@ -65,9 +65,17 @@ const member = (n: number) => peerId(token(n));
 /** Counts room reads, so a proven room claim can be shown to cost nothing until it changes. */
 class CountingRoomDatabase extends MemoryRoomDatabase {
   reads = 0;
+  fail = false;
   override read(code: string) {
+    if (this.fail) throw new Error("database unavailable");
     this.reads++;
     return super.read(code);
+  }
+  override transact<T>(
+    ...args: Parameters<MemoryRoomDatabase["transact"]>
+  ): Promise<T> {
+    if (this.fail) return Promise.reject(new Error("database unavailable"));
+    return super.transact(...args) as Promise<T>;
   }
 }
 /** Counts presence writes, so the heartbeat rule can be checked. */
@@ -117,6 +125,9 @@ function fixture() {
     http,
     room,
     roomReads: () => roomDatabase.reads,
+    failRooms: (fail: boolean) => {
+      roomDatabase.fail = fail;
+    },
     tick: (ms: number) => {
       now += ms;
     },
@@ -329,7 +340,12 @@ test("presence: online inside the window, in a room while it last said so, writt
     await written(() =>
       f.sync("bob", {
         name: "Bob",
-        room: { code, memberId: member(2), token: token(2) },
+        room: {
+          code,
+          memberId: member(2),
+          token: token(2),
+          session: "2".repeat(32),
+        },
       }),
     ),
     1,
@@ -345,7 +361,12 @@ test("presence: online inside the window, in a room while it last said so, writt
     await written(() =>
       f.sync("bob", {
         name: "Bobby",
-        room: { code, memberId: member(2), token: token(2) },
+        room: {
+          code,
+          memberId: member(2),
+          token: token(2),
+          session: "2".repeat(32),
+        },
       }),
     ),
     1,
@@ -377,17 +398,33 @@ test("a presence claim is validated", async () => {
     { name: "<b>" },
     { avatarId: "dog" },
     { room: {} },
-    { room: { code: "bad", memberId: member(1), token: token(1) } },
+    {
+      room: {
+        code: "bad",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    },
     { room: { code: "AB12", memberId: "short" } },
     {
       room: {
         code: "AB12",
         memberId: member(1),
         token: token(1),
+        session: "1".repeat(32),
         gameId: "chess",
       },
     },
-    { room: { code: "AB12", memberId: member(1), token: token(1), extra: 1 } },
+    {
+      room: {
+        code: "AB12",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+        extra: 1,
+      },
+    },
     { extra: 1 },
     { passive: "yes" },
     { passive: 1 },
@@ -404,7 +441,12 @@ test("a presence claim is validated", async () => {
     // A passive page has no room of its own to claim.
     {
       passive: true,
-      room: { code: "AB12", memberId: member(1), token: token(1) },
+      room: {
+        code: "AB12",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
     },
   ])
     await assert.rejects(f.sync("alice", body), /Invalid presence/);
@@ -455,7 +497,12 @@ test("an old-shaped body and an old-shaped record still work, and say nothing ne
   const view = await f.sync("bob", {
     name: "Bob",
     avatarId: "cat",
-    room: { code, memberId: member(2), token: token(2) },
+    room: {
+      code,
+      memberId: member(2),
+      token: token(2),
+      session: "2".repeat(32),
+    },
   });
   assert.deepEqual(Object.keys(view).sort(), [
     "friends",
@@ -597,7 +644,12 @@ test("the desktop and a game on one account: passive polls keep the game's room 
   const code = await f.room(1);
   const game = {
       name: "Bob",
-      room: { code, memberId: member(2), token: token(2) },
+      room: {
+        code,
+        memberId: member(2),
+        token: token(2),
+        session: "2".repeat(32),
+      },
     },
     desktop = { passive: true, away: true, status: "in a match" };
   await f.sync("bob", game);
@@ -631,6 +683,7 @@ test("the desktop and a game on one account: passive polls keep the game's room 
       gameId: LEGACY_GAME_ID,
       incarnation: "incarnation-0",
       proven: true,
+      session: "2".repeat(32),
     });
   }
   assert.equal(writes, 3);
@@ -653,7 +706,14 @@ test("the desktop and a game on one account: passive polls keep the game's room 
 test("a passive poll cannot keep a dead room alive: the carried claim is re-proven on the rewrite and dropped, not refused", async () => {
   const f = await pair();
   const code = await f.room(1);
-  await f.sync("bob", { room: { code, memberId: member(2), token: token(2) } });
+  await f.sync("bob", {
+    room: {
+      code,
+      memberId: member(2),
+      token: token(2),
+      session: "2".repeat(32),
+    },
+  });
   // The game's tab closes without a word; the desktop keeps polling. Inside the refresh period the claim stands.
   f.tick(20_000);
   await f.sync("bob", { passive: true });
@@ -731,7 +791,14 @@ test("the Firestore reader and the in-memory database agree on every presence re
   await f.sync("bob", { passive: true, away: true });
   await same();
   const code = await f.room(1);
-  await f.sync("bob", { room: { code, memberId: member(2), token: token(2) } });
+  await f.sync("bob", {
+    room: {
+      code,
+      memberId: member(2),
+      token: token(2),
+      session: "2".repeat(32),
+    },
+  });
   await same();
   await f.sync("bob", { status: "" });
   await same();
@@ -754,6 +821,7 @@ test("the Firestore reader and the in-memory database agree on every presence re
         code,
         memberId: member(2),
         token: token(2),
+        session: "2".repeat(32),
         gameId: LEGACY_GAME_ID,
       },
     },
@@ -783,7 +851,12 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
     {
       passive: true,
-      room: { code: "AB12", memberId: member(1), token: token(1) },
+      room: {
+        code: "AB12",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
     },
   ])
     assert.deepEqual(await post(body), {
@@ -800,32 +873,86 @@ test("a room claim requires a live seat in that room", async () => {
   // Not a room, not a member of one, a seat that is not in this room.
   await assert.rejects(
     f.sync("alice", {
-      room: { code: "ZZ99", memberId: member(1), token: token(1) },
+      room: {
+        code: "ZZ99",
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
     }),
     /Join the room first/,
   );
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(9), token: token(9) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(9),
+        token: token(9),
+        session: "9".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   const other = await f.room(3);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(3), token: token(3) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(3),
+        token: token(3),
+        session: "3".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   await f.sync("alice", {
-    room: { code, memberId: member(1), token: token(1) },
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
   });
   // Every active claim rechecks the live room.
   const reads = f.roomReads();
   await f.sync("alice", {
-    room: { code, memberId: member(1), token: token(1) },
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
   });
-  assert.equal(f.roomReads(), reads + 1);
+  assert.equal(f.roomReads(), reads);
   await f.sync("alice", {
-    room: { code: other, memberId: member(3), token: token(3) },
+    room: {
+      code: other,
+      memberId: member(3),
+      token: token(3),
+      session: "3".repeat(32),
+    },
   });
-  assert.equal(f.roomReads(), reads + 2);
+  assert.equal(f.roomReads(), reads);
+});
+
+test("F-07 room database outages are not reported as lost membership", async () => {
+  const f = fixture();
+  const code = await f.room(1);
+  const room = {
+    code,
+    memberId: member(1),
+    token: token(1),
+    session: "1".repeat(32),
+  };
+  await f.sync("alice", { room });
+  f.failRooms(true);
+  await assert.rejects(f.sync("alice", { room }), /database unavailable/);
+  await assert.rejects(
+    f.sync("alice", { passive: true }),
+    /database unavailable/,
+  );
+  f.failRooms(false);
+  assert.equal((await f.sync("alice", { room })).roomPlayers.length, 1);
 });
 
 test("a reissued room code is another room: a stale claim sees nobody there and is refused once re-proven", async () => {
@@ -833,7 +960,12 @@ test("a reissued room code is another room: a stale claim sees nobody there and 
   const code = await f.room(1);
   await f.sync("alice", {
     name: "Alice",
-    room: { code, memberId: member(1), token: token(1) },
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
   });
   // The room ends and its code is handed to a new room with other members.
   await f.rooms.end(code, token(1));
@@ -842,18 +974,35 @@ test("a reissued room code is another room: a stale claim sees nobody there and 
   await f.rooms.admit(code, token(6), "gateway");
   await f.sync("bob", {
     name: "Bob",
-    room: { code, memberId: member(5), token: token(5) },
+    room: {
+      code,
+      memberId: member(5),
+      token: token(5),
+      session: "5".repeat(32),
+    },
   });
   // Alice's old seat is refused immediately, even inside the refresh window.
   f.tick(1000);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(1), token: token(1) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   assert.deepEqual(
     (
       await f.sync("bob", {
-        room: { code, memberId: member(5), token: token(5) },
+        room: {
+          code,
+          memberId: member(5),
+          token: token(5),
+          session: "5".repeat(32),
+        },
       })
     ).roomPlayers.map((p) => p.name),
     ["Bob"],
@@ -861,7 +1010,14 @@ test("a reissued room code is another room: a stale claim sees nobody there and 
   // Once the record is due a rewrite the claim is proven again, and Alice holds no seat in the room the code names now.
   f.tick(PRESENCE_REFRESH_MS);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(1), token: token(1) } }),
+    f.sync("alice", {
+      room: {
+        code,
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
+    }),
     /Join the room first/,
   );
   // Without the room the poll is fine, and Alice is no longer in any room.
@@ -874,21 +1030,41 @@ test("the room's signed-in members are listed with their relation to the caller"
   const code = await f.room(1);
   const alice = await f.sync("alice", {
       name: "Alice",
-      room: { code, memberId: member(1), token: token(1) },
+      room: {
+        code,
+        memberId: member(1),
+        token: token(1),
+        session: "1".repeat(32),
+      },
     }),
     bob = await f.sync("bob", {
       name: "Bob",
-      room: { code, memberId: member(2), token: token(2) },
+      room: {
+        code,
+        memberId: member(2),
+        token: token(2),
+        session: "2".repeat(32),
+      },
     });
   const elsewhere = await f.room(3);
   await f.sync("carol", {
     name: "Carol",
-    room: { code: elsewhere, memberId: member(3), token: token(3) },
+    room: {
+      code: elsewhere,
+      memberId: member(3),
+      token: token(3),
+      session: "3".repeat(32),
+    },
   });
   await f.store.add("alice", { publicId: bob.me.publicId });
   const view = await f.sync("alice", {
     name: "Alice",
-    room: { code, memberId: member(1), token: token(1) },
+    room: {
+      code,
+      memberId: member(1),
+      token: token(1),
+      session: "1".repeat(32),
+    },
   });
   assert.deepEqual(view.roomPlayers.map((p) => [p.name, p.relation]).sort(), [
     ["Alice", "you"],
@@ -902,7 +1078,12 @@ test("the room's signed-in members are listed with their relation to the caller"
     (
       await f.sync("bob", {
         name: "Bob",
-        room: { code, memberId: member(2), token: token(2) },
+        room: {
+          code,
+          memberId: member(2),
+          token: token(2),
+          session: "2".repeat(32),
+        },
       })
     ).roomPlayers.find((p) => p.name === "Alice")!.relation,
     "incoming",
@@ -916,7 +1097,12 @@ test("the room's signed-in members are listed with their relation to the caller"
   assert.deepEqual(
     (
       await f.sync("alice", {
-        room: { code, memberId: member(1), token: token(1) },
+        room: {
+          code,
+          memberId: member(1),
+          token: token(1),
+          session: "1".repeat(32),
+        },
       })
     ).roomPlayers.map((p) => p.name),
     ["Alice"],
