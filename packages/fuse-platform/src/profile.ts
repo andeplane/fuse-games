@@ -1,5 +1,6 @@
 import { userDocumentGame, type Platform } from "./game.js";
 import { parseRating } from "./rating.js";
+import { parseRatingGuard } from "./rating-guard.js";
 import { counterLike, plain } from "./result.js";
 import { ACCOUNT_KEYS, type Account, type Profile } from "./settlement.js";
 
@@ -45,12 +46,21 @@ export function parseProfile(
   const rating =
     document.rating === undefined ? undefined : parseRating(document.rating);
   const totals = game.parseTotals(document);
-  if ((document.rating !== undefined && !rating) || !totals)
+  const ratingGuard =
+    document.ratingGuard === undefined
+      ? undefined
+      : parseRatingGuard(document.ratingGuard);
+  if (
+    (document.rating !== undefined && !rating) ||
+    (document.ratingGuard !== undefined && !ratingGuard) ||
+    !totals
+  )
     throw new Error("Stored player stats are incompatible");
   return {
     ...parseAccount(platform, plain(user) ? user : {}),
     ...totals,
     ...(rating ? { rating } : {}),
+    ...(ratingGuard ? { ratingGuard } : {}),
   };
 }
 

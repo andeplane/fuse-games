@@ -74,6 +74,8 @@ export interface DecidedRound {
   shots: RoundShot[];
   /** Frozen at the decision tick; absent in older checkpoints. */
   rating?: {
+    /** Simulation ticks since this round began, frozen with its result. */
+    durationTicks?: number;
     finishers: string[];
     standings: Array<{
       playerId: string;

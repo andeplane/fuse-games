@@ -156,6 +156,7 @@ export const fuseSurgeRegistration: GameRegistration<
   FuseSurgeTotalsRecord
 > = {
   id: "fuse-surge",
+  minRatedRoundTicks: 120, // engine/tuning.ts STEPS_PER_SECOND
   isBot: isBotId,
   parseStats: parseFuseSurgeStats,
   validField: validFuseSurgeField,

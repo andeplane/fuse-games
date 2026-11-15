@@ -161,7 +161,8 @@ export function storedDebugRecord(value: unknown): DebugRecord | undefined {
       (record.recordingId !== undefined &&
         (!uuid(record.recordingId) || !integer(record.offsetMs, 7_200_000))) ||
       (record.screenshotKey !== undefined &&
-        record.screenshotKey !== `screenshots/${record.id}`) ||
+        record.screenshotKey !== `screenshots/${record.id}` &&
+        record.screenshotKey !== `anonymous-screenshots/${record.id}`) ||
       (record.screenshotGeneration !== undefined &&
         !text(record.screenshotGeneration, 128)))
   )

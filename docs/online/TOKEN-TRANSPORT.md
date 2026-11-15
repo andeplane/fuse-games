@@ -65,8 +65,8 @@ a second mechanism. What those limits do and do not bound is spelled out under [
   (see Slot holding) and would land on honest pages: one closed or navigated away within a round trip of the upgrade,
   a mobile tab frozen mid-connect, a network drop right after the 101.
 - A refused socket is given `REFUSED_CLOSE_GRACE_MS` (3 s) to answer the close frame and is then terminated. `ws` would
-  otherwise keep it for 30 s: outside the gate's count by then, but still one of Cloud Run's concurrent requests. Only
-  refused sockets are cut off; an admitted socket's close handshake runs to its end, so its close code is never lost.
+  otherwise keep it for 30 s. It retains its pending slot until the handshake ends or it is terminated, since it still
+  occupies a Cloud Run request. Only refused sockets are cut off; an admitted socket's close handshake runs to its end.
 - A well-formed token then goes through `RoomGateway.connect` unchanged: per-room admission serialization,
   incarnation/revision fencing, membership and capacity are as before. `validSignal`, exact-origin CORS and the
   DNS-rebinding guard are untouched. Gateways stay stateless: the handshake is local to one socket.
@@ -90,15 +90,16 @@ Charging sockets that leave early would not change that, which is why they are n
 
 What does bound it:
 
-- **4 pending admissions per address, 128 per gateway instance**, `429` before the upgrade beyond that. An "address"
+- **4 pending admissions per address, 16 per gateway instance**, `429` before the upgrade beyond that. An "address"
   is an IPv4 address or an IPv6 **/64** (`rateLimitAddress`): one IPv6 host owns a whole /64, so a per-address limit
   on full IPv6 addresses would be no limit. A v4-mapped IPv6 address counts as the IPv4 address it wraps, and input
-  that is not an address shares one key. So filling one instance's 128 slots takes about 32 IPv4 addresses or 32
+  that is not an address shares one key. So filling one instance's 16 slots takes about 4 IPv4 addresses or 4
   IPv6 /64s (one /56), held continuously — at which point every admission on that instance gets `429` until they
   stop. That is a small number, and the design does not claim otherwise.
-- **In production the platform binds first.** Cloud Run runs this service with `--concurrency=80 --max-instances=2`
-  (`scripts/deploy-cloud.sh`), and every open WebSocket — players in rooms included — is one concurrent request. 160
-  sockets across both instances is the real ceiling, reached before 128 pending admissions on either.
+- **Production capacity.** Cloud Run concurrency and the per-instance socket and pending caps are documented together
+  next to the deployment flags. The caps reserve request headroom, but do not protect against a distributed HTTP flood;
+  instance balancing and admitted sockets awaiting close can also reduce the available headroom. `/api/ready` exposes
+  aggregate socket usage and the highest per-address usage without exposing addresses.
 - The failure budget still bounds what it always did: wrong room codes (`404`) and bad first frames (`401`), 30 an
   hour per address, shared across instances.
 

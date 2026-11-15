@@ -7,6 +7,7 @@ import {
 } from "./developer-access.js";
 import { TelemetryAdmission } from "./limits.js";
 import { MAX_EVENT_BODY_BYTES, type MetricsStore } from "./metrics.js";
+import type { MetricsSessions } from "./metrics-session.js";
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const contentType = req.headers["content-type"]
@@ -47,6 +48,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 export function createMetricsHttp(options: {
   metrics: MetricsStore;
   developer: DeveloperVerifier;
+  sessions: MetricsSessions;
   admission?: TelemetryAdmission;
 }): HttpExtension {
   const admission = options.admission ?? new TelemetryAdmission();
@@ -54,9 +56,12 @@ export function createMetricsHttp(options: {
     async handle(req, res, address) {
       const url = new URL(req.url ?? "/", "http://telemetry");
       if (
-        !["/api/telemetry/events", "/api/dev/metrics", "/api/dev/me"].includes(
-          url.pathname,
-        )
+        ![
+          "/api/telemetry/events",
+          "/api/telemetry/session",
+          "/api/dev/metrics",
+          "/api/dev/me",
+        ].includes(url.pathname)
       )
         return false;
       await admission.run(address, async () => {
@@ -67,8 +72,14 @@ export function createMetricsHttp(options: {
           });
           res.end(JSON.stringify(value));
         };
+        if (url.pathname === "/api/telemetry/session") {
+          if (req.method !== "POST") throw new RoomError(405, "Use POST");
+          json({ token: await options.sessions.issue(address) });
+          return;
+        }
         if (url.pathname === "/api/telemetry/events") {
           if (req.method !== "POST") throw new RoomError(405, "Use POST");
+          options.sessions.verify(req.headers.authorization);
           json(await options.metrics.ingest(await readBody(req), address));
           return;
         }

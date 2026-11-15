@@ -118,7 +118,7 @@ export const diceGame: RollbackGame<
   DiceSettings
 > = {
   id: "dice",
-  rules: "dice-1",
+  rules: "dice-2",
   isEntry: isDiceEntry,
   createRoom,
   createTicker: () => foldTick,

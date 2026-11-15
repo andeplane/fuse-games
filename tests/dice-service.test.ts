@@ -32,6 +32,7 @@ function playedMatch(a: string, b: string) {
   });
   fold(room, { a: [[ACTION, "start", "m1"]] });
   for (let round = 1; room.stage !== "over"; round++) {
+    runTo(room, room.roundStartTick + 20);
     if (room.turn !== a) fold(room, { [room.turn]: [[HOLD, room.turnNo]] });
     room.scores[a] = TARGET;
     fold(room, { [a]: [[HOLD, room.turnNo]] });

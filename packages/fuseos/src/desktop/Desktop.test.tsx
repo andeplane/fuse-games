@@ -245,17 +245,18 @@ describe(Desktop.name, () => {
       screen.getByRole("dialog", { name: "About FuseOS" }),
     ).toHaveAttribute("data-active", "true");
     const taskbar = within(screen.getByRole("toolbar", { name: "Taskbar" }));
-    // The window buttons, in order; the tray's Fuse Messenger button follows them.
+    // Startup includes Messenger; its separate presence tray button follows the window buttons.
     expect(
       taskbar
         .getAllByRole("button")
-        .slice(0, 5)
+        .slice(0, 6)
         .map((button) => button.textContent),
     ).toEqual([
       "Start",
       "untitled - Paint",
       "Winamp",
       "Fusteam",
+      "Fuse Messenger",
       "About FuseOS",
     ]);
   });

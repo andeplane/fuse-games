@@ -21,6 +21,8 @@ export interface Friend extends FriendCard {
   room?: { code: string; gameId: string };
   /** For an offline friend: when it last synced, rounded down to the hour so it is not a tracking signal. */
   lastSeen?: number;
+  /** Who sent the newest chat message between the two (a public id) and when, so a closed chat can pop up. */
+  lastMessage?: { from: string; at: number };
 }
 export interface FriendInvite {
   id: string;
@@ -56,7 +58,13 @@ export interface FriendsSyncBody {
   /** What the caller's screen calls it and the head it wears, so friends see it before any match is stored. */
   name?: string;
   avatarId?: string;
-  room?: { code: string; memberId: string; gameId?: string };
+  room?: {
+    code: string;
+    memberId: string;
+    token: string;
+    session: string;
+    gameId?: string;
+  };
   /**
    * The poll comes from a page that is not the one in a room (the FuseOS desktop around an embedded game): it keeps
    * the account online and leaves the stored room claim to the page that made it. Cannot be sent with `room`.

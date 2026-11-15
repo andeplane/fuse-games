@@ -444,6 +444,7 @@ const gameShape = shape({
       shots: array(shotRecord, MAX_ROUND_SHOTS),
       rating: optional(
         shape({
+          durationTicks: optional(integer),
           finishers: array(text, MAX_PLAYERS),
           standings: array(
             shape({
@@ -759,6 +760,8 @@ function gameInvariants(game: GameState): boolean {
     const { standings, finishers } = decided.rating;
     const ids = new Set(standings.map((p) => p.playerId));
     if (
+      (decided.rating.durationTicks !== undefined &&
+        decided.rating.durationTicks > decided.tick) ||
       standings.length < 2 ||
       ids.size !== standings.length ||
       new Set(finishers).size !== finishers.length ||

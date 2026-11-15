@@ -101,6 +101,10 @@ test("a match keeps each player's rolls, holds, busts and best turn, and reports
   fold(room, { a: [[HOLD, 3]] });
   assert.equal(room.history[0]!.tick, room.tick, "the round's decision tick");
   const receipt = roundResult(room, 1)!;
+  assert.deepEqual(receipt.roundDuration, {
+    version: 1,
+    ticks: room.history[0]!.durationTicks,
+  });
   assert.deepEqual(
     receipt.players.map((p) => [p.rolls, p.holds, p.busts, p.bestTurn]),
     [

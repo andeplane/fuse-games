@@ -3,5 +3,10 @@
   "screenshot": "gallery/hook-havok.jpg",
   "tagline": "Find your foothold. Take theirs.",
   "mark": "HH",
-  "accent": "#ff2e9d"
+  "accent": "#ff2e9d",
+  "screenshots": [
+    "gallery/hook-havok.jpg",
+    "gallery/hook-havok-menu.jpg",
+    "gallery/hook-havok-controls.jpg"
+  ]
 }

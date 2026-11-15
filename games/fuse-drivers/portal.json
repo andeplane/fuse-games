@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-drivers.jpg",
   "tagline": "Offroad racing with weapons",
   "mark": "FD",
-  "accent": "#ff9b3d"
+  "accent": "#ff9b3d",
+  "screenshots": [
+    "gallery/fuse-drivers.jpg",
+    "gallery/fuse-drivers-menu.jpg",
+    "gallery/fuse-drivers-controls.jpg"
+  ]
 }

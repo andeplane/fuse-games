@@ -62,30 +62,44 @@ describe("FriendsWindow", () => {
     expect(within(window).getByTestId("my-public-id")).toHaveTextContent(
       DEMO_ME.publicId,
     );
-    expect(within(window).getByText("Playing (1)")).toBeInTheDocument();
-    expect(within(window).getByText("Online (2)")).toBeInTheDocument();
-    expect(within(window).getByText("Away (1)")).toBeInTheDocument();
-    expect(within(window).getByText("Offline (2)")).toBeInTheDocument();
+    // The 1999 grouping: everyone signed in under Online, with "(Away)" or the game after the name.
+    expect(within(window).getByText("Online (4)")).toBeInTheDocument();
+    expect(within(window).getByText("Not Online (2)")).toBeInTheDocument();
+    expect(within(window).getByText("(Playing Fuseball)")).toBeInTheDocument();
+    expect(within(window).getByText("(Away)")).toBeInTheDocument();
     expect(
       within(window).getByText("Playing Fuseball · room AB42"),
     ).toBeInTheDocument();
+    for (const name of ["Add", "Send", "Invite", "Join"])
+      expect(
+        within(
+          within(window).getByRole("toolbar", { name: "Messenger" }),
+        ).getByRole("button", { name }),
+      ).toBeInTheDocument();
     expect(
-      within(window).getByText("4 of 6 buddies online"),
+      within(window).getByRole("button", { name: "My status: Online" }),
+    ).toBeInTheDocument();
+    expect(
+      within(window).getByRole("region", { name: "I want to" }),
+    ).toHaveTextContent("Send an Instant Message");
+    expect(
+      within(window).getByText("Online · 4 of 6 buddies online"),
     ).toBeInTheDocument();
     // A buddy's own status line (#665), as plain text.
     expect(within(window).getByText("brb, lag spike")).toBeInTheDocument();
-    expect(within(window).getAllByRole("img", { name: "Online" })).toHaveLength(
-      3, // two buddies and the player's own status
-    );
 
-    await user.click(within(window).getByRole("button", { name: "Join game" }));
+    // Select the playing buddy, then the toolbar's Join.
+    await user.click(
+      within(window).getByTestId(`buddy-${DEMO_BUDDIES[0]!.publicId}`),
+    );
+    await user.click(within(window).getByRole("button", { name: "Join" }));
     const game = await screen.findByRole("dialog", { name: "Fuseball" });
     expect(within(game).getByTitle("Fuseball")).toHaveAttribute(
       "src",
       "/fuse-riders/fuseball/?room=AB42",
     );
     // Joining the same room again brings that window forward rather than opening another.
-    await user.click(within(window).getByRole("button", { name: "Join game" }));
+    await user.click(within(window).getByRole("button", { name: "Join" }));
     expect(screen.getAllByRole("dialog", { name: "Fuseball" })).toHaveLength(1);
   });
 
@@ -125,9 +139,9 @@ describe("FriendsWindow", () => {
       "Fuse Messenger: signed out",
     );
     await user.click(
-      within(window).getByRole("button", { name: "Sign in with Google" }),
+      within(window).getByRole("button", { name: "Sign in to Fuse world" }),
     );
-    expect(await within(window).findByText("Playing (1)")).toBeInTheDocument();
+    expect(await within(window).findByText("Online (4)")).toBeInTheDocument();
     expect(presence.snapshot().account.kind).toBe("signed-in");
     expect(screen.getByTestId("friends-tray")).toHaveAccessibleName(
       "Fuse Messenger: 4 buddies online",
@@ -139,7 +153,7 @@ describe("FriendsWindow", () => {
     );
     expect(
       await within(window).findByRole("button", {
-        name: "Sign in with Google",
+        name: "Sign in to Fuse world",
       }),
     ).toBeInTheDocument();
   });
@@ -147,8 +161,11 @@ describe("FriendsWindow", () => {
   it("validates a player id before adding, then shows the request waiting", async () => {
     const { user } = renderFriends();
     const window = await dialog();
-    const input = within(window).getByLabelText("Add:");
-    const add = within(window).getByRole("button", { name: "Add" });
+    await user.click(within(window).getByRole("button", { name: "Add" }));
+    const form = within(window).getByRole("form", { name: "Add a Contact" });
+    const input = within(form).getByLabelText("Add a Contact by player id:");
+    expect(input).toHaveFocus();
+    const add = within(form).getByRole("button", { name: "Add" });
     expect(add).toBeDisabled();
     await user.type(input, "not-an-id");
     await user.click(add);
@@ -163,7 +180,8 @@ describe("FriendsWindow", () => {
       await within(window).findByText("Player abcdef"),
     ).toBeInTheDocument();
     expect(within(window).queryByRole("alert")).not.toBeInTheDocument();
-    expect(input).toHaveValue("");
+    // A sent request closes the Add a Contact box.
+    expect(input).not.toBeInTheDocument();
     await user.click(
       within(window).getByRole("button", {
         name: "Cancel request to Player abcdef",
@@ -185,7 +203,7 @@ describe("FriendsWindow", () => {
       within(window).getByRole("button", { name: "Accept PigChampion" }),
     );
     expect(within(window).queryByText("Requests")).not.toBeInTheDocument();
-    expect(within(window).getByText("Online (3)")).toBeInTheDocument();
+    expect(within(window).getByText("Online (6)")).toBeInTheDocument();
 
     const invites = within(window).getByRole("list", { name: "Invites" });
     expect(invites).toHaveTextContent("invited you to fuse-volley (VB77)");
@@ -243,10 +261,10 @@ describe("FriendsWindow", () => {
     expect(
       within(window).queryByText("LAN_party_Lars"),
     ).not.toBeInTheDocument();
-    expect(within(window).getByText("Offline (1)")).toBeInTheDocument();
+    expect(within(window).getByText("Not Online (1)")).toBeInTheDocument();
   });
 
-  it("pauses while a game window is open and says so", async () => {
+  it("keeps contacts available while a game window is open", async () => {
     const { presence } = renderFriends({
       windows: [
         friendsWindow,
@@ -260,11 +278,10 @@ describe("FriendsWindow", () => {
       ],
     });
     const window = await dialog();
-    expect(presence.snapshot().suspended).toBe(true);
-    expect(within(window).getByRole("status")).toHaveTextContent(
-      "A game window is open",
-    );
-    expect(within(window).getByText("In a game · demo")).toBeInTheDocument();
+    expect(presence.snapshot().suspended).toBe(false);
+    expect(
+      within(window).getByRole("button", { name: "My status: Online" }),
+    ).toHaveTextContent("(Online, demo)");
   });
 
   it("switches to the demo buddies and back from the sign-in screen and the File menu", async () => {
@@ -281,8 +298,8 @@ describe("FriendsWindow", () => {
       }),
     );
     expect(
-      await within(window).findByText("Online · demo"),
-    ).toBeInTheDocument();
+      await within(window).findByRole("button", { name: "My status: Online" }),
+    ).toHaveTextContent("(Online, demo)");
     await user.click(within(window).getByRole("menuitem", { name: "File" }));
     const demoItem = within(window).getByRole("menuitemcheckbox", {
       name: "Demo buddies",
@@ -291,19 +308,19 @@ describe("FriendsWindow", () => {
     await user.click(demoItem);
     expect(
       await within(window).findByRole("button", {
-        name: "Sign in with Google",
+        name: "Sign in to Fuse world",
       }),
     ).toBeInTheDocument();
     // The live service here cannot sign in; its message reaches the window.
     await user.click(
-      within(window).getByRole("button", { name: "Sign in with Google" }),
+      within(window).getByRole("button", { name: "Sign in to Fuse world" }),
     );
     expect(await within(window).findByRole("alert")).toHaveTextContent(
       "Sign-in is not available here.",
     );
   });
 
-  it("copies the player's id, joins on a double click and declines a request", async () => {
+  it("copies the player's id, explains demo chat and declines a request", async () => {
     const { user, timers, friendsDeps } = renderFriends();
     const window = await dialog();
     await user.click(
@@ -315,13 +332,15 @@ describe("FriendsWindow", () => {
       within(window).getByTestId(`buddy-${DEMO_BUDDIES[0]!.publicId}`),
     );
     expect(
-      await screen.findByRole("dialog", { name: "Fuseball" }),
+      await screen.findByRole("dialog", { name: "Demo contacts" }),
     ).toBeInTheDocument();
-    // An offline buddy has no game to join; a double click there does nothing.
+    // Offline contacts can also be selected for chat; demo contacts never send a live message.
     await user.dblClick(
       within(window).getByTestId(`buddy-${DEMO_BUDDIES[5]!.publicId}`),
     );
-    expect(screen.getAllByRole("dialog", { name: "Fuseball" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("dialog", { name: "Fuseball" }),
+    ).not.toBeInTheDocument();
 
     for (let i = 0; i < 4; i++) timers.fire(5_000);
     await user.click(
@@ -330,7 +349,7 @@ describe("FriendsWindow", () => {
       }),
     );
     expect(within(window).queryByText("Requests")).not.toBeInTheDocument();
-    expect(within(window).getByText("Online (2)")).toBeInTheDocument();
+    expect(within(window).getByText("Online (5)")).toBeInTheDocument();
   });
 
   it("has Help > About and File > Close", async () => {

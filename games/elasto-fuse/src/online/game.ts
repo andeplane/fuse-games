@@ -166,6 +166,7 @@ export interface Decided {
 export interface Room extends ManagedRoom<Settings> {
   tick: number;
   simulationTick: number;
+  matchStartTick: number;
   matchId: string;
   stage: RoomStage;
   /** The settings the current match plays with, fixed at its start. */
@@ -259,6 +260,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
   return {
     tick: 0,
     simulationTick: 0,
+    matchStartTick: 0,
     matchId,
     stage: "lobby",
     seats: new Map(),
@@ -313,6 +315,7 @@ function beginRace(room: Room): void {
 function beginMatch(room: Room): void {
   const seated = riders(room);
   if (seated.length < 1) return;
+  room.matchStartTick = room.simulationTick;
   room.roster = seated.map((seat, index) => ({
     id: seat.id,
     name: seat.name,
@@ -491,7 +494,7 @@ const SEAT_KEYS = [
   "away",
 ];
 const STAGES: readonly RoomStage[] = ["lobby", "running", "between", "over"];
-const FIELDS = 13;
+const FIELDS = 14;
 const seatOrder = (a: SeatRecord, b: SeatRecord) =>
   a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -518,6 +521,7 @@ export function encode(room: Room): unknown[] {
       : null,
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
+    room.matchStartTick,
   ];
 }
 
@@ -695,6 +699,7 @@ export function decode(
     rawDecided,
     rawWorld,
     simulationTick,
+    matchStartTick,
   ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay),
@@ -704,6 +709,8 @@ export function decode(
   if (
     !validMatchId(matchId) ||
     !uint32(simulationTick) ||
+    !uint32(matchStartTick) ||
+    matchStartTick > simulationTick ||
     // The clock moves the same steps every log tick, whatever the room is doing.
     simulationTick !== tick * STEPS_PER_TICK ||
     !STAGES.some((known) => known === stage) ||
@@ -752,7 +759,8 @@ export function decode(
       ) ||
       (stage === "over" && Object.keys(held).length > 0) ||
       (decided !== null &&
-        (decided.clock > simulationTick ||
+        (decided.clock < matchStartTick ||
+          decided.clock > simulationTick ||
           decided.winner !== roster[order(standings)[0]!]!.id))
     )
       return;
@@ -760,6 +768,7 @@ export function decode(
   return {
     tick,
     simulationTick,
+    matchStartTick,
     matchId,
     stage: stage as RoomStage,
     seats,

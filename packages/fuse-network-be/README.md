@@ -63,7 +63,11 @@ the sender told, and only a flood closes the socket. Paid work is metered
 separately: each room may publish 512 kB to another gateway, refilled at 51.2 kB a
 second, matching the bounded room-local window for bus retry IDs.
 Admission uses a separate 30-failures/hour/IP budget plus bounded pending work;
-successful joins do not consume it. See [abuse isolation](../../docs/design/signalling-abuse-isolation.md)
+successful joins do not consume it. Its local blocked-address cache holds at most
+10,000 entries. When full, it evicts an idle entry so a fresh address still reaches
+the authoritative shared allowance check; pending entries are never evicted.
+The structured `admission-map-saturated` log is emitted at most once per hour per
+instance, without address data. See [abuse isolation](../../docs/design/signalling-abuse-isolation.md)
 for ordering, limits and multi-instance concurrency boundaries.
 
 Games can mount account/history or other application routes without making the networking package depend on the game.

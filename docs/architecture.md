@@ -14,6 +14,8 @@ Every game's front door and waiting room use the shared `fuse-ui` main-menu and 
 
 The site root is FuseOS (`site/main.ts`, `packages/fuseos`), a Windows 98 desktop in React: one icon per game, each opening the game's page in an iframe window (`?open=<id>` deep links, window state in `localStorage`), plus Paint, Winamp, a Control Panel and the retro games under Start > Programs > Games. Vite builds its catalog and the in-game launcher from each game's `portal.json`, including its optional `screenshot` path, which the desktop shows behind a game while it loads. Every game has a dedicated page at `<base><game-id>/`, including Fuse Riders at `<base>fuse-riders/`. Root links with `room`, `solo` or `display` parameters still boot Riders for existing invites and bookmarks. The desktop loads no simulation or room connection; the launcher offers an **ALL GAMES** link back to it. [docs/fuseos/README.md](fuseos/README.md) describes the desktop itself: the boot screen, the programs, the About sheet's credits and the branding rule `tests/fuseos-branding.test.ts` enforces.
 
+Fusteam's screenshot carousel reads each portal entry's `screenshots`; its Leaderboard opens that game's Hall of Fame. Winamp, Fusteam and MSN Messenger open at startup, with the first completed cosmetic dial-up remembered. Messenger shares Firebase sign-in with the games. A validated same-origin [desktop bridge](fuseos/desktop-bridge.md) lets embedded games open Messenger, report their room and send invitations without exposing room or account credentials.
+
 ```text
 browser replica <------ WebRTC mesh ------> browser replica
          \                                 /
