@@ -60,6 +60,20 @@ export const DUKAMOK_SONGS = [
       "games/fusemania/charts/dukamok-originals/dukamok-beyond-abilities-v2.sm",
   },
   {
+    id: "dukamok-big-blue",
+    title: "Big Blue",
+    artist: "S.S.H.",
+    audio:
+      "https://storage.googleapis.com/andershaf-87-fuse-media/fusemania/dukamok-originals/dukamok-big-blue/1d1a7c75a097e3040f5f217c9da226b5c770824820d108a83a6542deca7ea760/Big_Blue.mp3",
+    audioIntegrity: {
+      bytes: 2540410,
+      sha256:
+        "1d1a7c75a097e3040f5f217c9da226b5c770824820d108a83a6542deca7ea760",
+    },
+    pack: "dukamok-originals",
+    simfile: "games/fusemania/charts/dukamok-originals/dukamok-big-blue.dwi",
+  },
+  {
     id: "dukamok-black-dragon",
     title: "Black Dragon",
     artist: "Rhapsody",
@@ -363,6 +377,20 @@ export const DUKAMOK_SONGS = [
     simfile: "games/fusemania/charts/dukamok-originals/dukamok-one-minutes.sm",
   },
   {
+    id: "dukamok-presto",
+    title: "Presto",
+    artist: "Osamu Kubota",
+    audio:
+      "https://storage.googleapis.com/andershaf-87-fuse-media/fusemania/dukamok-originals/dukamok-presto/8ccfce2addda025c379d246b5f10b9fc131047fe0cbae47b79ae39aef0b70626/Osamu%20Kubota%20-%20Presto.mp3",
+    audioIntegrity: {
+      bytes: 2020396,
+      sha256:
+        "8ccfce2addda025c379d246b5f10b9fc131047fe0cbae47b79ae39aef0b70626",
+    },
+    pack: "dukamok-originals",
+    simfile: "games/fusemania/charts/dukamok-originals/dukamok-presto.dwi",
+  },
+  {
     id: "dukamok-rain-of-a-thousand-flames",
     title: "Rain of a Thousand Flames",
     artist: "Rhapsody",
@@ -405,6 +433,21 @@ export const DUKAMOK_SONGS = [
     pack: "dukamok-originals",
     simfile:
       "games/fusemania/charts/dukamok-originals/dukamok-return-of-salieri.sm",
+  },
+  {
+    id: "dukamok-salieri-strikes-back",
+    title: "Salieri Strikes Back",
+    artist: "Warmen",
+    audio:
+      "https://storage.googleapis.com/andershaf-87-fuse-media/fusemania/dukamok-originals/dukamok-salieri-strikes-back/ba09bb992cde9fa7bd7382fe6a94d62a70fcdf0a4cb1972741bce145571541c5/Salieri_Strikes_Back.mp3",
+    audioIntegrity: {
+      bytes: 5107712,
+      sha256:
+        "ba09bb992cde9fa7bd7382fe6a94d62a70fcdf0a4cb1972741bce145571541c5",
+    },
+    pack: "dukamok-originals",
+    simfile:
+      "games/fusemania/charts/dukamok-originals/dukamok-salieri-strikes-back.dwi",
   },
   {
     id: "dukamok-scorpion-fire",
@@ -596,6 +639,20 @@ export const DUKAMOK_SONGS = [
     pack: "dukamok-originals",
     simfile:
       "games/fusemania/charts/dukamok-originals/dukamok-untitled-gabber-song.sm",
+  },
+  {
+    id: "dukamok-utopia",
+    title: "Utopia",
+    artist: "=)",
+    audio:
+      "https://storage.googleapis.com/andershaf-87-fuse-media/fusemania/dukamok-originals/dukamok-utopia/b2dee4446603b1a9e4686ed30d0ff97191f35becc1b570937f045d9ae4a053c0/Utopia.mp3",
+    audioIntegrity: {
+      bytes: 1997470,
+      sha256:
+        "b2dee4446603b1a9e4686ed30d0ff97191f35becc1b570937f045d9ae4a053c0",
+    },
+    pack: "dukamok-originals",
+    simfile: "games/fusemania/charts/dukamok-originals/dukamok-utopia.dwi",
   },
   {
     id: "dukamok-what-four",

@@ -9,10 +9,18 @@ import { PACKS_DATA, COVER_IDS } from "../src/app/packs-data.js";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-test("DukAmok Originals ships all 43 SM songs and every original four-arrow chart", () => {
-  assert.equal(DUKAMOK_SONGS.length, 43);
+test("DukAmok Originals ships all 47 songs and every original four-arrow chart", () => {
+  assert.equal(DUKAMOK_SONGS.length, 47);
+  assert.equal(
+    DUKAMOK_SONGS.filter((song) => song.simfile.endsWith(".sm")).length,
+    43,
+  );
+  assert.equal(
+    DUKAMOK_SONGS.filter((song) => song.simfile.endsWith(".dwi")).length,
+    4,
+  );
   const pack = PACKS_DATA.find((entry) => entry.id === "dukamok-originals");
-  assert.equal(pack?.songs.length, 43);
+  assert.equal(pack?.songs.length, 47);
   for (const spec of DUKAMOK_SONGS) {
     assert.ok(pack?.songs.includes(spec.id), spec.id);
     const original = readFileSync(`${repo}${spec.simfile}`, "utf8");
@@ -54,7 +62,23 @@ test("DukAmok Originals ships all 43 SM songs and every original four-arrow char
   }
 });
 
-test("DWI-only songs remain deferred until DWI support lands", () => {
-  for (const id of ["big-blue", "presto", "salieri-strikes-back", "utopia"])
-    assert.equal(LIBRARY.song(`dukamok-${id}`), undefined);
+test("the four DWI-only songs retain original difficulties and timing", () => {
+  for (const [id, meter, bpm] of [
+    ["big-blue", 12, 113],
+    ["presto", 12, 136],
+    ["salieri-strikes-back", 13, 241.25],
+    ["utopia", 11, 166],
+  ] as const) {
+    const song = LIBRARY.song(`dukamok-${id}`);
+    assert.ok(song, id);
+    assert.equal(song.charts[0]?.name, "Hard", id);
+    assert.equal(song.charts[0]?.meter, meter, id);
+    assert.equal(song.bpm[1], bpm, id);
+    assert.ok(song.charts[0]!.steps > 0, id);
+  }
+  assert.deepEqual(LIBRARY.song("dukamok-utopia")?.bpm, [88, 166]);
+  assert.deepEqual(
+    LIBRARY.song("dukamok-salieri-strikes-back")?.bpm,
+    [140, 241.25],
+  );
 });

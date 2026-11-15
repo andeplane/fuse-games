@@ -1,0 +1,2 @@
+# Imported native DWI files retain the supplied bytes, including CRLF line endings.
+games/fusemania/charts/dukamok-originals/*.dwi -text whitespace=cr-at-eol

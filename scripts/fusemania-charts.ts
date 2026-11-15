@@ -67,7 +67,8 @@ const readAnalysis = (id: string): Analysis =>
   parseAnalysis(readFileSync(analysisPath(id), "utf8"));
 
 async function analyze(song: SongSpec): Promise<void> {
-  if (!song.file) throw new Error(`${song.id}: analysis needs a local audio file`);
+  if (!song.file)
+    throw new Error(`${song.id}: analysis needs a local audio file`);
   const started = Date.now();
   const analysis = analyzeFile(song.id, song.file);
   mkdirSync(ANALYSIS, { recursive: true });
