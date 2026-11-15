@@ -15,6 +15,15 @@ with a uniform 1 px dark outline added around the art; `tests/fuseos-game-icons.
 | fuse-volley   | `public/games/fuse-volley/art/v1/ball.png`               |
 | hook-havok    | `games/hook-havok/art-source/props/brass-hook-source.png` |
 
+## Drawn in code (Canvas 2D paths at each size, 2026-11-15)
+
+| Icon       | Subject                                                                                   |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| fuse-surge | the cyan rider (helmet, dark visor, the fuse on top) hopping a red surge, as the game draws them |
+
+Drawn as filled paths on a 64 px and a 32 px canvas, then every pixel made fully opaque or fully clear and the same
+1 px dark outline added, so no image model or outside art is involved.
+
 ## Generated with GPT Image (`gpt-image-2`, 1024×1024, medium quality, 2026-11-14)
 
 The other games draw their sprites in code, so their icons were generated with each game's gallery capture or sprite

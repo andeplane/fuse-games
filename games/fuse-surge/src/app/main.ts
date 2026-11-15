@@ -1,7 +1,11 @@
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
-import { startGameAnalytics, createPlayMetrics } from "fuse-ui/play-metrics";
+import {
+  createPlayMetrics,
+  observeConfirmedPlay,
+  startGameAnalytics,
+} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
@@ -832,21 +836,35 @@ function room(solo: boolean): void {
   const callbacks: FuseSurgeCallbacks = {
     state(frame, roomSettings) {
       lastFrame = frame;
-      const players =
-        frame.stage === "lobby"
-          ? frame.seats.filter((seat) => !seat.watcher)
-          : frame.roster;
-      reportPlay({
-        matchId: frame.matchId,
-        active: frame.stage === "running",
-        ended: frame.stage === "over",
-        playerCount: players.length,
-        botCount: players.filter((player) => player.bot).length,
-        seated: players.some((player) => player.id === viewer.me),
-        mode: solo ? "solo" : roomSettings.display ? "shared" : "online",
-      });
+      // A round is the engine's: it is played while surges run (not in the countdown or the break), and it is
+      // complete once the break after it is in confirmed history, so a rolled-back ending is never counted.
+      observeConfirmedPlay(
+        reportPlay,
+        frame,
+        () => runtime.confirmedFrame(),
+        (each) => {
+          const players =
+            each.stage === "lobby"
+              ? each.seats.filter((seat) => !seat.watcher)
+              : each.roster;
+          const phase = each.stage === "lobby" ? undefined : each.world?.phase;
+          return {
+            matchId: each.matchId,
+            active: each.stage === "running",
+            ended: each.stage === "over",
+            round: each.world?.round ?? 1,
+            roundActive: each.stage === "running" && phase === "play",
+            roundEnded: phase === "break" || phase === "over",
+            playerCount: players.length,
+            botCount: players.filter((player) => player.bot).length,
+            seated: players.some((player) => player.id === viewer.me),
+            mode: solo ? "solo" : roomSettings.display ? "shared" : "online",
+          };
+        },
+      );
+      // How each round was decided, for the game's own questions (which ending is common, how often the clock runs out).
       for (const round of rounds(frame, viewer.me))
-        analytics.track("Round Ended", { ...round });
+        analytics.track("Round Decided", { ...round });
       settings = roomSettings;
       const next = present(frame, viewer);
       if (next.askName && remembered && !joinSent && !viewer.host) {
