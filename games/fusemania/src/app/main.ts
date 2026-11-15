@@ -807,6 +807,7 @@ function openTiming(): void {
 }
 
 function songHighscores(): void {
+  document.body.classList.add("fm-highscores-page");
   const scores = createSongLeaderboards(
     {
       catalog: async () =>
@@ -819,7 +820,22 @@ function songHighscores(): void {
         ).players,
     },
     document,
-    { openPlayer: social.openPlayer },
+    {
+      openPlayer: social.openPlayer,
+      playHref: (song, chart) =>
+        withFlags(
+          endpoints.appUrl(
+            `?solo=1&song=${encodeURIComponent(song)}&chart=${chart}&mode=${SCORE_MODE}`,
+          ),
+        ),
+      onViewChange: (song) => {
+        page.header.title.textContent = song
+          ? "Song leaderboard"
+          : "Song highscores";
+        page.back.textContent = song ? "All songs" : "Back";
+        page.back.setAttribute("aria-label", song ? "All songs" : "Back");
+      },
+    },
   );
   const page = createSubPage({
     title: "Song highscores",
@@ -827,6 +843,9 @@ function songHighscores(): void {
     content: [scores.element],
   });
   app.replaceChildren(header(), page.element);
+  page.back.onclick = (event) => {
+    if (scores.back()) event.preventDefault();
+  };
   backOnEscape(page.back);
   window.addEventListener("pagehide", scores.dispose, { once: true });
 }
