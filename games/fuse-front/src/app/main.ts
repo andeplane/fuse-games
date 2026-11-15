@@ -107,7 +107,7 @@ const social = createGameSocial({
 });
 const endpoints = createEndpoints(
   {
-    basePath: `${base}${GAME_ID}/`,
+    basePath: `${base}${GAME_ID.replaceAll("-", "")}/`,
     apiOrigin: import.meta.env.VITE_API_ORIGIN,
   },
   location.origin,

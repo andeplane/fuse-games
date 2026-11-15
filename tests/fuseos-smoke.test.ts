@@ -40,6 +40,8 @@ test("osUrl adds the ?open= deep link before mute and keeps what the URL had", (
 });
 
 test("isGameEmbed accepts the game's own page under any base, muted exactly when the OS is", () => {
+  assert.ok(isGameEmbed("/fuseriders/?mute", "fuse-riders", true));
+  assert.ok(!isGameEmbed("/fuse-riders/?mute", "fuse-riders", true));
   assert.ok(isGameEmbed("/fuseball/?mute", "fuseball", true));
   assert.ok(isGameEmbed("/fuse-riders/fuseball/?mute", "fuseball", true));
   assert.ok(isGameEmbed("./fuseball/", "fuseball", false));

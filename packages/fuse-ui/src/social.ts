@@ -162,8 +162,10 @@ export function createGameSocial(options: GameSocialOptions) {
     options.base === "./" || options.base === "" ? "../" : options.base;
   const endpoints = createEndpoints(
     {
-      basePath: new URL(base + options.gameId + "/", win.location.href)
-        .pathname,
+      basePath: new URL(
+        base + options.gameId.replaceAll("-", "") + "/",
+        win.location.href,
+      ).pathname,
       apiOrigin: options.apiOrigin,
     },
     win.location.origin,

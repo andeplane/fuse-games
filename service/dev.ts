@@ -115,8 +115,8 @@ export function devBanner(at: {
 FUSE GAMES — online rooms, locally
 ${actual === port ? "" : `\nPort ${port} is in use; using ${actual} instead.\n`}
 Home:      ${base}/          (game gallery)
-Riders:    ${base}/fuse-riders/ (create or join a room)
-Play solo: ${base}/fuse-riders/?solo=1
+Riders:    ${base}/fuseriders/ (create or join a room)
+Play solo: ${base}/fuseriders/?solo=1
 Health:    ${base}/api/health${timing}
 
 Rooms and match history are in memory and vanish when this stops. Serving ${staticDirectory}

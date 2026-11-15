@@ -353,7 +353,7 @@ apply.disabled = true;
 tuning.append(apply);
 const endpoints = createEndpoints(
   {
-    basePath: `${import.meta.env.BASE_URL}hook-havok/`,
+    basePath: `${import.meta.env.BASE_URL}hookhavok/`,
     apiOrigin: import.meta.env.VITE_API_ORIGIN,
   },
   location.origin,

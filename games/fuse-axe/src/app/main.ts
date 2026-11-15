@@ -127,7 +127,7 @@ const canvasSurface: MakeSurface<HTMLCanvasElement> = (width, height) => {
 };
 const endpoints = createEndpoints(
   {
-    basePath: `${import.meta.env.BASE_URL}${GAME}/`,
+    basePath: `${import.meta.env.BASE_URL}${GAME.replaceAll("-", "")}/`,
     apiOrigin: import.meta.env.VITE_API_ORIGIN,
   },
   location.origin,

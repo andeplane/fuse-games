@@ -89,7 +89,7 @@ const reportPlay = createPlayMetrics(analytics.track, () => performance.now());
 const BASE = siteBase(import.meta.env.BASE_URL, import.meta.url);
 const endpoints = createEndpoints(
   {
-    basePath: `${BASE}${GAME}/`,
+    basePath: `${BASE}${GAME.replaceAll("-", "")}/`,
     apiOrigin: import.meta.env.VITE_API_ORIGIN,
   },
   location.origin,

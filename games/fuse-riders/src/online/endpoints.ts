@@ -6,7 +6,7 @@ function configured() {
       basePath:
         base === "./" || base === ""
           ? new URL("./", location.href).pathname
-          : `${base}fuse-riders/`,
+          : `${base}fuseriders/`,
       apiOrigin: import.meta.env.VITE_API_ORIGIN,
     },
     location.origin,
