@@ -51,14 +51,14 @@ function fixture() {
 describe("desktop bridge", () => {
   it("only accepts the registered origin, source, game and session; routes friends to Messenger", () => {
     const f = fixture();
-    const status = { type: "status", gameId: "fuseball", room: "AB42" };
+    const status = { type: "status", gameId: "fuseball", room: "AB42AA" };
     f.receive(status, {}, origin);
     f.receive(status, f.peer, "https://evil.test");
     f.receive({ ...status, gameId: "other" });
     f.receive({ ...status, session: "old" });
     expect(f.rooms.at(-1)).toBeUndefined();
     f.receive(status);
-    expect(f.rooms.at(-1)).toEqual({ gameId: "fuseball", code: "AB42" });
+    expect(f.rooms.at(-1)).toEqual({ gameId: "fuseball", code: "AB42AA" });
     f.receive({ type: "friends" });
     expect(f.opened()).toBe(1);
     f.registration.dispose();
@@ -67,13 +67,13 @@ describe("desktop bridge", () => {
   });
   it("waits for an applied invite result, ignores unrelated replies and cancels on room changes", async () => {
     const f = fixture();
-    f.receive({ type: "status", gameId: "fuseball", room: "AB42" });
+    f.receive({ type: "status", gameId: "fuseball", room: "AB42AA" });
     let completed = false;
     const promise = f.bridge.invite(publicId, publicId).then(() => {
       completed = true;
     });
     const request = f.sent.at(-1)!;
-    expect(request).toMatchObject({ type: "invite", publicId, room: "AB42" });
+    expect(request).toMatchObject({ type: "invite", publicId, room: "AB42AA" });
     f.receive({ type: "invited", requestId: request.requestId, ok: true }, {});
     await Promise.resolve();
     expect(completed).toBe(false);
@@ -81,7 +81,7 @@ describe("desktop bridge", () => {
     await promise;
     expect(completed).toBe(true);
     const stale = f.bridge.invite(publicId, publicId);
-    f.receive({ type: "status", gameId: "fuseball", room: "CD43" });
+    f.receive({ type: "status", gameId: "fuseball", room: "CD43AA" });
     await expect(stale).rejects.toThrow("changed rooms");
     expect(f.scheduler.pending).toBe(0);
   });
@@ -90,14 +90,14 @@ describe("desktop bridge", () => {
     await expect(f.bridge.invite(publicId, publicId)).rejects.toThrow(
       "join a room",
     );
-    f.receive({ type: "status", gameId: "fuseball", room: "AB42" });
+    f.receive({ type: "status", gameId: "fuseball", room: "AB42AA" });
     const timeout = f.bridge.invite(publicId, publicId);
     f.scheduler.advance(10_000);
     await expect(timeout).rejects.toThrow("did not answer");
     const navigated = f.bridge.invite(publicId, publicId);
     f.registration.reconnect();
     await expect(navigated).rejects.toThrow("changed rooms");
-    f.receive({ type: "status", gameId: "fuseball", room: "AB42" });
+    f.receive({ type: "status", gameId: "fuseball", room: "AB42AA" });
     expect(f.rooms.at(-1)).toBeUndefined();
     f.bridge.dispose();
     expect(f.scheduler.pending).toBe(0);
@@ -109,7 +109,7 @@ describe("desktop bridge", () => {
       type: "connect",
       session: f.sent[0]?.session,
     });
-    f.receive({ type: "status", gameId: "fuseball", room: "AB42" });
+    f.receive({ type: "status", gameId: "fuseball", room: "AB42AA" });
     const otherSent: Record<string, unknown>[] = [];
     const other: MessagePeer = {
       postMessage: (message) =>
@@ -124,16 +124,16 @@ describe("desktop bridge", () => {
         type: "status",
         session: otherSent[0]?.session,
         gameId: "fuse-craft",
-        room: "CD43",
+        room: "CD43AA",
       },
     });
     expect(f.rooms.at(-1)?.gameId).toBe("fuse-craft");
     f.receive({ type: "friends" });
-    expect(f.rooms.at(-1)).toEqual({ gameId: "fuseball", code: "AB42" });
+    expect(f.rooms.at(-1)).toEqual({ gameId: "fuseball", code: "AB42AA" });
     const invited = f.bridge.invite(publicId, "b".repeat(20));
     expect(f.sent.at(-1)).toMatchObject({
       type: "invite",
-      room: "AB42",
+      room: "AB42AA",
       accountId: "b".repeat(20),
     });
     f.receive({

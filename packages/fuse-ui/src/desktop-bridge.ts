@@ -47,7 +47,7 @@ export type DesktopMessage =
 const id = (value: unknown): value is string =>
   typeof value === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(value);
 export const bridgeRoomCode = (value: unknown): value is string =>
-  typeof value === "string" && /^[A-Z]{2}[0-9]{2}$/.test(value);
+  typeof value === "string" && /^[A-Z0-9]{6}$/.test(value);
 export function desktopMessage(value: unknown): DesktopMessage | undefined {
   if (!value || typeof value !== "object") return;
   const v = value as Record<string, unknown>;
