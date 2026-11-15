@@ -24,6 +24,10 @@ const REQUIRED: ReadonlyArray<{ piece: string; uses: RegExp }> = [
   { piece: "the app portal (createAppPortal)", uses: /\bcreateAppPortal\b/ },
 ];
 
+/** Source with comments removed, so a name mentioned in a comment does not count as using it. */
+const stripComments = (text: string): string =>
+  text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
 const sourceOf = (dir: string): string => {
   let text = "";
   const walk = (path: string) => {
@@ -31,7 +35,7 @@ const sourceOf = (dir: string): string => {
       const child = join(path, name);
       if (statSync(child).isDirectory()) walk(child);
       else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name))
-        text += readFileSync(child, "utf8");
+        text += stripComments(readFileSync(child, "utf8"));
     }
   };
   walk(dir);
@@ -49,6 +53,11 @@ test("there are portal games to check", () => {
 for (const id of portalGames) {
   test(`${id} uses the shared fuse-ui top bar, room, results screen and portal`, () => {
     const source = sourceOf(join(gamesDir, id, "src"));
+    assert.match(
+      source,
+      /from "fuse-ui/,
+      `games/${id} imports nothing from fuse-ui`,
+    );
     const missing = REQUIRED.filter(({ uses }) => !uses.test(source)).map(
       ({ piece }) => piece,
     );
