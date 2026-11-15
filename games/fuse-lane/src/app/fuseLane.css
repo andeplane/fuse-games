@@ -1129,10 +1129,9 @@ body.fl-page .fl-card:disabled .fl-card-icon {
   box-shadow: 0 1px 2px rgba(16, 26, 34, 0.12);
 }
 
-/* Sheets in the middle: briefing, handoff, result, paused */
+/* Sheets in the middle: briefing, handoff, paused */
 .fl-briefing,
 .fl-handoff,
-.fl-result,
 .fl-paused {
   position: relative;
   z-index: 5;
@@ -1142,12 +1141,10 @@ body.fl-page .fl-card:disabled .fl-card-icon {
   width: min(36rem, 100%);
   overflow: hidden;
 }
-.fl-briefing,
-.fl-result {
+.fl-briefing {
   padding: 0;
 }
 .fl-briefing > .fl-banner,
-.fl-result > .fl-banner,
 .fl-paused > .fl-banner {
   padding: 0.9rem 1rem;
   color: #fff;
@@ -1329,19 +1326,6 @@ body.fl-page .fl-card:disabled .fl-card-icon {
 body.fl-page .fl-handoff-go {
   width: 100%;
   min-height: 3.25rem;
-}
-.fl-result .fl-actions {
-  padding: 0 1rem 1rem;
-}
-.fl-result-lines {
-  margin: 0;
-  /* Each line carries its own place ("1. Ada: ..."): no second number from the list. */
-  padding: 0 1rem;
-  list-style: none;
-  line-height: 1.45;
-}
-.fl-result .fl-ready-note {
-  padding: 0 1rem;
 }
 
 .fl-toast {

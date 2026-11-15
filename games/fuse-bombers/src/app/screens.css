@@ -71,7 +71,12 @@ kbd {
   opacity: 0.75;
 }
 
-/* Centred panels; results, winner and pause dim the arena around them. */
+/* The local page has no `fui-app` root: this one only lends the shared results screen its button styles. */
+.fb-results-host {
+  display: contents;
+}
+
+/* Centred panels; a round's results and pause dim the arena around them. */
 .panel {
   position: absolute;
   left: 50%;

@@ -11,6 +11,7 @@ import "@fontsource-variable/nunito";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import "./fuseLane.css";
 import QRCode from "qrcode";
 import {
@@ -310,11 +311,8 @@ function local(match: LocalMatch, resumed = false): void {
           saveChecklist(store, checks);
         },
       },
-      again: {
-        label: "PLAY AGAIN",
-        run: () => startLocal(playedChoice(store, match.room.matchId)),
-      },
-      back: { label: "MENU", run: () => toMenu() },
+      again: () => startLocal(playedChoice(store, match.room.matchId)),
+      back: () => toMenu(),
     },
     screenOptions,
   );
@@ -601,14 +599,10 @@ function room(): void {
     () => runtime,
     {
       controls: [gameMenu.element],
-      again: {
-        label: "REMATCH",
-        run: () => runtime.command({ type: "action", action: "rematch" }),
-      },
-      back: {
-        label: "LOBBY",
-        run: () => runtime.command({ type: "action", action: "lobby" }),
-      },
+      again: () => runtime.command({ type: "action", action: "rematch" }),
+      back: () => runtime.command({ type: "action", action: "lobby" }),
+      leave: () => leave.click(),
+      friends: social.friends,
       tvNote: `Join on your phone: ${endpoints.appUrl(`?room=${code}`).replace(/^https?:\/\//, "")}`,
     },
     screenOptions,

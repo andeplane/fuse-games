@@ -64,10 +64,7 @@ export const TEXT = {
   reached: (round: number, last: number) =>
     `STAGE ${round} OF ${last} · ${STAGE_NAMES[round] ?? ""}`,
   waitHost: "The host sets out again",
-  hostChoice: "Set out again, or back to the lobby",
   continueButton: "CONTINUE",
-  rematchButton: "REMATCH",
-  lobbyButton: "LOBBY",
   tallyHead: ["", "HERO", "DAMAGE", "KO"],
 } as const;
 
@@ -89,23 +86,48 @@ export interface TallyRow {
   damage: number;
   knockdowns: number;
 }
+/** A hero's line in the run's final standings. A seat that left keeps its slot's colour and shows its tag. */
+export interface ResultRow {
+  id: string;
+  slot: number;
+  name: string;
+  you: boolean;
+  bot: boolean;
+  /** By damage dealt, then knockdowns; equals share a place. */
+  place: number;
+  hero: HeroKind;
+  damage: number;
+  knockdowns: number;
+}
+/** The run's end, as the shared results screen shows it. */
+export interface Result {
+  kind: "victory" | "defeat";
+  title: string;
+  /** What happened: the Ember Axe made whole, or the stage the party reached. */
+  line: string;
+  /** The run's stages. */
+  stages: number;
+  rows: ResultRow[];
+  /** This device may set out again (REMATCH) or go back to the lobby. */
+  host: boolean;
+  /** What everybody else waits for. */
+  waiting: string;
+}
 /**
- * The card over the game while the stage flow holds it: a cleared stage's tally, camp's caption, the continue
- * countdown, or the run's end with its summary. `seconds` counts down whole seconds (rounded up) where a clock runs.
+ * The card over the game while the stage flow holds it: a cleared stage's tally, camp's caption or the continue
+ * countdown. `seconds` counts down whole seconds (rounded up).
  */
 export interface Card {
-  kind: "clear" | "camp" | "continue" | "victory" | "defeat";
+  kind: "clear" | "camp" | "continue";
   title: string;
   /** The stage, or what happened. */
   line: string;
-  seconds: number | null;
+  seconds: number;
   /** What the clock runs to, or what to do now. */
   hint: string;
   rows: TallyRow[];
   /** This device plays a hero in the run and may vote to continue it. */
   canContinue: boolean;
-  /** The host may set out again (REMATCH) or go back to the lobby from here. */
-  canRematch: boolean;
 }
 /** A shared screen's phone: its seat, in the seat's colour (its marker over the hero on the TV), and its hero. */
 export interface Controller {
@@ -117,6 +139,8 @@ export interface Model {
   /** The lobby, the game, or (a seat's page while a shared screen shows the game) the phone's controller. */
   screen: "lobby" | "play" | "controller";
   card: Card | null;
+  /** The run's end: the results screen over the page, on a phone's controller too. */
+  result: Result | null;
   askName: boolean;
   seated: boolean;
   /** This device steers a hero in the running world, so the game's keys are its own. */
@@ -192,6 +216,7 @@ export function present(view: View, viewer: Viewer): Model {
   return {
     screen,
     card: card(view, viewer, inWorld && mine.connected && !mine.away),
+    result: result(view, viewer),
     askName: !mine && !viewer.display && !viewer.solo,
     seated,
     playing,
@@ -267,13 +292,11 @@ function rows(view: View, of: "stage" | "run"): TallyRow[] {
 
 /**
  * The stage flow's card: the tally between stages, then camp's caption (small, over the top of the camp the heroes
- * play in), the countdown while every hero is out (a vote for a present hero of the run, a wait for everyone else),
- * and the outcome with the run's summary once it is over (the host's REMATCH and lobby). None while the party fights,
- * or in the lobby.
+ * play in) and the countdown while every hero is out (a vote for a present hero of the run, a wait for everyone
+ * else). None while the party fights, in the lobby, or once the run is over (`result`).
  */
 function card(view: View, viewer: Viewer, hero: boolean): Card | null {
-  const seconds = Math.ceil(view.countdown / TICKS_PER_SECOND),
-    host = viewer.host && !viewer.display;
+  const seconds = Math.ceil(view.countdown / TICKS_PER_SECOND);
   if (view.stage === "between" && view.world?.camp)
     return {
       kind: "camp",
@@ -283,7 +306,6 @@ function card(view: View, viewer: Viewer, hero: boolean): Card | null {
       hint: TEXT.onward,
       rows: [],
       canContinue: false,
-      canRematch: false,
     };
   if (view.stage === "between")
     return {
@@ -294,7 +316,6 @@ function card(view: View, viewer: Viewer, hero: boolean): Card | null {
       hint: view.round < view.lastStage ? TEXT.onward : TEXT.won,
       rows: rows(view, "stage"),
       canContinue: false,
-      canRematch: false,
     };
   if (view.stage === "running" && view.countdown > 0)
     return {
@@ -309,23 +330,54 @@ function card(view: View, viewer: Viewer, hero: boolean): Card | null {
           : TEXT.pressAttack,
       rows: [],
       canContinue: hero,
-      canRematch: false,
     };
-  if (view.stage === "over") {
-    const won = view.outcome === "victory";
-    return {
-      kind: won ? "victory" : "defeat",
-      title: won ? TEXT.victory : TEXT.defeat,
-      // A run is won only past its last stage, Vorhal's Keep: its card tells of the Ember Axe made whole.
-      line: won ? TEXT.restored : TEXT.reached(view.round, view.lastStage),
-      seconds: null,
-      hint: host ? TEXT.hostChoice : TEXT.waitHost,
-      rows: rows(view, "run"),
-      canContinue: false,
-      canRematch: host,
-    };
-  }
   return null;
+}
+
+/** The run's end: the outcome and every hero of the run with its numbers, the hardest hitter first. */
+function result(view: View, viewer: Viewer): Result | null {
+  if (view.stage !== "over") return null;
+  const won = view.outcome === "victory",
+    host = viewer.host && !viewer.display;
+  const rows = view.tally
+    .map((row) => {
+      const seat = view.seats.find(
+        (each) => !each.watcher && each.slot === row.seat,
+      );
+      return {
+        id: seat?.id ?? `seat:${row.seat}`,
+        slot: row.seat,
+        name: seat?.name ?? tag(row.seat),
+        you: !!seat && !viewer.display && seat.id === viewer.me,
+        bot: !!seat?.bot,
+        place: 1,
+        hero: row.kind,
+        ...row.run,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.damage - a.damage || b.knockdowns - a.knockdowns || a.slot - b.slot,
+    );
+  rows.forEach((row, index) => {
+    const above = rows[index - 1];
+    row.place =
+      above &&
+      above.damage === row.damage &&
+      above.knockdowns === row.knockdowns
+        ? above.place
+        : index + 1;
+  });
+  return {
+    kind: won ? "victory" : "defeat",
+    title: won ? TEXT.victory : TEXT.defeat,
+    // A run is won only past its last stage, Vorhal's Keep: its line tells of the Ember Axe made whole.
+    line: won ? TEXT.restored : TEXT.reached(view.round, view.lastStage),
+    stages: view.lastStage,
+    rows,
+    host,
+    waiting: host ? "" : TEXT.waitHost,
+  };
 }
 
 /**

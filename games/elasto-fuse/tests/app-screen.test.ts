@@ -387,12 +387,22 @@ test("a rider who never reached the flower is listed without a time or points", 
   const model = present(view(room), viewer("b"));
   assert.equal(model.result!.title, "ADA WINS");
   assert.deepEqual(
-    model.result!.rows.map((row) => [row.place, row.name, row.detail, row.you]),
+    model.result!.rows.map((row) => [
+      row.place,
+      row.id,
+      row.name,
+      row.you,
+      row.time,
+      row.maps,
+    ]),
     [
-      [1, "Ada", "0:05.00", false],
-      [2, "Bo", "DNF", true],
+      [1, "a", "Ada", false, 500, 1],
+      [2, "b", "Bo", true, null, 0],
     ],
   );
+  assert.equal(model.result!.winnerSlot, 0);
+  assert.equal(model.result!.rounds, 1);
+  assert.equal(model.result!.level, LEVELS[0]!.name.toUpperCase());
   assert.equal(model.status, "2ND PLACE");
   assert.equal(model.result!.host, false);
   assert.match(model.result!.waiting, /Waiting for the host/);
@@ -415,24 +425,25 @@ test("a tour's result ranks by points and says how many maps each rider finished
   assert.equal(stageOf(room), "over");
   const model = present(view(room), viewer("b"));
   assert.equal(model.result!.title, "ADA WINS");
-  assert.deepEqual(model.result!.rows, [
-    {
-      place: 1,
-      slot: 0,
-      name: "Ada",
-      you: false,
-      detail: "3 / 3 MAPS",
-      points: "27 PTS",
-    },
-    {
-      place: 2,
-      slot: 1,
-      name: "Bo",
-      you: true,
-      detail: "3 / 3 MAPS",
-      points: "24 PTS",
-    },
-  ]);
+  assert.equal(model.result!.winnerSlot, 0);
+  assert.equal(model.result!.rounds, 3);
+  assert.deepEqual(
+    model.result!.rows.map((row) => [
+      row.place,
+      row.name,
+      row.you,
+      row.bot,
+      row.points,
+      row.wins,
+      row.maps,
+      row.time,
+      row.crashes,
+    ]),
+    [
+      [1, "Ada", false, false, 27, 2, 3, centiseconds(960 + 800 + 800), 0],
+      [2, "Bo", true, false, 24, 1, 3, centiseconds(800 + 960 + 960), 0],
+    ],
+  );
   assert.equal(model.table, null);
 });
 
@@ -454,31 +465,28 @@ test("a solo ride ends on its time, the best for the level, and where NEXT MAP g
   const time = centiseconds(888);
   const first = present(view(room), me, undefined).result!;
   assert.equal(first.title, LEVELS[0]!.name.toUpperCase());
-  assert.deepEqual(first.lines, ["TIME 0:11.10", "NEW BEST!"]);
   assert.deepEqual(first.solo, { level: 0, next: 1, finished: true });
   assert.equal(first.host, true);
-  assert.deepEqual(first.rows, []);
-  // Slower than the best there was.
-  assert.deepEqual(present(view(room), me, time - 100).result!.lines, [
-    "TIME 0:11.10",
-    "BEST 0:10.10",
-  ]);
-  // Faster.
-  assert.deepEqual(present(view(room), me, time + 1).result!.lines, [
-    "TIME 0:11.10",
-    "NEW BEST!",
-  ]);
-  // Equal is not a new best.
-  assert.deepEqual(present(view(room), me, time).result!.lines, [
-    "TIME 0:11.10",
-    "BEST 0:11.10",
-  ]);
-  // Crashes on the way are told.
-  room.world!.riders[0]!.deaths = 2;
-  assert.equal(
-    present(view(room), me, time).result!.lines[2],
-    "2 crashes on the way",
+  assert.equal(first.best, null);
+  assert.equal(first.winnerSlot, 0);
+  assert.deepEqual(
+    first.rows.map((row) => [row.place, row.you, row.time, row.crashes]),
+    [[1, true, time, 0]],
   );
+  // The best there was before the ride comes along, for the report to compare.
+  assert.equal(present(view(room), me, time - 100).result!.best, time - 100);
+  // Out of time: no time, no winner.
+  const late = soloRoom(0);
+  const world = late.world!;
+  while (world.phase === "countdown") fold(late);
+  world.step = world.close + CLOSE_LAG;
+  fold(late);
+  assert.equal(stageOf(late), "over");
+  const lost = present(view(late), me, time).result!;
+  assert.equal(lost.title, "TIME IS UP");
+  assert.equal(lost.winnerSlot, -1);
+  assert.equal(lost.rows[0]!.time, null);
+  assert.equal(lost.solo!.finished, false);
   // The last level's NEXT MAP is the first.
   const last = soloRoom(LEVELS.length - 1);
   finishRace(last, [500]);

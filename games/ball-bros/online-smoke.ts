@@ -145,14 +145,18 @@ try {
   });
   await Promise.all([phase(a, "over", 140000), phase(b, "over", 140000)]);
   assert.equal(
-    await a.locator(".overlay h2").innerText(),
-    await b.locator(".overlay h2").innerText(),
+    await a
+      .locator(".fui-results:not([hidden]) .fui-results-victory h2")
+      .innerText(),
+    await b
+      .locator(".fui-results:not([hidden]) .fui-results-victory h2")
+      .innerText(),
   );
   assert.deepEqual(
     await a.locator(".scorecard strong").allTextContents(),
     await b.locator(".scorecard strong").allTextContents(),
   );
-  await a.getByRole("button", { name: "PLAY AGAIN", exact: true }).click();
+  await a.locator('.fui-results-actions button[data-action="rematch"]').click();
   await Promise.all([phase(a, "running"), phase(b, "running")]);
   console.log(
     "PASS individual: create retry, lobby/bots, two real peers, controls, reload recovery, agreed result and rematch.",

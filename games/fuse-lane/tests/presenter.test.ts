@@ -707,14 +707,21 @@ test("results online: you win, someone else wins, the leader after the week limi
   assert.equal(mine.result!.title, "YOU WIN!");
   assert.equal(mine.result!.waiting, "");
   assert.equal(mine.headline, "");
-  assert.match(
-    mine.result!.lines[0]!,
-    /^1\. Ada: all goals in week 2, net worth \$[\d,]+$/,
+  const [first, second] = mine.result!.rows;
+  assert.deepEqual(
+    [first!.place, first!.name, first!.you, first!.bot, first!.finished],
+    [1, "Ada", true, false, 2],
   );
-  assert.match(
-    mine.result!.lines[1]!,
-    /^2\. Bo: \d+% of goals, net worth \$[\d,]+$/,
+  assert.equal(first!.goals, 100);
+  assert.ok(first!.netWorth > 0);
+  assert.deepEqual(
+    [second!.place, second!.name, second!.you, second!.finished],
+    [2, "Bo", false, 0],
   );
+  assert.ok(second!.goals < 100);
+  assert.equal(mine.result!.winnerSlot, first!.slot);
+  assert.equal(mine.result!.local, false);
+  assert.equal(mine.result!.weeks, room.week);
   const theirs = present(fuseLaneView(room), BO);
   assert.equal(theirs.result!.title, "ADA WINS");
   assert.equal(theirs.result!.host, false);
@@ -739,10 +746,17 @@ test("results on one device: the winners by name when several people play, YOU W
   const pair = finished(started(TURNS), ["a"]);
   assert.equal(present(fuseLaneView(pair), DEVICE).result!.title, "ADA WINS");
   const both = finished(started(TURNS), ["a", "b"]);
-  assert.equal(
-    present(fuseLaneView(both), DEVICE).result!.title,
-    "ADA & BO WIN",
+  const shared = present(fuseLaneView(both), DEVICE).result!;
+  assert.equal(shared.title, "ADA & BO WIN");
+  assert.deepEqual(
+    shared.rows.map((row) => [row.place, row.you]),
+    [
+      [1, false],
+      [1, false],
+    ],
+    "a shared win is a shared place, and a passed device is nobody's",
   );
+  assert.deepEqual([shared.winnerSlot, shared.local], [-1, true]);
 
   const solo = () => {
     const room = createRoom("solo", TURNS);

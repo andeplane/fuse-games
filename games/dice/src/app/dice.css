@@ -369,31 +369,7 @@ body.dice-display .dice-die {
   --die: clamp(8rem, 22vw, 14rem);
 }
 
-/* Result and toast */
-.dice-result {
-  display: grid;
-  gap: var(--fui-space-3);
-  width: min(32rem, 100%);
-  margin: 0 auto;
-  padding: var(--fui-space-4);
-  background: var(--fui-panel);
-  border: 0.125rem solid var(--fui-yellow);
-  border-radius: var(--fui-radius-panel);
-  box-shadow: 0 0 2rem #ffe46b40;
-  text-align: center;
-}
-.dice-result-title {
-  margin: 0;
-  color: var(--fui-yellow);
-  font: 1.25rem/1.4 var(--fui-font-pixel);
-}
-.dice-result-lines {
-  margin: 0;
-  padding-left: 1.5rem;
-  text-align: left;
-  line-height: 1.7;
-}
-/* Over the top of the die, so a bust never covers whose turn it is. */
+/* Toast: over the top of the die, so a bust never covers whose turn it is. */
 .dice-toast {
   position: absolute;
   left: 50%;

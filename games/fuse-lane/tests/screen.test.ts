@@ -86,6 +86,9 @@ interface Options {
   width?: number;
   height?: number;
   checklistHooks?: boolean;
+  /** An online room's page lends the result its Leave and the room's friends. */
+  leave?: boolean;
+  friends?: Record<string, string>;
 }
 /**
  * The game screen over a match on this device, laid out at `width` × `height`: `render` shows the presenter's model
@@ -102,12 +105,15 @@ function harness(options: Options = {}) {
     width = 1280,
     height = 720,
     checklistHooks = true,
+    leave = false,
+    friends,
   } = options;
   const match = LocalMatch.create(setup(humans, bots));
   const plays: unknown[][] = [];
   const calls = {
     again: 0,
     back: 0,
+    leave: 0,
     folds: [] as boolean[],
     hides: [] as [string, boolean][],
   };
@@ -126,8 +132,21 @@ function harness(options: Options = {}) {
   };
   const hooks: ScreenHooks = {
     controls: [dom.document.createElement("button")],
-    again: { label: "PLAY AGAIN", run: () => calls.again++ },
-    back: { label: "MENU", run: () => calls.back++ },
+    again: () => calls.again++,
+    back: () => calls.back++,
+    ...(leave ? { leave: () => calls.leave++ } : {}),
+    ...(friends
+      ? {
+          friends: {
+            publicIdOfMember: (id: string) => friends[id],
+            friendButton: (publicId: string) => {
+              const add = dom.document.createElement("button");
+              add.textContent = `+ ADD FRIEND ${publicId}`;
+              return add;
+            },
+          },
+        }
+      : {}),
     ...(checklistHooks
       ? {
           checklist: {
@@ -595,7 +614,7 @@ test("the you panel: the clock opens it with money, job, chips, tips and goals; 
   h.render({
     ...news,
     hud: { ...news.hud, notices: ["Later news"] },
-    result: { title: "YOU WIN!", lines: [], host: true, waiting: "" },
+    result: RESULT,
   });
   assert.equal(you.hidden, true);
   // No HUD: the panel closes and stays closed.
@@ -652,7 +671,7 @@ test("the tip pill walks you to its place, and steps aside for a panel, the you 
   assert.equal(pill.hidden, true, "a panel is open");
   h.render({
     ...withTip,
-    result: { title: "", lines: [], host: true, waiting: "" },
+    result: RESULT,
   });
   assert.equal(pill.hidden, true, "a card is up");
   h.render({ ...model, tip: undefined });
@@ -1014,45 +1033,122 @@ test("a handoff names who is next and starts their week; their HUD then says who
   assert.equal(h.$(".fl-week").textContent, `WEEK 1 · ${week.hud!.name}`);
 });
 
-test("the result: title, standings and the host's buttons; a guest waits", () => {
+const RESULT: NonNullable<ScreenModel["result"]> = {
+  title: "ADA WINS",
+  weeks: 12,
+  rows: [
+    {
+      id: "p1",
+      slot: 0,
+      name: "Ada",
+      you: true,
+      bot: false,
+      place: 1,
+      goals: 100,
+      finished: 12,
+      netWorth: 5200,
+      degrees: 2,
+      shifts: 30,
+    },
+    {
+      id: "p2",
+      slot: 1,
+      name: "Bo",
+      you: false,
+      bot: false,
+      place: 2,
+      goals: 61,
+      finished: 0,
+      netWorth: 900,
+      degrees: 0,
+      shifts: 12,
+    },
+  ],
+  winnerSlot: 0,
+  local: true,
+  host: true,
+  waiting: "",
+};
+
+test("the result on this device: the shared results screen with the standings, PLAY AGAIN and MENU, and no Leave", () => {
   const h = harness();
   const model = h.render();
-  const result = {
-    title: "YOU WIN!",
-    lines: ["1. Ada", "2. Bot 2"],
-    host: true,
-    waiting: "",
-  };
-  h.render({ ...model, result });
-  assert.equal(h.$(".fl-result").hidden, false);
-  assert.equal(h.$(".fl-result-title").textContent, "YOU WIN!");
-  const lines = h.$$(".fl-result-lines li");
+  const results = dom.$(".fui-results");
+  assert.equal(results.hidden, true);
+  h.render({ ...model, result: RESULT });
+  assert.equal(results.hidden, false);
+  assert.equal(dom.$(".fui-results-victory h2").textContent, "ADA WINS");
+  const rows = dom.$$(".fui-results-standings tbody tr");
   assert.deepEqual(
-    lines.map((line) => line.textContent),
-    result.lines,
+    rows.map((row) =>
+      [...row.querySelectorAll("td")].map((cell) => cell.textContent),
+    ),
+    [
+      ["01", "100%", "$5,200", "2", "30"],
+      ["02", "61%", "$900", "0", "12"],
+    ],
   );
-  assert.equal(h.$(".fl-result .fl-actions").hidden, false);
-  assert.equal(h.$(".fl-result .fl-ready-note").hidden, true);
-  const [back, again] = h.$$<HTMLButtonElement>(
-    ".fl-result .fl-actions button",
+  assert.equal(dom.$(".fui-results-back").hidden, true);
+  const [back, again] = dom.$$<HTMLButtonElement>(
+    ".fui-results-actions button",
   );
   assert.deepEqual(
-    [back!.textContent, again!.textContent],
-    ["MENU", "PLAY AGAIN"],
+    [back!.textContent, again!.textContent, again!.className],
+    ["MENU", "PLAY AGAIN", "is-primary"],
   );
   again!.click();
   back!.click();
   assert.deepEqual([h.calls.again, h.calls.back], [1, 1]);
-  h.render({
-    ...model,
-    result: { ...result, host: false, waiting: "Waiting for the host" },
-  });
-  assert.equal(h.$$(".fl-result-lines li")[0], lines[0], "the same lines");
-  assert.equal(h.$(".fl-result .fl-actions").hidden, true);
+  h.render({ ...model, result: RESULT });
   assert.equal(
-    h.$(".fl-result .fl-ready-note").textContent,
-    "Waiting for the host",
+    dom.$$(".fui-results-standings tbody tr")[0],
+    rows[0],
+    "the same report",
   );
+  h.render(model);
+  assert.equal(results.hidden, true);
+});
+
+test("the result in a room: a guest waits and can leave, another player gets a friend button once their account is known, and a newcomer keeps the name card", () => {
+  const friends: Record<string, string> = {};
+  const h = harness({ viewer: ONLINE, leave: true, friends });
+  const model = h.render();
+  const result = {
+    ...RESULT,
+    local: false,
+    host: false,
+    waiting: "Waiting for the host to start a rematch",
+  };
+  h.render({ ...model, result });
+  assert.equal(dom.$$(".fui-results-actions button").length, 0);
+  assert.equal(
+    dom.$(".fui-results-status").textContent,
+    "Waiting for the host to start a rematch",
+  );
+  assert.equal(dom.$$(".fui-results-name button").length, 0);
+  friends.p2 = "pub-2";
+  friends.p1 = "pub-1";
+  h.render({ ...model, result });
+  assert.deepEqual(
+    dom.$$(".fui-results-name button").map((add) => add.textContent),
+    ["+ ADD FRIEND pub-2"],
+  );
+  const leave = dom.$<HTMLButtonElement>(".fui-results-back");
+  assert.deepEqual([leave.hidden, leave.textContent], [false, "Leave"]);
+  leave.click();
+  assert.equal(h.calls.leave, 1);
+  h.render({ ...model, result: { ...result, host: true, waiting: "" } });
+  assert.deepEqual(
+    dom
+      .$$<HTMLButtonElement>(".fui-results-actions button")
+      .map((action) => [action.dataset.action, action.textContent]),
+    [
+      ["lobby", "Back to lobby"],
+      ["rematch", "REMATCH"],
+    ],
+  );
+  h.render({ ...model, askName: true, result });
+  assert.equal(dom.$(".fui-results").hidden, true);
 });
 
 test("each animation frame sizes the canvas to the screen and draws the board, with the camera on you", () => {
@@ -1121,7 +1217,7 @@ test("the HUD's pieces keep the board's free area clear; behind a card the last 
   );
   h.render({
     ...model,
-    result: { title: "", lines: [], host: true, waiting: "" },
+    result: RESULT,
   });
   dom.place(h.$(".fl-clock"), { width: 0, height: 0 });
   h.frame();

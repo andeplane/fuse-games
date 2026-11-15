@@ -1,4 +1,4 @@
-import { elementsFor } from "fuse-ui";
+import { createResultsScreen, elementsFor } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -23,7 +23,8 @@ import { view } from "../engine/view.js";
 import { createArena } from "../engine/state.js";
 import { Controls, keyboardButton, gameplayKey } from "./controls.js";
 import type { Audio } from "./audio.js";
-import { present } from "./presenter.js";
+import { present, type Model } from "./presenter.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { roomPanel } from "./room-panel.js";
 import { roomModel } from "./room-model.js";
 import { NAME_KEY, roomFailure, type Store } from "./session.js";
@@ -60,6 +61,11 @@ export interface ScreenOptions {
   qr(link: string): Promise<string>;
   audio: Pick<Audio, "muted" | "unlock" | "play" | "destroy">;
   radio?: Radio;
+  /** The results screen's friend buttons, in a room. */
+  friends?: {
+    publicIdOfMember(memberId: string): string | undefined;
+    friendButton(publicId: string): HTMLElement;
+  };
   renderer(parent: HTMLElement): ArenaRenderer;
   runtime(callbacks: Callbacks<RoomView, Impact, Settings>): Client;
   now(): number;
@@ -108,12 +114,13 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     runtime?.stop();
     options.retry();
   };
-  const leave = el("button", "LEAVE", "quiet-button");
-  leave.onclick = () => {
+  const exit = () => {
     cancel();
     runtime?.stop();
     options.home();
   };
+  const leave = el("button", "LEAVE", "quiet-button");
+  leave.onclick = exit;
   top.append(retry, leave);
   const heading = el("section", "", "heading");
   heading.append(
@@ -218,11 +225,55 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     root.insertBefore(status, heading);
     status.classList.add("room-status");
   }
-  const returnLobby = el("button", "BACK TO LOBBY", "quiet-button");
-  returnLobby.hidden = true;
-  returnLobby.onclick = () =>
-    runtime?.command({ type: "action", action: "lobby" });
-  overlay.append(returnLobby);
+  // The result: the shared results screen over the page, on a phone controller and the TV too.
+  const results = createResultsScreen({
+    document,
+    // The screen covers the top bar: whoever is not the host still has a way out.
+    onBack: exit,
+    backText: "Leave",
+    onAction: (id) => {
+      if (id === "rematch") void begin();
+      else runtime?.command({ type: "action", action: "lobby" });
+    },
+  });
+  root.append(results.element);
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  function showResult(result: Model["result"]): void {
+    if (!result) {
+      if (results.open) results.hide();
+      shownResult = "";
+      return;
+    }
+    const friends = result.solo ? undefined : options.friends;
+    // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+    const shown = JSON.stringify([
+      { ...result, host: false, waiting: "" },
+      result.rows.map((row) => friends?.publicIdOfMember(row.id)),
+    ]);
+    const first = !shownResult;
+    if (shown !== shownResult) {
+      shownResult = shown;
+      results.show(
+        resultReport(result, {
+          color: colorCss,
+          ...(friends
+            ? {
+                friend: (id: string) => {
+                  const publicId = friends.publicIdOfMember(id);
+                  return publicId ? friends.friendButton(publicId) : undefined;
+                },
+              }
+            : {}),
+        }),
+      );
+    }
+    results.update(resultBar(result));
+    if (first)
+      results.actions
+        .querySelector<HTMLButtonElement>("button.is-primary")
+        ?.focus();
+  }
   const identity = el("p", "", "controller-identity");
   root.insertBefore(identity, controlsRow);
   const powers = el("p", "", "power-status");
@@ -348,10 +399,10 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       identity.style.color = m.slot === undefined ? "" : colorCss(m.slot);
       identity.hidden = m.lobby || options.online.display;
       restart.hidden = true;
-      start.hidden = !m.manage;
-      returnLobby.hidden = !m.over || !m.manage;
-      overlay.hidden = !m.over;
+      // In a room the overlay is only the arena's retry; a result is the results screen's.
+      overlay.hidden = true;
       if (m.lobby) {
+        showResult(undefined);
         powers.textContent = "";
         powers.hidden = true;
         previousHud = "";
@@ -362,7 +413,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     const model = present(
       v,
       options.online ? (runtime?.self ?? "") : undefined,
+      !!runtime?.canManage && !options.online?.display,
     );
+    showResult(model?.result);
     if (!model) return;
     const key = JSON.stringify(model);
     if (key === previousHud) return;
@@ -383,13 +436,9 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     powers.textContent = model.effects;
     powers.hidden = !model.effects;
     toast.textContent = model.toast;
-    if (model.over) {
+    if (model.result) {
       playing = false;
       cancel();
-      overlay.hidden = false;
-      overlayTitle.textContent = model.title;
-      overlayText.textContent = model.result;
-      start.textContent = "PLAY AGAIN";
       status.textContent = "Round complete";
     }
   }
@@ -468,6 +517,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     } catch (error) {
       graphicsFailed = true;
       playing = false;
+      // The retry is on the overlay, under the results screen.
+      showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
       if (panel) panel.element.hidden = true;
@@ -563,6 +614,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       runtime?.stop();
       runtime = undefined;
       playing = false;
+      showResult(undefined);
       overlay.hidden = false;
       layout.hidden = false;
       if (panel) panel.element.hidden = true;

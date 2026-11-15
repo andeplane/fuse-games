@@ -2,6 +2,7 @@ import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/social.css";
+import "fuse-ui/results.css";
 import { createTopBar } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import { createPlayMetrics, startGameAnalytics } from "fuse-ui/play-metrics";
@@ -110,6 +111,7 @@ function render() {
         displayLink: link(`?room=${online.code}&display=1`),
       },
       store: playerStore,
+      ...(online ? { friends: social.friends } : {}),
       settings,
       qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 240 }),
       audio: (activeAudio = new Audio(!soundEnabled)),

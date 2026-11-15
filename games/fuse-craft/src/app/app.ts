@@ -79,10 +79,14 @@ import {
   REPORT_METRICS,
   TEAM_NAMES,
   clock,
-  reportMarkup,
+  breakdownMarkup,
+  chartPanelMarkup,
+  findingsMarkup,
   reportPlayers,
   type ReportMetric,
+  type ReportPlayer,
 } from "./match-report.js";
+import { matchResult, resultBar, resultReport } from "./result-report.js";
 import { POWERUP_PRESENTATION } from "../engine/powerups.js";
 import {
   isBuildKind,
@@ -120,7 +124,11 @@ import type {
   OpeningChoice,
 } from "./contracts.js";
 import { isOpeningChoice } from "./contracts.js";
-import { createGameMenu, createRoundControls } from "fuse-ui";
+import {
+  createGameMenu,
+  createResultsScreen,
+  createRoundControls,
+} from "fuse-ui";
 
 const CRAFT_CONTROLS = [
   {
@@ -207,6 +215,11 @@ export interface AppDependencies {
   portal?: () => HTMLElement;
   /** Shared account and friends controls. */
   social?: () => HTMLElement;
+  /** Friend controls for the results screen: a room member's account and its button. */
+  friends?: {
+    publicIdOfMember(memberId: string): string | undefined;
+    friendButton(publicId: string): HTMLElement;
+  };
   /** Draws random openings; Math.random unless a test injects one. */
   random?: () => number;
   animationClock: () => number;
@@ -253,7 +266,6 @@ export function actionCue(action: string | undefined): SoundCue | null {
     action === "auto-expand" ||
     action === "charge" ||
     action === "fullscreen" ||
-    action === "toggle-report" ||
     action.startsWith("particle-")
   )
     return "toggle";
@@ -328,8 +340,15 @@ export function mountFuseCraft(
   let tutorialError: string | null = null;
   // The control focused before How to play opened over a match.
   let helpReturn: HTMLElement | null = null;
-  // The end-of-match report: open or not, and which chart it shows.
-  let report = { open: false, metric: "territory" as ReportMetric, match: "" };
+  // The end-of-match report: which chart it shows.
+  let reportMetric: ReportMetric = "territory";
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  /** The world and players the chart was drawn from, for its metric tabs. */
+  let shownReport: {
+    world: Readonly<World>;
+    players: readonly ReportPlayer[];
+  } | null = null;
   let noticeTick = -1;
   let noticeMatch = "";
   let panel: CommandPanel = "inspect";
@@ -370,6 +389,29 @@ export function mountFuseCraft(
     },
   });
   const roundControls = createRoundControls(controlsOptions);
+  // The result: the shared results screen over the battlefield.
+  const results = createResultsScreen({
+    document: root.ownerDocument,
+    // Online, whoever is not the host still has a way out of the room.
+    onBack: () => showMenu(),
+    backText: "Leave",
+    onAction: (id) => {
+      if (id === "menu") showMenu();
+      else if (id === "lobby") online?.lobby();
+      else if (online) online.rematch();
+      else restart();
+    },
+  });
+  // Smokes and tests find the result by the old card's id.
+  results.element.id = "match-result";
+  const reportPart = (className: string) => {
+    const part = root.ownerDocument.createElement("div");
+    part.className = className;
+    return part;
+  };
+  const reportFindings = reportPart("report-part"),
+    reportChart = reportPart("report-part"),
+    reportBreakdown = reportPart("match-report");
 
   function stopAnimation() {
     if (frame !== null) dependencies.cancelFrame(frame);
@@ -520,20 +562,6 @@ export function mountFuseCraft(
           );
     return openings;
   }
-  function openingsMarkup(
-    world: Readonly<World>,
-    players: readonly { id: string; name: string; color: string }[],
-  ): string {
-    const openings = aiOpenings(world);
-    if (!openings.size) return "";
-    return `<p class="result-openings">${[...openings]
-      .map(([id, kind]) => {
-        const p = players.find((q) => q.id === id);
-        return `<span style="--team:${p?.color ?? "#63cfff"}">${escape(p?.name ?? id)} played <strong>${escape(OPENINGS[kind].name)}</strong></span>`;
-      })
-      .join(" · ")}</p>`;
-  }
-
   /** The dominance countdown: who holds the dominant share and for how long. */
   function renderDominance(world: Readonly<World>) {
     const banner = root.querySelector<HTMLElement>("#dominance-banner");
@@ -801,7 +829,7 @@ export function mountFuseCraft(
     return `<main class="game-layout" aria-label="${escape(title ?? "Neural field")} battlefield" ${pending ? "inert" : ""}>
       <section class="board-shell">
       <div id="nd-viewport" class="board-scroll"><svg id="nd-board" class="nd-board" tabindex="0" aria-label="Hex board. Use arrow keys to move selection."></svg><canvas id="nd-light" class="nd-light" aria-hidden="true"></canvas></div>
-      <div id="dominance-banner" class="dominance-banner" role="status" hidden></div><div id="match-result" class="match-result" role="status" hidden></div><aside id="tutorial-coach" class="tutorial-coach" aria-live="polite" hidden></aside>
+      <div id="dominance-banner" class="dominance-banner" role="status" hidden></div><aside id="tutorial-coach" class="tutorial-coach" aria-live="polite" hidden></aside>
       </section>
       <aside id="game-sidebar" class="game-sidebar"></aside><div id="craft-menu"></div></main><div id="game-modal">${modal()}</div>`;
   }
@@ -1098,47 +1126,66 @@ export function mountFuseCraft(
     const svg = root.querySelector<SVGSVGElement>("#nd-board");
     const sidebar = root.querySelector<HTMLElement>("#game-sidebar");
     if (!svg || !sidebar) return;
-    const result = root.querySelector<HTMLElement>("#match-result");
-    if (result) {
-      result.hidden = !world.finished;
-      result.classList.toggle("expanded", world.finished && report.open);
-      if (world.finished) {
-        if (report.match !== world.matchId)
-          report = { ...report, open: false, match: world.matchId };
-        const title =
-          world.winnerId === null
-            ? "Draw"
-            : !playing
-              ? `${sideName(world, world.winnerId)} wins`
-              : world.winnerId === self
-                ? "Victory"
-                : "Defeat";
-        const winner = world.winnerId
-          ? world.winnerId === self
-            ? "You"
-            : sideName(world, world.winnerId)
-          : "";
-        const how =
-          world.winnerId === null
-            ? "Every brain was destroyed."
-            : world.victory === "dominance"
-              ? `${winner} held a dominant share of the cortex for a minute.`
-              : !playing
-                ? `${winner} destroyed the last rival brain.`
-                : world.winnerId === self
-                  ? "The last rival brain has been destroyed."
-                  : "Your brain has been destroyed.";
-        const seats = online?.room().seats ?? [];
-        const players = reportPlayers(
-          world,
-          self,
-          (id) => seats.find((seat) => seat.id === id)?.name,
-        );
+    if (!world.finished) {
+      if (results.open) results.hide();
+      shownResult = "";
+      shownReport = null;
+    } else {
+      const layout = root.querySelector(".game-layout");
+      if (layout && results.element.parentElement !== layout)
+        layout.append(results.element);
+      const room = online?.room();
+      const players = reportPlayers(
+        world,
+        self,
+        (id) => room?.seats.find((seat) => seat.id === id)?.name,
+      );
+      const result = matchResult(world, players, {
+        self,
+        bot: (id) =>
+          room ? !!room.seats.find((seat) => seat.id === id)?.bot : id !== self,
+        openings: new Map(
+          [...aiOpenings(world)].map(([id, kind]) => [id, OPENINGS[kind].name]),
+        ),
+        room: room ? { host: room.manager } : null,
+      });
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        world.matchId,
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) =>
+          dependencies.friends?.publicIdOfMember(row.id),
+        ),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        shownReport = { world, players };
+        updateContent(reportFindings, findingsMarkup(world, players, self));
         updateContent(
-          result,
-          `<strong>${title}</strong><p>${escape(how)}</p><small>${clock(world.tick)} elapsed</small>${openingsMarkup(world, players)}<div class="button-row"><button data-action="toggle-report" class="secondary" aria-expanded="${report.open}">${report.open ? "Hide report" : "Match report"}</button>${online ? (online.room().manager ? '<button data-action="rematch-room">Rematch</button><button data-action="lobby-room" class="secondary">Lobby</button>' : '<span class="room-wait">Waiting for the host…</span>') : `<button data-action="reset">${playing ? "Play again" : "Watch again"}</button>`}<button data-action="leave" class="secondary">${online ? "Leave room" : "Menu"}</button></div>${report.open ? reportMarkup(world, players, self, report.metric) : ""}`,
+          reportChart,
+          chartPanelMarkup(world, players, reportMetric),
+        );
+        updateContent(reportBreakdown, breakdownMarkup(world, players));
+        results.show(
+          resultReport(result, {
+            friend: (id) => {
+              const publicId = dependencies.friends?.publicIdOfMember(id);
+              return publicId
+                ? dependencies.friends?.friendButton(publicId)
+                : undefined;
+            },
+            findings: [reportFindings],
+            chart: [reportChart],
+            breakdown: [reportBreakdown],
+          }),
         );
       }
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus?.();
     }
     updateContent(sidebar, sidebarMarkup(world));
     // Keep the menu outside the reconciled HUD so focused controls survive ticks.
@@ -1822,15 +1869,20 @@ export function mountFuseCraft(
         if (id) online?.removeBot(id);
       } else if (action === "start-room") online?.start();
       else if (action === "rematch-room") online?.rematch();
-      else if (action === "toggle-report") {
-        report = { ...report, open: !report.open };
-        renderGame();
-      } else if (action === "report-metric") {
+      else if (action === "report-metric") {
         const metric =
           target.closest<HTMLElement>("[data-metric]")?.dataset.metric;
         const chosen = REPORT_METRICS.find((m) => m.id === metric);
-        if (chosen) report = { ...report, metric: chosen.id };
-        renderGame();
+        if (chosen) reportMetric = chosen.id;
+        if (shownReport)
+          updateContent(
+            reportChart,
+            chartPanelMarkup(
+              shownReport.world,
+              shownReport.players,
+              reportMetric,
+            ),
+          );
       } else if (action === "lobby-room") online?.lobby();
       else if (action === "leave-room") showMenu();
       else if (action === "copy-room-link" && online) {
@@ -2132,6 +2184,8 @@ export function mountFuseCraft(
   function onKeyDown(event: KeyboardEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
     if (gameMenu.isOpen()) return;
+    // The results screen covers the game: no camera or command key acts behind it.
+    if (results.open) return;
     // How to play is modal: no game shortcut acts behind it.
     if (helpOpen && screen === "game") return;
     if (pending) {

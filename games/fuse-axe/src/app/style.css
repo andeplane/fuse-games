@@ -338,7 +338,7 @@ body.fa-phone .fa-live {
   image-rendering: pixelated;
 }
 
-/* ---- the stage flow's card over the game: a stage's tally, the continue countdown, the run's end ---- */
+/* ---- the stage flow's card over the game: a stage's tally, camp's caption, the continue countdown ---- */
 .fa-card {
   --edge: var(--fa-gold);
   position: absolute;
@@ -362,8 +362,7 @@ body.fa-phone .fa-live {
   font: 10px/1.6 var(--fui-font-pixel, monospace);
 }
 
-.fa-card[data-kind="continue"],
-.fa-card[data-kind="defeat"] {
+.fa-card[data-kind="continue"] {
   --edge: var(--fa-ember);
 }
 

@@ -94,14 +94,53 @@ test("a finished race shows the winner and offers the host another", () => {
   room.race = {
     ...race,
     phase: "finished",
-    trucks: race.trucks.map((truck) => ({ ...truck, finishedTick: race.tick })),
+    trucks: race.trucks.map((truck) => ({
+      ...truck,
+      finishedTick: race.countdownEndTick + 600,
+    })),
   };
   fold(room);
   const model = presentTable(fuseDriversView(room), viewer());
   assert.equal(model.screen, "results");
   const results = defined(model.results, "results");
-  assert.equal(results.rows.length, 2);
+  // Both crossed the line on the same tick: they share first place and nobody is named the winner.
+  assert.equal(results.title, "DEAD HEAT");
+  assert.equal(results.winnerTruck, -1);
+  assert.deepEqual(
+    results.rows.map((row) => [row.name, row.you, row.place, row.truck]),
+    [
+      ["Ada", true, 1, 0],
+      ["Bo", false, 1, 1],
+    ],
+  );
   assert.ok(results.host);
+  // One truck a second behind: places split, and the winner is named with a race time.
+  const finished = defined(room.race, "race");
+  room.race = {
+    ...finished,
+    trucks: finished.trucks.map((truck) =>
+      truck.slot === 1
+        ? { ...truck, finishedTick: truck.finishedTick + 30, kills: 2 }
+        : truck,
+    ),
+  };
+  const split = defined(
+    presentTable(fuseDriversView(room), viewer({ me: "b" })).results,
+    "results",
+  );
+  assert.equal(split.title, "Ada WINS");
+  assert.equal(split.winnerTruck, 0);
+  assert.deepEqual(
+    split.rows.map((row) => [row.place, row.kills, row.you]),
+    [
+      [1, 0, false],
+      [2, 2, true],
+    ],
+  );
+  assert.equal(
+    defined(split.rows[1], "row").time - defined(split.rows[0], "row").time,
+    1,
+  );
   const guest = presentTable(fuseDriversView(room), viewer({ host: false }));
   assert.equal(
     defined(guest.results, "results").waiting,
