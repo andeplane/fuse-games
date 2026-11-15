@@ -1,5 +1,5 @@
 {
-  "about": "Each cover's Challenge aims at its original's hardest chart in the DDR/ITG packs: steps per second and meter.",
+  "about": "Each cover's Hard aims at its original's hardest chart in the DDR/ITG packs (steps per second); its Challenge goes up to 1.75 times that. The file keeps its name from when Challenge was the top chart. The meters here are the originals' own, for reference: a chart's meter comes from pack-meters.json.",
   "afronova": {
     "original": "DDR 3rd Mix Plus: AFRONOVA, Heavy",
     "nps": 4.67,

@@ -1,10 +1,18 @@
-import { button, elementsFor } from "fuse-ui";
+import { button, createDialog, elementsFor } from "fuse-ui";
 import {
   BATTLE_MODE,
   SCORE_MODE,
   type ChartInfo,
   type SongInfo,
 } from "../engine/index.js";
+import {
+  DEFAULT_SORT,
+  badgeText,
+  SORT_CHOICES,
+  sortLabel,
+  sortSongs,
+  type SongSort,
+} from "./song-sort.js";
 
 /**
  * The song select: a carousel of song covers over the selected song's details, its charts as chips and the mode
@@ -68,6 +76,11 @@ export interface SongPickerOptions {
    * the levels.
    */
   tools?: readonly Node[];
+  /**
+   * Starts the selected song. Shows a PLAY button on the song's details (for the host) and makes Enter start it.
+   * Leave out for a picker that has no start of its own.
+   */
+  onPlay?(): void;
 }
 export interface SongPicker {
   element: HTMLElement;
@@ -199,6 +212,9 @@ interface Chip {
   bestText: string;
 }
 
+const isButton = (node: unknown): node is HTMLElement =>
+  !!node && (node as Element).tagName === "BUTTON";
+
 export function createSongPicker(options: SongPickerOptions): SongPicker {
   const { songs } = options;
   const el = elementsFor(options.document);
@@ -309,10 +325,10 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
   const tabs = el("div", "", "fm-picker-packs");
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", "Song packs");
-  const order = [...rows.values()];
+  let order = [...rows.values()];
+  const packed = order.map((row) => row.song);
   const packTabs = packs.flatMap((pack, index) => {
-    const first = order.find((row) => row.pack === index);
-    if (!first) return [];
+    if (!order.some((row) => row.pack === index)) return [];
     const element = push("fm-picker-pack");
     element.setAttribute("role", "tab");
     element.setAttribute("aria-selected", "false");
@@ -326,19 +342,79 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       ),
     );
     element.addEventListener("click", () => {
-      if (shown?.host && rows.get(shown.song)?.pack !== index)
+      const first = order.find((row) => row.pack === index);
+      if (first && shown?.host && rows.get(shown.song)?.pack !== index)
         options.onSong(first.song.id);
     });
     tabs.append(element);
-    return [{ index, name: pack.name, first: first.song.id, element }];
+    return [{ index, name: pack.name, element }];
   });
   tabs.hidden = packTabs.length === 0;
   const top = el("div", "", "fm-picker-top"),
     tools = el("div", "", "fm-picker-tools");
-  tools.append(...(options.tools ?? []));
+  const sorter = createSorter();
+  tools.append(sorter.button, ...(options.tools ?? []));
+  // The sort button is a host's: until the picker is shown to one, an empty strip stays hidden.
+  sorter.button.hidden = true;
   tools.hidden = !options.tools?.length;
   top.append(tabs, tools);
-  wheel.append(top, before, list, after);
+
+  // The slider under the carousel: one stop for each song in the carousel's order, and a badge over the thumb with
+  // what the order is by (the title's letter, a meter, a BPM, a pack). Dragging it turns the carousel.
+  const scrub = el("div", "", "fm-picker-scrub");
+  const slider = el("input", "", "fm-picker-slider") as HTMLInputElement;
+  slider.type = "range";
+  slider.min = "0";
+  slider.step = "1";
+  slider.setAttribute("aria-label", "Song position");
+  const badge = el("span", "", "fm-picker-badge");
+  badge.setAttribute("aria-hidden", "true");
+  scrub.append(slider, badge);
+  slider.addEventListener("input", () => {
+    if (!shown?.host) return;
+    const id = order[Number(slider.value)]?.song.id;
+    if (id && id !== shown.song) options.onSong(id);
+    // Until the choice comes back the thumb stays where the drag put it; the badge follows it.
+    syncScrub(Number(slider.value));
+  });
+  // A button that was clicked or tapped does not keep the focus ring: the keys are the carousel's, Enter plays.
+  root.addEventListener("click", (event) => {
+    const target = event.target;
+    if (event.detail > 0 && isButton(target)) target.blur();
+  });
+  // The slider is for a finger or a mouse: the keys are the carousel's, so it never keeps the focus.
+  slider.tabIndex = -1;
+  const release = () => {
+    slider.blur();
+    // Whatever the room made of the drag, the thumb ends on the song that is selected.
+    syncScrub();
+  };
+  slider.addEventListener("pointerup", release);
+  slider.addEventListener("pointercancel", release);
+  /** Puts the thumb and the badge on `index` of the carousel's order, or on the selected song. */
+  function syncScrub(index?: number) {
+    const at =
+      index ??
+      (shown ? order.findIndex((row) => row.song.id === shown!.song) : -1);
+    const last = Math.max(0, order.length - 1);
+    const clamped = Math.min(Math.max(at, 0), last);
+    slider.max = String(last);
+    if (slider.value !== String(clamped)) slider.value = String(clamped);
+    const row = order[clamped];
+    if (row) {
+      const text = badgeText(row.song, sorter.current(), packs[row.pack]?.name);
+      write(badge, text);
+      slider.setAttribute(
+        "aria-valuetext",
+        `${clamped + 1} of ${order.length}, ${row.song.title}`,
+      );
+    }
+    scrub.style.setProperty(
+      "--fm-scrub",
+      String(last === 0 ? 0 : clamped / last),
+    );
+  }
+  wheel.append(top, before, list, after, scrub);
 
   // A swipe or a sideways scroll turns the carousel, one song for each stretch of the drag.
   let dragFrom: { id: number; x: number } | undefined;
@@ -495,7 +571,13 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     names = el("div", "", "fm-picker-names");
   names.append(packName, title, artist, facts);
   head.append(art, names);
-  detail.append(head, chartsLabel, charts);
+  const play = push("fm-picker-play");
+  play.textContent = "PLAY";
+  play.hidden = true;
+  play.addEventListener("click", () => {
+    if (shown?.host && rows.has(shown.song)) options.onPlay?.();
+  });
+  detail.append(head, ...(options.onPlay ? [play] : []), chartsLabel, charts);
   if (!hideMode) detail.append(modes);
   detail.append(note);
   root.append(wheel, detail);
@@ -603,6 +685,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       row?.element.setAttribute("aria-selected", "true");
       showSong(row?.song);
       place(next.song);
+      syncScrub();
       for (const tab of packTabs) {
         const selected = String(tab.index === row?.pack);
         if (tab.element.getAttribute("aria-selected") !== selected)
@@ -632,14 +715,156 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
       root.dataset.host = String(next.host);
       if (next.host) list.removeAttribute("aria-disabled");
       else list.setAttribute("aria-disabled", "true");
-      before.disabled = after.disabled = !next.host;
+      before.disabled = after.disabled = slider.disabled = !next.host;
+      play.hidden = !next.host;
       for (const tab of packTabs) tab.element.disabled = !next.host;
+      sorter.button.hidden = !next.host || order.length < 2;
+      tools.hidden = !options.tools?.length && sorter.button.hidden;
+      if (!next.host) sorter.close();
       for (const button of modeButtons) button.element.disabled = !next.host;
       note.hidden = next.host;
     }
     if (next.host && (songChanged || !last?.host)) fetchNear();
     showBests(next);
     showAudio();
+  }
+
+  /** The sort button and its modal: the order of the carousel is this player's view, so it never leaves the picker. */
+  function createSorter() {
+    let sort: SongSort = DEFAULT_SORT;
+    const trigger = push("fm-picker-sort");
+    trigger.setAttribute("aria-haspopup", "dialog");
+    const triggerLabel = el("span", "", "fm-picker-sort-label");
+    trigger.append(el("span", "SORT", "fm-picker-sort-word"), triggerLabel);
+    const shell = createDialog({
+      title: "SORT SONGS",
+      document: options.document,
+      classes: { root: "fui-dialog fm-sort-dialog" },
+    });
+    const group = el("div", "", "fm-sort-options");
+    group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-label", "Sort songs by");
+    const choices = SORT_CHOICES.map((choice) => {
+      const node = push("fm-sort-option");
+      node.setAttribute("role", "radio");
+      node.textContent = choice.name;
+      node.addEventListener("click", () => {
+        if (sort.key !== choice.key)
+          apply({ key: choice.key, direction: "asc" });
+        close();
+      });
+      group.append(node);
+      return { key: choice.key, node };
+    });
+    const directions = el("div", "", "fm-sort-directions");
+    directions.setAttribute("role", "group");
+    directions.setAttribute("aria-label", "Direction");
+    const flips = (["asc", "desc"] as const).map((direction) => {
+      const node = push("fm-sort-direction");
+      node.addEventListener("click", () => apply({ ...sort, direction }));
+      directions.append(node);
+      return { direction, node };
+    });
+    shell.body.append(group, directions);
+    root.append(shell.dialog);
+
+    const WORDS: Record<string, readonly [string, string]> = {
+      pack: ["Pack order", "Reversed"],
+      title: ["A → Z", "Z → A"],
+      bpm: ["Slowest first", "Fastest first"],
+    };
+    const wordsFor = (key: string): readonly [string, string] =>
+      WORDS[key] ?? ["Easiest first", "Hardest first"];
+
+    function show() {
+      write(triggerLabel, sortLabel(sort));
+      trigger.setAttribute(
+        "aria-label",
+        `Sort songs, now by ${SORT_CHOICES.find((c) => c.key === sort.key)?.name ?? ""}`,
+      );
+      for (const choice of choices) {
+        const on = String(choice.key === sort.key);
+        choice.node.setAttribute("aria-checked", on);
+        choice.node.tabIndex = choice.key === sort.key ? 0 : -1;
+      }
+      const words = wordsFor(sort.key);
+      flips.forEach((flip, index) => {
+        write(
+          flip.node,
+          `${flip.direction === "asc" ? "↑" : "↓"} ${words[index]}`,
+        );
+        flip.node.setAttribute(
+          "aria-pressed",
+          String(flip.direction === sort.direction),
+        );
+      });
+    }
+    /** Reorders the carousel and keeps the selected song in the middle. */
+    function apply(next: SongSort) {
+      sort = next;
+      const sorted = sortSongs(packed, sort);
+      order = sorted.map((song) => rows.get(song.id)!);
+      list.append(...order.map((row) => row.element));
+      syncScrub();
+      if (shown) {
+        place(shown.song);
+        if (shown.host) fetchNear();
+      }
+      show();
+    }
+    /** Whether the dialog was opened from the keyboard: only then does the focus go back to SORT when it closes. */
+    let byKeyboard = false;
+    function close() {
+      if (shell.dialog.open) shell.dialog.close();
+    }
+    shell.dialog.addEventListener("close", () => {
+      // After a mouse or a touch SORT is not left lit: Enter then starts the song, not SORT again.
+      if (byKeyboard) trigger.focus();
+      else trigger.blur();
+    });
+    trigger.addEventListener("click", (event) => {
+      if (!shown?.host) return;
+      byKeyboard = event.detail === 0;
+      show();
+      const dialog = shell.dialog;
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+      choices.find((choice) => choice.key === sort.key)?.node.focus();
+    });
+    // The dialog owns every key while it is open: the carousel behind it must not turn.
+    shell.dialog.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      const at = choices.findIndex((choice) => choice.node === event.target);
+      switch (event.code) {
+        case "ArrowUp":
+        case "ArrowDown":
+        case "KeyW":
+        case "KeyS": {
+          const by = event.code === "ArrowUp" || event.code === "KeyW" ? -1 : 1;
+          const from =
+            at < 0 ? choices.findIndex((c) => c.key === sort.key) : at;
+          choices[(from + by + choices.length) % choices.length]!.node.focus();
+          event.preventDefault();
+          break;
+        }
+        case "ArrowLeft":
+        case "ArrowRight":
+          apply({
+            ...sort,
+            direction: event.code === "ArrowLeft" ? "asc" : "desc",
+          });
+          event.preventDefault();
+          break;
+        default:
+      }
+    });
+    show();
+    return {
+      button: trigger,
+      close,
+      current: () => sort,
+      isOpen: () => shell.dialog.open,
+    };
   }
 
   function stepSong(by: number): boolean {
@@ -667,8 +892,8 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
           ? 0
           : packTabs.length - 1
         : (at + by + packTabs.length) % packTabs.length;
-    const id = packTabs[to]!.first;
-    if (id !== shown.song && to !== at) options.onSong(id);
+    const id = order.find((row) => row.pack === packTabs[to]!.index)?.song.id;
+    if (id && id !== shown.song && to !== at) options.onSong(id);
     return true;
   }
   function stepChart(by: number): boolean {
@@ -689,6 +914,8 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     element: root,
     update,
     key(code) {
+      // The sort dialog is open over the carousel: its keys are the dialog's.
+      if (sorter.isOpen()) return true;
       switch (code) {
         case "ArrowLeft":
         case "KeyA":
@@ -713,6 +940,20 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
         case "Tab":
         case "KeyM":
           return toggleMode();
+        case "Enter": {
+          if (!options.onPlay || !shown?.host || !rows.has(shown.song))
+            return false;
+          // Whatever button or link has the keyboard focus keeps its own Enter; a cover and the page do not.
+          const focus = options.document?.activeElement as HTMLElement | null;
+          const tag = focus?.tagName;
+          if (
+            (tag === "BUTTON" || tag === "A" || tag === "SUMMARY") &&
+            !focus?.classList.contains("fm-picker-row")
+          )
+            return false;
+          options.onPlay();
+          return true;
+        }
         default:
           return false;
       }

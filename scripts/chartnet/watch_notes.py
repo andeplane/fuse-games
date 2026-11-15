@@ -5,7 +5,7 @@ judge a span in the lab (`good ...`, `bad: too many`, a marked band, a tapped rh
   python watch_notes.py <song>   – regenerate that song once and exit
 
 Each regeneration runs `gen2.py fuse` for the song, puts the charts into the game (`bundle.ts`, `gen.py fixup`,
-`fusemania-charts.ts bundle`) and appends a line to $CHARTNET_WORK/watch.log. The lab served from this checkout
+`gen2.py meters`, `fusemania-charts.ts bundle`) and appends a line to $CHARTNET_WORK/watch.log. The lab served from this checkout
 (`pnpm exec vite`) shows the new chart on reload.
 """
 from __future__ import annotations
@@ -43,6 +43,7 @@ def regenerate(song: str) -> bool:
         ([sys.executable, str(here / "gen2.py"), "fuse"], here),
         (["pnpm", "exec", "tsx", "scripts/chartnet/bundle.ts", str(OUT), song], REPO),
         ([sys.executable, str(here / "gen.py"), "fixup", str(REPO / "games/fusemania/charts" / f"{song}.ssc")], here),
+        ([sys.executable, str(here / "gen2.py"), "meters", str(REPO / "games/fusemania/charts" / f"{song}.ssc")], here),
         (["pnpm", "exec", "tsx", "scripts/fusemania-charts.ts", "bundle"], REPO),
     ]
     for cmd, cwd in steps:

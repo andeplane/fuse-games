@@ -21,6 +21,7 @@ import {
 import { updateContent } from "./dom-update.js";
 import {
   createMainMenu,
+  escapeIsTaken,
   roomLayoutMarkup,
   mountAttract,
   createTopBar,
@@ -219,6 +220,8 @@ export interface AppDependencies {
   friends?: {
     publicIdOfMember(memberId: string): string | undefined;
     friendButton(publicId: string): HTMLElement;
+    /** Opens the friends panel, where a friend is invited into the room. */
+    open?(): void;
   };
   /** Draws random openings; Math.random unless a test injects one. */
   random?: () => number;
@@ -737,7 +740,7 @@ export function mountFuseCraft(
   }
 
   function guideScreenMarkup(): string {
-    return `${header("How to play", "rules and strategy")}<main class="nd-panel guide-panel">${guideMarkup(guideSection)}<button data-action="back-menu" class="secondary">← Back</button></main>`;
+    return `${header("How to play")}<main class="nd-panel guide-panel">${guideMarkup(guideSection)}</main>`;
   }
 
   function modal(): string {
@@ -749,16 +752,24 @@ export function mountFuseCraft(
     return `<div class="nd-modal-backdrop"><section class="nd-modal" role="alertdialog" aria-modal="true" aria-labelledby="discard-title"><p class="eyebrow">Progress will be discarded</p><h2 id="discard-title">${pending === "reset" ? "Reset this session?" : "Return to the menu?"}</h2><p>${pending === "reset" ? "The same map and spawn will start from the beginning." : watching ? "This battle will be discarded." : "Your current network and research will be lost."}</p><div class="button-row"><button data-action="cancel-confirm" class="secondary">${watching ? "Keep watching" : "Keep playing"}</button><button data-action="confirm-${pending}" class="danger">${pending === "reset" ? "Reset session" : "Leave session"}</button></div></section></div>`;
   }
 
-  function header(title: string, subtitle: string): string {
-    return `<header class="nd-header"><div class="brand">FUSE <strong>CRAFT</strong></div><span class="header-subtitle">${escape(subtitle)}</span>${dependencies.debug ? '<span class="debug-badge">DEBUG</span>' : ""}</header>${screen === "game" || screen === "menu" ? "" : `<div class="screen-heading"><h1>${escape(title)}</h1></div>`}`;
+  /**
+   * The app's bar, and under it a page's own head: Back at the top left, the title, and the page's main action at
+   * the right, as on every other page. The menu, the battlefield and the room (which has the shared room's head)
+   * pass no title.
+   */
+  function header(
+    title = "",
+    options: { back?: string; actions?: string } = {},
+  ): string {
+    return `<header class="nd-header"><div class="brand">FUSE <strong>CRAFT</strong></div>${dependencies.debug ? '<span class="debug-badge">DEBUG</span>' : ""}</header>${title ? `<div class="screen-heading fui-page-head"><button class="fui-back" data-action="${options.back ?? "back-menu"}" aria-label="Back">Back</button><h1 class="fui-page-title">${escape(title)}</h1>${options.actions ? `<div class="fui-page-actions">${options.actions}</div>` : ""}</div>` : ""}`;
   }
 
   function menuMarkup(): string {
-    return `<div class="attract-scene" aria-hidden="true"><svg id="nd-attract-board"></svg></div><div class="attract-shade"></div>${header("Fuse Craft", "A neural strategy game")}<main class="menu-layout fui-landing"><p class="eyebrow">GROW · CONNECT · DEFEND</p><h1 class="fui-landing-title">FUSE<br><span>CRAFT</span></h1><p class="fui-landing-tagline">Build your network.<br>Keep the signal alive.</p><nav class="fui-landing-actions" aria-label="Main menu"><button data-action="new-game" class="fui-button-primary menu-button"><span aria-hidden="true">▶</span> Single player</button>${dependencies.online ? '<button data-action="multiplayer" class="menu-button">Multiplayer</button>' : ""}<button data-action="tutorial" class="menu-button">Tutorial</button><button data-action="guide" class="menu-button">How to play</button><button data-action="settings" class="menu-button">Settings</button></nav></main><footer class="menu-footer">A FUSE GAME <span>${dependencies.online ? "PLAYER VS AI · ONLINE VERSUS" : "SKIRMISH · PLAYER VS AI"}</span></footer>`;
+    return `<div class="attract-scene" aria-hidden="true"><svg id="nd-attract-board"></svg></div><div class="attract-shade"></div>${header()}<main class="menu-layout fui-landing"><p class="eyebrow">GROW · CONNECT · DEFEND</p><h1 class="fui-landing-title">FUSE<br><span>CRAFT</span></h1><p class="fui-landing-tagline">Build your network.<br>Keep the signal alive.</p><nav class="fui-landing-actions" aria-label="Main menu"><button data-action="new-game" class="fui-button-primary menu-button"><span aria-hidden="true">▶</span> Single player</button>${dependencies.online ? '<button data-action="multiplayer" class="menu-button">Multiplayer</button>' : ""}<button data-action="tutorial" class="menu-button">Tutorial</button><button data-action="guide" class="menu-button">How to play</button><button data-action="settings" class="menu-button">Settings</button></nav></main><footer class="menu-footer">A FUSE GAME <span>${dependencies.online ? "PLAYER VS AI · ONLINE VERSUS" : "SKIRMISH · PLAYER VS AI"}</span></footer>`;
   }
 
   function settingsMarkup(): string {
-    return `${header("Settings", "presentation")}<main class="nd-panel settings-panel"><p>Preferences stay on this device.</p>${dependencies.forcedMute ? '<p class="debug-note">This preview URL forces audio off.</p>' : ""}<label class="setting-row"><span><strong>Mute sound</strong><small>Interface, construction and combat cues</small></span><input type="checkbox" data-setting="mute" ${preferences.mute ? "checked" : ""}></label><label class="setting-row"><span><strong>Volume</strong></span><input type="range" min="0" max="1" step="0.05" data-setting="volume" value="${preferences.volume}"></label><label class="setting-row"><span><strong>Reduced motion</strong><small>Reduce particle animation and flashes</small></span><input type="checkbox" data-setting="reducedMotion" ${preferences.reducedMotion ? "checked" : ""}></label><label class="setting-row"><span><strong>Edge scrolling</strong><small>Move the camera when the mouse rests at the board's edge</small></span><input type="checkbox" data-setting="edgeScroll" ${preferences.edgeScroll ? "checked" : ""}></label><button data-action="back-menu" class="secondary">← Back</button></main>`;
+    return `${header("Settings")}<main class="nd-panel settings-panel"><p>Preferences stay on this device.</p>${dependencies.forcedMute ? '<p class="debug-note">This preview URL forces audio off.</p>' : ""}<label class="setting-row"><span><strong>Mute sound</strong><small>Interface, construction and combat cues</small></span><input type="checkbox" data-setting="mute" ${preferences.mute ? "checked" : ""}></label><label class="setting-row"><span><strong>Volume</strong></span><input type="range" min="0" max="1" step="0.05" data-setting="volume" value="${preferences.volume}"></label><label class="setting-row"><span><strong>Reduced motion</strong><small>Reduce particle animation and flashes</small></span><input type="checkbox" data-setting="reducedMotion" ${preferences.reducedMotion ? "checked" : ""}></label><label class="setting-row"><span><strong>Edge scrolling</strong><small>Move the camera when the mouse rests at the board's edge</small></span><input type="checkbox" data-setting="edgeScroll" ${preferences.edgeScroll ? "checked" : ""}></label></main>`;
   }
 
   function setupMarkup(): string {
@@ -789,7 +800,8 @@ export function mountFuseCraft(
           : mapState.status === "error"
             ? `<div class="error-card" role="alert"><strong>Map unavailable or invalid</strong><p>${escape(mapState.message)}</p><button data-action="retry-map">Retry map</button></div>`
             : `<div class="map-meta"><strong>${loaded?.width} × ${loaded?.height} hexes</strong><span>◈ Biomass deposits</span><span>◇ Insight deposits</span><span>▰ Blocked ground</span></div><label class="field-label" for="spawn-picker">Spawn</label><select id="spawn-picker" data-field="spawn">${loaded?.spawns.map((spawn) => `<option value="${spawn.slot}" ${selectedSlot === spawn.slot ? "selected" : ""}>Spawn ${spawn.slot + 1} · tile ${spawn.cellIndex}</option>`).join("")}</select>`;
-    return `${header("New game", "setup")}
+    // Start is at the top, beside Back, never under the page.
+    return `${header("New game", { actions: `<button data-action="start" class="primary" ${loaded && !launching ? "" : "disabled"}>${launching ? "Starting…" : mode === "watch" ? "Watch match →" : "Start →"}</button>` })}
       <main class="setup-layout"><section class="nd-panel">
         <p class="section-index">01 / SCENARIO</p><div class="choice-grid">
         <button data-action="mode-skirmish" class="choice ${mode === "skirmish" ? "active" : ""}" aria-pressed="${mode === "skirmish"}"><strong>Player vs AI</strong><span>Grow, research and destroy the rival brain.</span></button>
@@ -815,8 +827,7 @@ export function mountFuseCraft(
               : "<p>Build beside resources. Connect your network. Select frontline nodes and use <strong>Charge</strong> to supply their weapons.</p>"
         }
         ${launchError ? `<div class="error-card" role="alert">${escape(launchError)}<button data-action="start">Retry launch</button></div>` : ""}
-        <div class="button-row"><button data-action="back-menu" class="secondary">← Back</button>
-        <button data-action="start" class="primary" ${loaded && !launching ? "" : "disabled"}>${launching ? "Starting…" : mode === "watch" ? "Watch match →" : "Start →"}</button></div></aside></main>`;
+        </aside></main>`;
   }
 
   function gameMarkup(): string {
@@ -1329,27 +1340,31 @@ export function mountFuseCraft(
   }
 
   function multiplayerMarkup(): string {
-    return `${header("Multiplayer", "online versus")}<main class="setup-layout multiplayer-layout"><section class="nd-panel"><p class="section-index">01 / NEW ROOM</p><h2>Host a Versus match</h2><p>Create a room, share its code or link, add bots if you like, and start when everyone has joined. Two to ${MAX_ROOM_SEATS_TEXT} networks depending on the map, one brain each.</p><button data-action="create-room" class="primary" ${creatingRoom ? "disabled" : ""}>${creatingRoom ? "Creating…" : "Create room"}</button></section><section class="nd-panel"><p class="section-index">02 / JOIN</p><h2>Join a friend</h2><label class="field-label" for="room-code">Room code</label><div class="join-row"><input id="room-code" data-field="room-code" autocomplete="off" spellcheck="false" maxlength="12" value="${escape(roomCode)}" placeholder="CODE"><button data-action="join-room" class="primary">Join</button></div>${roomError ? `<p class="error-card" role="alert">${escape(roomError)}</p>` : ""}</section><div class="button-row"><button data-action="back-menu" class="secondary">← Back</button></div></main>`;
+    return `${header("Multiplayer")}<main class="setup-layout multiplayer-layout"><section class="nd-panel"><p class="section-index">01 / NEW ROOM</p><h2>Host a Versus match</h2><p>Create a room, share its code or link, add bots if you like, and start when everyone has joined. Two to ${MAX_ROOM_SEATS_TEXT} networks depending on the map, one brain each.</p><button data-action="create-room" class="primary" ${creatingRoom ? "disabled" : ""}>${creatingRoom ? "Creating…" : "Create room"}</button></section><section class="nd-panel"><p class="section-index">02 / JOIN</p><h2>Join a friend</h2><label class="field-label" for="room-code">Room code</label><div class="join-row"><input id="room-code" data-field="room-code" autocomplete="off" spellcheck="false" maxlength="12" value="${escape(roomCode)}" placeholder="CODE"><button data-action="join-room" class="primary">Join</button></div>${roomError ? `<p class="error-card" role="alert">${escape(roomError)}</p>` : ""}</section></main>`;
   }
 
   function roomMarkup(): string {
     const room = online?.room();
     if (!online || !room) return multiplayerMarkup();
     if (room.closed)
-      return `${header("Versus room", room.code)}<main class="setup-layout"><section class="nd-panel"><h2>${room.closed === "kicked" ? "The host removed you from the room" : "The room has ended"}</h2><div class="button-row"><button data-action="leave-room" class="primary">Back to menu</button></div></section></main>`;
+      return `${header("Versus room", { back: "leave-room" })}<main class="setup-layout"><section class="nd-panel"><h2>${room.closed === "kicked" ? "The host removed you from the room" : "The room has ended"}</h2><div class="button-row"><button data-action="leave-room" class="primary">Back to menu</button></div></section></main>`;
     const players = room.seats.filter((seat) => !seat.watcher);
     const seated = players.some((seat) => seat.id === room.self);
     const capacity = ROOM_MAPS.find((map) => map.id === room.mapId)?.seats ?? 2;
     const ready = players.filter((seat) => seat.connected).length;
     const canStart = room.manager && ready >= 2 && ready <= capacity;
+    // The shared roster's row: the name, HOST on whoever holds Start, what the seat is, then ADD FRIEND (`decorate`
+    // fills its place once the seat is matched to an account) and the host's REMOVE on an AI.
     const seatRows = players.map(
       (seat) =>
-        `<li class="room-seat${seat.connected ? "" : " away"}" style="--team:${TEAM_COLORS[seat.slot] ?? "#63cfff"}"><span class="seat-dot"></span><strong>${escape(seat.name)}</strong>${seat.id === room.self ? "<em>you</em>" : ""}${seat.bot ? "<em>bot</em>" : ""}${seat.connected ? "" : "<em>away</em>"}${room.manager && seat.bot && room.stage === "lobby" ? `<button data-action="remove-bot" data-bot-id="${escape(seat.id)}" class="secondary small" aria-label="Remove ${escape(seat.name)}">✕</button>` : ""}</li>`,
+        `<li class="fui-roster-row room-seat${seat.connected ? "" : " away"}" style="--rider-color:${TEAM_COLORS[seat.slot] ?? "#63cfff"}"><div class="fui-roster-info"><strong class="fui-roster-name">${escape(seat.name)}${seat.id === room.self ? " (you)" : ""}</strong>${seat.id === room.managerId ? '<span class="fui-roster-host">HOST</span>' : ""}<small class="fui-roster-status">${seat.bot ? "AI" : seat.connected ? "" : "Away"}</small></div>${seat.bot ? "" : `<span id="seat-friend-${escape(seat.id)}" class="seat-friend" data-member="${escape(seat.id)}" data-fui-preserve></span>`}${room.manager && seat.bot && room.stage === "lobby" ? `<button data-action="remove-bot" data-bot-id="${escape(seat.id)}" class="secondary small" aria-label="Remove ${escape(seat.name)}">REMOVE</button>` : ""}</li>`,
     );
     const disabled = room.manager && room.stage === "lobby" ? "" : "disabled";
     return (
-      header("Versus room", room.code) +
+      header() +
       roomLayoutMarkup({
+        actionsInHeader: true,
+        heading: "Room",
         occupied: players.length,
         occupiedSlots: players.map((seat) => seat.slot),
         slotPlayers: players.map((seat, index) => ({
@@ -1363,16 +1378,20 @@ export function mountFuseCraft(
           room.manager && room.stage === "lobby" && players.length < capacity,
         slotColors: TEAM_COLORS,
         capacity,
-        invite: `<div class="fui-invite"><strong class="fui-room-code">${escape(room.code)}</strong>${roomQr?.code === room.code ? `<img class="fui-invite-qr" src="${escape(roomQr.url)}" alt="Scan to join this room">` : ""}<button data-action="copy-room-link">Copy link</button></div>`,
+        // The code once, by the QR code, as in every game's room.
+        invite: `<div class="fui-invite">${roomQr?.code === room.code ? `<img class="fui-invite-qr" src="${escape(roomQr.url)}" alt="Scan to join this room"><p class="fui-invite-caption">SCAN TO JOIN</p>` : ""}<strong class="fui-room-code">${escape(room.code)}</strong><button data-action="copy-room-link">COPY LINK</button>${dependencies.friends?.open ? '<button class="fui-room-invite-friends" data-action="invite-friends">INVITE FRIENDS</button>' : ""}</div>`,
         players: `<ul class="room-seats fui-roster"></ul>`,
         join: `${seated ? "" : `<div class="join-row"><label for="player-name">Your name</label><input id="player-name" data-field="player-name" maxlength="32" autocomplete="nickname" value="${escape(playerName)}" placeholder="Name"><button data-action="join-seat" class="primary">Join</button></div>`}`,
         settings: `<label for="room-map">Map</label><select id="room-map" data-field="room-map" ${disabled}>${ROOM_MAPS.map((map) => `<option value="${map.id}" ${map.id === room.mapId ? "selected" : ""}>${escape(map.title)} · ${map.seats} players</option>`).join("")}</select><label for="room-strategy">Bot opening</label><select id="room-strategy" data-field="room-strategy" ${disabled}>${openingOptions(room.aiStrategy)}</select><label class="toggle-field"><input type="checkbox" data-field="room-powerups" ${room.powerups ? "checked" : ""} ${disabled}> Random powerups</label>`,
         primaryAction: room.manager
-          ? `<button data-action="start-room" class="primary" ${canStart ? "" : "disabled"}>Start match</button>`
+          ? `<button data-action="start-room" class="primary" ${canStart ? "" : "disabled"}>START MATCH</button>`
           : undefined,
         mainMenu:
           '<button class="fui-back" data-action="leave-room" aria-label="Back">Back</button>',
-        actions: `<p class="room-status" role="status">${escape(room.stage === "connecting" ? "Connecting to the room…" : players.length > capacity ? `Too many players for this map: it seats ${capacity}. Pick a larger map or ask someone to leave.` : room.status)}</p>${!room.manager ? "<span>Waiting for the host to start…</span>" : ""}`,
+        actions: !room.manager
+          ? '<p class="room-note">Waiting for the host to start…</p>'
+          : "",
+        status: `<p class="room-status" role="status">${escape(room.stage === "connecting" ? "Connecting to the room…" : players.length > capacity ? `Too many players for this map: it seats ${capacity}. Pick a larger map or ask someone to leave.` : room.status)}</p>`,
       })
     );
   }
@@ -1615,6 +1634,20 @@ export function mountFuseCraft(
       .forEach((button) => button.classList.add("fui-button-primary"));
     // One portal element survives re-renders, so an open grid stays open.
     // Reconciling a header drops it, so it goes back first in each header.
+    // ADD FRIEND on a seat's row, once the room has matched the seat to an account. The row's place for it is
+    // kept across re-renders (`data-fui-preserve`), so the button is made once per account.
+    for (const place of root.querySelectorAll<HTMLElement>(".seat-friend")) {
+      const publicId = dependencies.friends?.publicIdOfMember(
+        place.dataset.member ?? "",
+      );
+      if ((place.dataset.account ?? "") === (publicId ?? "")) continue;
+      place.dataset.account = publicId ?? "";
+      const button = publicId
+        ? dependencies.friends?.friendButton(publicId)
+        : undefined;
+      button?.classList.add("fui-roster-friend");
+      place.replaceChildren(...(button ? [button] : []));
+    }
     const head = root.querySelector(".nd-header");
     if (head && dependencies.social) {
       const social = dependencies.social();
@@ -1885,6 +1918,7 @@ export function mountFuseCraft(
           );
       } else if (action === "lobby-room") online?.lobby();
       else if (action === "leave-room") showMenu();
+      else if (action === "invite-friends") dependencies.friends?.open?.();
       else if (action === "copy-room-link" && online) {
         const link = dependencies.online?.roomLink(online.code) ?? "";
         void navigator.clipboard?.writeText(link).catch(() => {});
@@ -2172,13 +2206,26 @@ export function mountFuseCraft(
 
   /**
    * Escape closes How to play wherever focus is, even when it fell to the
-   * page body, so it listens on the document rather than the app root.
+   * page body, so it listens on the document rather than the app root. On a page with a head of its own it is
+   * Back, as in every menu: not while a dialog, the game menu or the app portal is open (Escape is theirs), and
+   * not from a field being typed in or a list being picked from. The room is left by its Back alone, as in
+   * every game: Escape there does nothing.
    */
   function onDocumentKeyDown(event: KeyboardEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
-    if (!helpOpen || screen !== "game" || event.key !== "Escape") return;
+    if (event.key !== "Escape") return;
+    if (helpOpen && screen === "game") {
+      event.preventDefault();
+      closeHelp();
+      return;
+    }
+    if (pending || escapeIsTaken(event, root.ownerDocument)) return;
+    if ((event.target as Element | null)?.closest?.("input, select, textarea"))
+      return;
+    const back = root.querySelector<HTMLElement>(".screen-heading .fui-back");
+    if (!back) return;
     event.preventDefault();
-    closeHelp();
+    back.click();
   }
 
   function onKeyDown(event: KeyboardEvent) {

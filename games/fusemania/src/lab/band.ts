@@ -1,6 +1,7 @@
 /**
- * The chart lab's listening band: a box on the frequency axis that starts out covering all of it. Inside it the song plays as it is; outside
- * it is turned down to a tenth, so one instrument's register can be heard against the charts. Pure geometry here, in
+ * The chart lab's listening band: a box on the frequency axis that starts out covering all of it. It splits the song
+ * in three parts, below the band, the band and above it, and each can be muted, so one instrument's register can be
+ * heard against the charts. Pure geometry here, in
  * axis pixels; the page converts to and from hertz and drives the audio filters.
  */
 
@@ -13,8 +14,6 @@ export interface Span {
 /** What a press on the axis takes hold of: an edge of the box, or the whole box. */
 export type Grab = "low" | "high" | "move";
 
-/** How much of the song's level is left outside the band: turned down by 90%. */
-export const OUTSIDE_GAIN = 0.1;
 /** The narrowest box, in pixels: still easy to take hold of. */
 export const MIN_WIDTH = 8;
 
@@ -63,9 +62,37 @@ export function coversAll(span: Span, min: number, max: number): boolean {
   return span.from <= min + 1 && span.to >= max - 1;
 }
 
-/** The mix that turns everything outside the band down to `OUTSIDE_GAIN`: the untouched song plus the band alone. */
-export function bandMix(on: boolean): { dry: number; band: number } {
-  return on
-    ? { dry: OUTSIDE_GAIN, band: 1 - OUTSIDE_GAIN }
-    : { dry: 1, band: 0 };
+/** Which of the three parts of the spectrum are heard: below the band, the band itself, above it. */
+export interface Hear {
+  readonly below: boolean;
+  readonly band: boolean;
+  readonly above: boolean;
+}
+
+/** The part of the spectrum a point on the axis lies in, for a band drawn at `span`. */
+export function partAt(span: Span, x: number): keyof Hear {
+  return x < span.from ? "below" : x > span.to ? "above" : "band";
+}
+
+/** The gain of each path of the playback graph: the untouched song, and the three parts the band splits it into. */
+export interface PartsMix {
+  readonly dry: number;
+  readonly below: number;
+  readonly band: number;
+  readonly above: number;
+}
+
+/**
+ * The mix for a listening band. Without a band, or with all three parts heard, the song plays untouched. Otherwise
+ * each part is on or off; a part that is off is silent.
+ */
+export function partsMix(on: boolean, hear: Hear): PartsMix {
+  if (!on || (hear.below && hear.band && hear.above))
+    return { dry: 1, below: 0, band: 0, above: 0 };
+  return {
+    dry: 0,
+    below: hear.below ? 1 : 0,
+    band: hear.band ? 1 : 0,
+    above: hear.above ? 1 : 0,
+  };
 }

@@ -119,6 +119,7 @@ mountFuseCraft(root, {
   friends: {
     publicIdOfMember: (id) => social.friends.publicIdOfMember(id),
     friendButton: (publicId) => social.friends.friendButton(publicId),
+    open: () => social.friends.open(),
   },
   maps: createBrowserMapRepository(fetch.bind(globalThis)),
   preferences: createPreferencesStore(localStorage),

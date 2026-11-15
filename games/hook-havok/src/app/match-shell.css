@@ -16,39 +16,35 @@
 #match-hud .keeper-card:is([data-state="OUT"], [data-state="AWAY"]) small {
   color: #c0c9d8;
 }
+/* The room is a page of its own over the arena, under the shared bar. */
 #room-lounge {
-  margin: 0 0 12px;
-  border: 1px solid #76604480;
-  border-radius: 8px;
-  background: linear-gradient(120deg, #252438ed, #131c2bed);
-  padding: 12px 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: calc(max(12px, env(safe-area-inset-top)) + 60px) 24px 32px;
+  background: radial-gradient(ellipse at 50% 0, #26253c, #111520 65%);
 }
-#room-lounge summary,
+#room-lounge[hidden] {
+  display: none;
+}
+.in-room {
+  overflow: hidden;
+}
+#room-lounge .fui-room-head button {
+  white-space: nowrap;
+}
 #development-workshop summary {
   cursor: pointer;
   color: #efd8ae;
 }
-#lounge-summary {
-  float: right;
-  font:
-    12px system-ui,
-    sans-serif;
-  color: #b8c7d4;
-}
-#room-authority {
+.room-note {
+  margin: 0;
   font:
     12px/1.6 system-ui,
     sans-serif;
   color: #aeb6c9;
-  margin: 10px 0 4px;
-}
-.lounge-content {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
-}
-.lounge-content > * {
-  flex: 1 1 100%;
 }
 .lounge-content .controls {
   margin: 4px 0;
@@ -69,13 +65,6 @@
   font:
     11px system-ui,
     sans-serif;
-}
-.lounge-content #invitation {
-  padding-bottom: 8px;
-  border-bottom: 1px solid #75624655;
-}
-.lounge-content #invite-url {
-  width: 240px;
 }
 .personal-controls {
   font:
@@ -131,10 +120,10 @@
   margin: 4px 0;
 }
 .arena-focused main {
-  max-width: min(1560px, calc((100dvh - 235px) * 16 / 9));
+  max-width: min(1560px, calc((100dvh - 235px - var(--bar)) * 16 / 9));
 }
 .arena-focused.touch-trial .play-surface .stage {
-  width: min(100%, calc((100dvh - 230px) * 16 / 9));
+  width: min(100%, calc((100dvh - 230px - var(--bar)) * 16 / 9));
 }
 .match-heading {
   display: flex;
@@ -259,21 +248,13 @@
     100px/1.1 Georgia,
     serif;
 }
-.arena-focused #room-lounge {
-  display: none;
-}
 .display-only #room-lounge,
 .display-only #development-workshop {
   display: none;
 }
 @media (max-width: 700px) {
   #room-lounge {
-    padding: 10px;
-  }
-  #lounge-summary {
-    float: none;
-    display: block;
-    margin: 6px 0 0 16px;
+    padding-inline: 10px;
   }
   .match-heading {
     gap: 7px;
@@ -337,9 +318,6 @@
   }
   #match-hud {
     margin: 4px 0;
-  }
-  #room-lounge {
-    margin-bottom: 4px;
   }
 }
 /* 11B: bomb cooldown ring on each keeper card. */

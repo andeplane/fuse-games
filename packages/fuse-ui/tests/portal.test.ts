@@ -188,6 +188,14 @@ test("portal: the button opens the grid; Escape, an outside press or a pick clos
   assert.equal(portal.isOpen, false);
   assert.equal(toggle.getAttribute("aria-expanded"), "false");
 
+  // In a top bar the key stops at the bar: the portal hears Escape on its own button, and marks it used.
+  toggle.dispatchEvent(event(window, "click"));
+  portal.element.addEventListener("keydown", (key) => key.stopPropagation());
+  const pressed = event(window, "keydown", { key: "Escape" });
+  toggle.dispatchEvent(pressed);
+  assert.equal(portal.isOpen, false);
+  assert.equal(pressed.defaultPrevented, true);
+
   toggle.dispatchEvent(event(window, "click"));
   document.body.dispatchEvent(event(window, "pointerdown"));
   assert.equal(portal.isOpen, false);

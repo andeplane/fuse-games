@@ -107,6 +107,52 @@ test("HTML room markup puts its primary action before settings in the invitation
   );
 });
 
+test("HTML room markup can put Settings and its primary action in the header, with the status at the foot", () => {
+  const { document } = page(),
+    root = document.createElement("div");
+  root.innerHTML = roomLayoutMarkup({
+    invite: "<p>Scan to join</p>",
+    primaryAction: "<button data-start>Start</button>",
+    players: "",
+    join: "",
+    settings: "",
+    actions: "",
+    occupied: 0,
+    capacity: 2,
+    actionsInHeader: true,
+    heading: "Room",
+    status: "<p>Connected</p>",
+  });
+  const head = root.querySelector(".fui-room-head")!;
+  assert.deepEqual(
+    [...head.children].map((node) => node.className),
+    ["fui-back fui-room-main-menu", "fui-page-title", "fui-page-actions"],
+  );
+  assert.equal(head.querySelector(".fui-page-title")?.textContent, "Room");
+  const configure = head.querySelector(".fui-room-configure")!;
+  assert.equal(configure.textContent, "Settings");
+  assert.equal(configure.getAttribute("aria-label"), "Game settings");
+  assert.equal(
+    configure.nextElementSibling?.className,
+    "fui-room-primary-action",
+    "the main action is last, as in a dialog's bar",
+  );
+  assert.equal(
+    root.querySelector(".fui-room-invitation")?.querySelector("button"),
+    null,
+    "nothing of the header's is left under the invitation",
+  );
+  assert.ok(
+    root
+      .querySelector(".fui-room-layout")
+      ?.classList.contains("fui-room-actions-top"),
+  );
+  assert.equal(
+    root.querySelector(".fui-room-layout > .fui-room-status")?.textContent,
+    "Connected",
+  );
+});
+
 test("switching teams moves the existing row to its new slot without losing its controls", () => {
   const { document } = page(),
     root = document.createElement("section"),

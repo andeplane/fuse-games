@@ -59,13 +59,6 @@ select {
   font-weight: inherit;
   color: var(--fui-pink);
 }
-.header-subtitle {
-  margin-left: auto;
-  color: var(--fui-text-dim);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
 .debug-badge,
 .debug-note {
   color: var(--fui-yellow);
@@ -75,15 +68,10 @@ select {
   border: 1px solid #ffe46b70;
   padding: 0.35rem 0.5rem;
 }
-.screen-heading {
+/* A page's own head, under the app's fixed bar: Back at the top left, the title, the page's main action. */
+.screen-heading.fui-page-head {
   width: min(980px, 92vw);
-  margin: 2rem auto 1.5rem;
-}
-.screen-heading h1 {
-  margin: 0;
-  color: var(--fui-cyan);
-  font: 20px/1.6 var(--fui-font-pixel);
-  text-shadow: var(--fui-glow-cyan);
+  margin: calc(88px + env(safe-area-inset-top)) auto 1.5rem;
 }
 .eyebrow,
 .section-index {
@@ -362,38 +350,21 @@ select {
   display: grid;
   gap: 0.45rem;
 }
-.room-seat {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--team, #63cfff) 45%, transparent);
-  border-radius: var(--fui-radius-small, 6px);
-  background: color-mix(in srgb, var(--team, #63cfff) 8%, transparent);
-}
+/* A seat's row is the shared roster's; these are the room's own additions to it. */
 .room-seat.away {
   opacity: 0.55;
 }
-.room-seat.empty {
-  border-style: dashed;
-  color: var(--fui-text-muted);
-}
-.room-seat em {
-  font-style: normal;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fui-text-muted);
-}
-.room-seat button {
+.room-seat [data-action="remove-bot"] {
+  flex: none;
   margin-left: auto;
 }
-.seat-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--team, #63cfff);
-  box-shadow: 0 0 8px var(--team, #63cfff);
+/* ADD FRIEND's place on a row: nothing until the seat is matched to an account. */
+.seat-friend {
+  display: contents;
+}
+.room-note {
+  margin: 0;
+  color: var(--fui-text-muted);
 }
 .room-invite {
   display: grid;
@@ -1844,9 +1815,6 @@ select {
   .battle-topbar .hud-mini {
     display: none;
   }
-  .header-subtitle {
-    display: none;
-  }
   :root {
     --fui-page-top: calc(72px + env(safe-area-inset-top));
   }
@@ -2300,4 +2268,10 @@ select {
 }
 .spore-stain {
   fill: #3f7a2a;
+}
+/* The pixel brand is wide: on a phone it is set small enough to read whole beside the bar's controls. */
+@media (max-width: 600px) {
+  .nd-header .brand.fui-top-bar-brand {
+    font-size: 9px;
+  }
 }
