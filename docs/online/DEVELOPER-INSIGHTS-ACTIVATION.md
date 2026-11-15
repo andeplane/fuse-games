@@ -71,5 +71,26 @@ unredacted production payloads into issues or CI logs.
 
 ## Activation verification
 
-Provisioning is complete. Runtime activation and live acceptance evidence will
-be recorded here after the guarded deployment and smoke checks finish.
+The full instrumented unit run at `90109d9b` passed 6,517 tests with one skip.
+All eight browser coverage flows passed after repairing obsolete Ball Bros
+admission expectations and waiting for Hook Havok's native menu-close handler.
+Graveyard's updated flow and the 19 shared room-layout tests ran against `a81ec6d`.
+Typecheck and build passed at both source revisions; the Elasto focus fix in
+`6bf58fac` additionally passed its own full unit run, Chrome/WebKit regression and
+hosted `verify` gate.
+
+**Overall coverage remains below the repository threshold.** The combined
+source-checked report for `6bf58fac` reports 94.48% lines/statements (95% required),
+95.61% functions and 94.60% branches. Old coverage was reused only for files whose
+source hash matched the current revision; changed covered files received fresh
+coverage. The original failed report and browser failures remain preserved.
+No threshold or exclusion was changed to make activation pass.
+
+The largest uncovered included files are Fusemania's lab/timing UI, Fuse Front's
+3D field renderer and Riders' voice-chat UI. The playtest modules also have
+coverage gaps. This is an unresolved coverage failure on main, not a green full
+release-suite claim. Activation changes the configuration of the existing
+backend; it does not resolve those coverage gaps.
+
+Runtime activation and live acceptance evidence will be recorded below after
+the guarded deployment and smoke checks finish.
