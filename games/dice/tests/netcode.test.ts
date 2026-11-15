@@ -171,7 +171,7 @@ test("a room snapshot carries the dice room whole, and a tampered one is refused
   source.receive("b", [[1, 5, ROLL, 1]], 1, 60, 60);
   source.advance(60);
   const chunks = encodeSnapshot(source, 4);
-  assert.equal(chunks[0]!.rules, "dice-1");
+  assert.equal(chunks[0]!.rules, "dice-2");
   const assembler = new SnapshotAssembler(diceGame, 4);
   let complete: { tick: number; bytes: Uint8Array } | undefined;
   for (const chunk of chunks) complete = assembler.accept(chunk);

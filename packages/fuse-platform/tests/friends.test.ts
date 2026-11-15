@@ -52,6 +52,7 @@ const ACCOUNT: AccountRules = {
 };
 const game: GameRegistration = {
   id: LEGACY_GAME_ID,
+  minRatedRoundTicks: 1,
   isBot: (id) => id.startsWith("bot:"),
   parseStats: (raw) => raw as PlayerResult,
   emptyTotals: () => ({}),
@@ -1575,6 +1576,7 @@ test("listed players carry their public id, so a leaderboard row can be added", 
   const result = {
     matchId: "m1",
     round: 1,
+    roundDuration: { version: 1, ticks: 1 },
     length: 1,
     finishers: [member(1), member(2)],
     winnerId: member(1),
@@ -1586,7 +1588,7 @@ test("listed players carry their public id, so a leaderboard row can be added", 
       { result },
       uid,
     );
-  const whole = { ...result, round: undefined };
+  const whole = { ...result, round: undefined, roundDuration: undefined };
   for (const [i, uid] of ["alice", "bob"].entries())
     await history.submit(
       await history.admit(code, token(i + 1), "ip"),

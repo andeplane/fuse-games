@@ -20,6 +20,7 @@ export interface MatchReport {
   result: {
     matchId: string;
     round?: number;
+    roundDuration?: { version: 1; ticks: number };
     length: number;
     winnerId?: string;
     finishers: string[];
@@ -98,6 +99,7 @@ export function buildRoundReport(
 ): MatchReport | undefined {
   if (
     !decision?.rating ||
+    decision.rating.durationTicks === undefined ||
     decision.tick > confirmedTick ||
     riderId.startsWith(BOT_ID_PREFIX) ||
     !decision.rating.standings.some((p) => p.playerId === riderId)
@@ -126,6 +128,7 @@ export function buildRoundReport(
     result: {
       matchId: decision.matchId,
       round: decision.round,
+      roundDuration: { version: 1, ticks: decision.rating.durationTicks },
       length: 1,
       finishers: decision.rating.finishers.map((id) =>
         id === "solo" ? SOLO_RATING_PLAYER_ID : id,

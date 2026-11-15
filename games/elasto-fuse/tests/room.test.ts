@@ -203,6 +203,10 @@ test("one rider is enough; a single level is one race, decided when it closes", 
   assert.equal(stats?.points, PLACE_POINTS[0]);
   assert.ok(validElastoFuseField(result.players));
   assert.equal(roundResult(room)!.round, 1);
+  assert.deepEqual(roundResult(room)!.roundDuration, {
+    version: 1,
+    ticks: room.decided!.clock - room.matchStartTick,
+  });
   assert.deepEqual(room.held, {}, "nothing is held into the next match");
 });
 

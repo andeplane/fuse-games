@@ -222,7 +222,14 @@ test("early exits are retained per song and old single-song result semantics rem
   finish(single);
   const match = matchResult(library, single)!,
     round = roundResult(library, single)!;
-  assert.deepEqual(round, { ...match, round: 1 });
+  assert.deepEqual(round, {
+    ...match,
+    round: 1,
+    roundDuration: {
+      version: 1,
+      ticks: single.decided!.clock - single.matchStartTick,
+    },
+  });
   assert.equal(match.players[0]!.sessionLength, undefined);
   assert.equal(
     dueReports(library, single, "a", single.tick, new Set()).length,
@@ -456,6 +463,12 @@ test("retained receipts are bounded by parent, detached and strictly validated a
       groups[0]![0]!.result.round = 2;
     },
     (groups: FusemaniaReceipt[][]) => {
+      groups[0]![0]!.result.roundDuration!.ticks = -1;
+    },
+    (groups: FusemaniaReceipt[][]) => {
+      groups[0]![1]!.result.roundDuration = { version: 1, ticks: 1 };
+    },
+    (groups: FusemaniaReceipt[][]) => {
       groups.at(-1)!.pop();
     },
     (groups: FusemaniaReceipt[][]) => {
@@ -466,7 +479,7 @@ test("retained receipts are bounded by parent, detached and strictly validated a
     },
   ]) {
     const fields = structuredClone(original);
-    corrupt(fields[12] as FusemaniaReceipt[][]);
+    corrupt(fields[13] as FusemaniaReceipt[][]);
     assert.equal(game.checkpoint.decode(fields, room.tick), undefined);
   }
   assert.deepEqual(

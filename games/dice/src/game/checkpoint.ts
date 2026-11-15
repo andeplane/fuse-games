@@ -62,6 +62,7 @@ export function encodeRoom(room: DiceRoom): unknown[] {
       room.roundWinner,
       room.winner,
       room.resumeAt,
+      room.roundStartTick,
     ],
     [
       room.scores,
@@ -79,6 +80,7 @@ export function encodeRoom(room: DiceRoom): unknown[] {
         record.tick,
         record.present,
         record.finishers,
+        record.durationTicks,
       ]),
       Object.entries(room.stats).map(([id, stats]) => [
         id,
@@ -171,7 +173,7 @@ export function decodeRoom(
     !Array.isArray(rawSeats) ||
     rawSeats.length > CAPACITY + MAX_WATCHERS ||
     !Array.isArray(rawTurn) ||
-    rawTurn.length !== 9 ||
+    rawTurn.length !== 10 ||
     !Array.isArray(tallies) ||
     tallies.length !== 6
   )
@@ -239,9 +241,16 @@ export function decodeRoom(
   if (!scores || !wins || !played) return;
   const history: RoundRecord[] = [];
   for (const raw of rawHistory) {
-    if (!Array.isArray(raw) || raw.length !== 6) return;
-    const [at, winnerId, roundScores, decidedAt, rawPresent, rawFinishers] =
-      raw;
+    if (!Array.isArray(raw) || raw.length !== 7) return;
+    const [
+      at,
+      winnerId,
+      roundScores,
+      decidedAt,
+      rawPresent,
+      rawFinishers,
+      durationTicks,
+    ] = raw;
     const decided = counts(roundScores, known, MAX_POINTS),
       present = idList(rawPresent, known),
       finishers = idList(rawFinishers, known);
@@ -255,6 +264,8 @@ export function decodeRoom(
       // Rounds are decided in order, one record each, and none after the room's tick.
       at <= (history.at(-1)?.round ?? 0) ||
       !uint32(decidedAt) ||
+      !uint32(durationTicks) ||
+      durationTicks > decidedAt ||
       decidedAt > tick ||
       decidedAt < (history.at(-1)?.tick ?? 0) ||
       !known.has(winnerId as string) ||
@@ -265,6 +276,7 @@ export function decodeRoom(
       round: at,
       winnerId: winnerId as string,
       tick: decidedAt,
+      durationTicks,
       scores: decided,
       present,
       finishers,
@@ -301,6 +313,7 @@ export function decodeRoom(
     roundWinner,
     winner,
     resumeAt,
+    roundStartTick,
   ] = rawTurn;
   const turnSeat = typeof turn === "string" ? seats.get(turn) : undefined;
   if (
@@ -328,6 +341,8 @@ export function decodeRoom(
         ((wins[winner] ?? 0) < WINS_NEEDED &&
           history.length !== MAX_ROUNDS))) ||
     !uint32(resumeAt) ||
+    !uint32(roundStartTick) ||
+    roundStartTick > tick ||
     resumeAt > tick + BETWEEN_TICKS ||
     (turn !== "" && turnNo === 0) ||
     // A round win is exactly one decided round.
@@ -356,6 +371,7 @@ export function decodeRoom(
     roundWinner,
     winner,
     resumeAt,
+    roundStartTick,
     scores,
     wins,
     played,

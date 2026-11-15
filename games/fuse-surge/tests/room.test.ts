@@ -293,6 +293,10 @@ test("a finished match names its winners and who saw it end, and reports as one 
     ],
   );
   assert.equal(roundResult(room)!.round, 1);
+  assert.deepEqual(roundResult(room)!.roundDuration, {
+    version: 1,
+    ticks: room.world!.step,
+  });
   // The platform's own boundary takes it.
   const parsed = result.players.map((player) =>
     fuseSurgeRegistration.parseStats(

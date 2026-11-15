@@ -719,6 +719,7 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   const round: MatchResult = {
     ...signedIn,
     round: 1,
+    roundDuration: { version: 1, ticks: 20 },
     length: 1,
     players: signedIn.players.map((p) => ({
       ...p,
@@ -1200,6 +1201,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     const roundResult = {
       ...result,
       round: 1,
+      roundDuration: { version: 1, ticks: 20 },
       length: 1,
       players: result.players.map((p) => ({
         ...p,
@@ -1241,8 +1243,8 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     assert.deepEqual(
       board.players.map((p) => [p.rank, p.elo]),
       [
-        [1, 1016],
-        [2, 984],
+        [1, 1004],
+        [2, 996],
       ],
     );
     assert.equal(board.players[0]!.you, true);
@@ -1296,6 +1298,7 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
   const origin = `http://127.0.0.1:${(service.server.address() as AddressInfo).port}`;
   const result = resultOf([SOLO_RATING_PLAYER_ID, "bot:1"]);
   result.round = 1;
+  result.roundDuration = { version: 1, ticks: 20 };
   result.length = 1;
   result.players = result.players.map((p) => ({
     ...p,
@@ -1363,6 +1366,7 @@ test("solo HTTP rounds and finished games authenticate, isolate accounts and cre
     assert.equal(history.matches.length, 0);
     const whole = structuredClone(result);
     delete whole.round;
+    delete whole.roundDuration;
     const finish = (candidate: unknown, identity?: string) =>
       fetch(`${origin}/api/me/results`, {
         method: "POST",

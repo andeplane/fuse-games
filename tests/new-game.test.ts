@@ -143,7 +143,7 @@ test("the copied game module is the template under its new id", async () => {
       pathToFileURL(join(dir, "pig", "src", "game", "index.ts")).href
     )) as { pigGame: { id: string; rules: string } };
     assert.equal(module.pigGame.id, "pig");
-    assert.equal(module.pigGame.rules, "pig-1");
+    assert.equal(module.pigGame.rules, "pig-2");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
