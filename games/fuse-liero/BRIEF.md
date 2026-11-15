@@ -2,7 +2,7 @@
 
 Real-time worms combat in a destructible neon cavern, inspired by Liero and OpenLieroX. Move, jump and swing into position; switch between rockets, grenades and a scattergun to make new paths and score frags. One round is one cave deathmatch; win rounds to win the match. No progression in this first version.
 
-Fixed whole-arena camera, keyboard and multitouch controls, five players plus spectators. Target 60 FPS on desktop and modern phones, measured in browser rather than assumed. Pure deterministic TypeScript simulation, Canvas presentation, shared Fuse room runtime and WebRTC transport. All terrain, projectiles, bot decisions and random state checkpoint with the round.
+A large 1536×864 cave with personal worm-following cameras and a minimap; shared TVs and unseated spectators retain the full-world overview. Phones get a closer 384×288 viewport, desktop players 640×360. Keyboard and multitouch controls, five players plus spectators. Target 60 FPS on desktop and modern phones, measured in browser rather than assumed. Pure deterministic TypeScript simulation, Canvas presentation, shared Fuse room runtime and WebRTC transport. All terrain, projectiles, bot decisions and random state checkpoint with the round.
 
 Visual direction: luminous lime worms, cyan and magenta opponents, dark violet caves with bright cut edges, readable white health/weapon HUD. Adjectives: electric, chunky, subterranean, explosive, legible. Extend Fuse's existing system; no new site-wide design world.
 

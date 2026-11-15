@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { MAX_SNAPSHOT_BYTES, packMessage, unpackMessage } from "fuse-netcode";
 import {
   createWorld,
   stepWorld,
@@ -16,6 +17,10 @@ import {
   COUNTDOWN_STEPS,
   ROUND_STEPS,
   STEPS_PER_TICK,
+  WIDTH,
+  HEIGHT,
+  CELL,
+  RULES,
   COLS,
   ROWS,
   LEFT,
@@ -76,6 +81,116 @@ test("seeded cave generation and spawn placement are stable and safe", () => {
   for (const worm of world.worms)
     assert.equal(blocked(world, worm.x, worm.y), false);
   assert.equal(seedOf("repeat"), seedOf("repeat"));
+});
+test("the larger cave fills every region and all open cells remain connected", () => {
+  assert.equal(WIDTH, 1536);
+  assert.equal(HEIGHT, 864);
+  assert.equal(CELL, 4);
+  assert.equal(RULES, "fuse-liero-2");
+  for (const seed of [1, 17, 123, 999]) {
+    const world = createWorld(seed, seats, DEFAULT_SETTINGS);
+    for (let band = 0; band < 4; band++)
+      for (let column = 0; column < 5; column++) {
+        let air = 0,
+          total = 0;
+        for (
+          let y = Math.floor((ROWS * band) / 4);
+          y < Math.floor((ROWS * (band + 1)) / 4);
+          y++
+        )
+          for (
+            let x = Math.floor((COLS * column) / 5);
+            x < Math.floor((COLS * (column + 1)) / 5);
+            x++
+          ) {
+            total++;
+            if (world.terrain[y]![x] === "0") air++;
+          }
+        assert.ok(
+          air > total * 0.1,
+          `seed ${seed}, region ${column}/${band} has usable caves`,
+        );
+        assert.ok(
+          air < total * 0.85,
+          `seed ${seed}, region ${column}/${band} retains cover`,
+        );
+      }
+    const air = world.terrain.join("");
+    const first = air.indexOf("0"),
+      seen = new Uint8Array(air.length),
+      queue = [first];
+    seen[first] = 1;
+    for (let at = 0; at < queue.length; at++) {
+      const index = queue[at]!;
+      for (const neighbor of [index - COLS, index + COLS, index - 1, index + 1])
+        if (air[neighbor] === "0" && !seen[neighbor]) {
+          seen[neighbor] = 1;
+          queue.push(neighbor);
+        }
+    }
+    assert.equal(
+      queue.length,
+      [...air].filter((cell) => cell === "0").length,
+      `seed ${seed}: galleries and shafts are connected`,
+    );
+  }
+});
+test("five safe nonoverlapping spawns span the cave's width and depth", () => {
+  for (const seed of [1, 17, 123, 999]) {
+    const world = createWorld(
+      seed,
+      Array.from({ length: 5 }, (_, slot) => ({ id: `seat${slot}`, slot })),
+      DEFAULT_SETTINGS,
+    );
+    assert.ok(
+      Math.max(...world.worms.map((w) => w.x)) -
+        Math.min(...world.worms.map((w) => w.x)) >
+        WIDTH * 0.7,
+    );
+    assert.ok(Math.min(...world.worms.map((w) => w.y)) < HEIGHT * 0.25);
+    assert.ok(Math.max(...world.worms.map((w) => w.y)) > HEIGHT * 0.75);
+    for (const [index, worm] of world.worms.entries()) {
+      assert.equal(blocked(world, worm.x, worm.y), false);
+      assert.equal(blocked(world, worm.x, worm.y + CELL), true);
+      for (const other of world.worms.slice(index + 1))
+        assert.ok((worm.x - other.x) ** 2 + (worm.y - other.y) ** 2 > 200 ** 2);
+    }
+  }
+});
+test("larger cave checkpoints fit the existing transport and close after destruction and replay", () => {
+  const world = createWorld(
+    17,
+    Array.from({ length: 5 }, (_, slot) => ({ id: `seat${slot}`, slot })),
+    DEFAULT_SETTINGS,
+  );
+  assert.equal(
+    world.terrain.reduce((bytes, row) => bytes + row.length, 0),
+    82944,
+  );
+  const bytes = packMessage(encodeWorld(world));
+  assert.ok(bytes.byteLength < 90 * 1024);
+  assert.ok(bytes.byteLength < MAX_SNAPSHOT_BYTES);
+  assert.deepEqual(decodeWorld(unpackMessage(bytes)), world);
+  const obsolete = toView(world);
+  obsolete.terrain = obsolete.terrain
+    .slice(0, ROWS / 2)
+    .map((row) => row.slice(0, COLS / 2));
+  assert.equal(decodeWorld(obsolete), undefined);
+  advance(world, COUNTDOWN_STEPS + STEPS_PER_TICK);
+  for (let tick = 0; tick < 180; tick++)
+    advance(
+      world,
+      STEPS_PER_TICK,
+      new Map(world.worms.map((w) => [w.id, botInput(world, w)])),
+    );
+  const recovered = decodeWorld(unpackMessage(packMessage(encodeWorld(world))));
+  assert.ok(recovered);
+  for (let tick = 0; tick < 80; tick++) {
+    const input = new Map(world.worms.map((w) => [w.id, botInput(world, w)]));
+    advance(world, STEPS_PER_TICK, input);
+    advance(recovered, STEPS_PER_TICK, input);
+  }
+  assert.deepEqual(recovered, world);
 });
 test("countdown admits no play, starts once the complete countdown expires", () => {
   const world = room(),

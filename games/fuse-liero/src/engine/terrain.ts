@@ -9,7 +9,10 @@ import {
   type World,
 } from "./types.js";
 
-/** Fixed-size cave, with a connected central gallery, shafts and firing ledges. */
+const GALLERIES = [0.16, 0.38, 0.61, 0.84] as const;
+const SHAFTS = [0.1, 0.3, 0.5, 0.7, 0.9] as const;
+
+/** A connected cave across the full world, with four galleries and climbable shafts. */
 export function createTerrain(seed: number): string[] {
   const state = { rng: seed };
   const rows: string[][] = Array.from({ length: ROWS }, (_, y) =>
@@ -30,21 +33,33 @@ export function createTerrain(seed: number): string[] {
       )
         if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) rows[y]![x] = "0";
   };
-  // Keep useful cover while guaranteeing every spawn connects to every other.
-  for (let x = 4; x < COLS - 4; x += 3)
-    carve(x, 55 + Math.round((random(state) - 0.5) * 4), 10, 13);
-  for (let x = 14; x < COLS - 10; x += 35) {
-    for (let y = 25; y < 82; y += 4) carve(x, y, 9, 10);
-    carve(x, 28, 17, 11);
-    carve(x + 13, 82, 20, 10);
+  // Small, interpolated bends preserve the original passage and jump dimensions.
+  for (const depth of GALLERIES) {
+    let from = Math.round((random(state) - 0.5) * 10);
+    let to = Math.round((random(state) - 0.5) * 10);
+    for (let x = 5; x < COLS - 4; x += 2) {
+      if ((x - 5) % 32 === 0) {
+        from = to;
+        to = Math.round((random(state) - 0.5) * 10);
+      }
+      const bend = from + (to - from) * (((x - 5) % 32) / 32);
+      carve(x, Math.round(ROWS * depth + bend), 9, 10);
+    }
   }
-  for (let i = 0; i < 11; i++)
-    carve(
-      12 + random(state) * (COLS - 24),
-      23 + random(state) * 64,
-      8 + random(state) * 10,
-      5 + random(state) * 7,
-    );
+  for (const across of SHAFTS) {
+    const x = Math.round(COLS * across);
+    const top = Math.round(ROWS * GALLERIES[0]);
+    const bottom = Math.round(ROWS * GALLERIES[3]);
+    for (let y = top; y <= bottom; y += 2) carve(x, y, 8, 7);
+    for (const depth of GALLERIES) carve(x, Math.round(ROWS * depth), 17, 13);
+    // Staggered shelves every 40px make the shafts traversable with unchanged jumps.
+    // Each shelf leaves most of the shaft open, so worms can jump around its edge.
+    for (let y = top + 10, shelf = 0; y < bottom - 5; y += 10, shelf++) {
+      const side = shelf % 2 === 0 ? -1 : 1;
+      for (let dx = 2; dx <= 6; dx++)
+        for (let dy = 0; dy < 2; dy++) rows[y + dy]![x + dx * side] = "1";
+    }
+  }
   return rows.map((row) => row.join(""));
 }
 
@@ -108,19 +123,38 @@ export function spawnPoint(
   world: Pick<World, "terrain">,
   slot: number,
 ): { x: number; y: number } {
-  const wanted = 60 + slot * 160;
-  // Search in a stable order near this seat's own cave. Respawns never overwrite terrain.
-  for (let offset = 0; offset < COLS; offset++) {
-    const x = clamp(
-      wanted + (offset % 2 === 0 ? 1 : -1) * Math.ceil(offset / 2) * CELL,
-      16,
-      WIDTH - 16,
-    );
-    for (let y = 216; y < HEIGHT - 16; y += CELL)
-      if (!blocked(world, x, y) && blocked(world, x, y + CELL)) return { x, y };
+  const home = clamp(slot, 0, SHAFTS.length - 1);
+  const cx = Math.round(COLS * SHAFTS[home]!);
+  const cy = Math.round(ROWS * GALLERIES[[0, 2, 1, 3, 1][home]!]!);
+  const candidate = (
+    dx: number,
+    dy: number,
+  ): { x: number; y: number } | undefined => {
+    const x = (cx + dx) * CELL;
+    const y = (cy + dy) * CELL;
+    if (x < 16 || y < 16 || x >= WIDTH - 16 || y >= HEIGHT - 16) return;
+    return !blocked(world, x, y) && blocked(world, x, y + CELL)
+      ? { x, y }
+      : undefined;
+  };
+  // Expanding rings stay close to each slot's distinct home on both axes.
+  // The same stable search handles craters on respawn without changing terrain.
+  for (let radius = 0; radius < Math.max(COLS, ROWS); radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const above = candidate(dx, -radius);
+      if (above) return above;
+      const below = candidate(dx, radius);
+      if (below) return below;
+    }
+    for (let dy = -radius + 1; dy < radius; dy++) {
+      const left = candidate(-radius, dy);
+      if (left) return left;
+      const right = candidate(radius, dy);
+      if (right) return right;
+    }
   }
   for (let y = 16; y < HEIGHT - 16; y += CELL)
     for (let x = 16; x < WIDTH - 16; x += CELL)
       if (!blocked(world, x, y)) return { x, y };
-  return { x: 60, y: 216 };
+  return { x: cx * CELL, y: cy * CELL };
 }

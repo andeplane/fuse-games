@@ -7,6 +7,7 @@ import {
   direction,
   type WorldView,
 } from "../engine/index.js";
+import { cameraFor, type Camera } from "./camera.js";
 
 export const COLORS = ["#b6ff4d", "#16e7ff", "#ff2e9d", "#ffe46b", "#a78bfa"];
 
@@ -20,13 +21,35 @@ export function createArena(canvas: HTMLCanvasElement) {
   terrain.height = HEIGHT;
   const ground = terrain.getContext("2d")!;
   let oldRows: string[] = [];
+  let camera: Camera = {
+    x: 0,
+    y: 0,
+    width: WIDTH,
+    height: HEIGHT,
+    overview: true,
+  };
   return {
+    camera: () => ({ ...camera }),
     draw(world: WorldView, names: ReadonlyMap<string, string>, self: string) {
+      camera = cameraFor(
+        world,
+        self,
+        canvas.clientWidth > 0 && canvas.clientWidth < 720,
+      );
+      if (canvas.width !== camera.width || canvas.height !== camera.height) {
+        canvas.width = camera.width;
+        canvas.height = camera.height;
+      }
+      canvas.dataset.camera = camera.overview ? "overview" : "follow";
+      canvas.dataset.cameraX = String(camera.x);
+      canvas.dataset.cameraY = String(camera.y);
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = "#080917";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(-camera.x, -camera.y);
       // A distant crystal field gives empty tunnels depth without concealing terrain.
-      for (let i = 0; i < 75; i++) {
+      for (let i = 0; i < 300; i++) {
         const x = (i * 163 + 37) % WIDTH,
           y = (i * 79 + 29) % HEIGHT;
         ctx.fillStyle = i % 3 ? "#172238" : "#233b46";
@@ -155,6 +178,42 @@ export function createArena(canvas: HTMLCanvasElement) {
         ctx.fillRect(x - 10, y - 12, 20, 2);
         ctx.fillStyle = color;
         ctx.fillRect(x - 10, y - 12, worm.health / 5, 2);
+      }
+      ctx.restore();
+      if (!camera.overview) {
+        const width = canvas.width <= 384 ? 96 : 144,
+          height = (width * HEIGHT) / WIDTH;
+        const own = world.worms.find((worm) => worm.id === self);
+        const right = canvas.width - width - 10;
+        // At the map's upper-right edge the camera cannot centre the worm: move the map out of its way.
+        const x =
+          own && own.x - camera.x > right - 16 && own.y - camera.y < height + 40
+            ? 10
+            : right;
+        const y = 10,
+          scale = width / WIDTH;
+        ctx.fillStyle = "#050812";
+        ctx.fillRect(x - 3, y - 3, width + 6, height + 6);
+        ctx.drawImage(terrain, x, y, width, height);
+        ctx.strokeStyle = "#90acbc";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(
+          x + camera.x * scale,
+          y + camera.y * scale,
+          camera.width * scale,
+          camera.height * scale,
+        );
+        for (const worm of world.worms) {
+          if (worm.health <= 0) continue;
+          const px = Math.round(x + worm.x * scale),
+            py = Math.round(y + worm.y * scale);
+          ctx.fillStyle = COLORS[worm.slot % COLORS.length]!;
+          ctx.fillRect(px - 2, py - 2, 4, 4);
+          if (worm.id === self) {
+            ctx.strokeStyle = "#ffffff";
+            ctx.strokeRect(px - 3, py - 3, 6, 6);
+          }
+        }
       }
     },
   };

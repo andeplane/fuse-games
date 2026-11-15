@@ -63,6 +63,9 @@
   margin: 0 auto;
   padding: 12px 24px 24px;
 }
+.liero-room[data-display="true"] .liero-play {
+  max-width: calc((100svh - 200px) * 16 / 9);
+}
 .liero-hud {
   display: flex;
   align-items: center;

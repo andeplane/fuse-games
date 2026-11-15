@@ -1,8 +1,8 @@
 /** Original Fuse Liero rules. All evolving simulation data travels in this plain state. */
-export const RULES = "fuse-liero-1";
+export const RULES = "fuse-liero-2";
 export const CAPACITY = 5;
-export const WIDTH = 768;
-export const HEIGHT = 432;
+export const WIDTH = 1536;
+export const HEIGHT = 864;
 export const CELL = 4;
 export const COLS = WIDTH / CELL;
 export const ROWS = HEIGHT / CELL;

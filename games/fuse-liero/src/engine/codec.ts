@@ -109,7 +109,7 @@ function effect(raw: unknown): raw is Effect {
     ["blast", "hit", "spawn"].includes(raw.kind as string)
   );
 }
-/** Encoded terrain is just 20 KiB of row strings; no mutable buffers leak out. */
+/** Encoded terrain is 81KiB of row strings; no mutable buffers leak out. */
 export function encodeWorld(world: World): unknown {
   return toView(world);
 }

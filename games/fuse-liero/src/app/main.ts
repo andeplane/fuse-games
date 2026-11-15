@@ -235,6 +235,7 @@ function room(solo: boolean) {
   });
   const main = el("main", "", "liero-room"),
     lobby = el("section", "", "liero-lobby");
+  main.dataset.display = String(display);
   const roster = createRoster({ emptyText: "Take a seat or invite friends" });
   const start = button("START MATCH", "fui-button-primary"),
     addBot = button("+ ADD BOT"),
@@ -588,6 +589,7 @@ function room(solo: boolean) {
         return state ? lieroGame.hash(state) : "";
       },
       fps: () => fps,
+      camera: () => arena.camera(),
     },
   });
   installRoomLifecycle(window, {

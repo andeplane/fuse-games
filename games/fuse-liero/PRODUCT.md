@@ -12,7 +12,7 @@ Friends playing real-time worm combat inside Fuse, on individual browsers or a s
 
 ## Capabilities and constraints
 
-Destructible caves, ninja rope, weapons, bots, and Fuse's existing peer-to-peer rollback multiplayer. No always-running simulation service. Browser controls must work on keyboards and touch screens. Stop at a reviewed PR for human playtesting.
+Destructible caves, ninja rope, weapons, bots, and Fuse's existing peer-to-peer rollback multiplayer. Following user playtest feedback, the world is larger than each player's viewport: personal cameras follow the player's worm; shared TVs retain the full-world overview. No always-running simulation service. Browser controls must work on keyboards and touch screens. Stop at a reviewed PR for human playtesting.
 
 ## Brand commitments
 

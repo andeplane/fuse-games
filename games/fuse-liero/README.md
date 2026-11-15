@@ -19,6 +19,8 @@ Aim into a wall or ceiling before holding rope. Rockets dig paths on impact; gre
 
 ## Architecture
 
+The cave is 1536×864 world pixels, four times the area of the first prototype. Each player follows their own worm in a 640×360 viewport (384×288 on a narrow phone), with a minimap showing the camera rectangle and other living worms. The shared TV display and unseated spectators keep the full-world overview. Camera bounds, aim look-ahead and zoom affect presentation only; every browser still simulates the same complete cave.
+
 `src/engine/` owns the pure fixed-step rules, seeded cave and bots, and validated world snapshots. `src/online/` folds scoped held inputs through `fuse-netcode`, fences match/round/member generations and restores validated room checkpoints. `src/app/` renders the current view and connects keyboard/multitouch inputs to that runtime. Rendering never advances online physics. The room service coordinates membership and WebRTC signalling; it does not simulate or relay gameplay.
 
 One analytics round is one cave deathmatch, counted for participating browsers after countdown. Confirmed frames drive the shared `fuse-ui/play-metrics` lifecycle; spectators and menu backgrounds do not count. Account history/rankings are not credited in this version.
