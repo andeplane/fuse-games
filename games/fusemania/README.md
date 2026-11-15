@@ -2,7 +2,13 @@
 
 Fusemania is a four-arrow rhythm game for one to five players, in the tradition of StepMania and In The Groove. Arrows scroll to four targets; **hit each one as it reaches its target, on the beat**. Hold the long ones to their end, tap the zig-zag ones repeatedly (rolls), keep off the mines. The Fuse soundtrack has twenty tracks, each with Easy, Medium, Hard and Challenge charts made for this project. Imported packs retain their original authors' charts and artist credits.
 
-Charts are ordinary StepMania simfiles. The generated ones are the `.ssc` files in `charts/`, and a player can load any 4-panel (`dance-single`) `.sm` or `.ssc` with its music for a solo run. **DUKAMOK ORIGINALS** adds 43 songs with the pack's original `.sm` charts, artist credits, timing and audio. The four DWI-only songs (Big Blue, Presto, Salieri Strikes Back and Utopia) are deferred until the separate DWI loader is merged. See [the import record](charts/dukamok-originals/README.md).
+Charts are ordinary StepMania simfiles. The generated ones are the `.ssc` files in `charts/`, and a player can load any 4-panel (`dance-single`) `.sm`, `.ssc` or `.dwi` with its music for a solo run. **DUKAMOK ORIGINALS** adds 43 songs with the pack's original `.sm` charts, artist credits, timing and externally hosted audio. The four DWI-only songs (Big Blue, Presto, Salieri Strikes Back and Utopia) are reserved for a separate follow-up PR. See [the import record](charts/dukamok-originals/README.md).
+
+The DWI loader reads `SINGLE` charts, including keypad chords, simultaneous arrow groups, holds and subdivisions
+through 192nds. It preserves `GAP`, `CHANGEBPM`/`BPMCHANGE` and `FREEZE` timing and normalizes DWI's difficulty
+names (BASIC, ANOTHER, MANIAC, SMANIAC). Six-panel SOLO and eight-panel DOUBLE/COUPLE charts are not playable.
+Malformed or oversized charts are rejected. The selected simfile and audio stay on the device.
+The format conventions follow [StepMania's DWI loader](https://github.com/stepmania/stepmania/blob/5_1-new/src/NotesLoaderDWI.cpp).
 
 ## Run it
 
