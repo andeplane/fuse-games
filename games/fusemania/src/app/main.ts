@@ -1234,6 +1234,7 @@ function enterRoom(
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
+    layout: "configuration",
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor,

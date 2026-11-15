@@ -765,6 +765,7 @@ function room(solo: boolean): void {
       if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
     },
     addAI: addBot,
+    layout: "configuration",
     modes: [modePicker.element],
     settings: [scoringPicker.element, botTitle, botPicker.element],
     actions: [lobbyNote],

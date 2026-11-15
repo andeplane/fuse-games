@@ -17,6 +17,10 @@ export interface RoomFriends extends RosterFriends {
 }
 
 export interface RoomLayoutOptions {
+  /** Inline per-round room/player choices lead on the right; seats follow the invitation. Compact solo ignores it. */
+  layout?: "players" | "configuration";
+  /** Authored inline per-round choices; distinct from the settings dialog and general personal preferences. */
+  configuration?: readonly Node[];
   element: HTMLElement;
   invite?: HTMLElement;
   roster: Roster | HTMLElement;
@@ -311,8 +315,28 @@ export function createRoomLayout(options: RoomLayoutOptions) {
     ...(options.actions ?? []).filter((node) => node !== options.primaryAction),
   );
   // Who is here and where to join come first, in every game: a game's own choices (modes, maps, songs) follow.
-  right.append(heading, roster, slots, joinActions, modes, actions);
+  const configuration = options.layout === "configuration" && !compact;
+  const choices = options.configuration?.length
+    ? el("div", "", "fui-room-configuration-content", doc)
+    : undefined;
+  choices?.append(...(options.configuration ?? []));
+  if (configuration) {
+    const seats = el("section", "", "fui-room-seats", doc);
+    seats.append(heading, roster, slots, joinActions);
+    left.append(seats);
+    right.append(...(choices ? [choices] : []), modes, actions);
+  } else
+    right.append(
+      heading,
+      roster,
+      slots,
+      joinActions,
+      ...(choices ? [choices] : []),
+      modes,
+      actions,
+    );
   root.classList.add("fui-room-layout");
+  root.classList.toggle("fui-room-configuration", configuration);
   root.classList.toggle("fui-room-compact", compact);
   root.classList.toggle(
     "fui-room-every-seat",
@@ -538,6 +562,9 @@ export function createRoomAppearance(content: readonly Node[], doc: Document) {
  * All HTML slots are authored and escaped by the calling game's existing markup renderer.
  */
 export function roomLayoutMarkup(options: {
+  /** Match the retained-DOM layout's explicit per-round configuration mode. */
+  layout?: "players" | "configuration";
+  configuration?: string;
   invite: string;
   players: string;
   join: string;
@@ -584,5 +611,10 @@ export function roomLayoutMarkup(options: {
     ? `<div class="fui-room-primary-action">${options.primaryAction}</div>`
     : "";
   const configure = `<button class="fui-room-configure" data-action="open-room-settings" aria-label="Game settings">${inHeader ? "Settings" : "Game settings"}</button>`;
-  return `<main class="fui-room-layout${inHeader ? " fui-room-actions-top" : ""}"><header class="fui-page-head fui-room-head">${options.mainMenu ?? '<a class="fui-back fui-room-main-menu" href="./" aria-label="Back">Back</a>'}${options.heading !== undefined || inHeader ? `<h2 class="fui-page-title">${options.heading ?? ""}</h2>` : ""}${inHeader ? `<div class="fui-page-actions">${configure}${primary}</div>` : ""}</header><aside class="fui-room-invitation">${options.invite}${inHeader ? "" : primary + configure}</aside><section class="fui-room-players"><h2>Players <span class="fui-room-count">${options.occupied} / ${options.capacity}</span></h2>${options.players}<div class="fui-room-open-slots">${open}</div><div class="fui-room-actions">${options.actions}</div></section>${options.status !== undefined ? `<div class="fui-room-status">${options.status}</div>` : ""}<dialog class="fui-dialog fui-menu-dialog fui-slot-admission" data-room-name aria-label="Join the game"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-name" aria-label="Back">Back</button><strong class="fui-dialog-title">Join the game</strong></header><div class="fui-dialog-body">${options.join}</div></dialog><dialog class="fui-dialog fui-menu-dialog" data-room-settings aria-label="Game settings"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-settings" aria-label="Back">Back</button><strong class="fui-dialog-title">Game settings</strong></header><div class="fui-dialog-body">${options.settings}</div></dialog></main>`;
+  const seats = `<h2>Players <span class="fui-room-count">${options.occupied} / ${options.capacity}</span></h2>${options.players}<div class="fui-room-open-slots">${open}</div>`;
+  const configuration = options.layout === "configuration";
+  const choices = options.configuration
+    ? `<div class="fui-room-configuration-content">${options.configuration}</div>`
+    : "";
+  return `<main class="fui-room-layout${inHeader ? " fui-room-actions-top" : ""}${configuration ? " fui-room-configuration" : ""}"><header class="fui-page-head fui-room-head">${options.mainMenu ?? '<a class="fui-back fui-room-main-menu" href="./" aria-label="Back">Back</a>'}${options.heading !== undefined || inHeader ? `<h2 class="fui-page-title">${options.heading ?? ""}</h2>` : ""}${inHeader ? `<div class="fui-page-actions">${configure}${primary}</div>` : ""}</header><aside class="fui-room-invitation">${options.invite}${inHeader ? "" : primary + configure}${configuration ? `<section class="fui-room-seats">${seats}</section>` : ""}</aside><section class="fui-room-players">${configuration ? "" : seats}${choices}<div class="fui-room-actions">${options.actions}</div></section>${options.status !== undefined ? `<div class="fui-room-status">${options.status}</div>` : ""}<dialog class="fui-dialog fui-menu-dialog fui-slot-admission" data-room-name aria-label="Join the game"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-name" aria-label="Back">Back</button><strong class="fui-dialog-title">Join the game</strong></header><div class="fui-dialog-body">${options.join}</div></dialog><dialog class="fui-dialog fui-menu-dialog" data-room-settings aria-label="Game settings"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-settings" aria-label="Back">Back</button><strong class="fui-dialog-title">Game settings</strong></header><div class="fui-dialog-body">${options.settings}</div></dialog></main>`;
 }

@@ -946,7 +946,7 @@ test("the slider's badge shows the title's letter, and the slider is the host's"
   assert.deepEqual(f.calls, []);
 });
 
-test("PLAY on the selected song, and Enter, start it, for the host only", () => {
+test("the selected song card and Enter start it for the host, without a duplicate PLAY button", () => {
   const { document } = parseHTML("<!doctype html><html><body></body></html>");
   const plays: string[] = [];
   const picker = createSongPicker({
@@ -959,15 +959,16 @@ test("PLAY on the selected song, and Enter, start it, for the host only", () => 
   });
   document.body.append(picker.element);
   picker.update(state());
+  assert.equal(picker.element.querySelector(".fm-picker-play"), null);
   const play = picker.element.querySelector<HTMLButtonElement>(
-    ".fm-picker-detail .fm-picker-play",
+    '.fm-picker-row[aria-selected="true"]',
   )!;
-  assert.equal(play.hidden, false);
   play.click();
   assert.equal(picker.key("Enter"), true);
   assert.deepEqual(plays, ["play", "play"]);
   // A guest has neither.
   picker.update(state({ host: false }));
-  assert.equal(play.hidden, true);
+  play.click();
   assert.equal(picker.key("Enter"), false);
+  assert.deepEqual(plays, ["play", "play"]);
 });
