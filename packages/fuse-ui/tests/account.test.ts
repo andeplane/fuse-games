@@ -516,9 +516,7 @@ test("a public player's activity opens from the dialog API and from leaderboard 
   assert.equal(f.body.dataset.view, "activity");
   assert.match(f.body.textContent!, /Bee · RECENT ACTIVITY/);
   assert.ok(
-    f.requests.some(
-      (request) => request === "GET /activity?player=public-bee&kind=round",
-    ),
+    f.requests.some((request) => request === "GET /activity?player=public-bee"),
   );
   f.replies.leaderboard = () =>
     new Response(JSON.stringify({ players: ["Cass"] }));
@@ -530,7 +528,7 @@ test("a public player's activity opens from the dialog API and from leaderboard 
   assert.match(f.body.textContent!, /Cass · RECENT ACTIVITY/);
   assert.ok(
     f.requests.some(
-      (request) => request === "GET /activity?player=public-cass&kind=round",
+      (request) => request === "GET /activity?player=public-cass",
     ),
   );
   f.panel.dispose();

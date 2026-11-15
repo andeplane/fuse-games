@@ -203,14 +203,27 @@ test("player navigation clears unrelated filters, focuses the player heading, an
   await settle();
   assert.deepEqual(f.source.queries.at(-1), {
     player: "public-ada",
-    kind: "round",
   });
   assert.equal(f.document.activeElement?.textContent, "Ada · RECENT ACTIVITY");
   assert.equal(f.named("EVERYONE").getAttribute("aria-pressed"), "false");
   f.named("EVERYONE").click();
   await settle();
-  assert.deepEqual(f.source.queries.at(-1), { kind: "round" });
+  assert.deepEqual(f.source.queries.at(-1), {});
   assert.equal(f.named("EVERYONE").getAttribute("aria-pressed"), "true");
+});
+
+test("opening a player's feed includes games that record matches without round receipts", async (t) => {
+  const f = fixture(t);
+  f.source.listReply = async (query) => ({
+    events:
+      query.kind === "round"
+        ? []
+        : [event({ gameId: "fuse-lane", title: "Local game complete" })],
+  });
+  f.browser.openPlayer("public-ada", "Ada");
+  await settle();
+  assert.match(f.browser.element.textContent!, /Local game complete/);
+  assert.equal(f.source.queries.at(-1)?.kind, undefined);
 });
 
 test("round and match details preserve score units, escape names, sort linked rounds, and return focus", async (t) => {

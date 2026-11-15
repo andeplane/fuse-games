@@ -167,7 +167,8 @@ export function createActivityBrowser(options: ActivityBrowserOptions) {
   const showPlayer = (id: string, name: string) => {
     who = { id, name };
     game.value = "";
-    kind.value = "round";
+    // Some games report only matches; a player's default feed must include those too.
+    kind.value = "";
     mode.value = "";
     opened = true;
     detail.hidden = true;
