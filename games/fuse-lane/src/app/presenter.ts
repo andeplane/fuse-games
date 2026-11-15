@@ -285,6 +285,9 @@ export interface LobbyModel {
   canPickGoals: boolean;
   weekSeconds: number;
   canSetWeek: boolean;
+  /** The room is one shared screen with phones as controllers, and whether this device may change that. */
+  shared: boolean;
+  canShare: boolean;
 }
 export interface ScreenModel {
   screen: "lobby" | "game" | "over";
@@ -1207,6 +1210,8 @@ function lobby(view: FuseLaneView, viewer: Viewer): LobbyModel {
     canPickGoals: seated && !viewer.display,
     weekSeconds: view.weekSeconds,
     canSetWeek: host,
+    shared: viewer.shared,
+    canShare: host,
   };
 }
 
@@ -1302,10 +1307,16 @@ export function present(view: FuseLaneView, viewer: Viewer): ScreenModel {
   const seated = you !== undefined && !viewer.display;
   const playing = view.phase === "running";
   const inWeek = playing && view.part === "week";
-  // A shared-screen room's creator holds no seat: its screen is the TV, and it keeps the host's buttons.
-  const tvHost = viewer.shared && viewer.host && !viewer.local && !seated;
+  // A Shared TV room's host who took no seat: once the match runs its screen is the TV, and it keeps the host's
+  // buttons. In the lobby it is a device like any other and may still take a seat.
+  const tvHost =
+    viewer.shared &&
+    viewer.host &&
+    !viewer.local &&
+    !seated &&
+    view.phase !== "lobby";
   const layout: ScreenModel["layout"] =
-    viewer.display || (tvHost && view.phase !== "lobby")
+    viewer.display || tvHost
       ? "tv"
       : viewer.shared && seated
         ? "controller"

@@ -1,29 +1,22 @@
 import { button, createJoinByCode, el } from "fuse-ui";
-import { AVATARS, isAvatar, seatName } from "../game/index.js";
-import type { Art } from "./art.js";
+import { AVATARS, isAvatar } from "../game/index.js";
 import type { Store } from "./session.js";
 
 /**
- * The menu's PLAY ONLINE side, the way Fuse Riders does rooms: CREATE ROOM (each on their own device, or a shared TV
- * with phones as the controllers), a code to join, and REJOIN for the last room. The name and face picked here are
- * the ones the room seats.
+ * The menu's PLAY ONLINE side, the way Fuse Riders does rooms: CREATE ROOM, a code to join, and REJOIN for the last
+ * room. Everything else is the room's: it asks for your name and face, and how it is played (each on their own
+ * device, or a Shared TV with phones as the controllers) is ticked there.
  */
-export type OnlineMode = "devices" | "shared";
-
 export interface OnlineKeys {
-  name: string;
-  avatar: string;
-  shared: string;
   last: string;
 }
 
 export interface OnlineOptions {
-  art: Art;
   store: Store;
   keys: OnlineKeys;
   valid(code: string): boolean;
   /** Creates a room and goes to it; a rejection's message is shown and CREATE ROOM comes back. */
-  onCreate(mode: OnlineMode): Promise<void>;
+  onCreate(): Promise<void>;
   onJoin(code: string): void;
 }
 
@@ -48,14 +41,7 @@ export function lastRoom(
 }
 
 export function createOnlineSheet(options: OnlineOptions): HTMLElement {
-  const { art, store, keys } = options;
-  const save = (key: string, value: string) => {
-    try {
-      store.setItem(key, value);
-    } catch {
-      /* not remembered: the room asks again */
-    }
-  };
+  const { store, keys } = options;
   const sheet = el("section", "", "fl-sheet fl-online");
   const field = (title: string, hint: string, ...body: HTMLElement[]) => {
     const block = el("div", "", "fl-field");
@@ -64,65 +50,6 @@ export function createOnlineSheet(options: OnlineOptions): HTMLElement {
     block.append(...body);
     return block;
   };
-
-  // You: the face and name the room seats.
-  let face = storedFace(store, keys.avatar);
-  const you = el("div", "", "fl-person"),
-    faceButton = button("", "fl-person-face"),
-    name = el("input", "", "fl-person-name");
-  const drawFace = () => {
-    faceButton.replaceChildren(art.element(`avatar-${face}-portrait`, 44));
-    faceButton.setAttribute("aria-label", "Change your character");
-  };
-  faceButton.onclick = () => {
-    face = nextFace(face);
-    save(keys.avatar, face);
-    drawFace();
-  };
-  name.value = seatName(safeGet(store, keys.name) ?? "") ?? "";
-  name.placeholder = "Your name";
-  name.maxLength = 16;
-  name.autocomplete = "off";
-  name.setAttribute("aria-label", "Your name");
-  const keepName = () => {
-    const clean = seatName(name.value);
-    if (clean) save(keys.name, clean);
-  };
-  name.onchange = keepName;
-  you.append(faceButton, name);
-  drawFace();
-
-  // Where: each on their own device, or one TV with phones.
-  let mode: OnlineMode =
-    safeGet(store, keys.shared) === "1" ? "shared" : "devices";
-  const modes = el("div", "", "fl-segmented fl-online-mode"),
-    modeHint = el("p", "", "fl-hint fl-mode-hint");
-  const modeButtons = (
-    [
-      ["devices", "EACH ON THEIR OWN DEVICE"],
-      ["shared", "SHARED TV"],
-    ] as const
-  ).map(([value, label]) => {
-    const choice = button(label, "fl-segment");
-    choice.onclick = () => {
-      mode = value;
-      save(keys.shared, value === "shared" ? "1" : "0");
-      drawMode();
-    };
-    modes.append(choice);
-    return { value, choice };
-  });
-  const drawMode = () => {
-    for (const { value, choice } of modeButtons) {
-      choice.classList.toggle("on", value === mode);
-      choice.setAttribute("aria-pressed", String(value === mode));
-    }
-    modeHint.textContent =
-      mode === "shared"
-        ? "This screen shows the town for everyone; each player plays from their own phone."
-        : "Everyone plays on their own phone or computer, here or far away.";
-  };
-  drawMode();
 
   const error = el("p", "", "fl-online-error");
   error.setAttribute("role", "alert");
@@ -133,12 +60,11 @@ export function createOnlineSheet(options: OnlineOptions): HTMLElement {
   };
   const create = button("CREATE ROOM", "fui-button-primary fl-create-room");
   create.onclick = async () => {
-    keepName();
     error.hidden = true;
     create.disabled = true;
     create.textContent = "CREATING ROOM…";
     try {
-      await options.onCreate(mode);
+      await options.onCreate();
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : String(reason));
       create.disabled = false;
@@ -149,10 +75,7 @@ export function createOnlineSheet(options: OnlineOptions): HTMLElement {
   const last = lastRoom(store, keys.last, options.valid);
   const join = createJoinByCode({
     valid: options.valid,
-    onJoin: (code) => {
-      keepName();
-      options.onJoin(code);
-    },
+    onJoin: (code) => options.onJoin(code),
     onInvalid: fail,
     buttonText: "JOIN",
     placeholder: "Room code",
@@ -171,14 +94,8 @@ export function createOnlineSheet(options: OnlineOptions): HTMLElement {
 
   sheet.append(
     field(
-      "YOU",
-      "Tap the face to change character. The room seats you with this name.",
-      you,
-    ),
-    field("WHERE WILL YOU PLAY?", "", modes, modeHint),
-    field(
       "START A ROOM",
-      "Everyone plays the same week at the same time. Jobs and shelves are shared: first come, first served.",
+      "Everyone plays the same week at the same time, on their own device or around a Shared TV. Jobs and shelves are shared: first come, first served.",
       create,
     ),
     field("GOT A CODE?", "", join.row),
