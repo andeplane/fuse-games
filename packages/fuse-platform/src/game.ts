@@ -41,6 +41,8 @@ export interface GameRegistration<
 > {
   /** The gameId everywhere: rooms, match records, ratings, routes. Lowercase `[a-z0-9-]`, at most 32 characters. */
   readonly id: string;
+  /** Smallest plausible rated round in this game's reported tick units; absent means rating is disabled. */
+  readonly minRatedRoundTicks?: number;
   /** Bots never hold an account, never attest and are never rated. */
   isBot(playerId: string): boolean;
   /**
@@ -107,6 +109,12 @@ export class Platform {
     for (const game of games) {
       if (!validGameId(game.id) || registered.has(game.id))
         throw new RangeError(`Invalid or duplicate game id: ${game.id}`);
+      if (
+        game.minRatedRoundTicks !== undefined &&
+        (!Number.isSafeInteger(game.minRatedRoundTicks) ||
+          game.minRatedRoundTicks < 1)
+      )
+        throw new RangeError(`Invalid rated round minimum: ${game.id}`);
       const reserved = Object.keys(game.emptyTotals()).filter((key) =>
         RESERVED_KEYS.has(key),
       );

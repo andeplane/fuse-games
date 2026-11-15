@@ -68,5 +68,7 @@ export function roundResult(
 ): MatchResult<FuseDriversStats> | undefined {
   if (round !== room.round) return;
   const result = matchResult(room);
-  return result ? { ...result, round } : undefined;
+  return result && room.race
+    ? { ...result, round, roundDuration: { version: 1, ticks: room.race.tick } }
+    : undefined;
 }

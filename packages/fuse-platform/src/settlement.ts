@@ -156,6 +156,9 @@ export function settleHistory<T>(
   const humans = stayed.filter((p) => match.uidByPlayer[p.playerId]);
   const eligible =
     match.result.round !== undefined &&
+    game.minRatedRoundTicks !== undefined &&
+    match.result.roundDuration !== undefined &&
+    match.result.roundDuration.ticks >= game.minRatedRoundTicks &&
     !ratingClaimed &&
     !match.ratings &&
     match.ratingScope &&

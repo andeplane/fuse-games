@@ -54,6 +54,7 @@ const KEYS = [
 function fakeGame(id: string): GameRegistration<Seat, Totals, number> {
   return {
     id,
+    minRatedRoundTicks: 20,
     isBot: (playerId) => /^bot:[0-9]{1,6}$/.test(playerId),
     parseStats(raw) {
       if (!raw || typeof raw !== "object") return;
@@ -190,6 +191,7 @@ async function fixture(sameIncarnation = false) {
 const round = (ids: string[], winner: number, matchId = "m1") => ({
   matchId,
   round: 1,
+  roundDuration: { version: 1, ticks: 20 },
   length: 1,
   finishers: ids,
   winnerId: ids[winner],
@@ -393,6 +395,44 @@ test("F-06 concurrent distinct rounds share the same stored pair budget", async 
   );
 });
 
+test("F-06 a missing or sub-minimum duration cannot settle a rated round", async () => {
+  const f = await fixture();
+  const table = await f.room("dice", 80);
+  const base = round(table.ids, 0, "too-short");
+  await f.play(
+    "dice",
+    table,
+    { ...base, matchId: "zero", roundDuration: { version: 1, ticks: 0 } },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating, undefined);
+  await f.play(
+    "dice",
+    table,
+    { ...base, roundDuration: { version: 1, ticks: 19 } },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating, undefined);
+  await f.play(
+    "dice",
+    table,
+    { ...base, matchId: "old-client", roundDuration: undefined },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating, undefined);
+  await f.play(
+    "dice",
+    table,
+    { ...base, matchId: "long-enough" },
+    ["alice", "bob"],
+    true,
+  );
+  assert.equal((await f.database.profile("dice", "alice"))?.rating?.games, 1);
+});
+
 test("match history, totals and rivalries are per game; a record without a gameId is the legacy game's", async () => {
   const f = await fixture();
   const whole = (ids: string[], winner: number, matchId: string) => ({
@@ -568,6 +608,7 @@ test("solo rounds of different games never share a record or a rating scope", as
   const solo = {
     matchId: "solo-1",
     round: 1,
+    roundDuration: { version: 1, ticks: 20 },
     length: 1,
     finishers: ["0".repeat(24)],
     players: [seat("0".repeat(24), 0, 1), seat("bot:1", 1, 2)],

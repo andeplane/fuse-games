@@ -69,6 +69,10 @@ test("a game of the set is a rating receipt the platform takes: winners first, l
   assert.equal(roundResult(room, 1), undefined, "not decided yet");
   win(room, 0);
   const receipt = roundResult(room, 1)!;
+  assert.deepEqual(receipt.roundDuration, {
+    version: 1,
+    ticks: room.results[0]!.steps,
+  });
   assert.deepEqual(parse(structuredClone(receipt)), receipt);
   assert.equal(receipt.matchId, "set-1");
   assert.equal(receipt.round, 1);

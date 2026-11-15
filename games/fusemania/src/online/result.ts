@@ -83,5 +83,14 @@ export function roundResult(
   room: Room,
 ): MatchResult<FusemaniaPlayerResult> | undefined {
   const result = matchResult(library, room);
-  return result && { ...result, round: 1 };
+  return result && room.decided
+    ? {
+        ...result,
+        round: 1,
+        roundDuration: {
+          version: 1,
+          ticks: room.decided.clock - room.matchStartTick,
+        },
+      }
+    : undefined;
 }

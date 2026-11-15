@@ -128,6 +128,7 @@ export const fuseDriversRegistration: GameRegistration<
   FuseDriversTotalsRecord
 > = {
   id: "fuse-drivers",
+  minRatedRoundTicks: 30, // game/sim/config.ts TICK_RATE
   isBot: isBotId,
   parseStats: parseFuseDriversStats,
   emptyTotals: () => ({ totals: emptyFuseDriversTotals() }),

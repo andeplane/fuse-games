@@ -86,6 +86,9 @@ export function resolveRound(ctx: TickContext): void {
     inFlight,
   );
   state.decidedRound.rating = {
+    ...(state.roundStartedTick === undefined
+      ? {}
+      : { durationTicks: state.tick - state.roundStartedTick }),
     finishers: [...state.roundParticipants.keys()]
       .filter(
         (id) => state.players.get(id)?.connected && !id.startsWith("bot:"),

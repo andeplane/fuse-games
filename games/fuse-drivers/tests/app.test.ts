@@ -174,6 +174,10 @@ test("a device owes its report once the race is confirmed, and owes it once", ()
   );
   const due = dueReports(room, "a", room.tick, sent);
   const finishTick = room.finishTick;
+  assert.deepEqual(due[0]!.result.roundDuration, {
+    version: 1,
+    ticks: room.race!.tick,
+  });
   runTo(room, room.tick + 10);
   assert.deepEqual(
     dueReports(room, "a", finishTick, sent),

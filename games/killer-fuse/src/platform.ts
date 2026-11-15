@@ -124,6 +124,7 @@ export const killerFuseRegistration: GameRegistration<
   KillerFuseTotalsRecord
 > = {
   id: "killer-fuse",
+  minRatedRoundTicks: 60, // engine/tuning.ts TICK_HZ
   isBot: isBotId,
   parseStats: parseKillerFuseStats,
   emptyTotals: () => ({ totals: emptyKillerFuseTotals() }),

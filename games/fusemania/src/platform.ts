@@ -173,6 +173,7 @@ export const fusemaniaRegistration: GameRegistration<
   FusemaniaTotalsRecord
 > = {
   id: "fusemania",
+  minRatedRoundTicks: 20, // fuse-netcode/clock.ts TICK_MS = 50
   isBot: isBotId,
   parseStats: parseFusemaniaStats,
   validField: validFusemaniaField,

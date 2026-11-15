@@ -184,6 +184,7 @@ export interface SessionView {
 
 export interface Room extends ManagedRoom<Settings> {
   tick: number;
+  matchStartTick: number;
   matchId: string;
   /** Matches this room has started. */
   epoch: number;
@@ -265,7 +266,7 @@ const SEAT_KEYS = [
   "away",
 ];
 const STAGES: readonly RoomStage[] = ["lobby", "running", "over"];
-const FIELDS = 12;
+const FIELDS = 13;
 const seatOrder = (a: SeatRecord, b: SeatRecord) =>
   a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -545,6 +546,7 @@ export function createFusemaniaGame(
   function createRoom(matchId: string, settings: Settings): Room {
     return {
       tick: 0,
+      matchStartTick: 0,
       matchId,
       epoch: 0,
       stage: "lobby",
@@ -599,6 +601,7 @@ export function createFusemaniaGame(
       roster.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS,
     );
     if (!world) return;
+    room.matchStartTick = room.tick;
     room.roster = roster;
     room.world = world;
     room.stage = "running";
@@ -863,6 +866,7 @@ export function createFusemaniaGame(
       room.hold
         ? [room.hold.ticks, [...room.hold.ready], room.hold.screen]
         : null,
+      room.matchStartTick,
     ];
   }
 
@@ -885,6 +889,7 @@ export function createFusemaniaGame(
       epoch,
       rawSession,
       rawHold,
+      matchStartTick,
     ] = fields;
     const settings = parseSettings(rawSettings),
       play = parseSettings(rawPlay),
@@ -892,6 +897,8 @@ export function createFusemaniaGame(
       roster = decodeRoster(rawRoster);
     if (
       !validMatchId(id) ||
+      !uint32(matchStartTick) ||
+      matchStartTick > tick ||
       !STAGES.some((known) => known === stage) ||
       !settings ||
       !play ||
@@ -911,6 +918,7 @@ export function createFusemaniaGame(
     if (
       !picks ||
       decided === undefined ||
+      (decided !== null && decided.clock < matchStartTick) ||
       world === undefined ||
       session === undefined
     )
@@ -1003,6 +1011,7 @@ export function createFusemaniaGame(
     }
     return {
       tick,
+      matchStartTick,
       matchId: id,
       epoch,
       stage: stage as RoomStage,

@@ -24,7 +24,7 @@ import {
   READY,
   type Entry,
 } from "../src/online/game.js";
-import { matchResult } from "../src/online/result.js";
+import { matchResult, roundResult } from "../src/online/result.js";
 import { parseFusemaniaStats, validFusemaniaField } from "../src/platform.js";
 import {
   SETTINGS,
@@ -143,6 +143,10 @@ test("the song ends for everyone together, the best rating wins, and a rematch i
   assert.equal(view.world!.players[1]!.counts[MISS], steps.steps);
 
   const result = matchResult(library, room)!;
+  assert.deepEqual(roundResult(library, room)!.roundDuration, {
+    version: 1,
+    ticks: room.decided!.clock - room.matchStartTick,
+  });
   assert.equal(result.players.length, 2);
   // The service knows members by their long ids; the test's are one letter.
   const reported = result.players.map((player) => ({
