@@ -2,7 +2,7 @@ import { describe, playerRecord } from "./ccbs";
 import { CCBS_LISTED_PLAYERS, ccbsPersona, ircNick } from "./ddrPlayers";
 
 /**
- * The people in the simulated channels. Everyone on CCBS with at least five tournaments sits in #ddrnorway
+ * The people in the simulated channels. Everyone on CCBS with at least five tournaments can join #ddrnorway
  * and can be voiced by the language model from their public results. RiChY, Andeplane and Zredna keep
  * hand-written personas; the rest are modelled by `ccbsPersona`. Everyone else here is fictional. Players
  * with fewer tournaments appear only when CCBSbot cites a result.
@@ -230,6 +230,24 @@ export function regularsIn(channel: string): Regular[] {
   );
 }
 
+/** An automatic mIRC nick such as Guest1540. Nobody in the channel would greet that. */
+export function isAutomaticGuest(nick: string): boolean {
+  return /^guest\d+$/i.test(nick);
+}
+
+/**
+ * Drops an automatic guest nick out of a line. "hei Guest1540 :)" becomes "hei :)".
+ * A line that was only the nick is dropped.
+ */
+export function scrubGuestNick(text: string, nick: string): string | undefined {
+  if (!isAutomaticGuest(nick)) return text;
+  const cleaned = text
+    .replace(new RegExp(`\\b${nick}\\b`, "gi"), "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 /** The system prompt for one regular's next line. */
 export function systemPromptFor(
   regular: Regular,
@@ -241,12 +259,16 @@ export function systemPromptFor(
     company.length > 0
       ? ` You are in a conversation with ${company.join(", ")}.`
       : "";
+  const room = isAutomaticGuest(userNick)
+    ? `You are chatting on IRC in ${channel}.`
+    : `You are chatting on IRC in ${channel} with ${userNick} and others.`;
   return [
     regular.persona,
     SCENE,
-    `You are chatting on IRC in ${channel} with ${userNick} and others.${withWhom}`,
+    `${room}${withWhom}`,
     "Reply with ONE short IRC line (at most 20 words) in the same language as the last message (Norwegian or English).",
     "No quotes, no name prefix, no emojis except :) :D ;) -_-.",
     "Never speak for, quote or pretend to be anyone else. Do not invent tournament results; only mention the ones you were told.",
+    "Talk only to people in the channel. Never greet or address a nick that is Guest followed by digits.",
   ].join(" ");
 }

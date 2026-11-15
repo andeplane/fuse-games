@@ -28,8 +28,10 @@ import {
   findRegular,
   REGULARS,
   regularsIn,
+  scrubGuestNick,
 } from "./regulars";
-import { firstMentioned, pickScene, sceneGapMs } from "./scene";
+import type { ArrivalPlan } from "./scene";
+import { firstMentioned, planArrival, sceneGapMs } from "./scene";
 
 /**
  * A pretend IRC server that runs in the page: FuseOS has no IRC backend, and browsers cannot reach the real
@@ -97,6 +99,38 @@ export function reactionSpeaker(
   return present[Math.floor(random() * present.length)];
 }
 
+type SceneBeat =
+  | { kind: "join"; nick: string }
+  | { kind: "say"; nick: string; company: string[]; hint: string };
+
+function beatsFor(plan: ArrivalPlan): SceneBeat[] {
+  const group = [plan.greeter, plan.joiner, ...plan.others];
+  const company = (nick: string) => group.filter((other) => other !== nick);
+  const beats: SceneBeat[] = [
+    { kind: "join", nick: plan.joiner },
+    {
+      kind: "say",
+      nick: plan.greeter,
+      company: company(plan.greeter),
+      hint: `Say hei to ${plan.joiner}. One short line, and only to them.`,
+    },
+    {
+      kind: "say",
+      nick: plan.joiner,
+      company: company(plan.joiner),
+      hint: `${plan.greeter} said hei to you. Reply with one short line.`,
+    },
+  ];
+  for (const nick of plan.others)
+    beats.push({
+      kind: "say",
+      nick,
+      company: company(nick),
+      hint: `You are talking with ${company(nick).join(", ")}. One short line about DDR.`,
+    });
+  return beats;
+}
+
 export class SimServer {
   private nick = "*";
   private user = "user";
@@ -111,8 +145,8 @@ export class SimServer {
   private sceneBusy = false;
   private modelReady = false;
   private preparing: Promise<boolean> | undefined;
-  /** The players still due a line in the current model conversation. */
-  private scene: { nicks: string[]; left: string[] } | undefined;
+  /** The join and the lines still due in the current hello. */
+  private beats: SceneBeat[] = [];
   private stopped = false;
 
   constructor(
@@ -133,11 +167,14 @@ export class SimServer {
         members: new Map(),
         history: [],
       };
-      for (const regular of regularsIn(name))
+      for (const regular of regularsIn(name)) {
+        // Listed players arrive later, one join at a time. The house regulars are already here.
+        if (regular.host === "players.ddr.no") continue;
         channel.members.set(ircLower(regular.nick), {
           nick: regular.nick,
           prefix: regular.prefix,
         });
+      }
       this.channels.set(ircLower(name), channel);
     }
   }
@@ -515,11 +552,17 @@ export class SimServer {
           `:${this.prefixOf(ccbs)} NOTICE ${this.nick} :Velkommen til ${channel.name}! Siste turnering: ${describe(last)}. Skriv !ccbs for kommandoer.`,
         ),
       );
-    const greeter = findRegular("RiChY");
-    if (greeter)
-      this.later(between(TYPING_MS, this.deps.random) + 1500, () =>
-        this.say(greeter, channel.name, `hei ${this.nick} :)`),
-      );
+  }
+
+  /** A listed player comes into #ddrnorway. The people already there can then say hei. */
+  private arrive(regular: Regular) {
+    const channel = this.channel(DDR_CHANNEL);
+    if (!channel || channel.members.has(ircLower(regular.nick))) return;
+    channel.members.set(ircLower(regular.nick), {
+      nick: regular.nick,
+      prefix: regular.prefix,
+    });
+    this.send(`:${this.prefixOf(regular)} JOIN :${channel.name}`);
   }
 
   private onPrivmsg(target: string, text: string) {
@@ -563,6 +606,23 @@ export class SimServer {
   }
 
   private reactInChannel(channel: SimChannel, text: string) {
+    const known = regularsIn(channel.name).filter(
+      (regular) => regular.ai || regular.lines.length > 0,
+    );
+    const named = firstMentioned(
+      text,
+      known.map((regular) => regular.nick),
+    );
+    const mentioned = named ? findRegular(named) : undefined;
+    if (mentioned) {
+      if (
+        ircEquals(channel.name, DDR_CHANNEL) &&
+        !channel.members.has(ircLower(mentioned.nick))
+      )
+        this.arrive(mentioned);
+      this.reply(mentioned, channel.name, channel.history);
+      return;
+    }
     const seated = [...channel.members.values()]
       .map((member) => findRegular(member.nick))
       .filter((regular): regular is Regular => regular !== undefined);
@@ -594,11 +654,12 @@ export class SimServer {
         this.abort.signal,
       )
       .then((text) => {
-        if (!text || this.stopped) return;
+        const spoken = text ? scrubGuestNick(text, this.nick) : undefined;
+        if (!spoken || this.stopped) return;
         const waited = this.deps.now() - started;
         this.later(
           Math.max(0, between(TYPING_MS, this.deps.random) - waited),
-          () => this.say(regular, target, text),
+          () => this.say(regular, target, spoken),
         );
       });
   }
@@ -662,12 +723,21 @@ export class SimServer {
       this.armScene();
       return;
     }
-    if (!this.scene || this.scene.left.length === 0) {
-      const nicks = pickScene(sceneCandidates(), this.deps.random);
-      this.scene = { nicks, left: [...nicks] };
+    if (this.beats.length === 0) this.beats = this.nextBeats(channel);
+    const beat = this.beats.shift();
+    if (!beat) {
+      this.sceneBusy = false;
+      this.armScene();
+      return;
     }
-    const nick = this.scene.left.shift();
-    const regular = nick ? findRegular(nick) : undefined;
+    if (beat.kind === "join") {
+      const joiner = findRegular(beat.nick);
+      if (joiner) this.arrive(joiner);
+      this.sceneBusy = false;
+      this.armScene();
+      return;
+    }
+    const regular = findRegular(beat.nick);
     if (!regular) {
       this.sceneBusy = false;
       this.armScene();
@@ -680,7 +750,8 @@ export class SimServer {
           channel: channel.name,
           userNick: this.nick,
           history: [...channel.history],
-          company: this.scene.nicks.filter((other) => other !== regular.nick),
+          company: beat.company,
+          hint: beat.hint,
         },
         this.abort.signal,
       )
@@ -688,11 +759,12 @@ export class SimServer {
         this.later(0, () => {
           this.sceneBusy = false;
           if (this.stopped) return;
+          const spoken = text ? scrubGuestNick(text, this.nick) : undefined;
           if (
-            text &&
+            spoken &&
             this.channel(DDR_CHANNEL)?.members.has(ircLower(this.nick))
           )
-            this.say(regular, channel.name, text);
+            this.say(regular, channel.name, spoken);
           this.armScene();
         });
       })
@@ -702,6 +774,28 @@ export class SimServer {
           if (!this.stopped) this.armScene();
         });
       });
+  }
+
+  /** The next hello: a listed player joins, someone says hei, they reply, and it may grow. */
+  private nextBeats(channel: SimChannel): SceneBeat[] {
+    const weights = new Map(
+      sceneCandidates().map((player) => [
+        player.nick.toLowerCase(),
+        player.weight,
+      ]),
+    );
+    const weight = (nick: string) => weights.get(nick.toLowerCase()) ?? 0;
+    const present = [...channel.members.values()]
+      .map((member) => ({ nick: member.nick, weight: weight(member.nick) }))
+      .filter((player) => player.weight > 0);
+    const here = new Set(present.map((player) => player.nick.toLowerCase()));
+    const absent = sceneCandidates().filter(
+      (player) =>
+        !here.has(player.nick.toLowerCase()) &&
+        !channel.members.has(ircLower(player.nick)),
+    );
+    const plan = planArrival(absent, present, this.deps.random);
+    return plan ? beatsFor(plan) : [];
   }
 
   private scheduleIdle() {

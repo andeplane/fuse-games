@@ -1,8 +1,15 @@
+import type { AgentCompletionRequest } from "../../llm/agentLoop";
 import type { ChatEngine, ReplyRequest } from "../../llm/llmChat";
 
 import { cannedBrain, cannedLine, engineBrain, toIrcLine } from "./brain";
 import type { Regular } from "./regulars";
-import { findRegular, regularsIn, systemPromptFor } from "./regulars";
+import {
+  findRegular,
+  isAutomaticGuest,
+  regularsIn,
+  scrubGuestNick,
+  systemPromptFor,
+} from "./regulars";
 
 function regular(nick: string): Regular {
   const found = findRegular(nick);
@@ -75,6 +82,16 @@ describe("regulars", () => {
     expect(prompt).toContain(
       "Never speak for, quote or pretend to be anyone else",
     );
+    expect(prompt).not.toContain("with Guest1");
+    expect(prompt).toContain("Never greet or address a nick that is Guest");
+    expect(
+      systemPromptFor(regular("Andeplane"), "#ddrnorway", "Acid_Burn"),
+    ).toContain("with Acid_Burn");
+    expect(isAutomaticGuest("Guest1540")).toBe(true);
+    expect(isAutomaticGuest("Guest")).toBe(false);
+    expect(scrubGuestNick("hei Guest1540 :)", "Guest1540")).toBe("hei :)");
+    expect(scrubGuestNick("Guest1", "Guest1")).toBeUndefined();
+    expect(scrubGuestNick("hei Abra", "Guest1")).toBe("hei Abra");
   });
 });
 
@@ -152,6 +169,28 @@ describe("brains", () => {
     expect((await slow.reply(request("RiChY"), signal))?.length).toBe(300);
   });
 
+  it("looks a player up with a tool call before the line, and never for a guest nick", async () => {
+    const engine = new ToolEngine();
+    const brain = engineBrain(engine, () => 0);
+    const line = await brain.reply(
+      {
+        ...request("RiChY"),
+        hint: "Say hei to Abra. One short line.",
+        company: ["Abra"],
+      },
+      signal,
+    );
+    expect(line).toBe("hei Abra");
+    expect(engine.calls).toContain("player_facts");
+    const guest = await brain.reply(
+      { ...request("RiChY"), hint: "Say hei to Guest1." },
+      signal,
+    );
+    expect(guest).toBe("hei Abra");
+    const refused = engine.facts.find((fact) => fact.includes("guest"));
+    expect(refused).toContain("Do not greet");
+  });
+
   it("lets a second AI reply wait for the model instead of the tournament count", async () => {
     const engine = new HoldingEngine();
     const brain = engineBrain(engine, () => 0);
@@ -198,4 +237,31 @@ class HoldingEngine implements ChatEngine {
 
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** A model that calls player_facts for the nick in the hint, then answers. */
+class ToolEngine extends FakeEngine {
+  readonly calls: string[] = [];
+  readonly facts: string[] = [];
+  constructor() {
+    super("unused");
+  }
+  loopStyle() {
+    return "json" as const;
+  }
+  async complete(
+    step: AgentCompletionRequest & { onProgress: (text: string) => void },
+  ) {
+    const last = step.messages.at(-1)?.content ?? "";
+    if (last.startsWith("Result of ")) {
+      this.facts.push(last);
+      return { text: '{"tool":"answer","args":{"text":"hei Abra"}}' };
+    }
+    const nick =
+      /Say hei to ([A-Za-z0-9[\]\\`_^{|}-]+)/.exec(last)?.[1] ?? "Abra";
+    this.calls.push("player_facts");
+    return {
+      text: JSON.stringify({ tool: "player_facts", args: { nick } }),
+    };
+  }
 }

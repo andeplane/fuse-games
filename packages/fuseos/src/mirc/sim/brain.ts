@@ -1,8 +1,10 @@
+import type { AgentTool } from "../../agenttools/agentTool";
+import { runAgentLoop } from "../../llm/agentLoop";
 import type { ChatEngine } from "../../llm/llmChat";
 
 import { fallbackLine } from "./ddrPlayers";
 import type { Regular } from "./regulars";
-import { systemPromptFor } from "./regulars";
+import { findRegular, isAutomaticGuest, systemPromptFor } from "./regulars";
 
 export type ChatTurn = { nick: string; text: string };
 
@@ -14,6 +16,8 @@ export type BrainRequest = {
   history: readonly ChatTurn[];
   /** The other people in the current model conversation, when this line is part of one. */
   company?: readonly string[];
+  /** What this one line is for, such as "Say hei to Abra." */
+  hint?: string;
 };
 
 /** What decides a regular's next line: the shared language model, or their canned lines. */
@@ -110,7 +114,11 @@ export function engineBrain(
     reply(request, signal) {
       if (!request.regular.ai || engine.backend().kind !== "model")
         return Promise.resolve(spokenLine(request.regular, random));
-      const turn = tail.then(() => speak(engine, request, random, signal));
+      const turn = tail.then(() =>
+        engine.complete
+          ? speakWithTools(engine, request, random, signal)
+          : speak(engine, request, random, signal),
+      );
       tail = turn.then(
         () => undefined,
         () => undefined,
@@ -119,6 +127,116 @@ export function engineBrain(
     },
     dispose: () => engine.dispose(),
   };
+}
+
+/**
+ * One line via the model's tool loop, and only from a caller that already has mIRC's engine.
+ * The model may call `player_facts` before it answers. A plain sentence is still accepted.
+ * A failure or an empty answer falls back; an abort stays silent.
+ */
+async function speakWithTools(
+  engine: ChatEngine,
+  request: BrainRequest,
+  random: () => number,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  if (!engine.complete || signal.aborted) return undefined;
+  const style = engine.loopStyle?.() === "native" ? "native" : "json";
+  try {
+    const outcome = await runAgentLoop({
+      style,
+      complete: (step) =>
+        engine.complete?.({ ...step, onProgress: () => undefined }) ??
+        Promise.resolve({ text: "" }),
+      tools: [playerFactsTool()],
+      system: systemPromptFor(
+        request.regular,
+        request.channel,
+        request.userNick,
+        request.company,
+      ),
+      messages: [
+        ...historyMessages(request),
+        {
+          role: "user",
+          content:
+            request.hint ??
+            "Say one short line to the people you are talking with.",
+        },
+      ],
+      signal,
+      onStep: () => undefined,
+      onProgress: () => undefined,
+      timers: {
+        setTimeout: (callback, ms) =>
+          setTimeout(callback, ms) as unknown as number,
+        clearTimeout: (handle) => clearTimeout(handle),
+      },
+      maxSteps: 4,
+    });
+    if (signal.aborted || outcome.stopped === "cancelled") return undefined;
+    return (
+      toIrcLine(outcome.text, request.regular.nick) ??
+      spokenLine(request.regular, random)
+    );
+  } catch {
+    if (signal.aborted) return undefined;
+    return spokenLine(request.regular, random);
+  }
+}
+
+/** CCBS facts for one nick. Guest nicks are refused so the model is told not to talk to them. */
+function playerFactsTool(): AgentTool {
+  return {
+    name: "player_facts",
+    description:
+      "Look up one person in the channel: their club and CCBS results. Call this before you speak about them.",
+    parameters: [
+      {
+        name: "nick",
+        type: "string",
+        description: "Their IRC nick.",
+        required: true,
+      },
+    ],
+    sentence: (args) => `Looking up ${String(args.nick)}`,
+    run: (args) => {
+      const nick = String(args.nick);
+      if (isAutomaticGuest(nick)) {
+        return {
+          ok: false,
+          sentence: `${nick} is an automatic guest nick`,
+          observation: `${nick} is an automatic guest nick. Do not greet or address them.`,
+        };
+      }
+      const regular = findRegular(nick);
+      if (!regular) {
+        return {
+          ok: false,
+          sentence: `No such nick ${nick}`,
+          observation: `Nobody called ${nick} is in the channel.`,
+        };
+      }
+      return {
+        ok: true,
+        sentence: `Facts for ${regular.nick}`,
+        observation: regular.persona || `${regular.nick} is here.`,
+      };
+    },
+  };
+}
+
+function historyMessages(request: BrainRequest) {
+  return request.history.map((turn) => ({
+    role:
+      turn.nick === request.regular.nick
+        ? ("assistant" as const)
+        : ("user" as const),
+    content:
+      turn.nick === request.regular.nick
+        ? turn.text
+        : `<${turn.nick}> ${turn.text}`,
+  }));
 }
 
 /** One model reply. A failure or an empty answer falls back; an abort stays silent. */
@@ -140,16 +258,12 @@ async function speak(
         request.userNick,
         request.company,
       ),
-      messages: request.history.map((turn) => ({
-        role:
-          turn.nick === request.regular.nick
-            ? ("assistant" as const)
-            : ("user" as const),
-        content:
-          turn.nick === request.regular.nick
-            ? turn.text
-            : `<${turn.nick}> ${turn.text}`,
-      })),
+      messages: [
+        ...historyMessages(request),
+        ...(request.hint
+          ? [{ role: "user" as const, content: request.hint }]
+          : []),
+      ],
       signal,
       onProgress: () => undefined,
     })) {

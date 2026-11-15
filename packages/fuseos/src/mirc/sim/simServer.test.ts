@@ -5,7 +5,6 @@ import type { SessionState } from "../irc/session";
 import { channelId, findWindow, queryId, STATUS_ID } from "../irc/session";
 
 import type { BrainRequest, RegularsBrain } from "./brain";
-import { CCBS_LISTED_PLAYERS, ircNick } from "./ddrPlayers";
 import { regularsIn } from "./regulars";
 import { IDLE_MS, reactionSpeaker } from "./simServer";
 import { createSimTransport, simHost, SimServer } from "./simServer";
@@ -99,12 +98,14 @@ describe("simulated network", () => {
     scheduler.advance(0);
     const lines = text(client.getState(), channelId("#ddrnorway")).join("\n");
     expect(lines).toContain("-CCBSbot- Velkommen til #ddrnorway!");
-    expect(lines).toContain("<@RiChY> hei Guest1 :)");
+    expect(lines).not.toContain("hei Guest1");
     const nicks = new Set(window?.members.map((m) => m.nick.toLowerCase()));
-    for (const player of CCBS_LISTED_PLAYERS)
-      expect(nicks.has(ircNick(player.nick).toLowerCase())).toBe(true);
-    expect(window?.members).toHaveLength(regularsIn("#ddrnorway").length + 1);
-    expect(nicks.has("tha_dragon")).toBe(true);
+    const house = regularsIn("#ddrnorway").filter(
+      (regular) => regular.host !== "players.ddr.no",
+    );
+    expect(window?.members).toHaveLength(house.length + 1);
+    expect(nicks.has("snute")).toBe(false);
+    expect(nicks.has("tha_dragon")).toBe(false);
   });
 
   it("lets a mentioned regular answer through the brain, with the channel's recent lines", async () => {
@@ -286,27 +287,33 @@ describe("simulated network", () => {
     );
   });
 
-  it("runs a model conversation of the heaviest-weighted players every 10 seconds", async () => {
+  it("has a listed player join, RiChY say hei, and the joiner reply", async () => {
     const brain = new ScriptedBrain();
     brain.model = true;
     const { client, scheduler } = joined(brain);
     expect(brain.prepares).toBe(1);
     const lines = () => text(client.getState(), channelId("#ddrnorway"));
-    expect(lines().some((line) => line.includes("<Abra>"))).toBe(false);
+    expect(lines().some((line) => line.includes("Abra"))).toBe(false);
     scheduler.advance(2_000);
     await posted(scheduler);
+    expect(lines().join("\n")).toContain("Abra");
+    expect(lines().join("\n")).toContain("has joined");
+    expect(lines().some((line) => line.startsWith("<@RiChY>"))).toBe(false);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(lines()).toContain("<@RiChY> hei hei");
+    expect(brain.requests.at(-1)?.regular.nick).toBe("RiChY");
+    expect(brain.requests.at(-1)?.hint).toContain("Abra");
+    expect(brain.requests.at(-1)?.hint).not.toContain("Guest");
+    expect(brain.requests.at(-1)?.company).toEqual(["Abra", "Andeplane"]);
+    scheduler.advance(10_000);
+    await posted(scheduler);
     expect(lines()).toContain("<Abra> hei hei");
-    expect(brain.requests.at(-1)?.company).toEqual(["Advena", "Al"]);
-    scheduler.advance(10_000);
-    await posted(scheduler);
-    expect(lines()).toContain("<Advena> hei hei");
-    scheduler.advance(10_000);
-    await posted(scheduler);
-    expect(lines()).toContain("<Al> hei hei");
-    scheduler.advance(10_000);
-    await posted(scheduler);
     expect(brain.requests.at(-1)?.regular.nick).toBe("Abra");
-    expect(brain.requests.at(-1)?.company).toEqual(["Advena", "Al"]);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Andeplane");
+    expect(lines().join("\n")).not.toMatch(/<@RiChY> hei Guest/);
     expect(brain.prepares).toBe(1);
   });
 

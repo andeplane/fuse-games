@@ -1,5 +1,11 @@
 import { sceneCandidates } from "./ddrPlayers";
-import { firstMentioned, nickMentioned, pickScene, sceneGapMs } from "./scene";
+import {
+  firstMentioned,
+  nickMentioned,
+  pickScene,
+  planArrival,
+  sceneGapMs,
+} from "./scene";
 
 function rng(seed: number): () => number {
   let state = seed >>> 0;
@@ -40,5 +46,30 @@ describe("model conversation", () => {
     expect(firstMentioned("Snute og Al", ["Al", "Snute"])).toBe("Snute");
     expect(firstMentioned("Al, så Snute", ["Snute", "Al"])).toBe("Al");
     expect(firstMentioned("skal vi", ["Al", "Snute"])).toBeUndefined();
+  });
+
+  it("has someone join, a heavier player say hei, and sometimes keeps it to those two", () => {
+    const absent = [
+      { nick: "Abra", weight: 5 },
+      { nick: "Snute", weight: 36 },
+    ];
+    const present = [
+      { nick: "RiChY", weight: 30 },
+      { nick: "Andeplane", weight: 16 },
+      { nick: "Zredna", weight: 8 },
+    ];
+    const hello = planArrival(absent, present, () => 0);
+    expect(hello).toEqual({
+      joiner: "Abra",
+      greeter: "RiChY",
+      others: ["Andeplane"],
+    });
+    let roll = 0;
+    const quiet = planArrival(absent, present, () => {
+      roll += 1;
+      return roll === 3 ? 0.9 : 0;
+    });
+    expect(quiet).toEqual({ joiner: "Abra", greeter: "RiChY", others: [] });
+    expect(planArrival([], present, () => 0)).toBeUndefined();
   });
 });

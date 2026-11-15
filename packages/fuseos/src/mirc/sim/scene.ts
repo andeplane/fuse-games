@@ -1,7 +1,8 @@
 /**
- * The #ddrnorway conversation that runs once the language model is loaded.
- * A group of 3–5 players, drawn with probability proportional to how many CCBS tournaments they played,
- * talks one line at a time. The gap until the next line is a random 10–120 seconds (about once a minute).
+ * The #ddrnorway conversation that runs once the language model is loaded, and only while mIRC is in the channel.
+ * A listed player joins, someone already there (more likely the more tournaments they have played) says hei,
+ * the joiner replies, and about half the time that grows into a conversation of 3–5 people. The gap until the
+ * next line is a random 10–120 seconds. Guest nicks are never part of it.
  */
 
 export const SCENE_SIZE = { min: 3, max: 5 } as const;
@@ -16,6 +17,56 @@ export function sceneGapMs(random: () => number): number {
     SCENE_GAP_SECONDS.min +
     Math.floor(Math.min(random(), 0.999999) * (span + 1));
   return seconds * 1000;
+}
+
+/** Chance that a hello grows into a conversation of 3–5 people. */
+export const EXPAND_CHANCE = 0.5;
+
+export type ArrivalPlan = {
+  joiner: string;
+  greeter: string;
+  /** Further people, after the hello and the reply. */
+  others: string[];
+};
+
+/**
+ * Who joins, who says hei, and who else may join in. `absent` and `present` are weighted by tournaments.
+ * Returns undefined when nobody is waiting to join or nobody present can greet them.
+ */
+export function planArrival(
+  absent: readonly WeightedPlayer[],
+  present: readonly WeightedPlayer[],
+  random: () => number,
+): ArrivalPlan | undefined {
+  const joiner = pickWeightedNick(absent, random);
+  const greeter = pickWeightedNick(
+    present.filter((player) => player.nick !== joiner),
+    random,
+  );
+  if (!joiner || !greeter) return undefined;
+  if (random() >= EXPAND_CHANCE) return { joiner, greeter, others: [] };
+  const size = sceneSize(random);
+  const pool = present.filter(
+    (player) => player.nick !== greeter && player.nick !== joiner,
+  );
+  const others: string[] = [];
+  for (let n = 0; n < size - 2 && pool.length > 0; n += 1) {
+    const nick = pickWeightedNick(pool, random);
+    if (!nick) break;
+    others.push(nick);
+    const index = pool.findIndex((player) => player.nick === nick);
+    if (index >= 0) pool.splice(index, 1);
+  }
+  return { joiner, greeter, others };
+}
+
+function pickWeightedNick(
+  players: readonly WeightedPlayer[],
+  random: () => number,
+): string | undefined {
+  const pool = players.filter((player) => player.weight > 0);
+  if (pool.length === 0) return undefined;
+  return pool[takeWeighted(pool, random)]?.nick;
 }
 
 /** How many people are in the next conversation: 3, 4 or 5. */
