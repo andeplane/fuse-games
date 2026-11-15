@@ -148,7 +148,7 @@ try {
   await openPlayOptions(host);
   await host.getByRole("button", { name: "Host room", exact: true }).click();
   await host.waitForURL(/room=/);
-  await takeHostSeat(host, "Host");
+  await takeHostSeat(host, "Host", { autoSeat: true });
   console.log("Room created");
   const url = `${host.url()}&renderer=phaser-canvas`;
   await host.locator(".fui-slot-occupant > .room-rider").first().waitFor();
