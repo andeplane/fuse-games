@@ -175,11 +175,16 @@ gcloud logging read \
   --format='json(timestamp,resource.labels.revision_name,jsonPayload.kind,jsonPayload.uses)'
 ```
 
+Run the query with an account authorized to read this project's logs.
+
 The accessible `_Default` log bucket had 30-day retention, an active lifecycle and no exclusions on its default sink.
+The service was created on 2026-09-14, and a wider bounds query found an ordinary service entry on
+2026-11-04T23:13:45.918731Z, before the observation interval.
 An ordinary service-log bounds query over the same interval found entries from **2026-11-09T19:41:48.498535Z**
 through **2026-11-15T11:33:39.010238Z**. No service entries were observed in the earlier portion; the query establishes
-absence in retained logs, not uninterrupted traffic or perfect historical log delivery. The full queried interval
-exceeds the original seven-day observation requirement.
+absence in retained logs, not uninterrupted traffic or perfect historical log delivery. The query covers more than
+seven days, while ordinary service entries span only about 5 days and 16 hours; it cannot establish continuous
+seven-day activity.
 
 ### Compatibility and rollback
 
