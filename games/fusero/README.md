@@ -55,4 +55,4 @@ The source-data checks verify the packaged binary, descriptors and native materi
 
 `ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fusero-smoke.ts` exercises solo preparation, five-slot charge/reload, two players and a shared TV, native controls, terrain changes, phone reload recovery and full-state convergence. It passed against the composed source-derived engine. `pnpm gallery:capture fusero` refreshes the gallery from real play after a successful build. Earlier prototype results do not validate this replacement engine.
 
-Human gameplay comparison and physical-phone checks remain outstanding. The draft PR is not merge or deployment authorization.
+Human gameplay comparison and physical-phone checks remain outstanding. The open PR is not merge or deployment authorization.

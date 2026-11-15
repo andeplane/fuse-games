@@ -105,7 +105,11 @@ function selectWeapon(
 }
 
 export function botInput(world: World, worm: Worm): number {
-  if (world.phase !== "play" || !worm.alive || !worm.weaponsReady) return 0;
+  if (world.phase !== "play" || !worm.weaponsReady) return 0;
+  if (!worm.alive)
+    return worm.canRespawnNow && worm.lives !== -1 && !(worm.input & JUMP)
+      ? JUMP
+      : 0;
   const candidates = world.worms.filter(
     (other) => other.id !== worm.id && other.alive,
   );

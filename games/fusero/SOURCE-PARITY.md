@@ -1,6 +1,6 @@
 # Fusero source parity
 
-The user requires a close gameplay clone of Liero/OpenLieroX, with Fuse graphics and Fuse's existing networking and room recovery. The earlier original prototype is not the acceptance baseline. The pull request remains a draft until source-derived mechanics are implemented and verified.
+The user requires a close gameplay clone of Liero/OpenLieroX, with Fuse graphics and Fuse's existing networking and room recovery. The earlier original prototype is not the acceptance baseline. Readiness requires source-derived mechanics and verification; human gameplay acceptance remains separate.
 
 ## Baseline
 

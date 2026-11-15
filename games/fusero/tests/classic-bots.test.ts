@@ -23,6 +23,8 @@ import {
 } from "../src/engine/classic/physics.js";
 import type { World, Worm } from "../src/engine/classic/model.js";
 import { createPositionRecorder } from "../src/engine/classic/history.js";
+import { createWorld, stepWorld } from "../src/engine/classic/world.js";
+import { recordInjury } from "../src/engine/classic/match.js";
 
 function weaponId(name: string): number {
   const weapon = CLASSIC_WEAPONS.find((weapon) => weapon.name === name);
@@ -148,6 +150,57 @@ test("dead, finished, unready and isolated bots release every control", () => {
   current.weaponsReady = true;
   state.worms = [current];
   assert.equal(botInput(state, current), 0);
+});
+test("manual-respawn bots request a fresh ordinary jump only after native eligibility", () => {
+  const state = world(),
+    current = state.worms[0]!;
+  current.alive = false;
+  assert.equal(botInput(state, current), 0);
+  current.canRespawnNow = true;
+  assert.equal(botInput(state, current), JUMP);
+  current.input = JUMP;
+  assert.equal(
+    botInput(state, current),
+    0,
+    "release an already-held jump before retrying",
+  );
+  current.input = 0;
+  current.lives = -1;
+  assert.equal(botInput(state, current), 0);
+  current.lives = -2;
+  current.weaponsReady = false;
+  assert.equal(botInput(state, current), 0);
+});
+test("ordinary bot controls respawn through the composed native manual-respawn flow", () => {
+  const state = createWorld(
+    17,
+    [
+      { id: "bot", slot: 0 },
+      { id: "other", slot: 1 },
+    ],
+    { ...DEFAULT_SETTINGS, maxRespawnTimeMs: -1 },
+  );
+  const current = state.worms[0]!;
+  assert.equal(
+    recordInjury(state, current.id, 101, "other", state.settings).killed,
+    true,
+  );
+  let input = 0,
+    requests = 0;
+  for (let frame = 0; frame < 270; frame++) {
+    if (frame % 5 === 0) {
+      input = botInput(state, current);
+      if (!current.alive && input & JUMP) {
+        assert.equal(current.canRespawnNow, true);
+        requests++;
+      }
+    }
+    stepWorld(state, new Map([[current.id, input]]));
+    if (state.elapsedMs <= 2500) assert.equal(current.alive, false);
+  }
+  assert.ok(requests > 0);
+  assert.equal(current.alive, true);
+  assert.equal(current.health, 100);
 });
 test("living zero-HP players are still valid targets", () => {
   const state = world(),
