@@ -43,6 +43,8 @@ In the song select a cover wears a download mark while its full song is not on t
 
 The song select plays a separate lightweight preview: 20 seconds of music, fading out over the last 1.5 seconds, then two seconds of silence before repeating. Every bundled song has one, beginning at its original preview position where there is room. Browsing fetches these small clips rather than full songs; the full audio downloads when play starts. Preview bytes use the same persistent browser Cache Storage, so returning to a song or reopening the page reuses its downloaded clip. A fast swipe waits until a selection settles before fetching, and leaving song select stops playback and releases its object URL. `?mute` previews fetch nothing. See [preview generation](charts/previews.md).
 
+The download overlay shows received bytes and a progress bar, with a percentage when the server reports the complete file size. An unknown size stays indeterminate; once all bytes arrive it says `PREPARING AUDIO…` until decoding finishes. Cached files skip the network transfer, retrying a failed download starts its progress over, and waiting for another player does not show that player's progress as this device's own.
+
 ## Controls
 
 | Control       | Keyboard (default)  | Touch    |

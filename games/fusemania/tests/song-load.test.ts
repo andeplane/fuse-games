@@ -5,6 +5,7 @@ import {
   createFakeClockedSong,
 } from "fuse-ui/game-audio-fake";
 import type { ClockedSong } from "fuse-ui/game-audio";
+import type { SongTransferProgress } from "../src/app/song-cache.js";
 import {
   SONG_LOAD_TRIES,
   SONG_RETRY_MS,
@@ -22,15 +23,17 @@ function setup(extra: { enabled?: boolean; clock?: boolean } = {}) {
     url: string;
     settle(song: ClockedSong | undefined): void;
     fail(): void;
+    progress(value: SongTransferProgress): void;
   }[] = [];
   let changes = 0;
   const loader = createSongLoader({
     now: () => state.now,
     url: (id) => (id === "missing" ? undefined : `/music/${id}.mp3`),
-    load: (url) =>
+    load: (url, progress) =>
       new Promise((resolve, reject) => {
         asked.push({
           url,
+          progress,
           settle: resolve,
           fail: () => reject(new Error("offline")),
         });
@@ -77,6 +80,53 @@ test("a song is not downloaded until its fetch came back, and the device says so
   assert.equal(loader.settled("a"), false);
   assert.equal(loader.status("b"), "loading");
   assert.equal(loader.status("c"), "none");
+});
+
+test("download progress belongs to the active song and changes to decoding only after the bytes finish", async () => {
+  const { loader, asked, settle, song } = setup();
+  loader.song("a");
+  asked[0]!.progress({ received: 50, total: 100, complete: false });
+  assert.deepEqual(loader.progress("a"), {
+    received: 50,
+    total: 100,
+    phase: "downloading",
+  });
+  loader.song("b");
+  asked[0]!.progress({ received: 100, total: 100, complete: true });
+  assert.equal(loader.progress("a"), undefined);
+  assert.deepEqual(loader.progress("b"), { received: 0, phase: "downloading" });
+  asked[1]!.progress({ received: 100, total: 100, complete: true });
+  assert.equal(loader.progress("b")?.phase, "decoding");
+  assert.equal(
+    loader.settled("b"),
+    false,
+    "complete bytes do not mean decoded audio",
+  );
+  asked[1]!.settle(song());
+  await settle();
+  assert.equal(loader.progress("b"), undefined);
+  assert.equal(loader.settled("b"), true);
+});
+
+test("retry and song changes reset progress; mute and local files expose no transfer", async () => {
+  const { loader, asked, settle, state } = setup();
+  loader.song("a");
+  asked[0]!.progress({ received: 30, total: 100, complete: false });
+  asked[0]!.fail();
+  await settle();
+  assert.deepEqual(loader.progress("a"), { received: 0, phase: "retrying" });
+  loader.retry();
+  loader.song("a");
+  assert.deepEqual(loader.progress("a"), { received: 0, phase: "downloading" });
+  asked[0]!.progress({ received: 100, total: 100, complete: true });
+  assert.equal(
+    loader.progress("a")?.received,
+    0,
+    "the failed attempt cannot change its retry",
+  );
+  state.enabled = false;
+  assert.equal(loader.progress("a"), undefined);
+  assert.equal(loader.progress("custom"), undefined);
 });
 
 test("a failed fetch is tried again after a pause, and given up after three", async () => {
