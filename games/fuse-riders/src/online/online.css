@@ -1802,6 +1802,18 @@
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+/* The dialogs' own `.dialog-body h2` would otherwise size the shared report's winner headline. */
+.match-recap-report .fui-results-victory h2 {
+  margin: 0;
+  font:
+    clamp(1.3rem, 3.8vw, 3.5rem)/1.5 "Press Start 2P",
+    monospace;
+}
+@media (orientation: landscape) and (max-height: 550px) {
+  .match-recap-report .fui-results-victory h2 {
+    font-size: 1.5rem;
+  }
+}
 .online-app .recap-dialog .dialog-bar {
   order: 2;
   margin: 0 max(2rem, env(safe-area-inset-right)) 0
