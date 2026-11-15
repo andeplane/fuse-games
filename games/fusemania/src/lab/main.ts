@@ -584,27 +584,26 @@ function rebuildCharts(): void {
           ),
         ),
       );
-  if (taps.length) {
-    // The tapped rhythm, as a column of its own: where each tap fell, unsnapped.
-    const tapped = placeChart(
-      sim,
-      {
-        stepsType: "dance-single",
-        difficulty: "Custom",
-        meter: 1,
-        description: "",
-        credit: "tapped in the chart lab",
-        notes: taps.map((tap) => ({
-          beat: tap.beat,
-          column: tap.column,
-          kind: "tap" as const,
-        })),
-      },
-      TAPPED,
-      "recorded",
-    );
-    placed.push({ ...tapped, label: "Custom" });
-  }
+  // The tapped rhythm, as a column of its own: where each tap fell, unsnapped. Always there, empty until a tap lands,
+  // so there is somewhere to drag a selection and to see the first tap arrive.
+  const tapped = placeChart(
+    sim,
+    {
+      stepsType: "dance-single",
+      difficulty: "Custom",
+      meter: 1,
+      description: "",
+      credit: "tapped in the chart lab",
+      notes: taps.map((tap) => ({
+        beat: tap.beat,
+        column: tap.column,
+        kind: "tap" as const,
+      })),
+    },
+    TAPPED,
+    "recorded",
+  );
+  placed.push({ ...tapped, label: "Custom" });
   charts = placed;
   const current = tickSelect.value;
   tickSelect.replaceChildren(
