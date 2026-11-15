@@ -76,6 +76,11 @@ are never transmitted. Birds' UUID/round suffix is supported; reusable local
 seed scopes are excluded to prevent unrelated solo visits being joined.
 These references link only reported anonymous-browser participation, never
 names or verified account identities. They do not change authoritative play.
+The developer explorer counts play totals only when `played` is explicitly
+true. Riders' match observation now identifies whether this browser owns a
+listed seat. Spectator/display events and legacy observations without a flag
+remain inspectable and count as browser activity, with unknown participation
+disclosed separately.
 
 `App Opened` occurs once per page boot; `embedded` distinguishes FuseOS windows
 from standalone pages. Page `role` is solo, display, joiner or landing (desktop

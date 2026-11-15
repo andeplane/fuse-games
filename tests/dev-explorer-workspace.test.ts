@@ -7,6 +7,8 @@ import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { mountWorkspace, type WorkspaceAccount } from "../dev/workspace.js";
 import type { ExplorerQuery } from "fuse-telemetry/explorer-contracts";
 import type { ExplorerResult } from "fuse-telemetry/explorer-contracts";
+import { renderOverview } from "../dev/overview.js";
+import { createDom } from "../dev/dom.js";
 async function settled(predicate: () => boolean) {
   for (let index = 0; index < 300; index++) {
     if (predicate()) return;
@@ -337,5 +339,64 @@ test("keyboard filter controls survive native changes and late results, drafts s
   );
   assert.equal(document.activeElement, control("filters-summary"));
   unmount();
+  await window.happyDOM.close();
+});
+test("overview keeps active browsers visible while excluding displays and unknown legacy starts from play measures", async () => {
+  const window = new Window(),
+    document = window.document as unknown as Document,
+    db = new MemoryTelemetryDatabase(),
+    now = Date.UTC(2026, 10, 15, 12);
+  await db.transact(async (tx) => {
+    for (const [played, gameId, name] of [
+      [false, "dice", "fuse.Match Started"],
+      [undefined, "dice", "fuse.Match Started"],
+      [true, "fusemania", "fuse.Round Started"],
+    ] as const) {
+      const id = randomUUID();
+      tx.set(`telemetry-events/${id}`, {
+        v: 1,
+        id,
+        gameId,
+        name,
+        userId: randomUUID(),
+        sessionId: randomUUID(),
+        occurredAt: now - 1000,
+        properties: played === undefined ? {} : { played },
+        expiresAt: now + 86400000,
+      });
+    }
+  });
+  const data = await new EventExplorer(
+    db,
+    new Set(["dice", "fusemania"]),
+    () => now,
+  ).query({
+    from: "2026-11-15",
+    to: "2026-11-15",
+    gameId: "",
+    filters: { groups: [] },
+  });
+  const overview = renderOverview(
+    createDom(document),
+    data,
+    data,
+    "2026-11-15",
+    "2026-11-15",
+    () => {},
+  );
+  const measure = (label: string) =>
+    [...overview.querySelectorAll("dt")]
+      .find((node) => node.textContent === label)
+      ?.parentElement?.querySelector("dd")?.textContent;
+  assert.equal(measure("DAU"), "3");
+  assert.equal(measure("Round plays"), "1");
+  assert.equal(measure("Match plays"), "0");
+  assert.equal(measure("Games played"), "1");
+  assert.ok(overview.textContent?.includes("1 legacy play observations"));
+  const dice = [...overview.querySelectorAll("tbody tr")].find(
+    (row) => row.querySelector("th")?.textContent === "dice",
+  );
+  assert.equal(dice?.querySelectorAll("td")[2]?.textContent, "0");
+  assert.equal(dice?.querySelectorAll("td")[4]?.textContent, "0");
   await window.happyDOM.close();
 });

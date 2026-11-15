@@ -98,8 +98,13 @@ export interface ExplorerResult {
     matchPlays: number;
     games: number;
     completionRate: number | null;
+    participationUnknown?: number;
   };
 }
+/** A browser observation is a play only when the emitting integration confirms a seat. */
+export const isParticipation = (
+  event: Pick<TelemetryEvent, "properties">,
+): boolean => event.properties.played === true;
 export const eventKind = (name: string): EventKind =>
   name.startsWith("fuse.Match ")
     ? "match"

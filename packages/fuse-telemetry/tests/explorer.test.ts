@@ -145,3 +145,48 @@ test("bounded source scans continue through equal timestamps without duplicates 
   );
   await assert.rejects(explorer.query({ ...query, cursor: "bad" }));
 });
+test("play totals require confirmed participation while raw spectator and legacy activity remains navigable", async () => {
+  const observer = randomUUID(),
+    legacy = randomUUID();
+  const records = [
+    event({ name: "fuse.Match Started", kind: "match" }),
+    event(),
+    event({ name: "fuse.Round Ended" }),
+    event({
+      userId: observer,
+      sessionId: randomUUID(),
+      gameId: "dice",
+      name: "fuse.Match Started",
+      kind: "match",
+      properties: { played: false, mode: "display" },
+    }),
+    event({
+      userId: legacy,
+      sessionId: randomUUID(),
+      gameId: "dice",
+      name: "fuse.Match Started",
+      kind: "match",
+      properties: { mode: "online" },
+    }),
+  ];
+  const result = await new EventExplorer(
+    await database(records),
+    games,
+    () => now,
+  ).query(query);
+  assert.equal(result.events.length, 5);
+  assert.equal(result.summary.players, 3);
+  assert.equal(result.summary.roundPlays, 1);
+  assert.equal(result.summary.completions, 1);
+  assert.equal(result.summary.matchPlays, 1);
+  assert.equal(result.summary.games, 1);
+  assert.equal(result.summary.participationUnknown, 1);
+  assert.equal(
+    result.sessions.find((session) => session.player === observer)?.matches,
+    0,
+  );
+  assert.equal(
+    result.sessions.find((session) => session.player === legacy)?.matches,
+    0,
+  );
+});

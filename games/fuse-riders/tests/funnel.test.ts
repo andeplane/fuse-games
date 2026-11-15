@@ -109,6 +109,7 @@ test("a match start fires once per match id on round 1's countdown, and counts m
     {
       event: "Match Started",
       properties: {
+        played: false,
         matchNumber: 1,
         playerCount: 3,
         botCount: 1,
@@ -146,6 +147,19 @@ test("a device that joins mid-match reports no start, and rules that arrive with
     device({ playerId: "", rules: weightless }),
   );
   assert.equal(sent[0]!.properties!.powerupTypes, 0);
+});
+test("match observations identify participant seats separately from spectators and displays", () => {
+  for (const playerId of ["me", "", "not-seated"]) {
+    const { funnel, sent } = harness();
+    funnel.onFrame(
+      view({ phase: "countdown", round: 1 }),
+      device({ playerId }),
+    );
+    assert.equal(
+      sent.find((event) => event.event === "Match Started")?.properties?.played,
+      playerId === "me",
+    );
+  }
 });
 
 test("a decided round's kills and misses go out once it is confirmed, once, and are remembered across a reload", () => {

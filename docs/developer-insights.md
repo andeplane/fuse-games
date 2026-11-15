@@ -130,6 +130,10 @@ have older matches. Slice counts are labelled, overview lower bounds use `≥`,
 incomplete charts are withheld, and DAU/MAU are withheld when their full history
 cannot be read. DAU is the selected end date; MAU is that calendar month through
 the end date. Both count distinct anonymous browsers and use the same filters.
+Play totals require an explicit `played: true`: spectators/TV displays and
+legacy observations with unknown participation remain in raw events and active
+browser/session measures, but do not inflate round/match/game plays. The
+overview discloses excluded legacy observations.
 
 New lifecycle observations link reported participants by irreversible play
 references derived from random shared-runtime UUIDs, including Birds' UUID/round

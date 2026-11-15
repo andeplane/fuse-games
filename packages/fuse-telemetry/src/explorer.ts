@@ -5,6 +5,7 @@ import {
   baseEventFields,
   eventKind,
   matchesEvent,
+  isParticipation,
   type EventFilters,
   type ExplorerQuery,
   type ExplorerResult,
@@ -181,7 +182,7 @@ export class EventExplorer {
     );
     const participants = new Map<string, Set<string>>();
     for (const event of source) {
-      if (event.properties.played === false) continue;
+      if (!isParticipation(event)) continue;
       for (const reference of [
         event.properties.matchRef,
         event.properties.roundRef,
@@ -223,8 +224,12 @@ export class EventExplorer {
       session.startedAt = Math.min(session.startedAt, event.occurredAt);
       session.lastEventAt = Math.max(session.lastEventAt, event.occurredAt);
       session.events++;
-      session.rounds += Number(event.name === "fuse.Round Started");
-      session.matches += Number(event.name === "fuse.Match Started");
+      session.rounds += Number(
+        event.name === "fuse.Round Started" && isParticipation(event),
+      );
+      session.matches += Number(
+        event.name === "fuse.Match Started" && isParticipation(event),
+      );
       if (!session.games.includes(event.gameId))
         session.games.push(event.gameId);
       if (
@@ -235,10 +240,10 @@ export class EventExplorer {
       sessions.set(key, session);
     }
     const roundPlays = events.filter(
-      (event) => event.name === "fuse.Round Started",
+      (event) => event.name === "fuse.Round Started" && isParticipation(event),
     ).length;
     const completions = events.filter(
-      (event) => event.name === "fuse.Round Ended",
+      (event) => event.name === "fuse.Round Ended" && isParticipation(event),
     ).length;
     const last = record(raw[Math.min(raw.length, EXPLORER_SCAN_LIMIT) - 1]);
     return {
@@ -269,9 +274,26 @@ export class EventExplorer {
         roundPlays,
         completions,
         matchPlays: events.filter(
-          (event) => event.name === "fuse.Match Started",
+          (event) =>
+            event.name === "fuse.Match Started" && isParticipation(event),
         ).length,
-        games: new Set(events.map((event) => event.gameId)).size,
+        games: new Set(
+          events
+            .filter(
+              (event) =>
+                isParticipation(event) &&
+                ["fuse.Match Started", "fuse.Round Started"].includes(
+                  event.name,
+                ),
+            )
+            .map((event) => event.gameId),
+        ).size,
+        participationUnknown: events.filter(
+          (event) =>
+            /^fuse\.(?:(?:Match|Round) Started|Round Ended)$/.test(
+              event.name,
+            ) && typeof event.properties.played !== "boolean",
+        ).length,
         completionRate: roundPlays ? completions / roundPlays : null,
       },
     };

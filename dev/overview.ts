@@ -5,8 +5,10 @@ import type {
 } from "fuse-telemetry/explorer-contracts";
 import type { Dom } from "./dom.js";
 import { coverageNote } from "./events.js";
+import { isParticipation } from "fuse-telemetry/explorer-contracts";
 const count = (events: readonly ExplorerEvent[], name: string) =>
-  events.filter((event) => event.name === name).length;
+  events.filter((event) => event.name === name && isParticipation(event))
+    .length;
 const unique = (
   events: readonly ExplorerEvent[],
   key: "userId" | "sessionId",
@@ -61,7 +63,7 @@ export function renderOverview(
     ],
     [
       "Games played",
-      `${data.truncated ? "≥ " : ""}${new Set(data.events.filter((event) => event.name === "fuse.Round Started" || event.name === "fuse.Match Started").map((event) => event.gameId)).size}`,
+      `${data.truncated ? "≥ " : ""}${new Set(data.events.filter((event) => isParticipation(event) && (event.name === "fuse.Round Started" || event.name === "fuse.Match Started")).map((event) => event.gameId)).size}`,
       "Games with a round or match start",
     ],
   ];
@@ -75,6 +77,14 @@ export function renderOverview(
     stats.append(block);
   }
   section.append(stats, coverageNote(dom, data));
+  if (data.summary.participationUnknown)
+    section.append(
+      node(
+        "p",
+        "notice",
+        `${data.summary.participationUnknown} legacy play observations have no participation flag. They remain in Raw Events and browser/session activity, but are excluded from play totals.`,
+      ),
+    );
   if (activeMonth.truncated)
     section.append(
       node(
