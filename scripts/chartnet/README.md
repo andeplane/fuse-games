@@ -156,16 +156,16 @@ What was measured, on the 48 held-out DDR/ITG songs (`gen2.py eval`, `gen2.py pl
 
 | Held-out DDR/ITG charts     | Human | v2    | v3    |
 | --------------------------- | ----- | ----- | ----- |
-| Challenge: step timing F1   |       | 0.69  | 0.71  |
-| Challenge: steps in streams | 0.25  | 0.12  | 0.23  |
-| Challenge: longest 16th run | 28.7  | 4.9   | 15.9  |
-| Challenge: jumps            | 0.074 | 0.137 | 0.111 |
-| Challenge: freezes          | 0.065 | 0.052 | 0.028 |
-| Challenge: jacks            | 0.034 | 0.025 | 0.045 |
+| Challenge: step timing F1   |       | 0.69  | 0.72  |
+| Challenge: steps in streams | 0.25  | 0.12  | 0.20  |
+| Challenge: longest 16th run | 28.7  | 4.9   | 11.9  |
+| Challenge: jumps            | 0.074 | 0.137 | 0.105 |
+| Challenge: freezes          | 0.065 | 0.052 | 0.046 |
+| Challenge: jacks            | 0.034 | 0.025 | 0.039 |
 | Hard: step timing F1        |       | 0.75  | 0.75  |
-| Hard: jumps                 | 0.080 | 0.125 | 0.068 |
-| Hard: freezes               | 0.022 | 0.018 | 0.023 |
-| Hard: jacks                 | 0.042 | 0.015 | 0.030 |
+| Hard: jumps                 | 0.080 | 0.125 | 0.080 |
+| Hard: freezes               | 0.022 | 0.018 | 0.030 |
+| Hard: jacks                 | 0.042 | 0.015 | 0.024 |
 
 Placement alone, told each human chart's step count: 0.737 overall for v2 and 0.742 for v3 (Challenge 0.691 and
 0.729; the stream preference then trades 0.02 of that for the stream share). On the held-out community songs 0.750 and
@@ -188,10 +188,10 @@ Over the game's 36 songs (`gen2.py fuse`; a cover's Challenge aims at its origin
 
 | Difficulty | Steps/s | 16th-stream share | 24th share | Longest 16th run | 4-gram variety | Jacks | Jumps | Freezes |
 | ---------- | ------- | ----------------- | ---------- | ---------------- | -------------- | ----- | ----- | ------- |
-| Easy       | 1.65    | 0                 | 0          | 1                | 0.60           | 0     | 0.034 | 0.019   |
-| Medium     | 2.53    | 0                 | 0          | 1                | 0.53           | 0.002 | 0.076 | 0.023   |
-| Hard       | 3.79    | 0.18              | 0.011      | 7.5              | 0.54           | 0.041 | 0.068 | 0.030   |
-| Challenge  | 5.69    | 0.56              | 0.103      | 43.5             | 0.41           | 0.047 | 0.055 | 0.024   |
+| Easy       | 1.62    | 0                 | 0          | 1                | 0.62           | 0     | 0.035 | 0.024   |
+| Medium     | 2.52    | 0                 | 0          | 1                | 0.53           | 0.002 | 0.072 | 0.020   |
+| Hard       | 3.76    | 0.17              | 0.010      | 7.5              | 0.52           | 0.041 | 0.064 | 0.028   |
+| Challenge  | 5.55    | 0.52              | 0.103      | 46.8             | 0.44           | 0.052 | 0.053 | 0.033   |
 
 Human Challenge charts at 5.5 to 7.5 steps a second: 0.53 in 16th streams, 0.05 in 24ths, variety 0.42, jumps 0.05,
 freezes 0.07. v2's Challenge charts for the same songs had variety 0.33.
