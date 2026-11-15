@@ -67,8 +67,8 @@ try {
     { times: 1 },
   );
   await a.goto(url);
-  // The landing keeps the arena under Settings; the room keeps it under Game settings.
-  await a.getByRole("button", { name: "Settings", exact: true }).click();
+  // The landing keeps the arena under Settings; the room keeps it under Room settings.
+  await a.getByRole("button", { name: "Room settings", exact: true }).click();
   await arena(a).selectOption("ricochet");
   await a.keyboard.press("Escape");
   await openPlayOptions(a);
@@ -89,7 +89,7 @@ try {
   await a.locator(".fui-roster-name", { hasText: "Bob" }).waitFor();
   for (const page of [a, b])
     await page
-      .getByRole("button", { name: "Game settings", exact: true })
+      .getByRole("button", { name: "Room settings", exact: true })
       .click();
   await arena(a).selectOption("crossfire");
   await arena(b).waitFor();

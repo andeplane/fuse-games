@@ -21,7 +21,10 @@ export function createRoomSettingsDialog(
   dialogs: DialogRegistry<RoomDialogId>,
   options: RoomSettingsDialogOptions,
 ) {
-  const shell = createDialogShell({ title: "GAME MENU", label: "Game menu" });
+  const shell = createDialogShell({
+    title: "Room settings",
+    label: "Room settings",
+  });
   dialogs.add("roomSettings", shell.dialog);
   return {
     element: shell.dialog,

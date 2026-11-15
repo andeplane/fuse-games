@@ -126,7 +126,7 @@ try {
                 beside?.textContent?.trim()
               );
             })) ?? "",
-            /^(Game settings|Settings)$/,
+            /^(Room settings|Settings)$/,
           );
         }
         await first.getByRole("button").click();

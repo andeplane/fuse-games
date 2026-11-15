@@ -533,6 +533,7 @@ function landing(): void {
   /** `keepMusic`: the room that opens next plays the same preview on, without a gap. */
   const leaveLanding = (keepMusic = false) => {
     if (!keepMusic) preview.stop();
+    optionsMenu.dispose();
     settings.dispose();
     card.menu.dispose();
     menu.dispose();
@@ -989,14 +990,20 @@ function enterRoom(
     picker: picker.element,
     options: options.element,
     session: lobbySession.element,
+    onOpenChange: (open) => {
+      if (open) panel.refresh();
+      else panel.cancel();
+    },
   });
-  lobbyBar.menu.element.hidden = display;
   lobby.append(lobbyMain);
   const help = keyHelp();
   const panel = settingsPanel(() => {
     help.dispatchEvent(new Event("fm-refresh"));
     showOptions();
   });
+
+  lobbyBar.menu.panel.append(panel.element, help);
+  lobbyBar.menu.element.hidden = display;
 
   // The song: the canvas, the result over it, the touch pads under it.
   const stage = el("section", "", "fm-stage"),
@@ -1247,7 +1254,7 @@ function enterRoom(
       if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
     },
     addAI: addBot,
-    settings: [panel.element, help],
+    settings: [options.room],
     headerActions: lobbyBar.headerActions,
     modes: lobbyBar.modes,
     actions: [lobbyNote],
@@ -1701,6 +1708,7 @@ function enterRoom(
     main.dataset.playing = String(next.playing);
     // A restart passes through the song select for a moment: it is not shown.
     lobby.hidden = next.screen !== "lobby" || restarting;
+    if (lobby.hidden) lobbyBar.menu.close();
     stage.hidden = next.screen !== "play";
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
@@ -1995,6 +2003,7 @@ function enterRoom(
       say("The host removed you from the room", "error");
     },
     ended() {
+      lobbyBar.menu.close();
       say("Room ended", "error");
       over = true;
       songClock.stop();
@@ -2049,6 +2058,7 @@ function enterRoom(
       stopPlaytestInput();
       menu.dispose();
       playMenu.dispose();
+      lobbyBar.menu.dispose();
       panel.dispose();
       songClock.stop();
       scene.destroy();
