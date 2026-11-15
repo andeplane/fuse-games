@@ -14,6 +14,7 @@ export {
   createPageHeader,
   createPageMessage,
   createSubPage,
+  escapeIsTaken,
   type BackButtonOptions,
   type BackOnEscapeOptions,
   type PageHeader,

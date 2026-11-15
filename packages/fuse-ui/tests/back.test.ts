@@ -129,6 +129,20 @@ test("Escape presses Back, except when Back is out of reach or Escape already me
   assert.equal(pressed, 1, "Escape belongs to an open dialog");
   dialog.remove();
 
+  // The app portal's grid and the game menu are not dialogs, and each closes on this Escape.
+  for (const className of ["fui-portal-panel", "fui-game-menu-panel"]) {
+    const panel = document.createElement("div");
+    panel.className = className;
+    document.body.append(panel);
+    document.dispatchEvent(escape(window));
+    assert.equal(pressed, 1, `Escape belongs to an open ${className}`);
+    panel.hidden = true;
+    document.dispatchEvent(escape(window));
+    assert.equal(pressed, 2, `a closed ${className} leaves Escape to Back`);
+    pressed = 1;
+    panel.remove();
+  }
+
   enabled = false;
   document.dispatchEvent(escape(window));
   assert.equal(pressed, 1, "the page can say Escape is busy");

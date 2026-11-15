@@ -323,7 +323,9 @@ export function createOnlineSession(
               }))
           : [],
         self: runtime.self,
-        manager,
+        // Who runs the room: the page that created it, always (seated or not), and otherwise whoever the room
+        // names, so when the host leaves, the next one's HOST badge, Start and settings turn up together.
+        manager: manager || managerId === runtime.self,
         ...(managerId === undefined ? {} : { managerId }),
         status,
         closed,

@@ -21,6 +21,7 @@ import {
 import { updateContent } from "./dom-update.js";
 import {
   createMainMenu,
+  escapeIsTaken,
   roomLayoutMarkup,
   mountAttract,
   createTopBar,
@@ -2206,7 +2207,9 @@ export function mountFuseCraft(
   /**
    * Escape closes How to play wherever focus is, even when it fell to the
    * page body, so it listens on the document rather than the app root. On a page with a head of its own it is
-   * Back, as in every menu; an open dialog (the app's menu, the friends panel) takes Escape itself.
+   * Back, as in every menu: not while a dialog, the game menu or the app portal is open (Escape is theirs), and
+   * not from a field being typed in or a list being picked from. The room is left by its Back alone, as in
+   * every game: Escape there does nothing.
    */
   function onDocumentKeyDown(event: KeyboardEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
@@ -2216,7 +2219,9 @@ export function mountFuseCraft(
       closeHelp();
       return;
     }
-    if (pending || root.ownerDocument.querySelector("dialog[open]")) return;
+    if (pending || escapeIsTaken(event, root.ownerDocument)) return;
+    if ((event.target as Element | null)?.closest?.("input, select, textarea"))
+      return;
     const back = root.querySelector<HTMLElement>(".screen-heading .fui-back");
     if (!back) return;
     event.preventDefault();

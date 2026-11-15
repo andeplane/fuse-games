@@ -288,6 +288,15 @@ test("every page under the menu has Back at the top left, and New game has Start
     assert.ok(f.root.querySelector('[data-action="new-game"]'), "on the menu");
   }
   f.click('[data-action="settings"]');
+  // The app portal's open grid takes this Escape; so does a field being used.
+  const grid = f.root.ownerDocument.createElement("div");
+  grid.className = "fui-portal-panel";
+  f.root.ownerDocument.body.append(grid);
+  f.press("Escape", "body");
+  assert.ok(f.root.querySelector(".settings-panel"), "the portal is open");
+  grid.remove();
+  f.press("Escape", '[data-setting="volume"]');
+  assert.ok(f.root.querySelector(".settings-panel"), "a field has the key");
   f.press("Escape", "body");
   assert.ok(
     f.root.querySelector('[data-action="new-game"]'),

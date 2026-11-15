@@ -273,6 +273,17 @@ test("the room is the shared room: Back, Settings and Start in its head, HOST on
     room.status = "Connected · Bo lagging";
   });
   assert.equal(friend(), before, "the same button, not a new one each frame");
+  // The matched player leaves: the button goes with the row, not onto the neighbour's.
+  f.update((room) => {
+    room.seats = room.seats.filter((seat) => seat.id !== "guest");
+  });
+  assert.equal(friend(), null, "no ADD FRIEND left on another player's row");
+  assert.deepEqual(
+    [...f.root.querySelectorAll(".fui-roster-name")].map(
+      (name) => name.textContent,
+    ),
+    ["Anders (you)", "Bot 3"],
+  );
   f.click('[data-action="invite-friends"]');
   assert.deepEqual(opened, ["friends"]);
   f.app.dispose();
