@@ -23,7 +23,7 @@
     "gallery:capture": "tsx scripts/gallery-capture.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check --cache --cache-strategy content .",
-    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
+    "lint": "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js . --cache --cache-location node_modules/.cache/eslint/",
     "config:check": "tsx scripts/deploy-configuration.ts --check",
     "config:plan": "tsx scripts/deploy-configuration.ts --plan"
   },
