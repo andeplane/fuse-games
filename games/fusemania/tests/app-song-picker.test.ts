@@ -741,7 +741,7 @@ test("a cover is drawn from the song's id, and wears the song's image once it co
   assert.equal(f.rows()[0]!.querySelector(".fm-cover-image"), null);
 });
 
-test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/PageDown between them", () => {
+test("packs group the carousel: one button and a list, the songs pack by pack, and PageUp/PageDown between them", () => {
   const six = ["a", "b", "c", "d", "e", "f"].map((id) => song(id));
   const f = setup(six, {
     packs: [
@@ -808,9 +808,14 @@ test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/P
   f.picker.update(state({ song: "d" }));
   f.calls.length = 0;
   f.picker.update(state({ song: "b" }));
-  f.picker.update(state({ song: "b" }));
   assert.equal(f.picker.key("PageDown"), true);
   assert.equal(f.calls.at(-1), "song a");
+
+  // The pack button opens the list.
+  f.picker.update(state({ song: "b" }));
+  const dialog = f.one(".fm-pack-dialog") as HTMLDialogElement;
+  (f.one(".fm-picker-pack") as HTMLButtonElement).click();
+  assert.equal(dialog.hasAttribute("open"), true);
 
   // The packs are the host's to change.
   f.calls.length = 0;

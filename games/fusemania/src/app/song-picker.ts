@@ -408,6 +408,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
   tabs.hidden = packTabs.length === 0;
   packBefore.hidden = packAfter.hidden = packTabs.length < 2;
   write(packLabel, "PACKS");
+  packButton.disabled = packBefore.disabled = packAfter.disabled = true;
   const top = el("div", "", "fm-picker-top"),
     tools = el("div", "", "fm-picker-tools");
   const sorter = createSorter();
