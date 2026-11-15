@@ -80,6 +80,7 @@ import {
   heroCards,
   mapOptions,
   pickHero,
+  roomKey,
   slotsOf,
   type SlotView,
 } from "./model.js";
@@ -322,15 +323,19 @@ function room(code: string, token: string | undefined, display: boolean): void {
   play.append(hud.top, stage, hud.bottom, hint);
   play.hidden = true;
   app.replaceChildren(header(), status, lobby, play, results.element);
-  const name = () => store.getItem(keys.name) || "Commander";
+  // The name this device knows: the account's, or the one typed in a room before.
+  const known = () =>
+    social.playerName(store.getItem(keys.name))?.trim() || undefined;
   const online = token !== undefined;
   const runtime = new FrontRuntime(
     code,
     DEFAULT_SETTINGS,
     {
       ready: () => {
-        if (online && !display && !store.getItem(keys.host(code)))
-          runtime.command({ type: "join", name: name() });
+        // A guest this device has a name for is seated at once; anyone else is asked by the room's seat dialog.
+        const who = known();
+        if (online && !display && !store.getItem(keys.host(code)) && who)
+          runtime.command({ type: "join", name: who });
       },
       state: (frame) => show(frame),
       event: (event, matchId) => {
@@ -366,11 +371,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
               maxFastBytes: MAX_PACKET_BYTES,
             }),
         }
-      : { humanName: name() },
+      : { humanName: known() ?? "Commander" },
   );
   let lobbyKey = "";
   // The seat whose hero the lobby's cards show: this device's, or one the host chose from the team chips.
   let picking = -1;
+  // The row's HERO button that opened Settings: it has the focus back when Settings closes.
+  let heroOpener: string | undefined;
   let wasLobby = true;
   function show(view: Frame<View>): void {
     observeConfirmedPlay(
@@ -409,15 +416,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
       const slots = slotsOf(view, runtime.self);
       if (!slots.some((s) => s.slot === picking))
         picking = slots.find((s) => s.self)?.slot ?? 0;
-      const key = JSON.stringify([
+      const key = roomKey(
+        view,
         slots,
-        view.seats,
         picking,
-        view.settings.size,
-        view.settings.map,
         runtime.creator,
         view.managerId,
-      ]);
+      );
       if (key !== lobbyKey) {
         lobbyKey = key;
         renderLobby(view);
@@ -530,6 +535,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
     // Settings: team panels of seat chips; the host clicks a chip to pick that seat's hero on the cards under them.
     const teams = el("div", "", "ff-teams");
     const slots = slotsOf(view, runtime.self);
+    // The host looks at another seat's hero: the room is redrawn for it now, and not again by the next frame.
+    const pick = (slot: number, openSettings = false) => {
+      picking = slot;
+      lobbyKey = roomKey(view, slots, picking, runtime.creator, view.managerId);
+      renderLobby(view, openSettings);
+    };
     for (const team of [0, 1]) {
       const column = el("div", "", `ff-team ff-t${team}`);
       const seats = el("div", "", "ff-seats");
@@ -544,7 +555,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
         const name = el("button", `${who} · ${slot.hero}`, "ff-seat-pick");
         name.disabled = !host;
         name.setAttribute("aria-pressed", String(slot.slot === picking));
-        name.onclick = () => ((picking = slot.slot), renderLobby(view));
+        name.onclick = () => pick(slot.slot);
         chip.classList.toggle("ff-own", slot.self);
         chip.classList.toggle("ff-on", slot.slot === picking);
         chip.append(name);
@@ -575,7 +586,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
     });
     const seated = view.seats.filter((seat) => !seat.watcher);
     const title = (word: string) => word[0]!.toUpperCase() + word.slice(1);
-    const start = el("button", "START", "fui-button-primary ff-start");
+    const start = el("button", "START", "fui-button-primary");
     start.onclick = () => runtime.command({ type: "action", action: "start" });
     const note = el(
       "p",
@@ -713,13 +724,27 @@ function room(code: string, token: string | undefined, display: boolean): void {
         hero.setAttribute("aria-label", `Pick ${slot.name}'s hero`);
         hero.dataset.roomAction = `hero:${slot.slot}`;
         hero.onclick = () => {
-          picking = slot.slot;
-          renderLobby(view, true);
+          heroOpener = hero.dataset.roomAction;
+          pick(slot.slot, true);
         };
         tools.append(hero);
         row.append(tools);
       }
     currentLobby = layout;
+    // Settings closed: its cards are this device's seat again, and a row's HERO that opened it has the focus back.
+    layout.settings.addEventListener("close", () => {
+      const opener = heroOpener;
+      heroOpener = undefined;
+      const own = slots.find((s) => s.self)?.slot ?? 0;
+      const redrawn = picking !== own;
+      if (redrawn) pick(own);
+      if (opener)
+        [...lobby.querySelectorAll<HTMLElement>("[data-room-action]")]
+          .find((node) => node.dataset.roomAction === opener)
+          ?.focus();
+      else if (redrawn)
+        lobby.querySelector<HTMLElement>(".fui-room-configure")?.focus();
+    });
     if (settingsWereOpen) {
       layout.settings.showModal();
       const candidates = [
