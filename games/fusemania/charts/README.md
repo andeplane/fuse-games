@@ -62,6 +62,10 @@ A pack with no songs is not shown, so the two jazz mixes appear in the song sele
 
 The runtime uses the external URL directly and caches successfully downloaded bytes just like bundled audio. The host must allow cross-origin GETs and return an audio content type. Use immutable/versioned URLs when replacing audio, and bump `RULES` when changing the bundled catalogue. Run `pnpm exec tsx scripts/verify-fusemania-media.ts` after upload to verify every external file; this network check is deliberately separate from offline builds and unit tests. Analysis needs a local `file`, while authored `simfile` entries are excluded from analysis and generation. See the [DukAmok media setup](dukamok-originals/README.md) for the project's public bucket and upload command.
 
+The DDR and ITG jazz covers keep their original song names followed by distinct jazz-flavoured **Jazz Mix** names,
+such as **Candy (Sugar Swing Jazz Mix)** and **Monolith (Modal Drift Jazz Mix)**. These display titles are shared
+by the catalogue, simfiles and FuseOS Winamp. Their stable song ids, audio addresses and charts are unchanged.
+
 ## How a chart is made
 
 **Analysis** (`scripts/lib/fusemania/analyze.ts`, `tempo.ts`, `metre.ts`). The audio is split into three bands and
