@@ -35,6 +35,13 @@ createDevRoomService({
 What the platform owns and keeps the same for every game: a result is kept once a majority of its finishers report
 the same one; a round is rated once every player who stayed has reported, and only the signed-in ones on distinct accounts
 are rated (guests are left out), once per rating scope; early leavers are never rated; Elo is `calculateElo` over humans only. Rate-limit budgets are per game (the legacy game keeps its keys), except the username's, which is the account's.
+Room result routes also share an in-process address bucket across games and whole-match/round reports: 60 calls
+at once, refilling at 2 per second. Room invites have a separate address bucket of 30 calls, refilling at 0.5 per
+second. Both are consumed before room reads, body reads or identity verification; exhausted callers receive 429
+without buying a database read. Existing database seat/account/address limits remain authoritative after admission.
+These front-door buckets are per service instance, so their allowances multiply by the instance count. A 12-device
+room can submit its round and match reports together without exhausting the result burst. The HTTP factories accept
+an injected `now` clock for deterministic budget tests (`createPlatformHttp({ ..., now })`).
 What a game owns: the
 `PlayerResult` fields it reports beside its own stats (`parseStats`, the storage and wire boundary), which ids are
 bots, what a confirmed match adds to an account (`credit`, `addTotals`, `parseTotals`) and, optionally, rivalries.

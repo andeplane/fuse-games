@@ -1,5 +1,11 @@
 import type { IncomingMessage } from "node:http";
-import { RoomError, type HttpExtension } from "fuse-network-be";
+import {
+  AddressBudget,
+  RoomError,
+  ROOM_LOOKUP_BURST,
+  ROOM_LOOKUP_PER_SECOND,
+  type HttpExtension,
+} from "fuse-network-be";
 import { LEGACY_GAME_ID } from "./game.js";
 import type { FriendsStore } from "./friends.js";
 import type { HistoryStore } from "./history.js";
@@ -7,6 +13,12 @@ import type { IdentityVerifier } from "./identity.js";
 
 const MAX_BODY_BYTES = 256_000,
   BODY_TIMEOUT_MS = 10_000;
+/** Shared across games and result kinds: enough for 12 devices reporting a round and match together. */
+export const RESULT_LOOKUP_BURST = 60,
+  RESULT_LOOKUP_PER_SECOND = 2;
+export interface PlatformHttpDependencies {
+  now: () => number;
+}
 const bearer = (req: IncomingMessage): string =>
   req.headers.authorization?.replace(/^Bearer /, "") ?? "";
 /** A bounded JSON body: the limit is enforced while reading, so a lying Content-Length cannot buy memory. */
@@ -64,7 +76,13 @@ const HISTORY_ROUTE =
 export function createHistoryHttp(
   store: HistoryStore,
   identity: IdentityVerifier,
+  dependencies: PlatformHttpDependencies = { now: Date.now },
 ): HttpExtension {
+  const resultLookups = new AddressBudget(
+    dependencies.now,
+    RESULT_LOOKUP_BURST,
+    RESULT_LOOKUP_PER_SECOND,
+  );
   return {
     methods: ["PUT"],
     headers: ["X-Fuse-Identity"],
@@ -84,6 +102,9 @@ export function createHistoryHttp(
       // The room token says which seat is reporting; the optional identity header says whose account that seat is.
       // An identity that does not verify is a guest's report, never a refusal: signing in must not be able to cost a rider their result.
       if (route && req.method === "POST") {
+        // Refused credentials must not buy unlimited room reads. Database budgets still apply to proven seats.
+        if (!resultLookups.take(clientAddress))
+          throw new RoomError(429, "Too many results; try later");
         // The room token is checked first, so a stranger can buy neither a body read nor a signature verification.
         const reporter = await history.admit(
             route[1]!,
@@ -200,11 +221,17 @@ const FRIENDS_ROUTE =
 export function createFriendsHttp(
   store: FriendsStore,
   identity: IdentityVerifier,
+  dependencies: PlatformHttpDependencies = { now: Date.now },
 ): HttpExtension {
+  const inviteLookups = new AddressBudget(
+    dependencies.now,
+    ROOM_LOOKUP_BURST,
+    ROOM_LOOKUP_PER_SECOND,
+  );
   return {
     methods: ["DELETE"],
     headers: ["X-Fuse-Identity"],
-    async handle(req, res) {
+    async handle(req, res, clientAddress) {
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
       if (!FRIENDS_ROUTE.test(pathname)) return false;
@@ -217,6 +244,9 @@ export function createFriendsHttp(
       );
       if (invite) {
         if (req.method !== "POST") return false;
+        // Limit room lookups before verification/body reads; an identity is not proof of room membership.
+        if (!inviteLookups.take(clientAddress))
+          throw new RoomError(429, "Too many invites; try later");
         const header = req.headers["x-fuse-identity"];
         const uid =
           typeof header === "string" && header
@@ -279,9 +309,11 @@ export function createPlatformHttp(options: {
   history: HistoryStore;
   friends: FriendsStore;
   identity: IdentityVerifier;
+  now?: () => number;
 }): HttpExtension {
+  const dependencies = { now: options.now ?? Date.now };
   return composeHttp(
-    createHistoryHttp(options.history, options.identity),
-    createFriendsHttp(options.friends, options.identity),
+    createHistoryHttp(options.history, options.identity, dependencies),
+    createFriendsHttp(options.friends, options.identity, dependencies),
   );
 }
