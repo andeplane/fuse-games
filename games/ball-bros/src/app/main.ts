@@ -111,7 +111,9 @@ function render() {
         displayLink: link(`?room=${online.code}&display=1`),
       },
       store: playerStore,
-      ...(online ? { friends: social.friends } : {}),
+      ...(online
+        ? { friends: social.friends, roomFriends: social.friends }
+        : {}),
       settings,
       qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 240 }),
       audio: (activeAudio = new Audio(!soundEnabled)),
