@@ -226,7 +226,7 @@ export class World<
     }
     return earliest;
   }
-  /** Simulation may run 40 ticks past a connected player's completeness; further is a stall on that player. */
+  /** Simulation may run two seconds past a connected player's completeness; further is a stall on that player. */
   stallBound(): { tick: number; waitingFor?: string } {
     let bound = Infinity,
       waitingFor: string | undefined;

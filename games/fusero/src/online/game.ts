@@ -334,10 +334,14 @@ export function foldTick(
             entry[3] === room.matchId &&
             entry[4] === room.round
           ) {
-            tapped |= entry[5] & INPUT_MASK;
-            bits = entry[5] & INPUT_MASK;
+            const next = entry[5] & INPUT_MASK;
+            // Native key-up clears the sampled edge history even between physics pulses.
+            // A subsequent press must still be down-once when the next pulse samples it.
+            worm.input &= next;
+            tapped |= next & ~bits;
+            bits = next;
           }
-      }
+      } else if (!worm.ai) worm.input = 0;
       if (bits && !seat?.bot) room.held[worm.id] = bits;
       else delete room.held[worm.id];
       if (tapped) room.pendingPressed[worm.id] = tapped;

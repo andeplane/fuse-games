@@ -170,6 +170,68 @@ test("brief fire and weapon taps survive every native physics phase, including m
   );
 });
 
+test("release and repress remain distinct across skipped physics pulses and within one input tick", () => {
+  for (const sameTick of [false, true]) {
+    const room = humans(),
+      world = room.world!,
+      worm = world.worms.find((worm) => worm.id === "b")!;
+    fold(room, { b: [[PLAY, room.matchId, 1, NEXT]] });
+    while (room.pendingPressed.b) fold(room);
+    assert.equal(worm.weapon, 1);
+    while (world.lastClientPhysicsMs + PHYSICS_MS <= world.elapsedMs)
+      fold(room);
+    const physics = world.lastClientPhysicsMs;
+    fold(room, {
+      b: [
+        [PLAY, room.matchId, 1, 0],
+        ...(sameTick
+          ? [
+              [PLAY, room.matchId, 1, NEXT],
+              [PLAY, room.matchId, 1, 0],
+            ]
+          : []),
+      ],
+    });
+    assert.equal(
+      world.lastClientPhysicsMs,
+      physics,
+      "release arrived in an outer frame without physics",
+    );
+    const recovered = decode(encode(room), room.tick);
+    assert.ok(recovered);
+    const controls: Bodies = sameTick
+      ? {}
+      : { b: [[PLAY, room.matchId, 1, NEXT]] };
+    fold(room, controls);
+    fold(recovered, controls);
+    assert.equal(
+      worm.weapon,
+      2,
+      "a fresh press survives the previous sampled held bit",
+    );
+    assert.equal(hash(room), hash(recovered));
+  }
+});
+
+test("adding another held control cannot manufacture a second weapon press across an unsampled release", () => {
+  const room = humans(),
+    world = room.world!,
+    worm = world.worms.find((worm) => worm.id === "b")!;
+  fold(room, { b: [[PLAY, room.matchId, 1, NEXT]] });
+  while (room.pendingPressed.b) fold(room);
+  while (world.lastClientPhysicsMs + PHYSICS_MS <= world.elapsedMs) fold(room);
+  const physics = world.lastClientPhysicsMs;
+  fold(room, { b: [[PLAY, room.matchId, 1, NEXT | FIRE]] });
+  assert.equal(world.lastClientPhysicsMs, physics);
+  assert.equal(
+    room.pendingPressed.b,
+    FIRE,
+    "only the newly pressed fire bit is pending",
+  );
+  fold(room, { b: [[PLAY, room.matchId, 1, FIRE]] });
+  assert.equal(worm.weapon, 1, "releasing NEXT does not cycle weapons again");
+});
+
 test("a returning connection cannot inherit a previous generation's held or unsampled brief controls", () => {
   for (const release of [true, false]) {
     const room = createRoom("lobby", DEFAULT_SETTINGS);
@@ -195,6 +257,24 @@ test("a returning connection cannot inherit a previous generation's held or unsa
     assert.equal(room.world!.worms.find((worm) => worm.id === "b")!.weapon, 0);
     assert.equal(room.world!.nextId, 1);
   }
+});
+
+test("brief absence cancels sampled edge history even before a physics pulse or generation change", () => {
+  const room = humans(),
+    world = room.world!,
+    worm = world.worms.find((worm) => worm.id === "b")!;
+  fold(room, { b: [[PLAY, room.matchId, 1, NEXT]] });
+  while (room.pendingPressed.b) fold(room);
+  while (world.lastClientPhysicsMs + PHYSICS_MS <= world.elapsedMs) fold(room);
+  const physics = world.lastClientPhysicsMs;
+  fold(room, { a: [[PRESENCE, "b", false, 1]] });
+  assert.equal(world.lastClientPhysicsMs, physics);
+  assert.equal(worm.input, 0);
+  fold(room, {
+    a: [[PRESENCE, "b", true, 1]],
+    b: [[PLAY, room.matchId, 1, NEXT]],
+  });
+  assert.equal(worm.weapon, 2);
 });
 
 test("a new connection's first press is not suppressed by the previous generation's sampled key history", () => {

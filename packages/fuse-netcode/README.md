@@ -16,7 +16,7 @@ A game implements `RollbackGame<Room, Entry, View, Event, Settings>` (`src/game.
 | `rollback.ts`     | `World`: every stream folded to the current tick, snapshot ring, rollback, event dedupe, stall rule                                                                                              |
 | `snapshot.ts`     | Chunked snapshot transfer, validated and installed only whole                                                                                                                                    |
 | `packet.ts`       | Bounded MessagePack packet and nack codec                                                                                                                                                        |
-| `clock.ts`        | The slewed 50 ms log clock                                                                                                                                                                       |
+| `clock.ts`        | The slewed per-game log clock (50 ms by default)                                                                                                                                                 |
 | `management.ts`   | Join, leave, presence, settings, start/rematch/lobby, bots and spectators: one wire format, succession, permission, and `applyManagementTick` for a game that keeps its seats in a `ManagedRoom` |
 | `room-runtime.ts` | `RoomRuntime`: solo and online rooms, succession duties, snapshot recovery, the desync hash                                                                                                      |
 

@@ -20,7 +20,7 @@ interface Sample {
 }
 
 /**
- * Fractional log time from an injected monotonic clock: `tick = base + (now − t0) / TICK_MS` plus a slewed offset. It
+ * Fractional log time from an injected monotonic clock: `tick = base + (now − t0) / tickMs` plus a slewed offset. It
  * uses the trusted game's cadence (50 ms by default). A game may also run several simulation steps per tick.
  * The time authority starts it and never adjusts it; followers feed lowest-RTT samples and slew at most 50 ms per
  * second, and more gently the closer they already are. It never steps backwards, and a follower with no fresh sample free-runs rather than pausing.
