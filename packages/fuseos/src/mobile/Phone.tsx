@@ -56,9 +56,28 @@ export function Phone({
   const [page, setPage] = useState(0);
   useLayoutEffect(() => {
     if (screen === "home" && pages.current)
-      pages.current.scrollLeft = page * pages.current.clientWidth;
+      pages.current.scrollTo({
+        left: page * pages.current.clientWidth,
+        behavior: "instant",
+      });
   }, [screen]);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const carousel = useRef<HTMLDivElement>(null);
+  const gameDots = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (screen === "games" && carousel.current)
+      carousel.current.scrollTo({
+        left: carouselIndex * carousel.current.clientWidth,
+        behavior: "instant",
+      });
+  }, [screen]);
+  useLayoutEffect(() => {
+    const dots = gameDots.current;
+    const active = dots?.querySelector<HTMLButtonElement>("[aria-current]");
+    if (dots && active)
+      dots.scrollLeft =
+        active.offsetLeft - (dots.clientWidth - active.offsetWidth) / 2;
+  }, [screen, carouselIndex]);
   const navigate = (value: string) => {
     navigation?.push(value);
     setScreen(value);
@@ -74,7 +93,9 @@ export function Phone({
   const mount = useRef<HTMLDivElement>(null);
   const selected = games.find((game) => game.id === screen);
   const muted = new URLSearchParams(search).has("mute");
-  const home = () => navigate("home");
+  const home = () => {
+    if (screen !== "home") navigate("home");
+  };
   const dismissWelcome = () => {
     welcomePreference?.dismiss();
     setWelcome(false);
@@ -273,7 +294,7 @@ export function Phone({
                   onClick={() =>
                     pages.current?.scrollTo({
                       left: index * pages.current.clientWidth,
-                      behavior: "smooth",
+                      behavior: "auto",
                     })
                   }
                 >
@@ -290,38 +311,50 @@ export function Phone({
           <h1>Games</h1>
           {games.length > 0 ? (
             <>
-              <div className="phone-carousel-controls">
-                <button
-                  disabled={carouselIndex === 0}
-                  onClick={() => setCarouselIndex(carouselIndex - 1)}
-                  aria-label="Previous game"
-                >
-                  ←
-                </button>
-                <span>
-                  {carouselIndex + 1} / {games.length}
-                </span>
-                <button
-                  disabled={carouselIndex === games.length - 1}
-                  onClick={() => setCarouselIndex(carouselIndex + 1)}
-                  aria-label="Next game"
-                >
-                  →
-                </button>
+              <div
+                className="phone-game-pages"
+                ref={carousel}
+                aria-label="Game screenshots"
+                tabIndex={0}
+                onScroll={(event) => {
+                  const el = event.currentTarget;
+                  if (el.clientWidth)
+                    setCarouselIndex(
+                      Math.round(el.scrollLeft / el.clientWidth),
+                    );
+                }}
+              >
+                {games.map((game, index) => (
+                  <GameCard
+                    key={game.id}
+                    game={game}
+                    base={base}
+                    launch={launch}
+                    active={index === carouselIndex}
+                  />
+                ))}
               </div>
-              <GameCard
-                game={games[carouselIndex]!}
-                base={base}
-                launch={launch}
-                previous={() =>
-                  setCarouselIndex(Math.max(0, carouselIndex - 1))
-                }
-                next={() =>
-                  setCarouselIndex(
-                    Math.min(games.length - 1, carouselIndex + 1),
-                  )
-                }
-              />
+              <nav
+                className="phone-page-dots phone-game-dots"
+                aria-label="Game pages"
+                ref={gameDots}
+              >
+                {games.map((game, index) => (
+                  <button
+                    key={game.id}
+                    aria-label={`Show ${game.name}`}
+                    aria-current={carouselIndex === index ? "page" : undefined}
+                    onClick={() =>
+                      carousel.current?.scrollTo({
+                        left: index * carousel.current.clientWidth,
+                        behavior: "auto",
+                      })
+                    }
+                  >
+                    <span />
+                  </button>
+                ))}
+              </nav>
             </>
           ) : null}
           {games.length === 0 ? <p>No games are available yet.</p> : null}
@@ -400,8 +433,8 @@ export function Phone({
           </p>
           <h2>Your music comes along</h2>
           <p>
-            Open Winamp to play Fuse Radio. Use Home or Back to keep listening
-            while you browse and play.
+            Open Winamp to play Fuse Radio. Press the Home button to keep
+            listening while you browse and play.
           </p>
           <h2>Find your way back</h2>
           <p>
@@ -413,34 +446,9 @@ export function Phone({
         </main>
       ) : null}
       <nav className="phone-navigation" aria-label="Phone navigation">
-        {screen !== "home" ? (
-          <button onClick={() => (navigation ? navigation.back() : home())}>
-            Back
-          </button>
-        ) : null}
-        {activeGame && !selected ? (
-          <button
-            className="phone-return"
-            onClick={() => navigate(activeGame.id)}
-          >
-            Resume game
-          </button>
-        ) : null}
-        {screen !== "home" ? (
-          <button onClick={home} aria-label="Home">
-            Home
-          </button>
-        ) : (
-          <span className="phone-home-bar" />
-        )}
-        {musicOpened && screen !== "winamp" && screen !== "home" ? (
-          <button
-            className="phone-music-shortcut"
-            onClick={() => navigate("winamp")}
-          >
-            Winamp
-          </button>
-        ) : null}
+        <button className="phone-home-button" onClick={home} aria-label="Home">
+          <span aria-hidden="true" />
+        </button>
       </nav>
       {welcome ? <PhoneWelcome dismiss={dismissWelcome} /> : null}
     </div>
@@ -451,39 +459,23 @@ function GameCard({
   game,
   base,
   launch,
-  previous,
-  next,
+  active,
 }: {
   game: PortalGame;
   base: string;
   launch: (game: PortalGame) => void;
-  previous: () => void;
-  next: () => void;
+  active: boolean;
 }) {
-  const touch = useRef<number | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [game.id]);
   return (
-    <article
-      className="phone-game-card"
-      onTouchStart={(event) => {
-        touch.current = event.touches[0]?.clientX ?? null;
-      }}
-      onTouchEnd={(event) => {
-        if (touch.current !== null) {
-          const delta =
-            (event.changedTouches[0]?.clientX ?? touch.current) - touch.current;
-          if (delta > 50) previous();
-          else if (delta < -50) next();
-        }
-        touch.current = null;
-      }}
-    >
+    <article className="phone-game-card" aria-hidden={!active}>
       {game.screenshot && !failed ? (
         <img
           className="phone-game-shot"
           src={`${base}${game.screenshot}`}
           alt={`${game.name} gameplay`}
+          loading="lazy"
           onError={() => setFailed(true)}
         />
       ) : (
@@ -494,7 +486,11 @@ function GameCard({
       )}
       <h2>{game.name}</h2>
       <p>{game.tagline}</p>
-      <button className="phone-play" onClick={() => launch(game)}>
+      <button
+        className="phone-play"
+        tabIndex={active ? 0 : -1}
+        onClick={() => launch(game)}
+      >
         Play {game.name}
       </button>
     </article>

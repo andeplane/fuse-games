@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createFakeWebampPlayer } from "../__mocks__/webampPlayer";
 import { Phone, type PhoneProps } from "./Phone";
@@ -74,13 +75,37 @@ it("follows Back and Forward and restores the routed app after remount", () => {
   expect(navigation.read()).toBe("games");
   fireEvent.click(screen.getByRole("button", { name: "Play Fusemania" }));
   expect(navigation.read()).toBe("fusemania");
-  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  act(() => navigation.back());
   expect(screen.getByRole("heading", { name: "Games" })).toBeVisible();
   act(() => navigation.forward());
   expect(screen.getByTitle("Fusemania")).not.toHaveAttribute("hidden");
   first.unmount();
   render(<Phone {...props()} navigation={navigation} />);
   expect(screen.getByTitle("Fusemania")).not.toHaveAttribute("hidden");
+});
+
+it("offers only the classic Home button on every phone screen without adding history on Home", async () => {
+  const navigation = new Navigation();
+  render(<Phone {...props()} navigation={navigation} />);
+  const expectHomeOnly = () => {
+    const controls = within(
+      screen.getByRole("navigation", { name: "Phone navigation" }),
+    );
+    expect(controls.getAllByRole("button")).toHaveLength(1);
+    expect(controls.getByRole("button", { name: "Home" })).toBeVisible();
+    expect(controls.queryByText("Home")).toBeNull();
+  };
+  expectHomeOnly();
+  fireEvent.click(screen.getByRole("button", { name: "Home" }));
+  expect(navigation.entries).toEqual(["home"]);
+  for (const app of ["Games", "About", "Fusemania", "Winamp"]) {
+    fireEvent.click(screen.getByRole("button", { name: app }));
+    if (app === "Winamp")
+      await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expectHomeOnly();
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    expect(navigation.read()).toBe("home");
+  }
 });
 
 it("browses large screenshots and handles missing images", () => {
@@ -98,10 +123,15 @@ it("browses large screenshots and handles missing images", () => {
     screen.getByRole("img", { name: "Fusemania gameplay" }),
   ).toHaveAttribute("src", "/preview/gallery/fusemania.jpg");
   fireEvent.error(screen.getByRole("img", { name: "Fusemania gameplay" }));
-  expect(screen.getByText("Screenshot unavailable")).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Next game" }));
-  expect(screen.getByRole("button", { name: "Play Second" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Next game" })).toBeDisabled();
+  expect(screen.getAllByText("Screenshot unavailable")).toHaveLength(2);
+  expect(screen.queryByRole("button", { name: "Next game" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Previous game" })).toBeNull();
+  const dots = screen.getByRole("navigation", { name: "Game pages" });
+  expect(within(dots).getAllByRole("button")).toHaveLength(2);
+  expect(
+    within(dots).getByRole("button", { name: "Show Fusemania" }),
+  ).toHaveAttribute("aria-current", "page");
+  expect(screen.queryByRole("button", { name: "Play Second" })).toBeNull();
 });
 
 it("dismisses first-visit welcome durably and makes it available in About", () => {
@@ -193,7 +223,7 @@ it("opens the scrollable catalogue and launches the game inside the phone with m
   render(<Phone {...options} />);
   fireEvent.click(screen.getByRole("button", { name: "Games" }));
   expect(screen.getByRole("heading", { name: "Games" })).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: /Fusemania/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Play Fusemania" }));
   expect(screen.getByTitle("Fusemania")).toHaveAttribute(
     "src",
     "/preview/fusemania/?mute",
@@ -221,12 +251,15 @@ it("retains one playing Winamp through minimize, game launch and restore, then d
   expect(player.getMediaStatus()).toBe("PLAYING");
   expect(player.disposed).toBe(false);
   const gameFrame = screen.getByTitle("Fusemania");
+  fireEvent.click(screen.getByRole("button", { name: "Home" }));
   fireEvent.click(screen.getByRole("button", { name: "Winamp" }));
   expect(screen.getByTitle("Fusemania")).toBe(gameFrame);
   expect(gameFrame).toHaveAttribute("hidden");
-  fireEvent.click(screen.getByRole("button", { name: "Resume game" }));
+  fireEvent.click(screen.getByRole("button", { name: "Home" }));
+  fireEvent.click(screen.getByRole("button", { name: "Fusemania" }));
   expect(screen.getByTitle("Fusemania")).toBe(gameFrame);
   expect(gameFrame).not.toHaveAttribute("hidden");
+  fireEvent.click(screen.getByRole("button", { name: "Home" }));
   fireEvent.click(screen.getByRole("button", { name: "Winamp" }));
   expect(screen.getByRole("region", { name: "Winamp" })).toBeVisible();
   expect(createPlayer).toHaveBeenCalledTimes(1);
