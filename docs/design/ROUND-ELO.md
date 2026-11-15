@@ -19,9 +19,9 @@ is community trust, not anti-cheat. Service and client rollout must be coordinat
 
 Signed-in solo play posts to `/api/me/round-results` without creating a room or transport. The authenticated endpoint
 accepts exactly one human plus optional bots, binds the report to the caller's account, and scopes idempotency by
-account/match/round. It can record participation but never change Elo. A completed signed-in solo game also posts
+account/match/round. The receipt is retained without adding a competitive rating. A completed signed-in solo game also posts
 to `/api/me/results`, using the same one-human validation and account/match scope with the whole-game quotas.
-Its career credit and history entry commit once; it does not settle ratings again. Guests playing solo send no report.
+Its career credit and history entry commit once; it does not settle ratings again. A one-human room result also credits the reporting account's personal progress. These are self-reported, not proof of play, and do not enter the public match feed. Guests playing solo send no report.
 Deploy the gateway's `/api/me/results` support before publishing the client that posts completed solo games; older
 clients keep working with the new gateway, but an older gateway cannot record the new completed-solo reports.
 Rating profiles retain total settlement count in `games`, separate new round count in `rounds`, and optional `round`

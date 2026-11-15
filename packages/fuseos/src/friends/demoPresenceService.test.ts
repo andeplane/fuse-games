@@ -30,7 +30,7 @@ describe(createDemoPresenceService.name, () => {
     expect(seen).toEqual(["online", "playing"]);
     timers.fire();
     expect(service.snapshot().invites).toMatchObject([
-      { from: rocket, code: "VB77", gameId: "fuse-volley" },
+      { from: rocket, code: "VB77AA", gameId: "fuse-volley" },
     ]);
     timers.fire();
     expect(service.snapshot().incoming.map((c) => c.name)).toEqual([

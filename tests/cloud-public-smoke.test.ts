@@ -129,7 +129,7 @@ test("public smoke exercises real gateway socket boundaries and emits no credent
     assert.ok(report.checks.some((c) => c.name.includes("replacement")));
     assert.doesNotMatch(
       JSON.stringify(report),
-      /[a-f0-9]{64}|token=|api\/rooms\/[A-Z]{2}[0-9]{2}/,
+      /[a-f0-9]{64}|token=|api\/rooms\/[A-Z0-9]{6}/,
     );
   } finally {
     await f.close();

@@ -206,7 +206,7 @@ export async function runPublicSmoke(
     );
     const room = (await response.json()) as { code: string; token: string };
     createdRoom = room;
-    assert.match(room.code, /^[A-Z]{2}[0-9]{2}$/);
+    assert.match(room.code, /^[A-Z0-9]{6}$/);
     assert.match(room.token, /^[a-f0-9]{64}$/);
     checked("host WSS admission creates provider subscription and authority");
     const host = open(room.code, room.token),

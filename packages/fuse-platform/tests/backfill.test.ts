@@ -30,12 +30,13 @@ test("the feed backfill stamps exactly the games confirmation would have publish
   });
   const page = [
     { id: "attested", data: whole({}) },
-    // One rider's own account vouches for it, however few attested.
+    // A linked account does not replace corroboration.
     {
       id: "account",
       data: whole({ attesters: ["a"], uidByPlayer: { a: "u" } }),
     },
     { id: "lone-guest", data: whole({ attesters: ["a"] }) },
+    { id: "duplicate", data: whole({ attesters: ["a", "a"] }) },
     { id: "round", data: whole({ result: { winner: "a", round: 2 } }) },
     { id: "pending", data: whole({ status: "pending", endedAt: undefined }) },
     { id: "unended", data: whole({ endedAt: undefined }) },
@@ -52,7 +53,6 @@ test("the feed backfill stamps exactly the games confirmation would have publish
   ];
   assert.deepEqual(feedlessMatchStamps(page), [
     { id: "attested", feedAt: 1000 },
-    { id: "account", feedAt: 1000 },
   ]);
   assert.deepEqual(feedlessMatchStamps([]), []);
   // A second pass over the page it already wrote asks for nothing more.

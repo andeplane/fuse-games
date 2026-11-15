@@ -17,6 +17,9 @@ export interface ActionAgentToken {
   gameId: string | null;
   expiresAt: number;
   revoked: boolean;
+  /** Policy generation at mint; absent on credentials issued before this feature. */
+  ownerGeneration?: number;
+  ownerEmail?: string;
 }
 export interface ActionDatabase {
   /** Must serialize competing transactions across processes/instances. Callback has no side effects. */
@@ -167,6 +170,11 @@ export function validateActionToken(
     !/^[a-f0-9]{64}$/.test(token.hash) ||
     !integer(token.expiresAt) ||
     typeof token.revoked !== "boolean" ||
+    (token.ownerGeneration !== undefined && !integer(token.ownerGeneration)) ||
+    (token.ownerEmail !== undefined &&
+      (typeof token.ownerEmail !== "string" ||
+        token.ownerEmail.length > 254 ||
+        !token.ownerEmail.includes("@"))) ||
     !(token.recordingId === null || actionIdentifier(token.recordingId)) ||
     !(token.gameId === null || actionIdentifier(token.gameId)) ||
     (!token.recordingId && !token.gameId)

@@ -199,6 +199,7 @@ export class DebugService {
   async createRecording(
     owner: string,
     input: unknown,
+    ownerGeneration = 0,
   ): Promise<RecordingSummary> {
     debugAssert(
       plain(input) &&
@@ -219,7 +220,9 @@ export class DebugService {
       const current = ofKind(records.get(key), "recording");
       if (current) {
         debugAssert(
-          current.owner === owner && current.fingerprint === fingerprint,
+          current.owner === owner &&
+            (current.ownerGeneration ?? 0) === ownerGeneration &&
+            current.fingerprint === fingerprint,
           409,
           "Recording id conflict",
         );
@@ -236,6 +239,7 @@ export class DebugService {
         kind: "recording",
         ...body,
         owner,
+        ownerGeneration,
         fingerprint,
         lastUploadAt: now,
         status: "recording",
@@ -269,6 +273,7 @@ export class DebugService {
     startMs: number,
     bytes: Uint8Array,
     gameId?: string,
+    ownerGeneration = 0,
   ) {
     debugAssert(
       debugUuid(id) &&
@@ -300,6 +305,11 @@ export class DebugService {
           recording && recording.owner === owner,
           403,
           "Recording owner required",
+        );
+        debugAssert(
+          (recording.ownerGeneration ?? 0) === ownerGeneration,
+          412,
+          "Recording access changed",
         );
         debugAssert(
           recording.mediaExpiresAt > now,
@@ -387,7 +397,11 @@ export class DebugService {
     });
     return { sequence, startMs, endMs, saved: true as const };
   }
-  async finish(owner: string, id: string): Promise<RecordingSummary> {
+  async finish(
+    owner: string,
+    id: string,
+    ownerGeneration = 0,
+  ): Promise<RecordingSummary> {
     debugAssert(debugUuid(id));
     const key = recordingKey(id),
       now = this.now();
@@ -398,6 +412,11 @@ export class DebugService {
         403,
         "Recording owner required",
       );
+      debugAssert(
+        (record.ownerGeneration ?? 0) === ownerGeneration,
+        412,
+        "Recording access changed",
+      );
       const next: RecordingRecord = { ...record, status: "finished" };
       return { writes: new Map([[key, next]]), result: recordingSummary(next) };
     });
@@ -406,6 +425,7 @@ export class DebugService {
     identity: string,
     owner: string | undefined,
     input: unknown,
+    ownerGeneration = 0,
     trusted = Boolean(owner),
   ) {
     debugAssert(
@@ -482,7 +502,10 @@ export class DebugService {
         if (rkey) {
           const recording = ofKind(live(records.get(rkey), now), "recording");
           debugAssert(
-            recording && owner && recording.owner === owner,
+            recording &&
+              owner &&
+              recording.owner === owner &&
+              (recording.ownerGeneration ?? 0) === ownerGeneration,
             403,
             "Recording owner required",
           );

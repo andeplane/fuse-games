@@ -10,35 +10,35 @@ describe(RoomGameWindow.name, () => {
     const { recentRooms } = renderWithProviders(
       <RoomGameWindow
         gameId="fuseball"
-        code="AB42"
+        code="AB42AA"
         active
         onActivate={() => undefined}
       />,
       { muted: true },
     );
-    const frame = screen.getByTitle("Fuseball room AB42");
+    const frame = screen.getByTitle("Fuseball room AB42AA");
     expect(frame).toHaveAttribute(
       "src",
-      "/fuse-riders/fuseball/?mute&room=AB42",
+      "/fuse-riders/fuseball/?mute&room=AB42AA",
     );
     expect(frame).toHaveAttribute("allow", GAME_IFRAME_ALLOW);
     expect(frame.parentElement).toHaveStyle({
       backgroundImage: "url(/fuse-riders/gallery/fuseball.jpg)",
     });
-    expect(recentRooms.list().map((room) => room.code)).toEqual(["AB42"]);
+    expect(recentRooms.list().map((room) => room.code)).toEqual(["AB42AA"]);
   });
 
   it("explains a game that is not installed", () => {
     renderWithProviders(
       <RoomGameWindow
         gameId="pong"
-        code="AB42"
+        code="AB42AA"
         active
         onActivate={() => undefined}
       />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
-      'The game "pong" is not installed on this FuseOS, so room AB42 cannot be joined from here.',
+      'The game "pong" is not installed on this FuseOS, so room AB42AA cannot be joined from here.',
     );
   });
 });

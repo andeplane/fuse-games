@@ -31,27 +31,27 @@ describe(createRoomLauncher.name, () => {
   it("opens a room window on this desktop and remembers the room", () => {
     const { launcher, opened, openExternal, recentRooms } =
       launcherWith("window");
-    expect(launcher.join({ gameId: "fuseball", code: "AB42" })).toEqual({
+    expect(launcher.join({ gameId: "fuseball", code: "AB42AA" })).toEqual({
       ok: true,
       launch: "window",
     });
     expect(opened).toEqual([
-      [{ kind: "roomgame", gameId: "fuseball", code: "AB42" }, undefined],
+      [{ kind: "roomgame", gameId: "fuseball", code: "AB42AA" }, undefined],
     ]);
     expect(openExternal).not.toHaveBeenCalled();
     expect(recentRooms.list()).toEqual([
-      { gameId: "fuseball", code: "AB42", lastSeen: NOW },
+      { gameId: "fuseball", code: "AB42AA", lastSeen: NOW },
     ]);
   });
 
   it("opens the game's page with ?room= in a tab when that is the preference", () => {
     const { launcher, opened, openExternal } = launcherWith("tab");
-    expect(launcher.join({ gameId: "fuse-riders", code: "CD07" })).toEqual({
+    expect(launcher.join({ gameId: "fuse-riders", code: "CD07AA" })).toEqual({
       ok: true,
       launch: "tab",
     });
     expect(openExternal).toHaveBeenCalledWith(
-      "/fuse-riders/fuse-riders/?room=CD07",
+      "/fuse-riders/fuse-riders/?room=CD07AA",
     );
     expect(opened).toEqual([]);
   });
@@ -59,7 +59,7 @@ describe(createRoomLauncher.name, () => {
   it("refuses a game that is not installed without remembering anything", () => {
     const { launcher, opened, openExternal, recentRooms } =
       launcherWith("window");
-    expect(launcher.join({ gameId: "pong", code: "AB42" })).toEqual({
+    expect(launcher.join({ gameId: "pong", code: "AB42AA" })).toEqual({
       ok: false,
       reason: "unknown-game",
     });
@@ -77,13 +77,13 @@ describe(useRoomLauncher.name, () => {
       wrapper: context.Wrapper,
     });
     act(() => {
-      result.current.join({ gameId: "fuseball", code: "AB42" });
+      result.current.join({ gameId: "fuseball", code: "AB42AA" });
     });
     expect(context.desktopDeps.openExternal).toHaveBeenCalledWith(
-      "/fuse-riders/fuseball/?room=AB42",
+      "/fuse-riders/fuseball/?room=AB42AA",
     );
     expect(context.recentRooms.list().map((room) => room.code)).toEqual([
-      "AB42",
+      "AB42AA",
     ]);
   });
 
@@ -93,7 +93,7 @@ describe(useRoomLauncher.name, () => {
       wrapper: context.Wrapper,
     });
     act(() => {
-      result.current.join({ gameId: "fuseball", code: "AB42" });
+      result.current.join({ gameId: "fuseball", code: "AB42AA" });
     });
     expect(context.desktopDeps.openExternal).not.toHaveBeenCalled();
     expect(context.store.load().windows.map((window) => window.kind)).toEqual([
@@ -109,10 +109,10 @@ describe(useRoomLauncher.name, () => {
       wrapper: context.Wrapper,
     });
     act(() => {
-      result.current.join({ gameId: "fuseball", code: "AB42" });
+      result.current.join({ gameId: "fuseball", code: "AB42AA" });
     });
     expect(context.desktopDeps.openExternal).toHaveBeenCalledWith(
-      "/fuse-riders/fuseball/?room=AB42",
+      "/fuse-riders/fuseball/?room=AB42AA",
     );
   });
 

@@ -15,6 +15,7 @@ const adapter: typeof Production = {
     return () => {};
   },
   signIn: async () => {},
+  reauthenticate: async () => {},
   signOut: async () => {},
   signedInToken: async () => (signedIn() ? "smoke:solo-player" : undefined),
   identityToken: async () => (signedIn() ? "smoke:solo-player" : undefined),
@@ -29,6 +30,7 @@ export const {
   accountReady,
   watchAccount,
   signIn,
+  reauthenticate,
   signOut,
   signedInToken,
   identityToken,

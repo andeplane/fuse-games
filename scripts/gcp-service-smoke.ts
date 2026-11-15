@@ -250,7 +250,7 @@ try {
     "http://localhost",
   );
   const room = (await response.json()) as { code: string; token: string };
-  assert.match(room.code, /^[A-Z]{2}[0-9]{2}$/);
+  assert.match(room.code, /^[A-Z0-9]{6}$/);
   checked("real Firestore room create and Origin boundary");
   const host = open(a, room.code, room.token),
     hostWelcome = await host.frame("welcome");

@@ -55,13 +55,6 @@ export interface RoomHttpOptions {
   schedule?: (callback: () => void, delayMs: number) => () => void;
   /** Structured operational log. Entries never carry a request URL, a token or a frame. */
   log?: (entry: Record<string, unknown>) => void;
-  /**
-   * LEGACY-QUERY-TOKEN — every site of the window carries this tag; `grep -rn LEGACY-QUERY-TOKEN` lists what to delete.
-   * DEPRECATED rollout window (#256 S3, docs/online/TOKEN-TRANSPORT.md): also admit a room socket whose token is in
-   * `?token=`, as clients built before the first-frame handshake send it. Off unless the deployment asks for it.
-   * Remove this option, its block in the upgrade handler and its tests once no client sends the old form.
-   */
-  legacyQueryToken?: boolean;
   /** Local development only: serve this built frontend with single-page fallback. Production serves no files. */
   staticDirectory?: string;
   /** The deployed source revision, reported by the health route so a frontend release can wait for the backend it needs. */
@@ -69,17 +62,17 @@ export interface RoomHttpOptions {
 }
 
 /**
- * `/ice` and `/end` read the room for any caller, member or not, so each address has a budget of each: 30 at once and
- * one more every two seconds. A page asks for ICE servers once per admission (never on a resumed socket) and ends a
+ * `/ice` and `/end` read the room for any caller, member or not, so each address has a budget of each: 14 at once and
+ * 30 per hour thereafter, per instance. A page asks for ICE servers once per admission and ends a
  * room once, so a whole room of devices behind one address joining together is well inside it. A refused `/ice`
  * costs the page nothing: it falls back to the same STUN servers this service would have named. The two are counted
  * apart, so a venue's worth of pages asking for ICE servers cannot keep a creator from ending their room.
  */
-export const ROOM_LOOKUP_BURST = 30,
-  ROOM_LOOKUP_PER_SECOND = 0.5;
+export const ROOM_LOOKUP_BURST = 14,
+  ROOM_LOOKUP_PER_SECOND = 30 / 3600;
 /** What `ws` reports for a socket that ended without a close frame. */
 const CLOSE_ABNORMAL = 1006;
-const ROOM_ROUTE = /^\/api\/rooms\/([A-Z]{2}[0-9]{2})\/(end|ice|ws)$/;
+const ROOM_ROUTE = /^\/api\/rooms\/([A-Z0-9]{6})\/(end|ice|ws)$/;
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
@@ -167,6 +160,15 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
     new AddressBudget(now, ROOM_LOOKUP_BURST, ROOM_LOOKUP_PER_SECOND);
   const iceLookups = lookup(),
     endLookups = lookup();
+  // Count only aggregate refusals, without room IDs or addresses. Emit one bounded record per 30 misses;
+  // log-based metrics can sum these across instances without a shared database write per request.
+  let lookupMisses = 0;
+  const recordLookupMiss = () => {
+    if (++lookupMisses >= 30) {
+      log({ kind: "room-lookup-misses", count: lookupMisses });
+      lookupMisses = 0;
+    }
+  };
   const handle = async (
     req: IncomingMessage,
     res: ServerResponse,
@@ -263,7 +265,19 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
         return;
       }
       if (route?.[2] === "end" && req.method === "POST") {
-        await store.end(route[1]!, bearer(req));
+        try {
+          await store.end(route[1]!, bearer(req));
+        } catch (error) {
+          if (
+            error instanceof RoomError &&
+            (error.status === 403 || error.status === 404)
+          ) {
+            recordLookupMiss();
+            json({ error: "Room expired or not found" }, 404);
+            return;
+          }
+          throw error;
+        }
         json({ ok: true });
         return;
       }
@@ -274,10 +288,21 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
           json({ error: "Invalid identity" }, 401);
           return;
         }
-        const room = await store.get(route[1]!),
-          member = room.members[peerId(token)];
+        let room;
+        try {
+          room = await store.get(route[1]!);
+        } catch (error) {
+          if (error instanceof RoomError && error.status === 404) {
+            recordLookupMiss();
+            json({ error: "Room expired or not found" }, 404);
+            return;
+          }
+          throw error;
+        }
+        const member = room.members[peerId(token)];
         if (!member || member.expiresAt <= now()) {
-          json({ error: "Join the room first" }, 403);
+          recordLookupMiss();
+          json({ error: "Room expired or not found" }, 404);
           return;
         }
         json({ iceServers: DEFAULT_ICE_SERVERS, relayConfigured: false });
@@ -331,20 +356,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
       }
     });
   });
-  let legacyUses = 0,
-    legacyLoggedAt = Number.NEGATIVE_INFINITY;
-  // LEGACY-QUERY-TOKEN: DEPRECATED rollout window — see `legacyQueryToken`. At most one line a minute, and only a count.
-  const deprecatedQueryToken = () => {
-    legacyUses++;
-    if (now() - legacyLoggedAt < 60_000) return;
-    legacyLoggedAt = now();
-    log({
-      kind: "deprecated-query-token",
-      severity: "WARNING",
-      uses: legacyUses,
-    });
-    legacyUses = 0;
-  };
   const sockets = new WebSocketServer({
     noServer: true,
     maxPayload: 32_000,
@@ -376,16 +387,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
     const code = route[1]!;
     // The request carries no credential: the socket authenticates with its first frame, inside the admission
     // slot taken below, so unauthenticated sockets are bounded per address and in total like any other admission.
-    let queryToken: string | undefined;
-    // LEGACY-QUERY-TOKEN: DEPRECATED rollout window — see `legacyQueryToken`. Delete this block (and `queryToken`) with the option.
-    if (options.legacyQueryToken && url.searchParams.has("token")) {
-      queryToken = url.searchParams.get("token") ?? "";
-      if (!validToken(queryToken)) {
-        forbidden();
-        return;
-      }
-      deprecatedQueryToken();
-    }
     let upgraded: WebSocket | undefined;
     socket.on("error", () => socket.destroy());
     const address = options.clientAddress(req);
@@ -411,9 +412,7 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
               closed = false,
               pending: string[] = [],
               // "auth": only an `auth` frame is read. "rejected": nothing is read again.
-              // LEGACY-QUERY-TOKEN: without the window the initial phase is always "auth".
-              phase: "auth" | "admitted" | "rejected" =
-                queryToken === undefined ? "auth" : "admitted",
+              phase: "auth" | "admitted" | "rejected" = "auth",
               cancelDeadline: (() => void) | undefined;
             const refuse = (error: RoomError) => {
               phase = "rejected";
@@ -490,8 +489,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
                 refuse(new RoomError(401, "Authentication required"));
               ws.close();
             });
-            // LEGACY-QUERY-TOKEN: admitted without an `auth` frame.
-            if (queryToken !== undefined) admit(queryToken);
           });
         }).catch(async (error: unknown) => {
           // A refused upgraded socket still occupies a Cloud Run request until the close handshake finishes.

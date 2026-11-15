@@ -44,7 +44,7 @@ function fixture(storage: SafeStorage = createMemoryStorage()) {
       if (fail) throw new Error("offline");
       return events.map((event) => event.id);
     },
-    search: () => "?room=AB42",
+    search: () => "?room=AB42AA",
     port: () => "",
     doNotTrack: () => off,
     onFlush: (listener) => {
@@ -85,7 +85,7 @@ test("first-party delivery preserves namespace, game ownership and property scru
     analytics.start({ role: "solo", gameId: "wrong" });
     analytics.track("App Opened", {
       gameId: "wrong",
-      status: "Room AB42 https://example.com/?room=AB42",
+      status: "Room AB42AA https://example.com/?room=AB42AA",
       email: "bad@example.com",
       token: "secret",
       infinite: Infinity,
@@ -245,14 +245,14 @@ test("graphics and boot diagnostics preserve role and scrub error messages", asy
     a = f.create();
   a.start({ role: "joiner" });
   a.reportGraphics({ kind: "ready", renderer: "webgl" });
-  a.reportBootFailure(new Error("AB42 https://example.com/?room=AB42"));
+  a.reportBootFailure(new Error("AB42AA https://example.com/?room=AB42AA"));
   a.track("Seat Taken");
   await f.flush();
   const events = f.sent.flat();
   assert.equal(events[0]!.properties.renderer, "webgl");
   assert.equal(events[1]!.properties.role, "boot");
   assert.equal(events[2]!.properties.role, "joiner");
-  assert.equal(JSON.stringify(events).includes("AB42"), false);
+  assert.equal(JSON.stringify(events).includes("AB42AA"), false);
 });
 
 const playing: PlayFrame = {

@@ -1,11 +1,11 @@
 /**
  * A room code as the room service issues it (`packages/fuse-network-protocol/src/room-code.ts`):
- * two capital letters then two digits, e.g. "AB42". Mirrored here because the OS package does not
+ * six uppercase letters or digits, e.g. "AB42AA". Mirrored here because the OS package does not
  * depend on the protocol package; the shape has been stable since the service's first release.
  */
-export const ROOM_CODE_PATTERN = /^[A-Z]{2}[0-9]{2}$/;
+export const ROOM_CODE_PATTERN = /^[A-Z0-9]{6}$/;
 
-export const ROOM_CODE_LENGTH = 4;
+export const ROOM_CODE_LENGTH = 6;
 
 /** What a person typed, as a code: trimmed, upper-cased. Not validated. */
 export function normalizeRoomCode(input: string): string {

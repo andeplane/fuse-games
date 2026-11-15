@@ -48,7 +48,7 @@ test("returning runtime replays its own retired stream from the peer snapshot", 
     frame: Frame | undefined;
   const sent: unknown[] = [];
   const runtime = new RoomRuntime(
-    "AB42",
+    "AB42AA",
     settings,
     {
       state: (f) => {
@@ -107,7 +107,7 @@ test("returning runtime replays its own retired stream from the peer snapshot", 
   assert.ok(
     sent.some((v) => (v as { type?: string }).type === "snapshotRequest"),
   );
-  for (const chunk of encodeSnapshot(source, roomHash("AB42:creator")))
+  for (const chunk of encodeSnapshot(source, roomHash("AB42AA:creator")))
     events.message("creator", chunk);
   assert.equal(runtime.tick, 64);
   for (let i = 0; i < 10; i++) {

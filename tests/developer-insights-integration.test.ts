@@ -13,6 +13,7 @@ import {
 import { MemoryActionDatabase } from "fuse-telemetry/action-adapters";
 import { reportKey } from "fuse-telemetry/debug-store";
 import { DEBUG_LIMITS } from "fuse-telemetry/debug-contracts";
+import { MemoryDeveloperSecurityStore } from "fuse-telemetry/developer-security";
 import {
   TranscriptionWorker,
   transcriptionWorkerHttp,
@@ -27,12 +28,15 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
   const now = Date.UTC(2026, 10, 14, 12);
   const objects = new MemoryPrivateObjectStorage();
   const debugDatabase = new MemoryDebugDatabase();
+  const security = new MemoryDeveloperSecurityStore(() => now - 2000);
+  await security.setPolicy("admin", ["read", "record", "token"]);
   const services = createTelemetryServices({
     gameIds: ["dice"],
     now: () => now,
+    security,
     developer: async (token) =>
       token === "test-admin"
-        ? { uid: "admin", email: "andersullnass@gmail.com" }
+        ? { uid: "admin", email: "andersullnass@gmail.com", authTime: now }
         : undefined,
     identity: async (token) => (token === "test-player" ? "player" : undefined),
     metricsDatabase: new MemoryTelemetryDatabase(),

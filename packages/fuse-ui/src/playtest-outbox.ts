@@ -11,6 +11,8 @@ export interface StoredRecording {
   startedAt: number;
   savedMs: number;
   finished: boolean;
+  /** An obsolete server session cannot accept more audio; retain its private chunks. */
+  blocked?: boolean;
 }
 export interface StoredSegment extends WavSegment {
   kind: "segment";
@@ -154,6 +156,8 @@ export function indexedDbPlaytestOutbox(factory: IDBFactory): PlaytestOutbox {
 
 /** The service refused this upload for good; retrying cannot succeed. */
 export class PermanentUploadError extends Error {}
+/** The server invalidated this session; keep its chunks but do not retry it. */
+export class StaleUploadError extends Error {}
 export interface RecordingUpload {
   segment(recording: StoredRecording, segment: StoredSegment): Promise<void>;
   finish(recording: StoredRecording): Promise<void>;
@@ -214,8 +218,12 @@ export function createRecordingUploader(deps: UploadDependencies) {
         item.kind === "recording" ? Math.max(saved, item.savedMs) : saved,
       0,
     );
-    let discarded: string | undefined;
-    deps.changed({ pending, savedMs });
+    let discarded: string | undefined = items.some(
+      (item) => item.kind === "recording" && item.blocked,
+    )
+      ? "An earlier recording cannot be uploaded after access changed; its unsent audio remains on this device."
+      : undefined;
+    deps.changed({ pending, savedMs, error: discarded });
     const segmentsOf = async (id: string) =>
       (await deps.store.list())
         .filter(
@@ -224,7 +232,7 @@ export function createRecordingUploader(deps: UploadDependencies) {
         )
         .sort((a, b) => a.sequence - b.sequence);
     for (const item of items) {
-      if (item.kind !== "recording") continue;
+      if (item.kind !== "recording" || item.blocked) continue;
       let recording = item;
       try {
         for (;;) {
@@ -263,6 +271,16 @@ export function createRecordingUploader(deps: UploadDependencies) {
           break;
         }
       } catch (error) {
+        if (error instanceof StaleUploadError) {
+          await deps.store.updateRecording(item.key, (current) => ({
+            ...current,
+            blocked: true,
+          }));
+          discarded =
+            "Recording access changed. Unsent audio remains on this device.";
+          deps.changed({ pending, savedMs, error: discarded });
+          continue;
+        }
         if (!(error instanceof PermanentUploadError)) throw error;
         // The service will never take this recording: keeping it would block
         // every later one and fill the storage cap.
@@ -277,8 +295,16 @@ export function createRecordingUploader(deps: UploadDependencies) {
       }
     }
     // New recordings may have arrived while a request was pending.
+    const remaining = await ownedItems();
+    const blocked = new Set(
+      remaining.flatMap((item) =>
+        item.kind === "recording" && item.blocked ? [item.id] : [],
+      ),
+    );
     if (
-      (await ownedItems()).some((item) => item.kind === "segment") &&
+      remaining.some(
+        (item) => item.kind === "segment" && !blocked.has(item.recordingId),
+      ) &&
       !cancelled
     )
       again = true;

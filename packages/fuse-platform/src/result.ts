@@ -49,7 +49,7 @@ export interface MatchRecord<P extends PlayerResult = PlayerResult> {
   endedAt?: number;
   /**
    * When a whole game was confirmed as public: what orders the public match feed. Round receipts and pending results
-   * never have one, and a game only gets one once a second player attested it or an account owns a seat.
+   * never have one, and a game only gets one once a second human seat attested it.
    */
   feedAt?: number;
   /** Absent once a confirmed match belongs to an account: that is the history nothing cleans up. */
@@ -223,7 +223,7 @@ export function parseMatchRecord(
     typeof raw.id !== "string" ||
     !/^[a-f0-9]{40}$/.test(raw.id) ||
     typeof raw.roomCode !== "string" ||
-    !validCode(raw.roomCode)
+    !(validCode(raw.roomCode) || /^[A-Z]{2}[0-9]{2}$/.test(raw.roomCode))
   )
     return;
   // No backfill: every record from before match records carried a game is the legacy game's.
@@ -259,6 +259,7 @@ export function parseMatchRecord(
   if (
     !Array.isArray(raw.attesters) ||
     raw.attesters.length > humans.size ||
+    new Set(raw.attesters).size !== raw.attesters.length ||
     !raw.attesters.every((id) => typeof id === "string" && humans.has(id))
   )
     return;

@@ -133,7 +133,7 @@ test("a signed-in client polls, reports where it is, and stops when signed out",
   assert.equal(h.client.state().loading, false);
   // The next poll is one interval away; a room change brings it forward and puts the room in it.
   h.client.setRoom({
-    code: "AB12",
+    code: "AB12AA",
     memberId: "m1",
     gameId: "fuse-riders",
     token: "t",
@@ -144,7 +144,7 @@ test("a signed-in client polls, reports where it is, and stops when signed out",
     name: "Me",
     avatarId: "cat",
     room: {
-      code: "AB12",
+      code: "AB12AA",
       memberId: "m1",
       token: "t",
       session: "f".repeat(32),
@@ -155,7 +155,7 @@ test("a signed-in client polls, reports where it is, and stops when signed out",
   assert.equal(h.requests.length, 3);
   // Setting the same room again polls nothing; signing out stops the timer and forgets the view.
   h.client.setRoom({
-    code: "AB12",
+    code: "AB12AA",
     memberId: "m1",
     gameId: "fuse-riders",
     token: "t",
@@ -226,7 +226,7 @@ test("a room the service refuses is dropped from the claim, and the next poll co
   const h = harness();
   h.client.setSignedIn(true);
   h.client.setRoom({
-    code: "AB12",
+    code: "AB12AA",
     memberId: "m1",
     gameId: "fuse-riders",
     token: "t",
@@ -234,7 +234,7 @@ test("a room the service refuses is dropped from the claim, and the next poll co
   await h.advance(0);
   assert.equal(
     (h.requests.at(-1)!.body as { room: { code: string } }).room.code,
-    "AB12",
+    "AB12AA",
   );
   h.fail(403, { error: "Join the room first" });
   await h.advance(20_000);
@@ -246,7 +246,7 @@ test("a room the service refuses is dropped from the claim, and the next poll co
   assert.equal(h.client.state().error, undefined);
   // Any other failure keeps the room.
   h.client.setRoom({
-    code: "AB12",
+    code: "AB12AA",
     memberId: "m1",
     gameId: "fuse-riders",
     token: "t",
@@ -254,7 +254,7 @@ test("a room the service refuses is dropped from the claim, and the next poll co
   await h.advance(1500);
   h.fail(500);
   await h.advance(20_000);
-  assert.equal(h.client.room()?.code, "AB12");
+  assert.equal(h.client.room()?.code, "AB12AA");
 });
 
 test("a guest's poll is a sign-in error, not a request", async () => {
@@ -273,7 +273,7 @@ test("new invites are announced once each, refreshed ones again, and never on th
   const invite = (id: string, at: number) => ({
     id,
     from: { publicId: "f", name: "Fay" },
-    code: "AB12",
+    code: "AB12AA",
     gameId: "fuse-riders",
     at,
   });
@@ -295,7 +295,7 @@ test("actions send their request, then poll to show the result", async () => {
   const h = harness();
   h.client.setSignedIn(true);
   h.client.setRoom({
-    code: "AB12",
+    code: "AB12AA",
     memberId: "m1",
     gameId: "fuse-riders",
     token: "room-token",
@@ -321,7 +321,7 @@ test("actions send their request, then poll to show the result", async () => {
   // An invite is proven by the room token, with the account in the identity header.
   assert.equal(await h.client.invite(["abc", "def"]), 2);
   assert.deepEqual(h.requests.at(-2), {
-    url: "https://api/api/rooms/AB12/invites",
+    url: "https://api/api/rooms/AB12AA/invites",
     method: "POST",
     headers: {
       Authorization: "Bearer room-token",
@@ -342,7 +342,7 @@ test("leaving a room on the way out is one keepalive request, then nothing", asy
   const h = harness();
   h.client.setSignedIn(true);
   h.client.setRoom({
-    code: "AB12",
+    code: "AB12AA",
     memberId: "m1",
     gameId: "fuse-riders",
     token: "t",

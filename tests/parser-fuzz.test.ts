@@ -48,7 +48,7 @@ function corpus(seed: number) {
       case 3:
         return String.fromCharCode(next() % 0xffff).repeat(next() % 12);
       case 4:
-        return ["offer", "answer", "input", "time", "AB42", "a".repeat(24)][
+        return ["offer", "answer", "input", "time", "AB42AA", "a".repeat(24)][
           next() % 6
         ]!;
       case 5:
@@ -67,7 +67,7 @@ function corpus(seed: number) {
 const signal = { description: { type: "offer", sdp: "v=0" } };
 const room = {
   version: 2,
-  code: "AB42",
+  code: "AB42AA",
   incarnation: "incarnation",
   hostHash: "a".repeat(64),
   hostId: "b".repeat(24),

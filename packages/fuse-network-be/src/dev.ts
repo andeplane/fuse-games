@@ -21,8 +21,6 @@ export interface DevRoomServiceOptions {
   /** Socket authentication deadline scheduler and operational log; see `RoomHttpOptions`. */
   schedule?: RoomHttpOptions["schedule"];
   log?: RoomHttpOptions["log"];
-  /** LEGACY-QUERY-TOKEN: the deprecated `?token=` window, passed through for its tests; see `RoomHttpOptions`. */
-  legacyQueryToken?: boolean;
   /** Room capacity, per game where a game needs its own, and its refusal text; see `RoomStoreDependencies`. */
   maxGuests?: number;
   gameMaxGuests?: Readonly<Record<string, number>>;
@@ -96,8 +94,6 @@ export function createDevRoomService(
     now,
     ...(options.schedule ? { schedule: options.schedule } : {}),
     ...(options.log ? { log: options.log } : {}),
-    // LEGACY-QUERY-TOKEN: delete with the option.
-    ...(options.legacyQueryToken ? { legacyQueryToken: true } : {}),
     extension: options.httpExtension?.(store),
     allowOrigin: (origin, req) =>
       extra.has(origin) || sameLoopbackOrigin(origin, req),

@@ -286,12 +286,12 @@ test("server drops private properties and scrubs bearer credentials and invitati
     e = event({
       properties: {
         player_name: "Alice",
-        roomCode: "AB42",
+        roomCode: "AB42AA",
         email: "x@example.org",
         token: "secret",
         matchId: randomUUID(),
         error:
-          "Failed https://example.org/?room=AB42 token=secret x@example.org",
+          "Failed https://example.org/?room=AB42AA token=secret x@example.org",
         phase: "playing",
         score: 3,
       },

@@ -8,7 +8,7 @@ import {
 } from "fuse-network-be";
 import { LEGACY_GAME_ID } from "./game.js";
 import { publicIdOf, type FriendsStore } from "./friends.js";
-import type { HistoryStore } from "./history.js";
+import { parseFeedCursor, type HistoryStore } from "./history.js";
 import type { IdentityVerifier } from "./identity.js";
 import type { ActivityDatabase } from "./activity.js";
 import { createActivityHttp } from "./activity-http.js";
@@ -68,7 +68,7 @@ export function gameRoute(pathname: string): { gameId: string; path: string } {
     : { gameId: LEGACY_GAME_ID, path: pathname };
 }
 const HISTORY_ROUTE =
-  /^\/api\/(?:rooms\/[A-Z]{2}[0-9]{2}\/(?:results|round-results)|me\/(?:results|round-results)|leaderboard|matches|me|me\/matches)$/;
+  /^\/api\/(?:rooms\/[A-Z0-9]{6}\/(?:results|round-results)|me\/(?:results|round-results)|leaderboard|matches|me|me\/matches)$/;
 
 /**
  * Match history, accounts and ratings, mounted behind the networking service's Origin and error boundaries. The
@@ -95,7 +95,7 @@ export function createHistoryHttp(
       const history = store.game(routed.gameId),
         pathname = routed.path;
       const route = pathname.match(
-        /^\/api\/rooms\/([A-Z]{2}[0-9]{2})\/(results|round-results)$/,
+        /^\/api\/rooms\/([A-Z0-9]{6})\/(results|round-results)$/,
       );
       const json = (value: unknown, status = 200) => {
         res.writeHead(status, { "Content-Type": "application/json" });
@@ -161,8 +161,10 @@ export function createHistoryHttp(
       }
       // Public like the leaderboard: no sign-in, and an optional one only names the caller's own seat.
       if (pathname === "/api/matches" && req.method === "GET") {
-        const cursor = pageCursor(url);
-        if (cursor === null) {
+        const rawCursor = url.searchParams.get("before");
+        const cursor =
+          rawCursor === null ? undefined : parseFeedCursor(rawCursor);
+        if (rawCursor !== null && cursor === undefined) {
           json({ error: "Invalid cursor" }, 400);
           return true;
         }
@@ -213,7 +215,7 @@ export function createHistoryHttp(
 }
 
 const FRIENDS_ROUTE =
-  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z]{2}[0-9]{2}\/invites)$/;
+  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
 
 /**
  * Friends, presence and invites: account routes, so shared by every game and never under `/api/games/:gameId/`.
@@ -244,9 +246,7 @@ export function createFriendsHttp(
         });
         res.end(JSON.stringify(value));
       };
-      const invite = pathname.match(
-        /^\/api\/rooms\/([A-Z]{2}[0-9]{2})\/invites$/,
-      );
+      const invite = pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/invites$/);
       if (invite) {
         if (req.method !== "POST") return false;
         // Limit room lookups before verification/body reads; an identity is not proof of room membership.

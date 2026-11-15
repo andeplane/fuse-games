@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FakeNetwork, type NetworkOptions } from "./fixtures/fake-room.js";
+import {
+  FAKE_ROOM_CODE,
+  FakeNetwork,
+  type NetworkOptions,
+} from "./fixtures/fake-room.js";
 import { classicSettings } from "./fixtures/classic-settings.js";
 import {
   RULES,
@@ -780,7 +784,7 @@ test("a loop pass that throws after advancing still opens the next step budget: 
     net.transports.get("guest")!.events.fast(
       "host",
       encodePacket({
-        room: roomHash("AB42:host"),
+        room: roomHash(`${FAKE_ROOM_CODE}:host`),
         from: "host",
         generation: 1,
         through: clock,

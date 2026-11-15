@@ -7,6 +7,11 @@ import {
 } from "./developer-access.js";
 import type { ActionStatus } from "./action-contracts.js";
 import type { ActionPrincipal, ActionService } from "./action-service.js";
+import {
+  auditDeveloper,
+  authorizeDeveloper,
+  type DeveloperSecurityStore,
+} from "./developer-security.js";
 
 async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -36,6 +41,8 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
 export function createActionHttp(
   service: ActionService,
   verifier: DeveloperVerifier,
+  security?: DeveloperSecurityStore,
+  now: () => number = Date.now,
 ): HttpExtension {
   return {
     methods: ["POST", "DELETE"],
@@ -74,7 +81,30 @@ export function createActionHttp(
             )
           )
             throw new RoomError(400, "Unknown agent token field");
-          return json(await service.mintToken(value, developer.uid), 201);
+          const policy = security
+            ? await authorizeDeveloper(
+                security,
+                developer,
+                "token",
+                now(),
+                true,
+              )
+            : undefined;
+          const minted = await service.mintToken(
+            value,
+            developer.uid,
+            developer.email,
+            policy?.generation,
+          );
+          if (security)
+            await auditDeveloper(
+              security,
+              developer,
+              "agent-token.minted",
+              minted.id,
+              now(),
+            );
+          return json(minted, 201);
         }
         throw new RoomError(405, "Method not allowed");
       }
@@ -83,6 +113,21 @@ export function createActionHttp(
       if (bearer.startsWith("fa1.")) {
         const agent = await service.verifyAgentToken(bearer);
         if (!agent) throw new RoomError(403, "Agent token expired or revoked");
+        if (security) {
+          if (!agent.email)
+            throw new RoomError(403, "Agent credential must be replaced");
+          const resource =
+            path.length <= 240 && /^\/[A-Za-z0-9_/-]+$/.test(path)
+              ? path
+              : "invalid-path";
+          await security.append({
+            uid: agent.uid,
+            email: agent.email,
+            at: now(),
+            operation: `${req.method ?? "UNKNOWN"} agent:${agent.tokenId}`,
+            resource,
+          });
+        }
         principal = agent;
       } else principal = await requireDeveloper(req, verifier);
       if (path === "/api/dev/actions" && req.method === "GET") {
@@ -109,20 +154,30 @@ export function createActionHttp(
             throw new RoomError(400, `Invalid ${key}`);
           return Number(raw);
         };
-        return json(
-          await service.list(
-            {
-              recordingId: url.searchParams.get("recordingId") ?? undefined,
-              gameId: url.searchParams.get("gameId") ?? undefined,
-              since: numeric("since"),
-              status: (url.searchParams.get("status") ?? undefined) as
-                ActionStatus | undefined,
-              cursor: url.searchParams.get("cursor") ?? undefined,
-              limit: numeric("limit"),
-            },
-            principal,
-          ),
+        const page = await service.list(
+          {
+            recordingId: url.searchParams.get("recordingId") ?? undefined,
+            gameId: url.searchParams.get("gameId") ?? undefined,
+            since: numeric("since"),
+            status: (url.searchParams.get("status") ?? undefined) as
+              ActionStatus | undefined,
+            cursor: url.searchParams.get("cursor") ?? undefined,
+            limit: numeric("limit"),
+          },
+          principal,
         );
+        if (security && principal.email && page.actions.length) {
+          await security.append({
+            uid: principal.uid,
+            email: principal.email,
+            at: now(),
+            operation: principal.tokenId
+              ? `actions.read agent:${principal.tokenId}`
+              : "actions.read",
+            resource: page.actions.map((action) => action.id).join(","),
+          });
+        }
+        return json(page);
       }
       if (mutation && req.method === "POST") {
         const operation = mutation[2] as

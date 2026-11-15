@@ -181,7 +181,15 @@ test("online leave and presence determine finishers, frozen across recap changes
       0,
     );
     assert.deepEqual(f.report().result.finishers, [f.ids[0]]);
-    assert.equal((await f.submit(0)).status, "confirmed");
+    assert.equal((await f.submit(0)).status, "pending");
+    assert.equal(
+      (await f.history.profile("account-0"))?.totals.matches ?? 0,
+      0,
+    );
+    assert.deepEqual(
+      (await f.history.feed("viewer", undefined, undefined)).matches,
+      [],
+    );
     const before = f.report().result;
     f.manage([LEAVE, f.ids[1]!]);
     f.manage([JOIN, f.ids[2]!, "Late arrival", 1, "cat", 1]);

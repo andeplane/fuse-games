@@ -8,6 +8,7 @@ import {
   signOut,
   signInFailure,
   signedInToken,
+  reauthenticate,
 } from "fuse-ui/browser-account";
 import { createEndpoints } from "fuse-network-fe";
 import { mountWorkspace } from "./workspace.js";
@@ -28,6 +29,7 @@ mountWorkspace(root, {
     watch: watchAccount,
     signIn,
     signOut,
+    reauthenticate,
     failure: signInFailure,
   },
   transport: {

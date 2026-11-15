@@ -13,7 +13,7 @@ export type JoinRoomDialogProps = {
   onCancel: () => void;
 };
 
-/** "Join room": pick the game, type the four-character code a friend gave you. Sits over the window's panes. */
+/** "Join room": pick the game, type the six-character code a friend gave you. Sits over the window's panes. */
 export function JoinRoomDialog({
   dialog,
   games,
@@ -69,7 +69,7 @@ export function JoinRoomDialog({
               autoCapitalize="characters"
               autoComplete="off"
               spellCheck={false}
-              placeholder="AB42"
+              placeholder="AB42AA"
               className="font-mono uppercase tracking-wider"
               aria-invalid={dialog.error !== null}
               aria-describedby={dialog.error ? "join-room-error" : undefined}

@@ -18,7 +18,7 @@ function frameAt(search: string): FrameLike {
 
 describe(readRoomInFrame.name, () => {
   it("reads the room the page inside a same-origin frame is in", () => {
-    expect(readRoomInFrame(frameAt("?room=ab42&mute"))).toBe("AB42");
+    expect(readRoomInFrame(frameAt("?room=ab42aa&mute"))).toBe("AB42AA");
     expect(readRoomInFrame(frameAt(""))).toBeNull();
   });
 
@@ -52,20 +52,20 @@ describe(useRecordRoomFromFrame.name, () => {
       { wrapper: context.Wrapper },
     );
     expect(context.recentRooms.list()).toEqual([]);
-    search = "?room=AB42";
+    search = "?room=AB42AA";
     act(() => context.networkDeps.tick());
     act(() => context.networkDeps.tick());
     expect(context.recentRooms.list()).toEqual([
-      { gameId: "fuseball", code: "AB42", lastSeen: NOW },
+      { gameId: "fuseball", code: "AB42AA", lastSeen: NOW },
     ]);
-    search = "?room=CD07";
+    search = "?room=CD07AA";
     act(() => context.networkDeps.tick());
     expect(context.recentRooms.list().map((room) => room.code)).toEqual([
-      "CD07",
-      "AB42",
+      "CD07AA",
+      "AB42AA",
     ]);
     unmount();
-    search = "?room=EF99";
+    search = "?room=EF99AA";
     act(() => context.networkDeps.tick());
     expect(context.recentRooms.list()).toHaveLength(2);
   });
@@ -74,13 +74,13 @@ describe(useRecordRoomFromFrame.name, () => {
     const context = createWrapper();
     renderHook(
       () => {
-        const ref = useRef<FrameLike | null>(frameAt("?room=AB42"));
+        const ref = useRef<FrameLike | null>(frameAt("?room=AB42AA"));
         useRecordRoomFromFrame(ref, "fuse-riders");
       },
       { wrapper: context.Wrapper },
     );
     expect(context.recentRooms.list()).toEqual([
-      { gameId: "fuse-riders", code: "AB42", lastSeen: NOW },
+      { gameId: "fuse-riders", code: "AB42AA", lastSeen: NOW },
     ]);
   });
 });
@@ -88,11 +88,11 @@ describe(useRecordRoomFromFrame.name, () => {
 describe(useRecordRoom.name, () => {
   it("records the room the OS opened itself", () => {
     const context = createWrapper();
-    renderHook(() => useRecordRoom("fuseball", "AB42"), {
+    renderHook(() => useRecordRoom("fuseball", "AB42AA"), {
       wrapper: context.Wrapper,
     });
     expect(context.recentRooms.list()).toEqual([
-      { gameId: "fuseball", code: "AB42", lastSeen: NOW },
+      { gameId: "fuseball", code: "AB42AA", lastSeen: NOW },
     ]);
   });
 });

@@ -43,7 +43,7 @@ test("copyText reports a clipboard write, and falls back to execCommand when the
   const { document } = page();
   const written: string[] = [];
   assert.equal(
-    await copyText("https://x/?room=AB42", {
+    await copyText("https://x/?room=AB42AA", {
       clipboard: {
         writeText: async (text) => {
           written.push(text);
@@ -53,7 +53,7 @@ test("copyText reports a clipboard write, and falls back to execCommand when the
     }),
     true,
   );
-  assert.deepEqual(written, ["https://x/?room=AB42"]);
+  assert.deepEqual(written, ["https://x/?room=AB42AA"]);
 
   // An insecure origin has no clipboard; a rejected write falls through too. The legacy path reports what it did.
   const commands: string[] = [];

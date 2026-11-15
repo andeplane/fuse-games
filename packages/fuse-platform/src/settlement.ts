@@ -163,6 +163,7 @@ export function settleHistory<T>(
     !ratingClaimed &&
     !match.ratings &&
     match.ratingScope &&
+    stayed.length >= 2 &&
     stayed.every((p) => match.attesters.includes(p.playerId)) &&
     humans.length >= 1 &&
     new Set(humans.map((p) => match.uidByPlayer[p.playerId])).size ===

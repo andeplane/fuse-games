@@ -3,7 +3,7 @@
 Stacked on #249. The stats dialog puts current Elo and its per-entry Elo graph first, followed by four career totals, results, rivalries, combat and records. Detailed counters are collapsible. The dialog has three tabs, STATS, MATCHES and LEADERBOARD, and the landing page's rating and leaderboard buttons open the matching one. MATCHES lists recent finished games, everyone's by default or only your own, grouped by day; opening one shows the post-match results report (standings, awards, full stats) rebuilt from the stored record. Highlight moments are not stored, so a past match has no replays. STATS' recent-finish chips open the same view. The landing page shows the signed-in rider's rating and global rank; the public leaderboard exposes only rider names, avatars, rounded Elo and rated-result counts, never account IDs.
 
 Elo starts at 1000, K=32. It now settles after each individual round from the frozen, confirmed round standings,
-comparing signed-in human finishers only. Guests and bots are removed before pairwise calculations, and a lone signed-in human records a zero-change round. Each round's mean pairwise updates use the pre-round ratings simultaneously. A player
+comparing signed-in human finishers only. Guests and bots are removed before pairwise calculations. A round with fewer than two human finishers is retained as a receipt but does not create a competitive rating. Each round's mean pairwise updates use the pre-round ratings simultaneously. A player
 can join between rounds or leave before the game ends without losing completed rounds' ratings. A mid-round departure
 is excluded from that round. Settlement waits for all frozen human finishers' reports so delivery ordering does not
 exclude a signed-in finisher. A missing report can delay settlement. Late sign-in can complete an unsettled round;
@@ -38,28 +38,32 @@ hour, and never carries a room code, an account id or a round receipt; a signed-
 their own seat, and nobody else's. Guests appear: a game between guests is public once the riders themselves vouch
 for it.
 
-Confirmation stamps a whole game with `feedAt`, and only then. A lone guest confirms their own game against bots and
-room tokens are free, so a game is published only once **a second rider attests it or an account owns a seat**; a
+For a multi-human whole-game result, confirmation requires the existing majority of finishers and at least two distinct
+human seat reports of the same result. A departed player can still corroborate by reporting the same result. A pending
+result gives no career credit and does not enter the feed. A declared one-human game, including solo or a room with bots,
+credits the reporting account's personal history and career but does not enter the feed. This is self-reported progress,
+not proof that no other humans played. Room tokens do not prove independent people, so colluding or self-controlled seats can still invent results.
+Whole-match links are limited to 30 per account per hour and submissions to 240 per address per hour, separately from
+round receipt budgets. Older one-seat confirmations are hidden from the public feed, but their already credited career
+totals are not automatically reversed; those totals require a separate migration or reconciliation.
+
+The public feed scans at most 200 stored rows per request to skip hidden legacy records, and returns `nextBefore`
+when more storage may remain. Callers use this cursor even when the visible page is empty. The opaque cursor carries
+the timestamp and document ID so ties and unreadable records do not hide older eligible matches.
+
+Confirmation stamps a whole game with `feedAt`, and only then. A
 round receipt never gets a `feedAt` at all, and the storage parser refuses a record that claims one while pending or
 while carrying a round. `feedAt` is stamped from `endedAt`, which is what makes a listed `endedAt` a usable page
-cursor; the row itself is always dated by `endedAt`, never by when it became public. Games confirmed before this
+ordering value; the row itself is always dated by `endedAt`, never by when it became public. Games confirmed before this
 existed have no `feedAt`, and Firestore returns no document that lacks the field its query orders by, so EVERYONE
 comes back empty — not failed — while those same games are still in YOURS. That asymmetry is what
 `scripts/backfill-match-feed-at.ts` closes: it stamps `feedAt` from `endedAt` on every stored record that passes
-confirmation's own published test (`feedlessMatchStamps` in `packages/fuse-platform/src/backfill.ts`), skips any
+corroboration test (`feedlessMatchStamps` in `packages/fuse-platform/src/backfill.ts`), skips any
 record that already has one, and so is safe to repeat. A database that also predates `gameId` needs
 `scripts/backfill-match-game-id.ts` first, because the feed filters on `gameId` before it orders.
 
-Two known limits, both accepted:
-
-- **Same-millisecond ties.** Paging is `feedAt < before` at millisecond resolution, so two games stamped in the same
-  millisecond exactly on a page boundary can cost one of them its listing. A tie-proof cursor would have to page on
-  `(feedAt, document id)` with `startAfter` on `__name__`, which nothing in this repo can exercise against Firestore
-  (there is no emulator in CI), so it would ship unverified for a one-pair window on a 20-row boundary. The cursor in
-  `packages/fuse-platform/src/history.ts` and both implementations say so. The client drops ids it has already
-  listed, so a tie can never duplicate a row, only drop one.
-- **Unreadable stored records.** A record that fails to parse makes a page come back short, and the client then stops
-  offering OLDER. `/api/me/matches` already behaves this way.
+Personal history (`/api/me/matches`) still uses a timestamp cursor and may stop at unreadable records or skip ties.
+Previously open feed clients can send a numeric timestamp cursor for compatibility; tie-safe paging starts after a reload.
 
 Firestore serves the feed from the `(gameId, feedAt desc)` composite index in `firestore.indexes.json`: every game's
 history filters on `gameId`, so the feed is one game's, not the database's.

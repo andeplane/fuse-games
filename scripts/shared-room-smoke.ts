@@ -255,7 +255,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await host.waitForURL(/room=/);
     const invite = host.url(),
       code = new URL(invite).searchParams.get("room")!;
-    assert.match(code, /^[A-Z]{2}[0-9]{2}$/);
+    assert.match(code, /^[A-Z0-9]{6}$/);
     await qr(host);
     assert.equal(await host.locator(".shared-room-code").textContent(), code);
     assert.equal(await host.locator(".online-arena").isVisible(), true);

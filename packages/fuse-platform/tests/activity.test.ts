@@ -342,7 +342,7 @@ test("real room admission groups rounds with summaries and fences reissued room 
     history = new HistoryStore(platform, db, rooms, now).game(game.id);
   const tokens = ["1".repeat(64), "2".repeat(64)],
     seats = tokens.map(peerId),
-    code = "AB12";
+    code = "AB12AA";
   const open = async () => {
     await rooms.create(code, tokens[0]!, game.id);
     for (const token of tokens)
