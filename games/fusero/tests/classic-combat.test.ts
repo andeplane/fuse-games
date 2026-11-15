@@ -397,14 +397,12 @@ test("Bazooka child spread and random-index propagation match original C++ spawn
   advance(w, a.ports, 1);
   assert.equal(w.projectiles.length, 12);
   assert.deepEqual(
-    w.projectiles
-      .slice(0, 4)
-      .map(({ vx, vy, timeVarRandom, randomIndex }) => ({
-        vx,
-        vy,
-        timeVarRandom,
-        randomIndex,
-      })),
+    w.projectiles.slice(0, 4).map(({ vx, vy, timeVarRandom, randomIndex }) => ({
+      vx,
+      vy,
+      timeVarRandom,
+      randomIndex,
+    })),
     native.bazookaChildren,
   );
 });
