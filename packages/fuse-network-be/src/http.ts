@@ -55,13 +55,6 @@ export interface RoomHttpOptions {
   schedule?: (callback: () => void, delayMs: number) => () => void;
   /** Structured operational log. Entries never carry a request URL, a token or a frame. */
   log?: (entry: Record<string, unknown>) => void;
-  /**
-   * LEGACY-QUERY-TOKEN — every site of the window carries this tag; `grep -rn LEGACY-QUERY-TOKEN` lists what to delete.
-   * DEPRECATED rollout window (#256 S3, docs/online/TOKEN-TRANSPORT.md): also admit a room socket whose token is in
-   * `?token=`, as clients built before the first-frame handshake send it. Off unless the deployment asks for it.
-   * Remove this option, its block in the upgrade handler and its tests once no client sends the old form.
-   */
-  legacyQueryToken?: boolean;
   /** Local development only: serve this built frontend with single-page fallback. Production serves no files. */
   staticDirectory?: string;
   /** The deployed source revision, reported by the health route so a frontend release can wait for the backend it needs. */
@@ -331,20 +324,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
       }
     });
   });
-  let legacyUses = 0,
-    legacyLoggedAt = Number.NEGATIVE_INFINITY;
-  // LEGACY-QUERY-TOKEN: DEPRECATED rollout window — see `legacyQueryToken`. At most one line a minute, and only a count.
-  const deprecatedQueryToken = () => {
-    legacyUses++;
-    if (now() - legacyLoggedAt < 60_000) return;
-    legacyLoggedAt = now();
-    log({
-      kind: "deprecated-query-token",
-      severity: "WARNING",
-      uses: legacyUses,
-    });
-    legacyUses = 0;
-  };
   const sockets = new WebSocketServer({
     noServer: true,
     maxPayload: 32_000,
@@ -376,16 +355,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
     const code = route[1]!;
     // The request carries no credential: the socket authenticates with its first frame, inside the admission
     // slot taken below, so unauthenticated sockets are bounded per address and in total like any other admission.
-    let queryToken: string | undefined;
-    // LEGACY-QUERY-TOKEN: DEPRECATED rollout window — see `legacyQueryToken`. Delete this block (and `queryToken`) with the option.
-    if (options.legacyQueryToken && url.searchParams.has("token")) {
-      queryToken = url.searchParams.get("token") ?? "";
-      if (!validToken(queryToken)) {
-        forbidden();
-        return;
-      }
-      deprecatedQueryToken();
-    }
     let upgraded: WebSocket | undefined;
     socket.on("error", () => socket.destroy());
     const address = options.clientAddress(req);
@@ -411,9 +380,7 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
               closed = false,
               pending: string[] = [],
               // "auth": only an `auth` frame is read. "rejected": nothing is read again.
-              // LEGACY-QUERY-TOKEN: without the window the initial phase is always "auth".
-              phase: "auth" | "admitted" | "rejected" =
-                queryToken === undefined ? "auth" : "admitted",
+              phase: "auth" | "admitted" | "rejected" = "auth",
               cancelDeadline: (() => void) | undefined;
             const refuse = (error: RoomError) => {
               phase = "rejected";
@@ -490,8 +457,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
                 refuse(new RoomError(401, "Authentication required"));
               ws.close();
             });
-            // LEGACY-QUERY-TOKEN: admitted without an `auth` frame.
-            if (queryToken !== undefined) admit(queryToken);
           });
         }).catch(async (error: unknown) => {
           // A refused upgraded socket still occupies a Cloud Run request until the close handshake finishes.
