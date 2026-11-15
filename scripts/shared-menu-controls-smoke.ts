@@ -187,7 +187,6 @@ async function checkRidersMenu(page: Page): Promise<void> {
 
 /** Close by both supported paths, then use gameplay keys without clicking the arena first. */
 async function checkKeyboardResume(page: Page, game: string): Promise<void> {
-  const trigger = page.locator(".fui-game-menu-trigger");
   for (const close of ["resume", "escape"] as const) {
     let bombersShots = 0;
     if (game === "fuse-bombers") {
@@ -229,13 +228,19 @@ async function checkKeyboardResume(page: Page, game: string): Promise<void> {
           : game === "fuse-lane"
             ? ".fl-game"
             : "canvas";
-    assert.equal(
-      await page
-        .locator(play)
-        .evaluate((element) => document.activeElement === element),
-      true,
-      `${game}: ${close} returns focus to gameplay`,
-    );
+    // In the bar's menu the game resumes once the dialog has closed, a moment after the key or the click.
+    const focused = await page
+      .waitForFunction(
+        (selector) =>
+          document.activeElement === document.querySelector(selector),
+        play,
+        { timeout: 5_000 },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    assert.equal(focused, true, `${game}: ${close} returns focus to gameplay`);
     if (game === "fuse-bombers") {
       await page.keyboard.press("Space");
       await page.waitForFunction((shots) => {
@@ -314,7 +319,6 @@ async function checkBombersLocalResume(): Promise<void> {
       new URL("fuse-bombers/?local&mute&debug&seed=42", base).href,
     );
     await page.locator("#screen[data-screen='lobby']").waitFor();
-    const trigger = page.locator(".fui-game-menu-trigger");
     for (const close of ["resume", "escape"] as const) {
       await openGameMenu(page);
       if (close === "escape") await page.keyboard.press("Escape");
@@ -503,7 +507,6 @@ async function checkTownOnlineResume(): Promise<void> {
       .getByRole("button", { name: "START MATCH", exact: true })
       .click();
     await page.locator(".fl-room[data-phase='running']").waitFor();
-    const trigger = page.locator(".fui-game-menu-trigger");
     for (const close of ["resume", "escape"] as const) {
       await openGameMenu(page);
       if (close === "escape") await page.keyboard.press("Escape");

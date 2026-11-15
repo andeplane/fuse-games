@@ -141,16 +141,20 @@
 body.fb-controller > [data-input="touch-pads"] {
   z-index: calc(var(--fui-z-bar) + 1) !important;
 }
-/* A controller keeps its room code and LEAVE: the app portal and the brand lead out of the room mid-play. */
-.fb-controller .fb-bar > a,
-.fb-controller .fb-bar > .fui-portal,
+/* A controller keeps LEAVE and MENU alone, in the page's flow above its name and meters: the shared bar's own
+   controls (the app portal, the brand, sound, the account) lead out of the room mid-play and would lie over them. */
+.fb-controller .fb-bar.fui-top-bar {
+  position: static;
+  justify-content: flex-start;
+  height: auto;
+  min-height: 0;
+  padding-block: 4px;
+}
+.fb-controller .fb-bar > :is(.fui-top-bar-left, .fui-top-bar-right),
 .fb-controller .fb-status:not([data-tone="error"]) {
   display: none;
 }
 /* The bar and its LEAVE are slim: the pads below take 70% of the screen, the header the 30% above them. */
-.fb-controller .fb-bar {
-  padding-block: 4px;
-}
 .fb-controller .fb-bar button {
   min-height: 0;
   padding: 3px 10px;

@@ -243,11 +243,25 @@ test("a game menu the game keeps in the bar itself hears its keys; one taken int
   root.append(kept.element);
   press(taken.resume);
   assert.deepEqual(heard, [], "the dialog closes on Escape by itself");
-  press(kept.resume);
+  const key = (target: Element, name: string) =>
+    target.dispatchEvent(
+      Object.assign(new window.Event("keydown", { bubbles: true }), {
+        key: name,
+      }),
+    );
+  key(kept.resume, "Escape");
+  key(kept.resume, "ArrowDown");
   assert.deepEqual(
     heard,
-    [kept.resume],
+    [kept.resume, kept.resume],
     "Escape and the arrows reach the menu's document listeners",
+  );
+  key(kept.resume, " ");
+  key(kept.resume, "Enter");
+  assert.equal(
+    heard.length,
+    2,
+    "Space and Enter press the focused button, and must not fire in the match too",
   );
 });
 

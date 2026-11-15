@@ -77,8 +77,8 @@ go on a lost focus and keeps its header clear of the pads turned on its side.
 
 ## Controls
 
-Every round starts with a controls card for your device. MENU remains available during play (beside LEAVE in a
-room; as Game controls in the bar's menu when everyone is at one screen) with CONTROLS,
+Every round starts with a controls card for your device. MENU remains available during play (beside LEAVE in a room's
+match; as Game controls in the bar's menu when everyone is at one screen) with CONTROLS,
 BACK TO GAME, BACK TO LOBBY (for the room host) and LEAVE GAME. Opening the menu pauses a local match;
 online rooms keep playing, and your controls are released while the menu is open.
 
