@@ -25,6 +25,50 @@ try {
       .click();
     const content = page.locator("dialog[open] .fui-how-to-play");
     await content.waitFor();
+    const colors = await content.evaluate((node) => {
+      const dialog = node.closest("dialog")!;
+      return {
+        goal: [
+          getComputedStyle(node.querySelector("p")!).color,
+          getComputedStyle(dialog).backgroundColor,
+        ],
+        action: [
+          getComputedStyle(node.querySelector("dd")!).color,
+          getComputedStyle(dialog).backgroundColor,
+        ],
+        heading: [
+          getComputedStyle(node.querySelector("h3")!).color,
+          getComputedStyle(dialog).backgroundColor,
+        ],
+        header: [
+          getComputedStyle(dialog.querySelector(".fui-dialog-title")!).color,
+          getComputedStyle(dialog.querySelector(".fui-dialog-bar")!)
+            .backgroundColor,
+        ],
+      };
+    });
+    for (const [part, pair] of Object.entries(colors)) {
+      const values = pair.map((color) => {
+        const channels = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((value) => {
+            const channel = value / 255;
+            return channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+        return (
+          channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722
+        );
+      });
+      const ratio = (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
+      assert.ok(
+        ratio >= 4.5,
+        `${game} ${part} contrast is ${ratio.toFixed(2)}:1`,
+      );
+    }
     assert.ok(await content.locator("dd").count(), `${game} teaches actions`);
     if (game !== "fuselane")
       assert.ok(
