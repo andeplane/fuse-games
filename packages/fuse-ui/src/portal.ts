@@ -21,7 +21,7 @@ export interface PortalEntry {
 /** A portal entry as the build hands it to the page: the game id and its path under the site base. */
 export interface PortalGame extends PortalEntry {
   id: string;
-  /** `<id>/` under the site base. */
+  /** Dashless game name under the site base, e.g. `fuseriders/`. */
   path: string;
   /**
    * Site-relative 64x64 desktop icon (`fuseos/game-icons/<id>.png`, with a 32x32 `<id>-16.png` beside it), set by

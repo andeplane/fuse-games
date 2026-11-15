@@ -40,7 +40,7 @@ export function isGameEmbed(
   gameId: string,
   muted: boolean,
 ): boolean {
-  return src.endsWith(`/${gameId}/${muted ? "?mute" : ""}`);
+  return src.endsWith(`/${gameId.replaceAll("-", "")}/${muted ? "?mute" : ""}`);
 }
 
 /** The window that `window.open` was asked to open: what a stubbed opener records. */

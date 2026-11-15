@@ -13,6 +13,7 @@ import {
 } from "./packages/fuse-ui/src/portal.ts";
 import { repoTree } from "./scripts/fuseos/repo-tree-plugin.ts";
 import { chartLabNotes } from "./scripts/lib/chart-lab-notes.ts";
+import { gamePagePath } from "./packages/fuse-ui/src/game-path.ts";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 /** Every game with a page of its own (`games/<id>/index.html`); the root is the gallery. */
@@ -26,6 +27,8 @@ const games = readdirSync(new URL("games/", import.meta.url), {
   )
   .map((entry) => entry.name)
   .sort();
+if (new Set(games.map(gamePagePath)).size !== games.length)
+  throw new Error("Game page paths collide after removing dashes");
 /** A game's other built pages (`games/<id>/<page>.html`, served at `<base><id>/<page>.html`): developer tools. */
 const extraPages = ["fusemania/chart-lab.html"];
 
@@ -51,7 +54,7 @@ const portalGames = (): PortalGame[] =>
         ),
       );
       if (!parsed) throw new Error(`games/${id}/portal.json is invalid`);
-      // All games are served at `<base><id>/`; the root belongs to the gallery.
+      // Page slugs omit dashes; IDs and asset directories keep their original names.
       if (!games.includes(id))
         throw new Error(
           `games/${id}/portal.json lists a game with no index.html`,
@@ -62,7 +65,7 @@ const portalGames = (): PortalGame[] =>
       return {
         ...parsed,
         id,
-        path: `${id}/`,
+        path: gamePagePath(id),
         ...(existsSync(new URL(`public/${icon}`, import.meta.url))
           ? { icon }
           : {}),
@@ -71,7 +74,7 @@ const portalGames = (): PortalGame[] =>
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 
 /**
- * Emits `games/<id>/index.html` as `<id>/index.html`, so a game is served at `<base><id>/` beside the gallery (the
+ * Emits `games/<id>/index.html` under its dashless slug beside the gallery (the
  * dev room service, GitHub Pages). Its script and style URLs are absolute from the base, so the move keeps them;
  * under a relative base (`--base ./`, a static preview) they are relative to the page and lose one `../`.
  */
@@ -82,14 +85,30 @@ const gamePages = (): Plugin => {
     enforce: "post",
     configureServer(server) {
       // Source previews use the same public game URLs as the emitted site.
-      server.middlewares.use((request, _response, next) => {
+      server.middlewares.use((request, response, next) => {
         const url = new URL(request.url ?? "/", "http://localhost");
+        const legacy = games.find(
+          (game) =>
+            game.includes("-") &&
+            [
+              `${server.config.base}${game}`,
+              `${server.config.base}${game}/`,
+              `${server.config.base}${game}/index.html`,
+            ].includes(url.pathname),
+        );
+        if (legacy) {
+          response.writeHead(302, {
+            Location: `${server.config.base}${gamePagePath(legacy)}${url.search}`,
+          });
+          response.end();
+          return;
+        }
         const id = games.find((game) =>
-          url.pathname.startsWith(`${server.config.base}${game}/`),
+          url.pathname.startsWith(`${server.config.base}${gamePagePath(game)}`),
         );
         if (id) {
           const suffix = url.pathname.slice(
-            `${server.config.base}${id}/`.length,
+            `${server.config.base}${gamePagePath(id)}`.length,
           );
           // Keep public game assets at their deployed URLs instead of rewriting them into source-page paths.
           if (!suffix || !existsSync(`${root}public/${id}/${suffix}`))
@@ -105,7 +124,15 @@ const gamePages = (): Plugin => {
       for (const id of games) {
         const page = bundle[`games/${id}/index.html`];
         if (!page) continue;
-        page.fileName = `${id}/index.html`;
+        page.fileName = `${gamePagePath(id)}index.html`;
+        if (id.includes("-")) {
+          const target = `../${gamePagePath(id)}`;
+          this.emitFile({
+            type: "asset",
+            fileName: `${id}/index.html`,
+            source: `<!doctype html><meta charset="utf-8"><title>Game moved</title><script>location.replace(${JSON.stringify(target)}+location.search+location.hash)</script><a href="${target}">Open game</a>`,
+          });
+        }
         if (
           relative &&
           page.type === "asset" &&

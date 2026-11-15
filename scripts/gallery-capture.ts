@@ -232,7 +232,7 @@ try {
     const context = await browser.newContext({ viewport: VIEWPORT });
     const page = await context.newPage();
     try {
-      await page.goto(new URL(`${id}/?mute`, root).href);
+      await page.goto(new URL(`${id.replaceAll("-", "")}/?mute`, root).href);
       await RECIPES[id]?.(page);
       const path = `public/gallery/${id}.jpg`;
       await page.screenshot({ path, type: "jpeg", quality: JPEG_QUALITY });

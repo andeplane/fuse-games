@@ -31,7 +31,7 @@ const analytics = startGameAnalytics("ball-bros");
 const observePlay = createPlayMetrics(analytics.track, () => performance.now());
 const endpoints = createEndpoints(
   {
-    basePath: `${import.meta.env.BASE_URL}ball-bros/`,
+    basePath: `${import.meta.env.BASE_URL}ballbros/`,
     apiOrigin: import.meta.env.VITE_API_ORIGIN,
   },
   location.origin,

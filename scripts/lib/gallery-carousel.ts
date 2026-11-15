@@ -75,7 +75,7 @@ export async function captureCarousel(
           throw new Error(
             `${id} needs a gameplay cover before carousel capture`,
           );
-        await page.goto(new URL(`${id}/?mute`, root).href);
+        await page.goto(new URL(`${id.replaceAll("-", "")}/?mute`, root).href);
         const howTo = page.getByRole("button", { name: /^how to play$/i });
         await howTo.waitFor({ state: "visible", timeout: 30_000 });
         await settle(page);

@@ -8,6 +8,7 @@
     "node": ">=22.12.0"
   },
   "exports": {
+    "./game-path": "./src/game-path.ts",
     "./desktop-bridge": "./src/desktop-bridge.ts",
     "./results-history": "./src/results-history.ts",
     "./activity": "./src/activity.ts",
