@@ -100,7 +100,8 @@
   padding: var(--fui-space-2) var(--fui-space-2) 0;
 }
 .fm-picker-top .fm-picker-packs {
-  flex: 1 1 20rem;
+  flex: 1 1 14rem;
+  max-width: 24rem;
   min-width: 0;
   padding: 0;
 }
