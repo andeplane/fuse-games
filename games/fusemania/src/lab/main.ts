@@ -57,21 +57,24 @@ import { hiddenAtStart, parseShown } from "./shown.js";
 import { NOTES_UPLOAD_PATH, writeNotesUpload } from "./notes-upload.js";
 import {
   addTap,
+  gridStep,
+  moveTap,
   parseTaps,
   removeSpan,
   removeTap,
   tapAt,
-  tapGridBeat,
   tapColumn,
+  tapGridBeat,
   writeTaps,
   type Tap,
   type TapsFile,
 } from "./taps.js";
 import {
-  bandMix,
+  partsMix,
   coversAll,
   dragSpan,
   grabAt,
+  partAt,
   type Grab,
   type Span,
 } from "./band.js";
@@ -179,7 +182,7 @@ const keyLegend = el(
   " record from here",
   el("span", { className: "lab-keys-gap" }),
   key("⌘Z"),
-  " undo tap",
+  " undo the last tap, move or delete",
   el("span", { className: "lab-keys-gap" }),
   key("⌫"),
   " delete the clicked tap, or the taps in a selection dragged over Custom",
@@ -193,6 +196,10 @@ const keyLegend = el(
   key("↑"),
   key("↓"),
   " scroll",
+  el("span", { className: "lab-keys-gap" }),
+  key("W"),
+  key("S"),
+  " move the selected Custom arrow (paused)",
   el("span", { className: "lab-keys-gap" }),
   key("+"),
   key("−"),
@@ -389,10 +396,18 @@ let taps: Tap[] = [];
 let tapsTimer: ReturnType<typeof setTimeout> | undefined;
 /** The tap clicked on in the Custom chart: delete removes it. */
 let pickedTap: Tap | undefined;
+/** A Custom arrow being dragged to another moment: the tap as it is now and whether the pointer has moved yet. */
+let tapDrag: { tap: Tap; y: number; moved: boolean } | undefined;
 /** Where recording starts (shift + R): taps before it are not kept, so the hands can find the rhythm first. */
 let recordFrom: number | undefined;
 /** The taps of this visit in the order they were pressed: ⌘Z takes back the latest. */
 let tapHistory: Tap[] = [];
+/** The Custom taps as they were before each change (a tap, a move, a delete), newest last: what ⌘Z goes back to. */
+let tapUndo: (readonly Tap[])[] = [];
+const rememberTaps = (): void => {
+  tapUndo.push(taps);
+  if (tapUndo.length > 500) tapUndo.shift();
+};
 /** In local development the URL remembers the playhead (`#t=…`), so a reload carries on from there. */
 let resumeAt = import.meta.env.DEV ? parseResume(location.hash) : undefined;
 if (import.meta.env.DEV)
@@ -401,13 +416,24 @@ if (import.meta.env.DEV)
     if (resumeAt === undefined && location.hash !== hash)
       history.replaceState(null, "", hash);
   }, 1000);
-/** The listening band: outside these frequencies the song is turned down to a tenth. Undefined: all of them. */
+/** The listening band: it splits the song in three parts (below, band, above), each heard or muted. Undefined: no split. */
 let band: { lowHz: number; highHz: number } | undefined;
-/** The playback graph: every song source goes in at `mixIn`; the band's filters are `bandFilters` (2 high-pass, 2 low-pass). */
+/**
+ * The playback graph: every song source goes in at `mixIn` and reaches the output untouched (`dryGain`) or as three
+ * parts: below the band (`belowFilters`, 2 low-pass at its lower edge), the band (`bandFilters`, 2 high-pass and
+ * 2 low-pass) and above it (`aboveFilters`, 2 high-pass at its upper edge).
+ */
 let mixIn: GainNode | undefined;
 let dryGain: GainNode | undefined;
+let belowGain: GainNode | undefined;
 let bandGain: GainNode | undefined;
+let aboveGain: GainNode | undefined;
+let belowFilters: BiquadFilterNode[] = [];
 let bandFilters: BiquadFilterNode[] = [];
+let aboveFilters: BiquadFilterNode[] = [];
+/** Which parts are heard; a click on a part of the frequency bar switches it. */
+const heardParts = { below: true, band: true, above: true };
+const hear = () => heardParts;
 /** The current animation loop; a stop or a new start retires the one before it. */
 let frameLoop = 0;
 
@@ -446,6 +472,7 @@ async function loadSong(id: string): Promise<void> {
   playhead = 0;
   topTime = -0.5;
   taps = [];
+  tapUndo = [];
   tapHistory = [];
   pickedTap = undefined;
   const tapped = load(TAPS_KEY(data.id));
@@ -572,27 +599,26 @@ function rebuildCharts(): void {
           ),
         ),
       );
-  if (taps.length) {
-    // The tapped rhythm, as a column of its own: where each tap fell, unsnapped.
-    const tapped = placeChart(
-      sim,
-      {
-        stepsType: "dance-single",
-        difficulty: "Custom",
-        meter: 1,
-        description: "",
-        credit: "tapped in the chart lab",
-        notes: taps.map((tap) => ({
-          beat: tap.beat,
-          column: tap.column,
-          kind: "tap" as const,
-        })),
-      },
-      TAPPED,
-      "recorded",
-    );
-    placed.push({ ...tapped, label: "Custom" });
-  }
+  // The tapped rhythm, as a column of its own: where each tap fell, unsnapped. Always there, empty until a tap lands,
+  // so there is somewhere to drag a selection and to see the first tap arrive.
+  const tapped = placeChart(
+    sim,
+    {
+      stepsType: "dance-single",
+      difficulty: "Custom",
+      meter: 1,
+      description: "",
+      credit: "tapped in the chart lab",
+      notes: taps.map((tap) => ({
+        beat: tap.beat,
+        column: tap.column,
+        kind: "tap" as const,
+      })),
+    },
+    TAPPED,
+    "recorded",
+  );
+  placed.push({ ...tapped, label: "Custom" });
   charts = placed;
   const current = tickSelect.value;
   tickSelect.replaceChildren(
@@ -897,21 +923,46 @@ function draw(): void {
   if (spectra) drawCurve(g, spectra.onset, onsetScale, "#3bffd0", t0, t1);
   if (flux) drawCurve(g, flux, fluxScale, "#ff6bd5", t0, t1);
 
-  // The listening band: what is turned down is dimmed.
+  // The listening band: what is muted is dimmed.
   const listening = bandSpan();
   if (band) {
     const { specX, specW } = layout;
+    const heard = hear();
     g.fillStyle = "rgba(4,9,26,0.62)";
-    g.fillRect(specX, HEADER, listening.from - specX, height - HEADER);
-    g.fillRect(
-      listening.to,
-      HEADER,
-      specX + specW - listening.to,
-      height - HEADER,
-    );
+    if (!heard.below)
+      g.fillRect(specX, HEADER, listening.from - specX, height - HEADER);
+    if (!heard.band)
+      g.fillRect(
+        listening.from,
+        HEADER,
+        listening.to - listening.from,
+        height - HEADER,
+      );
+    if (!heard.above)
+      g.fillRect(
+        listening.to,
+        HEADER,
+        specX + specW - listening.to,
+        height - HEADER,
+      );
     g.fillStyle = "rgba(59,255,208,0.7)";
     g.fillRect(listening.from - 1, HEADER, 1, height - HEADER);
     g.fillRect(listening.to, HEADER, 1, height - HEADER);
+  }
+
+  // The selected Custom arrow's moment, as a line across the curves and the spectrogram: drag the arrow (or press
+  // W and S) until the line sits on the sound it belongs to.
+  if (pickedTap && !hidden.has(TAPPED)) {
+    const y = Math.round(yOf(pickedTap.time)) + 0.5;
+    if (y > HEADER && y < height) {
+      g.strokeStyle = "rgba(120,255,140,0.95)";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(layout.curvesX, y);
+      g.lineTo(layout.specX + layout.specW, y);
+      g.stroke();
+      g.lineWidth = 1;
+    }
   }
 
   // Where recording starts.
@@ -974,15 +1025,29 @@ function draw(): void {
     g.fillText(hz >= 1000 ? `${hz / 1000}k` : String(hz), x + 2, 22);
   }
   g.fillText(isModel() ? "mel bands (Hz) →" : "frequency (Hz) →", specX, 10);
-  // The listening box, always there, with a handle on each edge.
-  g.fillStyle = band ? "rgba(59,255,208,0.22)" : "rgba(59,255,208,0.08)";
-  g.fillRect(listening.from, 1, listening.to - listening.from, HEADER - 2);
+  // The listening box, always there, with a handle on each edge. With a band set, the bar shows the three parts:
+  // green where the song is heard (stronger on the band), red where it is muted. A click on a part switches it.
+  if (band) {
+    const heard = hear();
+    const part = (on: boolean, from: number, to: number, strong: boolean) => {
+      g.fillStyle = on
+        ? `rgba(59,255,140,${strong ? 0.5 : 0.2})`
+        : "rgba(255,70,90,0.42)";
+      g.fillRect(from, 1, Math.max(0, to - from), HEADER - 2);
+    };
+    part(heard.below, specX, listening.from, false);
+    part(heard.band, listening.from, listening.to, true);
+    part(heard.above, listening.to, specX + layout.specW, false);
+  } else {
+    g.fillStyle = "rgba(59,255,208,0.08)";
+    g.fillRect(listening.from, 1, listening.to - listening.from, HEADER - 2);
+  }
   g.fillStyle = "#3bffd0";
   g.fillRect(listening.from, 1, 3, HEADER - 2);
   g.fillRect(listening.to - 3, 1, 3, HEADER - 2);
   if (band)
     g.fillText(
-      `${Math.round(band.lowHz)}–${Math.round(band.highHz)} Hz, rest −90%`,
+      `${Math.round(band.lowHz)}–${Math.round(band.highHz)} Hz`,
       Math.min(listening.from + 6, specX + layout.specW - 150),
       HEADER + 12,
     );
@@ -1211,22 +1276,34 @@ function ensureContext(): AudioContext {
         Math.sin((2 * Math.PI * 2200 * i) / audioContext.sampleRate) *
         Math.exp(-i / (length / 5)) *
         0.6;
-    // The song, as it is (dry) and through a 4th-order band-pass (band); `applyBand` sets the mix.
+    // The song, as it is (dry) and split in three by 4th-order filters; `applyBand` sets the mix.
     const context = audioContext;
     mixIn = context.createGain();
     dryGain = context.createGain();
+    belowGain = context.createGain();
     bandGain = context.createGain();
-    bandFilters = [0.541, 1.307, 0.541, 1.307].map((q, index) => {
-      const filter = context.createBiquadFilter();
-      filter.type = index < 2 ? "highpass" : "lowpass";
-      // For these filter types Web Audio takes Q in decibels; the two stages make a Butterworth response.
-      filter.Q.value = 20 * Math.log10(q);
-      return filter;
-    });
+    aboveGain = context.createGain();
+    // For these filter types Web Audio takes Q in decibels; two stages make a Butterworth response.
+    const stages = (types: BiquadFilterType[]) =>
+      types.map((type, index) => {
+        const filter = context.createBiquadFilter();
+        filter.type = type;
+        filter.Q.value = 20 * Math.log10(index % 2 === 0 ? 0.541 : 1.307);
+        return filter;
+      });
+    belowFilters = stages(["lowpass", "lowpass"]);
+    bandFilters = stages(["highpass", "highpass", "lowpass", "lowpass"]);
+    aboveFilters = stages(["highpass", "highpass"]);
     mixIn.connect(dryGain).connect(context.destination);
-    let node: AudioNode = mixIn;
-    for (const filter of bandFilters) node = node.connect(filter);
-    node.connect(bandGain).connect(context.destination);
+    for (const [filters, gain] of [
+      [belowFilters, belowGain],
+      [bandFilters, bandGain],
+      [aboveFilters, aboveGain],
+    ] as const) {
+      let node: AudioNode = mixIn;
+      for (const filter of filters) node = node.connect(filter);
+      node.connect(gain).connect(context.destination);
+    }
     applyBand();
   }
   return audioContext;
@@ -1234,19 +1311,23 @@ function ensureContext(): AudioContext {
 
 /** Points the filters at the band and sets the mix; a short ramp, so dragging the box does not click. */
 function applyBand(): void {
-  if (!audioContext || !dryGain || !bandGain) return;
+  if (!audioContext || !dryGain || !belowGain || !bandGain || !aboveGain)
+    return;
   const now = audioContext.currentTime;
-  const mix = bandMix(Boolean(band));
+  const mix = partsMix(Boolean(band), hear());
   dryGain.gain.setTargetAtTime(mix.dry, now, 0.015);
+  belowGain.gain.setTargetAtTime(mix.below, now, 0.015);
   bandGain.gain.setTargetAtTime(mix.band, now, 0.015);
+  aboveGain.gain.setTargetAtTime(mix.above, now, 0.015);
   if (!band) return;
   const top = audioContext.sampleRate * 0.45;
+  const edge = (hz: number) => Math.max(10, Math.min(top, hz));
+  const aim = (filter: BiquadFilterNode, hz: number) =>
+    filter.frequency.setTargetAtTime(edge(hz), now, 0.015);
+  for (const filter of belowFilters) aim(filter, band.lowHz);
   for (const [index, filter] of bandFilters.entries())
-    filter.frequency.setTargetAtTime(
-      Math.max(10, Math.min(top, index < 2 ? band.lowHz : band.highHz)),
-      now,
-      0.015,
-    );
+    aim(filter, index < 2 ? band.lowHz : band.highHz);
+  for (const filter of aboveFilters) aim(filter, band.highHz);
 }
 
 /** Seconds into the song the listener hears now. */
@@ -1395,6 +1476,7 @@ function recordTap(column: number): void {
     column,
   };
   tapHistory.push(tap);
+  rememberTaps();
   taps = addTap(taps, tap);
   hidden.delete(TAPPED);
   rebuildCharts();
@@ -1411,6 +1493,19 @@ function saveTaps(): void {
 
 /** Takes back the tap pressed last (then the one before it, and so on). */
 function undoTap(): void {
+  // The last change made on this page, whatever it was: a tap, a move or a delete.
+  const before = tapUndo.pop();
+  if (before) {
+    taps = [...before];
+    tapHistory = tapHistory.filter((tap) => taps.includes(tap));
+    pickedTap = undefined;
+    tapDrag = undefined;
+    rebuildCharts();
+    saveTaps();
+    draw();
+    say(`undone: ${taps.length} tap${taps.length === 1 ? "" : "s"} again`);
+    return;
+  }
   // Nothing pressed since the page opened: the tap nearest the playhead, within a second, goes instead.
   const here = heardTime();
   const tap =
@@ -1429,11 +1524,44 @@ function undoTap(): void {
   say(`removed the tap at ${tap.time.toFixed(2)} s`);
 }
 
+/** Puts a Custom tap at another moment, keeps it selected and stores the taps. */
+function retimeTap(tap: Tap, time: number, store = true): Tap {
+  const timing = charts[0]?.timing;
+  if (!timing) return tap;
+  const result = moveTap(taps, tap, time, timing.beatAt(Math.max(0, time)));
+  taps = result.taps;
+  tapHistory = tapHistory.map((other) =>
+    other === tap ? result.moved : other,
+  );
+  pickedTap = result.moved;
+  rebuildCharts();
+  if (store) saveTaps();
+  draw();
+  return result.moved;
+}
+
+/** Moves the selected tap one line of the edit snap earlier (-1) or later (1), or by 10 ms with `fine`. */
+function nudgePickedTap(direction: 1 | -1, fine: boolean): void {
+  const timing = charts[0]?.timing;
+  if (!pickedTap || !timing) return;
+  const time = fine
+    ? pickedTap.time + direction * 0.01
+    : timing.timeAt(
+        gridStep(pickedTap.beat, Number(snapSelect.value) || 4, direction),
+      );
+  rememberTaps();
+  const moved = retimeTap(pickedTap, time);
+  say(
+    `tap moved to ${moved.time.toFixed(2)} s (beat ${moved.beat.toFixed(2)})`,
+  );
+}
+
 /** Deletes the Custom chart's taps inside the selection, when the selection was dragged over that chart. */
 function deleteSelectedTaps(): boolean {
   if (pickedTap) {
     const tap = pickedTap;
     pickedTap = undefined;
+    rememberTaps();
     taps = removeTap(taps, tap);
     tapHistory = tapHistory.filter((other) => other !== tap);
     rebuildCharts();
@@ -1445,6 +1573,7 @@ function deleteSelectedTaps(): boolean {
   if (!selection || selection.chart !== "Custom") return false;
   const left = removeSpan(taps, selection.start, selection.end);
   const gone = taps.length - left.length;
+  rememberTaps();
   taps = left;
   tapHistory = tapHistory.filter((tap) => left.includes(tap));
   selection = undefined;
@@ -1459,6 +1588,7 @@ function deleteSelectedTaps(): boolean {
 
 function clearTaps(): void {
   if (!taps.length) return;
+  rememberTaps();
   taps = [];
   tapHistory = [];
   rebuildCharts();
@@ -1486,7 +1616,8 @@ interface Drag {
 }
 let drag: Drag | undefined;
 /** A drag on the frequency axis: where it started, the box as it was, and what it took hold of. */
-let bandDrag: { x: number; start: Span; grab: Grab } | undefined;
+let bandDrag:
+  { x: number; start: Span; grab: Grab; moved: boolean } | undefined;
 
 /** The listening band on the frequency axis as it is drawn now, in canvas pixels. */
 function bandSpan(): Span {
@@ -1521,7 +1652,7 @@ canvas.addEventListener("pointerdown", (event) => {
       return;
     }
     const span = bandSpan();
-    bandDrag = { x, start: span, grab: grabAt(span, x) };
+    bandDrag = { x, start: span, grab: grabAt(span, x), moved: false };
     canvas.setPointerCapture(event.pointerId);
     return;
   }
@@ -1531,6 +1662,17 @@ canvas.addEventListener("pointerdown", (event) => {
     editTap(column.chart, Math.floor((x - column.x) / LANE), timeOf(y));
     return;
   }
+  // A press on one of the Custom chart's arrows takes hold of it: a drag moves it in time, a click selects it.
+  const held =
+    column?.chart.key === TAPPED
+      ? tapAt(
+          taps,
+          timeOf(y),
+          Math.floor((x - column.x) / LANE),
+          (LANE * 0.55) / pxPerSec,
+        )
+      : undefined;
+  if (held) tapDrag = { tap: held, y, moved: false };
   drag = { x, y, zone, ...(column ? { chart: column.chart } : {}) };
   canvas.setPointerCapture(event.pointerId);
 });
@@ -1540,6 +1682,9 @@ canvas.addEventListener("pointermove", (event) => {
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
   if (bandDrag) {
+    // A press that does not move is a click (it switches a part on pointerup), not a drag of the box.
+    if (!bandDrag.moved && Math.abs(x - bandDrag.x) < 4) return;
+    bandDrag.moved = true;
     const { specX, specW } = layout;
     const span = dragSpan(
       bandDrag.start,
@@ -1569,6 +1714,13 @@ canvas.addEventListener("pointermove", (event) => {
     return;
   }
   if (Math.abs(y - drag.y) < 4 && Math.abs(x - drag.x) < 4) return;
+  if (tapDrag) {
+    // The arrow follows the pointer, unsnapped; it is stored when the pointer lets go.
+    if (!tapDrag.moved) rememberTaps();
+    tapDrag.moved = true;
+    tapDrag.tap = retimeTap(tapDrag.tap, timeOf(y), false);
+    return;
+  }
   selection = selectionFrom(drag, x, y);
   draw();
 });
@@ -1577,6 +1729,7 @@ canvas.addEventListener("dblclick", (event) => {
   const rect = canvas.getBoundingClientRect();
   if (event.clientY - rect.top >= HEADER || !band) return;
   band = undefined;
+  heardParts.below = heardParts.band = heardParts.above = true;
   applyBand();
   draw();
 });
@@ -1584,11 +1737,21 @@ canvas.addEventListener("dblclick", (event) => {
 canvas.addEventListener("pointercancel", () => {
   bandDrag = undefined;
   drag = undefined;
+  if (tapDrag?.moved) saveTaps();
+  tapDrag = undefined;
 });
 
 canvas.addEventListener("pointerup", (event) => {
   if (bandDrag) {
+    const press = bandDrag;
     bandDrag = undefined;
+    if (!press.moved && band) {
+      // A click on the bar: the part under it (below the band, the band, above it) is muted or heard again.
+      const part = partAt(press.start, press.x);
+      heardParts[part] = !heardParts[part];
+      applyBand();
+      draw();
+    }
     return;
   }
   if (!drag) return;
@@ -1597,6 +1760,15 @@ canvas.addEventListener("pointerup", (event) => {
   const y = event.clientY - rect.top;
   const start = drag;
   drag = undefined;
+  const dragged = tapDrag;
+  tapDrag = undefined;
+  if (dragged?.moved) {
+    saveTaps();
+    say(
+      `tap moved to ${dragged.tap.time.toFixed(2)} s: W S move it a line of the snap, ⇧W ⇧S by 10 ms, ⌘Z undoes`,
+    );
+    return;
+  }
   if (Math.abs(y - start.y) < 4 && Math.abs(x - start.x) < 4) {
     // A click on one of the Custom chart's arrows picks it (delete removes it); anywhere else moves the playhead.
     const column = layout.columns.find((c) => x >= c.x && x < c.x + LANE * 4);
@@ -1611,7 +1783,9 @@ canvas.addEventListener("pointerup", (event) => {
         : undefined;
     if (picked) {
       pickedTap = picked;
-      say(`tap at ${picked.time.toFixed(2)} s selected: delete removes it`);
+      say(
+        `tap at ${picked.time.toFixed(2)} s selected: drag it or press W S to move it, delete removes it, ⌘Z undoes`,
+      );
       draw();
       return;
     }
@@ -1621,6 +1795,11 @@ canvas.addEventListener("pointerup", (event) => {
   }
   pickedTap = undefined;
   selection = selectionFrom(start, x, y);
+  // A box dragged on the spectrogram is also the listening band, so its frequencies can be heard alone or muted.
+  if (selection.lowHz !== undefined && selection.highHz !== undefined) {
+    band = { lowHz: selection.lowHz, highHz: selection.highHz };
+    applyBand();
+  }
   updateFlux();
   renderSelection();
   draw();
@@ -2197,6 +2376,18 @@ window.addEventListener("keydown", (event) => {
   ) {
     recordInput.checked = !recordInput.checked;
     recordInput.onchange?.(new Event("change"));
+  } else if (
+    pickedTap &&
+    !source &&
+    (event.key.toLowerCase() === "w" || event.key.toLowerCase() === "s") &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey
+  ) {
+    // With a Custom arrow selected and the song paused, W and S move it earlier and later (while it plays they
+    // tap). The arrow keys never move it: they scroll.
+    event.preventDefault();
+    nudgePickedTap(event.key.toLowerCase() === "s" ? 1 : -1, event.shiftKey);
   } else if (
     recordInput.checked &&
     tapColumn(event.key) !== undefined &&

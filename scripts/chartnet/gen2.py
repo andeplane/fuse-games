@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from arrows import ArrowNet, generate
+from arrows import PENALTY, ArrowNet, generate
 import data
 from data import load, split
 from features import FPS
@@ -22,18 +22,103 @@ from bursts import burst_beats
 from guidance import forced_beats, has_taps, jump_beats, keep_locked, noted_opening, opening_beat, verdicts
 from feet import Feet
 from gen import FUSE_DIFFS, SNAP, mean_stats, place, ssc, stats, timing
-from onset import OnsetNet, chart_nps, f1, predict
+from onset import DEV, OnsetNet, chart_nps, f1, predict
+import repeats
 from simfile import DIFFS
 
 ROOT = Path(os.environ.get("CHARTNET_WORK", Path.home() / "projects/personal/fusemania-songs/chartnet"))
-# What the Fuse charts aim at, in steps per second: about the packs' 75th–90th percentile, busier than the medians.
-FUSE_NPS = {"Easy": 1.8, "Medium": 2.8, "Hard": 4.3, "Challenge": 7.0}
+# What the Fuse charts aim at, in steps per second. Hard is what Challenge was until 2026-11-15 (the packs' meter 12),
+# and Challenge is a new, much denser chart: as busy as the packs' 15s where the tempo allows it.
+FUSE_NPS = {"Easy": 1.8, "Medium": 3.2, "Hard": 7.0, "Challenge": 10.0}
+# The difficulty the models are asked for: a Fuse Hard is written the way the packs write a Challenge.
+MODEL_DIFF = {"Easy": "Easy", "Medium": "Medium", "Hard": "Challenge", "Challenge": "Challenge"}
+# Where a span judged good in the chart lab takes its rows from: the chart of the same name in games/fusemania/charts.
+# CHARTNET_LOCK_FROM="Hard=Challenge,Challenge=" is for the one regeneration that moves the ladder (a Hard that was a
+# Challenge keeps the spans judged good on that chart; the new Challenge has nothing to keep).
+LOCK_FROM = {d: d for d in ("Easy", "Medium", "Hard", "Challenge")} | dict(
+    pair.split("=") for pair in os.environ.get("CHARTNET_LOCK_FROM", "").split(",") if pair)
+# A cover's Hard is its original's hardest chart; its Challenge is at most this many times busier.
+COVER_STEP = 1.75
+# A Hard is at most this share of what its song's Challenge reached, in steps a second.
+HARD_SHARE = 0.78
+# 24ths closer together than this many seconds are kept to the bursts the Hard chart has (see `fuse`).
+FREE_24TH_GAP = 0.085
+# The foot-flow costs of the new Challenge: in long streams the same arrow twice running costs more than at Hard's
+# density, which brings jacks down to what the packs' charts of that density have (1.6% of steps, from 2.6%).
+DENSE_PENALTY = {**PENALTY["Challenge"], "jack": float(os.environ.get("CHARTNET_DENSE_JACK", "1.5"))}
+
+
+def runs_24th(beats: list[float]) -> list[list[float]]:
+    """The runs of steps a 24th apart, each as its beats."""
+    out: list[list[float]] = []
+    run = beats[:1]
+    for a, b in zip(beats, beats[1:]):
+        if abs(b - a - 1 / 6) < 1e-6:
+            run.append(b)
+            continue
+        if len(run) >= 2:
+            out.append(run)
+        run = [b]
+    if len(run) >= 2:
+        out.append(run)
+    return out
+
+
+def with_runs(beats: list[float], runs: list[list[float]]) -> list[float]:
+    """`beats` with each run put in, in place of the steps it would crowd (closer than a 24th to its ends)."""
+    for run in runs:
+        beats = [b for b in beats if b <= run[0] - 1 / 6 + 1e-6 or b >= run[-1] + 1 / 6 - 1e-6] + run
+    return sorted(set(beats))
+# The meter a chart gets: the packs' meter whose median chart is as busy (steps a second, from 13,000 pack charts).
+# Until 2026-11-15 the meters were fixed per difficulty and ran about three too high: a 15 here played like a pack 12.
+PACK_NPS = {int(m): nps for m, nps in json.loads(
+    (Path(__file__).resolve().parents[2] / "games/fusemania/charts/pack-meters.json").read_text())["nps"].items()}
+
+
+def meter_for(nps: float) -> int:
+    """The pack meter whose median chart has `nps` rows a second."""
+    return min(PACK_NPS, key=lambda m: abs(PACK_NPS[m] - nps))
+
+
+def set_meters(paths: list[str]) -> None:
+    """Write each chart's meter into finished .ssc files, from the rows it has after `gen.py fixup`: the pack
+    meter for its density, never below the chart before it."""
+    import re
+    from simfile import parse
+    for path in paths:
+        text = Path(path).read_text()
+        sim = parse(text)
+        head, *blocks = text.split("#NOTEDATA:")
+        if len(blocks) != len(sim.charts):  # a chart the parser skips would shift every meter after it
+            raise ValueError(f"{path}: {len(blocks)} charts in the file, {len(sim.charts)} parsed")
+        last = 0
+        for i, chart in enumerate(sim.charts):
+            times = sorted({sim.timing.beat_to_time(b) for b, r in chart.rows if any(c in "124" for c in r)})
+            if len(times) < 2:
+                continue
+            last = max(last, meter_for((len(times) - 1) / max(times[-1] - times[0], 1.0)))
+            blocks[i] = re.sub(r"#METER:\d+;", f"#METER:{last};", blocks[i], count=1)
+        Path(path).write_text("#NOTEDATA:".join([head, *blocks]))
+
+
+def ladder(key: str) -> dict[str, float]:
+    """A song's target density per difficulty: the ladder above, and for a cover built on its original's hardest
+    chart. A slow song cannot hold a Challenge that busy; placement then fills what its grid allows."""
+    target = dict(FUSE_NPS)
+    if key in COVERS:
+        top = COVERS[key]["nps"]
+        target["Hard"] = top
+        target["Challenge"] = min(target["Challenge"], COVER_STEP * top)
+    target["Medium"] = min(target["Medium"], 0.6 * target["Hard"])
+    target["Easy"] = min(target["Easy"], 0.65 * target["Medium"])
+    return target
+
+
 # Placement: peaks above the density model's validation threshold (it is told the density it should reach), or with
 # PLACE_THR=0 the strongest peaks up to the target count.
 THR = float(os.environ.get("PLACE_THR", "0"))
 _COVERS_FILE = Path(__file__).resolve().parents[2] / "games/fusemania/charts/covers-challenge.json"
 COVERS = {k: v for k, v in json.loads(_COVERS_FILE.read_text()).items() if k != "about"} if _COVERS_FILE.exists() else {}
-METERS = {"Easy": 3, "Medium": 6, "Hard": 9, "Challenge": 13}
 # 24th bursts on Challenge: "learned" lets the placement model put steps on the 24th grid (kept only as runs),
 # "rule" is the onset test in bursts.py, "both" and "off" as they say.
 BURSTS = os.environ.get("CHARTNET_BURSTS", "both")
@@ -132,7 +217,7 @@ def placement_model():
     cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {"n_in": 192, "wide": False}
     data.BANDS = cfg["n_in"] > 192  # the features the weights were trained on
     st = np.load(ROOT / cfg.get("stats", "feat_stats.npz"))  # the normalisation the weights were trained with
-    om = OnsetNet(cfg["n_in"], True, use_density=True, wide=cfg["wide"]).to("mps")
+    om = OnsetNet(cfg["n_in"], True, use_density=True, wide=cfg["wide"]).to(DEV)
     om.load_state_dict(torch.load(ROOT / f"{WEIGHTS[0]}.pt", map_location="cpu"))
     return (st["mean"], st["std"]), om, cfg
 
@@ -172,12 +257,14 @@ def place_eval(keys_file="test_keys.json"):
     te, _ = load("cache", stats_, only=set(json.loads((ROOT / keys_file).read_text())))
     tot: dict = {}
     streams: dict = {}
+    same: dict = {}
     for s in te:
         tm = timing(s.meta)
         for c in s.meta["charts"]:
             d = c["difficulty"]
             true = np.array([int(round(t * FPS)) for _, t, r in c["rows"] if any(x in "124" for x in r)])
-            beats = place(predict(om, s, d, chart_nps(c)), tm, d, 0.0, n_target=len(true),
+            prob = repeats.share(predict(om, s, d, chart_nps(c)), s.feats, tm)
+            beats = place(prob, tm, d, 0.0, n_target=len(true),
                           snap24=d == "Challenge" and BURSTS in ("learned", "both"),
                           busy=busy_for(profiles, s.key, d, chart_nps(c)))
             r = local_density_corr(np.array([tm.beat_to_time(b) for b in beats]), true / FPS)
@@ -185,6 +272,9 @@ def place_eval(keys_file="test_keys.json"):
                 corr.setdefault(d, []).append(r)
             got = f1(np.array([int(round(tm.beat_to_time(b) * FPS)) for b in beats]), true)
             for name, bs in (("gen", beats), ("human", sorted(b for b, _, r in c["rows"] if any(x in "124" for x in r)))):
+                if d in ("Hard", "Challenge"):
+                    got_c = repeats.consistency(list(bs), s.feats, tm, len(prob))
+                    same[name] = [x + y for x, y in zip(same.get(name, [0.0, 0]), got_c)]
                 run = best = 1
                 for x, y in zip(bs, bs[1:]):
                     run = run + 1 if y - x <= 0.25 + 1e-6 else 1
@@ -204,6 +294,9 @@ def place_eval(keys_file="test_keys.json"):
     print(WEIGHTS[0], keys_file, " ".join(f"{k}={out[k]}" for k in ["all"] + [d for d in DIFFS if d in out]))
     print("   busy where the human chart is busy (correlation per chart):",
           " ".join(f"{d}={np.mean(v):.2f}" for d, v in corr.items()))
+    print(f"   same rhythm on bars that sound alike (Hard and Challenge, sharing {repeats.SHARE}):",
+          " ".join(f"{n}={v[0] / max(v[1], 1):.3f}" for n, v in same.items()),
+          f"({same.get('gen', [0.0, 0])[1]} bar pairs)")
     for d in ("Hard", "Challenge"):
         print("  ", d, " ".join(f"{n}: 16th-stream share {streams[d, n][0] / streams[d, n][1]:.3f}, longest run "
                                 f"{streams[d, n][2] / streams[d, n][3]:.1f};" for n in ("gen", "human") if (d, n) in streams))
@@ -307,49 +400,71 @@ def fuse():
         charts = []
         placement[s.key] = {}
         raw = np.load(ROOT / "cache_fuse" / f"{s.key}.npz")["feats"]  # unnormalised log-mel, for the review notes
-        # A cover's Challenge aims at its original's hardest chart (charts/covers-challenge.json); the easier
-        # charts stay below it.
-        target = dict(FUSE_NPS)
-        meters = dict(METERS)
-        if s.key in COVERS:
-            top = COVERS[s.key]["nps"]
-            target["Challenge"] = top
-            target["Hard"] = max(min(target["Hard"], 0.8 * top), 3.3)  # never thinner than a Hard may be
-            target["Medium"] = min(target["Medium"], 0.6 * top)
-            target["Easy"] = min(target["Easy"], 0.4 * top)
-            meters["Challenge"] = min(15, max(11, COVERS[s.key]["meter"]))  # the game's Challenge runs 11 to 15
-        for d in FUSE_DIFFS:
-            prob = predict(om, s, d, target[d])
-            n_target = None if THR > 0 else int(target[d] * 0.9 * len(s.feats) / FPS)
-            # review material from the chart lab: a marked band's onsets (8ths on Medium and Hard, 16ths on
-            # Challenge), and where he tapped, as many steps as he tapped (a share of them on the easier charts)
+        # the ladder for this song: Hard as busy as a pack Challenge (a cover's: its original's hardest chart,
+        # charts/covers-challenge.json), Challenge well above it
+        target = ladder(s.key)
+        locked, scale = verdicts(s.key)
+
+        def rhythm(g: str, bursts: bool = True) -> list[float]:
+            """Where the steps of this song's `g` chart go, in beats. Without `bursts` nothing lands on 24ths."""
+            d = MODEL_DIFF[g]  # the difficulty the models are asked for
+            prob = repeats.share(predict(om, s, d, target[g]), s.feats, tm)  # bars that sound alike, same rhythm
+            n_target = None if THR > 0 else int(target[g] * 0.9 * len(s.feats) / FPS)
+            # review material from the chart lab: a marked band's onsets (8ths on Medium, 16ths above it), and where
+            # he tapped, as many steps as he tapped (a share of them on the charts below Hard)
             # a chart starts where a review note says it should; without one, and without a tapped rhythm to
             # follow, on the song's first clear, sharp sound
             noted = noted_opening(s.key, s.onset, tm, SNAP[d])
             start = noted if noted is not None else None if has_taps(s.key) else opening_beat(s.onset, tm, SNAP[d])
             forced: list[float] = [] if start is None else [start]
-            if d != "Easy":
-                grid = {"Medium": [2], "Hard": [2], "Challenge": [4]}[d] + ([3] if swing and d != "Medium" else [])
+            if g != "Easy":
+                grid = {"Medium": [2], "Challenge": [4]}[d] + ([3] if swing and d != "Medium" else [])
                 forced = sorted(set(forced) | set(forced_beats(
-                    s.key, raw, tm, grid, prob, share=min(1.0, target[d] / target["Challenge"]))))
+                    s.key, raw, tm, grid, prob, share=min(1.0, target[g] / target["Hard"]))))
             guided[s.key] = max(guided.get(s.key, 0), len(forced) - (start is not None))
-            locked, scale = verdicts(s.key)
             beats = place(prob, tm, d, THR, n_target=n_target, swing=swing,
-                          snap24=d == "Challenge" and BURSTS in ("learned", "both"), forced=forced,
-                          busy=busy_for(profiles, s.key, d, target[d], "pool_fuse"), scale=scale)
+                          snap24=bursts and d == "Challenge" and BURSTS in ("learned", "both"), forced=forced,
+                          busy=busy_for(profiles, s.key, d, target[g], "pool_fuse"), scale=scale)
             if noted is not None:
                 beats = [b for b in beats if b >= noted - 1e-6]
-            if d == "Challenge" and BURSTS in ("rule", "both"):  # where the music itself moves at 24th speed
+            if bursts and d == "Challenge" and BURSTS in ("rule", "both"):  # where the music itself moves at 24th speed
                 beats, n_burst = with_bursts(beats, burst_beats(s.onset, tm, beats[0], beats[-1]))
-                bursts_[s.key] = n_burst
-            if d == "Challenge" and BURSTS == "learned":
+                if g == "Challenge":  # the count printed at the end is the top chart's
+                    bursts_[s.key] = n_burst
+            if bursts and g == "Challenge" and BURSTS == "learned":
                 bursts_[s.key] = len({int(b) for b in beats if abs(b * 6 - round(b * 6)) < 1e-6 and round(b * 6) % 6 in (1, 5)})
-            rows = generate(am, s, beats, tm, d, target[d], seed=zlib.crc32((s.key + d).encode()),
-                            jumps=None if d == "Easy" else jump_beats(s.key, raw, tm, beats))
-            if locked:  # spans judged good keep the chart they have now
-                rows = keep_locked(rows, current_rows(s.key, d), locked)
-            charts.append((d, meters[d], rows))
-            agg.setdefault(d, []).append(stats2(rows))
+            return beats
+
+        # A Challenge asked for more steps than its sixteenths hold fills up with 24ths. On a slow song those are
+        # a stream like any other; on a faster one (24ths closer than FREE_24TH_GAP) they are 12 steps a second and
+        # more, which human charts keep to short bursts. There the Challenge gets its 24ths from the Hard chart, which
+        # has them only where the music does, and its extra steps go on the ordinary grid.
+        fast = 10.0 / float(np.median([bpm for _, bpm in s.meta["bpms"]])) < FREE_24TH_GAP
+
+        # A slow song's grid fills up before a Challenge gets as busy as asked. The Hard below it then steps down,
+        # so the two stay a clear step apart (HARD_SHARE of what the Challenge reached), and the easier charts follow.
+        top = rhythm("Challenge", bursts=not fast)
+        reached = (len(top) - 1) / max(tm.beat_to_time(top[-1]) - tm.beat_to_time(top[0]), 1.0)
+        if target["Hard"] * 0.9 > HARD_SHARE * reached:
+            target["Hard"] = HARD_SHARE * reached / 0.9
+            target["Medium"] = min(target["Medium"], 0.6 * target["Hard"])
+            target["Easy"] = min(target["Easy"], 0.65 * target["Medium"])
+        hard = rhythm("Hard")
+        if fast:
+            top = with_runs(top, runs_24th(hard))
+        for g in FUSE_DIFFS:
+            d = MODEL_DIFF[g]
+            beats = top if g == "Challenge" else hard if g == "Hard" else rhythm(g)
+            rows = generate(am, s, beats, tm, d, target[g], seed=zlib.crc32((s.key + g).encode()),
+                            penalty=DENSE_PENALTY if g == "Challenge" else None,
+                            jumps=None if g == "Easy" else jump_beats(s.key, raw, tm, beats))
+            if locked and LOCK_FROM.get(g):  # spans judged good keep the chart they have now
+                rows = keep_locked(rows, current_rows(s.key, LOCK_FROM[g]), locked)
+            stepped = [t for _, t, r in rows if any(c in "124" for c in r)]
+            charts.append((g, meter_for((len(stepped) - 1) / max(stepped[-1] - stepped[0], 1.0)), rows))
+            agg.setdefault(g, []).append(stats2(rows))
+        for i in range(1, len(charts)):  # a harder chart never carries a lower meter
+            charts[i] = (charts[i][0], max(charts[i][1], charts[i - 1][1]), charts[i][2])
         (outdir / f"{s.key}.ssc").write_text(ssc(s.meta["ssc_head"], charts))
         print(s.key, [(d, len(r)) for d, _, r in charts], flush=True)
     summary = {d: mean_stats(v) for d, v in agg.items()}
@@ -369,6 +484,8 @@ if __name__ == "__main__":
         for keys in ("test_keys.json", "test2_keys.json"):
             te, _ = load("cache", stats_, only=set(json.loads((ROOT / keys).read_text())))
             print(WEIGHTS[1], keys, round(held_out_loss(am, te), 3))
+    elif sys.argv[1] == "meters":  # after gen.py fixup: the meters of finished .ssc files
+        set_meters(sys.argv[2:])
     elif sys.argv[1] == "place-eval":
         place_eval(sys.argv[2] if len(sys.argv) > 2 else "test_keys.json")
     elif sys.argv[1] == "eval2":  # the held-out community songs (stream and stamina packs)
