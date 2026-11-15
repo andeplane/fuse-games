@@ -93,6 +93,80 @@ try {
       step = "empty room and QR";
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
+      const configurationRoom = [
+        "fusemania",
+        "elasto-fuse",
+        "fuse-front",
+        "fuseball",
+        "fuse-volley",
+      ].includes(game);
+      assert.equal(
+        (await room.getAttribute("class"))
+          ?.split(/\s+/)
+          .includes("fui-room-configuration"),
+        configurationRoom,
+      );
+      if (configurationRoom) {
+        assert.equal(
+          await room
+            .locator(
+              ".fui-room-invitation .fui-room-seats .fui-room-open-slots",
+            )
+            .count(),
+          1,
+        );
+        assert.equal(
+          await room.locator(".fui-room-players .fui-room-open-slots").count(),
+          0,
+        );
+        for (const width of [360, 844, 1440]) {
+          await page.setViewportSize({
+            width,
+            height: width === 844 ? 390 : 1000,
+          });
+          assert.ok(
+            await room.evaluate((root, viewportWidth) => {
+              const seats = root
+                .querySelector(".fui-room-seats")!
+                .getBoundingClientRect();
+              const choices = root
+                .querySelector(".fui-room-modes")!
+                .getBoundingClientRect();
+              return viewportWidth > 640
+                ? seats.right <= choices.left
+                : seats.bottom <= choices.top;
+            }, width),
+            "round choices and seats occupy their intended columns/phone order",
+          );
+          if (game === "fusemania") {
+            assert.equal(
+              await room.locator(".fm-picker-play").count(),
+              0,
+              "header owns the explicit Start action",
+            );
+            assert.ok(
+              await room.evaluate((root) => {
+                const tools = root
+                  .querySelector(".fm-picker-tools")!
+                  .getBoundingClientRect();
+                return [...root.querySelectorAll(".fm-picker-pack")].every(
+                  (pack) => {
+                    const tab = pack.getBoundingClientRect();
+                    return (
+                      tab.right <= tools.left ||
+                      tab.left >= tools.right ||
+                      tab.bottom <= tools.top ||
+                      tab.top >= tools.bottom
+                    );
+                  },
+                );
+              }),
+              "song tools never cover pack tabs",
+            );
+          }
+        }
+      }
+      await page.setViewportSize({ width: 1440, height: 1000 });
       await page.waitForFunction(
         () =>
           document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
