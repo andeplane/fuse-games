@@ -1,4 +1,9 @@
 import { backOnEscape, createBackButton, createPageHeader } from "./back.js";
+import {
+  labelSettingsAction,
+  settingsLabel,
+  type SettingsScope,
+} from "./settings-actions.js";
 import { menuKeys } from "./menu-keys.js";
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
@@ -37,6 +42,8 @@ export interface MainMenuOptions {
   hostingOptions?: HTMLElement;
   onHowToPlay?: () => void;
   onSettings?: () => void;
+  /** Preferences are personal by default; room creation defaults may opt into room scope. */
+  settingsScope?: SettingsScope;
   document?: Document;
 }
 
@@ -57,7 +64,9 @@ export function createMainMenu(options: MainMenuOptions) {
   const play = button("Play", "fui-menu-primary", doc);
   const how = button("How to play", "", doc);
   const about = button("About", "", doc);
-  const settingsButton = button("Settings", "", doc);
+  const scope = options.settingsScope ?? "player";
+  const settingsButton = button("", "", doc);
+  labelSettingsAction(settingsButton, scope);
   const choices = el("nav", "", "fui-main-menu-nav fui-play-menu", doc);
   choices.setAttribute("aria-label", "Choose how to play");
   choices.hidden = true;
@@ -249,7 +258,9 @@ export function createMainMenu(options: MainMenuOptions) {
   };
   settingsButton.onclick = () => {
     returnFocus = settingsButton;
-    options.onSettings ? options.onSettings() : open("Settings", [settings]);
+    options.onSettings
+      ? options.onSettings()
+      : open(settingsLabel(scope), [settings]);
   };
   settingsButton.hidden = !options.onSettings;
   const addSettings = (...nodes: Node[]) => {

@@ -295,7 +295,7 @@ try {
   await guest.screenshot({ path: "artifacts/online-phone.png" });
   assert.equal(
     await guest
-      .getByRole("button", { name: "Game settings", exact: true })
+      .getByRole("button", { name: "Room settings", exact: true })
       .isVisible(),
     false,
   );
@@ -303,7 +303,9 @@ try {
   // indistinguishable and the room had no way to switch. Both must stay reachable and distinct.
   {
     await openTopMenu(host);
-    await host.getByRole("button", { name: "SETTINGS", exact: true }).click();
+    await host
+      .getByRole("button", { name: "Player options", exact: true })
+      .click();
     const styles = host.getByRole("button", { name: /^Visual style: / });
     assert.equal(
       await styles.count(),
@@ -511,7 +513,7 @@ try {
   console.log("Creator refresh mid-round confirmed");
   await closeRecap(host);
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .click();
   await host.getByLabel("Match length").fill("2"); // saves on input
   await host.getByRole("button", { name: "Back", exact: true }).click();
@@ -560,7 +562,7 @@ try {
     .first()
     .waitFor();
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .waitFor({ state: "visible" });
   console.log("Creator lobby reload confirmed");
   // One rider leaves so an AI rider can take the seat; a match with a bot runs on every replica alike.
@@ -607,10 +609,10 @@ try {
       ?.textContent?.startsWith("Ready up"),
   );
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .waitFor({ state: "visible" });
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .click();
   await host
     .getByRole("radio", { name: "Shared TV + phone controls", exact: true })
@@ -633,7 +635,7 @@ try {
     .waitFor();
   assert.equal(
     await display
-      .getByRole("button", { name: "Game settings", exact: true })
+      .getByRole("button", { name: "Room settings", exact: true })
       .isVisible(),
     false,
   );
@@ -728,7 +730,7 @@ try {
             const canvas =
               document.querySelector<HTMLCanvasElement>(".online-arena");
             const start = [...document.querySelectorAll("button")].find(
-              (button) => button.textContent === "Game settings",
+              (button) => button.textContent === "Room settings",
             );
             const startBox = start?.getBoundingClientRect();
             let savedMode: unknown;

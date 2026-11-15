@@ -421,7 +421,7 @@ test("SETTINGS takes the voice controls back and refreshes before it opens", () 
     settings.element.querySelector(".dialog-body")?.firstElementChild,
     content,
   );
-  assert.equal(settings.element.getAttribute("aria-label"), "Settings");
+  assert.equal(settings.element.getAttribute("aria-label"), "Player options");
 });
 
 test("SHORTCUTS lists the key groups, ROOM SETTINGS keys only for whoever may configure", () => {

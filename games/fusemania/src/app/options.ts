@@ -1,4 +1,4 @@
-import { button, elementsFor } from "fuse-ui";
+import { button, elementsFor, createPlayerOptions } from "fuse-ui";
 import { SPEEDS } from "./prefs.js";
 
 /**
@@ -31,13 +31,15 @@ export interface PlayOptionsOptions {
   onOrder?(random: boolean): void;
 }
 export interface PlayOptions {
-  /** This player's speed and, in a room, the session. */
+  /** This player's speed. */
   element: HTMLElement;
   /**
    * RANDOM SONG. It picks a song, so it belongs with the song carousel (the picker's `tools`), not under the
    * levels: the page places it.
    */
   random: HTMLButtonElement;
+  /** Room-wide session controls, separate from personal preferences. */
+  room: HTMLElement;
   /** Shows `state`. Cheap on every room frame: nothing is written unless it changed. */
   update(state: OptionsState): void;
 }
@@ -122,10 +124,12 @@ export function createPlayOptions(options: PlayOptionsOptions): PlayOptions {
   summary.hidden = true;
 
   root.append(speed.node);
-  if (lengths.length) root.append(songs.node, order.node, summary);
+  const room = el("div", "", "fm-options fm-room-options");
+  if (lengths.length) room.append(songs.node, order.node, summary);
 
   return {
     element: root,
+    room,
     random,
     update(state) {
       for (const each of speeds) press(each.node, each.value === state.speed);
@@ -155,6 +159,7 @@ export interface OptionsMenu {
   button: HTMLButtonElement;
   panel: HTMLElement;
   close(): void;
+  dispose(): void;
 }
 
 /**
@@ -164,34 +169,7 @@ export interface OptionsMenu {
 export function createOptionsMenu(options: {
   document: Document;
   content: readonly Node[];
+  onOpenChange?: (open: boolean) => void;
 }): OptionsMenu {
-  const doc = options.document,
-    el = elementsFor(doc);
-  const root = el("span", "", "fm-options-menu"),
-    toggle = button("OPTIONS", "fui-button fm-options-toggle", doc),
-    panel = el("div", "", "fm-options-panel");
-  panel.id = "fm-options-panel";
-  panel.hidden = true;
-  panel.append(...options.content);
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.setAttribute("aria-controls", panel.id);
-  const set = (open: boolean) => {
-    panel.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-  };
-  toggle.onclick = () => set(panel.hidden);
-  doc.addEventListener("pointerdown", (event) => {
-    if (!panel.hidden && !root.contains(event.target as Node | null))
-      set(false);
-  });
-  root.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || panel.hidden) return;
-    // Escape closes the panel, not the dialog under it.
-    event.preventDefault();
-    event.stopPropagation();
-    set(false);
-    toggle.focus();
-  });
-  root.append(toggle, panel);
-  return { element: root, button: toggle, panel, close: () => set(false) };
+  return createPlayerOptions(options);
 }

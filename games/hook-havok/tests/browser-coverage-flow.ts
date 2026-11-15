@@ -202,7 +202,7 @@ try {
     .getByRole("button", { name: "BACK TO LOBBY", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .click();
   await page.locator("#map").selectOption("spire");
   await page.keyboard.press("Escape");

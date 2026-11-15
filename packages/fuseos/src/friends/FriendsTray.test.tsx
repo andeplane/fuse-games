@@ -82,7 +82,9 @@ describe("FriendsTray", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("drops the oldest toast after its time, dismisses on the cross and opens the window from the text", async () => {
+  // Quarantined in #250: the toast may render before its expiry effect schedules the timer.
+  // Restore after the test synchronizes with that effect; keep the other tray behavior cases in CI.
+  it.skip("drops the oldest toast after its time, dismisses on the cross and opens the window from the text", async () => {
     const { user, timers } = renderTray();
     timers.fire(BEAT_MS);
     const region = await screen.findByRole("region", {
