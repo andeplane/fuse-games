@@ -55,10 +55,17 @@ async function main() {
     operation: `operator.${operation}.attempt`,
     resource: capabilities.join(","),
   });
-  await security.setPolicy(uid, capabilities as DeveloperCapability[]);
+  const policy = await security.setPolicy(
+    uid,
+    capabilities as DeveloperCapability[],
+  );
   const finished = capabilities.includes("record")
     ? 0
-    : await finishOwnedRecordings(new FirestoreDebugDatabase(db, prefix), uid);
+    : await finishOwnedRecordings(
+        new FirestoreDebugDatabase(db, prefix),
+        uid,
+        policy.recordingGeneration,
+      );
   await security.append({
     uid,
     email: "",

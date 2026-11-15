@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { RoomError, type HttpExtension } from "fuse-network-be";
 import {
   requireDeveloper,
+  type DeveloperPrincipal,
   type DeveloperVerifier,
 } from "./developer-access.js";
 import { DEBUG_LIMITS } from "./debug-contracts.js";
@@ -48,6 +49,21 @@ export function createDebugHttpExtension(
   options: DebugHttpOptions,
 ): HttpExtension {
   const { service, verifier } = options;
+  const recordGeneration = async (
+    principal: DeveloperPrincipal,
+    stepUp = false,
+  ) =>
+    options.security
+      ? (
+          await authorizeDeveloper(
+            options.security,
+            principal,
+            "record",
+            (options.now ?? Date.now)(),
+            stepUp,
+          )
+        ).recordingGeneration
+      : 0;
   return {
     methods: ["GET", "POST", "PUT"],
     headers: [
@@ -63,15 +79,11 @@ export function createDebugHttpExtension(
       if (method === "POST" && path === "/api/telemetry/reports") {
         const input = await json(req, 3 * 1024 * 1024);
         let owner: string | undefined;
+        let ownerGeneration = 0;
         if (input && typeof input === "object" && "recordingId" in input) {
           const principal = await requireDeveloper(req, verifier);
           if (options.security) {
-            await authorizeDeveloper(
-              options.security,
-              principal,
-              "record",
-              (options.now ?? Date.now)(),
-            );
+            ownerGeneration = await recordGeneration(principal);
             await auditDeveloper(
               options.security,
               principal,
@@ -88,12 +100,14 @@ export function createDebugHttpExtension(
             options.reportIdentity(req, address),
             owner,
             input,
+            ownerGeneration,
           ),
         );
         return true;
       }
       if (method === "POST" && path === "/api/telemetry/recordings") {
         const principal = await requireDeveloper(req, verifier);
+        const generation = await recordGeneration(principal, true);
         debugAssert(
           options.recordingEnabled !== false,
           503,
@@ -103,6 +117,7 @@ export function createDebugHttpExtension(
           recording: await service.createRecording(
             principal.uid,
             await json(req),
+            generation,
           ),
         });
         return true;
@@ -111,6 +126,7 @@ export function createDebugHttpExtension(
         /^\/api\/telemetry\/recordings\/([^/]+)\/segments\/(\d+)$/.exec(path);
       if (method === "PUT" && upload) {
         const principal = await requireDeveloper(req, verifier);
+        const generation = await recordGeneration(principal);
         debugAssert(
           options.recordingEnabled !== false,
           503,
@@ -134,6 +150,7 @@ export function createDebugHttpExtension(
             typeof req.headers["x-recording-game-id"] === "string"
               ? req.headers["x-recording-game-id"]
               : undefined,
+            generation,
           ),
         );
         return true;
@@ -143,8 +160,13 @@ export function createDebugHttpExtension(
       );
       if (method === "POST" && finish) {
         const principal = await requireDeveloper(req, verifier);
+        const generation = await recordGeneration(principal);
         send(res, {
-          recording: await service.finish(principal.uid, finish[1]!),
+          recording: await service.finish(
+            principal.uid,
+            finish[1]!,
+            generation,
+          ),
         });
         return true;
       }

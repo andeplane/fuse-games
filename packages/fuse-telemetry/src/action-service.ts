@@ -50,6 +50,7 @@ export interface ActionServiceOptions {
   randomId?: () => string;
   ownerPolicy?: (
     uid: string,
+    email?: string,
   ) => Promise<{ generation: number; tokenAllowed: boolean }>;
 }
 /** Stands in `processed` for a segment that will never be transcribed. */
@@ -660,7 +661,7 @@ export function createActionService(options: ActionServiceOptions) {
         throw new RoomError(400, "Token lifetime must be 1 minute to 24 hours");
       const tokenId = id(),
         secret = randomBytes(32).toString("base64url");
-      const ownerPolicy = await options.ownerPolicy?.(uid);
+      const ownerPolicy = await options.ownerPolicy?.(uid, email);
       if (ownerPolicy && !ownerPolicy.tokenAllowed)
         throw new RoomError(403, "Developer capability required");
       const token = `fa1.${tokenId}.${secret}`;
@@ -703,7 +704,10 @@ export function createActionService(options: ActionServiceOptions) {
         )
       )
         return;
-      const ownerPolicy = await options.ownerPolicy?.(stored.ownerId);
+      const ownerPolicy = await options.ownerPolicy?.(
+        stored.ownerId,
+        stored.ownerEmail,
+      );
       if (
         ownerPolicy &&
         (!stored.ownerEmail ||

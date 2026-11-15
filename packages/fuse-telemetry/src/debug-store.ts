@@ -7,6 +7,7 @@ import type {
 export interface RecordingRecord extends RecordingSummary {
   kind: "recording";
   owner: string;
+  ownerGeneration?: number;
   fingerprint: string;
   mediaExpiresAt: number;
 }
@@ -106,6 +107,8 @@ export function storedDebugRecord(value: unknown): DebugRecord | undefined {
     record.kind === "recording" &&
     (!uuid(record.id) ||
       !text(record.owner, 128) ||
+      (record.ownerGeneration !== undefined &&
+        !integer(record.ownerGeneration)) ||
       !text(record.gameId, 80) ||
       !hash(record.fingerprint) ||
       !integer(record.startedAt) ||

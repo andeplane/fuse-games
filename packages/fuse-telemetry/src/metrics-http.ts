@@ -50,6 +50,7 @@ export function createMetricsHttp(options: {
   developer: DeveloperVerifier;
   admission?: TelemetryAdmission;
   security?: DeveloperSecurityStore;
+  developerPreAdmitted?: boolean;
 }): HttpExtension {
   const admission = options.admission ?? new TelemetryAdmission();
   return {
@@ -61,7 +62,7 @@ export function createMetricsHttp(options: {
         )
       )
         return false;
-      await admission.run(address, async () => {
+      const execute = async () => {
         const json = (value: unknown) => {
           res.writeHead(200, {
             "Content-Type": "application/json",
@@ -109,7 +110,10 @@ export function createMetricsHttp(options: {
             ...(gameId === null ? {} : { gameId }),
           }),
         );
-      });
+      };
+      if (options.developerPreAdmitted && url.pathname.startsWith("/api/dev/"))
+        await execute();
+      else await admission.run(address, execute);
       return true;
     },
   };

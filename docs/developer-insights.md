@@ -66,7 +66,12 @@ pnpm exec tsx scripts/developer-access.ts revoke PROJECT DATABASE PREFIX UID
 
 `set` replaces the complete capability list; every change advances the UID's
 generation and permanently invalidates credentials minted under older
-generations, even if access is later restored. `revoke` installs an empty policy
+generations, even if access is later restored. Recording sessions have a separate
+generation that advances when recording access is removed: old sessions cannot
+accept further uploads after that, even if access is restored; their unsent
+browser chunks remain queued locally. Changes to other capabilities leave an
+authorized recording running. Restoring a removed capability requires a Google
+sign-in after it was restored. `revoke` installs an empty policy
 first, blocking subsequent developer requests and agent-token verification,
 then marks that owner's active recording records finished. The command may be
 retried if the finishing scan fails; inspect its exit status. Already in-flight
@@ -79,6 +84,8 @@ IAM audit logs to identify the operator. Reinstatement requires an explicit
 `set`, a fresh Google sign-in after the policy change, and rechecking the
 code-owned allowlist. Agent credentials minted before this change lack the
 verified email needed for attribution and must be replaced.
+Firebase timestamps have one-second resolution; if confirmation occurs in the
+same second as the policy change, wait a second and confirm sign-in again.
 
 Prefer managed-domain accounts with enforced MFA for recording and token access.
 This code verifies Firebase's Google provider and recent authentication only; it

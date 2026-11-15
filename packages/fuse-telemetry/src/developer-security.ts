@@ -21,7 +21,9 @@ export const ALL_CAPABILITIES: readonly DeveloperCapability[] = [
 export interface DeveloperPolicy {
   capabilities: DeveloperCapability[];
   generation: number;
+  recordingGeneration: number;
   notBefore: number;
+  capabilityNotBefore: Record<DeveloperCapability, number>;
 }
 export interface DeveloperAudit {
   uid: string;
@@ -33,13 +35,18 @@ export interface DeveloperAudit {
 export interface DeveloperSecurityStore {
   policy(uid: string): Promise<DeveloperPolicy>;
   /** Replace capabilities and increment generation, invalidating all older agent credentials. */
-  setPolicy(uid: string, capabilities: DeveloperCapability[]): Promise<void>;
+  setPolicy(
+    uid: string,
+    capabilities: DeveloperCapability[],
+  ): Promise<DeveloperPolicy>;
   append(event: DeveloperAudit): Promise<void>;
 }
 const initial = (): DeveloperPolicy => ({
   capabilities: [...ALL_CAPABILITIES],
   generation: 0,
+  recordingGeneration: 0,
   notBefore: 0,
+  capabilityNotBefore: { read: 0, record: 0, token: 0 },
 });
 export function validUid(uid: string): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/.test(uid) && !/^__.*__$/.test(uid);
@@ -54,14 +61,24 @@ function validatePolicy(value: unknown): DeveloperPolicy {
     new Set(policy.capabilities).size !== policy.capabilities.length ||
     !Number.isSafeInteger(policy.generation) ||
     policy.generation < 0 ||
+    !Number.isSafeInteger(policy.recordingGeneration) ||
+    policy.recordingGeneration < 0 ||
     !Number.isSafeInteger(policy.notBefore) ||
-    policy.notBefore < 0
+    policy.notBefore < 0 ||
+    !policy.capabilityNotBefore ||
+    !ALL_CAPABILITIES.every(
+      (capability) =>
+        Number.isSafeInteger(policy.capabilityNotBefore[capability]) &&
+        policy.capabilityNotBefore[capability] >= 0,
+    )
   )
     throw new Error("Invalid developer policy");
   return {
     capabilities: [...policy.capabilities],
     generation: policy.generation,
+    recordingGeneration: policy.recordingGeneration,
     notBefore: policy.notBefore,
+    capabilityNotBefore: { ...policy.capabilityNotBefore },
   };
 }
 function checked(uid: string, capabilities: DeveloperCapability[]) {
@@ -72,6 +89,32 @@ function checked(uid: string, capabilities: DeveloperCapability[]) {
     new Set(capabilities).size !== capabilities.length
   )
     throw new Error("Invalid developer policy update");
+}
+function nextPolicy(
+  old: DeveloperPolicy,
+  capabilities: DeveloperCapability[],
+  now: number,
+): DeveloperPolicy {
+  const after = (Math.floor(now / 1000) + 1) * 1000;
+  const capabilityNotBefore = { ...old.capabilityNotBefore };
+  for (const capability of ALL_CAPABILITIES)
+    if (
+      !old.capabilities.includes(capability) &&
+      capabilities.includes(capability)
+    )
+      capabilityNotBefore[capability] = after;
+  return {
+    capabilities: [...capabilities],
+    generation: old.generation + 1,
+    recordingGeneration:
+      old.recordingGeneration +
+      (old.capabilities.includes("record") && !capabilities.includes("record")
+        ? 1
+        : 0),
+    notBefore:
+      !old.capabilities.length || !capabilities.length ? after : old.notBefore,
+    capabilityNotBefore,
+  };
 }
 export class MemoryDeveloperSecurityStore implements DeveloperSecurityStore {
   constructor(protected now: () => number = Date.now) {}
@@ -84,11 +127,9 @@ export class MemoryDeveloperSecurityStore implements DeveloperSecurityStore {
   async setPolicy(uid: string, capabilities: DeveloperCapability[]) {
     checked(uid, capabilities);
     const old = validatePolicy(this.policies.get(uid) ?? initial());
-    this.policies.set(uid, {
-      capabilities: [...capabilities],
-      generation: old.generation + 1,
-      notBefore: (Math.floor(this.now() / 1000) + 1) * 1000,
-    });
+    const next = nextPolicy(old, capabilities, this.now());
+    this.policies.set(uid, next);
+    return validatePolicy(next);
   }
   async append(event: DeveloperAudit) {
     this.events.push(structuredClone(event));
@@ -122,7 +163,7 @@ export class FileDeveloperSecurityStore extends MemoryDeveloperSecurityStore {
     return store;
   }
   override async setPolicy(uid: string, capabilities: DeveloperCapability[]) {
-    await super.setPolicy(uid, capabilities);
+    const next = await super.setPolicy(uid, capabilities);
     await mkdir(this.directory, { recursive: true });
     const path = join(this.directory, "policies.json"),
       tmp = `${path}.${randomUUID()}.tmp`;
@@ -131,6 +172,7 @@ export class FileDeveloperSecurityStore extends MemoryDeveloperSecurityStore {
       flush: true,
     });
     await rename(tmp, path);
+    return next;
   }
   override async append(event: DeveloperAudit) {
     await mkdir(this.directory, { recursive: true });
@@ -161,15 +203,13 @@ export class FirestoreDeveloperSecurityStore implements DeveloperSecurityStore {
   }
   async setPolicy(uid: string, capabilities: DeveloperCapability[]) {
     checked(uid, capabilities);
-    await this.db.runTransaction(async (tx) => {
+    return this.db.runTransaction(async (tx) => {
       const ref = this.collection("policies").doc(uid),
         doc = await tx.get(ref),
         old = doc.exists ? validatePolicy(doc.data()) : initial();
-      tx.set(ref, {
-        capabilities,
-        generation: old.generation + 1,
-        notBefore: (Math.floor(Date.now() / 1000) + 1) * 1000,
-      });
+      const next = nextPolicy(old, capabilities, Date.now());
+      tx.set(ref, next);
+      return next;
     });
   }
   async append(event: DeveloperAudit) {
@@ -190,6 +230,12 @@ export async function authorizeDeveloper(
   if (
     policy.notBefore &&
     (principal.authTime === undefined || principal.authTime < policy.notBefore)
+  )
+    throw new RoomError(401, "Sign in again after your access changed");
+  if (
+    policy.capabilityNotBefore[capability] &&
+    (principal.authTime === undefined ||
+      principal.authTime < policy.capabilityNotBefore[capability])
   )
     throw new RoomError(401, "Sign in again after your access changed");
   if (
@@ -223,8 +269,14 @@ export async function auditDeveloper(
 export async function finishOwnedRecordings(
   database: DebugDatabase,
   uid: string,
+  beforeGeneration: number,
 ): Promise<number> {
-  if (!validUid(uid)) throw new Error("Invalid developer uid");
+  if (
+    !validUid(uid) ||
+    !Number.isSafeInteger(beforeGeneration) ||
+    beforeGeneration < 0
+  )
+    throw new Error("Invalid developer uid or generation");
   let cursor: string | undefined,
     finished = 0;
   do {
@@ -233,6 +285,7 @@ export async function finishOwnedRecordings(
       if (
         row.value.kind !== "recording" ||
         row.value.owner !== uid ||
+        (row.value.ownerGeneration ?? 0) >= beforeGeneration ||
         row.value.status !== "recording"
       )
         continue;
@@ -244,6 +297,7 @@ export async function finishOwnedRecordings(
             !record ||
             record.kind !== "recording" ||
             record.owner !== uid ||
+            (record.ownerGeneration ?? 0) >= beforeGeneration ||
             record.status !== "recording"
           )
             return { result: false };
