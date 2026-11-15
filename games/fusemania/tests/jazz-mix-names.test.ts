@@ -7,8 +7,8 @@ import { SONGS } from "../../../scripts/lib/fusemania/songs.js";
 import { FUSE_TRACKS } from "../../../packages/fuseos/src/winamp/fuseTracks.js";
 import { LIBRARY } from "../src/songs.js";
 
-// Main 3d64fc9a before the display-name change, with only #TITLE normalized. Holds chart notes, timing, audio reference and
-// all other simfile metadata to the original authored files while allowing their display titles to change.
+// Baseline refreshed for the intentional DSP regeneration of all first-party charts.
+// Normalizing only #TITLE keeps subsequent display-name edits independent of notes, timing and audio metadata.
 const ORIGINAL_CHARTS: Readonly<Record<string, string>> = {
   afronova: "91e99b7b6c97d0553fda9b72ea5a8ee5f40cf68ba1a4af5909324c61d5608b6d",
   "afronova-radio-edit":
