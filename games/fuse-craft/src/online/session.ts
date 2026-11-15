@@ -226,6 +226,7 @@ export function createOnlineSession(
     { id: "solo", slot: 0 },
   ]);
   let manager = false;
+  let managerId: string | undefined;
   let status = "Connecting to the room…";
   let closed: RoomSnapshot["closed"] = "";
   let disposed = false;
@@ -236,6 +237,7 @@ export function createOnlineSession(
     {
       state(frame) {
         view = frame;
+        managerId = frame.managerId;
         runtime.flushPending();
         notify();
       },
@@ -322,6 +324,7 @@ export function createOnlineSession(
           : [],
         self: runtime.self,
         manager,
+        ...(managerId === undefined ? {} : { managerId }),
         status,
         closed,
         ...rules(),
