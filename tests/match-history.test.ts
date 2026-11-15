@@ -7,7 +7,7 @@ import { WebSocket } from "ws";
 import { SOLO_RATING_PLAYER_ID, type Rating } from "fuse-platform/rating";
 import { AVATARS } from "../games/fuse-riders/src/shared/avatars.js";
 import { createDevRoomService } from "../service/dev.js";
-import { createIdentityVerifier } from "fuse-platform";
+import { createIdentityVerifier, publicIdOf } from "fuse-platform";
 import { GAME_ID } from "../games/fuse-riders/src/shared/game-id.js";
 import {
   GUEST_MATCH_TTL_MS,
@@ -81,6 +81,38 @@ const resultOf = (ids: string[], matchId = "match-1"): MatchResult => ({
   winnerId: ids[0]!,
   players: ids.map((id, slot) => player(id, slot, slot + 1)),
 });
+/** Assert the public result retains all stats and remaps every player reference consistently. */
+function assertPublishedResult(
+  actual: MatchResult,
+  original: MatchResult,
+): void {
+  assert.equal(actual.matchId, original.matchId);
+  assert.equal(actual.length, original.length);
+  assert.equal(actual.round, original.round);
+  assert.equal(actual.players.length, original.players.length);
+  const ids = new Map<string, string>();
+  for (const [index, expected] of original.players.entries()) {
+    const shown = actual.players[index]!;
+    ids.set(expected.playerId, shown.playerId);
+    if (/^[a-f0-9]{24}$/.test(expected.playerId)) {
+      assert.notEqual(shown.playerId, expected.playerId);
+      assert.equal(JSON.stringify(actual).includes(expected.playerId), false);
+    } else assert.equal(shown.playerId, expected.playerId);
+    const { playerId: _shownId, ...shownStats } = shown;
+    const { playerId: _expectedId, ...expectedStats } = expected;
+    assert.deepEqual(shownStats, expectedStats);
+  }
+  assert.equal(new Set(ids.values()).size, ids.size);
+  assert.equal(
+    actual.winnerId,
+    original.winnerId === undefined ? undefined : ids.get(original.winnerId),
+  );
+  assert.deepEqual(
+    [...actual.finishers].sort(),
+    original.finishers.map((id) => ids.get(id)!).sort(),
+  );
+}
+
 const token = () => randomBytes(32).toString("hex");
 
 // ---- sign-in verification ----
@@ -428,8 +460,15 @@ test("a match is kept once a majority of its riders report the same result, and 
   );
   const alice = await f.history.history("alice", undefined);
   assert.equal(alice.matches.length, 1);
-  assert.equal(alice.matches[0]!.you, f.ids[0]);
-  assert.deepEqual(alice.matches[0]!.result, result);
+  assertPublishedResult(alice.matches[0]!.result, result);
+  assert.equal(
+    alice.matches[0]!.you,
+    alice.matches[0]!.result.players[0]!.playerId,
+  );
+  assert.equal(
+    alice.matches[0]!.accounts[alice.matches[0]!.you!],
+    publicIdOf("alice"),
+  );
   assert.equal(
     JSON.stringify(alice).includes("uidByPlayer"),
     false,
@@ -539,10 +578,10 @@ test("a forged result cannot displace or block the honest one", async () => {
     "one vote of three never confirms",
   );
   assert.deepEqual((await f.history.history("mallory", undefined)).matches, []);
-  assert.equal(
-    (await f.history.history("alice", undefined)).matches[0]!.result.winnerId,
-    f.ids[0],
-  );
+  const published = (await f.history.history("alice", undefined)).matches[0]!
+    .result;
+  assertPublishedResult(published, honest);
+  assert.equal(published.winnerId, published.players[0]!.playerId);
 });
 
 test("a rider who quit can corroborate, and an address is limited as well as a seat", async () => {
@@ -697,6 +736,7 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   const round: MatchResult = {
     ...signedIn,
     round: 1,
+    roundDuration: { version: 1, ticks: 20 },
     length: 1,
     players: signedIn.players.map((p) => ({
       ...p,
@@ -728,11 +768,20 @@ test("the public feed lists every confirmed game newest first, guests' too, but 
   for (const secret of [f.code, "alice", "bob", "uidByPlayer", "roomCode"])
     assert.equal(text.includes(secret), false, `${secret} stays private`);
   const alice = await f.history.feed("viewer", "alice", undefined);
-  assert.deepEqual(
-    alice.matches.map((entry) => entry.you),
-    [f.ids[0], undefined],
+  assert.equal(
+    alice.matches[0]!.you,
+    alice.matches[0]!.result.players[0]!.playerId,
+  );
+  assert.equal(
+    alice.matches[0]!.accounts[alice.matches[0]!.you!],
+    publicIdOf("alice"),
+  );
+  assert.equal(
+    alice.matches[1]!.you,
+    undefined,
     "a signed-in viewer sees only their own seat",
   );
+  assert.notEqual(alice.matches[0]!.you, f.ids[0]);
   assert.deepEqual(
     (
       await f.history.feed("viewer", undefined, guest.matches[0]!.endedAt)
@@ -1271,13 +1320,21 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
       })
     ).json()) as {
       profile: { totals: { wins: number } };
-      matches: { you: string; avatars: Record<string, string> }[];
+      matches: {
+        you: string;
+        avatars: Record<string, string>;
+        accounts: Record<string, string>;
+        result: MatchResult;
+      }[];
     };
     assert.equal(mine.matches.length, 1);
-    assert.equal(mine.matches[0]!.you, peerId(created.token));
-    assert.deepEqual(mine.matches[0]!.avatars, {
-      [peerId(created.token)]: AVATARS[0]!.id,
-      [peerId(guest)]: AVATARS[0]!.id,
+    const listed = mine.matches[0]!;
+    assertPublishedResult(listed.result, result);
+    assert.equal(listed.you, listed.result.players[0]!.playerId);
+    assert.equal(listed.accounts[listed.you], publicIdOf("alice"));
+    assert.deepEqual(listed.avatars, {
+      [listed.result.players[0]!.playerId]: AVATARS[0]!.id,
+      [listed.result.players[1]!.playerId]: AVATARS[0]!.id,
     });
     assert.equal(mine.profile.totals.wins, 1);
     assert.equal((await call("/api/matches?before=-1")).status, 400);
@@ -1293,10 +1350,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     assert.equal(everyone.matches.length, 1, "the feed needs no sign-in");
     assert.equal(everyone.matches[0]!.you, undefined);
     assert.equal(JSON.stringify(everyone).includes(created.code), false);
-    assert.equal(
-      (await feed("Bearer id:alice")).matches[0]!.you,
-      peerId(created.token),
-    );
+    assert.equal((await feed("Bearer id:alice")).matches[0]!.you, listed.you);
     assert.equal((await feed("Bearer forged")).matches[0]!.you, undefined);
     assert.deepEqual(
       await (
@@ -1319,6 +1373,7 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     const roundResult = {
       ...result,
       round: 1,
+      roundDuration: { version: 1, ticks: 20 },
       length: 1,
       players: result.players.map((p) => ({
         ...p,
@@ -1360,8 +1415,8 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     assert.deepEqual(
       board.players.map((p) => [p.rank, p.elo]),
       [
-        [1, 1016],
-        [2, 984],
+        [1, 1004],
+        [2, 996],
       ],
     );
     assert.equal(board.players[0]!.you, true);
@@ -1415,6 +1470,7 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
   const origin = `http://127.0.0.1:${(service.server.address() as AddressInfo).port}`;
   const result = resultOf([SOLO_RATING_PLAYER_ID, "bot:1"]);
   result.round = 1;
+  result.roundDuration = { version: 1, ticks: 20 };
   result.length = 1;
   result.players = result.players.map((p) => ({
     ...p,
@@ -1484,6 +1540,7 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
     const whole = structuredClone(result);
     delete whole.round;
     whole.players[0]!.roundWins = 1;
+    delete whole.roundDuration;
     const finish = (candidate: unknown, identity?: string) =>
       fetch(`${origin}/api/me/results`, {
         method: "POST",
@@ -1524,8 +1581,23 @@ test("solo HTTP rounds are receipts and finished games credit only personal prog
       await fetch(`${origin}/api/me/matches`, {
         headers: { origin, authorization: "Bearer id:a" },
       })
-    ).json()) as { matches: { result: MatchResult }[] };
+    ).json()) as {
+      matches: {
+        you: string;
+        accounts: Record<string, string>;
+        result: MatchResult;
+      }[];
+    };
     assert.equal(personal.matches.length, 1);
+    assertPublishedResult(personal.matches[0]!.result, whole);
+    assert.equal(
+      personal.matches[0]!.you,
+      personal.matches[0]!.result.players[0]!.playerId,
+    );
+    assert.equal(
+      personal.matches[0]!.accounts[personal.matches[0]!.you],
+      publicIdOf("a"),
+    );
     const feed = (await (
       await fetch(`${origin}/api/matches`, { headers: { origin } })
     ).json()) as { matches: unknown[] };

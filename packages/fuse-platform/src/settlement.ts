@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { calculateElo } from "./elo.js";
+import { guardedElo, type RatingGuard } from "./rating-guard.js";
 import { newRating, type Rating } from "./rating.js";
 import type { AnyGame } from "./game.js";
 import type { MatchRecord } from "./result.js";
@@ -24,7 +24,7 @@ export const ACCOUNT_KEYS = [
  * (`T`, from the game's registration). `rank` is filled in on read, never stored.
  */
 export type Profile<T extends object = object> = Account &
-  T & { rating?: Rating; rank?: number };
+  T & { rating?: Rating; rank?: number; ratingGuard?: RatingGuard };
 
 export interface RivalCredit {
   uid: string;
@@ -157,6 +157,9 @@ export function settleHistory<T>(
   const eligible =
     game.ratesRounds !== false &&
     match.result.round !== undefined &&
+    game.minRatedRoundTicks !== undefined &&
+    match.result.roundDuration !== undefined &&
+    match.result.roundDuration.ticks >= game.minRatedRoundTicks &&
     !ratingClaimed &&
     !match.ratings &&
     match.ratingScope &&
@@ -168,13 +171,16 @@ export function settleHistory<T>(
   if (!eligible) return { profiles: updated, rivals, claimed: false };
   const field = humans.map((p) => ({
     id: p.playerId,
+    uid: match.uidByPlayer[p.playerId]!,
+    opponentKey: opaqueOpponent(match.uidByPlayer[p.playerId]!),
+    guard: profiles.get(match.uidByPlayer[p.playerId]!)?.ratingGuard,
     rating: (
       profiles.get(match.uidByPlayer[p.playerId]!)?.rating ?? newRating()
     ).value,
     score: p.matchScoreUnits,
     wins: p.roundWins,
   }));
-  const calculated = calculateElo(field, (id) => game.isBot(id));
+  const calculated = guardedElo(field, now);
   match.ratings = {};
   // All players share a timestamp later than their previous settlement, even if clocks step backwards.
   const at = Math.max(
@@ -195,7 +201,8 @@ export function settleHistory<T>(
       profile.updatedAt = now;
     }
     const rating = profile.rating ?? newRating(),
-      value = calculated.get(player.id)!;
+      value = calculated.values.get(player.id)!;
+    profile.ratingGuard = calculated.guards.get(player.uid)!;
     const point = {
       match: match.id,
       at,

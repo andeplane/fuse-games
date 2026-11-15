@@ -139,6 +139,10 @@ export function roundResult(
     matchId: room.session?.id ?? room.matchId,
     length: 1,
     round: room.session?.done ?? 1,
+    roundDuration: {
+      version: 1,
+      ticks: room.decided.clock - room.matchStartTick,
+    },
     winnerId: room.decided.winner,
     finishers: [...room.decided.finishers],
     players: list,

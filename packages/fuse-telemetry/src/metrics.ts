@@ -277,6 +277,13 @@ export class MetricsStore {
       sessions.set(event.sessionId, (sessions.get(event.sessionId) ?? 0) + 1);
     const charges: QuotaCharge[] = [
       {
+        dimension: "events-global-day",
+        identity: "global",
+        cost: events.length,
+        limit: 100_000,
+        windowMs: DAY,
+      },
+      {
         dimension: "events-ip-minute",
         identity: rateLimitAddress(address),
         cost: events.length,

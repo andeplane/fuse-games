@@ -74,6 +74,10 @@ export const DEBUG_LIMITS = {
   dailyRecordingMs: 2 * 60 * 60 * 1000,
   dailySessions: 20,
   dailyReports: 50,
+  dailyAnonymousReports: 5,
+  dailyGlobalReports: 500,
+  dailyGlobalReportBytes: 100 * 1024 * 1024,
+  anonymousRetentionMs: 2 * 86400_000,
   mediaRetentionMs: 30 * 86400_000,
   textRetentionMs: 365 * 86400_000,
 } as const;

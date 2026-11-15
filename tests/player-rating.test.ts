@@ -73,6 +73,7 @@ function result(ids: string[], matchId = "match-1"): MatchResult {
     matchId,
     length: 1,
     round: 1,
+    roundDuration: { version: 1, ticks: 20 },
     players,
     finishers: ids.filter((id) => !id.startsWith("bot:")).sort(),
   };
@@ -180,9 +181,9 @@ test("human Elo settles exactly once, graph and public rank agree, AI positions 
   assert.equal((await f.history.profile("user0"))?.rating, undefined);
   await f.report(1, match);
   const first = (await f.history.profile("user0"))!;
-  assert.equal(first.rating!.value, 1016);
+  assert.equal(first.rating!.value, 1004);
   assert.equal(first.rank, 1);
-  assert.equal((await f.history.profile("user1"))!.rating!.value, 984);
+  assert.equal((await f.history.profile("user1"))!.rating!.value, 996);
   assert.equal(first.career, undefined);
   assert.equal(first.totals.matches, 0);
   assert.equal(first.rating!.points[0]!.after, first.rating!.value);
@@ -192,8 +193,8 @@ test("human Elo settles exactly once, graph and public rank agree, AI positions 
   assert.deepEqual(
     board.map((p) => [p.rank, p.elo, p.you]),
     [
-      [1, 1016, true],
-      [2, 984, undefined],
+      [1, 1004, true],
+      [2, 996, undefined],
     ],
   );
   assert.equal(JSON.stringify(board).includes("user0"), false);
@@ -203,11 +204,11 @@ test("human Elo settles exactly once, graph and public rank agree, AI positions 
   await f.report(0, onlyAI);
   assert.equal((await f.history.profile("user0"))!.rating!.games, 1);
   assert.equal((await f.history.profile("user0"))!.rating!.rounds, 1);
-  assert.equal((await f.history.profile("user0"))!.rating!.value, 1016);
+  assert.equal((await f.history.profile("user0"))!.rating!.value, 1004);
   assert.equal((await f.history.profile("user0"))!.career, undefined);
   await f.history.rename("user0", { username: "New name" });
   assert.equal((await f.history.leaderboard("board-ip"))[0]!.name, "New name");
-  assert.equal((await f.history.profile("user0"))!.rating!.value, 1016);
+  assert.equal((await f.history.profile("user0"))!.rating!.value, 1004);
 });
 
 test("one signed-in human records a zero-change round; late sign-in cannot rewrite a settled field", async () => {
@@ -252,8 +253,8 @@ test("a rider who left, joined late or played as a guest is left out instead of 
     );
     if (mode !== "departure")
       await f.report(2, match, mode === "guest" ? null : "user2");
-    assert.equal((await f.history.profile("user0"))!.rating!.value, 1016, mode);
-    assert.equal((await f.history.profile("user1"))!.rating!.value, 984, mode);
+    assert.equal((await f.history.profile("user0"))!.rating!.value, 1004, mode);
+    assert.equal((await f.history.profile("user1"))!.rating!.value, 996, mode);
     const third = await f.history.profile("user2");
     assert.equal(third?.rating, undefined, mode);
     assert.equal(third?.totals.matches, undefined);
@@ -270,7 +271,7 @@ test("a rider who left, joined late or played as a guest is left out instead of 
         async (i) => (await f.history.profile(`user${i}`))!.rating!.value,
       ),
     ),
-    [1016, 1000, 984],
+    [1004, 1000, 996],
   );
 });
 
@@ -294,7 +295,7 @@ test("conflicting reports for the same match cannot rate twice; concurrent match
   ]);
   const rating = (await f.history.profile("user0"))!.rating!;
   assert.equal(rating.games, 3);
-  assert.ok(rating.value < 1048 && rating.value > 1040);
+  assert.ok(rating.value < 1014 && rating.value > 1011);
   assert.equal(rating.points[1]!.before, rating.points[0]!.after);
   assert.equal(rating.points[2]!.before, rating.points[1]!.after);
 });
@@ -407,7 +408,7 @@ test("rating graphs retain the latest 100 points without resetting current Elo o
   assert.equal(
     (await database.matchesFor(GAME_ID, "a", 2, 20))[0]!.ratings![ids[0]!]!
       .after,
-    1016,
+    1004,
   );
 });
 
@@ -469,6 +470,7 @@ test("rounds settle separately before game completion; final game credits career
   const before = (await f.history.profile("user0"))!.rating;
   const fullGame = result(f.ids);
   delete fullGame.round;
+  delete fullGame.roundDuration;
   fullGame.length = 2;
   fullGame.players[0]!.roundsPlayed = fullGame.players[1]!.roundsPlayed = 2;
   fullGame.players[0]!.combat!.victims[f.ids[1]!] = 2;
@@ -499,8 +501,8 @@ test("a guest winning the round does not change the signed-in humans' pairwise E
   await f.report(2, round, null);
   await f.report(1, round);
   await f.report(0, round);
-  assert.equal((await f.history.profile("user0"))!.rating!.value, 1016);
-  assert.equal((await f.history.profile("user1"))!.rating!.value, 984);
+  assert.equal((await f.history.profile("user0"))!.rating!.value, 1004);
+  assert.equal((await f.history.profile("user1"))!.rating!.value, 996);
   assert.equal(await f.history.profile("user2"), undefined);
 });
 test("round parser enforces its roster and single-round bounds at report and storage boundaries", () => {
@@ -557,9 +559,9 @@ test("account round quota exhaustion cannot register a guest vote and can recove
   assert.equal((await history.profile("user0"))?.rating, undefined);
   db.limited = false;
   await report(2);
-  assert.equal((await history.profile("user0"))!.rating!.value, 1016);
+  assert.equal((await history.profile("user0"))!.rating!.value, 1004);
   assert.equal((await history.profile("user1"))!.rating!.value, 1000);
-  assert.equal((await history.profile("user2"))!.rating!.value, 984);
+  assert.equal((await history.profile("user2"))!.rating!.value, 996);
 });
 
 test("a real simulation round reaches history settlement before the multi-round game ends", async () => {
@@ -602,8 +604,8 @@ test("a real simulation round reaches history settlement before the multi-round 
     a.matchScoreUnits === b.matchScoreUnits
       ? 1000
       : a.matchScoreUnits > b.matchScoreUnits
-        ? 1016
-        : 984;
+        ? 1004
+        : 996;
   assert.equal((await f.history.profile("user0"))!.rating!.value, expected);
   assert.equal((await f.history.profile("user0"))!.rating!.games, 1);
   assert.equal((await f.history.profile("user0"))!.totals.matches, 0);
@@ -647,7 +649,7 @@ test("solo round records retain an existing competitive Elo", async () => {
   const reporter = await f.history.admitSolo("user0", "ip");
   await f.history.submitSolo(reporter, { result: solo }, "user0");
   const rating = (await f.history.profile("user0"))!.rating!;
-  assert.equal(rating.value, 1016);
+  assert.equal(rating.value, 1004);
   assert.equal(rating.rounds, 1);
   assert.equal(rating.points.length, 1);
   await assert.rejects(

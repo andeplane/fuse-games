@@ -11,6 +11,8 @@ import {
   MemoryPrivateObjectStorage,
 } from "fuse-telemetry/debug-memory";
 import { MemoryActionDatabase } from "fuse-telemetry/action-adapters";
+import { reportKey } from "fuse-telemetry/debug-store";
+import { DEBUG_LIMITS } from "fuse-telemetry/debug-contracts";
 import {
   TranscriptionWorker,
   transcriptionWorkerHttp,
@@ -24,6 +26,7 @@ import {
 test("actual HTTP joins anonymous metrics/reports, admin audio, durable extraction and scoped work claims", async (t) => {
   const now = Date.UTC(2026, 10, 14, 12);
   const objects = new MemoryPrivateObjectStorage();
+  const debugDatabase = new MemoryDebugDatabase();
   const services = createTelemetryServices({
     gameIds: ["dice"],
     now: () => now,
@@ -31,8 +34,9 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
       token === "test-admin"
         ? { uid: "admin", email: "andersullnass@gmail.com" }
         : undefined,
+    identity: async (token) => (token === "test-player" ? "player" : undefined),
     metricsDatabase: new MemoryTelemetryDatabase(),
-    debugDatabase: new MemoryDebugDatabase(),
+    debugDatabase,
     actionDatabase: new MemoryActionDatabase(),
     objects,
     recordingEnabled: true,
@@ -135,8 +139,15 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
       },
     ],
   };
-  assert.equal((await request("/api/telemetry/events", batch)).status, 200);
-  assert.equal((await request("/api/telemetry/events", batch)).status, 200);
+  const admission = await (await request("/api/telemetry/session", {})).json();
+  assert.equal(
+    (await request("/api/telemetry/events", batch, admission.token)).status,
+    200,
+  );
+  assert.equal(
+    (await request("/api/telemetry/events", batch, admission.token)).status,
+    200,
+  );
   const metrics = await (
     await request(
       "/api/dev/metrics?period=day&from=2026-11-14&to=2026-11-14",
@@ -146,6 +157,27 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
   ).json();
   assert.equal(metrics.series[0].events, 1);
   assert.equal(metrics.series[0].roundStarts, 1);
+  const playerReportId = randomUUID();
+  assert.equal(
+    (
+      await request(
+        "/api/telemetry/reports",
+        {
+          id: playerReportId,
+          gameId: "dice",
+          category: "bug",
+          text: "Player report",
+          createdAt: now,
+        },
+        "test-player",
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await debugDatabase.read(reportKey(playerReportId)))?.expiresAt,
+    now + DEBUG_LIMITS.textRetentionMs,
+  );
   const recordingId = randomUUID();
   const recording = { id: recordingId, gameId: "dice", startedAt: now };
   assert.equal(
