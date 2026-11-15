@@ -113,9 +113,9 @@ body:has(.dice-lobby:not([hidden])) .dice-status {
   padding: 0 var(--fui-space-3);
   color: var(--fui-pink-soft);
 }
-/* Table: it starts under the bar, which is fixed over the page. */
+/* Table: it starts under the bar, which is fixed over the page, below a phone's notch. */
 .dice-room[data-screen="table"] {
-  padding-top: 4rem;
+  padding-top: calc(max(12px, env(safe-area-inset-top)) + 52px);
 }
 .dice-table {
   display: grid;
