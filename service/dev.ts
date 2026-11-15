@@ -19,6 +19,9 @@ import {
   type Platform,
 } from "fuse-platform";
 import { platform } from "./history.js";
+import { randomBytes } from "node:crypto";
+import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
+import { songScoresHttp } from "./song-scores.js";
 import { createTimingLogHttp } from "./timing-log.js";
 import { FIREBASE_PROJECT_ID } from "../games/fuse-riders/src/shared/firebase-config.js";
 import {
@@ -53,6 +56,7 @@ export function createDevRoomService(
     ...options,
     httpExtension: (store) => {
       const history = new MemoryHistoryDatabase(games, now);
+      const identity = options.identity ?? createIdentityVerifier(FIREBASE_PROJECT_ID);
       const http = createPlatformHttp({
         history: new HistoryStore(games, history, store, now),
         friends: new FriendsStore(
@@ -62,8 +66,7 @@ export function createDevRoomService(
           store,
           now,
         ),
-        identity:
-          options.identity ?? createIdentityVerifier(FIREBASE_PROJECT_ID),
+        identity,
       });
       const telemetry =
         options.telemetry ??
@@ -75,6 +78,7 @@ export function createDevRoomService(
           now,
         }).http;
       return composeHttp(
+        songScoresHttp(new MemoryTelemetryDatabase(), history, identity, randomBytes(32).toString("hex"), now),
         telemetry,
         options.timingLogDirectory
           ? composeHttp(createTimingLogHttp(options.timingLogDirectory), http)

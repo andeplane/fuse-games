@@ -123,6 +123,28 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "fuse-production-telemetry-song-runs",
+      "fieldPath": "cleanupAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "fuse-production-telemetry-song-active",
+      "fieldPath": "cleanupAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "fuse-production-telemetry-song-runs",
+      "fieldPath": "inputs",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "fuse-production-telemetry-song-boards",
+      "fieldPath": "players",
+      "indexes": []
+    },
+    {
       "collectionGroup": "fuse-production-telemetry-events",
       "fieldPath": "cleanupAt",
       "ttl": true,

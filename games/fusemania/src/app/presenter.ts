@@ -15,6 +15,7 @@ import {
   type PlayerView,
 } from "../engine/index.js";
 import type { SessionView, View } from "../online/game.js";
+import { scorePercent } from "../song-scores.js";
 
 /**
  * What the page shows, decided from one frame: the screen (the lobby with its song select, the note field, or a
@@ -57,11 +58,9 @@ export function grade(rating: number): string {
               ? "C"
               : "D";
 }
-export const percent = (rating: number): string =>
-  `${(Math.floor((rating / FULL_RATING) * 1000) / 10).toFixed(1)}%`;
-/** A rating as a score with thousands separators. */
-export const scoreText = (rating: number): string =>
-  String(rating).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+export const percent = scorePercent;
+/** A rating displayed as its percentage of the chart's possible points. */
+export const scoreText = scorePercent;
 /** What a best result reads as on a chart chip. */
 export const bestText = (rating: number): string =>
   `${grade(rating)} ${percent(rating)}`;
@@ -165,6 +164,7 @@ export interface Model {
   chartNames: string[];
   /** Each player's session total before this song, by slot; empty when the song is not one of a session. */
   totals: number[];
+  totalSongs: number;
   /** The song being played, after its number in a session: "SONG 2 OF 5 · NEON KICKOFF". */
   title: string;
   /** One line for a phone controller. */
@@ -249,7 +249,7 @@ const standingRows = (
     slot:
       view.seats.find((seat) => seat.id === score.id && !seat.watcher)?.slot ??
       -1,
-    points: scoreText(score.points),
+    points: scoreText(score.points / session.length),
     wins: score.wins
       ? `${score.wins} ${score.wins === 1 ? "WIN" : "WINS"}`
       : "",
@@ -502,6 +502,7 @@ export function present(
             );
           })
         : [],
+    totalSongs: session?.length ?? 1,
     title,
     status,
     note,

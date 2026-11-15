@@ -150,11 +150,11 @@ export function resultReport(
     you: row.you,
     ...(row.bot ? { tag: "AI" } : {}),
     friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [row.grade, row.score, row.accuracy, row.maxCombo],
+    values: [row.grade, row.score, row.maxCombo],
   }));
   const songStandings = {
     nameLabel: "PLAYER",
-    columns: ["GRADE", "SCORE", "ACCURACY", "MAX COMBO"],
+    columns: ["GRADE", "SCORE %", "MAX COMBO"],
     rows: songRows,
   };
   const alone = result.rows.length === 1,
@@ -186,14 +186,14 @@ export function resultReport(
       headline: result.title,
       ...(leader
         ? {
-            summary: `${leader.points} points${leader.wins ? ` · ${leader.wins.toLowerCase()}` : ""}`,
+            summary: `${leader.points} of the session maximum${leader.wins ? ` · ${leader.wins.toLowerCase()}` : ""}`,
             ...(leader.slot >= 0 ? { accent: parts.color(leader.slot) } : {}),
           }
         : {}),
       standings: {
         title: "FINAL STANDINGS",
         nameLabel: "PLAYER",
-        columns: ["POINTS", "WINS"],
+        columns: ["SESSION %", "WINS"],
         rows: result.session.rows.map((row, index) => ({
           id: `${index}`,
           placement: row.place,
@@ -228,7 +228,7 @@ export function resultReport(
     ...(alone && first ? { emblem: first.grade } : {}),
     ...(first
       ? {
-          summary: `${first.score} · ${first.accuracy} · ${first.chart}`,
+          summary: `${first.score} · ${first.chart}`,
           accent: parts.color(first.slot),
         }
       : {}),

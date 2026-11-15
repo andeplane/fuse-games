@@ -8,7 +8,39 @@ import {
   NO_JUDGMENT,
   LEAD_IN_MS,
   SOLO_LEAD_IN_MS,
+  createWorld,
+  stepWorld,
+  rating,
+  SCORE_MODE,
+  TICK_MS,
 } from "../src/engine/index.js";
+
+test("captured local input events replay to the actual result, including delayed/duplicated mesh delivery", () => {
+  const { mesh, host } = match();
+  lossy(mesh, 4812);
+  assert.deepEqual(host.scoreInputs(), []);
+  const play = fingers(host, 35);
+  mesh.run(library.song("grid")!.endMs + LEAD_IN_MS + 4000, play);
+  const inputs = host.scoreInputs();
+  assert.ok(inputs && inputs.length > 100);
+  const room = host.roomState()!, world = createWorld(library, "grid", SCORE_MODE, 0, [{ id: "host", bot: false, chart: 0 }], LEAD_IN_MS)!;
+  let next = 0;
+  while (world.phase !== "over") {
+    const due = [];
+    while (inputs[next]?.at === world.ms + TICK_MS) { const input = inputs[next++]!; due.push({ slot: 0, code: input.code, ms: input.ms }); }
+    stepWorld(library, world, due);
+  }
+  const own = room.world!.players.find(player => player.id === host.self)!;
+  assert.equal(world.players[0]!.score, own.score);
+  assert.equal(rating(library.steps("grid", 0)!, world.players[0]!.score), mesh.frames.get("host")!.at(-1)!.world!.players.find(player => player.id === host.self)!.rating);
+  host.resync();
+  assert.equal(host.scoreInputs(), undefined);
+});
+
+test("an input recording begun after the song starts is ineligible", () => {
+  const { mesh, host } = match(); mesh.run(6000);
+  assert.equal(host.scoreInputs(), undefined);
+});
 import { createFusemaniaGame } from "../src/online/game.js";
 import { FusemaniaRuntime } from "../src/online/runtime.js";
 import { Mesh, type TestRuntime } from "./fixtures/mesh.js";
