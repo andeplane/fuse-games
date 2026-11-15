@@ -41,7 +41,13 @@ import {
 
 import { hiddenAtStart, parseShown } from "../src/lab/shown.js";
 
-import { coversAll, dragSpan, grabAt, partsMix } from "../src/lab/band.js";
+import {
+  coversAll,
+  dragSpan,
+  grabAt,
+  partAt,
+  partsMix,
+} from "../src/lab/band.js";
 
 import { parseNotesUpload, writeNotesUpload } from "../src/lab/notes-upload.js";
 import {
@@ -390,6 +396,14 @@ test("chart lab: a box over the whole axis turns nothing down", () => {
   assert.equal(coversAll({ from: 0.6, to: 399.5 }, 0, 400), true);
   assert.equal(coversAll({ from: 20, to: 400 }, 0, 400), false);
   assert.equal(coversAll({ from: 0, to: 380 }, 0, 400), false);
+});
+
+test("chart lab: a click on the axis names the part under it", () => {
+  const span = { from: 100, to: 200 };
+  assert.equal(partAt(span, 40), "below");
+  assert.equal(partAt(span, 100), "band");
+  assert.equal(partAt(span, 150), "band");
+  assert.equal(partAt(span, 201), "above");
 });
 
 test("chart lab: each of the three parts of the spectrum can be muted", () => {

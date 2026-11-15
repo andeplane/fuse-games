@@ -72,6 +72,7 @@ import {
   coversAll,
   dragSpan,
   grabAt,
+  partAt,
   type Grab,
   type Span,
 } from "./band.js";
@@ -226,12 +227,6 @@ const gridInput = el("input", {
   checked: true,
   title: "Draw 16th lines over the spectrogram",
 });
-/** The three parts the listening band splits the song into: untick one to mute it. */
-const hearInput = (checked: boolean, title: string) =>
-  el("input", { type: "checkbox", checked, title });
-const hearBelow = hearInput(false, "Hear what is below the listening band");
-const hearBand = hearInput(true, "Hear the listening band itself");
-const hearAbove = hearInput(false, "Hear what is above the listening band");
 const editInput = el("input", {
   type: "checkbox",
   title: "Click a lane to add or remove a tap",
@@ -310,18 +305,6 @@ app.append(
     viewSelect,
     el("label", {}, "floor ", floorInput),
     el("label", {}, gridInput, " 16ths"),
-    el(
-      "span",
-      {
-        className: "lab-hear",
-        title:
-          "Drag a box on the spectrogram (or the bar above it) to set the listening band, then choose which parts play",
-      },
-      "hear ",
-      el("label", {}, hearBelow, " below"),
-      el("label", {}, hearBand, " band"),
-      el("label", {}, hearAbove, " above"),
-    ),
     el("label", {}, editInput, " edit"),
     el("label", { className: "lab-record" }, recordInput, " record"),
     button(
@@ -434,11 +417,9 @@ let aboveGain: GainNode | undefined;
 let belowFilters: BiquadFilterNode[] = [];
 let bandFilters: BiquadFilterNode[] = [];
 let aboveFilters: BiquadFilterNode[] = [];
-const hear = () => ({
-  below: hearBelow.checked,
-  band: hearBand.checked,
-  above: hearAbove.checked,
-});
+/** Which parts are heard; a click on a part of the frequency bar switches it. */
+const heardParts = { below: true, band: true, above: true };
+const hear = () => heardParts;
 /** The current animation loop; a stop or a new start retires the one before it. */
 let frameLoop = 0;
 
@@ -1015,9 +996,23 @@ function draw(): void {
     g.fillText(hz >= 1000 ? `${hz / 1000}k` : String(hz), x + 2, 22);
   }
   g.fillText(isModel() ? "mel bands (Hz) →" : "frequency (Hz) →", specX, 10);
-  // The listening box, always there, with a handle on each edge.
-  g.fillStyle = band ? "rgba(59,255,208,0.22)" : "rgba(59,255,208,0.08)";
-  g.fillRect(listening.from, 1, listening.to - listening.from, HEADER - 2);
+  // The listening box, always there, with a handle on each edge. With a band set, the bar shows the three parts:
+  // green where the song is heard (stronger on the band), red where it is muted. A click on a part switches it.
+  if (band) {
+    const heard = hear();
+    const part = (on: boolean, from: number, to: number, strong: boolean) => {
+      g.fillStyle = on
+        ? `rgba(59,255,140,${strong ? 0.5 : 0.2})`
+        : "rgba(255,70,90,0.42)";
+      g.fillRect(from, 1, Math.max(0, to - from), HEADER - 2);
+    };
+    part(heard.below, specX, listening.from, false);
+    part(heard.band, listening.from, listening.to, true);
+    part(heard.above, listening.to, specX + layout.specW, false);
+  } else {
+    g.fillStyle = "rgba(59,255,208,0.08)";
+    g.fillRect(listening.from, 1, listening.to - listening.from, HEADER - 2);
+  }
   g.fillStyle = "#3bffd0";
   g.fillRect(listening.from, 1, 3, HEADER - 2);
   g.fillRect(listening.to - 3, 1, 3, HEADER - 2);
@@ -1543,7 +1538,8 @@ interface Drag {
 }
 let drag: Drag | undefined;
 /** A drag on the frequency axis: where it started, the box as it was, and what it took hold of. */
-let bandDrag: { x: number; start: Span; grab: Grab } | undefined;
+let bandDrag:
+  { x: number; start: Span; grab: Grab; moved: boolean } | undefined;
 
 /** The listening band on the frequency axis as it is drawn now, in canvas pixels. */
 function bandSpan(): Span {
@@ -1578,7 +1574,7 @@ canvas.addEventListener("pointerdown", (event) => {
       return;
     }
     const span = bandSpan();
-    bandDrag = { x, start: span, grab: grabAt(span, x) };
+    bandDrag = { x, start: span, grab: grabAt(span, x), moved: false };
     canvas.setPointerCapture(event.pointerId);
     return;
   }
@@ -1597,6 +1593,9 @@ canvas.addEventListener("pointermove", (event) => {
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
   if (bandDrag) {
+    // A press that does not move is a click (it switches a part on pointerup), not a drag of the box.
+    if (!bandDrag.moved && Math.abs(x - bandDrag.x) < 4) return;
+    bandDrag.moved = true;
     const { specX, specW } = layout;
     const span = dragSpan(
       bandDrag.start,
@@ -1634,6 +1633,7 @@ canvas.addEventListener("dblclick", (event) => {
   const rect = canvas.getBoundingClientRect();
   if (event.clientY - rect.top >= HEADER || !band) return;
   band = undefined;
+  heardParts.below = heardParts.band = heardParts.above = true;
   applyBand();
   draw();
 });
@@ -1645,7 +1645,15 @@ canvas.addEventListener("pointercancel", () => {
 
 canvas.addEventListener("pointerup", (event) => {
   if (bandDrag) {
+    const press = bandDrag;
     bandDrag = undefined;
+    if (!press.moved && band) {
+      // A click on the bar: the part under it (below the band, the band, above it) is muted or heard again.
+      const part = partAt(press.start, press.x);
+      heardParts[part] = !heardParts[part];
+      applyBand();
+      draw();
+    }
     return;
   }
   if (!drag) return;
@@ -2180,12 +2188,6 @@ floorInput.oninput = () => {
   draw();
 };
 gridInput.onchange = () => draw();
-for (const input of [hearBelow, hearBand, hearAbove])
-  input.onchange = () => {
-    input.blur(); // keys go back to the page: space plays, it does not tick the box again
-    applyBand();
-    draw();
-  };
 recordInput.onchange = () => {
   document.body.classList.toggle("lab-recording", recordInput.checked);
   recordInput.blur();

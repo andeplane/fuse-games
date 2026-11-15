@@ -69,6 +69,11 @@ export interface Hear {
   readonly above: boolean;
 }
 
+/** The part of the spectrum a point on the axis lies in, for a band drawn at `span`. */
+export function partAt(span: Span, x: number): keyof Hear {
+  return x < span.from ? "below" : x > span.to ? "above" : "band";
+}
+
 /** The gain of each path of the playback graph: the untouched song, and the three parts the band splits it into. */
 export interface PartsMix {
   readonly dry: number;
