@@ -323,6 +323,10 @@ try {
   await page.getByRole("button", { name: "Clear taps", exact: true }).click();
   assert.equal(await customNotes(), 0);
   await page.getByRole("button", { name: "Reset edits", exact: true }).click();
+  // Collect each page load separately so coverage of the editor actions survives
+  // the persistence reload.
+  await finish();
+  finish = await startGameCoverage(page, { gameId: "fusemania" });
   await page.reload();
   await page.waitForFunction(
     () => (window as unknown as LabWindow).chartLab?.state().frames > 0,
