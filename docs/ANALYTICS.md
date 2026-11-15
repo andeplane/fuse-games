@@ -106,6 +106,7 @@ ledger capacity can forget their oldest marks; these metrics are not billing rec
 | Ball Bros         | Survival game; playing until over                                                |
 | Fuseball          | Whole first-to-three match; first active play, not each point                    |
 | Fuse Volley       | Whole match; first actual rally, not each serve/point                            |
+| Fuse Surge        | Engine round; surges running, completion once the break after it is confirmed    |
 | Fuse Front        | Battle, once its start tick is reached                                           |
 | Graveyard Shift   | One shift                                                                        |
 | Fuse Craft        | One scenario/match; sandbox has no invented end                                  |
@@ -122,7 +123,8 @@ versus the rest of the match); round participation uses an explicit constant key
 Existing game-specific events use the same namespace and privacy boundary:
 Riders' funnel/settings/graphics events and confirmed human-owned `Kill`/`Miss`,
 Killer Fuse's decided `Game Ended`, Fuseball's `Goal Scored`, Volley's
-`Point Scored` and Elasto's `Race Finished`. No per-tick stream is added.
+`Point Scored`, Elasto's `Race Finished` and Fuse Surge's `Round Decided` (how a round
+ended: `reason`, `won`, `riders`, `seconds` with 0 for an endless round, `hits`). No per-tick stream is added.
 Riders weapon credit follows the authoritative decided shot log, not speculative
 rendered explosions; the shooter reports its own shots and bots have no user identity.
 

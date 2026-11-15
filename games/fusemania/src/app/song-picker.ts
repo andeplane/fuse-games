@@ -332,15 +332,7 @@ export function createSongPicker(options: SongPickerOptions): SongPicker {
     const element = push("fm-picker-pack");
     element.setAttribute("role", "tab");
     element.setAttribute("aria-selected", "false");
-    const count = order.filter((row) => row.pack === index).length;
-    element.append(
-      el("span", pack.name, "fm-picker-pack-name"),
-      el(
-        "span",
-        count === 1 ? "1 SONG" : `${count} SONGS`,
-        "fm-picker-pack-count",
-      ),
-    );
+    element.append(el("span", pack.name, "fm-picker-pack-name"));
     element.addEventListener("click", () => {
       const first = order.find((row) => row.pack === index);
       if (first && shown?.host && rows.get(shown.song)?.pack !== index)
