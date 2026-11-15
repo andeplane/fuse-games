@@ -215,7 +215,7 @@ export function createHistoryHttp(
 }
 
 const FRIENDS_ROUTE =
-  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
+  /^\/api\/(?:friends(?:\/sync|\/search|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
 
 /**
  * Friends, presence and invites: account routes, so shared by every game and never under `/api/games/:gameId/`.
@@ -239,6 +239,11 @@ export function createFriendsHttp(
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
       if (!FRIENDS_ROUTE.test(pathname)) return false;
+      if (
+        pathname === "/api/friends/search" &&
+        !inviteLookups.take(clientAddress)
+      )
+        throw new RoomError(429, "Too many searches; try later");
       const json = (value: unknown, status = 200) => {
         res.writeHead(status, {
           "Content-Type": "application/json",
@@ -279,6 +284,10 @@ export function createFriendsHttp(
       }
       if (pathname === "/api/friends/sync" && req.method === "POST") {
         json(await store.sync(uid, await readJson(req)));
+        return true;
+      }
+      if (pathname === "/api/friends/search" && req.method === "GET") {
+        json({ players: await store.search(uid, url.searchParams.get("q")) });
         return true;
       }
       if (pathname === "/api/friends" && req.method === "POST") {
