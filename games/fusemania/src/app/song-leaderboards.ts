@@ -1,4 +1,5 @@
 import { el, button } from "fuse-ui";
+import { chartSlots } from "../chart-slots.js";
 import {
   SCORE_DIFFICULTIES,
   scorePercent,
@@ -9,12 +10,13 @@ import { packsOf, type SongPack } from "./packs.js";
 import { PACKS_DATA } from "./packs-data.js";
 
 export interface ScoreSort {
-  column: "song" | (typeof SCORE_DIFFICULTIES)[number];
+  column: "song" | "pack" | "plays" | (typeof SCORE_DIFFICULTIES)[number];
   direction: "asc" | "desc";
 }
 export function sortScoreSongs(
   songs: readonly SongBoard[],
   sort: ScoreSort,
+  packNames: ReadonlyMap<string, string> = new Map(),
 ): SongBoard[] {
   const title = (a: SongBoard, b: SongBoard) =>
     a.title.localeCompare(b.title, undefined, {
@@ -24,160 +26,274 @@ export function sortScoreSongs(
   const sign = sort.direction === "asc" ? 1 : -1;
   return [...songs].sort((a, b) => {
     if (sort.column === "song") return sign * title(a, b);
-    const score = (song: SongBoard) =>
-      song.charts.find(
-        (chart) => chart.difficulty.toLowerCase() === sort.column.toLowerCase(),
-      )?.top?.rating;
-    const left = score(a),
-      right = score(b);
+    if (sort.column === "pack")
+      return (
+        sign *
+          (packNames.get(a.song) ?? "").localeCompare(
+            packNames.get(b.song) ?? "",
+          ) || title(a, b)
+      );
+    const value = (song: SongBoard) =>
+      sort.column === "plays"
+        ? song.plays
+        : chartSlots(song.charts).find((chart) => chart.slot === sort.column)
+            ?.top?.rating;
+    const left = value(a),
+      right = value(b);
     if (left === undefined || right === undefined)
       return left === right ? title(a, b) : left === undefined ? 1 : -1;
     return sign * (left - right) || title(a, b);
   });
 }
-
 export interface ScoreReader {
   catalog(): Promise<SongBoard[]>;
   leaderboard(song: string, chart: number): Promise<ScoreEntry[]>;
 }
-/** Long, searchable song table with real empty cells; each available difficulty opens its full ranking. */
 export function createSongLeaderboards(
   reader: ScoreReader,
   doc: Document = document,
   options: {
     packs?: readonly SongPack[];
     openPlayer?(publicId: string, name: string): void;
+    playHref?(song: string, chart: number): string;
+    onViewChange?(song?: string): void;
   } = {},
 ) {
   const element = el("section", "", "fm-song-scores", doc);
   element.setAttribute("aria-label", "Song highscores");
-  const note = el(
-    "p",
-    "Top verified score per chart. Select a difficulty for its leaderboard. Sign in before playing Score mode to enter.",
-    "fm-score-note",
+  const browse = el("div", "", "fm-score-browse", doc);
+  const intro = el("div", "", "fm-score-intro", doc);
+  intro.append(
+    el("h1", "Find your next high score.", "", doc),
+    el("p", "Pick a song. See who leads. Make your mark.", "", doc),
+  );
+  const toolbar = el("div", "", "fm-score-toolbar", doc);
+  const searchLabel = el(
+    "label",
+    "Search songs or packs",
+    "fm-score-search-label",
     doc,
   );
   const search = el("input", "", "fm-score-search", doc);
   search.type = "search";
-  search.placeholder = "Find a song";
-  search.setAttribute("aria-label", "Find a song");
+  search.placeholder = "Song title or pack name";
+  searchLabel.append(search);
+  const packLabel = el("label", "Song pack", "", doc);
+  const packFilter = el("select", "", "fm-score-pack-filter", doc);
+  packFilter.setAttribute("aria-label", "Song pack");
+  packLabel.append(packFilter);
+  const sortLabel = el("label", "Sort by", "", doc);
+  const sortSelect = el("select", "", "fm-score-sort-select", doc);
+  sortSelect.setAttribute("aria-label", "Sort by");
+  const columns = ["song", "pack", "plays", ...SCORE_DIFFICULTIES] as const;
+  const labels = ["Song", "Pack", "Verified plays", ...SCORE_DIFFICULTIES];
+  for (const [index, column] of columns.entries()) {
+    for (const direction of ["asc", "desc"] as const) {
+      const option = el(
+        "option",
+        `${labels[index]} · ${column === "song" || column === "pack" ? (direction === "asc" ? "A–Z" : "Z–A") : direction === "asc" ? "lowest first" : "highest first"}`,
+        "",
+        doc,
+      );
+      option.value = `${column}:${direction}`;
+      sortSelect.append(option);
+    }
+  }
+  sortLabel.append(sortSelect);
+  toolbar.append(searchLabel, packLabel, sortLabel);
   const state = el("p", "Loading song scores…", "fm-score-state", doc);
   state.setAttribute("role", "status");
-  const retry = button("RETRY", "", doc);
+  const retry = button("Try again", "fm-score-retry", doc);
   retry.hidden = true;
-  const wrap = el("div", "", "fm-score-scroll", doc);
-  wrap.tabIndex = 0;
-  wrap.setAttribute("role", "region");
-  wrap.setAttribute("aria-label", "Song highscores table");
-  const detail = el("section", "", "fm-score-detail", doc);
-  detail.setAttribute("aria-label", "Selected song leaderboard");
-  const scrollHint = el(
+  const wrap = el("div", "", "fm-score-list", doc);
+  const footnote = el(
     "p",
-    "Scroll sideways to see all four difficulties.",
-    "fm-score-scroll-hint",
+    "Verified plays count signed-in Score-mode completions on the current chart version since tracking began. Guest and Battle runs are excluded.",
+    "fm-score-footnote",
     doc,
   );
+  const detail = el("section", "", "fm-score-detail", doc);
+  detail.hidden = true;
+  detail.setAttribute("aria-label", "Selected song leaderboard");
+  browse.append(intro, toolbar, state, retry, wrap, footnote);
+  element.append(browse, detail);
   let songs: SongBoard[] = [],
     generation = 0,
     disposed = false;
   let sort: ScoreSort = { column: "song", direction: "asc" };
+  let packNames = new Map<string, string>();
+  let returnFocus: HTMLElement | undefined;
   const playerName = (player: ScoreEntry) => {
     if (!options.openPlayer || !player.publicId)
-      return el("span", player.name, "", doc);
+      return el("span", player.name, "fm-score-player", doc);
     const link = button(player.name, "fm-score-player-link", doc);
     link.setAttribute("aria-label", `View ${player.name}'s activity`);
     link.onclick = () => options.openPlayer?.(player.publicId!, player.name);
     return link;
   };
-  let retryAction = () => {
-    void load();
-  };
-  retry.onclick = () => retryAction();
-  const open = (song: SongBoard, chart: SongBoard["charts"][number]) => {
-    const heading = el("h3", "", "", doc);
+  function open(song: SongBoard, chartIndex: number, trigger: HTMLElement) {
+    returnFocus = trigger;
+    const charts = chartSlots(song.charts);
+    browse.hidden = true;
+    detail.hidden = false;
+    options.onViewChange?.(song.title);
+    const heading = el("h1", song.title, "", doc);
     heading.tabIndex = -1;
-    const label = el("label", "Chart", "fm-score-chart-label", doc);
-    const select = el("select", "", "fm-score-chart-select", doc);
-    for (const available of song.charts) {
-      const option = el(
-        "option",
-        `${available.difficulty} · chart ${available.chart + 1}`,
-        "",
-        doc,
-      );
-      option.value = String(available.chart);
-      option.selected = available.chart === chart.chart;
-      select.append(option);
-    }
-    label.append(select);
-    const message = el("p", "Loading leaderboard…", "", doc);
+    const meta = el(
+      "p",
+      `${packNames.get(song.song) ?? ""} · ${song.plays === undefined ? "Play count unavailable" : `${song.plays.toLocaleString()} verified plays`}`,
+      "fm-score-meta",
+      doc,
+    );
+    const tabs = el("div", "", "fm-score-tabs", doc);
+    tabs.setAttribute("role", "group");
+    tabs.setAttribute("aria-label", "Chart difficulty");
+    const actions = el("div", "", "fm-score-detail-actions", doc);
+    const play = el("a", "Play this chart", "fm-score-play", doc);
+    const help = el(
+      "p",
+      "Sign in and finish a song in Score mode to join the leaderboard.",
+      "fm-score-help",
+      doc,
+    );
+    if (options.playHref) actions.append(play);
+    actions.append(help);
+    const message = el("p", "", "fm-score-board-state", doc);
     message.setAttribute("role", "status");
     message.setAttribute("aria-live", "polite");
-    const ranking = el("div", "", "", doc);
-    detail.replaceChildren(heading, label, message, ranking);
-    detail.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-    const loadChart = async (
-      chosen: SongBoard["charts"][number],
-      focusHeading = false,
-    ) => {
+    const ranking = el("div", "", "fm-score-ranking", doc);
+    detail.replaceChildren(heading, meta, tabs, actions, message, ranking);
+    const loadChart = async (chosen: (typeof charts)[number]) => {
       const own = ++generation;
-      heading.textContent = `${song.title} · ${chosen.difficulty} · chart ${chosen.chart + 1}`;
-      message.textContent = "Loading leaderboard…";
+      for (const tab of tabs.querySelectorAll<HTMLButtonElement>("button"))
+        tab.setAttribute(
+          "aria-pressed",
+          String(Number(tab.dataset.chart) === chosen.chart),
+        );
+      if (options.playHref)
+        play.href = options.playHref(song.song, chosen.chart);
+      message.textContent = `Loading ${chosen.slot.toLowerCase()} leaderboard…`;
       ranking.replaceChildren();
-      if (focusHeading) heading.focus?.({ preventScroll: true });
       try {
         const players = await reader.leaderboard(song.song, chosen.chart);
         if (disposed || own !== generation) return;
-        const list = el("ol", "", "fm-score-ranking", doc);
-        for (const player of players) {
-          const row = el("li", "", "", doc);
-          row.append(
-            playerName(player),
-            el("strong", scorePercent(player.rating), "", doc),
-          );
-          list.append(row);
-        }
         message.textContent = players.length
-          ? `${players.length} verified ${players.length === 1 ? "score" : "scores"}.`
-          : "No verified scores yet. Be the first to play this chart.";
-        if (players.length) ranking.append(list);
+          ? `${players.length} verified ${players.length === 1 ? "score" : "scores"} · ${chosen.slot}`
+          : "No scores yet. Set the first one.";
+        if (!players.length) {
+          ranking.append(
+            el(
+              "p",
+              "This leaderboard is waiting for its first finisher.",
+              "fm-score-empty",
+              doc,
+            ),
+          );
+          return;
+        }
+        const table = el("table", "", "fm-score-board", doc);
+        const caption = el(
+          "caption",
+          `${song.title} · ${chosen.slot} leaderboard`,
+          "fm-score-sr-only",
+          doc,
+        );
+        const head = el("thead", "", "", doc),
+          header = el("tr", "", "", doc);
+        for (const label of ["Rank", "Player", "Accuracy"]) {
+          const cell = el("th", label, "", doc);
+          cell.scope = "col";
+          header.append(cell);
+        }
+        head.append(header);
+        const body = el("tbody", "", "", doc);
+        for (const [index, player] of players.entries()) {
+          const row = el("tr", "", "", doc);
+          const name = el("td", "", "", doc);
+          name.append(playerName(player));
+          row.append(
+            el("td", String(index + 1).padStart(2, "0"), "fm-score-rank", doc),
+            name,
+            el("td", scorePercent(player.rating), "fm-score-accuracy", doc),
+          );
+          body.append(row);
+        }
+        table.append(caption, head, body);
+        ranking.append(table);
       } catch {
         if (disposed || own !== generation) return;
-        const again = button("RETRY LEADERBOARD", "", doc);
-        again.onclick = () => {
-          void loadChart(chosen, true);
-        };
         message.textContent = "Could not load this leaderboard.";
+        const again = button("Try again", "fm-score-retry", doc);
+        again.onclick = () => {
+          void loadChart(chosen);
+        };
         ranking.append(again);
       }
     };
-    select.onchange = () => {
-      const chosen = song.charts.find(
-        (available) => available.chart === Number(select.value),
-      );
-      if (chosen) void loadChart(chosen);
-    };
-    void loadChart(chart, true);
-  };
-  const draw = () => {
+    for (const slot of SCORE_DIFFICULTIES) {
+      const chart = charts.find((item) => item.slot === slot);
+      const tab = button(slot, "fm-score-tab", doc);
+      tab.dataset.level = slot.toLowerCase();
+      tab.disabled = !chart;
+      tab.setAttribute("aria-pressed", "false");
+      if (chart) {
+        tab.dataset.chart = String(chart.chart);
+        if (chart.meter !== undefined)
+          tab.append(el("span", String(chart.meter), "fm-score-meter", doc));
+        tab.onclick = () => {
+          void loadChart(chart);
+        };
+      }
+      tabs.append(tab);
+    }
+    const selected =
+      charts.find((chart) => chart.chart === chartIndex) ?? charts.at(-1);
+    play.hidden = !selected;
+    if (selected) void loadChart(selected);
+    else
+      message.textContent = "No playable charts are available for this song.";
+    heading.focus?.({ preventScroll: true });
+    element.scrollIntoView?.({ block: "start" });
+  }
+  function draw() {
+    const query = search.value.trim().toLocaleLowerCase();
+    const visible = sortScoreSongs(
+      songs.filter(
+        (song) =>
+          `${song.title} ${packNames.get(song.song) ?? ""}`
+            .toLocaleLowerCase()
+            .includes(query) &&
+          (!packFilter.value || packNames.get(song.song) === packFilter.value),
+      ),
+      sort,
+      packNames,
+    );
+    sortSelect.value = `${sort.column}:${sort.direction}`;
     const table = el("table", "", "fm-score-table", doc);
+    const caption = el(
+      "caption",
+      "Song leaderboards: best verified accuracy by difficulty",
+      "fm-score-sr-only",
+      doc,
+    );
     const head = el("thead", "", "", doc),
-      tr = el("tr", "", "", doc);
-    for (const [index, label] of ["SONG", ...SCORE_DIFFICULTIES].entries()) {
-      const th = el("th", label, "", doc);
-      th.scope = "col";
-      const column = index === 0 ? "song" : SCORE_DIFFICULTIES[index - 1]!;
+      header = el("tr", "", "", doc);
+    for (const [index, column] of columns.entries()) {
+      const cell = el("th", "", "", doc);
+      cell.scope = "col";
+      cell.dataset.column = column.toLowerCase();
+      cell.setAttribute("aria-label", labels[index]!);
       if (sort.column === column)
-        th.setAttribute(
+        cell.setAttribute(
           "aria-sort",
           sort.direction === "asc" ? "ascending" : "descending",
         );
-      const pick = button(label, "fm-score-sort", doc);
+      const pick = button(labels[index]!, "fm-score-sort", doc);
       pick.setAttribute(
         "aria-label",
-        index === 0 ? "Sort by song title" : `Sort by ${label} top score`,
+        `Sort by ${labels[index]}${SCORE_DIFFICULTIES.some((slot) => slot === column) ? " top score" : ""}`,
       );
-      pick.onclick = () => {
+      pick.onclick = (event) => {
         sort = {
           column,
           direction:
@@ -185,131 +301,131 @@ export function createSongLeaderboards(
               ? sort.direction === "asc"
                 ? "desc"
                 : "asc"
-              : column === "song"
+              : column === "song" || column === "pack"
                 ? "asc"
                 : "desc",
         };
         draw();
-        wrap
-          .querySelectorAll<HTMLButtonElement>("thead button")
-          [index]?.focus({ preventScroll: true });
+        if (event.detail === 0)
+          wrap
+            .querySelectorAll<HTMLButtonElement>("thead button")
+            [index]?.focus({ preventScroll: true });
       };
-      th.replaceChildren(pick);
-      tr.append(th);
+      cell.append(pick);
+      header.append(cell);
     }
-    head.append(tr);
-    const query = search.value.trim().toLocaleLowerCase();
-    const visible = songs.filter((song) =>
-      song.title.toLocaleLowerCase().includes(query),
-    );
-    table.append(head);
-    for (const pack of packsOf(
-      songs.map((song) => ({ id: song.song })),
-      undefined,
-      options.packs ?? PACKS_DATA,
-    )) {
-      const members = new Set(pack.songs);
-      const grouped = sortScoreSongs(
-        visible.filter((song) => members.has(song.song)),
-        sort,
+    head.append(header);
+    const body = el("tbody", "", "", doc);
+    for (const song of visible) {
+      const charts = chartSlots(song.charts);
+      const row = el("tr", "", "", doc);
+      row.dataset.song = song.song;
+      const name = el("th", "", "fm-score-song", doc);
+      name.scope = "row";
+      const songButton = button(song.title, "fm-score-song-link", doc);
+      songButton.setAttribute("aria-label", `${song.title}: open leaderboard`);
+      songButton.onclick = () =>
+        open(song, charts.at(-1)?.chart ?? 0, songButton);
+      name.append(songButton);
+      row.append(
+        name,
+        el("td", packNames.get(song.song) ?? "", "fm-score-pack", doc),
+        el("td", song.plays?.toLocaleString() ?? "—", "fm-score-plays", doc),
       );
-      if (!grouped.length) continue;
-      const body = el("tbody", "", "", doc);
-      body.setAttribute("aria-label", pack.name);
-      const group = el("tr", "", "fm-score-pack", doc),
-        label = el("th", pack.name, "", doc);
-      label.colSpan = 5;
-      label.scope = "rowgroup";
-      group.append(label);
-      body.append(group);
-      for (const song of grouped) {
-        const row = el("tr", "", "", doc),
-          name = el("th", song.title, "", doc);
-        name.scope = "row";
-        const represented = new Set(
-          SCORE_DIFFICULTIES.map((difficulty) =>
-            song.charts.find(
-              (chart) =>
-                chart.difficulty.toLowerCase() === difficulty.toLowerCase(),
-            ),
-          ),
-        );
-        const extra = song.charts.filter((chart) => !represented.has(chart));
-        if (extra.length) {
-          const more = button(
-            `MORE CHARTS (${extra.length})`,
-            "fm-score-more-charts",
+      for (const slot of SCORE_DIFFICULTIES) {
+        const cell = el("td", "", "fm-score-cell", doc);
+        cell.dataset.label = slot;
+        cell.dataset.level = slot.toLowerCase();
+        const chart = charts.find((item) => item.slot === slot);
+        if (chart) {
+          const pick = button(
+            chart.top ? scorePercent(chart.top.rating) : "Set a score",
+            "fm-score-pick",
             doc,
           );
-          more.setAttribute(
+          pick.dataset.empty = String(!chart.top);
+          pick.setAttribute(
             "aria-label",
-            `${song.title}: ${extra.length} more ${extra.length === 1 ? "chart" : "charts"}. Open leaderboard`,
+            `${song.title}, ${slot}: ${chart.top ? `${chart.top.name}, ${scorePercent(chart.top.rating)}` : "no scores yet"}. Open leaderboard`,
           );
-          more.onclick = () => open(song, extra[0]!);
-          name.append(more);
+          pick.onclick = () => open(song, chart.chart, pick);
+          cell.append(pick);
+          if (chart.top) cell.append(playerName(chart.top));
+        } else {
+          cell.append(el("span", "—", "fm-score-unavailable", doc));
+          cell.setAttribute("aria-label", `${slot}: chart unavailable`);
         }
-        row.dataset.song = song.song;
-        row.append(name);
-        for (const difficulty of SCORE_DIFFICULTIES) {
-          const cell = el("td", "", "", doc),
-            chart = song.charts.find(
-              (c) => c.difficulty.toLowerCase() === difficulty.toLowerCase(),
-            );
-          if (chart) {
-            // Empty charts have an invisible-text accessible link, preserving the deliberately blank cell.
-            const pick = button("", "fm-score-pick", doc);
-            pick.setAttribute(
-              "aria-label",
-              `${song.title}, ${difficulty}: ${chart.top ? `${chart.top.name}, ${scorePercent(chart.top.rating)}` : "no scores yet"}. Open leaderboard`,
-            );
-            if (chart.top) {
-              if (options.openPlayer && chart.top.publicId) {
-                cell.append(playerName(chart.top));
-                pick.classList.add("has-score");
-              } else pick.append(playerName(chart.top));
-              pick.append(
-                el("strong", scorePercent(chart.top.rating), "", doc),
-              );
-            }
-            pick.onclick = () => {
-              void open(song, chart);
-            };
-            cell.append(pick);
-          } else cell.setAttribute("aria-label", "Chart unavailable");
-          row.append(cell);
-        }
-        body.append(row);
+        row.append(cell);
       }
-      table.append(body);
+      body.append(row);
     }
+    table.append(caption, head, body);
     wrap.replaceChildren(table);
     state.textContent = visible.length
-      ? `${visible.length} ${visible.length === 1 ? "song" : "songs"} · Blank cells have no verified score.`
-      : "No songs match your search.";
-  };
+      ? `${visible.length} ${visible.length === 1 ? "song" : "songs"} · Select a song or a score to view its leaderboard.`
+      : "No songs match. Try another title or pack.";
+  }
   async function load() {
     state.textContent = "Loading song scores…";
     retry.hidden = true;
+    toolbar.hidden = true;
     try {
-      songs = (await reader.catalog())
-        .slice()
-        .sort((a, b) => a.title.localeCompare(b.title));
-      if (!disposed) draw();
+      const loaded = await reader.catalog();
+      if (disposed) return;
+      songs = loaded;
+      const packs = packsOf(
+        songs.map((song) => ({ id: song.song })),
+        undefined,
+        options.packs ?? PACKS_DATA,
+      );
+      packNames = new Map(
+        packs.flatMap((pack) =>
+          pack.songs.map((song) => [song, pack.name] as const),
+        ),
+      );
+      const all = el("option", "All packs", "", doc);
+      all.value = "";
+      packFilter.replaceChildren(all);
+      for (const pack of packs) {
+        const option = el("option", pack.name, "", doc);
+        option.value = pack.name;
+        packFilter.append(option);
+      }
+      toolbar.hidden = false;
+      draw();
     } catch {
       if (!disposed) {
         state.textContent = "Could not load song scores. Try again.";
         retry.hidden = false;
-        retryAction = () => {
-          void load();
-        };
       }
     }
   }
+  retry.onclick = () => {
+    void load();
+  };
   search.oninput = draw;
-  element.append(note, search, state, retry, scrollHint, wrap, detail);
+  packFilter.onchange = draw;
+  sortSelect.onchange = () => {
+    const [column, direction] = sortSelect.value.split(":");
+    const valid = columns.find((value) => value === column);
+    if (valid && (direction === "asc" || direction === "desc")) {
+      sort = { column: valid, direction };
+      draw();
+    }
+  };
   void load();
   return {
     element,
+    back() {
+      if (detail.hidden) return false;
+      generation++;
+      detail.hidden = true;
+      browse.hidden = false;
+      options.onViewChange?.();
+      returnFocus?.focus?.({ preventScroll: true });
+      returnFocus?.scrollIntoView?.({ block: "nearest" });
+      return true;
+    },
     dispose() {
       disposed = true;
       generation++;

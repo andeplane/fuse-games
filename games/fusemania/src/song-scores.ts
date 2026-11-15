@@ -22,9 +22,12 @@ export interface ScoreEntry {
 export interface SongBoard {
   song: string;
   title: string;
+  /** Completed verified runs recorded since play counting was introduced. */
+  plays?: number;
   charts: {
     chart: number;
     difficulty: string;
+    meter?: number;
     version: string;
     top?: ScoreEntry;
   }[];
