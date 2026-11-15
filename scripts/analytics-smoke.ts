@@ -144,7 +144,7 @@ assert.equal(
   "tab B is reporting too",
 );
 await other
-  .getByRole("button", { name: /SETTINGS/ })
+  .getByRole("button", { name: /Room settings/ })
   .first()
   .click();
 await other.locator("details.settings-privacy > summary").click();
@@ -165,7 +165,7 @@ assert.equal(
 await other.close();
 // Tab A's own row heard about it, and works by keyboard in both directions without sending anything itself.
 await closeDialog();
-await page.getByRole("button", { name: "SETTINGS", exact: true }).click();
+await page.getByRole("button", { name: "Player options", exact: true }).click();
 const analyticsToggle = page.locator(".settings-privacy > button");
 assert.equal(
   await analyticsToggle.textContent(),
@@ -185,7 +185,7 @@ page.on("request", (request) => {
   if (/mixpanel/i.test(request.url())) sdkFetches.push(request.url());
 });
 await page.reload();
-await page.getByRole("button", { name: "SETTINGS", exact: true }).click();
+await page.getByRole("button", { name: "Player options", exact: true }).click();
 assert.equal(
   await page.locator(".settings-privacy > button").textContent(),
   "ANALYTICS OFF",

@@ -742,7 +742,7 @@ test("menu uses Fuse controls and actual board scenery without starting a simula
       f.root.querySelectorAll(".fui-main-menu-nav:not(.fui-play-menu) button"),
       (b) => b.textContent,
     ),
-    ["Play", "How to play", "About", "Settings"],
+    ["Play", "How to play", "About", "Player options"],
   );
   assert.ok(
     f.root
@@ -753,7 +753,7 @@ test("menu uses Fuse controls and actual board scenery without starting a simula
   assert.ok(f.root.querySelector("#nd-attract-board .structure-layer"));
   assert.deepEqual(f.counts(), { created: 0, requestedFrames: 0 });
   f.click("settings");
-  assert.equal(f.root.querySelector("h1")?.textContent, "Settings");
+  assert.equal(f.root.querySelector("h1")?.textContent, "Player options");
   f.click("back-menu");
   assert.deepEqual(f.counts(), { created: 0, requestedFrames: 0 });
   f.app.dispose();

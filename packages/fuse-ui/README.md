@@ -84,7 +84,7 @@ Each component is a function that returns its elements. Options take callbacks, 
 | `createPageHeader`    | A page's bar: Back, the title, then actions with the primary last; `createSubPage` is a whole page under it                         |
 | `backOnEscape`        | Escape presses a Back, unless a dialog is open or the page says Escape is busy; returns what removes the listener                   |
 | `menuKeys`            | Arrow keys, Home and End walk a menu's buttons from wherever the focus is; returns what removes the listener                        |
-| `createRoomLayout`    | A waiting room: Back, the invitation, numbered seats with Join and Add AI, a game's own choices, Game settings and the main action  |
+| `createRoomLayout`    | A waiting room: Back, the invitation, numbered seats with Join and Add AI, a game's own choices, Room settings and the main action  |
 | `createConfirm`       | A yes/no question for a dialog body (LEAVE ROOM / STAY)                                                                             |
 | `createKeyList`       | Keyboard shortcuts as headed definition lists                                                                                       |
 | `createAccountDialog` | Account and leaderboard buttons and their dialog: sign-in, history pages, username; auth, fetch and renderers are the game's        |

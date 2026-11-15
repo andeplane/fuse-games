@@ -1,4 +1,8 @@
 import { createBackLink, createPageHeader } from "./back.js";
+import {
+  labelSettingsAction,
+  settingsActionMarkup,
+} from "./settings-actions.js";
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
 import type { Roster, RosterFriends } from "./lobby.js";
@@ -32,7 +36,7 @@ export interface RoomLayoutOptions {
   settingsTrigger?: HTMLButtonElement;
   onSettings?: () => void;
   actions?: readonly Node[];
-  /** Main match action stays beside the invitation, before Game settings. */
+  /** Main match action stays beside the invitation, before Room settings. */
   primaryAction?: HTMLElement;
   mainMenuAction?: HTMLElement;
   mainMenuHref?: string;
@@ -145,16 +149,16 @@ export function createRoomLayout(options: RoomLayoutOptions) {
       el("p", "Play together on this device.", "", doc),
     );
   left.append(...(options.extras ?? []));
-  const settings = createDialog({ title: "Game settings", document: doc });
+  const settings = createDialog({ title: "Room settings", document: doc });
   settings.dialog.classList.add("fui-menu-dialog");
   const configure =
     options.settingsTrigger ??
-    button("Game settings", "fui-room-settings", doc);
-  configure.textContent = inHeader ? "Settings" : "Game settings";
-  configure.setAttribute("aria-label", "Game settings");
+    button("Room settings", "fui-room-settings", doc);
+  labelSettingsAction(configure, "room");
+  configure.setAttribute("aria-label", "Room settings");
   configure.classList.add("fui-room-configure");
   configure.onclick =
-    options.onSettings ?? (() => settings.show({ title: "Game settings" }));
+    options.onSettings ?? (() => settings.show({ title: "Room settings" }));
   if (options.settings?.length) {
     settings.body.append(...options.settings);
   } else
@@ -389,7 +393,7 @@ export function createRoomLayout(options: RoomLayoutOptions) {
     if (seats) occupiedSlots = new Set(seats);
     occupiedCount = occupied;
     capacity = nextCapacity;
-    // Game settings closes the invitation's column, under START and whatever a game put there since.
+    // Room settings closes the invitation's column, under START and whatever a game put there since.
     if (
       !root.hidden &&
       configure.parentElement === left &&
@@ -610,11 +614,11 @@ export function roomLayoutMarkup(options: {
   const primary = options.primaryAction
     ? `<div class="fui-room-primary-action">${options.primaryAction}</div>`
     : "";
-  const configure = `<button class="fui-room-configure" data-action="open-room-settings" aria-label="Game settings">${inHeader ? "Settings" : "Game settings"}</button>`;
+  const configure = `<button class="fui-room-configure fui-settings-action" data-action="open-room-settings" aria-label="Room settings">${settingsActionMarkup("room")}</button>`;
   const seats = `<h2>Players <span class="fui-room-count">${options.occupied} / ${options.capacity}</span></h2>${options.players}<div class="fui-room-open-slots">${open}</div>`;
   const configuration = options.layout === "configuration";
   const choices = options.configuration
     ? `<div class="fui-room-configuration-content">${options.configuration}</div>`
     : "";
-  return `<main class="fui-room-layout${inHeader ? " fui-room-actions-top" : ""}${configuration ? " fui-room-configuration" : ""}"><header class="fui-page-head fui-room-head">${options.mainMenu ?? '<a class="fui-back fui-room-main-menu" href="./" aria-label="Back">Back</a>'}${options.heading !== undefined || inHeader ? `<h2 class="fui-page-title">${options.heading ?? ""}</h2>` : ""}${inHeader ? `<div class="fui-page-actions">${configure}${primary}</div>` : ""}</header><aside class="fui-room-invitation">${options.invite}${inHeader ? "" : primary + configure}${configuration ? `<section class="fui-room-seats">${seats}</section>` : ""}</aside><section class="fui-room-players">${configuration ? "" : seats}${choices}<div class="fui-room-actions">${options.actions}</div></section>${options.status !== undefined ? `<div class="fui-room-status">${options.status}</div>` : ""}<dialog class="fui-dialog fui-menu-dialog fui-slot-admission" data-room-name aria-label="Join the game"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-name" aria-label="Back">Back</button><strong class="fui-dialog-title">Join the game</strong></header><div class="fui-dialog-body">${options.join}</div></dialog><dialog class="fui-dialog fui-menu-dialog" data-room-settings aria-label="Game settings"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-settings" aria-label="Back">Back</button><strong class="fui-dialog-title">Game settings</strong></header><div class="fui-dialog-body">${options.settings}</div></dialog></main>`;
+  return `<main class="fui-room-layout${inHeader ? " fui-room-actions-top" : ""}${configuration ? " fui-room-configuration" : ""}"><header class="fui-page-head fui-room-head">${options.mainMenu ?? '<a class="fui-back fui-room-main-menu" href="./" aria-label="Back">Back</a>'}${options.heading !== undefined || inHeader ? `<h2 class="fui-page-title">${options.heading ?? ""}</h2>` : ""}${inHeader ? `<div class="fui-page-actions">${configure}${primary}</div>` : ""}</header><aside class="fui-room-invitation">${options.invite}${inHeader ? "" : primary + configure}${configuration ? `<section class="fui-room-seats">${seats}</section>` : ""}</aside><section class="fui-room-players">${configuration ? "" : seats}${choices}<div class="fui-room-actions">${options.actions}</div></section>${options.status !== undefined ? `<div class="fui-room-status">${options.status}</div>` : ""}<dialog class="fui-dialog fui-menu-dialog fui-slot-admission" data-room-name aria-label="Join the game"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-name" aria-label="Back">Back</button><strong class="fui-dialog-title">Join the game</strong></header><div class="fui-dialog-body">${options.join}</div></dialog><dialog class="fui-dialog fui-menu-dialog" data-room-settings aria-label="Room settings"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-settings" aria-label="Back">Back</button><strong class="fui-dialog-title">Room settings</strong></header><div class="fui-dialog-body">${options.settings}</div></dialog></main>`;
 }
