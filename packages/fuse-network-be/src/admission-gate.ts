@@ -4,10 +4,10 @@ import {
   digest,
   type RoomDatabase,
 } from "./room-store.js";
+import { MAX_PENDING_ADMISSIONS } from "./socket-capacity.js";
 
 const HOUR_MS = 3_600_000;
 const FAILURE_LIMIT = 30;
-const MAX_PENDING = 128;
 const MAX_PENDING_PER_IP = 4;
 const MAX_KEYS = 10_000;
 interface Entry {
@@ -47,7 +47,7 @@ export class AdmissionGate {
     if (
       entry.blocked ||
       entry.pending >= MAX_PENDING_PER_IP ||
-      this.pending >= MAX_PENDING
+      this.pending >= MAX_PENDING_ADMISSIONS
     ) {
       if (!entry.blocked && entry.pending === 0) this.entries.delete(key);
       throw new RoomError(429, "Admission limit; try later");
