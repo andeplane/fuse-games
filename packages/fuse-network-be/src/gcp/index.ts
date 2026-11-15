@@ -98,10 +98,6 @@ export function startGcpRoomService(options: GcpRoomServiceOptions): Server {
     store,
     gateway,
     extension: options.httpExtension?.({ store, firestore, prefix, projectId }),
-    // LEGACY-QUERY-TOKEN: DEPRECATED rollout window (#256 S3, docs/online/TOKEN-TRANSPORT.md): pages built before the first-frame
-    // handshake still send `?token=`. Delete this line and `legacyQueryToken` once the
-    // `deprecated-query-token` log line has been absent for a week.
-    legacyQueryToken: true,
     allowOrigin: (origin) => origins.has(origin),
     ...(/^[a-f0-9]{40}$/.test(process.env.BUILD_REVISION ?? "")
       ? { revision: process.env.BUILD_REVISION }

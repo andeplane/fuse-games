@@ -144,8 +144,7 @@ page (below).
   `default (service refused: status N)`, distinct from `default (service list invalid)` and
   `default (ice fetch failed)`; the fallback to the default STUN list is unchanged.
 
-`welcome.protocol` stays `2`: every frame after `auth` is unchanged, and bumping it would make the pages the rollout
-window exists for tell their players to reload.
+`welcome.protocol` stays `2`: every frame after `auth` is unchanged.
 
 ## Logging
 
@@ -153,48 +152,39 @@ The service logs `{kind, errorType, code}` for failures and nothing else: no req
 no token. A refused `auth` frame is not echoed in the close reason or the log. The client's error paths embed no
 request URL. Invite links are built by `appUrl("?room=…")` and carry no capability, as before.
 
-## Rollout
+## Legacy transport removal (#763 / F-10)
 
-The page (GitHub Pages) and the service (Cloud Run) deploy independently, and a page already open keeps its old script.
+The temporary acceptance window for pages predating first-frame authentication is removed from source on
+2026-11-15. Production and local entry points now use the same handshake: a query parameter authenticates nothing,
+and every socket starts in the `auth` phase with the usual deadline and admission limits. The legacy option,
+counter, bypass and acceptance tests are deleted. This is a source change; its merge and deployment must be verified
+separately before claiming the production window is closed.
 
-- **New page, old service.** The old service refuses an upgrade without `?token=` with `403` before the admission gate,
-  so nothing is charged; the page shows "Signalling disconnected · retrying" and retries, backing off to every 30 s,
-  until the service is updated. `/ice` answers `401` and the page falls back to the same default STUN list. Rooms cannot be joined in that
-  state, so **the service should be live first**. The reverse order is not a safety problem — it is uncharged and
-  heals by itself — only a few minutes in which newly loaded pages cannot connect.
-- **Old page, new service.** Without help, an old page upgrades, never sends `auth`, is closed `4401` on its first
-  heartbeat (within 2 s), retries every 1.5 s and spends its address's failure budget in about two minutes — after which the _reloaded_
-  page is locked out for the rest of the hour too. A match in progress at deploy time would lose its room service
-  connection for good. That is not a safe rollout, so there is a window.
+### Production observation before removal
 
-**Deprecated acceptance window.** `RoomHttpOptions.legacyQueryToken` (off by default; the dev service and tests run
-strict) makes the upgrade handler also accept `?token=` and admit without an `auth` frame. Only the Cloud Run entry
-(`packages/fuse-network-be/src/gcp/index.ts`) turns it on. Each use is counted and reported at most once a minute as
-`{"kind":"deprecated-query-token","severity":"WARNING","uses":n}` — never the token, the URL or the room. There is no
-window for `/ice`: an old page's `401` there already degrades to the default STUN list.
+A read-only Cloud Logging query against project `andershaf-87`, service `fuse-riders-gateway`, returned **zero**
+`deprecated-query-token` entries in **2026-11-07 00:00:00 UTC ≤ timestamp < 2026-11-15 11:33:40 UTC**
+(8 days, 11 hours, 33 minutes, 40 seconds). Both structured JSON and text forms were checked across all revisions.
+Only timestamps, revision names, event kinds and counts were requested; no request URLs or credentials were read
+or copied.
 
-While the window is open, old pages still put their token in the URL; the leak closes for a player when their page
-reloads, and for everyone when the window is removed.
+```sh
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="fuse-riders-gateway" AND timestamp>="2026-11-07T00:00:00Z" AND timestamp<"2026-11-15T11:33:40Z" AND (jsonPayload.kind="deprecated-query-token" OR textPayload:"deprecated-query-token")' \
+  --project=andershaf-87 --freshness=30d --limit=1000 \
+  --format='json(timestamp,resource.labels.revision_name,jsonPayload.kind,jsonPayload.uses)'
+```
 
-**Deploy order.** Service first (window on), then the page, is preferred. The reverse order is safe: `main`'s handler
-answers a missing `?token=` with `403` before the admission gate, so nothing is charged and new pages connect by
-themselves once the service is live; the only cost is that pages loaded in that gap cannot connect until then.
+The accessible `_Default` log bucket had 30-day retention, an active lifecycle and no exclusions on its default sink.
+An ordinary service-log bounds query over the same interval found entries from **2026-11-09T19:41:48.498535Z**
+through **2026-11-15T11:33:39.010238Z**. No service entries were observed in the earlier portion; the query establishes
+absence in retained logs, not uninterrupted traffic or perfect historical log delivery. The full queried interval
+exceeds the original seven-day observation requirement.
 
-1. Deploy the service (accepts both forms). Both workflows trigger from the same CI run on `main`, and Pages usually
-   finishes first; until the backend deploy completes, new pages retry as described above and then connect on their
-   own. To avoid even that, disable the Pages workflow before merging and dispatch it for the merged revision once
-   `Deploy backend` has finished.
-2. Deploy the page (sends only the new form).
-3. When `deprecated-query-token` has not appeared in the service log for a week, delete the window. Every site
-   carries the comment tag **`LEGACY-QUERY-TOKEN`**; `grep -rn LEGACY-QUERY-TOKEN packages` must come back empty
-   afterwards. The sites:
-   - `http.ts`: the `legacyQueryToken` option; `deprecatedQueryToken` and its two counters; the `queryToken` block in
-     the upgrade handler; the phase initializer (`queryToken === undefined ? "auth" : "admitted"` becomes `"auth"`);
-     the legacy admit call (`if (queryToken !== undefined) admit(queryToken)`).
-   - `gcp/index.ts`: the `legacyQueryToken: true` line.
-   - `dev.ts`: the `legacyQueryToken` option of `DevRoomServiceOptions` and its passthrough to `createRoomServer`.
-   - `socket-auth.test.ts`: the window's test and the fixture's `legacyQueryToken` option.
-   - This section, and the window's sentence in `PROTOCOL.md` and the security review's status line.
+### Compatibility and rollback
 
-**Rollback.** Rolling the page back while the window is open is safe. Rolling the service back past this change breaks
-new pages until they are rolled back as well.
+Current clients already send their token in the first frame, so they need no page release for this removal.
+A page predating that handshake must reload: a query token alone receives no welcome, and a missing or wrong first
+frame closes with `4401` under the existing failure budget. Do not roll the page back before first-frame auth or
+restore query-token acceptance as a compatibility workaround. The signalling frames after authentication and
+`welcome.protocol` remain unchanged.

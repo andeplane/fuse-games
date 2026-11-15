@@ -60,11 +60,9 @@ interface Peer {
   closed: Promise<{ code: number; reason: string }>;
 }
 
-async function fixture(
-  options: { legacyQueryToken?: boolean; maxGuests?: number } = {},
-) {
+async function fixture(options: { maxGuests?: number } = {}) {
   let now = 1_000_000;
-  const { maxGuests, ...httpOptions } = options;
+  const { maxGuests } = options;
   const database = new CountingDatabase(),
     store = new RoomStore(database, {
       now: () => now,
@@ -103,7 +101,6 @@ async function fixture(
       };
     },
     log: (entry) => logs.push(entry),
-    ...httpOptions,
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
@@ -286,10 +283,6 @@ test("a token in the query string does not authenticate a socket", async () => {
     assert.equal((await silent.closed).code, CLOSE_UNAUTHENTICATED);
     assert.equal(f.database.charged, 2);
     assert.equal(f.gateway.connections, 0);
-    assert.deepEqual(
-      f.logs.filter((entry) => entry.kind === "deprecated-query-token"),
-      [],
-    );
   } finally {
     await f.close();
   }
@@ -661,45 +654,6 @@ test("ICE and ending a room take the token from Authorization only, behind an ex
       200,
     );
     assert.equal((await peer.closed).code, 4004);
-  } finally {
-    await f.close();
-  }
-});
-
-// LEGACY-QUERY-TOKEN: DEPRECATED rollout window — delete with `legacyQueryToken`, and the fixture option with it.
-test("the rollout window admits the old query form, says so at most once a minute, and never logs the token", async () => {
-  const f = await fixture({ legacyQueryToken: true });
-  try {
-    const { code, token } = await f.create();
-    const guest = "d".repeat(64);
-    const old = f.open(code, `?token=${token}`);
-    assert.equal((await old.frame()).type, "welcome");
-    assert.equal(f.scheduled.length, 0, "no auth frame is expected of it");
-    const second = f.open(code, `?token=${guest}`);
-    assert.equal((await second.frame()).type, "welcome");
-    assert.deepEqual(f.logs, [
-      { kind: "deprecated-query-token", severity: "WARNING", uses: 1 },
-    ]);
-    f.advance(60_000);
-    second.socket.close();
-    await second.closed;
-    assert.equal(
-      (await f.open(code, `?token=${guest}`).frame()).type,
-      "welcome",
-    );
-    assert.deepEqual(f.logs.at(-1), {
-      kind: "deprecated-query-token",
-      severity: "WARNING",
-      uses: 2,
-    });
-    assert.equal(JSON.stringify(f.logs).includes(guest), false);
-    await assert.rejects(f.open(code, "?token=nope").opened, /HTTP 403/);
-    // A current page is unaffected by the window.
-    const current = f.open(code);
-    await current.opened;
-    current.socket.send(authFrame("e".repeat(64)));
-    assert.equal((await current.frame()).type, "welcome");
-    assert.equal(f.database.charged, 0);
   } finally {
     await f.close();
   }

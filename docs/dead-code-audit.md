@@ -65,17 +65,12 @@ live code. The buffer is also named in `docs/reviews/`, `docs/adr/041-*.md` and
 | `RECAP_KICKER`, `RECAP_TITLE` in `engine/match-recap.ts`                                                                 |             2 | Two display strings with no reference anywhere, tests included.                                                                                                                                                                                                                                                                                                                                                               |
 | `EffectStacking` in `engine/effects.ts`                                                                                  |             1 | `EffectStackingRule` spells the three literals out inline instead of using the alias.                                                                                                                                                                                                                                                                                                                                         |
 
-## Tier 2 — Legacy window with a documented removal checklist
+## Tier 2 — Legacy query-token window removed
 
-`RoomHttpOptions.legacyQueryToken` — the deprecated `?token=` acceptance window from #256 S3.
-Every site carries a `LEGACY-QUERY-TOKEN` tag; **27 tagged sites across 4 files**
-(`fuse-network-be/src/http.ts` 13, `src/dev.ts` 4, `src/gcp/index.ts` 4,
-`tests/socket-auth.test.ts` 6). `docs/online/TOKEN-TRANSPORT.md` step 3 already lists exactly what
-to delete.
-
-The gate is a production observation, not a code question: delete it once
-`deprecated-query-token` has been absent from the service log for a week. **I cannot check the
-production log from here**, so this is ready but unverified — confirm the log before removing.
+The deprecated acceptance window from #256 S3 was removed from source for #763 on 2026-11-15 after a read-only
+production-log query returned no legacy-use events over an interval longer than seven days. The query, retained-log
+coverage and compatibility limits are recorded in [TOKEN-TRANSPORT.md](online/TOKEN-TRANSPORT.md#legacy-transport-removal-763--f-10).
+Deployment remains a separate verification.
 
 ## Tier 3 — Dead LAN wire remnant, needs a decision
 
