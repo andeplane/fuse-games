@@ -367,6 +367,32 @@ test("ratings and leaderboards are per game, while the account is shared", async
   assert.equal((await diceHistory.profile("carol"))!.rating!.games, 1);
 });
 
+test("F-06 concurrent distinct rounds share the same stored pair budget", async () => {
+  const f = await fixture();
+  const table = await f.room("dice", 70);
+  await Promise.all(
+    Array.from({ length: 205 }, (_, index) =>
+      f.play(
+        "dice",
+        table,
+        round(table.ids, 0, `concurrent-${index}`),
+        ["alice", "bob"],
+        true,
+      ),
+    ),
+  );
+  const alice = await f.database.profile("dice", "alice");
+  const bob = await f.database.profile("dice", "bob");
+  assert.equal(alice!.rating!.rounds, 205);
+  assert.equal(Object.values(alice!.ratingGuard!.opponents)[0]!.rounds, 200);
+  assert.equal(Object.values(bob!.ratingGuard!.opponents)[0]!.rounds, 200);
+  assert.ok(Math.abs(alice!.rating!.value + bob!.rating!.value - 2000) < 1e-8);
+  assert.equal(
+    (await f.store.game("dice").profile("alice"))!.ratingGuard,
+    undefined,
+  );
+});
+
 test("match history, totals and rivalries are per game; a record without a gameId is the legacy game's", async () => {
   const f = await fixture();
   const whole = (ids: string[], winner: number, matchId: string) => ({
