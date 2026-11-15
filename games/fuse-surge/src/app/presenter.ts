@@ -110,6 +110,20 @@ export interface Model {
   result: {
     title: string;
     lines: string[];
+    /** The standings, best first: riders level on round wins share a place. */
+    rows: {
+      id: string;
+      slot: number;
+      name: string;
+      you: boolean;
+      bot: boolean;
+      place: number;
+      wins: number;
+      dodges: number;
+      hits: number;
+    }[];
+    /** The round wins the match was played to. */
+    target: number;
     host: boolean;
     waiting: string;
   } | null;
@@ -211,14 +225,30 @@ export function present(view: View, viewer: Viewer): Model {
         : youWon
           ? "YOU WIN!"
           : `${winners[0]!.name.toUpperCase()} WINS`;
+    const ranked = [...riders].sort(
+      (a, b) => b.wins - a.wins || a.slot - b.slot,
+    );
     result = {
       title,
-      lines: [...riders]
-        .sort((a, b) => b.wins - a.wins || a.slot - b.slot)
-        .map((rider) => {
-          const stats = world.riders[rider.slot];
-          return `${rider.name}: ${plural(rider.wins, "round", "rounds")} · ${stats?.dodges ?? 0} dodged · ${plural(stats?.taken ?? 0, "hit", "hits")}`;
-        }),
+      lines: ranked.map((rider) => {
+        const stats = world.riders[rider.slot];
+        return `${rider.name}: ${plural(rider.wins, "round", "rounds")} · ${stats?.dodges ?? 0} dodged · ${plural(stats?.taken ?? 0, "hit", "hits")}`;
+      }),
+      rows: ranked.map((rider) => {
+        const stats = world.riders[rider.slot];
+        return {
+          id: rider.id,
+          slot: rider.slot,
+          name: rider.name,
+          you: rider.you,
+          bot: rider.bot,
+          place: 1 + riders.filter((other) => other.wins > rider.wins).length,
+          wins: rider.wins,
+          dodges: stats?.dodges ?? 0,
+          hits: stats?.taken ?? 0,
+        };
+      }),
+      target: world.target,
       host: viewer.host,
       waiting: viewer.host ? "" : "Waiting for the host to start a rematch",
     };

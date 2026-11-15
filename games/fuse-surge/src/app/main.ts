@@ -1,4 +1,4 @@
-import { requestedRoomSlot } from "fuse-ui";
+import { createResultsScreen, createTopBar, requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
 import {
@@ -10,6 +10,7 @@ import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
+import "fuse-ui/results.css";
 import {
   bindAudioInput,
   browserAudioDependencies,
@@ -67,6 +68,7 @@ import {
   type LookId,
 } from "../render/looks.js";
 import { createPicture } from "./picture.js";
+import { resultBar, resultReport } from "./result-report.js";
 import { createSmoother } from "../render/smooth.js";
 import { createSfx } from "./audio.js";
 import {
@@ -261,7 +263,10 @@ function logo(): HTMLElement {
   );
   return brand;
 }
-function header(extra: HTMLElement[] = []): HTMLElement {
+function header(
+  extra: HTMLElement[] = [],
+  onOpenChange?: (open: boolean) => void,
+): HTMLElement {
   const bar = el("header", "", "fs-top");
   const portal = createAppPortal({
     document,
@@ -276,7 +281,12 @@ function header(extra: HTMLElement[] = []): HTMLElement {
     audioControl.element,
     ...extra,
   );
-  return bar;
+  return createTopBar({
+    element: bar,
+    gameId: GAME,
+    onOpenChange,
+    sound: audioControl.sound,
+  });
 }
 
 function keyHelp(): HTMLElement {
@@ -505,12 +515,18 @@ function room(solo: boolean): void {
     setLook(nextLook(look));
     lookButton.blur();
   };
-  const top = header([
-    el("strong", solo ? "SOLO" : code, "fs-code"),
-    status.element,
-    lookButton,
-    menu.element,
-  ]);
+  const top = header(
+    [
+      el("strong", solo ? "SOLO" : code, "fs-code"),
+      status.element,
+      lookButton,
+      menu.element,
+    ],
+    // The bar's own panels take the keyboard: let go of everything held first.
+    (open) => {
+      if (open) letGoAll();
+    },
+  );
 
   // Lobby: the invitation and the riders on one side, the match settings and START on the other.
   let settings: Settings = chosenSettings();
@@ -582,25 +598,27 @@ function room(solo: boolean): void {
   );
   lobby.append(lobbyMain, lobbySide);
 
-  // The deck: the canvas, the result card and a line for a device that is not playing.
+  // The deck: the canvas and a line for a device that is not playing.
   const stage = el("section", "", "fs-stage"),
     screen = el("div", "", "fs-screen"),
     canvas = el("div", "", "fs-canvas"),
     note = el("p", "", "fs-note");
-  const result = el("section", "", "fs-result"),
-    resultTitle = el("h2"),
-    resultLines = el("ol"),
-    resultWaiting = el("p", "", "fui-lobby-note"),
-    resultActions = el("div", "", "fs-actions"),
-    rematch = button("REMATCH", "fui-button-primary fs-rematch"),
-    toLobby = button("LOBBY", "fs-to-lobby");
-  resultActions.append(toLobby, rematch);
-  result.append(resultTitle, resultLines, resultWaiting, resultActions);
-  result.hidden = true;
-  rematch.onclick = () =>
-    runtime.command({ type: "action", action: "rematch" });
-  toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
-  screen.append(canvas, result, roundControls.element);
+  // The result: the shared results screen over the deck.
+  const rematch = () => runtime.command({ type: "action", action: "rematch" }),
+    toLobby = () => runtime.command({ type: "action", action: "lobby" });
+  const results = createResultsScreen({
+    document,
+    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
+    onBack: () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    },
+    backText: "Leave",
+    onAction: (id) => (id === "rematch" ? rematch() : toLobby()),
+  });
+  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
+  let shownResult = "";
+  screen.append(canvas, roundControls.element);
 
   // A duck button and a jump button, twice: under a phone's own deck, and filling the phone for a shared screen.
   const pads = (className: string) => {
@@ -642,8 +660,8 @@ function room(solo: boolean): void {
   const controllerResult = el("div", "", "fs-actions fs-controller-result"),
     controllerRematch = button("REMATCH", "fui-button-primary"),
     controllerLobby = button("LOBBY");
-  controllerRematch.onclick = rematch.onclick;
-  controllerLobby.onclick = toLobby.onclick;
+  controllerRematch.onclick = rematch;
+  controllerLobby.onclick = toLobby;
   controllerResult.append(controllerLobby, controllerRematch);
   controller.append(controllerHead, controllerResult, controllerPads.row);
 
@@ -669,7 +687,15 @@ function room(solo: boolean): void {
   );
   closed.hidden = true;
   const main = el("main", "", "fs-room");
-  main.append(connecting, closed, nameEntry.form, lobby, stage, controller);
+  main.append(
+    connecting,
+    closed,
+    nameEntry.form,
+    lobby,
+    stage,
+    controller,
+    results.element,
+  );
   app.replaceChildren(top, main);
   const roomLayout = createRoomLayout({
     primaryAction: start,
@@ -853,20 +879,37 @@ function room(solo: boolean): void {
     }
     setText(controllerState, next.status);
     controllerResult.hidden = !(next.result && next.result.host);
-    // Result.
-    result.hidden = !next.result || next.screen === "controller";
-    if (next.result) {
-      setText(resultTitle, next.result.title);
-      const lines = next.result.lines.join("\n");
-      if (resultLines.dataset.lines !== lines) {
-        resultLines.dataset.lines = lines;
-        resultLines.replaceChildren(
-          ...next.result.lines.map((line) => el("li", line)),
+    // Result: the shared screen, on every device but a phone held as a pad.
+    const result = next.result;
+    if (!result || next.screen === "controller") {
+      if (results.open) results.hide();
+      shownResult = "";
+    } else {
+      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
+      const shown = JSON.stringify([
+        { ...result, host: false, waiting: "" },
+        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
+      ]);
+      const first = !shownResult;
+      if (shown !== shownResult) {
+        shownResult = shown;
+        results.show(
+          resultReport(result, {
+            color: laneColor,
+            friend: (id) => {
+              const publicId = social.friends.publicIdOfMember(id);
+              return publicId
+                ? social.friends.friendButton(publicId)
+                : undefined;
+            },
+          }),
         );
       }
-      resultActions.hidden = !next.result.host;
-      setText(resultWaiting, next.result.waiting);
-      resultWaiting.hidden = !next.result.waiting;
+      results.update(resultBar(result));
+      if (first)
+        results.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus();
     }
   };
 

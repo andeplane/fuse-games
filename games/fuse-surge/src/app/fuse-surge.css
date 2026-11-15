@@ -334,42 +334,6 @@ body.fs-display .fs-lobby {
 .fs-screen .fui-round-controls .fui-controls-goal {
   padding-right: 2.5rem;
 }
-.fs-result {
-  position: absolute;
-  left: 50%;
-  bottom: 6%;
-  transform: translateX(-50%);
-  display: grid;
-  gap: var(--fui-space-2);
-  width: min(92%, 30rem);
-  padding: var(--fui-space-3) var(--fui-space-4);
-  background: #050e25ee;
-  border: var(--fui-stroke) solid var(--fui-yellow);
-  border-radius: var(--fui-radius);
-  box-shadow: 0 0 2rem #ffe46b44;
-  text-align: center;
-}
-.fs-result h2 {
-  margin: 0;
-  color: var(--fui-yellow);
-  font: 0.875rem/1.4 var(--fui-font-pixel);
-}
-.fs-result ol {
-  display: grid;
-  gap: var(--fui-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fui-text-muted);
-  font-size: 0.75rem;
-}
-.fs-result li:first-child {
-  color: var(--fui-text-bright);
-  font: 0.625rem/1.6 var(--fui-font-pixel);
-}
-.fs-result .fs-actions {
-  justify-content: center;
-}
 
 /* Touch: a duck button under the left thumb and a jump button under the right */
 .fs-touch,
@@ -565,13 +529,6 @@ body.fs-display .fs-screen {
   }
   .fs-choices {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .fs-result {
-    bottom: 3%;
-    padding: var(--fui-space-2);
-  }
-  .fs-result ol li:not(:first-child) {
-    display: none;
   }
 }
 
