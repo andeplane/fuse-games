@@ -116,7 +116,7 @@ export function createDebugHttpExtension(
         const input = await json(req);
         debugAssert(
           (await recordGeneration(principal, true)) === generation,
-          403,
+          412,
           "Recording access changed",
         );
         send(res, {
@@ -148,7 +148,7 @@ export function createDebugHttpExtension(
         const bytes = await readDebugBody(req, DEBUG_LIMITS.segmentBytes);
         debugAssert(
           (await recordGeneration(principal)) === generation,
-          403,
+          412,
           "Recording access changed",
         );
         send(

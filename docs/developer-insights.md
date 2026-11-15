@@ -69,7 +69,9 @@ generation and permanently invalidates credentials minted under older
 generations, even if access is later restored. Recording sessions have a separate
 generation that advances when recording access is removed: old sessions cannot
 accept further uploads after that, even if access is restored; their unsent
-browser chunks remain queued locally. Changes to other capabilities leave an
+browser chunks remain on the device and are not retried. An obsolete session
+stops its microphone when the server rejects the next upload, without blocking
+later sessions. Changes to other capabilities leave an
 authorized recording running. Restoring a removed capability requires a Google
 sign-in after it was restored. `revoke` installs an empty policy
 first, blocking subsequent developer requests and agent-token verification,

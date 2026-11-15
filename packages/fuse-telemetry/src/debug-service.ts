@@ -301,11 +301,14 @@ export class DebugService {
       (records) => {
         const recording = ofKind(live(records.get(rkey), now), "recording");
         debugAssert(
-          recording &&
-            recording.owner === owner &&
-            (recording.ownerGeneration ?? 0) === ownerGeneration,
+          recording && recording.owner === owner,
           403,
           "Recording owner required",
+        );
+        debugAssert(
+          (recording.ownerGeneration ?? 0) === ownerGeneration,
+          412,
+          "Recording access changed",
         );
         debugAssert(
           recording.mediaExpiresAt > now,
@@ -404,11 +407,14 @@ export class DebugService {
     return this.database.transact([key], (records) => {
       const record = ofKind(live(records.get(key), now), "recording");
       debugAssert(
-        record &&
-          record.owner === owner &&
-          (record.ownerGeneration ?? 0) === ownerGeneration,
+        record && record.owner === owner,
         403,
         "Recording owner required",
+      );
+      debugAssert(
+        (record.ownerGeneration ?? 0) === ownerGeneration,
+        412,
+        "Recording access changed",
       );
       const next: RecordingRecord = { ...record, status: "finished" };
       return { writes: new Map([[key, next]]), result: recordingSummary(next) };

@@ -19,6 +19,7 @@ import {
   createRecordingUploader,
   indexedDbPlaytestOutbox,
   PermanentUploadError,
+  StaleUploadError,
   type StoredRecording,
   type StoredSegment,
   type PlaytestOutbox,
@@ -228,6 +229,11 @@ export function installBrowserPlaytest(
           throw new PlaytestRequestError(
             "This attachment is too large. Capture a smaller screenshot and retry.",
             413,
+          );
+        if (response.status === 412)
+          throw new PlaytestRequestError(
+            "Recording access changed. Unsent audio remains on this device.",
+            412,
           );
         if (response.status === 429)
           throw new Error(
@@ -778,7 +784,7 @@ export function installBrowserPlaytest(
       detail = node("p");
     status.setAttribute("role", "status");
     detail.textContent =
-      "Saved uploads survive closing this page. Queued audio retries when you return; an unfinished chunk may be lost.";
+      "Saved uploads survive closing this page. Queued audio retries when you return unless recording access changed; an unfinished chunk may be lost.";
     const controls = node("div");
     controls.className = "fui-playtest-actions";
     const signIn = button("Sign in", () => {
@@ -872,6 +878,18 @@ export function installBrowserPlaytest(
     // the service rejects as such will be rejected again.
     const uploadRequest: typeof request = (...input) =>
       request(...input).catch((error: unknown) => {
+        if (error instanceof PlaytestRequestError && error.status === 412) {
+          if (
+            recording &&
+            input[0].startsWith(`/api/telemetry/recordings/${recording.id}/`)
+          ) {
+            stoppedReason =
+              "Recording access changed. Recording stopped; unsent audio remains on this device.";
+            void stopRecording();
+            render();
+          }
+          throw new StaleUploadError(error.message);
+        }
         if (
           error instanceof PlaytestRequestError &&
           [400, 404, 410, 413, 422].includes(error.status)
