@@ -47,6 +47,10 @@ difficulty.
 
 A pack with no songs is not shown, so the two jazz mixes appear in the song select with their first song.
 
+The DDR and ITG jazz covers keep their original song names followed by distinct jazz-flavoured **Jazz Mix** names,
+such as **Candy (Sugar Swing Jazz Mix)** and **Monolith (Modal Drift Jazz Mix)**. These display titles are shared
+by the catalogue, simfiles and FuseOS Winamp. Their stable song ids, audio addresses and charts are unchanged.
+
 ## How a chart is made
 
 **Analysis** (`scripts/lib/fusemania/analyze.ts`, `tempo.ts`, `metre.ts`). The audio is split into three bands and
