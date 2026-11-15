@@ -173,6 +173,41 @@ test("denied developer access never fetches private metrics or exposes backend e
   unmount();
 });
 
+test("F-09: a recent-sign-in refusal offers reauthentication and retries the request", async () => {
+  const f = fixture();
+  let confirmed = false;
+  f.account.reauthenticate = async () => {
+    confirmed = true;
+  };
+  const unmount = mountWorkspace(f.root, {
+    ...f,
+    now: () => new Date("2026-11-14T12:00:00Z"),
+    gamesUrl: "/",
+    transport: {
+      origin: "https://service.example",
+      token: async () => "private-token",
+      request: async (input) => {
+        const path = new URL(String(input)).pathname;
+        if (path === "/api/dev/me")
+          return Response.json({ uid: "dev", email: "allowed@example.com" });
+        return confirmed
+          ? Response.json(metrics)
+          : Response.json({}, { status: 401 });
+      },
+    },
+  });
+  f.login();
+  await settled(() =>
+    [...f.root.querySelectorAll("button")].some(
+      (button) => button.textContent === "Confirm Google sign-in",
+    ),
+  );
+  click(f.root, "Confirm Google sign-in");
+  await settled(() => f.root.querySelectorAll("figure").length === 5);
+  assert.equal(confirmed, true);
+  unmount();
+});
+
 test("workspace authenticates, provides five chart equivalents, and discards stale views on sign-out", async () => {
   const f = fixture();
   const paths: string[] = [];

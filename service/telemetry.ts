@@ -18,8 +18,18 @@ import {
 import type { TelemetryDatabase } from "fuse-telemetry/metrics-database";
 import {
   createDeveloperVerifier,
+  developerBearer,
+  requireDeveloper,
   type DeveloperVerifier,
 } from "fuse-telemetry/developer-access";
+import {
+  auditDeveloper,
+  authorizeDeveloper,
+  FileDeveloperSecurityStore,
+  FirestoreDeveloperSecurityStore,
+  MemoryDeveloperSecurityStore,
+  type DeveloperSecurityStore,
+} from "fuse-telemetry/developer-security";
 import { DebugService } from "fuse-telemetry/debug-service";
 import { createDebugHttpExtension } from "fuse-telemetry/debug-http";
 import {
@@ -70,11 +80,13 @@ export interface TelemetryServicesOptions {
   recordingEnabled?: boolean;
   extractor: ActionExtractor;
   now?: () => number;
+  security?: DeveloperSecurityStore;
 }
 
 /** The same composition serves production, local previews and injected integration tests. */
 export function createTelemetryServices(options: TelemetryServicesOptions) {
   const now = options.now ?? Date.now;
+  const security = options.security ?? new MemoryDeveloperSecurityStore();
   const games = new Set([...options.gameIds, "fuseos"]);
   const quota = new SharedTelemetryQuota(
     options.metricsDatabase,
@@ -97,6 +109,13 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     database: options.actionDatabase,
     extractor: options.extractor,
     now,
+    async ownerPolicy(uid) {
+      const policy = await security.policy(uid);
+      return {
+        generation: policy.generation,
+        tokenAllowed: policy.capabilities.includes("token"),
+      };
+    },
     async readFailed(recordingId, sequence) {
       const segment = await options.debugDatabase.read(
         segmentKey(recordingId, sequence),
@@ -154,12 +173,14 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
       service: debug,
       verifier: options.developer,
       recordingEnabled: options.recordingEnabled ?? false,
+      security,
+      now,
       reportIdentity: (_request, address) =>
         createHmac("sha256", options.rateLimitKey)
           .update(rateLimitAddress(address))
           .digest("hex"),
     }),
-    createActionHttp(actions, options.developer),
+    createActionHttp(actions, options.developer, security, now),
   );
   const admission = new TelemetryAdmission(now);
   // Screenshot reports and audio chunks buffer megabytes each, and reports
@@ -190,14 +211,68 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
       });
     },
   };
+  const routes = composeHttp(
+    createMetricsHttp({ metrics, developer: options.developer, security }),
+    protectedRoutes,
+  );
+  const securedRoutes: HttpExtension = {
+    methods: routes.methods,
+    headers: routes.headers,
+    async handle(req, res, address) {
+      const path = new URL(req.url ?? "/", "http://telemetry").pathname;
+      const developerRoute = path.startsWith("/api/dev/");
+      const recordingRoute =
+        path === "/api/telemetry/recordings" ||
+        path.startsWith("/api/telemetry/recordings/");
+      const agent =
+        (path === "/api/dev/actions" || path.startsWith("/api/dev/actions/")) &&
+        developerBearer(req).startsWith("fa1.");
+      if ((developerRoute || recordingRoute) && !agent) {
+        const principal = await requireDeveloper(req, options.developer);
+        const at = now();
+        const capability =
+          path.startsWith("/api/dev/agent-tokens") ||
+          (path.startsWith("/api/dev/actions/") && req.method !== "GET")
+            ? "token"
+            : recordingRoute
+              ? "record"
+              : "read";
+        if (path === "/api/dev/me") {
+          const policy = await security.policy(principal.uid);
+          if (!policy.capabilities.length)
+            throw new RoomError(403, "Developer access revoked");
+          if (
+            policy.notBefore &&
+            (principal.authTime === undefined ||
+              principal.authTime < policy.notBefore)
+          )
+            throw new RoomError(401, "Sign in again after your access changed");
+        } else {
+          const stepUp =
+            (path === "/api/telemetry/recordings" && req.method === "POST") ||
+            (path === "/api/dev/agent-tokens" && req.method === "POST");
+          await authorizeDeveloper(security, principal, capability, at, stepUp);
+        }
+        const resource =
+          path.length <= 240 && /^\/[A-Za-z0-9_/-]+$/.test(path)
+            ? path
+            : "invalid-path";
+        await auditDeveloper(
+          security,
+          principal,
+          `${req.method ?? "UNKNOWN"} ${capability}`,
+          resource,
+          at,
+        );
+      }
+      return routes.handle(req, res, address);
+    },
+  };
   return {
     metrics,
     debug,
     actions,
-    http: composeHttp(
-      createMetricsHttp({ metrics, developer: options.developer }),
-      protectedRoutes,
-    ),
+    http: securedRoutes,
   };
 }
 
@@ -240,6 +315,9 @@ export async function createLocalTelemetry(options: {
     ),
     actionDatabase: await FileActionDatabase.open(
       join(options.directory, "actions.json"),
+    ),
+    security: await FileDeveloperSecurityStore.open(
+      join(options.directory, "security"),
     ),
     objects: new FilePrivateObjectStorage(join(options.directory, "objects")),
     rateLimitKey: randomBytes(32).toString("hex"),
@@ -301,6 +379,10 @@ export function createProductionTelemetry(options: {
       options.prefix,
     ),
     actionDatabase: new FirestoreActionDatabase(
+      options.firestore,
+      options.prefix,
+    ),
+    security: new FirestoreDeveloperSecurityStore(
       options.firestore,
       options.prefix,
     ),

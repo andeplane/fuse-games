@@ -29,7 +29,7 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
     now: () => now,
     developer: async (token) =>
       token === "test-admin"
-        ? { uid: "admin", email: "andersullnass@gmail.com" }
+        ? { uid: "admin", email: "andersullnass@gmail.com", authTime: now }
         : undefined,
     metricsDatabase: new MemoryTelemetryDatabase(),
     debugDatabase: new MemoryDebugDatabase(),
