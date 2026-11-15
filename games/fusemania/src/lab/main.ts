@@ -46,6 +46,8 @@ import {
   type Spectra,
 } from "./spectrum.js";
 import type { SpectrumReply, SpectrumRequest } from "./spectrum-worker.js";
+import type { RhythmResult } from "./rhythm.js";
+import type { RhythmRequest, RhythmReply } from "./rhythm-worker.js";
 import {
   parseResume,
   resumeHash,
@@ -95,6 +97,7 @@ const TAPS_KEY = (song: string) => `fusemania-lab:taps:${song}`;
 const RECORD_FROM_KEY = (song: string) => `fusemania-lab:record-from:${song}`;
 /** The key of the column that shows the tapped rhythm. */
 const TAPPED = "taps";
+const DETECTED = "detected";
 const HEADER = 30;
 const RULER = 58;
 const LANE = 30;
@@ -266,6 +269,105 @@ const overview = el("canvas", { className: "lab-overview" });
 const stage = el("div", { className: "lab-stage" }, canvas, overview);
 
 const selectionBox = el("section", { className: "lab-card" });
+const rhythmMode = el("select", { title: "Rhythm detection mode" });
+rhythmMode.append(
+  el("option", { value: "melody", textContent: "Melody changes + attacks" }),
+  el("option", { value: "attacks", textContent: "Band attacks only" }),
+);
+const rhythmSensitivity = el("input", {
+  type: "range",
+  min: "0",
+  max: "1",
+  step: "0.05",
+  value: "0.6",
+  title: "Higher sensitivity includes quieter attacks",
+});
+const sensitivityValue = el("output", { textContent: "60%" });
+const rhythmGap = el("select", {
+  title: "Minimum time between detected clicks",
+});
+for (const ms of [60, 80, 120, 180])
+  rhythmGap.append(
+    el("option", { value: String(ms / 1000), textContent: `${ms} ms` }),
+  );
+rhythmGap.value = "0.08";
+const detectButton = button(
+  "Detect rhythm",
+  () => runRhythm(),
+  "Analyse the selected phrase and band; otherwise the listening band or 200–3000 Hz over the song",
+);
+const listenButton = button(
+  "Listen",
+  () => listenToRhythm(),
+  "Play the analysed span with a click on each detected event",
+);
+const eventsButton = button(
+  "Download events",
+  () => {
+    if (rhythm)
+      download(
+        `${songId}-detected-rhythm.json`,
+        JSON.stringify(
+          {
+            version: 1,
+            song: songId,
+            experimental: true,
+            frameSeconds: 1 / FRAMES_PER_SECOND,
+            ...rhythm,
+            pitch: Array.from(rhythm.pitch),
+            novelty: Array.from(rhythm.novelty),
+          },
+          null,
+          2,
+        ),
+        "application/json",
+      );
+  },
+  "Download unsnapped event times, pitch trace and novelty features (experimental, not training labels)",
+);
+const rhythmStatus = el("p", {
+  className: "lab-dim",
+  textContent: "Loading audio analysis…",
+});
+rhythmStatus.setAttribute("role", "status");
+const rhythmBox = el(
+  "section",
+  { className: "lab-card lab-rhythm" },
+  el("h2", { textContent: "Rhythm experiment" }),
+  el("p", {
+    className: "lab-dim",
+    textContent:
+      "Select a phrase and frequency band, then detect. With no selection: listening band, or 200–3000 Hz over the song.",
+  }),
+  el("label", { className: "lab-rhythm-control" }, "Follow ", rhythmMode),
+  el(
+    "label",
+    { className: "lab-rhythm-control" },
+    "Sensitivity ",
+    rhythmSensitivity,
+    sensitivityValue,
+  ),
+  el("label", { className: "lab-rhythm-control" }, "Min gap ", rhythmGap),
+  el(
+    "div",
+    { className: "lab-row" },
+    detectButton,
+    listenButton,
+    button(
+      "Clear",
+      () => clearRhythm(),
+      "Remove only the experimental detections",
+    ),
+  ),
+  rhythmStatus,
+  eventsButton,
+  el("p", {
+    className: "lab-dim",
+    textContent:
+      "White trace: tracked pitch. Orange dots: attacks. Yellow squares: pitch changes. Times are unsnapped; charts and taps are unchanged.",
+  }),
+);
+detectButton.disabled = listenButton.disabled = eventsButton.disabled = true;
 const notesBox = el("section", { className: "lab-card" });
 const helpBox = el(
   "section",
@@ -291,6 +393,7 @@ const helpBox = el(
 const side = el(
   "aside",
   { className: "lab-side" },
+  rhythmBox,
   selectionBox,
   notesBox,
   helpBox,
@@ -366,6 +469,9 @@ const extraSims: { name: string; sim: Simfile }[] = [];
 const hidden = new Set<string>();
 let duration = 1;
 let spectra: Spectra | undefined;
+let rhythm: RhythmResult | undefined;
+let rhythmWorker: Worker | undefined;
+let auditionEnd: number | undefined;
 let tiles: { canvas: HTMLCanvasElement; from: number; frames: number }[] = [];
 let flux: Float32Array | undefined;
 let fluxScale = 1;
@@ -379,6 +485,8 @@ let linkedFile: FileSystemFileHandle | undefined;
 let loadToken = 0;
 
 let audioContext: AudioContext | undefined;
+let audioOutput: GainNode | undefined;
+const muted = new URLSearchParams(location.search).has("mute");
 let playBuffer: AudioBuffer | undefined;
 let source: AudioBufferSourceNode | undefined;
 let startCtx = 0;
@@ -388,6 +496,7 @@ let scheduledUntil = 0;
 let tickBuffer: AudioBuffer | undefined;
 /** Ticks scheduled on the audio clock and not yet heard; a stop or a seek silences them. */
 const pendingTicks = new Set<AudioBufferSourceNode>();
+const scheduledTickLog: { time: number; choice: string; when: number }[] = [];
 let follow = true;
 /** A place in the song to come back to: `x` sets it at the playhead, enter returns to it. Kept per song. */
 let marker: number | undefined;
@@ -468,6 +577,9 @@ async function loadSong(id: string): Promise<void> {
   selection = undefined;
   flux = undefined;
   spectra = undefined;
+  clearRhythm();
+  detectButton.disabled = true;
+  rhythmStatus.textContent = "Loading audio analysis…";
   tiles = [];
   playhead = 0;
   topTime = -0.5;
@@ -541,6 +653,9 @@ async function loadSong(id: string): Promise<void> {
     });
     if (token !== loadToken) return;
     spectra = result;
+    detectButton.disabled = false;
+    rhythmStatus.textContent =
+      "Ready. Select a phrase or detect over the whole song.";
     onsetScale = Math.max(1e-6, quantile(result.onset, 0.995));
     buildTiles();
     updateFlux();
@@ -550,6 +665,8 @@ async function loadSong(id: string): Promise<void> {
     say(
       `could not load the audio: ${error instanceof Error ? error.message : String(error)}`,
     );
+    rhythmStatus.textContent =
+      "Audio analysis unavailable. Select the song again to retry.";
   }
   draw();
 }
@@ -624,6 +741,11 @@ function rebuildCharts(): void {
   tickSelect.replaceChildren(
     el("option", { value: "", textContent: "off" }),
     el("option", { value: "beats", textContent: "beats" }),
+    el("option", {
+      value: DETECTED,
+      textContent: "Detected",
+      disabled: !rhythm?.events.length,
+    }),
     ...charts.map((chart) =>
       el("option", { value: chart.key, textContent: chart.label }),
     ),
@@ -676,6 +798,174 @@ function renderChips(): void {
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Spectrogram pictures
+
+/** Run only on request. A later selection does not silently replace the result being auditioned. */
+function runRhythm(): void {
+  if (!spectra) return;
+  rhythmWorker?.terminate();
+  const token = loadToken;
+  const worker = new Worker(new URL("./rhythm-worker.ts", import.meta.url), {
+    type: "module",
+  });
+  rhythmWorker = worker;
+  detectButton.disabled = true;
+  listenButton.disabled = eventsButton.disabled = true;
+  rhythmStatus.textContent = "Detecting rhythm…";
+  const finish = (): boolean => {
+    worker.terminate();
+    if (rhythmWorker !== worker || token !== loadToken) return false;
+    rhythmWorker = undefined;
+    detectButton.disabled = !spectra;
+    listenButton.disabled = !rhythm?.events.length;
+    eventsButton.disabled = !rhythm;
+    return true;
+  };
+  worker.onerror = () => {
+    if (finish())
+      rhythmStatus.textContent =
+        "Detection failed. Press Detect rhythm to retry.";
+  };
+  worker.onmessage = ({ data }: MessageEvent<RhythmReply>) => {
+    if (!finish()) return;
+    if (data.kind === "error") {
+      rhythmStatus.textContent = data.message;
+      return;
+    }
+    const result = data.result;
+    cancelTicks();
+    rhythm = result;
+    const count = result.events.length;
+    listenButton.disabled = !count;
+    eventsButton.disabled = false;
+    const option = tickSelect.querySelector<HTMLOptionElement>(
+      `option[value="${DETECTED}"]`,
+    );
+    if (option) option.disabled = !count;
+    const o = result.options;
+    rhythmStatus.textContent = `${count} events · ${o.start.toFixed(2)}–${o.end.toFixed(2)} s · ${Math.round(o.lowHz)}–${Math.round(o.highHz)} Hz. ${count ? "Listen, or choose Detected in the tick menu." : "Try a wider band or higher sensitivity."}${muted ? " This ?mute preview is silent; remove ?mute to hear it." : ""}`;
+    draw();
+  };
+  try {
+    const frequencies =
+      selection?.lowHz !== undefined && selection.highHz !== undefined
+        ? selection
+        : band;
+    const options = {
+      start: Math.max(0, selection?.start ?? 0),
+      end: Math.min(duration, selection?.end ?? duration),
+      lowHz: frequencies?.lowHz ?? 200,
+      highHz: frequencies?.highHz ?? 3000,
+      mode:
+        rhythmMode.value === "attacks"
+          ? ("attacks" as const)
+          : ("melody" as const),
+      sensitivity: Number(rhythmSensitivity.value),
+      minGap: Number(rhythmGap.value),
+    };
+    const detail = spectra.detail.slice();
+    worker.postMessage(
+      {
+        spectra: {
+          frames: spectra.frames,
+          detailBins: spectra.detailBins,
+          detail,
+        },
+        options,
+      } satisfies RhythmRequest,
+      [detail.buffer],
+    );
+  } catch (error) {
+    if (finish())
+      rhythmStatus.textContent =
+        error instanceof Error
+          ? error.message
+          : "Detection failed. Try another span.";
+  }
+}
+
+function clearRhythm(): void {
+  rhythmWorker?.terminate();
+  rhythmWorker = undefined;
+  detectButton.disabled = !spectra;
+  cancelTicks();
+  rhythm = undefined;
+  listenButton.disabled = eventsButton.disabled = true;
+  const option = tickSelect.querySelector<HTMLOptionElement>(
+    `option[value="${DETECTED}"]`,
+  );
+  if (option) option.disabled = true;
+  if (tickSelect.value === DETECTED) tickSelect.value = "";
+  rhythmStatus.textContent =
+    "Ready. Select a phrase or detect over the whole song.";
+  draw();
+}
+
+function listenToRhythm(): void {
+  if (!rhythm?.events.length) return;
+  stop();
+  tickSelect.value = DETECTED;
+  playhead = Math.max(0, rhythm.options.start - 0.1);
+  auditionEnd = Math.min(duration, rhythm.options.end + 0.1);
+  play();
+}
+
+function drawRhythm(g: CanvasRenderingContext2D, t0: number, t1: number): void {
+  if (!rhythm) return;
+  const { start, end } = rhythm.options;
+  g.save();
+  g.beginPath();
+  g.rect(layout.specX, HEADER, layout.specW, layout.height - HEADER);
+  g.clip();
+  g.strokeStyle = "rgba(255,255,255,0.8)";
+  g.lineWidth = 1.5;
+  g.beginPath();
+  let previousHz = 0;
+  for (
+    let frame = Math.max(
+      rhythm.fromFrame,
+      Math.floor(Math.max(start, t0) * FRAMES_PER_SECOND),
+    );
+    frame <=
+    Math.min(
+      Math.ceil(Math.min(end, t1) * FRAMES_PER_SECOND),
+      rhythm.fromFrame + rhythm.pitch.length - 1,
+    );
+    frame++
+  ) {
+    const hz = rhythm.pitch[frame - rhythm.fromFrame]!;
+    if (hz > 0) {
+      const x = xOfHz(hz),
+        y = yOf(frame / FRAMES_PER_SECOND);
+      if (!previousHz || Math.abs(Math.log2(hz / previousHz)) > 0.3)
+        g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    previousHz = hz;
+  }
+  g.stroke();
+  for (const event of rhythm.events) {
+    if (event.time < t0 || event.time > t1) continue;
+    const y = yOf(event.time);
+    g.strokeStyle =
+      event.kind === "pitch"
+        ? "rgba(255,226,59,0.45)"
+        : "rgba(255,174,91,0.45)";
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(layout.specX, y);
+    g.lineTo(layout.specX + layout.specW, y);
+    g.stroke();
+    g.fillStyle = event.kind === "pitch" ? "#ffe23b" : "#ffae5b";
+    const x = event.hz > 0 ? xOfHz(event.hz) : layout.specX + 6;
+    if (event.kind === "pitch") g.fillRect(x - 3, y - 3, 6, 6);
+    else {
+      g.beginPath();
+      g.arc(x, y, 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  g.restore();
+}
 
 /** A neon magma: black, violet, magenta, orange, pale yellow. */
 const COLOUR_STOPS: [number, number, number, number][] = [
@@ -949,6 +1239,8 @@ function draw(): void {
     g.fillRect(listening.from - 1, HEADER, 1, height - HEADER);
     g.fillRect(listening.to, HEADER, 1, height - HEADER);
   }
+
+  drawRhythm(g, t0, t1);
 
   // The selected Custom arrow's moment, as a line across the curves and the spectrogram: drag the arrow (or press
   // W and S) until the line sits on the sound it belongs to.
@@ -1278,6 +1570,9 @@ function ensureContext(): AudioContext {
         0.6;
     // The song, as it is (dry) and split in three by 4th-order filters; `applyBand` sets the mix.
     const context = audioContext;
+    audioOutput = context.createGain();
+    audioOutput.gain.value = muted ? 0 : 1;
+    audioOutput.connect(context.destination);
     mixIn = context.createGain();
     dryGain = context.createGain();
     belowGain = context.createGain();
@@ -1294,7 +1589,7 @@ function ensureContext(): AudioContext {
     belowFilters = stages(["lowpass", "lowpass"]);
     bandFilters = stages(["highpass", "highpass", "lowpass", "lowpass"]);
     aboveFilters = stages(["highpass", "highpass"]);
-    mixIn.connect(dryGain).connect(context.destination);
+    mixIn.connect(dryGain).connect(audioOutput);
     for (const [filters, gain] of [
       [belowFilters, belowGain],
       [bandFilters, bandGain],
@@ -1302,7 +1597,7 @@ function ensureContext(): AudioContext {
     ] as const) {
       let node: AudioNode = mixIn;
       for (const filter of filters) node = node.connect(filter);
-      node.connect(gain).connect(context.destination);
+      node.connect(gain).connect(audioOutput);
     }
     applyBand();
   }
@@ -1359,7 +1654,9 @@ function play(): void {
   startSong = Math.max(0, Math.min(playhead, duration - 0.05));
   startCtx = context.currentTime + 0.05;
   scheduledUntil = startSong;
-  source.start(startCtx, startSong);
+  if (auditionEnd !== undefined)
+    source.start(startCtx, startSong, Math.max(0.01, auditionEnd - startSong));
+  else source.start(startCtx, startSong);
   const mine = source;
   source.onended = () => {
     if (source === mine) stop();
@@ -1382,26 +1679,42 @@ function stop(): void {
     } catch {
       /* already ended */
     }
-    for (const tick of pendingTicks) {
-      tick.onended = null;
-      try {
-        tick.stop();
-      } catch {
-        /* already ended */
-      }
-    }
-    pendingTicks.clear();
   }
+  cancelTicks();
+  auditionEnd = undefined;
   playButton.textContent = "▶ Play";
   draw();
+}
+
+/** Retire clicks from the previous source/settings, including the audio-clock lookahead. */
+function cancelTicks(): void {
+  for (const tick of pendingTicks) {
+    tick.onended = null;
+    try {
+      tick.stop();
+    } catch {
+      /* already ended */
+    }
+  }
+  pendingTicks.clear();
+  scheduledTickLog.length = 0;
+  scheduledUntil =
+    source && audioContext
+      ? Math.max(
+          startSong,
+          startSong + (audioContext.currentTime - startCtx) * rate,
+        )
+      : playhead;
 }
 
 function scheduleTicks(): void {
   if (!audioContext || !source || !tickBuffer) return;
   const choice = tickSelect.value;
   // Look ahead on the audio clock, not the heard time: output latency must not eat the lookahead.
-  const horizon =
-    startSong + (audioContext.currentTime + 0.3 - startCtx) * rate;
+  const horizon = Math.min(
+    auditionEnd ?? duration,
+    startSong + (audioContext.currentTime + 0.3 - startCtx) * rate,
+  );
   if (horizon <= scheduledUntil || !choice) {
     scheduledUntil = Math.max(scheduledUntil, horizon);
     return;
@@ -1416,6 +1729,10 @@ function scheduleTicks(): void {
         beat++
       )
         times.push(timing.timeAt(beat));
+  } else if (choice === DETECTED) {
+    for (const event of rhythm?.events ?? [])
+      if (event.time >= scheduledUntil && event.time < horizon)
+        times.push(event.time);
   } else {
     const chart = charts.find((c) => c.key === choice);
     let last = -1;
@@ -1435,10 +1752,12 @@ function scheduleTicks(): void {
     if (when < audioContext.currentTime) continue;
     const tick = audioContext.createBufferSource();
     tick.buffer = tickBuffer;
-    tick.connect(audioContext.destination);
+    tick.connect(audioOutput ?? audioContext.destination);
     tick.onended = () => pendingTicks.delete(tick);
     pendingTicks.add(tick);
     tick.start(when);
+    scheduledTickLog.push({ time, choice, when });
+    if (scheduledTickLog.length > 128) scheduledTickLog.shift();
   }
   scheduledUntil = horizon;
 }
@@ -1646,7 +1965,7 @@ canvas.addEventListener("pointerdown", (event) => {
       if (column) {
         tickSelect.value =
           tickSelect.value === column.chart.key ? "" : column.chart.key;
-        scheduledUntil = heardTime();
+        cancelTicks();
         draw();
       }
       return;
@@ -2308,14 +2627,25 @@ recordInput.onchange = () => {
 };
 speedSelect.onchange = () => {
   if (source) {
+    const end = auditionEnd;
     stop();
+    auditionEnd = end;
     play();
   }
 };
 tickSelect.onchange = () => {
-  scheduledUntil = heardTime();
+  cancelTicks();
   draw();
 };
+rhythmSensitivity.oninput = () => {
+  sensitivityValue.textContent = `${Math.round(Number(rhythmSensitivity.value) * 100)}%`;
+};
+for (const control of [rhythmMode, rhythmSensitivity, rhythmGap])
+  control.onchange = () => {
+    clearRhythm();
+    rhythmStatus.textContent =
+      "Settings changed. Press Detect rhythm to analyse again.";
+  };
 
 window.addEventListener("keydown", (event) => {
   const target = event.target instanceof HTMLElement ? event.target : null;
@@ -2446,6 +2776,16 @@ new ResizeObserver(() => draw()).observe(stage);
     topTime,
     pxPerSec,
     selection,
+    playing: Boolean(source),
+    auditionEnd,
+    tick: tickSelect.value,
+    muted,
+    outputGain: audioOutput?.gain.value,
+    pendingTicks: pendingTicks.size,
+    scheduledTicks: [...scheduledTickLog],
+    rhythm: rhythm
+      ? { options: rhythm.options, events: rhythm.events }
+      : undefined,
   }),
   select: (span: Selection) => {
     selection = span;

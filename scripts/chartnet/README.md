@@ -350,3 +350,40 @@ feature such a band would add) and counts each chart's steps by subdivision in t
 note (`src/lab/notes.ts`, versioned JSON): kept in the browser, downloadable, copyable as text for a chat, or saved to
 a file on every change (Chrome's file picker). `Load .ssc…` adds a candidate's charts (e.g. `gen2.py fuse` output)
 beside the song's own for comparison. The DSP is `src/lab/spectrum.ts` and runs in a worker (about 8 s a song).
+
+### Auditioning extracted rhythm (experimental)
+
+The lab's **Rhythm experiment** panel extracts candidate events without training or changing a chart:
+
+1. Drag a time/frequency box over the musical line to follow. Without a selection it uses the listening band,
+   or 200–3000 Hz over the whole song.
+2. Choose **Melody changes + attacks** or **Band attacks only**, sensitivity and minimum spacing, then
+   **Detect rhythm**. Detection runs in its own cancellable worker; switching songs or settings retires it.
+3. **Listen** plays the analysed span with clicks; **Detected** in the tick menu uses the same events during normal
+   playback. White traces show estimated pitch, orange dots attacks, yellow squares persistent pitch changes.
+   Change the band/settings and detect again to compare. A later selection alone does not replace the analysed span.
+4. **Download events** exports unsnapped event times/strengths, the pitch trace and novelty features at 100 Hz with
+   their options and starting frame. These are experimental features, not verified training labels. They are not
+   written to saved notes, Custom taps or `.ssc` charts. `?mute` silences both the song and clicks for browser checks;
+   remove it for listening.
+
+`src/lab/rhythm.ts` uses noise-gated harmonic magnitude summation, up to six harmonics with decaying weights, and
+dynamic-programming ridge continuity. This is a simplified salience tracker inspired by
+[MELODIA's predominant-melody approach](https://essentia.upf.edu/reference/std_PredominantPitchMelodia.html), not a
+reproduction of that algorithm. Attacks use a two-frame positive spectral difference against a ±1-bin frequency
+maximum, following [SuperFlux](https://phenicx.upf.edu/system/files/publications/Boeck_DAFx-13.pdf); median-background
+thresholding and minimum-spacing suppression select events. Stable pitch changes provide additional evidence for
+connected notes, with relative pitch hysteresis to reject detuned vibrato. A local half-amplitude crossing refines
+pitched attack times to reduce the early log-flux bias of centred bass windows. Neither branch needs the beat grid
+or a chart. Changing playback speed preserves Listen's end; seeking leaves the bounded audition.
+
+Limits: the selected band does not separate instruments, and the strongest coherent line can still be accompaniment
+or an overtone. Fast runs, slides and tremolo can be ambiguous; the multiresolution spectrum can smear attack timing.
+Synthetic regressions cover silence, steady tones, repeated and connected notes, a missing fundamental, vibrato,
+off-band bass, broadband attacks and spacing/crop behaviour. No real-song transcription accuracy or ChartNet gain
+has been measured. Compare missed and extra events against the intended musical line before using them as inputs.
+
+The next distinct onset experiment is [complex-domain onset detection](https://www.dafx.de/paper-archive/2003/pdfs/dafx81.pdf),
+which also uses phase prediction error. It requires retaining FFT phase; sharpening the current dB picture cannot
+recover it. Harmonic/percussive separation and NMF are other possible experiments, rather than prerequisites for
+auditioning this baseline.

@@ -212,11 +212,49 @@ body.chart-lab {
 .lab-help p {
   color: #9aa3c5;
 }
+.lab-rhythm-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+.lab-rhythm select {
+  min-width: 0;
+  max-width: 100%;
+  background: #121b44;
+  color: #dfe6ff;
+  border: 1px solid #2b3a7a;
+  border-radius: 6px;
+  padding: 4px;
+  font: inherit;
+}
+.lab-rhythm input[type="range"] {
+  min-width: 40px;
+  flex: 1;
+  accent-color: #ffae5b;
+}
+.lab-rhythm output {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+}
+.chart-lab button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.lab-rhythm :focus-visible {
+  outline: 2px solid #ffae5b;
+  outline-offset: 2px;
+}
 @media (max-width: 800px) {
   .lab-main {
     flex-direction: column;
   }
+  .lab-stage {
+    min-height: 0;
+  }
   .lab-side {
+    flex: 0 1 45%;
+    min-height: 160px;
     width: auto;
     max-height: 40vh;
     border-left: 0;
