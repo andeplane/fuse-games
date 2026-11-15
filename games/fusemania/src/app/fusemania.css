@@ -1058,6 +1058,38 @@ body:has(.fm-room:is([data-screen="play"], [data-screen="controller"])) #app {
   max-width: 92%;
   padding: var(--fui-space-4);
 }
+.fm-hold-label,
+.fm-hold-detail {
+  margin: 0;
+}
+.fm-hold-progress {
+  display: block;
+  width: 100%;
+  height: 0.65rem;
+  margin-top: var(--fui-space-3);
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--fui-ink) 20%, transparent);
+  accent-color: var(--fui-ink);
+}
+.fm-hold-progress::-webkit-progress-bar {
+  background: color-mix(in srgb, var(--fui-ink) 20%, transparent);
+}
+.fm-hold-progress::-webkit-progress-value {
+  background: var(--fui-ink);
+}
+.fm-hold-progress::-moz-progress-bar {
+  background: var(--fui-ink);
+}
+.fm-hold-detail {
+  margin-top: var(--fui-space-2);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.fm-hold-progress[hidden],
+.fm-hold-detail[hidden] {
+  display: none;
+}
 
 /* Tables of the game's own on the results screen: every player's judgments, a session's last song. */
 .fm-judgments {

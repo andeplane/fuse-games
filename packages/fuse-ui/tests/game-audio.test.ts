@@ -39,6 +39,27 @@ const songs = [
   { id: "b", title: "B", path: "music/g/b.mp3" },
 ];
 
+test("external and cached song previews preserve their URLs under a deployment base", async () => {
+  for (const url of [
+    "https://storage.googleapis.com/media/song.ogg",
+    "https://storage.googleapis.com/media/song.mp3",
+    "blob:https://play.example/preview",
+  ]) {
+    const rig = createAudioRig("suspended");
+    const audio = createGameAudio(rig.deps);
+    audio.setSongs(
+      [{ id: "external", title: "External", path: url }],
+      "/games/",
+    );
+    audio.startMusic();
+    assert.equal(rig.elements.length, 0, "preview still waits for a gesture");
+    audio.unlock();
+    await Promise.resolve();
+    assert.equal(rig.elements[0]?.src, url);
+    assert.ok(rig.elements[0]!.plays > 0);
+  }
+});
+
 test("a muted preview never opens audio or writes a choice", () => {
   const r = createAudioRig();
   const audio = createGameAudio(r.deps, { forceMute: true });
