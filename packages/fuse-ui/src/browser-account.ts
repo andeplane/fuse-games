@@ -138,6 +138,17 @@ export async function signIn(): Promise<void> {
   await auth.signInWithPopup(instance, provider);
 }
 
+/** Reauthenticate the current Google user, producing a new auth_time for sensitive actions. */
+export async function reauthenticate(): Promise<void> {
+  const { auth, instance } = await firebase();
+  const user = instance.currentUser;
+  if (!user) throw new Error("Sign in first.");
+  const provider = new auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  await auth.reauthenticateWithPopup(user, provider);
+  await user.getIdToken(true);
+}
+
 export async function signOut(): Promise<void> {
   const { auth, instance } = await firebase();
   await auth.signOut(instance);

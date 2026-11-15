@@ -37,6 +37,7 @@ test("developer access requires signed Google provider and verified allowlisted 
   assert.deepEqual(await verify(await token()), {
     uid: "google-user",
     email: "andersullnass@gmail.com",
+    authTime: NOW - 60_000,
   });
   assert.equal(
     (await verify(await token({ email: "andershaf@gmail.com" })))?.email,

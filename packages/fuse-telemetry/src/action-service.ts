@@ -34,6 +34,7 @@ export interface ActionPrincipal {
   tokenId?: string;
   recordingId?: string;
   gameId?: string;
+  email?: string;
 }
 export interface ActionServiceOptions {
   database: ActionDatabase;
@@ -47,6 +48,10 @@ export interface ActionServiceOptions {
   readFailed?: (recordingId: string, sequence: number) => Promise<boolean>;
   now?: () => number;
   randomId?: () => string;
+  ownerPolicy?: (
+    uid: string,
+    email?: string,
+  ) => Promise<{ generation: number; tokenAllowed: boolean }>;
 }
 /** Stands in `processed` for a segment that will never be transcribed. */
 const SKIPPED = "0".repeat(64);
@@ -638,6 +643,8 @@ export function createActionService(options: ActionServiceOptions) {
     async mintToken(
       body: { recordingId?: unknown; gameId?: unknown; expiresInMs?: unknown },
       uid: string,
+      email?: string,
+      expectedGeneration?: number,
     ) {
       if (
         (!body.recordingId && !body.gameId) ||
@@ -655,6 +662,14 @@ export function createActionService(options: ActionServiceOptions) {
         throw new RoomError(400, "Token lifetime must be 1 minute to 24 hours");
       const tokenId = id(),
         secret = randomBytes(32).toString("base64url");
+      const ownerPolicy = await options.ownerPolicy?.(uid, email);
+      if (
+        ownerPolicy &&
+        (!ownerPolicy.tokenAllowed ||
+          (expectedGeneration !== undefined &&
+            ownerPolicy.generation !== expectedGeneration))
+      )
+        throw new RoomError(403, "Developer capability required");
       const token = `fa1.${tokenId}.${secret}`;
       const record: ActionAgentToken = {
         id: tokenId,
@@ -665,6 +680,8 @@ export function createActionService(options: ActionServiceOptions) {
         gameId: typeof body.gameId === "string" ? body.gameId : null,
         expiresAt: now() + Number(duration),
         revoked: false,
+        ...(ownerPolicy ? { ownerGeneration: ownerPolicy.generation } : {}),
+        ...(email ? { ownerEmail: email } : {}),
       };
       await db.putToken(record);
       return {
@@ -693,9 +710,21 @@ export function createActionService(options: ActionServiceOptions) {
         )
       )
         return;
+      const ownerPolicy = await options.ownerPolicy?.(
+        stored.ownerId,
+        stored.ownerEmail,
+      );
+      if (
+        ownerPolicy &&
+        (!stored.ownerEmail ||
+          !ownerPolicy.tokenAllowed ||
+          ownerPolicy.generation !== (stored.ownerGeneration ?? 0))
+      )
+        return;
       return {
         uid: stored.ownerId,
         tokenId: stored.id,
+        ...(stored.ownerEmail ? { email: stored.ownerEmail } : {}),
         ...(stored.recordingId ? { recordingId: stored.recordingId } : {}),
         ...(stored.gameId ? { gameId: stored.gameId } : {}),
       };

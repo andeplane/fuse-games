@@ -8,6 +8,7 @@ import {
 import { TelemetryAdmission } from "./limits.js";
 import { MAX_EVENT_BODY_BYTES, type MetricsStore } from "./metrics.js";
 import type { MetricsSessions } from "./metrics-session.js";
+import type { DeveloperSecurityStore } from "./developer-security.js";
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const contentType = req.headers["content-type"]
@@ -50,6 +51,8 @@ export function createMetricsHttp(options: {
   developer: DeveloperVerifier;
   sessions: MetricsSessions;
   admission?: TelemetryAdmission;
+  security?: DeveloperSecurityStore;
+  developerPreAdmitted?: boolean;
 }): HttpExtension {
   const admission = options.admission ?? new TelemetryAdmission();
   return {
@@ -64,7 +67,7 @@ export function createMetricsHttp(options: {
         ].includes(url.pathname)
       )
         return false;
-      await admission.run(address, async () => {
+      const execute = async () => {
         const json = (value: unknown) => {
           res.writeHead(200, {
             "Content-Type": "application/json",
@@ -86,7 +89,15 @@ export function createMetricsHttp(options: {
         if (req.method !== "GET") throw new RoomError(405, "Use GET");
         const principal = await requireDeveloper(req, options.developer);
         if (url.pathname === "/api/dev/me") {
-          json(principal);
+          json(
+            options.security
+              ? {
+                  ...principal,
+                  capabilities: (await options.security.policy(principal.uid))
+                    .capabilities,
+                }
+              : principal,
+          );
           return;
         }
         const period = url.searchParams.get("period");
@@ -110,7 +121,10 @@ export function createMetricsHttp(options: {
             ...(gameId === null ? {} : { gameId }),
           }),
         );
-      });
+      };
+      if (options.developerPreAdmitted && url.pathname.startsWith("/api/dev/"))
+        await execute();
+      else await admission.run(address, execute);
       return true;
     },
   };

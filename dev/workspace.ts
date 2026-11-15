@@ -34,6 +34,7 @@ export interface WorkspaceAccount {
   watch(listener: (account: { name: string } | undefined) => void): () => void;
   signIn(): Promise<void>;
   signOut(): Promise<void>;
+  reauthenticate?(): Promise<void>;
   failure(error: unknown): string;
 }
 export interface WorkspaceDependencies {
@@ -97,6 +98,23 @@ export function mountWorkspace(
     const notice = node("div", "notice error");
     notice.setAttribute("role", "alert");
     notice.append(node("p", "", message), button("Retry", retry));
+    if (
+      error instanceof WorkspaceError &&
+      error.status === 401 &&
+      deps.account.reauthenticate
+    ) {
+      notice.append(
+        button("Confirm Google sign-in", () => {
+          void deps.account.reauthenticate!()
+            .then(retry)
+            .catch((reason: unknown) => {
+              const message =
+                deps.account.failure(reason) || "Sign-in cancelled.";
+              failure(new WorkspaceError(401, message), target, retry);
+            });
+        }),
+      );
+    }
     if (
       error instanceof WorkspaceError &&
       (error.status === 401 || error.status === 403)

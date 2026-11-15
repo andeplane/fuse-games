@@ -43,7 +43,7 @@ export function createWorkspaceApi(transport: WorkspaceTransport) {
     if (!result.ok) {
       const message =
         result.status === 401
-          ? "Your sign-in expired. Sign in again."
+          ? "Confirm your Google sign-in to continue."
           : result.status === 403
             ? "This Google account does not have developer access."
             : result.status === 400 || result.status === 422

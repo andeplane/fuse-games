@@ -5,6 +5,7 @@ import { RoomError } from "fuse-network-be";
 export interface DeveloperPrincipal {
   uid: string;
   email: string;
+  authTime?: number;
 }
 export type DeveloperVerifier = (
   idToken: string,
@@ -61,7 +62,11 @@ export function createDeveloperVerifier(
         typeof payload.exp !== "number"
       )
         return undefined;
-      return { uid: payload.sub, email: payload.email.toLowerCase() };
+      return {
+        uid: payload.sub,
+        email: payload.email.toLowerCase(),
+        authTime: payload.auth_time * 1000,
+      };
     } catch {
       return undefined;
     }

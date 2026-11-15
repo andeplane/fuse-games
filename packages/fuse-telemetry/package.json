@@ -13,6 +13,7 @@
     "./metrics-firestore": "./src/metrics-firestore.ts",
     "./limits": "./src/limits.ts",
     "./developer-access": "./src/developer-access.ts",
+    "./developer-security": "./src/developer-security.ts",
     "./debug-contracts": "./src/debug-contracts.ts",
     "./debug-http": "./src/debug-http.ts",
     "./debug-store": "./src/debug-store.ts",
