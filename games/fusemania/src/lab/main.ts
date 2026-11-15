@@ -950,6 +950,21 @@ function draw(): void {
     g.fillRect(listening.to, HEADER, 1, height - HEADER);
   }
 
+  // The selected Custom arrow's moment, as a line across the curves and the spectrogram: drag the arrow (or press
+  // W and S) until the line sits on the sound it belongs to.
+  if (pickedTap && !hidden.has(TAPPED)) {
+    const y = Math.round(yOf(pickedTap.time)) + 0.5;
+    if (y > HEADER && y < height) {
+      g.strokeStyle = "rgba(120,255,140,0.95)";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(layout.curvesX, y);
+      g.lineTo(layout.specX + layout.specW, y);
+      g.stroke();
+      g.lineWidth = 1;
+    }
+  }
+
   // Where recording starts.
   if (recordFrom !== undefined) {
     const ry = yOf(recordFrom);
