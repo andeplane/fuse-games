@@ -382,6 +382,7 @@ function room(solo: boolean): void {
     onLeave: leave,
     onOpenChange: (open) => {
       if (open) letGoAll();
+      else if (model?.riding) main.focus({ preventScroll: true });
     },
   });
   const roundControls = createRoundControls(QUICK_GUIDE);
@@ -396,7 +397,7 @@ function room(solo: boolean): void {
         letGoAll();
         gamepads.letGo();
         captured.clear();
-      }
+      } else if (model?.riding) main.focus({ preventScroll: true });
     },
   });
   const modalOpen = () =>
@@ -618,6 +619,9 @@ function room(solo: boolean): void {
   );
   closed.hidden = true;
   const main = el("main", "", "ef-room");
+  // Resuming a ride returns keyboard input here, outside the header's own keyboard controls.
+  main.tabIndex = -1;
+  main.setAttribute("aria-label", "Elasto Fuse play area");
   main.append(
     problem.element,
     connecting,
