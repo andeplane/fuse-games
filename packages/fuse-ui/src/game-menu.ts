@@ -1,11 +1,8 @@
 import { createBackButton, createPageHeader } from "./back.js";
 import { menuKeys } from "./menu-keys.js";
 import { button, el } from "./dom.js";
-
-export interface ControlHint {
-  keys: string;
-  action: string;
-}
+import { createControlList, type ControlHint } from "./how-to-play.js";
+export type { ControlHint } from "./how-to-play.js";
 
 interface ControlsOptions {
   controls: readonly ControlHint[];
@@ -76,12 +73,7 @@ function controlContent(
         { keys: "On-screen buttons", action: "Tap or hold to play" },
       ])
     : options.controls;
-  const list = el("dl", "", "fui-controls-list", doc);
-  for (const hint of controls) {
-    const row = el("div", "", "fui-controls-row", doc);
-    row.append(el("dt", hint.keys, "", doc), el("dd", hint.action, "", doc));
-    list.append(row);
-  }
+  const list = createControlList(controls, doc, !touch);
   nodes.push(list);
   return nodes;
 }

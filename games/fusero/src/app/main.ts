@@ -253,6 +253,11 @@ function attract(host: HTMLElement) {
 function landing() {
   const card = createLandingCard({
     title: "FUSERO",
+    howToPlay: () => ({
+      goal: GOAL,
+      controls: controlHints(),
+      touchControls: TOUCH,
+    }),
     tagline:
       "Dig in. Rope out. Blow the cave apart. Real-time worm warfare for up to five friends.",
     background: attract,

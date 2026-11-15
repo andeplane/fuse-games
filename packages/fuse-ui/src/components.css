@@ -516,6 +516,26 @@
 .fui-controls-row dd {
   margin: 0;
 }
+.fui-how-to-play {
+  display: grid;
+  gap: 1rem;
+  max-width: 70ch;
+}
+.fui-how-to-play h3 {
+  margin: 0.75rem 0 0;
+}
+.fui-how-to-play p,
+.fui-how-to-play ul {
+  margin: 0;
+  line-height: 1.6;
+}
+.fui-controls-row kbd {
+  font: inherit;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  overflow-wrap: anywhere;
+}
 .fui-round-controls {
   position: absolute;
   z-index: 20;

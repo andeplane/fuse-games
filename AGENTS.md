@@ -50,6 +50,8 @@ These workflow rules replace older process requirements in ADRs, review notes an
 
 ## UI across games
 
+- **How to Play must teach actual play.** Use `createHowToPlay` or the structured `howToPlay` option on `createLandingCard` / `createMainMenu`: provide the goal, actual keyboard/mouse bindings, touch controls and essential rules. Reuse the running game's control definitions; supply a factory when bindings or PC/Mac presets can change. Pointer-only games describe their gestures instead of inventing keys. A tagline is not instructions. Check the landing guide and any existing in-game Controls at desktop and phone widths, including Back/Escape. The Dice scaffold must demonstrate this contract. Fusero originally omitted controls because the landing wrapper did not forward help data and the menu silently displayed its description; do not rely on that fallback for a playable game.
+
 Most of the user's corrections in November 2026 were UI drift: a rule fixed on one screen or game came back on another. These rules exist to stop that.
 
 - **Build from `packages/fuse-ui`, never a game-local copy.** The top bar (`createTopBar`), app portal, main menu and game menu, Back and page headers (`back.ts`), the room (`createRoomLayout` / `roomLayoutMarkup`), seats and Shared TV, and the results screen (`createResultsScreen` / `renderResults`) all live there; its README's "Menu patterns" is the spec. If the kit cannot do what a game needs, extend the kit for every game. `tests/shared-ui-adoption.test.ts` fails when a portal game does not import the shared top bar, room, results screen or app portal.

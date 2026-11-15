@@ -207,3 +207,8 @@ export {
   settingsLabel,
   type SettingsScope,
 } from "./settings-actions.js";
+export {
+  createHowToPlay,
+  createControlList,
+  type HowToPlayOptions,
+} from "./how-to-play.js";
