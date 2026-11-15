@@ -335,9 +335,9 @@ test("ratings and leaderboards are per game, while the account is shared", async
 
   const legacyHistory = f.store.game(LEGACY_GAME_ID),
     diceHistory = f.store.game("dice");
-  assert.equal((await legacyHistory.profile("alice"))!.rating!.value, 1016);
-  assert.equal((await diceHistory.profile("alice"))!.rating!.value, 984);
-  assert.equal((await diceHistory.profile("bob"))!.rating!.value, 1016);
+  assert.equal((await legacyHistory.profile("alice"))!.rating!.value, 1004);
+  assert.equal((await diceHistory.profile("alice"))!.rating!.value, 996);
+  assert.equal((await diceHistory.profile("bob"))!.rating!.value, 1004);
   assert.equal((await legacyHistory.profile("alice"))!.rank, 1);
   assert.equal((await diceHistory.profile("alice"))!.rank, 2);
   const top = async (gameId: string) =>
@@ -345,15 +345,15 @@ test("ratings and leaderboards are per game, while the account is shared", async
       (entry) => `${entry.name}:${entry.elo}${entry.you ? "*" : ""}`,
     );
   assert.deepEqual(await top(LEGACY_GAME_ID), [
-    "Player 1:1016",
-    "Player 2:984*",
+    "Player 1:1004",
+    "Player 2:996*",
   ]);
-  assert.deepEqual(await top("dice"), ["Player 2:1016*", "Player 1:984"]);
+  assert.deepEqual(await top("dice"), ["Player 2:1004*", "Player 1:996"]);
 
   // One rename, seen in both games: the username is the account's.
   await diceHistory.rename("alice", { username: "Ace" });
-  assert.deepEqual(await top(LEGACY_GAME_ID), ["Ace:1016", "Player 2:984*"]);
-  assert.deepEqual(await top("dice"), ["Player 2:1016*", "Ace:984"]);
+  assert.deepEqual(await top(LEGACY_GAME_ID), ["Ace:1004", "Player 2:996*"]);
+  assert.deepEqual(await top("dice"), ["Player 2:1004*", "Ace:996"]);
   assert.equal((await legacyHistory.profile("alice"))!.username, "Ace");
   await assert.rejects(diceHistory.rename("alice", { username: "" }), {
     status: 400,

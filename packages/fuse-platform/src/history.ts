@@ -485,6 +485,7 @@ export class GameHistory<
       throw new RoomError(429, "Too many requests; try later");
     const profile = (await this.database.profile(this.game.id, uid)) as
       Profile<T> | undefined;
+    if (profile) delete profile.ratingGuard;
     if (profile?.rating?.games)
       profile.rank = await this.database.rank(
         this.game.id,

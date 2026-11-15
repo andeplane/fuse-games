@@ -81,6 +81,7 @@ export const RESERVED_KEYS: ReadonlySet<string> = new Set([
   "avatarId",
   "updatedAt",
   "rating",
+  "ratingGuard",
   "rank",
   "ranked",
   "elo",
