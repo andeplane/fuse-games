@@ -37,6 +37,7 @@ export function RoomGameWindow({
   }
   return (
     <IframeGame
+      gameId={gameId}
       name={`${game.name} room ${code}`}
       url={roomUrl(registry.embedUrl(game), code)}
       backdropUrl={registry.screenshotUrl(game)}

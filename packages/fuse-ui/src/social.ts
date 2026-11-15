@@ -143,6 +143,7 @@ export function createGameSocial(options: GameSocialOptions) {
     account.accountUsername() ??
     storage.getItem(`${options.gameId}-player-name`);
   const friends = createFriendsPanel({
+    gameId: options.gameId,
     ...(options.pollMs ? { pollMs: options.pollMs } : {}),
     gameName: (id) =>
       (options.games ?? PORTAL_GAMES).find((game) => game.id === id)?.name ??

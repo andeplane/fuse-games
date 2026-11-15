@@ -65,12 +65,15 @@ export function useDialUpViewModel({
     sound.current = undefined;
   }, []);
 
-  const finish = useCallback(() => {
-    clear();
-    session.markConnected();
-    commands.close(windowId);
-    if (then) commands.open(then);
-  }, [clear, commands, session, then, windowId]);
+  const finish = useCallback(
+    (remember = true) => {
+      clear();
+      session.markConnected(remember);
+      commands.close(windowId);
+      if (then) commands.open(then);
+    },
+    [clear, commands, session, then, windowId],
+  );
 
   const connect = useCallback(() => {
     if (stage !== "idle") return;
@@ -86,7 +89,9 @@ export function useDialUpViewModel({
           setProgress(index / Math.max(1, schedule.length - 1));
           if (last) {
             setStage("connected");
-            cancels.current.push(deps.schedule(finish, CONNECTED_LINGER_MS));
+            cancels.current.push(
+              deps.schedule(() => finish(true), CONNECTED_LINGER_MS),
+            );
           }
         }, phase.atMs),
       );
@@ -102,6 +107,6 @@ export function useDialUpViewModel({
     progress,
     phoneNumber: MODEM_PHONE_NUMBER,
     connect,
-    cancel: finish,
+    cancel: () => finish(false),
   };
 }

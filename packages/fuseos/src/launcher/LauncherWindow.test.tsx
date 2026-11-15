@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ProviderOptions } from "../__mocks__/renderWithProviders";
 import {
   PHONE_DEVICE,
+  FIXTURE_GAMES,
   renderWithProviders,
 } from "../__mocks__/renderWithProviders";
 import { Desktop } from "../desktop/Desktop";
@@ -56,6 +57,62 @@ function renderLauncher(
 }
 
 describe("LauncherWindow", () => {
+  it("browses distinct screenshots with image, thumbnails and previous/next, resetting on game change", async () => {
+    const user = userEvent.setup();
+    const games = FIXTURE_GAMES.map((game) => ({
+      ...game,
+      screenshots: [
+        `gallery/${game.id}.jpg`,
+        `gallery/${game.id}-menu.jpg`,
+        `gallery/${game.id}-controls.jpg`,
+      ],
+    }));
+    const { inside } = renderLauncher({ games });
+    const image = () =>
+      inside.getByRole("img", { name: /Fuseball screenshot \d of 3/ });
+    expect(image()).toHaveAttribute("src", "/fuse-riders/gallery/fuseball.jpg");
+    await user.click(
+      inside.getByRole("button", { name: "Next Fuseball screenshot" }),
+    );
+    expect(image()).toHaveAttribute(
+      "src",
+      "/fuse-riders/gallery/fuseball-menu.jpg",
+    );
+    await user.click(
+      inside.getByRole("button", { name: "Show Fuseball screenshot 3" }),
+    );
+    expect(image()).toHaveAttribute(
+      "src",
+      "/fuse-riders/gallery/fuseball-controls.jpg",
+    );
+    await user.click(inside.getByRole("button", { name: "Next screenshot" }));
+    expect(image()).toHaveAttribute("src", "/fuse-riders/gallery/fuseball.jpg");
+    await user.click(
+      inside.getByRole("button", { name: "Previous screenshot" }),
+    );
+    expect(image()).toHaveAttribute(
+      "src",
+      "/fuse-riders/gallery/fuseball-controls.jpg",
+    );
+    await user.click(inside.getByRole("option", { name: "Fuse Birds" }));
+    expect(
+      inside.getByRole("img", { name: "Fuse Birds screenshot 1 of 3" }),
+    ).toHaveAttribute("src", "/fuse-riders/gallery/fuse-birds.jpg");
+  });
+
+  it("opens the selected game's leaderboard, including when the Hall of Fame is already open", async () => {
+    const user = userEvent.setup();
+    const { inside } = renderLauncher();
+    await user.click(inside.getByRole("button", { name: "Leaderboard" }));
+    const board = await screen.findByRole("dialog", { name: "Hall of Fame" });
+    expect(within(board).getByRole("combobox")).toHaveValue("fuseball");
+    await user.click(inside.getByRole("option", { name: "Fuse Birds" }));
+    await user.click(inside.getByRole("button", { name: "Leaderboard" }));
+    expect(within(board).getByRole("combobox")).toHaveValue("fuse-birds");
+    expect(
+      screen.getAllByRole("dialog", { name: "Hall of Fame" }),
+    ).toHaveLength(1);
+  });
   it("lists every game under MY GAMES with the first selected, its screenshot, tagline and facts", () => {
     const { inside } = renderLauncher();
     expect(inside.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
@@ -87,18 +144,17 @@ describe("LauncherWindow", () => {
 
     const details = inside.getByRole("region", { name: "Fuseball details" });
     expect(
-      within(details).getByRole("img", { name: "Fuseball screenshot" }),
+      within(details).getByRole("img", { name: "Fuseball screenshot 1 of 1" }),
     ).toHaveAttribute("src", "/fuse-riders/gallery/fuseball.jpg");
     expect(details).toHaveTextContent("Five-a-side with rockets");
     expect(details).toHaveTextContent("Status:Ready to play");
     expect(details).toHaveTextContent(/Disk usage:\d+ MB/);
     expect(details).toHaveTextContent("Last played:Never");
     const links = within(details).getByRole("navigation", { name: "Links" });
-    for (const name of ["Open in new tab", "Leaderboard"]) {
-      const link = within(links).getByRole("link", { name });
-      expect(link).toHaveAttribute("href", "/fuse-riders/fuseball/");
-      expect(link).toHaveAttribute("target", "_blank");
-    }
+    expect(within(links).queryByText("Open in new tab")).toBeNull();
+    expect(
+      within(links).getByRole("button", { name: "Leaderboard" }),
+    ).toBeInTheDocument();
     expect(inside.getByText("FUSTEAM")).toBeInTheDocument();
   });
 
@@ -273,7 +329,7 @@ describe("LauncherWindow", () => {
     );
     expect(dialUpSession.connected).toBe(true);
     expect(
-      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
+      await screen.findByRole("dialog", { name: "MSN Messenger" }),
     ).toBeInTheDocument();
     await user.click(inside.getByRole("tab", { name: "Servers" }));
     expect(
@@ -354,18 +410,18 @@ describe("LauncherWindow", () => {
     const { inside } = renderLauncher({ dialUpSession });
     await user.click(inside.getByRole("button", { name: "FRIENDS & CHAT" }));
     const messenger = await screen.findByRole("dialog", {
-      name: "Fuse Messenger",
+      name: "MSN Messenger",
     });
     await user.click(within(messenger).getByRole("button", { name: /close/i }));
-    expect(screen.queryByRole("dialog", { name: "Fuse Messenger" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "MSN Messenger" })).toBeNull();
     await user.click(
       within(inside.getByRole("navigation", { name: "Links" })).getByRole(
-        "link",
+        "button",
         { name: "Friends" },
       ),
     );
     expect(
-      await screen.findByRole("dialog", { name: "Fuse Messenger" }),
+      await screen.findByRole("dialog", { name: "MSN Messenger" }),
     ).toBeInTheDocument();
     await user.click(inside.getByRole("button", { name: "ADD A GAME..." }));
     // The message box is titled after the launcher, so two dialogs carry the name.

@@ -293,6 +293,18 @@ export function mergeInstance(
   existing: WindowState,
   content: WindowContent,
 ): WindowState {
+  if (
+    existing.kind === "halloffame" &&
+    content.kind === "halloffame" &&
+    content.gameId !== undefined
+  )
+    return { ...existing, gameId: content.gameId };
+  if (
+    existing.kind === "fusegame" &&
+    content.kind === "fusegame" &&
+    content.room !== undefined
+  )
+    return { ...existing, room: content.room };
   if (existing.kind === "controlpanel" && content.kind === "controlpanel")
     return content.tab === undefined
       ? existing

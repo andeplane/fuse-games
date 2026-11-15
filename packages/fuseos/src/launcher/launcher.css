@@ -314,18 +314,90 @@
   flex-shrink: 0;
   width: 100%;
   aspect-ratio: 16 / 9;
-  max-height: 56%;
+  display: block;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 0;
+  box-shadow: none;
   background: #000;
   border: 1px solid var(--fst-border-light);
   outline: 1px solid var(--fst-border-dark);
   box-sizing: border-box;
 }
 
+.fst-carousel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  max-height: 58%;
+}
+.win98 .window .fst-root button.fst-shot {
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  box-shadow: none;
+}
+.fst-carousel-controls {
+  flex-shrink: 0;
+}
+.fst-carousel-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fst-thumbnails {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+.fst-thumbnail {
+  flex: 1;
+  max-width: 90px;
+  min-width: 0;
+  min-height: 0;
+  padding: 2px;
+  background: var(--fst-bg-dark);
+  border: 1px solid var(--fst-border-light);
+  border-radius: 0;
+  box-shadow: none;
+}
+.fst-thumbnail[aria-pressed="true"] {
+  border-color: var(--fst-maize);
+}
+.fst-thumbnail img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.fst-shot-count {
+  color: var(--fst-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fst-shot:focus-visible,
+.fst-thumbnail:focus-visible {
+  outline: 1px dotted var(--fst-maize);
+  outline-offset: 2px;
+}
+.fst-shot-error {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: 12px;
+  box-sizing: border-box;
+  color: var(--fst-text);
+}
+
 .fst-shot-image {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .fst-shot-missing {
@@ -407,9 +479,18 @@
   box-shadow: inset 1px 0 var(--fst-border-light);
 }
 
-.fst-link {
+.win98 .window .fst-root button.fst-link {
   color: var(--fst-text-muted);
   text-decoration: underline;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  min-width: 0;
+  min-height: 20px;
+  text-align: left;
+  font: inherit;
 }
 
 .fst-link:hover {
