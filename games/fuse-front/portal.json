@@ -3,5 +3,10 @@
   "screenshot": "gallery/fuse-front.jpg",
   "tagline": "Take the flag. The factory does the rest.",
   "mark": "FFR",
-  "accent": "#f8d030"
+  "accent": "#f8d030",
+  "screenshots": [
+    "gallery/fuse-front.jpg",
+    "gallery/fuse-front-menu.jpg",
+    "gallery/fuse-front-controls.jpg"
+  ]
 }

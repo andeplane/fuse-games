@@ -4,5 +4,10 @@
   "tagline": "Bubble-bumping neon ball: duel, 2v2, 3v3",
   "mark": "FB",
   "accent": "#ffe46b",
-  "order": 4
+  "order": 4,
+  "screenshots": [
+    "gallery/fuseball.jpg",
+    "gallery/fuseball-menu.jpg",
+    "gallery/fuseball-controls.jpg"
+  ]
 }

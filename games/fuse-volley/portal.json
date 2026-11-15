@@ -4,5 +4,10 @@
   "tagline": "Jelly-blob beach volleyball",
   "mark": "FV",
   "accent": "#16e7ff",
-  "order": 3
+  "order": 3,
+  "screenshots": [
+    "gallery/fuse-volley.jpg",
+    "gallery/fuse-volley-menu.jpg",
+    "gallery/fuse-volley-controls.jpg"
+  ]
 }

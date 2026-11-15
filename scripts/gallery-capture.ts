@@ -17,6 +17,16 @@ import type { Page } from "playwright";
 import { launchSelected } from "./lib/browser.js";
 import { startRoomService } from "./lib/server.js";
 
+// A carousel adds the game's real front door and controls alongside its gameplay cover.
+// Captures use agent-browser; run this mode against Vite to refresh from source without a build.
+if (process.argv.includes("--carousel")) {
+  const { captureCarousel } = await import("./lib/gallery-carousel.js");
+  await captureCarousel(
+    process.argv.slice(2).filter((arg) => arg !== "--carousel"),
+  );
+  process.exit(0);
+}
+
 /** The card's image: 1200 pixels wide, as `public/gallery/README.md` asks, at the catalog's 16:10. */
 const VIEWPORT = { width: 1200, height: 750 };
 const JPEG_QUALITY = 84;
