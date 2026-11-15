@@ -2,7 +2,7 @@
 
 Fusemania is a four-arrow rhythm game for one to five players, in the tradition of StepMania and In The Groove. Arrows scroll to four targets; **hit each one as it reaches its target, on the beat**. Hold the long ones to their end, tap the zig-zag ones repeatedly (rolls), keep off the mines. The Fuse soundtrack has twenty tracks, each with Easy, Medium, Hard and Challenge charts made for this project. Imported packs retain their original authors' charts and artist credits.
 
-Charts are ordinary StepMania simfiles. The generated ones are the `.ssc` files in `charts/`, and a player can load any 4-panel (`dance-single`) `.sm`, `.ssc` or `.dwi` with its music for a solo run. **DUKAMOK ORIGINALS** adds 43 songs with the pack's original `.sm` charts, artist credits, timing and externally hosted audio. The four DWI-only songs (Big Blue, Presto, Salieri Strikes Back and Utopia) are reserved for a separate follow-up PR. See [the import record](charts/dukamok-originals/README.md).
+Charts are ordinary StepMania simfiles. The generated ones are the `.ssc` files in `charts/`, and a player can load any 4-panel (`dance-single`) `.sm`, `.ssc` or `.dwi` with its music for a solo run. **DUKAMOK ORIGINALS** adds all 47 songs with the pack's original charts, artist credits, timing and externally hosted audio: 43 SM songs plus the four DWI-only songs, Big Blue, Presto, Salieri Strikes Back and Utopia. See [the import record](charts/dukamok-originals/README.md).
 
 The DWI loader reads `SINGLE` charts, including keypad chords, simultaneous arrow groups, holds and subdivisions
 through 192nds. It preserves `GAP`, `CHANGEBPM`/`BPMCHANGE` and `FREEZE` timing and normalizes DWI's difficulty
@@ -39,7 +39,11 @@ Every finished song adds each rider's rating to their session total, and the win
 
 A match never begins on a device that is still downloading the song. A started song is held at its first moment: each device logs `READY` once it has the decoded audio (or will play none: `?mute`, a phone that is a pad, a file that failed three times), and the fold lets the song go on the tick the last connected device has said so, the shared screen's TV included. The field says `DOWNLOADING SONG…`, or who the room waits for. A device that never answers holds the room for at most 30 s (`HOLD_TICKS` in `src/online/game.ts`). This matters most in a random session, whose song is drawn at START.
 
-In the song select a cover wears a download mark while its song is not on the device (`src/app/song-load.ts`). Downloaded songs are kept in cache storage under the rules version (`src/app/song-cache.ts`), so a song is fetched once. A cached file is not asked for again: replacing a song's audio under the same path needs a `RULES` bump, as a changed chart does.
+In the song select a cover wears a download mark while its full song is not on the device (`src/app/song-load.ts`). Downloaded songs are kept in cache storage under the rules version (`src/app/song-cache.ts`), so a song is fetched once. A cached file is not asked for again: replacing a song's audio under the same path needs a `RULES` bump, as a changed chart does.
+
+The song select plays a separate lightweight preview: 20 seconds of music, fading out over the last 1.5 seconds, then two seconds of silence before repeating. Every bundled song has one, beginning at its original preview position where there is room. Browsing fetches these small clips rather than full songs; the full audio downloads when play starts. Preview bytes use the same persistent browser Cache Storage, so returning to a song or reopening the page reuses its downloaded clip. A fast swipe waits until a selection settles before fetching, and leaving song select stops playback and releases its object URL. `?mute` previews fetch nothing. See [preview generation](charts/previews.md).
+
+The download overlay shows received bytes and a progress bar, with a percentage when the server reports the complete file size. An unknown size stays indeterminate; once all bytes arrive it says `PREPARING AUDIO…` until decoding finishes. Cached files skip the network transfer, retrying a failed download starts its progress over, and waiting for another player does not show that player's progress as this device's own.
 
 ## Controls
 

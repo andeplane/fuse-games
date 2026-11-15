@@ -36,6 +36,7 @@ export function landing(
   const mapChoice = el("label", "", "map-choice");
   mapChoice.append(el("span", "ARENA"), map);
   const card = createLandingCard({
+    settingsScope: "room",
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     document: root.ownerDocument,

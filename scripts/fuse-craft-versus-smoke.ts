@@ -40,7 +40,7 @@ try {
   assert.match(host.url(), new RegExp(`room=${code}`));
   await join(host, "Host");
   await host
-    .getByRole("button", { name: "Game settings", exact: true })
+    .getByRole("button", { name: "Room settings", exact: true })
     .click();
   await host.locator("#room-map").selectOption(mapId);
   await host.keyboard.press("Escape");

@@ -1,6 +1,6 @@
-/** Import the user's DukAmok Originals .sm songs without regenerating their charts.
+/** Import the user's DukAmok Originals .sm/.dwi songs without regenerating their charts.
  * Usage: pnpm exec tsx scripts/import-dukamok.ts '/path/to/DukAmok Originals'
- * Requires ffmpeg for JPEG cover conversion. DWI-only folders are reported and deferred.
+ * Requires ffmpeg for JPEG cover conversion. Prefer SM when both formats exist.
  */
 import {
   copyFileSync,
@@ -35,7 +35,9 @@ for (const entry of readdirSync(source, { withFileTypes: true }).sort((a, b) =>
   const folder = entry.name;
   const dir = join(resolve(source), folder);
   const files = readdirSync(dir);
-  const simfile = files.find((file) => file.toLowerCase().endsWith(".sm"));
+  const simfile =
+    files.find((file) => file.toLowerCase().endsWith(".sm")) ??
+    files.find((file) => file.toLowerCase().endsWith(".dwi"));
   if (!simfile) {
     deferred.push(folder);
     continue;
@@ -62,7 +64,7 @@ for (const entry of readdirSync(source, { withFileTypes: true }).sort((a, b) =>
   );
   if (!loaded || loaded.charts.length !== singles.length)
     throw new Error(`Unplayable chart: ${folder}`);
-  const original = `${charts}/${id}.sm`;
+  const original = `${charts}/${id}${simfile.toLowerCase().endsWith(".dwi") ? ".dwi" : ".sm"}`;
   // Staged for an explicit GCS sync; never put imported audio into public/ or Git.
   const staged = join("artifacts/dukamok-media", object);
   mkdirSync(join(staged, ".."), { recursive: true });
@@ -116,5 +118,5 @@ writeFileSync(
   ),
 );
 console.log(
-  `Imported ${songs.length} original .sm songs. Deferred ${deferred.length} folders without .sm:\n${deferred.join("\n")}`,
+  `Imported ${songs.length} original SM/DWI songs. Deferred ${deferred.length} folders without a simfile:\n${deferred.join("\n")}`,
 );

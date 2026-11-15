@@ -4,6 +4,7 @@ import {
   createSongStore,
   type SongCache,
   type SongCaches,
+  type SongTransferProgress,
 } from "../src/app/song-cache.js";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -131,4 +132,108 @@ test("a file the player loaded is never kept", async () => {
   assert.equal(text(await store.fetch("blob:https://play.example/1")), "mine");
   await settle();
   assert.deepEqual(await store.stored(), []);
+});
+
+test("streamed audio reports real bytes, then completion; unsubscribed URLs stay silent", async () => {
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(value) {
+      controller = value;
+    },
+  });
+  const progress: SongTransferProgress[] = [];
+  let requests = 0;
+  const store = createSongStore({
+    caches: undefined,
+    fetch: async () =>
+      new Response(requests++ === 0 ? body : "abcdef", {
+        headers: { "Content-Length": "6" },
+      }),
+    prefix: "test-",
+    version: "1",
+    absolute,
+  });
+  const unsubscribe = store.subscribe("/song.mp3", (value) =>
+    progress.push(value),
+  );
+  const other: SongTransferProgress[] = [];
+  const stopOther = store.subscribe("/other.mp3", (value) => other.push(value));
+  const downloading = store.fetch("/song.mp3");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(progress, [{ received: 0, total: 6, complete: false }]);
+  assert.ok(controller);
+  controller.enqueue(bytes("abc"));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(progress.at(-1), { received: 3, total: 6, complete: false });
+  controller.enqueue(bytes("def"));
+  controller.close();
+  assert.equal(text(await downloading), "abcdef");
+  assert.deepEqual(progress.at(-1), { received: 6, total: 6, complete: true });
+  assert.deepEqual(other, []);
+  unsubscribe();
+  stopOther();
+  const count = progress.length;
+  const again: SongTransferProgress[] = [];
+  const stopAgain = store.subscribe("/song.mp3", (value) => again.push(value));
+  unsubscribe();
+  await store.fetch("/song.mp3");
+  assert.equal(progress.length, count);
+  assert.deepEqual(
+    again.at(-1),
+    { received: 6, total: 6, complete: true },
+    "a repeated old cleanup does not remove a new observer",
+  );
+  stopAgain();
+});
+
+test("missing or compressed lengths remain indeterminate; cached audio completes without a transfer", async () => {
+  const cases: HeadersInit[] = [
+    {},
+    { "Content-Length": "3", "Content-Encoding": "gzip" },
+  ];
+  for (const headers of cases) {
+    const progress: SongTransferProgress[] = [];
+    const store = createSongStore({
+      caches: undefined,
+      fetch: async () => new Response("abc", { headers }),
+      prefix: "test-",
+      version: "1",
+      absolute,
+    });
+    store.subscribe("/song.ogg", (value) => progress.push(value));
+    assert.equal(text(await store.fetch("/song.ogg")), "abc");
+    assert.equal(progress[0]?.total, undefined);
+    assert.deepEqual(progress.at(-1), {
+      received: 3,
+      total: 3,
+      complete: true,
+    });
+  }
+  const { store, site, settle } = setup();
+  await store.fetch("/music/a.mp3");
+  await settle();
+  site.delete("/music/a.mp3");
+  const progress: SongTransferProgress[] = [];
+  store.subscribe("/music/a.mp3", (value) => progress.push(value));
+  await store.fetch("/music/a.mp3");
+  assert.deepEqual(progress, [{ received: 6, total: 6, complete: true }]);
+});
+
+test("a failed stream rejects and never reports complete", async () => {
+  const progress: SongTransferProgress[] = [];
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error("lost connection"));
+    },
+  });
+  const store = createSongStore({
+    caches: undefined,
+    fetch: async () => new Response(body),
+    prefix: "test-",
+    version: "1",
+    absolute,
+  });
+  store.subscribe("/song.mp3", (value) => progress.push(value));
+  await assert.rejects(store.fetch("/song.mp3"), /lost connection/);
+  assert.ok(progress.every((value) => !value.complete));
 });

@@ -125,6 +125,11 @@ export interface TickContext {
   /** When in the step, 0 to 1, each rider first touched a trail, another rider, and scenery. */
   readonly trailContactTimes: Map<PlayerId, number>;
   readonly riderContactTimes: Map<PlayerId, number>;
+  /**
+   * When in the step each rider first met a shell, a blast, the boundary or a black hole's core. Only the rider sweep reads it:
+   * a rider dead by then has no rest of the step to meet another rider with (#188).
+   */
+  readonly hazardContactTimes: Map<PlayerId, number>;
   /** Crashing into scenery is `wall`, and only these riders stop against what they hit rather than at the boundary. */
   readonly obstacleContactTimes: Map<PlayerId, number>;
   /** The scenery each of those contacts is with, which is what an absorbed crash turns the rider away from. */
@@ -174,6 +179,7 @@ export function createTickContext(
     shotSources: new Map(),
     trailContactTimes: new Map(),
     riderContactTimes: new Map(),
+    hazardContactTimes: new Map(),
     obstacleContactTimes: new Map(),
     obstaclesReached: new Map(),
     sceneryReached: new Map(),

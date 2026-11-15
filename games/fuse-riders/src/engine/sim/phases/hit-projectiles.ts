@@ -22,6 +22,7 @@ export function hitProjectiles(ctx: TickContext): void {
     shotSources,
     landingHits,
     shellHits,
+    hazardContactTimes,
   } = ctx;
   // Bombs only hit on landing; shells sweep their path to avoid tunnelling.
   for (const bomb of sortedBombs(state)) {
@@ -99,6 +100,11 @@ export function hitProjectiles(ctx: TickContext): void {
         }
       }
     if (hit) {
+      // The rider sweep cuts the rider's step here: nobody rides into what is left of it (#188).
+      hazardContactTimes.set(
+        hit.player.id,
+        Math.min(hazardContactTimes.get(hit.player.id) ?? 1, hitTime),
+      );
       markCause(causes, causeOwners, hit.player.id, "explosion", bomb.ownerId);
       markShot(shotSources, hit.player.id, bomb.id, bomb.shot);
       if (!shellHits.has(hit.player.id))

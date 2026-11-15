@@ -101,31 +101,67 @@ export const SONGS: readonly SongSpec[] = [
   killerFuse("match-day", "Match Day"),
   killerFuse("victory", "Victory"),
   // DDR JAZZ MIX: Fuse's jazzy chiptune covers.
-  packed("ddr-jazz-mix", "afronova", "Afronova (Extended Mix)"),
-  packed("ddr-jazz-mix", "afronova-radio-edit", "Afronova (Radio Edit)"),
-  packed("ddr-jazz-mix", "burning-heat", "Burning Heat"),
+  packed("ddr-jazz-mix", "afronova", "Afronova (Extended Blue Note Jazz Mix)"),
+  packed(
+    "ddr-jazz-mix",
+    "afronova-radio-edit",
+    "Afronova (Radio Shuffle Jazz Mix)",
+  ),
+  packed("ddr-jazz-mix", "burning-heat", "Burning Heat (Hot Club Jazz Mix)"),
   packed(
     "ddr-jazz-mix",
     "cant-stop-fallin-in-love",
-    "Can't Stop Fallin' in Love",
+    "Can't Stop Fallin' in Love (Moonlight Ballad Jazz Mix)",
   ),
-  packed("ddr-jazz-mix", "candy", "Candy"),
-  packed("ddr-jazz-mix", "electro-tuned", "Electro Tuned"),
-  packed("ddr-jazz-mix", "exotic-ethnic", "Exotic Ethnic"),
-  packed("ddr-jazz-mix", "paranoia-survivor-max", "Paranoia Survivor MAX"),
-  packed("ddr-jazz-mix", "rain-of-sorrow", "Rain of Sorrow (Fuse Mix)"),
+  packed("ddr-jazz-mix", "candy", "Candy (Sugar Swing Jazz Mix)"),
+  packed(
+    "ddr-jazz-mix",
+    "electro-tuned",
+    "Electro Tuned (Electric Acid Jazz Mix)",
+  ),
+  packed(
+    "ddr-jazz-mix",
+    "exotic-ethnic",
+    "Exotic Ethnic (Afro-Cuban Groove Jazz Mix)",
+  ),
+  packed(
+    "ddr-jazz-mix",
+    "paranoia-survivor-max",
+    "Paranoia Survivor MAX (After Hours Bebop Jazz Mix)",
+  ),
+  packed(
+    "ddr-jazz-mix",
+    "rain-of-sorrow",
+    "Rain of Sorrow (Fuse Cool Jazz Mix)",
+  ),
   packed(
     "ddr-jazz-mix",
     "rain-of-sorrow-night-mix",
-    "Rain of Sorrow (Night Mix)",
+    "Rain of Sorrow (Night Stride Jazz Mix)",
   ),
-  packed("ddr-jazz-mix", "the-least-100sec", "The Least 100sec"),
-  packed("ddr-jazz-mix", "the-legend-of-max", "The Legend of MAX"),
-  packed("ddr-jazz-mix", "xenon", "Xenon"),
+  packed(
+    "ddr-jazz-mix",
+    "the-least-100sec",
+    "The Least 100sec (Double Time Sprint Jazz Mix)",
+  ),
+  packed(
+    "ddr-jazz-mix",
+    "the-legend-of-max",
+    "The Legend of MAX (Big Band Brass Jazz Mix)",
+  ),
+  packed("ddr-jazz-mix", "xenon", "Xenon (Neon Bossa Jazz Mix)"),
   // ITG JAZZ MIX: Fuse's jazzy chiptune covers.
-  packed("itg-jazz-mix", "determinator", "Determinator"),
-  packed("itg-jazz-mix", "monolith", "Monolith"),
-  packed("itg-jazz-mix", "temple-of-boom", "Temple of Boom"),
+  packed(
+    "itg-jazz-mix",
+    "determinator",
+    "Determinator (Hard Bop Drive Jazz Mix)",
+  ),
+  packed("itg-jazz-mix", "monolith", "Monolith (Modal Drift Jazz Mix)"),
+  packed(
+    "itg-jazz-mix",
+    "temple-of-boom",
+    "Temple of Boom (Jungle Funk Jazz Mix)",
+  ),
   ...DUKAMOK_SONGS,
 ];
 
