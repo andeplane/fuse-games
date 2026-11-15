@@ -232,6 +232,7 @@ function room(solo: boolean) {
   });
   const top = header([menu.element], (open) => {
     if (open) controls.release();
+    else if (last?.stage === "running") canvas.focus({ preventScroll: true });
   });
   const main = el("main", "", "liero-room"),
     lobby = el("section", "", "liero-lobby");
@@ -269,7 +270,12 @@ function room(solo: boolean) {
       })
     : undefined;
   const tv = button("OPEN TV SCREEN");
-  tv.onclick = () => window.open(url(`?room=${code}&display=1`), "_blank");
+  tv.onclick = () =>
+    window.open(
+      url(`?room=${code}&display=1`),
+      "_blank",
+      "popup,width=1280,height=800,noopener",
+    );
   const play = el("section", "", "liero-play"),
     hud = el("div", "", "liero-hud"),
     score = el("div", "", "liero-scores");

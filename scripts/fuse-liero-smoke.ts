@@ -140,6 +140,20 @@ try {
   await host!.getByRole("button", { name: "START MATCH", exact: true }).click();
   await Promise.all([host!, peer!, tv!].map(play));
   await host!.locator(".liero-arena canvas").click();
+  await host!
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  await host!.locator(".fui-top-bar-menu[open]").waitFor();
+  await host!.keyboard.press("Escape");
+  await host!.locator(".fui-top-bar-menu[open]").waitFor({ state: "hidden" });
+  await host!.waitForFunction(
+    () => document.activeElement?.tagName === "CANVAS",
+  );
+  assert.equal(
+    await host!.evaluate(() => document.activeElement?.tagName),
+    "CANVAS",
+    "closing the menu restores gameplay keyboard focus",
+  );
   const initial = await sample(host!);
   assert.equal(initial.worms.length, 2, "display must not take a player seat");
   assert.deepEqual(initial.names.sort(), ["Liero Ada", "Liero Bo"]);
