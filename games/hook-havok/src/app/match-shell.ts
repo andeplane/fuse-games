@@ -10,6 +10,7 @@ import {
   button,
   createResultsScreen,
   requestedRoomSlot,
+  type RoomFriends,
 } from "fuse-ui";
 import QRCode from "qrcode";
 
@@ -20,31 +21,35 @@ export function createMatchShell(actions: {
   playerName?(): string | undefined;
   /** Out of the room, as the menu's Leave does. */
   leave(): void;
-  /** The account behind a seat, once known, and the friend button for it. */
-  friends: {
-    publicIdOfMember(memberId: string): string | undefined;
-    friendButton(publicId: string): HTMLElement;
-  };
+  /** The round starts again for the whole room: the manager's START. False while the room cannot take it yet. */
+  start(): boolean;
+  /** The room opened over the arena, or closed onto it. */
+  onOpenChange(open: boolean): void;
+  /** INVITE FRIENDS beside the invitation, ADD FRIEND on a seat and on a result row. */
+  friends: RoomFriends;
 }) {
   const get = <T extends HTMLElement>(id: string) =>
     document.getElementById(id) as T;
-  const lounge = document.createElement("details");
+  // The room is a page of its own over the arena: the round keeps running underneath, as free play does.
+  const lounge = document.createElement("section");
   lounge.id = "room-lounge";
-  lounge.open = true;
-  lounge.innerHTML = `<summary>Room & match <span id="lounge-summary"></span></summary><p id="room-authority" role="status"></p><div class="lounge-content"></div>`;
+  lounge.hidden = true;
+  const content = document.createElement("div");
+  content.className = "lounge-content";
+  // The prototype's own invitation row keeps the fields the page reads; the room shows the shared invitation.
+  const legacy = document.createElement("div");
+  legacy.hidden = true;
+  legacy.append(get("invitation"));
+  lounge.append(content, legacy);
   document.querySelector("header")!.after(lounge);
-  const content = lounge.querySelector(".lounge-content")!;
-  content.append(
-    get("invitation"),
-    get("experiment").closest("section")!,
-    get("rules").closest("section")!,
-  );
   const workshop = get("tuning").closest("details")!;
   workshop.id = "development-workshop";
   workshop.querySelector("summary")!.textContent =
     "Development workshop · movement & control experiments";
   const controls = get("reset").closest("section")!;
-  get("experiment").closest("section")!.append(get("reset"));
+  const experimentSection = get("experiment").closest("section")!,
+    rulesSection = get("rules").closest("section")!;
+  experimentSection.append(get("reset"));
   workshop.append(
     get("jump-mode").closest("section")!,
     get("zone-controls"),
@@ -54,7 +59,6 @@ export function createMatchShell(actions: {
   const preferences = document.createElement("section");
   preferences.className = "controls personal-controls";
   preferences.setAttribute("aria-label", "Your controls and atmosphere");
-  content.append(preferences);
   for (const id of [
     "keyboard-mode",
     "touch-toggle",
@@ -64,8 +68,10 @@ export function createMatchShell(actions: {
   ])
     preferences.append(get(id).closest("label")!);
   preferences.append(get("control-help"));
-  content.append(document.querySelector("[data-radio]")!);
-  const inviteHolder = document.createElement("div");
+  // The invitation is made once the room has its code; INVITE FRIENDS is added under it and stays.
+  const inviteHolder = document.createElement("div"),
+    inviteCard = document.createElement("div");
+  inviteHolder.append(inviteCard);
   const players = createRoster();
   const join = createNameEntry({
     initial: actions.playerName?.() ?? "",
@@ -74,31 +80,87 @@ export function createMatchShell(actions: {
   });
   const addAI = button("Add AI");
   addAI.onclick = () => actions.addAI(requestedRoomSlot(addAI));
-  const settingsParts = [...content.children].filter(
-    (node) => node.id !== "invitation",
-  );
+  // The manager starts the round for everyone; a keeper who is not the manager walks into the arena as it is.
+  const go = button("START", "fui-button-primary");
+  const back = button("RESUME");
+  back.hidden = true;
+  const note = document.createElement("p");
+  note.className = "room-note";
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  const tv = document.createElement("div");
+  tv.className = "fui-room-extra";
+  const openTv = button("OPEN TV SCREEN", "fui-room-tv-screen");
+  openTv.onclick = () =>
+    window.open(
+      get<HTMLAnchorElement>("display-link").href,
+      "_blank",
+      "noopener",
+    );
+  tv.append(openTv);
+  let manages = false,
+    entered = false;
+  const show = (value: boolean) => {
+    // A dialog left open inside a hidden room would keep the page inert.
+    if (!value)
+      for (const dialog of lounge.querySelectorAll("dialog[open]"))
+        (dialog as HTMLDialogElement).close();
+    lounge.hidden = !value;
+    document.body.classList.toggle("in-room", value);
+    // The arena behind the room takes no keys, focus or taps: the round runs on without this keeper's hands.
+    for (const covered of document.querySelectorAll<HTMLElement>(
+      ".play-surface, #match-hud",
+    ))
+      covered.inert = value;
+    syncBackground();
+  };
+  const open = (value: boolean) => {
+    if (lounge.hidden === !value) return;
+    show(value);
+    if (!value) entered = true;
+    back.hidden = !manages || !entered;
+    actions.onOpenChange(value);
+  };
+  go.onclick = () => {
+    // Before the room runs there is no round to start yet: the room stays until START can be heard.
+    if (manages && !actions.start()) return;
+    open(false);
+  };
+  back.onclick = () => open(false);
   const roomLayout = createRoomLayout({
-    primaryAction: get("restart-room"),
+    primaryAction: go,
+    headerActions: [back],
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
-    element: content as HTMLElement,
+    element: content,
     invite: inviteHolder,
     roster: players,
     capacity: 5,
     join: join.form,
     playerName: actions.playerName,
     addAI,
-    settings: settingsParts,
-    actions: [get("invitation")],
+    settings: [
+      experimentSection,
+      rulesSection,
+      preferences,
+      document.querySelector<HTMLElement>("[data-radio]")!,
+      workshop,
+    ],
+    actions: [note],
+    actionsInHeader: true,
+    heading: "Room",
+    status,
+    extras: [tv],
+    friends: actions.friends,
   });
   let inviteCode = "";
   // The room's background is a whole WebGL scene. Under the entrance menu nobody sees it, and it would draw beside
   // the menu's own and the playground behind both: three scenes at once starve the page where WebGL has no GPU.
-  const syncBackground = () =>
+  function syncBackground() {
     roomLayout.setActive(
-      lounge.open && !document.body.classList.contains("at-entrance"),
+      !lounge.hidden && !document.body.classList.contains("at-entrance"),
     );
-  lounge.addEventListener("toggle", syncBackground);
+  }
   new MutationObserver(syncBackground).observe(document.body, {
     attributes: true,
     attributeFilter: ["class"],
@@ -122,6 +184,8 @@ export function createMatchShell(actions: {
     onBack: actions.leave,
     backText: "Leave",
     onAction(id) {
+      // Every answer to a result leads to the arena, also for a keeper who was in the room when the round ended.
+      open(false);
       if (id === "rematch") {
         get<HTMLButtonElement>("restart-room").click();
         // Movement keys are handled on the arena.
@@ -154,7 +218,18 @@ export function createMatchShell(actions: {
   let previous = "",
     lastRound = -1;
   return {
+    /** Shows the room over the arena, or the arena. */
+    open,
+    isOpen: () => !lounge.hidden,
+    /** The room's line: the connection, as the room reports it. */
+    say(text: string) {
+      status.textContent = text;
+    },
     reset() {
+      // Without the arena's focus and resize: the room is being left, not closed onto the arena.
+      show(false);
+      entered = false;
+      back.hidden = true;
       overlay.hidden = true;
       results.hide();
       shownResult = "";
@@ -170,6 +245,7 @@ export function createMatchShell(actions: {
       display: boolean,
       round: number,
       code: string,
+      managerId: string,
     ) {
       const c = view.contest;
       if (round !== lastRound || c.phase !== "over") dismissed = false;
@@ -227,12 +303,13 @@ export function createMatchShell(actions: {
         display,
         round,
         code,
+        managerId,
       ]);
       if (facts === previous) return;
       previous = facts;
       if (inviteCode !== code) {
         inviteCode = code;
-        inviteHolder.replaceChildren(
+        inviteCard.replaceChildren(
           createInviteCard({
             code,
             link: get<HTMLInputElement>("invite-url").value,
@@ -246,19 +323,31 @@ export function createMatchShell(actions: {
           slot: keeper.slot,
           name: keeper.name,
           status: keeper.bot ? "AI" : keeper.id === selfId ? "You" : "Ready",
+          color: keeperColor(keeper.slot),
+          host: keeper.id === managerId,
         })),
       );
-      join.form.hidden =
-        display || view.keepers.some((keeper) => keeper.id === selfId);
+      const seated = view.keepers.some((keeper) => keeper.id === selfId);
+      join.form.hidden = display || seated;
       addAI.hidden = !manager || view.keepers.length >= 5;
       const local = view.keepers.find((k) => k.id === selfId);
-      get("lounge-summary").textContent =
-        `${code} · ${view.keepers.filter((k) => k.connected).length}/5 keepers`;
-      get("room-authority").textContent = display
-        ? "Shared display · invite friends from a player device."
-        : manager
-          ? "You manage this room. Explore now; choose a round mode to compete. Match choices restart the shared trial."
-          : "The room manager chooses the arena and starts the next round. You can explore during free play.";
+      manages = manager;
+      go.textContent = manager
+        ? "START"
+        : seated
+          ? "ENTER ARENA"
+          : "WATCH ARENA";
+      // The manager starts from a seat; anybody else may walk in, or look on without one.
+      go.disabled = manager && !seated;
+      back.hidden = !manager || !entered;
+      tv.hidden = !manager;
+      note.textContent = manager
+        ? c.rules === "free"
+          ? "Free play. Pick a round mode in Settings to compete."
+          : "START begins the round for everyone."
+        : seated
+          ? "The host picks the arena and starts the round. Enter the arena to explore meanwhile."
+          : "Take a seat to play, or watch the arena.";
       get("match-map").textContent =
         view.map === "crossroads"
           ? "THE CROSSROADS"

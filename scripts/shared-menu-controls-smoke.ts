@@ -75,6 +75,8 @@ async function start(page: Page, game: GameFlow): Promise<void> {
     await openPlayOptions(page);
     await page.getByRole("button", { name: "Host room", exact: true }).click();
     await takeHostSeat(page, "Menu smoke");
+    // The room is a page over the arena: START begins the round and shows the arena.
+    await page.getByRole("button", { name: "START", exact: true }).click();
   } else if (game.start) {
     const button = page.getByRole("button", { name: game.start, exact: true });
     const guide = page.locator(".fui-round-controls:visible");
