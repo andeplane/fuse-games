@@ -114,10 +114,10 @@ export const BURST_MS = 240,
   SHAKE_MS = 260,
   WORD_MS = 520,
   WORD_POP_MS = 80;
-/** How far from the targets the warning line is, in columns: under the word and the combo. */
-const WARN_AT = 4.05;
 /** The combo is shown from here up. */
 export const COMBO_FROM = 4;
+/** Space reserved for the field readout below feedback. */
+const WARN_AT = 4.05;
 const WARNINGS = ITEM_NAMES.map((name) => `INCOMING: ${name}`);
 // The lanes' colour is opaque (the navy over the background, worked out once): an opaque fill is the cheapest there is.
 const LANE = "#08132a",
@@ -788,9 +788,7 @@ export function drawField(
   }
 
   // ---- warnings and banners, further down the lanes ----
-  const warnY = frame.down
-    ? lane.targetY - col * WARN_AT
-    : lane.targetY + col * WARN_AT;
+  const warnY = wordY - col * 0.75;
   const blockedAge = songMs - state.blockedAt;
   if (blockedAge >= 0 && blockedAge < 900) {
     const pop = calm || blockedAge >= 90 ? 1 : 1.3 - (0.3 * blockedAge) / 90;
@@ -815,7 +813,7 @@ export function drawField(
         WARNINGS[incoming]!,
         middle,
         warnY,
-        Math.min(col * 0.2, (width * 0.98) / WARNINGS[incoming]!.length),
+        Math.min(col * 0.28, (width * 0.98) / WARNINGS[incoming]!.length),
         PINK,
         width * 0.98,
       );

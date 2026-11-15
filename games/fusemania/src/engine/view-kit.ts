@@ -42,7 +42,13 @@ export {
   isAttack,
 } from "./rules.js";
 export { HOLD, MINE, ROLL, TAP, type StepNote, type Steps } from "./steps.js";
-export { turnedMine, under, wasHit, type Effect } from "./play.js";
+export {
+  effectIntensity,
+  turnedMine,
+  under,
+  wasHit,
+  type Effect,
+} from "./play.js";
 export { itemNotes } from "./world.js";
 
 /** What each judgment is called on screen, by its number. */

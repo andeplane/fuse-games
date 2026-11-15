@@ -9,6 +9,7 @@ import {
   TORNADO,
   TURBO,
   WAVE,
+  effectIntensity,
   type Effect,
 } from "../engine/view-kit.js";
 
@@ -62,7 +63,11 @@ export function strengthAt(effect: Effect, songMs: number): number {
   const from = effect[1],
     until = effect[2];
   if (!(songMs > from && songMs < until)) return 0;
-  return smoothstep(0, 1, Math.min(songMs - from, until - songMs) / EASE_MS);
+  return (
+    (smoothstep(0, 1, Math.min(songMs - from, until - songMs) / EASE_MS) *
+      effectIntensity(effect)) /
+    1000
+  );
 }
 
 /**
