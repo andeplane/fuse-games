@@ -1,7 +1,7 @@
 import { createOptionsMenu, type OptionsMenu } from "./options.js";
 
 export interface LobbyBar {
-  /** OPTIONS, with the speeds and a room's session in the panel under it. */
+  /** Player options, with personal speed and device preferences. */
   menu: OptionsMenu;
   /** For the room's header, before Settings and START. */
   headerActions: readonly Node[];
@@ -10,22 +10,24 @@ export interface LobbyBar {
 }
 
 /**
- * What a Fusemania room hands the shared room layout. The rule it keeps: a room's top is Back, OPTIONS, Settings
- * and START, as the menu's own song select has them, and a player's speed lives behind OPTIONS. The speeds are
+ * What a Fusemania room hands the shared room layout. A room's top is Back, Player options, Room settings
+ * and START, and a player's speed lives behind Player options. The speeds are
  * never a row in the lobby, and START is never under the song select.
  */
 export function createLobbyBar(parts: {
   document: Document;
   /** The song select. */
   picker: HTMLElement;
-  /** `createPlayOptions().element`: the speeds, and a host's session. */
+  /** `createPlayOptions().element`: this player's speeds. */
   options: HTMLElement;
   /** Where a session is at: "SONG 2 OF 5". */
   session: HTMLElement;
+  onOpenChange?: (open: boolean) => void;
 }): LobbyBar {
   const menu = createOptionsMenu({
     document: parts.document,
     content: [parts.options],
+    onOpenChange: parts.onOpenChange,
   });
   return {
     menu,

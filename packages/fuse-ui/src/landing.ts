@@ -1,4 +1,5 @@
 import { el, partClass, type PartClasses } from "./dom.js";
+import type { SettingsScope } from "./settings-actions.js";
 import { createMainMenu } from "./main-menu.js";
 import type { AttractFactory } from "./attract.js";
 
@@ -71,6 +72,7 @@ export function createJoinByCode(options: JoinByCodeOptions): JoinByCode {
 }
 
 export interface LandingOptions {
+  settingsScope?: SettingsScope;
   background?: AttractFactory;
   /** The game's name, the card's heading. */
   title: string;
@@ -174,6 +176,7 @@ export function createLandingCard(options: LandingOptions): LandingCard {
   const menu = createMainMenu({
     background: options.background,
     title: options.title,
+    settingsScope: options.settingsScope,
     description: options.tagline,
     play: element,
     onPlay: runCreate,

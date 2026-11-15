@@ -11,6 +11,7 @@ export type DeveloperVerifier = (
 ) => Promise<DeveloperPrincipal | undefined>;
 /** Server-owned access list: never accept an email sent separately by the browser. */
 export const DEVELOPER_EMAILS: ReadonlySet<string> = new Set([
+  "andershaf@gmail.com",
   "andersullnass@gmail.com",
   "andreas@bonito.no",
   "andreassolbra@gmail.com",

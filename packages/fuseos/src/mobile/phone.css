@@ -1,0 +1,277 @@
+@import "fuse-ui/tokens.css";
+@import "@fontsource/press-start-2p/latin-400.css";
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+body {
+  background: #091525;
+  color: #f4f7ff;
+  font: 16px/1.5 var(--fui-font-sans);
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button:focus-visible {
+  outline: 3px solid var(--fui-cyan);
+  outline-offset: 4px;
+}
+::selection {
+  background: #6544c2;
+  color: #fff;
+}
+.phone-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: #091525;
+}
+.phone-home {
+  background:
+    radial-gradient(ellipse at 80% 85%, #a23268, transparent 65%),
+    radial-gradient(ellipse at 10% 15%, #285bc4, transparent 75%), #202246;
+}
+.phone-status {
+  height: 48px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: relative;
+  font-size: 14px;
+  font-weight: 600;
+}
+.phone-island {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 25px;
+  border-radius: 20px;
+  background: #05080e;
+}
+.phone-homescreen,
+.phone-games,
+.phone-music {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: #8c9bb3 #091525;
+}
+.phone-homescreen {
+  padding: 24px 16px;
+}
+.phone-homescreen h1 {
+  margin: 4px 0 32px;
+  font: 18px/1.6 var(--fui-font-pixel);
+  text-align: center;
+}
+.phone-apps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px 8px;
+  align-items: start;
+}
+.phone-app {
+  border: 0;
+  background: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  text-align: center;
+}
+.phone-app-icon {
+  flex: none;
+  width: 62px;
+  height: 62px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #07101e;
+  font-weight: 800;
+}
+.phone-app-icon img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.phone-folder {
+  background: #ffffff38;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+}
+.phone-folder .phone-app-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  font-size: 6px;
+}
+.phone-winamp-icon {
+  background: #151d31;
+}
+.phone-winamp-icon svg {
+  width: 50px;
+  height: 50px;
+}
+.phone-home-hint {
+  margin: 48px 12px 0;
+  text-align: center;
+  color: #e2e9ff;
+  font-size: 14px;
+}
+.phone-games {
+  padding: 16px 20px 32px;
+}
+.phone-games h1,
+.phone-music h1 {
+  margin: 0;
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+.phone-games > p,
+.phone-music > p {
+  margin: 4px 0 24px;
+  color: #b6cce3;
+}
+.phone-games ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.phone-games li + li {
+  border-top: 1px solid #26354c;
+}
+.phone-games li button {
+  width: 100%;
+  border: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  padding: 16px 0;
+}
+.phone-games li button > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.phone-games strong {
+  display: block;
+  font-size: 17px;
+}
+.phone-games strong + span {
+  display: block;
+  color: #b6cce3;
+  font-size: 14px;
+  margin-top: 3px;
+}
+.phone-games .phone-app-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 13px;
+}
+.phone-games li button:active {
+  background: #142640;
+}
+.phone-music {
+  padding: 16px 16px 0;
+}
+.phone-music[hidden] {
+  display: none;
+}
+.phone-music[data-background-loading="true"] {
+  position: absolute;
+  inset: 48px 0 44px;
+  visibility: hidden;
+  pointer-events: none;
+}
+.phone-webamp {
+  position: relative;
+  min-height: 500px;
+  width: 100%;
+}
+.phone-webamp #webamp {
+  z-index: 1 !important;
+}
+.phone-game {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #020715;
+}
+.phone-game[hidden] {
+  display: none;
+}
+.phone-navigation .phone-return {
+  position: absolute;
+  left: 0;
+  font-size: 12px;
+  padding-inline: 8px;
+}
+.phone-navigation {
+  flex: none;
+  min-height: 44px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+.phone-navigation button {
+  min-height: 44px;
+  border: 0;
+  background: none;
+  padding: 10px 24px;
+}
+.phone-navigation .phone-music-shortcut {
+  position: absolute;
+  right: 0;
+  font-size: 12px;
+}
+.phone-home-bar {
+  display: block;
+  width: 72px;
+  height: 5px;
+  border-radius: 4px;
+  background: #f4f7ff;
+}
+.phone-navigation > button[aria-label="Home"] {
+  padding-inline: 8px;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .phone-status {
+    height: 32px;
+  }
+  .phone-homescreen {
+    padding-top: 8px;
+  }
+  .phone-homescreen h1 {
+    margin-bottom: 16px;
+  }
+  .phone-apps {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+  .phone-home-hint {
+    margin-top: 20px;
+  }
+}

@@ -371,7 +371,7 @@ try {
   );
   // The watcher's own action bar is up — SWAP TO PLAYER lives in it — so ask for the host's controls by name rather
   // than for the bar that holds them.
-  for (const action of ["Game settings", "Add AI", "BACK TO LOBBY"])
+  for (const action of ["Room settings", "Add AI", "BACK TO LOBBY"])
     assert.equal(
       await watcher
         .getByRole("button", { name: action, exact: true })

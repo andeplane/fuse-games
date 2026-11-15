@@ -17,8 +17,8 @@ export function createSettingsDialog(
   options: SettingsDialogOptions,
 ) {
   const shell = createDialogShell({
-    title: "SETTINGS",
-    label: "Settings",
+    title: "Player options",
+    label: "Player options",
     ...(options.document ? { document: options.document } : {}),
   });
   dialogs.add("settings", shell.dialog);

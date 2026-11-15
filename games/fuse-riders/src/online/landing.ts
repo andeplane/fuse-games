@@ -270,8 +270,8 @@ export function showLanding(host: LandingHost): void {
   const landingSettings = node("button", "SETTINGS", "landing-settings");
   landingSettings.type = "button";
   const { dialog: landingDialog, body: landingBody } = createDialog({
-    title: "SETTINGS",
-    label: "Settings",
+    title: "Room settings",
+    label: "Room settings",
     classes: FUSE_DIALOG_CLASSES,
   });
   // This device's privacy choice sits under the room settings draft rather than in it: it is not the room's.
@@ -332,6 +332,7 @@ export function showLanding(host: LandingHost): void {
   const hostingOptions = node("div");
   hostingOptions.append(mode, localLink);
   const mainMenu = createMainMenu({
+    settingsScope: "room",
     background: async (host) =>
       (await import("./menu-attract.js")).createAttract(host),
     title: "FUSE RIDERS",

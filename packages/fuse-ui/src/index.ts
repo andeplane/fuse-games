@@ -199,3 +199,11 @@ export {
   type SharedTvOptionOptions,
 } from "./shared-tv.js";
 export { createPendingSettings } from "./pending-settings.js";
+
+export {
+  createPlayerOptions,
+  labelSettingsAction,
+  settingsActionMarkup,
+  settingsLabel,
+  type SettingsScope,
+} from "./settings-actions.js";
