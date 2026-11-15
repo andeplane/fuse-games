@@ -126,7 +126,7 @@ export interface TickContext {
   readonly trailContactTimes: Map<PlayerId, number>;
   readonly riderContactTimes: Map<PlayerId, number>;
   /**
-   * When in the step each rider first met a blast, the boundary or a black hole's core. Only the rider sweep reads it:
+   * When in the step each rider first met a shell, a blast, the boundary or a black hole's core. Only the rider sweep reads it:
    * a rider dead by then has no rest of the step to meet another rider with (#188).
    */
   readonly hazardContactTimes: Map<PlayerId, number>;

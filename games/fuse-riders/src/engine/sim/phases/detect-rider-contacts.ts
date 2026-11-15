@@ -22,7 +22,7 @@ interface RiderPair {
  * Riders against riders, every pair once. The relative step is swept, so both are compared at the same instant of the
  * tick, and each is marked `rider` under the other's name unless something makes it immune.
  *
- * A rider exists only until it dies (#188). One that met a trail, scenery, a blast, the boundary or a core earlier in
+ * A rider exists only until it dies (#188). One that met a trail, scenery, a shell, a blast, the boundary or a core earlier in
  * the step is swept only up to that moment, and contacts are settled earliest first, so a rider killed by another
  * rider cannot go on to reach a third later in the step. A shielded rider survives every mark this tick, so it keeps
  * its whole step. Contact before a death still counts: a rider's segment is cut at its death, never removed.

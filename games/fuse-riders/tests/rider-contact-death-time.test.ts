@@ -14,6 +14,7 @@ import {
 import { createTickContext } from "../src/engine/sim/context.ts";
 import { detectHazards } from "../src/engine/sim/phases/detect-hazards.ts";
 import { detectRiderContacts } from "../src/engine/sim/phases/detect-rider-contacts.ts";
+import { hitProjectiles } from "../src/engine/sim/phases/hit-projectiles.ts";
 import { classicSettings } from "./fixtures/classic-settings.ts";
 
 type Step = readonly [fromX: number, fromY: number, toX: number, toY: number];
@@ -103,6 +104,46 @@ test("a rider caught by a blast early cannot kill a rider that reaches its untra
     `p0 enters the blast early in the step, at ${blastTime}`,
   );
   assert.equal(ctx.hazardContactTimes.has("p1"), false);
+  detectRiderContacts(ctx);
+  assert.equal(ctx.causes.get("p0"), "explosion");
+  assert.equal(ctx.causes.get("p1"), undefined);
+});
+
+test("a rider hit by a shell early cannot kill a rider that reaches its untravelled path later", () => {
+  const state = playing(3);
+  // p2's shell hangs at (520, 368): p0's body reaches it about 0.3 of the way along, p1's never does.
+  state.bombs.set(7, {
+    id: 7,
+    ownerId: "p2",
+    launchX: 520,
+    launchY: 368,
+    x: 520,
+    y: 368,
+    launchedTick: state.tick - 20,
+    landsAtTick: state.tick + 20,
+    flightPath: [],
+    explodeAtTick: state.tick + 20,
+    blastRange: 0,
+    shell: { vx: 0, vy: 0 },
+  });
+  const ctx = createTickContext(state, new Map());
+  ctx.shellPaths.set(7, [
+    [
+      { x: 520, y: 368, t: 0 },
+      { x: 520, y: 368, t: 1 },
+    ],
+  ]);
+  for (const [id, [oldX, oldY, x, y]] of Object.entries(late)) {
+    const player = state.players.get(id)!;
+    ctx.movements.set(id, { player, oldX, oldY, x, y, angle: 0 });
+  }
+  hitProjectiles(ctx);
+  const shellTime = ctx.hazardContactTimes.get("p0");
+  assert.ok(
+    shellTime !== undefined && shellTime > 0.2 && shellTime < 0.4,
+    `p0 meets the shell early in the step, at ${shellTime}`,
+  );
+  detectHazards(ctx);
   detectRiderContacts(ctx);
   assert.equal(ctx.causes.get("p0"), "explosion");
   assert.equal(ctx.causes.get("p1"), undefined);
