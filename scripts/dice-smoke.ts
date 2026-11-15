@@ -181,12 +181,13 @@ async function sharedScreen(browser: Browser): Promise<void> {
   const h = await host.newPage();
   await h.goto(`${page}?mute`);
   await openPlayOptions(h);
-  await h.getByLabel(/Shared TV/).check();
-  await openPlayOptions(h);
   await h.getByRole("button", { name: "Host room" }).click();
   await h.waitForURL(/\?room=[A-Z0-9]+/);
   const code = new URL(h.url()).searchParams.get("room")!;
   await joinAs(h, "Host");
+  // Shared TV is the room's choice: the host ticks it in the room, and the button beside it opens the screen.
+  await h.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await h.getByRole("button", { name: "OPEN TV SCREEN" }).waitFor();
   const tv = await host.newPage();
   await tv.goto(`${page}?room=${code}&display=1&mute`);
   await tv.locator(".fui-invite .fui-room-code", { hasText: code }).waitFor();

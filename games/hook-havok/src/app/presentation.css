@@ -98,29 +98,24 @@
   display: none;
 }
 /* Keep the game and identity visible; controls remain one button away. */
+/* The arena starts under the shared bar. */
+.arena-focused {
+  --bar: calc(max(12px, env(safe-area-inset-top)) + 52px);
+}
 .arena-focused main {
-  max-width: min(1560px, calc((100dvh - 155px) * 16 / 9));
-  padding: 8px 12px;
+  max-width: min(1560px, calc((100dvh - 155px - var(--bar)) * 16 / 9));
+  padding: calc(var(--bar) + 4px) 12px 8px;
 }
 .arena-focused header {
   margin: 0 0 4px;
 }
-.arena-focused header .home-bar,
 .arena-focused .room-entry,
-.arena-focused #invitation,
-.arena-focused .experiment-controls,
-.arena-focused .rules-controls > label,
-.arena-focused #rules-help,
-.arena-focused #map-help,
 .arena-focused main > .controls:not(.rules-controls),
 .arena-focused main > .intro,
 .arena-focused #status,
 .arena-focused main > details,
 .arena-focused main > [data-radio] {
   display: none;
-}
-.arena-focused .rules-controls {
-  margin: 0;
 }
 .arena-focused .play-surface {
   margin-top: 4px;
@@ -187,7 +182,7 @@
     font-size: 9px;
   }
   .arena-focused.touch-trial .play-surface .stage {
-    width: min(100%, calc((100dvh - 175px) * 16 / 9));
+    width: min(100%, calc((100dvh - 175px - var(--bar)) * 16 / 9));
   }
   .arena-focused.touch-trial #round-status {
     font-size: 12px;
@@ -221,16 +216,6 @@
     flex: none;
     width: min(100vw, calc(100dvh * 16 / 9));
   }
-  .arena-focused:not(.touch-trial) header {
-    position: fixed;
-    top: 12px;
-    right: 16px;
-    z-index: 3;
-    margin: 0;
-  }
-  .arena-focused:not(.touch-trial) header > :not(#arena-focus) {
-    display: none;
-  }
   .arena-focused:not(.touch-trial) #match-hud {
     position: fixed;
     top: 0;
@@ -241,7 +226,8 @@
     align-items: flex-start;
     gap: 14px;
     margin: 0;
-    padding: 10px 170px 34px 20px;
+    /* Under the shared bar, which is in the same band of sky. */
+    padding: calc(max(12px, env(safe-area-inset-top)) + 54px) 20px 34px;
     background: linear-gradient(#05060ae0, #05060a99 55%, #05060a00);
     pointer-events: none;
   }
@@ -273,12 +259,65 @@
   }
   .arena-focused:not(.touch-trial) #round-status {
     position: absolute;
-    top: 64px;
+    top: calc(max(12px, env(safe-area-inset-top)) + 118px);
     left: 50%;
     transform: translateX(-50%);
   }
   .arena-focused:not(.touch-trial) .keeper-card {
     padding: 3px 8px;
     background: #0b0e18c0;
+  }
+}
+/* Touch layouts set their own page padding: the arena still starts under the shared bar. */
+.playground.arena-focused.touch-trial main {
+  padding-top: calc(var(--bar) + 4px);
+}
+/*
+ * A phone on its side has no height to spare. In the arena the bar keeps its menu button alone and the match line
+ * shares that row, so the arena gets the rest; the room still has the whole bar.
+ */
+@media (orientation: landscape) and (max-height: 600px) {
+  .arena-focused.touch-trial:not(.in-room) .fui-top-bar > .fui-top-bar-left,
+  .arena-focused.touch-trial:not(.in-room)
+    .fui-top-bar-right
+    > :not(.fui-top-bar-toggle) {
+    display: none;
+  }
+  .playground.arena-focused.touch-trial main {
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+  .arena-focused.touch-trial #match-hud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    min-height: 48px;
+    margin: 0 0 4px;
+    padding-right: 64px;
+  }
+  .arena-focused.touch-trial .match-heading {
+    display: contents;
+  }
+  .arena-focused.touch-trial #match-hud #roster {
+    order: 2;
+    flex: 1;
+    margin: 0;
+  }
+  .arena-focused.touch-trial #spectator-state {
+    order: 3;
+    margin-left: 0;
+  }
+  .arena-focused.touch-trial .match-clock {
+    order: 4;
+  }
+  .arena-focused.touch-trial #round-status {
+    order: 5;
+    flex: 1 1 100%;
+  }
+  .playground.arena-focused.touch-trial .play-surface .stage {
+    width: min(100%, calc((100dvh - 84px) * 16 / 9));
+  }
+  .arena-focused.touch-trial:not(.in-room) .fui-top-bar {
+    justify-content: flex-end;
   }
 }

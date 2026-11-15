@@ -204,8 +204,7 @@ test("a shared TV: the TV frames everyone and asks no name; each seated device i
   room.settings.display = true;
   const tv: Viewer = { ...seen, me: "tv", host: false, display: true };
   match(show(room, tv).note, /Scan the code/);
-  ok(!show(room, tv).askName && !show(room, tv).openTv);
-  ok(show(room).openTv && !show(room, guest).openTv, "OPEN TV SCREEN: host");
+  ok(!show(room, tv).askName);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   const screen = show(room, tv);
   eq(
@@ -304,10 +303,7 @@ test("only a seated rider of a shared room is a controller: not in the lobby, a 
   const plain = lobby();
   fold(plain, { a: [[ACTION, "start", "m1"]] });
   const flat = show(plain);
-  eq(
-    [flat.screen, flat.controller, flat.openTv, flat.flying],
-    ["countdown", null, false, true],
-  );
+  eq([flat.screen, flat.controller, flat.flying], ["countdown", null, true]);
 
   const room = lobby();
   room.settings.display = true;

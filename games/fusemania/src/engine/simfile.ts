@@ -1,7 +1,7 @@
 /**
- * StepMania simfiles: the `.sm` and `.ssc` text formats, read into plain data and written back as `.ssc`.
+ * StepMania simfiles: `.sm`, `.ssc` and four-panel `.dwi`, read into plain data and written back as `.ssc`.
  *
- * Both are lists of `#TAG:value;` messages. In `.sm` every chart is one `#NOTES` message with six fields; in `.ssc`
+ * SM and SSC are lists of `#TAG:value;` messages. In `.sm` every chart is one `#NOTES` message with six fields; in `.ssc`
  * a chart starts at `#NOTEDATA:;` and its tags follow, ending with `#NOTES`. A chart's note data is measures
  * separated by commas, each a list of rows, one character per column: `0` empty, `1` tap, `2` hold head, `3` hold or
  * roll tail, `4` roll head, `M` mine, `L` lift (read as a tap), `F` fake and `K` keysound (dropped).
@@ -225,7 +225,169 @@ function notesOf(data: string, stepsType: string): ChartNote[] {
   return notes;
 }
 
-/** Reads a `.sm` or `.ssc` file. Throws `SimfileError` when it has no tempo or no chart with a note. */
+/**
+ * DWI uses keypad arrows, eighth-note slots and optional finer subdivisions. A hold marker (`!`) changes
+ * the following arrows to heads; their next occurrence closes them and is consumed as the tail.
+ * Timing follows StepMania's NotesLoaderDWI: GAP/FREEZE are milliseconds, change positions are quarter-beats.
+ */
+function dwiNotes(raw: string): ChartNote[] {
+  const arrows: Readonly<Record<string, readonly number[]>> = {
+    "0": [],
+    "5": [],
+    "1": [0, 1],
+    "2": [1],
+    "3": [1, 3],
+    "4": [0],
+    "6": [3],
+    "7": [0, 2],
+    "8": [2],
+    "9": [2, 3],
+    A: [1, 2],
+    B: [0, 3],
+  };
+  const data = raw.replace(/\s/g, "").toUpperCase();
+  const cells = new Map<number, Map<number, boolean>>();
+  let row = 0,
+    increment = 24,
+    count = 0;
+  const put = (char: string, hold: boolean): boolean => {
+    const columns = arrows[char];
+    if (!columns) return false;
+    for (const column of columns) {
+      let at = cells.get(row);
+      if (!at) cells.set(row, (at = new Map()));
+      if (!at.has(column) && ++count > MAX_NOTES) return false;
+      at.set(column, hold || at.get(column) === true);
+    }
+    return true;
+  };
+  for (let at = 0; at < data.length;) {
+    const char = data[at++]!;
+    if (char === "(" || char === "[" || char === "{" || char === "`") {
+      increment = char === "(" ? 12 : char === "[" ? 8 : char === "{" ? 3 : 1;
+      continue;
+    }
+    if (")]}'>".includes(char)) {
+      increment = 24;
+      continue;
+    }
+    // Older DWI files used <...0...> for 192nds; newer files use <...> for simultaneous arrows.
+    const end = char === "<" ? data.indexOf(">", at) : -1;
+    if (char === "<" && end < 0) return [];
+    // Groups cannot nest. Reject before rescanning a shared suffix for each malformed opener.
+    if (char === "<" && data.slice(at, end).includes("<")) return [];
+    if (char === "<" && data.slice(at, end).includes("0")) {
+      increment = 1;
+      continue;
+    }
+    const jump = char === "<";
+    if (!jump) at--;
+    do {
+      const note = data[at++]!;
+      if (!put(note, false)) return [];
+      if (data[at] === "!") {
+        at++;
+        if (!put(data[at++] ?? "", true)) return [];
+      }
+    } while (jump && at < end);
+    if (jump) {
+      if (at !== end) return [];
+      at++;
+    }
+    row += increment;
+    if (row > MAX_BEAT * 48) return [];
+  }
+  const notes: ChartNote[] = [];
+  const open = new Map<number, ChartNote>();
+  for (const [at, columns] of cells)
+    for (const [column, hold] of columns) {
+      const head = open.get(column);
+      if (head) {
+        head.endBeat = at / 48;
+        notes.push(head);
+        open.delete(column);
+      } else if (hold) {
+        open.set(column, { beat: at / 48, column, kind: "hold" });
+      } else notes.push({ beat: at / 48, column, kind: "tap" });
+    }
+  return notes.sort((a, b) => a.beat - b.beat || a.column - b.column);
+}
+
+function dwiFile(all: readonly Message[]): Simfile {
+  const tags = new Map(all.map(({ tag, value }) => [tag, value]));
+  const bpm = number(tags.get("BPM"));
+  if (!(bpm > 0 && bpm < 100_000))
+    throw new SimfileError("That DWI file has no valid tempo (#BPM).");
+  const marks = (names: readonly string[]) =>
+    all
+      .filter(({ tag }) => names.includes(tag))
+      .flatMap(({ value }) => pairs(value))
+      .slice(0, MAX_MARKS);
+  const changes = marks(["CHANGEBPM", "BPMCHANGE"])
+    .map(([beat, value]) => [beat / 4, value] as const)
+    .filter(([, value]) => value > 0 && value < 100_000);
+  const timing: TimingData = {
+    offset: -number(tags.get("GAP")) / 1000,
+    bpms: [[0, bpm] as const, ...changes].sort((a, b) => a[0] - b[0]),
+    stops: marks(["FREEZE"])
+      .map(([beat, ms]) => [beat / 4, ms / 1000] as const)
+      .filter(([, seconds]) => seconds > 0 && seconds < 600)
+      .sort((a, b) => a[0] - b[0]),
+  };
+  const difficulty = (raw: string): string => {
+    const name = raw.trim().toLowerCase();
+    if (["basic", "easy", "light"].includes(name)) return "Easy";
+    if (["another", "medium", "trick", "standard", "difficult"].includes(name))
+      return "Medium";
+    if (["maniac", "hard", "ssr", "heavy"].includes(name)) return "Hard";
+    if (["smaniac", "challenge", "expert", "oni"].includes(name))
+      return "Challenge";
+    return name === "beginner" ? "Beginner" : "Edit";
+  };
+  const charts: SimChart[] = [];
+  for (const { tag, value } of all) {
+    // Fusemania plays four panels. Refuse six- and eight-panel modes rather than misreading their arrows.
+    if (tag !== "SINGLE" || charts.length >= MAX_FILE_CHARTS) continue;
+    const [description = "", meter, data] = value.split(":");
+    if (data === undefined) continue;
+    const notes = dwiNotes(data);
+    if (!notes.length) continue;
+    charts.push({
+      stepsType: "dance-single",
+      description: description.trim(),
+      difficulty: difficulty(description),
+      meter: Math.max(1, Math.min(99, Math.round(number(meter, 1)))),
+      credit: (tags.get("CREDIT") ?? "").trim(),
+      notes,
+    });
+  }
+  if (!charts.length)
+    throw new SimfileError("That DWI file has no readable 4-panel steps.");
+  const timestamp = (raw: string | undefined, fallback: number): number => {
+    if (!raw?.trim()) return fallback;
+    const parts = raw.split(":");
+    const value =
+      parts.length > 1
+        ? parts.reduce((sum, part) => sum * 60 + number(part), 0)
+        : number(raw) / (raw.includes(".") ? 1 : 1000);
+    return Number.isFinite(value) ? Math.max(0, value) : fallback;
+  };
+  const sampleLength = timestamp(tags.get("SAMPLELENGTH"), 12);
+  return {
+    title: (tags.get("TITLE") ?? "").trim() || "Untitled",
+    subtitle: "",
+    artist: (tags.get("ARTIST") ?? "").trim(),
+    credit: (tags.get("CREDIT") ?? "").trim(),
+    music: (tags.get("FILE") ?? "").trim(),
+    timing,
+    charts,
+    sampleStart: timestamp(tags.get("SAMPLESTART"), 0),
+    sampleLength:
+      sampleLength > 0 && sampleLength < 1 ? sampleLength * 1000 : sampleLength,
+  };
+}
+
+/** Reads `.sm`, `.ssc` or four-panel `.dwi`. Throws `SimfileError` for unusable timing or steps. */
 export function parseSimfile(text: string): Simfile {
   if (text.length > MAX_SIMFILE_BYTES)
     throw new SimfileError("That simfile is too large.");
@@ -235,6 +397,11 @@ export function parseSimfile(text: string): Simfile {
   const chartTags: ReadonlyMap<string, string>[] = [];
   let chart: Map<string, string> | undefined;
   const all = messages(text);
+  if (
+    all.some(({ tag }) => tag === "SINGLE") &&
+    !all.some(({ tag }) => tag === "NOTES" || tag === "NOTEDATA")
+  )
+    return dwiFile(all);
   const finish = (tags: ReadonlyMap<string, string>, notes: string) => {
     if (charts.length >= MAX_FILE_CHARTS) return;
     const stepsType = (tags.get("STEPSTYPE") ?? "").trim().toLowerCase();

@@ -18,6 +18,7 @@ import {
   cycleDifficulty,
   heroCards,
   mapOptions,
+  roomKey,
   slotsOf,
   type SlotView,
 } from "../src/app/model.js";
@@ -81,6 +82,33 @@ test("the lobby model lists the slots a start plays, and the board maps clicks a
   assert.equal(banner(1, 1), "VICTORY");
   assert.equal(banner(1, 0), "DEFEAT");
   assert.equal(banner(0, -1), "RED WINS");
+});
+
+test("the room is redrawn when its host, an AI's level or the seat being picked for changes", () => {
+  const mesh = new Mesh("host", DEFAULT_SETTINGS);
+  const host = mesh.join("host");
+  mesh.run(300);
+  host.command({ type: "join", name: "Ada" });
+  mesh.run(500);
+  const room = view(host.roomState()!);
+  const key = (of = room, picking = 0, managerId = "host") =>
+    roomKey(of, slotsOf(of, "host"), picking, true, managerId);
+  assert.equal(key(), key(), "the same room is not redrawn");
+  assert.notEqual(
+    key(room, 0, "guest"),
+    key(),
+    "HOST moves to who holds START",
+  );
+  assert.notEqual(key(room, 1), key(), "Settings shows another seat's hero");
+  assert.notEqual(
+    key({ ...room, settings: cycleDifficulty(room.settings, 1) }),
+    key(),
+    "an AI's level is on its row",
+  );
+  assert.notEqual(
+    key({ ...room, settings: { ...room.settings, size: 2 } }),
+    key(),
+  );
 });
 
 test("the runtime logs this device's controls only while it rides a seat in a running match", () => {

@@ -2,7 +2,13 @@
 
 Fusemania is a four-arrow rhythm game for one to five players, in the tradition of StepMania and In The Groove. Arrows scroll to four targets; **hit each one as it reaches its target, on the beat**. Hold the long ones to their end, tap the zig-zag ones repeatedly (rolls), keep off the mines. The songs are the whole Fuse soundtrack, twenty tracks, each with Easy, Medium, Hard and Challenge charts. The name, the art and every chart are this project's own.
 
-Charts are ordinary StepMania simfiles. The bundled ones are the `.ssc` files in `charts/`, and a player can load any 4-panel (`dance-single`) `.sm` or `.ssc` with its music for a solo run.
+Charts are ordinary StepMania simfiles. The bundled ones are the `.ssc` files in `charts/`, and a player can load any 4-panel (`dance-single`) `.sm`, `.ssc` or `.dwi` with its music for a solo run.
+
+The DWI loader reads `SINGLE` charts, including keypad chords, simultaneous arrow groups, holds and subdivisions
+through 192nds. It preserves `GAP`, `CHANGEBPM`/`BPMCHANGE` and `FREEZE` timing and normalizes DWI's difficulty
+names (BASIC, ANOTHER, MANIAC, SMANIAC). Six-panel SOLO and eight-panel DOUBLE/COUPLE charts are not playable.
+Malformed or oversized charts are rejected. The selected simfile and audio stay on the device.
+The format conventions follow [StepMania's DWI loader](https://github.com/stepmania/stepmania/blob/5_1-new/src/NotesLoaderDWI.cpp).
 
 ## Run it
 

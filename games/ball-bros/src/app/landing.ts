@@ -23,10 +23,6 @@ export function landing(
   },
 ) {
   const el = elementsFor(root.ownerDocument);
-  const shared = el("input");
-  shared.type = "checkbox";
-  const choice = el("label", "", "shared-choice");
-  choice.append(shared, el("span", "Shared TV + phone controllers"));
   const map = el("select", "", "map-select");
   for (const mapId of MAP_IDS) {
     const option = el("option", ARENA_MAPS[mapId].label);
@@ -51,7 +47,8 @@ export function landing(
       try {
         const room = await options.create();
         if (options.active && !options.active()) return;
-        rememberRoom(options.store, room.code, room.token, shared.checked);
+        // Shared TV is the room's choice, made in the room.
+        rememberRoom(options.store, room.code, room.token);
         options.navigate(`?room=${room.code}`);
       } catch (error) {
         throw new Error(
@@ -62,8 +59,10 @@ export function landing(
     onSolo: () => options.navigate("?solo=1"),
     onJoin: (code) => options.navigate(`?room=${code}`),
   });
-  card.create.before(choice);
-  choice.before(avatarChoice(root.ownerDocument, options.store), mapChoice);
+  card.create.before(
+    avatarChoice(root.ownerDocument, options.store),
+    mapChoice,
+  );
   card.menu.addSettings(mapChoice);
   const help = el(
     "p",

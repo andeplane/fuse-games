@@ -512,6 +512,10 @@ function landing(): void {
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
     tools: [options.random],
+    onPlay: () => {
+      leaveLanding();
+      startSolo(library, choice);
+    },
   });
   const show = (next: Choice) => {
     if (next.song !== choice.song || next.chart !== choice.chart) sfx.blip();
@@ -589,14 +593,14 @@ function landing(): void {
     openTiming();
   });
 
-  // A player's own simfile: any 4-panel .sm or .ssc with its music, for a solo run on this device.
+  // A player's own simfile: any 4-panel .sm, .ssc or .dwi with its music, for a solo run on this device.
   const own = el("details", "", "fm-own"),
     ownChart = el("input"),
     ownAudio = el("input"),
     ownPlay = button("PLAY THIS SIMFILE", "fm-own-play"),
     ownError = el("p", "", "fm-own-error");
   ownChart.type = ownAudio.type = "file";
-  ownChart.accept = ".sm,.ssc,text/plain";
+  ownChart.accept = ".sm,.ssc,.dwi,text/plain";
   ownAudio.accept = "audio/*,.ogg,.mp3,.m4a,.wav";
   ownError.setAttribute("role", "alert");
   const field = (label: string, input: HTMLInputElement) => {
@@ -608,7 +612,7 @@ function landing(): void {
     el("summary", "PLAY YOUR OWN STEPMANIA FILE"),
     el(
       "p",
-      "Pick a simfile (.sm or .ssc) and its music. They stay on this device.",
+      "Pick a simfile (.sm, .ssc or .dwi) and its music. They stay on this device.",
     ),
     field("Simfile", ownChart),
     field("Music", ownAudio),
@@ -966,6 +970,7 @@ function enterRoom(
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
     tools: [options.random],
+    onPlay: () => start.click(),
   });
   const showOptions = () =>
     options.update({

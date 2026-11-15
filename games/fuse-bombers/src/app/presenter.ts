@@ -221,7 +221,6 @@ export function present(view: View, viewer: Viewer) {
     host: viewer.host,
     canAddBot: viewer.host && players.length < CAPACITY,
     canStart: viewer.host && !few,
-    openTv: shared && viewer.host && !tv, // OPEN TV SCREEN in the lobby
     note,
     controller,
     overlay, // over the round (screens.ts)

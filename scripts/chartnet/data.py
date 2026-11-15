@@ -35,6 +35,7 @@ def beat_phase(meta: dict, n: int) -> np.ndarray:
 
 
 BANDS = os.environ.get("CHARTNET_BANDS", "1") == "1"
+EXTRA = os.environ.get("CHARTNET_EXTRA", "")  # a folder in the work dir with <key>.npy, (frames, columns)
 N_BANDS = 8
 
 
@@ -65,6 +66,15 @@ def load(cache: str, stats: tuple[np.ndarray, np.ndarray] | None = None, only: s
         f = z["feats"]
         if BANDS:
             f = np.concatenate([f, band_rhythm(f).astype(np.float16)], axis=1)
+        if EXTRA:  # per-frame features from another folder (e.g. separated instruments); songs without them are left out
+            path = ROOT / EXTRA / f"{Path(j).stem}.npy"
+            if not path.exists():
+                continue
+            e = np.load(path).astype(np.float16)
+            e = np.pad(e, ((0, max(len(f) - len(e), 0)), (0, 0)))[: len(f)]
+            f = np.concatenate([f, e], axis=1)
+        if stats is not None:
+            f = f[:, : len(stats[0])]  # a model trained without the extra columns reads the ones it knows
         songs.append(Song(meta["key"], f, beat_phase(meta, len(f)), z["onset"], meta))
     if stats is None:
         allf = np.concatenate([s.feats[::10] for s in songs]).astype(np.float32)
@@ -86,6 +96,9 @@ def targets(chart: dict, n: int) -> np.ndarray:
             if 0 <= i < n:
                 y[i] = 1.0
     return y
+
+
+NEVER_TRAIN = "DukAmok_Originals__"  # a third held-out set: modern originals no model has trained on
 
 
 def song_title(key: str) -> str:
@@ -115,7 +128,8 @@ def _split(songs: list[Song], seed: int = 0) -> tuple[list[Song], list[Song], li
         test2 = set(json.loads(t2.read_text())) if t2.exists() else set()
         # the same song turns up in several packs (edit packs, re-releases): none of those copies is trained on either
         held_titles = {song_title(k) for k in test | test2}
-        rest = sorted(s.key for s in songs if s.key not in test | test2 and song_title(s.key) not in held_titles)
+        rest = sorted(s.key for s in songs if s.key not in test | test2 and song_title(s.key) not in held_titles
+                      and not s.key.startswith(NEVER_TRAIN))
         random.Random(seed).shuffle(rest)
         val = set(rest[: max(len(rest) // 20, 1)])
         return ([s for s in songs if s.key in set(rest) - val], [s for s in songs if s.key in val],

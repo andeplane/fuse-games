@@ -13,7 +13,7 @@ export interface SongSource {
   readonly id: string;
   /** Where the audio is served from, relative to the site root (or any URL the page can fetch). */
   readonly audio: string;
-  /** The `.sm` or `.ssc` text. */
+  /** The `.sm`, `.ssc` or `.dwi` text. */
   readonly ssc: string;
 }
 export interface ChartInfo {

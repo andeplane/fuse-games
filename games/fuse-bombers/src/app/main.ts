@@ -92,8 +92,6 @@ async function boot(): Promise<void> {
   const brand = document.createElement("a");
   brand.textContent = "FUSE BOMBERS";
   brand.href = import.meta.env.BASE_URL;
-  top.append(brand, social.element());
-  createTopBar({ element: top, brand, gameId: GAME, sound: audio.master });
   let flow: Flow | undefined;
   const leave = () =>
     location.assign(
@@ -112,25 +110,37 @@ async function boot(): Promise<void> {
   resultsHost.append(results.element);
   document.body.append(resultsHost);
   let shownResult = "";
+  // The bar's menu and the game's own inside it pause the round alike: either one open owns the keys.
+  let barOpen = false;
+  const pause = () => {
+    const open = barOpen || menu.isOpen();
+    flow?.setSharedMenuOpen(open);
+    // Resume at the arena: Space on a control of the bar would press it again instead of firing.
+    if (!open && flow) {
+      game.canvas.tabIndex = -1;
+      game.canvas.focus({ preventScroll: true });
+    }
+  };
   const menu = createGameMenu({
     title: "FUSE BOMBERS",
     controls: ONLINE_CONTROLS,
     goal: GOAL,
     onLobby: () => flow?.returnToLobby(),
     onLeave: leave,
+    onOpenChange: pause,
+  });
+  // In the header before the bar takes it, the menu is the bar's "Game controls", as in every other game.
+  top.append(brand, social.element(), menu.element);
+  createTopBar({
+    element: top,
+    brand,
+    gameId: GAME,
+    sound: audio.master,
     onOpenChange: (open) => {
-      flow?.setSharedMenuOpen(open);
-      // Resume at the arena: Space on the menu trigger would reopen it instead of firing.
-      if (!open && flow) {
-        game.canvas.tabIndex = -1;
-        game.canvas.focus({ preventScroll: true });
-      }
+      barOpen = open;
+      pause();
     },
   });
-  const corner = document.createElement("div");
-  corner.className = "fb-local-menu";
-  corner.append(menu.element);
-  document.body.append(corner);
   const roundControls = createRoundControls({
     controls: ONLINE_CONTROLS,
     goal: GOAL,
@@ -186,8 +196,9 @@ async function boot(): Promise<void> {
 
 /**
  * The app portal (every Fuse game) in the top-left corner, after `#screen` so screens.css shows it in the lobby
- * only. Focused from the keyboard, it keeps Enter and Space (`pressesFocusedControl`); a mouse click leaves no
- * focus behind, so Enter starts the match again, as after the sound toggle.
+ * only; its corner becomes the shared bar. Focused from the keyboard, a control there keeps Enter and Space
+ * (`pressesFocusedControl`); a mouse click leaves no focus behind, so Enter starts the match again, as after the
+ * sound toggle.
  */
 function mountPortal(): AppPortal {
   const portal = createAppPortal({
@@ -200,7 +211,14 @@ function mountPortal(): AppPortal {
   corner.className = "portal-corner";
   corner.append(portal.element);
   corner.addEventListener("click", (event) => {
-    if (event.detail > 0 && document.activeElement instanceof HTMLElement)
+    // The bar's menu is a dialog, and focus inside it is its own: Escape must find it there to close it.
+    const inMenu =
+      event.target instanceof Element && event.target.closest("dialog");
+    if (
+      event.detail > 0 &&
+      !inMenu &&
+      document.activeElement instanceof HTMLElement
+    )
       document.activeElement.blur();
   });
   document.body.append(corner);

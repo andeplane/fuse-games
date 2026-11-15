@@ -80,4 +80,8 @@ pnpm exec tsx --test games/elasto-fuse/tests/app-controls.test.ts   # keys, touc
 pnpm exec tsx --test games/elasto-fuse/tests/app-screen.test.ts     # forward run, presenter, session, art, sound
 pnpm exec tsx --test games/elasto-fuse/tests/app-reports.test.ts    # result reports
 pnpm exec tsx --test games/elasto-fuse/tests/render.test.ts         # cues, HUD, camera, IK, tinting
+pnpm exec tsx scripts/elasto-fuse-keyboard.ts                      # real menu close → focus → arrow-key driving
 ```
+
+The keyboard smoke starts Vite on a free port, or uses `HOME_URL` when supplied. It checks Back, Escape,
+BACK TO GAME and opening the menu with Space. `BROWSER=webkit` checks the same flow in WebKit.

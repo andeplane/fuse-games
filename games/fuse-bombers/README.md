@@ -19,8 +19,9 @@ mid-round) loads the world from a peer's validated checkpoint (`src/engine/codec
 
 ### Shared TV
 
-Tick **Shared TV: phones are the controllers** before CREATE ROOM (the choice is remembered). In the lobby the creator
-gets OPEN TV SCREEN, which opens `?room=CODE&display=1`: put that tab on the TV. The TV never takes a seat. It shows the
+The room is the shared `fuse-ui` room: Back, Settings and START lead it, and the invitation with its QR code sits
+beside the seats. In the room the host ticks **Shared TV** under the invitation (the choice is remembered) and gets
+OPEN TV SCREEN, which opens `?room=CODE&display=1`: put that tab on the TV. The TV never takes a seat. It shows the
 lobby's QR code and roster, then every round under the shared framing camera (every gunship and ghost), with big
 badges, and the scoreboard and winner. Everyone scans the code and picks a name; once the host starts, each seated
 device is a controller with no arena:
@@ -76,7 +77,8 @@ go on a lost focus and keeps its header clear of the pads turned on its side.
 
 ## Controls
 
-Every round starts with a controls card for your device. MENU remains available during play with CONTROLS,
+Every round starts with a controls card for your device. MENU remains available during play (beside LEAVE in a room's
+match; as Game controls in the bar's menu when everyone is at one screen) with CONTROLS,
 BACK TO GAME, BACK TO LOBBY (for the room host) and LEAVE GAME. Opening the menu pauses a local match;
 online rooms keep playing, and your controls are released while the menu is open.
 

@@ -14,7 +14,7 @@ npm run dev          # builds, then serves every game; open the printed URL plus
 `npx tsx service/dev.ts --port 8890` serves an existing `dist/` and walks to the next free port if that one is taken. Open `/dice/?mute` and pick one of:
 
 - **PLAY SOLO VS BOTS**: one bot, no room service. **Back to lobby** on the result screen lets you add more bots.
-- **CREATE ROOM**: a room with a QR invite. Others join by the code or the link, the creator adds bots and starts. Tick **Shared TV** first to play on one screen: **OPEN TV SCREEN** opens `?room=CODE&display=1`, and every phone becomes a big ROLL/HOLD controller.
+- **CREATE ROOM**: a room with a QR invite. Others join by the code or the link, the creator adds bots and starts. The room is the shared `fuse-ui` room: Back, Settings and START MATCH in its header, the invitation with INVITE FRIENDS beside the seats, the connection line at its foot. Tick **Shared TV** under the invitation to play on one screen: **OPEN TV SCREEN** opens `?room=CODE&display=1`, and every phone becomes a big ROLL/HOLD controller.
 
 Space or R rolls and H or Enter holds on a keyboard. Each round opens with a brief controls guide; **MENU** keeps the controls available during play and offers the host **LOBBY**, plus **LEAVE ROOM** for every device. The menu does not pause the shared game. A refreshed device rejoins the running match from a peer.
 

@@ -476,10 +476,6 @@ h2 {
 
 /* Familiar menu and round guidance retain the belfry's slate and lantern palette. */
 .playground .fui-game-menu {
-  position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
-  z-index: 90;
   font:
     13px/1.5 system-ui,
     sans-serif;

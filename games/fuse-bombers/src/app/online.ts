@@ -111,14 +111,6 @@ function page(
 
 /** The first screen: create or join a room, play against bots, or everyone at this screen (the local lobby). */
 export function showLanding(store: Store, error = "", audio?: GameAudio): void {
-  // A room made with this ticked shows the arena on a TV (OPEN TV SCREEN) and every seated phone is a controller.
-  const shared = el("label", "", "fb-shared"),
-    toggle = el("input");
-  toggle.type = "checkbox";
-  toggle.checked = store.getItem(names.shared) === "1";
-  toggle.onchange = () =>
-    store.setItem(names.shared, toggle.checked ? "1" : "0");
-  shared.append(toggle, el("span", "Shared TV: phones are the controllers"));
   const card = ui.createLandingCard({
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
@@ -135,8 +127,12 @@ export function showLanding(store: Store, error = "", audio?: GameAudio): void {
             : failure;
         });
       store.setItem(names.host(room.code), room.token);
-      // Kept with the room, so a reload of its creator's page makes the same room whatever the box says by then.
-      store.setItem(names.sharedRoom(room.code), toggle.checked ? "1" : "0");
+      // Shared TV is chosen in the room; a new room starts with what this device last chose. Kept with the room, so
+      // a reload of its creator's page makes the same room whatever was chosen elsewhere by then.
+      store.setItem(
+        names.sharedRoom(room.code),
+        store.getItem(names.shared) === "1" ? "1" : "0",
+      );
       go(`room=${room.code}`);
     },
     onSolo: () => go("solo=1"),
@@ -146,7 +142,6 @@ export function showLanding(store: Store, error = "", audio?: GameAudio): void {
   const local = button("EVERYONE AT THIS SCREEN");
   local.onclick = () => go("local");
   card.solo?.after(local);
-  card.create.after(shared);
   card.error.textContent = error;
   card.menu.help.append(
     el(
@@ -183,7 +178,10 @@ export function showRoom(
   let settings = DEFAULT_SETTINGS,
     dead = false;
 
-  const status = ui.createNotice({ className: "fui-notice fb-status" }),
+  // The room's state is one line: at the room's foot while it waits (`status`), in the bar during a match, where
+  // it shows only while something is wrong (`live`).
+  const status = ui.createNotice({ className: "fb-room-status" }),
+    live = ui.createNotice({ className: "fui-notice fb-status" }),
     leave = button(solo ? "EXIT" : "LEAVE"),
     card = el("section", "", "fb-card"),
     cardTitle = el("h2", "CONNECTING", "fui-lobby-title"),
@@ -208,8 +206,6 @@ export function showRoom(
   });
   // The host cycles the settings as in the local lobby: rounds to win 1–9; bots easy, normal, hard.
   const lobby = el("section", "", "fb-lobby"),
-    pilots = el("div"),
-    match = el("div"),
     roster = ui.createRoster({ emptyText: "No pilots yet" }),
     addBot = button("+ ADD BOT"),
     start = button("START", "fui-button-primary"),
@@ -230,21 +226,29 @@ export function showRoom(
   start.onclick = () => runtime.command({ type: "action", action: "start" });
   wins.onclick = () => set({ wins: (settings.wins % MAX_WINS) + 1 });
   level.onclick = () => set({ difficulty: after(LEVELS, settings.difficulty) });
-  match.append(el("h2", "MATCH", "fui-lobby-title"), wins, level, start);
-  match.hidden = display;
-  const tv = button("OPEN TV SCREEN", "fui-button-primary");
-  tv.onclick = () => window.open(link(`room=${code}&display=1`), "_blank");
+  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
+  // The choice is remembered for the next room this device creates, once the room has taken it.
+  const sharedTv = ui.createSharedTvOption({
+    className: "fb-tv-option",
+    onChange: (shared) => {
+      const sent = set({ display: shared });
+      if (sent) {
+        store.setItem(names.shared, shared ? "1" : "0");
+        store.setItem(names.sharedRoom(code), shared ? "1" : "0");
+      }
+      return sent;
+    },
+    onOpenScreen: () =>
+      window.open(link(`room=${code}&display=1`), "_blank", "noopener"),
+  });
   if (!solo)
-    pilots.append(
+    lobby.append(
       ui.createInviteCard({
         code,
         link: endpoints.appUrl(`?room=${code}`),
         qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 360 }),
       }).element,
-      tv,
     );
-  pilots.append(el("h2", "PILOTS", "fui-lobby-title"), roster.element, addBot);
-  lobby.append(pilots, match);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   ui.createRoomLayout({
@@ -259,11 +263,17 @@ export function showRoom(
       (await import("./attract.js")).createAttract(host),
     element: lobby,
     roster,
+    friends: social.friends,
     capacity: 5,
     join: nameEntry.form,
     addAI: addBot,
-    settings: [wins, level],
-    actions: [note, tv, start],
+    settings: [wins, level, el("p", GOAL)],
+    actions: [note],
+    actionsInHeader: true,
+    status: status.element,
+    ...(solo
+      ? { compact: true, heading: "Solo match" }
+      : { heading: "Room", extras: [sharedTv.element] }),
   });
   // A phone's controller for the shared TV: who it flies, hull and launcher, the round's word; the pads are the input
   // layer's, laid out big (`controllerPadLayout`).
@@ -289,8 +299,11 @@ export function showRoom(
   pad.append(head, meters, padState, padLine, padActions);
   if (!touch) pad.append(el("p", "WASD OR ARROW KEYS TO FLY · SPACE TO FIRE"));
   pad.hidden = true;
-  const bar = page(audio, card, nameEntry.form, note, lobby, pad);
-  bar.append(el("strong", code), status.element, leave);
+  // The lobby's note is the room's own line (its `actions`): put on the page as well, it left the room and lay
+  // over the bar.
+  const bar = page(audio, card, nameEntry.form, lobby, pad);
+  // The room's code is on its invitation. LEAVE, MENU and the line are the match's: online.css hides them in the room.
+  bar.append(live.element, leave);
   const menu = ui.createGameMenu({
     title: "FUSE BOMBERS",
     controls: ONLINE_CONTROLS,
@@ -418,6 +431,7 @@ export function showRoom(
       heard.kind === "retry" ||
       (heard.kind === "display" && !!model && model.screen !== "lobby");
     status.show(heard.text, urgent ? "error" : "info");
+    live.show(heard.text, urgent ? "error" : "info");
   };
   const render = (next: Model) => {
     model = next;
@@ -485,7 +499,10 @@ export function showRoom(
       }
       if (scene?.sys.isSleeping()) game.scene.wake(RoundScene.KEY);
     }
-    tv.hidden = !next.openTv;
+    sharedTv.update(
+      settings.display,
+      next.host && !display && !solo && next.screen === "lobby",
+    );
     const result = controller ? null : next.result;
     if (!result) {
       if (results.open) results.hide();
@@ -515,7 +532,12 @@ export function showRoom(
     }
     if (overlay.dataset.html !== next.overlay)
       overlay.innerHTML = overlay.dataset.html = next.overlay;
-    roster.update(next.members);
+    roster.update(
+      next.members.map((member) => ({
+        ...member,
+        host: member.id === frame?.managerId,
+      })),
+    );
     for (const [id, row] of roster.entries()) {
       const removable = next.members.some((m) => m.id === id && m.removable);
       let remove = row.querySelector("button");

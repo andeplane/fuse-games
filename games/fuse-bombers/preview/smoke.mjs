@@ -112,10 +112,13 @@ try {
 
   // ---- a shared TV with a phone as the controller ----
   const creator = await open("fuse-bombers/?mute");
-  await creator.locator(".fb-shared input").check();
   const sharedCode = await create(creator);
   await join(creator, "Host");
-  assert.ok(await creator.getByText("OPEN TV SCREEN").isVisible());
+  // Shared TV is the host's choice in the room, with the screen's button beside it.
+  await creator.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await creator
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
   // `?debug` hands the page's room and game to this script: the TV's replica of the room, and whether a game draws.
   const tv = await open(
     `fuse-bombers/?room=${sharedCode}&display=1&mute&debug`,

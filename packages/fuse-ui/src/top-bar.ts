@@ -33,6 +33,9 @@ const bindings = new WeakMap<HTMLElement, () => void>();
 const radios = new WeakMap<Document, ReturnType<typeof createRadio>>();
 
 /** Shared overlay navigation. Existing game/account controls retain their handlers and game-specific data. */
+/** The keys that press a focused button. */
+const PRESSES = new Set([" ", "Enter"]);
+
 export function createTopBar(options: TopBarOptions): HTMLElement {
   const root = options.element;
   const previous = installed.get(root);
@@ -232,8 +235,17 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   // behind them. Keyup still reaches the game so previously held keys release.
   // The context is the game's own content, lent to the bar (a roster, the host's actions): a key pressed with
   // focus left there after a click is still the game's, or Space would press that button again instead of the bomb.
+  // So is a game menu the game keeps in the bar itself rather than in the dialog: Escape closes it and the arrows
+  // walk it from the document, where it listens. Space and Enter press the focused button and stay here, or they
+  // would fire in the match as well.
   root.addEventListener("keydown", (event) => {
-    if (!context.contains(event.target as Node | null)) event.stopPropagation();
+    const target = event.target as Element | null;
+    const games =
+      context.contains(target) ||
+      (!PRESSES.has(event.key) &&
+        !menu.dialog.contains(target) &&
+        !!target?.closest?.(".fui-game-menu"));
+    if (!games) event.stopPropagation();
   });
   toggle.onclick = () => {
     renderSound();

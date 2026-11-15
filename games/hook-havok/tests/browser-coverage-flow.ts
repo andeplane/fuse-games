@@ -175,7 +175,12 @@ try {
   // Single player opens a room of one; the keeper enters once it takes a seat.
   await openPlayOptions(page, "single");
   await takeHostSeat(page, "Keeper");
-  await page.locator('#status[data-state="playing"]').waitFor();
+  // The room is a page over the arena: START begins the round and shows the arena.
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  // The line itself is not shown over the full-screen arena; its state still says the room is playing.
+  await page
+    .locator('#status[data-state="playing"]')
+    .waitFor({ state: "attached" });
   // Room status can precede the first local rendered frame. Initial round and
   // phase transitions cancel held input, so wait for the playable keeper before
   // exercising a single key press through the menu.
@@ -201,6 +206,7 @@ try {
     .click();
   await page.locator("#map").selectOption("spire");
   await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "RESUME", exact: true }).click();
   // Native precise coverage left the simulation at log tick 183 against room tick 543 on main CI
   // (run 38647662723), so the applied map change never rendered within 30 s. Quarantined under
   // flaky-test epic #250 only while collecting native coverage; ordinary runs keep both waits.
@@ -218,6 +224,11 @@ try {
   await menu.getByText("WASD / ARROWS + K", { exact: true }).waitFor();
   await menu.getByText("MOUSE + RIGHT CLICK", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
+  // Native dialog dismissal queues its close event. The top bar collapses the
+  // embedded game menu and restores arena focus from that event, after Escape.
+  await page
+    .locator('.fui-game-menu-trigger[aria-expanded="false"]')
+    .waitFor({ state: "attached" });
   assert.equal(
     await page
       .locator("#scene")

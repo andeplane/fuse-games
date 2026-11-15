@@ -39,37 +39,34 @@ body.dice-page {
   color: var(--fui-cyan);
   font: 0.625rem var(--fui-font-pixel);
 }
-.dice-code {
-  padding: var(--fui-space-1) var(--fui-space-2);
-  color: var(--fui-ink);
-  background: var(--fui-cyan);
-  border-radius: var(--fui-radius-small);
-  font: 0.75rem var(--fui-font-pixel);
-}
+/* The room's line during a match: in the bar's row where there is room, before its buttons. In the lobby the line
+   is at the room's foot, and on a narrower screen only a failure shows, under the bar. */
 .dice-status {
-  flex: 1 1 10rem;
-  /* One line, always laid out: a status that appears, changes or wraps must not move the buttons below it. */
-  min-width: 0;
-  min-height: 1.25rem;
-  overflow: hidden;
+  max-width: 22rem;
+  color: var(--fui-text-dim);
   font-size: 0.75rem;
   line-height: 1.25rem;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.fui-app .dice-status[hidden] {
-  display: block !important;
-  visibility: hidden;
+body:has(.dice-lobby:not([hidden])) .dice-status {
+  display: none !important;
 }
-.dice-top .fui-game-menu {
-  margin-left: auto;
-}
-@media (max-width: 34rem) {
-  /* On a phone the status line takes its own row under the brand, code and MENU. */
+@media (min-width: 900px) {
+  .dice-top .fui-top-bar-context {
+    inset: 0 16rem 0 12rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
   .dice-status {
-    order: 1;
-    flex-basis: 100%;
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 899px) {
+  .dice-status:not([data-tone="error"]) {
+    display: none !important;
   }
 }
 .dice-top .fui-game-menu-trigger {
@@ -89,19 +86,6 @@ body.dice-page {
 .dice-page .fui-landing-tagline {
   line-height: 1.6;
 }
-.dice-shared {
-  display: flex;
-  align-items: center;
-  gap: var(--fui-space-2);
-  color: var(--fui-text-muted);
-  font-size: 0.875rem;
-}
-.fui-app .dice-shared input {
-  min-height: 0;
-  width: 1.25rem;
-  height: 1.25rem;
-  accent-color: var(--fui-cyan);
-}
 .dice-error {
   color: var(--fui-pink-soft);
   text-align: center;
@@ -120,16 +104,6 @@ body.dice-page {
   width: min(32rem, 100%);
   margin: 0 auto;
 }
-.dice-lobby {
-  display: grid;
-  gap: var(--fui-space-4);
-  width: min(32rem, 100%);
-  margin: 0 auto;
-  padding: var(--fui-space-4);
-  background: var(--fui-panel);
-  border: var(--fui-border);
-  border-radius: var(--fui-radius-panel);
-}
 .dice-lobby .fui-roster-row {
   position: relative;
 }
@@ -139,17 +113,10 @@ body.dice-page {
   padding: 0 var(--fui-space-3);
   color: var(--fui-pink-soft);
 }
-.dice-lobby-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--fui-space-2);
+/* Table: it starts under the bar, which is fixed over the page, below a phone's notch. */
+.dice-room[data-screen="table"] {
+  padding-top: calc(max(12px, env(safe-area-inset-top)) + 52px);
 }
-.dice-lobby-actions button {
-  flex: 1 1 9rem;
-}
-
-/* Table */
 .dice-table {
   display: grid;
   gap: var(--fui-space-3);

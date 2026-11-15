@@ -75,6 +75,12 @@ async function start(page: Page, game: GameFlow): Promise<void> {
     await openPlayOptions(page);
     await page.getByRole("button", { name: "Host room", exact: true }).click();
     await takeHostSeat(page, "Menu smoke");
+    // The room is a page over the arena: START begins the round and shows the arena.
+    await page.getByRole("button", { name: "START", exact: true }).click();
+  } else if (game.id === "fuse-lane") {
+    // A game on this device: Single player's setup, then its START.
+    await openPlayOptions(page, "single");
+    await page.locator(".fl-start-game").click();
   } else if (game.start) {
     const button = page.getByRole("button", { name: game.start, exact: true });
     const guide = page.locator(".fui-round-controls:visible");
@@ -107,10 +113,27 @@ async function checkTopBarInWindow(page: Page, game: string): Promise<void> {
   assert.deepEqual(outside, [], `${game}: top bar controls inside the window`);
 }
 
+/** A game's menu is on the page or, in most games, "Game controls" in the bar's menu: open that one first. */
+async function openGameMenu(page: Page): Promise<void> {
+  const trigger = page.locator(".fui-game-menu-trigger");
+  if (!(await trigger.isVisible()))
+    await page
+      .getByRole("button", { name: "Open game menu", exact: true })
+      .click();
+  await trigger.click();
+}
+
+/** The menu has closed. In the bar's menu that follows the dialog's own close, a moment after the key or click. */
+async function collapsed(page: Page): Promise<void> {
+  await page
+    .locator('.fui-game-menu-trigger[aria-expanded="false"]')
+    .waitFor({ state: "attached" });
+}
+
 async function checkSharedMenu(page: Page): Promise<void> {
   const menu = page.locator(".fui-game-menu");
   const trigger = menu.locator(".fui-game-menu-trigger");
-  await trigger.click();
+  await openGameMenu(page);
   assert.equal(await trigger.getAttribute("aria-expanded"), "true");
   const panel = menu.locator(".fui-game-menu-panel");
   await panel
@@ -124,21 +147,21 @@ async function checkSharedMenu(page: Page): Promise<void> {
   );
   await controls.getByRole("button", { name: "Menu", exact: true }).click();
   await page.keyboard.press("Escape");
-  assert.equal(await trigger.getAttribute("aria-expanded"), "false");
-  await trigger.click();
+  await collapsed(page);
+  await openGameMenu(page);
   await panel
     .getByRole("button", { name: "BACK TO GAME", exact: true })
     .click();
-  assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+  await collapsed(page);
   // Read the normal navigation through the same menu; it is absent where no lobby exists.
-  await trigger.click();
+  await openGameMenu(page);
   const lobby = panel.getByRole("button", {
     name: "BACK TO LOBBY",
     exact: true,
   });
   if (await lobby.isVisible()) {
     await lobby.click();
-    assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+    await collapsed(page);
     await page.waitForFunction(() =>
       [...document.querySelectorAll<HTMLElement>(".fui-round-controls")].every(
         (guide) => guide.hidden,
@@ -170,7 +193,6 @@ async function checkRidersMenu(page: Page): Promise<void> {
 
 /** Close by both supported paths, then use gameplay keys without clicking the arena first. */
 async function checkKeyboardResume(page: Page, game: string): Promise<void> {
-  const trigger = page.locator(".fui-game-menu-trigger");
   for (const close of ["resume", "escape"] as const) {
     let bombersShots = 0;
     if (game === "fuse-bombers") {
@@ -197,7 +219,7 @@ async function checkKeyboardResume(page: Page, game: string): Promise<void> {
       });
     }
     if (game === "dice") await page.locator(".dice-roll").waitFor();
-    await trigger.click();
+    await openGameMenu(page);
     if (close === "escape") await page.keyboard.press("Escape");
     else
       await page
@@ -212,13 +234,19 @@ async function checkKeyboardResume(page: Page, game: string): Promise<void> {
           : game === "fuse-lane"
             ? ".fl-game"
             : "canvas";
-    assert.equal(
-      await page
-        .locator(play)
-        .evaluate((element) => document.activeElement === element),
-      true,
-      `${game}: ${close} returns focus to gameplay`,
-    );
+    // In the bar's menu the game resumes once the dialog has closed, a moment after the key or the click.
+    const focused = await page
+      .waitForFunction(
+        (selector) =>
+          document.activeElement === document.querySelector(selector),
+        play,
+        { timeout: 5_000 },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    assert.equal(focused, true, `${game}: ${close} returns focus to gameplay`);
     if (game === "fuse-bombers") {
       await page.keyboard.press("Space");
       await page.waitForFunction((shots) => {
@@ -281,7 +309,7 @@ async function checkKeyboardResume(page: Page, game: string): Promise<void> {
         await page.locator(".fl-briefing").waitFor({ state: "hidden" });
       }
     }
-    assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+    await collapsed(page);
   }
   results.push({ game, keyboardAfterResumeAndEscape: true });
 }
@@ -297,21 +325,24 @@ async function checkBombersLocalResume(): Promise<void> {
       new URL("fuse-bombers/?local&mute&debug&seed=42", base).href,
     );
     await page.locator("#screen[data-screen='lobby']").waitFor();
-    const trigger = page.locator(".fui-game-menu-trigger");
     for (const close of ["resume", "escape"] as const) {
-      await trigger.click();
+      await openGameMenu(page);
       if (close === "escape") await page.keyboard.press("Escape");
       else
         await page
           .getByRole("button", { name: "BACK TO GAME", exact: true })
           .click();
+      // The menu is the bar's dialog: play resumes, at the arena, once the dialog has closed.
+      await page.waitForFunction(
+        () => document.activeElement?.tagName === "CANVAS",
+      );
       await page.keyboard.press("Space");
       await page.waitForFunction((joined) => {
         const flow = (window as Window & { fuseBombers?: { flow: Flow } })
           .fuseBombers!.flow;
         return flow.lobby.devices.includes("key:WASD") === joined;
       }, close === "resume");
-      assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+      await collapsed(page);
     }
     await page.keyboard.press("Space");
     await page.keyboard.press("Enter");
@@ -329,12 +360,16 @@ async function checkBombersLocalResume(): Promise<void> {
           (window as Window & { fuseBombers?: { flow: Flow } }).fuseBombers!
             .flow.view.castles[0]!.stats.rocketsFired,
       );
-      await trigger.click();
+      await openGameMenu(page);
       if (close === "escape") await page.keyboard.press("Escape");
       else
         await page
           .getByRole("button", { name: "BACK TO GAME", exact: true })
           .click();
+      // The menu is the bar's dialog: play resumes, at the arena, once the dialog has closed.
+      await page.waitForFunction(
+        () => document.activeElement?.tagName === "CANVAS",
+      );
       await page.keyboard.press("Space");
       await page.waitForFunction(
         (shots) =>
@@ -342,7 +377,7 @@ async function checkBombersLocalResume(): Promise<void> {
             .flow.view.castles[0]!.stats.rocketsFired > shots,
         before,
       );
-      assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+      await collapsed(page);
     }
     results.push({
       game: "fuse-bombers",
@@ -420,10 +455,13 @@ async function checkBombersDisplay(): Promise<void> {
   try {
     await host.goto(new URL("fuse-bombers/?mute", base).href);
     await openPlayOptions(host);
-    await host.locator(".fb-shared input").check();
-    await openPlayOptions(host);
     await host.getByRole("button", { name: "Host room", exact: true }).click();
     await takeHostSeat(host, "Menu smoke");
+    // Shared TV is the host's choice in the room.
+    await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
+    await host
+      .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+      .waitFor();
     await host
       .getByRole("button", { name: /^Add AI$/i, exact: true })
       .first()
@@ -475,9 +513,8 @@ async function checkTownOnlineResume(): Promise<void> {
       .getByRole("button", { name: "START MATCH", exact: true })
       .click();
     await page.locator(".fl-room[data-phase='running']").waitFor();
-    const trigger = page.locator(".fui-game-menu-trigger");
     for (const close of ["resume", "escape"] as const) {
-      await trigger.click();
+      await openGameMenu(page);
       if (close === "escape") await page.keyboard.press("Escape");
       else
         await page
@@ -493,7 +530,7 @@ async function checkTownOnlineResume(): Promise<void> {
     }
     await page.keyboard.press("Enter");
     await page.locator(".fl-briefing").waitFor({ state: "hidden" });
-    assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+    await collapsed(page);
     results.push({
       game: "fuse-lane",
       onlineKeyboardAfterResumeAndEscape: true,

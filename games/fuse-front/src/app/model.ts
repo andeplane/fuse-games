@@ -12,6 +12,28 @@ import {
 import type { Settings, View } from "../online/game.js";
 import { mapsFor, resolveMap } from "../online/maps.js";
 
+/**
+ * What the room is drawn from: it is rebuilt when this changes. Seats, heroes and AI levels, the seat whose hero
+ * Settings shows, the battle size and map, and who holds START (the HOST badge follows `managerId`).
+ */
+export function roomKey(
+  view: View,
+  slots: readonly SlotView[],
+  picking: number,
+  creator: boolean,
+  managerId: string | undefined,
+): string {
+  return JSON.stringify([
+    slots,
+    view.seats,
+    picking,
+    view.settings.size,
+    view.settings.map,
+    creator,
+    managerId,
+  ]);
+}
+
 export const TEAMS = ["RED", "BLUE"] as const;
 export const SIZES = [1, 2, 3] as const;
 

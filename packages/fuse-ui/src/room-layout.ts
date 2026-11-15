@@ -554,6 +554,12 @@ export function roomLayoutMarkup(options: {
   canAddAI?: boolean;
   slotColors?: readonly string[];
   slotPlayers?: readonly { slot: number; html: string }[];
+  /** Settings and the primary action sit in the room's header, after Back and the heading, as in `createRoomLayout`. */
+  actionsInHeader?: boolean;
+  /** The header's title, e.g. "Room". Escaped by the caller like every other slot. */
+  heading?: string;
+  /** The connection's line at the room's foot. */
+  status?: string;
 }): string {
   const open = Array.from(
     {
@@ -573,5 +579,10 @@ export function roomLayoutMarkup(options: {
           ? ""
           : `<div class="fui-room-open-slot fui-slot-plain${options.canJoin || options.canMove || options.canAddAI ? "" : " fui-slot-idle"}" data-slot="${index}" style="--slot-color:${options.slotColors?.[index] ?? "#b9d0e1"}"><span class="fui-slot-chip" aria-hidden="true">${index + 1}</span><span class="fui-slot-label">Open seat</span><div class="fui-slot-controls">${options.canJoin ? `<button data-action="take-slot" data-slot="${index}">Join</button>` : options.canMove ? `<button data-action="move-slot" data-slot="${index}">Sit here</button>` : ""}${options.canAddAI ? `<button data-action="add-bot" data-slot="${index}">Add AI</button>` : ""}</div></div>`,
   ).join("");
-  return `<main class="fui-room-layout"><header class="fui-page-head fui-room-head">${options.mainMenu ?? '<a class="fui-back fui-room-main-menu" href="./" aria-label="Back">Back</a>'}</header><aside class="fui-room-invitation">${options.invite}${options.primaryAction ? `<div class="fui-room-primary-action">${options.primaryAction}</div>` : ""}<button class="fui-room-configure" data-action="open-room-settings">Game settings</button></aside><section class="fui-room-players"><h2>Players <span class="fui-room-count">${options.occupied} / ${options.capacity}</span></h2>${options.players}<div class="fui-room-open-slots">${open}</div><div class="fui-room-actions">${options.actions}</div></section><dialog class="fui-dialog fui-menu-dialog fui-slot-admission" data-room-name aria-label="Join the game"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-name" aria-label="Back">Back</button><strong class="fui-dialog-title">Join the game</strong></header><div class="fui-dialog-body">${options.join}</div></dialog><dialog class="fui-dialog fui-menu-dialog" data-room-settings aria-label="Game settings"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-settings" aria-label="Back">Back</button><strong class="fui-dialog-title">Game settings</strong></header><div class="fui-dialog-body">${options.settings}</div></dialog></main>`;
+  const inHeader = options.actionsInHeader === true;
+  const primary = options.primaryAction
+    ? `<div class="fui-room-primary-action">${options.primaryAction}</div>`
+    : "";
+  const configure = `<button class="fui-room-configure" data-action="open-room-settings" aria-label="Game settings">${inHeader ? "Settings" : "Game settings"}</button>`;
+  return `<main class="fui-room-layout${inHeader ? " fui-room-actions-top" : ""}"><header class="fui-page-head fui-room-head">${options.mainMenu ?? '<a class="fui-back fui-room-main-menu" href="./" aria-label="Back">Back</a>'}${options.heading !== undefined || inHeader ? `<h2 class="fui-page-title">${options.heading ?? ""}</h2>` : ""}${inHeader ? `<div class="fui-page-actions">${configure}${primary}</div>` : ""}</header><aside class="fui-room-invitation">${options.invite}${inHeader ? "" : primary + configure}</aside><section class="fui-room-players"><h2>Players <span class="fui-room-count">${options.occupied} / ${options.capacity}</span></h2>${options.players}<div class="fui-room-open-slots">${open}</div><div class="fui-room-actions">${options.actions}</div></section>${options.status !== undefined ? `<div class="fui-room-status">${options.status}</div>` : ""}<dialog class="fui-dialog fui-menu-dialog fui-slot-admission" data-room-name aria-label="Join the game"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-name" aria-label="Back">Back</button><strong class="fui-dialog-title">Join the game</strong></header><div class="fui-dialog-body">${options.join}</div></dialog><dialog class="fui-dialog fui-menu-dialog" data-room-settings aria-label="Game settings"><header class="fui-dialog-bar"><button class="fui-back" data-action="close-room-settings" aria-label="Back">Back</button><strong class="fui-dialog-title">Game settings</strong></header><div class="fui-dialog-body">${options.settings}</div></dialog></main>`;
 }

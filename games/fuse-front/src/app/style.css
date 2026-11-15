@@ -65,7 +65,6 @@ body.fui-app {
 .ff-sound:disabled {
   opacity: 0.5;
 }
-.ff-name,
 .ff-team,
 .ff-cycle {
   font: inherit;
@@ -95,7 +94,6 @@ body.fui-app {
 .ff-lobby .fui-lobby {
   width: min(72rem, 100%);
 }
-.ff-roster h2,
 .ff-team-name {
   margin: 0;
   font: 800 1.5rem var(--ff-display);
@@ -195,13 +193,29 @@ body.fui-app {
 #app .ff-cycle {
   color: var(--ff-hazard);
 }
-#app .ff-start {
-  min-width: 200px;
-  border: 0;
-  background: #e0442c;
-  color: #fff;
-  font: 800 1.4rem var(--ff-display);
-  letter-spacing: 0.1em;
+/* The room's players: the host's HERO and an AI's LEVEL at the end of a seat's row. */
+.ff-lobby .fui-roster-row .ff-row-tools {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  margin-left: auto;
+}
+.ff-lobby .fui-roster-row .ff-portrait {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+/* At the room's foot the line reads from the left, like the room's in every game. */
+.ff-lobby .fui-room-status .ff-status {
+  margin: 0;
+  text-align: left;
+  color: inherit;
+}
+.ff-room-note {
+  margin: 0;
+  color: var(--ff-muted);
+  text-align: center;
 }
 .ff-play {
   position: relative;
@@ -1018,10 +1032,11 @@ body.fui-app {
  * top bar (`fit` in `main.ts`). MORE opens the rest: portrait, XP, target, the order toggles and the minimap.
  */
 @media (max-width: 720px), (max-height: 500px) {
+  /* The app bar is fixed over the page: the status line and the score start under it. */
   #app.ff-in-match {
-    padding: 4px 6px 0;
+    padding: calc(60px + env(safe-area-inset-top)) 6px 0;
   }
-  /* The header (the way out) and the room's status stay, as one slim line each. */
+  /* The app bar (the way out) stays, and the room's status is one slim line under it. */
   #app.ff-in-match > .ff-top {
     gap: 8px;
     padding-bottom: 2px;
