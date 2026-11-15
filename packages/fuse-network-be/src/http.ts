@@ -162,7 +162,7 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
       errorType: error instanceof Error ? error.name : "unknown",
       code: (error as { code?: unknown })?.code,
     });
-  const admissions = new AdmissionGate(store.database, now);
+  const admissions = new AdmissionGate(store.database, now, log);
   const lookup = () =>
     new AddressBudget(now, ROOM_LOOKUP_BURST, ROOM_LOOKUP_PER_SECOND);
   const iceLookups = lookup(),
