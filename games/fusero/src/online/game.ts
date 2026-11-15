@@ -50,7 +50,7 @@ export const PLAY = 0;
 export const LOADOUT = 1;
 export const BEGIN_LOADOUT = 2;
 export const MAX_WATCHERS = 5;
-const LOG_TICK_MS = 50;
+export const LOG_TICK_MS = OUTER_MS;
 export type Loadout = [number, number, number, number, number];
 export type PlayEntry = [
   seq: number,
@@ -78,7 +78,7 @@ export type BeginLoadoutEntry = [
 export type Entry =
   ManagementEntry<Settings> | PlayEntry | LoadoutEntry | BeginLoadoutEntry;
 
-/** A Fuse log tick runs five native 10ms outer frames; the world owns its internal physics clocks. */
+/** Each Fuse input tick runs one native 10ms outer frame; the world owns its internal physics clocks. */
 export interface Room extends ManagedRoom<Settings> {
   tick: number;
   simulationTick: number;
@@ -87,6 +87,8 @@ export interface Room extends ManagedRoom<Settings> {
   stage: Stage;
   play: Settings;
   held: Record<string, number>;
+  /** Brief controls wait for the next native 11ms physics pulse, including after recovery. */
+  pendingPressed: Record<string, number>;
   loadouts: Record<string, Loadout>;
   winner: string;
   world: World | null;
@@ -159,6 +161,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     settings: { ...settings },
     play: { ...settings },
     held: {},
+    pendingPressed: {},
     loadouts: {},
     winner: "",
     world: null,
@@ -177,6 +180,7 @@ function resetMatch(room: Room, matchId: string): void {
   room.stage = "lobby";
   room.play = { ...room.settings };
   room.held = {};
+  room.pendingPressed = {};
   room.winner = "";
   room.world = null;
   reconcileLoadouts(room);
@@ -242,7 +246,7 @@ function reconcileLoadouts(room: Room): void {
       delete room.loadouts[id];
   }
 }
-/** Native outer scheduling divides Fuse's 50ms log tick without a room-level remainder. */
+/** Input admission follows the native outer frame rather than batching five frames. */
 export const stepsPerTick = (): number => LOG_TICK_MS / OUTER_MS;
 export const MAX_STEPS_PER_TICK = LOG_TICK_MS / OUTER_MS;
 export function foldTick(
@@ -252,6 +256,9 @@ export function foldTick(
 ): never[] {
   const tick = room.tick + 1;
   const count = stepsPerTick();
+  const generations = new Map(
+    [...room.seats.values()].map((seat) => [seat.id, seat.generation]),
+  );
   // Loadout selection belongs to the lobby as seen before a same-tick START, so the selected weapons enter that match.
   if (room.stage === "lobby")
     for (const seat of riders(room)) {
@@ -267,6 +274,15 @@ export function foldTick(
       }
     }
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
+  for (const seat of room.seats.values()) {
+    if (generations.get(seat.id) === seat.generation) continue;
+    delete room.held[seat.id];
+    delete room.pendingPressed[seat.id];
+    const worm = room.world?.worms.find(
+      (candidate) => candidate.id === seat.id,
+    );
+    if (worm && !worm.ai) worm.input = 0;
+  }
   reconcileLoadouts(room);
   const world = room.world;
   if (room.stage === "running" && world) {
@@ -298,6 +314,7 @@ export function foldTick(
         worm.weapon = 0;
         worm.input = 0;
         delete room.held[seat.id];
+        delete room.pendingPressed[seat.id];
         selectionSequence.set(seat.id, entry[0]);
       }
     }
@@ -309,6 +326,7 @@ export function foldTick(
         tapped = 0;
       if (seat?.connected && !seat.bot && !seat.watcher && worm.weaponsReady) {
         bits = room.held[worm.id] ?? 0;
+        tapped = room.pendingPressed[worm.id] ?? 0;
         for (const entry of ownEntries(room, seat, streams, tick))
           if (
             entry[2] === PLAY &&
@@ -322,6 +340,8 @@ export function foldTick(
       }
       if (bits && !seat?.bot) room.held[worm.id] = bits;
       else delete room.held[worm.id];
+      if (tapped) room.pendingPressed[worm.id] = tapped;
+      else delete room.pendingPressed[worm.id];
       held.set(worm.id, bits);
       first.set(worm.id, bits | tapped);
     }
@@ -329,13 +349,16 @@ export function foldTick(
     for (let step = 0; step < count; step++) {
       const previousPhysicsMs = world.lastClientPhysicsMs;
       stepWorld(world, firstPhysicsPulse ? first : held);
-      if (world.lastClientPhysicsMs !== previousPhysicsMs)
+      if (world.lastClientPhysicsMs !== previousPhysicsMs) {
         firstPhysicsPulse = false;
+        room.pendingPressed = {};
+      }
     }
     if (world.phase === "done") {
       room.stage = "over";
       room.winner = world.winner ?? "";
       room.held = {};
+      room.pendingPressed = {};
     }
   }
   room.tick = tick;
@@ -372,6 +395,7 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.loadouts).map(([id, weapons]) => [id, [...weapons]]),
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
+    sortedEntries(room.pendingPressed),
   ];
 }
 function decodeSeat(raw: unknown): SeatRecord | undefined {
@@ -417,7 +441,7 @@ export function decode(
   fields: readonly unknown[],
   tick: number,
 ): Room | undefined {
-  if (fields.length !== 10 || !uint32(tick)) return;
+  if (fields.length !== 11 || !uint32(tick)) return;
   const [
     matchId,
     round,
@@ -429,6 +453,7 @@ export function decode(
     rawLoadouts,
     rawWorld,
     simulationTick,
+    rawPendingPressed,
   ] = fields;
   const settings = parseSettings(rawSettings),
     play = parseSettings(rawPlay);
@@ -444,6 +469,8 @@ export function decode(
     simulationTick !== (tick * LOG_TICK_MS) / OUTER_MS ||
     !Array.isArray(rawHeld) ||
     rawHeld.length > CAPACITY ||
+    !Array.isArray(rawPendingPressed) ||
+    rawPendingPressed.length > CAPACITY ||
     !Array.isArray(rawLoadouts) ||
     rawLoadouts.length > CAPACITY
   )
@@ -465,6 +492,7 @@ export function decode(
   if ([...seats.values()].filter((seat) => seat.watcher).length > MAX_WATCHERS)
     return;
   const held: Record<string, number> = {},
+    pendingPressed: Record<string, number> = {},
     loadouts: Record<string, Loadout> = {};
   for (const pair of rawHeld) {
     if (
@@ -477,6 +505,18 @@ export function decode(
     )
       return;
     held[pair[0]] = pair[1];
+  }
+  for (const pair of rawPendingPressed) {
+    if (
+      !Array.isArray(pair) ||
+      pair.length !== 2 ||
+      !playerKey(pair[0]) ||
+      Object.hasOwn(pendingPressed, pair[0]) ||
+      !isInput(pair[1]) ||
+      pair[1] === 0
+    )
+      return;
+    pendingPressed[pair[0]] = pair[1];
   }
   for (const pair of rawLoadouts) {
     if (
@@ -511,10 +551,10 @@ export function decode(
           if (stage === "running" && (!seat || seat.watcher)) return true;
           return seat && !seat.watcher && Boolean(worm.ai) !== seat.bot;
         }))) ||
-    Object.keys(held).some(
+    [...Object.keys(held), ...Object.keys(pendingPressed)].some(
       (id) =>
         stage !== "running" ||
-        !world?.worms.some((worm) => worm.id === id) ||
+        !world?.worms.some((worm) => worm.id === id && worm.weaponsReady) ||
         !seats.get(id)?.connected ||
         seats.get(id)?.bot ||
         seats.get(id)?.watcher,
@@ -531,6 +571,7 @@ export function decode(
     settings,
     play,
     held,
+    pendingPressed,
     loadouts,
     winner: world?.winner ?? "",
     world,
@@ -587,7 +628,8 @@ export function view(room: Room): View {
 }
 export const fuseroGame: RollbackGame<Room, Entry, View, never, Settings> = {
   id: "fusero",
-  rules: `${RULES}-room-2`,
+  rules: `${RULES}-room-3`,
+  tickMs: LOG_TICK_MS,
   isEntry,
   createRoom,
   createTicker: () => foldTick,

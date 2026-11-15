@@ -40,6 +40,7 @@ import {
   hash,
   isEntry,
   stepsPerTick,
+  LOG_TICK_MS,
   fuseroGame,
   type Entry,
   type Room,
@@ -124,6 +125,8 @@ test("brief fire and weapon taps survive every native physics phase, including m
         [PLAY, room.matchId, 1, 0],
       ],
     });
+    // Some 10ms outer frames have no due 11ms native physics pulse.
+    for (let i = 0; i < 2 && room.pendingPressed.b; i++) fold(room);
     const worm = room.world!.worms.find((candidate) => candidate.id === "b")!;
     assert.equal(
       worm.weapon,
@@ -135,7 +138,7 @@ test("brief fire and weapon taps survive every native physics phase, including m
       `phase ${phase}: fire tap reaches native simulation`,
     );
     assert.equal(room.held.b, undefined);
-    fold(room);
+    for (let i = 0; i < 2; i++) fold(room);
     assert.equal(worm.input, 0);
   }
   const room = createRoom("lobby", DEFAULT_SETTINGS);
@@ -152,11 +155,68 @@ test("brief fire and weapon taps survive every native physics phase, including m
       [PLAY, "match-1", 1, 0],
     ],
   });
+  const recovered = decode(encode(room), room.tick);
+  assert.ok(recovered, "pending startup controls are checkpointed");
+  assert.equal(hash(recovered), hash(room));
+  for (let i = 0; i < 3; i++) {
+    fold(room);
+    fold(recovered);
+    assert.equal(hash(recovered), hash(room));
+  }
   assert.equal(room.world!.worms.find((worm) => worm.id === "b")!.weapon, 1);
   assert.ok(
     room.world!.nextId > 1 || room.world!.pendingShots.length > 0,
     "first match tick consumes brief controls after skipped initial outer frames",
   );
+});
+
+test("a returning connection cannot inherit a previous generation's held or unsampled brief controls", () => {
+  for (const release of [true, false]) {
+    const room = createRoom("lobby", DEFAULT_SETTINGS);
+    fold(room, {
+      a: [
+        [JOIN, "a", "Ada", 0, "robot", 1],
+        [JOIN, "b", "Bo", 1, "cat", 1],
+      ],
+    });
+    fold(room, {
+      a: [[ACTION, "start", "match-1"]],
+      b: [
+        [PLAY, "match-1", 1, NEXT | FIRE],
+        ...(release ? [[PLAY, "match-1", 1, 0]] : []),
+      ],
+    });
+    assert.equal(room.pendingPressed.b, NEXT | FIRE);
+    fold(room, { a: [[PRESENCE, "b", true, 2]] });
+    assert.equal(room.seats.get("b")?.generation, 2);
+    assert.equal(room.held.b, undefined);
+    assert.equal(room.pendingPressed.b, undefined);
+    for (let i = 0; i < 3; i++) fold(room);
+    assert.equal(room.world!.worms.find((worm) => worm.id === "b")!.weapon, 0);
+    assert.equal(room.world!.nextId, 1);
+  }
+});
+
+test("a new connection's first press is not suppressed by the previous generation's sampled key history", () => {
+  const room = humans(),
+    worm = room.world!.worms.find((worm) => worm.id === "b")!;
+  fold(room, { b: [[PLAY, room.matchId, 1, NEXT]] });
+  while (room.pendingPressed.b) fold(room);
+  assert.equal(worm.weapon, 1);
+  const tick = room.tick + 1;
+  foldTick(
+    room,
+    "a",
+    new Map<string, StreamEntries<Entry>>([
+      ["a", { generation: 1, entries: [[1, tick, PRESENCE, "b", true, 2]] }],
+      [
+        "b",
+        { generation: 2, entries: [[1, tick, PLAY, room.matchId, 1, NEXT]] },
+      ],
+    ]),
+  );
+  while (room.pendingPressed.b) fold(room);
+  assert.equal(worm.weapon, 2);
 });
 
 test("native live weapon selection blocks controls while passive physics continues and confirmation is owner-scoped", () => {
@@ -178,7 +238,8 @@ test("native live weapon selection blocks controls while passive physics continu
   }
   const expected = structuredClone(world),
     expectedWorm = expected.worms.find((candidate) => candidate.id === "b")!;
-  for (let frame = 0; frame < 5; frame++) stepWorld(expected, new Map());
+  for (let frame = 0; frame < stepsPerTick(); frame++)
+    stepWorld(expected, new Map());
   const before = world.nextId;
   fold(room, {
     b: [
@@ -247,15 +308,16 @@ test("a dead worm may change weapons without spawning or restoring health", () =
   assert.equal(worm.weaponsReady, true);
 });
 
-test("50ms Fuse ticks run five 10ms outer frames while world checkpoints retain native physics clocks", () => {
+test("10ms Fuse input ticks run one native outer frame while checkpoints retain native physics clocks", () => {
   const room = started();
   for (let i = 0; i < 55; i++) {
     const before = room.simulationTick,
       budget = stepsPerTick();
-    assert.equal(budget, 5);
+    assert.equal(budget, 1);
+    assert.equal(fuseroGame.tickMs, OUTER_MS);
     fold(room);
     assert.equal(room.simulationTick - before, budget);
-    assert.equal(room.simulationTick, (room.tick * 50) / OUTER_MS);
+    assert.equal(room.simulationTick, (room.tick * LOG_TICK_MS) / OUTER_MS);
     assert.equal(room.world!.lastClientPhysicsMs % PHYSICS_MS, 0);
     assert.ok(room.world!.lastClientPhysicsMs <= room.world!.elapsedMs);
   }
@@ -419,7 +481,7 @@ test("one native deathmatch ends without invented rounds; rematch resets its wor
   assert.equal(room.stage, "running");
   assert.equal(room.round, 1);
   assert.equal(room.world!.phase, "play");
-  for (let i = 0; i < 30 && fuseroGame.stage(room) !== "over"; i++) fold(room);
+  for (let i = 0; i < 60 && fuseroGame.stage(room) !== "over"; i++) fold(room);
   assert.equal(room.stage, "over");
   assert.equal(room.round, 1);
   assert.equal(room.world!.phase, "done");
@@ -451,11 +513,24 @@ test("room checkpoints reject invalid phase, inventories and clocks without modi
     fields[10] = 11;
   });
   bad((fields) => {
-    fields[9] = Math.floor((room.tick * 50) / PHYSICS_MS);
+    fields[9] = Math.floor((room.tick * LOG_TICK_MS) / PHYSICS_MS);
   });
   bad((fields) => {
     fields[6] = [["nobody", FIRE]];
   });
+  for (const pending of [
+    [["nobody", FIRE]],
+    [["bot:1", FIRE]],
+    [["a", 0]],
+    [["a", 131072]],
+    [
+      ["a", FIRE],
+      ["a", FIRE],
+    ],
+  ])
+    bad((fields) => {
+      fields[10] = pending;
+    });
   bad((fields) => {
     fields[7] = [["constructor", chosen()]];
   });
@@ -539,7 +614,7 @@ test("a full native world travels through Fuse's bounded snapshot chunks and res
   const recovered = decodeSnapshot(fuseroGame, complete.bytes, 17);
   assert.ok(recovered);
   assert.equal(hash(recovered.state), hash(world.servable().state));
-  assert.equal(recovered.state.simulationTick, recovered.state.tick * 5);
+  assert.equal(recovered.state.simulationTick, recovered.state.tick);
   assert.equal(
     recovered.state.world?.lastClientPhysicsMs,
     world.servable().state.world?.lastClientPhysicsMs,

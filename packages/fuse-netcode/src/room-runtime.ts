@@ -1,12 +1,12 @@
 import { StatusNotices } from "./status-notices.js";
-import { TICK_MS, TickClock } from "./clock.js";
+import { TickClock } from "./clock.js";
+import { logTiming, type LogTiming } from "./timing.js";
 import {
   World,
   type Frame,
   type WindowTime,
   type WorldEvent,
 } from "./rollback.js";
-import { STALL_TICKS } from "./rollback.js";
 import { PACKET_ENTRIES, StreamLog } from "./stream.js";
 import {
   decodePacket,
@@ -256,6 +256,7 @@ export class RoomRuntime<
   private returnAt = -Infinity;
   private cancelTick?: () => void;
   private cancelVisibility?: () => void;
+  private readonly timing: Readonly<LogTiming>;
   readonly localPlayerIds: readonly string[];
   constructor(
     readonly game: RollbackGame<Room, Entry, View, Event, Settings>,
@@ -264,6 +265,7 @@ export class RoomRuntime<
     private readonly callbacks: Callbacks<View, Event, Settings>,
     private readonly options: RuntimeOptions = {},
   ) {
+    this.timing = logTiming(game.tickMs);
     if (
       options.localPlayers &&
       (options.transport ||
@@ -326,7 +328,7 @@ export class RoomRuntime<
       () => this.deps.now(),
       (text) => this.deliver("status", () => callbacks.status(text)),
     );
-    this.clock = new TickClock(() => this.deps.now());
+    this.clock = new TickClock(() => this.deps.now(), this.timing.tickMs);
     if (options.transport)
       this.transport = options.transport({
         welcome: (id, hostId) => this.welcome(id, hostId),
@@ -674,10 +676,15 @@ export class RoomRuntime<
         packet.lastSeq + 1,
         ...packet.entries.map((entry) => entry[0]),
       );
-      const bootstrap = new StreamLog(this.game, packet.generation, {
-        seq: first - 1,
-        tick: 0,
-      });
+      const bootstrap = new StreamLog(
+        this.game,
+        packet.generation,
+        {
+          seq: first - 1,
+          tick: 0,
+        },
+        this.timing,
+      );
       if (
         bootstrap.receive(
           packet.entries,
@@ -716,7 +723,8 @@ export class RoomRuntime<
     member.lastPacketAt = now;
     member.lastSentAt = packet.sentAt;
     member.lastSentReceivedAt = now;
-    member.clockTick = packet.clockTick + (member.rttMs ?? 0) / 2 / TICK_MS;
+    member.clockTick =
+      packet.clockTick + (member.rttMs ?? 0) / 2 / this.timing.tickMs;
     if (packet.echoSentAt !== 0) {
       const rtt = wrapDelta(wrapMs(now), packet.echoSentAt) - packet.echoHeld;
       if (rtt >= 0 && rtt < 10_000) {
@@ -774,7 +782,7 @@ export class RoomRuntime<
     if (existing && existing.generation === member.generation) return false;
     this.world.stream(id, member.generation, {
       seq: 0,
-      tick: Math.max(0, this.world.tick - STALL_TICKS),
+      tick: Math.max(0, this.world.tick - this.timing.rollbackTicks),
     });
     if (this.creator && !this.hiddenState)
       this.management.ensurePresence(id, member);
@@ -917,8 +925,13 @@ export class RoomRuntime<
       ) {
         const part = stream.entries.slice(offset, offset + PACKET_ENTRIES);
         if (
-          log.receive(part, part.at(-1)![0], tick, tick + 60, tick).status !==
-          "accepted"
+          log.receive(
+            part,
+            part.at(-1)![0],
+            tick,
+            tick + this.timing.replayLeadTicks,
+            tick,
+          ).status !== "accepted"
         ) {
           reject();
           return;
@@ -992,12 +1005,13 @@ export class RoomRuntime<
           )
           .map(
             (member) =>
-              member.clockTick! + (now - member.lastPacketAt) / TICK_MS,
+              member.clockTick! +
+              (now - member.lastPacketAt) / this.timing.tickMs,
           );
       this.clock.start(
         readings.length
           ? Math.max(...readings)
-          : tick + (now - request.at) / 2 / TICK_MS,
+          : tick + (now - request.at) / 2 / this.timing.tickMs,
       );
     }
     this.sync.clearNoWorld();
@@ -1621,9 +1635,9 @@ export class RoomRuntime<
     keep: "newest" | "oldest" = "newest",
   ): void {
     const hash =
-      tick % HASH_INTERVAL === 0 &&
-      tick - HASH_LAG <= this.world!.completeTick()
-        ? this.world!.hashAt(tick - HASH_LAG)
+      tick % this.timing.hashInterval === 0 &&
+      tick - this.timing.hashLag <= this.world!.completeTick()
+        ? this.world!.hashAt(tick - this.timing.hashLag)
         : undefined;
     const packet: Packet = {
       room: this.room,
@@ -1638,7 +1652,7 @@ export class RoomRuntime<
         ? Math.max(0, Math.round(now - member.lastSentReceivedAt)) >>> 0
         : 0,
       clockTick: Math.max(0, this.clock.tick()),
-      hash: hash === undefined ? null : [tick - HASH_LAG, hash],
+      hash: hash === undefined ? null : [tick - this.timing.hashLag, hash],
     };
     try {
       this.transport!.sendFast(id, encodePacketTrimmed(packet, keep));

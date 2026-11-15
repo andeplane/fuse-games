@@ -1,4 +1,5 @@
-export const TICK_MS = 50;
+import { DEFAULT_TICK_MS, logTiming, type LogTiming } from "./timing.js";
+export const TICK_MS = DEFAULT_TICK_MS;
 export const SAMPLE_WINDOW_MS = 2000;
 export const SLEW_TICKS_PER_SECOND = 1;
 /**
@@ -20,8 +21,8 @@ interface Sample {
 
 /**
  * Fractional log time from an injected monotonic clock: `tick = base + (now − t0) / TICK_MS` plus a slewed offset. It
- * has one rate: a game that runs faster runs more simulation steps per tick (`driveGameTick`), not a faster clock.
- * The time authority starts it and never adjusts it; followers feed lowest-RTT samples and slew at most one tick per
+ * uses the trusted game's cadence (50 ms by default). A game may also run several simulation steps per tick.
+ * The time authority starts it and never adjusts it; followers feed lowest-RTT samples and slew at most 50 ms per
  * second, and more gently the closer they already are. It never steps backwards, and a follower with no fresh sample free-runs rather than pausing.
  */
 export class TickClock {
@@ -35,7 +36,13 @@ export class TickClock {
   private pausedAt?: number;
   /** Whether the offset has reached its target once since the clock started: the first lock runs at the full rate. */
   private locked = false;
-  constructor(private readonly now: () => number) {}
+  private readonly timing: Readonly<LogTiming>;
+  constructor(
+    private readonly now: () => number,
+    readonly tickMs = TICK_MS,
+  ) {
+    this.timing = logTiming(tickMs);
+  }
   get started(): boolean {
     return this.t0 !== undefined;
   }
@@ -50,7 +57,7 @@ export class TickClock {
     this.locked = false;
   }
   private raw(now: number): number {
-    return this.base + (now - (this.t0 ?? now)) / TICK_MS;
+    return this.base + (now - (this.t0 ?? now)) / this.tickMs;
   }
   /** Current fractional tick, monotonic across calls. */
   tick(): number {
@@ -59,13 +66,13 @@ export class TickClock {
     if (this.offset !== this.target) {
       const rate = this.locked
           ? Math.min(
-              SLEW_TICKS_PER_SECOND,
+              this.timing.slewTicksPerSecond,
               Math.max(
-                SLEW_FLOOR_MS_PER_SECOND / TICK_MS,
+                SLEW_FLOOR_MS_PER_SECOND / this.tickMs,
                 (Math.abs(this.target - this.offset) * 1000) / SLEW_SETTLE_MS,
               ),
             )
-          : SLEW_TICKS_PER_SECOND,
+          : this.timing.slewTicksPerSecond,
         budget = (Math.max(0, now - this.lastAdjust) / 1000) * rate;
       this.offset += Math.max(
         -budget,
@@ -86,7 +93,7 @@ export class TickClock {
     if (!Number.isFinite(authorityTick) || !Number.isFinite(rttMs) || rttMs < 0)
       return;
     const now = this.now(),
-      estimate = authorityTick + rttMs / 2 / TICK_MS;
+      estimate = authorityTick + rttMs / 2 / this.tickMs;
     if (this.t0 === undefined) {
       this.start(estimate);
       return;
@@ -98,7 +105,7 @@ export class TickClock {
     const best = this.samples.reduce((best, sample) =>
       sample.rttMs < best.rttMs ? sample : best,
     );
-    if (Math.abs(best.offset - this.offset) > SNAP_TICKS) {
+    if (Math.abs(best.offset - this.offset) > this.timing.snapTicks) {
       this.offset = this.target = best.offset;
       return;
     }

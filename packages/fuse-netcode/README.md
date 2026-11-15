@@ -2,7 +2,7 @@
 
 Game-agnostic lockstep and rollback netcode for a room of 2–5 browsers on a `fuse-network-fe` mesh. Every member
 simulates the same deterministic game from one shared input log: each member owns a stream of entries stamped with
-a 50 ms log tick, sends one packet per tick to every other member, and rolls back when a late entry changes history.
+a log tick (50 ms by default), sends one packet per tick to every other member, and rolls back when a late entry changes history.
 A joiner or a refreshed page installs a validated snapshot from any peer. The model, bounds and constants are
 [ADR 047](../../docs/adr/047-p2p-input-log-lockstep-rollback.md); the contract is in
 [the multi-game design note](../../docs/design/multi-game.md).
@@ -43,12 +43,14 @@ runtime.start();
 runtime.command({ type: "join", name: "Ada" });
 ```
 
+`RollbackGame.tickMs` optionally selects a trusted cadence between 10 and 50 ms that divides 200 ms. Changing it requires a rules-version bump. Duration-based rollback, resend, stall, snapshot and hash windows retain their wall-time meaning; entry and byte caps stay fixed. Fusero selects 10 ms to admit human controls every native outer frame. Other games keep 50 ms.
+
 `tests/fixtures/counter-game.ts` is a complete small game on the contract; the package tests drive it through
 rollback, lossy and reordering links, snapshot recovery and succession. The package must not import `games/` or `service/`.
 
 ## Drawing at the clock
 
-`frameTiming()` presents one log tick behind the clock, so blending its two frames shows a press 50–100 ms after it
+`frameTiming()` presents one log tick behind the clock, so at the default cadence blending its two frames shows a press 50–100 ms after it
 was made. A real-time game that can step a copy of its world should instead play the newest folded world forward to
 the clock, with the controls everyone holds and this device's own live, and draw that. `present.ts` holds the parts
 every game needs for it:

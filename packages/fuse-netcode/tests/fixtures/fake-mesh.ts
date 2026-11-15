@@ -90,7 +90,11 @@ export class FakeMesh {
     this.queue.push({ at: this.now + ms, order: this.order++, run });
   }
   /** Creates a member's runtime on this mesh and starts it; it is admitted on the next pass. */
-  join(id: string, game: typeof counterGame = counterGame): CounterRuntime {
+  join(
+    id: string,
+    game: typeof counterGame = counterGame,
+    generation = 1,
+  ): CounterRuntime {
     const recorded: Recorded = { events: [], statuses: [], frames: 0 };
     this.recorded.set(id, recorded);
     const callbacks: Callbacks<CounterView, CounterEvent, CounterSettings> = {
@@ -106,7 +110,7 @@ export class FakeMesh {
       now: () => this.now,
       hidden: () => this.hidden.has(id),
       token: () => `token-${this.order++}`,
-      generation: () => 1,
+      generation: () => generation,
       schedule: (callback) => {
         this.loops.set(id, callback);
         return () => this.loops.delete(id);
