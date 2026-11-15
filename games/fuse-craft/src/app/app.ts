@@ -303,6 +303,8 @@ export function mountFuseCraft(
   let roomError: string | null = null;
   let creatingRoom = false;
   let playerName = dependencies.online?.savedName() ?? "";
+  /** This room has already seated its viewer once on arriving (or found no name to seat). */
+  let autoSeated = false;
   let roomJoinSlot: number | undefined;
   let roomBackground: { root: HTMLElement; stop(): void } | undefined;
   let roomQr: { code: string; url: string } | null = null;
@@ -1355,6 +1357,8 @@ export function mountFuseCraft(
           html: seatRows[index]!,
         })),
         canJoin: !seated,
+        // Seated already: any open seat is a move, and the team colour is the seat's.
+        canMove: seated && room.stage === "lobby",
         canAddAI:
           room.manager && room.stage === "lobby" && players.length < capacity,
         slotColors: TEAM_COLORS,
@@ -1382,6 +1386,7 @@ export function mountFuseCraft(
     panel = "inspect";
     placement = null;
     placementCell = null;
+    autoSeated = false;
     unsubscribe = created.subscribe(onRoomChange);
     screen = "room";
     render();
@@ -1400,6 +1405,14 @@ export function mountFuseCraft(
     if (!online || disposed) return;
     const room = online.room();
     const playing = room.stage === "running" || room.stage === "over";
+    // Opening or entering a room is taking a seat in it: once, for a viewer whose name is known, whichever seat is
+    // free. "Sit here" moves the player from there, and a seat given up later is not retaken.
+    if (!autoSeated && room.stage === "lobby" && !room.closed) {
+      autoSeated = true;
+      const name = (dependencies.online?.savedName() || playerName).trim();
+      if (name && !room.seats.some((seat) => seat.id === room.self))
+        online.join(name);
+    }
     if (screen === "room" && playing && !room.closed) {
       helpOpen = false;
       selectedCell =
@@ -1829,6 +1842,15 @@ export function mountFuseCraft(
             ?.showModal();
           root.querySelector<HTMLInputElement>("#player-name")?.focus();
         }
+      } else if (action === "move-slot" && online) {
+        const room = online.room();
+        const own = room.seats.find(
+          (seat) => seat.id === room.self && !seat.watcher,
+        );
+        const slot = Number(
+          target.closest<HTMLElement>("[data-slot]")?.dataset.slot,
+        );
+        if (own && Number.isInteger(slot)) online.join(own.name, slot);
       } else if (action === "close-room-name")
         root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
       else if (action === "join-seat" && online) {

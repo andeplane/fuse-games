@@ -6,7 +6,8 @@ body.fuseDrivers-page {
   display: grid;
   /* The column is the screen, never the widest unbreakable line in it: a phone must not scroll sideways. */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* One row, the room: the shared bar floats over the page and takes none. */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 100dvh;
   padding: 0 max(var(--fui-space-3), env(safe-area-inset-left))
     env(safe-area-inset-bottom);
@@ -435,12 +436,15 @@ body.fuseDrivers-display .fuseDrivers-die {
   width: min(100%, 44rem);
 }
 .fd-race {
+  /* What the race needs beside the arena: the bar above it, the HUD line and the pads below. */
   --fd-arena-ui: 16rem;
   display: flex;
   flex-direction: column;
   gap: var(--fui-space-2);
   align-items: center;
   width: 100%;
+  /* The shared bar floats over the page's top: the arena's scoreboard starts under it, not behind it. */
+  padding-top: 3.25rem;
 }
 .fd-race.fd-display {
   --fd-arena-ui: 10rem;
@@ -475,12 +479,60 @@ body.fuseDrivers-display .fuseDrivers-die {
 .fd-error {
   color: var(--fui-pink);
 }
-/* Shared-screen rooms leave the racing arena to the TV. */
-.fd-shared-choice {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 0;
-  font-size: 0.65rem;
-  line-height: 1.6;
+/* What went wrong, said above the room wherever the driver is. */
+.fd-alert {
+  margin: var(--fui-space-3) auto 0;
+  padding: 0 var(--fui-space-4);
+  color: var(--fui-pink);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: center;
+}
+/* During a race it floats over the top of the track: a line that appears must not push the arena or the pads out
+   from under a thumb. */
+.fd-room:is([data-screen="race"], [data-screen="results"]) > .fd-alert {
+  position: fixed;
+  z-index: var(--fui-z-overlay);
+  top: 4.25rem;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  margin: 0;
+  padding: var(--fui-space-2) var(--fui-space-4);
+  border: 1px solid currentColor;
+  border-radius: var(--fui-radius-small);
+  background: #08163af2;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+/* The room's state beside the menu while a race is on; in the lobby it is the line at the lobby's foot. */
+.fd-live {
+  max-width: 22rem;
+  color: var(--fui-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+body:has(.fd-lobby:not([hidden])) .fd-live {
+  display: none !important;
+}
+/* Where the bar has room, the line sits in the bar itself, before the buttons. Where it has none, the line would
+   lie on the arena's scoreboard, so a narrow screen goes without it: a failure is still said, by the alert. */
+@media (max-width: 899px) {
+  .fd-live {
+    display: none !important;
+  }
+}
+@media (min-width: 900px) {
+  .fd-top .fui-top-bar-context {
+    inset: 0 24.5rem 0 17.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .fd-live {
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

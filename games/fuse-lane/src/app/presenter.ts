@@ -270,6 +270,8 @@ export interface ResultModel {
 }
 export interface LobbyModel {
   members: RosterMember[];
+  /** This device's own seat, by its plain name: what a move to another open seat is asked with. */
+  own?: { name: string; slot: number };
   canStart: boolean;
   showStart: boolean;
   note: string;
@@ -1168,8 +1170,12 @@ function lobby(view: FuseLaneView, viewer: Viewer): LobbyModel {
   const leader = players.find((player) => !player.bot && view.goals[player.id]);
   const mine = view.goals[viewer.me] ??
     (leader ? view.goals[leader.id] : undefined) ?? [50, 50, 50, 50];
-  const seated = players.some((player) => player.id === viewer.me);
+  const own = players.find((player) => player.id === viewer.me);
+  const seated = own !== undefined;
   return {
+    ...(own && !viewer.display
+      ? { own: { name: own.name, slot: own.slot } }
+      : {}),
     members: players.map((player) => ({
       id: player.id,
       slot: player.slot,

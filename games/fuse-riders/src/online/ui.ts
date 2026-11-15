@@ -312,6 +312,14 @@ export async function startOnline(): Promise<void> {
   let latestWatchers: readonly { id: string; name: string }[] = [];
   /** A colour asked for in the join form, sent once the room has seated this rider; the fold decides whether it sticks. */
   let wantedColor: number | undefined;
+  /** This device's own seat while the room waits in its lobby, as the last frame had it. */
+  let ownSeat: { name: string; slot: number; colorIndex: number } | undefined;
+  /**
+   * A move to another seat is a leave and a join, and a join takes the lowest free colour: the colour this rider wore
+   * is asked for again once the room shows it in another seat than the one it left. Whichever seat that is: of two
+   * quick clicks the room takes the first, and a refused move leaves the rider, and this, where they were.
+   */
+  let movedColor: { from: number; colorIndex: number } | undefined;
   /**
    * The name this device takes its seat under, without asking: its account's, the one it last played under on this
    * browser, or a plain one for a browser that has never played. None of them is a commitment — the room is where a
@@ -1500,6 +1508,21 @@ export async function startOnline(): Promise<void> {
       // Seated at last: ask for the colour the join form chose, once. The join gave this rider the lowest free colour,
       // so it already has one; this is the preference on top, and a single attempt is right because the fold's answer
       // is final — a colour someone else holds stays theirs rather than being retried every frame.
+      ownSeat =
+        player && state.phase === "lobby" && !localPlayers
+          ? {
+              name: player.name,
+              slot: player.slot,
+              colorIndex: riderColorIndex(player.color),
+            }
+          : undefined;
+      if (!ownSeat) movedColor = undefined;
+      else if (movedColor && movedColor.from !== ownSeat.slot) {
+        const asked = movedColor.colorIndex;
+        movedColor = undefined;
+        if (ownSeat.colorIndex !== asked)
+          runtime.command({ type: "color", colorIndex: asked });
+      }
       if (player && wantedColor !== undefined) {
         const asked = wantedColor;
         wantedColor = undefined;
@@ -2115,6 +2138,14 @@ export async function startOnline(): Promise<void> {
   settingsButton.onclick = () => openSettings();
   settingsButton.textContent = "Game settings";
   createRoomLayout({
+    // Seated already: any open seat is a move. The head goes along, and the colour is asked for again (`movedColor`).
+    ownSlot: () => ownSeat?.slot,
+    onMove: (slot) => {
+      if (!ownSeat) return;
+      const { name, colorIndex } = ownSeat;
+      if (runtime.command({ type: "join", name, slot }))
+        movedColor ??= { from: ownSeat.slot, colorIndex };
+    },
     primaryAction: primaryPlay,
     background: async (host) =>
       (await import("./menu-attract.js")).createAttract(host),
