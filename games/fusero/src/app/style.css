@@ -1,5 +1,6 @@
-.liero-page {
+body.liero-page {
   --liero-lime: #b6ff4d;
+  padding: 0;
   background: #080917;
   color: #ecf7ff;
 }
@@ -404,6 +405,20 @@
     max-width: 800px;
   }
   .liero-pad button {
-    min-height: 42px;
+    min-height: 44px;
+  }
+}
+@media (max-height: 720px) {
+  .liero-overlay h1 {
+    margin: 6px 0;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  .liero-overlay p {
+    margin: 6px 0;
+    font-size: 12px;
+  }
+  .liero-actions {
+    margin-top: 8px;
   }
 }

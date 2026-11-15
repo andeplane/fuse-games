@@ -2,7 +2,7 @@
 
 ## Current scope
 
-The user clarified that this must be a close clone: original gameplay mechanics, with only graphics styled differently. The public game name and route are now **Fusero** and `/fusero/`. Fuse's networking and room recovery remain the selected architecture. The earlier custom three-weapon simulation is being replaced, and the PR remains a draft.
+The user clarified that this must be a close clone: original gameplay mechanics, with only graphics styled differently. The public game name and route are now **Fusero** and `/fusero/`. Fuse's networking and room recovery remain the selected architecture. Source-derived Classic gameplay replaces the earlier custom three-weapon simulation. Merge and deployment are not authorized.
 
 ## Source-derived work
 
@@ -17,13 +17,13 @@ The user clarified that this must be a close clone: original gameplay mechanics,
 
 The terrain/default-level domain has **20 passing focused tests**, with strict TypeScript and focused ESLint checks. Tests compare original PNG mask pixels, all 176,400 native level material pixels, source digests, carving and dirt-placement behavior, spawn-search bounds and compact terrain serialization. The level generator's `--check` reproduces its retained source exactly.
 
-Other source-derived domains have their own focused tests and native differential evidence; their exact coverage and open gaps belong in [SOURCE-PARITY.md](SOURCE-PARITY.md). No complete-world or browser result is claimed here for the current composed port. Earlier prototype full-suite, multiplayer, screenshot and 60 FPS observations do not validate the replacement engine.
+The composed game has **154 passing focused tests**, including all 38 weapons, deferred shots, strict state validation, deterministic continuation, dropped/reordered input recovery and the integrated 200-frame native Laser timing fixture. TypeScript, scoped lint and the production build pass. Independent core and integration reviews found and corrected projectile RNG ordering, server clock offset and lost short input taps; two review suggestions hardened fixture-length and released-input assertions.
+
+The rebuilt browser smoke passed solo preparation, native terrain, five-slot charge/reload, two players plus a TV, continuous aim, persistent rope with jump release, touch controls, resizing and phone reload recovery. All three replicas converged on the same room hash. Headless real-flow screenshots and a refreshed gallery capture exist; short desktop and portrait phone layouts keep the HUD, five slots and controls inside the viewport. Live weapon selection was exercised through the game menu. These are browser-emulation checks, not physical-phone or human feel acceptance. Earlier prototype observations do not validate this replacement engine. Exact parity coverage and remaining limits belong in [SOURCE-PARITY.md](SOURCE-PARITY.md).
 
 ## Remaining acceptance
 
-- Finish and verify the composed outer/physics clocks, pending shot delivery, complete state validation and deterministic replay.
-- Run the affected integration checks against the final source-derived build, including loadouts/settings, weapon behavior, terrain destruction, input release, multiplayer convergence and recovery.
-- Refresh browser screenshots and gallery captures from that build, and compare actual play against the original.
+- Finish the broader repository checks recorded in the pull request and compare actual play against the original.
 - Obtain human gameplay acceptance and physical-phone evidence. The current bot policy emits ordinary Fuse inputs; native OpenLieroX bot AI remains unported.
 - Keep deployment and merge separate from technical checks. Neither is currently authorized.
 

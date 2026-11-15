@@ -53,6 +53,6 @@ pnpm exec tsx --test games/fusero/tests/classic-*.test.ts
 
 The source-data checks verify the packaged binary, descriptors and native material plane. Focused module tests cover mechanics and serialization; native differential fixtures compare the specific physics paths they exercise. These are separate from complete-world replay, multiplayer and browser acceptance.
 
-`ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fusero-smoke.ts` is the browser integration entry point. It must be refreshed and passed against the composed source-derived engine before its results establish current readiness. `pnpm gallery:capture fusero` refreshes the gallery from real play after a successful build. Earlier prototype screenshots, frame rates and browser results do not validate this replacement engine.
+`ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fusero-smoke.ts` exercises solo preparation, five-slot charge/reload, two players and a shared TV, native controls, terrain changes, phone reload recovery and full-state convergence. It passed against the composed source-derived engine. `pnpm gallery:capture fusero` refreshes the gallery from real play after a successful build. Earlier prototype results do not validate this replacement engine.
 
 Human gameplay comparison and physical-phone checks remain outstanding. The draft PR is not merge or deployment authorization.

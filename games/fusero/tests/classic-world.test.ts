@@ -181,6 +181,7 @@ test("integrated local/listen Laser matches all200 native outer-frame slot and q
     vx: 0,
     vy: 0,
   });
+  assert.equal(reference.localLaserFrames.length, 200);
   for (const expected of reference.localLaserFrames) {
     assert.equal(world.elapsedMs, expected.frame * OUTER_MS);
     stepWorld(world, new Map([["a", FIRE]]));

@@ -591,10 +591,14 @@ test("runtime submits lobby inventories, rejects live changes and releases contr
   );
   runtime.input(FIRE | RIGHT);
   assert.equal(runtime.heldNow, FIRE | RIGHT);
+  run(100);
+  assert.equal(runtime.roomState()!.held.a, FIRE | RIGHT);
   runtime.resync();
   runtime.flush();
   runtime.release();
   assert.equal(runtime.heldNow, 0);
+  run(100);
+  assert.equal(Object.hasOwn(runtime.roomState()!.held, "a"), false);
   runtime.input(-1);
   assert.equal(runtime.heldNow, 0);
   runtime.stop();
