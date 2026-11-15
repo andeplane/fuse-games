@@ -80,9 +80,11 @@ export function createSongLeaderboards(
   searchLabel.append(search);
   const packLabel = el("label", "Song pack", "", doc);
   const packFilter = el("select", "", "fm-score-pack-filter", doc);
+  packFilter.setAttribute("aria-label", "Song pack");
   packLabel.append(packFilter);
   const sortLabel = el("label", "Sort by", "", doc);
   const sortSelect = el("select", "", "fm-score-sort-select", doc);
+  sortSelect.setAttribute("aria-label", "Sort by");
   const columns = ["song", "pack", "plays", ...SCORE_DIFFICULTIES] as const;
   const labels = ["Song", "Pack", "Verified plays", ...SCORE_DIFFICULTIES];
   for (const [index, column] of columns.entries()) {
@@ -280,6 +282,7 @@ export function createSongLeaderboards(
       const cell = el("th", "", "", doc);
       cell.scope = "col";
       cell.dataset.column = column.toLowerCase();
+      cell.setAttribute("aria-label", labels[index]!);
       if (sort.column === column)
         cell.setAttribute(
           "aria-sort",

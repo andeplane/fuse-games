@@ -432,6 +432,9 @@ body.fm-highscores-page {
     overflow: hidden;
     clip-path: inset(50%);
   }
+  .fm-score-table thead button {
+    display: none;
+  }
   .fm-score-table tbody tr {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

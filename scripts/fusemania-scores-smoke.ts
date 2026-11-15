@@ -32,6 +32,19 @@ try {
     );
     const top = await page.locator(".fm-score-toolbar").boundingBox();
     assert.ok(top && top.width <= viewport.width);
+    if (viewport.width === 360) {
+      await page
+        .getByRole("combobox", { name: "Sort by", exact: true })
+        .focus();
+      await page.keyboard.press("Tab");
+      assert.ok(
+        await page
+          .locator(".fm-score-song-link")
+          .first()
+          .evaluate((element) => element === document.activeElement),
+        "phone Tab skips visually hidden table sorting controls",
+      );
+    }
   }
   await page.getByLabel("Search songs or packs").fill("Cold Pizza");
   await page
