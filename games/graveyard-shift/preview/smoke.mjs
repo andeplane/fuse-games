@@ -47,12 +47,13 @@ try {
   const splash = await open("?mute");
   await splash.getByRole("button", { name: "Play", exact: true }).waitFor();
   await snap(splash, "menu");
-  // The main menu's How to play opens the summary; its HOW TO PLAY button opens the handbook.
+  // Controls are available immediately; the Field Guide adds the longer handbook.
   await splash
     .getByRole("button", { name: "How to play", exact: true })
     .click();
+  await splash.getByText("WASD / arrows", { exact: true }).waitFor();
   await splash
-    .getByRole("button", { name: "HOW TO PLAY", exact: true })
+    .getByRole("button", { name: "FIELD GUIDE", exact: true })
     .click();
   await splash.locator("dialog.handbook").waitFor();
   await snap(splash, "tutorial");
