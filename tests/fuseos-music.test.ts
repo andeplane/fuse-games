@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { CLASSIC_SOUND_ASSETS } from "../games/fusero/src/app/audio.js";
 
 import {
   FUSE_MUSIC_GAMES,
@@ -20,6 +21,10 @@ import {
  * and never misses one that is.
  */
 const AUDIO = /\.(m4a|mp3|ogg|oga|opus|wav|flac|aac|webm)$/i;
+// The native Classic samples are weapon/explosion effects, not Winamp tracks.
+const SOUND_EFFECTS = new Set(
+  CLASSIC_SOUND_ASSETS.map((asset) => `fusero/audio/${asset.file}`),
+);
 const root = path.join(import.meta.dirname, "..");
 
 /** Every file under `directory`, as paths relative to it with `/` separators. */
@@ -37,7 +42,10 @@ function filesUnder(directory: string): string[] {
 function servedMusic(): string[] {
   const shared = filesUnder(path.join(root, "public")).filter(
     // `public/fuseos/` holds the retro games' own bundles, not Fuse music.
-    (file) => AUDIO.test(file) && !file.startsWith("fuseos/"),
+    (file) =>
+      AUDIO.test(file) &&
+      !file.startsWith("fuseos/") &&
+      !SOUND_EFFECTS.has(file),
   );
   const perGame = readdirSync(path.join(root, "games"), {
     withFileTypes: true,
