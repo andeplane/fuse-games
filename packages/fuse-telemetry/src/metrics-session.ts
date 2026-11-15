@@ -40,11 +40,12 @@ export class MetricsSessions {
     );
     if (!match) throw new RoomError(401, "Metrics session required");
     const expires = Number(match[1]);
+    const now = this.now();
     const expected = Buffer.from(this.sign(`${match[1]}.${match[2]}`));
     const actual = Buffer.from(match[3]!);
     if (
-      expires <= this.now() ||
-      expires > this.now() + 3600_000 ||
+      expires <= now ||
+      expires > now + 3600_000 + 5000 ||
       !timingSafeEqual(expected, actual)
     )
       throw new RoomError(401, "Metrics session expired or invalid");

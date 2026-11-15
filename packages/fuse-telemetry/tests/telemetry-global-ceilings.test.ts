@@ -15,6 +15,33 @@ import { MetricsSessions } from "../src/metrics-session.js";
 
 const now = 1_800_000_000_000;
 const secret = "test-only-key-longer-than-32-bytes";
+test("F-08 session verification tolerates bounded clock skew across instances", async () => {
+  const db = new MemoryTelemetryDatabase();
+  const quota = new SharedTelemetryQuota(db, secret, () => now);
+  const verifier = new MetricsSessions(secret, quota, () => now);
+  for (const skew of [1, 5000]) {
+    const token = await new MetricsSessions(
+      secret,
+      quota,
+      () => now + skew,
+    ).issue("127.0.0.1");
+    verifier.verify(`Bearer ${token}`);
+    const [expiry, nonce, signature] = token.split(".");
+    const forged = `${expiry}.${nonce}.${signature![0] === "A" ? "B" : "A"}${signature!.slice(1)}`;
+    assert.throws(() => verifier.verify(`Bearer ${forged}`));
+    assert.throws(() =>
+      new MetricsSessions(secret, quota, () => now + skew + 3600_000).verify(
+        `Bearer ${token}`,
+      ),
+    );
+  }
+  const tooFar = await new MetricsSessions(
+    secret,
+    quota,
+    () => now + 5001,
+  ).issue("127.0.0.1");
+  assert.throws(() => verifier.verify(`Bearer ${tooFar}`));
+});
 test("F-08 global event ceiling applies across addresses and session capabilities expire", async () => {
   const db = new MemoryTelemetryDatabase();
   const quota = new SharedTelemetryQuota(db, secret, () => now);
