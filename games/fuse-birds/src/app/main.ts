@@ -384,11 +384,7 @@ function room(code: string, display: boolean, practice = false): void {
   footer.append(weapons, turnActions, hint);
   board.append(scorebar, turn, sky, overlay, cameraBar, footer);
   board.hidden = true;
-<<<<<<< Updated upstream
-  page.append(header, lobby, board, results.element);
-=======
-  page.append(header, problem, lobby, board);
->>>>>>> Stashed changes
+  page.append(header, problem, lobby, board, results.element);
   app.replaceChildren(page);
   // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
   // The choice is remembered for the next room this device creates.
