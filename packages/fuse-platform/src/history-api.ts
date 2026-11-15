@@ -108,6 +108,21 @@ export function parseHistoryPlayer(
   };
 }
 
+function validRoundDuration(
+  raw: unknown,
+): raw is { version: 1; ticks: number } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const { version, ticks, ...rest } = raw as Record<string, unknown>;
+  return (
+    !Object.keys(rest).length &&
+    version === 1 &&
+    typeof ticks === "number" &&
+    Number.isSafeInteger(ticks) &&
+    ticks >= 0 &&
+    ticks <= 0xffffffff
+  );
+}
+
 /** Strict browser-safe checkpoint boundary; each game supplies its player, seat and bot rules. */
 export function parseHistoryResult<P extends PlayerResult>(
   raw: unknown,
@@ -154,18 +169,7 @@ export function parseHistoryResult<P extends PlayerResult>(
         round > 1_000_000 ||
         length !== 1)) ||
     (roundDuration !== undefined &&
-      (round === undefined ||
-        !roundDuration ||
-        typeof roundDuration !== "object" ||
-        Array.isArray(roundDuration) ||
-        Object.keys(roundDuration).length !== 2 ||
-        (roundDuration as Record<string, unknown>).version !== 1 ||
-        !Number.isSafeInteger(
-          (roundDuration as Record<string, unknown>).ticks,
-        ) ||
-        Number((roundDuration as Record<string, unknown>).ticks) < 0 ||
-        Number((roundDuration as Record<string, unknown>).ticks) >
-          0xffffffff)) ||
+      (round === undefined || !validRoundDuration(roundDuration))) ||
     !Array.isArray(rawPlayers) ||
     !rawPlayers.length ||
     rawPlayers.length > 128 ||
@@ -202,14 +206,9 @@ export function parseHistoryResult<P extends PlayerResult>(
   return {
     matchId,
     ...(round === undefined ? {} : { round: round as number }),
-    ...(roundDuration === undefined
-      ? {}
-      : {
-          roundDuration: {
-            version: 1 as const,
-            ticks: Number((roundDuration as Record<string, unknown>).ticks),
-          },
-        }),
+    ...(validRoundDuration(roundDuration)
+      ? { roundDuration: { version: 1 as const, ticks: roundDuration.ticks } }
+      : {}),
     length,
     ...(winnerId === undefined ? {} : { winnerId: winnerId as string }),
     finishers: [...finishers].sort(),
