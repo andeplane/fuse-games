@@ -18,5 +18,12 @@ if (legacyRidersLink(location.search)) {
     )
     .catch(() => undefined);
   // FuseOS: the Windows 95 desktop that fronts every game (packages/fuseos). It mounts itself into #app.
-  await import("../packages/fuseos/src/main.tsx");
+  if (
+    matchMedia("(max-width: 899px), (pointer: coarse) and (hover: none)")
+      .matches
+  ) {
+    await import("../packages/fuseos/src/mobile/main.tsx");
+  } else {
+    await import("../packages/fuseos/src/main.tsx");
+  }
 }
