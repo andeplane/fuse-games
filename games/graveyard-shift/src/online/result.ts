@@ -7,7 +7,8 @@ export interface ShiftCompletion {
   clock: number;
   result: MatchResult;
 }
-export const isHunterBot = (id: string) => /^bot:[0-9]+$/.test(id);
+import { isHunterBot } from "../basics.js";
+export { isHunterBot };
 export function shiftReceipts(
   room: Room,
 ): { tick: number; result: MatchResult }[] {

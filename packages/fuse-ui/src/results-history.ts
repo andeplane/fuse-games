@@ -1,4 +1,4 @@
-import type { MatchResult } from "fuse-platform";
+import type { MatchResult } from "fuse-platform/history-api";
 
 /** A game-owned immutable outcome, with the log tick at which it became final. */
 export interface HistoryReceipt {

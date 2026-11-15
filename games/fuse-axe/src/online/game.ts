@@ -1047,7 +1047,7 @@ export function view(room: Room): View {
 
 export const axeGame: RollbackGame<Room, Entry, View, never, Settings> = {
   id: "fuse-axe",
-  rules: RULES,
+  rules: `${RULES}-history-1`,
   isEntry,
   createRoom,
   createTicker: () => foldTick,

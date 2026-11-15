@@ -1,5 +1,6 @@
 import type { PlayerResult } from "./game.js";
 import type { MatchResult } from "./result.js";
+export type { MatchResult } from "./result.js";
 import { MAX_RATED_PLAYERS } from "./rating.js";
 
 /** The shared account display contract, applied to game receipts without changing runtime seat names. */

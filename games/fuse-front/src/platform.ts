@@ -1,5 +1,5 @@
 import { historyOnlyRegistration } from "fuse-platform";
-import { isFrontBot } from "./online/result.js";
+import { isFrontBot } from "./basics.js";
 
 /** Team outcomes enter shared history without introducing Elo or progression. */
 export const frontRegistration = historyOnlyRegistration({

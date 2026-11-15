@@ -479,7 +479,7 @@ export function hash(r: Room): string {
 }
 export const hookGame: RollbackGame<Room, Entry, View, never, Tuning> = {
   id: "hook-havok",
-  rules: RULES,
+  rules: `${RULES}-history-1`,
   isEntry,
   createRoom,
   createTicker: () => foldTick,

@@ -3,7 +3,8 @@ import { parseHistoryPlayer } from "fuse-platform/history-api";
 import { memberId, type SeatRecord } from "fuse-netcode";
 import { DRAW, teamOf, type World } from "../engine/index.js";
 
-export const isFrontBot = (id: string) => /^bot:[0-5]$/.test(id);
+import { isFrontBot } from "../basics.js";
+export { isFrontBot };
 export interface FrontDecision {
   tick: number;
   players: PlayerResult[];

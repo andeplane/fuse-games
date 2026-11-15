@@ -370,7 +370,7 @@ export const ballGame: RollbackGame<
   Settings
 > = {
   id: "ball-bros",
-  rules: RULES,
+  rules: `${RULES}-history-1`,
   isEntry,
   createRoom,
   createTicker: () => foldTick,
