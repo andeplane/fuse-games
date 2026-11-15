@@ -241,7 +241,7 @@ const GAME_TRACKS: readonly FuseTrack[] = [
   },
   {
     id: "ddr-jazz-mix-electro-tuned",
-    title: "Electro Tuned (Electric Fusion Jazz Mix)",
+    title: "Electro Tuned (Electric Acid Jazz Mix)",
     games: ["fusemania"],
     path: "music/ddr-jazz-mix/electro-tuned.mp3",
     duration: 179.952,

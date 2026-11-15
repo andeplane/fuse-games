@@ -117,7 +117,7 @@ export const SONGS: readonly SongSpec[] = [
   packed(
     "ddr-jazz-mix",
     "electro-tuned",
-    "Electro Tuned (Electric Fusion Jazz Mix)",
+    "Electro Tuned (Electric Acid Jazz Mix)",
   ),
   packed(
     "ddr-jazz-mix",
