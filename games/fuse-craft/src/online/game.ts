@@ -25,6 +25,17 @@ import { prepareCombatLab, labCommands } from "./combat-lab.js";
 import { aiCommands, randomOpening } from "../engine/ai.js";
 import { isAiStrategy, RULES, type AiStrategy } from "../engine/types.js";
 import { ROOM_MAPS, bundledMap } from "./maps.js";
+import {
+  craftDecision,
+  parseCraftDecision,
+  type CraftDecision,
+} from "./result.js";
+import { craftResults, isCraftBot } from "./result.js";
+import {
+  parseHistoryReceipts,
+  parseHistoryPlayer,
+  type HistoryReceipt,
+} from "fuse-platform/history-api";
 
 export type NeuralMode =
   "sandbox" | "combat-lab" | "skirmish" | "watch" | "versus";
@@ -57,6 +68,8 @@ export interface NeuralRoom {
   seats: Map<string, SeatRecord>;
   settings: NeuralSettings;
   world: World;
+  decided: CraftDecision | null;
+  history: HistoryReceipt[];
 }
 export type PlayEntry = [number, number, 1, string, Action];
 export type NeuralEntry = ManagementEntry<NeuralSettings> | PlayEntry;
@@ -146,6 +159,8 @@ function roomHash(room: NeuralRoom): string {
         a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
       ),
       world: encodeState(room.world),
+      decided: room.decided,
+      history: room.history,
     }),
   );
   let hash = 0xcbf29ce484222325n;
@@ -219,6 +234,7 @@ function startVersus(room: NeuralRoom, matchId: string) {
     return;
   }
   room.matchId = matchId;
+  room.decided = null;
   room.stage = "running";
 }
 /**
@@ -329,6 +345,7 @@ function start(room: NeuralRoom, matchId: string) {
   if (!world) return;
   room.matchId = matchId;
   room.world = world;
+  room.decided = null;
   room.stage = "running";
 }
 const MAX_WATCHERS = 4;
@@ -341,6 +358,8 @@ export const COMMANDS_PER_SEAT = 16;
 /** Presentation metadata belongs to the same historical frame as its world. */
 export interface NeuralView extends World {
   seats: SeatRecord[];
+  decided: CraftDecision | null;
+  history: HistoryReceipt[];
 }
 export const neuralGame: RollbackGame<
   NeuralRoom,
@@ -350,7 +369,7 @@ export const neuralGame: RollbackGame<
   NeuralSettings
 > = {
   id: "fuse-craft",
-  rules: "fuse-craft-13-watch-9",
+  rules: "fuse-craft-13-watch-10",
   isEntry,
   createRoom: (matchId, settings) => ({
     tick: 0,
@@ -359,6 +378,8 @@ export const neuralGame: RollbackGame<
     seats: new Map(),
     settings,
     world: initial(settings, matchId),
+    decided: null,
+    history: [],
   }),
   createTicker: () => (room, creator, streams) => {
     const tick = room.tick + 1;
@@ -375,6 +396,7 @@ export const neuralGame: RollbackGame<
         r.stage = "lobby";
         r.matchId = id;
         r.world = initial(r.settings, id);
+        r.decided = null;
       },
     });
     if (room.stage === "lobby") fitTable(room);
@@ -440,7 +462,12 @@ export const neuralGame: RollbackGame<
         );
       }
       room.world = step(room.world, commands.slice(0, 256));
-      if (room.world.finished) room.stage = "over";
+      if (room.world.finished) {
+        room.decided = craftDecision(room.world, room.seats, tick);
+        room.history.push(...craftResults(room.world, room.decided));
+        room.history = room.history.slice(-64);
+        room.stage = "over";
+      }
     }
     room.tick = tick;
     return [];
@@ -452,6 +479,8 @@ export const neuralGame: RollbackGame<
   view: (r) => ({
     ...r.world,
     seats: [...r.seats.values()].map((seat) => ({ ...seat })),
+    decided: r.decided && structuredClone(r.decided),
+    history: structuredClone(r.history),
   }),
   hash: roomHash,
   checkpoint: {
@@ -464,6 +493,8 @@ export const neuralGame: RollbackGame<
         seats: [...r.seats.values()],
         settings: r.settings,
         world: encodeState(r.world),
+        decided: r.decided,
+        history: r.history,
       }),
     ],
     decode: (fields, tick) => {
@@ -602,6 +633,16 @@ export const neuralGame: RollbackGame<
           )
             return;
         }
+        const decided = parseCraftDecision(raw.decided, world, tick);
+        if (decided === undefined) return;
+        const history = parseHistoryReceipts(
+          raw.history,
+          tick,
+          parseHistoryPlayer,
+          (id): id is string => typeof id === "string" && ROSTER_ID.test(id),
+          isCraftBot,
+        );
+        if (!history) return;
         return {
           tick,
           matchId: raw.matchId,
@@ -609,6 +650,8 @@ export const neuralGame: RollbackGame<
           seats,
           settings,
           world,
+          decided,
+          history,
         };
       } catch {
         return;

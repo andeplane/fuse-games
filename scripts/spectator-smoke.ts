@@ -77,7 +77,7 @@ try {
   // side switch is a message over one of those links. Phaser Canvas keeps the room responsive, as in online-smoke.ts.
   const roomUrl = `${base}?room=${code}&mute=1&benchmark=1&renderer=phaser-canvas`;
   await host.goto(roomUrl);
-  await takeHostSeat(host, "Hosty");
+  await takeHostSeat(host, "Hosty", { autoSeat: true });
   await host.locator(".fui-slot-occupant > .room-rider").first().waitFor();
 
   // An invited device is seated by the room itself (`docs/design/room-is-the-join-screen.md`).

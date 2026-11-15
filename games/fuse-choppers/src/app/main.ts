@@ -5,6 +5,8 @@ import {
 } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { historyReceipts } from "../online/history.js";
 import { AVATAR_ATLAS } from "fuse-ui/assets";
 import { pilotPosition } from "../render/pilots.js";
 import "fuse-ui/social.css";
@@ -421,6 +423,33 @@ function room(solo: boolean): void {
     display = role === "display";
   document.body.classList.toggle("fc-display", display);
   const viewer: Viewer = { me: "", host: solo, solo, display };
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code: session.code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => viewer.me,
+    now: () => performance.now(),
+  });
+  const leaveRoom = () => {
+    controls.clear();
+    history.close(
+      () => {
+        const state = runtime.roomState();
+        return {
+          receipts: state ? historyReceipts(state) : [],
+          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+        };
+      },
+      () => {
+        runtime.stop();
+        location.href = withFlags(endpoints.appUrl());
+      },
+    );
+  };
   const sfx = createSfx(muted);
   activeSfx = sfx;
   sfx.setMuted(!soundEnabled);
@@ -446,10 +475,7 @@ function room(solo: boolean): void {
   const menu = createGameMenu({
     ...controllerGuide,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onLeave: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onLeave: leaveRoom,
     onOpenChange: (open) => {
       if (open) controls.clear();
     },
@@ -650,10 +676,7 @@ function room(solo: boolean): void {
   const results = createResultsScreen({
     document,
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      runtime.stop();
-      location.href = withFlags(endpoints.appUrl());
-    },
+    onBack: leaveRoom,
     backText: "Leave",
     onAction: (id) =>
       runtime.command({
@@ -1119,6 +1142,11 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: ChopperCallbacks = {
     state(frame, roomSettings) {
+      if (!display) {
+        const confirmed = runtime.confirmedFrame();
+        if (confirmed)
+          history.observe(historyReceipts(confirmed), confirmed.logTick);
+      }
       observeConfirmedPlay(
         reportPlay,
         frame,
@@ -1224,7 +1252,10 @@ function room(solo: boolean): void {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => stopPlaytestInput(),
+    destroy: () => {
+      history.dispose();
+      stopPlaytestInput();
+    },
     reload: () => location.reload(),
   });
 

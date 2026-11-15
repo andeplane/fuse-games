@@ -391,7 +391,7 @@ test("a hero's fresh Attack votes to continue once a countdown, and nowhere else
   assert.equal(gone.continueRun(), false, "logged absent");
 });
 
-test("the platform registration admits rooms and records nothing yet", () => {
+test("the platform registration accepts strict cooperative history without rating or progression", () => {
   assert.equal(axeRegistration.id, axeGame.id);
   const account: AccountRules = {
     validName,
@@ -402,8 +402,32 @@ test("the platform registration admits rooms and records nothing yet", () => {
   const platform = new Platform(account, [axeRegistration]);
   assert.deepEqual(platform.gameIds, ["fuse-axe"]);
   assert.equal(platform.game("fuse-axe"), axeRegistration);
-  assert.equal(axeRegistration.isBot("bot:1"), false);
+  assert.equal(axeRegistration.isBot("bot:1"), true);
+  assert.equal(axeRegistration.isBot("not-a-bot"), false);
+  assert.equal(axeRegistration.ratesRounds, false);
   assert.equal(axeRegistration.parseStats({}, 1), undefined);
+  const player = {
+    playerId: "a".repeat(24),
+    name: "Ada",
+    slot: 0,
+    roundsPlayed: 1,
+    roundWins: 0,
+    matchScoreUnits: 0,
+    matchPlacement: 1,
+    earlyExits: 0,
+    damage: 12,
+    knockdowns: 2,
+    outcome: "defeat" as const,
+  };
+  assert.deepEqual(axeRegistration.parseStats(player, 1), player);
+  assert.equal(
+    axeRegistration.parseStats({ ...player, damage: -1 }, 1),
+    undefined,
+  );
+  assert.equal(
+    axeRegistration.parseStats({ ...player, injected: true }, 1),
+    undefined,
+  );
   assert.deepEqual(axeRegistration.emptyTotals(), {});
   const reserved = [...RESERVED_KEYS][0]!;
   assert.deepEqual(axeRegistration.parseTotals({ [reserved]: 1 }), {});
