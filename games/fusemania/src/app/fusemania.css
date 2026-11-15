@@ -428,11 +428,12 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
   white-space: pre;
 }
 
-/* Touch pads: one per arrow under the field, and the power-up beside them in a battle */
+/* Keyboard arrow cluster. The play overlay leaves the note field visible underneath. */
 .fm-touch,
 .fm-controller-pads {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(44px, 1fr)) auto;
   gap: var(--fui-space-2);
   width: 100%;
   user-select: none;
@@ -441,8 +442,23 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
   touch-action: none;
 }
 .fm-touch {
-  flex: none;
-  height: min(11rem, 26dvh);
+  position: absolute;
+  z-index: 2;
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(24rem, calc(100% - 1rem));
+  height: min(12rem, 32dvh);
+  pointer-events: none;
+}
+.fm-touch .fm-pad {
+  pointer-events: auto;
+  background: transparent;
+  box-shadow: none;
+}
+.fm-touch .fm-pad.held {
+  background: #eefaff22;
+  box-shadow: none;
 }
 .fm-pad {
   display: flex;
@@ -484,15 +500,19 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
   rotate: 180deg;
 }
 .fm-pad-0 {
+  grid-area: 2 / 1;
   border-color: var(--fui-pink);
 }
 .fm-pad-1 {
+  grid-area: 2 / 2;
   border-color: var(--fui-cyan);
 }
 .fm-pad-2 {
+  grid-area: 1 / 2;
   border-color: #4dff7c;
 }
 .fm-pad-3 {
+  grid-area: 2 / 3;
   border-color: var(--fui-yellow);
 }
 .fm-pad.held {
@@ -503,6 +523,7 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
     0 0 1.25rem #ffffff66;
 }
 .fm-pad-item {
+  grid-row: 3;
   grid-column: 1 / -1;
   min-height: 3rem;
   color: var(--fui-ink);
@@ -554,7 +575,7 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
 }
 .fm-controller-pads {
   flex: 1;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: repeat(2, minmax(44px, 1fr)) auto;
   min-height: 12rem;
 }
 
