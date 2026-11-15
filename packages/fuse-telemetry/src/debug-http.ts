@@ -113,10 +113,16 @@ export function createDebugHttpExtension(
           503,
           "Recording is not configured",
         );
+        const input = await json(req);
+        debugAssert(
+          (await recordGeneration(principal, true)) === generation,
+          403,
+          "Recording access changed",
+        );
         send(res, {
           recording: await service.createRecording(
             principal.uid,
-            await json(req),
+            input,
             generation,
           ),
         });
@@ -139,6 +145,12 @@ export function createDebugHttpExtension(
         );
         const offset = req.headers["x-recording-start-ms"];
         debugAssert(typeof offset === "string" && /^\d{1,8}$/.test(offset));
+        const bytes = await readDebugBody(req, DEBUG_LIMITS.segmentBytes);
+        debugAssert(
+          (await recordGeneration(principal)) === generation,
+          403,
+          "Recording access changed",
+        );
         send(
           res,
           await service.upload(
@@ -146,7 +158,7 @@ export function createDebugHttpExtension(
             upload[1]!,
             Number(upload[2]),
             Number(offset),
-            await readDebugBody(req, DEBUG_LIMITS.segmentBytes),
+            bytes,
             typeof req.headers["x-recording-game-id"] === "string"
               ? req.headers["x-recording-game-id"]
               : undefined,

@@ -644,6 +644,7 @@ export function createActionService(options: ActionServiceOptions) {
       body: { recordingId?: unknown; gameId?: unknown; expiresInMs?: unknown },
       uid: string,
       email?: string,
+      expectedGeneration?: number,
     ) {
       if (
         (!body.recordingId && !body.gameId) ||
@@ -662,7 +663,12 @@ export function createActionService(options: ActionServiceOptions) {
       const tokenId = id(),
         secret = randomBytes(32).toString("base64url");
       const ownerPolicy = await options.ownerPolicy?.(uid, email);
-      if (ownerPolicy && !ownerPolicy.tokenAllowed)
+      if (
+        ownerPolicy &&
+        (!ownerPolicy.tokenAllowed ||
+          (expectedGeneration !== undefined &&
+            ownerPolicy.generation !== expectedGeneration))
+      )
         throw new RoomError(403, "Developer capability required");
       const token = `fa1.${tokenId}.${secret}`;
       const record: ActionAgentToken = {

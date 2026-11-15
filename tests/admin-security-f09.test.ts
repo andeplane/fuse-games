@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { createServer } from "node:http";
+import { createServer, request as nodeRequest } from "node:http";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -352,6 +352,91 @@ test("F-09: restoring read access requires a newer Google authentication", async
     now + 1000,
   );
   await authorizeDeveloper(store, principal, "record", now);
+});
+
+test("F-09: a delayed mint body cannot cross revoke and regrant", async (t) => {
+  let clock = Date.UTC(2026, 10, 14, 12),
+    verifies = 0;
+  const authTime = clock;
+  let verified!: () => void;
+  const beforeBody = new Promise<void>((resolve) => {
+    verified = resolve;
+  });
+  const security = new MemoryDeveloperSecurityStore(() => clock);
+  const services = createTelemetryServices({
+    gameIds: ["dice"],
+    now: () => clock,
+    security,
+    developer: async () => {
+      if (++verifies === 2) verified();
+      return { uid: "admin", email: "admin@example.test", authTime };
+    },
+    metricsDatabase: new MemoryTelemetryDatabase(),
+    debugDatabase: new MemoryDebugDatabase(),
+    actionDatabase: new MemoryActionDatabase(),
+    objects: new MemoryPrivateObjectStorage(),
+    rateLimitKey: "admin-security-test-rate-key-32-bytes",
+    extractor: {
+      async extract() {
+        return [];
+      },
+    },
+  });
+  const server = createServer((req, res) => {
+    void services.http.handle(req, res, "127.0.0.1").catch((error: unknown) => {
+      res.writeHead(error instanceof RoomError ? error.status : 500);
+      res.end();
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const result = new Promise<number>((resolve, reject) => {
+    const req = nodeRequest(
+      {
+        host: "127.0.0.1",
+        port: address.port,
+        path: "/api/dev/agent-tokens",
+        method: "POST",
+        headers: {
+          authorization: "Bearer verified",
+          "content-type": "application/json",
+          "transfer-encoding": "chunked",
+        },
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      },
+    );
+    req.on("error", reject);
+    req.flushHeaders();
+    void beforeBody
+      .then(async () => {
+        clock += 2000;
+        await security.setPolicy("admin", []);
+        await security.setPolicy("admin", ["read", "record", "token"]);
+        req.end(JSON.stringify({ gameId: "dice" }));
+      })
+      .catch(reject);
+  });
+  assert.equal(await result, 401);
+  await assert.rejects(
+    services.actions.mintToken(
+      { gameId: "dice" },
+      "admin",
+      "admin@example.test",
+      0,
+    ),
+    (error: unknown) => error instanceof RoomError && error.status === 403,
+  );
 });
 
 test("F-09: exhausted admission refuses before verifier, policy reads or audit writes", async (t) => {

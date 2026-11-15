@@ -9,6 +9,7 @@ import type { ActionStatus } from "./action-contracts.js";
 import type { ActionPrincipal, ActionService } from "./action-service.js";
 import {
   auditDeveloper,
+  authorizeDeveloper,
   type DeveloperSecurityStore,
 } from "./developer-security.js";
 
@@ -80,10 +81,20 @@ export function createActionHttp(
             )
           )
             throw new RoomError(400, "Unknown agent token field");
+          const policy = security
+            ? await authorizeDeveloper(
+                security,
+                developer,
+                "token",
+                now(),
+                true,
+              )
+            : undefined;
           const minted = await service.mintToken(
             value,
             developer.uid,
             developer.email,
+            policy?.generation,
           );
           if (security)
             await auditDeveloper(
