@@ -35,6 +35,56 @@ import {
   type Profile,
 } from "./settlement.js";
 
+/** The subset of a collection query used by the feed, injectable for query-level tests. */
+export interface FeedQuery {
+  where(
+    field: string,
+    operation: "==" | ">=" | "<=" | "<",
+    value: string | number,
+  ): FeedQuery;
+  orderBy(field: string | FieldPath, direction: "desc"): FeedQuery;
+  startAfter(...values: (string | number)[]): FeedQuery;
+  limit(count: number): FeedQuery;
+  get(): Promise<{
+    docs: readonly {
+      id: string;
+      get(field: string): unknown;
+      data(): unknown;
+    }[];
+  }>;
+}
+
+export async function readFeedPage(
+  query: FeedQuery,
+  platform: Platform,
+  gameId: string,
+  before: FeedCursor | undefined,
+  limit: number,
+): Promise<FeedRow[]> {
+  query = query
+    .where("gameId", "==", gameId)
+    .where("feedAt", ">=", 0)
+    .where("feedAt", "<=", Number.MAX_VALUE);
+  if (before !== undefined && before.id === undefined)
+    query = query.where("feedAt", "<", before.at);
+  let ordered = query
+    .orderBy("feedAt", "desc")
+    .orderBy(FieldPath.documentId(), "desc");
+  if (before?.id !== undefined)
+    ordered = ordered.startAfter(before.at, before.id);
+  const docs = (await ordered.limit(limit).get()).docs;
+  return docs.map((doc) => {
+    const at = doc.get("feedAt");
+    if (typeof at !== "number" || !Number.isFinite(at) || at < 0)
+      throw new Error("Invalid feed cursor in storage");
+    const match = parseMatchRecord(platform, doc.data());
+    return {
+      cursor: { at, id: doc.id },
+      ...(match?.gameId === gameId ? { match } : {}),
+    };
+  });
+}
+
 /**
  * Match history, accounts and ratings of every game. Only this service reaches these collections: firestore.rules
  * denies every browser.
@@ -177,27 +227,7 @@ export class FirestoreHistoryDatabase implements HistoryDatabase {
     limit: number,
   ): Promise<FeedRow[]> {
     // `(gameId, feedAt desc)` on the matches collection; firestore.indexes.json carries it.
-    let query = this.matches()
-      .where("gameId", "==", gameId)
-      .where("feedAt", ">=", 0);
-    if (before !== undefined && before.id === undefined)
-      query = query.where("feedAt", "<", before.at);
-    let ordered = query
-      .orderBy("feedAt", "desc")
-      .orderBy(FieldPath.documentId(), "desc");
-    if (before?.id !== undefined)
-      ordered = ordered.startAfter(before.at, before.id);
-    const docs = (await ordered.limit(limit).get()).docs;
-    return docs.map((doc) => {
-      const at: unknown = doc.get("feedAt");
-      if (typeof at !== "number" || !Number.isFinite(at) || at < 0)
-        throw new Error("Invalid feed cursor in storage");
-      const match = parseMatchRecord(this.platform, doc.data());
-      return {
-        cursor: { at, id: doc.id },
-        ...(match?.gameId === gameId ? { match } : {}),
-      };
-    });
+    return readFeedPage(this.matches(), this.platform, gameId, before, limit);
   }
   async matchesFor(
     gameId: string,

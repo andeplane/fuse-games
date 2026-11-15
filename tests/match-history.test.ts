@@ -896,6 +896,10 @@ test("feed scans unreadable rows and preserves ties across internal and output p
       },
       result: undefined,
     }));
+  await f.matches.transactMatch(GAME_ID, "infinite", () => ({
+    match: { ...record, id: "infinite", feedAt: Infinity },
+    result: undefined,
+  }));
   const first = await f.history.feed("viewer", undefined, undefined);
   assert.equal(first.matches.length, 20);
   assert.ok(first.nextBefore);

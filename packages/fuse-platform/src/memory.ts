@@ -98,6 +98,8 @@ export class MemoryHistoryDatabase implements HistoryDatabase {
         (match) =>
           match.gameId === gameId &&
           match.feedAt !== undefined &&
+          Number.isFinite(match.feedAt) &&
+          match.feedAt >= 0 &&
           // Strictly older, exactly as FirestoreHistoryDatabase pages.
           (before === undefined ||
             match.feedAt < before.at ||
