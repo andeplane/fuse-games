@@ -35,6 +35,7 @@ export function detectHazards(ctx: TickContext): void {
     causeOwners,
     shotSources,
     trailContactTimes,
+    hazardContactTimes,
     obstacleContactTimes,
     obstaclesReached,
     trailHits,
@@ -45,22 +46,42 @@ export function detectHazards(ctx: TickContext): void {
   // turns away from, so the order obstacles are visited in is part of the outcome.
   const obstacleHitboxes = sortedObstacles(state).map(obstacleHitbox);
   for (const movement of movements.values()) {
+    // Where the step stands at `time`. The whole step ends exactly where it ends, as the full-step tests always did.
+    const atX = (time: number): number =>
+      time === 1
+        ? movement.x
+        : movement.oldX + (movement.x - movement.oldX) * time;
+    const atY = (time: number): number =>
+      time === 1
+        ? movement.y
+        : movement.oldY + (movement.y - movement.oldY) * time;
+    // The earliest moment this step meets a blast, the boundary or a core; `touches` holds for every prefix from it on.
+    const meetHazard = (touches: (time: number) => boolean): void => {
+      const previous = hazardContactTimes.get(movement.player.id) ?? 1;
+      if (touches(previous))
+        hazardContactTimes.set(
+          movement.player.id,
+          firstContactTime(touches, previous),
+        );
+    };
     // A rider overhanging an open edge, or whose step ends past it, is also in reach of a blast on the far side.
+    const blastImages = open
+      ? movementImages(state, movement, RIDER_RADIUS)
+      : NO_WRAP;
     for (const blast of newBlasts) {
-      if (
-        !isHazardImmune(movement.player, state.tick) &&
-        (open ? movementImages(state, movement, RIDER_RADIUS) : NO_WRAP).some(
-          ({ dx, dy }) =>
-            segmentIntersectsDisk(
-              movement.oldX + dx,
-              movement.oldY + dy,
-              movement.x + dx,
-              movement.y + dy,
-              blast.circle,
-              RIDER_RADIUS,
-            ),
-        )
-      ) {
+      const touches = (time: number): boolean =>
+        blastImages.some(({ dx, dy }) =>
+          segmentIntersectsDisk(
+            movement.oldX + dx,
+            movement.oldY + dy,
+            atX(time) + dx,
+            atY(time) + dy,
+            blast.circle,
+            RIDER_RADIUS,
+          ),
+        );
+      if (!isHazardImmune(movement.player, state.tick) && touches(1)) {
+        meetHazard(touches);
         markCause(
           causes,
           causeOwners,
@@ -77,29 +98,28 @@ export function detectHazards(ctx: TickContext): void {
     const right = state.width - state.boundaryInset - reach;
     const top = state.boundaryInset + reach;
     const bottom = state.height - state.boundaryInset - reach;
-    if (
-      !open &&
-      !isHazardImmune(movement.player, state.tick) &&
-      (movement.x < left ||
-        movement.x > right ||
-        movement.y < top ||
-        movement.y > bottom)
-    ) {
+    const outside = (time: number): boolean => {
+      const x = atX(time),
+        y = atY(time);
+      return x < left || x > right || y < top || y > bottom;
+    };
+    if (!open && !isHazardImmune(movement.player, state.tick) && outside(1)) {
+      meetHazard(outside);
       markCause(causes, causeOwners, movement.player.id, "wall");
     }
     // Falling into a black hole's core is the arena's kill, like the wall: nobody owns it.
-    if (
-      !isHazardImmune(movement.player, state.tick) &&
+    const inCore = (time: number): boolean =>
       state.gravityFields.some((field) =>
         segmentIntersectsDisk(
           movement.oldX,
           movement.oldY,
-          movement.x,
-          movement.y,
+          atX(time),
+          atY(time),
           { x: field.x, y: field.y, radius: gravityCoreRadius(field.radius) },
         ),
-      )
-    ) {
+      );
+    if (!isHazardImmune(movement.player, state.tick) && inCore(1)) {
+      meetHazard(inCore);
       markCause(causes, causeOwners, movement.player.id, "wall");
     }
 
