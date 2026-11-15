@@ -208,7 +208,8 @@ real Norwegian/English sample before claiming production readiness.
 
 Integration test results and private browser evidence are recorded in the PR.
 The private bucket, queue and IAM are provisioned; activation evidence is tracked
-in [the activation inventory](online/DEVELOPER-INSIGHTS-ACTIVATION.md). Pending:
-enabled production deployment, real microphone and Norwegian/English/dialect
-sample, and physical-device acceptance. A local test or source inspection does
-not establish these outcomes.
+in [the activation inventory](online/DEVELOPER-INSIGHTS-ACTIVATION.md). Production
+reporting, private media storage and synthetic Norwegian/English transcription
+with proposed tasks are verified live. Real microphone/dialect samples,
+individual admin sign-in and physical-device acceptance remain. The inventory
+also records the unresolved global coverage threshold failure on main.
