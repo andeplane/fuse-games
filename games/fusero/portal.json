@@ -3,5 +3,10 @@
   "tagline": "Dig in. Rope out. Blow the cave apart.",
   "mark": "FR",
   "accent": "#b6ff4d",
-  "screenshot": "gallery/fusero.jpg"
+  "screenshot": "gallery/fusero.jpg",
+  "screenshots": [
+    "gallery/fusero.jpg",
+    "gallery/fusero-menu.jpg",
+    "gallery/fusero-controls.jpg"
+  ]
 }

@@ -99,6 +99,7 @@ try {
         "fuse-front",
         "fuseball",
         "fuse-volley",
+        "fusero",
       ].includes(game);
       assert.equal(
         (await room.getAttribute("class"))
@@ -129,14 +130,34 @@ try {
               const seats = root
                 .querySelector(".fui-room-seats")!
                 .getBoundingClientRect();
-              const choices = root
-                .querySelector(".fui-room-modes")!
-                .getBoundingClientRect();
+              const choices = (
+                root.querySelector(".fui-room-configuration-content") ??
+                root.querySelector(".fui-room-modes")!
+              ).getBoundingClientRect();
               return viewportWidth > 640
                 ? seats.right <= choices.left
                 : seats.bottom <= choices.top;
             }, width),
             "round choices and seats occupy their intended columns/phone order",
+          );
+          assert.ok(
+            await room.evaluate((root) => {
+              const head = root.querySelector(".fui-room-head")!;
+              const bounds = head.getBoundingClientRect();
+              return [...head.querySelectorAll("button, a")].every(
+                (control) => {
+                  const rect = control.getBoundingClientRect();
+                  return (
+                    rect.width === 0 ||
+                    (rect.left >= bounds.left - 1 &&
+                      rect.right <= bounds.right + 1 &&
+                      rect.top >= bounds.top - 1 &&
+                      rect.bottom <= bounds.bottom + 1)
+                  );
+                },
+              );
+            }),
+            "room header keeps every action inside its visible bounds",
           );
           if (game === "fusemania") {
             assert.equal(

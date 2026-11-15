@@ -22,6 +22,8 @@ The previous 320×180/192×144 camera description and oversized sprite presentat
 
 Run `pnpm dev`, then open the printed URL plus `/fusero/?mute`. The intended flow is **PLAY → SINGLE PLAYER** for a match with the native Classic bots, or **HOST ROOM** for an online room. Take a seat, choose the five weapons on the room page, invite friends or add AI, then **START MATCH**. Game settings expose the level, weapon restrictions, limits, loading time, bonuses and owner injury.
 
+The shared configuration layout keeps the player list on the left and the five weapon choices on the right, including solo rooms. Phones stack players before choices. Solo omits QR/invitation content; online rooms retain their invitation. Back, Room settings and Start stay in the shared room header.
+
 The default **Original PC** keyboard preset uses the original primary-player bindings from the pinned `Options.cpp`, matching the official WebAssembly build even when played on a Mac. **Original Mac** is available under **MENU → GAME CONTROLS → Keyboard preset**. The choice is a local keyboard preference, not a room or gameplay setting.
 
 | Action                                    | PC                                                             | Mac                 |

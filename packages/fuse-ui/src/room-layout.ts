@@ -21,7 +21,7 @@ export interface RoomFriends extends RosterFriends {
 }
 
 export interface RoomLayoutOptions {
-  /** Inline per-round room/player choices lead on the right; seats follow the invitation. Compact solo ignores it. */
+  /** Inline per-round room/player choices lead on the right; seats stay on the left, including solo rooms. */
   layout?: "players" | "configuration";
   /** Authored inline per-round choices; distinct from the settings dialog and general personal preferences. */
   configuration?: readonly Node[];
@@ -60,8 +60,8 @@ export interface RoomLayoutOptions {
   /** A game's own actions in the header, before Settings (a song select's OPTIONS). Implies `actionsInHeader`. */
   headerActions?: readonly Node[];
   /**
-   * A room on one device (a solo game): one column with no invitation, the seats a strip of who is here and the
-   * next open one. Implies `actionsInHeader`.
+   * A room on one device (a solo game): no invitation and actions in the header. Without configuration layout,
+   * it uses one column with seats as a strip of who is here and the next open one.
    */
   compact?: boolean;
   /**
@@ -133,7 +133,9 @@ export function createRoomLayout(options: RoomLayoutOptions) {
       compact ||
       options.actionsInHeader === true ||
       Boolean(options.headerActions?.length);
-  if (invite) left.append(invite);
+  // Solo keeps invitation-only content detached even when its configuration needs a left seat column.
+  const invitationContent = compact ? doc.createDocumentFragment() : left;
+  if (invite) invitationContent.append(invite);
   if (invite && options.friends) {
     const friends = options.friends,
       inviteFriends = button("INVITE FRIENDS", "fui-room-invite-friends", doc);
@@ -148,7 +150,7 @@ export function createRoomLayout(options: RoomLayoutOptions) {
       el("h2", "Your room", "", doc),
       el("p", "Play together on this device.", "", doc),
     );
-  left.append(...(options.extras ?? []));
+  invitationContent.append(...(options.extras ?? []));
   const settings = createDialog({ title: "Room settings", document: doc });
   settings.dialog.classList.add("fui-menu-dialog");
   const configure =
@@ -319,7 +321,7 @@ export function createRoomLayout(options: RoomLayoutOptions) {
     ...(options.actions ?? []).filter((node) => node !== options.primaryAction),
   );
   // Who is here and where to join come first, in every game: a game's own choices (modes, maps, songs) follow.
-  const configuration = options.layout === "configuration" && !compact;
+  const configuration = options.layout === "configuration";
   const choices = options.configuration?.length
     ? el("div", "", "fui-room-configuration-content", doc)
     : undefined;
@@ -341,17 +343,17 @@ export function createRoomLayout(options: RoomLayoutOptions) {
     );
   root.classList.add("fui-room-layout");
   root.classList.toggle("fui-room-configuration", configuration);
-  root.classList.toggle("fui-room-compact", compact);
+  root.classList.toggle("fui-room-compact", compact && !configuration);
   root.classList.toggle(
     "fui-room-every-seat",
-    compact && options.compactShowsEverySeat === true,
+    compact && !configuration && options.compactShowsEverySeat === true,
   );
   root.classList.toggle("fui-room-actions-top", inHeader);
   const foot = el("div", "", "fui-room-status", doc);
   if (options.status) foot.append(options.status);
   root.replaceChildren(
     head.element,
-    ...(compact ? [] : [left]),
+    ...(compact && !configuration ? [] : [left]),
     right,
     ...(options.status ? [foot] : []),
     settings.dialog,

@@ -203,6 +203,59 @@ async function chooseWeapons(
     );
   }
 }
+async function configurationRoom(page: Page, solo: boolean): Promise<void> {
+  const room = page.locator(".fui-room-configuration");
+  await room.waitFor();
+  assert.equal(await room.locator(".fui-invite").count(), solo ? 0 : 1);
+  assert.equal(
+    await room.locator(".fui-room-seats .fui-room-open-slot").count(),
+    5,
+  );
+  assert.equal(
+    await room
+      .locator(".fui-room-configuration-content .liero-loadout")
+      .count(),
+    1,
+  );
+  const previousSize = page.viewportSize();
+  for (const size of [
+    { width: 1440, height: 1000 },
+    { width: 844, height: 390 },
+    { width: 360, height: 800 },
+  ]) {
+    await page.setViewportSize(size);
+    const geometry = await room.evaluate((root) => ({
+      seats: root
+        .querySelector(".fui-room-seats")!
+        .getBoundingClientRect()
+        .toJSON(),
+      choices: root
+        .querySelector(".fui-room-configuration-content")!
+        .getBoundingClientRect()
+        .toJSON(),
+      scrollWidth: document.documentElement.scrollWidth,
+      width: innerWidth,
+    }));
+    assert.ok(geometry.scrollWidth <= geometry.width + 1);
+    if (size.width > 640)
+      assert.ok(
+        geometry.seats.right <= geometry.choices.left,
+        "players stay left of game options",
+      );
+    else
+      assert.ok(
+        geometry.seats.bottom <= geometry.choices.top,
+        "phone lists players before game options",
+      );
+    await page
+      .getByRole("combobox", { name: "Weapon slot 5", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page
+      .getByRole("button", { name: "START MATCH", exact: true })
+      .scrollIntoViewIfNeeded();
+  }
+  if (previousSize) await page.setViewportSize(previousSize);
+}
 async function convergence(pages: Page[]): Promise<number> {
   const histories = pages.map(() => new Map<number, string>());
   let lastCommon = -1;
@@ -286,6 +339,7 @@ try {
     exact: true,
   });
   await firstWeapon.waitFor();
+  await configurationRoom(host, true);
   assert.equal((await sample(host)).stage, "lobby", "solo waits for START");
   await host
     .getByRole("button", { name: "Room settings", exact: true })
@@ -466,6 +520,7 @@ try {
   await peer.locator(".fui-roster-name", { hasText: "Classic Ada" }).waitFor();
   await takeHostSeat(peer, "Classic Bo");
   await host.locator(".fui-roster-name", { hasText: "Classic Bo" }).waitFor();
+  await configurationRoom(host, false);
   await host
     .getByRole("button", { name: "Room settings", exact: true })
     .click();
