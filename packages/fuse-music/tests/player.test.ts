@@ -129,6 +129,21 @@ test("preview mute and an empty catalogue never create media, even after unmute 
   assert.equal(f.creates, 0);
 });
 
+test("external OGG and MP3 URLs stream without a deployment prefix", () => {
+  for (const ext of ["ogg", "mp3"]) {
+    const f = fixture();
+    const url = `https://storage.googleapis.com/media/song.${ext}`;
+    const player = MusicPlayer([{ id: "remote", title: "Remote", path: url }], {
+      base: "/fuse-games/",
+      createMedia: f.createMedia,
+    });
+    player.play();
+    assert.equal(f.media.src, url);
+    assert.equal(f.plays, 1);
+    player.destroy();
+  }
+});
+
 test("mute pauses without losing intent or position and repeated refreshes do not restart playback", () => {
   const f = fixture();
   const player = MusicPlayer(ALL_SONGS, { createMedia: f.createMedia });
