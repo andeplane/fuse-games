@@ -149,16 +149,18 @@ def _whole(shares: np.ndarray, total: int) -> np.ndarray:
 
 
 def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | None = None, swing: bool = False,
-          snap24: bool = False, forced: list[float] | None = None, busy: np.ndarray | None = None):
+          snap24: bool = False, forced: list[float] | None = None, busy: np.ndarray | None = None,
+          scale: list[tuple[float, float, float]] | None = None):
     """Peaks of the step probability → snapped beats (respecting the difficulty's grid and minimum gap).
     `snap24` lets steps land on the 24th grid too; isolated ones are dropped again (`keep_24th_runs`).
+    `scale` is a list of (start s, end s, factor): the windows in that span get that many times their steps.
 
     `busy` (`density.py`: local density over the chart's average, every half second) and `forced` beats (review
     material, `guidance.py`) shape where the steps go without taking any stretch's steps away: the model first
     spreads the steps its own way, then every QUOTA_SECONDS window's share is scaled by the profile there, and a
     window with forced beats gets at least those on top."""
     steer = busy is not None and BUSY_POWER > 0
-    if n_target is None or not (steer or forced):
+    if n_target is None or not (steer or forced or scale):
         return _select(prob, tm, diff, thr, n_target, swing, snap24, forced, None)
     own = _select(prob, tm, diff, thr, n_target, swing, snap24, None, None)
     n_win = int(len(prob) / FPS // QUOTA_SECONDS) + 1
@@ -169,6 +171,9 @@ def place(prob: np.ndarray, tm: Timing, diff: str, thr: float, n_target: int | N
         prof = np.array([busy[w * per:(w + 1) * per].mean() if w * per < len(busy) else 1.0 for w in range(n_win)])
         count = count * np.clip(prof, 0.05, 4.0) ** BUSY_POWER
     quota = _whole(count, len(own))
+    for start, end, factor in scale or []:
+        for w in range(max(int(start // QUOTA_SECONDS), 0), min(int(end // QUOTA_SECONDS) + 1, n_win)):
+            quota[w] = int(round(quota[w] * factor))
     if forced:
         quota = np.maximum(quota, np.bincount([window(b) for b in forced if b >= 0], minlength=n_win))
     return _select(prob, tm, diff, thr, int(quota.sum()), swing, snap24, forced, quota)

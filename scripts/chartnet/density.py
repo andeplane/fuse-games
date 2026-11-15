@@ -28,6 +28,7 @@ from features import FPS
 
 ROOT = Path(os.environ.get("CHARTNET_WORK", Path.home() / "projects/personal/fusemania-songs/chartnet"))
 DEV = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+NAME = os.environ.get("CHARTNET_PROFILE", "profile")  # the weights' file name
 HOP = 0.5  # seconds between profile frames
 WIN = 2.0  # seconds each frame summarises
 N_FEAT = 16 + 8 + 8 + 8 + 3 + 2
@@ -127,7 +128,22 @@ class ProfileNet(nn.Module):
         return nn.functional.softplus(self.out(self.body(self.inp(z))).squeeze(1))
 
 
-def load_pool(keys: set[str] | None = None, exclude_titles: set[str] | None = None, folder: str = "pool"):
+LEAD = os.environ.get("CHARTNET_LEAD", "0") == "1"  # add `lead.py`'s six measures to the inputs
+
+
+def with_lead(x: np.ndarray, key: str, folder: str) -> np.ndarray | None:
+    """The pooled features with the lead measures appended (None when the song has none)."""
+    path = ROOT / ("lead" if folder == "pool" else "lead_fuse") / f"{key}.npy"
+    if not path.exists():
+        return None
+    lead = np.load(path)
+    if len(lead) < len(x):
+        lead = np.pad(lead, ((0, len(x) - len(lead)), (0, 0)), mode="edge")
+    return np.concatenate([x, lead[:len(x)]], axis=1)
+
+
+def load_pool(keys: set[str] | None = None, exclude_titles: set[str] | None = None, folder: str = "pool",
+              need_lead: bool = False):
     ex = []
     for p in sorted(glob.glob(str(ROOT / folder / "*.npz"))):
         key = Path(p).stem
@@ -135,7 +151,16 @@ def load_pool(keys: set[str] | None = None, exclude_titles: set[str] | None = No
             continue
         if exclude_titles and song_title(key) in exclude_titles:
             continue
+        if need_lead and not (ROOT / "lead" / f"{key}.npy").exists():
+            continue
         z = np.load(p)
+        if LEAD:
+            x = with_lead(z["x"], key, folder)
+            if x is None:
+                continue
+            for d, nps, y in zip(z["diffs"], z["nps"], z["y"]):
+                ex.append((key, x, int(d), float(nps), y))
+            continue
         for d, nps, y in zip(z["diffs"], z["nps"], z["y"]):
             ex.append((key, z["x"], int(d), float(nps), y))
     return ex
@@ -167,13 +192,14 @@ def held_out():
 def train(steps: int = 6000) -> None:
     t1, t2 = held_out()
     titles = {song_title(k) for k in t1 | t2}
-    tr = [e for e in load_pool(exclude_titles=titles) if e[0] not in t1 | t2]
+    need = os.environ.get("CHARTNET_NEED_LEAD", "0") == "1"  # the same songs as a run with CHARTNET_LEAD=1
+    tr = [e for e in load_pool(exclude_titles=titles, need_lead=need) if e[0] not in t1 | t2]
     allx = np.concatenate([e[1] for e in tr[::7]])
     stats = (allx.mean(0), allx.std(0) + 1e-5)
-    np.savez(ROOT / "profile_stats.npz", mean=stats[0], std=stats[1])
-    te1, te2 = load_pool(t1), load_pool(t2)
-    print(len(tr), "training charts;", len(te1), "and", len(te2), "held-out charts", DEV, flush=True)
-    model = ProfileNet().to(DEV)
+    np.savez(ROOT / f"{NAME}_stats.npz", mean=stats[0], std=stats[1])
+    te1, te2 = load_pool(t1, need_lead=need), load_pool(t2, need_lead=need)
+    print(len(tr), "training charts;", len(te1), "and", len(te2), "held-out charts", DEV, "inputs", allx.shape[1], flush=True)
+    model = ProfileNet(allx.shape[1]).to(DEV)
     opt = torch.optim.AdamW(model.parameters(), 2e-3, weight_decay=1e-3)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-3, total_steps=steps)
     L = 240  # two minutes
@@ -201,13 +227,13 @@ def train(steps: int = 6000) -> None:
         if step % 500 == 0 or step == steps - 1:
             print(step, round(loss.item(), 4), "DDR/ITG", correlation(model, te1, stats), "community",
                   correlation(model, te2, stats), flush=True)
-    torch.save(model.state_dict(), ROOT / "profile.pt")
+    torch.save(model.state_dict(), ROOT / f"{NAME}.pt")
 
 
 def load_model() -> tuple[ProfileNet, tuple[np.ndarray, np.ndarray]]:
-    st = np.load(ROOT / "profile_stats.npz")
-    model = ProfileNet().to(DEV)
-    model.load_state_dict(torch.load(ROOT / "profile.pt", map_location="cpu"))
+    st = np.load(ROOT / f"{NAME}_stats.npz")
+    model = ProfileNet(len(st["mean"])).to(DEV)
+    model.load_state_dict(torch.load(ROOT / f"{NAME}.pt", map_location="cpu"))
     return model.eval(), (st["mean"], st["std"])
 
 

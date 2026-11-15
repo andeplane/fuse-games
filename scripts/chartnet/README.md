@@ -235,6 +235,25 @@ What is built on that:
   of his taps (66% before) and is busy where he is.
 - `guidance.opening_beat`: every chart starts on the song's first clear, sharp sound after the lead-in.
 
+### The labelling loop (`watch_notes.py`)
+
+`python watch_notes.py` watches the lab's notes and taps and regenerates a song about 20 seconds after its labels
+change (`gen2.py fuse` for that song, `bundle.ts`, `gen.py fixup`, `fusemania-charts.ts bundle`); the lab served from
+the same checkout shows the result on reload. The labels the committed charts were made from are copied to
+`labels/` so the charts can be regenerated without the labeller's machine. What a note does (`guidance.py`):
+
+- starts with `good`: the span is locked, later regenerations keep its rows;
+- `bad: too many` or `bad: too few`: the span gets half or 1.7 times its steps;
+- has a frequency box: the steps follow that band's onsets; with `jump` in the text those steps become jumps;
+- contains `good first` (or is tagged `start`): the chart starts on the strongest onset in the span;
+- a tapped rhythm: where the taps sit on the grid (Burning Heat: 12 ms from the nearest triplet or sixteenth, random
+  taps would be 22 ms) each tap is a step; where they scatter (Final Chase) they set the step count per two beats.
+
+Burning Heat was labelled after the model was trained and served as a blind test: the placement model matches the
+tapped rhythm at 70% there (84% on Final Chase), and the chart made without its labels has a step on 59% of the taps.
+With the labels: 73%, busy where the taps are busy 0.60 (from 0.24), first step at 3.2 s where the note says. Training
+the placement model further on one song's taps did not transfer to the other (70% to 65%, 84% to 82%).
+
 Also measured, and not built on yet:
 
 - What he marks is a lead that stands out. In the densely labelled part of Final Chase, quieter drums tell marked

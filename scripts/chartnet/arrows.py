@@ -214,9 +214,14 @@ class _Cand:
         return _Cand(self.feet.copy(), list(self.toks), list(self.conds), list(self.ffs), list(self.auds), list(self.out))
 
 
-def _costs(feet: Feet, toks: list[int], b: float, nxt: float, last: bool, diff: str, pen) -> torch.Tensor:
+def _costs(feet: Feet, toks: list[int], b: float, nxt: float, last: bool, diff: str, pen,
+           must_jump: bool = False) -> torch.Tensor:
     cost = torch.zeros(N_TOK)
     cost[0] = 1e9
+    if must_jump:  # a review note asks for a jump on this step
+        for t in range(1, N_TOK):
+            if len(TOK_COLS[t]) != 2:
+                cost[t] += 12.0
     bonus = FREEZE_BONUS[diff] if nxt >= 0.5 - 1e-6 or FREEZE_BONUS[diff] < 0 else 0.0
     for t in range(1, N_TOK):
         cols = TOK_COLS[t]
@@ -240,7 +245,7 @@ def _costs(feet: Feet, toks: list[int], b: float, nxt: float, last: bool, diff: 
 
 @torch.no_grad()
 def generate(model, song, beats, tm, diff: str, nps: float, temp: float = 1.0, seed: int = 0, penalty=None,
-             candidates: int | None = None):
+             candidates: int | None = None, jumps: set[float] | None = None):
     """Arrows and freezes for placed `beats`: [(beat, time, row string)] including freeze tails."""
     model.eval()
     g = torch.Generator().manual_seed(seed)
@@ -272,7 +277,7 @@ def generate(model, song, beats, tm, diff: str, nps: float, temp: float = 1.0, s
                            di1.expand(len(cands)), dn1.expand(len(cands)))
             logps = torch.log_softmax(logits[:, -1].float().cpu() / temp, -1)
             for c, logp in zip(cands, logps):
-                score = logp - _costs(c.feet, c.toks, b, nxt, i + 1 >= n, diff, pen)
+                score = logp - _costs(c.feet, c.toks, b, nxt, i + 1 >= n, diff, pen, bool(jumps) and b in jumps)
                 tok = int(torch.multinomial(torch.softmax(score, -1), 1, generator=g))
                 c.score += float(score[tok])
                 c.toks.append(tok)

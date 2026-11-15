@@ -19,7 +19,7 @@ import data
 from data import load, split
 from features import FPS
 from bursts import burst_beats
-from guidance import forced_beats, opening_beat
+from guidance import forced_beats, has_taps, jump_beats, keep_locked, noted_opening, opening_beat, verdicts
 from feet import Feet
 from gen import FUSE_DIFFS, SNAP, mean_stats, place, ssc, stats, timing
 from onset import OnsetNet, chart_nps, f1, predict
@@ -275,6 +275,17 @@ def eval_packs(only=None, keys_file="test_keys.json", out_name="eval2_results.js
             print("   ", k.ljust(7), " ".join(f"{a[:7]}={b}" for a, b in st.items()))
 
 
+def current_rows(key: str, diff: str):
+    """The chart the game has now for this song and difficulty: [(beat, time, row)]."""
+    from simfile import parse
+    path = Path(__file__).resolve().parents[2] / "games/fusemania/charts" / f"{key}.ssc"
+    if not path.exists():
+        return []
+    sim = parse(path.read_text())
+    chart = next((c for c in sim.charts if c.difficulty == diff), None)
+    return [] if chart is None else [(b, sim.timing.beat_to_time(b), r) for b, r in chart.rows]
+
+
 def fuse():
     stats_, om, am = models()
     profiles = busy_profiles()
@@ -312,23 +323,31 @@ def fuse():
             n_target = None if THR > 0 else int(target[d] * 0.9 * len(s.feats) / FPS)
             # review material from the chart lab: a marked band's onsets (8ths on Medium and Hard, 16ths on
             # Challenge), and where he tapped, as many steps as he tapped (a share of them on the easier charts)
-            # every chart starts on the song's first clear, sharp sound
-            start = opening_beat(s.onset, tm, SNAP[d])
+            # a chart starts where a review note says it should; without one, and without a tapped rhythm to
+            # follow, on the song's first clear, sharp sound
+            noted = noted_opening(s.key, s.onset, tm, SNAP[d])
+            start = noted if noted is not None else None if has_taps(s.key) else opening_beat(s.onset, tm, SNAP[d])
             forced: list[float] = [] if start is None else [start]
             if d != "Easy":
+                grid = {"Medium": [2], "Hard": [2], "Challenge": [4]}[d] + ([3] if swing and d != "Medium" else [])
                 forced = sorted(set(forced) | set(forced_beats(
-                    s.key, raw, tm, {"Medium": [2], "Hard": [2], "Challenge": [4]}[d], prob,
-                    share=min(1.0, target[d] / target["Challenge"]))))
+                    s.key, raw, tm, grid, prob, share=min(1.0, target[d] / target["Challenge"]))))
             guided[s.key] = max(guided.get(s.key, 0), len(forced) - (start is not None))
+            locked, scale = verdicts(s.key)
             beats = place(prob, tm, d, THR, n_target=n_target, swing=swing,
                           snap24=d == "Challenge" and BURSTS in ("learned", "both"), forced=forced,
-                          busy=busy_for(profiles, s.key, d, target[d], "pool_fuse"))
+                          busy=busy_for(profiles, s.key, d, target[d], "pool_fuse"), scale=scale)
+            if noted is not None:
+                beats = [b for b in beats if b >= noted - 1e-6]
             if d == "Challenge" and BURSTS in ("rule", "both"):  # where the music itself moves at 24th speed
                 beats, n_burst = with_bursts(beats, burst_beats(s.onset, tm, beats[0], beats[-1]))
                 bursts_[s.key] = n_burst
             if d == "Challenge" and BURSTS == "learned":
                 bursts_[s.key] = len({int(b) for b in beats if abs(b * 6 - round(b * 6)) < 1e-6 and round(b * 6) % 6 in (1, 5)})
-            rows = generate(am, s, beats, tm, d, target[d], seed=zlib.crc32((s.key + d).encode()))
+            rows = generate(am, s, beats, tm, d, target[d], seed=zlib.crc32((s.key + d).encode()),
+                            jumps=None if d == "Easy" else jump_beats(s.key, raw, tm, beats))
+            if locked:  # spans judged good keep the chart they have now
+                rows = keep_locked(rows, current_rows(s.key, d), locked)
             charts.append((d, meters[d], rows))
             agg.setdefault(d, []).append(stats2(rows))
         (outdir / f"{s.key}.ssc").write_text(ssc(s.meta["ssc_head"], charts))
