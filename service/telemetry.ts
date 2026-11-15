@@ -70,6 +70,12 @@ import type { ActionDatabase } from "fuse-telemetry/action-store";
 import type { TranscriptActionSegment } from "fuse-telemetry/action-contracts";
 import { telemetryConfiguration } from "./telemetry-config.js";
 
+/** Namespaces owned by developer insights, leaving other /api/dev extensions alone. */
+const isDeveloperInsightsPath = (path: string): boolean =>
+  /^\/api\/dev\/(?:me|metrics|reports|recordings|actions|agent-tokens)(?:\/|$)/.test(
+    path,
+  );
+
 export interface TelemetryServicesOptions {
   gameIds: readonly string[];
   developer: DeveloperVerifier;
@@ -195,7 +201,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
   // so far fewer of these may be in flight than of the small requests.
   const uploads = options.uploadAdmission ?? new TelemetryAdmission(now, 8, 2);
   const isGuarded = (path: string) =>
-    path.startsWith("/api/dev/") ||
+    isDeveloperInsightsPath(path) ||
     path === "/api/telemetry/recordings" ||
     path.startsWith("/api/telemetry/recordings/");
   const protectedRoutes: HttpExtension = {
@@ -204,6 +210,8 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     async handle(req, res, address) {
       const path = new URL(req.url ?? "/", "http://telemetry").pathname;
       if (!path.startsWith("/api/telemetry/") && !path.startsWith("/api/dev/"))
+        return false;
+      if (path.startsWith("/api/dev/") && !isDeveloperInsightsPath(path))
         return false;
       const heavy =
         req.method === "PUT" ||
@@ -239,7 +247,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     headers: routes.headers,
     async handle(req, res, address) {
       const path = new URL(req.url ?? "/", "http://telemetry").pathname;
-      const developerRoute = path.startsWith("/api/dev/");
+      const developerRoute = isDeveloperInsightsPath(path);
       const recordingRoute =
         path === "/api/telemetry/recordings" ||
         path.startsWith("/api/telemetry/recordings/");
@@ -378,7 +386,7 @@ export const telemetryUnavailable: HttpExtension = {
     }
     if (
       path.startsWith("/api/telemetry/") ||
-      path.startsWith("/api/dev/") ||
+      isDeveloperInsightsPath(path) ||
       path === "/api/internal/transcription"
     )
       throw new RoomError(

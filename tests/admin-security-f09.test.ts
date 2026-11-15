@@ -102,6 +102,27 @@ test("F-09: private reads are audited; step-up and per-person policy fence recor
       },
       ...(body === undefined ? {} : { body }),
     });
+  for (const path of [
+    "/api/dev/me",
+    "/api/dev/metrics",
+    "/api/dev/reports",
+    "/api/dev/reports/id/screenshot",
+    "/api/dev/recordings",
+    "/api/dev/recordings/id",
+    "/api/dev/recordings/id/segments/0/audio",
+    "/api/dev/actions",
+    "/api/dev/actions/id/dismiss",
+    "/api/dev/agent-tokens",
+    "/api/dev/agent-tokens/id",
+    "/api/telemetry/recordings",
+    "/api/telemetry/recordings/id/finish",
+    "/api/telemetry/recordings/id/segments/0",
+  ]) {
+    const response: Response = await fetch(
+      `http://127.0.0.1:${address.port}${path}`,
+    );
+    assert.equal(response.status, 401, path);
+  }
   assert.equal((await request("/api/dev/reports", "old")).status, 200);
   assert.deepEqual(security.events.at(-1), {
     uid: "admin",
@@ -482,7 +503,10 @@ test("F-09: exhausted admission refuses before verifier, policy reads or audit w
   const server = createServer((req, res) => {
     void services.http
       .handle(req, res, "127.0.0.1")
-      .then(() => res.end())
+      .then((handled) => {
+        if (!handled) res.writeHead(404);
+        res.end();
+      })
       .catch((error: unknown) => {
         res.writeHead(error instanceof RoomError ? error.status : 500);
         res.end();
@@ -498,6 +522,11 @@ test("F-09: exhausted admission refuses before verifier, policy reads or audit w
   });
   const address = server.address();
   assert.ok(address && typeof address === "object");
+  const unrelated = await fetch(
+    `http://127.0.0.1:${address.port}/api/dev/timing-log`,
+    { method: "POST", body: "{}" },
+  );
+  assert.equal(unrelated.status, 404);
   for (const [path, method] of [
     ["/api/dev/me", "GET"],
     ["/api/dev/recordings", "GET"],
