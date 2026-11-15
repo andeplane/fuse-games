@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPendingSettings } from "../src/app/pending-settings.js";
+import { createPendingSettings } from "../src/pending-settings.js";
 
 interface Settings {
   level: number;
@@ -62,4 +62,11 @@ test("a command the room refused leaves nothing pending", () => {
   // `with` alone is what a refused command built; nothing was `sent`.
   pending.with(ROOM, { display: true });
   assert.deepEqual(pending.with(ROOM, { level: 2 }), { ...ROOM, level: 2 });
+});
+
+test("leaving a settings context cancels unanswered choices before another edit", () => {
+  const { pending, send } = pendingAt();
+  send(ROOM, { display: true });
+  pending.clear();
+  assert.deepEqual(send(ROOM, { level: 2 }), { ...ROOM, level: 2 });
 });

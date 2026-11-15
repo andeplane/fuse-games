@@ -51,6 +51,7 @@
     "fuse-volley": "workspace:*",
     "fuse-surge": "workspace:*",
     "fuse-lane": "workspace:*",
+    "fusero": "workspace:*",
     "fuse-network-be": "workspace:*",
     "fuse-platform": "workspace:*",
     "fuse-telemetry": "workspace:*",

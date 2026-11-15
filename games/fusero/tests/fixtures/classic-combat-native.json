@@ -1,0 +1,1763 @@
+{
+  "source": "0a20c6d0a10ed63b28a15f05c771913c294efbf6",
+  "flight": [
+    {
+      "kind": 0,
+      "step": 1,
+      "x": 101.54154205322266,
+      "y": 100,
+      "vx": 140.13999938964844,
+      "vy": 0
+    },
+    {
+      "kind": 0,
+      "step": 10,
+      "x": 115.4849624633789,
+      "y": 100,
+      "vx": 141.4063720703125,
+      "vy": 0
+    },
+    {
+      "kind": 0,
+      "step": 100,
+      "x": 262.04046630859375,
+      "y": 100,
+      "vx": 154.71685791015625,
+      "vy": 0
+    },
+    {
+      "kind": 1,
+      "step": 1,
+      "x": 100.87999725341797,
+      "y": 98.80573272705078,
+      "vx": 80,
+      "vy": -108.56999969482422
+    },
+    {
+      "kind": 1,
+      "step": 10,
+      "x": 108.79997253417969,
+      "y": 88.76515197753906,
+      "vx": 80,
+      "vy": -95.69999694824219
+    },
+    {
+      "kind": 1,
+      "step": 100,
+      "x": 188.000244140625,
+      "y": 58.43651580810547,
+      "vx": 80,
+      "vy": 33.00002670288086
+    },
+    {
+      "kind": 2,
+      "step": 1,
+      "x": 107.69999694824219,
+      "y": 100.0001220703125,
+      "vx": 700,
+      "vy": 0.01100000087171793
+    },
+    {
+      "kind": 2,
+      "step": 10,
+      "x": 176.99996948242188,
+      "y": 100.00666046142578,
+      "vx": 700,
+      "vy": 0.11000000685453415
+    },
+    {
+      "kind": 2,
+      "step": 100,
+      "x": 870.0009155273438,
+      "y": 100.61104583740234,
+      "vx": 700,
+      "vy": 1.0999995470046997
+    }
+  ],
+  "cornerBounce": {
+    "vx": -40,
+    "vy": 60
+  },
+  "bazookaChargeAfter500": 0.9405015707015991,
+  "grenadeTimerPreSteps": 142,
+  "grenadeTimerLife": 1.56200110912323,
+  "historyPartial": [0, 30, 20, 20],
+  "historyFull": [0, 99, 1, 1],
+  "historyCleared": [1, 1],
+  "bazookaChildren": [
+    {
+      "vx": -83.98658752441406,
+      "vy": 49.10353469848633,
+      "timeVarRandom": -0.47445499897003174,
+      "randomIndex": 5
+    },
+    {
+      "vx": 86.03914642333984,
+      "vy": 47.66013717651367,
+      "timeVarRandom": 0.10602500289678574,
+      "randomIndex": 7
+    },
+    {
+      "vx": -96.33795928955078,
+      "vy": -45.36423873901367,
+      "timeVarRandom": -0.2566069960594177,
+      "randomIndex": 9
+    },
+    {
+      "vx": 92.46868133544922,
+      "vy": 41.629608154296875,
+      "timeVarRandom": 0.6458520293235779,
+      "randomIndex": 11
+    }
+  ],
+  "rifleSpawns": [
+    {
+      "seed": 7,
+      "randomIndex": 9,
+      "maxCheck": 8,
+      "avgCheck": 5,
+      "wallShootTime": 0.010743392631411552,
+      "flight": [
+        {
+          "step": 1,
+          "x": 107.69999694824219,
+          "y": 100.0001220703125,
+          "vx": 700,
+          "vy": 0.01100000087171793
+        },
+        {
+          "step": 10,
+          "x": 176.99996948242188,
+          "y": 100.00666046142578,
+          "vx": 700,
+          "vy": 0.11000000685453415
+        }
+      ]
+    },
+    {
+      "seed": 8,
+      "randomIndex": 10,
+      "maxCheck": 7,
+      "avgCheck": 4,
+      "wallShootTime": 0.010229445062577724,
+      "flight": [
+        {
+          "step": 1,
+          "x": 107.69999694824219,
+          "y": 100.00008392333984,
+          "vx": 700,
+          "vy": 0.01100000087171793
+        },
+        {
+          "step": 10,
+          "x": 176.99996948242188,
+          "y": 100.00630187988281,
+          "vx": 700,
+          "vy": 0.11000002175569534
+        }
+      ]
+    }
+  ],
+  "localLaserFrames": [
+    {
+      "frame": 0,
+      "physicsMs": 0,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0,
+      "charge": 1
+    },
+    {
+      "frame": 1,
+      "physicsMs": 0,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0,
+      "charge": 1
+    },
+    {
+      "frame": 2,
+      "physicsMs": 11,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 3,
+      "physicsMs": 22,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 4,
+      "physicsMs": 33,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 5,
+      "physicsMs": 44,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 6,
+      "physicsMs": 55,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 7,
+      "physicsMs": 66,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 8,
+      "physicsMs": 77,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 9,
+      "physicsMs": 88,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 10,
+      "physicsMs": 99,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 11,
+      "physicsMs": 110,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 12,
+      "physicsMs": 110,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 13,
+      "physicsMs": 121,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 14,
+      "physicsMs": 132,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 15,
+      "physicsMs": 143,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 16,
+      "physicsMs": 154,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 17,
+      "physicsMs": 165,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.987500011920929
+    },
+    {
+      "frame": 18,
+      "physicsMs": 176,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 19,
+      "physicsMs": 187,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 20,
+      "physicsMs": 198,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 21,
+      "physicsMs": 209,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 22,
+      "physicsMs": 220,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 23,
+      "physicsMs": 220,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 24,
+      "physicsMs": 231,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 25,
+      "physicsMs": 242,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 26,
+      "physicsMs": 253,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 27,
+      "physicsMs": 264,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 28,
+      "physicsMs": 275,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 29,
+      "physicsMs": 286,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 30,
+      "physicsMs": 297,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 31,
+      "physicsMs": 308,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 32,
+      "physicsMs": 319,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 33,
+      "physicsMs": 330,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 34,
+      "physicsMs": 330,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9750000238418579
+    },
+    {
+      "frame": 35,
+      "physicsMs": 341,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 36,
+      "physicsMs": 352,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 37,
+      "physicsMs": 363,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 38,
+      "physicsMs": 374,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 39,
+      "physicsMs": 385,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 40,
+      "physicsMs": 396,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 41,
+      "physicsMs": 407,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 42,
+      "physicsMs": 418,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 43,
+      "physicsMs": 429,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 44,
+      "physicsMs": 440,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 45,
+      "physicsMs": 440,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 46,
+      "physicsMs": 451,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 47,
+      "physicsMs": 462,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 48,
+      "physicsMs": 473,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 49,
+      "physicsMs": 484,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 50,
+      "physicsMs": 495,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9625000357627869
+    },
+    {
+      "frame": 51,
+      "physicsMs": 506,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 52,
+      "physicsMs": 517,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 53,
+      "physicsMs": 528,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 54,
+      "physicsMs": 539,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 55,
+      "physicsMs": 550,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 56,
+      "physicsMs": 550,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 57,
+      "physicsMs": 561,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 58,
+      "physicsMs": 572,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 59,
+      "physicsMs": 583,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 60,
+      "physicsMs": 594,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 61,
+      "physicsMs": 605,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 62,
+      "physicsMs": 616,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 63,
+      "physicsMs": 627,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 64,
+      "physicsMs": 638,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 65,
+      "physicsMs": 649,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 66,
+      "physicsMs": 660,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 67,
+      "physicsMs": 660,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9500000476837158
+    },
+    {
+      "frame": 68,
+      "physicsMs": 671,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 69,
+      "physicsMs": 682,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 70,
+      "physicsMs": 693,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 71,
+      "physicsMs": 704,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 72,
+      "physicsMs": 715,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 73,
+      "physicsMs": 726,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 74,
+      "physicsMs": 737,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 75,
+      "physicsMs": 748,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 76,
+      "physicsMs": 759,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 77,
+      "physicsMs": 770,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 78,
+      "physicsMs": 770,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 79,
+      "physicsMs": 781,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 80,
+      "physicsMs": 792,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 81,
+      "physicsMs": 803,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 82,
+      "physicsMs": 814,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 83,
+      "physicsMs": 825,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9375000596046448
+    },
+    {
+      "frame": 84,
+      "physicsMs": 836,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 85,
+      "physicsMs": 847,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 86,
+      "physicsMs": 858,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 87,
+      "physicsMs": 869,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 88,
+      "physicsMs": 880,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 89,
+      "physicsMs": 880,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 90,
+      "physicsMs": 891,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 91,
+      "physicsMs": 902,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 92,
+      "physicsMs": 913,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 93,
+      "physicsMs": 924,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 94,
+      "physicsMs": 935,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 95,
+      "physicsMs": 946,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 96,
+      "physicsMs": 957,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 97,
+      "physicsMs": 968,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 98,
+      "physicsMs": 979,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 99,
+      "physicsMs": 990,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 100,
+      "physicsMs": 990,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9250000715255737
+    },
+    {
+      "frame": 101,
+      "physicsMs": 1001,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 102,
+      "physicsMs": 1012,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 103,
+      "physicsMs": 1023,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 104,
+      "physicsMs": 1034,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 105,
+      "physicsMs": 1045,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 106,
+      "physicsMs": 1056,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 107,
+      "physicsMs": 1067,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 108,
+      "physicsMs": 1078,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 109,
+      "physicsMs": 1089,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 110,
+      "physicsMs": 1100,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 111,
+      "physicsMs": 1100,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 112,
+      "physicsMs": 1111,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 113,
+      "physicsMs": 1122,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 114,
+      "physicsMs": 1133,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 115,
+      "physicsMs": 1144,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 116,
+      "physicsMs": 1155,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9125000834465027
+    },
+    {
+      "frame": 117,
+      "physicsMs": 1166,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 118,
+      "physicsMs": 1177,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 119,
+      "physicsMs": 1188,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 120,
+      "physicsMs": 1199,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 121,
+      "physicsMs": 1210,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 122,
+      "physicsMs": 1210,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 123,
+      "physicsMs": 1221,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 124,
+      "physicsMs": 1232,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 125,
+      "physicsMs": 1243,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 126,
+      "physicsMs": 1254,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 127,
+      "physicsMs": 1265,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 128,
+      "physicsMs": 1276,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 129,
+      "physicsMs": 1287,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 130,
+      "physicsMs": 1298,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 131,
+      "physicsMs": 1309,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 132,
+      "physicsMs": 1320,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 133,
+      "physicsMs": 1320,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.9000000953674316
+    },
+    {
+      "frame": 134,
+      "physicsMs": 1331,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 135,
+      "physicsMs": 1342,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 136,
+      "physicsMs": 1353,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 137,
+      "physicsMs": 1364,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 138,
+      "physicsMs": 1375,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 139,
+      "physicsMs": 1386,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 140,
+      "physicsMs": 1397,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 141,
+      "physicsMs": 1408,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 142,
+      "physicsMs": 1419,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 143,
+      "physicsMs": 1430,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 144,
+      "physicsMs": 1430,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 145,
+      "physicsMs": 1441,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 146,
+      "physicsMs": 1452,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 147,
+      "physicsMs": 1463,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 148,
+      "physicsMs": 1474,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 149,
+      "physicsMs": 1485,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.8875001072883606
+    },
+    {
+      "frame": 150,
+      "physicsMs": 1496,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 151,
+      "physicsMs": 1507,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 152,
+      "physicsMs": 1518,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 153,
+      "physicsMs": 1529,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 154,
+      "physicsMs": 1540,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 155,
+      "physicsMs": 1540,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 156,
+      "physicsMs": 1551,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 157,
+      "physicsMs": 1562,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 158,
+      "physicsMs": 1573,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 159,
+      "physicsMs": 1584,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 160,
+      "physicsMs": 1595,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 161,
+      "physicsMs": 1606,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 162,
+      "physicsMs": 1617,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 163,
+      "physicsMs": 1628,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 164,
+      "physicsMs": 1639,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 165,
+      "physicsMs": 1650,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 166,
+      "physicsMs": 1650,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.8750001192092896
+    },
+    {
+      "frame": 167,
+      "physicsMs": 1661,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 168,
+      "physicsMs": 1672,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 169,
+      "physicsMs": 1683,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 170,
+      "physicsMs": 1694,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 171,
+      "physicsMs": 1705,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 172,
+      "physicsMs": 1716,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 173,
+      "physicsMs": 1727,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 174,
+      "physicsMs": 1738,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 175,
+      "physicsMs": 1749,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 176,
+      "physicsMs": 1760,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 177,
+      "physicsMs": 1760,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 178,
+      "physicsMs": 1771,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 179,
+      "physicsMs": 1782,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 180,
+      "physicsMs": 1793,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 181,
+      "physicsMs": 1804,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 182,
+      "physicsMs": 1815,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.8625001311302185
+    },
+    {
+      "frame": 183,
+      "physicsMs": 1826,
+      "shot": true,
+      "pending": 1,
+      "lastFire": -0.0010000010952353477,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 184,
+      "physicsMs": 1837,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.27900001406669617,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 185,
+      "physicsMs": 1848,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2580000162124634,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 186,
+      "physicsMs": 1859,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.2370000034570694,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 187,
+      "physicsMs": 1870,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 188,
+      "physicsMs": 1870,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.21599999070167542,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 189,
+      "physicsMs": 1881,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.19499997794628143,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 190,
+      "physicsMs": 1892,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.17399996519088745,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 191,
+      "physicsMs": 1903,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.15299995243549347,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 192,
+      "physicsMs": 1914,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1319999396800995,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 193,
+      "physicsMs": 1925,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.1109999418258667,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 194,
+      "physicsMs": 1936,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.08999994397163391,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 195,
+      "physicsMs": 1947,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.06899994611740112,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 196,
+      "physicsMs": 1958,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.047999944537878036,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 197,
+      "physicsMs": 1969,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.02699994295835495,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 198,
+      "physicsMs": 1980,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.8500001430511475
+    },
+    {
+      "frame": 199,
+      "physicsMs": 1980,
+      "shot": false,
+      "pending": 0,
+      "lastFire": 0.005999942310154438,
+      "charge": 0.8500001430511475
+    }
+  ]
+}

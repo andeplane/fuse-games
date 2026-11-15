@@ -1,5 +1,8 @@
 # FuseOS game icons
 
+Fusero (2026-11-15): original code-drawn neon worm and rope from
+`games/fusero/art/icon.svg`, rasterized to 64×64 and 32×32 transparent RGBA PNGs.
+
 One Windows-98-style desktop icon per portal game: `<id>.png` is 64×64 (drawn at 32 px on the desktop and at the top
 of the Start menu), `<id>-16.png` is 32×32 (title bars, taskbar buttons, submenus). Both are transparent RGBA PNGs
 with a uniform 1 px dark outline added around the art; `tests/fuseos-game-icons.test.ts` checks that every

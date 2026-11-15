@@ -17,6 +17,7 @@ import {
   type ReceiveResult,
   type StreamBase,
 } from "./stream.js";
+import { logTiming, type LogTiming } from "./timing.js";
 
 export const SNAPSHOT_INTERVAL = 4,
   SNAPSHOTS_RETAINED = 12,
@@ -75,6 +76,7 @@ export class World<
   private frames: Frame<View>[] = [];
   private emitted = new Set<string>();
   private readonly ticker: Ticker<Room, Entry, Event>;
+  private readonly timing: Readonly<LogTiming>;
   /**
    * The state being simulated. Settled, it is `state`. After a rollback whose re-run the budget window could not
    * finish, it is the re-run, short of `state.tick`, and `state` stays the newest state the world reached until the
@@ -107,6 +109,7 @@ export class World<
     readonly creatorId: string,
     readonly selfId: string,
   ) {
+    this.timing = logTiming(game.tickMs);
     this.ticker = game.createTicker();
     this.work = state;
     this.installedTick = state.tick;
@@ -153,6 +156,7 @@ export class World<
       this.game,
       generation,
       base ?? { seq: 0, tick: 0 },
+      this.timing,
     );
     this.adoptStream(id, stream);
     return stream;
@@ -222,7 +226,7 @@ export class World<
     }
     return earliest;
   }
-  /** Simulation may run 40 ticks past a connected player's completeness; further is a stall on that player. */
+  /** Simulation may run two seconds past a connected player's completeness; further is a stall on that player. */
   stallBound(): { tick: number; waitingFor?: string } {
     let bound = Infinity,
       waitingFor: string | undefined;
@@ -239,8 +243,8 @@ export class World<
       let through = stream ? stream.completeThrough() : 0;
       const disconnect = this.pendingDisconnect(player.id);
       if (disconnect !== undefined) through = Math.max(through, disconnect);
-      if (through + STALL_TICKS < bound) {
-        bound = through + STALL_TICKS;
+      if (through + this.timing.rollbackTicks < bound) {
+        bound = through + this.timing.rollbackTicks;
         waitingFor = player.name;
       }
     }
@@ -286,10 +290,15 @@ export class World<
     const replacing =
       generation !== undefined && existing?.generation !== generation;
     const stream = replacing
-      ? new StreamLog(this.game, generation, {
-          seq: 0,
-          tick: Math.max(0, this.tick - STALL_TICKS),
-        })
+      ? new StreamLog(
+          this.game,
+          generation,
+          {
+            seq: 0,
+            tick: Math.max(0, this.tick - this.timing.rollbackTicks),
+          },
+          this.timing,
+        )
       : existing;
     if (!stream)
       return {
@@ -412,7 +421,7 @@ export class World<
       else events.push(emitted);
     });
     this.gameTicks.set(tick, after);
-    if (tick % SNAPSHOT_INTERVAL === 0)
+    if (tick % this.timing.snapshotInterval === 0)
       this.snapshots.set(tick, structuredClone(state));
     const shown =
       last - tick <= 1 ||
@@ -486,7 +495,7 @@ export class World<
    * Unlike `servable`, never falls back to speculative state on a gap or missing history.
    */
   confirmedFrame(): Frame<View> | undefined {
-    const complete = this.work.tick - ROLLBACK_TICKS;
+    const complete = this.work.tick - this.timing.rollbackTicks;
     // Called every frame: no allocation unless the confirmed snapshot moved.
     let at = -1;
     for (const tick of this.snapshots.keys())

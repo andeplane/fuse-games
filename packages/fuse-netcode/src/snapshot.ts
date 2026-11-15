@@ -3,6 +3,7 @@ import { packMessage, unpackMessage } from "./packet.js";
 import type { World } from "./rollback.js";
 import { StreamLog, PACKET_ENTRIES } from "./stream.js";
 import { memberId, uint32 } from "./wire.js";
+import { DEFAULT_LOG_TIMING, logTiming, type LogTiming } from "./timing.js";
 
 export const SNAPSHOT_CHUNK_BYTES = 16_000,
   MAX_SNAPSHOT_BYTES = 2_600_000,
@@ -34,14 +35,21 @@ export function restoreSnapshotStream<Entry extends LogEntry>(
   rules: import("./game.js").EntryRules<Entry>,
   stream: SnapshotStream<Entry>,
   tick: number,
-  localTick = tick + 60,
+  localTick: number | undefined = undefined,
   lastSeq = stream.entries.at(-1)?.[0] ?? stream.seq,
+  timing: Readonly<LogTiming> = DEFAULT_LOG_TIMING,
 ): StreamLog<Entry> | undefined {
-  const log = new StreamLog(rules, stream.generation, {
-    seq: stream.seq,
-    tick,
-    ordinal: stream.ordinal,
-  });
+  const log = new StreamLog(
+    rules,
+    stream.generation,
+    {
+      seq: stream.seq,
+      tick,
+      ordinal: stream.ordinal,
+    },
+    timing,
+  );
+  const replayTick = localTick ?? tick + timing.replayLeadTicks;
   for (
     let offset = 0;
     offset < stream.entries.length;
@@ -49,7 +57,7 @@ export function restoreSnapshotStream<Entry extends LogEntry>(
   ) {
     const part = stream.entries.slice(offset, offset + PACKET_ENTRIES);
     if (
-      log.receive(part, part.at(-1)![0], tick, localTick, tick).status !==
+      log.receive(part, part.at(-1)![0], tick, replayTick, tick).status !==
       "accepted"
     )
       return;
@@ -268,7 +276,17 @@ export function decodeSnapshot<
       ordinal,
       entries: entries as Entry[],
     };
-    if (!restoreSnapshotStream(game, stream, tick)) return;
+    if (
+      !restoreSnapshotStream(
+        game,
+        stream,
+        tick,
+        undefined,
+        undefined,
+        logTiming(game.tickMs),
+      )
+    )
+      return;
     streams.push(stream);
   }
   return { state, streams };

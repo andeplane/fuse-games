@@ -45,6 +45,7 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
   assert.deepEqual(platform.gameIds, [
     GAME_ID,
     diceGame.id,
+    "fusero",
     "hook-havok",
     "fuse-choppers",
     "fuse-craft",
@@ -65,6 +66,7 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
     "fusemania",
   ]);
   assert.equal(platform.game("fuse-front").parseStats({}, 1), undefined);
+  assert.equal(platform.game("fusero").parseStats({}, 1), undefined);
   assert.equal(platform.game("fuse-lane").parseStats({}, 1), undefined);
   assert.equal(platform.game("fuse-choppers").parseStats({}, 1), undefined);
   assert.equal(platform.game("fuse-axe").parseStats({}, 1), undefined);
@@ -115,6 +117,10 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
     const dice = await create("dice"),
       riders = await create(GAME_ID);
     const ballBros = await create("ball-bros");
+    const liero = await create("fusero");
+    assert.deepEqual(await open(liero.code, liero.token, "fusero"), {
+      welcomed: true,
+    });
     assert.deepEqual(await open(ballBros.code, ballBros.token, "ball-bros"), {
       welcomed: true,
     });

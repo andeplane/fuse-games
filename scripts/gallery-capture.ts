@@ -70,6 +70,28 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  fusero: async (page) => {
+    await openPlayOptions(page, "single");
+    await page
+      .getByRole("button", { name: "START MATCH", exact: true })
+      .click();
+    await page.locator('.liero-room[data-phase="running"]').waitFor();
+    await page.waitForFunction(() =>
+      document.querySelector(".liero-overlay")?.hasAttribute("hidden"),
+    );
+    await page.locator(".liero-arena canvas").click();
+    const mac = await page.evaluate<boolean>(
+      "window.fusero.keyboard().platform === 'mac'",
+    );
+    const fire = mac ? "AltLeft" : "ControlLeft";
+    const jump = mac ? "MetaLeft" : "AltLeft";
+    await page.keyboard.press(jump, { delay: 80 });
+    await page.keyboard.down(fire);
+    await page.keyboard.down("ArrowRight");
+    await hold(page, ["ArrowLeft", "ArrowUp", "KeyX"], 700);
+    await page.keyboard.up("ArrowRight");
+    await page.keyboard.up(fire);
+  },
   "ball-bros": async (page) => {
     await openPlayOptions(page);
     await page

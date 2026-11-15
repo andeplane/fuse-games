@@ -80,6 +80,8 @@ export interface RollbackGame<
   id: string;
   /** The rules identifier, `<prefix>-<n>`: peers on different rules refuse each other, and `n` says which one is newer. */
   rules: string;
+  /** Log-clock duration; defaults to 50 ms. Changing it requires a rules-version bump. */
+  tickMs?: number;
   createRoom(matchId: string, settings: Settings): Room;
   /** A fresh fold; the runtime keeps one per world, across rollbacks. */
   createTicker(): Ticker<Room, Entry, Event>;

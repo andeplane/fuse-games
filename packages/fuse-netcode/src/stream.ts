@@ -1,5 +1,6 @@
 import type { EntryRules, LogEntry } from "./game.js";
 import { uint32 } from "./wire.js";
+import { DEFAULT_LOG_TIMING, type LogTiming } from "./timing.js";
 
 export const ROLLBACK_TICKS = 40;
 /** Entries stamped further ahead than this are rejected. Clocks converge by slewing, so a live peer may legitimately
@@ -79,6 +80,7 @@ export class StreamLog<Entry extends LogEntry = LogEntry> {
     private readonly rules: EntryRules<Entry>,
     public generation: number,
     base: StreamBase = { seq: 0, tick: 0 },
+    private readonly timing: Readonly<LogTiming> = DEFAULT_LOG_TIMING,
   ) {
     this.contiguous = base.seq;
     this.baseSeq = base.seq;
@@ -180,7 +182,8 @@ export class StreamLog<Entry extends LogEntry = LogEntry> {
         candidate[0] > Math.max(lastSeq, this.lastSeq)
       )
         return refused("violation");
-      if (candidate[1] > localTick + FUTURE_TICKS) return refused("window");
+      if (candidate[1] > localTick + this.timing.futureTicks)
+        return refused("window");
       const [seq, tick] = candidate;
       const existing = seen.get(seq);
       if (existing) {
@@ -232,7 +235,10 @@ export class StreamLog<Entry extends LogEntry = LogEntry> {
       this.confirmedTick = Math.max(this.confirmedTick, this.through);
     if (!added.length) return { status: "accepted", added };
     const earliest = Math.min(...added.map((entry) => entry[1]));
-    if (earliest <= this.baseTick || earliest <= currentTick - ROLLBACK_TICKS)
+    if (
+      earliest <= this.baseTick ||
+      earliest <= currentTick - this.timing.rollbackTicks
+    )
       return { status: "unrepairable", added };
     return {
       status: "accepted",
@@ -265,7 +271,7 @@ export class StreamLog<Entry extends LogEntry = LogEntry> {
   /** Own entries still worth resending: the last 64 or the last two seconds, whichever is smaller. */
   retained(): Entry[] {
     return [...this.entries.values()]
-      .filter((entry) => entry[1] > this.through - RETAINED_TICKS)
+      .filter((entry) => entry[1] > this.through - this.timing.retainedTicks)
       .sort((a, b) => a[0] - b[0])
       .slice(-RETAINED_ENTRIES);
   }

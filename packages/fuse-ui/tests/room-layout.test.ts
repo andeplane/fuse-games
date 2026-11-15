@@ -9,16 +9,19 @@ import {
 } from "fuse-ui";
 import { page } from "./dom-fixture.js";
 
-test("configuration rooms keep seats below invites and authored round choices on the right; compact stays intact", () => {
+test("configuration rooms keep seats left and authored choices right, including solo without invitations", () => {
   for (const compact of [false, true]) {
     const { document } = page();
     const root = document.createElement("section");
     const invite = document.createElement("div");
+    const extra = document.createElement("button");
+    extra.textContent = "Open shared TV";
     const choices = document.createElement("button");
     choices.textContent = "Choose round";
     const layout = createRoomLayout({
       element: root,
       invite,
+      extras: [extra],
       roster: createRoster({ document }),
       capacity: 3,
       compact,
@@ -26,9 +29,13 @@ test("configuration rooms keep seats below invites and authored round choices on
       configuration: [choices],
     });
     layout.update(1);
-    assert.equal(root.classList.contains("fui-room-configuration"), !compact);
+    assert.equal(root.classList.contains("fui-room-configuration"), true);
+    assert.equal(root.classList.contains("fui-room-compact"), false);
+    assert.equal(root.querySelector(".fui-invite") !== null, !compact);
+    assert.equal(root.contains(extra), !compact);
     const slots = root.querySelector(".fui-room-open-slots")!;
-    assert.equal(slots.closest(".fui-room-invitation") !== null, !compact);
+    assert.ok(slots.closest(".fui-room-invitation"));
+    assert.equal(root.classList.contains("fui-room-actions-top"), compact);
     assert.ok(choices.closest(".fui-room-players"));
     assert.ok(choices.closest(".fui-room-configuration-content"));
     assert.equal(root.querySelectorAll(".fui-room-open-slot").length, 3);
