@@ -68,7 +68,7 @@ import {
   type TapsFile,
 } from "./taps.js";
 import {
-  bandMix,
+  partsMix,
   coversAll,
   dragSpan,
   grabAt,
@@ -226,6 +226,12 @@ const gridInput = el("input", {
   checked: true,
   title: "Draw 16th lines over the spectrogram",
 });
+/** The three parts the listening band splits the song into: untick one to mute it. */
+const hearInput = (checked: boolean, title: string) =>
+  el("input", { type: "checkbox", checked, title });
+const hearBelow = hearInput(false, "Hear what is below the listening band");
+const hearBand = hearInput(true, "Hear the listening band itself");
+const hearAbove = hearInput(false, "Hear what is above the listening band");
 const editInput = el("input", {
   type: "checkbox",
   title: "Click a lane to add or remove a tap",
@@ -304,6 +310,18 @@ app.append(
     viewSelect,
     el("label", {}, "floor ", floorInput),
     el("label", {}, gridInput, " 16ths"),
+    el(
+      "span",
+      {
+        className: "lab-hear",
+        title:
+          "Drag a box on the spectrogram (or the bar above it) to set the listening band, then choose which parts play",
+      },
+      "hear ",
+      el("label", {}, hearBelow, " below"),
+      el("label", {}, hearBand, " band"),
+      el("label", {}, hearAbove, " above"),
+    ),
     el("label", {}, editInput, " edit"),
     el("label", { className: "lab-record" }, recordInput, " record"),
     button(
@@ -401,13 +419,26 @@ if (import.meta.env.DEV)
     if (resumeAt === undefined && location.hash !== hash)
       history.replaceState(null, "", hash);
   }, 1000);
-/** The listening band: outside these frequencies the song is turned down to a tenth. Undefined: all of them. */
+/** The listening band: it splits the song in three parts (below, band, above), each heard or muted. Undefined: no split. */
 let band: { lowHz: number; highHz: number } | undefined;
-/** The playback graph: every song source goes in at `mixIn`; the band's filters are `bandFilters` (2 high-pass, 2 low-pass). */
+/**
+ * The playback graph: every song source goes in at `mixIn` and reaches the output untouched (`dryGain`) or as three
+ * parts: below the band (`belowFilters`, 2 low-pass at its lower edge), the band (`bandFilters`, 2 high-pass and
+ * 2 low-pass) and above it (`aboveFilters`, 2 high-pass at its upper edge).
+ */
 let mixIn: GainNode | undefined;
 let dryGain: GainNode | undefined;
+let belowGain: GainNode | undefined;
 let bandGain: GainNode | undefined;
+let aboveGain: GainNode | undefined;
+let belowFilters: BiquadFilterNode[] = [];
 let bandFilters: BiquadFilterNode[] = [];
+let aboveFilters: BiquadFilterNode[] = [];
+const hear = () => ({
+  below: hearBelow.checked,
+  band: hearBand.checked,
+  above: hearAbove.checked,
+});
 /** The current animation loop; a stop or a new start retires the one before it. */
 let frameLoop = 0;
 
@@ -897,18 +928,28 @@ function draw(): void {
   if (spectra) drawCurve(g, spectra.onset, onsetScale, "#3bffd0", t0, t1);
   if (flux) drawCurve(g, flux, fluxScale, "#ff6bd5", t0, t1);
 
-  // The listening band: what is turned down is dimmed.
+  // The listening band: what is muted is dimmed.
   const listening = bandSpan();
   if (band) {
     const { specX, specW } = layout;
+    const heard = hear();
     g.fillStyle = "rgba(4,9,26,0.62)";
-    g.fillRect(specX, HEADER, listening.from - specX, height - HEADER);
-    g.fillRect(
-      listening.to,
-      HEADER,
-      specX + specW - listening.to,
-      height - HEADER,
-    );
+    if (!heard.below)
+      g.fillRect(specX, HEADER, listening.from - specX, height - HEADER);
+    if (!heard.band)
+      g.fillRect(
+        listening.from,
+        HEADER,
+        listening.to - listening.from,
+        height - HEADER,
+      );
+    if (!heard.above)
+      g.fillRect(
+        listening.to,
+        HEADER,
+        specX + specW - listening.to,
+        height - HEADER,
+      );
     g.fillStyle = "rgba(59,255,208,0.7)";
     g.fillRect(listening.from - 1, HEADER, 1, height - HEADER);
     g.fillRect(listening.to, HEADER, 1, height - HEADER);
@@ -982,7 +1023,7 @@ function draw(): void {
   g.fillRect(listening.to - 3, 1, 3, HEADER - 2);
   if (band)
     g.fillText(
-      `${Math.round(band.lowHz)}–${Math.round(band.highHz)} Hz, rest −90%`,
+      `${Math.round(band.lowHz)}–${Math.round(band.highHz)} Hz`,
       Math.min(listening.from + 6, specX + layout.specW - 150),
       HEADER + 12,
     );
@@ -1211,22 +1252,34 @@ function ensureContext(): AudioContext {
         Math.sin((2 * Math.PI * 2200 * i) / audioContext.sampleRate) *
         Math.exp(-i / (length / 5)) *
         0.6;
-    // The song, as it is (dry) and through a 4th-order band-pass (band); `applyBand` sets the mix.
+    // The song, as it is (dry) and split in three by 4th-order filters; `applyBand` sets the mix.
     const context = audioContext;
     mixIn = context.createGain();
     dryGain = context.createGain();
+    belowGain = context.createGain();
     bandGain = context.createGain();
-    bandFilters = [0.541, 1.307, 0.541, 1.307].map((q, index) => {
-      const filter = context.createBiquadFilter();
-      filter.type = index < 2 ? "highpass" : "lowpass";
-      // For these filter types Web Audio takes Q in decibels; the two stages make a Butterworth response.
-      filter.Q.value = 20 * Math.log10(q);
-      return filter;
-    });
+    aboveGain = context.createGain();
+    // For these filter types Web Audio takes Q in decibels; two stages make a Butterworth response.
+    const stages = (types: BiquadFilterType[]) =>
+      types.map((type, index) => {
+        const filter = context.createBiquadFilter();
+        filter.type = type;
+        filter.Q.value = 20 * Math.log10(index % 2 === 0 ? 0.541 : 1.307);
+        return filter;
+      });
+    belowFilters = stages(["lowpass", "lowpass"]);
+    bandFilters = stages(["highpass", "highpass", "lowpass", "lowpass"]);
+    aboveFilters = stages(["highpass", "highpass"]);
     mixIn.connect(dryGain).connect(context.destination);
-    let node: AudioNode = mixIn;
-    for (const filter of bandFilters) node = node.connect(filter);
-    node.connect(bandGain).connect(context.destination);
+    for (const [filters, gain] of [
+      [belowFilters, belowGain],
+      [bandFilters, bandGain],
+      [aboveFilters, aboveGain],
+    ] as const) {
+      let node: AudioNode = mixIn;
+      for (const filter of filters) node = node.connect(filter);
+      node.connect(gain).connect(context.destination);
+    }
     applyBand();
   }
   return audioContext;
@@ -1234,19 +1287,23 @@ function ensureContext(): AudioContext {
 
 /** Points the filters at the band and sets the mix; a short ramp, so dragging the box does not click. */
 function applyBand(): void {
-  if (!audioContext || !dryGain || !bandGain) return;
+  if (!audioContext || !dryGain || !belowGain || !bandGain || !aboveGain)
+    return;
   const now = audioContext.currentTime;
-  const mix = bandMix(Boolean(band));
+  const mix = partsMix(Boolean(band), hear());
   dryGain.gain.setTargetAtTime(mix.dry, now, 0.015);
+  belowGain.gain.setTargetAtTime(mix.below, now, 0.015);
   bandGain.gain.setTargetAtTime(mix.band, now, 0.015);
+  aboveGain.gain.setTargetAtTime(mix.above, now, 0.015);
   if (!band) return;
   const top = audioContext.sampleRate * 0.45;
+  const edge = (hz: number) => Math.max(10, Math.min(top, hz));
+  const aim = (filter: BiquadFilterNode, hz: number) =>
+    filter.frequency.setTargetAtTime(edge(hz), now, 0.015);
+  for (const filter of belowFilters) aim(filter, band.lowHz);
   for (const [index, filter] of bandFilters.entries())
-    filter.frequency.setTargetAtTime(
-      Math.max(10, Math.min(top, index < 2 ? band.lowHz : band.highHz)),
-      now,
-      0.015,
-    );
+    aim(filter, index < 2 ? band.lowHz : band.highHz);
+  for (const filter of aboveFilters) aim(filter, band.highHz);
 }
 
 /** Seconds into the song the listener hears now. */
@@ -1621,6 +1678,11 @@ canvas.addEventListener("pointerup", (event) => {
   }
   pickedTap = undefined;
   selection = selectionFrom(start, x, y);
+  // A box dragged on the spectrogram is also the listening band, so its frequencies can be heard alone or muted.
+  if (selection.lowHz !== undefined && selection.highHz !== undefined) {
+    band = { lowHz: selection.lowHz, highHz: selection.highHz };
+    applyBand();
+  }
   updateFlux();
   renderSelection();
   draw();
@@ -2118,6 +2180,12 @@ floorInput.oninput = () => {
   draw();
 };
 gridInput.onchange = () => draw();
+for (const input of [hearBelow, hearBand, hearAbove])
+  input.onchange = () => {
+    input.blur(); // keys go back to the page: space plays, it does not tick the box again
+    applyBand();
+    draw();
+  };
 recordInput.onchange = () => {
   document.body.classList.toggle("lab-recording", recordInput.checked);
   recordInput.blur();

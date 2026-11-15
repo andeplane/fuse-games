@@ -41,7 +41,7 @@ import {
 
 import { hiddenAtStart, parseShown } from "../src/lab/shown.js";
 
-import { bandMix, coversAll, dragSpan, grabAt } from "../src/lab/band.js";
+import { coversAll, dragSpan, grabAt, partsMix } from "../src/lab/band.js";
 
 import { parseNotesUpload, writeNotesUpload } from "../src/lab/notes-upload.js";
 import {
@@ -392,11 +392,33 @@ test("chart lab: a box over the whole axis turns nothing down", () => {
   assert.equal(coversAll({ from: 0, to: 380 }, 0, 400), false);
 });
 
-test("chart lab: outside the band the song keeps a tenth of its level", () => {
-  assert.deepEqual(bandMix(false), { dry: 1, band: 0 });
-  const mix = bandMix(true);
-  assert.equal(mix.dry, 0.1);
-  assert.equal(mix.dry + mix.band, 1);
+test("chart lab: each of the three parts of the spectrum can be muted", () => {
+  const all = { below: true, band: true, above: true };
+  const untouched = { dry: 1, below: 0, band: 0, above: 0 };
+  // No band, or everything heard: the song as it is, through no filter.
+  assert.deepEqual(
+    partsMix(false, { below: false, band: true, above: false }),
+    untouched,
+  );
+  assert.deepEqual(partsMix(true, all), untouched);
+  // The band alone: what is outside it is silent.
+  assert.deepEqual(partsMix(true, { below: false, band: true, above: false }), {
+    dry: 0,
+    below: 0,
+    band: 1,
+    above: 0,
+  });
+  // The band muted, the rest heard.
+  assert.deepEqual(partsMix(true, { below: true, band: false, above: true }), {
+    dry: 0,
+    below: 1,
+    band: 0,
+    above: 1,
+  });
+  assert.deepEqual(
+    partsMix(true, { below: false, band: false, above: false }),
+    { dry: 0, below: 0, band: 0, above: 0 },
+  );
 });
 
 /** The smallest PNG: its signature and nothing else, which is all the upload checks. */

@@ -223,3 +223,10 @@ body.chart-lab {
     border-top: 1px solid #1f2a5c;
   }
 }
+.lab-hear {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: #3bffd0;
+  white-space: nowrap;
+}
