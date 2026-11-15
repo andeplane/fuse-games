@@ -932,6 +932,15 @@ test("a Shared TV room's host without a seat is the TV once the match runs: it k
     present(fuseLaneView(room), host).tv?.line,
     "1 of 2 done for the week",
   );
+  // Back in the lobby the host is a device like any other again, and may take a seat.
+  fold(room, { a: [[ACTION, "lobby", "m2"]] });
+  tv = present(fuseLaneView(room), host);
+  assert.deepEqual(
+    [tv.screen, tv.layout, tv.askName],
+    ["lobby", "board", true],
+  );
+  fold(room, { a: [[ACTION, "start", "m3"]] });
+  assert.equal(present(fuseLaneView(room), host).layout, "tv");
   // The phones in that room are controllers; a joined creator would be one too.
   assert.equal(
     present(fuseLaneView(room), { ...BO, shared: true }).layout,

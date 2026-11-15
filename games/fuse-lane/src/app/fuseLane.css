@@ -289,6 +289,16 @@ body.fl-page .fl-remove {
   padding: 0 var(--fui-space-3);
   color: var(--fl-coral);
 }
+.fl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--fui-space-2);
+}
+.fl-actions button {
+  flex: 1 1 9rem;
+}
+
 /* Art: a picture once its file loads, a coloured block with a label until then. */
 .fl-art {
   --art-size: 24px;

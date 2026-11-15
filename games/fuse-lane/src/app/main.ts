@@ -56,6 +56,7 @@ import {
 import { present, type Viewer } from "./presenter.js";
 import { createOnlineSheet, nextFace, storedFace } from "./online-menu.js";
 import { createRoomLobby } from "./room-lobby.js";
+import { createPendingSettings } from "./pending-settings.js";
 import { dueReports, sendReport } from "./reports.js";
 import { FuseLaneRuntime, type FuseLaneCallbacks } from "./runtime.js";
 import { markToured, owesTour, tourSteps } from "./tour.js";
@@ -489,8 +490,8 @@ function room(): void {
     display = role === "display";
   if (!display) store.setItem(names.last, code);
   document.body.classList.toggle("fl-display", display);
-  // Shared TV is ticked in the room. The host's choice is remembered for this room, so a reload alone keeps it.
-  const shared = role === "host" && store.getItem(names.tvRoom(code)) === "1";
+  // Shared TV is ticked in the room. What the room last had is remembered for its host, so a reload alone keeps it.
+  let shared = role === "host" && store.getItem(names.tvRoom(code)) === "1";
   const viewer: Viewer = {
     me: "",
     host: false,
@@ -499,10 +500,23 @@ function room(): void {
     shared: false,
   };
   let settings: FuseLaneSettings = { ...DEFAULT_SETTINGS, display: shared };
+  // A settings command carries every setting: a choice the room has not answered yet rides along with the next one.
+  const pending = createPendingSettings<FuseLaneSettings>(() =>
+    performance.now(),
+  );
+  const change = (patch: Partial<FuseLaneSettings>): boolean => {
+    const sent = runtime.command({
+      type: "settings",
+      settings: pending.with(settings, patch),
+    });
+    if (sent) pending.sent(patch);
+    return sent;
+  };
 
   // The room's line is at the room's foot. A match fills the screen and the bar is away, so there the same words
-  // are a small line under the town's own bar, and only while they say something other than "Connected". `say`
-  // writes both, and once the room is over nothing later replaces that.
+  // are a small line under the town's own bar, and only while they say something other than the plain connected
+  // line (a lagging player or a wait for one still shows). `say` writes both, and once the room is over nothing
+  // later replaces that.
   const status = createNotice({ className: "fl-room-status" }),
     live = createNotice({ className: "fl-status" });
   let over = false;
@@ -513,7 +527,7 @@ function room(): void {
     live.show(words, tone);
     live.element.classList.toggle(
       "quiet",
-      tone === "info" && words.startsWith("Connected"),
+      tone === "info" && words === fuseLaneGame.text.connected,
     );
   };
   const leave = () => {
@@ -537,24 +551,9 @@ function room(): void {
       removeBot: (id) => runtime.command({ type: "bot", action: "remove", id }),
       start: () => runtime.command({ type: "action", action: "start" }),
       goal: (goal) => runtime.setGoals([goal, goal, goal, goal]),
-      level: (level) =>
-        runtime.command({ type: "settings", settings: { ...settings, level } }),
-      weekSeconds: (weekSeconds) =>
-        runtime.command({
-          type: "settings",
-          settings: { ...settings, weekSeconds },
-        }),
-      shared: (on) => {
-        const sent = runtime.command({
-          type: "settings",
-          settings: { ...settings, display: on },
-        });
-        if (sent) {
-          if (on) store.setItem(names.tvRoom(code), "1");
-          else store.removeItem(names.tvRoom(code));
-        }
-        return sent;
-      },
+      level: (level) => change({ level }),
+      weekSeconds: (weekSeconds) => change({ weekSeconds }),
+      shared: (display) => change({ display }),
       openTv: () =>
         window.open(
           endpoints.appUrl(`?room=${code}&display=1`),
@@ -671,7 +670,15 @@ function room(): void {
         }),
       );
       settings = roomSettings;
+      pending.answered(roomSettings);
       viewer.shared = roomSettings.display;
+      // The room's creator remembers what the room has, not what it asked for: a tick the room never took, or one
+      // changed while this device was away, does not come back with a reload.
+      if (role === "host" && viewer.host && roomSettings.display !== shared) {
+        shared = roomSettings.display;
+        if (shared) store.setItem(names.tvRoom(code), "1");
+        else store.removeItem(names.tvRoom(code));
+      }
       const model = present(frame, viewer);
       gameMenu.update({
         canLobby: viewer.host && frame.phase !== "lobby",

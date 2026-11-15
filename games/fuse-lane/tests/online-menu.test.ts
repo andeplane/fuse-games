@@ -62,10 +62,18 @@ test("PLAY ONLINE: CREATE ROOM and a code, and nothing about how the room is pla
   s.byText("CREATE ROOM").click();
   await settle();
   assert.equal(s.created(), 1);
-  // The face the room's join card shows is the remembered one, and a tap there moves to the next.
-  assert.equal(storedFace(store, names.avatar), "fox");
-  store.setItem(names.avatar, nextFace("fox"));
-  assert.equal(storedFace(store, names.avatar), nextFace("fox"));
+});
+
+test("the room's face: the remembered one, the first when none or a stale one is stored, and the next in order", () => {
+  const { store } = memory({ [names.avatar]: "cat" });
+  assert.equal(storedFace(store, names.avatar), "cat");
+  assert.equal(storedFace(memory().store, names.avatar), "fox");
+  assert.equal(
+    storedFace(memory({ [names.avatar]: "dragon?" }).store, names.avatar),
+    "fox",
+  );
+  assert.equal(nextFace("fox"), "alien");
+  assert.equal(nextFace("no such face"), "robot", "a stale face starts over");
 });
 
 test("CREATE ROOM says what went wrong and comes back; JOIN takes a code in any case, or says what a code looks like", async () => {

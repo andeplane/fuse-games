@@ -38,7 +38,11 @@ async function create(host: Page, shared: boolean): Promise<string> {
     .locator(".fl-lobby .fui-room-code")
     .filter({ hasText: code })
     .waitFor();
-  assert.equal(await host.locator(".fl-code").count(), 0);
+  assert.equal(
+    await host.getByText(code, { exact: true }).count(),
+    1,
+    "the room code is shown once",
+  );
   if (shared) {
     await host.locator(".fl-shared-tv input").check();
     await host.locator(".fl-shared-tv .fui-room-tv-screen").waitFor();
@@ -65,6 +69,9 @@ try {
   await host.getByRole("button", { name: "START MATCH", exact: true }).click();
   await running(host, "board");
   await running(guest, "board");
+  // The match fills the screen: the app's bar is away, and the room's line stays quiet while all is well.
+  await host.locator(".fl-top").waitFor({ state: "hidden" });
+  assert.equal(await host.locator(".fl-status").isVisible(), false);
   await guest.getByRole("button", { name: "MENU", exact: true }).click();
   await guest.getByRole("button", { name: "CONTROLS", exact: true }).click();
   await guest.locator(".fui-game-menu-controls .fui-controls-list").waitFor();
