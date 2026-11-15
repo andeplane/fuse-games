@@ -278,7 +278,12 @@ body.fs-display .fs-lobby {
   justify-content: center;
 }
 
-/* The deck */
+/* The deck. The shared top bar floats over the page, so the deck and a phone's pad start under it. */
+.fs-stage,
+.fs-controller {
+  /* The bar, and the line under its left end that says which room this is. */
+  padding-top: calc(var(--fui-page-top) + 1.5rem);
+}
 .fs-stage {
   flex: 1;
   display: flex;
@@ -289,7 +294,7 @@ body.fs-display .fs-lobby {
 }
 .fs-screen {
   position: relative;
-  width: min(100%, calc((100dvh - 9.5rem) * 16 / 9));
+  width: min(100%, calc((100dvh - 11rem) * 16 / 9));
   aspect-ratio: 16 / 9;
   overflow: hidden;
   background: var(--fui-ink);
@@ -470,7 +475,23 @@ body.fs-display .fs-screen {
     z-index: calc(var(--fui-z-overlay) + 1);
     padding: 0;
   }
-  body:has(.fs-room[data-screen="play"]) .fs-top > :not(.fui-game-menu) {
+  /* On a phone on its side the deck takes the whole screen: the bar keeps only its right end, where the menu is. */
+  body:has(.fs-room[data-screen="play"])
+    .fs-top
+    > :is(.fui-top-bar-left, .fui-top-bar-context) {
+    display: none;
+  }
+  .fs-room[data-screen="play"] .fs-stage {
+    padding-top: 0;
+  }
+  /* Only the menu button stays, in the top right corner. */
+  body:has(.fs-room[data-screen="play"]) .fs-top {
+    justify-content: flex-end;
+  }
+  body:has(.fs-room[data-screen="play"])
+    .fs-top
+    .fui-top-bar-right
+    > :not(.fui-top-bar-toggle) {
     display: none;
   }
   body:has(.fs-room[data-screen="play"]) .fs-top .fui-game-menu {
