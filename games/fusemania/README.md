@@ -39,7 +39,9 @@ Every finished song adds each rider's rating to their session total, and the win
 
 A match never begins on a device that is still downloading the song. A started song is held at its first moment: each device logs `READY` once it has the decoded audio (or will play none: `?mute`, a phone that is a pad, a file that failed three times), and the fold lets the song go on the tick the last connected device has said so, the shared screen's TV included. The field says `DOWNLOADING SONG…`, or who the room waits for. A device that never answers holds the room for at most 30 s (`HOLD_TICKS` in `src/online/game.ts`). This matters most in a random session, whose song is drawn at START.
 
-In the song select a cover wears a download mark while its song is not on the device (`src/app/song-load.ts`). Downloaded songs are kept in cache storage under the rules version (`src/app/song-cache.ts`), so a song is fetched once. A cached file is not asked for again: replacing a song's audio under the same path needs a `RULES` bump, as a changed chart does.
+In the song select a cover wears a download mark while its full song is not on the device (`src/app/song-load.ts`). Downloaded songs are kept in cache storage under the rules version (`src/app/song-cache.ts`), so a song is fetched once. A cached file is not asked for again: replacing a song's audio under the same path needs a `RULES` bump, as a changed chart does.
+
+The song select plays a separate lightweight preview: 20 seconds of music, fading out over the last 1.5 seconds, then two seconds of silence before repeating. Every bundled song has one, beginning at its original preview position where there is room. Browsing fetches these small clips rather than full songs; the full audio downloads when play starts. Preview bytes use the same persistent browser Cache Storage, so returning to a song or reopening the page reuses its downloaded clip. A fast swipe waits until a selection settles before fetching, and leaving song select stops playback and releases its object URL. `?mute` previews fetch nothing. See [preview generation](charts/previews.md).
 
 ## Controls
 
