@@ -1,5 +1,6 @@
 import {
   FieldValue,
+  FieldPath,
   Firestore,
   Timestamp,
   type DocumentReference,
@@ -15,7 +16,7 @@ import {
   storedPresence,
 } from "./friends.js";
 import { validPublicId } from "./friends-api.js";
-import type { HistoryDatabase } from "./history.js";
+import type { FeedCursor, FeedRow, HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
 import {
   parseProfile,
@@ -172,20 +173,30 @@ export class FirestoreHistoryDatabase implements HistoryDatabase {
   }
   async recentMatches(
     gameId: string,
-    before: number | undefined,
+    before: FeedCursor | undefined,
     limit: number,
-  ): Promise<MatchRecord[]> {
+  ): Promise<FeedRow[]> {
     // `(gameId, feedAt desc)` on the matches collection; firestore.indexes.json carries it.
-    let query = this.matches().where("gameId", "==", gameId);
-    // Strictly older, exactly as MemoryHistoryDatabase pages: two games stamped in the same millisecond on a page
-    // boundary can cost one of them its listing (docs/design/PLAYER-STATS.md).
-    if (before !== undefined) query = query.where("feedAt", "<", before);
-    const docs = (await query.orderBy("feedAt", "desc").limit(limit).get())
-      .docs;
-    // One unreadable record must not hide the rest of the page.
-    return docs.flatMap((doc) => {
+    let query = this.matches()
+      .where("gameId", "==", gameId)
+      .where("feedAt", ">=", 0);
+    if (before !== undefined && before.id === undefined)
+      query = query.where("feedAt", "<", before.at);
+    let ordered = query
+      .orderBy("feedAt", "desc")
+      .orderBy(FieldPath.documentId(), "desc");
+    if (before?.id !== undefined)
+      ordered = ordered.startAfter(before.at, before.id);
+    const docs = (await ordered.limit(limit).get()).docs;
+    return docs.map((doc) => {
+      const at: unknown = doc.get("feedAt");
+      if (typeof at !== "number" || !Number.isFinite(at) || at < 0)
+        throw new Error("Invalid feed cursor in storage");
       const match = parseMatchRecord(this.platform, doc.data());
-      return match?.gameId === gameId ? [match] : [];
+      return {
+        cursor: { at, id: doc.id },
+        ...(match?.gameId === gameId ? { match } : {}),
+      };
     });
   }
   async matchesFor(

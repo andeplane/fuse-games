@@ -201,7 +201,7 @@ export interface AccountDialogOptions<
   /** GET the signed-in player's history; `before` pages backwards from an `endedAt`. */
   historyUrl(before?: number): string;
   /** GET everyone's recent games; `before` pages backwards from a listed `endedAt`. */
-  matchesUrl(before?: number): string;
+  matchesUrl(before?: string | number): string;
   /** GET the profile, PUT `{ username }`. */
   profileUrl: string;
   /** GET `{ players }`. */
@@ -258,7 +258,7 @@ export interface AccountDialog {
 interface Feed<Match> {
   matches: Match[];
   more: boolean;
-  cursor?: number;
+  cursor?: string | number;
   loaded: boolean;
   state: "idle" | "loading" | "failed";
 }
@@ -536,12 +536,12 @@ export function createAccountDialog<
     try {
       const response =
         which === "everyone"
-          ? await get<{ matches: Match[]; nextBefore?: number | null }>(
-              options.matchesUrl(before),
-              false,
-            )
+          ? await get<{
+              matches: Match[];
+              nextBefore?: string | number | null;
+            }>(options.matchesUrl(before), false)
           : await get<AccountPage<Profile, Match>>(
-              options.historyUrl(before),
+              options.historyUrl(feed.matches.at(-1)?.endedAt),
               true,
             );
       if (mine !== session) return;

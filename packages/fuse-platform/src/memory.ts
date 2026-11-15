@@ -1,6 +1,6 @@
 import type { Platform } from "./game.js";
 import { publicIdOf } from "./friends.js";
-import type { HistoryDatabase } from "./history.js";
+import type { FeedCursor, FeedRow, HistoryDatabase } from "./history.js";
 import type { LeaderboardEntry, Rivalries } from "./rating.js";
 import type { MatchRecord } from "./result.js";
 import {
@@ -90,20 +90,30 @@ export class MemoryHistoryDatabase implements HistoryDatabase {
 
   async recentMatches(
     gameId: string,
-    before: number | undefined,
+    before: FeedCursor | undefined,
     limit: number,
-  ): Promise<MatchRecord[]> {
+  ): Promise<FeedRow[]> {
     return [...this.matches.values()]
       .filter(
         (match) =>
           match.gameId === gameId &&
           match.feedAt !== undefined &&
           // Strictly older, exactly as FirestoreHistoryDatabase pages.
-          (before === undefined || match.feedAt < before),
+          (before === undefined ||
+            match.feedAt < before.at ||
+            (match.feedAt === before.at &&
+              before.id !== undefined &&
+              match.id < before.id)),
       )
-      .sort((a, b) => b.feedAt! - a.feedAt!)
+      .sort(
+        (a, b) =>
+          b.feedAt! - a.feedAt! || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      )
       .slice(0, limit)
-      .map((match) => structuredClone(match));
+      .map((match) => ({
+        cursor: { at: match.feedAt!, id: match.id },
+        match: structuredClone(match),
+      }));
   }
 
   async matchesFor(

@@ -231,7 +231,7 @@ test("an empty filtered feed page can continue from the server cursor", async ()
               matches: [{ id: "older", endedAt: 100, label: "Older match" }],
               nextBefore: null,
             }
-          : { matches: [], nextBefore: 123 },
+          : { matches: [], nextBefore: "cWzEyMywiYSJd" },
       ),
     );
   f.panel.matchesButton.click();
@@ -239,7 +239,7 @@ test("an empty filtered feed page can continue from the server cursor", async ()
   assert.equal(f.named("OLDER MATCHES")!.hidden, false);
   f.named("OLDER MATCHES")!.click();
   await settle();
-  assert.ok(f.requests.includes("GET /matches?before=123"));
+  assert.ok(f.requests.includes("GET /matches?before=cWzEyMywiYSJd"));
   assert.equal(
     f.body.querySelector(".row")!.textContent?.includes("Older match"),
     true,

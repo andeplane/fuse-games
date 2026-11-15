@@ -47,13 +47,13 @@ round receipt budgets. Older one-seat confirmations are hidden from the public f
 totals are not automatically reversed; those totals require a separate migration or reconciliation.
 
 The public feed scans at most 200 stored rows per request to skip hidden legacy records, and returns `nextBefore`
-when more storage may remain. Callers use this cursor even when the visible page is empty. It is a timestamp cursor,
-so the same-millisecond boundary limitation below also applies to scan batches.
+when more storage may remain. Callers use this cursor even when the visible page is empty. The opaque cursor carries
+the timestamp and document ID so ties and unreadable records do not hide older eligible matches.
 
 Confirmation stamps a whole game with `feedAt`, and only then. A
 round receipt never gets a `feedAt` at all, and the storage parser refuses a record that claims one while pending or
 while carrying a round. `feedAt` is stamped from `endedAt`, which is what makes a listed `endedAt` a usable page
-cursor; the row itself is always dated by `endedAt`, never by when it became public. Games confirmed before this
+ordering value; the row itself is always dated by `endedAt`, never by when it became public. Games confirmed before this
 existed have no `feedAt`, and Firestore returns no document that lacks the field its query orders by, so EVERYONE
 comes back empty — not failed — while those same games are still in YOURS. That asymmetry is what
 `scripts/backfill-match-feed-at.ts` closes: it stamps `feedAt` from `endedAt` on every stored record that passes
@@ -61,16 +61,8 @@ corroboration test (`feedlessMatchStamps` in `packages/fuse-platform/src/backfil
 record that already has one, and so is safe to repeat. A database that also predates `gameId` needs
 `scripts/backfill-match-game-id.ts` first, because the feed filters on `gameId` before it orders.
 
-Two known limits, both accepted:
-
-- **Same-millisecond ties.** Paging is `feedAt < before` at millisecond resolution, so two games stamped in the same
-  millisecond exactly on a page boundary can cost one of them its listing. A tie-proof cursor would have to page on
-  `(feedAt, document id)` with `startAfter` on `__name__`, which nothing in this repo can exercise against Firestore
-  (there is no emulator in CI), so it would ship unverified for a one-pair window on a 20-row boundary. The cursor in
-  `packages/fuse-platform/src/history.ts` and both implementations say so. The client drops ids it has already
-  listed, so a tie can never duplicate a row, only drop one.
-- **Unreadable stored records.** A record that fails to parse makes a page come back short, and the client then stops
-  offering OLDER. `/api/me/matches` already behaves this way.
+Personal history (`/api/me/matches`) still uses a timestamp cursor and may stop at unreadable records or skip ties.
+Previously open feed clients can send a numeric timestamp cursor for compatibility; tie-safe paging starts after a reload.
 
 Firestore serves the feed from the `(gameId, feedAt desc)` composite index in `firestore.indexes.json`: every game's
 history filters on `gameId`, so the feed is one game's, not the database's.

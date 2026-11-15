@@ -15,6 +15,9 @@ import {
   PENDING_TTL_MS,
   feedlessMatchStamps,
   matchRecordId,
+  parseFeedCursor,
+  type FeedCursor,
+  type FeedRow,
 } from "fuse-platform";
 import {
   parseMatchResult,
@@ -358,13 +361,15 @@ test("a stored record is re-validated and sheds storage-only fields", () => {
 
 // ---- results: the store ----
 
-async function room(riders: number) {
+async function room(
+  riders: number,
+  matches = new MemoryHistoryDatabase(platform),
+) {
   let now = 1_000_000;
   const rooms = new RoomStore(new MemoryRoomDatabase(), {
-      now: () => now,
-      id: () => randomBytes(8).toString("hex"),
-    }),
-    matches = new MemoryHistoryDatabase(platform);
+    now: () => now,
+    id: () => randomBytes(8).toString("hex"),
+  });
   const history = new HistoryStore(platform, matches, rooms, () => now).game(
       fuseRiders,
     ),
@@ -836,11 +841,76 @@ test("feed scans past hidden legacy rows and exposes a bounded continuation curs
   }));
   const first = await f.history.feed("viewer", undefined, undefined);
   assert.deepEqual(first.matches, []);
-  assert.equal(first.nextBefore, 801);
-  const second = await f.history.feed("viewer", undefined, first.nextBefore!);
+  assert.equal(parseFeedCursor(first.nextBefore!)?.at, 801);
+  const second = await f.history.feed(
+    "viewer",
+    undefined,
+    parseFeedCursor(first.nextBefore!)!,
+  );
   assert.equal(second.matches.length, 1);
   assert.equal(second.matches[0]!.id, record.id);
   assert.equal(second.nextBefore, null);
+});
+
+test("feed scans unreadable rows and preserves ties across internal and output pages", async () => {
+  class PartlyUnreadableDatabase extends MemoryHistoryDatabase {
+    override async recentMatches(
+      gameId: string,
+      before: FeedCursor | undefined,
+      limit: number,
+    ): Promise<FeedRow[]> {
+      return (await super.recentMatches(gameId, before, limit)).map((row) =>
+        row.cursor.id === "z-invalid" ? { cursor: row.cursor } : row,
+      );
+    }
+  }
+  const f = await room(2, new PartlyUnreadableDatabase(platform));
+  const result = parseMatchResult(resultOf(f.ids, "tied"))!;
+  const record: MatchRecord = {
+    gameId: GAME_ID,
+    version: 1,
+    id: "",
+    roomCode: f.code,
+    status: "confirmed",
+    result,
+    attesters: f.ids,
+    uidByPlayer: {},
+    avatars: {},
+    participantUids: [],
+    createdAt: 1,
+    endedAt: 500,
+    feedAt: 500,
+  };
+  // One unreadable row, 20 filtered rows, and 22 eligible rows all share the exact timestamp.
+  const ids = [
+    "z-invalid",
+    ...Array.from({ length: 20 }, (_, i) => `y-${String(i).padStart(2, "0")}`),
+    ...Array.from({ length: 22 }, (_, i) => `x-${String(i).padStart(2, "0")}`),
+  ];
+  for (const id of ids)
+    await f.matches.transactMatch(GAME_ID, id, () => ({
+      match: {
+        ...record,
+        id,
+        attesters: id.startsWith("y-") ? [f.ids[0]!] : f.ids,
+      },
+      result: undefined,
+    }));
+  const first = await f.history.feed("viewer", undefined, undefined);
+  assert.equal(first.matches.length, 20);
+  assert.ok(first.nextBefore);
+  const second = await f.history.feed(
+    "viewer",
+    undefined,
+    parseFeedCursor(first.nextBefore!)!,
+  );
+  assert.equal(second.matches.length, 2);
+  assert.equal(second.nextBefore, null);
+  assert.equal(
+    new Set([...first.matches, ...second.matches].map((entry) => entry.id))
+      .size,
+    22,
+  );
 });
 
 test("a listed game is dated when it ended, not when it became public", async () => {
@@ -1200,6 +1270,8 @@ test("the HTTP surface: a report needs a seat, history needs a sign-in, and a ba
     });
     assert.equal(mine.profile.totals.wins, 1);
     assert.equal((await call("/api/matches?before=-1")).status, 400);
+    assert.equal((await call("/api/matches?before=cnot-valid")).status, 400);
+    assert.equal((await call("/api/matches?before=")).status, 400);
     const feed = async (authorization?: string) =>
       (await (
         await call("/api/matches", {

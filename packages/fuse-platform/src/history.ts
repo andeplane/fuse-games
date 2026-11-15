@@ -48,6 +48,50 @@ import { publicIdOf } from "./friends.js";
  * pending and expires.
  */
 
+export interface FeedCursor {
+  at: number;
+  id?: string;
+}
+export interface FeedRow {
+  cursor: FeedCursor;
+  match?: MatchRecord;
+}
+
+/** A bounded, URL-safe cursor. A numeric cursor remains accepted for already-open clients. */
+export function parseFeedCursor(value: string): FeedCursor | undefined {
+  if (/^\d+$/.test(value)) {
+    const at = Number(value);
+    return Number.isSafeInteger(at) ? { at } : undefined;
+  }
+  const parts = /^c([A-Za-z0-9_-]{1,13000})$/.exec(value);
+  if (!parts) return;
+  try {
+    const bytes = Buffer.from(parts[1]!, "base64url");
+    if (bytes.toString("base64url") !== parts[1]) return;
+    const pair: unknown = JSON.parse(bytes.toString("utf8"));
+    if (!Array.isArray(pair) || pair.length !== 2) return;
+    const [at, id]: unknown[] = pair;
+    if (
+      typeof at !== "number" ||
+      !Number.isFinite(at) ||
+      at < 0 ||
+      typeof id !== "string" ||
+      !id ||
+      id.includes("/") ||
+      Buffer.byteLength(id) > 1500
+    )
+      return;
+    return { at, id };
+  } catch {
+    return;
+  }
+}
+export function formatFeedCursor(cursor: FeedCursor): string {
+  return cursor.id === undefined
+    ? String(cursor.at)
+    : `c${Buffer.from(JSON.stringify([cursor.at, cursor.id])).toString("base64url")}`;
+}
+
 export interface HistoryDatabase {
   /**
    * Like RoomDatabase.transact: the operation is pure and may be retried. Credits commit atomically with the match,
@@ -59,17 +103,13 @@ export interface HistoryDatabase {
     operation: (current: MatchRecord | undefined) => HistoryMutation<T>,
   ): Promise<T>;
   /**
-   * Confirmed whole games of one game, every player's, newest first and strictly before `before`.
-   *
-   * `before` is a `feedAt` in milliseconds, so two games confirmed in the same millisecond on a page boundary can
-   * cost one of them its listing. A tie-proof cursor would have to page on `(feedAt, document id)`, which no test
-   * here can exercise against Firestore; see docs/design/PLAYER-STATS.md.
+   * Raw ordered rows, including unreadable records, with their storage cursors.
    */
   recentMatches(
     gameId: string,
-    before: number | undefined,
+    before: FeedCursor | undefined,
     limit: number,
-  ): Promise<MatchRecord[]>;
+  ): Promise<FeedRow[]>;
   /** Confirmed matches of an account in one game, newest first. */
   matchesFor(
     gameId: string,
@@ -533,8 +573,8 @@ export class GameHistory<
   async feed(
     address: string,
     uid: string | undefined,
-    before: number | undefined,
-  ): Promise<{ matches: FeedEntry<P>[]; nextBefore: number | null }> {
+    before: number | FeedCursor | undefined,
+  ): Promise<{ matches: FeedEntry<P>[]; nextBefore: string | null }> {
     if (
       !(await this.rooms.database.allowance(
         this.limit(`feed:${address}`),
@@ -544,7 +584,7 @@ export class GameHistory<
     )
       throw new RoomError(429, "Too many requests; try later");
     const matches: FeedEntry<P>[] = [];
-    let cursor = before;
+    let cursor = typeof before === "number" ? { at: before } : before;
     // Bound work per request, but return the scan cursor even if all scanned rows
     // were hidden, so the caller can continue to older corroborated matches.
     for (let batch = 0; batch < 10; batch++) {
@@ -553,10 +593,12 @@ export class GameHistory<
         cursor,
         HISTORY_PAGE,
       );
-      for (const record of records) {
-        cursor = record.feedAt;
+      for (const row of records) {
+        cursor = row.cursor;
+        const record = row.match;
         // A record the storage layer ordered by `feedAt` still has to earn its place here.
         if (
+          !record ||
           record.feedAt === undefined ||
           record.result.round !== undefined ||
           new Set(record.attesters).size < 2
@@ -578,12 +620,12 @@ export class GameHistory<
           result: record.result as MatchResult<P>,
         });
         if (matches.length === HISTORY_PAGE)
-          return { matches, nextBefore: cursor ?? null };
+          return { matches, nextBefore: formatFeedCursor(cursor) };
       }
       if (records.length < HISTORY_PAGE || cursor === undefined)
         return { matches, nextBefore: null };
     }
-    return { matches, nextBefore: cursor ?? null };
+    return { matches, nextBefore: cursor ? formatFeedCursor(cursor) : null };
   }
 
   async leaderboard(
