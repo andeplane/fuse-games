@@ -151,8 +151,74 @@ it("draws message boxes in a modal layer, not a frame: the top box has focus, th
   expect(within(second).queryByLabelText("Minimize")).toBeNull();
 });
 
+it("keeps every undragged window where it opened when focus restacks them or one closes, so a press on Close never moves its window", () => {
+  const panel: WindowState = {
+    kind: "controlpanel",
+    applet: "home",
+    id: "w1",
+    minimized: false,
+    maximized: false,
+  };
+  const picker: WindowState = {
+    kind: "wallpaper",
+    id: "w2",
+    minimized: false,
+    maximized: false,
+  };
+  const about: WindowState = {
+    kind: "about",
+    id: "w3",
+    minimized: false,
+    maximized: false,
+  };
+  const host = (windows: WindowState[]) => (
+    <WindowsDepsContext.Consumer>
+      {(deps) => (
+        <WindowsDepsContext.Provider
+          value={{ ...deps, WindowFrame: RecordingFrame }}
+        >
+          <WindowManagerProvider>
+            <WindowHost
+              windows={windows}
+              activeId={windows[windows.length - 1]?.id ?? null}
+            />
+          </WindowManagerProvider>
+        </WindowsDepsContext.Provider>
+      )}
+    </WindowsDepsContext.Consumer>
+  );
+  const places = () =>
+    Object.fromEntries(
+      screen
+        .getAllByTestId("frame")
+        .map((frame) => [
+          frame.getAttribute("data-id"),
+          `${frame.getAttribute("data-x")},${frame.getAttribute("data-y")}`,
+        ]),
+    );
+
+  const { rerender } = render(host([panel, picker, about]));
+  const opened = places();
+  expect(new Set(Object.values(opened)).size).toBe(3);
+
+  // The press on a background window's Close button raises it first: the reducer moves it to the end.
+  rerender(host([picker, about, panel]));
+  expect(places()).toEqual(opened);
+  // Nor does its element move in the document, which would cost the press its click and reload a game's page.
+  expect(Object.keys(places())).toEqual(["w1", "w2", "w3"]);
+
+  // Closing a window leaves the ones stacked above it where they are.
+  rerender(host([about, panel]));
+  expect(places()).toEqual({ w3: opened.w3, w1: opened.w1 });
+
+  // The next window takes the step the closed one left, not one a window still holds.
+  rerender(host([about, panel, { ...picker, id: "w4" }]));
+  expect(places()).toEqual({ w3: opened.w3, w1: opened.w1, w4: opened.w2 });
+});
+
 function RecordingFrame({
   children,
+  id,
   scale,
   rect,
   maximized,
@@ -161,6 +227,9 @@ function RecordingFrame({
   return (
     <div
       data-testid="frame"
+      data-id={id}
+      data-x={rect.x}
+      data-y={rect.y}
       data-scale={scale}
       data-width={rect.width}
       data-height={rect.height}
