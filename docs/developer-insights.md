@@ -31,9 +31,10 @@ entry IDs and use a minimal redacted reproduction when reporting a bug.
 The code-owned email allowlist remains the outer identity gate. A durable policy
 per Firebase UID then grants `read` (private reports, recordings, transcripts,
 media and metrics), `record` (create, upload and finish owned recordings), and
-`token` (mint/revoke agent credentials and mutate proposed actions). Existing
-allowlisted users without a policy document start with all three capabilities;
-an explicit empty policy denies all developer access. A valid Google ID token
+`token` (mint/revoke agent credentials and mutate proposed actions). A UID with
+no policy has no capabilities, even when its email is allowlisted. This prevents
+a recreated Firebase account from silently inheriting a revoked person's access.
+An explicit empty policy also denies all developer access. A valid Google ID token
 must have an `auth_time` within 15 minutes to start a recording or mint a token.
 The workspace and recording panel offer Google reauthentication; refreshing an
 ID token alone does not change `auth_time`. Ongoing uploads and finishing do not
@@ -63,6 +64,19 @@ pnpm exec tsx scripts/developer-access.ts show PROJECT DATABASE PREFIX UID
 pnpm exec tsx scripts/developer-access.ts set PROJECT DATABASE PREFIX UID read,record
 pnpm exec tsx scripts/developer-access.ts revoke PROJECT DATABASE PREFIX UID
 ```
+
+**Before deploying this access change**, the owner must inventory the Firebase
+Authentication users in the intended project, verify each person's UID and
+verified allowlisted email through the Firebase console or authorized Admin SDK,
+decide their minimum capabilities, and run `set` for each approved UID using
+the actual production database and prefix. Review each result with `show` and
+record the review privately. Until these policies are created, all developer
+workspace access and recording requests are denied after rollout; do not assume
+the email allowlist bootstraps them. A newly created or recreated UID likewise
+requires explicit review and a grant, even when it has the same email as a revoked
+UID. Do not grant a replacement UID merely because the address matches. After a
+grant, the person must sign in again. Existing agent credentials must be reminted.
+No bootstrap is performed by this change or by deployment.
 
 `set` replaces the complete capability list; every change advances the UID's
 generation and permanently invalidates credentials minted under older
@@ -108,6 +122,11 @@ with the process. Local microphone recording stays disabled until a durable
 production-equivalent upload/worker path is configured. A local preview does
 not pretend to have transcribed speech or a live action queue. Unit tests
 inject explicit fake transcription/extraction adapters.
+To enable local private insights for an approved test UID, stop the local
+service, run `pnpm exec tsx scripts/developer-access.ts set-local .fuse-insights/security UID read,record,token`,
+then restart it and sign in again. `show-local` and `revoke-local` use the same
+directory and UID arguments; local policy edits take effect on restart. Local
+recording remains disabled regardless of this grant.
 
 ## Private HTTP API
 

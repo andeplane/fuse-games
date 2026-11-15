@@ -26,6 +26,7 @@ import { pcmWav } from "../packages/fuse-ui/src/playtest-audio.js";
 
 test("F-09: private reads are audited; step-up and per-person policy fence recording and agent access", async (t) => {
   const now = Date.UTC(2026, 10, 14, 12);
+  let policyClock = now - STEP_UP_MS - 2000;
   let authTime = now;
   let emailAllowed = true;
   class AuditStore extends MemoryDeveloperSecurityStore {
@@ -37,7 +38,9 @@ test("F-09: private reads are audited; step-up and per-person policy fence recor
       await super.append(event);
     }
   }
-  const security = new AuditStore(() => now);
+  const security = new AuditStore(() => policyClock);
+  await security.setPolicy("admin", ["read", "record", "token"]);
+  policyClock = now;
   const debugDatabase = new MemoryDebugDatabase();
   const services = createTelemetryServices({
     gameIds: ["dice"],
@@ -45,9 +48,9 @@ test("F-09: private reads are audited; step-up and per-person policy fence recor
     security,
     agentEmailAllowed: () => emailAllowed,
     developer: async (token) =>
-      token === "fresh" || token === "old"
+      token === "fresh" || token === "old" || token === "recreated"
         ? {
-            uid: "admin",
+            uid: token === "recreated" ? "recreated_uid" : "admin",
             email: "admin@example.test",
             authTime: token === "fresh" ? authTime : now - STEP_UP_MS - 1,
           }
@@ -225,6 +228,15 @@ test("F-09: private reads are audited; step-up and per-person policy fence recor
     undefined,
   );
   const revoked = await security.setPolicy("admin", []);
+  assert.equal((await request("/api/dev/reports", "recreated")).status, 403);
+  await assert.rejects(
+    services.actions.mintToken(
+      { gameId: "dice" },
+      "recreated_uid",
+      "admin@example.test",
+    ),
+    (error: unknown) => error instanceof RoomError && error.status === 403,
+  );
   const other = randomUUID();
   await services.debug.createRecording("other", {
     id: other,
@@ -331,6 +343,7 @@ test("F-09: local audit and revoked policy survive reopening", async () => {
   const directory = await mkdtemp(join(tmpdir(), "f09-security-"));
   try {
     const store = await FileDeveloperSecurityStore.open(directory);
+    assert.deepEqual((await store.policy("admin")).capabilities, []);
     await store.setPolicy("admin", []);
     await store.append({
       uid: "admin",
@@ -340,6 +353,7 @@ test("F-09: local audit and revoked policy survive reopening", async () => {
       resource: "recording-id",
     });
     const reopened = await FileDeveloperSecurityStore.open(directory);
+    assert.deepEqual((await reopened.policy("another_uid")).capabilities, []);
     assert.deepEqual((await reopened.policy("admin")).capabilities, []);
     assert.equal((await reopened.policy("admin")).generation, 1);
     const event = JSON.parse(
@@ -354,13 +368,15 @@ test("F-09: local audit and revoked policy survive reopening", async () => {
 
 test("F-09: restoring read access requires a newer Google authentication", async () => {
   const now = Date.UTC(2026, 10, 14, 12);
-  const store = new MemoryDeveloperSecurityStore(() => now);
+  let policyClock = now - 2000;
+  const store = new MemoryDeveloperSecurityStore(() => policyClock);
   const principal = {
     uid: "admin",
     email: "admin@example.test",
     authTime: now,
   };
   await store.setPolicy("admin", ["record", "token"]);
+  policyClock = now;
   await store.setPolicy("admin", ["read", "record", "token"]);
   await assert.rejects(
     authorizeDeveloper(store, principal, "read", now),
@@ -375,6 +391,28 @@ test("F-09: restoring read access requires a newer Google authentication", async
   await authorizeDeveloper(store, principal, "record", now);
 });
 
+test("F-09: a recreated Firebase UID cannot inherit a revoked person's access", async () => {
+  const now = Date.UTC(2026, 10, 14, 12);
+  const store = new MemoryDeveloperSecurityStore(() => now - 2000);
+  const email = "admin@example.test";
+  await store.setPolicy("original_uid", ["read", "record", "token"]);
+  await store.setPolicy("original_uid", []);
+  for (const uid of ["original_uid", "recreated_uid"]) {
+    for (const capability of ["read", "record", "token"] as const) {
+      await assert.rejects(
+        authorizeDeveloper(
+          store,
+          { uid, email, authTime: now },
+          capability,
+          now,
+        ),
+        (error: unknown) => error instanceof RoomError && error.status === 403,
+      );
+    }
+  }
+  assert.deepEqual((await store.policy("recreated_uid")).capabilities, []);
+});
+
 test("F-09: a delayed mint body cannot cross revoke and regrant", async (t) => {
   let clock = Date.UTC(2026, 10, 14, 12),
     verifies = 0;
@@ -383,7 +421,8 @@ test("F-09: a delayed mint body cannot cross revoke and regrant", async (t) => {
   const beforeBody = new Promise<void>((resolve) => {
     verified = resolve;
   });
-  const security = new MemoryDeveloperSecurityStore(() => clock);
+  const security = new MemoryDeveloperSecurityStore(() => clock - 2000);
+  await security.setPolicy("admin", ["read", "record", "token"]);
   const services = createTelemetryServices({
     gameIds: ["dice"],
     now: () => clock,

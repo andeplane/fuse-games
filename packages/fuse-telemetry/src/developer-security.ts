@@ -42,7 +42,8 @@ export interface DeveloperSecurityStore {
   append(event: DeveloperAudit): Promise<void>;
 }
 const initial = (): DeveloperPolicy => ({
-  capabilities: [...ALL_CAPABILITIES],
+  // An allowlisted email alone is not a grant: accounts can be recreated with a new UID.
+  capabilities: [],
   generation: 0,
   recordingGeneration: 0,
   notBefore: 0,

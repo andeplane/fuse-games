@@ -11,6 +11,7 @@ import {
   MemoryPrivateObjectStorage,
 } from "fuse-telemetry/debug-memory";
 import { MemoryActionDatabase } from "fuse-telemetry/action-adapters";
+import { MemoryDeveloperSecurityStore } from "fuse-telemetry/developer-security";
 import {
   TranscriptionWorker,
   transcriptionWorkerHttp,
@@ -24,9 +25,12 @@ import {
 test("actual HTTP joins anonymous metrics/reports, admin audio, durable extraction and scoped work claims", async (t) => {
   const now = Date.UTC(2026, 10, 14, 12);
   const objects = new MemoryPrivateObjectStorage();
+  const security = new MemoryDeveloperSecurityStore(() => now - 2000);
+  await security.setPolicy("admin", ["read", "record", "token"]);
   const services = createTelemetryServices({
     gameIds: ["dice"],
     now: () => now,
+    security,
     developer: async (token) =>
       token === "test-admin"
         ? { uid: "admin", email: "andersullnass@gmail.com", authTime: now }
