@@ -684,6 +684,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
       roster,
       capacity: 2 * view.settings.size,
       join,
+      layout: "configuration",
       modes: [sizes],
       playerName: () => social.playerName(undefined) ?? undefined,
       addAI,

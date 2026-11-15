@@ -353,19 +353,6 @@
 .fm-picker-next::before {
   transform: translateX(-0.125rem) rotate(225deg);
 }
-/* PLAY on the selected song: the same primary button as the bar's, so the song can start from where it is shown. */
-.fm-picker.fm-picker .fm-picker-play {
-  justify-self: center;
-  width: auto;
-  min-width: 12rem;
-  color: var(--fui-primary-text, #031b29);
-  background: var(--fui-primary-fill, #18dbeb);
-  border-color: var(--fui-primary-fill, #18dbeb);
-}
-.fm-picker-play[hidden] {
-  display: none;
-}
-
 /* The slider under the carousel: a track the whole width, and a badge over the thumb saying where in the order it is. */
 .fm-picker-scrub {
   --fm-thumb: 1.5rem;

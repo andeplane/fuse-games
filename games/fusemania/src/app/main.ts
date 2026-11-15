@@ -159,6 +159,7 @@ import {
 } from "./run-log.js";
 import { drawTimingGraph } from "./timing-graph.js";
 import { resultBar, resultReport } from "./result-report.js";
+import { createSongLinkButton, songLink, songQuery } from "./song-link.js";
 import { createSongPicker } from "./song-picker.js";
 import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
@@ -545,6 +546,10 @@ function landing(): void {
       if (song) show({ ...choice, song });
     },
   });
+  const share = createSongLinkButton({
+    document,
+    link: () => songLink(endpoints.appUrl, choice.song, choice.chart),
+  });
   const picker = createSongPicker({
     document,
     songs: library.songs,
@@ -555,7 +560,7 @@ function landing(): void {
     audio: songs.status,
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
-    tools: [options.random],
+    tools: [options.random, share.element],
     onPlay: () => {
       leaveLanding();
       startSolo(library, choice);
@@ -567,6 +572,26 @@ function landing(): void {
     remember(choice);
     picker.update({ ...choice, host: true });
     preview.show(choice.song);
+    address();
+  };
+  /**
+   * The address bar follows the select: while it is open the page's address is a link to the selected song and
+   * level, to copy as it is, and the front door's own address once it is closed. Replaced, never pushed: turning
+   * the carousel leaves no trail for Back to walk.
+   */
+  const address = () => {
+    const selecting =
+      card.menu.dialog.open && card.menu.dialog.contains(picker.element);
+    // Whatever else the page was opened with (its flags, `latency`) stays as it was written.
+    const kept = location.search
+      .slice(1)
+      .split("&")
+      .filter((part) => part && !/^(song|chart)(=|$)/.test(part));
+    const parts = selecting
+      ? [songQuery(choice.song, choice.chart).slice(1), ...kept]
+      : kept;
+    const url = endpoints.appUrl(parts.length ? `?${parts.join("&")}` : "");
+    if (url !== location.href) history.replaceState(history.state, "", url);
   };
   const showOptions = () =>
     options.update({
@@ -578,6 +603,8 @@ function landing(): void {
   /** `keepMusic`: the room that opens next plays the same preview on, without a gap. */
   const leaveLanding = (keepMusic = false) => {
     if (!keepMusic) preview.stop();
+    share.dispose();
+    card.menu.dialog.removeEventListener("close", address);
     optionsMenu.dispose();
     settings.dispose();
     card.menu.dispose();
@@ -700,6 +727,9 @@ function landing(): void {
   card.soloDetails.append(select, own);
   // A select that is opened again starts with the speeds put away.
   card.menu.dialog.addEventListener("close", () => optionsMenu.close());
+  card.menu.dialog.addEventListener("close", address);
+  // After the menu's own handler has opened the select.
+  card.menu.singlePlayer.addEventListener("click", address);
   card.solo?.classList.add("fui-button-primary", "fm-solo-play");
   const settings = settingsPanel(() => {
     help.dispatchEvent(new Event("fm-refresh"));
@@ -745,6 +775,9 @@ function landing(): void {
   preview.show(choice.song);
   // Until a room takes the page over (`room` clears the watchers and the timer).
   audioWatchers.add(() => picker.update({ ...choice, host: true }));
+  // A link to a song opens the select on it: the friend it was sent to sees the song, with PLAY beside it.
+  if (new URLSearchParams(location.search).has("song"))
+    card.menu.singlePlayer.click();
 }
 
 /** From the menu into a solo song without leaving the page, so the click that asked for it is what lets sound out. */
@@ -1020,6 +1053,16 @@ function enterRoom(
       runtime.command({ type: "settings", settings: { ...settings, random } });
     },
   });
+  // A link to the room's song, for a friend to try alone. A player's own file has none: it is on this device only.
+  /** The level this player's select shows: their own pick, as the room last drew it. */
+  let shownChart = choice.chart;
+  const share = createSongLinkButton({
+    document,
+    link: () =>
+      localSong(settings.song)
+        ? undefined
+        : songLink(endpoints.appUrl, settings.song, shownChart),
+  });
   const picker = createSongPicker({
     document,
     songs: library.songs,
@@ -1041,7 +1084,7 @@ function enterRoom(
     audio: songs.status,
     cover: coverUrl,
     packs: packsOf(library.songs, CUSTOM),
-    tools: [options.random],
+    tools: [options.random, share.element],
     onPlay: () => start.click(),
   });
   const showOptions = () =>
@@ -1337,6 +1380,7 @@ function enterRoom(
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
+    layout: "configuration",
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor,
@@ -1884,6 +1928,7 @@ function enterRoom(
     if (tvToggle.checked !== view.settings.display)
       tvToggle.checked = view.settings.display;
     tvLink.hidden = !view.settings.display;
+    shownChart = next.chart;
     picker.update({
       song: view.settings.song,
       chart: next.chart,

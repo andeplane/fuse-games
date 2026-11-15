@@ -7,7 +7,7 @@ export type WindowManager = {
   viewport: Size;
   /** The physical viewport is too narrow for floating windows (`isCompactViewport`): every resizable window renders maximized. */
   compact: boolean;
-  /** Current or default rectangle; `size` is the window's preferred size when it has never been placed. */
+  /** Current or default rectangle; `index` is the cascade step of a window that has never been placed (`assignSlots`), `size` its preferred size. */
   rectFor: (id: string, index: number, size?: Size, fixed?: boolean) => Rect;
   setRect: (id: string, rect: Rect) => void;
   /** Drops the rectangles of windows that are no longer open, so a reused window id starts from its default size again. */

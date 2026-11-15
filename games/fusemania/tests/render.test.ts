@@ -1118,8 +1118,12 @@ test("an attack on its way warns the victim, then shows as a label with a draini
       ]),
       shot(steps, songMs),
     );
-  const warned = attacked(5200);
+  const warned = attacked(5200, { combo: 12 });
   assert.equal(textAt(warned, "INCOMING: DRUNK")?.fill, PINK);
+  assert.ok(
+    textAt(warned, "INCOMING: DRUNK")!.y < textAt(warned, "COMBO")!.y,
+    "warning stays above the combo",
+  );
   assert.ok(!texts(warned).includes("DRUNK"), "not in force yet");
   const under = attacked(8000);
   assert.ok(!texts(under).includes("INCOMING: DRUNK"));
