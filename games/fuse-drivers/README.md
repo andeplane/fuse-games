@@ -10,7 +10,7 @@ Drive with the arrows or `A`/`D`, brake with `S`, nitro on `Shift`, use an item 
 `Down` with `Space` to use it the other way: a mine lobbed ahead, a missile fired backwards. The throttle
 is always on. On a phone the same controls are the four buttons under the arena.
 
-For shared-screen play, select **Shared TV + phone controllers** before creating a room and open the lobby's **OPEN TV DISPLAY** link on the TV. The TV shows the arena and phones show controls.
+For shared-screen play, the host ticks **Shared TV** in the room, under the invitation, and opens **OPEN TV SCREEN** on the TV. The TV shows the arena and phones show controls.
 
 ## How it fits the shared packages
 

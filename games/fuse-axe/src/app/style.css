@@ -12,14 +12,7 @@
   --fui-menu-bg: var(--fa-panel);
   --fui-menu-accent: var(--fa-gold);
 }
-body.fa-phone #app > .fui-game-menu {
-  position: fixed;
-  top: max(8px, env(safe-area-inset-top));
-  right: max(8px, env(safe-area-inset-right));
-  z-index: 60;
-}
-.fa-top .fui-game-menu-panel,
-#app > .fui-game-menu .fui-game-menu-panel {
+.fa-top .fui-game-menu-panel {
   border-color: var(--fa-edge);
   background: #140a22;
 }
@@ -90,17 +83,71 @@ body {
   text-shadow: 0 0 10px rgba(255, 106, 61, 0.7);
 }
 
-.fa-code {
-  font: 12px var(--fui-font-pixel, monospace);
-  color: var(--fa-gold);
-  padding: 6px 10px;
-  border: 1px solid var(--fa-edge);
-  border-radius: 6px;
+/* What went wrong, said above the room wherever the hero is. */
+.fa-alert {
+  margin: 12px auto 0;
+  padding: 0 16px;
+  color: var(--fa-ember);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
 }
 
-.fa-status {
-  flex: 1;
-  min-width: 0;
+/* During a run it floats over the top of the road: a line that appears must not push the screen or the pads out
+   from under a thumb. */
+.fa-room:is([data-screen="play"], [data-screen="controller"]) > .fa-alert {
+  position: fixed;
+  z-index: var(--fui-z-overlay);
+  top: 68px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: #0c0716f2;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* The room's state beside the menu while a run is on; in the lobby it is the line at the lobby's foot. */
+.fa-live {
+  max-width: 352px;
+  color: var(--fui-text-muted, #b6cce3);
+  font-size: 13px;
+}
+
+body:has(.fa-lobby:not([hidden])) .fa-live {
+  display: none !important;
+}
+
+/* A phone in play: the pads and the game take the screen, so the bar keeps its sound and menu buttons only. */
+body.fa-phone .fa-top .fui-top-bar-left {
+  /* Still laid out, so the buttons keep the right corner. */
+  visibility: hidden;
+}
+
+body.fa-phone .fa-top .fui-top-bar-account,
+body.fa-phone .fa-live {
+  display: none !important;
+}
+
+/* Where the bar has room, the line sits in the bar itself, before the buttons. */
+@media (min-width: 900px) {
+  .fa-top .fui-top-bar-context {
+    inset: 0 24.5rem 0 17.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .fa-live {
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .fa-back {
@@ -422,30 +469,7 @@ body {
   padding: 12px 18px;
 }
 
-/* ---- the shared screen: the host's switch, the TV link, and the TV page ---- */
-.fa-share {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 2px 10px;
-  font: 10px var(--fui-font-pixel, monospace);
-  color: var(--fa-gold);
-  cursor: pointer;
-}
-
-.fui-app .fa-share input {
-  grid-row: span 2;
-  width: 22px;
-  min-height: 22px;
-  margin: 0;
-  accent-color: var(--fa-gold);
-}
-
-.fa-share small {
-  font: 12px var(--fui-font-body, system-ui, sans-serif);
-  color: var(--fui-text-muted, #b6cce3);
-}
-
+/* ---- the shared screen: the TV page ---- */
 .fa-tv-invite {
   display: flex;
   align-items: center;
@@ -701,7 +725,6 @@ body.fa-phone {
   padding: 0;
 }
 
-body.fa-phone #app:not(.fui-tools-open) > .fa-top,
 body.fa-phone .fa-note {
   display: none;
 }
@@ -759,6 +782,23 @@ body.fa-phone main[data-screen="controller"] ~ .fui-control-hints {
   top: calc(max(8px, env(safe-area-inset-top)) + 64px);
 }
 
+/* The round's controls card says the same in the same place: the hints stay out from under it. */
+body.fa-phone #app:has(> .fui-round-controls:not([hidden])) .fui-control-hints {
+  visibility: hidden;
+}
+
+/* The shared bar's sound and menu buttons lie over the right end of the controller's head: the seat's name and hero
+   stop short of them. The sound button carries its label from 601px. */
+body.fa-phone .fa-controller-head {
+  padding-right: 200px;
+}
+
+@media (max-width: 600px) {
+  body.fa-phone .fa-controller-head {
+    padding-right: 100px;
+  }
+}
+
 .fui-control-hints span::after {
   content: attr(data-hint);
 }
@@ -807,13 +847,8 @@ body.fa-phone #app.fui-tools-open > .fa-top {
     translate: none;
   }
 
-  body.fa-phone .fa-controller-head,
   body.fa-phone #app.fui-tools-open > .fa-top {
     padding-right: 100px;
-  }
-
-  body.fa-phone #app.fui-tools-open .fa-status {
-    flex-basis: 100%;
   }
 
   body.fa-phone .fui-control-hints {
