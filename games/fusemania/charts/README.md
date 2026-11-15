@@ -51,7 +51,7 @@ A pack with no songs is not shown, so the two jazz mixes appear in the song sele
 
 ### External audio
 
-`SongSpec.audio` also accepts an absolute HTTPS URL for an `.ogg` or `.mp3` file; omit `file` when there is no repository copy and set `audioIntegrity: { bytes, sha256 }` from the original bytes. Supply `simfile` with the repository path to the existing authored `.sm`/`.ssc` chart. For example:
+`SongSpec.audio` also accepts an absolute HTTPS URL for an `.ogg` or `.mp3` file; omit `file` when there is no repository copy and set `audioIntegrity: { bytes, sha256 }` from the original bytes. Supply `simfile` with the repository path to the existing authored `.sm`/`.ssc`/`.dwi` chart. For example:
 
 ```ts
 { id: "example", title: "Example", artist: "Artist", pack: "my-pack",
