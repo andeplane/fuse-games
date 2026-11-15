@@ -29,6 +29,20 @@ export class AddressBudget {
         this.buckets.delete(other);
       else break;
     if (!bucket) {
+      // At capacity, even a recently used bucket may already have refilled (for example, after a single call).
+      // Scan the bounded table only on saturation; never evict a bucket that still carries a spent allowance.
+      if (this.buckets.size >= this.maxKeys) {
+        for (const [other, idle] of this.buckets) {
+          if (
+            idle.tokens +
+              (Math.max(0, now - idle.at) * this.perSecond) / 1000 >=
+            this.burst
+          ) {
+            this.buckets.delete(other);
+            break;
+          }
+        }
+      }
       if (this.buckets.size >= this.maxKeys) return false;
       bucket = { tokens: this.burst, at: now };
     }

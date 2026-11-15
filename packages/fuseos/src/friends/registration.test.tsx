@@ -60,13 +60,13 @@ describe("Fuse Messenger registration", () => {
   });
 
   it("lets a game window carry a room code, and only a real one", () => {
-    expect(isRoomCode("AB42")).toBe(true);
+    expect(isRoomCode("AB42AA")).toBe(true);
     expect(isRoomCode("ab42")).toBe(false);
     expect(isRoomCode("ABC4")).toBe(false);
     expect(isRoomCode(42)).toBe(false);
     expect(
       isWindowState(
-        window({ kind: "fusegame", gameId: "fuseball", room: "AB42" }),
+        window({ kind: "fusegame", gameId: "fuseball", room: "AB42AA" }),
       ),
     ).toBe(true);
     expect(
@@ -84,11 +84,11 @@ describe("Fuse Messenger registration", () => {
   });
 
   it("adds room= to the embed URL whether or not it already has a query", () => {
-    expect(withRoom("/fuse-riders/fuseball/", "AB42")).toBe(
-      "/fuse-riders/fuseball/?room=AB42",
+    expect(withRoom("/fuse-riders/fuseball/", "AB42AA")).toBe(
+      "/fuse-riders/fuseball/?room=AB42AA",
     );
-    expect(withRoom("/fuse-riders/fuseball/?mute", "AB42")).toBe(
-      "/fuse-riders/fuseball/?mute&room=AB42",
+    expect(withRoom("/fuse-riders/fuseball/?mute", "AB42AA")).toBe(
+      "/fuse-riders/fuseball/?mute&room=AB42AA",
     );
     expect(withRoom("/fuse-riders/fuseball/", undefined)).toBe(
       "/fuse-riders/fuseball/",
@@ -99,7 +99,7 @@ describe("Fuse Messenger registration", () => {
     renderWithProviders(
       <FuseGameWindow
         gameId="fuseball"
-        room="AB42"
+        room="AB42AA"
         active
         onActivate={() => undefined}
       />,
@@ -107,7 +107,7 @@ describe("Fuse Messenger registration", () => {
     );
     expect(screen.getByTitle("Fuseball")).toHaveAttribute(
       "src",
-      "/fuse-riders/fuseball/?mute&room=AB42",
+      "/fuse-riders/fuseball/?mute&room=AB42AA",
     );
   });
 

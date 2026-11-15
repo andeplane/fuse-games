@@ -89,10 +89,10 @@ test("pageRole: solo wins, then a room's display or joiner, else the landing pag
   assert.equal(pageRole(""), "landing");
   assert.equal(pageRole("?mute"), "landing");
   assert.equal(pageRole("?solo"), "solo");
-  assert.equal(pageRole("?room=AB42&solo"), "solo");
-  assert.equal(pageRole("?room=AB42"), "joiner");
-  assert.equal(pageRole("?room=AB42&display=1"), "display");
-  assert.equal(pageRole("?room=AB42&display=0"), "joiner");
+  assert.equal(pageRole("?room=AB42AA&solo"), "solo");
+  assert.equal(pageRole("?room=AB42AA"), "joiner");
+  assert.equal(pageRole("?room=AB42AA&display=1"), "display");
+  assert.equal(pageRole("?room=AB42AA&display=0"), "joiner");
 });
 
 test("startGameAnalytics: registers the role, then reports App Opened with whether the page is embedded", () => {
@@ -105,7 +105,7 @@ test("startGameAnalytics: registers the role, then reports App Opened with wheth
   };
   const inWindow = startGameAnalytics(
     "fuseball",
-    { search: "?room=AB42&mute", embedded: true },
+    { search: "?room=AB42AA&mute", embedded: true },
     create,
   );
   assert.deepEqual(created, ["fuseball"]);
@@ -124,5 +124,5 @@ test("startGameAnalytics: registers the role, then reports App Opened with wheth
     { event: "App Opened", properties: { embedded: false } },
   ]);
   // Nothing from the address — no room code — travels on the event; the shared boundary adds `gameId`.
-  assert.equal(JSON.stringify(calls).includes("AB42"), false);
+  assert.equal(JSON.stringify(calls).includes("AB42AA"), false);
 });

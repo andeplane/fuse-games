@@ -23,7 +23,7 @@ export interface JoinByCodeOptions {
   placeholder?: string;
   invalidMessage?: string;
   maxLength?: number;
-  /** The last room this browser was in, one tap away (REJOIN AB42) after JOIN. Omit when there is none. */
+  /** The last room this browser was in, one tap away (REJOIN AB42XY) after JOIN. Omit when there is none. */
   rejoin?: { code: string; onRejoin(code: string): void; title?: string };
   classes?: PartClasses<JoinByCodePart>;
   document?: Document;
@@ -53,7 +53,7 @@ export function createJoinByCode(options: JoinByCodeOptions): JoinByCode {
     if (options.valid(value)) options.onJoin(value);
     else
       options.onInvalid(
-        options.invalidMessage ?? "Enter a room code, for example AB42",
+        options.invalidMessage ?? "Enter a room code, for example AB42XY",
       );
   };
   input.onkeydown = (event) => {

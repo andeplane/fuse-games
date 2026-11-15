@@ -466,7 +466,7 @@ function fixture(options: FixtureOptions = {}) {
     dispose() {},
   });
   const room: RoomSnapshot = {
-    code: "AB12",
+    code: "AB12AA",
     stage: "lobby",
     seats: [
       { id: "blue", name: "Ada", slot: 0, bot: false, connected: true },
@@ -488,7 +488,7 @@ function fixture(options: FixtureOptions = {}) {
       history: [],
       logTick: 0,
     }),
-    code: "AB12",
+    code: "AB12AA",
     get localPlayerId() {
       return room.self;
     },
@@ -526,16 +526,17 @@ function fixture(options: FixtureOptions = {}) {
   const onlineDependencies: OnlineDependencies = {
     createRoom() {
       calls.push("createRoom");
-      if (!options.online?.slowCreate) return Promise.resolve({ code: "AB12" });
+      if (!options.online?.slowCreate)
+        return Promise.resolve({ code: "AB12AA" });
       return new Promise((resolve) => {
-        resolveCreate = () => resolve({ code: "AB12" });
+        resolveCreate = () => resolve({ code: "AB12AA" });
       });
     },
     openRoom(code) {
       calls.push(`openRoom:${code}`);
       return online;
     },
-    validCode: (code) => /^[A-Z0-9]{4}$/.test(code),
+    validCode: (code) => /^[A-Z0-9]{6}$/.test(code),
     roomLink: (code) => `https://fuse.test/fuse-craft/?room=${code}`,
     enterRoom: (code) => calls.push(`enterRoom:${code}`),
     leaveRoom: () => calls.push("leaveRoom"),
@@ -590,7 +591,7 @@ function fixture(options: FixtureOptions = {}) {
     },
     ...(options.online ? { online: onlineDependencies } : {}),
     ...(options.online && !options.online.slowCreate
-      ? { initialRoom: "AB12" }
+      ? { initialRoom: "AB12AA" }
       : {}),
   };
   const app = mountFuseCraft(root, dependencies);

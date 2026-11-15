@@ -11,7 +11,7 @@ import {
 const HOST = "a".repeat(64),
   GUEST = "b".repeat(64),
   OTHER = "c".repeat(64),
-  CODE = "AB42";
+  CODE = "AB42AA";
 function fixture(maxGuests?: number) {
   let now = 1000,
     serial = 0;

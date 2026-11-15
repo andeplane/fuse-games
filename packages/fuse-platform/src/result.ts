@@ -223,7 +223,7 @@ export function parseMatchRecord(
     typeof raw.id !== "string" ||
     !/^[a-f0-9]{40}$/.test(raw.id) ||
     typeof raw.roomCode !== "string" ||
-    !validCode(raw.roomCode)
+    !(validCode(raw.roomCode) || /^[A-Z]{2}[0-9]{2}$/.test(raw.roomCode))
   )
     return;
   // No backfill: every record from before match records carried a game is the legacy game's.

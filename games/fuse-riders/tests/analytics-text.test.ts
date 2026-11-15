@@ -12,10 +12,10 @@ import {
 const ROOM_TOKEN = "0123456789abcdef".repeat(4);
 
 test("a URL carrying a room code and a token leaves as a placeholder, with the words around it intact", () => {
-  const message = `Failed to fetch dynamically imported module: https://fuse.example/assets/ui-4f2a.js?room=AB42&token=${ROOM_TOKEN}`;
+  const message = `Failed to fetch dynamically imported module: https://fuse.example/assets/ui-4f2a.js?room=AB42AA&token=${ROOM_TOKEN}`;
   const clean = sanitizeText(message);
   assert.equal(clean, "Failed to fetch dynamically imported module: [url]");
-  for (const leaked of ["AB42", ROOM_TOKEN, "fuse.example", "?room="])
+  for (const leaked of ["AB42AA", ROOM_TOKEN, "fuse.example", "?room="])
     assert.ok(!clean.includes(leaked), leaked);
 });
 
@@ -51,17 +51,20 @@ test("an Authorization header loses the credential, not the word Bearer", () => 
 
 test("percent-encoded separators and zero-width characters do not hide a credential", () => {
   assert.equal(
-    sanitizeText("redirect=%2Findex.html%3Froom%3DAB42%26display%3D1 failed", {
-      secrets: ["AB42"],
-    }),
+    sanitizeText(
+      "redirect=%2Findex.html%3Froom%3DAB42AA%26display%3D1 failed",
+      {
+        secrets: ["AB42AA"],
+      },
+    ),
     "redirect=/index.html[query] failed",
   );
   assert.equal(
-    sanitizeText("joining room%3DAB42", { secrets: ["AB42"] }),
+    sanitizeText("joining room%3DAB42AA", { secrets: ["AB42AA"] }),
     "joining room=[redacted]",
   );
   assert.equal(
-    sanitizeText("bad %3DAB42 value", { secrets: ["AB42"] }),
+    sanitizeText("bad %3DAB42AA value", { secrets: ["AB42AA"] }),
     "bad =[redacted] value",
     "the D of %3D no longer shields the code from the whole-word match",
   );
@@ -69,7 +72,7 @@ test("percent-encoded separators and zero-width characters do not hide a credent
   const split = `${ROOM_TOKEN.slice(0, 20)}${zeroWidth}${ROOM_TOKEN.slice(20)}`;
   assert.equal(sanitizeText(`peer ${split} gone`), "peer [token] gone");
   assert.equal(
-    sanitizeText(`Room A${zeroWidth}B42 is full`, { secrets: ["AB42"] }),
+    sanitizeText(`Room A${zeroWidth}B42AA is full`, { secrets: ["AB42AA"] }),
     "Room [redacted] is full",
   );
   assert.equal(
@@ -108,11 +111,11 @@ test("a connect status never carries a rider's name", () => {
 
 test("query strings, credential pairs, tokens, UUIDs, JWTs and e-mail addresses are all removed outside URLs too", () => {
   assert.equal(
-    sanitizeText("GET /index.html?room=AB42&display=1 failed"),
+    sanitizeText("GET /index.html?room=AB42AA&display=1 failed"),
     "GET /index.html[query] failed",
   );
   assert.equal(
-    sanitizeText("joining room=AB42 now"),
+    sanitizeText("joining room=AB42AA now"),
     "joining room=[redacted] now",
   );
   assert.equal(sanitizeText("bad token: hunter2!"), "bad token=[redacted]");
@@ -139,11 +142,11 @@ test("query strings, credential pairs, tokens, UUIDs, JWTs and e-mail addresses 
 
 test("a known secret is removed wherever it appears, as a whole word and whatever its case", () => {
   assert.equal(
-    sanitizeText("Room ab42 is full (AB42)", { secrets: ["AB42"] }),
+    sanitizeText("Room ab42aa is full (AB42AA)", { secrets: ["AB42AA"] }),
     "Room [redacted] is full ([redacted])",
   );
   assert.equal(
-    sanitizeText("CAB421 stays", { secrets: ["AB42"] }),
+    sanitizeText("CAB421 stays", { secrets: ["AB42AA"] }),
     "CAB421 stays",
     "never the middle of a longer word",
   );
@@ -195,16 +198,16 @@ test("every string in a property bag is sanitised and nothing unbounded rides al
   assert.deepEqual(
     sanitizeProperties(
       {
-        status: "link to https://fuse.example/?room=AB42 failed",
+        status: "link to https://fuse.example/?room=AB42AA failed",
         secondsWaiting: 20,
         host: true,
         nothing: null,
         dropped: undefined,
         tags: ["ok", `t ${ROOM_TOKEN}`],
-        nested: { room: "AB42" },
-        callback: () => "AB42",
+        nested: { room: "AB42AA" },
+        callback: () => "AB42AA",
       },
-      { secrets: ["AB42"] },
+      { secrets: ["AB42AA"] },
     ),
     {
       status: "link to [url] failed",
@@ -223,9 +226,9 @@ test("every string in a property bag is sanitised and nothing unbounded rides al
 
 test("a boot failure is reported as a class, a stable code and a bounded message", () => {
   const error = new TypeError(
-    `Failed to fetch dynamically imported module: https://fuse.example/assets/ui.js?room=AB42`,
+    `Failed to fetch dynamically imported module: https://fuse.example/assets/ui.js?room=AB42AA`,
   );
-  assert.deepEqual(bootFailedProps(error, { secrets: ["AB42"] }), {
+  assert.deepEqual(bootFailedProps(error, { secrets: ["AB42AA"] }), {
     name: "TypeError",
     code: "module-load",
     message: "Failed to fetch dynamically imported module: [url]",

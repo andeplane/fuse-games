@@ -13,7 +13,7 @@ import {
 const invite: FriendInvite = {
   id: "i1",
   from: { publicId: "f", name: "Fay" },
-  code: "AB12",
+  code: "AB12AA",
   gameId: "fuse-riders",
   at: 1,
 };
@@ -144,12 +144,12 @@ test("an invite is shown only to a player who is not looking, and its click open
   n.notifier.notify(invite);
   assert.equal(fake.shown.length, 1);
   assert.equal(fake.shown[0]!.title, "Fay invited you to Fuse Riders");
-  assert.match(fake.shown[0]!.body, /Room AB12/);
-  assert.equal(fake.shown[0]!.tag, "fuse-invite-AB12");
+  assert.match(fake.shown[0]!.body, /Room AB12AA/);
+  assert.equal(fake.shown[0]!.tag, "fuse-invite-AB12AA");
   fake.shown[0]!.note.onclick!();
   assert.equal(fake.shown[0]!.note.closed, true);
   assert.equal(n.focused(), 1);
-  assert.deepEqual(n.opened, ["AB12"]);
+  assert.deepEqual(n.opened, ["AB12AA"]);
   n.attend();
   n.notifier.notify(invite);
   assert.equal(fake.shown.length, 1, "a visible page has the banner");

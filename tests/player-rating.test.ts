@@ -386,7 +386,7 @@ test("rating graphs retain the latest 100 points without resetting current Elo o
         version: 1,
         id,
         ratingScope: id,
-        roomCode: "AB42",
+        roomCode: "AB42AA",
         status: "confirmed",
         result: match,
         attesters: ids,
@@ -487,7 +487,7 @@ test("round numbers and round roster bounds reject malformed reports", async () 
   for (const round of [0, -1, 1.5, 1000001, "1", null]) {
     await assert.rejects(() =>
       f.history.submit(
-        { gameId: GAME_ID, code: "AB12", rider: f.ids[0]!, incarnation: "r" },
+        { gameId: GAME_ID, code: "AB12AA", rider: f.ids[0]!, incarnation: "r" },
         { result: { ...result(f.ids), round } },
         "user0",
       ),

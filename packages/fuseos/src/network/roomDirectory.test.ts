@@ -17,12 +17,12 @@ describe(MemoryRoomDirectory.name, () => {
     const directory = new MemoryRoomDirectory({
       fuseball: {
         kind: "rooms",
-        rooms: [{ gameId: "fuseball", code: "AB42" }],
+        rooms: [{ gameId: "fuseball", code: "AB42AA" }],
       },
     });
     await expect(directory.listRooms("fuseball")).resolves.toEqual({
       kind: "rooms",
-      rooms: [{ gameId: "fuseball", code: "AB42" }],
+      rooms: [{ gameId: "fuseball", code: "AB42AA" }],
     });
     await expect(directory.listRooms("fuse-riders")).resolves.toEqual({
       kind: "rooms",

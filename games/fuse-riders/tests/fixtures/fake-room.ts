@@ -9,6 +9,8 @@ import { fuseGame, type Frame } from "../../src/online/fuse-game.js";
 import type { RoomSettings } from "../../src/engine/room-settings.js";
 import type { GameEvent } from "../../src/shared/protocol.js";
 
+export const FAKE_ROOM_CODE = "AB42AA";
+
 export interface NetworkOptions {
   loss: number;
   baseMs: number;
@@ -280,7 +282,7 @@ export class FakeNetwork {
       kicked: () => recorded.kicked++,
       ended: () => recorded.ended++,
     };
-    const runtime = new RoomRuntime("AB42", settings, callbacks, {
+    const runtime = new RoomRuntime(FAKE_ROOM_CODE, settings, callbacks, {
       transport: (events) => new FakeTransport(this, id, events),
       displayOnly: extra.displayOnly,
       humanName: extra.humanName,

@@ -219,7 +219,7 @@ describe("FriendsTray", () => {
     timers.fire(BEAT_MS);
     const invite = await screen.findByTestId("friends-toast-invite");
     expect(invite).toHaveTextContent(
-      "xXx_RocketMan_xXx invited you to fuse-volley (room VB77).",
+      "xXx_RocketMan_xXx invited you to fuse-volley (room VB77AA).",
     );
     await user.click(
       within(invite).getByRole("button", { name: "Dismiss notification" }),
@@ -263,7 +263,7 @@ describe("FriendsTray", () => {
         buddy: {
           ...rocket,
           status: "playing",
-          room: { code: "AB42", gameId: "fuseball" },
+          room: { code: "AB42AA", gameId: "fuseball" },
         },
       },
       { type: "playing", buddy: { ...rocket, status: "playing" } },
@@ -272,7 +272,7 @@ describe("FriendsTray", () => {
         invite: {
           id: "i",
           from: rocket,
-          code: "AB42",
+          code: "AB42AA",
           gameId: "fuseball",
           at: 1,
         },
@@ -283,7 +283,7 @@ describe("FriendsTray", () => {
       "xXx_RocketMan_xXx has just signed in.",
       "xXx_RocketMan_xXx is playing Fuseball.",
       "xXx_RocketMan_xXx is playing .",
-      "xXx_RocketMan_xXx invited you to Fuseball (room AB42).",
+      "xXx_RocketMan_xXx invited you to Fuseball (room AB42AA).",
       "xXx_RocketMan_xXx wants to be your friend.",
     ]);
   });

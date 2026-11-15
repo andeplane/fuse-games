@@ -85,7 +85,7 @@ export const ENTIRE_NETWORK_LABEL = "Entire Network";
 export const JOIN_ROOM_LABEL = "Join room...";
 
 export const INVALID_CODE_MESSAGE =
-  "A room code is two letters and two digits, like AB42.";
+  "A room code is six letters or digits, like AB42AA.";
 export const NO_GAMES_MESSAGE =
   "No Fuse games are installed on this desktop, so there is nothing to join.";
 

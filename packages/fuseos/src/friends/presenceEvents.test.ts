@@ -25,7 +25,7 @@ describe(presenceEvents.name, () => {
           ? {
               ...b,
               status: "playing" as const,
-              room: { code: "VB77", gameId: "fuse-volley" },
+              room: { code: "VB77AA", gameId: "fuse-volley" },
             }
           : b,
       ),
@@ -34,7 +34,7 @@ describe(presenceEvents.name, () => {
           {
             id: "i1",
             from: rocket,
-            code: "VB77",
+            code: "VB77AA",
             gameId: "fuse-volley",
             at: 1,
           },
@@ -67,7 +67,13 @@ describe(presenceEvents.name, () => {
   it("does not repeat an unchanged state, a seen invite or a known request", () => {
     const snapshot = loaded(DEMO_BUDDIES, {
       invites: [
-        { id: "i1", from: rocket, code: "VB77", gameId: "fuse-volley", at: 1 },
+        {
+          id: "i1",
+          from: rocket,
+          code: "VB77AA",
+          gameId: "fuse-volley",
+          at: 1,
+        },
       ],
       incoming: [{ publicId: "p".repeat(20), name: "PigChampion" }],
     });
@@ -79,7 +85,7 @@ describe(presenceEvents.name, () => {
     const moved = loaded(
       DEMO_BUDDIES.map((b) =>
         b === playing
-          ? { ...b, room: { code: "ZZ99", gameId: "fuseball" } }
+          ? { ...b, room: { code: "ZZ99AA", gameId: "fuseball" } }
           : b,
       ),
       {
@@ -87,7 +93,7 @@ describe(presenceEvents.name, () => {
           {
             id: "i1",
             from: rocket,
-            code: "VB77",
+            code: "VB77AA",
             gameId: "fuse-volley",
             at: 2,
           },
@@ -96,7 +102,13 @@ describe(presenceEvents.name, () => {
     );
     const before = loaded(DEMO_BUDDIES, {
       invites: [
-        { id: "i1", from: rocket, code: "VB77", gameId: "fuse-volley", at: 1 },
+        {
+          id: "i1",
+          from: rocket,
+          code: "VB77AA",
+          gameId: "fuse-volley",
+          at: 1,
+        },
       ],
     });
     expect(presenceEvents(before, moved).map((e) => e.type)).toEqual([

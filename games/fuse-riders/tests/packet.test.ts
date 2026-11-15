@@ -18,7 +18,7 @@ import { fuseGame } from "../src/online/fuse-game.js";
 import { PRESS, RELEASE, STEER, type Entry } from "../src/engine/input-log.js";
 
 const packet = (): Packet => ({
-  room: roomHash("AB42:host"),
+  room: roomHash("AB42AA:host"),
   from: "abcdef",
   generation: 3,
   through: 120,

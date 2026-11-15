@@ -36,7 +36,7 @@ export const DEMO_BUDDIES: readonly Buddy[] = [
     publicId: "a1a1a1a1a1a1a1a1a1a1",
     name: "DoomSlayer_1993",
     status: "playing",
-    room: { code: "AB42", gameId: "fuseball" },
+    room: { code: "AB42AA", gameId: "fuseball" },
   },
   { publicId: "b2b2b2b2b2b2b2b2b2b2", name: "sk8rgrl99", status: "online" },
   { publicId: "c3c3c3c3c3c3c3c3c3c3", name: "Clippy_Fan", status: "online" },
@@ -59,7 +59,7 @@ export const DEMO_BUDDIES: readonly Buddy[] = [
 ];
 
 const ROCKET = DEMO_BUDDIES[4]!;
-const DEMO_INVITE_ROOM = { code: "VB77", gameId: "fuse-volley" };
+const DEMO_INVITE_ROOM = { code: "VB77AA", gameId: "fuse-volley" };
 const PIG_CHAMPION: PlayerCard = {
   publicId: "0707070707070707070707".slice(0, 20),
   name: "PigChampion",

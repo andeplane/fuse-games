@@ -611,10 +611,10 @@ test("a presence claim is validated", async () => {
         session: "1".repeat(32),
       },
     },
-    { room: { code: "AB12", memberId: "short" } },
+    { room: { code: "AB12AA", memberId: "short" } },
     {
       room: {
-        code: "AB12",
+        code: "AB12AA",
         memberId: member(1),
         token: token(1),
         session: "1".repeat(32),
@@ -623,7 +623,7 @@ test("a presence claim is validated", async () => {
     },
     {
       room: {
-        code: "AB12",
+        code: "AB12AA",
         memberId: member(1),
         token: token(1),
         session: "1".repeat(32),
@@ -647,7 +647,7 @@ test("a presence claim is validated", async () => {
     {
       passive: true,
       room: {
-        code: "AB12",
+        code: "AB12AA",
         memberId: member(1),
         token: token(1),
         session: "1".repeat(32),
@@ -1019,7 +1019,7 @@ test("the Firestore reader and the in-memory database agree on every presence re
     { ...base, at: 1.5 },
     { ...base, publicId: "nope" },
     { ...base, uid: "" },
-    { ...base, room: "AB12" },
+    { ...base, room: "AB12AA" },
     {
       ...base,
       room: {
@@ -1057,7 +1057,7 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
     {
       passive: true,
       room: {
-        code: "AB12",
+        code: "AB12AA",
         memberId: member(1),
         token: token(1),
         session: "1".repeat(32),
@@ -1079,7 +1079,7 @@ test("a room claim requires a live seat in that room", async () => {
   await assert.rejects(
     f.sync("alice", {
       room: {
-        code: "ZZ99",
+        code: "ZZ99AA",
         memberId: member(1),
         token: token(1),
         session: "1".repeat(32),

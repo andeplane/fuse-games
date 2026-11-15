@@ -69,7 +69,7 @@ const view = (extra: Partial<FriendsPanelView> = {}): FriendsPanelView => ({
       publicId: "rm222",
       name: HOSTILE,
       online: true,
-      room: { code: "CD34", gameId: "fuse-riders" },
+      room: { code: "CD34AA", gameId: "fuse-riders" },
     },
     { publicId: "off33", name: "Ofelia", online: false },
   ],
@@ -139,7 +139,7 @@ test("friends are listed online first with their room, then requests and sent on
   assert.deepEqual(f.texts(".fui-friends-status"), [
     "",
     "ONLINE",
-    "IN ROOM CD34",
+    "IN ROOM CD34AA",
     "OFFLINE",
     "",
   ]);
@@ -170,7 +170,7 @@ test("friends are listed online first with their room, then requests and sent on
   assert.deepEqual(f.calls, [
     "add:in444",
     "remove:in444",
-    "join:CD34",
+    "join:CD34AA",
     "remove:out55",
     "notifications:true",
   ]);
@@ -178,7 +178,7 @@ test("friends are listed online first with their room, then requests and sent on
 
 test("in a room, online friends elsewhere get INVITE and INVITE EVERYONE ONLINE covers them", () => {
   const f = fixture();
-  f.panel.render(state({ roomCode: "AB12", notifications: "on" }));
+  f.panel.render(state({ roomCode: "AB12AA", notifications: "on" }));
   assert.deepEqual(f.texts(".fui-friends-action").slice(0, 3), [
     "🔔 INVITE ALERTS ON",
     "+ ADD FRIEND",
@@ -197,14 +197,14 @@ test("in a room, online friends elsewhere get INVITE and INVITE EVERYONE ONLINE 
   // A friend already in this room is not invited, and with nobody to invite the button is disabled.
   f.panel.render(
     state({
-      roomCode: "CD34",
+      roomCode: "CD34AA",
       view: view({
         friends: [
           {
             publicId: "rm222",
             name: "Ro",
             online: true,
-            room: { code: "CD34", gameId: "fuse-riders" },
+            room: { code: "CD34AA", gameId: "fuse-riders" },
           },
           { publicId: "off33", name: "Ofelia", online: false },
         ],
@@ -244,40 +244,40 @@ test("invites show in the list and the newest in the banner, except for the room
     {
       id: "i2",
       from: { publicId: "on111", name: "Onni" },
-      code: "EF56",
+      code: "EF56AA",
       gameId: "fuse-riders",
       at: 2,
     },
     {
       id: "i1",
       from: { publicId: "rm222", name: HOSTILE },
-      code: "CD34",
+      code: "CD34AA",
       gameId: "fuse-riders",
       at: 1,
     },
   ];
   f.panel.render(state({ view: view({ invites }) }));
   assert.equal(f.panel.banner.hidden, false);
-  assert.match(f.panel.banner.textContent!, /Onni invited you to room EF56/);
+  assert.match(f.panel.banner.textContent!, /Onni invited you to room EF56AA/);
   assert.equal(f.panel.banner.querySelector("img"), null);
   f.click("JOIN", f.panel.banner);
   f.click("✕", f.panel.banner);
-  assert.deepEqual(f.calls, ["join:EF56", "dismiss:i2"]);
+  assert.deepEqual(f.calls, ["join:EF56AA", "dismiss:i2"]);
   assert.deepEqual(f.texts(".fui-friends-heading")[0], "INVITES");
   assert.deepEqual(f.texts(".fui-friends-status").slice(0, 2), [
-    "invited you to room EF56",
-    "invited you to room CD34",
+    "invited you to room EF56AA",
+    "invited you to room CD34AA",
   ]);
-  // In EF56 already: the banner shows the other invite, and that row has no JOIN.
-  f.panel.render(state({ view: view({ invites }), roomCode: "EF56" }));
-  assert.match(f.panel.banner.textContent!, /room CD34/);
+  // In EF56AA already: the banner shows the other invite, and that row has no JOIN.
+  f.panel.render(state({ view: view({ invites }), roomCode: "EF56AA" }));
+  assert.match(f.panel.banner.textContent!, /room CD34AA/);
   const rows = f.panel.dialog.querySelectorAll(
     ".fui-friends-section .fui-friends-row",
   );
   assert.equal(rows[0]!.querySelectorAll("button").length, 1);
   assert.equal(rows[1]!.querySelectorAll("button").length, 2);
   f.panel.render(
-    state({ view: view({ invites: [invites[0]!] }), roomCode: "EF56" }),
+    state({ view: view({ invites: [invites[0]!] }), roomCode: "EF56AA" }),
   );
   assert.equal(f.panel.banner.hidden, true);
 });
