@@ -1118,8 +1118,12 @@ test("an attack on its way warns the victim, then shows as a label with a draini
       ]),
       shot(steps, songMs),
     );
-  const warned = attacked(5200);
+  const warned = attacked(5200, { combo: 12 });
   assert.equal(textAt(warned, "INCOMING: DRUNK")?.fill, PINK);
+  assert.ok(
+    textAt(warned, "INCOMING: DRUNK")!.y < textAt(warned, "COMBO")!.y,
+    "warning stays above the combo",
+  );
   assert.ok(!texts(warned).includes("DRUNK"), "not in force yet");
   const under = attacked(8000);
   assert.ok(!texts(under).includes("INCOMING: DRUNK"));
@@ -1219,24 +1223,24 @@ test("more than one rider: a box each on the right, ranked, with place, name, sc
       .filter((call) => call.op === "fillText" && inRow(call, index))
       .map((call) => call.what);
   // Place, name and chart; the score; the combo and the best one.
-  assert.deepEqual(row(0), ["1ST", "BEA", "EASY", "0600000", "x3", "MAX 57"]);
+  assert.deepEqual(row(0), ["1ST", "BEA", "EASY", "60.00%", "x3", "MAX 57"]);
   assert.deepEqual(row(1), [
     "2ND",
     "ADA",
     "HARD",
     "YOU",
-    "0412345",
+    "41.23%",
     "x12",
     "MAX 40",
   ]);
-  assert.deepEqual(row(2), ["3RD", "CY", "HARD", "0001000", "x0", "MAX 0"]);
+  assert.deepEqual(row(2), ["3RD", "CY", "HARD", "0.10%", "x0", "MAX 0"]);
   // In a session the box's last line ends in the rider's total: what it had before plus this song's score.
   const session = rig().frame(
     world([
       rider(0, { rating: 412_345, place: 2, combo: 12, best: 40 }),
       rider(1, { rating: 600_000, place: 1, combo: 3, best: 57 }),
     ]),
-    shot(steps, 1000, { totals: [1_000_000, 0] }),
+    shot(steps, 1000, { totals: [1_000_000, 0], totalSongs: 3 }),
   );
   const duo = layoutFor(1366, 768, 2, 0).panel!;
   const last = (index: number) =>
@@ -1249,9 +1253,9 @@ test("more than one rider: a box each on the right, ranked, with place, name, sc
           call.y < boxY(duo, index) + duo.boxHeight,
       )
       .map((call) => call.what);
-  assert.deepEqual(last(0), ["x3", "TOTAL 600,000", "MAX 57"]);
+  assert.deepEqual(last(0), ["x3", "SESSION 20.00%"]);
   // A total too long to sit beside the best combo takes its place.
-  assert.deepEqual(last(1), ["x12", "TOTAL 1,412,345"]);
+  assert.deepEqual(last(1), ["x12", "SESSION 47.07%"]);
   // The item in hand and the effects a rider is under, as icons in its box.
   const icons = (index: number) =>
     calls
@@ -1277,14 +1281,14 @@ test("more than one rider: a box each on the right, ranked, with place, name, sc
           call.y < fieldOf(layout, slot).laneTop,
       )
       .map((call) => call.what);
-  assert.deepEqual(header(0), ["2ND", "ADA", "HARD", "0412345", "-187,655"]);
-  assert.deepEqual(header(1), ["1ST", "BEA", "EASY", "0600000"]);
-  assert.deepEqual(header(2), ["3RD", "CY", "HARD", "0001000"]);
+  assert.deepEqual(header(0), ["2ND", "ADA", "HARD", "41.23%", "-18.76%"]);
+  assert.deepEqual(header(1), ["1ST", "BEA", "EASY", "60.00%"]);
+  assert.deepEqual(header(2), ["3RD", "CY", "HARD", "0.10%"]);
 
   // Alone there is no board and no place.
   const solo = rig().frame(world([rider(0, { rating: 5 })]), shot(steps, 1000));
   assert.ok(!texts(solo).includes("1ST") && !texts(solo).includes("YOU"));
-  assert.ok(texts(solo).includes("0000005"));
+  assert.ok(texts(solo).includes("0.00%"));
 });
 
 test("an overtake slides the boxes to their new rows over several frames, the riser on top, and tells the local rider", () => {
@@ -1431,13 +1435,13 @@ test("a box flashes in the colour of each judgment, its score rolls up, a miss n
   for (let ms = 3016; ms < 4200; ms += 16) {
     const shown = texts(
       fresh.frame(them({ rating: 160_000 }), shot(steps, ms)),
-    ).filter((text) => /^0\d{6}$/.test(text) && text !== "0500000");
+    ).filter((text) => /^\d+\.\d{2}%$/.test(text) && text !== "50.00%");
     for (const text of shown) scores.add(text);
     assert.ok(
-      shown.every((text) => Number(text) >= 100_000 && Number(text) <= 160_000),
+      shown.every((text) => parseFloat(text) >= 10 && parseFloat(text) <= 16),
     );
   }
-  assert.ok(scores.size > 10 && scores.has("0160000"));
+  assert.ok(scores.size > 10 && scores.has("16.00%"));
 
   // A miss: red flash, the box nudged sideways, the lost combo falling in red.
   const calm = r.frame(them(judged), shot(steps, 4000));

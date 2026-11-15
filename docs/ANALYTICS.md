@@ -6,6 +6,14 @@ bounded event batches to the existing service's `POST /api/telemetry/events`.
 No third-party analytics SDK or analytics provider receives new events.
 Existing Mixpanel history is neither migrated nor deleted.
 
+Gameplay activity and verified highscores use this same first-party persistence
+infrastructure through authenticated, separately validated routes. They are not
+accepted through anonymous telemetry ingestion. Shared match/round activity is an
+indexed projection of accepted history; Fusemania song boards are projections of
+canonical input replays. See [gameplay activity](design/gameplay-activity.md) and
+[song scores](design/fusemania-song-scores.md). Analytics opt-out does not turn an
+anonymous event into an account-owned result or disable ordinary game history.
+
 ## Identity and sessions
 
 A user is one anonymous browser installation, identified by a random UUID saved on
@@ -106,6 +114,7 @@ ledger capacity can forget their oldest marks; these metrics are not billing rec
 | Ball Bros         | Survival game; playing until over                                                |
 | Fuseball          | Whole first-to-three match; first active play, not each point                    |
 | Fuse Volley       | Whole match; first actual rally, not each serve/point                            |
+| Fuse Surge        | Engine round; surges running, completion once the break after it is confirmed    |
 | Fuse Front        | Battle, once its start tick is reached                                           |
 | Graveyard Shift   | One shift                                                                        |
 | Fuse Craft        | One scenario/match; sandbox has no invented end                                  |
@@ -122,7 +131,8 @@ versus the rest of the match); round participation uses an explicit constant key
 Existing game-specific events use the same namespace and privacy boundary:
 Riders' funnel/settings/graphics events and confirmed human-owned `Kill`/`Miss`,
 Killer Fuse's decided `Game Ended`, Fuseball's `Goal Scored`, Volley's
-`Point Scored` and Elasto's `Race Finished`. No per-tick stream is added.
+`Point Scored`, Elasto's `Race Finished` and Fuse Surge's `Round Decided` (how a round
+ended: `reason`, `won`, `riders`, `seconds` with 0 for an endless round, `hits`). No per-tick stream is added.
 Riders weapon credit follows the authoritative decided shot log, not speculative
 rendered explosions; the shooter reports its own shots and bots have no user identity.
 

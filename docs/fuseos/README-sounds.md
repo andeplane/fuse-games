@@ -44,6 +44,11 @@ await modem.finished;
 
 `withDialUp(content, session)` returns `{ kind: "dialup", then: content }` while the session is offline and `content` itself once it has connected (or the user pressed Cancel: the gag never blocks anything). The dialog plays the modem, shows "Dialing 555-FUSE...", "Ringing...", "Verifying user name and password...", "Negotiating connection speed...", "Logging on to network..." and "Connected at 56,000 bps" in time with the sound (`MODEM_PHASES`), then closes and opens `then`. Start > Programs > Accessories > Dial-Up Networking opens it with no `then`.
 
+The browser composition uses `LocalStorageDialUpSession`: a completed handshake
+is saved as `fuseos.network.connected`, so subsequent visits skip it. Cancel skips
+only the current page. Startup opens the first connection dialog above Messenger;
+the remembered flag does not sign anyone in or store a password.
+
 ## Integrator checklist: wiring the triggers
 
 Already wired on this branch: start-up, shut-down and wake-up (`SystemSoundTriggers` in `Shell`), message boxes (`windows/MessageBox.tsx` plays `error` for the warning icon and `ding` for info), Dial-Up Networking in the Start menu, the Sounds applet. Still to wire when the apps land:

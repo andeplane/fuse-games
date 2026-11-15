@@ -22,6 +22,8 @@ import {
 } from "../src/online/game.js";
 import { bombersGame as game, createRoom } from "../src/online/game.js";
 import { foldTick, hash, type Entry, type Room } from "../src/online/game.js";
+import { historyReceipts } from "../src/online/history.js";
+import { view } from "../src/online/game.js";
 
 const { encode, decode } = game.checkpoint;
 /** The fields as a peer reads them: through MessagePack and its limits (−0 arrives as 0). */
@@ -94,6 +96,35 @@ function record(): Map<string, Room> {
 }
 const rooms = record();
 const battle = rooms.get("battle")!;
+
+test("an immediate rematch retains completed pilots and rounds before confirmation catches up", () => {
+  const room = structuredClone(rooms.get("over")!);
+  const oldMatch = room.matchId;
+  const expected = historyReceipts(view(room));
+  fold(room, { a: [[ACTION, "rematch", "rapid-next"]] });
+  assert.equal(room.stage, "running");
+  assert.equal(room.pastMatches.length, 1);
+  const restored = restore(room);
+  assert.ok(restored);
+  assert.equal(hash(restored), hash(room));
+  assert.deepEqual(
+    historyReceipts(view(restored)).filter(
+      (r) => r.result.matchId === oldMatch,
+    ),
+    expected.map((r) => ({
+      ...r,
+      result: {
+        ...r.result,
+        players: [...r.result.players].sort((a, b) => a.slot - b.slot),
+      },
+    })),
+  );
+  const fields = wire(room);
+  const groups = fields[12] as unknown[][];
+  const item = groups[0]![0] as { tick: number };
+  item.tick = room.tick + 1;
+  assert.equal(decode(fields, room.tick), undefined);
+});
 
 test("the checkpoint carries a room whole at every stage, and the restored room plays on bit for bit", () => {
   // prettier-ignore
@@ -563,14 +594,44 @@ test("a match that was decided plays no further round", () => {
     ["bot:3", "bot:2", "bot:2"],
   );
   assert.ok(decode(crowned, tick("over")) === undefined, "crowned in round 2");
-  // A result names a member that can be a record key: not one of `Object.prototype`'s names.
-  assert.ok(decode(changed(over, [[6, 0, 1], "zz"]), tick("over")));
+  // A winner belongs to the frozen roster, and can never be a prototype key.
+  assert.equal(
+    decode(changed(over, [[6, 0, 1], "zz"]), tick("over")),
+    undefined,
+  );
   const proto = changed(over, [[6, 0, 1], "constructor"]);
   assert.ok(decode(proto, tick("over")) === undefined, "a winner called that");
   // Running: the round before it already gave bot:3 the wins the match needs.
   assert.ok(decode(running, tick("sudden death")));
   const done = changed(running, [[4], settle(1)]);
   assert.ok(decode(done, tick("sudden death")) === undefined, "crowned, on");
+});
+
+test("frozen history metadata rejects future ticks, invented finishers and corrupt roster stats", () => {
+  const room = rooms.get("over")!;
+  const corrupt = (edit: (fields: unknown[]) => void) => {
+    const fields = wire(room);
+    edit(fields);
+    assert.equal(decode(fields, room.tick), undefined);
+  };
+  assert.ok(restore(room));
+  corrupt((fields) => {
+    const rounds = fields[6] as unknown[][];
+    rounds[0]![3] = room.tick + 1;
+  });
+  corrupt((fields) => {
+    const rounds = fields[6] as unknown[][];
+    rounds[0]![5] = ["not-a-finisher"];
+  });
+  corrupt((fields) => {
+    const rounds = fields[6] as unknown[][];
+    const players = rounds[0]![4] as Record<string, unknown>[];
+    players[0]!.matchScoreUnits = 999;
+  });
+  corrupt((fields) => {
+    const roster = fields[11] as Record<string, unknown>[];
+    roster[0]!.name = "\u0000";
+  });
 });
 
 test("a sparse array or a −0 from a source other than MessagePack does not get through", () => {

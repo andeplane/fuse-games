@@ -12,6 +12,11 @@ import {
   type RivalCredit,
 } from "./settlement.js";
 import { ratingDocumentId, splitProfile } from "./profile.js";
+import {
+  activityOf,
+  MemoryActivityDatabase,
+  type StoredActivity,
+} from "./activity.js";
 
 /**
  * Single-process HistoryDatabase with FirestoreHistoryDatabase's contract; history disappears when the process exits.
@@ -21,8 +26,15 @@ export class MemoryHistoryDatabase implements HistoryDatabase {
   constructor(
     private platform: Platform,
     private now: () => number = Date.now,
-  ) {}
+  ) {
+    this.activity = new MemoryActivityDatabase(
+      async () => [...this.activities.values()],
+      now,
+    );
+  }
   private matches = new Map<string, MatchRecord>();
+  private activities = new Map<string, StoredActivity>();
+  readonly activity: MemoryActivityDatabase;
   private accountRecords = new Map<string, Account>();
   private standings = new Map<string, Record<string, unknown>>();
   private ratingClaims = new Set<string>();
@@ -62,7 +74,10 @@ export class MemoryHistoryDatabase implements HistoryDatabase {
         this.now(),
         !!scope && this.ratingClaims.has(scope),
       );
+      const activity = next.match && activityOf(game, next.match);
+      const projected = activity && structuredClone(activity);
       if (next.match) this.matches.set(id, structuredClone(next.match));
+      if (projected) this.activities.set(projected.id, projected);
       for (const [uid, profile] of settled.profiles) {
         const { account, standing } = splitProfile(profile);
         this.accountRecords.set(uid, account);

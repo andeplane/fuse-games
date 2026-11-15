@@ -77,6 +77,9 @@ test("online observations ignore connecting and distinguish lobby, players and b
     ...friend.view(),
     finished: true,
     seats: friend.room().seats,
+    decided: null,
+    history: [],
+    logTick: 0,
   };
   let completed: PlayFrame | undefined;
   observeOnlinePlay(

@@ -1,13 +1,23 @@
-import { RESERVED_KEYS, type GameRegistration } from "fuse-platform";
+import { historyOnlyRegistration } from "fuse-platform";
+import { isFrontBot } from "./basics.js";
 
-/** Room admission only: Fuse Front's first online version reports no results and credits no progression. */
-export const frontRegistration: GameRegistration = {
+/** Team outcomes enter shared history without introducing Elo or progression. */
+export const frontRegistration = historyOnlyRegistration({
   id: "fuse-front",
-  isBot: () => false,
-  parseStats: () => undefined,
-  emptyTotals: () => ({}),
-  credit: () => undefined,
-  addTotals: () => {},
-  parseTotals: (raw) =>
-    Object.keys(raw).every((key) => RESERVED_KEYS.has(key)) ? {} : undefined,
-};
+  isBot: isFrontBot,
+  activityPlayer(player) {
+    return {
+      label: `${player.slot % 2 === 0 ? "Blue" : "Red"} team · controller at match end`,
+      stats: {},
+    };
+  },
+  activity(result) {
+    const blue = result.players.find(
+      (player) => player.slot % 2 === 0,
+    )?.roundWins;
+    const red = result.players.find(
+      (player) => player.slot % 2 === 1,
+    )?.roundWins;
+    return { title: blue ? "Blue team won" : red ? "Red team won" : "Draw" };
+  },
+});

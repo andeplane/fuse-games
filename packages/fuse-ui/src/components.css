@@ -1,4 +1,5 @@
 @import "@fontsource/press-start-2p/latin.css";
+@import "./activity.css";
 @import "./top-bar.css";
 @import "./play-menu.css";
 @import "./playtest.css";
@@ -835,6 +836,28 @@
   gap: 16px;
   min-width: 0;
 }
+.fui-room-seats {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.fui-room-configuration-content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.fui-room-seats > h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+}
+.fui-room-configuration .fui-room-seats > .fui-roster {
+  display: none;
+}
+.fui-room-configuration .fui-room-seats > .fui-room-open-slots {
+  grid-template-columns: minmax(0, 1fr);
+}
 .fui-room-layout .fui-invite {
   display: flex;
   flex-direction: column;
@@ -1206,6 +1229,9 @@
     order: 2;
   }
   .fui-room-players > .fui-room-modes {
+    order: 3;
+  }
+  .fui-room-players > .fui-room-configuration-content {
     order: 3;
   }
   /* START follows the page down: a long lobby never hides it. */

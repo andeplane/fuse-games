@@ -1,4 +1,6 @@
 import { LEGACY_GAME_ID, RoomError, validGameId } from "fuse-network-be";
+import type { MatchResult } from "./result.js";
+import type { GameActivity } from "./activity-api.js";
 
 /**
  * What the platform itself reads of one player's result. Every game reports these, under these names, beside its own
@@ -41,6 +43,8 @@ export interface GameRegistration<
 > {
   /** The gameId everywhere: rooms, match records, ratings, routes. Lowercase `[a-z0-9-]`, at most 32 characters. */
   readonly id: string;
+  /** Explicitly disable Elo settlement for games that record outcomes without ranked play. Defaults to true. */
+  readonly ratesRounds?: boolean;
   /** Bots never hold an account, never attest and are never rated. */
   isBot(playerId: string): boolean;
   /**
@@ -51,6 +55,16 @@ export interface GameRegistration<
   parseStats(raw: unknown, rounds: number): P | undefined;
   /** Checks that need the whole field, e.g. that stats naming other players name players of this match. */
   validField?(players: readonly P[]): boolean;
+  /** Game-owned presentation of validated outcomes; history identity, grouping and storage stay platform-owned. */
+  activity?(result: MatchResult<P>): {
+    title?: string;
+    context?: GameActivity["context"];
+  };
+  activityPlayer?(player: P): {
+    label?: string;
+    score?: number;
+    stats?: Record<string, number>;
+  };
   emptyTotals(): T;
   /** What one confirmed whole match adds to one account. Round receipts never credit totals. */
   credit(player: P, players: readonly P[]): C;

@@ -1,6 +1,7 @@
 import { createBackButton } from "./back.js";
 import { createDialog, type DialogPart } from "./dialog.js";
 import { el, partClass, type PartClasses } from "./dom.js";
+import { createActivityBrowser, createActivitySource } from "./activity.js";
 
 /**
  * What the account panel needs from sign-in. The game supplies it (Firebase, or a fake in a browser test); nothing
@@ -38,7 +39,7 @@ export interface AccountPage<Profile extends AccountProfile, Match> {
 }
 
 /** Which section of the dialog is on screen. */
-export type AccountView = "stats" | "matches" | "leaderboard";
+export type AccountView = "stats" | "matches" | "leaderboard" | "activity";
 /** Whose recent games the MATCHES tab lists. */
 export type AccountScope = "everyone" | "mine";
 
@@ -206,6 +207,8 @@ export interface AccountDialogOptions<
   profileUrl: string;
   /** GET `{ players }`. */
   leaderboardUrl: string;
+  /** Shared, cross-game round and match history. Old match recaps remain available independently. */
+  activityApiUrl?: string;
   /** The name this browser already plays under, the natural first username. */
   localName(): string | null;
   track(event: string): void;
@@ -227,7 +230,10 @@ export interface AccountDialogOptions<
   match(entry: Match, context: AccountMatchContext): Node;
   /** An opened match: its full results, as the post-match report shows them. */
   matchDetail(entry: Match, context: { now: number; day: string }): Node;
-  leaderboard(players: Player[]): Node;
+  leaderboard(
+    players: Player[],
+    handlers: { openPlayer(publicId: string, name: string): void },
+  ): Node;
   /** The avatar beside the username. */
   avatar(id: string): HTMLElement;
   /** A full page; fewer means the list ended. Default 20. */
@@ -251,6 +257,7 @@ export interface AccountDialog {
   dialog: HTMLDialogElement;
   /** Refresh the header's rating soon (coalesced: at most one profile request per 15 seconds). */
   refresh(): void;
+  openPlayer(publicId: string, name: string): void;
   dispose(): void;
 }
 
@@ -349,8 +356,10 @@ export function createAccountDialog<
   for (const [key, label] of [
     ["stats", text.statsTab],
     ["matches", text.matchesTab],
+    ["activity", "ACTIVITY"],
     ["leaderboard", text.leaderboardTab],
   ] as const) {
+    if (key === "activity" && !options.activityApiUrl) continue;
     const tab = plainButton(label);
     tab.onclick = () => show(key);
     tabButtons.set(key, tab);
@@ -364,6 +373,19 @@ export function createAccountDialog<
     scope: AccountScope = "everyone",
     opened: Match | undefined,
     listScroll = 0;
+  const activity = options.activityApiUrl
+    ? createActivityBrowser({
+        document: doc,
+        source: createActivitySource({
+          apiUrl: (path) =>
+            `${options.activityApiUrl}${path.slice("/api/activity".length)}`,
+          fetch: options.fetch,
+          token: () => auth.token(),
+        }),
+        signedIn: () => Boolean(account),
+        signIn: () => show("stats"),
+      })
+    : undefined;
   // Read once per opening and kept while the dialog is up, so switching tabs never refetches.
   let session = 0,
     history:
@@ -583,6 +605,7 @@ export function createAccountDialog<
     render();
     body.scrollTop = back ? listScroll : 0;
     if (back) focusPart(`match-${back.id}`);
+    if (next === "activity") activity?.open();
   }
 
   function signInPrompt(message: string): HTMLElement[] {
@@ -829,7 +852,9 @@ export function createAccountDialog<
           false,
         );
         if (mine === generation)
-          body.replaceChildren(options.leaderboard(page.players));
+          body.replaceChildren(
+            options.leaderboard(page.players, { openPlayer }),
+          );
       } catch {
         if (mine === generation) {
           message.textContent = text.leaderboardFailed;
@@ -851,7 +876,8 @@ export function createAccountDialog<
       if (key === view) tab.setAttribute("aria-current", "page");
       else tab.removeAttribute("aria-current");
     body.dataset.view = opened ? "match" : view;
-    if (view === "leaderboard") renderLeaderboard();
+    if (view === "activity" && activity) body.replaceChildren(activity.element);
+    else if (view === "leaderboard") renderLeaderboard();
     else if (view === "stats") renderStats();
     else if (opened) renderMatch(opened);
     else renderMatches();
@@ -870,6 +896,7 @@ export function createAccountDialog<
     reset();
     if (next) void refreshLanding();
     if (dialog.open) render();
+    activity?.refresh();
   });
   // Sign-in loads when the pointer arrives, so its popup can open inside the click that asks for it.
   button.addEventListener("pointerenter", auth.warm, { once: true });
@@ -880,12 +907,22 @@ export function createAccountDialog<
     scope = "everyone";
     render();
     dialog.showModal();
+    if (next === "activity") activity?.open(true);
   };
+  function openPlayer(publicId: string, name: string) {
+    if (!activity) return;
+    view = "activity";
+    opened = undefined;
+    render();
+    body.scrollTop = 0;
+    if (!dialog.open) dialog.showModal();
+    activity.openPlayer(publicId, name);
+  }
   button.onclick = () => {
     auth.warm();
     open("stats");
   };
-  matchesButton.onclick = () => open("matches");
+  matchesButton.onclick = () => open(activity ? "activity" : "matches");
   leaderboardButton.onclick = () => open("leaderboard");
   dialog.addEventListener("close", () => {
     generation++;
@@ -896,6 +933,7 @@ export function createAccountDialog<
     leaderboardButton,
     dialog,
     refresh,
+    openPlayer,
     dispose: () => {
       account = undefined;
       cancelRefresh?.();
@@ -903,6 +941,7 @@ export function createAccountDialog<
       landingGeneration++;
       reset();
       stop();
+      activity?.dispose();
     },
   };
 }

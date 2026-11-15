@@ -1,4 +1,9 @@
-import { FADE, PINGPONG, type Effect } from "../engine/index.js";
+import {
+  FADE,
+  PINGPONG,
+  effectIntensity,
+  type Effect,
+} from "../engine/index.js";
 
 /**
  * What the two attacks on the ears do to the song this device plays. Only loudness, per ear: the song is never
@@ -35,7 +40,9 @@ const smooth = (x: number): number => {
 /** How much of an effect is on at `songMs`: 0 outside it, 1 in its middle, eased over `ease` at each end. */
 const strength = (effect: Effect, songMs: number, ease: number): number =>
   songMs > effect[1] && songMs < effect[2]
-    ? smooth(Math.min(songMs - effect[1], effect[2] - songMs) / ease)
+    ? (smooth(Math.min(songMs - effect[1], effect[2] - songMs) / ease) *
+        effectIntensity(effect)) /
+      1000
     : 0;
 
 /** The song as a rider under `effects` hears it at `songMs`, `beat` beats into the song. */

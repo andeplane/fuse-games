@@ -4,6 +4,7 @@ import {
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
 import { createAppPortal } from "fuse-ui/portal";
+import type { HistorySnapshot } from "fuse-ui/results-history";
 import { observeConfirmedPlay, type PlayObserver } from "fuse-ui/play-metrics";
 import { playFrame } from "./play-metrics.js";
 import type { BallRuntime } from "../online/runtime.js";
@@ -44,11 +45,14 @@ export type Client = Pick<
   | "canManage"
 > &
   // Optional: a client without it is drawn a tick behind the clock, blended.
-  Partial<Pick<BallRuntime, "lead">>;
+  Partial<Pick<BallRuntime, "lead" | "historyReceipts">>;
 export interface ScreenOptions {
   base?: string;
   search?: string;
   observePlay?: PlayObserver;
+  /** Called with confirmed state only; submission is supplied by the composition root. */
+  history?(snapshot: HistorySnapshot): void;
+  closeHistory?(read: () => HistorySnapshot, stop: () => void): void;
   online?: {
     code: string;
     display: boolean;
@@ -107,17 +111,39 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const retry = el("button", "RECONNECT", "quiet-button");
   retry.hidden = !options.online;
   retry.onclick = () => {
+    leaving = false;
     cancel();
     runtime?.stop();
     options.retry();
   };
-  const exit = () => {
+  let leaving = false;
+  const exit = (navigate = options.home) => {
+    if (leaving) return;
+    leaving = true;
     cancel();
-    runtime?.stop();
-    options.home();
+    const previous = runtime;
+    const stop = () => {
+      previous?.stop();
+      if (!stopped && leaving) navigate();
+    };
+    if (options.closeHistory)
+      options.closeHistory(
+        () => ({
+          receipts: previous?.historyReceipts?.() ?? [],
+          confirmedTick: previous?.confirmedFrame()?.logTick ?? -1,
+        }),
+        stop,
+      );
+    else stop();
+  };
+  home.onclick = (event) => {
+    event.preventDefault();
+    exit(() => {
+      document.defaultView!.location.href = home.href;
+    });
   };
   const leave = el("button", "LEAVE", "quiet-button");
-  leave.onclick = exit;
+  leave.onclick = () => exit();
   top.append(retry, leave);
   const heading = el("section", "", "heading");
   heading.append(
@@ -487,6 +513,11 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         state: (f, settings) => {
           activeSettings = settings;
           shared = settings.display;
+          const confirmed = runtime?.confirmedFrame();
+          options.history?.({
+            receipts: runtime?.historyReceipts?.() ?? [],
+            confirmedTick: confirmed?.logTick ?? -1,
+          });
           if (options.observePlay)
             observeConfirmedPlay(
               options.observePlay,

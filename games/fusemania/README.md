@@ -25,6 +25,8 @@ pnpm dev          # builds, then serves every game; open the printed URL plus /f
 
 **The song select** is a carousel of covers, the selected song in the middle. Left/Right (A/D, J/L), a swipe, a sideways scroll, the arrows at its sides or a click on a cover turn it; Up/Down (W/S, I/K) change the level; PageUp/PageDown or a pack's tab jump to another pack. Songs are grouped in **packs** (`src/app/packs.ts`), shown in pack order with a tab each: FUSEMANIA is the Fuse soundtrack, and DDR JAZZ MIX and ITG JAZZ MIX have their place in the order and appear when their first song is added (see "Adding a song" in `charts/README.md`). Each bundled song has a cover image in `public/music/covers/<id>.jpg`; a song without one, and a player's own simfile, wears a cover drawn from its id.
 
+**A link to a song.** While the single-player select is open the address bar follows it (`?song=<id>&chart=<level, 0 the easiest>`), so the page's address is always a link to the selected song and level; it is replaced, not pushed, so Back still leaves the select. Opening such a link opens the select on that song. **SHARE** at the carousel's top copies the same link, in a room too, where the address stays the room's.
+
 **The other players' fields.** With more than one player, a device shows every field: its own lit and framed in the player's colour (in the middle of three or five players, on the left of two or four) and the others' smaller beside it, so an attack can be seen landing. Their judgments, combos, attacks and power-ups are shown as they are, but their arrows are not there to be read: every column is drawn in another column's place, the same shuffle for every opponent, changing from match to match (`src/render/scramble.ts`). It is only the picture; the Shared TV and a watcher see every field as it is.
 
 **Your speed.** **OPTIONS**, beside PLAY in the song select and beside START in a room, holds every player's own speed as chips (0.5x, 1x, 1.5x, 2x, 2.5x, 3x, 4x, 5x), and the Settings slider reaches the values between. The speeds are never a row in the lobby: `src/app/lobby-bar.ts` builds the room's bar and `tests/app-lobby-bar.test.ts` holds it there. It is saved on the device and only spreads that player's arrows apart on their own screen: the engine never sees it, so the beat, the judging and every other player are unchanged.
@@ -61,6 +63,25 @@ The download overlay shows received bytes and a progress bar, with a percentage 
 
 ## The result
 
+**Song highscores** in the main menu lists every bundled song, with the leading
+player and percentage for Easy, Medium, Hard and Challenge. Blank cells mean nobody
+has a verified score; select a cell to open that chart's leaderboard. Sign in and
+choose an account name before playing **Score** mode to save a result. The result
+screen shows whether saving succeeded and offers retry after a failed completion.
+Battle, custom files, spectators and runs recovered mid-song stay unranked.
+
+Song scores are displayed as percentages with two decimals. Session scores are
+percentages of the whole selected playlist's maximum: three perfect songs in a
+three-song session give 100%. Local browser bests remain available offline, but
+only server-replayed runs enter public boards. Scores belong to the exact chart
+and scoring version; changed charts start fresh boards.
+
+Verified completion events and their leaderboard projections use the shared
+first-party event database. The server checks a ticket, account ownership, elapsed
+time and the complete input replay against its own chart. This prevents fabricated
+totals, but cannot establish that inputs came from a human. See
+[song-score storage and verification](../../docs/design/fusemania-song-scores.md).
+
 The result shows this device's own run large: the grade, the score, the chart, the accuracy, the longest combo, a badge for a run that never broke its combo, the difference to this browser's best on the chart, and every judgment as a bar. Beside them is the **timing graph** (`src/app/timing-graph.ts`): one dot per step in its judgment's colour, from the song's start to its end, around a line at 0 ms with early above and late below; misses are red ticks on the floor; a histogram on the same scale shows the spread, a dashed line the mean; the combo runs under it on the same time axis. The numbers under it are the mean offset, the standard deviation, the mean distance from the note and how many steps were early or late outside a Marvelous. With other riders the ranking of everyone leads, and the breakdown is still this device's own.
 
 The graph is read from the picture frame by frame (`src/app/run-log.ts`), so it is this device's run only, a page reloaded on a finished song has none, and two steps hit in one frame with different judgments leave one without a dot.
@@ -69,11 +90,15 @@ Every key can be changed in Settings, up to four keys an arrow. WASD and IJKL ar
 
 ## Judging and scoring
 
-A step is judged by how far the press is from the note: Marvelous within 22 ms, Perfect 45, Great 90, Good 135, Boo 180, otherwise a Miss. The combo counts Marvelous to Great; a Good or worse breaks it. The combo number blinks in the colour of the worst judgment in it: white while every step was a Marvelous, yellow once a Perfect is in it, green once a Great is (the engine keeps that as `worst` beside the combo, so a device that recovers the match shows the same colour); with reduced motion it holds the colour without blinking. The score is a rating out of 1,000,000: the share of the chart's best possible points, so players on different levels compare. Grades run D to AAAA.
+A step is judged by how far the press is from the note: Marvelous within 22 ms, Perfect 45, Great 90, Good 135, Boo 180, otherwise a Miss. The combo counts Marvelous to Great; a Good or worse breaks it. The combo number blinks in the colour of the worst judgment in it: white while every step was a Marvelous, yellow once a Perfect is in it, green once a Great is (the engine keeps that as `worst` beside the combo, so a device that recovers the match shows the same colour); with reduced motion it holds the colour without blinking. The score is the percentage of the chart's best possible points, so players on different levels compare. Grades run D to AAAA.
 
 ## Battle mode
 
 Every few seconds one arrow glows. Hitting it puts a power-up in your slot; Space throws it.
+
+Incoming attacks show their name above the combo before they take hold. Attack amplitude is separate from the drop table: `ITEM_SCALABLE` classifies every item. Drunk, Wave, Boomerang, Tornado, Hidden, Turbo, Blackout, Mines, Lag, Fade and Ping-pong scale; Flip and the self-benefits Double, Star and Shield are on/off. Tied players receive 60% amplitude, falling to 20% when 20% behind first place (using chart-normalized rating and the early-score floor). A sole leader at least 5% ahead of the runner-up gets full amplitude on one in four seeded throws. Mine density and audio effects follow the same amplitude. Each recipient's intensity is frozen in the checkpointed effect at throw time; overlapping effects of different intensities remain separate. This changes Fusemania's rules to `fusemania-10`, so older clients cannot join the same match.
+
+The room header owns the explicit Start action. Clicking the selected cover or pressing Enter also starts; selecting a different cover only selects it. Song details contain no duplicate PLAY button.
 
 The drops rubber-band on the score. Each power-up has a power from 1 to 10 (`ITEM_POWER` in `src/engine/rules.ts`): for an attack, how hard it is to keep playing through (Flip 10, Blackout 8, Mines and Lag 7, down to Wave 2); for your own items, how much they are worth (Star 9, Double 8, Shield 2); Fade is 6 and Ping-pong 3. A rider behind the others draws the high-power ones more often and a rider ahead the low-power ones, in proportion to the gap: your rating against the others' average, as a share of the best rating, with 20% counting as a full gap. At a full gap Flip is about one drop in 170 for the leader and one in 9 for the rider behind; level riders get the plain `ITEM_BASE` table. `ITEM_BASE`, `ITEM_POWER`, `ITEM_TILT`, `ITEM_GAP_FULL_PCT` and `ITEM_GAP_FLOOR` are the knobs.
 

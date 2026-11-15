@@ -4,6 +4,7 @@ import {
   digest,
   peerId,
   roomGameId,
+  rateLimitAddress,
   validCode,
   validToken,
   type RoomStore,
@@ -142,6 +143,7 @@ export interface Reporter {
   code: string;
   rider: string;
   incarnation: string;
+  mode?: "solo" | "multiplayer";
 }
 /**
  * What anyone may see of a confirmed game: every player's stats, which seat was the caller's own, and the public id
@@ -204,6 +206,13 @@ export class HistoryStore {
     private rooms: RoomStore,
     private now: () => number,
   ) {}
+  async allowActivity(address: string): Promise<boolean> {
+    return this.rooms.database.allowance(
+      digest(`activity:${rateLimitAddress(address)}`),
+      this.now(),
+      READS_PER_HOUR,
+    );
+  }
   /**
    * One game's history, by id or by the registration itself (which types the view). An unregistered game is refused
    * with 404.
@@ -302,6 +311,7 @@ export class GameHistory<
       code,
       rider,
       incarnation: room.incarnation,
+      mode: "multiplayer",
     };
   }
 
@@ -329,6 +339,7 @@ export class GameHistory<
       code: "SO00",
       rider: SOLO_RATING_PLAYER_ID,
       incarnation: soloIncarnation(this.game.id, uid),
+      mode: "solo",
     };
   }
 
@@ -438,6 +449,13 @@ export class GameHistory<
         ? structuredClone(current)
         : {
             gameId: game.id,
+            ...(reporter.mode === undefined ? {} : { playMode: reporter.mode }),
+            groupScope: createHash("sha256")
+              .update(
+                JSON.stringify([game.id, reporter.incarnation, result.matchId]),
+              )
+              .digest("hex")
+              .slice(0, 40),
             version: 1,
             ratingScope: createHash("sha256")
               .update(

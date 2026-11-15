@@ -741,7 +741,7 @@ test("a cover is drawn from the song's id, and wears the song's image once it co
   assert.equal(f.rows()[0]!.querySelector(".fm-cover-image"), null);
 });
 
-test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/PageDown between them", () => {
+test("packs group the carousel: one button and a list, the songs pack by pack, and PageUp/PageDown between them", () => {
   const six = ["a", "b", "c", "d", "e", "f"].map((id) => song(id));
   const f = setup(six, {
     packs: [
@@ -763,20 +763,24 @@ test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/P
     "Song c",
     "Song f",
   ]);
-  const tabs = () => f.all<HTMLButtonElement>(".fm-picker-pack");
+  const tabs = () => f.all<HTMLButtonElement>(".fm-pack-option");
   const lit = () =>
     tabs()
-      .filter((tab) => tab.getAttribute("aria-selected") === "true")
-      .map((tab) => tab.querySelector(".fm-picker-pack-name")?.textContent);
+      .filter((tab) => tab.getAttribute("aria-checked") === "true")
+      .map((tab) => tab.textContent);
   assert.deepEqual(
     tabs().map((tab) => tab.textContent),
-    ["JAZZ MIX2 SONGS", "FUSE2 SONGS"],
+    ["JAZZ MIX", "FUSE"],
   );
+  // One button names the pack; an arrow on each side steps to the previous and next pack.
+  assert.equal(f.all(".fm-picker-pack").length, 1);
+  assert.equal(f.one(".fm-picker-pack-name").textContent, "PACKS");
   assert.deepEqual(lit(), []);
 
   f.picker.update(state({ song: "d" }));
   assert.deepEqual(lit(), ["FUSE"]);
   assert.equal(f.one(".fm-picker-pack-of").textContent, "FUSE");
+  assert.equal(f.one(".fm-picker-pack-name").textContent, "FUSE");
   // Turning past a pack's last song goes on into what follows.
   assert.equal(f.picker.key("ArrowRight"), true);
   assert.deepEqual(f.calls, ["song c"]);
@@ -793,14 +797,35 @@ test("packs group the carousel: a tab each, the songs pack by pack, and PageUp/P
   assert.equal(f.picker.key("PageDown"), true);
   assert.equal(f.picker.key("PageUp"), true);
   assert.deepEqual(f.calls, ["song e", "song e", "song e"], "two packs wrap");
+  f.calls.length = 0;
+  f.picker.update(state({ song: "d" }));
+  f.one(".fm-picker-pack-prev").click();
+  f.one(".fm-picker-pack-next").click();
+  assert.deepEqual(f.calls, ["song e", "song e"], "the arrows step and wrap");
+  f.calls.length = 0;
+  tabs()[1]!.click();
+  assert.deepEqual(f.calls, [], "the pack shown asks nothing");
+  f.picker.update(state({ song: "d" }));
+  f.calls.length = 0;
   f.picker.update(state({ song: "b" }));
   assert.equal(f.picker.key("PageDown"), true);
   assert.equal(f.calls.at(-1), "song a");
+
+  // The pack button opens the list.
+  f.picker.update(state({ song: "b" }));
+  const dialog = f.one(".fm-pack-dialog") as HTMLDialogElement;
+  (f.one(".fm-picker-pack") as HTMLButtonElement).click();
+  assert.equal(dialog.hasAttribute("open"), true);
 
   // The packs are the host's to change.
   f.calls.length = 0;
   f.picker.update(state({ song: "b", host: false }));
   assert.equal(tabs()[1]!.disabled, true);
+  assert.equal((f.one(".fm-picker-pack") as HTMLButtonElement).disabled, true);
+  assert.equal(
+    (f.one(".fm-picker-pack-next") as HTMLButtonElement).disabled,
+    true,
+  );
   tabs()[1]!.click();
   assert.equal(f.picker.key("PageDown"), false);
   assert.deepEqual(f.calls, []);
@@ -811,7 +836,8 @@ test("without packs there are no tabs and the songs keep the library's order", (
     packs: [{ id: "only", name: "ONLY", songs: ["a", "b", "c"] }],
   });
   one.picker.update(state());
-  assert.equal(one.all(".fm-picker-pack").length, 1);
+  assert.equal(one.all(".fm-pack-option").length, 1);
+  assert.equal(one.one(".fm-picker-pack-next").hidden, true);
   assert.equal(
     one.picker.key("PageDown"),
     false,
@@ -819,7 +845,7 @@ test("without packs there are no tabs and the songs keep the library's order", (
   );
   const f = setup();
   assert.equal(f.one(".fm-picker-packs").hidden, true);
-  assert.deepEqual(f.all(".fm-picker-pack"), []);
+  assert.deepEqual(f.all(".fm-pack-option"), []);
   f.picker.update(state());
   assert.equal(f.picker.key("PageDown"), false);
   assert.deepEqual(
@@ -946,7 +972,7 @@ test("the slider's badge shows the title's letter, and the slider is the host's"
   assert.deepEqual(f.calls, []);
 });
 
-test("PLAY on the selected song, and Enter, start it, for the host only", () => {
+test("the selected song card and Enter start it for the host, without a duplicate PLAY button", () => {
   const { document } = parseHTML("<!doctype html><html><body></body></html>");
   const plays: string[] = [];
   const picker = createSongPicker({
@@ -959,15 +985,16 @@ test("PLAY on the selected song, and Enter, start it, for the host only", () => 
   });
   document.body.append(picker.element);
   picker.update(state());
+  assert.equal(picker.element.querySelector(".fm-picker-play"), null);
   const play = picker.element.querySelector<HTMLButtonElement>(
-    ".fm-picker-detail .fm-picker-play",
+    '.fm-picker-row[aria-selected="true"]',
   )!;
-  assert.equal(play.hidden, false);
   play.click();
   assert.equal(picker.key("Enter"), true);
   assert.deepEqual(plays, ["play", "play"]);
   // A guest has neither.
   picker.update(state({ host: false }));
-  assert.equal(play.hidden, true);
+  play.click();
   assert.equal(picker.key("Enter"), false);
+  assert.deepEqual(plays, ["play", "play"]);
 });

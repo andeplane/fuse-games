@@ -548,6 +548,7 @@ export function playerStats(
 export function leaderboardTable(
   players: readonly LeaderboardEntry[],
   friendButton?: (publicId: string) => HTMLElement,
+  openPlayer?: (publicId: string, name: string) => void,
 ): HTMLElement {
   const root = section(
     "GLOBAL LEADERBOARD",
@@ -571,7 +572,17 @@ export function leaderboardTable(
   for (const p of players) {
     const row = element("tr");
     row.dataset.you = String(!!p.you);
-    const rider = element("td", `${p.name}${p.you ? " (you)" : ""}`);
+    const rider = element("td");
+    if (openPlayer && p.publicId) {
+      const name = element(
+        "button",
+        `${p.name}${p.you ? " (you)" : ""}`,
+        "fui-button",
+      );
+      name.type = "button";
+      name.onclick = () => openPlayer(p.publicId!, p.name);
+      rider.append(name);
+    } else rider.textContent = `${p.name}${p.you ? " (you)" : ""}`;
     if (friendButton && p.publicId && !p.you)
       rider.append(friendButton(p.publicId));
     row.append(
