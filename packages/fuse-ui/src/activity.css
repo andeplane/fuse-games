@@ -1,0 +1,150 @@
+.fui-activity {
+  color: var(--fui-text, #e8f0ff);
+}
+.fui-app dialog.fui-dialog:has(.fui-activity) {
+  width: min(58rem, calc(100vw - 1.5rem));
+}
+.fui-app .fui-account-tabs button[aria-current="page"] {
+  border-color: #74e8ff;
+  color: #74e8ff;
+}
+.fui-activity .fui-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.fui-activity .fui-activity-filters .fui-activity-filter {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  border: 0;
+}
+.fui-activity .fui-activity-filters .fui-activity-filter select {
+  width: 100%;
+  min-width: 0;
+}
+.fui-activity h3 {
+  font-size: 0.95rem;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.fui-activity-scope,
+.fui-activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+.fui-activity-scope [aria-pressed="true"],
+.fui-app .fui-dialog .fui-activity-scope .fui-button[aria-pressed="true"] {
+  border-color: #74e8ff;
+  color: #74e8ff;
+  background: #18394b;
+}
+.fui-activity-filters label {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 9rem;
+  flex: 1;
+  font-size: 0.75rem;
+}
+.fui-activity select {
+  width: 100%;
+  padding: 0.65rem;
+  border: 1px solid #6886b2;
+  border-radius: 0.5rem;
+  background: #0b1830;
+  color: #e8f0ff;
+  font: inherit;
+}
+.fui-activity-status {
+  color: #b9d3f5;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.fui-activity-list {
+  list-style: none;
+  padding: 0;
+}
+.fui-activity-list > li {
+  padding-block: 1rem;
+  border-bottom: 1px solid #30496a;
+}
+.fui-activity time,
+.fui-activity small {
+  display: block;
+  color: #b9d3f5;
+  font-size: 0.75rem;
+  line-height: 1.8;
+}
+.fui-activity .fui-activity-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-block: 0.5rem;
+}
+.fui-activity-players {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.7rem;
+  margin-top: 0.5rem;
+}
+.fui-activity .fui-activity-player,
+.fui-app .fui-dialog .fui-activity .fui-activity-player {
+  padding: 0.2rem 0;
+  min-height: 2rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #74e8ff;
+  font: inherit;
+  text-transform: none;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+.fui-activity-standings {
+  width: 100%;
+  border-collapse: collapse;
+  margin-block: 1.5rem;
+  font-size: 0.8rem;
+}
+.fui-activity-standings th,
+.fui-activity-standings td {
+  padding: 0.65rem 0.4rem;
+  text-align: left;
+  border-bottom: 1px solid #30496a;
+  font-variant-numeric: tabular-nums;
+}
+.fui-activity details {
+  margin-block: 1.5rem;
+}
+.fui-activity dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+.fui-activity dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.fui-activity-detail section ol {
+  list-style: none;
+  padding: 0;
+}
+.fui-activity-detail section li {
+  margin-block: 0.5rem;
+}
+.fui-activity :focus-visible {
+  outline: 2px solid #74e8ff;
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .fui-activity-filters label {
+    min-width: 8rem;
+  }
+  .fui-activity-standings {
+    font-size: 0.7rem;
+  }
+}

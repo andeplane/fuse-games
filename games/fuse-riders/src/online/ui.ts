@@ -186,6 +186,7 @@ const createPlayerAccountPanel = (
       apiUrl(`/api/matches${before === undefined ? "" : `?before=${before}`}`),
     profileUrl: apiUrl("/api/me"),
     leaderboardUrl: apiUrl("/api/leaderboard"),
+    activityApiUrl: apiUrl("/api/activity"),
     localName: () => read("fuse-riders-player-name"),
     fetch: (input, init) => fetch(input, init),
     track,

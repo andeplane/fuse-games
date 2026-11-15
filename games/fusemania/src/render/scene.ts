@@ -71,6 +71,7 @@ export interface DrawOptions {
   chartNames: readonly string[];
   /** Each player's session total before this song, by slot: the leaderboard adds the song's score. Leave out for none. */
   totals?: readonly number[];
+  totalSongs?: number;
   /** The key that throws the held power-up, as text ("SPACE"), for the prompt. */
   itemKey: string;
   /** CSS pixels at the bottom of the canvas covered by touch buttons (0 when none): the field stays above it. */
@@ -140,6 +141,7 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
     names: [],
     chartNames: [],
     totals: [],
+    totalSongs: 1,
     local: -1,
     texts,
   };
@@ -213,6 +215,7 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
         boardInfo.names = shot.names;
         boardInfo.chartNames = shot.chartNames;
         boardInfo.totals = shot.totals ?? NO_TOTALS;
+        boardInfo.totalSongs = shot.totalSongs ?? 1;
         boardInfo.local = local;
         drawBoard(frame, plan.panel, view, feedback, boardInfo);
       }

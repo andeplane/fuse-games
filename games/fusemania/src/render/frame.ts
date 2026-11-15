@@ -1,6 +1,7 @@
 import { pixelFont } from "./palette.js";
 import type { Pen } from "./pen.js";
 import type { Icons, Sprite } from "./sprites.js";
+import { scorePercent } from "../song-scores.js";
 
 /** What every part of one frame draws with: the pen, the moment, and the player's settings. */
 export interface Frame {
@@ -100,11 +101,11 @@ export interface NumberText {
 }
 export const numberText = (): NumberText => ({ value: Number.NaN, text: "" });
 
-/** A score, seven digits wide. */
+/** A chart score as a percentage. */
 export function scoreText(memo: NumberText, value: number): string {
   if (memo.value !== value) {
     memo.value = value;
-    memo.text = String(Math.max(0, value)).padStart(7, "0");
+    memo.text = scorePercent(Math.max(0, value));
   }
   return memo.text;
 }
@@ -124,7 +125,7 @@ export function countText(
 export function totalText(memo: NumberText, value: number): string {
   if (memo.value !== value) {
     memo.value = value;
-    memo.text = `TOTAL ${Math.max(0, value).toLocaleString("en-US")}`;
+    memo.text = `SESSION ${scorePercent(Math.max(0, value))}`;
   }
   return memo.text;
 }
@@ -132,8 +133,7 @@ export function totalText(memo: NumberText, value: number): string {
 export function gapText(memo: NumberText, value: number): string {
   if (memo.value !== value) {
     memo.value = value;
-    memo.text =
-      (value < 0 ? "-" : "+") + Math.abs(value).toLocaleString("en-US");
+    memo.text = (value < 0 ? "-" : "+") + scorePercent(Math.abs(value));
   }
   return memo.text;
 }

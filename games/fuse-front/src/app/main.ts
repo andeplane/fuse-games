@@ -6,6 +6,7 @@ import {
 } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
 import {
   createPlayMetrics,
   startGameAnalytics,
@@ -229,6 +230,7 @@ function landing(error = ""): void {
 
 function room(code: string, token: string | undefined, display: boolean): void {
   const status = el("p", "Connecting…", "ff-status");
+  let detached = false;
   status.setAttribute("role", "status");
   const lobby = el("section", "", "ff-lobby");
   const play = el("section", "", "ff-play");
@@ -238,8 +240,16 @@ function room(code: string, token: string | undefined, display: boolean): void {
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
     onBack: () => {
-      runtime.stop();
-      location.href = link();
+      resultsHistory.close(
+        () => ({
+          receipts: runtime.roomState()?.history ?? [],
+          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+        }),
+        () => {
+          runtime.stop();
+          location.href = link();
+        },
+      );
     },
     backText: "Leave",
     onAction: (id) =>
@@ -337,8 +347,11 @@ function room(code: string, token: string | undefined, display: boolean): void {
         if (online && !display && !store.getItem(keys.host(code)) && who)
           runtime.command({ type: "join", name: who });
       },
-      state: (frame) => show(frame),
+      state: (frame) => {
+        if (!detached) show(frame);
+      },
       event: (event, matchId) => {
+        if (detached) return;
         field.event(matchId, event, performance.now());
         audio.event(matchId, event, shown, runtime.slot());
         const ping = radar.event(matchId, event, shown, runtime.slot());
@@ -379,6 +392,15 @@ function room(code: string, token: string | undefined, display: boolean): void {
   // The row's HERO button that opened Settings: it has the focus back when Settings closes.
   let heroOpener: string | undefined;
   let wasLobby = true;
+  const resultsHistory = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME_ID,
+    ...(token ? { room: { code, token } } : {}),
+    signedIn: () => social.isSignedIn(),
+    playerId: () => runtime.self,
+    now: () => performance.now(),
+  });
   function show(view: Frame<View>): void {
     observeConfirmedPlay(
       reportPlay,
@@ -386,6 +408,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
       () => runtime.confirmedFrame(),
       (view) => frontPlayFrame(view, runtime.self, display, online),
     );
+    const confirmed = runtime.confirmedFrame();
+    if (!display && confirmed)
+      resultsHistory.observe(confirmed.history, confirmed.logTick);
     const inLobby = view.stage === "lobby";
     // The room's line is at the room's foot; in a match it is the line under the page's header again.
     if (!inLobby && status.parentElement !== app) lobby.before(status);
@@ -659,6 +684,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
       roster,
       capacity: 2 * view.settings.size,
       join,
+      layout: "configuration",
       modes: [sizes],
       playerName: () => social.playerName(undefined) ?? undefined,
       addAI,
@@ -1085,6 +1111,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
   window.addEventListener("blur", blurred);
   runtime.start();
   teardown = () => {
+    detached = true;
     stopPlaytestCapture();
     stopPlaytestInput();
     cancelAnimationFrame(raf);
@@ -1092,7 +1119,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
     window.removeEventListener("keydown", keys123);
     window.removeEventListener("keyup", keyUp);
     window.removeEventListener("blur", blurred);
-    runtime.stop();
+    resultsHistory.close(
+      () => ({
+        receipts: runtime.roomState()?.history ?? [],
+        confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+      }),
+      () => runtime.stop(),
+    );
     field.dispose();
   };
 }

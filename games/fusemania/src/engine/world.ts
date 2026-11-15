@@ -1,6 +1,7 @@
 import type { Library } from "./library.js";
 import {
   addEffect,
+  attackIntensity,
   advance,
   createPlayer,
   finish,
@@ -24,6 +25,7 @@ import {
   ITEM_EVERY_MS,
   ITEM_FIRST_MS,
   ITEM_MS,
+  ITEM_SCALABLE,
   LATE_MS,
   MISS,
   NO_ITEM,
@@ -155,7 +157,12 @@ function contexts(library: Library, world: World): PlayContext[] {
   });
 }
 
-function useItem(world: World, slot: number, now: number): void {
+function useItem(
+  library: Library,
+  world: World,
+  slot: number,
+  now: number,
+): void {
   const player = world.players[slot]!,
     item = player.item;
   if (item === NO_ITEM) return;
@@ -167,6 +174,9 @@ function useItem(world: World, slot: number, now: number): void {
     return;
   }
   const only = hitsOne(item) ? oneRival(world, slot, now) : -1;
+  const ratings = world.players.map((target) =>
+    rating(stepsOf(library, world, target), target.score),
+  );
   const lasts =
     ITEM_MS[item]! +
     (item === FADE
@@ -180,7 +190,10 @@ function useItem(world: World, slot: number, now: number): void {
       continue;
     }
     const from = now + ATTACK_LEAD_MS;
-    addEffect(target, item, from, from + lasts, slot);
+    const intensity = ITEM_SCALABLE[item]
+      ? attackIntensity(ratings, other, hash(world.seed, now, 0xb411 + other))
+      : 1000;
+    addEffect(target, item, from, from + lasts, slot, intensity);
   }
 }
 
@@ -204,6 +217,7 @@ function oneRival(world: World, slot: number, now: number): number {
  * never before the rider's last one.
  */
 function applyInput(
+  library: Library,
   ctxs: readonly PlayContext[],
   world: World,
   input: Input,
@@ -221,7 +235,7 @@ function applyInput(
   else if (input.code < USE) release(ctx, player, input.code - RELEASE, at);
   else {
     advance(ctx, player, at);
-    useItem(world, input.slot, now);
+    useItem(library, world, input.slot, now);
   }
 }
 
@@ -238,7 +252,7 @@ export function stepWorld(
   world.ms += TICK_MS;
   const now = world.ms;
   const ctxs = contexts(library, world);
-  for (const input of inputs) applyInput(ctxs, world, input, now);
+  for (const input of inputs) applyInput(library, ctxs, world, input, now);
   for (const [slot, player] of world.players.entries()) {
     // A bot plays on the room's clock; a rider's own clock may be `LATE_MS` behind what its device has yet to log.
     advance(ctxs[slot]!, player, player.bot ? now : now - LATE_MS);
@@ -247,7 +261,7 @@ export function stepWorld(
       player.item !== NO_ITEM &&
       now >= player.itemAt + BOT_ITEM_DELAY_MS
     )
-      useItem(world, slot, now);
+      useItem(library, world, slot, now);
   }
   for (const player of world.players)
     if (player.effects.some((effect) => effect[2] + EFFECT_KEEP_MS < now))
@@ -303,7 +317,13 @@ export function forecast(
   if (copy.phase === "over" || !player || player.bot) return copy;
   const ctxs = contexts(library, copy);
   for (const input of pending)
-    applyInput(ctxs, copy, { slot, code: input.code, ms: input.ms }, input.at);
+    applyInput(
+      library,
+      ctxs,
+      copy,
+      { slot, code: input.code, ms: input.ms },
+      input.at,
+    );
   advance(ctxs[slot]!, player, Math.max(player.last, now));
   return copy;
 }

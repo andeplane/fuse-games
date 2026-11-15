@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "fuse-netcode": "workspace:*",
+    "fuse-network-be": "workspace:*",
+    "fuse-telemetry": "workspace:*",
     "fuse-platform": "workspace:*",
     "fuse-ui": "workspace:*"
   },

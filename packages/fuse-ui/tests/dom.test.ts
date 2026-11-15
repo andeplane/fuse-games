@@ -125,6 +125,8 @@ test("DOM components stay self-contained; browser adapters use explicit shared b
         "top-bar.ts": ["fuse-music"],
         "friends-client.ts": ["fuse-platform/friends-api"],
         "friends-notify.ts": ["fuse-platform/friends-api"],
+        "activity.ts": ["fuse-platform/activity-api"],
+        "results-history.ts": ["fuse-platform/history-api"],
         "social.ts": ["fuse-network-fe", "fuse-platform/rating"],
         "analytics.ts": ["fuse-network-fe"],
         "analytics-client.ts": ["fuse-telemetry/contracts"],
