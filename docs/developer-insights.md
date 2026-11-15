@@ -131,8 +131,10 @@ no merge or deployment permission.
 
 ## Production dependencies and retention
 
-Provisioning and deployment are pending authorization. No resources are
-provisioned by this document. The release requires:
+Production activation was authorized on 2026-11-15. The private bucket and
+authenticated delivery resources are provisioned; see
+[the activation inventory](online/DEVELOPER-INSIGHTS-ACTIVATION.md) for exact
+resource names, verification and remaining acceptance checks. A release requires:
 
 - `TELEMETRY_ENABLED=1`, a private `TELEMETRY_BUCKET`, Firestore indexes from
   `firestore.indexes.json`, and the authenticated developer sign-in setup.
@@ -205,6 +207,9 @@ real Norwegian/English sample before claiming production readiness.
 ## Verification evidence and pending acceptance
 
 Integration test results and private browser evidence are recorded in the PR.
-Pending: exact-source production deployment, durable bucket/queue/IAM setup,
-real microphone and Norwegian/English/dialect sample, and physical-device
-acceptance. A local test or source inspection does not establish these outcomes.
+The private bucket, queue and IAM are provisioned; activation evidence is tracked
+in [the activation inventory](online/DEVELOPER-INSIGHTS-ACTIVATION.md). Production
+reporting, private media storage and synthetic Norwegian/English transcription
+with proposed tasks are verified live. Real microphone/dialect samples,
+individual admin sign-in and physical-device acceptance remain. The inventory
+also records the unresolved global coverage threshold failure on main.
