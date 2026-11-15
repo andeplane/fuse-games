@@ -1160,6 +1160,63 @@ test("every friends route needs a sign-in and the room invite is proven by the r
   assert.deepEqual(f.http.headers, ["X-Fuse-Identity", "X-Fuse-Account"]);
 });
 
+test("Messenger invites are bound to the expected account before reading a body or writing an invite", async () => {
+  const f = fixture();
+  const alice = (await f.sync("alice")).me.publicId,
+    bob = (await f.sync("bob")).me.publicId;
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const code = await f.room(1);
+  const headers = {
+    authorization: `Bearer ${token(1)}`,
+    "x-fuse-identity": "id:alice",
+  };
+  const wrongAccount = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    { ...headers, "x-fuse-account": bob },
+    { malformed: true },
+  );
+  assert.equal(
+    wrongAccount.status,
+    403,
+    "account mismatch is rejected before the malformed body is parsed",
+  );
+  assert.deepEqual(
+    (await f.sync("bob")).invites,
+    [],
+    "a stale Messenger cannot send from a different iframe account",
+  );
+  const matching = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    { ...headers, "x-fuse-account": alice },
+    { to: [bob] },
+  );
+  assert.deepEqual(matching.json, { sent: 1 });
+  const invite = (await f.sync("bob")).invites[0]!;
+  await f.store.dismissInvite("bob", invite.id);
+  const legacy = await handle(
+    f.http,
+    "POST",
+    `/api/rooms/${code}/invites`,
+    headers,
+    { to: [bob] },
+  );
+  assert.deepEqual(
+    legacy.json,
+    { sent: 1 },
+    "existing in-game invites remain compatible without expected-account binding",
+  );
+  assert.equal((await f.sync("bob")).invites.length, 1);
+  assert.deepEqual(createFriendsHttp(f.store, async () => "alice").headers, [
+    "X-Fuse-Identity",
+    "X-Fuse-Account",
+  ]);
+});
+
 test("createPlatformHttp serves history and friends behind one extension", async () => {
   const f = fixture();
   const http = createPlatformHttp({

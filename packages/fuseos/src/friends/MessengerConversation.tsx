@@ -25,6 +25,7 @@ export function MessengerConversation({
   const [messages, setMessages] = useState<FriendMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string>();
+  const [sendError, setSendError] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -88,6 +89,7 @@ export function MessengerConversation({
     revision.current++;
     setSending(true);
     setError(undefined);
+    setSendError(undefined);
     try {
       const conversation = await client.send(
         buddy.publicId,
@@ -102,7 +104,7 @@ export function MessengerConversation({
       pending.current = undefined;
     } catch (failure) {
       if (alive.current)
-        setError(
+        setSendError(
           failure instanceof Error
             ? failure.message
             : "Message not sent. Try again.",
@@ -115,7 +117,7 @@ export function MessengerConversation({
     setInviting(true);
     setNotice(undefined);
     try {
-      await game.invite(buddy.publicId);
+      await game.invite(buddy.publicId, me.publicId);
       if (alive.current) setNotice("Game invitation sent.");
     } catch (failure) {
       if (alive.current)
@@ -176,10 +178,17 @@ export function MessengerConversation({
           </div>
         ))}
       </div>
-      {error ? (
+      {sendError || error ? (
         <div className="msn-chat-error" role="alert">
-          {error}{" "}
-          <button type="button" onClick={() => setRetry((n) => n + 1)}>
+          {sendError ?? error}{" "}
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => {
+              if (sendError) void send();
+              else setRetry((n) => n + 1);
+            }}
+          >
             Retry
           </button>
         </div>

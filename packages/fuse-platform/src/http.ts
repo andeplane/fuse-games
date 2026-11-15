@@ -67,7 +67,7 @@ export function createHistoryHttp(
 ): HttpExtension {
   return {
     methods: ["PUT"],
-    headers: ["X-Fuse-Identity", "X-Fuse-Account"],
+    headers: ["X-Fuse-Identity"],
     async handle(req, res, clientAddress) {
       const url = new URL(req.url ?? "/", "http://gateway");
       const routed = gameRoute(url.pathname);
@@ -203,7 +203,7 @@ export function createFriendsHttp(
 ): HttpExtension {
   return {
     methods: ["DELETE"],
-    headers: ["X-Fuse-Identity"],
+    headers: ["X-Fuse-Identity", "X-Fuse-Account"],
     async handle(req, res) {
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
@@ -226,6 +226,15 @@ export function createFriendsHttp(
             ? await identity(header)
             : undefined;
         if (!uid) throw new RoomError(401, "Sign in first");
+        const expectedAccount = req.headers["x-fuse-account"];
+        if (
+          expectedAccount !== undefined &&
+          expectedAccount !== publicIdOf(uid)
+        )
+          throw new RoomError(
+            403,
+            "The signed-in account changed. Reopen Messenger and try again.",
+          );
         json(
           await store.invite(invite[1]!, bearer(req), uid, await readJson(req)),
         );

@@ -104,7 +104,7 @@ describe("MSN Messenger conversation", () => {
     await user.click(
       within(conversation).getByRole("button", { name: "Invite to game" }),
     );
-    expect(invite).toHaveBeenCalledWith(buddy.publicId);
+    expect(invite).toHaveBeenCalledWith(buddy.publicId, DEMO_ME.publicId);
     expect(
       within(conversation).getByText("Game invitation sent."),
     ).toBeInTheDocument();
@@ -130,10 +130,11 @@ describe("MSN Messenger conversation", () => {
       return { messages: [] };
     });
     const messageId = vi.fn(() => "2".repeat(32));
+    const load = vi.fn(async () => ({ messages: [] }));
     renderWithProviders(
       <MessengerChatContext.Provider
         value={{
-          client: { load: async () => ({ messages: [] }), send },
+          client: { load, send },
           messageId,
         }}
       >
@@ -165,13 +166,18 @@ describe("MSN Messenger conversation", () => {
       "Message not sent",
     );
     expect(input).toHaveValue("hello");
+    await act(async () => timers.fire(10_000));
+    expect(screen.getByRole("alert")).toHaveTextContent("Message not sent");
+    const readsBeforeRetry = load.mock.calls.length;
     await user.click(
       within(
         screen.getByRole("region", { name: `Conversation with ${buddy.name}` }),
-      ).getByRole("button", { name: "Send" }),
+      ).getByRole("button", { name: "Retry" }),
     );
     expect(messageId).toHaveBeenCalledTimes(1);
     expect(send.mock.calls).toHaveLength(2);
+    expect(send.mock.calls[1]).toEqual(send.mock.calls[0]);
+    expect(load.mock.calls.length).toBe(readsBeforeRetry);
     expect(input).toHaveValue("");
   });
 });
