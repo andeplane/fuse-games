@@ -22,7 +22,7 @@ export const RUN_EMPTY_MESSAGE =
   "Type the name of a program, folder, document or Internet resource.";
 
 /**
- * Carries out what a Run line resolved to: a program or folder (Network Neighborhood and Fuse Messenger dial
+ * Carries out what a Run line resolved to: a program or folder (Network Neighborhood and MSN Messenger dial
  * in first, as from the Start menu), a Fuse game through the games launcher, a web address in a tab, or the
  * blue screen (the desktop's own where the build has D1, else the SYSTEM32 gag's).
  */

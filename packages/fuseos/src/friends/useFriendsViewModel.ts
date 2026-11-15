@@ -75,7 +75,7 @@ export function useJoinRoom(): (gameId: string, code: string) => void {
   );
 }
 
-/** Open Fuse Messenger, or bring it to the front: one window, always the same id. */
+/** Open MSN Messenger, or bring it to the front: one window, always the same id. */
 export function useOpenFriends(): () => void {
   // Dials in first when nothing has connected yet this session (Dial-Up Networking).
   const commands = useDialUpCommands();
@@ -83,17 +83,6 @@ export function useOpenFriends(): () => void {
     () => commands.open({ kind: "friends" }, { id: FRIENDS_WINDOW_ID }),
     [commands],
   );
-}
-
-/**
- * While a Fuse game window is open, the desktop stops reporting presence: the game reports its own, room
- * included, and a second reporter would wipe that claim (docs/fuseos/friends-design.md). Mounted once, by the tray.
- */
-export function useGameWindowSuspension(): void {
-  const presence = useContext(PresenceServiceContext);
-  const { state } = useAppState();
-  const gameOpen = state.windows.some((window) => window.kind === "fusegame");
-  useEffect(() => presence.setSuspended(gameOpen), [presence, gameOpen]);
 }
 
 export type BuddyGroup = { status: BuddyStatus; buddies: Buddy[] };
@@ -172,7 +161,7 @@ export function useFriendsViewModel(): FriendsViewModel {
       const id = publicId.trim().toLowerCase();
       if (!isPublicId(id)) {
         setActionError(
-          "A player id is 20 letters and digits; friends find theirs at the top of their own Fuse Messenger.",
+          "A player id is 20 letters and digits; friends find theirs at the top of their own MSN Messenger.",
         );
         return false;
       }

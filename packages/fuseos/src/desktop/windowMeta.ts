@@ -232,7 +232,7 @@ export function windowMeta(
       };
     case "friends":
       return {
-        title: "Fuse Messenger",
+        title: "MSN Messenger",
         icon: "messenger",
         resizable: true,
         size: FRIENDS_WINDOW_SIZE,

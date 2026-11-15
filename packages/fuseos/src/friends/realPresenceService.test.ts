@@ -179,6 +179,19 @@ describe(apiUrlFor.name, () => {
   });
 });
 
+it("clears the old account's private view before a direct account switch, including equal display names", () => {
+  const { service, account, client } = setup();
+  account.signIn("Same name");
+  client.emit({ view, loading: false });
+  expect(service.snapshot().me?.publicId).toBe(view.me.publicId);
+  account.signIn("Same name");
+  expect(service.snapshot().me).toBeUndefined();
+  expect(service.snapshot().buddies).toEqual([]);
+  expect(service.snapshot().invites).toEqual([]);
+  expect(client.calls.slice(-2)).toEqual(["signedIn:false", "signedIn:true"]);
+  service.dispose();
+});
+
 describe(buddyFrom.name, () => {
   it("maps online+room to playing, online to online and anything else to offline", () => {
     expect(view.friends.map(buddyFrom)).toEqual([

@@ -15,6 +15,7 @@ import {
   storedPresence,
 } from "./friends.js";
 import { validPublicId } from "./friends-api.js";
+import { parseConversation, type FriendMessage } from "./messages-api.js";
 import type { HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
 import {
@@ -487,8 +488,37 @@ export class FirestoreFriendsDatabase implements FriendsDatabase {
         const next = operation(
           FirestoreFriendsDatabase.edgeOf((await transaction.get(ref)).data()),
         );
-        if (next.edge === null) transaction.delete(ref);
-        else if (next.edge) transaction.set(ref, next.edge);
+        if (next.edge === null) {
+          transaction.delete(ref);
+          transaction.delete(ref.collection("chat").doc("recent"));
+        } else if (next.edge) transaction.set(ref, next.edge);
+        return next.result;
+      },
+      { maxAttempts: 5 },
+    );
+  }
+  async transactConversation<T>(
+    id: string,
+    operation: (
+      edge: FriendEdge | undefined,
+      messages: FriendMessage[],
+    ) => {
+      messages?: FriendMessage[];
+      result: T;
+    },
+  ): Promise<T> {
+    const friendship = this.friends().doc(id);
+    const conversation = friendship.collection("chat").doc("recent");
+    return this.firestore.runTransaction(
+      async (transaction) => {
+        const [edge, chat] = await transaction.getAll(friendship, conversation);
+        const data: unknown = chat!.data();
+        const next = operation(
+          FirestoreFriendsDatabase.edgeOf(edge!.data()),
+          data === undefined ? [] : parseConversation(data).messages,
+        );
+        if (next.messages)
+          transaction.set(conversation, { messages: next.messages });
         return next.result;
       },
       { maxAttempts: 5 },

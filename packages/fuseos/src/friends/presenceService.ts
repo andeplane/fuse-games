@@ -1,7 +1,7 @@
 import { createContext } from "react";
 
 /**
- * What Fuse Messenger (the buddy list) depends on: one service that says who the player is, who their friends
+ * What MSN Messenger (the buddy list) depends on: one service that says who the player is, who their friends
  * are and where each one is right now. The desktop never talks to the room service directly; the real
  * implementation (`realPresenceService.ts`) composes fuse-ui's polling client and browser sign-in, the demo
  * one (`demoPresenceService.ts`) plays a script. See docs/fuseos/friends-design.md.

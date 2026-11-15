@@ -1,135 +1,98 @@
-# Fuse Messenger: friends and presence in FuseOS
+# MSN Messenger in FuseOS
 
-The ICQ/MSN-style buddy list on the desktop (`packages/fuseos/src/friends/`). This note records what the platform
-already offers, what the desktop app needs on top of it, and the smallest backend addition that would close the gap.
-Nothing under `service/` or `packages/fuse-platform` changes with the app; the proposal at the end waits for approval.
+MSN Messenger is the desktop's account and friends app, under Start > Programs,
+`?open=friends`, and every Fusteam Friends action. Its buddy list, white
+conversation pane, menu strip and shared green/blue buddy icon use the existing
+Windows 98 chrome. The first-run desktop opens Winamp, Fusteam and Messenger.
+The desktop's completed dial-up handshake is remembered separately from sign-in.
 
-## What exists today
+## One Fuse world account
 
-The friend graph, presence and room invites were built for the games themselves (`docs/design/friends.md`) and are
-account-level, shared by every game and by the desktop:
+The **Sign in to Fuse world** button uses the existing Google/Firebase account
+adapter (`fuse-ui/browser-account`). The desktop and same-origin game frames
+restore the same Firebase account. The FuseOS/game bridge coordinates desktop
+actions; it never sends account tokens, room tokens or host capabilities through
+`postMessage`. API credentials travel in request headers.
 
-| Piece                                                              | Where                                                                                      |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Google sign-in (Firebase, popup, SDK loaded on first use)          | `packages/fuse-ui/src/browser-account.ts`                                                  |
-| ID-token verification, no Firebase credential on the server        | `packages/fuse-platform/src/identity.ts`                                                   |
-| Public id per account (`sha256("public:" + uid)`, 20 hex)          | `packages/fuse-platform/src/friends.ts` (`publicIdOf`)                                     |
-| `POST /api/friends/sync`: report presence, get the whole view      | `FriendsStore.sync`; wire types in `packages/fuse-platform/src/friends-api.ts`             |
-| `POST /api/friends { publicId }`, `DELETE /api/friends/:publicId`  | ask, accept, unfriend, decline, withdraw                                                   |
-| `POST /api/rooms/:code/invites`, `DELETE /api/friends/invites/:id` | invite friends into a room (room token as proof), dismiss                                  |
-| Polling client (20 s, coalesced, invite de-duplication)            | `packages/fuse-ui/src/friends-client.ts`                                                   |
-| Browser `Notification` wrapper for invites                         | `packages/fuse-ui/src/friends-notify.ts`                                                   |
-| Firestore adapter and in-memory fake                               | `packages/fuse-platform/src/firestore.ts`, `MemoryFriendsDatabase`                         |
-| Deployed composition                                               | `service/index.ts` (`createPlatformHttp`), `service/dev.ts` locally with in-memory storage |
+A direct account switch clears the old private friend list before the new poll
+starts, even if the accounts have identical display names. An open conversation
+is keyed to the account's public id and contact id; late responses cannot restore
+a closed conversation or replace a newer send. Chat requests also carry the
+expected public account id in `X-Fuse-Account`, checked against the authenticated
+account, so a pending draft cannot be sent by a replacement account.
 
-What one poll answers (`FriendsView`): `me`, `friends[]` each with `online` (last sync younger than 120 s) and, when
-online and in a room, `room: { code, gameId }`; `incoming[]` and `outgoing[]` requests; `invites[]`; and
-`roomPlayers[]` for the room the caller itself reported. Presence is one document per account, rewritten at most
-once a minute when nothing changed, so an idle poll costs reads alone (`docs/design/heartbeat-write-cost.md`).
+## Contacts, presence and game invitations
 
-Everything is bound to the AGENTS.md constraints already: no push path, no socket per account, no relay, no paid
-service, Firestore reads only on an idle poll. The ID token travels in a header and nowhere else; public ids, not
-uids, are what players see.
+The existing platform friend graph supplies public player ids, requests,
+acceptance, removal, online/away/playing states, last seen and incoming game
+invites. Copy your id and give it to a friend, or add theirs. Both sides must
+accept before they can chat.
 
-Sign-in is per origin. The desktop and the games it embeds share the same origin, so a sign-in from the desktop's
-Fuse Messenger is the sign-in every embedded game sees (Firebase keeps it in IndexedDB; `fuse-riders-signed-in` in
-localStorage says a browser remembers one).
+The desktop polls presence every 20 seconds with `passive: true`: it refreshes
+the account without replacing the room claim made by the game. Opening a game
+does not suspend Messenger; friends and incoming invites remain available.
+Switching to demo mode still suspends the live client until switching back.
 
-## What the desktop app wants that is missing
+Double-click a contact or press its Chat button to open a conversation.
+**Back to contacts** returns to the buddy list. **Join game** remains an explicit
+action for a contact currently playing. In a conversation, **Invite to game**
+uses `MessengerGameContext`: FuseOS forwards the request to the embedded game
+that owns the selected active room. That game uses the existing invitation API
+with its own room token. The button is disabled until a room is available;
+failed invitations remain visible and retryable. Incoming invites open the
+corresponding game and room on the desktop.
 
-1. **"Away"**: the view carries `online: boolean` and a room. There is no idle state, so a buddy who left the tab open
-   for an hour looks the same as one who is actively waiting for a game. ICQ/MSN users expect Online / Away / Playing /
-   Offline.
-2. **Two reporters per account**: an embedded game page polls `sync` with its room claim, and the desktop, if it
-   polled too, would send `sync` without a room. The service stores whatever the latest poll claims, so the two would
-   overwrite each other's room every 20 seconds and friends would see the buddy flicker between "Playing" and
-   "Online". A sync body cannot say "keep what you have".
-3. **A status line** ("brb", "looking for a volley match") is part of the genre but nothing stores one.
-4. **Last seen**: offline buddies show nothing; ICQ showed "last online 3 days ago". The presence record has `at`, but
-   the view does not expose it for offline friends.
+## Private messages
 
-Nothing else is missing: adding by public id, accepting, declining, removing, invites to a room and "Join game" all
-map one-to-one onto routes that exist.
+The new account routes are:
 
-## How the frontend handles it now (no backend change)
+- `GET /api/friends/:publicId/messages`: read the recent conversation.
+- `POST /api/friends/:publicId/messages` with `{ id, text }`: send plain text.
 
-- `PresenceService` (`src/friends/presenceService.ts`) is the app's only dependency: a snapshot of the account state
-  and the buddy list, a subscription, sign-in/out, add/remove/dismiss, `refresh` and `setSuspended`. The UI,
-  the tray and the toasts are written against it.
-- `createRealPresenceService` (`src/friends/realPresenceService.ts`) composes `fuse-ui/friends-client` with
-  `fuse-ui/browser-account`. It reports no name or avatar (the desktop has none; the service keeps whatever a game
-  last reported) and derives the four buddy states as: online + room = **Playing &lt;game&gt;**, online = **Online**,
-  online + `away` = **Away**, otherwise **Offline**; an online friend's `status` shows under the name as plain text
-  and an offline friend's `lastSeen` as "Last seen 5 hours ago". These fields came with #665 and are read only when
-  present, so an older room service gives the list it always did. The desktop polls with `passive: true`: it keeps
-  the account online and never touches the room claim a game's own page made (an older service ignores the flag).
-- The desktop **suspends its own polling while a Fuse game window is open**: the embedded game polls for itself with
-  its room claim, and the desktop's poll would clear it. While suspended the buddy list keeps its last snapshot and
-  says "Updated by the game in the open window". When the last game window closes the desktop resumes.
-- `DemoPresenceService` (`src/friends/demoPresenceService.ts`) is the typed fake: a scripted set of buddies that sign
-  in, start playing, go away and invite the player, driven by an injected clock, so the app's every state renders in
-  tests and in the preview without an account. File > Demo buddies switches to it; the real service is restored by
-  switching back.
-- Analytics: the app reports nothing beyond the OS's existing `App Opened`. If the integrator adds events later they
-  must carry no names, public ids or room codes (`docs/ANALYTICS.md`).
+Both require the existing bearer identity and the expected public account id.
+The store checks the accepted friendship transactionally on every read and
+write. Nonfriends, pending requests and other accounts cannot read or send.
+Removing the friendship deletes its conversation in the same storage
+transaction, so a later re-add starts empty.
 
-## Proposed backend addition (needs approval before it is built)
+The service accepts at most 1,000 UTF-16 units per message, rejects control
+characters and extra request fields, trims surrounding whitespace, and renders
+the result as text. Per-account budgets are 800 reads and 600 sends per hour.
+A sender-generated 32-hex id is reused after a failed send, making retries
+idempotent; reusing it with different text is rejected. Concurrent sends append
+atomically, with server timestamps and public sender ids.
 
-Small, additive, and in the spirit of the existing design: three optional fields on the sync body and two on the view.
+The view contains at most 80 messages from the previous seven days. A bounded
+`chat/recent` child document under the existing friendship stores the
+transcript. It is separate from the friendship document, so normal presence
+polling does not download message histories. Expired entries are removed on the
+next conversation read or write; this is a visibility limit, not a background
+TTL deletion guarantee. Unfriending deletes the child document immediately.
+There is no new service, collection query, composite index, persistent socket,
+or gameplay relay.
 
-```ts
-// friends-api.ts
-export interface FriendsSyncBody {
-  name?: string;
-  avatarId?: string;
-  room?: { code: string; memberId: string; gameId?: string };
-  /** The poll comes from a page that is not the one in the room (the desktop): refresh "online", keep the stored room claim. */
-  passive?: true;
-  /** The player has not touched the page for a while (client rule: hidden or no input for 5 minutes). */
-  away?: boolean;
-  /** A short status line; validated like a username (max 40 chars, plain text). */
-  status?: string;
-}
-export interface Friend extends FriendCard {
-  online: boolean;
-  away?: boolean;
-  status?: string;
-  room?: { code: string; gameId: string };
-  /** For an offline friend: when it last synced, rounded to the hour so it is not a tracking signal. */
-  lastSeen?: number;
-}
-```
+Only the open conversation polls, every 10 seconds, with the next poll scheduled
+after the previous request finishes. Returning to contacts or closing Messenger
+stops that timer. Errors retain the draft and provide Retry; a successful send
+updates the transcript without waiting for the next poll. Enter sends,
+Shift+Enter inserts a newline, and composing an IME does not send prematurely.
+Messages, contact ids and room details are never added to analytics.
 
-Service side (`FriendsStore.sync`):
+## Implementation and verification
 
-- `passive`: the stored `room` is kept as it is (re-proven on the usual once-a-minute rewrite exactly as a normal
-  claim is, so a passive poll can never keep a dead room alive longer than an active one would). This is what lets
-  the desktop and an embedded game share one account without fighting.
-- `away` and `status` are stored on the presence record next to `name` and `avatarId` and copied onto `Friend`
-  for online friends; `lastSeen` is `Math.floor(at / 3_600_000) * 3_600_000` for offline ones.
-- No new route, no new collection, no new index: the presence document gains three optional fields. Write cost is
-  unchanged because the once-a-minute rewrite rule applies to the new fields too (a change of `away` is a change
-  of the record, so it writes once when the player goes idle and once when they come back).
-- Firestore adapter: read the three fields if present; nothing to migrate.
+- `src/friends/FriendsWindow.tsx`: contacts, requests, invites and sign-in.
+- `src/friends/MessengerConversation.tsx`: conversation, draft, polling and game invite.
+- `src/friends/MessengerChatContext.ts`: injected chat client and message ids.
+- `src/friends/MessengerGameContext.ts`: the desktop's active-room/invite capability.
+- `src/friends/realPresenceService.ts`: the existing account and friend adapters.
+- `packages/fuse-ui/src/messenger-client.ts`: authenticated HTTP client and response validation.
+- `packages/fuse-platform/src/messages-api.ts`: browser-safe message contract and bounds.
+- `FriendsStore.conversation`, `MemoryFriendsDatabase` and `FirestoreFriendsDatabase`:
+  authorization, idempotency and atomic persistence.
 
-Cost and policy check against AGENTS.md: no always-on process, no connection per account, no relay, no paid
-service, no push; the only new traffic is the desktop's existing-shaped 20 s poll while the Friends window or the
-tray is up, which the hidden-tab policy already throttles. Privacy: `status` is text a player chose to show
-friends only; `lastSeen` is coarsened to the hour; nothing new reaches analytics.
-
-Agent work to build it once approved: about 2 hours (types, `FriendsStore.sync`, the Firestore adapter, tests in
-`packages/fuse-platform/tests/friends.test.ts`, the real `PresenceService` sending `passive`/`away` and reading the
-new fields). Nothing gates it except the decision.
-
-## Modules
-
-| Where                                | What                                                                       |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| `src/friends/presenceService.ts`     | `PresenceService`, `PresenceSnapshot`, `Buddy`, `BuddyStatus`, the context |
-| `src/friends/demoPresenceService.ts` | The scripted typed fake, used by tests and File > Demo buddies             |
-| `src/friends/realPresenceService.ts` | Over `fuse-ui/friends-client` + `fuse-ui/browser-account`                  |
-| `src/friends/presenceEvents.ts`      | Diff of two snapshots into the events the tray announces                   |
-| `src/friends/useFriendsViewModel.ts` | Groups, actions, the demo switch and the game-window suspension            |
-| `src/friends/FriendsWindow.tsx`      | The buddy list window (Start > Programs > Fuse Messenger, `?open=friends`) |
-| `src/friends/FriendsTray.tsx`        | The taskbar tray icon and the "uh-oh" toasts                               |
-| `src/friends/friendsDepsContext.ts`  | `FriendsDeps`: the service, the clock and the alert sound                  |
+`pnpm exec tsx scripts/messenger-smoke.ts` opens two isolated headless browser
+accounts against the real local HTTP service, with explicitly injected
+identities. It exercises adding/accepting contacts, bidirectional plain-text
+chat, history after reopening and the no-room invite state. It closes its
+browsers and servers. This proves the local UI/API flow, not production
+deployment, Google popup authentication or physical-phone behavior.

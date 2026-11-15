@@ -9,7 +9,6 @@ import type { PresenceSnapshot } from "./presenceService";
 import { PresenceServiceContext } from "./presenceService";
 import {
   useGameName,
-  useGameWindowSuspension,
   useJoinRoom,
   useOpenFriends,
   usePresenceSnapshot,
@@ -60,7 +59,6 @@ export function FriendsTray() {
   const gameName = useGameName();
   const openFriends = useOpenFriends();
   const joinRoom = useJoinRoom();
-  useGameWindowSuspension();
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const previous = useRef<PresenceSnapshot>(snapshot);
@@ -87,8 +85,8 @@ export function FriendsTray() {
   const signedIn = snapshot.account.kind === "signed-in";
   const online = snapshot.buddies.filter((b) => b.status !== "offline").length;
   const label = signedIn
-    ? `Fuse Messenger: ${online} ${online === 1 ? "buddy" : "buddies"} online`
-    : "Fuse Messenger: signed out";
+    ? `MSN Messenger: ${online} ${online === 1 ? "buddy" : "buddies"} online`
+    : "MSN Messenger: signed out";
   return (
     <>
       <button
@@ -112,7 +110,7 @@ export function FriendsTray() {
         <div
           className="absolute bottom-full right-1 mb-1 flex w-64 flex-col gap-1"
           role="region"
-          aria-label="Fuse Messenger notifications"
+          aria-label="MSN Messenger notifications"
         >
           {toasts.map(({ id, event }) => {
             const room = toastRoom(event);

@@ -188,7 +188,7 @@ export const START_MENU_REGISTRATIONS: readonly StartMenuRegistration[] = [
   {
     slot: "programs",
     id: "friends",
-    label: "Fuse Messenger",
+    label: "MSN Messenger",
     icon: "messenger",
     // One instance: a fixed id brings an open window to the front instead of opening another.
     open: (commands) =>

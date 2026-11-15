@@ -168,6 +168,130 @@ async function handle(
 
 const names = (cards: readonly { name: string }[]) => cards.map((c) => c.name);
 
+test("private messages require accepted friends and are shared with exactly the two accounts", async () => {
+  const f = fixture();
+  const alice = publicIdOf("alice"),
+    bob = publicIdOf("bob"),
+    eve = publicIdOf("eve");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.sync("eve");
+  const path = `/api/friends/${bob}/messages`;
+  const send = { id: "a".repeat(32), text: "Hello <b>Bob</b>" };
+  assert.equal((await handle(f.http, "POST", path, {}, send)).status, 401);
+  assert.equal(
+    (
+      await handle(
+        f.http,
+        "POST",
+        path,
+        { authorization: "Bearer id:alice", "x-fuse-account": alice },
+        send,
+      )
+    ).status,
+    403,
+  );
+  await f.store.add("alice", { publicId: bob });
+  await assert.rejects(
+    f.store.conversation("alice", bob, send),
+    /accepted friends/,
+  );
+  await f.store.add("bob", { publicId: alice });
+  const sent = await f.store.conversation("alice", bob, send);
+  assert.equal(
+    (
+      await handle(f.http, "GET", path, {
+        authorization: "Bearer id:alice",
+        "x-fuse-account": alice,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await handle(
+        f.http,
+        "POST",
+        path,
+        { authorization: "Bearer id:bob", "x-fuse-account": alice },
+        send,
+      )
+    ).status,
+    403,
+    "a draft from the old account cannot be sent by the new account",
+  );
+  assert.equal(sent.messages.length, 1);
+  assert.deepEqual(
+    (await f.store.conversation("bob", alice)).messages,
+    sent.messages,
+  );
+  assert.equal(
+    sent.messages[0]!.text,
+    "Hello <b>Bob</b>",
+    "plain text is not interpreted or rewritten as markup",
+  );
+  assert.equal(sent.messages[0]!.from, alice);
+  await assert.rejects(f.store.conversation("eve", bob), /accepted friends/);
+  await assert.rejects(f.store.conversation("alice", eve), /accepted friends/);
+});
+
+test("message retries are idempotent, concurrent sends survive, invalid data is refused and unfriend clears history", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  const message = { id: "1".repeat(32), text: "hi" };
+  await Promise.all([
+    f.store.conversation("alice", bob, message),
+    f.store.conversation("alice", bob, message),
+    f.store.conversation("bob", alice, { id: "2".repeat(32), text: "hello" }),
+  ]);
+  assert.equal((await f.store.conversation("alice", bob)).messages.length, 2);
+  await assert.rejects(
+    f.store.conversation("alice", bob, { ...message, text: "changed" }),
+    /already sent/,
+  );
+  for (const invalid of [
+    { id: "bad", text: "hey" },
+    { ...message, text: " " },
+    { ...message, text: "a".repeat(1001) },
+    { ...message, text: "\u0000" },
+    { ...message, extra: 1 },
+  ])
+    await assert.rejects(
+      f.store.conversation("alice", bob, invalid),
+      /plain-text/,
+    );
+  await f.store.remove("alice", bob);
+  await assert.rejects(f.store.conversation("bob", alice), /accepted friends/);
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  assert.deepEqual((await f.store.conversation("alice", bob)).messages, []);
+});
+
+test("message history is bounded and expires from both friends' views", async () => {
+  const f = fixture(),
+    alice = publicIdOf("alice"),
+    bob = publicIdOf("bob");
+  await f.sync("alice");
+  await f.sync("bob");
+  await f.store.add("alice", { publicId: bob });
+  await f.store.add("bob", { publicId: alice });
+  for (let n = 0; n < 85; n++)
+    await f.store.conversation("alice", bob, {
+      id: n.toString(16).padStart(32, "0"),
+      text: `message ${n}`,
+    });
+  const messages = (await f.store.conversation("bob", alice)).messages;
+  assert.equal(messages.length, 80);
+  assert.equal(messages[0]!.text, "message 5");
+  f.tick(7 * 24 * 60 * 60_000);
+  assert.deepEqual((await f.store.conversation("bob", alice)).messages, []);
+});
+
 test("a public id is stable, opaque and not the account", () => {
   assert.equal(publicIdOf("alice"), publicIdOf("alice"));
   assert.notEqual(publicIdOf("alice"), publicIdOf("bob"));
@@ -1033,7 +1157,7 @@ test("every friends route needs a sign-in and the room invite is proven by the r
     false,
   );
   assert.deepEqual(f.http.methods, ["PUT", "DELETE"]);
-  assert.deepEqual(f.http.headers, ["X-Fuse-Identity"]);
+  assert.deepEqual(f.http.headers, ["X-Fuse-Identity", "X-Fuse-Account"]);
 });
 
 test("createPlatformHttp serves history and friends behind one extension", async () => {

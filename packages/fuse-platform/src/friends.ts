@@ -31,6 +31,14 @@ import {
 import type { HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
 import { plain } from "./result.js";
+import {
+  MAX_CONVERSATION_MESSAGES,
+  MAX_MESSAGE_LENGTH,
+  MESSAGE_HISTORY_MS,
+  validMessageId,
+  type FriendMessage,
+  type FriendConversation,
+} from "./messages-api.js";
 
 /**
  * Friends, presence and invites for every game's accounts. Gameplay is peer-to-peer and the service pushes nothing,
@@ -129,6 +137,17 @@ export interface InviteRecord {
 }
 
 export interface FriendsDatabase {
+  /** The friendship and its bounded transcript are read atomically, so unfriending immediately revokes chat. */
+  transactConversation<T>(
+    id: string,
+    operation: (
+      edge: FriendEdge | undefined,
+      messages: FriendMessage[],
+    ) => {
+      messages?: FriendMessage[];
+      result: T;
+    },
+  ): Promise<T>;
   presence(uid: string): Promise<PresenceRecord | undefined>;
   presences(uids: readonly string[]): Promise<PresenceRecord[]>;
   setPresence(record: PresenceRecord): Promise<void>;
@@ -532,6 +551,76 @@ export class FriendsStore {
     }));
   }
 
+  /** Only the two accepted friends can read or send. A retry reuses its id and never duplicates a message. */
+  async conversation(
+    uid: string,
+    publicId: string,
+    body?: unknown,
+  ): Promise<FriendConversation> {
+    if (
+      body !== undefined &&
+      (!plain(body) ||
+        Object.keys(body).length !== 2 ||
+        !validMessageId(body.id) ||
+        typeof body.text !== "string" ||
+        body.text.length > MAX_MESSAGE_LENGTH ||
+        !body.text.trim() ||
+        /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(body.text))
+    )
+      throw new RoomError(
+        400,
+        "A message must contain 1 to 1000 plain-text characters",
+      );
+    await this.allow(
+      `messages-${body === undefined ? "read" : "send"}:${uid}`,
+      body === undefined ? 800 : 600,
+    );
+    const other = await this.resolve(publicId);
+    const now = this.now();
+    return this.database.transactConversation(
+      edgeId(uid, other),
+      (edge, stored) => {
+        if (
+          !edge ||
+          edge.status !== "accepted" ||
+          !edge.uids.includes(uid) ||
+          !edge.uids.includes(other)
+        )
+          throw new RoomError(403, "Only accepted friends can chat");
+        const messages = stored.filter(
+          (message) => message.at > now - MESSAGE_HISTORY_MS,
+        );
+        if (body !== undefined) {
+          // Validated above, before any storage operation.
+          const input = body as { id: string; text: string };
+          const from = publicIdOf(uid);
+          const existing = messages.find(
+            (message) => message.from === from && message.id === input.id,
+          );
+          if (existing && existing.text !== input.text.trim())
+            throw new RoomError(
+              409,
+              "That message was already sent with different text",
+            );
+          if (!existing)
+            messages.push({
+              id: input.id,
+              from,
+              text: input.text.trim(),
+              at: now,
+            });
+        }
+        const recent = messages.slice(-MAX_CONVERSATION_MESSAGES);
+        return {
+          ...(body !== undefined || recent.length !== stored.length
+            ? { messages: recent }
+            : {}),
+          result: { messages: recent },
+        };
+      },
+    );
+  }
+
   /**
    * Invite friends to a room the caller is a live member of, proven by its room token as a result report is. Only
    * accepted friends are invited; anyone else in the list is skipped, not refused, so one stale name cannot block
@@ -596,6 +685,7 @@ export class FriendsStore {
 
 /** Single-process FriendsDatabase with the Firestore adapter's contract; everything is gone when the process exits. */
 export class MemoryFriendsDatabase implements FriendsDatabase {
+  private conversations = new Map<string, FriendMessage[]>();
   private presenceByUid = new Map<string, PresenceRecord>();
   private edgesById = new Map<string, FriendEdge>();
   private invitesById = new Map<string, InviteRecord>();
@@ -639,8 +729,32 @@ export class MemoryFriendsDatabase implements FriendsDatabase {
   ): Promise<T> {
     const work = this.chain.then(() => {
       const next = operation(structuredClone(this.edgesById.get(id)));
-      if (next.edge === null) this.edgesById.delete(id);
-      else if (next.edge) this.edgesById.set(id, structuredClone(next.edge));
+      if (next.edge === null) {
+        this.edgesById.delete(id);
+        this.conversations.delete(id);
+      } else if (next.edge) this.edgesById.set(id, structuredClone(next.edge));
+      return next.result;
+    });
+    this.chain = work.catch(() => undefined);
+    return work;
+  }
+  transactConversation<T>(
+    id: string,
+    operation: (
+      edge: FriendEdge | undefined,
+      messages: FriendMessage[],
+    ) => {
+      messages?: FriendMessage[];
+      result: T;
+    },
+  ): Promise<T> {
+    const work = this.chain.then(() => {
+      const next = operation(
+        structuredClone(this.edgesById.get(id)),
+        structuredClone(this.conversations.get(id) ?? []),
+      );
+      if (next.messages)
+        this.conversations.set(id, structuredClone(next.messages));
       return next.result;
     });
     this.chain = work.catch(() => undefined);

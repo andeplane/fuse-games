@@ -10,4 +10,5 @@ export * from "./http.js";
 export * from "./memory.js";
 export * from "./backfill.js";
 export * from "./friends-api.js";
+export * from "./messages-api.js";
 export * from "./friends.js";

@@ -9,6 +9,8 @@ import { menuPositionAt } from "../windows/menuPosition";
 import { useWindowCommands } from "../windows/useWindowCommands";
 
 import { FriendsDepsContext } from "./friendsDepsContext";
+import { MessengerConversation } from "./MessengerConversation";
+import "./messenger.css";
 import type { Buddy, BuddyStatus } from "./presenceService";
 import { STATUS_LABEL } from "./presenceService";
 import type { FriendsViewModel } from "./useFriendsViewModel";
@@ -43,10 +45,12 @@ function BuddyRow({
   buddy,
   vm,
   onMenu,
+  onChat,
 }: {
   buddy: Buddy;
   vm: FriendsViewModel;
   onMenu: (buddy: Buddy, position: MenuPosition) => void;
+  onChat: (buddy: Buddy) => void;
 }) {
   const playing = buddy.status === "playing" && buddy.room;
   return (
@@ -57,9 +61,7 @@ function BuddyRow({
         event.preventDefault();
         onMenu(buddy, menuPositionAt(event));
       }}
-      onDoubleClick={() =>
-        playing ? vm.joinRoom(buddy.room!.gameId, buddy.room!.code) : undefined
-      }
+      onDoubleClick={() => onChat(buddy)}
     >
       <StatusDot status={buddy.status} />
       <span className="min-w-0 flex-1 truncate">
@@ -80,6 +82,14 @@ function BuddyRow({
           </span>
         ) : null}
       </span>
+      <button
+        type="button"
+        className="msn-chat-button"
+        onClick={() => onChat(buddy)}
+        aria-label={`Chat with ${buddy.name}`}
+      >
+        Chat
+      </button>
       {playing ? (
         <button
           type="button"
@@ -97,12 +107,13 @@ function BuddyRow({
 function SignedOut({ vm }: { vm: FriendsViewModel }) {
   const restoring = vm.snapshot.account.kind === "restoring";
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+    <div className="msn-signed-out">
       <Win98Icon name="messenger" size={32} />
-      <p className="font-bold">Fuse Messenger</p>
+      <p className="msn-signin-title">MSN Messenger</p>
       <p>
-        See which friends are online, what they are playing, and jump into their
-        game. Sign in with the account you use in the games.
+        Talk to friends, see what they are playing, and invite them to a game.
+        One sign-in connects you to Fuse world across this desktop and every
+        game.
       </p>
       <button
         type="button"
@@ -110,8 +121,9 @@ function SignedOut({ vm }: { vm: FriendsViewModel }) {
         disabled={vm.busy || restoring}
         onClick={vm.signIn}
       >
-        {restoring ? "Signing in..." : "Sign in with Google"}
+        {restoring ? "Signing in..." : "Sign in to Fuse world"}
       </button>
+      <p className="msn-signin-note">Uses your Google account.</p>
       {vm.capabilities.demo ? (
         <button
           type="button"
@@ -162,17 +174,21 @@ function AddFriendForm({ vm }: { vm: FriendsViewModel }) {
   );
 }
 
-/** Fuse Messenger: the buddy list, requests, invites and the player's own id, ICQ/MSN style. */
+/** MSN Messenger: the buddy list, requests, invites and the player's own id, ICQ/MSN style. */
 export function FriendsWindow({ windowId }: FriendsWindowProps) {
   const vm = useFriendsViewModel();
   const commands = useWindowCommands();
   const deps = useContext(FriendsDepsContext);
   const [menu, setMenu] = useState<{ buddy: Buddy; position: MenuPosition }>();
+  const [conversationId, setConversationId] = useState<string>();
   const { snapshot } = vm;
   const signedIn = snapshot.account.kind === "signed-in";
   const accountName =
     snapshot.account.kind === "signed-in" ? snapshot.account.name : "";
   const demo = snapshot.mode === "demo";
+  const conversation = snapshot.buddies.find(
+    (buddy) => buddy.publicId === conversationId,
+  );
   const menus: MenuDef[] = [
     {
       label: "File",
@@ -196,11 +212,11 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
       label: "Help",
       items: [
         {
-          label: "About Fuse Messenger",
+          label: "About MSN Messenger",
           onSelect: () =>
             commands.showInfo(
-              "About Fuse Messenger",
-              "Friends from every Fuse game, in one list. Give a friend the player id shown at the top of this window and they can add you; accept, and you see each other online and in games.\n\nThe list refreshes every 20 seconds while this desktop is signed in. A game window reports where you are while it is open.",
+              "About MSN Messenger",
+              "Friends from every Fuse game, in one list. Add a contact with their player id, accept the request, and double-click their name to chat. Join a game room to invite them.\n\nYour Fuse world account is shared with the games. Contacts refresh every 20 seconds; an open conversation checks for messages every 10 seconds. Messages are plain text; the view shows up to 80 messages from the last seven days. Removing a friend clears that conversation.",
             ),
         },
       ],
@@ -211,13 +227,24 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
     if (id) void deps.copyText(id);
   };
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="friends-window">
+    <div
+      className="msn-root flex h-full min-h-0 flex-col"
+      data-testid="friends-window"
+    >
       <MenuBar menus={menus} />
-      {signedIn ? (
+      {signedIn && conversation && snapshot.me && !demo ? (
+        <MessengerConversation
+          key={`${snapshot.me.publicId}:${conversation.publicId}`}
+          buddy={conversation}
+          me={snapshot.me}
+          back={() => setConversationId(undefined)}
+        />
+      ) : signedIn ? (
         <>
-          <div className="flex items-center gap-2 border-b border-gray-500 px-2 py-1">
-            <Win98Icon name="assistant" size={32} />
+          <div className="msn-my-status flex items-center gap-2 border-b border-gray-500 px-2 py-1">
+            <Win98Icon name="messenger" size={32} />
             <div className="min-w-0 flex-1">
+              <p className="msn-my-status-label">My Status:</p>
               <div className="truncate font-bold">
                 {snapshot.me?.name ?? accountName}
               </div>
@@ -287,7 +314,7 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
               ))}
             </ul>
           ) : null}
-          <div className="sunken-panel m-1 flex min-h-0 flex-1 flex-col overflow-auto bg-white">
+          <div className="msn-contact-list sunken-panel m-1 flex min-h-0 flex-1 flex-col overflow-auto bg-white">
             {snapshot.incoming.length > 0 || snapshot.outgoing.length > 0 ? (
               <section
                 aria-label="Requests"
@@ -372,6 +399,14 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
                         key={buddy.publicId}
                         buddy={buddy}
                         vm={vm}
+                        onChat={(buddy) => {
+                          if (demo)
+                            commands.showInfo(
+                              "Demo contacts",
+                              "Switch off File > Demo buddies and sign in to chat with your real friends.",
+                            );
+                          else setConversationId(buddy.publicId);
+                        }}
                         onMenu={(target, position) =>
                           setMenu({ buddy: target, position })
                         }
@@ -382,11 +417,17 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
               ),
             )}
           </div>
+          <div className="msn-want-to">I want to...</div>
           <AddFriendForm vm={vm} />
         </>
       ) : (
         <SignedOut vm={vm} />
       )}
+      <div className="msn-brand">
+        <span>msn</span>
+        <Win98Icon name="messenger" size={32} />
+        <b>Messenger</b>
+      </div>
       {vm.actionError || snapshot.error ? (
         <p className="px-2 py-0.5 text-[10px] text-[#a00]" role="alert">
           {vm.actionError ?? snapshot.error}
@@ -404,6 +445,12 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
           label={`${menu.buddy.name} menu`}
           position={menu.position}
           items={[
+            {
+              label: "Send an Instant Message",
+              bold: true,
+              disabled: demo,
+              onSelect: () => setConversationId(menu.buddy.publicId),
+            },
             {
               label: "Join game",
               bold: menu.buddy.status === "playing",
