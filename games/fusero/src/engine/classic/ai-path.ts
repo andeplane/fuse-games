@@ -36,6 +36,7 @@ export interface AiSearch {
   status: "idle" | "searching" | "found" | "failed";
   result: AiPoint[];
   initialized: boolean;
+  pendingRestart: boolean;
   nextExpansionMs: number;
 }
 export function createAiSearch(): AiSearch {
@@ -47,6 +48,7 @@ export function createAiSearch(): AiSearch {
     status: "idle",
     result: [],
     initialized: false,
+    pendingRestart: false,
     nextExpansionMs: 0,
   };
 }
@@ -278,8 +280,14 @@ export function requestAiSearch(
   start: AiPoint,
   target: AiPoint,
   nowMs: number,
-): void {
+  restart = false,
+): boolean {
   const wasSearching = search.status === "searching";
+  if (wasSearching && !restart) return false;
+  const wake =
+    wasSearching && !search.initialized
+      ? search.nextExpansionMs
+      : nowMs + (wasSearching ? 1 : 100);
   search.start = intPoint(start);
   search.target = intPoint(target);
   search.areas = [];
@@ -287,7 +295,9 @@ export function requestAiSearch(
   search.result = [];
   search.status = "searching";
   search.initialized = false;
-  search.nextExpansionMs = nowMs + (wasSearching ? 1 : 100);
+  search.pendingRestart = restart;
+  search.nextExpansionMs = wake;
+  return true;
 }
 
 /** Complete the source A* expansions due on the explicit deterministic worker clock. */
@@ -300,6 +310,7 @@ export function advanceAiSearch(
     search.nextExpansionMs++;
     if (!search.initialized) {
       search.initialized = true;
+      search.pendingRestart = false;
       addArea(search, terrain, search.start, null);
       continue;
     }

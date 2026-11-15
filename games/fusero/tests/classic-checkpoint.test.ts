@@ -14,6 +14,7 @@ import {
   resetPositionRecorder,
 } from "../src/engine/classic/history.js";
 import type { World, Worm } from "../src/engine/classic/model.js";
+import { createNativeAiShared } from "../src/engine/classic/ai-state.js";
 import {
   DIRT,
   AIR,
@@ -63,6 +64,7 @@ function actor(id: string, slot: number): Worm {
     input: 0,
     lastInputTimeMs: 0,
     canRespawnNow: false,
+    ai: null,
     health: 100,
     alive: true,
     rope: null,
@@ -105,6 +107,7 @@ function fixture(): World {
     nextId: 1,
     projectiles: [],
     effects: [],
+    aiShared: createNativeAiShared(),
   };
 }
 
@@ -278,23 +281,23 @@ test("invalid source checkpoints reject atomically rather than changing healthy 
     },
   ];
   for (const mutate of cases) {
-    const candidate = toView(healthy);
+    const candidate = structuredClone(healthy);
     mutate(candidate);
     assert.equal(decodeWorld(candidate), undefined);
     assert.deepEqual(healthy, before);
   }
-  const unknownField = { ...toView(healthy), privateRuntime: true };
+  const unknownField = { ...structuredClone(healthy), privateRuntime: true };
   assert.equal(decodeWorld(unknownField), undefined);
   assert.equal(
     decodeWorld({
-      ...toView(healthy),
+      ...structuredClone(healthy),
       worms: [{ ...healthy.worms[0], positionHistory: [] }],
     }),
     undefined,
   );
   assert.equal(
     decodeWorld({
-      ...toView(healthy),
+      ...structuredClone(healthy),
       worms: [{ ...healthy.worms[0], extra: 1 }],
     }),
     undefined,
@@ -629,11 +632,11 @@ test("native UseSound effects survive recovery and reject peer-supplied paths or
     "/sounds/Bazooka.wav",
     "unrecognized.wav",
   ]) {
-    const candidate = toView(world);
+    const candidate = structuredClone(world);
     candidate.effects[0]!.sound = sound;
     assert.equal(decodeWorld(encodeWorld(candidate)), undefined);
   }
-  const wrongBranch = toView(world);
+  const wrongBranch = structuredClone(world);
   wrongBranch.effects[0]!.kind = "beam";
   assert.equal(decodeWorld(encodeWorld(wrongBranch)), undefined);
 });
@@ -695,7 +698,7 @@ test("outer-frame recovery preserves deferred shots and the exact 10ms/11ms sche
   const view = toView(world);
   view.pendingShots[0]!.x = 1;
   assert.notEqual(view.pendingShots[0]!.x, world.pendingShots[0]!.x);
-  const inclusiveRandom = toView(world);
+  const inclusiveRandom = structuredClone(world);
   inclusiveRandom.pendingShots[0]!.randomIndex = 255;
   assert.ok(decodeWorld(encodeWorld(inclusiveRandom)));
   const cases: Array<(candidate: World) => void> = [
@@ -719,7 +722,7 @@ test("outer-frame recovery preserves deferred shots and the exact 10ms/11ms sche
     },
   ];
   for (const mutate of cases) {
-    const candidate = toView(world);
+    const candidate = structuredClone(world);
     mutate(candidate);
     assert.equal(decodeWorld(encodeWorld(candidate)), undefined);
   }

@@ -26,6 +26,7 @@ import {
   OUTER_MS,
   allowedWeaponIds,
   validLoadout,
+  createWorld as createClassicWorld,
   type Settings,
 } from "../src/engine/index.js";
 import {
@@ -33,7 +34,6 @@ import {
   LOADOUT,
   BEGIN_LOADOUT,
   createRoom,
-  botLoadout,
   decode,
   encode,
   foldTick,
@@ -323,12 +323,25 @@ test("loadout selections are owner-only, generation-fenced, lobby-scoped and res
 
 test("source random selection is seeded, restriction-safe and retained through recovery", () => {
   for (const restrictionPreset of ["all", "standard-100lt"] as const) {
-    const settings = { ...DEFAULT_SETTINGS, restrictionPreset };
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      restrictionPreset,
+      loadingTime: 50,
+    };
     for (let seed = 0; seed < 30; seed++) {
-      const result = botLoadout(`match-${seed}`, "bot:1", settings);
+      const create = () =>
+        createClassicWorld(
+          seed,
+          [{ id: "bot:1", slot: 0, bot: true }],
+          settings,
+        );
+      const result = create().worms[0]!.slots.map((slot) => slot.weaponId);
       assert.ok(validLoadout(result, settings));
       assert.equal(new Set(result).size, 5);
-      assert.deepEqual(botLoadout(`match-${seed}`, "bot:1", settings), result);
+      assert.deepEqual(
+        create().worms[0]!.slots.map((slot) => slot.weaponId),
+        result,
+      );
     }
   }
   const room = started(),
@@ -341,6 +354,31 @@ test("source random selection is seeded, restriction-safe and retained through r
   );
   assert.ok(recovered);
   assert.deepEqual(recovered.loadouts, room.loadouts);
+});
+
+test("running checkpoints bind native AI to a live bot seat while finished results retain departed actors", () => {
+  const room = started(),
+    before = hash(room);
+  const missing = structuredClone(room);
+  missing.seats.delete("bot:1");
+  delete missing.loadouts["bot:1"];
+  assert.equal(decode(encode(missing), missing.tick), undefined);
+  const wrongRole = structuredClone(room);
+  wrongRole.world!.worms.find((worm) => worm.id === "bot:1")!.ai = null;
+  assert.equal(decode(encode(wrongRole), wrongRole.tick), undefined);
+  assert.equal(
+    hash(room),
+    before,
+    "rejected recovery leaves the healthy controller untouched",
+  );
+  missing.stage = "over";
+  missing.world!.phase = "done";
+  missing.world!.winner = "a";
+  missing.world!.worms.find((worm) => worm.id === "a")!.kills = 15;
+  assert.ok(
+    decode(encode(missing), missing.tick),
+    "finished results may retain removed actor seats",
+  );
 });
 
 test("switching restrictions prunes invalid lobby inventories without changing a running match", () => {

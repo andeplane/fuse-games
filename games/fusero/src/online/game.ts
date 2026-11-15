@@ -21,8 +21,6 @@ import {
   OUTER_MS,
   RULES,
   validLoadout,
-  nativeBotArsenal,
-  botInput,
   createWorld,
   decodeWorld,
   encodeWorld,
@@ -46,7 +44,6 @@ import {
   validName,
 } from "./names.js";
 import { defaultLoadout as nativeDefaultLoadout } from "../engine/classic/match.js";
-import { randomUnit, randomInt } from "../engine/classic/random.js";
 export type { Settings } from "../engine/index.js";
 
 export const PLAY = 0;
@@ -174,18 +171,6 @@ export const riders = (room: Room): SeatRecord[] =>
 const entrants = (room: Room) =>
   riders(room).filter((seat) => seat.connected || seat.away || seat.bot);
 
-/** Pure choice from the match seed; every chosen slot obeys the source restriction preset. */
-export function botLoadout(
-  matchId: string,
-  id: string,
-  settings: Settings,
-): Loadout {
-  const state = { rng: seedOf(`${matchId}:${id}:loadout`) };
-  return nativeBotArsenal(settings, {
-    nextFloat: () => randomUnit(state),
-    nextInt: (max) => randomInt(state, max),
-  }).loadout;
-}
 function resetMatch(room: Room, matchId: string): void {
   room.matchId = matchId;
   room.round = 0;
@@ -209,14 +194,17 @@ function start(room: Room, matchId: string): void {
       const loadout =
         chosen && validLoadout(chosen, room.play)
           ? chosen
-          : seat.bot
-            ? botLoadout(matchId, seat.id, room.play)
-            : nativeDefaultLoadout(room.play);
-      room.loadouts[seat.id] = [...loadout];
-      return { id: seat.id, slot: seat.slot, loadout };
+          : nativeDefaultLoadout(room.play);
+      return { id: seat.id, slot: seat.slot, loadout, bot: seat.bot };
     }),
     room.play,
   );
+  for (const worm of room.world.worms) {
+    const loadout = worm.slots.map((slot) => slot.weaponId);
+    if (!validLoadout(loadout, room.play))
+      throw new Error("Native bot selected a forbidden arsenal");
+    room.loadouts[worm.id] = loadout;
+  }
 }
 export const lifecycle: LifecycleHooks<Room, Settings> = {
   stage: (room) => room.stage,
@@ -319,8 +307,7 @@ export function foldTick(
       const seat = room.seats.get(worm.id);
       let bits = 0,
         tapped = 0;
-      if (seat?.bot) bits = botInput(world, worm);
-      else if (seat?.connected && !seat.watcher && worm.weaponsReady) {
+      if (seat?.connected && !seat.bot && !seat.watcher && worm.weaponsReady) {
         bits = room.held[worm.id] ?? 0;
         for (const entry of ownEntries(room, seat, streams, tick))
           if (
@@ -340,10 +327,6 @@ export function foldTick(
     }
     let firstPhysicsPulse = true;
     for (let step = 0; step < count; step++) {
-      if (step > 0)
-        for (const worm of world.worms)
-          if (room.seats.get(worm.id)?.bot)
-            held.set(worm.id, botInput(world, worm));
       const previousPhysicsMs = world.lastClientPhysicsMs;
       stepWorld(world, firstPhysicsPulse ? first : held);
       if (world.lastClientPhysicsMs !== previousPhysicsMs)
@@ -522,7 +505,12 @@ export function decode(
             Object.entries(world.settings).find(
               ([name]) => name === key,
             )?.[1] !== value,
-        ))) ||
+        ) ||
+        world.worms.some((worm) => {
+          const seat = seats.get(worm.id);
+          if (stage === "running" && (!seat || seat.watcher)) return true;
+          return seat && !seat.watcher && Boolean(worm.ai) !== seat.bot;
+        }))) ||
     Object.keys(held).some(
       (id) =>
         stage !== "running" ||

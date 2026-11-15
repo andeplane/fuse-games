@@ -37,8 +37,8 @@ export function normalized(p: AiPoint): AiPoint {
   return length === 0 ? { ...p } : point(f(p.x / length), f(p.y / length));
 }
 export const intPoint = (p: AiPoint): AiPoint => ({
-  x: Math.trunc(p.x),
-  y: Math.trunc(p.y),
+  x: Math.trunc(p.x) || 0,
+  y: Math.trunc(p.y) || 0,
 });
 export const rectCenter = (r: AiRect): AiPoint => ({
   x: Math.trunc((r.x1 + r.x2) / 2),

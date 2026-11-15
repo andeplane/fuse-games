@@ -1,4 +1,4 @@
-import type { World as WorldView } from "../engine/classic/model.js";
+import type { WorldView } from "../engine/classic/codec.js";
 import { WIDTH, HEIGHT } from "../engine/index.js";
 import { CLASSIC_PROJECTILES } from "../engine/classic/catalog.js";
 import { decodeTerrainRow } from "../engine/classic/terrain.js";

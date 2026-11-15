@@ -45,7 +45,6 @@ import {
   DEFAULT_SETTINGS,
   createWorld,
   stepWorld,
-  botInput,
   OUTER_MS,
   LEFT,
   RIGHT,
@@ -221,9 +220,9 @@ function attract(host: HTMLElement) {
   const world = createWorld(
     713,
     [
-      { id: "demo-a", slot: 0 },
-      { id: "demo-b", slot: 1 },
-      { id: "demo-c", slot: 2 },
+      { id: "demo-a", slot: 0, bot: true },
+      { id: "demo-b", slot: 1, bot: true },
+      { id: "demo-c", slot: 2, bot: true },
     ],
     DEFAULT_SETTINGS,
   );
@@ -237,10 +236,7 @@ function attract(host: HTMLElement) {
     advance() {
       carry += 50;
       while (carry >= OUTER_MS) {
-        stepWorld(
-          world,
-          new Map(world.worms.map((worm) => [worm.id, botInput(world, worm)])),
-        );
+        stepWorld(world, new Map());
         carry -= OUTER_MS;
       }
     },

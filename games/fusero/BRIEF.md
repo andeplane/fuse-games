@@ -18,7 +18,7 @@ The compatibility profile uses fixed 100 FPS outer frames (10 ms), independent 1
 
 Keep the existing Fuse neon/pixel system: distinct player colors, readable health and weapon charge, visible terrain edges and expressive effects. Cosmetic effects must not decide collision, damage, rope force, lifetime or timing. Keyboard and multitouch input feed the same public contracts. The hosted service coordinates rooms and signaling, with no always-running gameplay simulation.
 
-Fusero's current bot controller is a Fuse input policy, not the original OpenLieroX AI. This distinction must remain visible in readiness claims. Native mod, protocol and game-mode compatibility must not be inferred from a Classic deathmatch implementation.
+The live bots port the original Classic controller, including targeting, weapon choice, rope navigation, digging and stuck recovery. Their complete decision state is checkpointed. Deterministic worker scheduling and seeded randomness replace native threads and C `rand()`; retain these explicit comparison limits. Native mod, protocol and game-mode compatibility must not be inferred from a Classic deathmatch implementation.
 
 ## Acceptance work
 

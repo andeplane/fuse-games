@@ -259,10 +259,19 @@ test("incremental search resumes from copied frontier, with deterministic restar
   }
   requestAiSearch(restored, { x: 30, y: 40 }, { x: 150, y: 125 }, 300);
   assert.equal(restored.nextExpansionMs, 400, "idle worker starts after 100ms");
-  requestAiSearch(restored, { x: 30, y: 40 }, { x: 150, y: 30 }, 310);
+  requestAiSearch(restored, { x: 30, y: 40 }, { x: 150, y: 30 }, 310, true);
   assert.equal(
     restored.nextExpansionMs,
-    311,
+    400,
+    "a pending restart retains the sleeping worker's wake time",
+  );
+  assert.equal(restored.pendingRestart, true);
+  advanceAiSearch(restored, terrain, 400);
+  assert.equal(restored.pendingRestart, false);
+  requestAiSearch(restored, { x: 30, y: 40 }, { x: 150, y: 60 }, 400, true);
+  assert.equal(
+    restored.nextExpansionMs,
+    401,
     "active worker handles restart at next expansion",
   );
 });

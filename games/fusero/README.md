@@ -20,7 +20,7 @@ The previous 320×180/192×144 camera description and oversized sprite presentat
 
 ## Local play and controls
 
-Run `pnpm dev`, then open the printed URL plus `/fusero/?mute`. The intended flow is **PLAY → SINGLE PLAYER** for a match with Fuse-controlled bots, or **HOST ROOM** for an online room. Take a seat, choose the five weapons on the room page, invite friends or add AI, then **START MATCH**. Game settings expose the level, weapon restrictions, limits, loading time, bonuses and owner injury.
+Run `pnpm dev`, then open the printed URL plus `/fusero/?mute`. The intended flow is **PLAY → SINGLE PLAYER** for a match with the native Classic bots, or **HOST ROOM** for an online room. Take a seat, choose the five weapons on the room page, invite friends or add AI, then **START MATCH**. Game settings expose the level, weapon restrictions, limits, loading time, bonuses and owner injury.
 
 The default **Original PC** keyboard preset uses the original primary-player bindings from the pinned `Options.cpp`, matching the official WebAssembly build even when played on a Mac. **Original Mac** is available under **MENU → GAME CONTROLS → Keyboard preset**. The choice is a local keyboard preference, not a room or gameplay setting.
 
@@ -47,7 +47,7 @@ Phones provide movement, aim, jump, rope, fire, carve and five weapon-slot contr
 
 The selected parity profile fixes the native outer frame at **100 FPS / 10 ms**. LX56 physics keeps its separate **11 ms** step, produced by the source's integer `1000 / 84` calculation. Native next-outer-frame shot delivery, clock remainders, pending shots, RNG, terrain, projectiles and weapon-slot state belong in checkpoints. Fuse's 50 ms log tick groups five outer frames; rendering does not advance either simulation clock. This scheduling contract is part of integration verification, not a claim that every native variable-frame-rate execution has already been matched.
 
-Fuse bot controllers emit ordinary inputs through the same gameplay kernels. **OpenLieroX's native bot AI has not been ported**, so bot decisions are not a demonstrated parity area. Shared Fuse menus, phone controls and room recovery are integration features. Compatibility with OpenLieroX's network protocol, arbitrary mods and every native game mode is not established by this Classic port.
+The native Classic bot controller supplies source control fields through the same gameplay kernels as humans. Its arsenal, targeting, aiming, shooting, rectangle A*, digging, rope navigation and stuck recovery follow the pinned source. Bot memory, frontier, timers and shared random samples survive checkpoints; private AI graphs stay out of presentation views. Seeded randomness and deterministic worker scheduling replace native C `rand()` and OS threads. See [the controller design](../../docs/design/fusero-native-ai.md) for exact comparison limits. Shared Fuse menus, phone controls and room recovery are integration features. Compatibility with OpenLieroX's network protocol, arbitrary mods and every native game mode is not established by this Classic port.
 
 One first-party analytics round is one deathmatch, counted for participating browsers from confirmed play. Spectators and menu backgrounds do not count. Account history/rankings are not credited by the current room-only platform registration.
 
@@ -63,6 +63,6 @@ The source-data checks verify the packaged binary, descriptors and native materi
 
 `ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fusero-smoke.ts` exercises solo preparation, five-slot charge/reload, two players and a shared TV, native controls, terrain changes, phone reload recovery and full-state convergence. It passed against the composed source-derived engine. `pnpm gallery:capture fusero` refreshes the gallery from real play after a successful build. Earlier prototype results do not validate this replacement engine.
 
-The official OpenLieroX WebAssembly build has also been played through its UI with native PC fire, dig, aim and rope inputs. Reference play visibly produced explosions, health changing from 100 to 84 and weapon charge changing from 100 to 66. This is evidence of actual reference interaction, not a whole-session or bit-perfect equivalence proof. The latest repair has 164 passing game tests and a passing browser smoke for native controls, zoom, multiplayer and recovery; broader repository results belong in the PR.
+The official OpenLieroX WebAssembly build has also been played through its UI with native PC fire, dig, aim and rope inputs. Reference play visibly produced explosions, health changing from 100 to 84 and weapon charge changing from 100 to 66. This is evidence of actual reference interaction, not a whole-session or bit-perfect equivalence proof. Source-extracted C++ fixtures include geometry/path comparisons and 690 tactical cases across all 38 weapons. Current cloud checks and browser results belong in the PR.
 
 The user's acceptance of gameplay feel and physical-phone checks remain outstanding. The open PR is not merge or deployment authorization.

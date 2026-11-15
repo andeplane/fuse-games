@@ -13,8 +13,17 @@ import type { World, Worm } from "./model.js";
 import { INPUT_MASK, type ClassicRope } from "./physics-types.js";
 import { decodeTerrain } from "./terrain.js";
 import { FIXED_RANDOM } from "./random.js";
+import {
+  decodeNativeAi,
+  decodeNativeAiShared,
+  encodeNativeAi,
+  encodeNativeAiShared,
+} from "./ai-codec.js";
 
-export type WorldView = World;
+export type WormView = Omit<Worm, "ai">;
+export type WorldView = Omit<World, "worms" | "aiShared"> & {
+  worms: WormView[];
+};
 
 const UINT32 = 0xffff_ffff;
 const WORLD_KEYS = [
@@ -34,6 +43,7 @@ const WORLD_KEYS = [
   "effects",
   "lastClientPhysicsMs",
   "pendingShots",
+  "aiShared",
 ] as const;
 const WORM_KEYS = [
   "id",
@@ -65,6 +75,7 @@ const WORM_KEYS = [
   "positionRecordings",
   "lastInputTimeMs",
   "canRespawnNow",
+  "ai",
 ] as const;
 const PROJECTILE_KEYS = [
   "id",
@@ -256,7 +267,12 @@ function positionRecorder(raw: unknown): PositionRecorder | undefined {
   return { cursor, count, positions: decoded };
 }
 
-function worm(raw: unknown, elapsedMs: number): Worm | undefined {
+function worm(
+  raw: unknown,
+  elapsedMs: number,
+  width: number,
+  height: number,
+): Worm | undefined {
   if (!record(raw) || !keys(raw, WORM_KEYS)) return;
   const {
     id,
@@ -289,6 +305,7 @@ function worm(raw: unknown, elapsedMs: number): Worm | undefined {
   const decodedRope = rope(raw.rope),
     decodedSlots = slots(raw.slots);
   const decodedPositions = positionRecorder(raw.positionRecordings);
+  const ai = decodeNativeAi(raw.ai, elapsedMs, width, height);
   if (
     !memberId(id) ||
     !integer(slot, 0, 4) ||
@@ -324,6 +341,7 @@ function worm(raw: unknown, elapsedMs: number): Worm | undefined {
     decodedRope === undefined ||
     !decodedSlots ||
     !decodedPositions ||
+    ai === undefined ||
     (alive && lives === -1)
   )
     return;
@@ -357,6 +375,7 @@ function worm(raw: unknown, elapsedMs: number): Worm | undefined {
     lastInputTimeMs,
     canRespawnNow,
     positionRecordings: decodedPositions,
+    ai,
   };
 }
 
@@ -646,22 +665,28 @@ function pendingShot(
 }
 
 /** Independent presentation/checkpoint copies cannot mutate the authoritative world or its nested arrays. */
-function cloneSharedState(world: World): World {
+function cloneSharedState(world: World): WorldView {
+  const { aiShared, ...visible } = world;
+  void aiShared;
   return {
-    ...world,
+    ...visible,
     settings: { ...world.settings },
     terrain: { ...world.terrain, rows: [...world.terrain.rows] },
-    worms: world.worms.map((value) => ({
-      ...value,
-      rope: value.rope ? { ...value.rope } : null,
-      slots: value.slots.map((slot) => ({ ...slot })),
-      positionRecordings: {
-        ...value.positionRecordings,
-        positions: value.positionRecordings.positions.map((position) => ({
-          ...position,
-        })),
-      },
-    })),
+    worms: world.worms.map((value) => {
+      const { ai, ...visibleWorm } = value;
+      void ai;
+      return {
+        ...visibleWorm,
+        rope: value.rope ? { ...value.rope } : null,
+        slots: value.slots.map((slot) => ({ ...slot })),
+        positionRecordings: {
+          ...value.positionRecordings,
+          positions: value.positionRecordings.positions.map((position) => ({
+            ...position,
+          })),
+        },
+      };
+    }),
     projectiles: world.projectiles,
     effects: world.effects.map((value) => ({ ...value })),
     bonuses: world.bonuses.map((value) => ({ ...value })),
@@ -675,8 +700,14 @@ export function toView(world: World): WorldView {
   };
 }
 export function encodeWorld(world: World): unknown {
+  const view = cloneSharedState(world);
   return {
-    ...cloneSharedState(world),
+    ...view,
+    aiShared: encodeNativeAiShared(world.aiShared),
+    worms: view.worms.map((value, index) => ({
+      ...value,
+      ai: encodeNativeAi(world.worms[index]!.ai),
+    })),
     projectiles: world.projectiles.map((value) =>
       PROJECTILE_KEYS.map((key) => value[key]),
     ),
@@ -722,13 +753,14 @@ export function decodeWorld(raw: unknown): World | undefined {
   )
     return;
   const settings = parseSettings(raw.settings),
-    terrain = decodeTerrain(raw.terrain);
-  if (!settings || !terrain) return;
+    terrain = decodeTerrain(raw.terrain),
+    aiShared = decodeNativeAiShared(raw.aiShared, elapsedMs);
+  if (!settings || !terrain || !aiShared) return;
   const within = (x: number, y: number) =>
     x >= -32 && y >= -32 && x <= terrain.width + 32 && y <= terrain.height + 32;
   const worms: Worm[] = [];
   for (const value of raw.worms) {
-    const decoded = worm(value, elapsedMs);
+    const decoded = worm(value, elapsedMs, terrain.width, terrain.height);
     if (!decoded) return;
     worms.push(decoded);
   }
@@ -754,6 +786,12 @@ export function decodeWorld(raw: unknown): World | undefined {
         value.rope?.state === "worm" &&
         (!memberIds.has(value.rope.attachedId!) ||
           value.rope.attachedId === value.id),
+    ) ||
+    worms.some(
+      (value) =>
+        value.ai?.targetWormId !== null &&
+        value.ai?.targetWormId !== undefined &&
+        !memberIds.has(value.ai.targetWormId),
     )
   )
     return;
@@ -829,5 +867,6 @@ export function decodeWorld(raw: unknown): World | undefined {
     bonuses,
     lastClientPhysicsMs,
     pendingShots,
+    aiShared,
   };
 }

@@ -46,15 +46,36 @@ import {
   stepClientWeapon,
 } from "./weapons.js";
 import { stepProjectiles } from "./projectiles.js";
-import { JUMP, INPUT_MASK, stepWorm, f, length2 } from "./physics.js";
+import {
+  JUMP,
+  INPUT_MASK,
+  stepWorm,
+  stepWormWithControls,
+  f,
+  length2,
+} from "./physics.js";
 import { randomInt, randomUnit } from "./random.js";
 import {
   createPositionRecorder,
   recordPosition,
   resetPositionRecorder,
 } from "./history.js";
+import { aiTerrain, type AiTerrain } from "./ai-geometry.js";
+import { advanceAiSearch } from "./ai-path.js";
+import {
+  aiNow,
+  createNativeAiShared,
+  createNativeAiState,
+  emptyAiControls,
+  type NativeAiFrame,
+  type AiDifficulty,
+  type NativeAiState,
+} from "./ai-state.js";
+import { inputAi, respawnAi, syncAiBonusPosition } from "./ai-controller.js";
+import { nativeBotArsenal } from "./bot-arsenal.js";
+import type { PhysicsTerrainPort } from "./physics-types.js";
 
-export const RULES = "fusero-classic-3";
+export const RULES = "fusero-classic-4";
 export const CAPACITY = 5;
 export const WIDTH = CLASSIC_LEVEL_WIDTH;
 export const HEIGHT = CLASSIC_LEVEL_HEIGHT;
@@ -81,12 +102,34 @@ export interface Entrant {
   id: string;
   slot: number;
   loadout?: readonly number[];
+  bot?: boolean;
+  difficulty?: AiDifficulty;
 }
 /** The adapter closes over authoritative rng state, never an external mutable random generator. */
 const matchRandom = (world: World): MatchRandom => ({
   nextFloat: () => randomUnit(world),
   nextInt: (maximum) => randomInt(world, maximum),
 });
+
+function nativeAiFrame(
+  world: World,
+  worm: Worm,
+  ai: NativeAiState,
+  map: AiTerrain = aiTerrain(world.terrain),
+  physicsTerrain: PhysicsTerrainPort = asPhysicsTerrain(world.terrain),
+): NativeAiFrame {
+  return {
+    world,
+    worm,
+    ai,
+    shared: world.aiShared,
+    terrain: map,
+    physicsTerrain,
+    targets: world.worms.filter((entry) => entry.alive),
+    deltaMs: OUTER_MS,
+    controls: emptyAiControls(),
+  };
+}
 
 function spawn(world: World, worm: Worm): void {
   const position = findSpot(world.terrain, () => randomUnit(world));
@@ -108,6 +151,7 @@ function spawn(world: World, worm: Worm): void {
     slot.lastFire = 0;
   }
   resetPositionRecorder(worm.positionRecordings, worm);
+  if (worm.ai) respawnAi(nativeAiFrame(world, worm, worm.ai));
   carveSpawn(world.terrain, worm.x, worm.y);
 }
 
@@ -130,7 +174,13 @@ export function createWorld(
         !wormId(seat.id) ||
         !Number.isInteger(seat.slot) ||
         seat.slot < 0 ||
-        seat.slot >= CAPACITY,
+        seat.slot >= CAPACITY ||
+        (seat.bot !== undefined && typeof seat.bot !== "boolean") ||
+        (seat.difficulty !== undefined &&
+          (!seat.bot ||
+            !Number.isInteger(seat.difficulty) ||
+            seat.difficulty < 0 ||
+            seat.difficulty > 3)),
     )
   )
     throw new Error("Invalid Classic entrants");
@@ -151,11 +201,17 @@ export function createWorld(
     nextId: 1,
     bonuses: [],
     nextBonusAtMs: BONUS_FREQUENCY_MS,
+    aiShared: createNativeAiShared(),
   };
   world.worms = seats.map((seat) => {
-    const loadout = validLoadout(seat.loadout, settings)
-      ? seat.loadout
-      : defaultLoadout(settings);
+    const arsenal = seat.bot
+      ? nativeBotArsenal(settings, matchRandom(world))
+      : undefined;
+    const loadout =
+      arsenal?.loadout ??
+      (validLoadout(seat.loadout, settings)
+        ? seat.loadout
+        : defaultLoadout(settings));
     return {
       id: seat.id,
       slot: seat.slot,
@@ -186,6 +242,9 @@ export function createWorld(
       positionRecordings: createPositionRecorder(),
       lastInputTimeMs: 0,
       canRespawnNow: false,
+      ai: arsenal
+        ? createNativeAiState(arsenal.gameType, seat.difficulty)
+        : null,
     };
   });
   for (const worm of world.worms) spawn(world, worm);
@@ -231,9 +290,12 @@ export function stepWorld(
   const terrain = asPhysicsTerrain(world.terrain),
     ports = combatPorts(world),
     random = matchRandom(world);
+  const nativeMap = aiTerrain(world.terrain);
   const delivered = world.pendingShots;
   world.pendingShots = [];
   for (const shot of delivered) processWeaponShot(world, shot, ports);
+  for (const worm of world.worms)
+    if (worm.ai) advanceAiSearch(worm.ai.search, nativeMap, aiNow({ world }));
   while (world.lastClientPhysicsMs + PHYSICS_MS <= world.elapsedMs) {
     world.lastClientPhysicsMs += PHYSICS_MS;
     for (const worm of world.worms) {
@@ -241,22 +303,41 @@ export function stepWorld(
       const inputDtMs = world.elapsedMs - worm.lastInputTimeMs;
       worm.lastInputTimeMs = world.elapsedMs;
       if (!worm.alive) {
+        if (worm.ai) {
+          worm.input = 0;
+          if (worm.weaponsReady)
+            inputAi(nativeAiFrame(world, worm, worm.ai, nativeMap, terrain));
+          continue;
+        }
         const pressed = input & ~worm.input;
         worm.input = input;
         // Native CWormHuman accepts a new jump only after bCanRespawnNow; fire and early/held jumps do not request it.
         if (pressed & JUMP && worm.canRespawnNow) worm.respawnRequested = true;
         continue;
       }
-      const controls = stepWorm(
-        worm,
-        world.worms,
-        terrain,
-        input,
-        PHYSICS_MS,
-        undefined,
-        inputDtMs,
-        worm.weaponsReady,
-      );
+      const nativeFrame = worm.ai
+        ? nativeAiFrame(world, worm, worm.ai, nativeMap, terrain)
+        : undefined;
+      if (nativeFrame && worm.weaponsReady) inputAi(nativeFrame);
+      if (nativeFrame) worm.input = 0;
+      const controls = nativeFrame
+        ? stepWormWithControls(
+            worm,
+            world.worms,
+            terrain,
+            nativeFrame.controls,
+            PHYSICS_MS,
+          )
+        : stepWorm(
+            worm,
+            world.worms,
+            terrain,
+            input,
+            PHYSICS_MS,
+            undefined,
+            inputDtMs,
+            worm.weaponsReady,
+          );
       if (controls.weaponSlot !== null) worm.weapon = controls.weaponSlot;
       worm.weapon = (((worm.weapon + controls.weaponDelta) % 5) + 5) % 5;
       stepWeaponTimers(worm, PHYSICS_MS, world.settings.loadingTime);
@@ -274,6 +355,11 @@ export function stepWorld(
     }
     stepProjectiles(world, world.worms, ports, PHYSICS_MS);
     simulateBonuses(world.bonuses, terrain, PHYSICS_MS);
+    for (const worm of world.worms)
+      if (worm.ai)
+        syncAiBonusPosition(
+          nativeAiFrame(world, worm, worm.ai, nativeMap, terrain),
+        );
   }
   // The server grants eligibility after this frame's human input was consumed.
   for (const worm of world.worms) {
@@ -298,6 +384,11 @@ export function stepWorld(
     random,
     allowedWeaponIds(world.settings),
   );
+  for (const worm of world.worms)
+    if (worm.ai)
+      syncAiBonusPosition(
+        nativeAiFrame(world, worm, worm.ai, nativeMap, terrain),
+      );
   // Presentation entities are bounded independently of all authoritative projectile slots and terrain.
   if (world.effects.length > 512)
     world.effects.splice(0, world.effects.length - 512);

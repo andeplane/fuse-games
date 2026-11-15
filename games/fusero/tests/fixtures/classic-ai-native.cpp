@@ -1061,4 +1061,5 @@ int main(){
   if(op=="coarse"){CVec start(sx,sy),target(tx,ty);int type;int res=coarseTrace(target,start,&type,5,PX_EMPTY);float dist=0;if(res)dist=(float)((int)(start-target).GetLength()/res);std::cout<<res<<" "<<type<<" "<<dist<<"\n";}
   if(op=="tie"){searchpath_base s;auto result=s.equalScoreFixture();std::cout<<result.size();for(auto id:result)std::cout<<" "<<id;std::cout<<"\n";}
  }
+ return 0;
 }

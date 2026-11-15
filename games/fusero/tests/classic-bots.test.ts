@@ -1,289 +1,362 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { botInput } from "../src/engine/classic/bots.js";
-import { CLASSIC_WEAPONS } from "../src/engine/classic/catalog.js";
-import { DEFAULT_SETTINGS } from "../src/engine/classic/match-types.js";
 import {
+  createWorld,
+  stepWorld,
+  type World,
+} from "../src/engine/classic/world.js";
+import { DEFAULT_SETTINGS } from "../src/engine/classic/match-types.js";
+import { recordInjury, validLoadout } from "../src/engine/classic/match.js";
+import { weaponById } from "../src/engine/classic/catalog.js";
+import {
+  createPositionRecorder,
+  resetPositionRecorder,
+} from "../src/engine/classic/history.js";
+import { aiTerrain, point } from "../src/engine/classic/ai-geometry.js";
+import {
+  aiNow,
+  createNativeAiState,
+  emptyAiControls,
+  NATIVE_AI_EPOCH_MS,
+  type NativeAiFrame,
+  type AiDifficulty,
+} from "../src/engine/classic/ai-state.js";
+import {
+  inputAi,
+  respawnAi,
+  syncAiBonusPosition,
+} from "../src/engine/classic/ai-controller.js";
+import {
+  aiTargetPosition,
+  setAiAim,
+} from "../src/engine/classic/ai-targeting.js";
+import {
+  decodeWorld,
+  encodeWorld,
+  toView,
+} from "../src/engine/classic/codec.js";
+import { encodeNativeAi } from "../src/engine/classic/ai-codec.js";
+import {
+  encodeTerrainRow,
   uniformTerrain,
-  setMaterial,
-  asPhysicsTerrain,
   AIR,
   ROCK,
+  asPhysicsTerrain,
 } from "../src/engine/classic/terrain.js";
-import {
-  INPUT_MASK,
-  CARVE,
-  JUMP,
-  ROPE,
-  FIRE,
-  UP,
-  LEFT,
-  SLOT1,
-  stepWorm,
-} from "../src/engine/classic/physics.js";
-import type { World, Worm } from "../src/engine/classic/model.js";
-import { createPositionRecorder } from "../src/engine/classic/history.js";
-import { createWorld, stepWorld } from "../src/engine/classic/world.js";
-import { recordInjury } from "../src/engine/classic/match.js";
 
-function weaponId(name: string): number {
-  const weapon = CLASSIC_WEAPONS.find((weapon) => weapon.name === name);
-  assert.ok(weapon);
-  return weapon.id;
-}
-function worm(slot: number): Worm {
+function frame(world: World): NativeAiFrame {
+  const worm = world.worms[0]!;
+  assert.ok(worm.ai);
   return {
-    id: `bot${slot}`,
-    slot,
-    x: 100 + slot * 90,
-    y: 220,
-    vx: 0,
-    vy: 0,
-    aim: 0,
-    facing: 1,
-    moveFacing: 1,
-    aimSpeed: 0,
-    onGround: true,
-    input: 0,
-    health: 100,
-    alive: true,
-    rope: null,
-    weapon: 0,
-    slots: Array.from({ length: 5 }, () => ({
-      weaponId: weaponId("Laser"),
-      charge: 1,
-      reloading: false,
-      lastFire: 0,
-    })),
-    kills: 0,
-    deaths: 0,
-    suicides: 0,
-    damageScore: 0,
-    lives: -2,
-    respawnAtMs: null,
-    spawnedOnce: true,
-    respawnRequested: false,
-    weaponsReady: true,
-    lastInputTimeMs: 0,
-    canRespawnNow: false,
-    positionRecordings: createPositionRecorder(),
+    world,
+    worm,
+    ai: worm.ai,
+    shared: world.aiShared,
+    terrain: aiTerrain(world.terrain),
+    physicsTerrain: asPhysicsTerrain(world.terrain),
+    targets: world.worms.filter((entry) => entry.alive),
+    deltaMs: 10,
+    controls: emptyAiControls(),
   };
 }
-function world(): World {
-  return {
-    seed: 1,
-    rng: 1,
-    step: 0,
-    elapsedMs: 0,
-    lastClientPhysicsMs: 0,
-    pendingShots: [],
-    phase: "play",
-    winner: null,
-    settings: { ...DEFAULT_SETTINGS },
-    terrain: uniformTerrain(640, 480, AIR),
-    worms: [worm(0), worm(1)],
-    projectiles: [],
-    effects: [],
-    nextId: 1,
-    bonuses: [],
-    nextBonusAtMs: 30000,
-  };
-}
-test("each bot returns bounded human controls without mutating authoritative state", () => {
-  const state = world();
-  state.worms = Array.from({ length: 5 }, (_, slot) => worm(slot));
-  const previous = structuredClone(state);
-  for (const current of state.worms) {
-    const bits = botInput(state, current);
-    assert.ok(Number.isInteger(bits));
-    assert.equal(bits & ~INPUT_MASK, 0);
-  }
-  assert.deepEqual(state, previous);
-});
-test("all slots repeatedly carve and jump despite 50ms sampling and offset clocks", () => {
-  for (let slot = 0; slot < 5; slot++) {
-    const state = world(),
-      current = worm(slot),
-      target = worm((slot + 1) % 5);
-    current.x = 100;
-    target.x = 200;
-    target.y = 160;
-    state.worms = [current, target];
-    setMaterial(state.terrain, 107, 220, ROCK);
-    let previous = 0,
-      jumps = 0,
-      carves = 0;
-    for (let tick = 0; tick < 160; tick++) {
-      state.elapsedMs = 11 + tick * 50;
-      const bits = botInput(state, current);
-      if (bits & JUMP && !(previous & JUMP)) jumps++;
-      if (bits & CARVE && !(previous & CARVE)) carves++;
-      previous = bits;
-    }
-    assert.ok(jumps >= 3, `slot${slot} has repeated jump presses`);
-    assert.ok(carves >= 30, `slot${slot} has repeated ordinary carve presses`);
-  }
-});
-test("checkpoint copies and reordered peers produce identical decisions", () => {
-  const state = world();
-  state.worms.push(worm(2));
-  state.elapsedMs = 17611;
-  const copy = structuredClone(state);
-  copy.worms.reverse();
-  for (const current of state.worms) {
-    const restored = copy.worms.find((w) => w.id === current.id);
-    assert.ok(restored);
-    assert.equal(botInput(state, current), botInput(copy, restored));
-  }
-});
-test("dead, finished, unready and isolated bots release every control", () => {
-  const state = world(),
-    current = state.worms[0]!;
-  current.alive = false;
-  assert.equal(botInput(state, current), 0);
-  current.alive = true;
-  state.phase = "done";
-  assert.equal(botInput(state, current), 0);
-  state.phase = "play";
-  current.weaponsReady = false;
-  assert.equal(botInput(state, current), 0);
-  current.weaponsReady = true;
-  state.worms = [current];
-  assert.equal(botInput(state, current), 0);
-});
-test("manual-respawn bots request a fresh ordinary jump only after native eligibility", () => {
-  const state = world(),
-    current = state.worms[0]!;
-  current.alive = false;
-  assert.equal(botInput(state, current), 0);
-  current.canRespawnNow = true;
-  assert.equal(botInput(state, current), JUMP);
-  current.input = JUMP;
-  assert.equal(
-    botInput(state, current),
-    0,
-    "release an already-held jump before retrying",
-  );
-  current.input = 0;
-  current.lives = -1;
-  assert.equal(botInput(state, current), 0);
-  current.lives = -2;
-  current.weaponsReady = false;
-  assert.equal(botInput(state, current), 0);
-});
-test("ordinary bot controls respawn through the composed native manual-respawn flow", () => {
-  const state = createWorld(
-    17,
+function fixture(difficulty: AiDifficulty = 1): World {
+  const world = createWorld(
+    725,
     [
-      { id: "bot", slot: 0 },
-      { id: "other", slot: 1 },
+      { id: "bot", slot: 0, bot: true, difficulty },
+      { id: "human", slot: 1 },
     ],
-    { ...DEFAULT_SETTINGS, maxRespawnTimeMs: -1 },
+    DEFAULT_SETTINGS,
   );
-  const current = state.worms[0]!;
-  assert.equal(
-    recordInjury(state, current.id, 101, "other", state.settings).killed,
-    true,
+  world.terrain = uniformTerrain(192, 112, AIR);
+  const floor = encodeTerrainRow(new Uint8Array(192).fill(ROCK));
+  for (let y = 96; y < 112; y++) world.terrain.rows[y] = floor;
+  world.worms.forEach((worm, index) => {
+    worm.x = index === 0 ? 40 : 150;
+    worm.y = 91;
+    worm.vx = 0;
+    worm.vy = 0;
+    worm.aim = 0;
+    worm.aimSpeed = 0;
+    worm.facing = 1;
+    worm.moveFacing = 1;
+    worm.onGround = true;
+    worm.input = 0;
+    worm.rope = null;
+    worm.positionRecordings = createPositionRecorder();
+    resetPositionRecorder(worm.positionRecordings, worm);
+  });
+  world.worms[0]!.ai = createNativeAiState("100lt", difficulty);
+  respawnAi(frame(world));
+  return world;
+}
+function advance(world: World, frames: number): void {
+  for (let i = 0; i < frames; i++) stepWorld(world, new Map());
+}
+function record(value: unknown): Record<string, unknown> {
+  assert.ok(
+    value !== null && typeof value === "object" && !Array.isArray(value),
   );
-  let input = 0,
-    requests = 0;
-  for (let frame = 0; frame < 270; frame++) {
-    if (frame % 5 === 0) {
-      input = botInput(state, current);
-      if (!current.alive && input & JUMP) {
-        assert.equal(current.canRespawnNow, true);
-        requests++;
-      }
-    }
-    stepWorld(state, new Map([[current.id, input]]));
-    if (state.elapsedMs <= 2500) assert.equal(current.alive, false);
+  return value as Record<string, unknown>;
+}
+
+test("world creation selects native Classic arsenals and checkpoints the controller identity", () => {
+  for (const restrictionPreset of ["all", "standard-100lt"] as const) {
+    const world = createWorld(48, [{ id: "a", slot: 0, bot: true }], {
+      ...DEFAULT_SETTINGS,
+      restrictionPreset,
+    });
+    const bot = world.worms[0]!;
+    assert.deepEqual(
+      bot.slots.map((slot) => weaponById(slot.weaponId)!.name),
+      ["Super Shotgun", "Napalm", "Cannon", "Doomsday", "Chaingun"],
+    );
+    assert.equal(bot.ai?.gameType, "100lt");
+    assert.equal(bot.ai?.difficulty, 1);
+    assert.deepEqual(decodeWorld(encodeWorld(world)), world);
   }
-  assert.ok(requests > 0);
-  assert.equal(current.alive, true);
-  assert.equal(current.health, 100);
-});
-test("living zero-HP players are still valid targets", () => {
-  const state = world(),
-    current = state.worms[0]!,
-    target = state.worms[1]!;
-  target.health = 0;
-  assert.ok(botInput(state, current) & FIRE);
-  target.alive = false;
-  assert.equal(botInput(state, current), 0);
-});
-test("aim and facing change only when the ordinary physics kernel applies controls", () => {
-  const state = world(),
-    current = state.worms[0]!,
-    target = state.worms[1]!;
-  target.x = 40;
-  target.y = 100;
-  const initial = structuredClone(current);
-  const bits = botInput(state, current);
-  assert.ok(bits & UP);
-  assert.ok(bits & LEFT);
-  assert.deepEqual(current, initial);
-  stepWorm(current, state.worms, asPhysicsTerrain(state.terrain), bits);
-  assert.equal(current.facing, -1);
-  assert.ok(current.aim < 0 && current.aim > -1);
-  assert.ok(Math.abs(current.x - initial.x) < 1);
-});
-test("line-of-sight uses actual terrain and avoids firing into an adjacent wall", () => {
-  const state = world(),
-    current = state.worms[0]!;
-  assert.ok(botInput(state, current) & FIRE);
-  setMaterial(state.terrain, 107, 220, ROCK);
-  assert.equal(botInput(state, current) & FIRE, 0);
-  setMaterial(state.terrain, 107, 220, AIR);
-  assert.ok(botInput(state, current) & FIRE);
-});
-test("charged weapon selection uses a real direct-slot input and never edits charge", () => {
-  const state = world(),
-    current = state.worms[0]!;
-  current.slots.forEach((slot) => {
-    slot.charge = 0;
-    slot.reloading = true;
+  const rifles = createWorld(
+    12,
+    [{ id: "a", slot: 0, bot: true, difficulty: 3 }],
+    { ...DEFAULT_SETTINGS, restrictionPreset: "all", loadingTime: 20 },
+  );
+  assert.deepEqual(
+    rifles.worms[0]!.slots.map((slot) => weaponById(slot.weaponId)!.name),
+    Array<string>(5).fill("Rifle"),
+  );
+  assert.equal(rifles.worms[0]!.ai?.difficulty, 3);
+  assert.equal(rifles.worms[0]!.ai?.gameType, "rifles");
+  const random = createWorld(12, [{ id: "a", slot: 0, bot: true }], {
+    ...DEFAULT_SETTINGS,
+    loadingTime: 50,
   });
-  current.slots[4]!.charge = 1;
-  current.slots[4]!.reloading = false;
-  const before = structuredClone(current.slots),
-    bits = botInput(state, current);
-  assert.ok(bits & (SLOT1 << 4));
-  assert.equal(current.weapon, 0);
-  assert.deepEqual(current.slots, before);
+  assert.ok(
+    validLoadout(
+      random.worms[0]!.slots.map((slot) => slot.weaponId),
+      random.settings,
+    ),
+  );
+  assert.equal(random.worms[0]!.ai?.gameType, "other");
+  assert.equal(
+    createWorld(4, [{ id: "a", slot: 0 }], DEFAULT_SETTINGS).worms[0]!.ai,
+    null,
+  );
 });
-test("when every weapon is reloading the chosen slot stays selected to finish charging", () => {
-  const state = world(),
-    current = state.worms[0]!;
-  current.slots.forEach((slot) => {
-    slot.charge = 0.1;
-    slot.reloading = true;
-  });
-  current.slots[3]!.charge = 0.9;
-  const bits = botInput(state, current);
-  assert.ok(bits & (SLOT1 << 3));
-  assert.equal(bits & FIRE, 0);
-  current.weapon = 3;
-  assert.equal(botInput(state, current) & (SLOT1 << 3), 0);
+
+test("native bot controls wait 400ms after spawn while passive physics continues", () => {
+  const world = fixture(),
+    bot = world.worms[0]!;
+  bot.y = 40;
+  bot.onGround = false;
+  advance(world, 40);
+  assert.equal(world.elapsedMs, 400);
+  assert.ok(bot.y > 40);
+  assert.equal(bot.ai!.lastCarveMs, 0);
+  assert.equal(bot.aim, 0);
+  assert.equal(world.aiShared.angleNoiseAtMs, 0);
+  assert.equal(world.projectiles.length, 0);
+  advance(world, 4);
+  assert.ok(bot.ai!.lastCarveMs >= NATIVE_AI_EPOCH_MS + 400);
+  assert.ok(
+    world.aiShared.angleNoiseAtMs >= NATIVE_AI_EPOCH_MS + 400,
+    "initial absolute-time sentinels expire before the menu-prepared match",
+  );
 });
-test("rope launch is a press after aiming, release persists, and jump requests detachment", () => {
-  const state = world(),
-    current = state.worms[0]!,
-    target = state.worms[1]!;
-  target.y = 100;
-  current.aim = -80;
-  current.onGround = false;
-  state.elapsedMs = 211;
-  assert.ok(botInput(state, current) & ROPE);
-  current.rope = {
-    x: 250,
-    y: 40,
+
+test("native input can aim, choose weapons and throw rope without privileged physics changes", () => {
+  const world = fixture();
+  advance(world, 42);
+  const current = frame(world),
+    worm = current.worm;
+  const physical = {
+    x: worm.x,
+    y: worm.y,
+    vx: worm.vx,
+    vy: worm.vy,
+    health: worm.health,
+    kills: worm.kills,
+    deaths: worm.deaths,
+  };
+  inputAi(current);
+  assert.deepEqual(
+    {
+      x: worm.x,
+      y: worm.y,
+      vx: worm.vx,
+      vy: worm.vy,
+      health: worm.health,
+      kills: worm.kills,
+      deaths: worm.deaths,
+    },
+    physical,
+  );
+  assert.equal(worm.moveFacing, worm.facing);
+});
+
+test("bot aim uses outer-frame rotation and does not inherit keyboard acceleration", () => {
+  const world = fixture(3),
+    current = frame(world);
+  current.worm.aim = -50;
+  current.worm.aimSpeed = 200;
+  setAiAim(current, point(150, 91));
+  assert.equal(current.worm.aim, -49);
+  assert.equal(current.worm.aimSpeed, 200);
+  current.controls.shoot = true;
+  current.controls.move = true;
+  inputAi(current);
+  assert.equal(
+    current.controls.shoot,
+    false,
+    "spawn-delay input still resets previous state",
+  );
+  assert.equal(current.controls.move, false);
+});
+
+test("a copied active search and shared AI RNG resume the same complete world", () => {
+  const world = fixture();
+  advance(world, 11);
+  assert.equal(world.worms[0]!.ai!.search.status, "searching");
+  assert.equal(world.worms[0]!.ai!.search.initialized, true);
+  assert.ok(world.worms[0]!.ai!.search.frontier.length);
+  const restored = decodeWorld(encodeWorld(world));
+  assert.ok(restored);
+  for (let i = 0; i < 700; i++) {
+    stepWorld(world, new Map());
+    stepWorld(restored, new Map());
+    if (i % 50 === 0) assert.deepEqual(restored, world);
+  }
+  assert.deepEqual(restored, world);
+  assert.ok(world.aiShared.angleNoiseAtMs > 0);
+  assert.ok(world.worms[0]!.ai!.path.length);
+});
+
+test("native bot death requests respawn after eligibility without a human jump edge", () => {
+  const world = fixture(),
+    bot = world.worms[0]!;
+  recordInjury(world, bot.id, 101, "human", world.settings);
+  assert.equal(bot.alive, false);
+  advance(world, 200);
+  assert.equal(bot.alive, false);
+  advance(world, 80);
+  assert.equal(bot.alive, true);
+  assert.equal(bot.health, 100);
+  assert.equal(bot.input, 0);
+  assert.ok(bot.ai!.spawnedAtMs > NATIVE_AI_EPOCH_MS);
+});
+
+test("AI graph and shared random samples stay private to checkpoints, independent of views", () => {
+  const world = fixture();
+  advance(world, 11);
+  const before = structuredClone(world),
+    view = toView(world);
+  assert.equal("aiShared" in view, false);
+  assert.equal("ai" in view.worms[0]!, false);
+  view.worms[0]!.x = 10;
+  view.terrain.rows[0] = "changed";
+  assert.deepEqual(world, before);
+  const encoded = record(encodeWorld(world));
+  const worms = encoded.worms;
+  assert.ok(Array.isArray(worms));
+  const ai = record(record(worms[0]).ai),
+    search = record(ai.search),
+    areas = search.areas;
+  assert.ok(Array.isArray(areas));
+  const area = areas[0];
+  assert.ok(Array.isArray(area));
+  area[0] = 999;
+  assert.deepEqual(world, before);
+});
+
+test("malformed AI clocks, frontiers, parent cycles and identities reject atomically", () => {
+  const world = fixture();
+  advance(world, 11);
+  const before = structuredClone(world);
+  const cases: Array<(ai: Record<string, unknown>) => void> = [
+    (ai) => {
+      ai.difficulty = 4;
+    },
+    (ai) => {
+      ai.lastFaceMs = NaN;
+    },
+    (ai) => {
+      ai.spawnedAtMs = aiNow({ world }) + 1;
+    },
+    (ai) => {
+      ai.targetWormId = "missing";
+    },
+    (ai) => {
+      ai.randomSpread = -0;
+    },
+    (ai) => {
+      ai.currentNode = 8000;
+    },
+    (ai) => {
+      record(ai.search).frontier = [0, 0];
+    },
+    (ai) => {
+      const areas = record(ai.search).areas;
+      assert.ok(Array.isArray(areas));
+      assert.ok(Array.isArray(areas[0]));
+      areas[0][4] = 0;
+    },
+    (ai) => {
+      record(ai.search).nextExpansionMs = aiNow({ world }) + 101;
+    },
+    (ai) => {
+      record(ai.search).nextExpansionMs = 0;
+    },
+    (ai) => {
+      ai.extra = true;
+    },
+  ];
+  for (const mutate of cases) {
+    const candidate = record(encodeWorld(world)),
+      worms = candidate.worms;
+    assert.ok(Array.isArray(worms));
+    mutate(record(record(worms[0]).ai));
+    assert.equal(decodeWorld(candidate), undefined);
+    assert.deepEqual(world, before);
+  }
+  assert.deepEqual(
+    decodeWorld(encodeWorld(world)),
+    world,
+    "valid active search still restores",
+  );
+});
+
+test("a selected bonus retains its final native slot position after movement and pickup", () => {
+  const world = fixture(),
+    current = frame(world);
+  world.bonuses.push({
+    id: 3,
+    x: 75,
+    y: 30,
     vx: 0,
     vy: 0,
-    state: "falling",
-    attachedId: null,
-  };
-  state.elapsedMs = 350;
-  assert.equal(botInput(state, current) & ROPE, 0);
-  state.elapsedMs = 1511;
-  assert.ok(botInput(state, current) & JUMP);
+    life: 0,
+    flashTime: 0,
+    type: "health",
+    weaponId: -1,
+    spawnedAtMs: 0,
+  });
+  current.ai.targetType = "bonus";
+  current.ai.bonusId = 3;
+  current.ai.bonusPosition = point(75, 30);
+  world.bonuses[0]!.y = 31;
+  syncAiBonusPosition(current);
+  world.bonuses.splice(0, 1);
+  assert.deepEqual(aiTargetPosition(current), point(75, 31));
+  assert.equal(current.ai.mode, "think");
+});
+
+test("difficulty and all evolving AI state participate in the native checkpoint payload", () => {
+  for (const difficulty of [0, 1, 2, 3] as const) {
+    const world = fixture(difficulty);
+    advance(world, 60);
+    const restored = decodeWorld(encodeWorld(world));
+    assert.ok(restored);
+    assert.deepEqual(restored, world);
+    assert.notDeepEqual(encodeNativeAi(world.worms[0]!.ai), null);
+    assert.equal(restored.worms[0]!.ai?.difficulty, difficulty);
+  }
 });

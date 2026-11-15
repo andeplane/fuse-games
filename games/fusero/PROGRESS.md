@@ -23,14 +23,14 @@ The source audit traced the missed conversion through `CClient::SetupViewports`,
 
 ## Current repair verification
 
-The latest targeted run has **164 passing game tests**, including native camera dimensions, platform-specific keyboard bindings, all 38 weapons, deferred shots, strict state validation, deterministic continuation, dropped/reordered input recovery, manual bot respawn and the integrated 200-frame native Laser fixture. These checks exercise the stated paths; they do not prove the whole original application's behavior.
+The game tests cover native camera dimensions, platform-specific keyboard bindings, all 38 weapons, deferred shots, strict state validation, deterministic continuation, dropped/reordered input recovery, native bot respawn and the integrated 200-frame native Laser fixture. The live controller now ports native targeting, aiming, shooting, rectangle A*, rope navigation and stuck recovery, with checkpointed per-bot and shared decision state. Independent source-extracted C++ compares geometry/path behavior and 690 tactical cases. Current check counts and cloud results are recorded in the PR. These checks exercise the stated paths; they do not prove the whole original application's behavior.
 
 The official OpenLieroX WebAssembly release was played through its own UI with native PC fire, dig, aim and rope inputs. The active reference interaction visibly produced explosions, health changing from 100 to 84 and charge changing from 100 to 66. A prior reference attempt ended at the match timeout; it is not evidence of those active actions. The repaired browser smoke passed native controls and zoom, multiplayer convergence and recovery. Browser emulation is not physical-phone evidence, and the reference interaction does not establish whole-session or bit-perfect equivalence. Broader repository checks and fresh screenshot evidence are recorded separately in the PR. Exact parity coverage and limits belong in [SOURCE-PARITY.md](SOURCE-PARITY.md).
 
 ## Remaining acceptance
 
 - Finish the broader repository checks and capture the repaired real browser flow as recorded in the pull request.
-- Obtain the user's gameplay-feel acceptance and physical-phone evidence. The current bot policy emits ordinary Fuse inputs; native OpenLieroX bot AI remains unported.
+- Obtain the user's gameplay-feel acceptance and physical-phone evidence. Seeded RNG, the declared prepared-match epoch and deterministic worker scheduling remain explicit differences from arbitrary native execution.
 - Keep deployment and merge separate from technical checks. Neither is currently authorized.
 
 The initial prototype and superseded source-port screenshots remain historical work. Neither those results nor earlier readiness reports establish acceptance of this repair.
