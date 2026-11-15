@@ -8,6 +8,7 @@ import {
 import { createFakeWebampPlayer } from "../__mocks__/webampPlayer";
 import { Phone, type PhoneProps } from "./Phone";
 import type { WebampPlayer } from "../winamp/webampPlayer";
+import type { PhoneNavigation } from "./phoneNavigation";
 
 const games: PhoneProps["games"] = [
   {
@@ -26,6 +27,120 @@ const props = (): PhoneProps => ({
   search: "?mute",
   createPlayer: async () => createFakeWebampPlayer(),
   gameLaunched: vi.fn(),
+});
+
+class Navigation implements PhoneNavigation {
+  entries = ["home"];
+  index = 0;
+  listeners = new Set<() => void>();
+  read = () => this.entries[this.index]!;
+  push(value: string) {
+    this.entries = [...this.entries.slice(0, this.index + 1), value];
+    this.index++;
+  }
+  back = () => {
+    this.index = Math.max(0, this.index - 1);
+    this.listeners.forEach((fn) => fn());
+  };
+  forward = () => {
+    this.index = Math.min(this.entries.length - 1, this.index + 1);
+    this.listeners.forEach((fn) => fn());
+  };
+  subscribe = (fn: () => void) => {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  };
+}
+
+it("lists every game on paged Home, including games beyond the old six-icon limit", () => {
+  const many = Array.from({ length: 25 }, (_, index) => ({
+    ...games[0]!,
+    id: `game-${index}`,
+    name: `Game ${index}`,
+  }));
+  render(<Phone {...props()} games={many} />);
+  for (const game of many)
+    expect(screen.getByRole("button", { name: game.name })).toBeInTheDocument();
+  expect(screen.getAllByRole("group", { name: /Apps page/ })).toHaveLength(3);
+  expect(screen.getByRole("button", { name: "About" })).toBeVisible();
+});
+
+it("follows Back and Forward and restores the routed app after remount", () => {
+  const navigation = new Navigation();
+  const first = render(<Phone {...props()} navigation={navigation} />);
+  fireEvent.click(screen.getByRole("button", { name: "Games" }));
+  expect(navigation.read()).toBe("games");
+  fireEvent.click(screen.getByRole("button", { name: "Play Fusemania" }));
+  expect(navigation.read()).toBe("fusemania");
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(screen.getByRole("heading", { name: "Games" })).toBeVisible();
+  act(() => navigation.forward());
+  expect(screen.getByTitle("Fusemania")).not.toHaveAttribute("hidden");
+  first.unmount();
+  render(<Phone {...props()} navigation={navigation} />);
+  expect(screen.getByTitle("Fusemania")).not.toHaveAttribute("hidden");
+});
+
+it("browses large screenshots and handles missing images", () => {
+  render(
+    <Phone
+      {...props()}
+      games={[
+        { ...games[0]!, screenshot: "gallery/fusemania.jpg" },
+        { ...games[0]!, id: "second", name: "Second" },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Games" }));
+  expect(
+    screen.getByRole("img", { name: "Fusemania gameplay" }),
+  ).toHaveAttribute("src", "/preview/gallery/fusemania.jpg");
+  fireEvent.error(screen.getByRole("img", { name: "Fusemania gameplay" }));
+  expect(screen.getByText("Screenshot unavailable")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Next game" }));
+  expect(screen.getByRole("button", { name: "Play Second" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Next game" })).toBeDisabled();
+});
+
+it("dismisses first-visit welcome durably and makes it available in About", () => {
+  let seen = false;
+  const preference = {
+    seen: () => seen,
+    dismiss: () => {
+      seen = true;
+    },
+  };
+  const first = render(<Phone {...props()} welcomePreference={preference} />);
+  expect(screen.getByRole("dialog")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Let’s play" }));
+  expect(seen).toBe(true);
+  first.unmount();
+  render(<Phone {...props()} welcomePreference={preference} />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "About" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show welcome again" }));
+  expect(screen.getByRole("dialog")).toBeVisible();
+});
+
+it("opens Winamp directly from its URL and retains it through browser navigation", async () => {
+  const navigation = new Navigation();
+  navigation.push("winamp");
+  const player = createFakeWebampPlayer();
+  render(
+    <Phone
+      {...props()}
+      navigation={navigation}
+      createPlayer={async () => player}
+    />,
+  );
+  await waitFor(() => expect(player.renderedInto).toHaveLength(1));
+  act(() => navigation.back());
+  expect(screen.getByRole("heading", { name: "Fuse Games" })).toBeVisible();
+  act(() => navigation.forward());
+  expect(screen.getByRole("region", { name: "Winamp" })).toBeVisible();
+  expect(player.disposed).toBe(false);
 });
 
 it("opens the scrollable catalogue and launches the game inside the phone with mute and site base", () => {
