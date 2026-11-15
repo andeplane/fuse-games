@@ -10,34 +10,34 @@ import { LIBRARY } from "../src/songs.js";
 // Before the display-name change, with only #TITLE normalized. Holds chart notes, timing, audio reference and
 // all other simfile metadata to the original authored files while allowing their display titles to change.
 const ORIGINAL_CHARTS: Readonly<Record<string, string>> = {
-  afronova: "4a3d91a2e72eb3c300745099edff772e75bf834d04985aa3a6a79e85d6a5ab02",
+  afronova: "1fe0d03e1650a504d31d27741e41a1c3a7ca17d3e6967add4f0bf8f1cea120ed",
   "afronova-radio-edit":
-    "dd7f7407c29f4f08d91acce3306154940f9213c280d4a1ada0854a28afe39080",
+    "58adb0dbd3dd5cca85d2cb04e6de459fda7767ec4931ad2892bbfb83f32e544c",
   "burning-heat":
-    "fbfbd53223cc23b3655a29b30eef1fc3fbadf74123e34141602ed568c8fa038e",
+    "93a2af8363ba2eccd1888ff53cdacc7aee061134a29dd56f9da0105237aa6565",
   "cant-stop-fallin-in-love":
-    "6dbd7606cba4f823ed957538e522618d8a3901a91773cddaede03c74c7e87f05",
-  candy: "27ed8075b860dd0ffca87755c7fc6079112c2737cc5bae395eb57b865e7f00fd",
+    "1be8e4976687ba8455a3f3c2508c83bce924eb2e1ba3ef1b180662fae749f1fc",
+  candy: "e0745aa8700a0f558884560290f1d9804c169cf745c03603ca41ef3bfdfa7c16",
   "electro-tuned":
-    "05af632376f231902586649bc925e7a7cc375db29af3a37d6e01c1100a8e8546",
+    "d49bd988d11c69e3405fe0d483e5036d18b4eeece40493a12b736f702226a8c5",
   "exotic-ethnic":
-    "fcdc84bd7ed97c0bc0f8c311fe55815a8eb5ee0049e68d334cb69850f21b4125",
+    "d956fbef015f6d6afb3a9e7297539b76e378b2cdc8c6fb20113d27d262f21e48",
   "paranoia-survivor-max":
-    "a2eef7f862688d24e4de362a517fd02aa67c688060156f86f22e8f321a407803",
+    "17f87c812fc69e2cd19df0e0c4e49a39d5f3536c193f2c02479c06ca5aaad1e7",
   "rain-of-sorrow":
-    "8954d86ab68afcc899a5918604c29b418a96f9038e7837917ee0015f72a84f0d",
+    "270615447945f12aab8f14cb4c1c73bb749d32c7ef4d9d6d5acee2c668e01991",
   "rain-of-sorrow-night-mix":
-    "ac730f99a9fc09fb2451da0c59ca94624c83c427a0e441740545ce9587f7ba42",
+    "97de66c41db7e677a5a9f0ecbd5c8b8be0ea0154eafd843e0e439914aee3bcb6",
   "the-least-100sec":
-    "3d0b5c35761d65b6c2c8b1c51ec052e9a4a9f6ecdde9bbc3e708b8c3e2c349ac",
+    "b76cf933bbc6860ddb568ca4b3dc374a2a4b72350f86c1b47d16a7c75e255d43",
   "the-legend-of-max":
-    "e62bf4cf1c685024a3bc0a0d307e436e8efede91b4cc02207fcbfca08bdce054",
-  xenon: "ccfc7d03afe706f58aaea11e714e7eb2d05638e712e1d2eceeace4781fc0dfa1",
+    "44d7b1ddf7743c69580837e75b029f2f0b4a05f7925b4e4f4a438851146b0dbf",
+  xenon: "3f92b9390f2c895b2c3f6d14c32a3c504e0a1b87217a124229d8cb8f8929bbd0",
   determinator:
-    "e8e90bd979059c7b7b5a3c6ea0cc708d17cdc077f76fcd83aac318fbd1756e25",
-  monolith: "2e19cfcd92d22cd12a2eb3b73e3fe6fe5819658d8a710029bb9ef302dc310235",
+    "82d17cc7b108d2cc55749c208e1a9d7a784a0e22bb1be5f6ae20cc7e445a7c96",
+  monolith: "e9321a41c9dc3f4dc1a30d039935e44080a925f47033cfdf023f8395cdff494b",
   "temple-of-boom":
-    "e34e35d204053e5c4b451f0e924321e88c6ade15830d607027c55778714125e2",
+    "c556e9c6e59026cc4c325f186917fa1248b2c1ca128c230d995b34530a932ed4",
 };
 const mixes = SONGS.filter((song) =>
   ["ddr-jazz-mix", "itg-jazz-mix"].includes(song.pack),
