@@ -57,12 +57,14 @@ import { hiddenAtStart, parseShown } from "./shown.js";
 import { NOTES_UPLOAD_PATH, writeNotesUpload } from "./notes-upload.js";
 import {
   addTap,
+  gridStep,
+  moveTap,
   parseTaps,
   removeSpan,
   removeTap,
   tapAt,
-  tapGridBeat,
   tapColumn,
+  tapGridBeat,
   writeTaps,
   type Tap,
   type TapsFile,
@@ -193,7 +195,7 @@ const keyLegend = el(
   el("span", { className: "lab-keys-gap" }),
   key("↑"),
   key("↓"),
-  " scroll",
+  " scroll, or move the selected Custom arrow",
   el("span", { className: "lab-keys-gap" }),
   key("+"),
   key("−"),
@@ -390,6 +392,8 @@ let taps: Tap[] = [];
 let tapsTimer: ReturnType<typeof setTimeout> | undefined;
 /** The tap clicked on in the Custom chart: delete removes it. */
 let pickedTap: Tap | undefined;
+/** A Custom arrow being dragged to another moment: the tap as it is now and whether the pointer has moved yet. */
+let tapDrag: { tap: Tap; y: number; moved: boolean } | undefined;
 /** Where recording starts (shift + R): taps before it are not kept, so the hands can find the rhythm first. */
 let recordFrom: number | undefined;
 /** The taps of this visit in the order they were pressed: ⌘Z takes back the latest. */
@@ -1480,6 +1484,37 @@ function undoTap(): void {
   say(`removed the tap at ${tap.time.toFixed(2)} s`);
 }
 
+/** Puts a Custom tap at another moment, keeps it selected and stores the taps. */
+function retimeTap(tap: Tap, time: number, store = true): Tap {
+  const timing = charts[0]?.timing;
+  if (!timing) return tap;
+  const result = moveTap(taps, tap, time, timing.beatAt(Math.max(0, time)));
+  taps = result.taps;
+  tapHistory = tapHistory.map((other) =>
+    other === tap ? result.moved : other,
+  );
+  pickedTap = result.moved;
+  rebuildCharts();
+  if (store) saveTaps();
+  draw();
+  return result.moved;
+}
+
+/** Moves the selected tap one line of the edit snap earlier (-1) or later (1), or by 10 ms with `fine`. */
+function nudgePickedTap(direction: 1 | -1, fine: boolean): void {
+  const timing = charts[0]?.timing;
+  if (!pickedTap || !timing) return;
+  const time = fine
+    ? pickedTap.time + direction * 0.01
+    : timing.timeAt(
+        gridStep(pickedTap.beat, Number(snapSelect.value) || 4, direction),
+      );
+  const moved = retimeTap(pickedTap, time);
+  say(
+    `tap moved to ${moved.time.toFixed(2)} s (beat ${moved.beat.toFixed(2)})`,
+  );
+}
+
 /** Deletes the Custom chart's taps inside the selection, when the selection was dragged over that chart. */
 function deleteSelectedTaps(): boolean {
   if (pickedTap) {
@@ -1583,6 +1618,17 @@ canvas.addEventListener("pointerdown", (event) => {
     editTap(column.chart, Math.floor((x - column.x) / LANE), timeOf(y));
     return;
   }
+  // A press on one of the Custom chart's arrows takes hold of it: a drag moves it in time, a click selects it.
+  const held =
+    column?.chart.key === TAPPED
+      ? tapAt(
+          taps,
+          timeOf(y),
+          Math.floor((x - column.x) / LANE),
+          (LANE * 0.55) / pxPerSec,
+        )
+      : undefined;
+  if (held) tapDrag = { tap: held, y, moved: false };
   drag = { x, y, zone, ...(column ? { chart: column.chart } : {}) };
   canvas.setPointerCapture(event.pointerId);
 });
@@ -1624,6 +1670,12 @@ canvas.addEventListener("pointermove", (event) => {
     return;
   }
   if (Math.abs(y - drag.y) < 4 && Math.abs(x - drag.x) < 4) return;
+  if (tapDrag) {
+    // The arrow follows the pointer, unsnapped; it is stored when the pointer lets go.
+    tapDrag.moved = true;
+    tapDrag.tap = retimeTap(tapDrag.tap, timeOf(y), false);
+    return;
+  }
   selection = selectionFrom(drag, x, y);
   draw();
 });
@@ -1640,6 +1692,8 @@ canvas.addEventListener("dblclick", (event) => {
 canvas.addEventListener("pointercancel", () => {
   bandDrag = undefined;
   drag = undefined;
+  if (tapDrag?.moved) saveTaps();
+  tapDrag = undefined;
 });
 
 canvas.addEventListener("pointerup", (event) => {
@@ -1661,6 +1715,15 @@ canvas.addEventListener("pointerup", (event) => {
   const y = event.clientY - rect.top;
   const start = drag;
   drag = undefined;
+  const dragged = tapDrag;
+  tapDrag = undefined;
+  if (dragged?.moved) {
+    saveTaps();
+    say(
+      `tap moved to ${dragged.tap.time.toFixed(2)} s: ↑ ↓ move it a line of the snap, ⇧↑ ⇧↓ by 10 ms`,
+    );
+    return;
+  }
   if (Math.abs(y - start.y) < 4 && Math.abs(x - start.x) < 4) {
     // A click on one of the Custom chart's arrows picks it (delete removes it); anywhere else moves the playhead.
     const column = layout.columns.find((c) => x >= c.x && x < c.x + LANE * 4);
@@ -1675,7 +1738,9 @@ canvas.addEventListener("pointerup", (event) => {
         : undefined;
     if (picked) {
       pickedTap = picked;
-      say(`tap at ${picked.time.toFixed(2)} s selected: delete removes it`);
+      say(
+        `tap at ${picked.time.toFixed(2)} s selected: drag it or press ↑ ↓ to move it, delete removes it`,
+      );
       draw();
       return;
     }
@@ -2292,7 +2357,14 @@ window.addEventListener("keydown", (event) => {
     seekBy(marker - heardTime());
   } else if (event.key === "+" || event.key === "=") zoom(1.25);
   else if (event.key === "-") zoom(0.8);
-  else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+  else if (
+    (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+    pickedTap
+  ) {
+    // With a Custom arrow selected the keys move it: later is down the page.
+    event.preventDefault();
+    nudgePickedTap(event.key === "ArrowDown" ? 1 : -1, event.shiftKey);
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
     follow = false;
     topTime += (event.key === "ArrowDown" ? 1 : -1) * viewSeconds() * 0.15;

@@ -60,6 +60,8 @@ import { join } from "node:path";
 
 import {
   addTap,
+  gridStep,
+  moveTap,
   parseTaps,
   removeSpan,
   removeTap,
@@ -665,4 +667,30 @@ test("chart lab: a tapped beat reads as 4ths, 8ths, 16ths, triplets, 24ths or 32
   near(4.17, 4 + 1 / 6); // a 24th
   near(4.12, 4.125); // a 32nd
   near(4.875, 4.875);
+});
+
+test("chart lab: a tap moves to another moment and keeps its lane", () => {
+  const taps = [
+    { time: 1, beat: 2, column: 0 },
+    { time: 2, beat: 4, column: 3 },
+    { time: 3, beat: 6, column: 1 },
+  ];
+  const { taps: after, moved } = moveTap(taps, taps[1]!, 3.5004, 7.0004);
+  assert.deepEqual(moved, { time: 3.5, beat: 7, column: 3 });
+  assert.deepEqual(
+    after.map((tap) => tap.time),
+    [1, 3, 3.5],
+  );
+  assert.equal(taps.length, 3, "the list it was given is untouched");
+  // Never before the start of the song.
+  assert.equal(moveTap(taps, taps[0]!, -0.4, -1).moved.time, 0);
+});
+
+test("chart lab: a step along the grid goes to the next line in that direction", () => {
+  assert.equal(gridStep(2, 4, 1), 2.25);
+  assert.equal(gridStep(2, 4, -1), 1.75);
+  // Between two lines: the nearer line that way, not a whole step past it.
+  assert.equal(gridStep(2.1, 4, 1), 2.25);
+  assert.equal(gridStep(2.1, 4, -1), 2);
+  assert.equal(gridStep(1, 3, 1), 4 / 3);
 });
