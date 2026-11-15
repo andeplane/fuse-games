@@ -7,6 +7,7 @@ import {
   validCode,
   validToken,
   type RoomStore,
+  type RoomRecord,
 } from "fuse-network-be";
 import { LEGACY_GAME_ID, type Platform } from "./game.js";
 import type { Account } from "./settlement.js";
@@ -63,6 +64,8 @@ export interface PresenceRecord {
     memberId: string;
     gameId: string;
     incarnation: string;
+    /** Claim was authenticated with the seat token. */
+    proven?: true;
   };
 }
 /**
@@ -106,6 +109,7 @@ export function storedPresence(value: unknown): PresenceRecord | undefined {
             memberId: room.memberId as string,
             gameId: room.gameId as string,
             incarnation: room.incarnation as string,
+            ...(room.proven === true ? { proven: true as const } : {}),
           },
         }),
   };
@@ -231,12 +235,14 @@ export class FriendsStore {
       if (
         !plain(room) ||
         !Object.keys(room).every((key) =>
-          ["code", "memberId", "gameId"].includes(key),
+          ["code", "memberId", "gameId", "token"].includes(key),
         ) ||
         typeof room.code !== "string" ||
         !validCode(room.code) ||
         typeof room.memberId !== "string" ||
         !/^[a-f0-9]{24}$/.test(room.memberId) ||
+        typeof room.token !== "string" ||
+        !validToken(room.token) ||
         (room.gameId !== undefined &&
           (typeof room.gameId !== "string" ||
             !this.platform.gameIds.includes(room.gameId)))
@@ -259,7 +265,7 @@ export class FriendsStore {
       now = this.now();
     const current = await this.database.presence(uid);
     const passive = claim.passive === true,
-      stored = current?.room,
+      stored = current?.room?.proven ? current.room : undefined,
       due = !current || now - current.at >= PRESENCE_REFRESH_MS;
     // A passive poll (the desktop around an embedded game) makes no claim of its own: it carries the stored one
     // forward, so the two pages of one account do not overwrite each other's room every poll.
@@ -276,21 +282,24 @@ export class FriendsStore {
             gameId: claim.room.gameId ?? LEGACY_GAME_ID,
           }
         : undefined;
+    if (
+      !passive &&
+      claim.room &&
+      peerId(claim.room.token) !== claim.room.memberId
+    )
+      throw new RoomError(403, "Join the room first");
     const sameClaim =
       stored !== undefined &&
       claimed !== undefined &&
       stored.code === claimed.code &&
       stored.memberId === claimed.memberId &&
       stored.gameId === claimed.gameId;
-    // A room claim is proven when it changes and again whenever the record is due a rewrite anyway: the seat must be a
-    // live member of the room the code names now, which only a device in that room can know, and the claim is bound
-    // to that room's incarnation, so a reissued code is another room. Otherwise any signed-in account could name a
-    // room code and read who is in it. A carried-forward claim is re-proven on the same schedule, so a passive poll
-    // cannot keep a dead room alive longer than an active one would; it is dropped, not refused, when the proof
-    // fails, because the passive page is not the one that can act on a refusal.
+    // An active page proves possession on every request. Passive pages can only carry a previously
+    // proven claim, and periodically recheck the live seat and room incarnation.
     let room: PresenceRecord["room"];
+    let liveRoom: RoomRecord | undefined;
     if (claimed) {
-      if (!sameClaim || due) {
+      if (!passive || !sameClaim || due) {
         const record = await this.rooms
             .get(claimed.code)
             .catch(() => undefined),
@@ -299,10 +308,14 @@ export class FriendsStore {
             record !== undefined &&
             seat !== undefined &&
             seat.expiresAt > now &&
+            roomGameId(record) === claimed.gameId &&
             (!passive || record.incarnation === stored!.incarnation);
-        if (live) room = { ...claimed, incarnation: record.incarnation };
-        else if (!passive) throw new RoomError(403, "Join the room first");
-      } else room = { ...claimed, incarnation: stored!.incarnation };
+        if (live) {
+          liveRoom = record;
+          room = { ...claimed, incarnation: record.incarnation, proven: true };
+        } else if (!passive) throw new RoomError(403, "Join the room first");
+      } else
+        room = { ...claimed, incarnation: stored!.incarnation, proven: true };
     }
     // A poll that names nothing keeps the name, head and status the player last showed up with.
     const name = claim.name ?? current?.name,
@@ -394,7 +407,7 @@ export class FriendsStore {
                 online: true,
                 ...(p.away ? { away: true as const } : {}),
                 ...(p.status ? { status: p.status } : {}),
-                ...(p.room
+                ...(p.room?.proven
                   ? { room: { code: p.room.code, gameId: p.room.gameId } }
                   : {}),
               }
@@ -431,14 +444,32 @@ export class FriendsStore {
     invites.sort((a, b) => b.at - a.at);
     const roomPlayers: RoomPlayer[] = [];
     if (here) {
+      const seenPublic = new Set<string>();
+      const seatCounts = new Map<string, number>();
+      for (const p of seated) {
+        if (
+          online(p) &&
+          p.room?.proven &&
+          p.room.code === here.code &&
+          p.room.incarnation === here.incarnation &&
+          (liveRoom?.members[p.room.memberId]?.expiresAt ?? 0) > now
+        )
+          seatCounts.set(
+            p.room.memberId,
+            (seatCounts.get(p.room.memberId) ?? 0) + 1,
+          );
+      }
       for (const p of seated) {
         if (
           !online(p) ||
-          !p.room ||
+          !p.room?.proven ||
+          seatCounts.get(p.room.memberId) !== 1 ||
+          seenPublic.has(p.publicId) ||
           p.room.code !== here.code ||
           p.room.incarnation !== here.incarnation
         )
           continue;
+        seenPublic.add(p.publicId);
         roomPlayers.push({
           memberId: p.room.memberId,
           publicId: p.publicId,

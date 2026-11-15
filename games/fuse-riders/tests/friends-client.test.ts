@@ -142,7 +142,7 @@ test("a signed-in client polls, reports where it is, and stops when signed out",
   assert.deepEqual(h.requests[1]!.body, {
     name: "Me",
     avatarId: "cat",
-    room: { code: "AB12", memberId: "m1", gameId: "fuse-riders" },
+    room: { code: "AB12", memberId: "m1", token: "t", gameId: "fuse-riders" },
   });
   await h.advance(20_000);
   assert.equal(h.requests.length, 3);

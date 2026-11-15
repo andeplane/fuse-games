@@ -9,7 +9,7 @@ account and simulates no game, as before.
 No route exposed another account until now, and usernames are neither unique nor reserved. Every listed player now
 carries a **public id**: `sha256("public:" + uid)` truncated to 20 hex characters, computed by the service
 (`publicIdOf` in `packages/fuse-platform/src/friends.ts`). It appears on leaderboard rows (`publicId`), on the seats an
-account owns in a listed match (`accounts`, seat id to public id, on `/api/matches` and `/api/me/matches`) and on the
+account owns in a listed match (`accounts`, match-scoped seat id to public id, on `/api/matches` and `/api/me/matches`) and on the
 signed-in members of the room the caller reports. It identifies an account to other players without being the
 account: it opens no route on its own, and it cannot be turned back into the uid. The service resolves a public id
 through the presence document (`publicId` equality), so a player can be added once they have synced at least once,
@@ -17,7 +17,7 @@ which a signed-in client does on every page load.
 
 ## Presence and one poll
 
-`POST /api/friends/sync` carries where the device is (`name`, `avatarId`, `room: { code, memberId, gameId }`, and
+`POST /api/friends/sync` carries where the device is (`name`, `avatarId`, `room: { code, memberId, token, gameId }`, and
 optionally `passive`, `away` and `status`, see [below](#away-status-last-seen-and-passive-pages)) and
 answers with everything the panel shows: friends with `online` and their `room`, requests both ways, pending invites
 and `roomPlayers` (the signed-in members of the reported room, each with its seat id, public id and relation to the
@@ -31,13 +31,7 @@ and is online. The presence document is rewritten only when something in it chan
 batch of user documents for names, whatever the number of friends). A page that unloads sends one last keepalive sync without a room, so friends see it leave sooner
 than the window would tell them. Presence documents are kept: they are what a public id resolves through.
 
-A room claim is proven when it changes and again whenever the presence record is due its periodic rewrite, so at
-most about once a minute rather than on every poll: the service reads the room and requires the claimed seat to be a
-live member (403 "Join the room first" otherwise), and stores the room's incarnation with the claim. Room codes are
-reissued once a room ends, so `roomPlayers` lists only seats of the same incarnation, and a device still claiming a
-seat in an ended room is refused at its next proof; its client then drops the claim. A seat id is only known inside its room, so a stranger
-cannot name a room code and read who is in it; the room's own members are trusted with each other's seats, as they are
-with the shared log. `roomPlayers` is how the lobby knows which seat belongs to which account: the room socket
+Every active room claim supplies the seat's room token, which the service checks against `memberId` and the live room and game on every poll. The token is never stored in presence. The room incarnation is stored, so reissued codes do not mix players. Unproven older presence records cannot carry a room claim forward. When multiple accounts claim the same seat, the ambiguous seat is omitted from the roster; public ids are deduplicated as well. A room player must still hold a live seat. `roomPlayers` is how the lobby knows which seat belongs to which account: the room socket
 carries seat ids only, and nothing about accounts crosses the mesh. The client matches a roster row to a public id by the `memberId` the seat's
 own device reported, so ADD FRIEND on a lobby row, a scoreboard row or the recap needs no protocol change and no
 `RULES` bump.
@@ -71,8 +65,8 @@ characters and trims the ends. It does not escape markup: a status is plain text
 
 **Passive polls and the room claim.** A passive poll carries the stored room claim forward instead of clearing it, so
 the desktop and an embedded game do not overwrite each other every 20 seconds. The carried claim is re-proven on the
-same schedule as an active one (when the record is due its rewrite), against the same incarnation, so a passive
-poll cannot keep a dead room alive any longer than an active one would; when the proof fails the claim is dropped
+presence refresh schedule, against the same incarnation, so a passive
+poll drops a dead room by the next refresh; when the proof fails the claim is dropped
 rather than refused, because the passive page is not the one that can act on a 403. A game page that leaves still
 sends its unload sync without a room, which is an active poll and clears the claim at once. A passive poll is not
 answered with `roomPlayers` (they are for the page in the room), which also saves it the room query.
@@ -150,3 +144,5 @@ means here.
 | `packages/fuse-ui/src/friends-client.ts`        | The poll, its coalescing and the actions                                        |
 | `packages/fuse-ui/src/friends-notify.ts`        | Invite notifications over an injected `Notification` API                        |
 | `games/fuse-riders/src/online/friends-panel.ts` | The game's composition: endpoints, sign-in, avatars, tracking                   |
+
+Match feed and account history use match-scoped identifiers in place of live seat ids, including in nested game-specific statistics.

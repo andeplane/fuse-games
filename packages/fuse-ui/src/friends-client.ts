@@ -15,7 +15,7 @@ export interface FriendsRoom {
   code: string;
   memberId: string;
   gameId: string;
-  /** The room token, to prove membership when inviting; never sent anywhere but `POST /api/rooms/:code/invites`. */
+  /** The room token, to prove membership on sync and when inviting; never persisted or sent to other players. */
   token: string;
 }
 export interface FriendsClientDependencies {
@@ -169,6 +169,7 @@ export function createFriendsClient(
             room: {
               code: room.code,
               memberId: room.memberId,
+              token: room.token,
               gameId: room.gameId,
             },
           }

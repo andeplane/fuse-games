@@ -327,7 +327,10 @@ test("presence: online inside the window, in a room while it last said so, writt
   const code = await f.room(1);
   assert.equal(
     await written(() =>
-      f.sync("bob", { name: "Bob", room: { code, memberId: member(2) } }),
+      f.sync("bob", {
+        name: "Bob",
+        room: { code, memberId: member(2), token: token(2) },
+      }),
     ),
     1,
   );
@@ -340,7 +343,10 @@ test("presence: online inside the window, in a room while it last said so, writt
   // A name change writes too, and a rename wins over the name the player showed up with.
   assert.equal(
     await written(() =>
-      f.sync("bob", { name: "Bobby", room: { code, memberId: member(2) } }),
+      f.sync("bob", {
+        name: "Bobby",
+        room: { code, memberId: member(2), token: token(2) },
+      }),
     ),
     1,
   );
@@ -371,10 +377,17 @@ test("a presence claim is validated", async () => {
     { name: "<b>" },
     { avatarId: "dog" },
     { room: {} },
-    { room: { code: "bad", memberId: member(1) } },
+    { room: { code: "bad", memberId: member(1), token: token(1) } },
     { room: { code: "AB12", memberId: "short" } },
-    { room: { code: "AB12", memberId: member(1), gameId: "chess" } },
-    { room: { code: "AB12", memberId: member(1), extra: 1 } },
+    {
+      room: {
+        code: "AB12",
+        memberId: member(1),
+        token: token(1),
+        gameId: "chess",
+      },
+    },
+    { room: { code: "AB12", memberId: member(1), token: token(1), extra: 1 } },
     { extra: 1 },
     { passive: "yes" },
     { passive: 1 },
@@ -389,7 +402,10 @@ test("a presence claim is validated", async () => {
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
     { status: "x".repeat(MAX_STATUS_INPUT + 1) },
     // A passive page has no room of its own to claim.
-    { passive: true, room: { code: "AB12", memberId: member(1) } },
+    {
+      passive: true,
+      room: { code: "AB12", memberId: member(1), token: token(1) },
+    },
   ])
     await assert.rejects(f.sync("alice", body), /Invalid presence/);
 });
@@ -439,7 +455,7 @@ test("an old-shaped body and an old-shaped record still work, and say nothing ne
   const view = await f.sync("bob", {
     name: "Bob",
     avatarId: "cat",
-    room: { code, memberId: member(2) },
+    room: { code, memberId: member(2), token: token(2) },
   });
   assert.deepEqual(Object.keys(view).sort(), [
     "friends",
@@ -579,7 +595,10 @@ test("a passive page alone (the desktop, no game open) keeps the account online 
 test("the desktop and a game on one account: passive polls keep the game's room claim, and neither overwrites the other", async () => {
   const f = await pair();
   const code = await f.room(1);
-  const game = { name: "Bob", room: { code, memberId: member(2) } },
+  const game = {
+      name: "Bob",
+      room: { code, memberId: member(2), token: token(2) },
+    },
     desktop = { passive: true, away: true, status: "in a match" };
   await f.sync("bob", game);
   const playing = {
@@ -611,11 +630,12 @@ test("the desktop and a game on one account: passive polls keep the game's room 
       memberId: member(2),
       gameId: LEGACY_GAME_ID,
       incarnation: "incarnation-0",
+      proven: true,
     });
   }
   assert.equal(writes, 3);
-  // One proof per rewrite, whichever page's poll it falls to.
-  assert.equal(f.roomReads() - reads, 3);
+  // Active polls recheck the live seat; passive polls recheck on refresh.
+  assert.equal(f.roomReads() - reads, 9);
   // The game page leaves (its unload sync names no room): the room goes at once, and the desktop is heard on away.
   await f.sync("bob", { name: "Bob" });
   assert.equal((await f.friend()).room, undefined);
@@ -633,7 +653,7 @@ test("the desktop and a game on one account: passive polls keep the game's room 
 test("a passive poll cannot keep a dead room alive: the carried claim is re-proven on the rewrite and dropped, not refused", async () => {
   const f = await pair();
   const code = await f.room(1);
-  await f.sync("bob", { room: { code, memberId: member(2) } });
+  await f.sync("bob", { room: { code, memberId: member(2), token: token(2) } });
   // The game's tab closes without a word; the desktop keeps polling. Inside the refresh period the claim stands.
   f.tick(20_000);
   await f.sync("bob", { passive: true });
@@ -711,7 +731,7 @@ test("the Firestore reader and the in-memory database agree on every presence re
   await f.sync("bob", { passive: true, away: true });
   await same();
   const code = await f.room(1);
-  await f.sync("bob", { room: { code, memberId: member(2) } });
+  await f.sync("bob", { room: { code, memberId: member(2), token: token(2) } });
   await same();
   await f.sync("bob", { status: "" });
   await same();
@@ -728,7 +748,15 @@ test("the Firestore reader and the in-memory database agree on every presence re
     { ...base, publicId: "nope" },
     { ...base, uid: "" },
     { ...base, room: "AB12" },
-    { ...base, room: { code, memberId: member(2), gameId: LEGACY_GAME_ID } },
+    {
+      ...base,
+      room: {
+        code,
+        memberId: member(2),
+        token: token(2),
+        gameId: LEGACY_GAME_ID,
+      },
+    },
   ])
     assert.throws(() => storedPresence(bad), /Stored presence is incompatible/);
 });
@@ -753,7 +781,10 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
     { passive: "yes" },
     { status: 12 },
     { status: "x".repeat(MAX_STATUS_LENGTH + 1) },
-    { passive: true, room: { code: "AB12", memberId: member(1) } },
+    {
+      passive: true,
+      room: { code: "AB12", memberId: member(1), token: token(1) },
+    },
   ])
     assert.deepEqual(await post(body), {
       handled: true,
@@ -763,62 +794,74 @@ test("the new fields are validated at the HTTP boundary: a wrong type is a 400 a
   assert.equal((await f.friend()).status, "hi there");
 });
 
-test("a room claim is proven by a live seat in that room, once per change", async () => {
+test("a room claim requires a live seat in that room", async () => {
   const f = fixture();
   const code = await f.room(1);
   // Not a room, not a member of one, a seat that is not in this room.
   await assert.rejects(
-    f.sync("alice", { room: { code: "ZZ99", memberId: member(1) } }),
+    f.sync("alice", {
+      room: { code: "ZZ99", memberId: member(1), token: token(1) },
+    }),
     /Join the room first/,
   );
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(9) } }),
+    f.sync("alice", { room: { code, memberId: member(9), token: token(9) } }),
     /Join the room first/,
   );
   const other = await f.room(3);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(3) } }),
+    f.sync("alice", { room: { code, memberId: member(3), token: token(3) } }),
     /Join the room first/,
   );
-  await f.sync("alice", { room: { code, memberId: member(1) } });
-  // The same claim again reads no room; a changed one is proven again.
+  await f.sync("alice", {
+    room: { code, memberId: member(1), token: token(1) },
+  });
+  // Every active claim rechecks the live room.
   const reads = f.roomReads();
-  await f.sync("alice", { room: { code, memberId: member(1) } });
-  assert.equal(f.roomReads(), reads);
-  await f.sync("alice", { room: { code: other, memberId: member(3) } });
+  await f.sync("alice", {
+    room: { code, memberId: member(1), token: token(1) },
+  });
   assert.equal(f.roomReads(), reads + 1);
-  // A seat id is only known inside its room, so naming a live one is the proof; the room's own members are trusted
-  // with each other's, as they are with the shared log.
+  await f.sync("alice", {
+    room: { code: other, memberId: member(3), token: token(3) },
+  });
+  assert.equal(f.roomReads(), reads + 2);
 });
 
 test("a reissued room code is another room: a stale claim sees nobody there and is refused once re-proven", async () => {
   const f = fixture();
   const code = await f.room(1);
-  await f.sync("alice", { name: "Alice", room: { code, memberId: member(1) } });
+  await f.sync("alice", {
+    name: "Alice",
+    room: { code, memberId: member(1), token: token(1) },
+  });
   // The room ends and its code is handed to a new room with other members.
   await f.rooms.end(code, token(1));
   await f.rooms.create(code, token(5));
   await f.rooms.admit(code, token(5), "gateway");
   await f.rooms.admit(code, token(6), "gateway");
-  await f.sync("bob", { name: "Bob", room: { code, memberId: member(5) } });
-  // Alice's device still claims its old seat: inside the refresh window nothing is re-read, and it sees only itself.
+  await f.sync("bob", {
+    name: "Bob",
+    room: { code, memberId: member(5), token: token(5) },
+  });
+  // Alice's old seat is refused immediately, even inside the refresh window.
   f.tick(1000);
-  assert.deepEqual(
-    (
-      await f.sync("alice", { room: { code, memberId: member(1) } })
-    ).roomPlayers.map((p) => p.name),
-    ["Alice"],
+  await assert.rejects(
+    f.sync("alice", { room: { code, memberId: member(1), token: token(1) } }),
+    /Join the room first/,
   );
   assert.deepEqual(
     (
-      await f.sync("bob", { room: { code, memberId: member(5) } })
+      await f.sync("bob", {
+        room: { code, memberId: member(5), token: token(5) },
+      })
     ).roomPlayers.map((p) => p.name),
     ["Bob"],
   );
   // Once the record is due a rewrite the claim is proven again, and Alice holds no seat in the room the code names now.
   f.tick(PRESENCE_REFRESH_MS);
   await assert.rejects(
-    f.sync("alice", { room: { code, memberId: member(1) } }),
+    f.sync("alice", { room: { code, memberId: member(1), token: token(1) } }),
     /Join the room first/,
   );
   // Without the room the poll is fine, and Alice is no longer in any room.
@@ -831,21 +874,21 @@ test("the room's signed-in members are listed with their relation to the caller"
   const code = await f.room(1);
   const alice = await f.sync("alice", {
       name: "Alice",
-      room: { code, memberId: member(1) },
+      room: { code, memberId: member(1), token: token(1) },
     }),
     bob = await f.sync("bob", {
       name: "Bob",
-      room: { code, memberId: member(2) },
+      room: { code, memberId: member(2), token: token(2) },
     });
   const elsewhere = await f.room(3);
   await f.sync("carol", {
     name: "Carol",
-    room: { code: elsewhere, memberId: member(3) },
+    room: { code: elsewhere, memberId: member(3), token: token(3) },
   });
   await f.store.add("alice", { publicId: bob.me.publicId });
   const view = await f.sync("alice", {
     name: "Alice",
-    room: { code, memberId: member(1) },
+    room: { code, memberId: member(1), token: token(1) },
   });
   assert.deepEqual(view.roomPlayers.map((p) => [p.name, p.relation]).sort(), [
     ["Alice", "you"],
@@ -857,7 +900,10 @@ test("the room's signed-in members are listed with their relation to the caller"
   );
   assert.equal(
     (
-      await f.sync("bob", { name: "Bob", room: { code, memberId: member(2) } })
+      await f.sync("bob", {
+        name: "Bob",
+        room: { code, memberId: member(2), token: token(2) },
+      })
     ).roomPlayers.find((p) => p.name === "Alice")!.relation,
     "incoming",
   );
@@ -869,7 +915,9 @@ test("the room's signed-in members are listed with their relation to the caller"
   });
   assert.deepEqual(
     (
-      await f.sync("alice", { room: { code, memberId: member(1) } })
+      await f.sync("alice", {
+        room: { code, memberId: member(1), token: token(1) },
+      })
     ).roomPlayers.map((p) => p.name),
     ["Alice"],
   );
@@ -1075,6 +1123,7 @@ test("listed players carry their public id, so a leaderboard row can be added", 
     matchScoreUnits: 10 - placement,
     matchPlacement: placement,
     earlyExits: 0,
+    combat: { victims: { [member(slot === 0 ? 2 : 1)]: 1 } },
   });
   const result = {
     matchId: "m1",
@@ -1106,16 +1155,21 @@ test("listed players carry their public id, so a leaderboard row can be added", 
     ],
   );
   const feed = await history.feed("ip", "alice", undefined);
-  assert.deepEqual(feed.matches[0]!.accounts, {
-    [member(1)]: publicIdOf("alice"),
-    [member(2)]: publicIdOf("bob"),
+  const entry = feed.matches[0]!;
+  const alice = entry.result.players.find((p) => p.name === "Alice")!.playerId;
+  const bob = entry.result.players.find((p) => p.name === "Bob")!.playerId;
+  assert.ok(!JSON.stringify(entry).includes(member(1)));
+  assert.ok(!JSON.stringify(entry).includes(member(2)));
+  assert.ok(JSON.stringify(entry).includes(`"${bob}":1`));
+  assert.notEqual(alice, member(1));
+  assert.notEqual(bob, member(2));
+  assert.deepEqual(entry.accounts, {
+    [alice]: publicIdOf("alice"),
+    [bob]: publicIdOf("bob"),
   });
   assert.deepEqual(
     (await history.history("bob", undefined)).matches[0]!.accounts,
-    {
-      [member(1)]: publicIdOf("alice"),
-      [member(2)]: publicIdOf("bob"),
-    },
+    entry.accounts,
   );
 });
 
