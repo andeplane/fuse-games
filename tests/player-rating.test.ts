@@ -13,6 +13,7 @@ import { buildRoundReport } from "../games/fuse-riders/src/online/match-report.j
 import { calculateElo } from "fuse-platform";
 import { GAME_ID } from "../games/fuse-riders/src/shared/game-id.js";
 import {
+  MAX_RATED_PLAYERS,
   parseRating,
   newRating,
   SOLO_RATING_PLAYER_ID,
@@ -506,12 +507,14 @@ test("a guest winning the round does not change the signed-in humans' pairwise E
 });
 test("round parser enforces its roster and single-round bounds at report and storage boundaries", () => {
   const tooMany = result(
-    Array.from({ length: 7 }, (_, i) => String(i + 1).repeat(24)),
+    Array.from({ length: MAX_RATED_PLAYERS + 1 }, (_, i) =>
+      String(i + 1).repeat(24),
+    ),
   );
   tooMany.players.forEach((p, i) => {
-    p.slot = i % 6;
+    p.slot = i % MAX_RATED_PLAYERS;
   });
-  tooMany.finishers = tooMany.finishers.slice(0, 6);
+  tooMany.finishers = tooMany.finishers.slice(0, MAX_RATED_PLAYERS);
   assert.equal(parseMatchResult(tooMany), undefined);
   assert.equal(
     parseMatchResult({
@@ -633,7 +636,7 @@ test("round metadata preserves legacy rating history and rejects corrupt fields"
     { ...round, round: 1000001 },
     { ...round, opponents: undefined },
     { ...round, opponents: -1 },
-    { ...round, opponents: 6 },
+    { ...round, opponents: MAX_RATED_PLAYERS },
     { ...round, opponents: 0.5 },
     { ...old, opponents: 0 },
   ])

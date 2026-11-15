@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   MAX_PACKET_BYTES,
   MAX_PACKET_ENTRIES,
+  MAX_MESSAGE_BYTES,
   decodePacket,
   encodeNack,
   encodePacket,
@@ -189,7 +190,10 @@ test("bounded unpack rejects deep nesting, oversized collections, binary, extens
   );
   assert.throws(() => unpackMessage(new Uint8Array([0x01, 0x02])), /Trailing/);
   assert.throws(() => unpackMessage(new Uint8Array([0x91])), /Truncated/);
-  assert.throws(() => unpackMessage(new Uint8Array(2_600_001)), /too large/);
+  assert.throws(
+    () => unpackMessage(new Uint8Array(MAX_MESSAGE_BYTES + 1)),
+    /too large/,
+  );
   const wide = packMessage(
     Array.from({ length: 60 }, () => Array.from({ length: 4000 }, () => 0)),
   );

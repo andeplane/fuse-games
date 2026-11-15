@@ -7,7 +7,7 @@ import {
   type PadMapping,
   type PadSnapshot,
 } from "../client/controller-gamepad.js";
-import { MAX_PLAYERS } from "../engine/tuning.js";
+import { MAX_PLAYERS, SOLO_RIDERS } from "../engine/tuning.js";
 import {
   LOCAL_KEYBOARD_PRESETS,
   keyboardKeyLabel,
@@ -69,7 +69,7 @@ export function setupLocalPlayers(
       node("h1", "PLAY LOCAL"),
       node(
         "p",
-        "Connect your controllers, then press a button on each one to detect it. Up to six players share this screen; AI fills the spare seats.",
+        "Connect your controllers, then press a button on each one to detect it. Up to eight players share this screen; AI fills the spare seats up to six riders.",
       ),
     );
     const help = node(
@@ -291,9 +291,9 @@ export function setupLocalPlayers(
           : "") ||
           failure ||
           (count > MAX_PLAYERS
-            ? "Choose at most six players."
+            ? "Choose at most eight players."
             : count
-              ? `${count} player${count === 1 ? "" : "s"} · ${MAX_PLAYERS - count} AI rivals`
+              ? `${count} player${count === 1 ? "" : "s"} · ${Math.max(0, SOLO_RIDERS - count)} AI rivals`
               : "No controllers detected yet. Press a button, or add a keyboard player."),
       );
       frame = env.requestFrame(poll);

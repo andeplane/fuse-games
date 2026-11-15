@@ -18,6 +18,9 @@ import {
   AIM_SLOW_RAMP_TICKS,
   ARENA_WIDTH,
   ARENA_HEIGHT,
+  MAX_ARENA_WIDTH,
+  MAX_ARENA_HEIGHT,
+  isArenaSize,
   GRAVITY_FIELD_TICKS,
   GRAVITY_MAX_RADIUS,
   GRAVITY_MIN_RADIUS,
@@ -73,8 +76,8 @@ import {
   type MomentKind,
 } from "../moments.js";
 
-/** Six riders at the trail cap encode to about 2.2 MB; `MAX_SNAPSHOT_BYTES` in `fuse-netcode` carries this text. */
-export const MAX_CHECKPOINT_BYTES = 2_600_000;
+/** Eight riders at the trail cap encode to about 3 MB (six did to about 2.2 MB); `MAX_SNAPSHOT_BYTES` in `fuse-netcode` carries this text. */
+export const MAX_CHECKPOINT_BYTES = 3_400_000;
 export const MAX_CHECKPOINT_TRAILS = MAX_TRAIL_SEGMENTS;
 const MAX_HISTORY = 128;
 type Guard = (value: unknown) => boolean;
@@ -122,7 +125,7 @@ const map =
     v instanceof Map &&
     v.size <= max &&
     [...v].every(([key, value]) => keyGuard(key) && valueGuard(value));
-const position = range(-1000, ARENA_WIDTH + 1000);
+const position = range(-1000, MAX_ARENA_WIDTH + 1000);
 const portalPair: Guard = shape({
   id: text,
   gates: (v) =>
@@ -335,15 +338,18 @@ const railMotion: Guard = shape({
   kind: (v) => v === "rail",
   // Loose here; the walk over the decoded state below holds both to the round's own railway.
   track: count(MAX_TRACKS - 1),
-  along: range(0, ARENA_WIDTH * 4),
+  along: range(0, MAX_ARENA_WIDTH * 4),
   speed: moverSpeed,
   train: count(MAX_TRAINS - 1),
 });
 const motion: Guard = (v) => bounceMotion(v) || railMotion(v);
-/** Every rail point keeps a car centred on it wholly on the board, so no admitted track can carry a car off it. */
+/**
+ * Every rail point keeps a car centred on it wholly on the board, so no admitted track can carry a car off it. Bounded
+ * here by the biggest arena; the walk over the decoded state holds it to the round's own.
+ */
 const railPoint: Guard = shape({
-  x: range(TRAIN_CAR_HALF_SIZE, ARENA_WIDTH - TRAIN_CAR_HALF_SIZE),
-  y: range(TRAIN_CAR_HALF_SIZE, ARENA_HEIGHT - TRAIN_CAR_HALF_SIZE),
+  x: range(TRAIN_CAR_HALF_SIZE, MAX_ARENA_WIDTH - TRAIN_CAR_HALF_SIZE),
+  y: range(TRAIN_CAR_HALF_SIZE, MAX_ARENA_HEIGHT - TRAIN_CAR_HALF_SIZE),
 });
 const track: Guard = shape({
   points: (v) =>
@@ -355,8 +361,8 @@ const obstacleShape: Guard = shape({
     typeof v === "string" && (OBSTACLE_KINDS as readonly string[]).includes(v),
   x: position,
   y: position,
-  halfWidth: range(1, ARENA_WIDTH / 2),
-  halfHeight: range(1, ARENA_HEIGHT / 2),
+  halfWidth: range(1, MAX_ARENA_WIDTH / 2),
+  halfHeight: range(1, MAX_ARENA_HEIGHT / 2),
   motion: optional(motion),
 } satisfies Record<keyof Obstacle, Guard>);
 /**
@@ -385,9 +391,10 @@ const gameShape = shape({
     ["lobby", "countdown", "playing", "roundOver", "matchOver"].includes(v),
   phaseEndsAtTick: optional(integer),
   roundStartedTick: optional(integer),
-  width: (v) => v === ARENA_WIDTH,
-  height: (v) => v === ARENA_HEIGHT,
-  boundaryInset: range(0, ARENA_HEIGHT / 2 - 1),
+  // One of the arenas a round is played on (`arenaSize`); the pair is checked together in `gameInvariants`.
+  width: range(ARENA_WIDTH, MAX_ARENA_WIDTH),
+  height: range(ARENA_HEIGHT, MAX_ARENA_HEIGHT),
+  boundaryInset: range(0, MAX_ARENA_HEIGHT / 2 - 1),
   map: (v) =>
     typeof v === "string" && (ARENA_MAPS as readonly string[]).includes(v),
   obstacles: array(obstacle, MAX_OBSTACLES),
@@ -686,6 +693,19 @@ function gameInvariants(game: GameState): boolean {
   // A railway belongs to the trains map, and every loop of it is long enough to run along.
   if (game.tracks.length > 0 && game.map !== "trains") return false;
   if (game.tracks.some((loop) => !(trackLength(loop) > 0))) return false;
+  // The board is one a round can be played on, its walls have not met, and every rail stays on it.
+  if (!isArenaSize(game.width, game.height)) return false;
+  if (game.boundaryInset >= game.height / 2) return false;
+  if (
+    game.tracks.some((loop) =>
+      loop.points.some(
+        (point) =>
+          point.x > game.width - TRAIN_CAR_HALF_SIZE ||
+          point.y > game.height - TRAIN_CAR_HALF_SIZE,
+      ),
+    )
+  )
+    return false;
   // IDs select fixed catalog variants and identify destroyed pieces for the renderer.
   // Validate their dimensions and keep every obstacle inside the arena.
   const obstacleIds = new Set<number>();

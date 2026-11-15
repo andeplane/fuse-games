@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MAX_PLAYERS } from "../src/engine/tuning.ts";
 import {
   POINT_UNIT,
   applyRoundScores,
@@ -71,7 +72,7 @@ test("does not mutate participants and rejects invalid groups", () => {
   assert.throws(() => rankRound([p("a")]));
   assert.throws(() => rankRound([p("a"), p("a")]));
   assert.throws(() =>
-    rankRound([p("a"), p("b"), p("c"), p("d"), p("e"), p("f"), p("g")]),
+    rankRound(Array.from({ length: MAX_PLAYERS + 1 }, (_, i) => p(`r${i}`))),
   );
 });
 

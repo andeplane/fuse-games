@@ -24,6 +24,7 @@ import {
   fuseRiders,
 } from "../games/fuse-riders/src/platform.js";
 import { parseMatchRecord, platform } from "../service/history.js";
+import { MAX_PLAYERS } from "../games/fuse-riders/src/engine/tuning.js";
 import { MemoryRoomDatabase } from "fuse-network-be";
 import { MemoryHistoryDatabase } from "fuse-platform";
 import { RoomStore, authFrame, digest, peerId } from "fuse-network-be";
@@ -226,7 +227,7 @@ test("a result is normalised, and anything outside the schema is refused", () =>
     }),
     "a slot the arena does not have": (value) => ({
       ...value,
-      players: [{ ...value.players[0], slot: 6 }, value.players[1]],
+      players: [{ ...value.players[0], slot: MAX_PLAYERS }, value.players[1]],
     }),
     "an implausible kill count": (value) => ({
       ...value,
@@ -282,9 +283,10 @@ test("a result is normalised, and anything outside the schema is refused", () =>
     }),
     "an invalid seat slot": (value) => ({
       ...value,
-      players: [0, 1, 2, 3, 4, 5].map((slot) =>
-        player(`bot:${slot}`, slot, slot + 1),
-      ),
+      players: [
+        value.players[0],
+        { ...value.players[1], slot: MAX_PLAYERS + 1 },
+      ],
     }),
     "no riders": (value) => ({ ...value, players: [] }),
     "a winner who did not play": (value) => ({ ...value, winnerId: "bot:9" }),

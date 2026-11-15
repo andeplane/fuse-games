@@ -11,7 +11,7 @@ import {
   initialBoundaryInset,
 } from "./arena-map.js";
 import { fixedScenery } from "./scenery-motion.js";
-import { layRailway, railwayCars } from "./railway.js";
+import { layRailway, railwayCars, shiftRailway } from "./railway.js";
 import { beginMatchParticipant, recordEarlyExit } from "./match-stats.js";
 import { createTickContext } from "./sim/context.js";
 import { PHASES, TickFault, type Phase } from "./sim/pipeline.js";
@@ -26,6 +26,7 @@ import {
   MIN_PLAYERS,
   SPAWN_CORRIDOR_LENGTH,
   SPAWN_CORRIDOR_RADIUS,
+  arenaSize,
 } from "./tuning.js";
 import type { RoomSettings } from "./room-settings.js";
 import {
@@ -320,6 +321,9 @@ function prepareRound(state: GameState): void {
   for (const player of sortedPlayers(state))
     Object.assign(player, freshRoundPlayerState(state.tick));
 
+  // The round's arena, from how many ride it: the standard board up to six, a bigger one for seven or eight. It holds
+  // for the whole round, whoever leaves; everything below is laid out on it.
+  Object.assign(state, arenaSize(participants.length));
   const radius = 0.28 * Math.min(state.width, state.height);
   // Shuffle poses, never player slots/identity. The shared RNG makes replay and rollback agree.
   const spawnOrder = [...participants];
@@ -363,10 +367,28 @@ function prepareRound(state: GameState): void {
   // The movers a map starts with are laid after the sampled scenery, with the ids that follow it. The drifting cross
   // draws nothing from the stream and keeps clear of every spawn by design; the railway is drawn from the stream after
   // everything else and keeps its lines clear of every spawn corridor by rejection.
+  // The rail grid is drawn for the standard arena; a grown arena lays it there and centres it on the bigger board.
+  const railDx = (state.width - ARENA_WIDTH) / 2,
+    railDy = (state.height - ARENA_HEIGHT) / 2;
   const railway =
-    state.map === "trains"
-      ? layRailway(() => nextRandom(state), keepClear)
-      : undefined;
+    state.map !== "trains"
+      ? undefined
+      : railDx === 0 && railDy === 0
+        ? layRailway(() => nextRandom(state), keepClear)
+        : shiftRailway(
+            layRailway(
+              () => nextRandom(state),
+              keepClear.map((capsule) => ({
+                ...capsule,
+                x1: capsule.x1 - railDx,
+                y1: capsule.y1 - railDy,
+                x2: capsule.x2 - railDx,
+                y2: capsule.y2 - railDy,
+              })),
+            ),
+            railDx,
+            railDy,
+          );
   state.tracks = railway?.tracks ?? [];
   state.obstacles = [
     ...state.obstacles,

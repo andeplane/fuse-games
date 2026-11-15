@@ -1,4 +1,5 @@
 import test from "node:test";
+import { MAX_PLAYERS } from "../src/engine/tuning.js";
 import assert from "node:assert/strict";
 import {
   applyTick,
@@ -238,7 +239,7 @@ test("historical rosters and finisher lists are bounded, and large valid reports
     ["outsider"],
     ["bot:1"],
     [report.result.finishers[0], report.result.finishers[0]],
-    report.result.players.slice(0, 7).map((p) => p.playerId),
+    report.result.players.slice(0, MAX_PLAYERS + 1).map((p) => p.playerId),
   ]) {
     assert.equal(parseMatchResult({ ...report.result, finishers }), undefined);
   }
