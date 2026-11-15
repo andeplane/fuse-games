@@ -19,6 +19,10 @@ export type WebampStatus = "PLAYING" | "PAUSED" | "STOPPED";
 export type WebampPlaylistTrack = { url: string; defaultName?: string | null };
 
 export interface WebampPlayer {
+  /** Restores Webamp after its own close button; mobile keeps the instance for playback. */
+  reopen?(): void;
+  /** A mobile host can treat Close as minimize without stopping playback. */
+  onWillClose?(callback: (cancel: () => void) => void): () => void;
   /** Mounts the skinned player as a child of `node`, centred within it; its windows then drag inside `node`. */
   renderInto(node: HTMLElement): Promise<void>;
   appendTracks(tracks: WebampTrack[]): void;

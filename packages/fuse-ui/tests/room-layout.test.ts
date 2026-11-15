@@ -37,7 +37,7 @@ test("Back is the room's first control, top left, and can reuse the game's leave
   assert.equal(
     column.lastElementChild === configure,
     true,
-    "Game settings closes the invitation's column whatever a game adds to it",
+    "Room settings closes the invitation's column whatever a game adds to it",
   );
   const other = document.createElement("section");
   document.body.append(other);
@@ -55,7 +55,7 @@ test("Back is the room's first control, top left, and can reuse the game's leave
   );
 });
 
-test("the main room action stays above Game settings without changing its handler or disabled state", () => {
+test("the main room action stays above Room settings without changing its handler or disabled state", () => {
   const { document } = page(),
     root = document.createElement("section"),
     start = document.createElement("button");
@@ -130,8 +130,8 @@ test("HTML room markup can put Settings and its primary action in the header, wi
   );
   assert.equal(head.querySelector(".fui-page-title")?.textContent, "Room");
   const configure = head.querySelector(".fui-room-configure")!;
-  assert.equal(configure.textContent, "Settings");
-  assert.equal(configure.getAttribute("aria-label"), "Game settings");
+  assert.equal(configure.textContent, "Room settings");
+  assert.equal(configure.getAttribute("aria-label"), "Room settings");
   assert.equal(
     configure.nextElementSibling?.className,
     "fui-room-primary-action",
@@ -382,7 +382,7 @@ test("HTML room renderer shares the layout and respects map-dependent capacity",
   assert.equal(root.querySelector(".fui-room-count")?.textContent, "1 / 4");
   assert.equal(
     root.querySelector("[data-room-settings]")?.getAttribute("aria-label"),
-    "Game settings",
+    "Room settings",
   );
   assert.equal(root.querySelector("select")?.disabled, true);
   assert.ok(
@@ -416,7 +416,7 @@ test("an existing settings action is the shared room's single trigger", () => {
   assert.equal(opened, 1);
   assert.equal(
     [...root.querySelectorAll("button")].filter(
-      (node) => node.textContent === "Game settings",
+      (node) => node.textContent === "Room settings",
     ).length,
     1,
   );
@@ -533,11 +533,11 @@ test("header actions put a game's own actions, Settings and the main action acro
   assert.equal(head.querySelector(".fui-page-title")!.textContent, "Room");
   assert.deepEqual(
     [...head.querySelectorAll("button")].map((button) => button.textContent),
-    ["Options", "Settings", "Start"],
+    ["Options", "Room settings", "Start"],
   );
   assert.equal(
     head.querySelector(".fui-room-configure")!.getAttribute("aria-label"),
-    "Game settings",
+    "Room settings",
   );
   const column = root.querySelector(".fui-room-invitation")!;
   assert.equal(column.querySelector("button"), null);
@@ -598,7 +598,7 @@ test("a compact room is one column: no invitation, the heading beside Back, and 
   );
   assert.deepEqual(
     [...head.querySelectorAll("button")].map((button) => button.textContent),
-    ["Settings", "Start"],
+    ["Room settings", "Start"],
   );
   assert.equal(head.querySelector(".fui-back")!.textContent, "Back");
 });

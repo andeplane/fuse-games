@@ -151,7 +151,7 @@ try {
         .locator('.fui-room-open-slot[data-slot="1"].fui-slot-occupied')
         .waitFor();
       const settings = room.getByRole("button", {
-        name: "Game settings",
+        name: "Room settings",
         exact: true,
       });
       step = "settings";

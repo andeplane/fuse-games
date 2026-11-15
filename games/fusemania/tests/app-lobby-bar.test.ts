@@ -42,6 +42,7 @@ function lobby(kind: "host" | "guest" | "solo") {
     primaryAction: start,
     headerActions: bar.headerActions,
     modes: bar.modes,
+    settings: [options.room],
     ...(kind === "solo"
       ? { compact: true, heading: "Single player" }
       : { invite: document.createElement("div"), heading: "Room" }),
@@ -49,7 +50,7 @@ function lobby(kind: "host" | "guest" | "solo") {
   const all = [...root.querySelectorAll<HTMLElement>("*")];
   const before = (a: Element, b: Element) =>
     all.indexOf(a as HTMLElement) < all.indexOf(b as HTMLElement);
-  return { root, bar, picker, start, before };
+  return { root, bar, picker, start, before, options };
 }
 
 for (const kind of ["host", "guest", "solo"] as const) {
@@ -91,3 +92,20 @@ for (const kind of ["host", "guest", "solo"] as const) {
     assert.equal(head.querySelector(".fui-back")!.textContent, "Back");
   });
 }
+
+test("room rules and personal preferences have separate shared actions", () => {
+  const { root, bar, options } = lobby("host");
+  assert.equal(bar.menu.button.getAttribute("aria-label"), "Player options");
+  assert.equal(
+    root.querySelector(".fui-room-configure")?.getAttribute("aria-label"),
+    "Room settings",
+  );
+  assert.ok(root.querySelector("[aria-label='Room settings'] svg"));
+  assert.ok(bar.menu.button.querySelector("svg"));
+  assert.ok(bar.menu.panel.contains(options.element));
+  assert.equal(bar.menu.panel.querySelector(".fm-option-songs"), null);
+  assert.ok(
+    root.querySelector("dialog[aria-label='Room settings'] .fm-option-songs"),
+  );
+  bar.menu.dispose();
+});

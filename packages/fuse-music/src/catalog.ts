@@ -1,7 +1,7 @@
 export interface Song {
   readonly id: string;
   readonly title: string;
-  /** Site-root relative path; the player resolves it against the deployment base. */
+  /** Site-root relative path (resolved against the deployment base), or an external HTTPS audio URL. */
   readonly path: string;
 }
 

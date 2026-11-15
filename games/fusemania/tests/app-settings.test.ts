@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseHTML } from "linkedom";
+import { createPlayerOptions } from "fuse-ui";
 import { createGameAudio, type OscillatorLike } from "fuse-ui/game-audio";
 import { createAudioRig } from "fuse-ui/game-audio-fake";
 import {
@@ -365,6 +366,28 @@ test("ADD KEY binds the next key pressed and gives the keyboard back", () => {
   const later = h.key("KeyG");
   assert.equal(later.defaultPrevented, false);
   assert.equal(h.changes.length, 1);
+});
+
+test("closing player options cancels key capture and leaves the next key unbound", () => {
+  const h = harness();
+  const menu = createPlayerOptions({
+    document: h.document,
+    content: [h.panel.element],
+    onOpenChange: (open) => {
+      if (!open) h.panel.cancel();
+    },
+  });
+  h.document.body.append(menu.element);
+  menu.button.click();
+  h.add("up").click();
+  assert.equal(h.panel.busy, true);
+  menu.close();
+  assert.equal(h.panel.busy, false);
+  const later = h.key("KeyG");
+  assert.equal(later.defaultPrevented, false);
+  assert.equal(h.changes.length, 0);
+  menu.dispose();
+  h.panel.dispose();
 });
 
 test("Escape, or pressing the button again, cancels a capture without binding", () => {

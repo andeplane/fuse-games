@@ -1,5 +1,13 @@
 # Shared game menus and rooms
 
+Settings actions name their scope. **Room settings** uses the shared sliders icon and contains room-wide rules,
+session length, maps and choices that affect everyone. **Player options** uses the shared person icon and
+contains this device's controls, audio, appearance and timing. The shared main menu defaults to player scope;
+front doors that edit defaults for the next room pass `settingsScope: "room"`. Games can use
+`createPlayerOptions` for a personal disclosure in a room or song-selection header; it owns unique accessible
+panel IDs, outside-press/Escape dismissal and listener cleanup. Room buttons use the same label and icon in
+DOM and markup layouts, at every screen width.
+
 Every game uses the shared top bar for game identity, a fixed-size account/rating control and a hamburger. The header overlays the current scene without an opaque background or a separate layout row. Games with audio supply a typed `TopBarSound` adapter: one Sound on/off button controls music and effects together; games without audio hide it. Preview `?mute` disables that control without writing preferences. Detailed audio settings, friends, match-history and leaderboard controls live in its menu and retain their handlers. Account labels mirror the game's existing account panel, so ratings remain keyed by game and asynchronous sign-in/Elo updates do not resize the header. Craft preserves the stateful header while reconciling room updates, keeping open menus and focus intact.
 
 Every game uses `fuse-ui`'s main menu: Play creates a room; How to play and About open focused dialogs; Settings appears when a game has preferences. A secondary action retains joining by code and existing solo/local modes. Credits are shared across games.

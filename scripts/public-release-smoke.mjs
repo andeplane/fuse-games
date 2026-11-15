@@ -124,7 +124,7 @@ for (const [name, type] of [
     await guest.locator(".shared-lobby").waitFor({ state: "visible" });
     result.reset = true;
     await host
-      .getByRole("button", { name: "Game settings", exact: true })
+      .getByRole("button", { name: "Room settings", exact: true })
       .click();
     await host
       .getByRole("radio", { name: "Shared TV + phone controls", exact: true })
@@ -160,7 +160,7 @@ for (const [name, type] of [
       .getByText("Public host", { exact: false })
       .waitFor();
     await host
-      .getByRole("button", { name: "Game settings", exact: true })
+      .getByRole("button", { name: "Room settings", exact: true })
       .click();
     assert.equal(
       await host
@@ -207,7 +207,7 @@ for (const [name, type] of [
       .waitFor();
     assert.equal(
       await display
-        .getByRole("button", { name: "Game settings", exact: true })
+        .getByRole("button", { name: "Room settings", exact: true })
         .isVisible(),
       false,
     );

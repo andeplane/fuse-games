@@ -3,17 +3,23 @@
  * it. Titles are the ones the games that own the tracks show (`MUSIC_TRACKS` in `packages/fuse-ui/src/assets.ts`,
  * `games/fuse-volley/src/app/audio.ts`, `games/fuseball/src/app/audio.ts`, Killer Fuse's match and victory music).
  */
+import { DUKAMOK_SONGS } from "./dukamok-songs.js";
+
 export interface SongSpec {
   /** The file's base name: unique, kebab-case. */
   readonly id: string;
   readonly title: string;
   readonly artist: string;
   /** The audio file, relative to the repository root. */
-  readonly file: string;
-  /** The site-relative URL of the audio, no leading slash. */
+  readonly file?: string;
+  /** A site-relative path or an external HTTPS .ogg/.mp3 URL. */
   readonly audio: string;
+  /** Original bytes of externally hosted media, recorded at import time. */
+  readonly audioIntegrity?: { readonly bytes: number; readonly sha256: string };
   /** The id of the pack (`PACKS`) the song select groups the song under. */
   readonly pack: string;
+  /** Existing authored simfile; generation must never overwrite it. */
+  readonly simfile?: string;
 }
 
 /**
@@ -25,6 +31,7 @@ export const PACKS: readonly { readonly id: string; readonly name: string }[] =
     { id: "fusemania", name: "FUSEMANIA" },
     { id: "ddr-jazz-mix", name: "DDR JAZZ MIX" },
     { id: "itg-jazz-mix", name: "ITG JAZZ MIX" },
+    { id: "dukamok-originals", name: "DUKAMOK ORIGINALS" },
   ];
 const FUSE_PACK = "fusemania";
 
@@ -155,6 +162,7 @@ export const SONGS: readonly SongSpec[] = [
     "temple-of-boom",
     "Temple of Boom (Jungle Funk Jazz Mix)",
   ),
+  ...DUKAMOK_SONGS,
 ];
 
 export const songById = (id: string): SongSpec | undefined =>

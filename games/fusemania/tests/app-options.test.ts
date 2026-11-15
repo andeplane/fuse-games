@@ -35,6 +35,7 @@ function setup(over: Partial<PlayOptionsOptions> = {}) {
   document.body.append(options.element);
   const all = (selector: string) => [
     ...options.element.querySelectorAll<HTMLButtonElement>(selector),
+    ...options.room.querySelectorAll<HTMLButtonElement>(selector),
   ];
   const pressed = (selector: string) =>
     all(selector)
@@ -84,8 +85,7 @@ test("the session is the host's: how many songs, and who chooses them", () => {
     ["1 SONG", "3 SONGS", "5 SONGS", "10 SONGS"],
   );
   assert.deepEqual(pressed(".fm-option-songs"), ["1 SONG"]);
-  const order =
-    options.element.querySelector<HTMLElement>(".fm-options-order")!;
+  const order = options.room.querySelector<HTMLElement>(".fm-options-order")!;
   // One song has nothing to order.
   assert.equal(order.hidden, true);
   all(".fm-option-songs")[2]!.click();
@@ -99,11 +99,8 @@ test("the session is the host's: how many songs, and who chooses them", () => {
   assert.deepEqual(pressed(".fm-option-order"), ["RANDOM"]);
 
   // The host has the chips and no summary line.
-  const songs =
-      options.element.querySelector<HTMLElement>(".fm-options-songs")!,
-    summary = options.element.querySelector<HTMLElement>(
-      ".fm-options-summary",
-    )!;
+  const songs = options.room.querySelector<HTMLElement>(".fm-options-songs")!,
+    summary = options.room.querySelector<HTMLElement>(".fm-options-summary")!;
   assert.equal(songs.hidden, false);
   assert.equal(summary.hidden, true);
 
@@ -172,7 +169,7 @@ test("OPTIONS opens the speeds under the bar and closes on a second press, an ou
   const outside = document.createElement("p");
   document.body.append(menu.element, outside);
   const open = () => menu.button.getAttribute("aria-expanded");
-  assert.equal(menu.button.textContent, "OPTIONS");
+  assert.equal(menu.button.textContent, "Player options");
   assert.equal(menu.panel.hidden, true);
   assert.equal(open(), "false");
   assert.equal(menu.panel.querySelectorAll(".fm-option-speed").length, 8);

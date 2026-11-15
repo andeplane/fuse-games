@@ -543,6 +543,7 @@ function landing(): void {
       ),
     );
   const card = createLandingCard({
+    settingsScope: "room",
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSEBALL",

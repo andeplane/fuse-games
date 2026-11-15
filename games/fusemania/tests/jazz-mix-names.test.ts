@@ -7,7 +7,7 @@ import { SONGS } from "../../../scripts/lib/fusemania/songs.js";
 import { FUSE_TRACKS } from "../../../packages/fuseos/src/winamp/fuseTracks.js";
 import { LIBRARY } from "../src/songs.js";
 
-// Before the display-name change, with only #TITLE normalized. Holds chart notes, timing, audio reference and
+// Main 3d64fc9a before the display-name change, with only #TITLE normalized. Holds chart notes, timing, audio reference and
 // all other simfile metadata to the original authored files while allowing their display titles to change.
 const ORIGINAL_CHARTS: Readonly<Record<string, string>> = {
   afronova: "1fe0d03e1650a504d31d27741e41a1c3a7ca17d3e6967add4f0bf8f1cea120ed",

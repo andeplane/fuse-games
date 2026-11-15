@@ -1,9 +1,11 @@
 # Fusemania charts
 
 Every piece of music in the Fuse portfolio is a Fusemania song with four generated charts: Easy, Medium, Hard and
-Challenge. Nothing here is copied from an existing simfile; the charts are made from our own audio by
+Challenge. Those charts are made from our own audio by
 `scripts/fusemania-charts.ts`, using the conventions of StepMania and In The Groove packs as a guide to what a good
 chart does.
+
+This generation guide applies to Fuse's charts. The separately imported [DukAmok Originals SM songs](dukamok-originals/README.md) retain their authored charts and audio. Their catalogue entries name an original `simfile`; `bundle` includes it directly, while analysis and generation skip it.
 
 | File                          | What it is                                                                        |
 | ----------------------------- | --------------------------------------------------------------------------------- |
@@ -46,6 +48,19 @@ difficulty.
    room must agree on.
 
 A pack with no songs is not shown, so the two jazz mixes appear in the song select with their first song.
+
+### External audio
+
+`SongSpec.audio` also accepts an absolute HTTPS URL for an `.ogg` or `.mp3` file; omit `file` when there is no repository copy and set `audioIntegrity: { bytes, sha256 }` from the original bytes. Supply `simfile` with the repository path to the existing authored `.sm`/`.ssc`/`.dwi` chart. For example:
+
+```ts
+{ id: "example", title: "Example", artist: "Artist", pack: "my-pack",
+  audio: "https://storage.googleapis.com/my-media/example.ogg",
+  audioIntegrity: { bytes: 12345, sha256: "<64-character SHA-256>" },
+  simfile: "games/fusemania/charts/my-pack/example.sm" }
+```
+
+The runtime uses the external URL directly and caches successfully downloaded bytes just like bundled audio. The host must allow cross-origin GETs and return an audio content type. Use immutable/versioned URLs when replacing audio, and bump `RULES` when changing the bundled catalogue. Run `pnpm exec tsx scripts/verify-fusemania-media.ts` after upload to verify every external file; this network check is deliberately separate from offline builds and unit tests. Analysis needs a local `file`, while authored `simfile` entries are excluded from analysis and generation. See the [DukAmok media setup](dukamok-originals/README.md) for the project's public bucket and upload command.
 
 The DDR and ITG jazz covers keep their original song names followed by distinct jazz-flavoured **Jazz Mix** names,
 such as **Candy (Sugar Swing Jazz Mix)** and **Monolith (Modal Drift Jazz Mix)**. These display titles are shared

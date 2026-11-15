@@ -116,7 +116,7 @@ test("main menu: credits, rules and preferences preserve the original controls a
   ];
   assert.deepEqual(
     nav.map((b) => b.textContent),
-    ["Play", "How to play", "About", "Settings"],
+    ["Play", "How to play", "About", "Player options"],
   );
   assert.equal(nav[3]!.hidden, true);
   nav[0]!.click();
