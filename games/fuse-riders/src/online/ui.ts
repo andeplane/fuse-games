@@ -116,6 +116,7 @@ import {
   createLobbyShell,
   createRoster,
 } from "fuse-ui";
+import "fuse-ui/results.css";
 import "./online.css";
 import "./top-menu.css";
 import { formatNetStats } from "./net-stats.js";

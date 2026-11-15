@@ -1,6 +1,7 @@
 import { createAccountDialog, el, type AccountMatchContext } from "fuse-ui";
 import type { AvatarId } from "../engine/avatar-id.js";
 import { createAvatarPortrait } from "../client/avatar-heads.js";
+import "fuse-ui/results.css";
 import "./account-panel.css";
 import {
   playerStats,

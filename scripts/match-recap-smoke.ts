@@ -138,17 +138,22 @@ async function assertRecapLayout(page: Page): Promise<{
     "dialog body must not scroll horizontally",
   );
   await dialog.getByText("MATCH COMPLETE", { exact: true }).waitFor();
-  const champions = await page.locator(".recap-standings .is-champion").count();
+  const champions = await page
+    .locator(".fui-results-standings .is-champion")
+    .count();
   assert.ok(champions >= 1 && champions <= 5, `champions: ${champions}`);
-  assert.equal(await page.locator(".recap-standings tbody tr").count(), 6);
-  assert.equal(await page.locator(".recap-standings .is-you").count(), 1);
-  assert.ok(await page.locator(".recap-victory h2").textContent());
-  assert.ok((await page.locator(".recap-feature").count()) >= 1);
-  assert.equal(await page.locator(".recap-details").isVisible(), false);
+  assert.equal(
+    await page.locator(".fui-results-standings tbody tr").count(),
+    6,
+  );
+  assert.equal(await page.locator(".fui-results-standings .is-you").count(), 1);
+  assert.ok(await page.locator(".fui-results-victory h2").textContent());
+  assert.ok((await page.locator(".fui-results-feature").count()) >= 1);
+  assert.equal(await page.locator(".fui-results-details").isVisible(), false);
   await page
     .getByRole("button", { name: "View full stats ↗", exact: true })
     .click();
-  assert.equal(await page.locator(".recap-details").isVisible(), true);
+  assert.equal(await page.locator(".fui-results-details").isVisible(), true);
   assert.equal(
     await page.locator(".recap-stats-toggle").getAttribute("aria-expanded"),
     "true",
@@ -176,7 +181,7 @@ async function assertRecapLayout(page: Page): Promise<{
   await page
     .getByRole("button", { name: "Hide full stats ↗", exact: true })
     .click();
-  assert.equal(await page.locator(".recap-details").isVisible(), false);
+  assert.equal(await page.locator(".fui-results-details").isVisible(), false);
   return { champions, awards, totals, rows, comparisonScrolls };
 }
 
