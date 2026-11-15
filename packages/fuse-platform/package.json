@@ -12,6 +12,8 @@
     "./rating": "./src/rating.ts",
     "./friends-api": "./src/friends-api.ts",
     "./messages-api": "./src/messages-api.ts",
+    "./activity-api": "./src/activity-api.ts",
+    "./history-api": "./src/history-api.ts",
     "./firestore": "./src/firestore.ts"
   },
   "dependencies": {

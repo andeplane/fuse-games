@@ -4,6 +4,8 @@ import { LEGACY_GAME_ID } from "./game.js";
 import { publicIdOf, type FriendsStore } from "./friends.js";
 import type { HistoryStore } from "./history.js";
 import type { IdentityVerifier } from "./identity.js";
+import type { ActivityDatabase } from "./activity.js";
+import { createActivityHttp } from "./activity-http.js";
 
 const MAX_BODY_BYTES = 256_000,
   BODY_TIMEOUT_MS = 10_000;
@@ -309,8 +311,19 @@ export function createPlatformHttp(options: {
   history: HistoryStore;
   friends: FriendsStore;
   identity: IdentityVerifier;
+  activity?: ActivityDatabase;
 }): HttpExtension {
   return composeHttp(
+    ...(options.activity
+      ? [
+          createActivityHttp({
+            database: options.activity,
+            platform: options.history.platform,
+            identity: options.identity,
+            allowRead: (address) => options.history.allowActivity(address),
+          }),
+        ]
+      : []),
     createHistoryHttp(options.history, options.identity),
     createFriendsHttp(options.friends, options.identity),
   );

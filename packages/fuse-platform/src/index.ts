@@ -1,4 +1,5 @@
 export * from "./game.js";
+export * from "./history-only.js";
 export * from "./elo.js";
 export * from "./rating.js";
 export * from "./identity.js";
@@ -12,3 +13,6 @@ export * from "./backfill.js";
 export * from "./friends-api.js";
 export * from "./messages-api.js";
 export * from "./friends.js";
+export * from "./activity.js";
+export * from "./activity-api.js";
+export * from "./activity-http.js";

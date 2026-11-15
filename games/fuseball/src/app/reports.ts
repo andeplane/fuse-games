@@ -54,7 +54,7 @@ export function dueReports(
 export interface ReportTransport {
   fetch: typeof fetch;
   /** The room capability that proves which seat is reporting. */
-  roomToken: string;
+  roomToken?: string;
   wait?: (ms: number) => Promise<void>;
 }
 
@@ -81,7 +81,9 @@ export async function sendReport(
         keepalive: true,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${transport.roomToken}`,
+          ...(transport.roomToken === undefined
+            ? {}
+            : { Authorization: `Bearer ${transport.roomToken}` }),
         },
       });
       if (response.ok) {

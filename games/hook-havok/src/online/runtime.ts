@@ -9,6 +9,9 @@ import { NEUTRAL, type Input, type Tuning } from "../engine/world.js";
 import { parseTuning } from "../engine/codec.js";
 import { prewarmNav } from "../engine/bot-nav.js";
 export class HookRuntime extends RoomRuntime<Room, Entry, View, never, Tuning> {
+  historyReceipts(): readonly Room["history"][number][] {
+    return this.world?.state.history ?? [];
+  }
   private held: Input = { ...NEUTRAL };
   constructor(
     code: string,

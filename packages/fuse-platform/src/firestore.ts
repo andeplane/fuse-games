@@ -18,6 +18,8 @@ import { validPublicId } from "./friends-api.js";
 import { parseConversation, type FriendMessage } from "./messages-api.js";
 import type { HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
+import { activityOf } from "./activity.js";
+import { FirestoreActivityDatabase } from "./activity-firestore.js";
 import {
   parseProfile,
   rankFields,
@@ -52,7 +54,10 @@ export class FirestoreHistoryDatabase implements HistoryDatabase {
     private platform: Platform,
     private firestore: Firestore,
     private prefix: string,
-  ) {}
+  ) {
+    this.activity = new FirestoreActivityDatabase(firestore, prefix);
+  }
+  readonly activity: FirestoreActivityDatabase;
   private matches() {
     return this.firestore.collection(`${this.prefix}-matches`);
   }
@@ -120,6 +125,8 @@ export class FirestoreHistoryDatabase implements HistoryDatabase {
           Date.now(),
           claimed,
         );
+        const activity = next.match && activityOf(game, next.match);
+        if (activity) this.activity.write(transaction, activity);
         if (next.match)
           transaction.set(ref, {
             ...next.match,

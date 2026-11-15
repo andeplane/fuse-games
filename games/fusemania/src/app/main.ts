@@ -4,6 +4,8 @@ import {
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
+import { createResultsHistory } from "fuse-ui/results-history";
+import { identityToken } from "fuse-ui/browser-account";
 import "fuse-ui/social.css";
 import {
   observeConfirmedPlay,
@@ -28,6 +30,7 @@ import "./fusemania.css";
 import "./song-picker.css";
 import "./settings.css";
 import "./options.css";
+import "./song-leaderboards.css";
 import QRCode from "qrcode";
 import {
   PeerTransport,
@@ -65,6 +68,8 @@ import {
   MAX_SIMFILE_BYTES,
   RULES,
   SCORE_MODE,
+  LEAD_IN_MS,
+  SOLO_LEAD_IN_MS,
   createLibrary,
   type Library,
   type Steps,
@@ -107,7 +112,7 @@ import {
   type SessionModel,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { historyReceipts } from "../online/result.js";
 import {
   NOT_OPEN,
   bestRating,
@@ -158,6 +163,14 @@ import { createSongLinkButton, songLink, songQuery } from "./song-link.js";
 import { createSongPicker } from "./song-picker.js";
 import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
+import { createSongLeaderboards } from "./song-leaderboards.js";
+import { RankedRun } from "./ranked-run.js";
+import { fusemaniaPlayFrame } from "./play-metrics.js";
+import {
+  scoreSource,
+  type SongBoard,
+  type ScoreEntry,
+} from "../song-scores.js";
 
 /**
  * The Fusemania page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -172,6 +185,30 @@ const endpoints = createEndpoints(
   { basePath: `${BASE}${GAME}/`, apiOrigin: import.meta.env.VITE_API_ORIGIN },
   location.origin,
 );
+const scoresUrl = (path = "") =>
+  endpoints.apiUrl(`/api/games/fusemania/song-scores${path}`);
+async function scoreRequest(
+  path: string,
+  token?: string,
+  body?: unknown,
+): Promise<unknown> {
+  const response = await fetch(scoresUrl(path), {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const value = await response.json();
+  if (!response.ok)
+    throw new Error(
+      typeof value?.error === "string"
+        ? value.error
+        : "Song scores are unavailable",
+    );
+  return value;
+}
 const social = createGameSocial({
   gameId: GAME,
   base: BASE,
@@ -308,11 +345,24 @@ function remember(choice: Choice): void {
   store.setItem(names.chart, String(choice.chart));
   store.setItem(names.mode, String(choice.mode));
 }
+const localScoreVersions = new Map(
+  SONGS_DATA.map((source) => {
+    let hash = 2166136261;
+    for (const character of source.ssc)
+      hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+    return [source.id, `${RULES}:${hash >>> 0}`] as const;
+  }),
+);
 const bestKey = (library: Library, song: string, chart: number) => {
   // A player's own file keeps no best: every loaded file would share the one key.
   const info = localSong(song) ? undefined : library.song(song)?.charts;
   const picked = info?.[Math.min(chart, info.length - 1)];
-  return picked ? names.best(song, picked.name.toLowerCase()) : undefined;
+  return picked
+    ? names.best(
+        song,
+        `${picked.name.toLowerCase()}:${localScoreVersions.get(song)}`,
+      )
+    : undefined;
 };
 const bestLookup = (library: Library) => (song: string, chart: number) => {
   const key = bestKey(library, song, chart);
@@ -611,6 +661,12 @@ function landing(): void {
     leaveLanding();
     openTiming();
   });
+  card.menu.addEntry("Song highscores", () => {
+    leaveLanding();
+    history.pushState(null, "", withFlags(endpoints.appUrl("?highscores")));
+    window.addEventListener("popstate", () => location.reload());
+    songHighscores();
+  });
 
   // A player's own simfile: any 4-panel .sm, .ssc or .dwi with its music, for a solo run on this device.
   const own = el("details", "", "fm-own"),
@@ -750,6 +806,31 @@ function openTiming(): void {
   timing();
 }
 
+function songHighscores(): void {
+  const scores = createSongLeaderboards(
+    {
+      catalog: async () =>
+        ((await scoreRequest("")) as { songs: SongBoard[] }).songs,
+      leaderboard: async (song, chart) =>
+        (
+          (await scoreRequest(
+            `?song=${encodeURIComponent(song)}&chart=${chart}`,
+          )) as { players: ScoreEntry[] }
+        ).players,
+    },
+    document,
+    { openPlayer: social.openPlayer },
+  );
+  const page = createSubPage({
+    title: "Song highscores",
+    backHref: withFlags(endpoints.appUrl()),
+    content: [scores.element],
+  });
+  app.replaceChildren(header(), page.element);
+  backOnEscape(page.back);
+  window.addEventListener("pagehide", scores.dispose, { once: true });
+}
+
 /** The Timing screen ("sync"): thirty seconds of a steady tick, then what to set. No song, no room. */
 function timing(): void {
   const loading = el("p", "Loading…", "fm-connecting");
@@ -820,8 +901,10 @@ function enterRoom(
   const viewer: Viewer = { me: "", host: solo, solo, display };
   const choice = first ?? chosen(library);
   const leave = () => {
-    runtime.stop();
-    location.href = withFlags(endpoints.appUrl());
+    history.close(historySnapshot, () => {
+      runtime.stop();
+      location.href = withFlags(endpoints.appUrl());
+    });
   };
 
   // ---- the page ----
@@ -1079,6 +1162,31 @@ function enterRoom(
   cardGraph.append(graph, graphStats, cardTiming);
   cardGraph.hidden = true;
   cardReport.append(cardCounts, cardGraph);
+  const rankedStatus = el("p", "", "fm-ranked-status"),
+    rankedRetry = button("RETRY SAVING SCORE");
+  rankedStatus.setAttribute("role", "status");
+  rankedRetry.hidden = true;
+  const rankedRun = new RankedRun({
+    token: identityToken,
+    version: async (song) => {
+      const source = SONGS_DATA.find((source) => source.id === song);
+      if (!source) throw new Error("Custom songs are unranked");
+      const hash = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(scoreSource(RULES, source.ssc, source.id)),
+      );
+      return Array.from(new Uint8Array(hash), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+    },
+    post: scoreRequest,
+    inputs: () => runtime.scoreInputs(),
+    changed: () => {
+      rankedStatus.textContent = rankedRun.status;
+      rankedRetry.hidden = !rankedRun.canRetry;
+    },
+  });
+  rankedRetry.onclick = () => rankedRun.retry();
   // The menu over a song: a pause alone, a player's own menu in a room (`play-menu.ts`).
   const playMenu = createPlayMenu({
     document,
@@ -1659,6 +1767,7 @@ function enterRoom(
       title: model.title,
       chartNames: model.chartNames,
       totals: model.totals,
+      totalSongs: model.totalSongs,
       itemKey: coarse() ? "ITEM" : keyLabel(prefs.keys.item[0] ?? ""),
     });
     const done = performance.now();
@@ -1911,7 +2020,7 @@ function enterRoom(
           resultReport(result, {
             color: slotColor,
             friend,
-            run: result.own ? [cardReport] : [],
+            run: result.own ? [rankedStatus, rankedRetry, cardReport] : [],
           }),
         );
         if (!first) results.body.scrollTop = scroll;
@@ -1931,7 +2040,27 @@ function enterRoom(
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const history = createResultsHistory({
+    fetch: social.reportFetch,
+    apiUrl: endpoints.apiUrl,
+    gameId: GAME,
+    ...(session.kind === "room"
+      ? { room: { code, token: session.token } }
+      : {}),
+    signedIn: social.isSignedIn,
+    playerId: () => (display ? "" : runtime.self),
+    now: () => performance.now(),
+  });
+  const historySnapshot = () => {
+    const state = runtime.roomState();
+    return {
+      receipts:
+        !display && state && library === LIBRARY
+          ? historyReceipts(library, state)
+          : [],
+      confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+    };
+  };
   const bests = createBests(store);
   let finished = "";
   const remembered = seatName(
@@ -1946,34 +2075,35 @@ function enterRoom(
         reportPlay,
         frame,
         () => runtime.confirmedFrame(),
-        (frame) => {
-          const players =
-            frame.stage === "lobby"
-              ? frame.seats.filter((seat) => !seat.watcher)
-              : frame.roster;
-          return {
-            matchId: frame.matchId,
-            roundActive:
-              frame.stage === "running" &&
-              !!frame.world &&
-              frame.world.ms >= 0 &&
-              frame.world.phase === "playing",
-            roundEnded: frame.stage === "over",
-            active: frame.stage === "running",
-            ended: frame.stage === "over",
-            playerCount: players.length,
-            botCount: players.filter((player) => player.bot).length,
-            seated: players.some((player) => player.id === viewer.me),
+        (frame) =>
+          fusemaniaPlayFrame(frame, {
+            self: viewer.display ? "" : viewer.me,
             mode,
-            round: 1,
-          };
-        },
+          }),
       );
       settings = roomSettings;
       // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
       let bestBefore: number | undefined;
       const world = frame.world;
       const mine = world?.players.find((each) => each.id === viewer.me);
+      if (world && mine && !mine.bot && !viewer.display) {
+        rankedRun.observe({
+          key: `${frame.matchId}:${runtime.roomState()?.epoch}`,
+          song: world.song,
+          chart: mine.chart,
+          leadIn: world.players.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS,
+          eligible: world.mode === SCORE_MODE && library === LIBRARY,
+          beforeSong: world.ms < 0,
+          finished: frame.stage === "over",
+          confirmed:
+            solo ||
+            (runtime.roomState()?.decided?.clock ?? Infinity) <=
+              runtime.confirmedTick(),
+          rating: mine.rating,
+        });
+        rankedStatus.textContent = rankedRun.status;
+        rankedRetry.hidden = !rankedRun.canRetry;
+      }
       if (frame.stage === "over" && world && mine && !mine.bot) {
         const key = bestKey(library, world.song, mine.chart);
         const decided = runtime.roomState()?.decided?.clock;
@@ -2011,22 +2141,8 @@ function enterRoom(
         if (next.chart !== choice.chart) runtime.pick(choice.chart);
       }
       render(next, frame);
-      const state = runtime.roomState();
-      if (session.kind === "room" && !display && state)
-        for (const report of dueReports(
-          library,
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
-            report,
-            { fetch: social.reportFetch, roomToken: session.token },
-          );
-        }
+      const snapshot = historySnapshot();
+      history.observe(snapshot.receipts, snapshot.confirmedTick);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.
@@ -2093,7 +2209,10 @@ function enterRoom(
         },
   );
   installRoomLifecycle(window, {
-    stop: () => runtime.stop(),
+    stop: () => {
+      history.dispose();
+      runtime.stop();
+    },
     destroy: () => {
       stopPlaytestInput();
       menu.dispose();
@@ -2212,6 +2331,7 @@ function enterRoom(
 
 const query = new URLSearchParams(location.search);
 if (query.has("timing") || query.has("sync")) timing();
+else if (query.has("highscores")) songHighscores();
 else if (query.get("solo") === "1") enterRoom(true, LIBRARY);
 else if (query.has("room")) enterRoom(false, LIBRARY);
 else landing();

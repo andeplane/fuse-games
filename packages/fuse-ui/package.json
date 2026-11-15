@@ -9,6 +9,9 @@
   },
   "exports": {
     "./desktop-bridge": "./src/desktop-bridge.ts",
+    "./results-history": "./src/results-history.ts",
+    "./activity": "./src/activity.ts",
+    "./activity.css": "./src/activity.css",
     "./browser-account": "./src/browser-account.ts",
     "./firebase-config": "./src/firebase-config.ts",
     "./friends-client": "./src/friends-client.ts",
