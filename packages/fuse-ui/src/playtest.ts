@@ -179,6 +179,7 @@ export function installBrowserPlaytest(
     path: string,
     init: RequestInit = {},
     authorized = false,
+    optionalIdentity = false,
   ): Promise<unknown> {
     const requestGeneration = accessGeneration;
     const headers = new Headers(init.headers);
@@ -191,6 +192,10 @@ export function installBrowserPlaytest(
       if (requestGeneration !== accessGeneration)
         throw new Error("Account changed. Retry after sign-in.");
       headers.set("Authorization", `Bearer ${token}`);
+    } else if (optionalIdentity) {
+      const token = await identity.signedInToken();
+      if (token && requestGeneration === accessGeneration)
+        headers.set("Authorization", `Bearer ${token}`);
     }
     const controller = new AbortController();
     const cancel = schedule(() => controller.abort(), 20000);
@@ -586,6 +591,7 @@ export function installBrowserPlaytest(
       "/api/telemetry/reports",
       json(reportPayload),
       Boolean(reportContext),
+      true,
     )
       .then((acknowledgement) => {
         const ack = object(acknowledgement);

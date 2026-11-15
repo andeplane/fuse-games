@@ -6,9 +6,14 @@ import {
   rateLimitAddress,
   type HttpExtension,
 } from "fuse-network-be";
-import { composeHttp } from "fuse-platform";
+import {
+  composeHttp,
+  createIdentityVerifier,
+  type IdentityVerifier,
+} from "fuse-platform";
 import { MetricsStore } from "fuse-telemetry/metrics";
 import { createMetricsHttp } from "fuse-telemetry/metrics-http";
+import { MetricsSessions } from "fuse-telemetry/metrics-session";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { FirestoreTelemetryDatabase } from "fuse-telemetry/metrics-firestore";
 import {
@@ -62,6 +67,7 @@ import { telemetryConfiguration } from "./telemetry-config.js";
 export interface TelemetryServicesOptions {
   gameIds: readonly string[];
   developer: DeveloperVerifier;
+  identity?: IdentityVerifier;
   metricsDatabase: TelemetryDatabase;
   debugDatabase: DebugDatabase;
   actionDatabase: ActionDatabase;
@@ -153,6 +159,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     createDebugHttpExtension({
       service: debug,
       verifier: options.developer,
+      identity: options.identity,
       recordingEnabled: options.recordingEnabled ?? false,
       reportIdentity: (_request, address) =>
         createHmac("sha256", options.rateLimitKey)
@@ -195,7 +202,11 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
     debug,
     actions,
     http: composeHttp(
-      createMetricsHttp({ metrics, developer: options.developer }),
+      createMetricsHttp({
+        metrics,
+        developer: options.developer,
+        sessions: new MetricsSessions(options.rateLimitKey, quota, now),
+      }),
       protectedRoutes,
     ),
   };
@@ -254,7 +265,7 @@ export const telemetryUnavailable: HttpExtension = {
     // Every player's browser posts here. Until insights are configured that
     // is an expected, quiet "not here" that clients drop, not a logged
     // failure they retry.
-    if (path === "/api/telemetry/events") {
+    if (path === "/api/telemetry/events" || path === "/api/telemetry/session") {
       res.writeHead(404, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
@@ -290,6 +301,9 @@ export function createProductionTelemetry(options: {
   const services = createTelemetryServices({
     gameIds: options.gameIds,
     developer: createDeveloperVerifier(
+      options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
+    ),
+    identity: createIdentityVerifier(
       options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
     ),
     metricsDatabase: new FirestoreTelemetryDatabase(
