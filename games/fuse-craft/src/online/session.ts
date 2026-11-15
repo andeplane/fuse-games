@@ -226,6 +226,7 @@ export function createOnlineSession(
     { id: "solo", slot: 0 },
   ]);
   let manager = false;
+  let managerId: string | undefined;
   let status = "Connecting to the room…";
   let closed: RoomSnapshot["closed"] = "";
   let disposed = false;
@@ -236,6 +237,7 @@ export function createOnlineSession(
     {
       state(frame) {
         view = frame;
+        managerId = frame.managerId;
         runtime.flushPending();
         notify();
       },
@@ -321,7 +323,10 @@ export function createOnlineSession(
               }))
           : [],
         self: runtime.self,
-        manager,
+        // Who runs the room: the page that created it, always (seated or not), and otherwise whoever the room
+        // names, so when the host leaves, the next one's HOST badge, Start and settings turn up together.
+        manager: manager || managerId === runtime.self,
+        ...(managerId === undefined ? {} : { managerId }),
         status,
         closed,
         ...rules(),

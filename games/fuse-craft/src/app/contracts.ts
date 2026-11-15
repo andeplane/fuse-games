@@ -36,6 +36,8 @@ export interface RoomSnapshot extends RoomRules {
   /** This device's member id, once the room service has welcomed it. */
   self: string;
   manager: boolean;
+  /** Whoever holds Start: their seat carries HOST. Unknown until the room's first frame. */
+  managerId?: string;
   status: string;
   closed: "" | "ended" | "kicked";
 }
