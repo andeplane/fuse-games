@@ -366,7 +366,7 @@ export function createGameAudio(
     }
     song = next;
     element.loop = songs.length === 1;
-    element.src = baseUrl + next.path;
+    element.src = /^https?:/.test(next.path) ? next.path : baseUrl + next.path;
     element.onended = () => {
       songIndex = (songIndex + 1) % songs.length;
       loadSong();

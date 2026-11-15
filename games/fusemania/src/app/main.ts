@@ -135,6 +135,7 @@ import {
 import { createSongClock } from "./song-clock.js";
 import { createSongStore } from "./song-cache.js";
 import { SONG_LOAD_TRIES, createSongLoader } from "./song-load.js";
+import { previewSong } from "./song-preview.js";
 import { RESUME_MS, createPauseClock, resumeCount } from "./pause.js";
 import {
   SPEED_KEYS,
@@ -221,7 +222,7 @@ const setText = (node: HTMLElement, value: string) => {
 const coarse = () => matchMedia("(pointer: coarse)").matches;
 /** Keys the song select leaves alone: Tab is the browser's, and M is the shared mute. */
 const PAGE_KEYS: ReadonlySet<string> = new Set(["Tab", "KeyM"]);
-/** Where a song's audio is fetched from: the site's own files, or a file the player loaded. */
+/** Site files, external HTTPS audio (with CORS), or a file the player loaded. */
 const songUrl = (path: string) =>
   /^(blob:|https?:)/.test(path) ? path : `${BASE}${path}`;
 /** A song that exists only on this page: a loaded simfile. */
@@ -366,9 +367,8 @@ function createPreview(library: Library) {
       clearTimeout(timer);
       timer = setTimeout(() => {
         timer = undefined;
-        const info = library.song(id);
-        // A loaded file has no address the radio can play from.
-        if (!info || /^(blob:|https?:)/.test(info.audio)) {
+        const info = previewSong(library, id);
+        if (!info) {
           audio.setSongs([], BASE);
           return;
         }

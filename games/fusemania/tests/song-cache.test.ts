@@ -74,6 +74,23 @@ test("a file that cannot be fetched rejects and is not kept", async () => {
   assert.deepEqual(await store.stored(), []);
 });
 
+test("external HTTPS MP3 and OGG songs retain their URL and work from cache after download", async () => {
+  const { store, site, fetched, settle } = setup();
+  for (const ext of ["mp3", "ogg"]) {
+    const url = `https://storage.googleapis.com/media/track.${ext}`;
+    site.set(url, `external ${ext}`);
+    assert.equal(text(await store.fetch(url)), `external ${ext}`);
+    await settle();
+    site.delete(url);
+    assert.equal(text(await store.fetch(url)), `external ${ext}`);
+    assert.ok((await store.stored()).includes(url));
+  }
+  assert.deepEqual(fetched, [
+    "https://storage.googleapis.com/media/track.mp3",
+    "https://storage.googleapis.com/media/track.ogg",
+  ]);
+});
+
 test("another version's songs are deleted, another game's cache is left alone", async () => {
   const { store, stores, caches } = setup();
   await (
