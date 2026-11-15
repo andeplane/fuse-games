@@ -360,7 +360,8 @@
 /* PLAY on the selected song: the same primary button as the bar's, so the song can start from where it is shown. */
 .fm-picker.fm-picker .fm-picker-play {
   justify-self: center;
-  min-width: 10rem;
+  width: auto;
+  min-width: 12rem;
   color: var(--fui-primary-text, #031b29);
   background: var(--fui-primary-fill, #18dbeb);
   border-color: var(--fui-primary-fill, #18dbeb);
@@ -375,7 +376,7 @@
   position: relative;
   padding: 1.75rem var(--fui-space-4) var(--fui-space-3);
 }
-.fm-picker-slider {
+.fm-picker.fm-picker .fm-picker-slider {
   display: block;
   width: 100%;
   min-height: 0;
@@ -434,7 +435,7 @@
   );
   transform: translateX(-50%);
   min-width: 1.5rem;
-  max-width: 9rem;
+  max-width: 14rem;
   padding: 0.25rem 0.5rem;
   overflow: hidden;
   color: var(--fui-black, #000);
