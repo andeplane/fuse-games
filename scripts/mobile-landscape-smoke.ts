@@ -3,6 +3,7 @@ import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
+import { returnToSoloLobby } from "./lib/solo-lobby.js";
 const base = process.env.HOME_URL ?? "http://127.0.0.1:4188/";
 const results: object[] = [];
 const forceHoldTransition = process.env.MOBILE_HOLD_PHASE_RACE === "1";
@@ -83,9 +84,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page.screenshot({
       path: `artifacts/mobile-portrait-tools-${name}.png`,
     });
-    await page
-      .getByRole("button", { name: "BACK TO LOBBY", exact: true })
-      .click();
+    await returnToSoloLobby(page, kind);
     await page.locator(".phone-lobby").waitFor();
     await page.screenshot({
       path: `artifacts/mobile-portrait-lobby-${name}.png`,
