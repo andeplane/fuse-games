@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./explorer-contracts": "./src/explorer-contracts.ts",
+    "./workspace-http": "./src/workspace-http.ts",
     "./contracts": "./src/contracts.ts",
     "./metrics": "./src/metrics.ts",
     "./metrics-database": "./src/metrics-database.ts",

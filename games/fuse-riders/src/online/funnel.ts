@@ -133,6 +133,9 @@ export function createFunnel(
     if (startKey && startedMatch !== startKey) {
       const startedAt = now();
       track("Match Started", {
+        played:
+          device.playerId !== "" &&
+          view.players.some((player) => player.id === device.playerId),
         matchNumber: matchNumber + 1,
         playerCount: view.players.length,
         botCount,

@@ -9,6 +9,7 @@ import {
   signInFailure,
   signedInToken,
   reauthenticate,
+  connectGithub,
 } from "fuse-ui/browser-account";
 import { createEndpoints } from "fuse-network-fe";
 import { mountWorkspace } from "./workspace.js";
@@ -30,6 +31,7 @@ mountWorkspace(root, {
     signIn,
     signOut,
     reauthenticate,
+    connectGithub,
     failure: signInFailure,
   },
   transport: {

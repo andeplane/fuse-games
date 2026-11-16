@@ -1,4 +1,8 @@
-import { Timestamp, type DocumentReference } from "@google-cloud/firestore";
+import {
+  Timestamp,
+  FieldPath,
+  type DocumentReference,
+} from "@google-cloud/firestore";
 import type {
   TelemetryDatabase,
   TelemetryTransaction,
@@ -10,12 +14,24 @@ export interface TelemetryFirestoreTransaction {
   set(ref: DocumentReference, data: Record<string, unknown>): unknown;
 }
 export interface TelemetryFirestore {
+  collection?(path: string): TelemetryEventQuery;
   doc(path: string): DocumentReference;
   getAll(...refs: DocumentReference[]): Promise<readonly { data(): unknown }[]>;
   runTransaction<T>(
     operation: (tx: TelemetryFirestoreTransaction) => Promise<T>,
     options: { maxAttempts: number },
   ): Promise<T>;
+}
+export interface TelemetryEventQuery {
+  where(
+    field: string,
+    operator: ">=" | "<",
+    value: number,
+  ): TelemetryEventQuery;
+  orderBy(field: string | FieldPath, direction: "desc"): TelemetryEventQuery;
+  limit(count: number): TelemetryEventQuery;
+  startAfter(...values: (number | string)[]): TelemetryEventQuery;
+  get(): Promise<{ docs: readonly { data(): unknown }[] }>;
 }
 
 /** Only the service account reaches these collections; browser Firestore rules remain deny-all. */
@@ -66,5 +82,24 @@ export class FirestoreTelemetryDatabase implements TelemetryDatabase {
         ).map((snapshot) => snapshot.data()),
       );
     return result;
+  }
+  async queryEvents(query: {
+    from: number;
+    to: number;
+    limit: number;
+    after?: { time: number; id: string };
+  }): Promise<unknown[]> {
+    if (!this.firestore.collection)
+      throw new Error("Event queries unavailable");
+    let request = this.firestore
+      .collection(`${this.prefix}-telemetry-events`)
+      .where("occurredAt", ">=", query.from)
+      .where("occurredAt", "<", query.to)
+      .orderBy("occurredAt", "desc")
+      .orderBy(FieldPath.documentId(), "desc")
+      .limit(Math.min(2001, Math.max(1, query.limit)));
+    if (query.after)
+      request = request.startAfter(query.after.time, query.after.id);
+    return (await request.get()).docs.map((snapshot) => snapshot.data());
   }
 }

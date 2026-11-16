@@ -78,6 +78,63 @@ function fixture(storage: SafeStorage = createMemoryStorage()) {
     },
   };
 }
+test("shared play correlation uses opaque UUID scopes and excludes repeatable local seeds", async () => {
+  const f = fixture();
+  const scopes: string[] = [];
+  f.environment.correlate = async (scope) => {
+    scopes.push(scope);
+    return "p_12345678-12345678-12345678-12345678";
+  };
+  const analytics = f.create("fusemania");
+  analytics.start({});
+  const shared = uuid();
+  analytics.track(
+    "Round Started",
+    { song: "jazz" },
+    { key: "shared", match: shared, round: 2 },
+  );
+  analytics.track(
+    "Round Started",
+    {},
+    { key: "seeded", match: "local:1234:1", round: 1 },
+  );
+  analytics.track(
+    "Round Started",
+    {},
+    { key: "birds", match: `${uuid()}:2`, round: 2 },
+  );
+  await f.flush();
+  const events = f.sent.flat();
+  assert.equal(events.length, 3);
+  assert.equal(scopes.length, 4);
+  assert.equal(
+    events[0]?.properties.matchRef,
+    "p_12345678-12345678-12345678-12345678",
+  );
+  assert.equal(events[1]?.properties.matchRef, undefined);
+  assert.equal(
+    events[2]?.properties.roundRef,
+    "p_12345678-12345678-12345678-12345678",
+  );
+  assert.ok(!JSON.stringify(events).includes(shared));
+  assert.ok(!JSON.stringify(events).includes("local:1234"));
+});
+test("unavailable correlation crypto preserves ordinary event delivery", async () => {
+  const f = fixture();
+  f.environment.correlate = async () => {
+    throw new Error("unavailable");
+  };
+  const analytics = f.create();
+  analytics.start({});
+  analytics.track(
+    "Round Started",
+    { played: true },
+    { key: "round", match: uuid(), round: 1 },
+  );
+  await f.flush();
+  assert.equal(f.sent.flat().length, 1);
+  assert.equal(f.sent[0]?.[0]?.properties.played, true);
+});
 test("first-party delivery preserves namespace, game ownership and property scrubbing across navigation", async () => {
   const f = fixture();
   for (const game of ["dice", "fuse-riders", "fuse-front", "fuseos"]) {

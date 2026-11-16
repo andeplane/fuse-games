@@ -35,4 +35,27 @@ export class MemoryTelemetryDatabase implements TelemetryDatabase {
     await this.pending;
     return keys.map((key) => structuredClone(this.documents.get(key)));
   }
+  async queryEvents(query: {
+    from: number;
+    to: number;
+    limit: number;
+    after?: { time: number; id: string };
+  }): Promise<unknown[]> {
+    await this.pending;
+    return [...this.documents.entries()]
+      .filter(([key]) => key.startsWith("telemetry-events/"))
+      .map(([, value]) => value as { occurredAt: number; id: string })
+      .filter(
+        (value) =>
+          value.occurredAt >= query.from &&
+          value.occurredAt < query.to &&
+          (!query.after ||
+            value.occurredAt < query.after.time ||
+            (value.occurredAt === query.after.time &&
+              value.id < query.after.id)),
+      )
+      .sort((a, b) => b.occurredAt - a.occurredAt || b.id.localeCompare(a.id))
+      .slice(0, Math.min(2001, Math.max(1, query.limit)))
+      .map((value) => structuredClone(value));
+  }
 }

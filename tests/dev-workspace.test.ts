@@ -1,11 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import type {
-  MetricsResponse,
-  MetricsRow,
-  RecordingDetail,
-} from "fuse-telemetry/contracts";
+import type { MetricsRow, RecordingDetail } from "fuse-telemetry/contracts";
 import {
   comparisonRows,
   defaultDateRange,
@@ -17,6 +13,26 @@ import { mountWorkspace, type WorkspaceAccount } from "../dev/workspace.js";
 import { createDom } from "../dev/dom.js";
 import { tokenTools, type MintedToken } from "../dev/actions.js";
 import { recordingDetail, type PrivateMedia } from "../dev/sessions.js";
+import type { ExplorerResult } from "fuse-telemetry/explorer-contracts";
+const explorer: ExplorerResult = {
+  events: [],
+  sessions: [],
+  fields: ["kind", "gameId"],
+  commonFields: ["kind", "gameId"],
+  gameIds: ["fuse-riders"],
+  scanned: 0,
+  matched: 0,
+  truncated: false,
+  summary: {
+    players: 0,
+    sessions: 0,
+    roundPlays: 0,
+    completions: 0,
+    matchPlays: 0,
+    games: 0,
+    completionRate: null,
+  },
+};
 
 function row(gameId: string | null, start: string, users: number): MetricsRow {
   return {
@@ -31,16 +47,6 @@ function row(gameId: string | null, start: string, users: number): MetricsRow {
     eventCounts: {},
   };
 }
-const metrics: MetricsResponse = {
-  period: "day",
-  timezone: "UTC",
-  from: "2026-11-14",
-  toExclusive: "2026-11-15",
-  series: [row(null, "2026-11-14", 3)],
-  games: [row("fuse-riders", "2026-11-14", 3)],
-  partial: false,
-  limits: { maxPeriods: 100, maxDocuments: 1000 },
-};
 function fixture() {
   const window = new Window();
   const document = window.document as unknown as Document;
@@ -190,8 +196,12 @@ test("F-09: a recent-sign-in refusal offers reauthentication and retries the req
         const path = new URL(String(input)).pathname;
         if (path === "/api/dev/me")
           return Response.json({ uid: "dev", email: "allowed@example.com" });
+        if (path === "/api/dev/catalog")
+          return Response.json({ gameIds: ["fuse-riders"] });
+        if (path === "/api/dev/metrics")
+          return Response.json({ series: [{ users: 3 }] });
         return confirmed
-          ? Response.json(metrics)
+          ? Response.json(explorer)
           : Response.json({}, { status: 401 });
       },
     },
@@ -203,12 +213,12 @@ test("F-09: a recent-sign-in refusal offers reauthentication and retries the req
     ),
   );
   click(f.root, "Confirm Google sign-in");
-  await settled(() => f.root.querySelectorAll("figure").length === 5);
+  await settled(() => f.root.querySelectorAll("figure").length === 2);
   assert.equal(confirmed, true);
   unmount();
 });
 
-test("workspace authenticates, provides five chart equivalents, and discards stale views on sign-out", async () => {
+test("workspace authenticates, provides numbered charts and accessible daily values, and discards stale views on sign-out", async () => {
   const f = fixture();
   const paths: string[] = [];
   let finishReports: ((response: Response) => void) | undefined;
@@ -225,7 +235,11 @@ test("workspace authenticates, provides five chart equivalents, and discards sta
         paths.push(path);
         if (path === "/api/dev/me")
           return Response.json({ uid: "dev", email: "allowed@example.com" });
-        if (path === "/api/dev/metrics") return Response.json(metrics);
+        if (path === "/api/dev/catalog")
+          return Response.json({ gameIds: ["fuse-riders"] });
+        if (path === "/api/dev/events") return Response.json(explorer);
+        if (path === "/api/dev/metrics")
+          return Response.json({ series: [{ users: 3 }] });
         reportSignal = init?.signal;
         return new Promise<Response>((resolve) => {
           finishReports = resolve;
@@ -239,10 +253,17 @@ test("workspace authenticates, provides five chart equivalents, and discards sta
   );
   assert.deepEqual(paths, []);
   f.login();
-  await settled(() => f.root.querySelectorAll("figure").length === 5);
-  assert.deepEqual(paths.slice(0, 2), ["/api/dev/me", "/api/dev/metrics"]);
-  assert.equal(f.root.querySelectorAll("details table tbody tr").length, 1);
-  assert.ok(f.root.textContent?.includes("browser installations"));
+  await settled(() => f.root.querySelectorAll("figure").length === 2);
+  assert.deepEqual(paths.slice(0, 3), [
+    "/api/dev/me",
+    "/api/dev/catalog",
+    "/api/dev/events",
+  ]);
+  assert.ok(
+    f.root.querySelectorAll("figure details table tbody tr").length > 1,
+  );
+  assert.ok(f.root.querySelector("svg text")?.textContent === "0");
+  assert.ok(f.root.textContent?.includes("Anonymous browsers"));
   click(f.root, "Reports");
   await settled(() => !!finishReports);
   f.logout();

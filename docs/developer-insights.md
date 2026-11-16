@@ -113,6 +113,74 @@ not verified people. Weekly/monthly unique counts use membership sets rather
 than summed daily totals. Round plays count participating browsers at actual
 play, excluding spectators/countdowns. See [ANALYTICS.md](ANALYTICS.md).
 
+## Analytics workspace
+
+Overview, Raw Events and Player Sessions share UTC dates, an autocomplete game
+textbox and OR-of-AND constraints. The textbox lists every registered game on
+focus, including games without events, and narrows while typing. A clicked game,
+player, song, event type or property adds an AND constraint to every OR group.
+Sessions open the corresponding player/session event timeline. Existing Playtest
+sessions are audio recordings, separate from these ordinary player visits.
+
+Raw Events starts with common fields and discovers optional columns from the
+current selection. `kind` identifies app, seat, match, round and custom events.
+Queries read at most 2,001 source documents; each displayed slice contains at
+most 2,000, with stable time/id continuation. An empty filtered slice may still
+have older matches. Slice counts are labelled, overview lower bounds use `≥`,
+incomplete charts are withheld, and DAU/MAU are withheld when their full history
+cannot be read. DAU is the selected end date; MAU is that calendar month through
+the end date. Both count distinct anonymous browsers and use the same filters.
+For the current end date or a complete calendar month, date/game DAU/MAU use
+the complete existing rollups, so raw pagination cannot hide these headline
+figures. Historical partial months and property constraints require
+the matching raw month scan; incomplete coverage withholds those filtered
+uniques explicitly.
+Play totals require an explicit `played: true`: spectators/TV displays and
+legacy observations with unknown participation remain in raw events and active
+browser/session measures, but do not inflate round/match/game plays. The
+overview discloses excluded legacy observations.
+
+New lifecycle observations link reported participants by irreversible play
+references derived from random shared-runtime UUIDs, including Birds' UUID/round
+scope. Reusable local seed IDs are excluded. Correlation covers loaded source
+events only; historical events without references cannot reconstruct other
+participants. Names, emails and room capabilities remain excluded.
+
+The workspace assistant uses `OPENAI_API_KEY`, server-side only, and the exact
+`gpt-6.1-sol` model through Responses. It navigates sections, edits filters and
+columns, opens sessions/recordings, reads the current screen, operates visible
+controls and prepares issue drafts through the same browser command adapter as
+the human. Credentials, sign-in/out and publishing require the human. Each
+question has six steps and a bounded context. Server limits are 8 provider calls
+per minute and 80 per day per admin, 400 per day globally, one durable in-flight
+lease per admin, 1,800 output tokens and a 55-second provider timeout. Event
+scanning separately reserves up to 2,001 reads per request against 400,000 per
+admin/day and 2,000,000 globally/day. Normal admission, policy and audit checks
+also apply. An unavailable provider or exhausted quota leaves the page usable.
+
+Action Proposals offers Connect GitHub and an editable public-issue composer.
+Enable GitHub in Firebase Authentication and configure its OAuth callback before
+using this flow. GitHub links to the existing Firebase player; it does not
+replace developer Google access. Connecting requires recent authentication and
+the `token` capability. Access tokens are validated against GitHub, then
+AES-256-GCM encrypted in `telemetry-github` under a UID-derived key with UID AAD.
+The encryption key is domain-separated from `TELEMETRY_RATE_LIMIT_KEY`; rotating
+that secret requires reconnection. Neither status nor logs expose the token.
+Disconnect clears usable credentials. The local preview uses memory only.
+
+Publishing targets `andeplane/fuse-games`, checks the proposal revision and
+retraction state, and excludes private evidence from the default draft. Limits
+are 10 publication/reconciliation requests per admin/day and 30 globally/day.
+Each proposal revision has a durable idempotency marker. Explicit rejection is
+retryable; uncertain outcomes reconcile before another POST can occur. If the
+created issue falls outside the latest 100 results, enter its issue number in
+the composer; the server verifies its marker before attaching it. No duplicate
+is sent merely because a connection dropped.
+
+New private endpoints: `GET /api/dev/catalog`, `POST /api/dev/events`,
+`POST /api/dev/assistant`, `GET|POST|DELETE /api/dev/github` and
+`POST /api/dev/github/issues`. Action-only agent credentials cannot use them.
+
 ## Local development
 
 Run the normal `pnpm dev` flow and open the printed free-port URL with `?mute`.

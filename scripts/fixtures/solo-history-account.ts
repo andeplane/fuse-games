@@ -4,6 +4,9 @@ import type * as Production from "../../games/fuse-riders/src/online/account.js"
 const signedIn = () =>
   localStorage.getItem("solo-history-smoke-account") === "1";
 const adapter: typeof Production = {
+  connectGithub: async () => {
+    throw new Error("GitHub is unavailable in this fixture");
+  },
   remembersSignIn: signedIn,
   accountUsername: () => (signedIn() ? "Smoke Rider" : undefined),
   rememberUsername: () => {},
@@ -22,6 +25,7 @@ const adapter: typeof Production = {
   signInFailure: () => "Test sign-in failed",
 };
 export const {
+  connectGithub,
   remembersSignIn,
   accountUsername,
   rememberUsername,
