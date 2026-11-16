@@ -482,6 +482,7 @@ function landing(): void {
   const card = createLandingCard({
     background: demoBackground,
     title: "KILLER FUSE",
+    howToPlay: guideNodes(),
     tagline:
       "Three against three in one arena. Kill the Queen, fill the hive or ride the snail home. Bots play every empty seat.",
     soloText: "PLAY SOLO WITH BOTS",
@@ -506,7 +507,6 @@ function landing(): void {
   });
   // Join by code, PLAY SOLO WITH BOTS and the tutorial stay together behind the menu's secondary action.
   card.create.parentElement!.after(tutorialList());
-  card.menu.help.append(...guideNodes());
   card.menu.addSettings(...preferences());
   const back = el("a", "← FUSE RIDERS", "kf-back");
   back.href = import.meta.env.BASE_URL;

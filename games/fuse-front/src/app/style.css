@@ -73,7 +73,6 @@ body.fui-app {
   border: 2px solid var(--ff-steel);
   padding: 8px;
 }
-.ff-help,
 .ff-status,
 .ff-hud {
   color: var(--ff-muted);

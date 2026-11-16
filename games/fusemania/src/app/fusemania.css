@@ -112,21 +112,6 @@ body:has(.fm-lobby:not([hidden])) .fm-top::before {
   margin-bottom: var(--fui-space-3);
   text-align: left;
 }
-.fm-keys {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--fui-space-1) var(--fui-space-3);
-  margin: var(--fui-space-4) 0 0;
-  font-size: 0.75rem;
-}
-.fm-keys dt {
-  color: var(--fui-yellow);
-  font: 0.5625rem/1.6 var(--fui-font-pixel);
-}
-.fm-keys dd {
-  margin: 0;
-  color: var(--fui-text-muted);
-}
 .fm-own {
   padding: var(--fui-space-2) var(--fui-space-3);
   color: var(--fui-text-muted);

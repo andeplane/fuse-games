@@ -292,7 +292,7 @@ body:has(.lobby:not([hidden])) .gs-live {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 18px;
+  gap: clamp(8px, 2vw, 18px);
   max-width: 700px;
   margin: auto;
 }
@@ -324,10 +324,13 @@ body:has(.lobby:not([hidden])) .gs-live {
 .abilities {
   display: flex;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 .abilities button {
   min-height: 78px;
   min-width: 115px;
+  flex: 1;
 }
 .vacuum {
   border-color: #7df5d0;
@@ -449,9 +452,15 @@ body:has(.lobby:not([hidden])) .gs-live {
     max-height: 48vh;
   }
   .abilities button {
-    min-width: 90px;
-    padding: 10px;
+    min-width: 0;
+    padding: 10px 6px;
     font-size: 11px;
+  }
+  .abilities {
+    gap: 6px;
+  }
+  .directions {
+    grid-template-columns: repeat(3, 44px);
   }
   .hint {
     font-size: 9px;

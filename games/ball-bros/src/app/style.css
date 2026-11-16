@@ -232,14 +232,6 @@ h1 {
   font-size: 13px;
   line-height: 1.7;
 }
-.key-guide {
-  border-left: 2px solid #35d9ff;
-  padding-left: 14px;
-  margin: 24px 0;
-  font-size: 10px;
-  letter-spacing: 1px;
-  font-weight: 700;
-}
 .footnote {
   color: #506f84;
   font-size: 10px;
@@ -273,10 +265,6 @@ h1 {
   background: #255067;
   transform: translateY(2px);
 }
-.landing-help {
-  text-align: center;
-  color: #92adbf;
-}
 /* The room is the shared room: the kit lays it out. The match's own line sits above the arena. */
 .room-status {
   margin: 0 0 12px;
@@ -294,8 +282,7 @@ h1 {
 }
 .controller-mode .canvas-host,
 .controller-mode .instructions,
-.controller-mode .footnote,
-.controller-mode .key-guide {
+.controller-mode .footnote {
   display: none;
 }
 .controller-mode .layout {
@@ -450,7 +437,6 @@ h1 {
   }
   .sidebar > .eyebrow,
   .instructions,
-  .key-guide,
   .footnote {
     display: none;
   }

@@ -17,6 +17,15 @@ try {
     "fuselane",
     "dice",
     "graveyardshift",
+    "fuseaxe",
+    "fusechoppers",
+    "fuseball",
+    "fusevolley",
+    "fusesurge",
+    "fusemania",
+    "elastofuse",
+    "ballbros",
+    "fusefront",
   ]) {
     await page.goto(new URL(`${game}/?mute`, base).href);
     await page
@@ -88,6 +97,18 @@ try {
         false,
         `${game} fits ${viewport.width}px`,
       );
+      assert.ok(
+        await content
+          .locator("dd")
+          .evaluateAll((descriptions) =>
+            descriptions.every(
+              (description) =>
+                (description.textContent?.length ?? 0) < 25 ||
+                description.getBoundingClientRect().width >= 120,
+            ),
+          ),
+        `${game} keeps control descriptions readable at ${viewport.width}px`,
+      );
       await content.locator("dd").last().scrollIntoViewIfNeeded();
       await page
         .locator("dialog[open]")
@@ -125,7 +146,7 @@ try {
   );
   await page.keyboard.press("Escape");
   console.log(
-    "Shared How to Play: six real pages pass controls, responsive scrolling, Back and Escape; in-game keycaps render",
+    "Shared How to Play: fifteen real pages pass controls, readable descriptions, responsive scrolling, Back and Escape; in-game keycaps render",
   );
 } finally {
   await browser.close();

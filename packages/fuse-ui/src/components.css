@@ -2007,6 +2007,15 @@ a.fui-button-danger {
   }
 }
 
+/* Keep Back and the primary action reachable in narrow dialog bars. The icon
+   retains the settings button's explicit accessible name. */
+@media (max-width: 400px) {
+  .fui-dialog-actions .fui-settings-action > span,
+  .fui-dialog-actions .fui-player-options-toggle > span {
+    display: none;
+  }
+}
+
 /* Explicit scope, the same icons and disclosure behavior in every game. */
 .fui-settings-action {
   display: inline-flex;

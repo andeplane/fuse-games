@@ -1,4 +1,4 @@
-import { requestedRoomSlot } from "fuse-ui";
+import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -234,10 +234,7 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 }
 
 function keyHelp(): HTMLElement {
-  const list = el("dl", "", "ef-keys");
-  for (const hint of GUIDE.controls)
-    list.append(el("dt", hint.keys), el("dd", hint.action));
-  return list;
+  return createHowToPlay(GUIDE);
 }
 
 /** A compact native picker with keyboard type-ahead, shared by solo and rooms. */
@@ -269,6 +266,7 @@ function landing(): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "ELASTO FUSE",
+    howToPlay: GUIDE,
     tagline:
       "A springy motorbike, the original 54-level campaign and hundreds of extra tracks. Eat every apple, then touch the flower, and keep your head off the ground. Chase your best times alone, or race up to four friends.",
     soloText: "PLAY SOLO",
@@ -301,7 +299,6 @@ function landing(): void {
   const rules = el("section", "", "ef-landing-rules");
   rules.append(picker.element);
   card.solo?.before(rules);
-  card.menu.help.append(keyHelp());
   const back = el("a", "All games", "ef-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(GUIDE);

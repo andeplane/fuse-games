@@ -2,7 +2,12 @@ import { social } from "./social.js";
 import "fuse-ui/portal.css";
 import "./entrance.css";
 import { createAppPortal } from "fuse-ui/portal";
-import { createTopBar, type TopBarSound } from "fuse-ui";
+import {
+  createBackButton,
+  createPageHeader,
+  createTopBar,
+  type TopBarSound,
+} from "fuse-ui";
 import { createMainMenu } from "fuse-ui";
 
 interface EntranceOptions {
@@ -95,8 +100,20 @@ export function createEntrance(o: EntranceOptions) {
       dialog.showModal();
       if (kind === "join") o.code.focus();
     };
-    dialog.querySelector<HTMLButtonElement>(".dialog-close")!.onclick = () =>
-      dialog.close();
+    const back = createBackButton({ onBack: () => dialog.close(), document });
+    const head = createPageHeader({
+      back,
+      title:
+        kind === "join"
+          ? "Join room"
+          : kind === "help"
+            ? "How to play"
+            : "Player options",
+      document,
+    });
+    dialog.querySelector(".dialog-close")!.remove();
+    dialog.querySelector(".entrance-kicker")?.remove();
+    dialog.prepend(head.element);
   }
   o.join.type = "button";
   root.querySelector<HTMLFormElement>("#menu-join-form")!.onsubmit = (e) => {

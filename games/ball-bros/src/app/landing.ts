@@ -10,6 +10,7 @@ import {
 } from "./session.js";
 import { avatarChoice } from "./avatars.js";
 import { ARENA_MAPS, MAP_IDS, type MapId } from "../engine/maps.js";
+import { BALL_GUIDE } from "./controls.js";
 
 export function landing(
   root: HTMLElement,
@@ -41,6 +42,7 @@ export function landing(
       (await import("./attract.js")).createAttract(host, signal),
     document: root.ownerDocument,
     title: "BALL BROS",
+    howToPlay: BALL_GUIDE,
     tagline: "Five cores. One survivor. Orbit, reach, ricochet.",
     soloText: "PLAY SOLO",
     valid: validRoomCode,
@@ -65,11 +67,6 @@ export function landing(
     mapChoice,
   );
   card.menu.addSettings(mapChoice);
-  const help = el(
-    "p",
-    "A / D orbit · W / S out / in · Space launch",
-    "landing-help",
-  );
   const back = el("a", "All games", "back");
   back.href = "../";
   const top = el("header", "", "topbar");
@@ -82,7 +79,6 @@ export function landing(
     }).element,
     back,
   );
-  card.menu.help.append(help);
   root.replaceChildren(top, card.element);
   return card;
 }

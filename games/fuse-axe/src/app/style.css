@@ -177,32 +177,6 @@ body.fa-phone .fa-live {
   color: var(--fui-pink-soft, #ff72b3);
 }
 
-/* ---- keys ---- */
-.fa-keys .fui-key-group {
-  margin: 8px 0 6px;
-  font: 10px var(--fui-font-pixel, monospace);
-  color: var(--fa-gold);
-}
-
-.fa-keys .fui-key-list {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 14px;
-  margin: 0;
-  font-size: 13px;
-}
-
-.fa-keys dt {
-  font: 9px var(--fui-font-pixel, monospace);
-  color: var(--fui-cyan, #16e7ff);
-  align-self: center;
-}
-
-.fa-keys dd {
-  margin: 0;
-  color: var(--fui-text-muted, #b6cce3);
-}
-
 /* ---- the room ---- */
 .fa-room {
   flex: 1;

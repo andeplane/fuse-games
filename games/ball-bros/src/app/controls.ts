@@ -1,4 +1,20 @@
 import type { Steering } from "../engine/state.js";
+
+export const BALL_GUIDE = {
+  goal: "Keep the rally alive. Your blocks break on impact; one hit to the core ends your round. Even your own ball can hurt you.",
+  controls: [
+    { keys: "A / D · ← / →", action: "Orbit left or right" },
+    { keys: "W / ↑", action: "Reach out for an early interception" },
+    { keys: "S / ↓", action: "Pull in for tighter coverage" },
+    { keys: "SPACE", action: "Launch the ball" },
+  ],
+  touchControls: [
+    { keys: "LEFT / RIGHT", action: "Hold to orbit" },
+    { keys: "OUT / IN", action: "Hold to reach out or pull in" },
+    { keys: "LAUNCH", action: "Tap to launch the ball" },
+  ],
+} as const;
+
 export type Button = "left" | "right" | "inward" | "outward" | "launch";
 /** Multiple keys/pointers may hold one action; releasing one never cancels another. */
 export class Controls {

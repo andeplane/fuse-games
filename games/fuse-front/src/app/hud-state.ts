@@ -17,6 +17,42 @@ import {
 } from "../engine/index.js";
 import { ITEM_KEYS } from "./shop-state.js";
 
+const SPELL_KEYS = "QWER";
+export const FRONT_GUIDE = {
+  goal: "Push the lanes, hold the jungle and raze the enemy fort.",
+  controls: [
+    { keys: "RIGHT CLICK", action: "Move or attack" },
+    { keys: "A + CLICK", action: "Attack-move" },
+    { keys: "SHIFT", action: "Hold to queue orders" },
+    {
+      keys: [...SPELL_KEYS].join(" / "),
+      action: "Cast a spell, or aim it on the map",
+    },
+    { keys: [...ITEM_KEYS].join(" / "), action: "Use an item" },
+    { keys: "B", action: "Open the shop" },
+    { keys: "`", action: "Hold to show the scoreboard" },
+    { keys: "Z / X · + / −", action: "Zoom" },
+    { keys: "SPACE / F", action: "Follow your hero" },
+    { keys: "TAB / HOME", action: "Look at the latest fight or your fort" },
+  ],
+  touchControls: [
+    {
+      keys: "TAP MAP",
+      action: "Move or attack; tap a target after arming a spell",
+    },
+    { keys: "DRAG / PINCH", action: "Pan the map or zoom" },
+    {
+      keys: "SPELLS / ITEMS",
+      action: "Tap the HUD buttons to cast or use an item",
+    },
+    {
+      keys: "ATTACK-MOVE / QUEUE",
+      action: "Arm an attack-move or queue your next orders",
+    },
+    { keys: "SHOP / SCORE", action: "Open the shop or scoreboard" },
+  ],
+} as const;
+
 /**
  * The record `deriveHud` fills, for the seat's hero `kind` (its kit names the spell slots). Bars are shares 0 to 1, `respawn` is seconds (0 while alive), `red`/`neutral`/`blue`
  * count sectors and `time` is the match time as `m:ss`. Each spell
@@ -27,7 +63,7 @@ export function createHud() {
   const spells = KITS.brick.map((spell, i) => ({
     effect: spell.effect as string,
     name: spell.name,
-    key: "QWER"[i]!,
+    key: SPELL_KEYS[i]!,
     seconds: 0,
     shade: 0,
     locked: false,
@@ -173,7 +209,7 @@ const ZOOM_KEYS: Readonly<Record<string, number>> = {
  * scoreboard.
  */
 export function keyAction(key: string): KeyAction | undefined {
-  const slot = key.length === 1 ? "QWER".indexOf(key.toUpperCase()) : -1;
+  const slot = key.length === 1 ? SPELL_KEYS.indexOf(key.toUpperCase()) : -1;
   if (slot >= 0) return { kind: "cast", slot };
   if (key === "a" || key === "A") return { kind: "attackMove" };
   if (key === " " || key === "f" || key === "F") return { kind: "recentre" };

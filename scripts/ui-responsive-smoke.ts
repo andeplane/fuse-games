@@ -1,0 +1,169 @@
+import assert from "node:assert/strict";
+import { launchSelected } from "./lib/browser.js";
+import { startViteServer } from "./lib/server.js";
+
+// Real entry points: catch controls clipped by a dialog or the viewport, even
+// when the document itself hides horizontal overflow. Run with ONLINE_URL to
+// inspect a built preview, or without it to exercise current source via Vite.
+const server = process.env.ONLINE_URL ? undefined : await startViteServer();
+const base = process.env.ONLINE_URL ?? server!.url;
+const browser = await launchSelected("chrome", {
+  headless: true,
+  args: ["--mute-audio"],
+});
+const sizes = [
+  { width: 360, height: 800 },
+  { width: 844, height: 390 },
+  { width: 1440, height: 1000 },
+];
+
+try {
+  for (const hasTouch of [false, true]) {
+    const context = await browser.newContext({ hasTouch });
+    const page = await context.newPage();
+    await page.goto(new URL("fusemania/?mute", base).href);
+    await page
+      .locator(".fui-main-menu")
+      .getByRole("button", { name: "Play", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Single player", exact: true })
+      .click();
+    const dialog = page.locator("dialog[open]");
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      for (const name of ["Back", "Player options", "Play"]) {
+        const control = dialog.getByRole("button", {
+          name: new RegExp(`^${name}$`, "i"),
+        });
+        assert.ok(
+          await control.evaluate((node) => {
+            const rect = node.getBoundingClientRect();
+            const bar = node
+              .closest(".fui-dialog-bar")!
+              .getBoundingClientRect();
+            return (
+              rect.width >= 44 &&
+              rect.height >= 44 &&
+              rect.left >= bar.left &&
+              rect.right <= bar.right + 1
+            );
+          }),
+          `Fusemania ${name} fits at ${size.width}px (touch=${hasTouch})`,
+        );
+      }
+      await dialog
+        .getByRole("button", { name: "Player options", exact: true })
+        .click();
+      await page.locator(".fui-player-options-panel:not([hidden])").waitFor();
+      await page.keyboard.press("Escape");
+      assert.equal(
+        await dialog.isVisible(),
+        true,
+        "Escape closes options before leaving song select",
+      );
+    }
+    await page.goto(new URL("graveyardshift/?solo=1&mute", base).href);
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      const controls = page.locator(".pad:visible button");
+      if (await controls.count())
+        assert.ok(
+          await controls.evaluateAll((nodes) =>
+            nodes.every((node) => {
+              const rect = node.getBoundingClientRect();
+              return (
+                rect.width >= 44 &&
+                rect.height >= 44 &&
+                rect.left >= 0 &&
+                rect.right <= innerWidth
+              );
+            }),
+          ),
+          `Graveyard Shift controls fit at ${size.width}px (touch=${hasTouch})`,
+        );
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      );
+    }
+    await page.setViewportSize(sizes[0]!);
+    await page.goto(new URL("fuseriders/?solo=1&mute", base).href);
+    await page.locator(".online-arena").waitFor();
+    // Rotate after boot: the desktop-game class is applied dynamically.
+    for (const size of [sizes[1]!, sizes[2]!, sizes[0]!]) {
+      await page.setViewportSize(size);
+      await page.waitForFunction(() => {
+        const button = document.querySelector(".fui-top-bar-toggle");
+        const rect = button?.getBoundingClientRect();
+        return rect && rect.left >= 0 && rect.right <= innerWidth;
+      });
+      const menu = page
+        .locator(".fui-top-bar-toggle:visible, .mobile-tools-toggle:visible")
+        .first();
+      await menu.click();
+      await page.waitForFunction(
+        () =>
+          !!document.querySelector(
+            ".fui-top-bar-menu[open], .mobile-tools-open",
+          ),
+      );
+      await page.keyboard.press("Escape");
+    }
+    await page.goto(new URL("fuselane/?mute", base).href);
+    await page.locator(".fui-main-menu").waitFor();
+    assert.equal(
+      await page
+        .locator("body")
+        .evaluate((body) => getComputedStyle(body).backgroundColor),
+      "rgb(3, 9, 25)",
+      "Fusetown's attract scene has a dark backing for light menu text",
+    );
+    for (const kind of ["help", "join", "settings"]) {
+      await page.goto(new URL("hookhavok/?mute", base).href);
+      const main = page.locator(".fui-main-menu");
+      if (kind === "join") {
+        await main.getByRole("button", { name: "Play", exact: true }).click();
+        await main
+          .getByRole("button", { name: "Join room", exact: true })
+          .click();
+      } else {
+        await main
+          .getByRole("button", {
+            name: kind === "help" ? "How to play" : "Player options",
+            exact: true,
+          })
+          .click();
+      }
+      const sheet = page.locator(`#entrance-${kind}[open]`);
+      for (const size of sizes) {
+        await page.setViewportSize(size);
+        await sheet.locator("p").last().scrollIntoViewIfNeeded();
+        assert.ok(
+          await sheet
+            .getByRole("button", { name: "Back", exact: true })
+            .evaluate((button) => {
+              const rect = button.getBoundingClientRect();
+              return (
+                rect.left >= 0 &&
+                rect.right <= innerWidth &&
+                rect.top >= 0 &&
+                rect.bottom <= innerHeight
+              );
+            }),
+          `Hook Havok ${kind} keeps Back in reach at ${size.width}px`,
+        );
+      }
+      await sheet.getByRole("button", { name: "Back", exact: true }).click();
+      assert.equal(await sheet.count(), 0);
+    }
+    await context.close();
+  }
+  console.log(
+    "Responsive real flows: Fusemania actions/options, Graveyard Shift pads, Riders rotation/menu and Fusetown menu backing pass with mouse and emulated touch.",
+  );
+} finally {
+  await browser.close();
+  await server?.stop();
+}

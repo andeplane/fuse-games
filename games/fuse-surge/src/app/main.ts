@@ -1,4 +1,9 @@
-import { createResultsScreen, createTopBar, requestedRoomSlot } from "fuse-ui";
+import {
+  createHowToPlay,
+  createResultsScreen,
+  createTopBar,
+  requestedRoomSlot,
+} from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import "fuse-ui/social.css";
 import {
@@ -290,10 +295,7 @@ function header(
 }
 
 function keyHelp(): HTMLElement {
-  const list = el("dl", "", "fs-keys");
-  for (const hint of GUIDE.controls)
-    list.append(el("dt", hint.keys), el("dd", hint.action));
-  return list;
+  return createHowToPlay(GUIDE);
 }
 
 type SettingKey = Exclude<keyof Settings, "display">;
@@ -407,6 +409,7 @@ function landing(): void {
   const card = createLandingCard({
     background: attractIn,
     title: "FUSE SURGE",
+    howToPlay: GUIDE,
     tagline:
       "Surges sweep the deck, faster and faster. Jump the low ones, duck the high ones: every hit throws you a step toward the pit. Two to five riders: friends online, on one TV with phones as pads, or bots.",
     soloText: "PLAY SOLO VS BOTS",
@@ -446,7 +449,6 @@ function landing(): void {
     createLookPicker(),
   );
   card.menu.addSettings(rules);
-  card.menu.help.append(keyHelp());
   const back = el("a", "← ALL GAMES", "fs-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(GUIDE);
