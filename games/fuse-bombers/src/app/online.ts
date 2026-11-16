@@ -114,6 +114,11 @@ function page(
 /** The first screen: create or join a room, play against bots, or everyone at this screen (the local lobby). */
 export function showLanding(store: Store, error = "", audio?: GameAudio): void {
   const card = ui.createLandingCard({
+    howToPlay: {
+      goal: GOAL,
+      controls: ONLINE_CONTROLS,
+      touchControls: TOUCH_CONTROLS,
+    },
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE BOMBERS",
@@ -145,12 +150,6 @@ export function showLanding(store: Store, error = "", audio?: GameAudio): void {
   local.onclick = () => go("local");
   card.solo?.after(local);
   card.error.textContent = error;
-  card.menu.help.append(
-    el(
-      "p",
-      "Your gunship flies around its castle while the launcher rotates. Press to fire toward the other castles. Dodge enemy shots and be the last castle standing. Use the same fire button on a keyboard or phone.",
-    ),
-  );
   page(audio, card.element);
 }
 

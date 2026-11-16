@@ -305,6 +305,64 @@ test("a peer on other rules is refused, and the text says which side is out of d
   assert.equal(rulesAge("counter-3", 3), "unknown");
 });
 
+test("solo lobby settles seat requests before accepting the next move", () => {
+  let now = 0,
+    loop: (() => void) | undefined;
+  const runtime = new CounterRuntime(
+    counterGame,
+    "SOLO",
+    { target: 5 },
+    { state: () => {}, event: () => {}, status: () => {}, ready: () => {} },
+    {
+      autoStartSolo: false,
+      humanName: "Ada",
+      dependencies: {
+        now: () => now,
+        hidden: () => false,
+        token: () => "match",
+        generation: () => 1,
+        schedule: (callback) => {
+          loop = callback;
+          return () => (loop = undefined);
+        },
+        onVisibilityChange: () => () => {},
+      },
+    },
+  );
+  const advance = () => {
+    for (let step = 0; step < 30; step++) {
+      now += 10;
+      loop!();
+    }
+  };
+  runtime.start();
+  try {
+    assert.equal(room(runtime).stage, "lobby");
+    assert.equal(runtime.command({ type: "join", name: "Ada", slot: 3 }), true);
+    assert.equal(
+      room(runtime).seats.get("solo")?.slot,
+      0,
+      "queued is not applied",
+    );
+    assert.equal(
+      runtime.command({ type: "join", name: "Ada", slot: 0 }),
+      false,
+    );
+    advance();
+    assert.equal(room(runtime).seats.get("solo")?.slot, 3);
+    assert.equal(runtime.command({ type: "join", name: "Ada", slot: 0 }), true);
+    advance();
+    assert.equal(room(runtime).seats.get("solo")?.slot, 0);
+    assert.equal(
+      room(runtime).seats.size,
+      2,
+      "moves preserve the human and bot roster",
+    );
+  } finally {
+    runtime.stop();
+  }
+});
+
 test("solo seats the player and the game's bots and starts at once", () => {
   let now = 0,
     loop: (() => void) | undefined;

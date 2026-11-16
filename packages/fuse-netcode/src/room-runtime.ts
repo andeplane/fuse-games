@@ -1489,6 +1489,21 @@ export class RoomRuntime<
           this.status.recurring(this.solo ? this.text.solo : this.lagging(now));
       }
     }
+    // Admission is a log outcome in solo rooms too. A completed local move must release
+    // the pending request before the next seat choice; only network requests need retries.
+    if (this.pendingJoin) {
+      const own = this.game.seat(world.state, this.id),
+        admitted =
+          own?.connected === true &&
+          (own.watcher === true) === this.pendingJoin.spectator &&
+          (this.pendingJoin.spectator ||
+            this.pendingJoin.slot === undefined ||
+            own.slot === this.pendingJoin.slot ||
+            this.game.stage(world.state) !== "lobby") &&
+          (!this.pendingJoin.rename ||
+            own.name === this.game.seating.seatName(this.pendingJoin.name));
+      if (admitted) this.pendingJoin = undefined;
+    }
     if (this.transport) {
       const own = this.game.seat(world.state, this.id);
       if (
@@ -1513,21 +1528,8 @@ export class RoomRuntime<
       this.lastLoopAt = now;
       const player = this.player();
       if (player && !player.connected) this.absentControls();
-      if (this.pendingJoin) {
-        const own = this.game.seat(world.state, this.id),
-          admitted =
-            own?.connected === true &&
-            (own.watcher === true) === this.pendingJoin.spectator &&
-            // A seat it asked for by number is the seat it waits for: a move is not done while it holds the old one.
-            (this.pendingJoin.spectator ||
-              this.pendingJoin.slot === undefined ||
-              own.slot === this.pendingJoin.slot ||
-              this.game.stage(world.state) !== "lobby") &&
-            (!this.pendingJoin.rename ||
-              own.name === this.game.seating.seatName(this.pendingJoin.name));
-        if (admitted) this.pendingJoin = undefined;
-        else if (now - this.pendingJoin.sentAt > JOIN_RETRY_MS) this.sendJoin();
-      }
+      if (this.pendingJoin && now - this.pendingJoin.sentAt > JOIN_RETRY_MS)
+        this.sendJoin();
       const full =
         this.options.displayOnly === true ||
         !this.game.seating.sharedScreen(this.game.settings(world.state)) ||

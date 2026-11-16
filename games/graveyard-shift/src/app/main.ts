@@ -1,4 +1,4 @@
-import { createTopBar } from "fuse-ui";
+import { createTopBar, createHowToPlay, type HowToPlayOptions } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -152,12 +152,30 @@ function header(extra: HTMLElement[] = [], leave?: () => void) {
     },
   });
 }
+const HOW_TO_PLAY: HowToPlayOptions = {
+  goal: "Bank the most ghost energy at the shrines in 90 seconds. Only banked energy counts; equal scores share placement.",
+  controls: [
+    { keys: "WASD / arrows", action: "Move" },
+    {
+      keys: "J / left mouse",
+      action: "Hold to vacuum a ghost in front of you",
+    },
+    { keys: "Space / K", action: "Pulse to disrupt nearby rivals" },
+  ],
+  touchControls: [
+    { keys: "Direction pad", action: "Hold to move" },
+    { keys: "Action buttons", action: "Vacuum ghosts or send a pulse" },
+  ],
+  rules: [
+    "Carry up to five ghosts. Stand still at a gold shrine for 1.25 seconds to bank them; moving interrupts delivery.",
+  ],
+};
 function handbook() {
   const d = el("dialog", "", "handbook");
   d.append(
     el("p", "FIELD GUIDE / 01", "eyebrow"),
     el("h2", "Your first night"),
-    el("p", "90 seconds. Two shrines. Only banked energy counts."),
+    createHowToPlay(HOW_TO_PLAY),
   );
   const steps = [
     [
@@ -226,6 +244,7 @@ function landing() {
   hero.classList.add("fui-menu-stage");
   art.classList.add("fui-menu-scene");
   const card = createLandingCard({
+    howToPlay: HOW_TO_PLAY,
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "GRAVEYARD SHIFT",
@@ -241,7 +260,7 @@ function landing() {
     valid: validRoomCode,
     onJoin: (code) => navigate(`?room=${code}`),
   });
-  const guide = button("HOW TO PLAY", "guide");
+  const guide = button("FIELD GUIDE", "guide");
   guide.onclick = handbook;
   card.menu.help.append(
     guide,

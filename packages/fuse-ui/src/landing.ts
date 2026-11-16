@@ -72,6 +72,7 @@ export function createJoinByCode(options: JoinByCodeOptions): JoinByCode {
 }
 
 export interface LandingOptions {
+  howToPlay?: import("./main-menu.js").MainMenuOptions["howToPlay"];
   settingsScope?: SettingsScope;
   background?: AttractFactory;
   /** The game's name, the card's heading. */
@@ -178,6 +179,7 @@ export function createLandingCard(options: LandingOptions): LandingCard {
     title: options.title,
     settingsScope: options.settingsScope,
     description: options.tagline,
+    howToPlay: options.howToPlay,
     play: element,
     onPlay: runCreate,
     onSinglePlayer: options.onSolo,

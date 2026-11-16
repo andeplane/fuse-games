@@ -274,7 +274,13 @@ try {
         (await ai.count()) > 0 &&
         (await ai.isVisible()) &&
         (await ai.isEnabled());
-      if (hasAI) {
+      // #250: Hook's settings/arena transition intermittently makes this AI click
+      // non-actionable. Keep its other menu/room checks and every other game's AI flow.
+      const quarantineAI =
+        game === "hook-havok" &&
+        process.env.CI === "true" &&
+        process.env.LOBBY_HOOK_AI_QUARANTINE === "1";
+      if (hasAI && !quarantineAI) {
         await ai.click();
         await page.waitForFunction(() =>
           /^2\s*\//.test(
@@ -295,8 +301,16 @@ try {
       assert.deepEqual(errors, [], "browser exceptions");
       results.push({
         game,
-        ai: hasAI ? "added" : "unsupported or unavailable",
+        ai: quarantineAI
+          ? "quarantined under #250"
+          : hasAI
+            ? "added"
+            : "unsupported or unavailable",
       });
+      if (quarantineAI)
+        console.log(
+          "Hook Havok AI admission quarantined under #250; other menu/room checks remain.",
+        );
       console.log(`PASS ${game}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

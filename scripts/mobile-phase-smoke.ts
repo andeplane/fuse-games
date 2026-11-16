@@ -2,6 +2,7 @@ import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
+import { returnToSoloLobby } from "./lib/solo-lobby.js";
 // #13: a joined phone shows one controller presentation (invisible arcade regions, hint labels, ☰ MENU pill) in countdown, playing and matchOver.
 // #134: the lobby is a phone screen instead — riders, START RACE and one menu on screen in both orientations, no controls, no rotate gate.
 const base = process.env.HOME_URL ?? "http://127.0.0.1:4188/";
@@ -138,9 +139,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     );
     const seen: Record<string, unknown> = {};
     await tools(true);
-    await page
-      .getByRole("button", { name: "BACK TO LOBBY", exact: true })
-      .click();
+    await returnToSoloLobby(page, kind);
     await notice(/^Choose your rivals/);
     await lobbyScreen("landscape lobby");
     await page.screenshot({ path: `artifacts/mobile-phase-lobby-${name}.png` });

@@ -118,6 +118,21 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 
 function landing(): void {
   const card = createLandingCard({
+    howToPlay: {
+      goal: "Race through every checkpoint in order to finish your laps.",
+      controls: [
+        { keys: "A / ←", action: "Steer left" },
+        { keys: "D / →", action: "Steer right" },
+        { keys: "S / ↓", action: "Brake" },
+        { keys: "Shift", action: "Nitro" },
+        { keys: "Space", action: "Use item" },
+        { keys: "↓ + Space", action: "Alternate item action" },
+      ],
+      touchControls: [
+        { keys: "LEFT / RIGHT", action: "Steer" },
+        { keys: "ITEM / NITRO", action: "Use an item or nitro" },
+      ],
+    },
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE DRIVERS",
@@ -142,12 +157,6 @@ function landing(): void {
       location.href = endpoints.appUrl(`?room=${code}`);
     },
   });
-  card.menu.help.append(
-    el(
-      "p",
-      "Choose a truck slot, add AI or invite friends, then start the race. Drive with the on-screen controls or a controller. Race through every checkpoint in order to finish your laps.",
-    ),
-  );
   app.replaceChildren(header(), card.element);
 }
 

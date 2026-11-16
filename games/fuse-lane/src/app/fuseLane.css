@@ -1,6 +1,9 @@
 /* The Fuse Lane page: a full-screen city diorama with a slim glass HUD over its edges, and paper panels that open in
    the middle of the board. Warm, tactile and modern: soft shadows, raised buttons, rounded type (Nunito). fuse-ui's
    tokens are re-pointed at this palette, so its lobby pieces follow. Phone first; `.compact` is the tall phone board. */
+body.fl-page .fui-main-menu {
+  --fui-dialog-bar-fill: var(--fl-paper-2);
+}
 body.fl-page {
   --fl-ink: #1d2733;
   --fl-ink-soft: #5b6674;

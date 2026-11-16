@@ -120,6 +120,11 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 
 function landing(): void {
   const card = createLandingCard({
+    howToPlay: {
+      goal: GOAL,
+      controls: CONTROLS,
+      touchControls: TOUCH_CONTROLS,
+    },
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "ROLL OR HOLD",

@@ -8,6 +8,7 @@ import { menuKeys } from "./menu-keys.js";
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
 import { mountAttract, type AttractFactory } from "./attract.js";
+import { createHowToPlay, type HowToPlayOptions } from "./how-to-play.js";
 
 export const VIBE_CODING_GANG = [
   "Anders Hafreager",
@@ -25,7 +26,7 @@ export interface MainMenuOptions {
   description?: string;
   /** Existing create/join/solo/local controls, with their original handlers. */
   play: HTMLElement;
-  howToPlay?: readonly Node[];
+  howToPlay?: readonly Node[] | HowToPlayOptions | (() => HowToPlayOptions);
   settings?: readonly Node[];
   /** Host room invokes the game's existing room-creation command. */
   onPlay?: () => Promise<void> | void;
@@ -97,16 +98,27 @@ export function createMainMenu(options: MainMenuOptions) {
   const error = el("p", "", "fui-menu-error", doc);
   error.setAttribute("role", "alert");
   const help = el("div", "", "fui-menu-help", doc);
+  const helpOptions =
+    typeof options.howToPlay === "function"
+      ? options.howToPlay()
+      : options.howToPlay;
   help.append(
-    ...(options.howToPlay ?? [
-      el(
-        "p",
-        options.description ??
-          "Choose Play, join a slot, then start the game with your friends.",
-        "",
-        doc,
-      ),
-    ]),
+    ...(helpOptions && !Array.isArray(helpOptions)
+      ? [
+          createHowToPlay({
+            ...(helpOptions as HowToPlayOptions),
+            document: doc,
+          }),
+        ]
+      : ((helpOptions as readonly Node[] | undefined) ?? [
+          el(
+            "p",
+            options.description ??
+              "Choose Play, join a slot, then start the game with your friends.",
+            "",
+            doc,
+          ),
+        ])),
   );
   const settings = el("div", "", "fui-menu-settings", doc);
   const dialog = createDialog({ title: options.title, document: doc });
@@ -245,6 +257,10 @@ export function createMainMenu(options: MainMenuOptions) {
   };
   how.onclick = () => {
     returnFocus = how;
+    if (typeof options.howToPlay === "function")
+      help.replaceChildren(
+        createHowToPlay({ ...options.howToPlay(), document: doc }),
+      );
     options.onHowToPlay ? options.onHowToPlay() : open("How to play", [help]);
   };
   about.onclick = () => {
