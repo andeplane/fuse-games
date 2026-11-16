@@ -263,7 +263,7 @@
   align-items: center;
   gap: var(--fui-space-3);
   padding: var(--fui-space-3) var(--fui-space-4);
-  background: #102039;
+  background: var(--fui-dialog-bar-fill, #102039);
   border-bottom: 0.0625rem solid #334965;
 }
 .fui-dialog-title {
@@ -516,6 +516,27 @@
 .fui-controls-row dd {
   margin: 0;
 }
+.fui-how-to-play {
+  color: var(--fui-text-bright);
+  display: grid;
+  gap: 1rem;
+  max-width: 70ch;
+}
+.fui-how-to-play h3 {
+  margin: 0.75rem 0 0;
+}
+.fui-how-to-play p,
+.fui-how-to-play ul {
+  margin: 0;
+  line-height: 1.6;
+}
+.fui-controls-row kbd {
+  font: inherit;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  overflow-wrap: anywhere;
+}
 .fui-round-controls {
   position: absolute;
   z-index: 20;
@@ -762,7 +783,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #101f35;
+  background: var(--fui-dialog-bar-fill, #101f35);
   padding: 12px 16px;
 }
 .fui-menu-dialog .fui-dialog-body {

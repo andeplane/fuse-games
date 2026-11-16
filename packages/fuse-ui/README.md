@@ -1,5 +1,20 @@
 # fuse-ui
 
+### How to Play
+
+Pass structured instructions to `createLandingCard` or `createMainMenu`:
+
+```ts
+howToPlay: () => ({
+  goal: GOAL,
+  controls: currentControls(), // same definitions used by the running game
+  touchControls: TOUCH_CONTROLS,
+  rules: ["Choose your equipment before starting."],
+});
+```
+
+`createHowToPlay` renders the same content for custom guides. The shared menu owns the dialog and Back/Escape behavior. A factory refreshes configurable bindings each time help opens. Pointer games may set `controlsTitle: "Mouse & touch"` and `keycaps: false`. Every playable game needs real controls and a goal; a marketing description alone is insufficient. Both keyboard and touch instructions remain discoverable on any device.
+
 `fuse-ui/modal-input` provides `createModalInputGate({ isOpen, observe, cancel })` for game input boundaries.
 Supply native dialog observation and the game's cancellation callback; cancel held controls when a dialog opens,
 and check `blocked()` before dispatching gameplay keys or pointer inputs. Dispose the observer with the game.

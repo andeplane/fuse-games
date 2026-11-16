@@ -18,9 +18,22 @@
   "smokes": [
     {
       "id": "game-lobbies",
+      "batch": "shared-menus",
       "group": "game-lobbies",
       "name": "Shared main menus and rooms in every game",
       "command": "pnpm exec tsx scripts/game-lobbies-smoke.ts",
+      "browsers": ["chrome"],
+      "env": { "LOBBY_HOOK_AI_QUARANTINE": "1" },
+      "serviceUrlEnv": "ONLINE_URL",
+      "timeoutMinutes": 10,
+      "retries": 0
+    },
+    {
+      "id": "how-to-play",
+      "batch": "shared-menus",
+      "group": "how-to-play",
+      "name": "Shared How to Play controls and navigation",
+      "command": "pnpm exec tsx scripts/how-to-play-smoke.ts",
       "browsers": ["chrome"],
       "env": {},
       "serviceUrlEnv": "ONLINE_URL",
@@ -210,7 +223,7 @@
       "name": "Shared QR lobby and room termination regression",
       "command": "pnpm exec tsx scripts/shared-room-smoke.ts",
       "browsers": ["chromium", "webkit"],
-      "env": {},
+      "env": { "SHARED_WEBKIT_PEER_QUARANTINE": "1" },
       "serviceUrlEnv": "ONLINE_URL",
       "timeoutMinutes": 25,
       "retries": 1

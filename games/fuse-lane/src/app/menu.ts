@@ -1,4 +1,5 @@
-import { button, el, createMainMenu } from "fuse-ui";
+import { button, el, createMainMenu, createHowToPlay } from "fuse-ui";
+import { TOWN_CONTROLS, TOWN_GOAL } from "./control-guide.js";
 import {
   AVATARS,
   CAPACITY,
@@ -504,7 +505,15 @@ export function createMenu(options: MenuOptions): HTMLElement {
           },
         }
       : {}),
-    howToPlay: [hero],
+    howToPlay: [
+      createHowToPlay({
+        goal: TOWN_GOAL,
+        controls: TOWN_CONTROLS,
+        keycaps: false,
+        controlsTitle: "Mouse & touch",
+      }),
+      hero,
+    ],
   });
   return menu.element;
 }

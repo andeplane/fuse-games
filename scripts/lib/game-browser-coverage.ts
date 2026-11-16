@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
+import { gamePagePath } from "../../packages/fuse-ui/src/game-path.js";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 interface SourceMap {
@@ -19,11 +20,17 @@ export interface GameCoverageOptions {
 }
 
 /** Vite serves game pages through source paths and public game aliases. */
-export function gameSourcePath(pathname: string): string | undefined {
+export function gameSourcePath(
+  pathname: string,
+  gameId?: string,
+): string | undefined {
   const match = /^\/(?:games\/)?([a-z][a-z0-9-]*)\/src\/(.+\.ts)$/.exec(
     pathname,
   );
-  return match ? `/games/${match[1]}/src/${match[2]}` : undefined;
+  if (!match) return undefined;
+  const id =
+    gameId && `${match[1]}/` === gamePagePath(gameId) ? gameId : match[1];
+  return `/games/${id}/src/${match[2]}`;
 }
 
 /** Native Chromium ranges, remapped only after checking the exact source Vite executed. */
@@ -42,6 +49,7 @@ export async function startGameCoverage(
     for (const entry of entries) {
       const pathname = gameSourcePath(
         decodeURIComponent(new URL(entry.url || "about:blank").pathname),
+        options.gameId,
       );
       if (
         !pathname ||
@@ -67,7 +75,7 @@ export async function startGameCoverage(
       const gameRoot = resolve(root, pathname.split("/").slice(1, 4).join("/"));
       map.sources = await Promise.all(
         map.sources.map(async (source, index) => {
-          const canonical = gameSourcePath(source);
+          const canonical = gameSourcePath(source, options.gameId);
           const path = canonical
             ? resolve(root, `.${canonical}`)
             : resolve(dirname(generated), source);
