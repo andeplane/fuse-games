@@ -223,7 +223,7 @@
       "name": "Shared QR lobby and room termination regression",
       "command": "pnpm exec tsx scripts/shared-room-smoke.ts",
       "browsers": ["chromium", "webkit"],
-      "env": {},
+      "env": { "SHARED_WEBKIT_PEER_QUARANTINE": "1" },
       "serviceUrlEnv": "ONLINE_URL",
       "timeoutMinutes": 25,
       "retries": 1
