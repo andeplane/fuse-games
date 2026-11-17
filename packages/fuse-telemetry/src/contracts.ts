@@ -6,10 +6,16 @@ export interface TelemetryEvent {
   gameId: string;
   /** Anonymous browser installation, never an account/email or claimed unique person. */
   userId: string;
+  /** Claimed enqueue-time account; stored attribution is independently verified by the server. */
+  accountUid?: string;
   sessionId: string;
   name: string;
   occurredAt: number;
   properties: Record<string, TelemetryProperty>;
+}
+export interface TelemetryAccount {
+  uid: string;
+  name: string;
 }
 export interface TelemetryEventsRequest {
   events: TelemetryEvent[];

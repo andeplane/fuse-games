@@ -109,6 +109,9 @@ for (let day = 13; day >= 0; day--)
           id: randomUUID(),
           gameId,
           userId,
+          ...(process.argv.includes("--accounts") && playerIndex < 3
+            ? { accountUid: `preview-player-${playerIndex}` }
+            : {}),
           sessionId,
           name: `fuse.${name}`,
           occurredAt: at + index * 1000,
@@ -116,6 +119,14 @@ for (let day = 13; day >= 0; day--)
         })),
       },
       `preview-${day}-${playerIndex}`,
+      process.argv.includes("--accounts") && playerIndex < 3
+        ? {
+            uid: `preview-player-${playerIndex}`,
+            name: ["Preview Alex", "Preview Morgan", "Preview Sam"][
+              playerIndex
+            ]!,
+          }
+        : undefined,
     );
   }
 const server = await createServer({

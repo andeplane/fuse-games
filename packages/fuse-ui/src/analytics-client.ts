@@ -19,6 +19,7 @@ const SHARED_PLAY_SCOPE =
 const FORBIDDEN =
   /^(?:gameId|userId|sessionId|room|roomCode|matchId|playerId|playerName|name|email|url|token|authorization|password)$/i;
 export interface DeliveryEnvironment {
+  accountUid?(): Promise<string | undefined>;
   /** One-way, domain-separated play correlation. Never returns the original simulation scope. */
   correlate?(scope: string): Promise<string>;
   storage: SafeStorage;
@@ -28,6 +29,26 @@ export interface DeliveryEnvironment {
   /** Serializes persisted mutations across same-origin tabs. Network requests never hold this lock. */
   exclusive<T>(operation: () => Promise<T>): Promise<T>;
   send(events: TelemetryEvent[], enabled: () => boolean): Promise<string[]>;
+}
+/** Standard crypto is supplied at the browser boundary; unsupported hashing leaves ordinary metrics usable. */
+export function createPlayCorrelation(
+  subtle: Pick<SubtleCrypto, "digest"> | undefined,
+): NonNullable<DeliveryEnvironment["correlate"]> {
+  return async (scope) => {
+    if (!subtle) throw new Error("Play correlation unavailable");
+    const bytes = new Uint8Array(
+      await subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(`fuse-play-v1:${scope}`),
+      ),
+    );
+    return `p_${Array.from(bytes.slice(0, 16), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    )
+      .join("")
+      .match(/.{8}/g)!
+      .join("-")}`;
+  };
 }
 export function boundedProperties(
   properties: Record<string, unknown>,
@@ -80,6 +101,9 @@ export function createAnalyticsDelivery(
             UUID.test(event.id) &&
             typeof event.userId === "string" &&
             UUID.test(event.userId) &&
+            (event.accountUid === undefined ||
+              (typeof event.accountUid === "string" &&
+                /^[A-Za-z0-9_-]{1,128}$/.test(event.accountUid))) &&
             typeof event.sessionId === "string" &&
             UUID.test(event.sessionId) &&
             typeof event.gameId === "string" &&
@@ -107,8 +131,10 @@ export function createAnalyticsDelivery(
       ANALYTICS_QUEUE_KEY,
       JSON.stringify(events.slice(-MAX_QUEUED_EVENTS)),
     );
-  const locked = (operation: () => Promise<void>) => {
+  const locked = (operation: () => Promise<void>, ready?: Promise<unknown>) => {
     pending = pending
+      // Restoring account state can load the SDK; never hold a cross-tab lock for that.
+      .then(() => ready)
       .then(() => environment.exclusive(operation))
       .catch(() => undefined);
   };
@@ -210,9 +236,12 @@ export function createAnalyticsDelivery(
         return;
       const id = environment.uuid(),
         occurredAt = now();
+      // Capture before waiting for the shared outbox lock; never assign the send-time account.
+      const account = environment.accountUid?.().catch(() => undefined);
       locked(async () => {
         if (!enabled()) return;
         const identity = session();
+        const accountUid = await account;
         if (localScope) {
           if (localScope.key.length > 512) return;
           let ledger: string[] = [];
@@ -279,13 +308,14 @@ export function createAnalyticsDelivery(
             id,
             gameId,
             ...identity,
+            ...(accountUid ? { accountUid } : {}),
             name,
             occurredAt,
             properties: { ...dimensions, ...context },
           },
         ]);
         schedule();
-      });
+      }, account);
     },
     touch() {
       if (now() - touchedAt < 30000) return;

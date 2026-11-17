@@ -7,6 +7,7 @@ import type {
   MetricsResponse,
   MetricsRow,
   TelemetryEvent,
+  TelemetryAccount,
   TelemetryEventsResponse,
   TelemetryProperty,
 } from "./contracts.js";
@@ -96,6 +97,7 @@ export function parseTelemetryEvents(
             "id",
             "gameId",
             "userId",
+            "accountUid",
             "sessionId",
             "name",
             "occurredAt",
@@ -103,6 +105,10 @@ export function parseTelemetryEvents(
           ].includes(key),
       ) ||
       e.v !== 1 ||
+      (e.accountUid !== undefined &&
+        (typeof e.accountUid !== "string" ||
+          !/^[A-Za-z0-9_-]{1,128}$/.test(e.accountUid) ||
+          /^__.*__$/.test(e.accountUid))) ||
       ![e.id, e.userId, e.sessionId].every(
         (id) => typeof id === "string" && UUID.test(id),
       ) ||
@@ -145,6 +151,7 @@ export function parseTelemetryEvents(
       id: String(e.id).toLowerCase(),
       gameId: e.gameId,
       userId: String(e.userId).toLowerCase(),
+      ...(typeof e.accountUid === "string" ? { accountUid: e.accountUid } : {}),
       sessionId: String(e.sessionId).toLowerCase(),
       name: e.name,
       occurredAt: Number(e.occurredAt),
@@ -269,6 +276,8 @@ export class MetricsStore {
   async ingest(
     body: unknown,
     address: string,
+    attribution?:
+      TelemetryAccount | (() => Promise<TelemetryAccount | undefined>),
   ): Promise<TelemetryEventsResponse> {
     const now = this.now(),
       events = parseTelemetryEvents(body, this.games, now);
@@ -306,16 +315,29 @@ export class MetricsStore {
       })),
     ];
     await this.quota.consume(charges);
+    const account = events.some((event) => event.accountUid)
+      ? typeof attribution === "function"
+        ? await attribution()
+        : attribution
+      : undefined;
     const acknowledgedIds: string[] = [];
     // Separate bounded transactions allow a full batch without exceeding Firestore's transaction write limits.
     // If interrupted, retrying the same IDs acknowledges already accepted events without recounting them.
     for (const event of events) {
-      await this.accept(event, now);
+      await this.accept(
+        event,
+        now,
+        event.accountUid === account?.uid ? account : undefined,
+      );
       acknowledgedIds.push(event.id);
     }
     return { acknowledgedIds };
   }
-  private async accept(event: TelemetryEvent, now: number): Promise<void> {
+  private async accept(
+    event: TelemetryEvent,
+    now: number,
+    account?: TelemetryAccount,
+  ): Promise<void> {
     const eventKey = `telemetry-events/${event.id}`;
     const fingerprint = hash(JSON.stringify(event));
     const shard =
@@ -361,6 +383,7 @@ export class MetricsStore {
       // its final admissible retry, so TTL can never remove the dedupe key while delivery is valid.
       tx.set(eventKey, {
         ...event,
+        ...(account ? { account } : {}),
         receivedAt: now,
         expiresAt: Math.max(now, event.occurredAt) + EVENT_RETENTION + 1,
         fingerprint,

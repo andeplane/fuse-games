@@ -108,8 +108,10 @@ This code verifies Firebase's Google provider and recent authentication only; it
 does not establish a managed domain, require MFA, or prove an MFA challenge.
 Those controls and their verification belong to the identity administrator.
 
-Metrics use anonymous browser installation IDs and inactivity-based sessions,
-not verified people. Weekly/monthly unique counts use membership sets rather
+Metrics count browser installation IDs and inactivity-based sessions. New
+signed-in events also show the server-verified account username; account ID and
+username filters follow that account across browsers and games. Guests and old
+events keep browser labels. Weekly/monthly unique counts use membership sets rather
 than summed daily totals. Round plays count participating browsers at actual
 play, excluding spectators/countdowns. See [ANALYTICS.md](ANALYTICS.md).
 

@@ -40,6 +40,9 @@ test("real workspace composes autocomplete, game/song/player/session drilldowns 
         v: 1,
         id,
         userId,
+        ...(!index
+          ? { account: { uid: "test-player", name: "Test Player" } }
+          : {}),
         sessionId: index ? randomUUID() : session,
         gameId: "fusemania",
         name: "fuse.Round Started",
@@ -127,12 +130,22 @@ test("real workspace composes autocomplete, game/song/player/session drilldowns 
       root.querySelector(".view-content")?.getAttribute("aria-busy") ===
       "false",
   );
-  click(root, `Browser ${player.slice(0, 8)}`);
+  assert.ok(
+    root.textContent?.includes(`Browser ${other.slice(0, 8)}`),
+    "guest browser labels remain visible alongside accounts",
+  );
+  assert.ok(
+    (root.textContent?.match(/Test Player/g) ?? []).length >= 2,
+    "player and participant cells both show the account name",
+  );
+  click(root, "Test Player");
   await settled(
     () =>
       queries
         .at(-1)
-        ?.filters.groups[0]?.some((rule) => rule.field === "userId") === true,
+        ?.filters.groups[0]?.some(
+          (rule) => rule.field === "accountId" && rule.value === "test-player",
+        ) === true,
   );
   await settled(
     () =>

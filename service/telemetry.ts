@@ -75,6 +75,9 @@ import {
 import type { ActionDatabase } from "fuse-telemetry/action-store";
 import type { TranscriptActionSegment } from "fuse-telemetry/action-contracts";
 import { telemetryConfiguration } from "./telemetry-config.js";
+import { platform } from "./history.js";
+import { parseAccount } from "fuse-platform";
+import type { TelemetryAccount } from "fuse-telemetry/contracts";
 
 /** Namespaces owned by developer insights, leaving other /api/dev extensions alone. */
 const isDeveloperInsightsPath = (path: string): boolean =>
@@ -86,6 +89,7 @@ export interface TelemetryServicesOptions {
   gameIds: readonly string[];
   developer: DeveloperVerifier;
   identity?: IdentityVerifier;
+  analyticsAccount?(token: string): Promise<TelemetryAccount | undefined>;
   metricsDatabase: TelemetryDatabase;
   debugDatabase: DebugDatabase;
   actionDatabase: ActionDatabase;
@@ -257,6 +261,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
   const routes = composeHttp(
     createMetricsHttp({
       metrics,
+      account: options.analyticsAccount,
       developer: options.developer,
       sessions: new MetricsSessions(options.rateLimitKey, quota, now),
       security,
@@ -421,6 +426,30 @@ export const telemetryUnavailable: HttpExtension = {
   },
 };
 
+export interface AnalyticsProfiles {
+  doc(uid: string): {
+    get(): Promise<{ data(): Record<string, unknown> | undefined }>;
+  };
+}
+/** Resolve names exclusively from the verified account's server-owned profile. */
+export function createAnalyticsAccountResolver(
+  verify: IdentityVerifier,
+  profiles: AnalyticsProfiles,
+): NonNullable<TelemetryServicesOptions["analyticsAccount"]> {
+  return async (token) => {
+    const uid = await verify(token);
+    if (!uid) return undefined;
+    const account = parseAccount(
+      platform,
+      (await profiles.doc(uid).get()).data() ?? {},
+    );
+    return {
+      uid,
+      name: account.username ?? account.name ?? "Signed-in player",
+    };
+  };
+}
+
 export function createProductionTelemetry(options: {
   firestore: Firestore;
   prefix: string;
@@ -433,6 +462,9 @@ export function createProductionTelemetry(options: {
   // No ephemeral fallback in production: accepted screenshots must survive instance shutdown.
   if (!config.bucket)
     throw new Error("TELEMETRY_BUCKET is required when telemetry is enabled");
+  const verifyAccount = createIdentityVerifier(
+    options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
+  );
   const services = createTelemetryServices({
     gameIds: options.gameIds,
     developer: createDeveloperVerifier(
@@ -440,6 +472,10 @@ export function createProductionTelemetry(options: {
     ),
     identity: createIdentityVerifier(
       options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
+    ),
+    analyticsAccount: createAnalyticsAccountResolver(
+      verifyAccount,
+      options.firestore.collection(`${options.prefix}-users`),
     ),
     agentEmailAllowed: (email) => DEVELOPER_EMAILS.has(email),
     metricsDatabase: new FirestoreTelemetryDatabase(

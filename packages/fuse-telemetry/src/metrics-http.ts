@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { RoomError, type HttpExtension } from "fuse-network-be";
-import type { MetricsPeriod } from "./contracts.js";
+import type { MetricsPeriod, TelemetryAccount } from "./contracts.js";
 import {
   requireDeveloper,
   type DeveloperVerifier,
@@ -55,9 +55,11 @@ export function createMetricsHttp(options: {
   admission?: TelemetryAdmission;
   security?: DeveloperSecurityStore;
   developerPreAdmitted?: boolean;
+  account?(token: string): Promise<TelemetryAccount | undefined>;
 }): HttpExtension {
   const admission = options.admission ?? new TelemetryAdmission();
   return {
+    headers: ["X-Fuse-Identity"],
     async handle(req, res, address) {
       const url = new URL(req.url ?? "/", "http://telemetry");
       if (
@@ -85,8 +87,17 @@ export function createMetricsHttp(options: {
         if (url.pathname === "/api/telemetry/events") {
           if (req.method !== "POST") throw new RoomError(405, "Use POST");
           options.sessions.verify(req.headers.authorization);
+          const identity = req.headers["x-fuse-identity"];
+          const account =
+            typeof identity === "string" && identity.length <= 4096
+              ? () => options.account?.(identity) ?? Promise.resolve(undefined)
+              : undefined;
           json(
-            await options.metrics.ingest(await readTelemetryBody(req), address),
+            await options.metrics.ingest(
+              await readTelemetryBody(req),
+              address,
+              account,
+            ),
           );
           return;
         }

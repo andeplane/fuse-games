@@ -12,6 +12,8 @@ export const fieldLabel = (field: string) =>
     gameId: "Game",
     userId: "Player",
     sessionId: "Session",
+    accountId: "Account ID",
+    accountName: "Username",
   })[field] ?? field.replace(/^properties\./, "");
 let comboId = 0;
 export function gameAutocomplete(

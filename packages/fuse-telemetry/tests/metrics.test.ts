@@ -32,6 +32,57 @@ function setup() {
     ),
   };
 }
+test("account resolution follows validation and quotas, and mixed batches attribute only matching claims", async () => {
+  const db = new MemoryTelemetryDatabase();
+  let blocked = false,
+    lookups = 0;
+  const store = new MetricsStore(
+    db,
+    ["riders"],
+    {
+      consume: async () => {
+        if (blocked) throw new RoomError(429, "Limited");
+      },
+    },
+    () => NOW,
+  );
+  const resolve = async () => {
+    lookups++;
+    return { uid: "verified-player", name: "Player" };
+  };
+  await assert.rejects(
+    store.ingest({ events: [{ bad: true }] }, "test", resolve),
+  );
+  await store.ingest({ events: [event()] }, "test", resolve);
+  blocked = true;
+  await assert.rejects(
+    store.ingest(
+      { events: [event({ accountUid: "verified-player" })] },
+      "test",
+      resolve,
+    ),
+  );
+  assert.equal(
+    lookups,
+    0,
+    "invalid, anonymous and quota-rejected events never read the account profile",
+  );
+  blocked = false;
+  const batch = [
+    event({ accountUid: "verified-player" }),
+    event(),
+    event({ accountUid: "another-player" }),
+  ];
+  await store.ingest({ events: batch }, "test", resolve);
+  assert.equal(lookups, 1, "one profile lookup per mixed batch");
+  const stored = await db.readMany(
+    batch.map((value) => `telemetry-events/${value.id}`),
+  );
+  assert.deepEqual(
+    stored.map((value) => (value as { account?: unknown }).account),
+    [{ uid: "verified-player", name: "Player" }, undefined, undefined],
+  );
+});
 function event(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
   return {
     v: 1,

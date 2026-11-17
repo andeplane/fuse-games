@@ -9,6 +9,7 @@ import { MetricsStore } from "../src/metrics.js";
 import { MemoryTelemetryDatabase } from "../src/metrics-memory.js";
 import { SharedTelemetryQuota } from "../src/limits.js";
 import { MetricsSessions } from "../src/metrics-session.js";
+import { EventExplorer } from "../src/explorer.js";
 
 test("HTTP requires developer authentication for reads and bounds anonymous ingestion", async (context) => {
   const now = Date.parse("2026-11-14T12:00:00Z"),
@@ -25,6 +26,10 @@ test("HTTP requires developer authentication for reads and bounds anonymous inge
   );
   const http = createMetricsHttp({
     metrics,
+    account: async (token) =>
+      token === "player-token"
+        ? { uid: "player-1", name: "Test Player" }
+        : undefined,
     sessions: new MetricsSessions(
       "test-only-key-longer-than-32-bytes",
       new SharedTelemetryQuota(
@@ -121,4 +126,100 @@ test("HTTP requires developer authentication for reads and bounds anonymous inge
   const result = await (await fetch(base + query, { headers })).json();
   assert.equal(result.series[0].events, 1);
   assert.equal(result.partial, false);
+  assert.ok(http.headers?.includes("X-Fuse-Identity"));
+  const attributed = { ...e, id: randomUUID(), accountUid: "player-1" };
+  const sendAs = (event: object, identity?: string) =>
+    fetch(base + "/api/telemetry/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(identity ? { "X-Fuse-Identity": identity } : {}),
+      },
+      body: JSON.stringify({ events: [event] }),
+    });
+  assert.equal((await sendAs(attributed, "player-token")).status, 200);
+  // A retry after sign-out cannot change the accepted attribution or double-count.
+  assert.equal((await sendAs(attributed)).status, 200);
+  for (const [accountUid, identity] of [
+    ["another-player", "player-token"],
+    ["player-1", "forged"],
+    [undefined, "player-token"],
+    ["player-1", undefined],
+  ]) {
+    assert.equal(
+      (
+        await sendAs(
+          { ...e, id: randomUUID(), ...(accountUid ? { accountUid } : {}) },
+          identity,
+        )
+      ).status,
+      200,
+    );
+  }
+  assert.equal(
+    (
+      await sendAs(
+        {
+          ...attributed,
+          id: randomUUID(),
+          account: { uid: "player-1", name: "Spoof" },
+        },
+        "player-token",
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await sendAs(
+        { ...attributed, id: randomUUID(), accountUid: "../bad" },
+        "player-token",
+      )
+    ).status,
+    400,
+  );
+  const explorer = new EventExplorer(db, new Set(["riders"]), () => now);
+  const range = {
+    from: "2026-11-14",
+    to: "2026-11-14",
+    gameId: "",
+    filters: { groups: [] },
+  };
+  const events = await explorer.query(range);
+  assert.equal(events.events.length, 6);
+  assert.equal(events.events.filter((event) => event.accountId).length, 1);
+  assert.equal(
+    events.events.find((event) => event.id === attributed.id)?.accountName,
+    "Test Player",
+  );
+  assert.equal(
+    events.sessions.length,
+    2,
+    "account and guest observations stay separate on a shared browser session",
+  );
+  assert.equal(
+    (
+      await explorer.query({
+        ...range,
+        filters: {
+          groups: [[{ field: "accountId", operator: "eq", value: "player-1" }]],
+        },
+      })
+    ).events.length,
+    1,
+  );
+  assert.equal(
+    (
+      await explorer.query({
+        ...range,
+        filters: {
+          groups: [
+            [{ field: "accountName", operator: "contains", value: "Player" }],
+          ],
+        },
+      })
+    ).events.length,
+    1,
+  );
 });

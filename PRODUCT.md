@@ -12,7 +12,7 @@ Friends play Fuse Games alone or together, on individual devices or a shared TV 
 
 ## Product Purpose
 
-Make responsive, consistent games easy to play together. Give developers a navigable account of which games and rounds were played, by which anonymous browsers, and in which sessions.
+Make responsive, consistent games easy to play together. Give developers a navigable account of which games and rounds were played, by which signed-in accounts or guest browsers, and in which sessions.
 
 ## Capabilities and Constraints
 

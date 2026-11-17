@@ -263,7 +263,12 @@ test("workspace authenticates, provides numbered charts and accessible daily val
     f.root.querySelectorAll("figure details table tbody tr").length > 1,
   );
   assert.ok(f.root.querySelector("svg text")?.textContent === "0");
-  assert.ok(f.root.textContent?.includes("Anonymous browsers"));
+  assert.ok(f.root.textContent?.includes("Names identify verified accounts"));
+  assert.ok(
+    f.root.textContent?.includes(
+      "browser labels identify guests or older events",
+    ),
+  );
   click(f.root, "Reports");
   await settled(() => !!finishReports);
   f.logout();

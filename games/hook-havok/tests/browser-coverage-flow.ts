@@ -175,6 +175,18 @@ try {
   // Single player opens a room of one; the keeper enters once it takes a seat.
   await openPlayOptions(page, "single");
   await takeHostSeat(page, "Keeper");
+  if (nativeCoverage) {
+    // Exercise the real settings UI before play, when returning to the arena does
+    // not depend on a rendered manager/RESUME state (the #250 native stall).
+    await page
+      .getByRole("button", { name: "Room settings", exact: true })
+      .click();
+    await page.locator("#map").selectOption("spire");
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("dialog", { name: "Room settings", exact: true })
+      .waitFor({ state: "hidden" });
+  }
   // The room is a page over the arena: START begins the round and shows the arena.
   await page.getByRole("button", { name: "START", exact: true }).click();
   // The line itself is not shown over the full-screen arena; its state still says the room is playing.
@@ -202,20 +214,22 @@ try {
   initialTick =
     (await page.locator("#scene").getAttribute("data-tick")) ?? undefined;
   stage = "visible room controls select Neon Spire";
-  await openMenu(page);
-  await page
-    .getByRole("button", { name: "BACK TO LOBBY", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Room settings", exact: true })
-    .click();
-  await page.locator("#map").selectOption("spire");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "RESUME", exact: true }).click();
   // Native precise coverage left the simulation at log tick 183 against room tick 543 on main CI
   // (run 38647662723), so the applied map change never rendered within 30 s. Quarantined under
-  // flaky-test epic #250 only while collecting native coverage; ordinary runs keep both waits.
+  // flaky-test epic #250 only while collecting native coverage. Run 44129086984 also froze at
+  // tick 0/log 632: without the first shell update, manager status and RESUME stay hidden.
+  // Quarantine the dependent room/settings roundtrip too; ordinary runs keep the whole case.
   if (!nativeCoverage) {
+    await openMenu(page);
+    await page
+      .getByRole("button", { name: "BACK TO LOBBY", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Room settings", exact: true })
+      .click();
+    await page.locator("#map").selectOption("spire");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "RESUME", exact: true }).click();
     await page.getByText("NEON SPIRE", { exact: true }).waitFor();
     await page.waitForFunction(
       () =>
@@ -308,7 +322,7 @@ try {
   await finishCoverage();
   console.log(
     nativeCoverage
-      ? "PASS Hook: native coverage, real room, current bomb guide, menu focus restoration; charge/cancel/throw timing quarantined under #250; no page errors"
+      ? "PASS Hook: native coverage, real pre-play room settings, current bomb guide, menu focus restoration; in-play map/resume and charge/cancel/throw timing quarantined under #250; no page errors"
       : "PASS Hook: real room, current bomb guide, menu focus restoration, menu cancels charge, ordinary K release increments persistent throw tally; no page errors",
   );
 } catch (error) {
