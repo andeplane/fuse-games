@@ -245,7 +245,9 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         admissionStorage.setItem(admissionKey, session);
       }
       if (!enabled()) return [];
-      const account = await analyticsIdentity().catch(() => undefined);
+      // A transient token-refresh failure must retry, not permanently accept
+      // signed-in activity as anonymous. Guests/sign-out resolve undefined.
+      const account = await analyticsIdentity();
       if (!enabled()) return [];
       const response = await fetch(endpoints.apiUrl("/api/telemetry/events"), {
         method: "POST",
