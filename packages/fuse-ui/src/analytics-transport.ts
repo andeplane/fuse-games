@@ -1,13 +1,11 @@
 import type { DeliveryEnvironment } from "./analytics-client.js";
 import type { SafeStorage } from "./safe-storage.js";
-import { createEndpoints } from "fuse-network-fe";
 
 export const ANALYTICS_ADMISSION_KEY = "fuse-metrics-admission";
 export interface TelemetryTransport {
   storage: SafeStorage;
   now(): number;
-  origin: string;
-  apiOrigin?: string;
+  apiUrl(path: string): string;
   request(
     url: string,
     init: RequestInit,
@@ -21,11 +19,6 @@ export function createTelemetrySender(
 ): DeliveryEnvironment["send"] {
   const { storage } = environment;
   return async (events, enabled) => {
-    // Validate configuration only on delivery, so telemetry cannot break game startup.
-    const endpoints = createEndpoints(
-      { basePath: "/", apiOrigin: environment.apiOrigin },
-      environment.origin,
-    );
     let session = storage.getItem(ANALYTICS_ADMISSION_KEY) ?? undefined;
     const expires = Number(session?.split(".")[0]);
     if (
@@ -35,7 +28,7 @@ export function createTelemetrySender(
       expires > environment.now() + 3900_000
     ) {
       const admission = await environment.request(
-        endpoints.apiUrl("/api/telemetry/session"),
+        environment.apiUrl("/api/telemetry/session"),
         { method: "POST" },
       );
       if (admission.status === 404) return events.map((event) => event.id);
@@ -57,7 +50,7 @@ export function createTelemetrySender(
     const account = await environment.identity();
     if (!enabled()) return [];
     const response = await environment.request(
-      endpoints.apiUrl("/api/telemetry/events"),
+      environment.apiUrl("/api/telemetry/events"),
       {
         method: "POST",
         headers: {

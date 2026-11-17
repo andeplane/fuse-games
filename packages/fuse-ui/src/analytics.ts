@@ -7,6 +7,7 @@ import {
   type DeliveryEnvironment,
 } from "./analytics-client.js";
 import { analyticsAccountUid, analyticsIdentity } from "./browser-account.js";
+import { createEndpoints } from "fuse-network-fe";
 import {
   ANALYTICS_ADMISSION_KEY,
   createTelemetrySender,
@@ -206,8 +207,11 @@ export function createBrowserAnalytics(gameId: string): Analytics {
     send: createTelemetrySender({
       storage: admissionStorage,
       now: Date.now,
-      origin: location.origin,
-      apiOrigin: import.meta.env.VITE_API_ORIGIN,
+      apiUrl: (path) =>
+        createEndpoints(
+          { basePath: "/", apiOrigin: import.meta.env.VITE_API_ORIGIN },
+          location.origin,
+        ).apiUrl(path),
       request: fetch.bind(globalThis),
       identity: analyticsIdentity,
     }),

@@ -3,6 +3,7 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import type { TelemetryEvent } from "fuse-telemetry/contracts";
 import { createMemoryStorage } from "../src/safe-storage.js";
+import { createBrowserAnalytics } from "../src/analytics.js";
 import {
   ANALYTICS_QUEUE_KEY,
   createAnalyticsDelivery,
@@ -16,6 +17,9 @@ import {
 const settle = async () => {
   for (let index = 0; index < 1000; index++) await Promise.resolve();
 };
+test("browser analytics can be constructed by game modules before browser surfaces are used", () => {
+  assert.doesNotThrow(() => createBrowserAnalytics("dice"));
+});
 const event = (): TelemetryEvent => ({
   v: 1,
   id: randomUUID(),
@@ -40,8 +44,7 @@ function fixture() {
   const transport: TelemetryTransport = {
     storage,
     now: () => 100000,
-    origin: "https://app.example",
-    apiOrigin: "https://service.example",
+    apiUrl: (path) => `https://service.example${path}`,
     async identity() {
       identityCalls++;
       if (tokenFailed) throw new Error("Token refresh unavailable");
@@ -115,9 +118,11 @@ test("production sender separates account and admission credentials from the dur
   );
 });
 
-test("invalid telemetry configuration cannot throw during game startup", async () => {
+test("endpoint resolution stays deferred until delivery", async () => {
   const f = fixture();
-  f.transport.apiOrigin = "https://service.example/invalid-path";
+  f.transport.apiUrl = () => {
+    throw new Error("Invalid API origin");
+  };
   const send = createTelemetrySender(f.transport);
   await assert.rejects(
     send([event()], () => true),
