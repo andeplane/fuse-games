@@ -6,6 +6,7 @@ import {
   type DeliveryEnvironment,
 } from "./analytics-client.js";
 import { createEndpoints } from "fuse-network-fe";
+import { analyticsAccountUid, analyticsIdentity } from "./browser-account.js";
 export type GraphicsReport =
   | { kind: "ready"; renderer: string }
   | { kind: "failed"; stage: "startup" | "context" | "render" };
@@ -184,6 +185,7 @@ export function createBrowserAnalytics(gameId: string): Analytics {
   const admissionStorage = safeStorage(() => sessionStorage);
   const admissionKey = "fuse-metrics-admission";
   return createAnalytics(gameId, {
+    accountUid: analyticsAccountUid,
     async correlate(scope) {
       const bytes = new Uint8Array(
         await crypto.subtle.digest(
@@ -243,11 +245,14 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         admissionStorage.setItem(admissionKey, session);
       }
       if (!enabled()) return [];
+      const account = await analyticsIdentity().catch(() => undefined);
+      if (!enabled()) return [];
       const response = await fetch(endpoints.apiUrl("/api/telemetry/events"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session}`,
+          ...(account ? { "X-Fuse-Identity": account.token } : {}),
         },
         body: JSON.stringify({ events }),
         keepalive: true,

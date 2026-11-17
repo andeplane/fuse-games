@@ -102,7 +102,9 @@ export function mountWorkspace(
   let toolbar: HTMLElement;
   let gameIds: string[] = [];
   let eventFilters: EventFilters = { groups: [] };
-  let columns: string[] = [...baseEventFields];
+  let columns: string[] = baseEventFields.filter(
+    (key) => key !== "accountId" && key !== "accountName",
+  );
   let customColumns = false;
   let availableFields: string[] = [...baseEventFields];
   const filterHistory: {
@@ -241,14 +243,18 @@ export function mountWorkspace(
   function addFilter(rule: EventConstraint) {
     changeFilters(constrain(eventFilters, rule));
   }
-  function selectSession(player: string, sessionId: string) {
+  function selectSession(
+    player: string,
+    sessionId: string,
+    accountId?: string,
+  ) {
     remember();
     current = "events";
     eventFilters = constrain(
       constrain(eventFilters, {
-        field: "userId",
+        field: accountId ? "accountId" : "userId",
         operator: "eq",
-        value: player,
+        value: accountId ?? player,
       }),
       { field: "sessionId", operator: "eq", value: sessionId },
     );
@@ -784,7 +790,14 @@ export function mountWorkspace(
         availableFields = [...new Set([...baseEventFields, ...data.fields])];
         if (!customColumns)
           columns = [
-            ...new Set([...baseEventFields, ...data.commonFields]),
+            ...new Set([
+              ...baseEventFields.filter(
+                (key) => key !== "accountId" && key !== "accountName",
+              ),
+              ...data.commonFields.filter(
+                (key) => key !== "accountId" && key !== "accountName",
+              ),
+            ]),
           ].slice(0, 24);
         const show = (result: ExplorerResult) => {
           if (!isCurrent(signal)) return;
@@ -794,8 +807,8 @@ export function mountWorkspace(
                 dom,
                 result,
                 addFilter,
-                (player, session) => {
-                  void selectSession(player, session);
+                (player, session, accountId) => {
+                  void selectSession(player, session, accountId);
                 },
               ),
             );

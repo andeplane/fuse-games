@@ -16,7 +16,7 @@ export function coverageNote(dom: Dom, data: ExplorerResult): HTMLElement {
     data.truncated ? "notice" : "muted",
     data.truncated
       ? `Loaded a slice of ${data.scanned.toLocaleString()} events. ${data.nextCursor ? "More history is available: load older events or narrow the dates." : "This is the oldest slice in this query."} Counts and columns describe this slice only.`
-      : `${data.matched.toLocaleString()} matching events · ${data.scanned.toLocaleString()} examined · UTC. Anonymous browsers are not verified people. Raw history is retained for 90 days.`,
+      : `${data.matched.toLocaleString()} matching events · ${data.scanned.toLocaleString()} examined · UTC. Names identify verified accounts; browser labels identify guests or older events. Raw history is retained for 90 days.`,
   );
 }
 export function renderEvents(
@@ -124,10 +124,10 @@ export function renderEvents(
         else
           cell.append(
             link(
-              key,
-              value,
+              key === "userId" && event.accountId ? "accountId" : key,
+              key === "userId" && event.accountId ? event.accountId : value,
               key === "userId"
-                ? shortPlayer(String(value))
+                ? (event.accountName ?? shortPlayer(String(value)))
                 : key === "sessionId"
                   ? String(value).slice(0, 8)
                   : String(value),
@@ -139,10 +139,18 @@ export function renderEvents(
       const reference = event.properties.roundRef ?? event.properties.matchRef;
       const players =
         typeof reference === "string"
-          ? (data.participants?.[reference] ?? [event.userId])
-          : [event.userId];
-      for (const player of players)
-        peers.append(link("userId", player, shortPlayer(player)));
+          ? (data.participants?.[reference] ?? [
+              event.accountId ? `account:${event.accountId}` : event.userId,
+            ])
+          : [event.accountId ? `account:${event.accountId}` : event.userId];
+      for (const player of players) {
+        const uid = player.startsWith("account:") ? player.slice(8) : undefined;
+        peers.append(
+          uid
+            ? link("accountId", uid, data.accounts?.[uid] ?? "Signed-in player")
+            : link("userId", player, shortPlayer(player)),
+        );
+      }
       if (!reference)
         peers.append(node("span", "muted", "Other participants not recorded"));
       tr.append(peers);
@@ -171,7 +179,7 @@ export function renderPlayerSessions(
   dom: Dom,
   data: ExplorerResult,
   filter: (rule: EventConstraint) => void,
-  open: (player: string, session: string) => void,
+  open: (player: string, session: string, accountId?: string) => void,
 ): HTMLElement {
   const { node, button } = dom;
   const section = node("section");
@@ -213,15 +221,19 @@ export function renderPlayerSessions(
     id.append(
       button(
         session.id.slice(0, 8),
-        () => open(session.player, session.id),
+        () => open(session.player, session.id, session.accountId),
         "dimension",
       ),
     );
     player.append(
       button(
-        shortPlayer(session.player),
+        session.accountName ?? shortPlayer(session.player),
         () =>
-          filter({ field: "userId", operator: "eq", value: session.player }),
+          filter({
+            field: session.accountId ? "accountId" : "userId",
+            operator: "eq",
+            value: session.accountId ?? session.player,
+          }),
         "dimension",
       ),
     );

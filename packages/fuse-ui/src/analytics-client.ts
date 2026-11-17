@@ -19,6 +19,7 @@ const SHARED_PLAY_SCOPE =
 const FORBIDDEN =
   /^(?:gameId|userId|sessionId|room|roomCode|matchId|playerId|playerName|name|email|url|token|authorization|password)$/i;
 export interface DeliveryEnvironment {
+  accountUid?(): Promise<string | undefined>;
   /** One-way, domain-separated play correlation. Never returns the original simulation scope. */
   correlate?(scope: string): Promise<string>;
   storage: SafeStorage;
@@ -80,6 +81,9 @@ export function createAnalyticsDelivery(
             UUID.test(event.id) &&
             typeof event.userId === "string" &&
             UUID.test(event.userId) &&
+            (event.accountUid === undefined ||
+              (typeof event.accountUid === "string" &&
+                /^[A-Za-z0-9_-]{1,128}$/.test(event.accountUid))) &&
             typeof event.sessionId === "string" &&
             UUID.test(event.sessionId) &&
             typeof event.gameId === "string" &&
@@ -107,8 +111,10 @@ export function createAnalyticsDelivery(
       ANALYTICS_QUEUE_KEY,
       JSON.stringify(events.slice(-MAX_QUEUED_EVENTS)),
     );
-  const locked = (operation: () => Promise<void>) => {
+  const locked = (operation: () => Promise<void>, ready?: Promise<unknown>) => {
     pending = pending
+      // Restoring account state can load the SDK; never hold a cross-tab lock for that.
+      .then(() => ready)
       .then(() => environment.exclusive(operation))
       .catch(() => undefined);
   };
@@ -210,9 +216,12 @@ export function createAnalyticsDelivery(
         return;
       const id = environment.uuid(),
         occurredAt = now();
+      // Capture before waiting for the shared outbox lock; never assign the send-time account.
+      const account = environment.accountUid?.().catch(() => undefined);
       locked(async () => {
         if (!enabled()) return;
         const identity = session();
+        const accountUid = await account;
         if (localScope) {
           if (localScope.key.length > 512) return;
           let ledger: string[] = [];
@@ -279,13 +288,14 @@ export function createAnalyticsDelivery(
             id,
             gameId,
             ...identity,
+            ...(accountUid ? { accountUid } : {}),
             name,
             occurredAt,
             properties: { ...dimensions, ...context },
           },
         ]);
         schedule();
-      });
+      }, account);
     },
     touch() {
       if (now() - touchedAt < 30000) return;

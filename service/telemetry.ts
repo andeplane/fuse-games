@@ -75,6 +75,9 @@ import {
 import type { ActionDatabase } from "fuse-telemetry/action-store";
 import type { TranscriptActionSegment } from "fuse-telemetry/action-contracts";
 import { telemetryConfiguration } from "./telemetry-config.js";
+import { platform } from "./history.js";
+import { parseAccount } from "fuse-platform";
+import type { TelemetryAccount } from "fuse-telemetry/contracts";
 
 /** Namespaces owned by developer insights, leaving other /api/dev extensions alone. */
 const isDeveloperInsightsPath = (path: string): boolean =>
@@ -86,6 +89,7 @@ export interface TelemetryServicesOptions {
   gameIds: readonly string[];
   developer: DeveloperVerifier;
   identity?: IdentityVerifier;
+  analyticsAccount?(token: string): Promise<TelemetryAccount | undefined>;
   metricsDatabase: TelemetryDatabase;
   debugDatabase: DebugDatabase;
   actionDatabase: ActionDatabase;
@@ -257,6 +261,7 @@ export function createTelemetryServices(options: TelemetryServicesOptions) {
   const routes = composeHttp(
     createMetricsHttp({
       metrics,
+      account: options.analyticsAccount,
       developer: options.developer,
       sessions: new MetricsSessions(options.rateLimitKey, quota, now),
       security,
@@ -433,6 +438,9 @@ export function createProductionTelemetry(options: {
   // No ephemeral fallback in production: accepted screenshots must survive instance shutdown.
   if (!config.bucket)
     throw new Error("TELEMETRY_BUCKET is required when telemetry is enabled");
+  const verifyAccount = createIdentityVerifier(
+    options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
+  );
   const services = createTelemetryServices({
     gameIds: options.gameIds,
     developer: createDeveloperVerifier(
@@ -441,6 +449,18 @@ export function createProductionTelemetry(options: {
     identity: createIdentityVerifier(
       options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
     ),
+    analyticsAccount: async (token) => {
+      const uid = await verifyAccount(token);
+      if (!uid) return undefined;
+      const data = (
+        await options.firestore.doc(`${options.prefix}-users/${uid}`).get()
+      ).data();
+      const account = parseAccount(platform, data ?? {});
+      return {
+        uid,
+        name: account.username ?? account.name ?? "Signed-in player",
+      };
+    },
     agentEmailAllowed: (email) => DEVELOPER_EMAILS.has(email),
     metricsDatabase: new FirestoreTelemetryDatabase(
       options.firestore,

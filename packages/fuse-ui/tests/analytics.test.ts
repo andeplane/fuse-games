@@ -20,6 +20,44 @@ const settle = async () => {
 let serial = 0;
 const uuid = () =>
   `00000000-0000-4000-8000-${(++serial).toString(16).padStart(12, "0")}`;
+test("events capture enqueue-time accounts across switches, sign-out, retries and legacy guests", async () => {
+  const f = fixture();
+  let account: string | undefined = "first-player";
+  f.environment.accountUid = () => Promise.resolve(account);
+  const analytics = f.create();
+  analytics.start({});
+  await settle();
+  analytics.track("App Opened");
+  account = "second-player";
+  analytics.track("Seat Taken");
+  account = undefined;
+  analytics.track("Round Started");
+  await settle();
+  const queued = JSON.parse(
+    f.storage.getItem(ANALYTICS_QUEUE_KEY)!,
+  ) as TelemetryEvent[];
+  assert.deepEqual(
+    queued.map((event) => event.accountUid),
+    ["first-player", "second-player", undefined],
+  );
+  f.fail(true);
+  await f.flush();
+  f.fail(false);
+  account = "third-player";
+  await f.flush();
+  assert.deepEqual(
+    f.sent.at(-1)?.map((event) => event.accountUid),
+    ["first-player", "second-player", undefined],
+  );
+  assert.equal(f.storage.getItem(ANALYTICS_QUEUE_KEY), "[]");
+  f.environment.accountUid = async () => {
+    throw new Error("Auth offline");
+  };
+  analytics.track("App Opened");
+  await settle();
+  await f.flush();
+  assert.equal(f.sent.at(-1)?.[0]?.accountUid, undefined);
+});
 function fixture(storage: SafeStorage = createMemoryStorage()) {
   let time = 100000,
     off = false,

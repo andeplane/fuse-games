@@ -66,10 +66,14 @@ export interface ExplorerQuery {
 }
 export interface ExplorerEvent extends TelemetryEvent {
   kind: EventKind;
+  accountId?: string;
+  accountName?: string;
 }
 export interface PlayerSession {
   id: string;
   player: string;
+  accountId?: string;
+  accountName?: string;
   startedAt: number;
   lastEventAt: number;
   games: string[];
@@ -90,6 +94,7 @@ export interface ExplorerResult {
   /** Cursor continues the bounded source scan; totals describe this slice only when truncated. */
   nextCursor?: string;
   participants?: Record<string, string[]>;
+  accounts?: Record<string, string>;
   summary: {
     players: number;
     sessions: number;
@@ -122,6 +127,8 @@ export const baseEventFields = [
   "gameId",
   "userId",
   "sessionId",
+  "accountId",
+  "accountName",
 ] as const;
 export function eventValue(
   event: ExplorerEvent,

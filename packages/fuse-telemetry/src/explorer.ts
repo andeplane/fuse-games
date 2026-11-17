@@ -173,7 +173,24 @@ export class EventExplorer {
           this.games,
           now,
         );
-        return { ...safe!, kind: eventKind(safe!.name) };
+        const account = record(event.account);
+        const attributed =
+          account &&
+          typeof account.uid === "string" &&
+          /^[A-Za-z0-9_-]{1,128}$/.test(account.uid) &&
+          typeof account.name === "string" &&
+          account.name.length > 0 &&
+          account.name.length <= 80;
+        return {
+          ...safe!,
+          kind: eventKind(safe!.name),
+          ...(attributed
+            ? {
+                accountId: String(account.uid),
+                accountName: String(account.name),
+              }
+            : {}),
+        };
       });
     const events = source.filter(
       (event) =>
@@ -192,14 +209,20 @@ export class EventExplorer {
           /^p_[a-f0-9]{8}(?:-[a-f0-9]{8}){3}$/.test(reference)
         ) {
           const players = participants.get(reference) ?? new Set<string>();
-          players.add(event.userId);
+          players.add(
+            event.accountId ? `account:${event.accountId}` : event.userId,
+          );
           participants.set(reference, players);
         }
     }
     const fieldSets = events.map(
       (event) =>
         new Set([
-          ...baseEventFields,
+          ...baseEventFields.filter(
+            (key) =>
+              (key !== "accountId" && key !== "accountName") ||
+              event[key] !== undefined,
+          ),
           ...Object.keys(event.properties).map((key) => `properties.${key}`),
         ]),
     );
@@ -209,10 +232,13 @@ export class EventExplorer {
     const sessions = new Map<string, PlayerSession>();
     for (const event of events) {
       // Include user in the grouping key: an untrusted session id cannot mix two browsers.
-      const key = `${event.userId}:${event.sessionId}`;
+      const key = `${event.userId}:${event.sessionId}:${event.accountId ?? "guest"}`;
       const session = sessions.get(key) ?? {
         id: event.sessionId,
         player: event.userId,
+        ...(event.accountId
+          ? { accountId: event.accountId, accountName: event.accountName }
+          : {}),
         startedAt: event.occurredAt,
         lastEventAt: event.occurredAt,
         games: [],
@@ -253,6 +279,11 @@ export class EventExplorer {
           reference,
           [...players],
         ]),
+      ),
+      accounts: Object.fromEntries(
+        source.flatMap((event) =>
+          event.accountId ? [[event.accountId, event.accountName!]] : [],
+        ),
       ),
       sessions: [...sessions.values()].sort(
         (a, b) => b.lastEventAt - a.lastEventAt,

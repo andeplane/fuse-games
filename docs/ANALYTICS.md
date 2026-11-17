@@ -16,10 +16,20 @@ anonymous event into an account-owned result or disable ordinary game history.
 
 ## Identity and sessions
 
-A user is one anonymous browser installation, identified by a random UUID saved on
+A metric user is one browser installation, identified by a random UUID saved on
 this origin. It is not a verified person or an account, and contains no fingerprint,
 email or Firebase UID. Different devices count separately. With storage refused,
 the safe-storage adapter keeps an in-memory identity for that page.
+
+Signed-in events also capture the enqueue-time account UID. On delivery the
+browser sends its current Firebase credential in `X-Fuse-Identity`; the server
+verifies it and resolves the username from the shared account profile. Only a
+matching captured UID receives account attribution. Raw Events, Player Sessions
+and reported participants show these names, with account ID/username filters.
+Guests, older events and queued events delivered after signing out or switching
+accounts remain anonymous. No historical browser activity is relabeled. Account
+attribution expires with raw events after 90 days; aggregate browser/session
+counts retain their existing meaning. See [design](design/analytics-account-attribution.md).
 
 One session spans same-origin games, tabs and FuseOS windows until 30 minutes of
 inactivity. Real pointer/key interaction refreshes activity. An accepted local event
@@ -59,7 +69,9 @@ email addresses, bearer/token-shaped text and long credential runs are removed.
 There are at most 24 properties, with bounded identifier keys and finite primitive
 values. Object/array payloads are not serialized as arbitrary data. Reserved identity,
 room, match, player-name and credential keys are dropped. No event carries page URLs,
-invitations, room capabilities, names, account tokens, audio, report text or screenshots.
+invitations, room capabilities, account tokens, audio, report text or screenshots.
+Names are excluded from client properties; verified usernames are server-owned
+attribution visible only through the private developer APIs.
 The API never derives stored location from the request IP. Network infrastructure
 still receives requests normally.
 
@@ -75,7 +87,9 @@ shared-runtime UUID scopes, truncated to 128 bits. Raw simulation identifiers
 are never transmitted. Birds' UUID/round suffix is supported; reusable local
 seed scopes are excluded to prevent unrelated solo visits being joined.
 These references link only reported anonymous-browser participation, never
-names or verified account identities. They do not change authoritative play.
+names or account identities in the correlation references themselves. Individual
+events may carry the separately verified account attribution above. These
+observations do not change authoritative play.
 The developer explorer counts play totals only when `played` is explicitly
 true. Riders' match observation now identifies whether this browser owns a
 listed seat. Spectator/display events and legacy observations without a flag

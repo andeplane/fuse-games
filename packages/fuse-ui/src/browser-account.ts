@@ -23,6 +23,7 @@ const REMEMBER_KEY = ACCOUNT_REMEMBER_KEY,
 const storage = safeStorage(() => localStorage);
 const listeners = new Set<Listener>();
 let current: Account | undefined;
+let initializedAuth: import("firebase/auth").Auth | undefined;
 let stopAccountSync: (() => void) | undefined;
 
 async function load() {
@@ -43,6 +44,7 @@ async function load() {
     for (const listener of listeners) listener(current);
   });
   await instance.authStateReady();
+  initializedAuth = instance;
   return { auth, instance };
 }
 let loading: ReturnType<typeof load> | undefined;
@@ -177,6 +179,24 @@ export async function connectGithub(): Promise<string> {
 export async function signedInToken(): Promise<string | undefined> {
   if (!remembersSignIn()) return undefined;
   return (await firebase()).instance.currentUser?.getIdToken();
+}
+/** Snapshot the user before fetching its token, so an account switch cannot mix identities. */
+export async function analyticsAccountUid(): Promise<string | undefined> {
+  if (!remembersSignIn()) return undefined;
+  return initializedAuth
+    ? initializedAuth.currentUser?.uid
+    : (await firebase()).instance.currentUser?.uid;
+}
+/** Credentials are acquired only at delivery, never while recording an event. */
+export async function analyticsIdentity(): Promise<
+  { uid: string; token: string } | undefined
+> {
+  if (!remembersSignIn()) return undefined;
+  const user = initializedAuth
+    ? initializedAuth.currentUser
+    : (await firebase()).instance.currentUser;
+  if (!user) return undefined;
+  return { uid: user.uid, token: await user.getIdToken() };
 }
 /** The same, but never throws: a failed sign-in is a guest. */
 export async function identityToken(): Promise<string | undefined> {
