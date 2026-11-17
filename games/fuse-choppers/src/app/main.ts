@@ -1,4 +1,4 @@
-import { createTopBar } from "fuse-ui";
+import { createHowToPlay, createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -320,15 +320,7 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 }
 
 function keyHelp(): HTMLElement {
-  const list = el("dl", "", "fc-keys");
-  for (const [keysText, what] of [
-    ["SPACE / W / ↑", "Hold to climb, let go to fall"],
-    ["A D / ← →", "Fly back and forward"],
-    ["F / J / K / ENTER / CLICK", "Fire: nudges rivals, downs drones"],
-    ["S / ↓", "Dive (W/S thrust trial only)"],
-  ])
-    list.append(el("dt", keysText), el("dd", what));
-  return list;
+  return createHowToPlay(controllerGuide);
 }
 
 function landing(): void {
@@ -336,6 +328,7 @@ function landing(): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSE CHOPPERS",
+    howToPlay: () => flightGuide(devSettings().lift),
     tagline:
       "Hold to climb, let go to fall. The cave scrolls, the crush zone closes in and your friends' shots knock you about. Be the last chopper flying, or first through the exit.",
     soloText: "PLAY SOLO VS BOTS",
@@ -359,7 +352,6 @@ function landing(): void {
     },
   });
   card.create.parentElement!.before(pilotPicker());
-  card.menu.help.append(keyHelp());
   const back = el("a", "All games", "fc-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(flightGuide(devSettings().lift));

@@ -203,26 +203,6 @@ body:has(.fc-lobby:not([hidden])) .fc-live {
 
 /* ---- landing ---- */
 
-.fc-keys {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 14px;
-  margin: 18px 0 0;
-  font-size: 13px;
-}
-
-.fc-keys dt {
-  font-family: var(--fui-font-pixel, monospace);
-  font-size: 9px;
-  color: var(--fc-edge);
-  align-self: center;
-}
-
-.fc-keys dd {
-  margin: 0;
-  color: var(--fui-text-dim, #b8c0e8);
-}
-
 /* ---- lobby ---- */
 .fc-room {
   flex: 1;

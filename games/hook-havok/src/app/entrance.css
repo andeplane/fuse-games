@@ -222,6 +222,8 @@
   margin-left: auto;
 }
 :where(#entrance) dialog {
+  --entrance-dialog-top: 38px;
+  --entrance-dialog-inline: 38px;
   position: fixed;
   color: #e9dfce;
   background: linear-gradient(145deg, #202637, #111724);
@@ -236,7 +238,7 @@
   background: #050911c9;
   backdrop-filter: blur(5px);
 }
-:where(#entrance) dialog h2 {
+:where(#entrance) dialog > h2 {
   font-size: 32px;
   font-weight: 400;
   margin: 0 0 20px;
@@ -248,15 +250,14 @@
     sans-serif;
   color: #bdc3cf;
 }
-:where(#entrance) dialog .dialog-close {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  border: none;
-  background: transparent;
-  min-height: 32px;
-  padding: 4px 10px;
-  font-size: 24px;
+:where(#entrance) dialog > .fui-page-head {
+  position: sticky;
+  top: calc(-1 * var(--entrance-dialog-top));
+  z-index: 1;
+  margin: calc(-1 * var(--entrance-dialog-top))
+    calc(-1 * var(--entrance-dialog-inline)) 24px;
+  padding: 12px;
+  background: #202637;
 }
 :where(#entrance) dialog dt {
   color: #e2c58b;
@@ -372,6 +373,8 @@
     gap: 8px;
   }
   :where(#entrance) dialog {
+    --entrance-dialog-top: 34px;
+    --entrance-dialog-inline: 24px;
     padding: 34px 24px 24px;
   }
 }

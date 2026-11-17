@@ -1,4 +1,4 @@
-import { createTopBar } from "fuse-ui";
+import { createHowToPlay, createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -288,10 +288,7 @@ function header(
 }
 
 function keyHelp(): HTMLElement {
-  const list = el("dl", "", "fb-keys");
-  for (const hint of GUIDE.controls)
-    list.append(el("dt", hint.keys), el("dd", hint.action));
-  return list;
+  return createHowToPlay(GUIDE);
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -547,6 +544,7 @@ function landing(): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSEBALL",
+    howToPlay: GUIDE,
     tagline:
       "A neon ball game for two to six: a duel, 2 v 2 or 3 v 3. Knock the ball into the goal in your own colour to score and zap the other side. Air-jump as often as you like: every one leaves a bubble that bumps the ball away. First to three wins.",
     soloText: "PLAY SOLO WITH BOTS",
@@ -614,7 +612,6 @@ function landing(): void {
     seeds.element,
   );
   card.menu.addSettings(arena);
-  card.menu.help.append(keyHelp());
   const back = el("a", "All games", "fb-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(GUIDE);

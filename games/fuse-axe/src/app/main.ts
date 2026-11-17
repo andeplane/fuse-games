@@ -38,7 +38,7 @@ import {
   createControllerRow,
   createGameMenu,
   createInviteCard,
-  createKeyList,
+  createHowToPlay,
   createLandingCard,
   createNameEntry,
   createNotice,
@@ -69,7 +69,7 @@ import { SEAT_COLORS } from "../render/seat-colors.js";
 import type { MakeSurface } from "../render/surface.js";
 import { AxeAudio } from "./audio/director.js";
 import { WebAudioBackend } from "./audio/web-backend.js";
-import { HeldControls, KEY_HELP } from "./controls.js";
+import { HeldControls } from "./controls.js";
 import {
   AXE_CONTROLS,
   AXE_TOUCH_CONTROLS,
@@ -191,9 +191,11 @@ function header(extra: HTMLElement[] = []): HTMLElement {
   });
 }
 function keyHelp(): HTMLElement {
-  const box = el("div", "", "fa-keys");
-  box.append(...createKeyList([{ title: "KEYS", entries: KEY_HELP }]));
-  return box;
+  return createHowToPlay({
+    controls: AXE_CONTROLS,
+    touchControls: AXE_TOUCH_CONTROLS,
+    goal: AXE_GOAL,
+  });
 }
 /** A hero's badge: its initial on its colour, until the sprites arrive. */
 function badge(hero: string): HTMLElement {
@@ -218,6 +220,11 @@ function landing(): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSE AXE",
+    howToPlay: {
+      controls: AXE_CONTROLS,
+      touchControls: AXE_TOUCH_CONTROLS,
+      goal: AXE_GOAL,
+    },
     tagline:
       "Three heroes take the road east to the Dark Keep. Cleave through Vorhal's raiders alone or with up to four friends.",
     soloText: "PLAY SOLO",
@@ -240,7 +247,6 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
-  card.menu.help.append(keyHelp());
   const back = el("a", "All games", "fa-back");
   back.href = import.meta.env.BASE_URL + (query.has("mute") ? "?mute" : "");
   app.replaceChildren(header([back, menu.element]), card.element);

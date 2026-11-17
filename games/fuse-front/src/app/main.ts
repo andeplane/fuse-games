@@ -58,7 +58,7 @@ import { qualityParam } from "../render3d/fx.js";
 import { edgePan, PAN_SPEED } from "../render/camera.js";
 import { Hud } from "./hud.js";
 import { HERO_ROLES, heroPortrait, loadPortraits } from "./look.js";
-import { keyAction } from "./hud-state.js";
+import { FRONT_GUIDE, keyAction } from "./hud-state.js";
 import {
   IDLE,
   bodyAt,
@@ -195,6 +195,7 @@ function landing(error = ""): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSE FRONT",
+    howToPlay: FRONT_GUIDE,
     tagline: "Push the lanes. Hold the jungle. Raze the fort.",
     soloText: "SOLO VS BOTS",
     valid: validRoomCode,
@@ -215,17 +216,7 @@ function landing(error = ""): void {
     onJoin: (code) => navigate(`?room=${code}`),
   });
   card.error.textContent = error;
-  app.replaceChildren(
-    header(),
-    card.element,
-    el(
-      "p",
-      "Right-click to move or attack · A + click: attack-move · Shift queues orders · Q W E R: cast or aim · 1–6: items · B: shop · hold `: scoreboard · Z / X: zoom · Tab: the fight · Home: your fort",
-      "ff-help",
-    ),
-  );
-  const help = app.querySelector<HTMLElement>(".ff-help");
-  if (help) card.menu.help.append(help);
+  app.replaceChildren(header(), card.element);
 }
 
 function room(code: string, token: string | undefined, display: boolean): void {

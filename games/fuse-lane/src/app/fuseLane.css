@@ -4,6 +4,17 @@
 body.fl-page .fui-main-menu {
   --fui-dialog-bar-fill: var(--fl-paper-2);
 }
+/* The translucent attract scene needs the same dark backing as the shared
+   menu's light text. Restore the town palette when entering the actual game. */
+body.fl-page:has(.fui-main-menu) {
+  background: var(--fui-ink);
+}
+body.fl-page .fui-top-bar {
+  --fui-cyan: #9ee7c4;
+}
+body.fl-page .fui-top-bar-brand {
+  color: #9ee7c4;
+}
 body.fl-page {
   --fl-ink: #1d2733;
   --fl-ink-soft: #5b6674;

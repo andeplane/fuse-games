@@ -130,22 +130,6 @@ body:has(.fb-lobby:not([hidden])) .fb-live {
   gap: var(--fui-space-2);
   margin-top: var(--fui-space-4);
 }
-.fb-keys {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--fui-space-1) var(--fui-space-3);
-  margin: var(--fui-space-4) 0 0;
-  font-size: 0.75rem;
-}
-.fb-keys dt {
-  color: var(--fui-yellow);
-  font: 0.5625rem/1.6 var(--fui-font-pixel);
-}
-.fb-keys dd {
-  margin: 0;
-  color: var(--fui-text-muted);
-}
-
 /* The arena picker: on the landing page and in the lobby */
 .fb-modes {
   display: grid;

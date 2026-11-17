@@ -1,4 +1,9 @@
-import { createResultsScreen, elementsFor, type RoomFriends } from "fuse-ui";
+import {
+  createHowToPlay,
+  createResultsScreen,
+  elementsFor,
+  type RoomFriends,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -22,7 +27,12 @@ import { colorCss, interpolate } from "../render/present.js";
 import type { BallView } from "../engine/view.js";
 import { view } from "../engine/view.js";
 import { createArena } from "../engine/state.js";
-import { Controls, keyboardButton, gameplayKey } from "./controls.js";
+import {
+  BALL_GUIDE,
+  Controls,
+  keyboardButton,
+  gameplayKey,
+} from "./controls.js";
 import type { Audio } from "./audio.js";
 import { present, type Model } from "./presenter.js";
 import { resultBar, resultReport } from "./result-report.js";
@@ -192,22 +202,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   };
   const instructions = el("div", "", "instructions");
   instructions.append(
-    el("span", "HOW TO SURVIVE", "eyebrow"),
-    el("h3", "Keep the rally alive."),
-    el(
-      "p",
-      "Orbit with A / D. Reach out with W for early interceptions; pull in with S for tighter coverage. Combine both to chase a save.",
-    ),
-    el(
-      "p",
-      "Your blocks break on impact. One hit to the core ends your round. Even your own ball can hurt you.",
-    ),
-  );
-  const keys = el("div", "", "key-guide");
-  keys.append(
-    el("p", "A / D   ORBIT"),
-    el("p", "W / S   OUT / IN"),
-    el("p", "SPACE   LAUNCH"),
+    createHowToPlay({ ...BALL_GUIDE, document: root.ownerDocument }),
   );
   const restart = el("button", "RESTART ROUND", "quiet-button");
   restart.hidden = true;
@@ -217,7 +212,6 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     mapName,
     status,
     instructions,
-    keys,
     restart,
     el(
       "p",

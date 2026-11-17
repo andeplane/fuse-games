@@ -1,4 +1,4 @@
-import { requestedRoomSlot } from "fuse-ui";
+import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -494,14 +494,8 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 }
 
 function keyHelp(): HTMLElement {
-  const list = el("dl", "", "fm-keys");
-  const fill = () =>
-    list.replaceChildren(
-      ...guide().controls.flatMap((hint) => [
-        el("dt", hint.keys),
-        el("dd", hint.action),
-      ]),
-    );
+  const list = el("div");
+  const fill = () => list.replaceChildren(createHowToPlay(guide()));
   fill();
   list.addEventListener("fm-refresh", fill);
   return list;
@@ -622,6 +616,7 @@ function landing(): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSEMANIA",
+    howToPlay: guide,
     tagline:
       "Four arrows, one beat. Play the whole Fuse soundtrack at four levels, chase a perfect score alone, or battle up to four friends with power-ups that bend, hide and booby-trap their arrows.",
     soloText: "PLAY",
@@ -732,12 +727,9 @@ function landing(): void {
   card.menu.singlePlayer.addEventListener("click", address);
   card.solo?.classList.add("fui-button-primary", "fm-solo-play");
   const settings = settingsPanel(() => {
-    help.dispatchEvent(new Event("fm-refresh"));
     showOptions();
   });
-  const help = keyHelp();
   card.menu.addSettings(settings.element);
-  card.menu.help.append(help);
   /** The select sits in the menu's own dialog: only another one on top takes the keys away. */
   const otherDialogOpen = () =>
     [...document.querySelectorAll("dialog[open]")].some(

@@ -1,4 +1,4 @@
-import { createTopBar } from "fuse-ui";
+import { createHowToPlay, createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -286,10 +286,7 @@ function header(
 }
 
 function keyHelp(): HTMLElement {
-  const list = el("dl", "", "fv-keys");
-  for (const hint of GUIDE.controls)
-    list.append(el("dt", hint.keys), el("dd", hint.action));
-  return list;
+  return createHowToPlay(GUIDE);
 }
 
 /** The two scoring rules as cards; `onPick` hears a choice, `update` shows the room's. */
@@ -377,6 +374,7 @@ function landing(): void {
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSE VOLLEY",
+    howToPlay: GUIDE,
     tagline:
       "Jelly blobs, one ball, one net. Bounce the ball over to the other side and keep it off your own sand: three touches a side at most. Play one on one, two on two, three on three, or three teams of two as king of the court: friends online, on one TV with phones as pads, or bots.",
     soloText: "PLAY SOLO VS BOTS",
@@ -424,7 +422,6 @@ function landing(): void {
     bots.element,
   );
   card.menu.addSettings(rules);
-  card.menu.help.append(keyHelp());
   const back = el("a", "All games", "fv-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
   const menu = createGameMenu(GUIDE);

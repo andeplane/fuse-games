@@ -150,7 +150,7 @@
   display: none;
 }
 @media (orientation: landscape) and (max-height: 550px) {
-  .online-app:not(.mobile-play) > .online-header {
+  .online-app:not(.mobile-play) > .online-header:not(.fui-top-bar) {
     position: relative;
     z-index: var(--fui-z-bar);
   }
