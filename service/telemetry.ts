@@ -426,6 +426,30 @@ export const telemetryUnavailable: HttpExtension = {
   },
 };
 
+export interface AnalyticsProfiles {
+  doc(uid: string): {
+    get(): Promise<{ data(): Record<string, unknown> | undefined }>;
+  };
+}
+/** Resolve names exclusively from the verified account's server-owned profile. */
+export function createAnalyticsAccountResolver(
+  verify: IdentityVerifier,
+  profiles: AnalyticsProfiles,
+): NonNullable<TelemetryServicesOptions["analyticsAccount"]> {
+  return async (token) => {
+    const uid = await verify(token);
+    if (!uid) return undefined;
+    const account = parseAccount(
+      platform,
+      (await profiles.doc(uid).get()).data() ?? {},
+    );
+    return {
+      uid,
+      name: account.username ?? account.name ?? "Signed-in player",
+    };
+  };
+}
+
 export function createProductionTelemetry(options: {
   firestore: Firestore;
   prefix: string;
@@ -449,18 +473,10 @@ export function createProductionTelemetry(options: {
     identity: createIdentityVerifier(
       options.environment.FIREBASE_PROJECT_ID ?? options.projectId,
     ),
-    analyticsAccount: async (token) => {
-      const uid = await verifyAccount(token);
-      if (!uid) return undefined;
-      const data = (
-        await options.firestore.doc(`${options.prefix}-users/${uid}`).get()
-      ).data();
-      const account = parseAccount(platform, data ?? {});
-      return {
-        uid,
-        name: account.username ?? account.name ?? "Signed-in player",
-      };
-    },
+    analyticsAccount: createAnalyticsAccountResolver(
+      verifyAccount,
+      options.firestore.collection(`${options.prefix}-users`),
+    ),
     agentEmailAllowed: (email) => DEVELOPER_EMAILS.has(email),
     metricsDatabase: new FirestoreTelemetryDatabase(
       options.firestore,

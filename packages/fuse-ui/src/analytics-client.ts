@@ -30,6 +30,26 @@ export interface DeliveryEnvironment {
   exclusive<T>(operation: () => Promise<T>): Promise<T>;
   send(events: TelemetryEvent[], enabled: () => boolean): Promise<string[]>;
 }
+/** Standard crypto is supplied at the browser boundary; unsupported hashing leaves ordinary metrics usable. */
+export function createPlayCorrelation(
+  subtle: Pick<SubtleCrypto, "digest"> | undefined,
+): NonNullable<DeliveryEnvironment["correlate"]> {
+  return async (scope) => {
+    if (!subtle) throw new Error("Play correlation unavailable");
+    const bytes = new Uint8Array(
+      await subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(`fuse-play-v1:${scope}`),
+      ),
+    );
+    return `p_${Array.from(bytes.slice(0, 16), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    )
+      .join("")
+      .match(/.{8}/g)!
+      .join("-")}`;
+  };
+}
 export function boundedProperties(
   properties: Record<string, unknown>,
 ): Record<string, TelemetryProperty> {

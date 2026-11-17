@@ -4,10 +4,13 @@ import {
   createAnalytics,
   type AnalyticsEnvironment,
   OPT_OUT_KEY,
+  doNotTrackOn,
 } from "../src/analytics.js";
 import {
   ANALYTICS_QUEUE_KEY,
   ANALYTICS_USER_KEY,
+  ANALYTICS_SESSION_KEY,
+  createPlayCorrelation,
   SESSION_IDLE_MS,
   MAX_QUEUED_EVENTS,
 } from "../src/analytics-client.js";
@@ -116,6 +119,93 @@ function fixture(storage: SafeStorage = createMemoryStorage()) {
     },
   };
 }
+test("real play correlation is deterministic and unavailable crypto preserves ordinary events", async () => {
+  const correlate = createPlayCorrelation(crypto.subtle);
+  const scope = JSON.stringify(["match", "dice", uuid()]);
+  const reference = await correlate(scope);
+  assert.match(reference, /^p_[a-f0-9]{8}(?:-[a-f0-9]{8}){3}$/);
+  assert.equal(await correlate(scope), reference);
+  assert.notEqual(
+    await correlate(JSON.stringify(["round", "dice", scope, 1])),
+    reference,
+  );
+  const f = fixture();
+  f.environment.correlate = createPlayCorrelation(undefined);
+  const analytics = f.create();
+  analytics.start({});
+  analytics.track(
+    "Round Started",
+    { played: true },
+    { key: "round", match: uuid(), round: 1 },
+  );
+  await f.flush();
+  assert.equal(f.sent[0]?.[0]?.properties.played, true);
+  assert.equal(f.sent[0]?.[0]?.properties.matchRef, undefined);
+});
+test("browser privacy flags require an explicit Do Not Track value", () => {
+  for (const value of [true, 1, "1", "yes"])
+    assert.equal(doNotTrackOn([undefined, value]), true);
+  assert.equal(
+    doNotTrackOn([undefined, null, false, 0, "0", "unspecified"]),
+    false,
+  );
+});
+test("privacy subscribers receive local and cross-tab changes and can unsubscribe", async () => {
+  const f = fixture(),
+    analytics = f.create(),
+    states: string[] = [];
+  const unsubscribe = analytics.onChange(() => states.push(analytics.status()));
+  analytics.onChange(() => {
+    throw new Error("Detached settings UI");
+  });
+  analytics.start({});
+  analytics.setOptOut(true);
+  analytics.setOptOut(false);
+  f.storage.setItem(OPT_OUT_KEY, "1");
+  f.storageEvent(OPT_OUT_KEY);
+  await settle();
+  assert.deepEqual(states, ["optedOut", "on", "optedOut"]);
+  unsubscribe();
+  analytics.setOptOut(false);
+  assert.deepEqual(states, ["optedOut", "on", "optedOut"]);
+});
+test("real activity keeps a signed-in browser's session continuous, while opt-out suppresses activity writes", async () => {
+  const f = fixture();
+  let activity = () => {};
+  f.environment.onActivity = (listener) => {
+    activity = listener;
+  };
+  f.environment.accountUid = async () => "active-player";
+  const analytics = f.create();
+  activity();
+  await settle();
+  assert.equal(f.storage.getItem(ANALYTICS_SESSION_KEY), null);
+  analytics.start({});
+  analytics.track("App Opened");
+  await settle();
+  const first = JSON.parse(
+    f.storage.getItem(ANALYTICS_QUEUE_KEY)!,
+  ) as TelemetryEvent[];
+  f.time(100000 + SESSION_IDLE_MS - 1000);
+  activity();
+  await settle();
+  f.time(100000 + SESSION_IDLE_MS + 1000);
+  analytics.track("Seat Taken");
+  await settle();
+  const queued = JSON.parse(
+    f.storage.getItem(ANALYTICS_QUEUE_KEY)!,
+  ) as TelemetryEvent[];
+  assert.equal(queued[1]?.sessionId, first[0]?.sessionId);
+  assert.equal(queued[1]?.accountUid, "active-player");
+  analytics.setOptOut(true);
+  await settle();
+  const session = f.storage.getItem(ANALYTICS_SESSION_KEY);
+  f.time(100000 + 2 * SESSION_IDLE_MS);
+  activity();
+  await settle();
+  assert.equal(f.storage.getItem(ANALYTICS_SESSION_KEY), session);
+  assert.equal(f.storage.getItem(ANALYTICS_QUEUE_KEY), null);
+});
 test("shared play correlation uses opaque UUID scopes and excludes repeatable local seeds", async () => {
   const f = fixture();
   const scopes: string[] = [];

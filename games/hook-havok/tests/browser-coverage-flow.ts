@@ -175,6 +175,18 @@ try {
   // Single player opens a room of one; the keeper enters once it takes a seat.
   await openPlayOptions(page, "single");
   await takeHostSeat(page, "Keeper");
+  if (nativeCoverage) {
+    // Exercise the real settings UI before play, when returning to the arena does
+    // not depend on a rendered manager/RESUME state (the #250 native stall).
+    await page
+      .getByRole("button", { name: "Room settings", exact: true })
+      .click();
+    await page.locator("#map").selectOption("spire");
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("dialog", { name: "Room settings", exact: true })
+      .waitFor({ state: "hidden" });
+  }
   // The room is a page over the arena: START begins the round and shows the arena.
   await page.getByRole("button", { name: "START", exact: true }).click();
   // The line itself is not shown over the full-screen arena; its state still says the room is playing.
@@ -310,7 +322,7 @@ try {
   await finishCoverage();
   console.log(
     nativeCoverage
-      ? "PASS Hook: native coverage, real room, current bomb guide, menu focus restoration; map/resume and charge/cancel/throw timing quarantined under #250; no page errors"
+      ? "PASS Hook: native coverage, real pre-play room settings, current bomb guide, menu focus restoration; in-play map/resume and charge/cancel/throw timing quarantined under #250; no page errors"
       : "PASS Hook: real room, current bomb guide, menu focus restoration, menu cancels charge, ordinary K release increments persistent throw tally; no page errors",
   );
 } catch (error) {

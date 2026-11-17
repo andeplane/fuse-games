@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { randomUUID } from "node:crypto";
 import {
   Firestore,
   Timestamp,
   type DocumentReference,
+  FieldPath,
 } from "@google-cloud/firestore";
 import {
   FirestoreTelemetryDatabase,
   type TelemetryFirestore,
   type TelemetryFirestoreTransaction,
+  type TelemetryEventQuery,
 } from "../src/metrics-firestore.js";
+import { EventExplorer } from "../src/explorer.js";
 
 /** SDK references need no network; every read/transaction is provided by this typed fake. */
 class FakeFirestore implements TelemetryFirestore {
@@ -18,6 +22,33 @@ class FakeFirestore implements TelemetryFirestore {
   batches: number[] = [];
   attempts = 0;
   retryOnce = false;
+  queryRows: Record<string, unknown>[] = [];
+  queryCalls: unknown[][] = [];
+  collection(path: string): TelemetryEventQuery {
+    this.queryCalls.push(["collection", path]);
+    const query: TelemetryEventQuery = {
+      where: (field, operator, value) => {
+        this.queryCalls.push(["where", field, operator, value]);
+        return query;
+      },
+      orderBy: (field, direction) => {
+        this.queryCalls.push(["orderBy", field, direction]);
+        return query;
+      },
+      limit: (limit) => {
+        this.queryCalls.push(["limit", limit]);
+        return query;
+      },
+      startAfter: (...values) => {
+        this.queryCalls.push(["startAfter", ...values]);
+        return query;
+      },
+      get: async () => ({
+        docs: this.queryRows.map((value) => ({ data: () => value })),
+      }),
+    };
+    return query;
+  }
   doc(path: string): DocumentReference {
     return this.sdk.doc(path);
   }
@@ -48,6 +79,83 @@ class FakeFirestore implements TelemetryFirestore {
     return result;
   }
 }
+test("Firestore explorer queries preserve verified names, bound reads and paginate by time/id", async () => {
+  const firestore = new FakeFirestore(),
+    db = new FirestoreTelemetryDatabase(firestore, "fuse-test");
+  const now = Date.UTC(2026, 10, 17, 12),
+    id = randomUUID();
+  firestore.queryRows = [
+    {
+      v: 1,
+      id,
+      gameId: "dice",
+      userId: randomUUID(),
+      sessionId: randomUUID(),
+      name: "fuse.App Opened",
+      occurredAt: now - 1000,
+      properties: {},
+      account: { uid: "verified-player", name: "Server Username" },
+      accountName: "Ignored top-level name",
+      expiresAt: now + 1000,
+    },
+  ];
+  const result = await new EventExplorer(
+    db,
+    new Set(["dice"]),
+    () => now,
+  ).query({
+    from: "2026-11-17",
+    to: "2026-11-17",
+    gameId: "",
+    filters: {
+      groups: [
+        [{ field: "accountId", operator: "eq", value: "verified-player" }],
+      ],
+    },
+  });
+  assert.equal(result.events[0]?.accountName, "Server Username");
+  assert.equal(result.sessions[0]?.accountId, "verified-player");
+  assert.deepEqual(firestore.queryCalls.slice(0, 3), [
+    ["collection", "fuse-test-telemetry-events"],
+    ["where", "occurredAt", ">=", Date.UTC(2026, 10, 17)],
+    ["where", "occurredAt", "<", now + 1],
+  ]);
+  assert.deepEqual(firestore.queryCalls[3], ["orderBy", "occurredAt", "desc"]);
+  const orderField = firestore.queryCalls[4]?.[1];
+  assert.ok(orderField instanceof FieldPath);
+  assert.ok(orderField.isEqual(FieldPath.documentId()));
+  firestore.queryCalls.length = 0;
+  await db.queryEvents({
+    from: 0,
+    to: now,
+    limit: 9999,
+    after: { time: now - 1000, id },
+  });
+  assert.ok(
+    firestore.queryCalls.some(
+      (call) => call[0] === "limit" && call[1] === 2001,
+    ),
+  );
+  assert.deepEqual(firestore.queryCalls.at(-1), ["startAfter", now - 1000, id]);
+  firestore.queryCalls.length = 0;
+  await db.queryEvents({ from: 0, to: now, limit: -1 });
+  assert.ok(
+    firestore.queryCalls.some((call) => call[0] === "limit" && call[1] === 1),
+  );
+  const withoutQueries: TelemetryFirestore = {
+    doc: firestore.doc.bind(firestore),
+    getAll: firestore.getAll.bind(firestore),
+    runTransaction: firestore.runTransaction.bind(firestore),
+  };
+  await assert.rejects(
+    new FirestoreTelemetryDatabase(withoutQueries, "fuse-test").queryEvents({
+      from: 0,
+      to: now,
+      limit: 1,
+    }),
+    /Event queries unavailable/,
+  );
+});
 test("Firestore adapter namespaces documents, preserves result order, adds timestamp TTL and supports retries", async () => {
   const firestore = new FakeFirestore(),
     db = new FirestoreTelemetryDatabase(firestore, "fuse-test");

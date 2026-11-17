@@ -3,10 +3,14 @@ import { safeStorage, type SafeStorage } from "./safe-storage.js";
 import { bootFailedProps, sanitizeProperties } from "./analytics-text.js";
 import {
   createAnalyticsDelivery,
+  createPlayCorrelation,
   type DeliveryEnvironment,
 } from "./analytics-client.js";
-import { createEndpoints } from "fuse-network-fe";
 import { analyticsAccountUid, analyticsIdentity } from "./browser-account.js";
+import {
+  ANALYTICS_ADMISSION_KEY,
+  createTelemetrySender,
+} from "./analytics-transport.js";
 export type GraphicsReport =
   | { kind: "ready"; renderer: string }
   | { kind: "failed"; stage: "startup" | "context" | "render" };
@@ -183,25 +187,11 @@ export function createAnalytics(
 export function createBrowserAnalytics(gameId: string): Analytics {
   const storage = safeStorage(() => localStorage);
   const admissionStorage = safeStorage(() => sessionStorage);
-  const admissionKey = "fuse-metrics-admission";
   return createAnalytics(gameId, {
     accountUid: analyticsAccountUid,
-    async correlate(scope) {
-      const bytes = new Uint8Array(
-        await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(`fuse-play-v1:${scope}`),
-        ),
-      );
-      return `p_${Array.from(bytes.slice(0, 16), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      )
-        .join("")
-        .match(/.{8}/g)!
-        .join("-")}`;
-    },
+    correlate: createPlayCorrelation(crypto.subtle),
     storage,
-    clearAdmission: () => admissionStorage.removeItem(admissionKey),
+    clearAdmission: () => admissionStorage.removeItem(ANALYTICS_ADMISSION_KEY),
     now: () => Date.now(),
     uuid: () => crypto.randomUUID(),
     schedule: (callback, delay) => {
@@ -213,79 +203,14 @@ export function createBrowserAnalytics(gameId: string): Analytics {
         return await navigator.locks.request("fuse-analytics", operation);
       return await operation();
     },
-    send: async (events, enabled) => {
-      const endpoints = createEndpoints(
-        { basePath: "/", apiOrigin: import.meta.env.VITE_API_ORIGIN },
-        location.origin,
-      );
-      let session = admissionStorage.getItem(admissionKey) ?? undefined;
-      const expires = Number(session?.split(".")[0]);
-      if (
-        !session ||
-        !Number.isSafeInteger(expires) ||
-        expires <= Date.now() ||
-        expires > Date.now() + 3900_000
-      ) {
-        const admission = await fetch(
-          endpoints.apiUrl("/api/telemetry/session"),
-          { method: "POST" },
-        );
-        if (admission.status === 404) return events.map((event) => event.id);
-        if (!admission.ok) throw new Error("Metrics admission unavailable");
-        const body: unknown = await admission.json();
-        if (
-          !body ||
-          typeof body !== "object" ||
-          !("token" in body) ||
-          typeof body.token !== "string"
-        )
-          throw new Error("Invalid metrics admission");
-        session = body.token;
-        if (!enabled()) return [];
-        admissionStorage.setItem(admissionKey, session);
-      }
-      if (!enabled()) return [];
-      // A transient token-refresh failure must retry, not permanently accept
-      // signed-in activity as anonymous. Guests/sign-out resolve undefined.
-      const account = await analyticsIdentity();
-      if (!enabled()) return [];
-      const response = await fetch(endpoints.apiUrl("/api/telemetry/events"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session}`,
-          ...(account ? { "X-Fuse-Identity": account.token } : {}),
-        },
-        body: JSON.stringify({ events }),
-        keepalive: true,
-      });
-      if (response.status === 401) {
-        admissionStorage.removeItem(admissionKey);
-        throw new Error("Metrics session expired");
-      }
-      // A batch the service refuses outright will be refused again: retrying
-      // it would hold every later event, from every game on this origin,
-      // behind it. Let it go; only overload and server failures are retried.
-      if (
-        response.status >= 400 &&
-        response.status < 500 &&
-        response.status !== 408 &&
-        response.status !== 429
-      )
-        return events.map((event) => event.id);
-      if (!response.ok) throw new Error("Metrics unavailable");
-      const body: unknown = await response.json();
-      if (
-        !body ||
-        typeof body !== "object" ||
-        !("acknowledgedIds" in body) ||
-        !Array.isArray(body.acknowledgedIds)
-      )
-        throw new Error("Invalid metrics acknowledgement");
-      return body.acknowledgedIds.filter(
-        (id): id is string => typeof id === "string",
-      );
-    },
+    send: createTelemetrySender({
+      storage: admissionStorage,
+      now: Date.now,
+      origin: location.origin,
+      apiOrigin: import.meta.env.VITE_API_ORIGIN,
+      request: fetch.bind(globalThis),
+      identity: analyticsIdentity,
+    }),
     search: () => location.search,
     port: () => location.port,
     doNotTrack: () =>
