@@ -90,6 +90,10 @@ const levels = speed.map((speedLimit, i) => ({
 export function offroadCpuStats(level: number) {
   return levels[level]!;
 }
+/** CS:3848 replaces the previous raw checkpoint progress in place, saturating on a repeat. */
+export function offroadPaceProgress(raw: number, lapDistance: number) {
+  return raw >= lapDistance ? 65535 : Math.floor((raw * 65536) / lapDistance);
+}
 /** CS:2353 ranks the last DOS CPU against the first human in the standings. */
 export function offroadCatchupLevel(
   base: number,
@@ -119,6 +123,8 @@ interface CpuFrame {
   difficulty?: number;
   /** Offered only to Ivan's fourth arcade slot when its pace opcode executes. */
   catchupLevel?: number;
+  /** Reacquisition can encounter another pace instruction in the same update. */
+  repeatedCatchupLevel?: number;
 }
 
 const inRange = (v: number, lo: number, hi: number) =>
@@ -172,6 +178,7 @@ function cpuDecision(
         level: frame.difficulty ?? 6,
       };
 
+  let paceCount = 0;
   function nextPoint() {
     for (let n = 0; n <= nodes.length; n++) {
       const p = nodes[state.pc++]!;
@@ -185,7 +192,13 @@ function cpuDecision(
           state.radius = p.a;
           break;
         case "pace":
-          state.level = frame.catchupLevel ?? state.level;
+          if (frame.catchupLevel !== undefined) {
+            state.level =
+              paceCount === 0
+                ? frame.catchupLevel
+                : (frame.repeatedCatchupLevel ?? frame.catchupLevel);
+            paceCount++;
+          }
           break;
         case "jump":
           state.pc = p.a;
@@ -236,6 +249,7 @@ function cpuDecision(
   if (initializeOnly)
     return {
       input: { steer: 0 as const, gas: false, nitro: false },
+      paceCount,
       state,
       seed,
     };
@@ -259,6 +273,7 @@ function cpuDecision(
   const steer: -1 | 0 | 1 = error < -8 ? -1 : error > 8 ? 1 : 0;
   return {
     input: { steer, gas: state.pedal > frame.throttle, nitro: false },
+    paceCount,
     state,
     seed,
   };
@@ -270,14 +285,12 @@ export function createOffroadCpu(
   frame: CpuFrame,
   seed: number,
 ) {
-  const { state, seed: nextSeed } = cpuDecision(
-    course,
-    undefined,
-    frame,
-    seed,
-    true,
-  );
-  return { state, seed: nextSeed };
+  const {
+    state,
+    seed: nextSeed,
+    paceCount,
+  } = cpuDecision(course, undefined, frame, seed, true);
+  return { state, seed: nextSeed, paceCount };
 }
 
 export function driveOffroadCpu(
