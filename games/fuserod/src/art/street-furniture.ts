@@ -8,7 +8,7 @@ import {
   type Brush,
 } from "./drawing";
 import { roadside, type Route } from "./landscape";
-import { vergeSprite } from "./verge";
+import { canyonShape, vergeSprite } from "./verge";
 
 export interface RoadTraffic {
   kind: "rock" | "debris" | "warning" | "bush";
@@ -36,13 +36,40 @@ export function trafficProp(
   g.scale(s, s);
   if (kind === "warning") barricade(g);
   else if (kind === "bush") {
-    if (!vergeSprite(g, 0, 0, 54, 2)) roadside(g, 0, 0, 1, 4, "canyon", 1);
+    // The historical marker name survives in the simulation. Its 7/8 sprites
+    // depict a rocky verge with a separate small stone beside the cluster.
+    if (vergeSprite(g, 0, 0, 60, canyonShape.clusteredRocks))
+      vergeSprite(g, 35, 1, 23, canyonShape.greyRock, true);
+    else
+      fill(
+        g,
+        "#77767b",
+        "M-30 0 l4 -7 9 -4 11 3 6 -8 11 -2 8 9 8 -2 8 7 -7 4Z",
+      );
   } else {
-    ellipse(g, "#24253568", 0, 0, 35, 6);
-    fill(g, "#72574d", "M-32 -2 L11 -16 30 -11 -13 4Z");
-    fill(g, "#c39168", "M-32 -4 L10 -18 29 -13 -14 2Z");
-    fill(g, "#a6785e", "M-15 -14 L-6 -16 27 3 21 5Z");
-    stroke(g, "#d7ab7d", 1.5, "M-24 -5 L10 -16 M-10 -13 L19 3");
+    // Secondary wheel-impact object: a shallow, uneven depression in the asphalt.
+    fill(
+      g,
+      "#302e35",
+      "M-39 -1 L-32 -5 -23 -5 -17 -8 -8 -7 3 -10 11 -8 23 -8 27 -5 37 -4 40 -1 34 2 27 2 21 6 11 5 5 8 -4 6 -11 8 -20 5 -29 5 -32 2Z",
+    );
+    fill(
+      g,
+      "#494750",
+      "M-33 0 L-26 -3 -18 -4 -9 -4 3 -6 10 -5 21 -5 27 -2 35 -1 28 2 20 3 11 3 4 5 -5 4 -13 5 -22 3 -29 3Z",
+    );
+    stroke(
+      g,
+      "#b4a28c",
+      1.4,
+      "M-33 2 l5 2 8 1 7 2 9 -1 8 2 7 -3 10 1 7 -4 6 -1",
+    );
+    stroke(
+      g,
+      "#555059",
+      1,
+      "M-39 -1 l-6 -3 -6 1 M36 0 l6 1 5 -3 M11 6 l3 3 4 1",
+    );
   }
   g.restore();
 }
@@ -91,6 +118,18 @@ function hydrant(g: Brush) {
   rect(g, "#dec092", -6, -19, 12, 2);
 }
 
+const canyonVerge: Partial<
+  Record<number, { kind: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7; width: number }>
+> = {
+  1: { kind: 0, width: 85 },
+  2: { kind: 1, width: 68 },
+  4: { kind: canyonShape.spreadingTree, width: 112 },
+  5: { kind: canyonShape.domedTree, width: 84 },
+  6: { kind: 2, width: 43 },
+  10: { kind: 2, width: 46 },
+  11: { kind: canyonShape.clusteredRocks, width: 58 },
+};
+
 export function furniture(
   g: Brush,
   x: number,
@@ -102,37 +141,13 @@ export function furniture(
   bend: number,
 ) {
   const slot = id % 12;
-  if (route === "canyon") {
-    const vegetation =
-      slot === 4 || slot === 5
-        ? 0
-        : slot === 2
-          ? 1
-          : slot === 1 || slot === 6 || slot === 10
-            ? 2
-            : slot === 11
-              ? 3
-              : undefined;
-    if (
-      vegetation !== undefined &&
-      vergeSprite(
-        g,
-        x,
-        y,
-        s *
-          (vegetation === 0
-            ? slot === 5
-              ? 114
-              : 77
-            : vegetation === 1
-              ? 68
-              : 43),
-        vegetation,
-        id % 3 === 0,
-      )
-    )
-      return;
-  }
+  const scenic = canyonVerge[slot];
+  if (
+    route === "canyon" &&
+    scenic &&
+    vergeSprite(g, x, y, s * scenic.width, scenic.kind, id % 3 === 0)
+  )
+    return;
   if (slot === 0 || slot === 1 || slot === 2) {
     roadside(
       g,

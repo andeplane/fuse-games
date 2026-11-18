@@ -2,12 +2,19 @@ import { ellipse, type Brush } from "./drawing";
 
 let atlas: HTMLImageElement | undefined;
 
+export const canyonShape = {
+  spreadingTree: 4,
+  domedTree: 5,
+  greyRock: 6,
+  clusteredRocks: 7,
+} as const;
+
 export function vergeSprite(
   g: Brush,
   x: number,
   y: number,
   size: number,
-  kind: 0 | 1 | 2 | 3,
+  kind: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7,
   flip = false,
 ) {
   if (!atlas) {
@@ -15,7 +22,7 @@ export function vergeSprite(
     atlas.src = new URL("./canyon-verge.webp", import.meta.url).href;
   }
   if (!atlas.complete || !atlas.naturalWidth) return false;
-  // Four bottom-anchored original painted cutouts with transparent padding.
+  // The atlas has two columns of bottom-anchored original cutouts.
   ellipse(
     g,
     "#4a37334a",

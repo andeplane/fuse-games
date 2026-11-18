@@ -7,7 +7,7 @@ import {
   type,
   type Brush,
 } from "./drawing";
-import { vergeSprite } from "./verge";
+import { canyonShape, vergeSprite } from "./verge";
 
 export interface RoadFeature {
   kind: "bridge" | "rough" | "bank" | "guardrail";
@@ -54,7 +54,7 @@ export function warningSign(
 }
 
 export function boulder(g: Brush, x: number, y: number, scale: number) {
-  if (vergeSprite(g, x, y, scale * 62, 3)) return;
+  if (vergeSprite(g, x, y, scale * 62, canyonShape.greyRock)) return;
   g.save();
   g.translate(x, y);
   g.scale(scale, scale);
