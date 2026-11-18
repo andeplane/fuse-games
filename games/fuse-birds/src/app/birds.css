@@ -6,14 +6,6 @@
 body.fui-app {
   padding: 0;
 }
-/* The battle's own choices sit in the bar's menu, in the open. */
-.birds-menu summary {
-  display: none;
-}
-.birds-menu-items {
-  display: grid;
-  gap: 9px;
-}
 .birds-controls .birds-weapon {
   border-radius: 5px;
   font-family: "Press Start 2P", monospace;

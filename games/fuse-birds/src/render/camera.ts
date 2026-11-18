@@ -12,6 +12,23 @@ export interface MapSize {
   height: number;
 }
 
+/** Give the impact a moment to read, then settle on the next shooter's perch. */
+export function turnCamera(
+  from: Camera,
+  to: Camera,
+  elapsedMs: number,
+): Camera {
+  const t = Math.max(0, Math.min(1, (elapsedMs - 250) / 350));
+  if (!t) return from;
+  if (t === 1) return to;
+  const mix = t * t * (3 - 2 * t);
+  return {
+    x: from.x + (to.x - from.x) * mix,
+    y: from.y + (to.y - from.y) * mix,
+    zoom: from.zoom + (to.zoom - from.zoom) * mix,
+  };
+}
+
 export function fitScale(map: MapSize, viewport: Viewport): number {
   return Math.min(viewport.width / map.width, viewport.height / map.height);
 }

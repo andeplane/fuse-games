@@ -5,11 +5,23 @@ import {
   edgeMarker,
   fitScale,
   followShot,
+  turnCamera,
   screenToWorld,
   zoomAt,
 } from "../src/render/camera.js";
 const map = { width: 1536, height: 768 },
   viewport = { width: 1000, height: 600 };
+test("turn handoff holds impact, eases across the map, then restores the player's selected zoom", () => {
+  const impact = { x: 1100, y: 340, zoom: 1.5 };
+  const perch = { x: 300, y: 420, zoom: 3 };
+  assert.equal(turnCamera(impact, perch, 240), impact);
+  assert.deepEqual(turnCamera(impact, perch, 425), {
+    x: 700,
+    y: 380,
+    zoom: 2.25,
+  });
+  assert.equal(turnCamera(impact, perch, 650), perch);
+});
 test("zoomed edge markers preserve direction and safe screen margins", () => {
   const camera = { x: 768, y: 384, zoom: 3 };
   assert.equal(

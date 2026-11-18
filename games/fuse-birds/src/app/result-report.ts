@@ -164,8 +164,8 @@ export function resultBar(result: Result): ResultsBar {
     ...(result.waiting ? { status: result.waiting } : {}),
     actions: result.host
       ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "PLAY AGAIN", primary: true },
+          { id: "lobby", label: "Back to room" },
+          { id: "rematch", label: "Rematch", primary: true },
         ]
       : [],
   };
