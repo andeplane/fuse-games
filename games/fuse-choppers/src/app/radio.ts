@@ -59,7 +59,7 @@ export function createChopperRadio(options: {
     return button;
   };
   const save = () => {
-    if (muted || disposed) return;
+    if (options.muted || disposed) return;
     try {
       store.setItem(
         RADIO_KEY,
@@ -111,20 +111,24 @@ export function createChopperRadio(options: {
   label.textContent = "MUSIC VOLUME";
   label.append(volume);
   volume.oninput = () => {
-    if (muted || disposed) return;
+    if (options.muted || disposed) return;
     level = Number(volume.value) / 100;
     player.setVolume(level);
     save();
   };
   select.onchange = () => choose(Number(select.value));
   const render = () => {
+    for (const control of [previous, play, next, loop, select])
+      control.disabled = muted;
     play.textContent = playing && !muted ? "PAUSE" : "PLAY";
     play.setAttribute("aria-pressed", String(playing && !muted));
     loop.textContent = repeat ? "REPEAT SONG ON" : "REPEAT SONG OFF";
     loop.setAttribute("aria-pressed", String(repeat));
-    status.textContent = muted
+    status.textContent = options.muted
       ? "Audio muted by preview URL"
-      : player.error || ALL_SONGS[index]!.title;
+      : muted
+        ? "Sound is off. Turn it on in Player options."
+        : player.error || ALL_SONGS[index]!.title;
     for (const option of select.querySelectorAll("option"))
       option.selected = option.value === String(index);
   };
@@ -136,8 +140,7 @@ export function createChopperRadio(options: {
   transport.className = "fc-radio-transport";
   transport.append(previous, play, next);
   element.append(status, select, transport, loop);
-  for (const control of [previous, play, next, loop, select, volume])
-    control.disabled = options.muted;
+  volume.disabled = options.muted;
   render();
   return {
     element,

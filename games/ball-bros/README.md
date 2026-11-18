@@ -41,7 +41,7 @@ Your ball collects power-ups for you, even after it travels across the arena. Pa
 
 Pickups appear in the center every four seconds after the first second of play. Effect timers appear on player cards and phone controllers. Ghosted paddles are stunned; white paddles are sticky; gold rings mark Thief; orange halos mark bomb balls.
 
-Choose **YOUR CORE** before solo or joining for an avatar from the shared Fuse Riders sheet. **RADIO OFF** explicitly enables the shared music catalog; **NEXT ♫** changes tracks. The radio starts off, pauses on leaving/reconnecting, and is hidden on shared phone controllers. Use the TV's radio for shared play. The SOUND toggle controls impact effects separately. Missing portrait/music assets leave the game playable.
+Choose **YOUR CORE** before solo or joining for an avatar from the shared Fuse Riders sheet. Open the top-right **Game menu → Radio** to play the shared catalog or change tracks. **Player options** contains the saved music volume. The radio starts off, pauses on leaving/reconnecting, and is hidden on shared phone controllers. Use the TV’s radio for shared play. The header Sound shortcut controls both music and impact effects. Missing portrait/music assets leave the game playable.
 
 ## Playing together
 

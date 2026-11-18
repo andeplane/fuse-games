@@ -72,7 +72,13 @@ test("master mute resumes the selected playing radio and cannot override preview
   assert.equal(active.plays, 1);
   active.radio.setMuted(true);
   assert.ok(active.pauses > 0);
+  assert.match(active.radio.element.textContent!, /Sound is off/);
+  const slider = active.radio.volumeControl.querySelector("input")!;
+  slider.value = "42";
+  slider.dispatchEvent(new active.window.Event("input"));
   active.radio.setMuted(false);
+  assert.equal(active.player.volume, 0.42);
+  assert.equal(JSON.parse(active.values.get(RADIO_KEY)!).volume, 0.42);
   assert.equal(active.plays, 2);
   active.radio.destroy();
   const preview = setup({ muted: true });

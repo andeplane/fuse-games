@@ -101,8 +101,12 @@ test("radio is opt-in, advances shared tracks, suppresses controllers and dispos
   assert.equal(toggle!.textContent, "RADIO OFF");
   radio.enable(false);
   toggle!.click();
-  assert.equal(radio.element.hidden, true);
+  assert.match(radio.element.textContent!, /Use the radio on the shared TV/);
+  assert.equal(toggle!.hidden, true);
+  assert.equal(radio.volumeControl.hidden, true);
   radio.enable(true);
+  assert.equal(toggle!.hidden, false);
+  assert.equal(radio.volumeControl.hidden, false);
   player.fail = true;
   toggle!.click();
   await Promise.resolve();

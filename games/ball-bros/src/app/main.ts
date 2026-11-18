@@ -54,7 +54,8 @@ const playerStore = {
   setItem: (key: string, value: string) => store.setItem(key, value),
 };
 const muted = new URLSearchParams(location.search).has("mute");
-let soundEnabled = !muted;
+const soundKey = "ball-bros-sound";
+let soundEnabled = !muted && store.getItem(soundKey) !== "off";
 let activeAudio: Audio | undefined;
 let activeRadio: ReturnType<typeof createRadio> | undefined;
 const sound = {
@@ -63,6 +64,7 @@ const sound = {
   setEnabled(on: boolean) {
     if (muted) return;
     soundEnabled = on;
+    store.setItem(soundKey, on ? "on" : "off");
     if (activeAudio) {
       activeAudio.setMuted(!on);
     }

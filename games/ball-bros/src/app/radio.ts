@@ -65,7 +65,10 @@ export function createRadio(
   volume.disabled = button.disabled = next.disabled = Boolean(options.preview);
   const render = () => {
     button.textContent = player.playing ? "RADIO ON" : "RADIO OFF";
-    title.textContent = player.error || player.song?.title || "";
+    title.textContent = enabled
+      ? player.error || player.song?.title || ""
+      : "Use the radio on the shared TV.";
+    button.hidden = next.hidden = !enabled;
   };
   const unsubscribe = player.subscribe(render);
   button.onclick = () => {
@@ -88,9 +91,9 @@ export function createRadio(
     enable(value: boolean) {
       enabled = value;
       button.disabled = next.disabled = !value || Boolean(options.preview);
-      element.hidden = !value;
       volumeControl.hidden = !value;
       if (!value) player.pause();
+      render();
     },
     destroy() {
       unsubscribe();

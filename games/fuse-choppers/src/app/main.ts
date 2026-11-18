@@ -159,7 +159,8 @@ const pilotPicker = () => {
 };
 const query = new URLSearchParams(location.search);
 const muted = query.has("mute");
-let soundEnabled = !muted;
+const soundKey = "fuse-choppers-sound";
+let soundEnabled = !muted && store.getItem(soundKey) !== "off";
 let activeSfx: ReturnType<typeof createSfx> | undefined;
 const sound = {
   forcedMute: muted,
@@ -167,6 +168,7 @@ const sound = {
   setEnabled(on: boolean) {
     if (muted) return;
     soundEnabled = on;
+    store.setItem(soundKey, on ? "on" : "off");
     radio.setMuted(!on);
     activeSfx?.setMuted(!on);
   },
@@ -178,6 +180,7 @@ const radio = createChopperRadio({
   baseUrl: import.meta.env.BASE_URL,
   muted,
 });
+radio.setMuted(!soundEnabled);
 document.addEventListener("keydown", (event) => {
   if (
     event.code === "KeyA" &&
