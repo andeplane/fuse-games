@@ -6,6 +6,7 @@ import {
   getPuzzle,
   available,
   partSize,
+  placementIssue,
   type Machine,
   type MachineCommand,
   type PartKind,
@@ -54,7 +55,7 @@ const linkNames: Record<LinkKind, string> = {
 };
 
 export function createBench(options: {
-  onCommand: (command: MachineCommand) => void;
+  onCommand: (command: MachineCommand) => boolean | void;
 }) {
   const root = element("section", "if-bench");
   root.setAttribute("aria-label", "Workshop");
@@ -143,11 +144,25 @@ export function createBench(options: {
   let keyboardMove = false;
   const activePart = () => machine?.parts.find((part) => part.id === selected);
   const building = () => machine?.mode === "build" && editable;
-  function send(command: MachineCommand) {
-    if (!editable || !machine) return;
-    if (command.type !== "rewind" && machine.mode !== "build") return;
-    if (command.type === "undo" && !machine.undo.length) return;
-    options.onCommand(command);
+  function send(command: MachineCommand): boolean {
+    if (!editable || !machine) return false;
+    if (command.type !== "rewind" && machine.mode !== "build") return false;
+    if (command.type === "undo" && !machine.undo.length) return false;
+    if (command.type === "place" || command.type === "move") {
+      const reason = placementIssue(machine, command);
+      if (reason) {
+        announcement = reason;
+        refresh();
+        return false;
+      }
+    }
+    announcement = "";
+    if (options.onCommand(command) === false) {
+      announcement = "The room could not accept this action. Try again.";
+      refresh();
+      return false;
+    }
+    return true;
   }
   function actOnPart(type: "flip" | "remove" | "rotate") {
     const part = activePart();
@@ -291,7 +306,10 @@ export function createBench(options: {
                   linkNames[link].toLowerCase() +
                   "."
                 : tool
-                  ? PARTS[tool].name + " · Tap the board to place."
+                  ? PARTS[tool].name +
+                    " · " +
+                    PARTS[tool].hint +
+                    " Tap the board to place."
                   : part
                     ? PARTS[part.kind].name +
                       (part.fixed
@@ -338,17 +356,14 @@ export function createBench(options: {
     announcement = "";
     const target = hit(p);
     if (tool) {
-      const piece = tool;
-      tool = undefined;
-      send({ type: "place", kind: piece, x: p.x, y: p.y });
+      if (send({ type: "place", kind: tool, x: p.x, y: p.y })) tool = undefined;
     } else if (link && selected !== undefined) {
       if (!target || target.id === selected) {
         announcement = "Choose another compatible part.";
       } else {
         const wire = canonicalLink(link, selected, target.id);
         if (canLink(machine.parts, machine.links, wire)) {
-          send({ type: "connect", ...wire });
-          link = undefined;
+          if (send({ type: "connect", ...wire })) link = undefined;
         } else announcement = "Those sockets cannot take this connection.";
       }
     } else if (target) {
@@ -501,8 +516,8 @@ export function createBench(options: {
       e.preventDefault();
       if (!e.repeat) {
         if (keyboardMove && selected !== undefined) {
-          send({ type: "move", id: selected, ...cursor });
-          keyboardMove = false;
+          if (send({ type: "move", id: selected, ...cursor }))
+            keyboardMove = false;
         } else interact(cursor);
       }
     }

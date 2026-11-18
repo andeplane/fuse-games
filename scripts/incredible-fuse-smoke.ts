@@ -48,10 +48,22 @@ try {
     await tv.getByRole("button", { name: "Run machine" }).count(),
     0,
   );
-  await guest.getByRole("button", { name: "Incline", exact: true }).click();
+  const incline = guest.getByRole("button", { name: "Incline", exact: true });
+  await incline.click();
+  const feedback = guest.locator(".if-bench-feedback");
+  assert.match(await feedback.innerText(), /Flip to reverse the slope/);
   const board = guest.locator(".if-bench-board");
   const bounds = await board.boundingBox();
   assert.ok(bounds);
+  await board.tap({
+    position: { x: (bounds.width * 2) / 640, y: (bounds.height * 60) / 400 },
+  });
+  assert.match(await feedback.innerText(), /whole part inside/);
+  assert.equal(await incline.getAttribute("aria-pressed"), "true");
+  for (let i = 0; i < 20; i++) await board.press("ArrowRight");
+  await board.press("Enter");
+  assert.match(await feedback.innerText(), /Another part is centered here/);
+  assert.equal(await incline.getAttribute("aria-pressed"), "true");
   await board.tap({
     position: { x: (bounds.width * 160) / 640, y: (bounds.height * 140) / 400 },
   });
@@ -59,6 +71,16 @@ try {
     .locator(".if-bench-tools button:enabled")
     .filter({ hasText: "Undo" })
     .waitFor();
+  await board.tap({
+    position: { x: (bounds.width * 160) / 640, y: (bounds.height * 140) / 400 },
+  });
+  for (let i = 0; i < 10; i++) await board.press("ArrowUp");
+  await board.press("Enter");
+  assert.match(await feedback.innerText(), /Another part is centered here/);
+  assert.equal(
+    await guest.getByRole("button", { name: "Flip", exact: true }).isEnabled(),
+    true,
+  );
   await guest.reload();
   await guest
     .locator(".if-bench-tools button:enabled")
