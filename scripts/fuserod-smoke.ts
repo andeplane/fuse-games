@@ -49,6 +49,9 @@ try {
   await solo.getByRole("button", { name: "Challenge", exact: true }).click();
   await solo.locator('[data-garage-key="race"]').click();
   await ready(solo);
+  await solo.goBack();
+  await solo.locator('[data-garage-key="resume"]').click();
+  await ready(solo);
   await drive(solo);
   await solo.setViewportSize({ width: 844, height: 390 });
   assert(await solo.locator(".rod-pad").isVisible());
@@ -65,8 +68,24 @@ try {
   await openPlayOptions(host);
   await host.getByRole("button", { name: /^host room$/i }).click();
   await host.waitForURL(/room=[A-Z0-9]+/);
-  await takeHostSeat(host, "Driver One");
   const start = host.getByRole("button", { name: /^start race$/i });
+  await host
+    .getByRole("button", { name: "Add AI", exact: true })
+    .first()
+    .click();
+  await host.getByRole("button", { name: "Room settings" }).click();
+  await host
+    .getByLabel("Race event", { exact: true })
+    .selectOption("timed-strip");
+  await host.keyboard.press("Escape");
+  await start.and(host.locator(":disabled")).waitFor();
+  await host.getByRole("button", { name: "Room settings" }).click();
+  await host
+    .getByLabel("Race event", { exact: true })
+    .selectOption("street-strip");
+  await host.keyboard.press("Escape");
+  await host.getByRole("button", { name: "Remove bot" }).click();
+  await takeHostSeat(host, "Driver One");
   await start.click();
   await ready(host);
   await drive(host);

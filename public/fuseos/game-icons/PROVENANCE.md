@@ -1,5 +1,7 @@
 # FuseOS game icons
 
+Fuserod uses its own orange hot rod from `games/fuserod/src/art/front.ts`, rendered on a transparent canvas at both desktop icon sizes.
+
 Fusero (2026-11-15): original code-drawn neon worm and rope from
 `games/fusero/art/icon.svg`, rasterized to 64×64 and 32×32 transparent RGBA PNGs.
 

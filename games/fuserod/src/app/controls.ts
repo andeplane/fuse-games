@@ -58,6 +58,7 @@ export function drivingControls(
   const element = el("div", "", "rod-pad");
   const held = new Map<string, number>();
   const buttons = bindings.map((b) => button(b.label, "rod-pedal"));
+  let automatic = false;
   element.append(...buttons);
   const pressed = (i: number) => [...held.values()].includes(i);
   const update = (shift: -1 | 0 | 1 = 0) => {
@@ -70,7 +71,7 @@ export function drivingControls(
     });
   };
   const press = (source: string, i: number) => {
-    if (!active() || held.has(source)) return;
+    if (!active() || held.has(source) || (automatic && i >= 4)) return;
     held.set(source, i);
     update(i === 4 ? -1 : i === 5 ? 1 : 0);
   };
@@ -137,6 +138,13 @@ export function drivingControls(
   );
   return {
     element,
+    transmission(nextAutomatic: boolean) {
+      if (automatic === nextAutomatic) return;
+      automatic = nextAutomatic;
+      element.classList.toggle("rod-automatic", automatic);
+      for (const b of buttons.slice(4)) b.hidden = automatic;
+      clear();
+    },
     clear,
     dispose() {
       clear();

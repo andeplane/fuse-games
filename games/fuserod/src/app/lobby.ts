@@ -57,7 +57,8 @@ export function raceLobby(opts: {
     onOpenScreen: () => window.open(opts.displayLink, "_blank", "noopener"),
   });
   const select = el("select"),
-    label = el("label", "Race ");
+    label = el("label", "Race event ");
+  select.setAttribute("aria-label", "Race event");
   const events = [
     ["street", "strip", "Street drag"],
     ["timed", "strip", "Quarter-mile time trial"],
@@ -162,7 +163,9 @@ export function raceLobby(opts: {
       automatic.disabled = select.disabled;
       add.hidden = !host || display || players.length >= 5;
       start.hidden = !host || display;
-      start.disabled = !players.some((p) => p.connected || p.bot);
+      start.disabled = !players.some(
+        (p) => p.connected && (settings.variant !== "timed" || !p.bot),
+      );
       roster.update(
         players.map((p) => ({
           id: p.id,

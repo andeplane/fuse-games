@@ -126,6 +126,9 @@
   border: 1px solid #756577;
   border-radius: 0.4rem;
 }
+.rod-pad.rod-automatic {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .rod-pad button:nth-child(4) {
   background: #624333;
   border-color: #b48356;

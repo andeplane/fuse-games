@@ -48,6 +48,7 @@ import { drawScene } from "../art/scenes.js";
 import { mountCruise, type TownStop } from "../cruise/index.js";
 import { activeCar, setup, MODELS } from "../garage/campaign.js";
 import {
+  cruiseBlockReason,
   loadCampaign,
   mountGarage,
   motorSetup,
@@ -68,6 +69,12 @@ const endpoints = createEndpoints(
   location.origin,
 );
 const query = new URLSearchParams(location.search);
+const automaticKeys = controls.slice(0, 4);
+const automaticTouch = touchControls.slice(0, 4);
+// A cached page may contain a settled wager or disconnected room runtime.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) location.reload();
+});
 const url = (search = "") =>
   endpoints.appUrl(
     search + (query.has("mute") ? (search ? "&mute" : "?mute") : ""),
@@ -166,8 +173,14 @@ function garage(startAt?: TownStop) {
   app.replaceChildren(header(), host);
   let dispose = () => {};
   const cruise = (start: TownStop) => {
-    const car = activeCar(loadCampaign(campaignStorage));
-    if (!car) return;
+    const career = loadCampaign(campaignStorage);
+    const car = activeCar(career);
+    if (!car || cruiseBlockReason(career)) {
+      cleanup();
+      window.removeEventListener("pagehide", cleanup);
+      garage(start);
+      return;
+    }
     dispose();
     window.removeEventListener("pagehide", cleanup);
     const build = setup(car);
@@ -395,8 +408,11 @@ function play() {
             !r.falseStart,
         );
       pad.element.hidden = !canDrive;
+      pad.transmission(config.automatic);
       if (!canDrive) pad.clear();
       menu.update({
+        controls: config.automatic ? automaticKeys : controls,
+        touchControls: config.automatic ? automaticTouch : touchControls,
         canLobby: !display && host && frame.phase !== "lobby",
         touch: matchMedia("(pointer: coarse)").matches,
         display,
