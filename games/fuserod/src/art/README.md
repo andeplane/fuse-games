@@ -1,5 +1,9 @@
 # Fuserod graphics
 
+The [canyon sunset panorama](canyon-sunset.webp) was generated for Fuserod with ImageGen. The renderer pans across it as the car turns. The production prompt was:
+
+> Production game background asset, ultrawide landscape panorama painted for an original stylish modern 1960s hot-rod arcade racing game. Southern California canyon at sunset, screenprinted gouache, burnt orange and dusty salmon sky, thin amber-lit clouds, distant layered warm rock ridges and purple-blue foothills, sparse distant pines and desert scrub. Actual panoramic horizon at 75 percent image height, foreground below is a simple muted dusty earth gradient. Sophisticated illustrated landscape, strong readable big shapes with tangible natural texture. Straight-on level view from a car. No road, no cars, no dashboard, no typography, no text, no logos. Wide landscape image.
+
 ## What the supplied DOS build draws
 
 I inspected the files accompanying `SR.EXE` (SHA-256 `d763bd13be07b2ef457b5982f26316a8d71470d73beeb4eee7c6c1e1fef72d96`). Reading each little-endian directory count followed by 28-byte records produced the inventory below. All recorded picture ranges fit their library. Each library ends one byte after the final recorded picture. The CGA alternatives contain the same picture counts and mask flags.
