@@ -559,14 +559,31 @@ function pestMotion(world: World, level: Level, e: Enemy, speed: number) {
   const target = world.players.filter((p) => p.lives && p.respawn === "active");
   const prey = target[e.id % Math.max(1, target.length)];
   const tracks = prey && e.y >= prey.y && e.y <= 410;
-  e.phase = (e.phase + 1) % 65536;
-  if (e.type === 19 && tracks) {
-    e.facing = prey.x < e.x ? -1 : 1;
-    e.vx += e.facing * 0.5;
-    e.vx = Math.max(-speed - 2, Math.min(speed + 2, e.vx));
+  if (!e.grounded && (e.type === 23 || e.type === 52 || e.type === 56)) return;
+  const phaseStep =
+    e.type === 52
+      ? Math.max(6, Math.floor(Math.abs(speed) * 8))
+      : e.type === 56
+        ? 16
+        : 1;
+  e.phase = (e.phase + phaseStep) % 65536;
+  if (e.type === 19 && prey) {
+    // SpecialEnemy nudges a slow demon in its old heading before reassessing the target.
+    if (Math.abs(e.vx) < 1) e.vx += e.facing * 2 * SIXTEENTH;
+    const delta = prey.x - e.x;
+    if (tracks || (e.y < prey.y && Math.abs(delta) < 80)) {
+      const toward: Facing = prey.x - 24 < e.x - 16 ? -1 : 1;
+      e.facing = tracks ? toward : toward === 1 ? -1 : 1;
+      const spec = level.pests[e.id]!;
+      const cap = e.slowed
+        ? 6
+        : 2 * (Math.abs(spec.speed) + Math.abs(spec.temper) - 1);
+      if (e.facing * e.vx < (16 + cap) * SIXTEENTH)
+        e.vx += e.facing * 8 * SIXTEENTH;
+    } else if (Math.abs(e.vx) < 20 * SIXTEENTH)
+      e.vx += e.facing * 4 * SIXTEENTH;
     return;
   }
-  if (!e.grounded && (e.type === 23 || e.type === 52 || e.type === 56)) return;
   if (e.type === 23) {
     e.vx = 0;
     if (e.phase >= 10) {
@@ -596,6 +613,7 @@ function pestMotion(world: World, level: Level, e: Enemy, speed: number) {
     e.grounded = false;
     return;
   }
+  if (e.type === 52 || e.type === 56) return;
   if (e.id < 1000) e.vx = e.facing * speed;
 }
 function enemyStep(world: World, level: Level, enemy: Enemy) {

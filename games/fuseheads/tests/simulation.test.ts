@@ -56,6 +56,33 @@ test("Surfaceville's first dog spawns only after its ten-tick entrance delay", (
   assert.equal(world.nextPest, 1);
 });
 
+test("the measured grounded demon and cobra velocity sequences match the native SpecialEnemy branches", () => {
+  for (const kind of [19, 27] as const) {
+    const base = referenceBoard();
+    const level = {
+      ...base,
+      pests: [{ ...base.pests[0]!, type: kind, speed: 16, temper: 7 }],
+    };
+    // This seed produces random-chart value 10 on the first cobra decision, as in the probe.
+    const w = createWorld(0, [0], 7);
+    w.nextSpawnAt = 0;
+    stepWorld(w, [0], level);
+    Object.assign(w.players[0]!, { x: 72, y: 200 });
+    const e = w.enemies[0]!;
+    Object.assign(e, { x: 144, y: 240, vx: 1, vy: 0, grounded: true });
+    const samples: number[] = [];
+    for (let step = 0; step < 12; step++) {
+      stepWorld(w, [0], level);
+      if (step < 2 || step >= 8) samples.push(e.vx * 16);
+    }
+    assert.deepEqual(
+      samples,
+      oracle.specialEnemy[kind].map((row) => row[0]),
+      `pest ${kind}`,
+    );
+  }
+});
+
 test("Deluxe dog bonk, recovery, lower exit and one-pixel kick threshold", () => {
   const base = referenceBoard(),
     tiles = Array.from(base.tiles);
