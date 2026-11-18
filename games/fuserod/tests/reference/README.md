@@ -25,3 +25,18 @@ Three complete quarter-mile motion traces compare RPM, mph, gear and position on
 ## Fuse-specific behavior
 
 Drivers can request up and down shifts explicitly. The original click chose a direction from the throttle, brake and current torque band. The parity cases use the same directional result as that click. After a breakdown the motor stops advancing and the caller handles the race outcome. The caller also owns course geometry, wheel-to-lane motion, opponents, start lights, race stakes and results. Choose the tune at race start and retain it for the duration of the race.
+
+## Rival decisions, police and timing
+
+Run `uv run --with unicorn==2.1.4 games/fuserod/tests/reference/rival_probe.py /tmp/SR2-unpacked.exe` and `pnpm exec tsx --test games/fuserod/tests/opponent.test.ts` to compare:
+
+| DOS instructions                                       | Measured behavior                                                                                         | Cases |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ----: |
+| 0001:cb98 rival AI through acceleration or gear change | Requested speed cap on straights, entering turns, passing, alongside, police pursuit and sanctioned strip |   384 |
+| 0001:d21a–d2a3 street traffic avoidance                | Clearance direction and lateral step for an obstructed span between two edges                             |    76 |
+| 0001:d9b4 police dispatch                              | Waiting, abandonment, pursuit, siren, pulling the driver over                                             |   132 |
+| 0001:b1e8–b219 finish ordering                         | Signed subdivision rounding when cars finish within or across a segment                                   |   390 |
+| 0001:90a6 bracket countdown                            | Which lane waits for the stronger dial-in, and for how many PIT ticks                                     |    16 |
+| 0001:b366 bracket decisions                            | First or second at the line, dial-in exceeded, matched or beaten                                          |    32 |
+
+The opponent probe supplies synthetic road flags and reads the decision before any rendering, siren or car swap. The CPU driver's pedal adapter applies the recovered pacing targets through player-accessible controls. The DOS AI's private instantaneous gear changes and the original field's times are outside these trace claims. The three automated Fuse quarter-mile runs verify finish and checkpoint recovery. Course generation, the traffic lookahead scanner, bracket tournament seeding, aqueduct lane AI, traffic assets, police model swapping and the original game's complete campaign remain outside these probes.

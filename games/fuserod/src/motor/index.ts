@@ -121,6 +121,30 @@ function ratioFor(gear: number, gearbox: Grade, performance: number) {
   );
 }
 
+export function motorTopSpeed(tune: MotorTune): number {
+  return Math.min(
+    130,
+    div(carPerformance(tune.power ?? 0, tune.gearbox ?? 0) * 13, 10),
+  );
+}
+
+/** Road contacts slow the powered wheels and the connected engine together. */
+export function slowMotor(
+  state: MotorState,
+  maximum: number,
+  tune: MotorTune = {},
+): MotorState {
+  const speed = Math.max(0, Math.min(state.speed, Math.trunc(maximum)));
+  if (speed === state.speed) return state;
+  const gearbox = tune.gearbox ?? 0;
+  const power = tune.power ?? 0;
+  const ratio = ratioFor(state.gear, gearbox, carPerformance(power, gearbox));
+  const rpm =
+    state.gear === 0 ? 1500 + speed * 30 : Math.max(1500, speed * ratio);
+  const [lower, upper] = thresholds[power];
+  return { ...state, speed, rpm, band: rpm > upper ? 2 : rpm > lower ? 1 : 0 };
+}
+
 function physics(s: MotorState, input: MotorControls, tune: MotorTune) {
   if (s.broken) return;
   const power = tune.power ?? 0;
@@ -239,6 +263,7 @@ export function isMotorState(value: unknown): value is MotorState {
   if (!value || typeof value !== "object") return false;
   const s = value as Record<string, unknown>;
   return (
+    Object.keys(s).length === 18 &&
     integer(s.rpm, -32768, 32767) &&
     integer(s.speed, 0, 1000) &&
     integer(s.gear, 0, 4) &&
@@ -252,6 +277,7 @@ export function isMotorState(value: unknown): value is MotorState {
     [0, 5, 17, 21].includes(Number(s.failure)) &&
     s.broken === (s.failure !== 0) &&
     typeof s.engaged === "boolean" &&
+    (s.engaged || (s.gear === 0 && s.speed === 0 && s.position === 0)) &&
     integer(s.steps, 0, 0x7fffffff) &&
     integer(s.seed, 0, 0xffffffff) &&
     integer(s.position, 0, 0x7fffffff) &&
