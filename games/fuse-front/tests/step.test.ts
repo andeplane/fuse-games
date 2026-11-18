@@ -290,6 +290,18 @@ test("factory orders and stances are gone: an old command does nothing, and past
   }));
   const last: Command = { seat: 0, type: "move", x: 11, y: 7 };
   assert.equal(send(...flood, last).heroes[0]!.goal, 7 * map.width + 2);
+  // Refused commands still use their sender's budget. The other seat can act.
+  const invalid = flood.map((command) => ({
+    ...command,
+    type: "move" as const,
+    x: -1,
+    y: 7,
+  }));
+  const other: Command = { seat: 1, type: "move", x: 11, y: 7 };
+  assert.equal(
+    hashWorld(send(...invalid, last, other)),
+    hashWorld(send(other)),
+  );
 });
 
 test("capturing a factory restarts it on its default order", () => {
