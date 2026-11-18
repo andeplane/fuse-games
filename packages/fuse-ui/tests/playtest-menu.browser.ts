@@ -82,6 +82,21 @@ try {
   await childToggle.click();
   await expect(page.locator("body")).toHaveAttribute("data-stops", "1");
   await expect(game.locator("body")).toHaveAttribute("data-stops", "0");
+  // The same menu returns focus to its trigger on landing and to the keyboard play surface in a match.
+  const toggle = game.getByRole("button", { name: "Open game menu" });
+  await toggle.click();
+  await page.keyboard.press("Escape");
+  await expect(toggle).toBeFocused();
+  await game.getByRole("button", { name: "Start match" }).click();
+  await toggle.click();
+  await options.click();
+  await page.keyboard.press("Escape");
+  await expect(options).toBeFocused();
+  await page.keyboard.press("Escape");
+  const arena = game.getByRole("main");
+  await expect(arena).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(arena).toHaveText("Jump");
   // Wrong source, even with the right origin, cannot control desktop capture.
   await page.evaluate(() => {
     window.dispatchEvent(
