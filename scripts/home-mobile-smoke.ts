@@ -288,7 +288,9 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           await inside(page, dialog);
           assert.ok(
             await page
-              .locator("dialog[open] .dialog-body")
+              .locator(
+                "dialog[open] :is(.dialog-body,.fui-dialog-body):visible",
+              )
               .evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
             "dialog body horizontal overflow",
           );
@@ -448,18 +450,17 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
               page,
               page.getByRole("button", { name: "EFFECTS OFF", exact: true }),
             );
-            await dialog
-              .getByRole("button", { name: "♫ RADIO", exact: true })
-              .click();
-            await page.locator(".audio-panel").waitFor({ state: "visible" });
-            for (const slider of await page
-              .locator(".audio-panel input[type=range]")
-              .all())
+            for (const name of [/music volume/i, /effects volume/i]) {
+              const slider = dialog.getByRole("slider", { name });
+              await slider.scrollIntoViewIfNeeded();
               await inside(page, slider);
+            }
           }
-          await page.locator("dialog[open] .dialog-body").evaluate((e) => {
-            e.scrollTop = e.scrollHeight;
-          });
+          await page
+            .locator("dialog[open] :is(.dialog-body,.fui-dialog-body):visible")
+            .evaluate((e) => {
+              e.scrollTop = e.scrollHeight;
+            });
           await inside(
             page,
             dialog.getByRole("button", { name: "Back", exact: true }),
@@ -470,6 +471,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           await dialog
             .getByRole("button", { name: "Back", exact: true })
             .click();
+          if (name === "Player options") await page.keyboard.press("Escape");
           await dialog.waitFor({ state: "hidden" });
         }
         await page.reload();

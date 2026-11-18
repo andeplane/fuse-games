@@ -217,6 +217,7 @@ try {
   });
   await phone.getByLabel("Landscape bomb side").selectOption("left");
   await phone.getByRole("button", { name: "Back", exact: true }).click();
+  await phone.keyboard.press("Escape");
   if (await phone.locator(".mobile-tools-open").count())
     await phone.locator(".mobile-tools-toggle").click();
   await layout(false, "left");

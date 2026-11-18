@@ -32,7 +32,7 @@ try {
     const dialog = page.locator("dialog[open]");
     for (const size of sizes) {
       await page.setViewportSize(size);
-      for (const name of ["Back", "Player options", "Play"]) {
+      for (const name of ["Back", "Scroll speed", "Play"]) {
         const control = dialog.getByRole("button", {
           name: new RegExp(`^${name}$`, "i"),
         });
@@ -52,9 +52,7 @@ try {
           `Fusemania ${name} fits at ${size.width}px (touch=${hasTouch})`,
         );
       }
-      await dialog
-        .getByRole("button", { name: "Player options", exact: true })
-        .click();
+      await dialog.getByRole("button", { name: /^scroll speed$/i }).click();
       await page.locator(".fui-player-options-panel:not([hidden])").waitFor();
       await page.keyboard.press("Escape");
       assert.equal(
@@ -128,18 +126,28 @@ try {
         await main
           .getByRole("button", { name: "Join room", exact: true })
           .click();
+      } else if (kind === "settings") {
+        await page.getByRole("button", { name: "Open game menu" }).click();
+        await page.getByRole("button", { name: /^player options$/i }).click();
       } else {
         await main
           .getByRole("button", {
-            name: kind === "help" ? "How to play" : "Player options",
+            name: "How to play",
             exact: true,
           })
           .click();
       }
-      const sheet = page.locator(`#entrance-${kind}[open]`);
+      const sheet =
+        kind === "settings"
+          ? page.getByRole("dialog", { name: /^player options$/i })
+          : page.locator(`#entrance-${kind}[open]`);
       for (const size of sizes) {
         await page.setViewportSize(size);
-        await sheet.locator("p").last().scrollIntoViewIfNeeded();
+        const last =
+          kind === "settings"
+            ? sheet.getByRole("slider").last()
+            : sheet.locator("p").last();
+        await last.scrollIntoViewIfNeeded();
         assert.ok(
           await sheet
             .getByRole("button", { name: "Back", exact: true })

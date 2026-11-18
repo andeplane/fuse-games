@@ -19,7 +19,10 @@ interface Snapshot {
   players: Array<{ id: string; alive: boolean; angle: number }>;
 }
 await mkdir("artifacts", { recursive: true });
-const browser = await launchSelected("chromium", { headless: true });
+const browser = await launchSelected("chromium", {
+  headless: true,
+  args: ["--mute-audio"],
+});
 import { ridersPageUrl } from "./lib/riders-url.js";
 import { openTopMenu } from "./lib/top-menu.js";
 const base = ridersPageUrl(process.env.ONLINE_URL ?? "http://localhost:8787/");
@@ -135,10 +138,24 @@ try {
         time: element?.currentTime ?? -1,
       };
     });
-  // The radio attaches its <audio> and sets the track from the page's first audio update, after `load` resolves goto.
+  // A player starts the radio explicitly; ordinary navigation must leave idle music paused.
+  await openTopMenu(host);
+  await host.getByRole("button", { name: /^radio$/i }).click();
+  assert.equal(
+    await host.evaluate(() =>
+      [...document.querySelectorAll("audio")].every((audio) => audio.paused),
+    ),
+    true,
+  );
+  await host
+    .getByRole("dialog", { name: /^radio$/i })
+    .getByRole("button", { name: /^play$/i })
+    .click();
   await host.waitForFunction(
     () => !!document.querySelector("audio")?.getAttribute("src"),
   );
+  await host.keyboard.press("Escape");
+  await host.keyboard.press("Escape");
   await host.evaluate(() => {
     Reflect.set(window, "kept", true);
   });
@@ -356,6 +373,7 @@ try {
       "switching back restores the first style",
     );
     await host.getByRole("button", { name: "Back", exact: true }).click();
+    await host.keyboard.press("Escape");
     console.log(
       `Visual style switched and switched back (${before} -> ${after})`,
     );
