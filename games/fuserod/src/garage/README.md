@@ -10,4 +10,6 @@ The driver's licence and logbook hold 15 manual save slots alongside autosave. R
 
 Fuserod's five rivals, car and part designs, asking prices, fixed purses, bargaining reserves, opponent acceptance weighting, title trade values, repair costs, weekly rotation and per-event calendar advance are original balancing choices. The DOS game's individual seller records, detailed carhop encounters, fine-grained clock and timed operation of the fuel nozzle have simpler counterparts or remain outside this campaign. DOS campaign trace parity is unverified.
 
+Each dealer car comes with a fitted workbench corresponding to its DOS model record. The race reads the installed engine, transmission, tyres, manifold, primary carburettor, exhaust, silencer and axle, plus distributor timing, removed bodywork and wear. Multiple shop items share a reference equipment class. Extra carburettors must be fitted and secured on multi-port manifolds. A final-drive adjustment changes the axle ratio independently of transmission type. Older saves keep upgrades, loose bolts and spare parts when their stock fittings are restored.
+
 Run `pnpm exec tsx --test games/fuserod/tests/garage.test.ts games/fuserod/tests/workshop.test.ts` to exercise the garage and workbench.

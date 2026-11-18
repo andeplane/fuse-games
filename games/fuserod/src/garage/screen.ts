@@ -533,7 +533,7 @@ export function mountGarage(
     for (const part of ["engine", "tyres"] as const satisfies readonly Part[]) {
       const row = node("div", "frg-row"),
         desc = node("div"),
-        grade = c[part],
+        grade = setup(c).drive[part === "engine" ? "power" : "tires"],
         cost = partPrice(c, part);
       desc.append(
         node("h3", "", part === "engine" ? "Engine kit" : "Tyres"),
@@ -564,7 +564,7 @@ export function mountGarage(
           value,
           label: [
             "Short · close ratios",
-            "Street · stock ratios",
+            "Street · fitted axle",
             "Tall · long ratios",
           ][i]!,
         })),

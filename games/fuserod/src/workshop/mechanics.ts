@@ -274,8 +274,8 @@ function fitError(w: Workshop, s: Station, g: Grade) {
   const parent = needs[s];
   if (parent && !secured(w, parent))
     return "Secure the " + STATION[parent].label.toLowerCase() + " first.";
-  if (s === "carb" && g >= 4 && (w.mounts.intake.part ?? -1) < 2)
-    return "The four-barrel flange needs a Street plenum or higher intake.";
+  if (s === "carb" && g >= 4 && (w.mounts.intake.part ?? -1) < 1)
+    return "The four-barrel flange needs a Long runner or higher intake.";
   return "";
 }
 export function inspectWorkshop(w: Workshop) {

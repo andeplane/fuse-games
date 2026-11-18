@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { stockDrive } from "../src/motor/index.js";
+import { freshWorkshop, inspectWorkshop } from "../src/workshop/mechanics.js";
 import { saveSlot, restoreSlot, slotSummary } from "../src/garage/slots.js";
 import {
   activeCar,
@@ -108,10 +110,79 @@ test("a car, fitted parts, gearing and wear feed the race setup", () => {
   const geared = success(change(tuned, { type: "gear", gearing: "short" }));
   assert.equal(geared.cash, 25);
   const c = activeCar(geared)!;
-  assert.deepEqual(motorSetup(setup(c)), { power: 1, tires: 1, gearbox: 1 });
-  assert.equal(motorSetup(setup({ ...c, condition: 30 })).power, 0);
+  const tunedDrive = motorSetup(setup(c));
+  assert.equal(tunedDrive.power, 1);
+  assert.equal(tunedDrive.tires, 2);
+  assert.equal(tunedDrive.gearbox, stockDrive(0).gearbox);
+  assert.equal(tunedDrive.calibration.differential, 2);
+  assert.equal(
+    motorSetup(setup({ ...c, condition: 30 })).calibration.wear,
+    7000,
+  );
   assert.equal(change(geared, { type: "upgrade", part: "engine" }).ok, false);
   assert.equal(initial.fleet.length, 0);
+});
+test("all 22 classified cars leave the dealer roadworthy with their recorded stock drivetrain", () => {
+  for (const model of MODEL_IDS) {
+    const day = [1, 8, 15].find((d) => listings(d).includes(model))!;
+    const s = success(
+      change(
+        { ...freshCampaign(), day, cash: 100_000 },
+        { type: "buy", model },
+      ),
+    );
+    const vehicle = activeCar(s)!;
+    assert.equal(inspectWorkshop(vehicle.workshop).ready, true, model);
+    assert.deepEqual(
+      motorSetup(setup(vehicle)),
+      stockDrive(MODELS[model].sprite),
+      model,
+    );
+    assert.equal(setup(vehicle).power, MODELS[model].hp, model);
+  }
+});
+test("legacy saves retain loose fasteners, fitted equipment and body changes while restoring factory classes", () => {
+  const storage = new Store();
+  const model = MODEL_IDS[6]!;
+  const w = freshWorkshop();
+  w.mounts.engine.bolts[0] = 1;
+  w.mounts.muffler = { part: null, bolts: w.mounts.muffler.bolts.map(() => 0) };
+  w.mounts.gearbox.part = 5;
+  w.timing = -4;
+  const s = success(
+    change({ ...freshCampaign(), cash: 100_000 }, { type: "buy", model }),
+  );
+  const { driveVersion: _version, ...car } = activeCar(s)!;
+  storage.setItem(
+    "fuserod.garage.v1",
+    JSON.stringify({
+      ...s,
+      fleet: [
+        {
+          ...car,
+          tyres: MODELS[model].grip,
+          workshop: w,
+          condition: 72,
+          fittings: { ...car.fittings, roof: false, rearBumper: false },
+        },
+      ],
+    }),
+  );
+  const resumed = activeCar(loadCampaign(storage))!;
+  assert.equal(resumed.workshop.mounts.engine.bolts[0], 1);
+  assert.equal(inspectWorkshop(resumed.workshop).ready, false);
+  const tune = motorSetup(setup(resumed)),
+    stock = stockDrive(6);
+  assert.equal(tune.automatic, true);
+  assert.equal(tune.power, stock.power);
+  assert.equal(tune.tires, stock.tires);
+  assert.deepEqual(tune.calibration, {
+    ...stock.calibration,
+    muffler: -1,
+    timing: -4,
+    wear: 2800,
+    removed: 5,
+  });
 });
 test("resuming a wager reserves cash once; settling pays and advances once", () => {
   const storage = new Store();
@@ -450,14 +521,14 @@ test("a car carries its bench, readiness and bodywork through save, undo and rac
   ).pending!;
   assert.equal(ticket.car.modelIndex, 0);
   assert.equal(ticket.car.fittings.hoodScoop, true);
-  assert.equal(ticket.car.automatic, false);
+  assert.equal(ticket.car.automatic, stockDrive(0).automatic);
 });
 test("an earlier saved car retains its tuning and gets stock equipment and bodywork", () => {
   const storage = new Store();
   success(transact(storage, buy));
   const key = "fuserod.garage.v1",
     state = JSON.parse(storage.getItem(key)!);
-  for (const field of ["fuel", "paint", "workshop", "fittings"])
+  for (const field of ["fuel", "paint", "workshop", "fittings", "driveVersion"])
     delete state.fleet[0][field];
   for (const field of [
     "roadStarts",
@@ -528,8 +599,7 @@ test("a heavily advantaged driver can renegotiate a declined title race down to 
       { type: "buy", model: "meteor" },
     ),
   );
-  let s = success(change(base, { type: "upgrade", part: "engine" }));
-  s = success(change(s, { type: "upgrade", part: "engine" }));
+  const s = success(change(base, { type: "upgrade", part: "engine" }));
   const car = activeCar(s)!;
   assert.equal(rivalAccepts(s, car, 0, 0, true), false);
   assert.equal(

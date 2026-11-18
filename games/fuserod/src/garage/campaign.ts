@@ -1,5 +1,11 @@
 import { uuid } from "fuse-netcode";
 import {
+  factoryWorkshop,
+  installedDrive,
+  migrateBench,
+  type InstalledDrive,
+} from "./drivetrain.js";
+import {
   MODELS,
   PAINTS,
   FITTINGS,
@@ -60,6 +66,7 @@ export type Part = "engine" | "tyres";
 type Grade = 0 | 1 | 2;
 export type StoragePort = Pick<Storage, "getItem" | "setItem">;
 export interface Vehicle {
+  driveVersion: 1;
   fittings: Fittings;
   workshop: Workshop;
   fuel: number;
@@ -71,10 +78,10 @@ export interface Vehicle {
   condition: number;
 }
 export interface Setup {
+  drive: InstalledDrive;
   modelIndex: number;
   automatic: boolean;
   fittings: Fittings;
-  gearBonus: Grade;
   paint: Paint;
   model: ModelId;
   power: number;
@@ -200,13 +207,14 @@ export const rivalCar = (rank: number): ModelId =>
   (["kestrel", "marlin", "arrowhead", "meridian", "wildfire"] as const)[rank]!;
 const stockCar = (model: ModelId): Vehicle => ({
   model,
+  driveVersion: 1,
   fittings: stockFittings(),
-  workshop: freshWorkshop(),
+  workshop: factoryWorkshop(model),
   fuel: 40,
   paint: MODELS[model].paint,
   engine: 0,
-  tyres: MODELS[model].grip,
-  gearing: MODELS[model].gearing,
+  tyres: 0,
+  gearing: "street",
   condition: 100,
 });
 export const purse = (rank: number) => 240 + rank * 140;
@@ -256,36 +264,23 @@ export function fuelQuote(c: Vehicle, cash: number) {
   return { amount, price: amount ? 10 + Math.ceil(amount / 20) : 0 };
 }
 export function setup(c: Vehicle): Setup {
-  const bay = inspectWorkshop(c.workshop);
+  const bay = inspectWorkshop(c.workshop),
+    factory = inspectWorkshop(factoryWorkshop(c.model)),
+    drive = installedDrive(c);
   return {
+    drive,
     modelIndex: MODELS[c.model].sprite,
-    automatic: bay.automatic,
-    gearBonus: bay.gearBonus,
+    automatic: drive.automatic,
     fittings: { ...c.fittings },
     paint: c.paint,
     model: c.model,
-    power: MODELS[c.model].hp + 55 * c.engine + bay.hp,
-    grip: Math.min(2, c.tyres + bay.gripBonus) as Grade,
+    power: MODELS[c.model].hp + 55 * c.engine + bay.hp - factory.hp,
+    grip: drive.tires,
     gearing: c.gearing,
     condition: c.condition,
   };
 }
-export function motorSetup(c: Setup): {
-  power: Grade;
-  tires: Grade;
-  gearbox: Grade;
-} {
-  const hp = c.power * (0.75 + 0.0025 * c.condition);
-  return {
-    power: hp < 205 ? 0 : hp < 270 ? 1 : 2,
-    tires: c.grip,
-    gearbox: Math.min(
-      2,
-      (c.gearing === "street" ? 0 : c.gearing === "short" ? 1 : 2) +
-        c.gearBonus,
-    ) as Grade,
-  };
-}
+export const motorSetup = (c: Setup) => c.drive;
 const own = (dict: object, key: unknown): key is string =>
   typeof key === "string" && Object.hasOwn(dict, key);
 const integer = (v: unknown, min: number, max: number): v is number =>
@@ -295,6 +290,7 @@ const record = (v: unknown): v is Record<string, unknown> =>
 function isCar(v: unknown): v is Vehicle {
   return (
     record(v) &&
+    v.driveVersion === 1 &&
     own(MODELS, v.model) &&
     isWorkshop(v.workshop) &&
     isFittings(v.fittings) &&
@@ -369,17 +365,30 @@ function decode(v: unknown): Campaign | undefined {
                 : { heat: 0, stakeKind: "cash", ...v.pending, dialInTicks: 0 },
           }
         : {}),
-      fleet: v.fleet.map((car) =>
-        record(car) && own(MODELS, car.model)
-          ? {
-              fuel: 40,
-              paint: MODELS[car.model as ModelId].paint,
-              workshop: freshWorkshop(),
-              fittings: stockFittings(),
-              ...car,
-            }
-          : car,
-      ),
+      fleet: v.fleet.map((car) => {
+        if (!record(car) || !own(MODELS, car.model)) return car;
+        const model = car.model as ModelId;
+        const loaded = {
+          fuel: 40,
+          paint: MODELS[model].paint,
+          fittings: stockFittings(),
+          ...car,
+        };
+        if ("driveVersion" in car) return loaded;
+        const workshop = "workshop" in car ? car.workshop : freshWorkshop();
+        return {
+          ...loaded,
+          driveVersion: 1,
+          workshop: isWorkshop(workshop)
+            ? migrateBench(workshop, model)
+            : workshop,
+          tyres: integer(car.tyres, 0, 2)
+            ? Math.max(0, car.tyres - MODELS[model].grip)
+            : car.tyres,
+          gearing:
+            car.gearing === MODELS[model].gearing ? "street" : car.gearing,
+        };
+      }),
     };
   }
   if (
@@ -873,7 +882,8 @@ export function change(s: Campaign, a: LoggedAction): Result {
       receipt = "Repairs complete.";
       break;
     case "upgrade":
-      if (c[a.part] >= 2) return fail("This part is fully upgraded.");
+      if (installedDrive(c)[a.part === "engine" ? "power" : "tires"] >= 2)
+        return fail("This part is fully upgraded.");
       cost = partPrice(c, a.part);
       replacement = { ...c, [a.part]: c[a.part] + 1 };
       receipt =
