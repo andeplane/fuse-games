@@ -1,17 +1,51 @@
 import { button, el } from "fuse-ui";
 import {
   validWorkshopBlueprint,
+  type Machine,
   type WorkshopBlueprint,
 } from "../game/machine.js";
-import { parseTimWorkshop } from "../game/tim-import.js";
+import { MAX_TIM_BYTES, parseTimWorkshop } from "../game/tim-import.js";
 
 const STORAGE_KEY = "incredible-fuse-local-workshop-v1";
-const MAX_FILE_BYTES = 256 * 1024;
+export function downloadWorkshop(machine: Machine) {
+  const { air, gravity, parts, links } = machine;
+  const file = new Blob(
+    [JSON.stringify({ version: 1, blueprint: { air, gravity, parts, links } })],
+    { type: "application/json" },
+  );
+  const url = URL.createObjectURL(file);
+  const link = el("a");
+  link.href = url;
+  link.download = "workshop.fuse-machine.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function parseWorkshopFile(name: string, data: ArrayBuffer) {
+  if (name.toLowerCase().endsWith(".tim"))
+    return parseTimWorkshop(new Uint8Array(data));
+  let record: unknown;
+  try {
+    record = JSON.parse(new TextDecoder().decode(data));
+  } catch {
+    throw new Error("Choose a Fuse blueprint or a DOS .TIM machine.");
+  }
+  if (
+    record &&
+    typeof record === "object" &&
+    "version" in record &&
+    record.version === 1 &&
+    "blueprint" in record &&
+    validWorkshopBlueprint(record.blueprint)
+  )
+    return { blueprint: record.blueprint, warnings: [] };
+  throw new Error("This blueprint is invalid or uses an unsupported version.");
+}
 
 export function readLocalWorkshop(): WorkshopBlueprint | undefined {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (!stored || stored.length > MAX_FILE_BYTES) return;
+    if (!stored || stored.length > MAX_TIM_BYTES) return;
     const blueprint: unknown = JSON.parse(stored);
     return validWorkshopBlueprint(blueprint) ? blueprint : undefined;
   } catch {
@@ -26,11 +60,11 @@ export function localWorkshopPicker({
   onOpen: () => void;
 }): HTMLElement {
   const details = el("details", "", "machine-import");
-  const summary = el("summary", "Open a DOS machine");
-  const label = el("label", "Choose a local .TIM freeform machine");
+  const summary = el("summary", "Open a saved machine");
+  const label = el("label", "Choose a Fuse blueprint or a DOS .TIM machine");
   const file = el("input");
   file.type = "file";
-  file.accept = ".tim";
+  file.accept = ".tim,.json";
   label.append(file);
   const status = el("p");
   status.setAttribute("role", "status");
@@ -44,11 +78,9 @@ export function localWorkshopPicker({
     status.textContent = "";
     if (!input) return;
     try {
-      if (input.size > MAX_FILE_BYTES)
-        throw new Error("Choose a .TIM machine smaller than 256 KiB.");
-      const parsed = parseTimWorkshop(
-        new Uint8Array(await input.arrayBuffer()),
-      );
+      if (input.size > MAX_TIM_BYTES)
+        throw new Error("Choose a machine no larger than 256 KiB.");
+      const parsed = parseWorkshopFile(input.name, await input.arrayBuffer());
       if (file.files?.[0] !== input) return;
       selected = parsed.blueprint;
       status.textContent = [

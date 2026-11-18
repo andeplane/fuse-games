@@ -47,7 +47,11 @@ import {
 import { FREE_WORKSHOP, getPuzzle, PUZZLES } from "../game/machine.js";
 import { createAttract } from "./attract.js";
 import { createBench } from "./bench.js";
-import { localWorkshopPicker, readLocalWorkshop } from "./local-workshop.js";
+import {
+  downloadWorkshop,
+  localWorkshopPicker,
+  readLocalWorkshop,
+} from "./local-workshop.js";
 import { dueReports, sendReport } from "./reports.js";
 import {
   IncredibleFuseRuntime,
@@ -266,7 +270,7 @@ function workshop() {
       header(),
       el(
         "p",
-        "This tab has no saved machine. Open the .TIM file again from Single player.",
+        "This tab has no saved machine. Open the file again from Single player.",
       ),
       createBackLink({ href: pageUrl() }),
     );
@@ -295,6 +299,13 @@ function workshop() {
     },
   });
   stage.append(bench.element);
+  const save = button("Save machine", "fui-button");
+  save.hidden = true;
+  save.onclick = () => {
+    const machine = runtime.roomState()?.machine;
+    if (solo && machine?.puzzle === FREE_WORKSHOP) downloadWorkshop(machine);
+  };
+  if (solo) stage.append(save);
   const results = createResultsScreen({
     document,
     onBack: leave,
@@ -414,6 +425,7 @@ function workshop() {
       main.dataset.phase = frame.phase;
       if (lobby.hidden === waiting) lobby.hidden = !waiting;
       stage.hidden = !playing;
+      save.hidden = !playing || frame.machine.puzzle !== FREE_WORKSHOP;
       const needsSeat =
         Boolean(me) &&
         !display &&
