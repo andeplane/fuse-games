@@ -1,30 +1,24 @@
-export const MODELS = {
-  kestrel: {
-    title: "Kestrel Six",
-    body: "Club coupe",
-    price: 700,
-    hp: 160,
-    paint: "#4ce1d3",
-    sprite: 0,
-  },
-  marlin: {
-    title: "Marlin Eight",
-    body: "Fastback",
-    price: 1500,
-    hp: 230,
-    paint: "#e8a255",
-    sprite: 1,
-  },
-  meteor: {
-    title: "Meteor GT",
-    body: "Sport hardtop",
-    price: 2400,
-    hp: 295,
-    paint: "#eb6999",
-    sprite: 2,
-  },
-} as const;
-export type ModelId = keyof typeof MODELS;
+import {
+  MODELS,
+  PAINTS,
+  FITTINGS,
+  FLEET_CAPACITY,
+  listings,
+  nextIssue,
+  stockFittings,
+  type ModelId,
+  type Paint,
+  type Fittings,
+} from "./models.js";
+import {
+  freshWorkshop,
+  inspectWorkshop,
+  isWorkshop,
+  workshopAction,
+  type Workshop,
+  type WorkshopCommand,
+} from "../workshop/mechanics.js";
+export * from "./models.js";
 export const ROUTES = {
   strip: { name: "Launch Strip", description: "Straight-line sprint" },
   aqueduct: { name: "Spillway Run", description: "Concrete channel" },
@@ -58,20 +52,14 @@ export const FUEL = {
   grudge: 24,
   championship: 36,
 } as const;
-export const PAINTS = {
-  "#4ce1d3": "Glacier",
-  "#e8a255": "Copper",
-  "#eb6999": "Orchid",
-  "#f2ebe0": "Ivory",
-  "#738bdd": "Indigo",
-} as const;
-export type Paint = keyof typeof PAINTS;
 export const GEARS = ["short", "street", "tall"] as const;
 type Gearing = (typeof GEARS)[number];
 export type Part = "engine" | "tyres";
 type Grade = 0 | 1 | 2;
 export type StoragePort = Pick<Storage, "getItem" | "setItem">;
 export interface Vehicle {
+  fittings: Fittings;
+  workshop: Workshop;
   fuel: number;
   paint: Paint;
   model: ModelId;
@@ -81,6 +69,10 @@ export interface Vehicle {
   condition: number;
 }
 export interface Setup {
+  modelIndex: number;
+  automatic: boolean;
+  fittings: Fittings;
+  gearBonus: Grade;
   paint: Paint;
   model: ModelId;
   power: number;
@@ -119,6 +111,9 @@ export interface Campaign {
   receipt: string;
 }
 export type Action =
+  | { type: "workbench"; command: WorkshopCommand }
+  | { type: "body"; fitting: keyof Fittings }
+  | { type: "newspaper" }
   | { type: "buy" | "select" | "sell"; model: ModelId }
   | { type: "paint"; paint: Paint }
   | { type: "refuel" }
@@ -174,14 +169,16 @@ export const eligible = (s: Campaign) =>
 export const unlockedRank = (s: Campaign) =>
   Math.min(s.rank, eligible(s) ? RIVALS.length - 1 : RIVALS.length - 2);
 export const rivalCar = (rank: number): ModelId =>
-  (["kestrel", "marlin", "kestrel", "meteor", "meteor"] as const)[rank]!;
+  (["kestrel", "marlin", "arrowhead", "meridian", "wildfire"] as const)[rank]!;
 const stockCar = (model: ModelId): Vehicle => ({
   model,
+  fittings: stockFittings(),
+  workshop: freshWorkshop(),
   fuel: 40,
   paint: MODELS[model].paint,
   engine: 0,
-  tyres: 0,
-  gearing: "street",
+  tyres: MODELS[model].grip,
+  gearing: MODELS[model].gearing,
   condition: 100,
 });
 export const purse = (rank: number) => 240 + rank * 140;
@@ -198,11 +195,16 @@ export function fuelQuote(c: Vehicle, cash: number) {
   return { amount, price: amount ? 10 + Math.ceil(amount / 20) : 0 };
 }
 export function setup(c: Vehicle): Setup {
+  const bay = inspectWorkshop(c.workshop);
   return {
+    modelIndex: MODELS[c.model].sprite,
+    automatic: bay.automatic,
+    gearBonus: bay.gearBonus,
+    fittings: { ...c.fittings },
     paint: c.paint,
     model: c.model,
-    power: MODELS[c.model].hp + 55 * c.engine,
-    grip: c.tyres,
+    power: MODELS[c.model].hp + 55 * c.engine + bay.hp,
+    grip: Math.min(2, c.tyres + bay.gripBonus) as Grade,
     gearing: c.gearing,
     condition: c.condition,
   };
@@ -216,7 +218,11 @@ export function motorSetup(c: Setup): {
   return {
     power: hp < 205 ? 0 : hp < 270 ? 1 : 2,
     tires: c.grip,
-    gearbox: c.gearing === "street" ? 0 : c.gearing === "short" ? 1 : 2,
+    gearbox: Math.min(
+      2,
+      (c.gearing === "street" ? 0 : c.gearing === "short" ? 1 : 2) +
+        c.gearBonus,
+    ) as Grade,
   };
 }
 const own = (dict: object, key: unknown): key is string =>
@@ -229,12 +235,20 @@ function isCar(v: unknown): v is Vehicle {
   return (
     record(v) &&
     own(MODELS, v.model) &&
+    isWorkshop(v.workshop) &&
+    isFittings(v.fittings) &&
     own(PAINTS, v.paint) &&
     integer(v.fuel, 0, TANK) &&
     integer(v.engine, 0, 2) &&
     integer(v.tyres, 0, 2) &&
     (GEARS as readonly unknown[]).includes(v.gearing) &&
     integer(v.condition, 0, 100)
+  );
+}
+function isFittings(value: unknown): value is Fittings {
+  return (
+    record(value) &&
+    Object.keys(FITTINGS).every((k) => typeof value[k] === "boolean")
   );
 }
 function createChallenge(
@@ -270,15 +284,35 @@ function createChallenge(
   };
 }
 function decode(v: unknown): Campaign | undefined {
-  if (record(v) && Array.isArray(v.fleet) && v.fleet.length <= 3) {
+  if (record(v) && Array.isArray(v.fleet) && v.fleet.length <= FLEET_CAPACITY) {
+    const oldTicket =
+      record(v.pending) &&
+      !("dialInTicks" in v.pending) &&
+      !("roadStarts" in v);
     v = {
+      qualified: false,
+      roadStarts: 0,
+      canyonWins: 0,
+      aqueductWins: 0,
+      finalLeg: 0,
       ...v,
+      ...(oldTicket && record(v.pending)
+        ? {
+            pending:
+              v.pending.stakeKind === "bracket"
+                ? { ...v.pending, heat: 0, rivalRank: 0, dialInTicks: 0 }
+                : { heat: 0, stakeKind: "cash", ...v.pending, dialInTicks: 0 },
+          }
+        : {}),
       fleet: v.fleet.map((car) =>
-        record(car) &&
-        own(MODELS, car.model) &&
-        !("fuel" in car) &&
-        !("paint" in car)
-          ? { ...car, fuel: 40, paint: MODELS[car.model as ModelId].paint }
+        record(car) && own(MODELS, car.model)
+          ? {
+              fuel: 40,
+              paint: MODELS[car.model as ModelId].paint,
+              workshop: freshWorkshop(),
+              fittings: stockFittings(),
+              ...car,
+            }
           : car,
       ),
     };
@@ -291,13 +325,13 @@ function decode(v: unknown): Campaign | undefined {
     !integer(v.rank, 0, RIVALS.length) ||
     !integer(v.next, 1, 1_000_000_000) ||
     typeof v.qualified !== "boolean" ||
-    !integer(v.canyonWins, 0, FINAL_DAY + 3) ||
-    !integer(v.aqueductWins, 0, FINAL_DAY + 3) ||
-    !integer(v.roadStarts, 0, FINAL_DAY + 3) ||
+    !integer(v.canyonWins, 0, FINAL_DAY * 3) ||
+    !integer(v.aqueductWins, 0, FINAL_DAY * 3) ||
+    !integer(v.roadStarts, 0, FINAL_DAY * 3) ||
     v.canyonWins + v.aqueductWins > v.roadStarts ||
     !integer(v.finalLeg, 0, 2) ||
     !Array.isArray(v.fleet) ||
-    v.fleet.length > 3 ||
+    v.fleet.length > FLEET_CAPACITY ||
     !v.fleet.every(isCar) ||
     new Set(v.fleet.map((c) => c.model)).size !== v.fleet.length ||
     typeof v.receipt !== "string" ||
@@ -380,7 +414,7 @@ export function loadCampaign(storage: StoragePort): Campaign {
   const raw = storage.getItem(KEY);
   if (raw === null) return freshCampaign();
   try {
-    if (raw.length <= 8192) {
+    if (raw.length <= 65_536) {
       const state = decode(JSON.parse(raw));
       if (state) return state;
     }
@@ -511,14 +545,16 @@ export function change(s: Campaign, a: Action): Result {
         });
       }
       const model = s.pending.rivalCar;
-      const owned = worked.some((v) => v.model === model);
+      const owned =
+        worked.some((v) => v.model === model) ||
+        worked.length >= FLEET_CAPACITY;
       const trade = Math.floor(MODELS[model].price / 2);
       return success({
         ...next,
         fleet: owned ? worked : [...worked, stockCar(model)],
         cash: s.cash + (owned ? trade : 0),
         receipt: owned
-          ? `Traded the duplicate ${MODELS[model].title} title for $${trade}.`
+          ? `Traded the ${MODELS[model].title} title for $${trade}.`
           : `Won the title to a ${MODELS[model].title}.`,
       });
     }
@@ -532,7 +568,16 @@ export function change(s: Campaign, a: Action): Result {
     });
   }
   if (s.pending) return fail("Finish or retire the active race first.");
+  if (a.type === "newspaper") {
+    const day = nextIssue(s.day);
+    if (day > FINAL_DAY) return fail("This is the final issue of the season.");
+    return success({ ...s, day, receipt: "The new classifieds are in." });
+  }
   if (a.type === "buy") {
+    if (s.fleet.length >= FLEET_CAPACITY)
+      return fail("All 16 garage spaces are occupied.");
+    if (!listings(s.day).includes(a.model))
+      return fail("This car is no longer listed this week.");
     if (s.fleet.some((v) => v.model === a.model))
       return fail("This model is already in your garage.");
     const car = MODELS[a.model];
@@ -564,6 +609,22 @@ export function change(s: Campaign, a: Action): Result {
     });
   }
   if (!c) return fail("Buy a car in the classifieds first.");
+  if (a.type === "workbench") {
+    const out = workshopAction(c.workshop, a.command, s.cash);
+    if (!out.ok) return out;
+    return success({
+      ...s,
+      cash: out.cash,
+      fleet: s.fleet.map((v) =>
+        v === c ? { ...v, workshop: out.workshop } : v,
+      ),
+      receipt: "",
+    });
+  }
+  if (a.type === "race" || a.type === "grudge") {
+    const bay = inspectWorkshop(c.workshop);
+    if (!bay.ready) return fail(bay.reason);
+  }
   if (a.type === "wait") {
     const days = daysToGrudge(s.day);
     if (days === 0 || s.day + days > FINAL_DAY)
@@ -578,7 +639,7 @@ export function change(s: Campaign, a: Action): Result {
     if (!grudgeNight(s.day) || s.cash < GRUDGE_FEE)
       return fail("Enter Grudge Night on Wednesday with the entry fee.");
     if (c.fuel < FUEL.grudge)
-      return fail("Grudge Night needs 2.4 gal. Visit the workshop fuel pump.");
+      return fail("Grudge Night needs 2.4 gal. Visit the station.");
     return success({
       ...s,
       cash: s.cash - GRUDGE_FEE,
@@ -599,7 +660,7 @@ export function change(s: Campaign, a: Action): Result {
     const fuel = rank === RIVALS.length - 1 ? FUEL.championship : FUEL[a.route];
     if (c.fuel < fuel)
       return fail(
-        `This event needs ${(fuel / 10).toFixed(1)} gal. Visit the workshop fuel pump.`,
+        `This event needs ${(fuel / 10).toFixed(1)} gal. Visit the station.`,
       );
     const fleet = s.fleet.map((v) =>
       v === c ? { ...v, fuel: v.fuel - fuel } : v,
@@ -645,6 +706,19 @@ export function change(s: Campaign, a: Action): Result {
   let cost = 0;
   let receipt = "";
   switch (a.type) {
+    case "body":
+      if (
+        !own(FITTINGS, a.fitting) ||
+        (a.fitting === "roof" && !MODELS[c.model].openTop)
+      )
+        return fail("That fitting is fixed on this model.");
+      cost = 20;
+      replacement = {
+        ...c,
+        fittings: { ...c.fittings, [a.fitting]: !c.fittings[a.fitting] },
+      };
+      receipt = "Bodywork complete.";
+      break;
     case "paint":
       if (!own(PAINTS, a.paint) || c.paint === a.paint)
         return fail("Choose another paint colour.");
@@ -701,6 +775,22 @@ export function transact(storage: StoragePort, action: Action): Result {
         ? error.message
         : "The garage could not save this change.",
     );
+  }
+}
+export function undoWorkshop(
+  storage: StoragePort,
+  before: Campaign,
+  after: Campaign,
+): Result {
+  try {
+    if (JSON.stringify(loadCampaign(storage)) !== JSON.stringify(after))
+      return fail(
+        "The garage has changed. This work order can no longer be undone.",
+      );
+    storage.setItem(KEY, JSON.stringify(before));
+    return success(before);
+  } catch {
+    return fail("The workbench could not restore this change.");
   }
 }
 export function settleRace(

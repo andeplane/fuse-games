@@ -283,6 +283,11 @@
 .frg-panel > [data-garage-key="cruise"] {
   margin-top: 0.8rem;
 }
+.frg-bodywork {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
 @media (max-height: 460px) and (min-width: 600px) {
   .frg-art {
     height: 8.5rem;

@@ -7,6 +7,11 @@ import {
   finished,
   freshCampaign,
   loadCampaign,
+  listings,
+  MODELS,
+  FLEET_CAPACITY,
+  MODEL_IDS,
+  undoWorkshop,
   motorSetup,
   purse,
   RIVALS,
@@ -345,4 +350,76 @@ test("corrupt saves and failed writes cannot open or pay a race", () => {
     ok: false,
     error: "Storage full",
   });
+});
+test("weekly classifieds cover 22 distinct bodies and cap the working fleet at sixteen", () => {
+  assert.equal(MODEL_IDS.length, 22);
+  assert.equal(new Set(MODEL_IDS.map((id) => MODELS[id].sprite)).size, 22);
+  const offered = new Set([...listings(1), ...listings(8), ...listings(15)]);
+  assert.equal(offered.size, 22);
+  const storage = new Store();
+  // A funded garage exercises the full fleet without coupling this check to an entire season of wins.
+  storage.setItem(
+    "fuserod.garage.v1",
+    JSON.stringify({ ...freshCampaign(), cash: 100000 }),
+  );
+  for (const model of listings(1))
+    success(transact(storage, { type: "buy", model }));
+  success(transact(storage, { type: "newspaper" }));
+  const nextModel = listings(8).find((id) => !listings(1).includes(id))!;
+  success(transact(storage, { type: "buy", model: nextModel }));
+  const fleet = loadCampaign(storage);
+  assert.equal(fleet.fleet.length, FLEET_CAPACITY);
+  assert.equal(fleet.day, 8);
+  assert.equal(setup(activeCar(fleet)!).modelIndex, MODELS[nextModel].sprite);
+  const another = listings(8).find(
+    (id) => !fleet.fleet.some((v) => v.model === id),
+  )!;
+  assert.equal(transact(storage, { type: "buy", model: another }).ok, false);
+});
+test("a car carries its bench, readiness and bodywork through save, undo and races", () => {
+  const storage = new Store();
+  success(transact(storage, buy));
+  const prior = loadCampaign(storage);
+  const opened = success(
+    transact(storage, { type: "workbench", command: { type: "jack" } }),
+  );
+  assert.equal(
+    transact(storage, { type: "race", route: "strip", wager: 0 }).ok,
+    false,
+  );
+  assert.equal(activeCar(loadCampaign(storage))?.workshop.jacked, true);
+  success(undoWorkshop(storage, prior, opened));
+  assert.equal(activeCar(loadCampaign(storage))?.workshop.jacked, false);
+  success(transact(storage, { type: "body", fitting: "hoodScoop" }));
+  assert.equal(undoWorkshop(storage, prior, opened).ok, false);
+  const ticket = success(
+    transact(storage, { type: "race", route: "strip", wager: 0 }),
+  ).pending!;
+  assert.equal(ticket.car.modelIndex, 0);
+  assert.equal(ticket.car.fittings.hoodScoop, true);
+  assert.equal(ticket.car.automatic, false);
+});
+test("an earlier saved car retains its tuning and gets stock equipment and bodywork", () => {
+  const storage = new Store();
+  success(transact(storage, buy));
+  const key = "fuserod.garage.v1",
+    state = JSON.parse(storage.getItem(key)!);
+  for (const field of ["fuel", "paint", "workshop", "fittings"])
+    delete state.fleet[0][field];
+  for (const field of [
+    "roadStarts",
+    "canyonWins",
+    "aqueductWins",
+    "finalLeg",
+    "qualified",
+  ])
+    delete state[field];
+  state.fleet[0].engine = 1;
+  storage.setItem(key, JSON.stringify(state));
+  const c = activeCar(loadCampaign(storage))!;
+  assert.equal(c.engine, 1);
+  assert.equal(c.fuel, 40);
+  assert.equal(c.paint, MODELS.kestrel.paint);
+  assert.equal(c.workshop.wired, true);
+  assert.equal(c.fittings.frontBumper, true);
 });

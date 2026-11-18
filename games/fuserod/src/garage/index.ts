@@ -1,5 +1,6 @@
 import "./garage.css";
 import { backOnEscape, createBackLink } from "fuse-ui";
+import { createBenchView, workshopPanel } from "../workshop/panel.js";
 import {
   activeCar,
   bankrupt,
@@ -8,6 +9,11 @@ import {
   FINAL_DAY,
   finished,
   FUEL,
+  FITTINGS,
+  FLEET_CAPACITY,
+  listings,
+  nextIssue,
+  undoWorkshop,
   fuelQuote,
   PAINTS,
   TANK,
@@ -33,12 +39,12 @@ import {
   type Action,
   type Campaign,
   type Challenge,
-  type ModelId,
   type Paint,
   type Part,
   type Route,
   type StoragePort,
   type Vehicle,
+  type Fittings,
 } from "./campaign.js";
 
 export { loadCampaign, settleRace, motorSetup } from "./campaign.js";
@@ -57,6 +63,7 @@ export interface GarageOptions {
       rival?: number;
       progress?: number;
       part?: string;
+      fittings?: Fittings;
     },
   ) => void;
   backHref?: string;
@@ -64,12 +71,21 @@ export interface GarageOptions {
   onRace: (challenge: Challenge) => void;
   drawCar?: (
     canvas: HTMLCanvasElement,
-    appearance: { model: number; paint: string; upgrade: number },
+    appearance: {
+      model: number;
+      paint: string;
+      upgrade: number;
+      fittings?: Fittings;
+    },
   ) => void;
   drawItem?: (
     kind: "rival" | "part" | "car",
     item: number | string,
-    options?: { paint?: string; angle?: "side" | "front" | "quarter" },
+    options?: {
+      paint?: string;
+      angle?: "side" | "front" | "quarter";
+      fittings?: Fittings;
+    },
   ) => Element;
 }
 export type TownStop = "garage" | "diner" | "station" | "strip";
@@ -94,6 +110,8 @@ export function mountGarage(
   options: GarageOptions,
 ): () => void {
   const doc = host.ownerDocument;
+  const bench = createBenchView();
+  const undo: { before: Campaign; after: Campaign }[] = [];
   let tab: Tab = options.startAt ? tabForStop[options.startAt] : "Challenge",
     route: Route = "strip",
     wager = 0,
@@ -165,8 +183,13 @@ export function mountGarage(
     kind: "rival" | "car" | "part",
     item: string | number,
     paint?: string,
+    fittings?: Fittings,
   ) {
-    const image = options.drawItem?.(kind, item, { paint, angle: "quarter" });
+    const image = options.drawItem?.(kind, item, {
+      paint,
+      angle: "quarter",
+      fittings,
+    });
     if (image) {
       image.classList.add("frg-thumbnail", `frg-${kind}`);
       row.prepend(image);
@@ -178,8 +201,21 @@ export function mountGarage(
     return n;
   }
   function execute(a: Action, nextTab?: Tab) {
+    let before: Campaign | undefined;
+    if (a.type === "workbench") {
+      try {
+        before = loadCampaign(options.storage);
+      } catch {
+        render("Could not read the garage.");
+        return;
+      }
+    }
     const result = transact(options.storage, a);
     if (result.ok) {
+      if (before) {
+        undo.push({ before, after: result.state });
+        if (undo.length > 16) undo.shift();
+      } else undo.length = 0;
       if (nextTab) tab = nextTab;
       if ((a.type === "race" || a.type === "grudge") && result.state.pending) {
         options.onRace(result.state.pending);
@@ -188,6 +224,27 @@ export function mountGarage(
     }
     render(result.ok ? "" : result.error);
   }
+  function undoLast() {
+    const last = undo.pop();
+    if (!last) return;
+    const out = undoWorkshop(options.storage, last.before, last.after);
+    if (!out.ok) undo.length = 0;
+    render(out.ok ? "Last workbench change undone." : out.error);
+  }
+  const keys = (e: KeyboardEvent) => {
+    if (
+      tab === "Workshop" &&
+      !e.defaultPrevented &&
+      (e.ctrlKey || e.metaKey) &&
+      !e.shiftKey &&
+      e.key.toLowerCase() === "z" &&
+      undo.length
+    ) {
+      e.preventDefault();
+      undoLast();
+    }
+  };
+  doc.addEventListener("keydown", keys);
   function hero(s: Campaign, c: Vehicle | undefined) {
     const selected = c?.model ?? "kestrel",
       model = MODELS[selected];
@@ -218,6 +275,7 @@ export function mountGarage(
           model: model.sprite,
           paint: c?.paint ?? model.paint,
           upgrade: c?.engine ?? 0,
+          fittings: c?.fittings,
           rival: Math.min(s.rank, rivalRank ?? s.rank, RIVALS.length - 1),
           progress: scene === "station" ? (c?.fuel ?? 0) / TANK : 0,
         };
@@ -240,7 +298,7 @@ export function mountGarage(
     if (c)
       stats.append(
         metric("Power", `${setup(c).power} hp`),
-        metric("Tyres", ["Stock", "Sport", "Race"][c.tyres]!),
+        metric("Tyres", ["Stock", "Sport", "Race"][setup(c).grip]!),
         metric("Condition", `${c.condition}%`),
         metric("Fuel", `${(c.fuel / 10).toFixed(1)} gal`),
       );
@@ -255,7 +313,23 @@ export function mountGarage(
   }
   function classifieds(s: Campaign) {
     const list = node("div", "frg-rows");
-    for (const id of Object.keys(MODELS) as ModelId[]) {
+    const upcoming = nextIssue(s.day);
+    const issue = node("div", "frg-row");
+    issue.append(
+      node("h3", "", `Week ${Math.floor((s.day - 1) / 7) + 1} classifieds`),
+      control(
+        upcoming <= FINAL_DAY ? `Next issue · day ${upcoming}` : "Final issue",
+        "newspaper",
+        () => execute({ type: "newspaper" }),
+        upcoming > FINAL_DAY,
+      ),
+    );
+    list.append(issue);
+    const ads = new Set([
+      ...s.fleet.map((car) => car.model),
+      ...listings(s.day),
+    ]);
+    for (const id of ads) {
       const model = MODELS[id],
         owned = s.fleet.find((c) => c.model === id),
         driving = s.selected === id;
@@ -276,7 +350,9 @@ export function mountGarage(
           id,
           () =>
             execute({ type: owned ? "select" : "buy", model: id }, "Challenge"),
-          driving || (!owned && model.price > s.cash),
+          driving ||
+            (!owned &&
+              (model.price > s.cash || s.fleet.length >= FLEET_CAPACITY)),
           !owned && model.price <= s.cash,
         ),
       );
@@ -293,7 +369,13 @@ export function mountGarage(
           ),
         );
       }
-      picture(row, "car", model.sprite, owned?.paint ?? model.paint);
+      picture(
+        row,
+        "car",
+        model.sprite,
+        owned?.paint ?? model.paint,
+        owned?.fittings,
+      );
       list.append(row);
     }
     return list;
@@ -329,6 +411,27 @@ export function mountGarage(
   }
   function workshop(s: Campaign, c: Vehicle) {
     const list = node("div", "frg-rows");
+    list.append(
+      workshopPanel(
+        doc,
+        c.workshop,
+        s.cash,
+        (command) => execute({ type: "workbench", command }),
+        options.drawItem,
+        options.drawScene
+          ? (canvas, scene, look) =>
+              options.drawScene?.(canvas, scene, {
+                ...look,
+                model: MODELS[c.model].sprite,
+                paint: c.paint,
+                upgrade: c.engine,
+                fittings: c.fittings,
+              })
+          : undefined,
+        bench,
+      ),
+      control("Undo workbench change", "undo-bench", undoLast, !undo.length),
+    );
     for (const part of ["engine", "tyres"] as const satisfies readonly Part[]) {
       const row = node("div", "frg-row"),
         desc = node("div"),
@@ -403,6 +506,20 @@ export function mountGarage(
         (v) => execute({ type: "paint", paint: v as Paint }),
       ),
     );
+    const body = node("div", "frg-bodywork");
+    for (const [key, label] of Object.entries(FITTINGS)) {
+      const fitting = key as keyof Fittings;
+      if (fitting === "roof" && !MODELS[c.model].openTop) continue;
+      body.append(
+        control(
+          `${c.fittings[fitting] ? "Remove" : "Fit"} ${label.toLowerCase()} · $20`,
+          `body-${key}`,
+          () => execute({ type: "body", fitting }),
+          s.cash < 20,
+        ),
+      );
+    }
+    list.append(body);
     return list;
   }
   function challenge(s: Campaign) {
@@ -709,6 +826,7 @@ export function mountGarage(
   }
   render();
   return () => {
+    doc.removeEventListener("keydown", keys);
     stopEscape?.();
     disposed = true;
     artSize?.disconnect();
