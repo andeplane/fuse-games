@@ -261,8 +261,8 @@
   max-height: calc(
     100dvh - var(--pad-top) - env(safe-area-inset-bottom) - 1rem
   );
-  padding: var(--fui-space-4);
-  gap: var(--fui-space-3);
+  padding: var(--fui-space-2);
+  gap: var(--fui-space-1) var(--fui-space-2);
   border: 1px solid #44bfff;
   border-radius: 0.75rem;
   background: #071428f5;
