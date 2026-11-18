@@ -2,15 +2,20 @@
 
 Settings actions name their scope. **Room settings** uses the shared sliders icon and contains room-wide rules,
 session length, maps and choices that affect everyone. **Player options** uses the shared person icon and
-contains this device's controls, audio, appearance and timing. The shared main menu defaults to player scope;
-front doors that edit defaults for the next room pass `settingsScope: "room"`. Games can use
-`createPlayerOptions` for a personal disclosure in a room or song-selection header; it owns unique accessible
-panel IDs, outside-press/Escape dismissal and listener cleanup. Room buttons use the same label and icon in
-DOM and markup layouts, at every screen width.
+contains this device's controls, audio, appearance and timing. Open Player options from the top-right Game
+menu on the landing page and in the room. Radio is a sibling when the game offers background radio.
+Radio holds playback and track selection. Player options holds audio levels. An explicit play action starts
+idle radio. A contextual shortcut such as Fusemania's Scroll speed changes the same preference as Player
+options. The room's game rules and the player's seat and loadout stay in the setup flow.
 
 Every game uses the shared top bar for game identity, a fixed-size account/rating control and a hamburger. The header overlays the current scene without an opaque background or a separate layout row. Games with audio supply a typed `TopBarSound` adapter: one Sound on/off button controls music and effects together; games without audio hide it. Preview `?mute` disables that control without writing preferences. Detailed audio settings, friends, match-history and leaderboard controls live in its menu and retain their handlers. Account labels mirror the game's existing account panel, so ratings remain keyed by game and asynchronous sign-in/Elo updates do not resize the header. Craft preserves the stateful header while reconciling room updates, keeping open menus and focus intact.
 
-Every game uses `fuse-ui`'s main menu: Play creates a room; How to play and About open focused dialogs; Settings appears when a game has preferences. A secondary action retains joining by code and existing solo/local modes. Credits are shared across games.
+Every game uses `fuse-ui`'s main menu. Play opens setup. How to play and About open focused dialogs. A game may
+offer Room settings for the next match. Credits are shared across games.
+
+Register menu expectations in `tests/fixtures/game-menu-expectations.ts` when adding a game or changing its
+capabilities. The unit suite checks the inventory against playable entries, including Dice. The release suite's
+game-lobbies smoke opens the real landing and host-room menus and checks accessible controls, scope and Back/Escape.
 
 The room layout places its public invitation and game-settings action on the left, with numbered slots on the right. The players and their Join buttons always lead the right-hand column, in every game: a game's own choices (match size, map, song) follow under them. Each open slot contains Join and, where supported, Add AI. Missing names open a dialog; signed-in or remembered names join directly. Team games color and label the slots. Occupied players retain their actual numbered slots, including gaps after removal. On phones these stack in one column with the players first, then the invitation, the game's choices, START (which stays in reach at the bottom of a long lobby) and the remaining actions. The component moves existing controls rather than owning room commands. Game adapters retain capacity, permission checks, names, teams, selection and settings validation. Roster updates explicitly notify the layout; there is no DOM polling.
 

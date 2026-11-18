@@ -108,7 +108,6 @@
   position: fixed;
   inset: 76px 20px auto auto;
   width: min(350px, calc(100vw - 32px));
-  max-height: calc(100svh - 96px);
   margin: 0;
   padding: 0;
   overflow: auto;
@@ -118,12 +117,42 @@
   color: #e8f5ff;
   box-shadow: 0 12px 30px #0006;
 }
+/* The menu is anchored below the header. Its scrolling body must end inside the viewport. */
+.fui-top-bar dialog.fui-dialog.fui-top-bar-menu {
+  box-sizing: border-box;
+  max-height: calc(100dvh - 76px - max(12px, env(safe-area-inset-bottom)));
+}
 .fui-top-bar-menu::backdrop {
   background: #03081244;
 }
 .fui-top-bar-actions {
   display: grid;
   gap: 10px;
+}
+.fui-top-bar-detail,
+.fui-top-bar-detail .fui-radio,
+.fui-top-bar-detail .fui-audio-panel {
+  display: grid;
+  position: static;
+  gap: 10px;
+  min-width: 0;
+}
+.fui-player-custom:empty {
+  display: none;
+}
+.fui-top-bar-detail .fui-radio-volume {
+  display: grid;
+  gap: 4px;
+}
+.fui-top-bar-detail .fui-radio-volume input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+}
+.fui-top-bar-detail select,
+.fui-top-bar-detail input[type="range"] {
+  max-width: 100%;
 }
 .fui-top-bar-actions > :is(div, nav, section):not(.fui-radio, [hidden]) {
   display: grid !important;

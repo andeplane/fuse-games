@@ -43,6 +43,31 @@ try {
   const game = page.frameLocator("#game");
   const childToggle = game.locator(".fui-playtest-recording-toggle");
   await game.locator(".fui-top-bar-toggle").click();
+  const back = game.getByRole("button", { name: "Back", exact: true });
+  const radio = game.getByRole("button", { name: "Radio", exact: true });
+  const options = game.getByRole("button", {
+    name: "Player options",
+    exact: true,
+  });
+  await expect(back).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(radio).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(back).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(game.getByRole("button", { name: "Play radio" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(radio).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(options).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("End");
+  const slider = game.getByRole("slider", { name: "Input offset" });
+  await expect(slider).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(slider).toHaveValue("51");
+  await back.click();
+  await expect(options).toBeFocused();
   await expect(childToggle).toBeVisible();
   await expect(childToggle).toHaveText("Start recording");
   await expect(page.locator("body")).toHaveAttribute("data-starts", "0");
@@ -57,6 +82,21 @@ try {
   await childToggle.click();
   await expect(page.locator("body")).toHaveAttribute("data-stops", "1");
   await expect(game.locator("body")).toHaveAttribute("data-stops", "0");
+  // The same menu returns focus to its trigger on landing and to the keyboard play surface in a match.
+  const toggle = game.getByRole("button", { name: "Open game menu" });
+  await toggle.click();
+  await page.keyboard.press("Escape");
+  await expect(toggle).toBeFocused();
+  await game.getByRole("button", { name: "Start match" }).click();
+  await toggle.click();
+  await options.click();
+  await page.keyboard.press("Escape");
+  await expect(options).toBeFocused();
+  await page.keyboard.press("Escape");
+  const arena = game.getByRole("main");
+  await expect(arena).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(arena).toHaveText("Jump");
   // Wrong source, even with the right origin, cannot control desktop capture.
   await page.evaluate(() => {
     window.dispatchEvent(

@@ -95,7 +95,7 @@ for (const kind of ["host", "guest", "solo"] as const) {
 
 test("room rules and personal preferences have separate shared actions", () => {
   const { root, bar, options } = lobby("host");
-  assert.equal(bar.menu.button.getAttribute("aria-label"), "Player options");
+  assert.equal(bar.menu.button.getAttribute("aria-label"), "Scroll speed");
   assert.equal(
     root.querySelector(".fui-room-configure")?.getAttribute("aria-label"),
     "Room settings",

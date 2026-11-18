@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { readdir, writeFile, mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
+import { checkGameMenu } from "./lib/check-game-menu.js";
+import type { Page } from "playwright";
+
+async function openCraftMotionPreference(page: Page) {
+  await page
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  await page.getByRole("button", { name: /^player options$/i }).click();
+  return page.getByRole("checkbox", { name: /reduced motion/i });
+}
 
 /** Real menu → room → admission paths. No injected game state or browser API replacements. */
 const base = process.env.ONLINE_URL ?? "http://127.0.0.1:8787/";
@@ -46,6 +56,12 @@ try {
             .attractTick !== first,
         firstTick,
       );
+      assert.equal(
+        await menu.getByRole("button", { name: /^player options$/i }).count(),
+        0,
+        "The top-right Game menu owns device preferences",
+      );
+      await checkGameMenu(page, game);
       await menu
         .getByRole("button", { name: "Pause background", exact: true })
         .click();
@@ -93,6 +109,7 @@ try {
       step = "empty room and QR";
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
+      await checkGameMenu(page, game);
       const configurationRoom = [
         "fuse-drivers",
         "fusemania",
@@ -246,6 +263,44 @@ try {
       await room
         .locator('.fui-room-open-slot[data-slot="1"].fui-slot-occupied')
         .waitFor();
+      if (game === "fuse-craft") {
+        step = "guest device preferences";
+        const guestContext = await browser.newContext({
+          viewport: { width: 360, height: 800 },
+        });
+        try {
+          const guest = await guestContext.newPage();
+          const invite = new URL("fusecraft/", base);
+          invite.searchParams.set(
+            "room",
+            (await room.locator(".fui-room-code").innerText()).trim(),
+          );
+          invite.searchParams.set("mute", "");
+          await guest.goto(invite.href);
+          await guest.locator(".fui-room-layout").waitFor();
+          await checkGameMenu(guest, game);
+          const hostMotion = await openCraftMotionPreference(page);
+          const before = await hostMotion.isChecked();
+          const guestMotion = await openCraftMotionPreference(guest);
+          await guestMotion.setChecked(!before);
+          await guest.reload();
+          await guest.locator(".fui-room-layout").waitFor();
+          assert.equal(
+            await (await openCraftMotionPreference(guest)).isChecked(),
+            !before,
+            "guest device remembers its choice after reload",
+          );
+          assert.equal(
+            await hostMotion.isChecked(),
+            before,
+            "guest motion preference is independent of host",
+          );
+          await page.keyboard.press("Escape");
+          await page.keyboard.press("Escape");
+        } finally {
+          await guestContext.close();
+        }
+      }
       const settings = room.getByRole("button", {
         name: "Room settings",
         exact: true,
@@ -299,7 +354,48 @@ try {
         ),
         "phone room overflows horizontally",
       );
-      assert.deepEqual(errors, [], "browser exceptions");
+      if (game === "ball-bros") {
+        step = "shared TV controller audio";
+        await room.getByRole("checkbox", { name: /shared tv/i }).check();
+        await room.getByRole("button", { name: /^start match$/i }).click();
+        await page.locator("#app.controller-mode").waitFor();
+        await page
+          .getByRole("button", { name: "Open game menu", exact: true })
+          .click();
+        const menu = page.getByRole("dialog", { name: /^game menu$/i });
+        await menu.getByRole("button", { name: /^player options$/i }).click();
+        const options = page.getByRole("dialog", { name: /^player options$/i });
+        await options.waitFor();
+        assert.equal(
+          await options
+            .getByRole("slider", { name: /^radio volume$/i })
+            .count(),
+          0,
+          "controller volume is managed on the TV",
+        );
+        await options.getByRole("button", { name: /^back$/i }).click();
+        await menu.getByRole("button", { name: /^radio$/i }).click();
+        const radio = page.getByRole("dialog", { name: /^radio$/i });
+        await radio
+          .getByText("Use the radio on the shared TV.", { exact: true })
+          .waitFor();
+        assert.equal(
+          await radio
+            .getByRole("button", {
+              name: /^(radio (on|off)|next radio track)$/i,
+            })
+            .count(),
+          0,
+          "a controller never drives TV playback",
+        );
+        await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
+      }
+      assert.deepEqual(
+        errors,
+        [],
+        "browser exceptions after menu interactions",
+      );
       results.push({
         game,
         ai: quarantineAI

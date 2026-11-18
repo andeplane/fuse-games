@@ -5,7 +5,7 @@ import { MUSIC_TRACKS } from "fuse-ui/assets";
 import type { MusicPlayer } from "fuse-ui/radio";
 import { createChopperRadio, RADIO_KEY } from "../src/app/radio.js";
 
-function setup({ muted = false, autoStart = false, saved = "null" } = {}) {
+function setup({ muted = false, saved = "null" } = {}) {
   const { document, window } = parseHTML("<html><body></body></html>");
   const values = new Map([[RADIO_KEY, saved]]);
   let plays = 0;
@@ -34,7 +34,6 @@ function setup({ muted = false, autoStart = false, saved = "null" } = {}) {
     },
     baseUrl: "/party/",
     muted,
-    autoStart,
   });
   const buttons = radio.element.querySelectorAll("button");
   const [previous, play, next, loop] = buttons;
@@ -68,38 +67,43 @@ function setup({ muted = false, autoStart = false, saved = "null" } = {}) {
   };
 }
 test("master mute resumes the selected playing radio and cannot override preview mute", () => {
-  const active = setup({ autoStart: true });
-  active.radio.unlock();
+  const active = setup();
+  active.play.click();
   assert.equal(active.plays, 1);
   active.radio.setMuted(true);
   assert.ok(active.pauses > 0);
+  assert.match(active.radio.element.textContent!, /Sound is off/);
+  const slider = active.radio.volumeControl.querySelector("input")!;
+  assert.equal(slider.getAttribute("aria-label"), "Radio volume");
+  slider.value = "42";
+  slider.dispatchEvent(new active.window.Event("input"));
   active.radio.setMuted(false);
+  assert.equal(active.player.volume, 0.42);
+  assert.equal(JSON.parse(active.values.get(RADIO_KEY)!).volume, 0.42);
   assert.equal(active.plays, 2);
   active.radio.destroy();
-  const preview = setup({ muted: true, autoStart: true });
+  const preview = setup({ muted: true });
   preview.radio.setMuted(false);
-  preview.radio.unlock();
   assert.equal(preview.plays, 0);
   preview.radio.destroy();
 });
 
-test("desktop unlock starts once; touch is opt-in and pause survives navigation", () => {
-  const desktop = setup({ autoStart: true });
+test("radio stays idle after navigation until explicitly played", () => {
+  const desktop = setup({ saved: JSON.stringify({ playing: true }) });
   assert.equal(desktop.plays, 0);
-  desktop.radio.unlock();
-  desktop.radio.unlock();
+  desktop.radio.setMuted(true);
+  desktop.radio.setMuted(false);
+  assert.equal(desktop.plays, 0);
+  desktop.play.click();
   assert.equal(desktop.plays, 1);
   assert.equal(desktop.player.src, "/party/" + MUSIC_TRACKS[0].path.slice(1));
   desktop.play.click();
   assert.equal(desktop.play.textContent, "PLAY");
   const restored = setup({
-    autoStart: true,
     saved: desktop.values.get(RADIO_KEY)!,
   });
-  restored.radio.unlock();
   assert.equal(restored.plays, 0);
   const touch = setup();
-  touch.radio.unlock();
   assert.equal(touch.plays, 0);
   touch.play.click();
   assert.equal(touch.plays, 1);
@@ -116,12 +120,12 @@ test("track navigation wraps, ended advances or repeats, volume and selection pe
   f.loop.click();
   f.ended();
   assert.ok(f.player.src.endsWith(MUSIC_TRACKS[1].path));
-  const volume = f.radio.element.querySelector("input")!;
+  const volume = f.radio.volumeControl.querySelector("input")!;
   volume.value = "42";
   volume.dispatchEvent(new f.window.Event("input"));
   assert.equal(f.player.volume, 0.42);
   const restored = setup({ saved: f.values.get(RADIO_KEY)! });
-  restored.radio.unlock();
+  restored.play.click();
   assert.equal(restored.player.src, f.player.src);
   assert.equal(restored.player.volume, 0.42);
   assert.equal(restored.loop.getAttribute("aria-pressed"), "true");
@@ -130,7 +134,6 @@ test("track navigation wraps, ended advances or repeats, volume and selection pe
 test("muted preview never loads or plays music or changes saved preferences", () => {
   const saved = JSON.stringify({ playing: true, volume: 0.5 });
   const f = setup({ muted: true, saved });
-  f.radio.unlock();
   for (const control of f.radio.element.querySelectorAll(
     "button:not(:last-child), select, input",
   ))

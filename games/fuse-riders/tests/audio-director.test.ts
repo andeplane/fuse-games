@@ -688,6 +688,12 @@ test("the track length survives a pause for the lock-screen scrubber and resets 
   f.director.togglePause();
   assert.equal(f.director.duration(), 180, "paused keeps the known length");
   f.director.nextTrack();
+  f.director.previousTrack();
+  assert.equal(
+    f.director.state.paused,
+    true,
+    "browsing tracks preserves an idle radio",
+  );
   assert.equal(
     f.director.duration(),
     undefined,

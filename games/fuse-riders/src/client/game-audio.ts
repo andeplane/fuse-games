@@ -42,7 +42,7 @@ export interface GameAudioOptions {
   /** Plays music without waiting for a match, for the landing page and a room that has not connected yet. */
   background?: boolean;
   storage?: SafeStorage;
-  /** Shows or hides the radio for Ctrl+A; by default the `controls` dropdown toggles. */
+  /** Opens the radio from the Ctrl+A shortcut. */
   toggleRadio?: () => void;
   /** The OS media session to mirror the radio onto; defaults to the browser's, or none. */
   mediaSession?: MediaSessionPort;
@@ -55,17 +55,8 @@ export interface GameAudio {
   master: TopBarSound;
   director: AudioDirector;
   controls: HTMLElement;
+  mixer: HTMLElement;
   unlock: (confirm?: boolean) => void;
-  /**
-   * Wires an existing button as the ♫ MUSIC ON / ♫ MUSIC OFF toggle. Its label is the setting, not the speaker: only
-   * a muted channel or a paused radio reads OFF, and a page the browser has not let play yet still reads ON, because the
-   * first gesture anywhere starts it. Tapping OFF unmutes, unpauses and unlocks. Every page uses this button and wording.
-   */
-  bindMusicToggle: (button: HTMLButtonElement) => void;
-  /** The EFFECTS ON / EFFECTS OFF counterpart for the settings dialog: the effects channel's mute, and nothing else. */
-  bindEffectsToggle: (button: HTMLButtonElement) => void;
-  /** The 🔊 SOUND ON / 🔇 SOUND OFF toggle: OFF mutes music and effects, the same as Ctrl+M; ON unmutes both, unpauses and unlocks. */
-  bindMuteToggle: (button: HTMLButtonElement) => void;
 }
 
 const CHANNELS = ["music", "effects"] as const;
@@ -303,12 +294,14 @@ export function createGameAudio(
     storage,
     options.musicOffByDefault ?? touchDevice(),
   );
-  if (mutedByQuery()) {
+  const preview = mutedByQuery();
+  if (preview) {
     settings.muted.music = true;
     settings.muted.effects = true;
   }
   const enable = el("button", "", "audio-enable");
   enable.type = "button";
+  enable.disabled = preview;
   enable.textContent = `Enable ${deviceLabel} audio`;
   let running = false;
   const showState = (ok: boolean) => {
@@ -327,10 +320,11 @@ export function createGameAudio(
       () => director.mediaPaused(),
       () => director.mediaResumed(),
     ),
-    loadRadio(storage),
+    { ...loadRadio(storage), paused: true },
     // A periodic save records only where this tab is, merged over the stored choices, so a second open tab cannot revert
     // a playlist or loop change made in the first. Choice changes write everything.
-    (state, kind) =>
+    (state, kind) => {
+      if (preview) return;
       saveRadio(
         storage,
         kind === "all"
@@ -341,14 +335,11 @@ export function createGameAudio(
               position: state.position,
               paused: state.paused,
             },
-      ),
+      );
+    },
   );
-  const controls = el("details", "", "audio-controls");
-  const summary = el("summary", "♫ RADIO");
-  summary.title = "Fuse Riders Radio (Ctrl+A)";
   const panel = el("div", "", "audio-panel radio");
   panel.setAttribute("aria-label", "Fuse Riders Radio");
-  controls.append(summary, panel);
   for (const channel of CHANNELS) {
     director.setVolume(channel, settings.volume[channel]);
     director.setMuted(channel, settings.muted[channel]);
@@ -357,6 +348,7 @@ export function createGameAudio(
   const store = () =>
     storage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(settings));
   const setMuted = (channel: AudioChannel, value: boolean) => {
+    if (preview) return;
     settings.muted[channel] = value;
     refreshSession(); // Before the director starts the track, so it starts in the right session.
     director.setMuted(channel, value);
@@ -369,6 +361,7 @@ export function createGameAudio(
     setMuted("effects", value);
   };
   const setVolume = (channel: AudioChannel, value: number) => {
+    if (preview) return;
     settings.volume[channel] = value;
     director.setVolume(channel, value);
     store();
@@ -412,15 +405,13 @@ export function createGameAudio(
       () => unlock(),
     ),
   );
-  // update() is what actually starts a track, so every successful unlock has to drive it: the first one
-  // usually lands on a gesture long after playBackground() asked for music.
   const unlock = (confirm = false) => {
     void director.unlock(confirm).then((ok) => {
       showState(ok);
       if (ok) director.update();
     });
   };
-  // Browsers refuse audio until the page is interacted with, so the first gesture anywhere starts the music.
+  // Gestures unlock effects and allow a user-requested track to resume.
   // These stay for the page's life rather than being released on the first success: a running AudioContext
   // is not proof the track plays, and an OS interruption can pause it much later. unlock() is idempotent.
   // iOS counts touchend, pointerup and click as activation, not a touch pointerdown or touchstart (#134): listen to all of them.
@@ -463,6 +454,7 @@ export function createGameAudio(
     button.type = "button";
     button.setAttribute("aria-label", label);
     button.title = label;
+    button.disabled = preview;
     button.addEventListener("click", () => {
       unlock();
       action();
@@ -484,6 +476,7 @@ export function createGameAudio(
   const toggle = (text: string, action: () => void) => {
     const button = el("button", text, "radio-toggle");
     button.type = "button";
+    button.disabled = preview;
     button.addEventListener("click", action);
     return button;
   };
@@ -506,6 +499,7 @@ export function createGameAudio(
     const row = el("label", `${label} volume`);
     const slider = el("input");
     slider.type = "range";
+    slider.disabled = preview;
     slider.min = "0";
     slider.max = "100";
     slider.value = String(Math.round(settings.volume[channel] * 100));
@@ -516,6 +510,7 @@ export function createGameAudio(
     row.append(slider);
     const mute = el("button", `Mute ${label.toLowerCase()}`, "radio-toggle");
     mute.type = "button";
+    mute.disabled = preview;
     const renderMute = () => {
       const pressed = String(settings.muted[channel]);
       if (mute.getAttribute("aria-pressed") !== pressed)
@@ -541,6 +536,7 @@ export function createGameAudio(
     if (director.state.track === id) play.setAttribute("aria-current", "true");
     const edit = el("button", listed ? "−" : "+", "radio-track-edit");
     edit.type = "button";
+    edit.disabled = preview;
     const editLabel = listed
       ? `Remove ${name} from playlist`
       : `Add ${name} to playlist`;
@@ -556,7 +552,6 @@ export function createGameAudio(
     unit,
     enable,
     modes,
-    mixer,
     el("h3", "TRACKS"),
     tracks,
     playlistHeading,
@@ -627,59 +622,6 @@ export function createGameAudio(
   director.subscribe(render);
   render(); // Mute changes reach it through the director as well.
 
-  // The setting, not what is coming out of the speaker: a browser that has not been tapped yet still reads ON, because
-  // music IS on and the first gesture anywhere starts it. Reporting silence as OFF made a plain page load look broken.
-  const musicOn = () => !settings.muted.music && !director.state.paused;
-  const bindToggle = (
-    button: HTMLButtonElement,
-    on: () => boolean,
-    labels: readonly [string, string],
-    set: (on: boolean) => void,
-  ) => {
-    const render = () => {
-      // The label carries the state, so no aria-pressed: "Turn music on, pressed" reads as a contradiction.
-      const text = on() ? labels[0] : labels[1];
-      if (button.textContent !== text) button.textContent = text;
-      const muted = String(!on());
-      if (button.dataset.muted !== muted) button.dataset.muted = muted;
-    };
-    rendered.add(render);
-    render();
-    button.addEventListener("click", () => {
-      set(!on());
-      render();
-    });
-  };
-  const bindMusicToggle = (button: HTMLButtonElement) =>
-    bindToggle(button, musicOn, ["♫ MUSIC ON", "♫ MUSIC OFF"], (on) => {
-      if (!on) setMuted("music", true);
-      else {
-        setMuted("music", false);
-        if (director.state.paused) director.togglePause();
-        unlock();
-      }
-    });
-  const bindEffectsToggle = (button: HTMLButtonElement) =>
-    bindToggle(
-      button,
-      () => !settings.muted.effects,
-      ["EFFECTS ON", "EFFECTS OFF"],
-      (on) => setMuted("effects", !on),
-    );
-  // Sound OFF is Ctrl+M: both channels muted. Any channel on reads ON, so a music-only listener is not told they are muted.
-  const bindMuteToggle = (button: HTMLButtonElement) =>
-    bindToggle(
-      button,
-      () => !allMuted(),
-      ["🔊 SOUND ON", "🔇 SOUND OFF"],
-      (on) => {
-        setAllMuted(!on);
-        if (on) {
-          if (director.state.paused) director.togglePause();
-          unlock();
-        }
-      },
-    );
   // Ctrl+A radio, Ctrl+M everything, Ctrl+Alt+M music, Ctrl+Alt+E effects. Capture phase, ahead of game keys.
   window.addEventListener(
     "keydown",
@@ -688,13 +630,7 @@ export function createGameAudio(
       if (!shortcut || editable(event.target)) return;
       event.preventDefault();
       if (event.repeat) return;
-      if (shortcut === "radio")
-        (
-          options.toggleRadio ??
-          (() => {
-            controls.open = !controls.open;
-          })
-        )();
+      if (shortcut === "radio") options.toggleRadio?.();
       else if (shortcut === "muteAll") setAllMuted(!allMuted());
       else {
         const channel = shortcut === "muteMusic" ? "music" : "effects";
@@ -735,7 +671,7 @@ export function createGameAudio(
   });
   window.addEventListener("pagehide", () => director.disconnect()); // Saves the position before stopping.
   if (options.background) director.playBackground();
-  unlock(); // Autoplay usually refuses here; the gesture listeners above pick it up.
+  unlock(); // The context may need a gesture before effects can play.
   return {
     director,
     master: {
@@ -744,20 +680,15 @@ export function createGameAudio(
       setEnabled(on) {
         if (mutedByQuery()) return;
         setAllMuted(!on);
-        if (on) {
-          if (director.state.paused) director.togglePause();
-          unlock();
-        }
+        if (on) unlock();
       },
       onChange(changed) {
         rendered.add(changed);
         return () => rendered.delete(changed);
       },
     },
-    controls,
+    controls: panel,
+    mixer,
     unlock,
-    bindMusicToggle,
-    bindEffectsToggle,
-    bindMuteToggle,
   };
 }

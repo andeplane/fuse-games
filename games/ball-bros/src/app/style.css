@@ -505,10 +505,9 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9px;
+  flex-wrap: wrap;
 }
 .radio span {
-  max-width: 100px;
   color: #a9c2db;
 }
 .avatar-choice {
@@ -534,11 +533,6 @@ h1 {
 }
 .card-label {
   overflow-wrap: anywhere;
-}
-@media (max-width: 850px) {
-  .radio span {
-    display: none;
-  }
 }
 .avatar-preview {
   width: 36px;

@@ -176,13 +176,17 @@ async function keyboardPreset(
     1,
     "the explicit reporting action remains available in the menu",
   );
-  await page.getByRole("button", { name: /^game controls$/i }).click();
+  await page
+    .getByRole("button", { name: "Player options", exact: true })
+    .click();
   await page
     .getByRole("combobox", { name: "Keyboard preset", exact: true })
     .selectOption(platform);
   await page.waitForFunction(
     `window.fusero.keyboard().platform === ${JSON.stringify(platform)}`,
   );
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: /^game controls$/i }).click();
   await page.getByRole("button", { name: "CONTROLS", exact: true }).click();
   for (const label of platform === "mac"
     ? ["Left Option", "Left Command"]

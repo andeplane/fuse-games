@@ -54,7 +54,8 @@ const playerStore = {
   setItem: (key: string, value: string) => store.setItem(key, value),
 };
 const muted = new URLSearchParams(location.search).has("mute");
-let soundEnabled = !muted;
+const soundKey = "ball-bros-sound";
+let soundEnabled = !muted && store.getItem(soundKey) !== "off";
 let activeAudio: Audio | undefined;
 let activeRadio: ReturnType<typeof createRadio> | undefined;
 const sound = {
@@ -63,6 +64,7 @@ const sound = {
   setEnabled(on: boolean) {
     if (muted) return;
     soundEnabled = on;
+    store.setItem(soundKey, on ? "on" : "off");
     if (activeAudio) {
       activeAudio.setMuted(!on);
     }
@@ -81,11 +83,39 @@ function render() {
   const mounted = ++generation;
   destroy();
   activeAudio = undefined;
-  activeRadio = undefined;
-  destroy = () => {};
+  const radio = createRadio(
+    document,
+    import.meta.env.BASE_URL,
+    new window.Audio(),
+    { store, preview: muted },
+  );
+  activeRadio = radio;
+  radio.setMuted(!soundEnabled);
+  destroy = radio.destroy;
   root.replaceChildren();
   root.className = "";
   delete root.dataset.phase;
+  const attachHeader = (
+    top: HTMLElement,
+    onOpenChange?: (open: boolean) => void,
+  ) => {
+    top.append(social.element());
+    const brand =
+      ([...top.children].find((node) => node.tagName === "A") as
+        HTMLElement | undefined) ??
+      top.querySelector<HTMLElement>(".fui-top-bar-brand");
+    if (brand) brand.textContent = "BALL BROS";
+    createTopBar({
+      ...(onOpenChange ? { onOpenChange } : {}),
+      music: false,
+      radioControls: radio.element,
+      playerOptions: () => radio.volumeControl,
+      element: top,
+      brand: brand ?? undefined,
+      gameId: "ball-bros",
+      sound,
+    });
+  };
   const mode = session(location.search, store, memberToken);
   if (mode.kind === "landing" || mode.kind === "invalid") {
     const screen = landing(root, {
@@ -96,6 +126,8 @@ function render() {
       navigate,
       active: () => generation === mounted,
     });
+    const top = root.querySelector<HTMLElement>("header");
+    if (top) attachHeader(top);
     if (mode.kind === "invalid")
       screen.error.textContent =
         "Invalid room code. Check your invite or create a new room.";
@@ -116,6 +148,7 @@ function render() {
       now: () => performance.now(),
     });
     const stop = mountGame(root, {
+      attachHeader,
       online: online && {
         ...online,
         link: link(`?room=${online.code}`),
@@ -128,11 +161,7 @@ function render() {
       settings,
       qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 240 }),
       audio: (activeAudio = new Audio(!soundEnabled)),
-      radio: (activeRadio = createRadio(
-        document,
-        import.meta.env.BASE_URL,
-        new window.Audio(),
-      )),
+      radio: activeRadio,
       renderer: (parent) => createRenderer(parent, import.meta.env.BASE_URL),
       runtime: (callbacks) =>
         new BallRuntime(
@@ -184,22 +213,6 @@ function render() {
       history.dispose();
     };
     activeRadio?.setMuted(!soundEnabled);
-  }
-  root.querySelector("header")?.append(social.element());
-  const top = root.querySelector<HTMLElement>("header");
-  if (top) {
-    const brand =
-      ([...top.children].find((node) => node.tagName === "A") as
-        HTMLElement | undefined) ??
-      top.querySelector<HTMLElement>(".fui-top-bar-brand");
-    if (brand) brand.textContent = "BALL BROS";
-    createTopBar({
-      music: false,
-      element: top,
-      brand: brand ?? undefined,
-      gameId: "ball-bros",
-      sound,
-    });
   }
 }
 window.addEventListener("popstate", render);

@@ -406,6 +406,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await clickInTools("Player options", true);
     await page.getByLabel("Landscape bomb side").selectOption("left");
     await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.keyboard.press("Escape");
     if (await page.locator(".mobile-tools-open").count())
       await page.locator(".mobile-tools-toggle").click();
     await page.setViewportSize({ width: 844, height: 390 });
