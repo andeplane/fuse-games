@@ -59,6 +59,9 @@
 .frg-stats {
   gap: clamp(0.75rem, 3vw, 2rem);
 }
+.frg-heading .frg-wallet {
+  margin-left: auto;
+}
 .frg-metric {
   min-width: 0;
 }
@@ -239,6 +242,11 @@
 .frg-event p {
   font-size: 0.86rem;
   color: var(--shop-muted);
+}
+.frg-standing {
+  grid-column: 1/-1;
+  color: var(--shop-muted);
+  font-size: 0.88rem;
 }
 @media (max-width: 500px) {
   .fr-garage {

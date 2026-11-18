@@ -115,10 +115,10 @@ test("cars retain their workshop configurations when switched", () => {
 test("winning the ladder or running down the calendar closes a season", () => {
   for (const won of [true, false]) {
     let s = success(change(freshCampaign(), buy));
-    for (let i = 0; i < (won ? RIVALS.length : FINAL_DAY); i++) {
+    for (let i = 0; i < (won ? 12 : FINAL_DAY); i++) {
       if (won && i === 2) {
         s = success(change(s, { type: "grudge" }));
-        for (let heat = 1; heat <= 3; heat++) {
+        for (let heat = 0; heat <= 4; heat++) {
           assert.equal(s.pending?.heat, heat);
           s = success(
             change(s, {
@@ -126,15 +126,38 @@ test("winning the ladder or running down the calendar closes a season", () => {
               id: s.pending!.id,
               won: true,
               damage: 0,
+              elapsedTicks: 330,
             }),
           );
         }
         assert.equal(s.qualified, true);
       }
-      s = success(change(s, { type: "race", route: "aqueduct", wager: 0 }));
+      s = success(
+        change(s, {
+          type: "race",
+          route: i % 2 ? "aqueduct" : "canyon",
+          wager: 0,
+        }),
+      );
       s = success(
         change(s, { type: "settle", id: s.pending!.id, won, damage: 0 }),
       );
+    }
+    if (won) {
+      s = success(
+        change(s, { type: "race", route: "strip", wager: 0, rivalRank: 4 }),
+      );
+      for (const route of ["strip", "canyon", "aqueduct"]) {
+        assert.ok(s.pending?.king);
+        assert.equal(s.pending.route, route);
+        assert.equal(
+          s.pending.stakeKind,
+          route === "aqueduct" ? "title" : "cash",
+        );
+        s = success(
+          change(s, { type: "settle", id: s.pending.id, won: true, damage: 0 }),
+        );
+      }
     }
     assert.ok(finished(s));
     assert.equal(s.rank, won ? RIVALS.length : 0);
@@ -191,13 +214,24 @@ test("Wednesday bracket tickets survive reloads without double entry fees or hea
   assert.equal(s.day, 3);
   s = success(transact(storage, { type: "grudge" }));
   assert.equal(s.cash, 370);
-  for (let heat = 1; heat <= 3; heat++) {
+  for (let heat = 0; heat <= 4; heat++) {
     const before = loadCampaign(storage);
     assert.deepEqual(before, s);
     assert.equal(before.pending!.heat, heat);
     assert.equal(before.day, 3);
     assert.equal(before.pending!.route, "strip");
-    s = success(settleRace(storage, before.pending!.id, { won: true }));
+    assert.equal(before.pending!.variant, heat === 0 ? "timed" : "grudge");
+    assert.equal(before.pending!.dialInTicks, heat === 0 ? 0 : 320);
+    assert.equal(
+      settleRace(storage, before.pending!.id, { won: true }).ok,
+      false,
+    );
+    s = success(
+      settleRace(storage, before.pending!.id, {
+        won: true,
+        elapsedTicks: 320 + heat,
+      }),
+    );
     assert.equal(
       settleRace(storage, before.pending!.id, { won: true }).ok,
       false,
@@ -208,6 +242,21 @@ test("Wednesday bracket tickets survive reloads without double entry fees or hea
   assert.equal(s.qualified, true);
   assert.equal(s.rank, 0);
   assert.equal(s.pending, null);
+});
+test("a breakout eliminates the driver even when the finish line was crossed first", () => {
+  const storage = new Store();
+  success(transact(storage, buy));
+  success(transact(storage, { type: "wait" }));
+  const time = success(transact(storage, { type: "grudge" }));
+  const heat = success(
+    settleRace(storage, time.pending!.id, { won: true, elapsedTicks: 375 }),
+  );
+  const breakout = success(
+    settleRace(storage, heat.pending!.id, { won: true, elapsedTicks: 374 }),
+  );
+  assert.equal(breakout.pending, null);
+  assert.match(breakout.receipt, /Breakout/);
+  assert.equal(breakout.cash, 370);
 });
 test("Redline requires the four earlier rivals and a Grudge Night win", () => {
   let s = success(change(freshCampaign(), buy));

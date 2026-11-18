@@ -32,7 +32,9 @@ export const ROUTES = {
 } as const;
 export type Route = keyof typeof ROUTES;
 export const RIVALS = ["Finch", "Pulse", "Sable", "Juno", "Redline"] as const;
-export const FINAL_DAY = 28;
+export const FINAL_DAY = 91;
+export const ROAD_WINS_NEEDED = 6;
+export const CHAMPIONSHIP = ["strip", "canyon", "aqueduct"] as const;
 export const GRUDGE_FEE = 30;
 export const GRUDGE_PURSE = 450;
 export const WEEKDAYS = [
@@ -77,6 +79,9 @@ export interface Challenge {
   stakeKind: "cash" | "title" | "bracket";
   rivalCar: ModelId;
   heat: number;
+  variant: "timed" | "grudge" | "street" | "duel";
+  dialInTicks: number;
+  king: boolean;
 }
 export interface Campaign {
   version: 1;
@@ -85,6 +90,10 @@ export interface Campaign {
   rank: number;
   next: number;
   qualified: boolean;
+  canyonWins: number;
+  aqueductWins: number;
+  roadStarts: number;
+  finalLeg: 0 | 1 | 2;
   fleet: Vehicle[];
   selected: ModelId | null;
   pending: Challenge | null;
@@ -104,7 +113,13 @@ export type Action =
     }
   | { type: "grudge" }
   | { type: "wait" }
-  | { type: "settle"; id: string; won: boolean; damage: number }
+  | {
+      type: "settle";
+      id: string;
+      won: boolean;
+      damage: number;
+      elapsedTicks?: number;
+    }
   | { type: "restart" };
 export type Result =
   { ok: true; state: Campaign } | { ok: false; error: string };
@@ -115,6 +130,10 @@ export const freshCampaign = (): Campaign => ({
   rank: 0,
   next: 1,
   qualified: false,
+  canyonWins: 0,
+  aqueductWins: 0,
+  roadStarts: 0,
+  finalLeg: 0,
   fleet: [],
   selected: null,
   pending: null,
@@ -126,8 +145,13 @@ export const bankrupt = (s: Campaign) =>
   !s.fleet.length && s.cash < MODELS.kestrel.price;
 export const finished = (s: Campaign) =>
   s.rank === RIVALS.length || s.day > FINAL_DAY || bankrupt(s);
+export const eligible = (s: Campaign) =>
+  s.qualified &&
+  s.canyonWins >= ROAD_WINS_NEEDED &&
+  s.aqueductWins >= ROAD_WINS_NEEDED &&
+  s.canyonWins + s.aqueductWins >= Math.floor(s.roadStarts / 2);
 export const unlockedRank = (s: Campaign) =>
-  Math.min(s.rank, s.qualified ? RIVALS.length - 1 : RIVALS.length - 2);
+  Math.min(s.rank, eligible(s) ? RIVALS.length - 1 : RIVALS.length - 2);
 export const rivalCar = (rank: number): ModelId =>
   (["kestrel", "marlin", "kestrel", "meteor", "meteor"] as const)[rank]!;
 const stockCar = (model: ModelId): Vehicle => ({
@@ -187,6 +211,7 @@ function createChallenge(
   rivalRank: number,
   stakeKind: Challenge["stakeKind"],
   heat = 0,
+  dialInTicks = 0,
 ): Challenge {
   return {
     id: `race-${s.next}`,
@@ -198,6 +223,16 @@ function createChallenge(
     stakeKind,
     heat,
     rivalCar: rivalCar(rivalRank),
+    variant:
+      stakeKind === "bracket"
+        ? heat === 0
+          ? "timed"
+          : "grudge"
+        : route === "strip"
+          ? "street"
+          : "duel",
+    dialInTicks,
+    king: rivalRank === RIVALS.length - 1 && stakeKind !== "bracket",
   };
 }
 function decode(v: unknown): Campaign | undefined {
@@ -209,6 +244,11 @@ function decode(v: unknown): Campaign | undefined {
     !integer(v.rank, 0, RIVALS.length) ||
     !integer(v.next, 1, 1_000_000_000) ||
     typeof v.qualified !== "boolean" ||
+    !integer(v.canyonWins, 0, FINAL_DAY + 3) ||
+    !integer(v.aqueductWins, 0, FINAL_DAY + 3) ||
+    !integer(v.roadStarts, 0, FINAL_DAY + 3) ||
+    v.canyonWins + v.aqueductWins > v.roadStarts ||
+    !integer(v.finalLeg, 0, 2) ||
     !Array.isArray(v.fleet) ||
     v.fleet.length > 3 ||
     !v.fleet.every(isCar) ||
@@ -226,6 +266,10 @@ function decode(v: unknown): Campaign | undefined {
     rank: v.rank,
     next: v.next,
     qualified: v.qualified,
+    canyonWins: v.canyonWins,
+    aqueductWins: v.aqueductWins,
+    roadStarts: v.roadStarts,
+    finalLeg: v.finalLeg as 0 | 1 | 2,
     fleet: v.fleet,
     selected: selected?.model ?? null,
     pending: null,
@@ -249,17 +293,18 @@ function decode(v: unknown): Campaign | undefined {
       return;
     if (
       !integer(p.rivalRank, 0, RIVALS.length - 1) ||
-      !integer(p.heat, 0, 3) ||
+      !integer(p.heat, 0, 4) ||
+      !integer(p.dialInTicks, 0, 72_000) ||
       (p.stakeKind !== "cash" && p.wager !== 0)
     )
       return;
     if (
       p.stakeKind === "bracket"
         ? !grudgeNight(s.day) ||
-          p.heat < 1 ||
-          p.rivalRank !== p.heat - 1 ||
+          (p.heat === 0) !== (p.dialInTicks === 0) ||
+          p.rivalRank !== Math.max(0, p.heat - 1) ||
           p.route !== "strip"
-        : p.heat !== 0 || p.rivalRank > unlockedRank(s)
+        : p.heat !== 0 || p.dialInTicks !== 0 || p.rivalRank > unlockedRank(s)
     )
       return;
     const pending = createChallenge(
@@ -270,8 +315,16 @@ function decode(v: unknown): Campaign | undefined {
       p.rivalRank,
       p.stakeKind,
       p.heat,
+      p.dialInTicks,
     );
     if (p.id !== pending.id) return;
+    if (
+      pending.king &&
+      (pending.route !== CHAMPIONSHIP[s.finalLeg] ||
+        pending.stakeKind !== (s.finalLeg === 2 ? "title" : "cash") ||
+        pending.wager !== 0)
+    )
+      return;
     s.pending = pending;
   }
   return s;
@@ -302,14 +355,32 @@ export function change(s: Campaign, a: Action): Result {
   if (a.type === "settle") {
     if (!s.pending || !c || a.id !== s.pending.id || !integer(a.damage, 0, 100))
       return fail("This race ticket is no longer active.");
-    const { wager, rivalName, rivalRank, stakeKind, heat } = s.pending;
+    const {
+      wager,
+      rivalName,
+      rivalRank,
+      stakeKind,
+      heat,
+      route,
+      dialInTicks,
+      king,
+    } = s.pending;
     const wear = Math.min(100, 6 + a.damage);
     const worked = s.fleet.map((v) =>
       v === c ? { ...v, condition: Math.max(0, v.condition - wear) } : v,
     );
     if (stakeKind === "bracket") {
       const next = { ...s, fleet: worked, next: s.next + 1, pending: null };
-      if (a.won && heat < 3) {
+      if (a.won && !integer(a.elapsedTicks, 1, 72_000))
+        return fail("A strip finish time is needed to settle this run.");
+      const breakout =
+        heat > 0 &&
+        a.elapsedTicks !== undefined &&
+        a.elapsedTicks < dialInTicks;
+      const tooSlow =
+        heat === 0 && a.elapsedTicks !== undefined && a.elapsedTicks > 1600;
+      const advanced = a.won && !breakout && !tooSlow;
+      if (advanced && heat < 4) {
         const following = createChallenge(
           next,
           activeCar(next)!,
@@ -318,24 +389,36 @@ export function change(s: Campaign, a: Action): Result {
           heat,
           "bracket",
           heat + 1,
+          heat === 0 ? a.elapsedTicks! : dialInTicks,
         );
         return success({
           ...next,
           pending: following,
-          receipt: `Won heat ${heat}. Heat ${heat + 1} is ready.`,
+          receipt:
+            heat === 0
+              ? "Dial-in recorded. Heat 1 is ready."
+              : `Won heat ${heat}. Heat ${heat + 1} is ready.`,
         });
       }
       return success({
         ...next,
         day: s.day + 1,
-        qualified: s.qualified || a.won,
-        cash: s.cash + (a.won ? GRUDGE_PURSE : 0),
-        receipt: a.won
+        qualified: s.qualified || advanced,
+        cash: s.cash + (advanced ? GRUDGE_PURSE : 0),
+        receipt: advanced
           ? `Won Grudge Night. $${GRUDGE_PURSE} purse and a championship qualifier.`
-          : `Eliminated in heat ${heat}.`,
+          : breakout
+            ? "Breakout. Your run beat your dial-in."
+            : tooSlow
+              ? "Time run exceeded 80 seconds."
+              : heat === 0
+                ? "Retired from the time run."
+                : `Eliminated in heat ${heat}.`,
       });
     }
-    const rank = s.rank + Number(a.won && rivalRank === s.rank);
+    const rank =
+      s.rank +
+      Number(a.won && rivalRank === s.rank && (!king || s.finalLeg === 2));
     const next = {
       ...s,
       pending: null,
@@ -343,7 +426,32 @@ export function change(s: Campaign, a: Action): Result {
       day: s.day + 1,
       rank,
       fleet: worked,
+      roadStarts: s.roadStarts + Number(route !== "strip"),
+      canyonWins: s.canyonWins + Number(a.won && route === "canyon"),
+      aqueductWins: s.aqueductWins + Number(a.won && route === "aqueduct"),
     };
+    if (king) {
+      if (!a.won) {
+        next.finalLeg = 0;
+        next.canyonWins = Math.max(0, next.canyonWins - 3);
+        next.aqueductWins = Math.max(0, next.aqueductWins - 2);
+      } else if (s.finalLeg < 2) {
+        const leg = s.finalLeg === 0 ? 1 : 2;
+        const following = { ...next, day: s.day, finalLeg: leg as 1 | 2 };
+        return success({
+          ...following,
+          pending: createChallenge(
+            following,
+            activeCar(following)!,
+            CHAMPIONSHIP[leg],
+            0,
+            rivalRank,
+            leg === 2 ? "title" : "cash",
+          ),
+          receipt: `Beat Redline on ${ROUTES[route].name}. Next: ${ROUTES[CHAMPIONSHIP[leg]].name}.`,
+        });
+      }
+    }
     if (stakeKind === "title") {
       if (!a.won) {
         const fleet = worked.filter((v) => v.model !== c.model);
@@ -411,7 +519,7 @@ export function change(s: Campaign, a: Action): Result {
     return success({
       ...s,
       cash: s.cash - GRUDGE_FEE,
-      pending: createChallenge(s, c, "strip", 0, 0, "bracket", 1),
+      pending: createChallenge(s, c, "strip", 0, 0, "bracket"),
       receipt: "",
     });
   }
@@ -421,6 +529,19 @@ export function change(s: Campaign, a: Action): Result {
       return fail(
         "Beat the next rival and qualify at Grudge Night to reach the champion.",
       );
+    if (rank === RIVALS.length - 1)
+      return success({
+        ...s,
+        pending: createChallenge(
+          s,
+          c,
+          CHAMPIONSHIP[s.finalLeg],
+          0,
+          rank,
+          s.finalLeg === 2 ? "title" : "cash",
+        ),
+        receipt: "",
+      });
     if (
       !own(ROUTES, a.route) ||
       !(stakes as readonly number[]).includes(a.wager) ||
@@ -491,12 +612,13 @@ export function transact(storage: StoragePort, action: Action): Result {
 export function settleRace(
   storage: StoragePort,
   id: string,
-  outcome: { won: boolean; damage?: number },
+  outcome: { won: boolean; damage?: number; elapsedTicks?: number },
 ): Result {
   return transact(storage, {
     type: "settle",
     id,
     won: outcome.won,
     damage: outcome.damage ?? 0,
+    elapsedTicks: outcome.elapsedTicks,
   });
 }

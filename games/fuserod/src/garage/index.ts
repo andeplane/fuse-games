@@ -1,7 +1,9 @@
 import "./garage.css";
+import { backOnEscape, createBackLink } from "fuse-ui";
 import {
   activeCar,
   bankrupt,
+  CHAMPIONSHIP,
   daysToGrudge,
   FINAL_DAY,
   finished,
@@ -16,6 +18,7 @@ import {
   repairPrice,
   rivalCar,
   RIVALS,
+  ROAD_WINS_NEEDED,
   ROUTES,
   setup,
   stakes,
@@ -36,6 +39,7 @@ export { loadCampaign, settleRace, motorSetup } from "./campaign.js";
 export type { Campaign, Challenge, Setup, StoragePort } from "./campaign.js";
 
 export interface GarageOptions {
+  backHref?: string;
   storage: StoragePort;
   onRace: (challenge: Challenge) => void;
   drawCar?: (
@@ -65,6 +69,10 @@ export function mountGarage(
   root.className = "fr-garage";
   root.setAttribute("aria-label", "Campaign garage");
   host.append(root);
+  const back = options.backHref
+    ? createBackLink({ href: options.backHref, document: doc })
+    : undefined;
+  const stopEscape = back ? backOnEscape(back, { document: doc }) : undefined;
   let artSize: ResizeObserver | undefined;
   function node<K extends keyof HTMLElementTagNameMap>(
     tag: K,
@@ -298,12 +306,20 @@ export function mountGarage(
       const card = node("div", "frg-rows");
       const stake =
         active.stakeKind === "bracket"
-          ? `Grudge Night · heat ${active.heat} of 3`
+          ? active.heat === 0
+            ? "Grudge Night · set your dial-in"
+            : `Grudge Night · heat ${active.heat} of 4 · dial-in ${(active.dialInTicks / 20).toFixed(2)} s`
           : active.stakeKind === "title"
             ? "Car titles at stake"
             : `${money(active.wager)} staked`;
       card.append(
-        node("h3", "", `Race against ${active.rivalName}`),
+        node(
+          "h3",
+          "",
+          active.variant === "timed"
+            ? "Solo qualifying run"
+            : `Race against ${active.rivalName}`,
+        ),
         node("p", "", `${ROUTES[active.route].name} · ${stake}`),
         control(
           "Resume race",
@@ -378,6 +394,17 @@ export function mountGarage(
       ),
     );
     const offered = MODELS[rivalCar(rank)].title;
+    const isFinal = rank === RIVALS.length - 1;
+    if (isFinal) {
+      grid.replaceChildren(
+        opponent,
+        node(
+          "p",
+          "frg-payout",
+          `Three races against Redline: ${CHAMPIONSHIP.map((r) => ROUTES[r].name).join(" → ")}. The final leg costs the loser their car.`,
+        ),
+      );
+    }
     const prize = node(
       "p",
       "frg-payout",
@@ -385,8 +412,8 @@ export function mountGarage(
         ? `Win the ${offered} title or lose your car. Duplicate titles pay half the car price.`
         : `Win ${money(purse(rank) + 2 * wager)} including your stake. Each race takes one day.`,
     );
+    if (!isFinal) grid.append(prize);
     grid.append(
-      prize,
       control(
         "Race " + RIVALS[rank],
         "race",
@@ -404,8 +431,8 @@ export function mountGarage(
         "p",
         "",
         s.qualified
-          ? `Qualified · three drag heats for ${money(GRUDGE_PURSE)}.`
-          : `Win three drag heats to qualify for Redline and take ${money(GRUDGE_PURSE)}.`,
+          ? `Qualified · race again for ${money(GRUDGE_PURSE)}.`
+          : `Set a quarter-mile dial-in, then win four heats without going faster to qualify for Redline and earn ${money(GRUDGE_PURSE)}.`,
       ),
     );
     const until = daysToGrudge(s.day),
@@ -425,6 +452,14 @@ export function mountGarage(
       ),
     );
     grid.append(event);
+    if (s.rank >= RIVALS.length - 2)
+      grid.append(
+        node(
+          "p",
+          "frg-standing",
+          `Redline requirements · Summit wins ${s.canyonWins}/${ROAD_WINS_NEEDED} · Spillway wins ${s.aqueductWins}/${ROAD_WINS_NEEDED} · road wins ${s.canyonWins + s.aqueductWins}/${s.roadStarts} (half needed) · Grudge Night ${s.qualified ? "won" : "pending"}.`,
+        ),
+      );
     return grid;
   }
   function render(error = "") {
@@ -452,6 +487,7 @@ export function mountGarage(
     const title = node("header", "frg-heading"),
       wallet = node("dl", "frg-wallet");
     title.append(node("h1", "", "Garage"));
+    if (back) title.prepend(back);
     const day = Math.min(s.day, FINAL_DAY);
     wallet.append(
       metric("Day", `${WEEKDAYS[(day - 1) % 7]} ${day} / ${FINAL_DAY}`),
@@ -533,6 +569,7 @@ export function mountGarage(
   }
   render();
   return () => {
+    stopEscape?.();
     disposed = true;
     artSize?.disconnect();
     root.remove();
