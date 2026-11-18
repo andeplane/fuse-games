@@ -72,14 +72,12 @@ type Recipe = (page: Page) => Promise<void>;
 const RECIPES: Record<string, Recipe> = {
   "fuse-particles": async (page) => {
     await openPlayOptions(page, "single");
-    await page
-      .getByRole("button", { name: "START MATCH", exact: true })
-      .click();
+    await page.getByRole("button", { name: /^start match$/i }).click();
     await page.locator('.fuseParticles-room[data-phase="running"]').waitFor();
     await page.waitForFunction(() => {
       const clock =
         document.querySelector(".fp-match .fp-arena time")?.textContent ?? "";
-      return /^0:(1[2-9]|[2-5][0-9])$/.test(clock);
+      return /^0:[2-5][0-9]$/.test(clock);
     });
   },
   "fuse-drivers": async (page) => {
