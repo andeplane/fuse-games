@@ -232,6 +232,11 @@ export function createFriendsHttp(
     ROOM_LOOKUP_BURST,
     ROOM_LOOKUP_PER_SECOND,
   );
+  const nameLookups = new AddressBudget(
+    dependencies.now,
+    ROOM_LOOKUP_BURST,
+    ROOM_LOOKUP_PER_SECOND,
+  );
   return {
     methods: ["DELETE"],
     headers: ["X-Fuse-Identity", "X-Fuse-Account"],
@@ -239,11 +244,13 @@ export function createFriendsHttp(
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
       if (!FRIENDS_ROUTE.test(pathname)) return false;
-      if (
-        pathname === "/api/friends/search" &&
-        !inviteLookups.take(clientAddress)
-      )
-        throw new RoomError(429, "Too many searches; try later");
+      const search = pathname === "/api/friends/search";
+      if (search) {
+        if (req.method !== "GET") return false;
+        // Protect identity verification as well as the database, independently of room invites.
+        if (!nameLookups.take(clientAddress))
+          throw new RoomError(429, "Too many searches; try later");
+      }
       const json = (value: unknown, status = 200) => {
         res.writeHead(status, {
           "Content-Type": "application/json",
@@ -286,7 +293,7 @@ export function createFriendsHttp(
         json(await store.sync(uid, await readJson(req)));
         return true;
       }
-      if (pathname === "/api/friends/search" && req.method === "GET") {
+      if (search) {
         json({ players: await store.search(uid, url.searchParams.get("q")) });
         return true;
       }

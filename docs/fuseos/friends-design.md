@@ -42,12 +42,15 @@ Per-account searches are limited to 120/hour with an additional address budget.
 Presence sync maintains a `searchName` index, using Firestore's automatic single
 field index rather than scanning accounts. A rename is discoverable under its new
 name after the next presence sync; stale indexed names are filtered from responses.
-For existing offline players, after deploying the backend run
-`pnpm exec tsx scripts/backfill-friend-search.ts PROJECT_ID PREFIX` to preview counts,
-then the same command with `--apply`. The migration pages 100 presence records at
-a time, uses update-time preconditions to preserve concurrent heartbeats, and prints
-counts only. Rerun for skipped records. Until backfilled, older records become
-searchable on their next sync. This command has not been run against production.
+For existing offline players, after verifying the backend serves search, run
+`pnpm exec tsx scripts/backfill-friend-search.ts PROJECT_ID DATABASE_ID PREFIX`
+to preview counts, then run the same command with `--apply`. Use the serving
+gateway's exact project, named database and collection prefix from the deployment
+inventory. The migration pages 100 presence records at a time, uses update-time
+preconditions to preserve concurrent heartbeats, and prints counts only. Rerun
+for skipped concurrent records and confirm with a final dry run. Older records
+also become searchable on their next sync. This command has not been run against
+production.
 
 The desktop polls presence every 20 seconds with `passive: true`: it refreshes
 the account without replacing the room claim made by the game. Opening a game

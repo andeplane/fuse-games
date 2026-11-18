@@ -55,6 +55,15 @@ export const publicIdOf = (uid: string): string =>
     .digest("hex")
     .slice(0, PUBLIC_ID_LENGTH);
 
+/** The public name used by friend cards and the search index. */
+export function friendDisplayName(
+  fallback: string,
+  account?: Account,
+  presence?: PresenceRecord,
+): string {
+  return account?.username ?? presence?.name ?? account?.name ?? fallback;
+}
+
 export interface PresenceRecord {
   uid: string;
   publicId: string;
@@ -269,11 +278,11 @@ export class FriendsStore {
     const avatarId = account?.avatarId ?? presence?.avatarId;
     return {
       publicId: publicIdOf(uid),
-      name:
-        account?.username ??
-        presence?.name ??
-        account?.name ??
+      name: friendDisplayName(
         this.platform.account.fallbackName,
+        account,
+        presence,
+      ),
       ...(avatarId ? { avatarId } : {}),
     };
   }

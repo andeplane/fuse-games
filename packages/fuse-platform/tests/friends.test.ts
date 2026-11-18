@@ -5,6 +5,7 @@ import { MESSAGE_HISTORY_MS } from "../src/messages-api.js";
 import { searchPrefixEnd } from "../src/friends-api.js";
 import {
   MemoryRoomDatabase,
+  ROOM_LOOKUP_BURST,
   RoomError,
   RoomStore,
   peerId,
@@ -201,6 +202,34 @@ test("search HTTP requires sign-in and enforces query validation and account bud
   });
   for (let i = 0; i < 119; i++) await f.store.search("one", "rich");
   await assert.rejects(f.store.search("one", "rich"), /Too many requests/);
+});
+
+test("name searches and room invites have separate address budgets", async () => {
+  const f = fixture();
+  const code = await f.room(1);
+  const http = createFriendsHttp(
+    f.store,
+    async (value) => (value.startsWith("id:") ? value.slice(3) : undefined),
+    { now: f.now },
+  );
+  assert.equal(
+    (await handle(http, "POST", "/api/friends/search")).handled,
+    false,
+  );
+  for (let i = 0; i < ROOM_LOOKUP_BURST; i++)
+    assert.equal(
+      (await handle(http, "GET", "/api/friends/search?q=ri")).status,
+      401,
+    );
+  assert.equal(
+    (await handle(http, "GET", "/api/friends/search?q=ri")).status,
+    429,
+  );
+  // A real room invite may still reach the identity check from that address.
+  assert.equal(
+    (await handle(http, "POST", `/api/rooms/${code}/invites`)).status,
+    401,
+  );
 });
 
 /** Drives an HttpExtension with a minimal request (a readable body) and response. */
