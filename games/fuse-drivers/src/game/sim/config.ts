@@ -1,5 +1,6 @@
 /** Every balance value lives here (ADR 002). Angles in radians, times in ticks or seconds as named. */
-export const TICK_RATE = 30;
+/** VGA refresh (70 Hz), with one simulation frame every three retraces. */
+export const TICK_RATE = 70 / 3;
 export const DT = 1 / TICK_RATE;
 export const TICK_MS = 1000 / TICK_RATE;
 const deg = (d: number) => (d * Math.PI) / 180;
@@ -40,7 +41,7 @@ export const BASE_STATS: TruckStats = {
   turnRateHigh: deg(180),
   landingMul: 0.85,
   maxArmor: 4,
-  nitros: 3,
+  nitros: 25,
   mass: 1,
 };
 
@@ -54,9 +55,9 @@ export const config = {
   screen: { width: 1600, height: 900 },
   tile: 32,
   laps: 4,
-  countdownTicks: 90,
+  countdownTicks: 40,
   /** 45 s after the leader finishes: at 12-17 s laps a 12 s grace left 37-52 % of the field DNF, and laps are now ~60 % slower. */
-  raceEndGraceTicks: 1350,
+  raceEndGraceTicks: 1050,
   truck: {
     radius: 14,
     turnRateLow: deg(270),
@@ -74,7 +75,7 @@ export const config = {
     boostMul: 1.25,
     nitroTicks: 36,
     nitroMul: 1.5,
-    nitroMax: 6,
+    nitroMax: 99,
     rocketStartWindow: 10,
     airborneBase: 12,
     airborneSpeedTicks: 10,

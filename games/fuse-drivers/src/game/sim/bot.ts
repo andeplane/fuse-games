@@ -1,9 +1,10 @@
+import { getOffroadCourse, isOffroadCourse } from "../offroad/course.js";
 import { config } from "./config.js";
 import { crosses } from "./geometry.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./input.js";
 import type { RaceState } from "./race.js";
 import type { Point, Track } from "./track.js";
-import { wrapAngle, type Truck } from "./truck.js";
+import { wrapAngle } from "./truck.js";
 import { atan2, cos, hypot, sin } from "./deterministic-math.js";
 
 export type Difficulty = "easy" | "normal" | "hard";
@@ -109,49 +110,6 @@ function ahead(
   return { p: wp[i % n]!, tangent: tangentOf(wp, i) };
 }
 
-/** ADR 007 item rules: missile at a truck ahead in the cone, mine at a truck behind, shield when locked, nitro at once. */
-function wantsItem(state: RaceState, t: Truck): boolean {
-  if (!t.item || state.tick < t.airborneUntilTick) return false;
-  const others = state.trucks.filter(
-    (o) =>
-      o.slot !== t.slot &&
-      !o.respawnAtTick &&
-      !o.finishedTick &&
-      state.tick >= o.invulnerableUntilTick,
-  );
-  const rel = (o: Truck) => ({
-    d: hypot(o.x - t.x, o.y - t.y),
-    a: Math.abs(wrapAngle(atan2(o.y - t.y, o.x - t.x) - t.heading)),
-  });
-  switch (t.item) {
-    case "missile":
-      return others.some((o) => {
-        const r = rel(o);
-        return (
-          (r.d < 500 && r.a < config.items.missile.lockCone) ||
-          (r.d < 300 && r.a > Math.PI / 2)
-        );
-      });
-    case "mine":
-    case "oil":
-      return others.some((o) => {
-        const r = rel(o);
-        return r.d < 300 && r.a > Math.PI / 2;
-      });
-    case "shield":
-      return t.lockedUntilTick > state.tick;
-    case "emp":
-      return (
-        others.filter((o) => rel(o).d <= config.items.emp.range).length >= 2
-      );
-    case "nitro":
-    case "drone":
-      return true;
-    default:
-      return false;
-  }
-}
-
 /** Ordinary inputs only (ADR 007). Pure: returns the input and the next memory. */
 export function botInput(
   state: RaceState,
@@ -161,12 +119,41 @@ export function botInput(
   difficulty: Difficulty,
 ): [TruckInput, BotMemory] {
   const t = state.trucks[slot]!; // A bot is wired to a slot that this race has a truck for.
-  if (state.phase === "countdown") {
+  if (state.phase !== "racing") return [NEUTRAL_INPUT, memory];
+  if (isOffroadCourse(track.name)) {
+    const course = getOffroadCourse(track.name);
+    const wp = course.waypoints;
+    const position = t.motion;
+    let nearest = 0,
+      nearestDistance = Infinity;
+    for (let i = 0; i < wp.length; i++) {
+      if (course.waypointRegion[i] !== t.checkpoint) continue;
+      const point = wp[i]!;
+      const distance =
+        (point.x - position.x) ** 2 + (point.y - position.y) ** 2;
+      if (distance < nearestDistance) {
+        nearest = i;
+        nearestDistance = distance;
+      }
+    }
+    // Aim through the next stretch of the captured racing line. Looking further at speed
+    // gives the momentum vector time to catch up with the nose before the next turn.
+    const target = ahead(wp, nearest, Math.max(420, position.speed * 5)).p;
+    const error = wrapAngle(
+      atan2(target.y - position.y, target.x - position.x) -
+        position.heading * ((2 * Math.PI) / 65536),
+    );
     return [
       {
         ...NEUTRAL_INPUT,
+        gas: position.speed < 48 || Math.abs(error) < 1.05,
+        left: error < -0.065,
+        right: error > 0.065,
         nitro:
-          state.tick >= state.countdownEndTick - config.truck.rocketStartWindow,
+          Math.abs(error) < 0.04 &&
+          position.speed >= 125 &&
+          !position.nitroTicks &&
+          position.nitros > 0,
       },
       memory,
     ];
@@ -249,76 +236,22 @@ export function botInput(
   const cornerBrake = sharp && t.speed > 0.6 * t.stats.topSpeed;
   const airborneOrSpun =
     state.tick < t.airborneUntilTick || state.tick < t.spinUntilTick;
-  // Wedged against a wall with the throttle on (still within 20 u of where it was a second ago, oscillating included):
-  // back out for a second.
-  let { anchorX, anchorY, anchorTick, reverseUntilTick } = memory;
-  if (state.tick - anchorTick >= 30) {
-    const wedged =
-      t.wallTicks >= 30 &&
-      hypot(t.x - anchorX, t.y - anchorY) < 20 &&
-      !airborneOrSpun;
-    if (wedged && state.tick >= reverseUntilTick)
-      reverseUntilTick = state.tick + 30;
-    anchorX = t.x;
-    anchorY = t.y;
-    anchorTick = state.tick;
-  }
-  // Facing the wrong way for a second while pressed against a wall (blocked at a crossing): back out and swing round.
-  if (
-    t.wrongWayTicks >= 30 &&
-    t.wallTicks >= 10 &&
-    state.tick >= reverseUntilTick &&
-    !airborneOrSpun
-  ) {
-    reverseUntilTick = state.tick + 30;
-    anchorX = t.x;
-    anchorY = t.y;
-    anchorTick = state.tick;
-  }
-  const nextMemory = {
-    ...memory,
-    anchorX,
-    anchorY,
-    anchorTick,
-    reverseUntilTick,
-  };
-  if (state.tick < reverseUntilTick) {
-    // Reverse with the nose swinging towards the target (heading turns the same way at any speed), so the
-    // truck drives out of the corner rather than back into it.
-    const backOut: TruckInput = {
-      ...NEUTRAL_INPUT,
-      brake: true,
-      left: err < -STEER_DEADBAND,
-      right: err > STEER_DEADBAND,
-    };
-    return [backOut, nextMemory];
-  }
-  // A drift only ends when both turn buttons are released (ADR 004); countersteering just slows it, so a bot
-  // drifting away from its target lets go instead of circling.
-  const release = t.driftDir !== 0 && Math.sign(err) !== t.driftDir;
+  const nextMemory = memory;
   const decided: TruckInput = {
     ...NEUTRAL_INPUT,
-    left: !release && err < -STEER_DEADBAND,
-    right: !release && err > STEER_DEADBAND,
+    left: err < -STEER_DEADBAND,
+    right: err > STEER_DEADBAND,
     nitro:
       straight &&
+      Math.abs(err) < STEER_DEADBAND &&
       !airborneOrSpun &&
-      t.nitros > 0 &&
-      !t.prevNitro &&
-      state.tick >= t.nitroUntilTick,
-    brake: cornerBrake || (straight && state.tick % 30 < BRAKE_TAP[difficulty]),
-    item: wantsItem(state, t),
-    // Fire a missile backwards when the threat is behind and nobody is ahead in the cone.
-    itemAlt:
-      t.item === "missile" &&
-      !state.trucks.some(
-        (o) =>
-          o.slot !== t.slot &&
-          !o.respawnAtTick &&
-          hypot(o.x - t.x, o.y - t.y) < 500 &&
-          Math.abs(wrapAngle(atan2(o.y - t.y, o.x - t.x) - t.heading)) <
-            config.items.missile.lockCone,
-      ),
+      t.motion.speed > 120 &&
+      !t.motion.nitroTicks,
+    gas:
+      t.motion.speed < 45 ||
+      (!cornerBrake &&
+        Math.abs(err) < 1.05 &&
+        !(straight && state.tick % 30 < BRAKE_TAP[difficulty])),
   };
   const delay = DELAY[difficulty];
   const queue = [...memory.queue, decided].slice(-(delay + 1));
