@@ -11,7 +11,7 @@ from unicorn.x86_const import (
 )
 
 
-def oracle(image, route, x, speed):
+def oracle(image, route, x, speed, feature="clear"):
     machine = Uc(UC_ARCH_X86, UC_MODE_16)
     machine.mem_map(0, 0x100000)
     machine.mem_write(0, image)
@@ -34,6 +34,14 @@ def oracle(image, route, x, speed):
         0xF000: 0xF100, 0xF002: 0x0DCB,
     }.items():
         put(off, value)
+    if feature in ["bridge", "rough", "guardrail"]:
+        array,value = {"bridge":(0x3EEA,0x80),"rough":(0x3EEA,0x60),"guardrail":(0x2F72,0x8000)}[feature]
+        machine.mem_write(0x37260+array+2,struct.pack("<H",value))
+        if feature=="bridge":
+            put(0xA7DA,2000)
+            put(0xB8D2,2800)
+    elif feature=="rock":
+        put(0xBB88,int(abs(x/1000+0.28)<=0.14))
     # The audio adapter consumes no arguments and has no driving side effects.
     machine.mem_write(0x78000, bytes([0xcb]))
     put(0xBB8C+16*4, 0)
@@ -48,6 +56,25 @@ def oracle(image, route, x, speed):
     return [x_after,word(0xA100),word(0x7BA2),machine.reg_read(UC_X86_REG_AX)]
 
 
+def bank(image,lane):
+    machine=Uc(UC_ARCH_X86,UC_MODE_16)
+    machine.mem_map(0,0x100000)
+    machine.mem_write(0,image)
+    ds=0x3E080
+    camera=2118+(lane*927+500)//1000
+    left,right=camera-110,camera+520
+    for off,value in [(0x9AC8,left),(0x9A58,right),(0xA564,camera),(0xF000,0xF100)]:
+        machine.mem_write(ds+off,struct.pack("<H",value))
+    for reg,value in [(UC_X86_REG_DS,ds//16),(UC_X86_REG_SS,ds//16),(UC_X86_REG_SP,0xF000),(UC_X86_REG_CS,0x0DCB)]:
+        machine.reg_write(reg,value)
+    if left<=1480 or right>=3320:
+        start=0x9d9c if left<=1480 else 0x9e4e
+        machine.emu_start(0xdcb0+start,0xdcb0+0xf100,count=200)
+        assert machine.reg_read(UC_X86_REG_IP)==0xf100
+        return -struct.unpack("<h",machine.mem_read(ds+0x9e70,2))[0]
+    return 0
+
+
 if __name__=="__main__":
     packed=Path(sys.argv[1]).read_bytes()
     image=packed[struct.unpack_from("<H",packed,8)[0]*16:]
@@ -58,3 +85,10 @@ if __name__=="__main__":
               for speed in [0,9,10,39,40,41,75]]
         digest=hashlib.sha256(json.dumps(rows,separators=(",",":")).encode()).hexdigest()
         print(route,len(rows),digest)
+    for feature in ["bridge","rough","rock","guardrail"]:
+        rows=[oracle(image,"canyon",x,speed,feature)
+              for x in [-1200,-1001,-420,-369,-368,-280,-140,0,323,324,999,1000,1001,1100]
+              for speed in [10,30,31,39,40,60,61]]
+        print(feature,len(rows),hashlib.sha256(json.dumps(rows,separators=(",",":")).encode()).hexdigest())
+    angles=[bank(image,lane) for lane in range(-1000,1001,5)]
+    print("bank",len(angles),hashlib.sha256(json.dumps(angles,separators=(",",":")).encode()).hexdigest())
