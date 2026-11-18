@@ -1,0 +1,16 @@
+---
+name: fuse-create-game
+description: Build a new original game in the Fuse Games monorepo, from the Pig scaffold through shared menus, controls, rooms, results, analytics, and portal registration. Use for a new playable Fuse game or to integrate an already extracted engine into a new Fuse game.
+---
+
+# Create a Fuse game
+
+Work in the Fuse Games checkout under its current `AGENTS.md`. Read `docs/architecture.md`, the “Menu patterns” in `packages/fuse-ui/README.md`, and the vendored `.claude/skills/game-dev-index/SKILL.md` and `.claude/skills/game-direction-workflow/SKILL.md`. Use `games/dice` as the integration example. For an existing source game or a shipped reference that still needs analysis, start with `$fuse-replicate-game`.
+
+1. Define the playable loop, round end, supported modes, and keyboard and touch inputs. Post the repo's three-line design covering what the player sees, where it sits in the menus, and what it replaces. Use the player's requested bindings and modes.
+2. Run `pnpm exec tsx scripts/new-game.ts <id>` for a new workspace. Adapt the generated Pig code and tests to the real game. Keep the workspace ID consistent across the rules, room service, platform and metrics. Verify the public URL in `vite.config.ts`, since the page slug can differ from the ID.
+3. Keep the deterministic simulation under `src/game` and the page, input adapters, and renderer under `src/app`. Use the existing `RollbackGame` and room runtime for online play. Put seeded randomness and gameplay clocks in the checkpointed state. Drive presentation from the current view so rollback corrects what players see. Implement checkpoint validation and real round and match results for the game's rules.
+4. Compose the app from `fuse-ui`. Start with the shared top bar and portal, landing and main menu, How to Play, in-match menu, Back/Escape, shared room and TV join controls, and results. Use the shared seat, invite and settings patterns. Derive help from the actual keyboard, pointer and touch bindings and describe the win condition. Start, replay and return to the lobby or landing from the applicable modes. Add undo to any editor. Read `docs/ANALYTICS.md` and wire the real app, seat, match and round events through the shared analytics and play metrics.
+5. Finish registration. Add the workspace package to the root dependencies as neighboring games do, run `pnpm install` for the lockfile, add the manifest to `Dockerfile.cloud`, and add the game's `src/platform.ts` registration to `GAMES` in `service/history.ts`. Fill in `games/<id>/portal.json`, add a real gameplay recipe to `scripts/gallery-capture.ts`, and capture the gallery image with `pnpm gallery:capture <id>`. Use the current registered-game, gallery and shared-UI tests to catch missed integration.
+
+Verify the rules, checkpoint and replay where applicable, plus the composed browser flow. Exercise solo, room host and guest, a one-player room, TV and phone controls where supported. Open Help, use Back/Escape, finish a round, and exercise replay or leave. Check desktop, 360 px portrait and phone landscape. Use muted, headless previews and the repo's PR screenshot instructions. Report the exact revision, tested modes, and steps to play, and follow the repo's PR workflow.

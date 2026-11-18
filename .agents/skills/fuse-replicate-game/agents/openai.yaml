@@ -1,0 +1,3 @@
+interface:
+  display_name: "Fuse Replicate Game"
+  short_description: "Extract and verify gameplay for a Fuse port"
