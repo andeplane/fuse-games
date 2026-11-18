@@ -1,3 +1,4 @@
+import { trafficView } from "./traffic.js";
 import {
   applyManagementTick,
   isManagementEntry,
@@ -200,6 +201,7 @@ export function fuserodView(room: FuserodRoom) {
     round: 1 as const,
     players: seats(room).map((s) => ({ ...s })),
     racers: race ? racerViews(race) : [],
+    traffic: race ? trafficView(race.traffic) : [],
     countdown: race ? Math.max(0, race.treeTicks - race.elapsed) : 0,
     raceTicks: race ? Math.max(0, race.elapsed - race.treeTicks) : 0,
     finishDistance: metres(finishUnits(route, variant)),

@@ -1,3 +1,9 @@
+import {
+  raceTraffic,
+  dodgeTraffic,
+  hitTraffic,
+  type TrafficState,
+} from "./traffic.js";
 import type { SeatRecord } from "fuse-netcode";
 import {
   advanceMotor,
@@ -58,6 +64,7 @@ export interface Race {
   winnerId: string | null;
   ended: boolean;
   police: { phase: PatrolState; position: number };
+  traffic: TrafficState;
 }
 export function seedForMatch(matchId: string): number {
   let seed = 2166136261;
@@ -87,6 +94,7 @@ export function createRace(
     elapsed: 0,
     ended: false,
     winnerId: null,
+    traffic: raceTraffic(settings.route, seed),
     police: {
       phase: patrol ? 1 : 0,
       position: patrol ? (110 + ((seed >>> 8) % 240)) * 64 : 0,
@@ -182,7 +190,19 @@ function botInput(
       target = f.lane > 0 ? -120 : 120;
   }
   // A bot looks into a bend and countersteers against its steering-wheel momentum.
-  const error = target - driver.x - driver.motor.wheel * 12;
+  const street =
+    race.settings.variant === "street" || race.settings.route === "canyon";
+  const desired = street
+    ? 8 *
+      dodgeTraffic(
+        race.traffic,
+        { x: driver.x, position: driver.motor.position },
+        player && { x: player.x, position: player.motor.position },
+        target,
+        driver.motor.speed,
+      )
+    : target - driver.x;
+  const error = desired - driver.motor.wheel * 12;
   const steer: Direction = error > 35 ? 1 : error < -35 ? -1 : 0;
   const previous = roadCurve(
     race.settings.route,
@@ -330,6 +350,24 @@ export function advanceRace(race: Race): void {
           Math.trunc((bend * travel) / (920 + 60 * (tune.tires ?? 0))),
       ),
     );
+    if (travel > 0 && race.traffic.obstacles.length) {
+      const trafficHit = hitTraffic(
+        race.traffic,
+        old.position,
+        driver.motor.position,
+        driver.x,
+        driver.motor.speed,
+      );
+      driver.x = Math.max(
+        -1450,
+        Math.min(1450, driver.x + trafficHit.sideways),
+      );
+      driver.motor = slowMotor(driver.motor, trafficHit.speed, tune);
+      if (trafficHit.crashed) {
+        driver.crashed = true;
+        continue;
+      }
+    }
     const initialLane =
       race.racers.length === 1 && variant === "timed"
         ? 1

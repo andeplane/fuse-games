@@ -1,3 +1,4 @@
+import { decodeTraffic } from "./traffic.js";
 import { uint32, type SeatRecord } from "fuse-netcode";
 import { parseHistoryReceipts } from "fuse-platform/history-api";
 import { motorGears, isMotorState } from "../motor/index.js";
@@ -133,7 +134,7 @@ function decodeRacer(v: unknown): Racer | undefined {
   };
 }
 function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
-  if (!object(v) || Object.keys(v).length !== 8) return;
+  if (!object(v) || Object.keys(v).length !== 9) return;
   const {
     startTick,
     treeTicks,
@@ -143,6 +144,7 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
     winnerId,
     racers: raw,
     settings: rawSettings,
+    traffic: rawTraffic,
   } = v;
   const settings = parseSettings(rawSettings);
   if (
@@ -198,7 +200,10 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
     (winnerId !== null && !validId(winnerId))
   )
     return;
+  const traffic = decodeTraffic(rawTraffic, settings.route, seed);
+  if (!traffic) return;
   const race: Race = {
+    traffic,
     settings,
     startTick,
     treeTicks,
