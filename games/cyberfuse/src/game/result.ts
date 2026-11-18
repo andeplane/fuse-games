@@ -5,6 +5,15 @@ import { CAMPAIGNS } from "../campaign/index.js";
 import type { CyberfuseRoom } from "./rules.js";
 export type CyberfusePlayerResult = CyberfuseStats;
 export const DOGFIGHT_WIN_TARGET = 5;
+export function placement(
+  mode: CyberfuseRoom["mode"],
+  wins: number,
+  rows: readonly { wins: number }[],
+) {
+  return mode === "campaign"
+    ? 1
+    : 1 + rows.filter((row) => row.wins > wins).length;
+}
 export const MAX_DOGFIGHT_ROUNDS = 99; // A platform match may record at most 99 rounds (simultaneous KOs can draw).
 export function standings(
   room: Pick<CyberfuseRoom, "history" | "matchId" | "roster">,
@@ -132,10 +141,7 @@ export function finishRound(room: CyberfuseRoom, tick: number): void {
           kills: p.kills,
           friendlies: p.friendlies,
           survived: p.survived,
-          matchPlacement:
-            room.mode === "campaign"
-              ? 1
-              : 1 + totals.filter((other) => other.wins > p.wins).length,
+          matchPlacement: placement(room.mode, p.wins, totals),
           earlyExits: Number(!p.bot && !finishers.includes(p.id)),
         })),
       },

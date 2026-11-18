@@ -2,6 +2,7 @@ import { DEFAULT_GAMEPLAY } from "../src/options/index.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { finishRound } from "../src/game/result.js";
+import { isMissionState } from "../src/sim/index.js";
 import { parseCyberfuseStats } from "../src/game/stats.js";
 import { dueReports } from "../src/app/reports.js";
 import {
@@ -81,6 +82,26 @@ test("a late release rolls back a solo operative and the recovered snapshot cont
     undefined,
   );
 });
+test("a complete fire tap within one room tick fires once and converges after rollback", () => {
+  const timely = replica(),
+    late = replica();
+  const inputs: CyberfuseEntry[] = [
+    [1, 3, PLAY, "mission", 1, FIRE],
+    [2, 3, PLAY, "mission", 1, 0],
+  ];
+  timely.receive("peer", inputs, 2, 12, 12);
+  timely.advance(6);
+  late.advance(6);
+  assert.ok(late.receive("peer", inputs, 2, 12, 12).rollbackTicks > 0);
+  assert.equal(timely.state.held.peer?.bits, 0);
+  assert.ok(
+    timely.state.world!.actors.find((a) => a.seat === "peer")!.lastShot > 0,
+  );
+  assert.equal(
+    cyberfuseGame.hash(timely.state),
+    cyberfuseGame.hash(late.state),
+  );
+});
 test("out-of-scope controls and a retired generation cannot move the reconnected player", () => {
   const room = replica();
   room.receive(
@@ -119,6 +140,7 @@ test("one seated dogfighter receives a real AI opponent and room controls remain
     2,
   );
   assert.equal(room.state.roster.filter((p) => p.bot).length, 1);
+  assert.equal(isMissionState({ ...room.state.world, objectives: [] }), false);
   assert.equal(
     parseSettings({ display: false, mode: "dogfight", loadout: [1, 1] }),
     undefined,

@@ -185,6 +185,13 @@ export function isMissionState(s: unknown): s is MissionState {
   if (
     !array(os, 16) ||
     !os.every(objective) ||
+    (s.mode === "dogfight" &&
+      (os.length !== 1 ||
+        os[0]?.kind !== "dogfight" ||
+        os[0].count !== 1 ||
+        os[0].required !== 1 ||
+        os[0].done > 1 ||
+        os[0].flags !== 0)) ||
     !objective(s.objective) ||
     !array(s.actors, 256)
   )

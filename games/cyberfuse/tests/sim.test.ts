@@ -229,7 +229,10 @@ test("destroying an ordinary box, explosive barrel, flammable barrel and poison 
       },
     ];
     s = stepMission(s, {});
-    assert.equal(s.props.length, 0);
+    assert.equal(s.props.length, 1);
+    assert.equal(s.props[0]?.hp, 0);
+    assert.equal(s.props[0]?.impassable, false);
+    assert.equal(s.props[0]?.objectFlags, 0);
     const secondary = s.shots.filter((x) => x.kind !== "spark");
     assert.ok(
       expected

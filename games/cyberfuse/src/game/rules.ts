@@ -350,6 +350,7 @@ export function foldTick(
     }
   }
   if (room.stage === "running" && room.world) {
+    const transitions = new Map<string, number[]>();
     // Presence and generation changes cancel a held control before a new stream can contribute.
     for (const p of room.roster) {
       const seat = room.seats.get(p.id);
@@ -361,8 +362,12 @@ export function foldTick(
         delete room.held[p.id];
       if (!seat?.connected || seat.bot) continue;
       for (const e of ownEntries(p.id, seat, streams, tick)) {
-        if (e[2] === PLAY && e[3] === room.matchId && e[4] === room.round)
+        if (e[2] === PLAY && e[3] === room.matchId && e[4] === room.round) {
+          const sequence = transitions.get(p.id) ?? [];
+          if (e[5] !== (room.held[p.id]?.bits ?? 0)) sequence.push(e[5]);
+          transitions.set(p.id, sequence);
           room.held[p.id] = { bits: e[5], generation: seat.generation! };
+        }
       }
     }
     for (let i = clockAt(room.tick); i < clockAt(tick); i++) {
@@ -372,7 +377,13 @@ export function foldTick(
           p.id,
           p.bot || !room.seats.get(p.id)?.connected
             ? botControl(world, p.id)
-            : controls(room.held[p.id]?.bits ?? 0),
+            : controls(
+                (i + 1 < clockAt(tick)
+                  ? transitions.get(p.id)?.shift()
+                  : undefined) ??
+                  room.held[p.id]?.bits ??
+                  0,
+              ),
         ]),
       );
       room.world = stepMission(world, inputs);

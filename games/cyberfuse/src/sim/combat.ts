@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // C-Dogs actor and damage rules adapted from Ronny Wester's ACTORS.C and OBJS.C.
+import { PROP_DEFS } from "../campaign/index.js";
 import {
   advanceShots,
   burst,
@@ -127,6 +128,10 @@ function hitObject(
     progress(s, object.objectiveIndex);
     if (object.objectiveIndex !== null && owner.seat) owner.score += 50;
     s.items = s.items.filter((i) => i !== object);
+  } else if (PROP_DEFS[object.objectIndex]?.wreck) {
+    s.props = s.props.map((p) =>
+      p === object ? { ...p, hp: 0, impassable: false, objectFlags: 0 } : p,
+    );
   } else s.props = s.props.filter((p) => p !== object);
   const flags = object.objectFlags;
   const kind =

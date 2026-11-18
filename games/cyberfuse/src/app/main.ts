@@ -1,3 +1,4 @@
+import { placement } from "../game/result.js";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
@@ -468,10 +469,10 @@ function room() {
           : "Squad lost",
       standings: {
         columns: dog ? ["Score", "Wins"] : ["Score", "Bonus", "Kills"],
-        rows: rows.map((r, i) => ({
+        rows: rows.map((r) => ({
           id: r.id,
           name: r.name,
-          placement: i + 1,
+          placement: placement(frame.mode, r.wins, rows),
           you: r.id === me,
           color: colors[r.slot % colors.length]!,
           values: dog
@@ -506,7 +507,7 @@ function room() {
           ended: f.phase === "over",
           playerCount:
             f.world?.actors.filter((a) => a.seat !== null).length ?? 0,
-          botCount: f.players.filter((p) => p.bot).length,
+          botCount: f.results.filter((p) => p.bot).length,
           seated: !display && !!f.world?.actors.some((a) => a.seat === me),
           mode: solo ? "solo" : current.display ? "shared" : "online",
         }),

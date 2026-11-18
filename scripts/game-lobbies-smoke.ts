@@ -111,6 +111,7 @@ try {
       await room.waitFor();
       await checkGameMenu(page, game);
       const configurationRoom = [
+        "cyberfuse",
         "fuse-drivers",
         "fusemania",
         "elasto-fuse",
