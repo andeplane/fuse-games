@@ -77,6 +77,8 @@ const plain = (value: unknown): value is Record<string, unknown> =>
 export function parseFuseDriversStats(
   raw: unknown,
   rounds: number,
+  acceptPlayerId: (id: string) => boolean = (id) =>
+    /^[a-f0-9]{24}$/.test(id) || isBotId(id),
 ): FuseDriversStats | undefined {
   if (!plain(raw)) return;
   const keys = Object.keys(raw);
@@ -88,7 +90,7 @@ export function parseFuseDriversStats(
   const { playerId, name } = raw;
   if (
     typeof playerId !== "string" ||
-    !(/^[a-f0-9]{24}$/.test(playerId) || isBotId(playerId)) ||
+    !acceptPlayerId(playerId) ||
     !validName(name)
   )
     return;

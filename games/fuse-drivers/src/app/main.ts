@@ -768,16 +768,11 @@ function room(solo: boolean): void {
       observePlay(playFrame(room, runtime.self, mode), {
         frame: final && confirmedPlayFrame(final, runtime.self, mode),
       });
+      if (final && (session.kind === "room" || social.isSignedIn()))
+        reports.tick(
+          dueReports(final, runtime.self, final.tick, reports.completed),
+        );
     }
-    if (room && (session.kind === "room" || social.isSignedIn()))
-      reports.tick(
-        dueReports(
-          room,
-          runtime.self,
-          runtime.confirmedTick(),
-          reports.completed,
-        ),
-      );
   };
   requestAnimationFrame(frame);
 

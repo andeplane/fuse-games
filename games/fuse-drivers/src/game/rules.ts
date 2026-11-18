@@ -10,12 +10,18 @@ import {
   type LifecycleHooks,
   type ManagedRoom,
   type ManagementEntry,
+  type ManagementOrigin,
   type SeatRecord,
   type Stage,
   type StreamEntries,
 } from "fuse-netcode";
 import { CAPACITY, MAX_ROUNDS, MAX_WATCHERS, validName } from "./basics.js";
 import { BASE_STATS } from "./sim/config.js";
+import {
+  freezeFinishedRace,
+  RETAINED_FINISHES,
+  type FinishedRace,
+} from "./result.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./sim/input.js";
 import { createRace, step, type RaceState } from "./sim/race.js";
 import type { Track } from "./sim/track.js";
@@ -119,6 +125,7 @@ export const DEFAULT_SETTINGS: FuseDriversSettings = {
 };
 
 export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
+  recentFinishes: FinishedRace[];
   /** -1 in the lobby. Each subsequent race follows the original schedule from the selected opener. */
   campaignIndex: number;
   /** Immutable snapshots keyed by the grid's member IDs. A reclaimed slot cannot inherit its wallet. */
@@ -244,6 +251,7 @@ export function createRoom(
     matchId,
     round: 1,
     stage: "lobby",
+    recentFinishes: [],
     campaignIndex: -1,
     garage: {},
     seats: new Map(),
@@ -352,6 +360,7 @@ function shop(
   room: FuseDriversRoom,
   streams: ReadonlyMap<string, StreamEntries<FuseDriversEntry>>,
   tick: number,
+  closing?: ManagementOrigin,
 ): void {
   for (const seat of players(room)) {
     if (!seat.connected || seat.bot || !room.garage[seat.id]) continue;
@@ -359,7 +368,7 @@ function shop(
       .filter((entry): entry is PurchaseEntry => entry[2] === PURCHASE)
       .sort((a, b) => a[0] - b[0]);
     for (const [
-      ,
+      seq,
       ,
       ,
       match,
@@ -372,6 +381,8 @@ function shop(
     ] of purchases) {
       const driver = room.garage[seat.id]!;
       if (
+        (closing?.author === seat.id &&
+          (seat.generation !== closing.generation || seq >= closing.seq)) ||
         match !== room.matchId ||
         round !== room.round ||
         finish !== room.finishTick ||
@@ -401,7 +412,19 @@ export function foldTick(
   const generations = new Map(
     [...room.seats.values()].map((seat) => [seat.id, seat.generation]),
   );
-  applyManagementTick(room, tick, creatorId, streams, lifecycle);
+  const hooks =
+    room.stage === "over"
+      ? {
+          ...lifecycle,
+          rematch(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
+            // The host's own earlier buys precede NEXT. Other active drivers have
+            // until this closing tick; all still have to quote the closing finish.
+            shop(r, streams, tick, origin);
+            lifecycle.rematch(r, id);
+          },
+        }
+      : lifecycle;
+  applyManagementTick(room, tick, creatorId, streams, hooks);
 
   // Held input belongs to the page generation that logged it. Admission of a new
   // page must release the previous page even when no disconnect was received.
@@ -476,6 +499,12 @@ export function foldTick(
           : [];
       });
       room.stage = "over";
+      const finish = freezeFinishedRace(room);
+      if (finish)
+        room.recentFinishes = [
+          ...room.recentFinishes.slice(1 - RETAINED_FINISHES),
+          finish,
+        ];
     }
   }
 
