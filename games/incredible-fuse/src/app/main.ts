@@ -44,7 +44,7 @@ import {
   incredibleFuseGame,
   seatName,
 } from "../game/index.js";
-import { PUZZLES } from "../game/machine.js";
+import { FREE_WORKSHOP, getPuzzle, PUZZLES } from "../game/machine.js";
 import { createAttract } from "./attract.js";
 import { createBench } from "./bench.js";
 import { dueReports, sendReport } from "./reports.js";
@@ -142,14 +142,17 @@ function puzzleChoice(initial: number) {
   const select = el("select");
   select.setAttribute("aria-label", "Puzzle");
   const goal = el("small");
-  PUZZLES.forEach((puzzle, index) => {
-    const option = el("option", index + 1 + ". " + puzzle.title);
+  [...PUZZLES, getPuzzle(FREE_WORKSHOP)].forEach((puzzle, index) => {
+    const option = el(
+      "option",
+      index === FREE_WORKSHOP ? puzzle.title : index + 1 + ". " + puzzle.title,
+    );
     option.value = String(index);
     select.append(option);
   });
   function update(index: number) {
     select.value = String(index);
-    goal.textContent = PUZZLES[index]!.goal;
+    goal.textContent = getPuzzle(index).goal;
   }
   select.addEventListener("change", () => update(select.selectedIndex));
   update(initial);
@@ -218,7 +221,10 @@ function workshop() {
       session.role === "host" &&
       store.getItem(names.shared) === "1",
     puzzleIndex:
-      solo && Number.isInteger(initialPuzzle) && PUZZLES[initialPuzzle]
+      solo &&
+      Number.isInteger(initialPuzzle) &&
+      initialPuzzle >= 0 &&
+      initialPuzzle <= FREE_WORKSHOP
         ? initialPuzzle
         : 0,
   };
@@ -364,7 +370,8 @@ function workshop() {
       main.dataset.phase = frame.phase;
       if (lobby.hidden === waiting) lobby.hidden = !waiting;
       stage.hidden = !playing;
-      name.form.hidden = !me || display || Boolean(mine) || !waiting;
+      const needsSeat = Boolean(me) && !display && !mine && waiting;
+      if (name.form.hidden === needsSeat) name.form.hidden = !needsSeat;
       start.hidden = !canManage;
       start.disabled = !waiting || !frame.players.some((p) => p.connected);
       shared.update(settings.display, canManage && !solo && waiting);
@@ -397,7 +404,7 @@ function workshop() {
         const key = JSON.stringify([frame.matchId, record?.players]);
         if (key !== resultKey) {
           resultKey = key;
-          const puzzle = PUZZLES[settings.puzzleIndex]!;
+          const puzzle = getPuzzle(settings.puzzleIndex);
           results.show({
             game: TITLE,
             kicker: "Puzzle complete",
