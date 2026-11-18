@@ -263,7 +263,8 @@ export function parseTimWorkshop(bytes: Uint8Array): {
   if (air > 255 || gravity > 512)
     throw new Error("The machine's atmosphere is outside the supported range.");
   reader.word(); // Original music track.
-  const count = reader.word() + reader.word();
+  const staticCount = reader.word();
+  const count = staticCount + reader.word();
   if (count > 128)
     throw new Error("This workbench holds at most 128 part records.");
   if (reader.word() !== 0)
@@ -322,6 +323,7 @@ export function parseTimWorkshop(bytes: Uint8Array): {
       height,
       flip: (raw.flags & 0x10) !== 0,
       fixed: false,
+      mobile: index >= staticCount,
     });
   }
   if (parts.length)

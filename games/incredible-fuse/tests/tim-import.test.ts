@@ -73,8 +73,10 @@ test("imports view geometry, flips, atmosphere and unique electrical and drive c
     y: 38.5,
     flip: false,
     fixed: false,
+    mobile: false,
   });
   assert.equal(blueprint.parts[2]?.flip, true);
+  assert.equal(blueprint.parts.at(-1)?.mobile, true);
   assert.deepEqual(blueprint.links, [
     { kind: "wire", a: 2, b: 3 },
     { kind: "belt", a: 1, b: 3 },
