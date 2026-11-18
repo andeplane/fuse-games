@@ -164,3 +164,33 @@ test("two room runtimes converge over dropped, duplicated and reordered fast pac
   host.stop();
   guest.stop();
 });
+
+test("a returning peer restores the running level from a surviving player", () => {
+  const mesh = new FuseheadsMesh("host", DEFAULT_SETTINGS),
+    host = mesh.join("host");
+  mesh.run(250);
+  const guest = mesh.join("guest");
+  mesh.run(900);
+  host.command({ type: "join", name: "Ada", slot: 0 });
+  guest.command({ type: "join", name: "Bo", slot: 1 });
+  mesh.run(1800);
+  host.command({ type: "action", action: "start" });
+  mesh.run(600);
+  assert.ok(guest.play(2));
+  mesh.run(300);
+  guest.stop();
+  mesh.run(1400);
+  const returning = mesh.join("guest");
+  mesh.run(2000);
+  assert.equal(returning.roomState()?.stage, "running");
+  assert.equal(returning.roomState()?.matchId, host.roomState()?.matchId);
+  assert.ok(returning.play(4));
+  mesh.run(160);
+  assert.ok(returning.play(0));
+  mesh.run(500);
+  const at = Math.floor((Math.min(host.tick, returning.tick) - 8) / 8) * 8;
+  assert.ok(host.hashAt(at));
+  assert.equal(returning.hashAt(at), host.hashAt(at));
+  returning.stop();
+  host.stop();
+});

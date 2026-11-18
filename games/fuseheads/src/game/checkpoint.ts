@@ -18,6 +18,7 @@ import {
   validMask,
   validMatchId,
   validName,
+  validLevelTeam,
   type FuseheadsRoom,
   type Participant,
 } from "./rules.js";
@@ -160,7 +161,16 @@ export function decodeRoom(
     () => false,
     MAX_RECEIPTS,
   );
-  if (!receipts || receipts.some((r) => r.result.players.length > CAPACITY))
+  if (
+    !receipts ||
+    receipts.some(
+      ({ result }) =>
+        result.length !== 1 ||
+        result.round !== undefined ||
+        result.winnerId !== undefined ||
+        !validLevelTeam(result.players),
+    )
+  )
     return;
   if (world !== null && !validWorld(world)) return;
   if (stage === "lobby") {

@@ -1,4 +1,28 @@
+import type { PlayerResult } from "fuse-platform";
+
 export const CAPACITY = 2;
+
+/** The same team always shares one level outcome. Only the earned points differ by seat. */
+export function validLevelTeam(players: readonly PlayerResult[]): boolean {
+  return (
+    players.length > 0 &&
+    players.length <= CAPACITY &&
+    new Set(players.map((p) => p.slot)).size === players.length &&
+    players.every(
+      (p) =>
+        p.slot >= 0 &&
+        p.slot < CAPACITY &&
+        validName(p.name) &&
+        p.roundsPlayed === 1 &&
+        (p.roundWins === 0 || p.roundWins === 1) &&
+        p.roundWins === players[0]!.roundWins &&
+        p.matchPlacement === 1 &&
+        Number.isSafeInteger(p.matchScoreUnits) &&
+        p.matchScoreUnits >= 0 &&
+        p.matchScoreUnits <= 99_999_999,
+    )
+  );
+}
 export const MAX_WATCHERS = 8;
 
 export function validName(value: unknown): value is string {
