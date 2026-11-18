@@ -70,6 +70,17 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  cyberfuse: async (page) => {
+    await openPlayOptions(page, "single");
+    await page.getByRole("button", { name: "Deploy", exact: true }).click();
+    await page
+      .locator('.cyberfuse-room[data-phase="running"] canvas')
+      .first()
+      .waitFor();
+    await page.keyboard.down("Space");
+    await hold(page, ["ArrowRight", "ArrowDown"], 450);
+    await page.keyboard.up("Space");
+  },
   "fuse-drivers": async (page) => {
     await openPlayOptions(page, "single");
     await page.getByRole("button", { name: "START RACE", exact: true }).click();
