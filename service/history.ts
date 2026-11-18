@@ -1,3 +1,4 @@
+import { fuseheadsRegistration } from "fuseheads/platform";
 import { diceRegistration } from "dice/platform";
 import { lieroRegistration } from "fusero/platform";
 import { fuseDriversRegistration } from "fuse-drivers/platform";
@@ -39,6 +40,7 @@ import {
 export const GAMES = [
   fuseRiders,
   diceRegistration,
+  fuseheadsRegistration,
   lieroRegistration,
   hookRegistration,
   choppersRegistration,

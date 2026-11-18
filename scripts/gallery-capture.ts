@@ -70,6 +70,14 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  fuseheads: async (page) => {
+    await openPlayOptions(page, "single");
+    await page.getByRole("button", { name: "START GAME", exact: true }).click();
+    await page.locator('.fuseheads-arena[data-ready="true"]').waitFor();
+    await hold(page, ["ArrowRight"], 650);
+    await page.keyboard.press("Space", { delay: 120 });
+    await page.waitForTimeout(800);
+  },
   "fuse-drivers": async (page) => {
     await openPlayOptions(page, "single");
     await page.getByRole("button", { name: "START RACE", exact: true }).click();

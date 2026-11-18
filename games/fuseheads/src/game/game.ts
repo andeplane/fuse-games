@@ -91,5 +91,9 @@ export const fuseheadsGame: RollbackGame<
     botName: () => "Bot",
     solo: { name: "You", bots: 0 },
   },
-  text: { ...defaultText, needTwo: "Take a seat to begin." },
+  text: {
+    ...defaultText,
+    solo: "Local game",
+    needTwo: "Take a seat to begin.",
+  },
 };

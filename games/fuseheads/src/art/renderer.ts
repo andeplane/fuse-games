@@ -224,10 +224,17 @@ export function createArena(canvas: HTMLCanvasElement): {
       sprite(base + pose, player.x, player.y, true);
     }
     ctx.restore();
-    for (const player of world.players) {
-      const left = player.slot === 0;
-      numberPanel(player.score, 16, left ? 240 : 512, 432, 7);
-      numberPanel(player.lives, 16, left ? 160 : 512, 450, 2);
+    for (const slot of [0, 1]) {
+      const player = world.players.find((p) => p.slot === slot);
+      const left = slot === 0;
+      numberPanel(player?.score ?? 0, 16, left ? 240 : 512, 432, 7);
+      numberPanel(
+        Math.max(0, (player?.lives ?? 0) - 1),
+        16,
+        left ? 160 : 512,
+        450,
+        2,
+      );
     }
     numberPanel(world.levelIndex + 1, 32, 368, 432, 3);
     canvas.dataset.ready = "true";

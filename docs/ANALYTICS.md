@@ -129,27 +129,28 @@ rollback publication, reload or popout from recounting the same participation.
 Its raw match/round keys never leave the browser. Very long sessions exceeding that
 ledger capacity can forget their oldest marks; these metrics are not billing records.
 
-| Game              | Round unit and active boundary                                                   |
-| ----------------- | -------------------------------------------------------------------------------- |
-| Fuse Riders       | Engine round; playing, completion after the decision tick is confirmed           |
-| Pig               | Pig game, not a turn or die roll                                                 |
-| Bombers           | Engine round after its countdown; local and online paths                         |
-| Choppers, Freight | Engine round; world play phase                                                   |
-| Elasto Fuse       | Each level/race in a tour; racing phase                                          |
-| Killer Fuse       | Each game within a set, after its countdown                                      |
-| Fuse Axe          | Combat stage; exclude camp and continue retries                                  |
-| Fuse Drivers      | Race; racing until finished                                                      |
-| Ball Bros         | Survival game; playing until over                                                |
-| Fuseball          | Whole first-to-three match; first active play, not each point                    |
-| Fuse Volley       | Whole match; first actual rally, not each serve/point                            |
-| Fuse Surge        | Engine round; surges running, completion once the break after it is confirmed    |
-| Fuse Front        | Battle, once its start tick is reached                                           |
-| Graveyard Shift   | One shift                                                                        |
-| Fuse Craft        | One scenario/match; sandbox has no invented end                                  |
-| Fuse Birds        | One artillery battle/map; preparing/fault excluded, practice has no invented end |
-| Fusemania         | One song after lead-in; playlists contain several song matches                   |
-| Fusetown          | Whole race to four goals; weeks remain turns                                     |
-| Hook Havok        | Contest; open-ended free arena has no invented end                               |
+| Game              | Round unit and active boundary                                                    |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Fuse Riders       | Engine round; playing, completion after the decision tick is confirmed            |
+| Pig               | Pig game, not a turn or die roll                                                  |
+| Bombers           | Engine round after its countdown; local and online paths                          |
+| Choppers, Freight | Engine round; world play phase                                                    |
+| Elasto Fuse       | Each level/race in a tour; racing phase                                           |
+| Killer Fuse       | Each game within a set, after its countdown                                       |
+| Fuse Axe          | Combat stage; exclude camp and continue retries                                   |
+| Fuse Drivers      | Race; racing until finished                                                       |
+| Ball Bros         | Survival game; playing until over                                                 |
+| Fuseball          | Whole first-to-three match; first active play, not each point                     |
+| Fuse Volley       | Whole match; first actual rally, not each serve/point                             |
+| Fuse Surge        | Engine round; surges running, completion once the break after it is confirmed     |
+| Fuse Front        | Battle, once its start tick is reached                                            |
+| Graveyard Shift   | One shift                                                                         |
+| Fuse Craft        | One scenario/match; sandbox has no invented end                                   |
+| Fuseheads         | One played campaign level, including ruler fights; a clear or team defeat ends it |
+| Fuse Birds        | One artillery battle/map; preparing/fault excluded, practice has no invented end  |
+| Fusemania         | One song after lead-in; playlists contain several song matches                    |
+| Fusetown          | Whole race to four goals; weeks remain turns                                      |
+| Hook Havok        | Contest; open-ended free arena has no invented end                                |
 
 Fuseball's existing `playRound` helper is only a match-start guard (first countdown
 versus the rest of the match); round participation uses an explicit constant key.
