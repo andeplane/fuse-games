@@ -47,6 +47,7 @@ import {
 import { FREE_WORKSHOP, getPuzzle, PUZZLES } from "../game/machine.js";
 import { createAttract } from "./attract.js";
 import { createBench } from "./bench.js";
+import { localWorkshopPicker, readLocalWorkshop } from "./local-workshop.js";
 import { dueReports, sendReport } from "./reports.js";
 import {
   IncredibleFuseRuntime,
@@ -189,7 +190,18 @@ function landing() {
       location.href = pageUrl({ room: code });
     },
   });
-  card.soloDetails.append(choice.element);
+  card.soloDetails.append(
+    choice.element,
+    localWorkshopPicker({
+      onOpen: () => {
+        location.href = pageUrl({
+          solo: "1",
+          puzzle: String(FREE_WORKSHOP),
+          local: "1",
+        });
+      },
+    }),
+  );
   app.replaceChildren(header(), card.element);
 }
 
@@ -502,6 +514,9 @@ function workshop() {
       : {
           humanName: social.playerName(store.getItem(names.name)) ?? undefined,
         },
+    solo && settings.puzzleIndex === FREE_WORKSHOP && query.get("local") === "1"
+      ? readLocalWorkshop()
+      : undefined,
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
