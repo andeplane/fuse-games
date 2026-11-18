@@ -28,7 +28,8 @@ def trace(image, power, gearbox, tires, scenario):
     put(0xA810, 2, 1)
     for offset in [2, 6, 8]:
         put(0xBAAC + offset, 1)
-    for slot, (offset, grade) in enumerate([(6, gearbox + 1), (8, power), (10, 0), (12, 0),
+    auto = scenario == "automatic"
+    for slot, (offset, grade) in enumerate([(6, 0 if auto else gearbox + 1), (8, power), (10, 0), (12, 0),
                                              (18, tires), (28, 0), (30, 0), (32, 1)]):
         part = 0xC100 + slot*16
         put(car + offset, part)
@@ -68,6 +69,8 @@ def trace(image, power, gearbox, tires, scenario):
         brake = scenario != "quarter" and 95 <= i < 108
         gas = running and not brake
         shift = (gear == 0 or (scenario != "limiter" and rpm >= 4350 and gear < word(player + 28))) and gas
+        if auto:
+            shift = gear == 0 and gas
         steer = 1 if 38 <= i < 49 else -1 if 52 <= i < 64 else 0
         put(0x1F6E, (i+1)*3, 4)
         put(0x3B36, steer, 1)
@@ -113,7 +116,7 @@ if __name__ == "__main__":
     speeds = trace(image, 0, 0, 0, "speeds")
     print("road steps", hashlib.sha256(json.dumps(speeds, separators=(",", ":")).encode()).hexdigest())
     for tune in [(0, 0, 0), (1, 1, 1), (2, 2, 2)]:
-        for scenario in ["shifts", "limiter", "quarter"]:
+        for scenario in ["shifts", "limiter", "quarter", "automatic"]:
             rows = trace(image, *tune, scenario)
             if scenario == "quarter":
                 rows = quarter(rows, speeds)

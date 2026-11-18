@@ -19,14 +19,17 @@ const original = [
   [
     "27564d5a8825bf5d07263deab1d340d3da7c90377f3985796f6a37ee0c0219d3",
     "63b6b35698584eab35060581cfdec88802946e6f3e4e24a57f8cebad58255e48",
+    "4d83abb83ca108ba4d13048f37d10654bf723980efdb0c5bb8dbe0d0e0bbb647",
   ],
   [
     "56427a7ca59a6ef9d553414ea4aa4c4f9e69c7e08a68e73244c54bb04b3724e2",
     "2dd8da4db76784896a6d4b1b1ac6ba69d5106d1cf6033f0bdfd04719d3a134e1",
+    "49d70de73baa5f8d368c6e2813c408a15a7019338aa5ab6f7c48821e12069a87",
   ],
   [
     "4b057d3e91ba91304ac37c2ca85504eda688551490171c7c05c6e756933e988e",
     "3a883f109bff74d8dfd9cb176a76c736c0777d5553d7c4427843eeb0e3fe2334",
+    "ee0624de194acc5f5b603baffa954fc15d77eae781dbd1364ddb1146b2dab4ef",
   ],
 ] as const;
 const finish = [
@@ -53,9 +56,14 @@ for (const grade of [0, 1, 2] as const) {
     }
     assert.equal(digest(frames), finish[grade]);
   });
-  for (const shiftAtRedline of [true, false]) {
-    test(`DOS motor trace for grade ${grade}, shifting ${shiftAtRedline}`, () => {
-      const tune = { power: grade, gearbox: grade, tires: grade };
+  for (const variant of ["shift", "limiter", "automatic"] as const) {
+    test(`DOS motor trace for grade ${grade}, ${variant}`, () => {
+      const tune = {
+        power: grade,
+        gearbox: grade,
+        tires: grade,
+        automatic: variant === "automatic",
+      };
       let motor = createMotor(37);
       const rows = [];
       for (let i = 0; i < 170 && !motor.broken; i++) {
@@ -63,7 +71,7 @@ for (const grade of [0, 1, 2] as const) {
         const throttle = i < 135 && !brake;
         const upshift =
           motor.gear === 0 ||
-          (shiftAtRedline &&
+          (variant === "shift" &&
             motor.rpm >= 4350 &&
             motor.gear < motorGears(tune));
         motor = stepMotor(
@@ -90,7 +98,12 @@ for (const grade of [0, 1, 2] as const) {
           motor.failure,
         ]);
       }
-      assert.equal(digest(rows), original[grade][shiftAtRedline ? 0 : 1]);
+      assert.equal(
+        digest(rows),
+        original[grade][
+          variant === "automatic" ? 2 : variant === "shift" ? 0 : 1
+        ],
+      );
     });
   }
 }

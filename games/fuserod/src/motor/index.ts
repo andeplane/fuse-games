@@ -1,7 +1,8 @@
-/** Street Rod 2 manual drivetrain. See tests/reference for parity evidence and license. */
+/** Street Rod 2 drivetrain. See tests/reference for parity evidence and license. */
 export type Grade = 0 | 1 | 2;
 export type Direction = -1 | 0 | 1;
 export interface MotorTune {
+  automatic?: boolean;
   power?: Grade;
   gearbox?: Grade;
   tires?: Grade;
@@ -88,15 +89,17 @@ export function speedToStep(mph: number): number {
 }
 
 export function motorGears(tune: MotorTune = {}): number {
-  return tune.gearbox ? 4 : 3;
+  return !tune.automatic && tune.gearbox ? 4 : 3;
 }
 
-// DOS car_setup for our fresh, class-2 manual cars with standard bodywork,
-// induction, exhaust and street differential. The first manual transmission is SR2 grade 1.
-function carPerformance(engine: Grade, transmission: Grade) {
+// DOS car_setup for fresh class-2 cars with standard bodywork, induction,
+// exhaust and street differential. SR2 grade zero is the three-speed automatic.
+function carPerformance(engine: Grade, transmission: Grade, automatic = false) {
   const score =
-    [33, 66, 100][transmission]! * 15 + (88 + 55) * 10 + engine * 50 * 25;
-  return div(div(score, 100) * 30, 100) + 70;
+    (automatic ? 0 : [33, 66, 100][transmission]!) * 15 +
+    (88 + 55) * 10 +
+    engine * 50 * 25;
+  return div(div(score, 100) * (automatic ? 24 : 30), 100) + 70;
 }
 
 function curve(state: MotorState, tune: MotorTune, performance: number) {
@@ -124,7 +127,10 @@ function ratioFor(gear: number, gearbox: Grade, performance: number) {
 export function motorTopSpeed(tune: MotorTune): number {
   return Math.min(
     130,
-    div(carPerformance(tune.power ?? 0, tune.gearbox ?? 0) * 13, 10),
+    div(
+      carPerformance(tune.power ?? 0, tune.gearbox ?? 0, tune.automatic) * 13,
+      10,
+    ),
   );
 }
 
@@ -136,9 +142,13 @@ export function slowMotor(
 ): MotorState {
   const speed = Math.max(0, Math.min(state.speed, Math.trunc(maximum)));
   if (speed === state.speed) return state;
-  const gearbox = tune.gearbox ?? 0;
+  const gearbox = tune.automatic ? 0 : (tune.gearbox ?? 0);
   const power = tune.power ?? 0;
-  const ratio = ratioFor(state.gear, gearbox, carPerformance(power, gearbox));
+  const ratio = ratioFor(
+    state.gear,
+    gearbox,
+    carPerformance(power, gearbox, tune.automatic),
+  );
   const rpm =
     state.gear === 0 ? 1500 + speed * 30 : Math.max(1500, speed * ratio);
   const [lower, upper] = thresholds[power];
@@ -148,8 +158,8 @@ export function slowMotor(
 function physics(s: MotorState, input: MotorControls, tune: MotorTune) {
   if (s.broken) return;
   const power = tune.power ?? 0;
-  const gearbox = tune.gearbox ?? 0;
-  const performance = carPerformance(power, gearbox);
+  const gearbox = tune.automatic ? 0 : (tune.gearbox ?? 0);
+  const performance = carPerformance(power, gearbox, tune.automatic);
   let { up, down } = curve(s, tune, performance);
   s.steps++;
   if (s.rpm > 5000) {
@@ -164,6 +174,7 @@ function physics(s: MotorState, input: MotorControls, tune: MotorTune) {
 
   if (input.throttle) {
     s.rpm += up;
+    if (tune.automatic) s.rpm = Math.min(5690, s.rpm);
     if (s.rpm > 5700) {
       s.rpm = 5700;
       if (++s.limiter > 15 - div(s.engineWear, 1000)) s.failure |= 5;
@@ -174,17 +185,28 @@ function physics(s: MotorState, input: MotorControls, tune: MotorTune) {
   if (s.rpm < 5700) s.limiter = 0;
 
   const stall = s.speed < 5 && !input.throttle && s.gear > 0;
-  if (input.shift !== 0 || stall) {
+  let shift = input.shift;
+  if (tune.automatic) {
+    // Fuse selects Drive on the first throttle press. DOS selected it with the shift button.
+    shift = 0;
+    if (
+      input.throttle &&
+      (s.gear === 0 || (s.gear < 3 && s.rpm > thresholds[power][1]))
+    )
+      shift = 1;
+    else if (!input.throttle && s.gear > 1 && s.band === 0) shift = -1;
+  }
+  if (shift !== 0 || stall) {
     s.gearWear += s.rpm > 5000 ? 15 : 3;
     if (s.gearWear >= 9900) s.failure |= 17;
-    else if (input.throttle && s.rpm > 5000) {
+    else if (!tune.automatic && input.throttle && s.rpm > 5000) {
       s.seed = (Math.imul(s.seed, 0x015a4e35) + 1) >>> 0;
       if (div(s.gearWear, 100) + 100 > ((s.seed >>> 16) & 32767) % 3277)
         s.failure |= 17;
     }
     s.gear = stall
       ? 0
-      : Math.max(0, Math.min(motorGears(tune), s.gear + input.shift));
+      : Math.max(0, Math.min(motorGears(tune), s.gear + shift));
     s.engaged = true;
     // x86 stores the 16-bit product, including when a driver selects neutral while moving.
     s.rpm =

@@ -92,6 +92,7 @@ export function mountCruise(
   const toggle = el("input");
   toggle.type = "checkbox";
   toggle.checked = true;
+  toggle.disabled = !!options.tune?.automatic;
   toggle.onchange = () => {
     assist = toggle.checked;
   };

@@ -24,6 +24,8 @@ Three complete quarter-mile motion traces compare RPM, mph, gear and position on
 
 ## Fuse-specific behavior
 
+The three-speed automatic uses SR2 transmission grade zero. It has its own performance factor, gear ratios, shift threshold and 5690 RPM governor. Three additional 170-step DOS traces compare Drive engagement, automatic upshifts, downshifts on lift, braking, wear, steering and shoulder response across engine grades. The DOS driver requested Drive by clicking the shifter. Fuse selects Drive on the first throttle press.
+
 Drivers can request up and down shifts explicitly. The original click chose a direction from the throttle, brake and current torque band. The parity cases use the same directional result as that click. After a breakdown the motor stops advancing and the caller handles the race outcome. The caller also owns course geometry, wheel-to-lane motion, opponents, start lights, race stakes and results. Choose the tune at race start and retain it for the duration of the race.
 
 ## Rival decisions, police and timing
