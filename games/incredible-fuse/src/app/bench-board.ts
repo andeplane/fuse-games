@@ -195,7 +195,36 @@ export function paintMachine(
       q = socketPosition(b, link.kind, bCenter, aCenter);
     drawLink(c, p, q, link.kind, machine.tick);
   }
-  const targets = getPuzzle(machine.puzzle).targets;
+  const puzzle = getPuzzle(machine.puzzle);
+  const targets = puzzle.targets;
+  const objective = puzzle.objective;
+  if (objective?.kind === "quota") {
+    const { x, y, width, height } = objective.region;
+    const count = machine.bodies.filter(
+      (body) =>
+        objective.candidates.includes(body.id) &&
+        body.x >= x &&
+        body.x <= x + width &&
+        body.y >= y &&
+        body.y <= y + height,
+    ).length;
+    c.save();
+    c.fillStyle = "#78d6bc13";
+    c.fillRect(x, y, width, height);
+    c.strokeStyle = "#8ae4c5";
+    c.lineWidth = 1.2;
+    c.setLineDash([4, 4]);
+    c.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+    c.setLineDash([]);
+    corners(c, x + width / 2, y + height / 2, width, height, "#a7ebc7");
+    c.fillStyle = "#244b46";
+    c.fillRect(x + 3, y + height - 13, 37, 10);
+    c.font = "bold 8px monospace";
+    c.textAlign = "left";
+    c.fillStyle = "#bff0d5";
+    c.fillText(count + " / " + objective.count, x + 7, y + height - 5);
+    c.restore();
+  }
   for (const part of machine.parts) {
     const body = bodies.get(part.id);
     const { x, y } = part.kind === "popper" ? part : (body ?? part);
@@ -250,6 +279,17 @@ export function paintMachine(
         c.fillText("TARGET", x, y + h / 2 + 14);
       }
     }
+    if (
+      machine.mode === "build" &&
+      objective?.kind === "select" &&
+      objective.forbidden.includes(part.id)
+    ) {
+      corners(c, x, y, w + 8, h + 8, "#ef947e");
+      c.font = "600 8px monospace";
+      c.fillStyle = "#ffbba8";
+      c.textAlign = "center";
+      c.fillText("KEEP OFF", x, y + h / 2 + 14);
+    }
     if (part.id === overlay.selected) {
       corners(c, x, y, w + 8, h + 8, "#fff09c");
       if (overlay.link && overlay.cursor)
@@ -266,10 +306,21 @@ export function paintMachine(
     const { x, y } = overlay.cursor;
     const ghost = overlay.ghost;
     if (ghost) {
-      const { width: w, height: h } = PARTS[ghost.kind];
+      const piece =
+        overlay.selected === undefined
+          ? undefined
+          : parts.get(overlay.selected);
+      const { width: w, height: h } = piece
+        ? partSize(piece)
+        : PARTS[ghost.kind];
+      c.save();
       c.globalAlpha = 0.53;
-      drawPart(c, ghost.kind, x, y, w, h, ghost.flip, 0, false);
-      c.globalAlpha = 1;
+      if (piece?.rotation === 1) {
+        c.translate(x, y);
+        c.rotate(Math.PI / 2);
+        drawPart(c, ghost.kind, 0, 0, h, w, ghost.flip, 0, false);
+      } else drawPart(c, ghost.kind, x, y, w, h, ghost.flip, 0, false);
+      c.restore();
       corners(c, x, y, w + 8, h + 8, "#85eee5");
     } else {
       c.strokeStyle = "#e7f4de";

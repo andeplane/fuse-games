@@ -138,7 +138,9 @@ export function createBench(options: {
     { button: HTMLButtonElement; count: HTMLElement }
   >();
   let linkKey = "",
-    announcement = "";
+    announcement = "",
+    lastBuild = "";
+  let keyboardMove = false;
   const activePart = () => machine?.parts.find((part) => part.id === selected);
   const building = () => machine?.mode === "build" && editable;
   function send(command: MachineCommand) {
@@ -172,6 +174,7 @@ export function createBench(options: {
     });
   }
   function resetSelection() {
+    keyboardMove = false;
     selected = undefined;
     tool = undefined;
     link = undefined;
@@ -372,6 +375,7 @@ export function createBench(options: {
     if (!e.isPrimary || e.button !== 0 || !building()) return;
     const p = boardPoint(e);
     cursor = p;
+    keyboardMove = false;
     cursorVisible = false;
     announcement = "";
     focusBoard();
@@ -478,6 +482,9 @@ export function createBench(options: {
     const delta = deltas[e.key];
     if (delta) {
       e.preventDefault();
+      keyboardMove = Boolean(
+        activePart() && !activePart()?.fixed && !tool && !link,
+      );
       cursor = {
         x: Math.max(0, Math.min(WIDTH, cursor.x + delta.x)),
         y: Math.max(0, Math.min(HEIGHT, cursor.y + delta.y)),
@@ -492,7 +499,12 @@ export function createBench(options: {
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      if (!e.repeat) interact(cursor);
+      if (!e.repeat) {
+        if (keyboardMove && selected !== undefined) {
+          send({ type: "move", id: selected, ...cursor });
+          keyboardMove = false;
+        } else interact(cursor);
+      }
     }
     if (e.key.toLowerCase() === "r" && activePart() && !rotate.hidden) {
       e.preventDefault();
@@ -522,6 +534,24 @@ export function createBench(options: {
   return {
     element: root,
     update(next: Machine, canEdit: boolean) {
+      // Room frames also arrive while everyone is studying the same motionless bench.
+      // Capture values so this also detects in-place edits and rollback to the same tick.
+      const stamp =
+        next.mode === "build"
+          ? JSON.stringify([
+              next.puzzle,
+              next.parts,
+              next.links,
+              next.undo.length,
+              next.imported,
+              canEdit,
+            ])
+          : "";
+      if (stamp && stamp === lastBuild) {
+        machine = next;
+        return;
+      }
+      lastBuild = stamp;
       const changed = next.puzzle !== puzzle;
       if (changed || next.mode !== lastMode || canEdit !== editable) {
         resetSelection();
