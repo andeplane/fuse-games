@@ -3,8 +3,7 @@ import { registerPhaserPlaytestCapture } from "fuse-ui/playtest-renderer";
 import type { FuseDriversView } from "../../game/game.js";
 import { config } from "../../game/sim/config.js";
 import type { RaceState } from "../../game/sim/race.js";
-import { parseTrack, type Track } from "../../game/sim/track.js";
-import { TRACK_DATA } from "../../game/tracks-data.js";
+import { trackFor } from "../../game/rules.js";
 import { defaultAssetBase } from "./assets.js";
 import {
   focusTruck,
@@ -15,23 +14,6 @@ import {
 import { HudScene } from "./hud-scene.js";
 import { renderSnapshot } from "./interpolate.js";
 import { RaceScene } from "./race-scene.js";
-
-/** Tracks parse once per page: the maps are committed data, identical on every peer. */
-const parsed = new Map<string, Track>();
-function trackByName(name: string): Track | undefined {
-  const cached = parsed.get(name);
-  if (cached) return cached;
-  const raw = TRACK_DATA[name];
-  if (raw === undefined) return undefined;
-  try {
-    const track = parseTrack(raw, name);
-    parsed.set(name, track);
-    return track;
-  } catch {
-    // A map the bundle no longer carries is a missing picture, not a broken page.
-    return undefined;
-  }
-}
 
 export interface ArenaEngineOptions {
   /** Where the art is served from; ends with a slash. Defaults to `assets/` under the page's base. */
@@ -119,8 +101,7 @@ export function createArena(
       if (!booted || destroyed) return;
       const next = view.race;
       if (!next) return;
-      const track = trackByName(next.trackName);
-      if (!track) return;
+      const track = trackFor(next.trackName);
       let newTick = true;
       if (lead) {
         // A forward run hands over its own step before; a run that steps back a step shows no new tick.

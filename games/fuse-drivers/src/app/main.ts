@@ -43,8 +43,13 @@ import {
   createSharedTvOption,
   el,
 } from "fuse-ui";
-import { DEFAULT_SETTINGS, fuseDriversGame, seatName } from "../game/index.js";
-import { TRACK_NAMES } from "../game/tracks-data.js";
+import {
+  DEFAULT_SETTINGS,
+  fuseDriversGame,
+  seatName,
+  trackNames,
+} from "../game/index.js";
+import { courseLabel } from "./course-label.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
 import type { RaceState } from "../game/sim/race.js";
 import {
@@ -119,24 +124,24 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 function landing(): void {
   const card = createLandingCard({
     howToPlay: {
-      goal: "Race through every checkpoint in order to finish your laps.",
+      goal: "Cross the finish line first after four laps. Lift off the gas for tight corners and spend nitro on the straights.",
       controls: [
         { keys: "A / ←", action: "Steer left" },
         { keys: "D / →", action: "Steer right" },
-        { keys: "S / ↓", action: "Brake" },
-        { keys: "Shift", action: "Nitro" },
-        { keys: "Space", action: "Use item" },
-        { keys: "↓ + Space", action: "Alternate item action" },
+        { keys: "W / ↑", action: "Hold to accelerate, release to coast" },
+        { keys: "Shift / Space", action: "Use nitro" },
       ],
       touchControls: [
-        { keys: "LEFT / RIGHT", action: "Steer" },
-        { keys: "ITEM / NITRO", action: "Use an item or nitro" },
+        { keys: "◀ / ▶", action: "Steer while holding GAS" },
+        { keys: "GAS", action: "Hold to accelerate, release to coast" },
+        { keys: "NITRO", action: "Use nitro" },
       ],
     },
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE DRIVERS",
-    tagline: "Offroad racing with weapons. Two to five drivers, one screen.",
+    tagline:
+      "Four laps of stadium dirt. Race up to four friends or take on the CPU.",
     soloText: "RACE THE CPU",
     async onCreate() {
       const room = await createRoom(endpoints.apiUrl, fetch, GAME).catch(
@@ -176,7 +181,7 @@ function keyboardControls(blocked: () => boolean): {
     )
       return;
     down.add(key(event));
-    if ([" ", "arrowleft", "arrowright", "arrowdown"].includes(key(event)))
+    if ([" ", "arrowleft", "arrowright", "arrowup"].includes(key(event)))
       event.preventDefault();
   };
   const onUp = (event: KeyboardEvent) => down.delete(key(event));
@@ -189,10 +194,11 @@ function keyboardControls(blocked: () => boolean): {
     read: () => ({
       left: down.has("arrowleft") || down.has("a"),
       right: down.has("arrowright") || down.has("d"),
-      brake: down.has("arrowdown") || down.has("s"),
-      nitro: down.has("shift"),
-      item: down.has(" "),
-      itemAlt: down.has("arrowdown") && down.has(" "),
+      gas: down.has("arrowup") || down.has("w"),
+      nitro: down.has("shift") || down.has(" "),
+      brake: false,
+      item: false,
+      itemAlt: false,
     }),
     stop: () => {
       removeEventListener("keydown", onDown);
@@ -249,8 +255,8 @@ function room(solo: boolean): void {
     });
   const track = el("select");
   track.setAttribute("aria-label", "Track");
-  for (const id of TRACK_NAMES) {
-    const option = el("option", id);
+  for (const id of trackNames()) {
+    const option = el("option", courseLabel(id));
     option.value = id;
     track.append(option);
   }
@@ -333,20 +339,26 @@ function room(solo: boolean): void {
     buttons: [
       {
         label: "◀",
+        keys: "ArrowLeft A",
+        title: "Steer left",
         onPress: () => {
           if (!modalInput.blocked()) touch.left = true;
         },
         onRelease: () => (touch.left = false),
       },
       {
-        label: "ITEM",
+        label: "GAS",
+        keys: "ArrowUp W",
+        title: "Hold to accelerate",
         onPress: () => {
-          if (!modalInput.blocked()) touch.item = true;
+          if (!modalInput.blocked()) touch.gas = true;
         },
-        onRelease: () => (touch.item = false),
+        onRelease: () => (touch.gas = false),
       },
       {
         label: "NITRO",
+        keys: "Shift Space",
+        title: "Use nitro",
         onPress: () => {
           if (!modalInput.blocked()) touch.nitro = true;
         },
@@ -354,6 +366,8 @@ function room(solo: boolean): void {
       },
       {
         label: "▶",
+        keys: "ArrowRight D",
+        title: "Steer right",
         onPress: () => {
           if (!modalInput.blocked()) touch.right = true;
         },
@@ -421,8 +435,13 @@ function room(solo: boolean): void {
       viewer.shared,
       viewer.host && !display && !solo && model.screen === "lobby",
     );
-    if (model.race)
-      hud.textContent = `LAP ${String(model.race.lap)}/${String(model.race.laps)}   POS ${String(model.race.place)}/${String(model.race.drivers.length)}`;
+    if (model.race) {
+      const mine = model.race.drivers.find((driver) => driver.you);
+      const lap = `LAP ${model.race.lap}/${model.race.laps}`;
+      hud.textContent = mine
+        ? `${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
+        : lap;
+    }
     const result = model.results;
     if (!result) {
       if (results.open) results.hide();
@@ -608,10 +627,11 @@ function room(solo: boolean): void {
           : {
               left: board.read().left || touch.left,
               right: board.read().right || touch.right,
-              brake: board.read().brake || touch.brake,
+              gas: !!(board.read().gas || touch.gas),
+              brake: false,
               nitro: board.read().nitro || touch.nitro,
-              item: board.read().item || touch.item,
-              itemAlt: board.read().itemAlt || touch.itemAlt,
+              item: false,
+              itemAlt: false,
             },
       );
     const room = runtime.roomState();

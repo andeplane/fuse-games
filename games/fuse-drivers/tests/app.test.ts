@@ -78,14 +78,14 @@ test("the screen reads the view, so a corrected race shows the correction", () =
   // A rollback re-folds to a different outcome; no event is emitted again, only the view changes.
   room.race = {
     ...race,
-    trucks: race.trucks.map((truck) => ({ ...truck, kills: 3 })),
+    trucks: race.trucks.map((truck) => ({ ...truck, nitros: 0 })),
   };
   const after = defined(
     presentTable(fuseDriversView(room), viewer()).race,
     "race",
   ).drivers[0];
   assert.notDeepEqual(after, before);
-  assert.equal(defined(after).kills, 3);
+  assert.equal(defined(after).nitros, 0);
 });
 
 test("a finished race shows the winner and offers the host another", () => {

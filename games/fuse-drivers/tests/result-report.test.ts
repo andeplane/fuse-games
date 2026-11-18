@@ -66,7 +66,7 @@ const parts = {
     ({ textContent: `+ ADD FRIEND ${id}` }) as HTMLElement,
 };
 
-test("a race's result: the winner in their truck's colour, each driver's time, laps, kills and wrecks, and a friend button per other human", () => {
+test("the results show finish times, laps led, nitro spent and the other human drivers", () => {
   const report = resultReport(result(), parts);
   assert.equal(report.game, "FUSE DRIVERS");
   assert.equal(report.context, "canyon · 4 laps · 3 drivers");
@@ -74,7 +74,12 @@ test("a race's result: the winner in their truck's colour, each driver's time, l
   assert.equal(report.summary, "1:23.4 over 4 laps");
   assert.equal(report.accent, COLORS[1]);
   const standings = defined(report.standings, "standings");
-  assert.deepEqual(standings.columns, ["TIME", "LAPS", "KILLS", "WRECKS"]);
+  assert.deepEqual(standings.columns, [
+    "TIME",
+    "LAPS",
+    "LAPS LED",
+    "NITROS USED",
+  ]);
   assert.deepEqual(
     standings.rows.map((entry) => [
       entry.placement,
@@ -91,10 +96,10 @@ test("a race's result: the winner in their truck's colour, each driver's time, l
         false,
         undefined,
         "+ ADD FRIEND b",
-        ["1:23.4", "4/4", "2", "0"],
+        ["1:23.4", "4/4", "3", "2"],
       ],
-      [2, "Ada", true, undefined, undefined, ["1:30.0", "4/4", "2", "1"]],
-      [3, "Diesel", false, "AI", undefined, ["DNF", "2/4", "0", "3"]],
+      [2, "Ada", true, undefined, undefined, ["1:30.0", "4/4", "1", "0"]],
+      [3, "Diesel", false, "AI", undefined, ["—", "2/4", "0", "2"]],
     ],
   );
   assert.deepEqual(
@@ -104,7 +109,6 @@ test("a race's result: the winner in their truck's colour, each driver's time, l
       card.detail,
     ]),
     [
-      ["Road warrior", ["Bo", "Ada"], "Wrecked 2 trucks."],
       ["Front runner", ["Bo"], "Led 3 laps."],
       ["Nitro junkie", ["Bo", "Diesel"], "Fired 2 nitros."],
     ],

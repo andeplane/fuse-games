@@ -8,6 +8,7 @@ import {
   TRUCK_COLORS,
 } from "./assets.js";
 import type { ArenaFrame } from "./frame.js";
+import { courseLabel } from "../course-label.js";
 import { raceViewport } from "./race-scene.js";
 
 const FONT: Phaser.Types.GameObjects.Text.TextStyle = {
@@ -69,21 +70,13 @@ export class HudScene extends Phaser.Scene {
   private readonly onReady: () => void;
 
   private built = "";
-  private lap?: Phaser.GameObjects.Text;
-  private pos?: Phaser.GameObjects.Text;
-  private kills?: Phaser.GameObjects.Text;
   private clock?: Phaser.GameObjects.Text;
-  private speed?: Phaser.GameObjects.Text;
-  private where?: Phaser.GameObjects.Text;
-  private slot?: Phaser.GameObjects.Image;
+  private course?: Phaser.GameObjects.Text;
   private bigImage?: Phaser.GameObjects.Image;
   private bigText?: Phaser.GameObjects.Text;
   private badge?: Phaser.GameObjects.Image;
   private chipNames: Phaser.GameObjects.Text[] = [];
-  /** Armor pips per truck in the driver chips. */
-  private chipArmor: Phaser.GameObjects.Image[][] = [];
-  private armor: Phaser.GameObjects.Image[] = [];
-  private nitros: Phaser.GameObjects.Image[] = [];
+  private chipStats: Phaser.GameObjects.Text[] = [];
   /** The lap each truck was last seen on, and the tick it changed, for the LAP banner. */
   private laps: number[] = [];
   private lapTick: number[] = [];
@@ -120,21 +113,6 @@ export class HudScene extends Phaser.Scene {
       )
       .setOrigin(0)
       .setAlpha(0.9);
-  }
-
-  private pips(
-    x: number,
-    y: number,
-    count: number,
-    size: number,
-    gap: number,
-    frame: number,
-  ): Phaser.GameObjects.Image[] {
-    return Array.from({ length: count }, (_, i) =>
-      this.add
-        .image(x + i * (size + gap) + size / 2, y, "bars", frame)
-        .setScale(size / HUD_CELL.bars),
-    );
   }
 
   /**
@@ -199,75 +177,49 @@ export class HudScene extends Phaser.Scene {
   /** Everything whose shape depends on the grid rather than on the tick. */
   private build(frame: ArenaFrame): void {
     for (const child of [...this.children.list]) child.destroy();
-    this.chipArmor = [];
+    this.chipStats = [];
     this.chipNames = [];
     const { width, height } = config.screen;
     const trucks = frame.race.trucks;
     this.drawStands(frame, width, height);
 
-    // Top strip: logo, one chip per driver, then lap / position / kills / time.
+    // One scoreboard across the top leaves the entire course visible, including the start line.
     this.add
-      .image(12, TOP + TOP_H / 2, "logo", 0)
+      .image(10, TOP + TOP_H / 2, "logo", 0)
       .setOrigin(0, 0.5)
       .setScale(TOP_H / 380);
-    const chipW = 172;
-    this.chipArmor = trucks.map((t, i) => {
-      const x = 170 + i * (chipW + 6);
-      this.panel(TRUCK_COLORS[i % TRUCK_COLORS.length]!, x, TOP, chipW, TOP_H);
+    const start = 176;
+    const clockWidth = 160;
+    const chipW = Math.floor((width - start - clockWidth - 12) / trucks.length);
+    trucks.forEach((_, i) => {
+      const x = start + i * chipW;
+      this.panel(
+        TRUCK_COLORS[i % TRUCK_COLORS.length]!,
+        x,
+        TOP,
+        chipW - 5,
+        TOP_H,
+      );
       this.add
-        .image(x + 32, TOP + TOP_H / 2, "portraits", i)
-        .setScale(46 / HUD_CELL.portraits);
+        .image(x + 31, TOP + TOP_H / 2, "portraits", i)
+        .setScale(44 / HUD_CELL.portraits);
       this.chipNames.push(
-        this.add.text(x + 60, TOP + 12, frame.names[i] ?? "", {
+        this.add.text(x + 56, TOP + 9, "", {
           ...LABEL,
           color: "#ffffff",
+          fontSize: "21px",
         }),
       );
-      return this.pips(x + 60, TOP + 44, t.stats.maxArmor, 14, 1, 2 * i);
+      this.chipStats.push(
+        this.add.text(x + 56, TOP + 36, "", { ...LABEL, color: "#ffe5aa" }),
+      );
     });
-    const px = 170 + trucks.length * (chipW + 6);
-    this.panel("grey", px, TOP, width - 8 - px, TOP_H);
-    const col = (width - 8 - px) / 4;
-    const readouts = ["LAP", "POS", "KILLS", "TIME"].map((label, i) => {
-      const cx = px + col * (i + 0.5);
-      this.add.text(cx, TOP + 16, label, LABEL).setOrigin(0.5);
-      return this.add
-        .text(cx, TOP + 42, "", {
-          ...FONT,
-          color: i === 1 ? "#ffe600" : "#ffffff",
-        })
-        .setOrigin(0.5);
-    });
-    [this.lap, this.pos, this.kills, this.clock] = readouts;
+    const timeX = width - clockWidth / 2 - 6;
+    this.panel("grey", width - clockWidth - 6, TOP, clockWidth, TOP_H);
+    this.add.text(timeX, TOP + 16, "RACE TIME", LABEL).setOrigin(0.5);
+    this.clock = this.add.text(timeX, TOP + 43, "", FONT).setOrigin(0.5);
 
-    // Bottom-left: framed item slot, nitro bottles, the followed truck's armor bar and its speed.
-    const by = height - 8 - 100;
-    this.panel("grey", 8, by, 330, 100);
-    this.panel("gold", 18, by + 10, 80, 80);
-    this.slot = this.add
-      .image(58, by + 50, "icons", FRAMES.icons.empty)
-      .setScale(54 / 128);
-    this.nitros = this.pips(
-      108,
-      by + 32,
-      config.truck.nitroMax,
-      30,
-      4,
-      FRAMES.bars.nitro,
-    );
-    // Enough pips for the best-armoured truck; paint() shows the followed truck's own count in its colour.
-    this.armor = this.pips(
-      108,
-      by + 72,
-      Math.max(...trucks.map((t) => t.stats.maxArmor)),
-      22,
-      2,
-      0,
-    );
-    this.speed = this.add
-      .text(326, by + 72, "", { ...LABEL, color: "#ffffff" })
-      .setOrigin(1, 0.5);
-    this.where = this.add
+    this.course = this.add
       .text(width - 12, height - 10, "", { ...FONT, fontSize: "20px" })
       .setOrigin(1, 1);
 
@@ -375,33 +327,18 @@ export class HudScene extends Phaser.Scene {
     const { race, focus } = frame;
     const me = race.trucks[focus];
     if (!me) return;
-    this.lap?.setText(`${Math.min(me.laps + 1, config.laps)}/${config.laps}`);
-    this.pos?.setText(
-      `${race.placements.indexOf(focus) + 1}/${race.trucks.length}`,
-    );
-    this.kills?.setText(String(me.kills));
     const secs = Math.max(0, (race.tick - race.countdownEndTick) / TICK_RATE);
     this.clock?.setText(
       `${Math.floor(secs / 60)}:${(secs % 60).toFixed(1).padStart(4, "0")}`,
     );
     race.trucks.forEach((t, i) => {
-      this.chipNames[i]?.setText(frame.names[i] ?? "");
-      for (const [j, pip] of (this.chipArmor[i] ?? []).entries())
-        pip.setFrame(2 * i + (j < t.armor ? 0 : 1));
+      const position = race.placements.indexOf(i) + 1;
+      this.chipNames[i]?.setText(`${position}. ${frame.names[i] ?? ""}`);
+      this.chipStats[i]?.setText(
+        `LAP ${Math.min(config.laps, t.laps + 1)}   NITRO ${t.nitros}`,
+      );
     });
-    this.armor.forEach((pip, j) =>
-      pip
-        .setVisible(j < me.stats.maxArmor)
-        .setFrame(2 * focus + (j < me.armor ? 0 : 1)),
-    );
-    this.nitros.forEach((pip, j) =>
-      pip.setFrame(j < me.nitros ? FRAMES.bars.nitro : FRAMES.bars.nitroEmpty),
-    );
-    this.speed?.setText(`${Math.round(me.speed / 10) * 10} u/s`);
-    this.slot?.setFrame(me.item ? FRAMES.icons[me.item] : FRAMES.icons.empty);
-    this.where?.setText(
-      `RACE ${frame.view.round + 1}  ${frame.track.name.toUpperCase()}`,
-    );
+    this.course?.setText(courseLabel(frame.track.name).toUpperCase());
     this.show(this.message(frame));
     this.badge
       ?.setFrame(Math.max(0, race.placements.indexOf(focus)))

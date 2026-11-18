@@ -30,8 +30,7 @@ export interface DriverRow {
   place: number;
   lap: number;
   laps: number;
-  kills: number;
-  armor: number;
+  nitros: number;
   /** Wrecked and waiting to respawn. */
   wrecked: boolean;
   finished: boolean;
@@ -41,7 +40,7 @@ export interface DriverRow {
 }
 
 export interface RaceModel {
-  /** Laps the leader is on, for the HUD. */
+  /** Lap of this driver, or the leader for a spectator. */
   lap: number;
   laps: number;
   /** This device's own place, or 0 when it is only watching. */
@@ -154,8 +153,7 @@ export function presentTable(
         place,
         lap: Math.min((car?.laps ?? 0) + 1, config.laps),
         laps: config.laps,
-        kills: car?.kills ?? 0,
-        armor: car?.armor ?? 0,
+        nitros: car?.nitros ?? 0,
         wrecked: (car?.respawnAtTick ?? 0) > 0,
         finished: (car?.finishedTick ?? 0) > 0,
         you: driver.id === viewer.me,
@@ -166,7 +164,7 @@ export function presentTable(
     rows.sort((a, b) => (a.place || 99) - (b.place || 99));
     const mine = rows.find((row) => row.you);
     model.race = {
-      lap: rows[0]?.lap ?? 1,
+      lap: mine?.lap ?? rows[0]?.lap ?? 1,
       laps: config.laps,
       place: mine?.place ?? 0,
       drivers: rows,
