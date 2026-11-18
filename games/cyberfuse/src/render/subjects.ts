@@ -166,11 +166,7 @@ export function drawShot(ctx: Context, art: Art, shot: Shot): void {
     lightPool(ctx, x, at, 12, 10, "rgba(255,146,61,.25)");
     art.effect(ctx, "fireball", Math.min(15, shot.age >> 2), x, at);
   } else if (kind === "gas") {
-    ctx.save();
-    ctx.globalAlpha = 0.68;
-    ctx.filter = z ? "hue-rotate(235deg)" : "hue-rotate(70deg)";
-    art.effect(ctx, "fireball", 8 + (shot.frame & 3), x, y);
-    ctx.restore();
+    return;
   } else if (kind === "grenade" || kind === "molotov") {
     shadow(ctx, x, y, 2.6);
     const at = y - Math.max(0, z) / 16;
@@ -210,15 +206,9 @@ export function drawShot(ctx: Context, art: Art, shot: Shot): void {
     ctx.lineTo(x, at);
     ctx.stroke();
     ctx.globalAlpha = 1;
-    art.prop(
-      ctx,
-      kind === "sniper" || kind === "brown"
-        ? "sniperbullet"
-        : kind === "petrifier"
-          ? "molotov"
-          : "bullet",
-      x,
-      at,
-    );
+    ctx.fillStyle = kind === "petrifier" ? "#ede1ff" : "#fff3c2";
+    ctx.beginPath();
+    ctx.arc(x, at, kind === "sniper" ? 0.72 : 0.48, 0, Math.PI * 2);
+    ctx.fill();
   }
 }

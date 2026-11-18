@@ -19,6 +19,7 @@ import {
 } from "./deck.js";
 import { drawOperator, drawPickup, drawShot } from "./subjects.js";
 import { Materials } from "./materials.js";
+import { Vapor } from "./vapor.js";
 
 interface Drawable {
   x: number;
@@ -30,6 +31,7 @@ function paintWorld(
   ctx: CanvasRenderingContext2D,
   art: Art,
   materials: Materials,
+  vapor: Vapor,
   width: number,
   height: number,
   world: MissionState,
@@ -83,6 +85,21 @@ function paintWorld(
         drawDeckLight(ctx, world, spec.altRange, col, row);
   for (const eye of party)
     if (eye.hp > 0) drawHelmetLight(ctx, eye.x, eye.y - 1.5, eye.dir);
+  vapor.draw(
+    ctx,
+    world.shots.filter((shot) => {
+      if (shot.kind !== "gas") return false;
+      const col = Math.floor(shot.x / TILE_W),
+        row = Math.floor(shot.y / TILE_H);
+      return (
+        col >= x0 &&
+        col < x1 &&
+        row >= y0 &&
+        row < y1 &&
+        visible[(row - y0) * cols + col - x0] === 1
+      );
+    }),
+  );
   ctx.restore();
   const add = (x: number, y: number, paint: () => void) => {
     const col = Math.floor(x / TILE_W);
@@ -135,7 +152,8 @@ function paintWorld(
       ),
     );
   for (const shot of world.shots)
-    add(shot.x, shot.y, () => drawShot(ctx, art, shot));
+    if (shot.kind !== "gas")
+      add(shot.x, shot.y, () => drawShot(ctx, art, shot));
   for (let row = y0; row < y1; row++) {
     for (let col = x0; col < x1; col++) {
       if (visible[(row - y0) * cols + col - x0])
@@ -155,6 +173,7 @@ export function createScene(canvas: HTMLCanvasElement) {
   const doc = canvas.ownerDocument;
   const window = doc.defaultView!;
   const materials = new Materials(doc);
+  const vapor = new Vapor(doc);
   let art: Art | undefined;
   let latest: MissionState | undefined;
   let previous: MissionState | undefined;
@@ -219,7 +238,7 @@ export function createScene(canvas: HTMLCanvasElement) {
         };
         schedule();
       }
-      paintWorld(ctx, art, materials, width, height, view, local);
+      paintWorld(ctx, art, materials, vapor, width, height, view, local);
     } else {
       ctx.fillStyle = "#b3d3d3";
       ctx.font = "13px monospace";
