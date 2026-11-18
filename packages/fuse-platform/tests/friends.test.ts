@@ -2,8 +2,10 @@ import test from "node:test";
 import { Readable } from "node:stream";
 import assert from "node:assert/strict";
 import { MESSAGE_HISTORY_MS } from "../src/messages-api.js";
+import { searchPrefixEnd } from "../src/friends-api.js";
 import {
   MemoryRoomDatabase,
+  ROOM_LOOKUP_BURST,
   RoomError,
   RoomStore,
   peerId,
@@ -137,6 +139,98 @@ function fixture() {
     sync: (uid: string, body: unknown = {}) => store.sync(uid, body),
   };
 }
+
+test("name search is case insensitive, bounded, public-only and includes chosen usernames", async () => {
+  const f = fixture();
+  await f.store.sync("self", { name: "Richard" });
+  await f.store.sync("one", { name: "Richard" });
+  await f.store.sync("two", { name: "Richard" });
+  await f.history.setUsername("three", "Richie", f.now());
+  await f.store.sync("three", { name: "Other name" });
+  const found = await f.store.search("self", " rIcH ");
+  assert.equal(found.length, 3);
+  assert.deepEqual(
+    new Set(found.map((p) => p.name)),
+    new Set(["Richard", "Richie"]),
+  );
+  assert.ok(found.every((p) => p.publicId !== publicIdOf("self")));
+  assert.deepEqual(Object.keys(found[0]!).sort(), ["name", "publicId"]);
+  await f.history.setUsername("three", "Renamed", f.now());
+  // No stale name result is returned before the next sync updates the index.
+  assert.equal((await f.store.search("self", "rich")).length, 2);
+  await f.store.sync("three", {});
+  assert.equal((await f.store.search("self", "ren"))[0]?.name, "Renamed");
+  assert.deepEqual(await f.store.search("self", "missing"), []);
+  for (const query of [null, "", "r", "a".repeat(65)])
+    await assert.rejects(f.store.search("self", query), /2 to 64/);
+  for (let i = 0; i < 25; i++)
+    await f.store.sync(`match${i}`, { name: "Match" });
+  assert.equal((await f.store.search("self", "match")).length, 20);
+});
+
+test("prefix bounds include emoji and carry Unicode code points safely", () => {
+  assert.equal(searchPrefixEnd("ri"), "rj");
+  assert.ok(
+    Buffer.compare(Buffer.from("ri😀"), Buffer.from(searchPrefixEnd("ri")!)) <
+      0,
+  );
+  assert.equal(searchPrefixEnd("ri\u{10ffff}"), "rj");
+  assert.equal(searchPrefixEnd("\u{10ffff}\u{10ffff}"), undefined);
+  assert.equal(searchPrefixEnd("ri\ud7ff"), "ri\ue000");
+});
+
+test("search HTTP requires sign-in and enforces query validation and account budget", async () => {
+  const f = fixture();
+  assert.equal(
+    (await handle(f.http, "GET", "/api/friends/search?q=rich")).status,
+    401,
+  );
+  assert.equal(
+    (
+      await handle(f.http, "GET", "/api/friends/search?q=r", {
+        authorization: "id:one",
+      })
+    ).status,
+    400,
+  );
+  await f.store.sync("two", { name: "Richard" });
+  const response = await handle(f.http, "GET", "/api/friends/search?q=ri", {
+    authorization: "id:one",
+  });
+  assert.deepEqual(response.json, {
+    players: [{ publicId: publicIdOf("two"), name: "Richard" }],
+  });
+  for (let i = 0; i < 119; i++) await f.store.search("one", "rich");
+  await assert.rejects(f.store.search("one", "rich"), /Too many requests/);
+});
+
+test("name searches and room invites have separate address budgets", async () => {
+  const f = fixture();
+  const code = await f.room(1);
+  const http = createFriendsHttp(
+    f.store,
+    async (value) => (value.startsWith("id:") ? value.slice(3) : undefined),
+    { now: f.now },
+  );
+  assert.equal(
+    (await handle(http, "POST", "/api/friends/search")).handled,
+    false,
+  );
+  for (let i = 0; i < ROOM_LOOKUP_BURST; i++)
+    assert.equal(
+      (await handle(http, "GET", "/api/friends/search?q=ri")).status,
+      401,
+    );
+  assert.equal(
+    (await handle(http, "GET", "/api/friends/search?q=ri")).status,
+    429,
+  );
+  // A real room invite may still reach the identity check from that address.
+  assert.equal(
+    (await handle(http, "POST", `/api/rooms/${code}/invites`)).status,
+    401,
+  );
+});
 
 /** Drives an HttpExtension with a minimal request (a readable body) and response. */
 async function handle(
@@ -730,6 +824,7 @@ test("an old-shaped body and an old-shaped record still work, and say nothing ne
     "name",
     "publicId",
     "room",
+    "searchName",
     "uid",
   ]);
   // A record stored before the fields existed reads as not away, with no status.

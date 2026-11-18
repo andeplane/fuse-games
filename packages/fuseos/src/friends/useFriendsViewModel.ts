@@ -18,6 +18,7 @@ import type {
   BuddyStatus,
   PresenceService,
   PresenceSnapshot,
+  PlayerCard,
 } from "./presenceService";
 import {
   groupBuddies,
@@ -100,8 +101,9 @@ export type FriendsViewModel = {
   signIn: () => void;
   signOut: () => void;
   refresh: () => void;
+  searchFriends: (query: string) => Promise<PlayerCard[]>;
   /** Add by public id: `false` (and a message) when the id is not one. */
-  addFriend: (publicId: string) => boolean;
+  addFriend: (publicId: string) => Promise<boolean>;
   removeFriend: (publicId: string) => void;
   dismissInvite: (id: string) => void;
   joinRoom: (gameId: string, code: string) => void;
@@ -157,7 +159,8 @@ export function useFriendsViewModel(): FriendsViewModel {
     signIn: () => run(() => presence.signIn()),
     signOut: () => run(() => presence.signOut()),
     refresh: () => presence.refresh(),
-    addFriend: (publicId) => {
+    searchFriends: (query) => presence.searchFriends(query),
+    addFriend: async (publicId) => {
       const id = publicId.trim().toLowerCase();
       if (!isPublicId(id)) {
         setActionError(
@@ -165,8 +168,21 @@ export function useFriendsViewModel(): FriendsViewModel {
         );
         return false;
       }
-      run(() => presence.addFriend(id));
-      return true;
+      setActionError(undefined);
+      setBusy(true);
+      try {
+        await presence.addFriend(id);
+        return true;
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not add friend. Try again.",
+        );
+        return false;
+      } finally {
+        setBusy(false);
+      }
     },
     removeFriend: (publicId) => run(() => presence.removeFriend(publicId)),
     dismissInvite: (id) => run(() => presence.dismissInvite(id)),
