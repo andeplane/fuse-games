@@ -13,6 +13,7 @@ import {
 } from "fuse-netcode";
 import {
   GAS,
+  ITEM,
   CONTROLS,
   LEFT,
   NITRO,
@@ -45,10 +46,14 @@ const ROOM = 4;
  * A replica of one room: the creator `a` (not seated) seats `b` at slot 0 and a bot at slot 1 at tick 1 and starts the
  * race at tick 2, so only `b`'s stream is remote and only `b` can stall the world.
  */
-function replica(self = "a", matchId = "m1"): FuseDriversWorld {
+function replica(
+  self = "a",
+  matchId = "m1",
+  settings = SETTINGS,
+): FuseDriversWorld {
   const world = new World(
     fuseDriversGame,
-    createRoom("m0", SETTINGS),
+    createRoom("m0", settings),
     "a",
     self,
   );
@@ -116,6 +121,34 @@ const promise = (
 ): void => void world.receive(id, [], lastSeq, through, through);
 
 const raceOf = (room: FuseDriversRoom): RaceState => defined(room.race, "race");
+
+test("a late Battle item tap rewinds its hazard exactly once, including a same-tick release", () => {
+  const settings = { ...SETTINGS, mode: "battle" as const };
+  const timely = replica("a", "m1", settings),
+    late = replica("a", "m1", settings);
+  const tap: FuseDriversEntry[] = [
+    [1, 70, CONTROLS, "m1", 1, ITEM],
+    [2, 70, CONTROLS, "m1", 1, 0],
+  ];
+  timely.receive("b", tap, 2, 150, 150);
+  timely.advance(80);
+  promise(late, "b", 0, 69);
+  late.advance(80);
+  assert.equal(
+    late.state.race!.battle!.bombs.some((b) => b.owner === 0),
+    false,
+  );
+  assert.ok(late.receive("b", tap, 2, 150, 150).rollbackTicks > 0);
+  assert.ok(timely.state.race!.battle!.bombs.some((b) => b.owner === 0));
+  assert.deepEqual(late.state.race, timely.state.race);
+  assert.equal(late.receive("b", tap, 2, 150, 150).rollbackTicks, 0);
+  late.advance(150);
+  timely.advance(150);
+  assert.equal(
+    fuseDriversGame.hash(late.state),
+    fuseDriversGame.hash(timely.state),
+  );
+});
 /** Total laps, including the fractional progress in the current lap. */
 const progress = (world: FuseDriversWorld, slot: number): number =>
   defined(raceOf(world.state).trucks[slot], "truck").progress;
@@ -288,7 +321,7 @@ test("a replica far behind recovers the race from a snapshot and folds on identi
   );
 
   const chunks = encodeSnapshot(source, ROOM);
-  assert.equal(defined(chunks[0]).rules, "fuse-drivers-5");
+  assert.equal(defined(chunks[0]).rules, "fuse-drivers-6");
   const assembler = new SnapshotAssembler(fuseDriversGame, ROOM);
   let complete: { tick: number; bytes: Uint8Array } | undefined;
   for (const chunk of chunks) complete = assembler.accept(chunk);

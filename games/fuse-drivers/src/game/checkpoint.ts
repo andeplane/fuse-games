@@ -17,6 +17,7 @@ import {
 } from "./rules.js";
 import { config, type TruckStats } from "./sim/config.js";
 import type { Phase, RaceState } from "./sim/race.js";
+import { decodeBattle, encodeBattle } from "./sim/battle.js";
 import { createTruck, type Truck } from "./sim/truck.js";
 import { getOffroadCourse } from "./offroad/course.js";
 import {
@@ -131,6 +132,7 @@ const encodeRace = (race: RaceState): unknown[] => [
       : null,
   ],
   [...race.paceOrder],
+  ...(race.battle ? [encodeBattle(race.battle)] : []),
 ];
 
 export function encodeRoom(room: FuseDriversRoom): unknown[] {
@@ -516,7 +518,12 @@ function decodeRace(
   seats: ReadonlyMap<string, SeatRecord>,
   roomTick: number,
 ): RaceState | undefined {
-  if (!Array.isArray(raw) || raw.length !== 10 || !grid.length) return;
+  if (
+    !Array.isArray(raw) ||
+    (raw.length !== 10 && raw.length !== 11) ||
+    !grid.length
+  )
+    return;
   const [
     tick,
     phase,
@@ -544,6 +551,11 @@ function decodeRace(
     return;
   const pickups = decodePickups(rawPickups, trackName);
   if (!pickups) return;
+  const battle =
+    raw.length === 11
+      ? decodeBattle(raw[10], trackName, grid.length, tick)
+      : undefined;
+  if (raw.length === 11 && !battle) return;
   const trucks: Truck[] = [];
   for (const [slot, rawTruck] of rawTrucks.entries()) {
     const truck = decodeTruck(
@@ -585,6 +597,7 @@ function decodeRace(
     placements,
     paceOrder,
     pickups,
+    ...(battle ? { battle } : {}),
   };
 }
 
@@ -757,6 +770,7 @@ export function decodeRoom(
   // The room calls the match over exactly when the race is: the fold sets one from the other.
   if (
     !race ||
+    Boolean(race.battle) !== (settings.mode === "battle") ||
     race.trackName !== trackNames()[campaignVariant(campaignIndex)] ||
     (race.phase === "finished") !== (stage === "over")
   )
