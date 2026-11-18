@@ -44,6 +44,8 @@ export interface RaceState {
   raceEndTick: number;
   /** Slots ordered by placement, best first. */
   placements: number[];
+  /** Stable DOS order, last sorted by a CPU pace command or final classification. */
+  paceOrder: number[];
 }
 
 export type RaceEvent =
@@ -107,6 +109,8 @@ export function createRace(
     }
     return truck;
   });
+  const gridRank = (slot: number) =>
+    gridOrder?.[slot] ?? (slot < 4 ? 3 - slot : slot);
   return {
     tick: 0,
     phase: "countdown",
@@ -117,6 +121,9 @@ export function createRace(
     countdownEndTick: config.countdownTicks,
     raceEndTick: 0,
     placements: trucks.map((t) => t.slot),
+    paceOrder: trucks
+      .map((t) => t.slot)
+      .sort((a, b) => gridRank(a) - gridRank(b)),
   };
 }
 
@@ -203,6 +210,23 @@ function applyCheckpoints(
   };
 }
 
+/** CS:3848 and CS:38c2. A repeat normalization can saturate a distance, so
+ * equal distances must retain the last DOS order (distinct from the live HUD). */
+function nativeOrder(
+  trucks: Truck[],
+  before: number[],
+  lapDistance: number,
+): number[] {
+  return before
+    .slice()
+    .sort(
+      (a, b) =>
+        trucks[b]!.laps - trucks[a]!.laps ||
+        offroadPaceProgress(trucks[b]!.dosProgress, lapDistance) -
+          offroadPaceProgress(trucks[a]!.dosProgress, lapDistance),
+    );
+}
+
 function rank(trucks: Truck[], previous: number[]): number[] {
   return previous
     .map((slot) => trucks[slot]!)
@@ -232,6 +256,7 @@ export function step(
   if (state.phase === "finished") return { state, events };
 
   const prev = state.trucks;
+  let paceOrder = state.paceOrder;
   const starting = prev.slice();
   const pickup = stepOffroadPickups(
     state.pickups,
@@ -287,17 +312,7 @@ export function step(
       const distance = getOffroadCourse(track.name).lapDistance;
       const normalize = (value: number) => offroadPaceProgress(value, distance);
       // Ivan compares against the leading human, or the last ranked CPU in an exhibition.
-      const ranked =
-        i === 3
-          ? state.placements
-              .slice()
-              .sort(
-                (a, b) =>
-                  trucks[b]!.laps - trucks[a]!.laps ||
-                  normalize(trucks[b]!.dosProgress) -
-                    normalize(trucks[a]!.dosProgress),
-              )
-          : [];
+      const ranked = i === 3 ? nativeOrder(trucks, paceOrder, distance) : [];
       const challenger =
         ranked.find((slot) => !botSlots[slot] && !trucks[slot]!.cpu) ??
         ranked.at(-1);
@@ -333,6 +348,7 @@ export function step(
       );
       rng = cpu.seed;
       if (i === 3 && leader) {
+        if (cpu.paceCount) paceOrder = ranked;
         for (let pace = 0; pace < cpu.paceCount; pace++) {
           for (let j = 0; j < trucks.length; j++)
             trucks[j] = {
@@ -365,7 +381,14 @@ export function step(
       state,
     );
   }
-  const placements = rank(trucks, state.placements);
+  const finishing = original && trucks.some((t) => t.finishedTick === tick);
+  if (finishing)
+    paceOrder = nativeOrder(
+      trucks,
+      paceOrder,
+      getOffroadCourse(track.name).lapDistance,
+    );
+  const placements = finishing ? paceOrder : rank(trucks, state.placements);
   let raceEndTick = state.raceEndTick;
   for (const t of trucks) {
     if (t.finishedTick === tick) {
@@ -388,6 +411,7 @@ export function step(
       pickups: pickup.state,
       trucks,
       placements,
+      paceOrder,
       raceEndTick,
       phase,
     },
