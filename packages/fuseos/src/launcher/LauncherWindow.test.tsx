@@ -130,8 +130,7 @@ describe("LauncherWindow", () => {
     expect(
       rows.map((row) => row.querySelector(".fst-row-name")?.textContent),
     ).toEqual(["Fuseball", "Fuse Riders", "Fuse Birds"]);
-    // The old list's Status column; decorative, so it stays out of the row's name.
-    expect(rows[0]).toHaveTextContent("Ready");
+    expect(rows[0]).toHaveAccessibleDescription("Never");
     expect(inside.getByRole("option", { name: "Fuseball" })).toBe(rows[0]);
     expect(rows[0]).toHaveAttribute("aria-selected", "true");
     expect(rows[0]?.querySelector("img")).toHaveAttribute(
@@ -303,17 +302,51 @@ describe("LauncherWindow", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the last played date read from the store", () => {
+  it("sorts My Games by most recent launch and lets the player switch to name order", async () => {
+    const user = userEvent.setup();
+    let now = Date.UTC(1998, 5, 25, 12, 34);
     const { inside } = renderLauncher({
+      desktopDeps: { now: () => now },
       launcherDeps: {
         lastPlayed: new MemoryLastPlayedStore({
           fuseball: Date.UTC(1998, 5, 24, 8, 0),
+          "fuse-riders": Date.UTC(1998, 5, 25, 8, 0),
         }),
       },
     });
-    expect(
-      inside.getByRole("region", { name: "Fuseball details" }),
-    ).toHaveTextContent("Last played:Yesterday");
+    const list = inside.getByRole("listbox", { name: "My Games" });
+    const birds = within(list).getByRole("option", { name: "Fuse Birds" });
+    const riders = within(list).getByRole("option", { name: "Fuse Riders" });
+    const ball = within(list).getByRole("option", { name: "Fuseball" });
+    const rows = () => within(list).getAllByRole("option");
+    const byDate = inside.getByRole("button", { name: "Sort by last played" });
+    const byName = inside.getByRole("button", { name: "Sort by game name" });
+
+    expect(rows()).toEqual([riders, ball, birds]);
+    expect(byDate).toHaveAttribute("aria-pressed", "true");
+    expect(riders).toHaveAttribute("aria-selected", "true");
+    expect(riders).toHaveAccessibleDescription("Today, 08:00");
+    expect(ball).toHaveAccessibleDescription("Yesterday");
+    expect(birds).toHaveAccessibleDescription("Never");
+
+    byName.focus();
+    await user.keyboard("{Enter}");
+    expect(rows()).toEqual([birds, riders, ball]);
+    expect(byName).toHaveAttribute("aria-pressed", "true");
+    expect(riders).toHaveAttribute("aria-selected", "true");
+    expect(byName).toHaveFocus();
+
+    await user.click(byDate);
+    expect(rows()).toEqual([riders, ball, birds]);
+    list.focus();
+    await user.keyboard("{ArrowDown}{ArrowDown}{Shift>}{Enter}{/Shift}");
+    expect(rows()).toEqual([birds, riders, ball]);
+    expect(birds).toHaveAttribute("aria-selected", "true");
+    expect(birds).toHaveAccessibleDescription("Today, 12:34");
+
+    now = Date.UTC(1998, 5, 26);
+    await user.click(ball);
+    expect(birds).toHaveAccessibleDescription("Yesterday");
   });
 
   it("opens Fuse Messenger and Network Neighborhood from their tabs, dialling in first, and stays on My Games", async () => {

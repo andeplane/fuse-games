@@ -10,7 +10,7 @@ import {
 import { AppIcon } from "../ui/icons";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 
-import { centeredLauncherRect } from "./launcherFacts";
+import { centeredLauncherRect, formatLastPlayed } from "./launcherFacts";
 import type { LauncherGame, LauncherViewModel } from "./useLauncherViewModel";
 import { LAUNCHER_TABS, useLauncherViewModel } from "./useLauncherViewModel";
 
@@ -132,7 +132,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
     );
     if (row && typeof row.scrollIntoView === "function")
       row.scrollIntoView({ block: "nearest" });
-  }, [vm.selected?.id]);
+  }, [vm.selected?.id, vm.games]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     switch (event.key) {
@@ -159,9 +159,24 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
         <h2 className="fst-heading" id="fst-my-games">
           My Games
         </h2>
-        <div className="fst-list-head" aria-hidden>
-          <span>Game</span>
-          <span>Status</span>
+        <div className="fst-list-head" role="group" aria-label="Sort games">
+          <button
+            type="button"
+            aria-label="Sort by game name"
+            aria-pressed={vm.sort === "name"}
+            onClick={() => vm.setSort("name")}
+          >
+            Game
+          </button>
+          <button
+            type="button"
+            className="fst-last-played"
+            aria-label="Sort by last played"
+            aria-pressed={vm.sort === "lastPlayed"}
+            onClick={() => vm.setSort("lastPlayed")}
+          >
+            Last played
+          </button>
         </div>
         <ul
           ref={list}
@@ -181,15 +196,22 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
                 key={game.id}
                 id={`fst-game-${game.id}`}
                 role="option"
+                aria-labelledby={`fst-game-name-${game.id}`}
+                aria-describedby={`fst-game-played-${game.id}`}
                 aria-selected={isSelected}
                 className={`fst-row ${isSelected ? "selected" : ""}`}
                 onClick={() => vm.select(game.id)}
                 onDoubleClick={() => vm.playGame(game.id)}
               >
                 <GameRowIcon game={game} />
-                <span className="fst-row-name">{game.name}</span>
-                <span className="fst-row-status" aria-hidden>
-                  Ready
+                <span id={`fst-game-name-${game.id}`} className="fst-row-name">
+                  {game.name}
+                </span>
+                <span
+                  id={`fst-game-played-${game.id}`}
+                  className="fst-row-date fst-last-played"
+                >
+                  {formatLastPlayed(game.lastPlayed, vm.now)}
                 </span>
               </li>
             );
@@ -232,7 +254,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
                 <dt>Disk usage:</dt>
                 <dd>{details.diskUsage}</dd>
                 <dt>Last played:</dt>
-                <dd>{details.lastPlayed}</dd>
+                <dd>{formatLastPlayed(selected.lastPlayed, vm.now)}</dd>
               </dl>
             </div>
             <nav className="fst-links" aria-label="Links">
