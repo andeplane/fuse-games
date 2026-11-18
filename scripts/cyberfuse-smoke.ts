@@ -78,9 +78,12 @@ async function moved(page: Page, before: Awaited<ReturnType<typeof current>>) {
     { timeout: 1500 },
   );
 }
-async function walkKeyboard(page: Page) {
-  const old = await current(page);
-  for (const key of ["KeyD", "KeyW", "KeyA", "KeyS"]) {
+async function walkKeyboard(
+  page: Page,
+  old: Awaited<ReturnType<typeof current>>,
+  keys: readonly string[],
+) {
+  for (const key of keys) {
     await page.keyboard.down(key);
     try {
       const changed = await moved(page, old).then(
@@ -197,7 +200,12 @@ async function solo(page: Page) {
     .waitFor();
   await frameFits(page);
   await page.getByLabel("Cyberfuse mission", { exact: true }).focus();
-  await walkKeyboard(page);
+  await walkKeyboard(page, await current(page), [
+    "KeyD",
+    "KeyW",
+    "KeyA",
+    "KeyS",
+  ]);
   const initial = await current(page);
   await page.keyboard.down("Space");
   try {
@@ -221,13 +229,129 @@ async function solo(page: Page) {
   await page.keyboard.press("KeyM");
   const map = page.getByRole("region", { name: "Mission map", exact: true });
   await map.waitFor();
+  const stopped = await pausedClock(page);
   await map.getByRole("button", { name: "Close map", exact: true }).click();
   await map.waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    (previous) => window.__cyberfuseProbe!().tick! >= previous + 2,
+    stopped,
+  );
+  await page
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  const menu = page.getByRole("dialog", { name: "Game menu", exact: true });
+  await menu.waitFor();
+  const stoppedAgain = await pausedClock(page);
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    (previous) => window.__cyberfuseProbe!().tick! >= previous + 2,
+    stoppedAgain,
+  );
   console.log(
     "Solo campaign briefing, help, movement, shooting, cycling and map passed",
   );
 }
-async function dogfight(page: Page) {
+async function pausedClock(page: Page) {
+  return page.evaluate(async () => {
+    const first = window.__cyberfuseProbe!().tick!;
+    const until = performance.now() + 350;
+    while (performance.now() < until) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      if (window.__cyberfuseProbe!().tick !== first)
+        throw new Error("The solo clock advanced during inspection");
+    }
+    return first;
+  });
+}
+async function keyboardCoop(page: Page) {
+  await page.goto(address());
+  await openPlayOptions(page, "single");
+  const brief = page.getByRole("dialog", {
+    name: "Single player",
+    exact: true,
+  });
+  await brief
+    .getByRole("checkbox", {
+      name: "Two players on this keyboard",
+      exact: true,
+    })
+    .check();
+  await brief.getByRole("button", { name: "Deploy", exact: true }).click();
+  await phase(page, "lobby");
+  assert.ok(
+    (await page
+      .getByRole("group", { name: /^Player 2 loadout/ })
+      .locator("input:checked")
+      .count()) >= 2,
+  );
+  await page.getByRole("group", { name: /^Loadout/ }).waitFor();
+  await page
+    .getByRole("button", { name: "Start mission", exact: true })
+    .click();
+  await phase(page, "running");
+  const first = await current(page);
+  const second = await page.evaluate(
+    (id) =>
+      window.__cyberfuseProbe!().actors.find(
+        (a) => a.seat !== null && a.seat !== id,
+      ),
+    first.seat,
+  );
+  assert.ok(second?.seat);
+  await page.getByLabel("Cyberfuse mission", { exact: true }).focus();
+  await walkKeyboard(page, first, [
+    "ArrowRight",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowUp",
+  ]);
+  await walkKeyboard(page, second, ["KeyD", "KeyS", "KeyA", "KeyW"]);
+  const shot = async (seat: string, key: string) => {
+    const start = await page.evaluate(
+      (id) =>
+        window.__cyberfuseProbe!().actors.find((a) => a.seat === id)!.lastShot,
+      seat,
+    );
+    await page.keyboard.down(key);
+    try {
+      await page.waitForFunction(
+        ({ seat, start }) =>
+          window.__cyberfuseProbe!().actors.some(
+            (a) => a.seat === seat && a.lastShot > start,
+          ),
+        { seat, start },
+      );
+    } finally {
+      await page.keyboard.up(key);
+    }
+  };
+  await shot(first.seat!, "Space");
+  assert.equal(
+    await page.evaluate(
+      (id) =>
+        window.__cyberfuseProbe!().actors.find((a) => a.seat === id)!.lastShot,
+      second.seat,
+    ),
+    second.lastShot,
+  );
+  await shot(second.seat, "KeyF");
+  await page.keyboard.press("KeyG", { delay: 140 });
+  await page.waitForFunction(
+    (old) =>
+      window.__cyberfuseProbe!().actors.some(
+        (a) => a.seat === old.seat && a.weapon !== old.weapon,
+      ),
+    second,
+  );
+  assert.equal((await current(page)).weapon, first.weapon);
+  console.log(
+    "Shared-keyboard co-op, both control sets and independent weapons passed",
+  );
+}
+async function finishWithDynamite(page: Page, mode: "campaign" | "dogfight") {
   await page.goto(address());
   await openPlayOptions(page, "single");
   const brief = page.getByRole("dialog", {
@@ -236,10 +360,16 @@ async function dogfight(page: Page) {
   });
   await brief
     .getByRole("combobox", { name: "Game mode", exact: true })
-    .selectOption("dogfight");
-  await brief
-    .getByRole("combobox", { name: "Arena", exact: true })
-    .selectOption("0");
+    .selectOption(mode);
+  if (mode === "dogfight") {
+    await brief
+      .getByRole("combobox", { name: "Arena", exact: true })
+      .selectOption("0");
+  } else {
+    await brief
+      .getByRole("combobox", { name: "Campaign", exact: true })
+      .selectOption({ label: "Ogre Rampage" });
+  }
   const guns = brief.locator("fieldset");
   // Choose dynamite through the armory; repeated point-blank blasts end a real round.
   const original = await guns
@@ -257,7 +387,7 @@ async function dogfight(page: Page) {
   await phase(page, "running");
   assert.equal(
     await page.getByRole("button", { name: "Map", exact: true }).isVisible(),
-    false,
+    mode === "campaign",
   );
   await page.getByLabel("Cyberfuse mission", { exact: true }).focus();
   await page.keyboard.down("Space");
@@ -272,7 +402,15 @@ async function dogfight(page: Page) {
     await page.keyboard.up("Space");
   }
   const round = await page.evaluate(() => window.__cyberfuseProbe!().round!);
-  const next = page.getByRole("button", { name: /^(next round|play again)$/i });
+  if (mode === "campaign") {
+    await page
+      .locator(".fui-results-report")
+      .getByText(/^Squad lost$/i)
+      .waitFor();
+  }
+  const next = page.getByRole("button", {
+    name: /^(next round|play again)\b/i,
+  });
   await next.click();
   await phase(page, "running");
   const after = await page.evaluate(() => window.__cyberfuseProbe!().round);
@@ -280,7 +418,11 @@ async function dogfight(page: Page) {
     after === round + 1 || after === 1,
     "next round or rematch reset the playing state",
   );
-  console.log("Dogfight loadout, a completed round and replay passed");
+  console.log(
+    mode === "dogfight"
+      ? "Dogfight loadout, a completed round and replay passed"
+      : "Campaign defeat report and rematch passed",
+  );
 }
 async function online(host: Page, peer: Page, tv: Page) {
   await host.goto(address());
@@ -383,8 +525,12 @@ try {
     p.on("pageerror", (e) => errors.push(e.message));
   }
   await Promise.all([
-    dogfight(arena),
-    solo(host).then(() => online(host, peer, tv)),
+    finishWithDynamite(arena, "dogfight").then(() =>
+      finishWithDynamite(arena, "campaign"),
+    ),
+    solo(host)
+      .then(() => keyboardCoop(host))
+      .then(() => online(host, peer, tv)),
   ]);
   assert.deepEqual(errors, []);
 } catch (error) {
