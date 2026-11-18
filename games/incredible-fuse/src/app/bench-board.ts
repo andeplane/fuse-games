@@ -4,7 +4,11 @@ import {
   HEIGHT,
   getPuzzle,
   partSize,
+  conveyorSpeed,
+  isBlowing,
+  type Body,
   type Machine,
+  type Part,
   type PartKind,
 } from "../game/machine.js";
 import { socketPosition, type LinkKind } from "../game/machine-links.js";
@@ -95,13 +99,7 @@ function corners(
   c.stroke();
 }
 
-function drawLink(
-  c: Context,
-  p: BoardPoint,
-  q: BoardPoint,
-  kind: LinkKind,
-  tick: number,
-) {
+function drawLink(c: Context, p: BoardPoint, q: BoardPoint, kind: LinkKind) {
   const dx = q.x - p.x,
     dy = q.y - p.y,
     len = Math.hypot(dx, dy) || 1;
@@ -137,10 +135,33 @@ function drawLink(
     c.strokeStyle = kind === "belt" ? "#42616b" : "#96714c";
     c.lineWidth = 1.1;
     c.setLineDash([2, 5]);
-    c.lineDashOffset = -tick % 7;
+    // Links follow their endpoints. The moving parts carry the simulation's rotation and direction.
     c.stroke();
   }
   c.restore();
+}
+
+/** Select the visible actuator pose from the same powered circuit and shaft as physics. */
+export function spritePose(machine: Machine, part: Part, body?: Body) {
+  const blowing = isBlowing(machine, part);
+  if (part.kind === "belt") {
+    const speed = conveyorSpeed(machine, part);
+    return {
+      blowing,
+      active: speed !== 0,
+      face: speed === 0 ? part.flip : speed < 0,
+      motion: (machine.tick * Math.abs(speed)) / 4,
+    };
+  }
+  const active =
+    part.kind === "fan" || part.kind === "bellows"
+      ? blowing
+      : machine.active.includes(part.id);
+  const face =
+    body?.vx && (part.kind === "cat" || part.kind === "mouse")
+      ? body.vx < 0
+      : part.flip;
+  return { blowing, active, face, motion: active || body ? machine.tick : 0 };
 }
 
 const backdrops = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
@@ -194,7 +215,7 @@ export function paintMachine(
       bCenter = b.kind === "popper" ? b : (bodies.get(b.id) ?? b);
     const p = socketPosition(a, link.kind, aCenter, bCenter),
       q = socketPosition(b, link.kind, bCenter, aCenter);
-    drawLink(c, p, q, link.kind, machine.tick);
+    drawLink(c, p, q, link.kind);
   }
   const puzzle = getPuzzle(machine.puzzle);
   const targets = puzzle.targets;
@@ -230,7 +251,7 @@ export function paintMachine(
     const body = bodies.get(part.id);
     const { x, y } = part.kind === "popper" ? part : (body ?? part);
     const { width: w, height: h } = partSize(part);
-    const active = machine.active.includes(part.id);
+    const { active, blowing, face, motion } = spritePose(machine, part, body);
     const direction = part.flip ? -1 : 1;
     if ((part.kind === "lamp" || part.kind === "lens") && active) {
       c.save();
@@ -249,10 +270,7 @@ export function paintMachine(
       c.fill();
       c.restore();
     }
-    if (
-      (part.kind === "fan" || (part.kind === "bellows" && active)) &&
-      machine.tick > 0
-    ) {
+    if (blowing && machine.tick > 0) {
       c.save();
       c.translate(x, y);
       c.scale(direction, 1);
@@ -290,21 +308,11 @@ export function paintMachine(
       c.rotate((part.flip ? -1 : 1) * 1.19);
       c.translate(-x, -y - h / 2);
     }
-    const motion =
-      active || part.kind === "fan" || part.kind === "belt" || body
-        ? machine.tick
-        : 0;
     if (part.rotation === 1) {
       c.translate(x, y);
       c.rotate(Math.PI / 2);
-      drawPart(c, part.kind, 0, 0, h, w, part.flip, motion, active);
-    } else {
-      const face =
-        body?.vx && (part.kind === "cat" || part.kind === "mouse")
-          ? body.vx < 0
-          : part.flip;
-      drawPart(c, part.kind, x, y, w, h, face, motion, active);
-    }
+      drawPart(c, part.kind, 0, 0, h, w, face, motion, active);
+    } else drawPart(c, part.kind, x, y, w, h, face, motion, active);
     c.restore();
     if (part.kind === "popper" && body) {
       const rubber = PARTS.tennis;
@@ -348,7 +356,6 @@ export function paintMachine(
           socketPosition(part, overlay.link, body),
           overlay.cursor,
           overlay.link,
-          0,
         );
     }
   }

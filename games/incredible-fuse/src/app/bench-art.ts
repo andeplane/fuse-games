@@ -1228,7 +1228,7 @@ export function drawPart(
       for (const x of [-33, 33]) roller(c, x, 0, 12, tick * 0.14);
       box(c, -46, -45, 92, 17, 5, amber);
       box(c, -46, 28, 92, 11, 4, metal);
-      for (let x = -39 + (tick % 5); x < 43; x += 9)
+      for (let x = -39 + (tick % 9); x < 43; x += 9)
         line(
           c,
           [
@@ -1240,12 +1240,8 @@ export function drawPart(
         );
       line(
         c,
-        [
-          [-12, 0],
-          [11, 0],
-          [4, -8],
-        ],
-        CYAN,
+        [[-12, 0], [11, 0], ...(active ? [[4, -8] as Point] : [])],
+        active ? CYAN : STEEL,
         4,
       );
       break;
