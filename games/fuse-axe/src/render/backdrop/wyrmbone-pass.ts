@@ -8,6 +8,7 @@ import {
 import { firstTile, bayer, dither, hash, Raster } from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, WINDBLOWN, type Fire } from "./fire.js";
+import { snowyRelief as shape, type Box } from "./relief.js";
 
 /**
  * Stage 2, Wyrmbone Pass: a cold dawn on a mountain road through the bones of a dead giant wyrm. Far to near: the sky
@@ -55,42 +56,6 @@ const WOOD = 0x3a2a3a;
 const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"] as const;
 /** The mist's colour, which no flame or snowflake shares. */
 const MIST = "#56628c";
-
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
-
-/**
- * Paints the pixels in `box` that `inside` holds, lit from the dawn at the upper right: inked where they meet the
- * outside, light along the top and right, shadow along the bottom and left, and between them `tone` (0 dark to 1
- * light) or the base colour; a material with a colour for its tops (snow) has it there.
- */
-function shape(
-  r: Raster,
-  [x0, y0, x1, y1]: Box,
-  inside: (x: number, y: number) => boolean,
-  [ink, dark, base, lit, top = lit]: Ramp,
-  tone?: (x: number, y: number) => number,
-) {
-  const w = x1 - x0 + 4;
-  const mask = new Uint8Array(w * (y1 - y0 + 4));
-  for (let y = y0 - 2; y < y1 + 2; y++)
-    for (let x = x0 - 2; x < x1 + 2; x++)
-      mask[(y - y0 + 2) * w + x - x0 + 2] = inside(x, y) ? 1 : 0;
-  const at = (x: number, y: number) =>
-    mask[(y - y0 + 2) * w + x - x0 + 2] === 1;
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!at(x, y)) continue;
-      let c = base;
-      if (!at(x, y - 1) || !at(x, y + 1) || !at(x - 1, y) || !at(x + 1, y))
-        c = ink;
-      else if (!at(x, y - 2)) c = top;
-      else if (!at(x + 1, y - 1) || !at(x + 2, y)) c = lit;
-      else if (!at(x, y + 2) || !at(x - 2, y) || !at(x - 1, y + 1)) c = dark;
-      else if (tone) c = dither([dark, base, lit], tone(x, y), x, y);
-      else if (hash(x, y) > 0.95) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 type Ellipse = readonly [cx: number, cy: number, rx: number, ry: number];
 type Sweep = readonly [a0: number, a1: number, t0: number, t1: number];
