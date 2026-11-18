@@ -108,7 +108,7 @@ export class FuseDriversRuntime extends RoomRuntime<
     const seat = this.player();
     if (
       !room ||
-      room.stage !== "over" ||
+      (room.stage !== "over" && room.stage !== "lobby") ||
       seriesComplete(room) ||
       !seat?.connected ||
       seat.watcher ||

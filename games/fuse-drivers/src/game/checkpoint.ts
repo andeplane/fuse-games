@@ -27,6 +27,9 @@ import {
 } from "./result.js";
 import {
   campaignVariant,
+  createOffroadDriver,
+  OFFROAD_SHOP,
+  type OffroadDriver,
   isCampaignIndex,
   isOffroadDriver,
 } from "./offroad/campaign.js";
@@ -168,26 +171,47 @@ export function encodeRoom(room: FuseDriversRoom): unknown[] {
       seat.connected,
     ]),
     room.campaignIndex,
-    room.grid.map((id) => {
-      const driver = room.garage[id]!;
-      return [
-        id,
-        driver.cash,
-        driver.careerEarnings,
-        driver.credits,
-        driver.nitros,
-        driver.shocks,
-        driver.tires,
-        driver.acceleration,
-        driver.topSpeed,
-      ];
-    }),
+    (room.stage === "lobby" ? Object.keys(room.garage).sort() : room.grid).map(
+      (id) => {
+        const driver = room.garage[id]!;
+        return [
+          id,
+          driver.cash,
+          driver.careerEarnings,
+          driver.credits,
+          driver.nitros,
+          driver.shocks,
+          driver.tires,
+          driver.acceleration,
+          driver.topSpeed,
+        ];
+      },
+    ),
     encodeRecentFinishes(room.recentFinishes),
   ];
 }
 
 const plain = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Before the first race, only purchases can change the opening allowance. */
+function validOpeningWallet(driver: OffroadDriver): boolean {
+  const fresh = createOffroadDriver();
+  if (
+    driver.careerEarnings !== 0 ||
+    driver.nitros < fresh.nitros ||
+    driver.credits > fresh.credits ||
+    driver.cash >= 20
+  )
+    return false;
+  let spent = 0;
+  for (const key of Object.keys(
+    OFFROAD_SHOP,
+  ) as (keyof typeof OFFROAD_SHOP)[]) {
+    spent += (driver[key] - fresh[key]) * OFFROAD_SHOP[key].cost;
+  }
+  return spent + driver.cash === 20 * (fresh.credits - driver.credits);
+}
 /** A number every peer hashes the same way: finite, never `-0`, and inside a sane range. */
 const real = (value: unknown, limit = MAX_COORD): value is number =>
   typeof value === "number" &&
@@ -626,7 +650,7 @@ export function decodeRoom(
     !Array.isArray(rawGrid) ||
     rawGrid.length > CAPACITY ||
     !Array.isArray(rawGarage) ||
-    rawGarage.length !== rawGrid.length ||
+    rawGarage.length > CAPACITY ||
     !Array.isArray(rawControls) ||
     rawControls.length > CAPACITY ||
     !Array.isArray(rawFinishSeats) ||
@@ -714,6 +738,14 @@ export function decodeRoom(
     controls[id] = bits;
   }
   const garage: FuseDriversRoom["garage"] = {};
+  const garageOwners =
+    stage === "lobby"
+      ? [...seats.values()]
+          .filter((seat) => !seat.bot && !seat.watcher)
+          .map((seat) => seat.id)
+          .sort()
+      : grid;
+  if (rawGarage.length !== garageOwners.length) return;
   for (const [index, raw] of rawGarage.entries()) {
     if (!Array.isArray(raw) || raw.length !== 9) return;
     const [
@@ -737,12 +769,17 @@ export function decodeRoom(
       acceleration,
       topSpeed,
     };
-    if (id !== grid[index] || !isOffroadDriver(driver)) return;
+    if (
+      id !== garageOwners[index] ||
+      !isOffroadDriver(driver) ||
+      (stage === "lobby" && !validOpeningWallet(driver))
+    )
+      return;
     garage[id] = driver;
   }
 
   // A race exists exactly while one is being driven or has just been decided; the lobby holds none, and drops the
-  // grid, controls and garage with it.
+  // grid and controls with it. Its opening garage belongs to the current human seats.
   const racing = stage === "running" || stage === "over";
   if (rawRace === null) {
     if (racing || grid.length || rawControls.length || campaignIndex !== -1)

@@ -17,6 +17,7 @@ import {
   CONTROLS,
   LEFT,
   NITRO,
+  PURCHASE,
   RIGHT,
   createRoom,
   fuseDriversGame,
@@ -121,6 +122,50 @@ const promise = (
 ): void => void world.receive(id, [], lastSeq, through, through);
 
 const raceOf = (room: FuseDriversRoom): RaceState => defined(room.race, "race");
+
+test("a delayed opening purchase rolls back through START and converges on the upgraded grid", () => {
+  const setup = () => {
+    const world = new World(
+      fuseDriversGame,
+      createRoom("lobby", SETTINGS),
+      "a",
+      "a",
+    );
+    const host = world.stream("a", 1);
+    world.stream("b", 1);
+    host.append(1, [JOIN, "b", "Bo", 0, "cat", 1]);
+    host.append(1, [BOT, "add", "bot:1", "CPU 2", 1]);
+    host.append(30, [ACTION, "start", "race"]);
+    host.through = 100;
+    return world;
+  };
+  const onTime = setup(),
+    late = setup();
+  const buy: FuseDriversEntry = [
+    1,
+    25,
+    PURCHASE,
+    "lobby",
+    1,
+    0,
+    "topSpeed",
+    0,
+    2,
+    0,
+  ];
+  onTime.receive("b", [buy], 1, 100, 100);
+  promise(late, "b", 0, 24);
+  onTime.advance(55);
+  late.advance(55);
+  assert.equal(late.state.race!.trucks[0]!.upgrades?.topSpeed, 0);
+  assert.ok(late.receive("b", [buy], 1, 100, 100).rollbackTicks > 0);
+  assert.equal(late.receive("b", [buy], 1, 100, 100).rollbackTicks, 0);
+  assert.equal(late.state.race!.trucks[0]!.upgrades?.topSpeed, 1);
+  assert.equal(
+    fuseDriversGame.hash(late.state),
+    fuseDriversGame.hash(onTime.state),
+  );
+});
 
 test("a late Battle item tap rewinds its hazard exactly once, including a same-tick release", () => {
   const settings = { ...SETTINGS, mode: "battle" as const };
@@ -321,7 +366,7 @@ test("a replica far behind recovers the race from a snapshot and folds on identi
   );
 
   const chunks = encodeSnapshot(source, ROOM);
-  assert.equal(defined(chunks[0]).rules, "fuse-drivers-6");
+  assert.equal(defined(chunks[0]).rules, "fuse-drivers-7");
   const assembler = new SnapshotAssembler(fuseDriversGame, ROOM);
   let complete: { tick: number; bytes: Uint8Array } | undefined;
   for (const chunk of chunks) complete = assembler.accept(chunk);

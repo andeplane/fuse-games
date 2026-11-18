@@ -249,7 +249,6 @@ export function isFuseDriversEntry(raw: unknown): raw is FuseDriversEntry {
       return (
         raw.length === 10 &&
         uint32(raw[5]) &&
-        raw[5] > 0 &&
         raw[5] < raw[1] &&
         typeof item === "string" &&
         Object.hasOwn(OFFROAD_SHOP, item) &&
@@ -326,7 +325,7 @@ function startRace(
   room.garage = Object.fromEntries(
     grid.map((seat) => [
       seat.id,
-      (continuing ? room.garage[seat.id] : undefined) ?? createOffroadDriver(),
+      room.garage[seat.id] ?? createOffroadDriver(),
     ]),
   );
   room.grid = grid.map((seat) => seat.id);
@@ -442,6 +441,22 @@ function shop(
   }
 }
 
+/** Reconnects keep their own wallet. A new lobby or a new seat owner starts with the DOS allowance. */
+function syncLobbyGarage(room: FuseDriversRoom): void {
+  const drivers = players(room).filter((seat) => !seat.bot);
+  if (
+    drivers.length === Object.keys(room.garage).length &&
+    drivers.every((seat) => room.garage[seat.id])
+  )
+    return;
+  room.garage = Object.fromEntries(
+    drivers.map((seat) => [
+      seat.id,
+      room.garage[seat.id] ?? createOffroadDriver(),
+    ]),
+  );
+}
+
 /**
  * One log tick: management first, then each seat's control changes, then the race steps.
  *
@@ -457,18 +472,20 @@ export function foldTick(
   const generations = new Map(
     [...room.seats.values()].map((seat) => [seat.id, seat.generation]),
   );
-  const hooks =
-    room.stage === "over"
-      ? {
-          ...lifecycle,
-          rematch(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
-            // The host's own earlier buys precede NEXT. Other active drivers have
-            // until this closing tick; all still have to quote the closing finish.
-            shop(r, streams, tick, origin);
-            lifecycle.rematch(r, id);
-          },
-        }
-      : lifecycle;
+  const hooks = {
+    ...lifecycle,
+    start(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
+      syncLobbyGarage(r);
+      shop(r, streams, tick, origin);
+      lifecycle.start(r, id);
+    },
+    rematch(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
+      // The host's own earlier buys precede NEXT. Other active drivers have
+      // until this closing tick; all still have to quote the closing finish.
+      shop(r, streams, tick, origin);
+      lifecycle.rematch(r, id);
+    },
+  };
   applyManagementTick(room, tick, creatorId, streams, hooks);
 
   // Held input belongs to the page generation that logged it. Admission of a new
@@ -486,7 +503,9 @@ export function foldTick(
     const mode = race.battle ? "battle" : "classic";
     if (room.settings.mode !== mode) room.settings = { ...room.settings, mode };
   }
-  if (room.stage === "over") shop(room, streams, tick);
+  if (room.stage === "lobby") syncLobbyGarage(room);
+  if (room.stage === "lobby" || room.stage === "over")
+    shop(room, streams, tick);
   if (race && room.stage === "running") {
     const grid = players(room);
     const pressed = new Set<string>();

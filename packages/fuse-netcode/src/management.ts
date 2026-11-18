@@ -318,7 +318,7 @@ export interface LifecycleHooks<Room, Settings> {
   /** The avatar a bot's seat records; `"robot"` when unset. */
   botAvatar?: string;
   /** `matchId` is the one the creator logged with the start (Fuse Riders keeps the lobby's). */
-  start(room: Room, matchId: string): void;
+  start(room: Room, matchId: string, origin?: ManagementOrigin): void;
   rematch(room: Room, matchId: string, origin?: ManagementOrigin): void;
   lobby(room: Room, matchId: string): void;
 }
@@ -479,20 +479,18 @@ export function applyManagementEntry<
     }
     case ACTION: {
       const [, , , action, matchId] = entry;
+      const origin =
+        author !== undefined && generation !== undefined
+          ? { author, generation, seq: entry[0] }
+          : undefined;
       if (action !== "lobby" && reclaimable) dropAbsent(false);
       if (action === "lobby") {
         hooks.lobby(room, matchId);
         dropAbsent(true);
       } else if (action === "start") {
-        if (hooks.stage(room) === "lobby") hooks.start(room, matchId);
+        if (hooks.stage(room) === "lobby") hooks.start(room, matchId, origin);
       } else if (hooks.stage(room) === "over")
-        hooks.rematch(
-          room,
-          matchId,
-          author !== undefined && generation !== undefined
-            ? { author, generation, seq: entry[0] }
-            : undefined,
-        );
+        hooks.rematch(room, matchId, origin);
       return;
     }
     case BOT: {
