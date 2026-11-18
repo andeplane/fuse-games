@@ -28,4 +28,6 @@ The original grid has four trucks. Fuse adds a fifth start position for five-dri
 
 The reference checks execute the original 16-bit instructions with controlled registers and memory. The terrain check covers 61,952 probes. Lap progress checks cover 50,072 region positions. Truck checks exercise scripted inputs at all 64 original starting positions across the sixteen directions. Integrated race checks compare the vehicles on each update, including stock, heading, momentum, coordinates, lap and region.
 
-Run `pnpm exec tsx --test games/fuse-drivers/tests/*.test.ts` for the engine and room tests. Run `ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fuse-drivers-smoke.ts` against the local room service for the browser race. These cover different failure modes. A DOS trace cannot test phone controls, and a multiplayer state hash cannot establish agreement with the DOS engine.
+Across 18 four-truck races, all 1,026,216 sampled vehicle fields matched through the winning finish. The traces cover every course direction and include races with one and two independent human input streams. Final standings, wallets, earnings and remaining nitro matched for all 72 grid entries.
+
+Run `pnpm exec tsx --test games/fuse-drivers/tests/*.test.ts` for the engine and room tests. Run `OFFROAD_CAMPAIGN_SMOKE=1 ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fuse-drivers-smoke.ts` against the local room service for a multiplayer race, purchase and reconnect.

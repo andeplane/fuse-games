@@ -36,9 +36,7 @@ npx tsx --test games/fuse-drivers/tests/*.test.ts
 ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fuse-drivers-smoke.ts
 ```
 
-`sim-*.test.ts` are the simulation's own suite, carried over from the game's first home, including a
-recorded replay hash that pins its physics. The rest cover the fold, the checkpoint, the mesh and the
-page.
+Set `OFFROAD_CAMPAIGN_SMOKE=1` when running the browser check to drive a shared-TV room through the finish, buy an upgrade from a guest phone, start the next race and reconnect. The [engine verification record](PORT-STATUS.md) describes comparisons against the DOS instructions.
 
 ### Local DOS artwork comparison
 
