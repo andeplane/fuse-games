@@ -10,6 +10,7 @@ import { courseLabel } from "./course-label.js";
 /** What the page lends the report: a truck's colour and the friend buttons. */
 export interface ReportParts {
   color(truck: number): string;
+  shop?: HTMLElement;
   /** FRIENDS or + ADD FRIEND for another driver whose account is known. */
   friend?(id: string): HTMLElement | undefined;
 }
@@ -95,18 +96,24 @@ export function resultReport(
       rows,
     },
     highlights: { cards },
+    ...(parts.shop
+      ? { sections: [{ title: "Speed shop", content: [parts.shop] }] }
+      : {}),
   };
 }
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
-export function resultBar(result: ResultModel): ResultsBar {
+export function resultBar(result: ResultModel, hasShop = false): ResultsBar {
   return {
     ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "RACE AGAIN", primary: true },
-        ]
-      : [],
+    actions: [
+      ...(hasShop ? [{ id: "shop", label: "Speed shop" }] : []),
+      ...(result.host
+        ? [
+            { id: "lobby", label: "Back to lobby" },
+            { id: "rematch", label: "NEXT RACE", primary: true },
+          ]
+        : []),
+    ],
   };
 }

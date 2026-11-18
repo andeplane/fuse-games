@@ -8,6 +8,10 @@ Hold `W` or `↑` for gas, release to coast, and steer with `A`/`D` or `←`/`�
 
 For shared-screen play, the host ticks **Shared TV** in the room, under the invitation, and opens **OPEN TV SCREEN** on the TV. The TV shows the arena and phones show controls.
 
+## Between races
+
+The first truck through four laps wins. The other drivers are classified by their race progress and take a place prize. Cash bags add to the payout, and nitro pickups refill the truck during the race. Open **Speed shop** on the results screen to buy nitro bottles, shocks, tires, acceleration or top speed. Each player spends their own wallet. When a purchase needs a credit, the shop shows that on the price. **Next race** advances the campaign and carries each driver's truck to the next grid. **Back to lobby** starts a fresh campaign.
+
 ## How it fits the shared packages
 
 The rules (`src/game/`) fold on `fuse-netcode`'s shared input log: every device simulates the identical

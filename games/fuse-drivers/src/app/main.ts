@@ -50,6 +50,7 @@ import {
   trackNames,
 } from "../game/index.js";
 import { courseLabel } from "./course-label.js";
+import { createPitShop } from "./pit-shop.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
 import type { RaceState } from "../game/sim/race.js";
 import {
@@ -124,7 +125,7 @@ function header(extra: HTMLElement[] = []): HTMLElement {
 function landing(): void {
   const card = createLandingCard({
     howToPlay: {
-      goal: "Cross the finish line first after four laps. Lift off the gas for tight corners and spend nitro on the straights.",
+      goal: "Cross the finish line first after four laps. Lift off the gas for tight corners and spend nitro on the straights. Collect cash and spend your prize in the speed shop between races.",
       controls: [
         { keys: "A / ←", action: "Steer left" },
         { keys: "D / →", action: "Steer right" },
@@ -310,6 +311,11 @@ function room(solo: boolean): void {
   canvas.className = "fd-arena";
   const hud = el("p", "", "fd-hud");
   // The result: the shared results screen over the page, on a phone controller and the TV too.
+  let shopView: Parameters<FuseDriversCallbacks["state"]>[0] | undefined;
+  const shop = createPitShop(
+    document,
+    (kind) => !!shopView && runtime.buyUpgrade(kind, shopView),
+  );
   const results = createResultsScreen({
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
@@ -318,11 +324,11 @@ function room(solo: boolean): void {
       location.href = endpoints.appUrl();
     },
     backText: "Leave",
-    onAction: (id) =>
-      runtime.command({
-        type: "action",
-        action: id === "rematch" ? "rematch" : "lobby",
-      }),
+    onAction: (id) => {
+      if (id === "shop") shop.focus();
+      else if (id === "rematch" || id === "lobby")
+        runtime.command({ type: "action", action: id });
+    },
   });
   /** What the results screen last showed: it is rebuilt only when the result itself changed. */
   let shownResult = "";
@@ -443,6 +449,19 @@ function room(solo: boolean): void {
         : lap;
     }
     const result = model.results;
+    const seat =
+      result && !display
+        ? latest?.drivers.find(
+            (driver) =>
+              driver.id === viewer.me &&
+              driver.connected &&
+              !driver.bot &&
+              driver.truck >= 0,
+          )
+        : undefined;
+    shopView = seat && latest?.garage[seat.id] ? latest : undefined;
+    const wallet = shopView?.garage[viewer.me];
+    if (wallet) shop.update(wallet);
     if (!result) {
       if (results.open) results.hide();
       shownResult = "";
@@ -450,6 +469,7 @@ function room(solo: boolean): void {
       // The bar's own fields do not rebuild the report; an account that turns up after the race gets its button.
       const shown = JSON.stringify([
         { ...result, host: false, waiting: "" },
+        !!wallet,
         result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
       ]);
       if (shown !== shownResult) {
@@ -457,6 +477,7 @@ function room(solo: boolean): void {
         results.show(
           resultReport(result, {
             color: truckColor,
+            shop: wallet ? shop.element : undefined,
             friend: (id) => {
               const publicId = social.friends.publicIdOfMember(id);
               return publicId
@@ -466,7 +487,7 @@ function room(solo: boolean): void {
           }),
         );
       }
-      results.update(resultBar(result));
+      results.update(resultBar(result, !!wallet));
       // No focus on show: Space is a play key here, and a held one would press the primary button.
     }
     // A phone that is only a controller has no room for the arena.
@@ -549,8 +570,10 @@ function room(solo: boolean): void {
         tick: state?.tick,
         hashChecks: metrics.hashChecks,
         mismatches: metrics.mismatches,
-        trucks: state?.race?.trucks.map(truck => ({
-          x: truck.motion.x, y: truck.motion.y, nitros: truck.nitros,
+        trucks: state?.race?.trucks.map((truck) => ({
+          x: truck.motion.x,
+          y: truck.motion.y,
+          nitros: truck.nitros,
         })),
       };
     });

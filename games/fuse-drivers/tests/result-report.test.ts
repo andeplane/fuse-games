@@ -134,7 +134,7 @@ test("the bar: the host races again or returns to the lobby, and a guest sees wh
   assert.deepEqual(resultBar(result()), {
     actions: [
       { id: "lobby", label: "Back to lobby" },
-      { id: "rematch", label: "RACE AGAIN", primary: true },
+      { id: "rematch", label: "NEXT RACE", primary: true },
     ],
   });
   assert.deepEqual(
