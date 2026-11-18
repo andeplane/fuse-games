@@ -1,5 +1,5 @@
 import { defaultText, type RollbackGame, type Stage } from "fuse-netcode";
-import { BOT_PREFIX, CAPACITY, MAX_WATCHERS } from "./basics.js";
+import { BOT_PREFIX, CAPACITY, MAX_WATCHERS, isBotId } from "./basics.js";
 import { decodeRoom, encodeRoom, hashRoom } from "./checkpoint.js";
 import {
   DEFAULT_SETTINGS,
@@ -10,12 +10,14 @@ import {
   parseSettings,
   players,
   seatName,
+  seriesComplete,
   stepsForTick,
   type FuseDriversEntry,
   type FuseDriversEvent,
   type FuseDriversRoom,
   type FuseDriversSettings,
 } from "./rules.js";
+import type { FinishedRace } from "./result.js";
 import type { RaceState } from "./sim/race.js";
 
 export interface FuseDriversDriverView {
@@ -34,6 +36,14 @@ export interface FuseDriversDriverView {
  * corrects history without emitting the events again.
  */
 export interface FuseDriversView {
+  matchId: string;
+  finishTick: number;
+  recentFinishes: readonly FinishedRace[];
+  campaignIndex: number;
+  seriesRace: number;
+  seriesLength: number;
+  seriesComplete: boolean;
+  garage: Readonly<FuseDriversRoom["garage"]>;
   /** The log tick, which is this game's clock. */
   tick: number;
   phase: Stage;
@@ -41,12 +51,25 @@ export interface FuseDriversView {
   track: string;
   drivers: FuseDriversDriverView[];
   watchers: { id: string; name: string; connected: boolean }[];
+  /** Identities and places from the finish tick, retained through renames and departures in the shop. */
+  finishers?: (Pick<FuseDriversDriverView, "id" | "name" | "truck" | "bot"> & {
+    place: number;
+  })[];
   /** The race as of this tick, or undefined in the lobby. */
   race?: RaceState;
 }
 
 export function fuseDriversView(room: FuseDriversRoom): FuseDriversView {
   return {
+    matchId: room.matchId,
+    finishTick: room.finishTick,
+    recentFinishes: room.recentFinishes,
+    campaignIndex: room.campaignIndex,
+    seriesRace: room.seriesRace,
+    seriesLength:
+      room.stage === "lobby" ? room.settings.races : room.seriesLength,
+    seriesComplete: seriesComplete(room),
+    garage: room.garage,
     tick: room.tick,
     phase: room.stage,
     round: room.round,
@@ -60,6 +83,26 @@ export function fuseDriversView(room: FuseDriversRoom): FuseDriversView {
       connected: seat.connected,
       truck: room.grid.indexOf(seat.id),
     })),
+    ...(room.stage === "over" && room.race
+      ? {
+          finishers: room.race.placements.flatMap((truck, index) => {
+            const seat = room.finishSeats.find(
+              (driver) => driver.id === room.grid[truck],
+            );
+            return seat
+              ? [
+                  {
+                    id: seat.id,
+                    name: seat.name,
+                    truck,
+                    bot: isBotId(seat.id),
+                    place: index + 1,
+                  },
+                ]
+              : [];
+          }),
+        }
+      : {}),
     watchers: [...room.seats.values()]
       .filter((seat) => seat.watcher)
       .map((seat) => ({
@@ -82,7 +125,7 @@ export const fuseDriversGame: RollbackGame<
   FuseDriversSettings
 > = {
   id: "fuse-drivers",
-  rules: "fuse-drivers-3",
+  rules: "fuse-drivers-5",
   isEntry: isFuseDriversEntry,
   createRoom,
   createTicker: () => foldTick,
@@ -122,7 +165,7 @@ export const fuseDriversGame: RollbackGame<
     },
     botName: (slot) => `CPU ${slot + 1}`,
     // A full grid against the computer, which is how the arcade original is played.
-    solo: { name: "You", bots: 4 },
+    solo: { name: "You", bots: 3 },
   },
   text: defaultText,
 };

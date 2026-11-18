@@ -373,7 +373,7 @@ export class RoomRuntime<
     return this.management.manager;
   }
   /** Whether this device runs the room for the players: the crown, not the log duties. */
-  private get managing(): boolean {
+  get managing(): boolean {
     return this.management.managing;
   }
   /** Where a joiner sends its join: the creator, or whoever manages while the creator is absent. */

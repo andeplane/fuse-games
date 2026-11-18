@@ -28,6 +28,7 @@ test("settings name a committed track and nothing else", () => {
   assert.deepEqual(parseSettings({ track, display: false }), {
     track,
     display: false,
+    races: 3,
   });
   assert.equal(parseSettings({ track: "nowhere", display: false }), undefined);
   assert.equal(parseSettings({ track }), undefined, "display is required");
@@ -71,7 +72,7 @@ test("a driver's controls hold until they log a change", () => {
   assert.equal(room.controls.a, 0);
 });
 
-test("track settings apply to the next race while the current race keeps its map", () => {
+test("changing the lobby course leaves the active heat and its campaign sequence intact", () => {
   const original = DEFAULT_SETTINGS.track;
   const next = trackNames().find((track) => track !== original)!;
   const changed = started(DEFAULT_SETTINGS, [addBot("bot:1", 2)]);
@@ -85,7 +86,10 @@ test("track settings apply to the next race while the current race keeps its map
   assert.equal(changed.settings.track, next);
   assert.equal(fuseDriversView(changed).track, original);
   assert.deepEqual(changed.race, baseline.race);
-  assert.deepEqual(changed.bots, baseline.bots);
+  assert.ok(
+    changed.race?.trucks[2]?.cpu,
+    "the compared race includes DOS CPU state",
+  );
   const race = defined(changed.race);
   changed.race = {
     ...race,
@@ -94,8 +98,12 @@ test("track settings apply to the next race while the current race keeps its map
   };
   fold(changed);
   fold(changed, { a: [[ACTION, "rematch", "m2"]] });
-  assert.equal(changed.race?.trackName, next);
-  assert.equal(fuseDriversView(changed).track, next);
+  assert.equal(
+    changed.race?.trackName,
+    "offroad-7",
+    "Sidewinder leads to Wipeout",
+  );
+  assert.equal(changed.settings.track, next, "the lobby retains its selection");
 });
 
 test("a race that finishes ends the match, and only then may it be replayed", () => {
@@ -127,13 +135,18 @@ test("a bot takes a grid slot and drives without logging anything", () => {
   fold(room, { a: [[PRESENCE, "a", true, 1]] });
   fold(room, { a: [[ACTION, "start", "m1"]] });
   assert.deepEqual(room.grid, ["a", "bot:1"]);
-  assert.ok(room.bots["bot:1"], "the bot has memory in the room");
-  const before = JSON.stringify(defined(room.race, "race").trucks[1]);
-  runTo(room, room.tick + 60);
-  assert.notEqual(
-    JSON.stringify(defined(room.race, "race").trucks[1]),
-    before,
-    "the bot drove",
+  const before = defined(defined(room.race).trucks[1]);
+  assert.ok(before.cpu, "the CPU carries its own waypoint state");
+  runTo(room, room.tick + 120);
+  const after = defined(defined(room.race).trucks[1]);
+  assert.notDeepEqual(
+    [after.motion.x, after.motion.y],
+    [before.motion.x, before.motion.y],
+  );
+  assert.equal(
+    room.controls["bot:1"],
+    undefined,
+    "CPU driving needs no network stream",
   );
 });
 

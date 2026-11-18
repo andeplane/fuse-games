@@ -1,6 +1,8 @@
 import { RoomRuntime, type Callbacks, type RuntimeOptions } from "fuse-netcode";
 import {
   CONTROLS,
+  PURCHASE,
+  seriesComplete,
   fuseDriversGame,
   packControls,
   type FuseDriversEntry,
@@ -10,6 +12,10 @@ import {
   type FuseDriversView,
 } from "../game/index.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
+import {
+  buyOffroadUpgrade,
+  type OffroadPurchase,
+} from "../game/offroad/campaign.js";
 
 export type FuseDriversCallbacks = Callbacks<
   FuseDriversView,
@@ -88,6 +94,55 @@ export class FuseDriversRuntime extends RoomRuntime<
 
   get heldNow(): number {
     return this.live;
+  }
+
+  /** Quote the rendered wallet and item. Every replica checks that quote when the purchase reaches its log tick. */
+  buyUpgrade(
+    item: OffroadPurchase,
+    displayed?: Pick<
+      FuseDriversView,
+      "matchId" | "round" | "finishTick" | "garage"
+    >,
+  ): boolean {
+    const room = this.world?.state;
+    const seat = this.player();
+    if (
+      !room ||
+      room.stage !== "over" ||
+      seriesComplete(room) ||
+      !seat?.connected ||
+      seat.watcher ||
+      seat.bot ||
+      seat.generation !== this.generation
+    )
+      return false;
+    const quote = displayed ?? room;
+    const driver = quote.garage[seat.id];
+    const current = room.garage[seat.id];
+    if (
+      !driver ||
+      !current ||
+      driver.cash !== current.cash ||
+      driver.credits !== current.credits ||
+      driver[item] !== current[item] ||
+      !buyOffroadUpgrade(driver, item) ||
+      quote.matchId !== room.matchId ||
+      quote.round !== room.round ||
+      quote.finishTick !== room.finishTick
+    )
+      return false;
+    this.append(
+      PURCHASE,
+      quote.matchId,
+      quote.round,
+      quote.finishTick,
+      item,
+      driver.cash,
+      driver.credits,
+      driver[item],
+    );
+    this.sendPackets(this.deps.now());
+    return true;
   }
 
   /** The newest simulated room, for the receipts a device reports; the screen renders from the view. */

@@ -23,11 +23,11 @@ function racing() {
 test("a whole tick played forward is the tick the fold produces, bots included, and the room is left alone", () => {
   const room = racing();
   fold(room, { a: [drive({ left: true })] });
-  const before = JSON.stringify([room.race, room.bots, room.controls]);
+  const before = JSON.stringify([room.race, room.controls]);
   const one = defined(forward(room, 1, "a", LEFT), "lead"),
     two = defined(forward(room, 2, "a", LEFT), "lead");
   assert.equal(
-    JSON.stringify([room.race, room.bots, room.controls]),
+    JSON.stringify([room.race, room.controls]),
     before,
     "the forward run never touches the room",
   );
@@ -68,6 +68,33 @@ test("the green light is shown when the room folds it, never on a guess", () => 
   }
   assert.ok(checked > 10);
   assert.equal(room.race?.phase, "racing");
+});
+
+test("a cash or nitro pickup reaches the screen on its committed room tick", () => {
+  for (const kind of ["cash", "nitro"] as const) {
+    const room = racing();
+    const race = defined(room.race);
+    const truck = defined(race.trucks[0]);
+    room.race = {
+      ...race,
+      pickups: {
+        ...race.pickups,
+        waitTicks: 0,
+        active: { kind, x: truck.motion.x, y: truck.motion.y },
+      },
+    };
+    const prediction = defined(forward(room, 1, "a", 0));
+    assert.equal(prediction.race.pickups.active?.kind, kind);
+    const events = fold(room);
+    assert.deepEqual(
+      events.filter((event) => event.type === "pickup"),
+      [{ type: "pickup", id: "a" }],
+    );
+    assert.equal(room.race.pickups.active, null);
+    const paid = defined(room.race.trucks[0]);
+    if (kind === "cash") assert.equal(paid.cash, truck.cash + 1);
+    else assert.equal(paid.motion.nitros, truck.motion.nitros + 1);
+  }
 });
 
 test("a correction to another truck is spread over a few frames", () => {

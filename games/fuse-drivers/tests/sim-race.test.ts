@@ -1,193 +1,243 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { BASE_STATS, config } from "../src/game/sim/config.js";
-import { NEUTRAL_INPUT, type TruckInput } from "../src/game/sim/input.js";
-import { reaches } from "../src/game/sim/geometry.js";
+import { test } from "node:test";
 import {
-  createRace,
-  crosses,
-  step,
-  type RaceState,
-} from "../src/game/sim/race.js";
-import { parseTrack } from "../src/game/sim/track.js";
-import { defined } from "./fixtures/defined.js";
+  getOffroadCourse,
+  OFFROAD_COURSE_NAMES,
+} from "../src/game/offroad/course.js";
+import { BASE_STATS } from "../src/game/sim/config.js";
+import { NEUTRAL_INPUT } from "../src/game/sim/input.js";
+import { createRace, step } from "../src/game/sim/race.js";
 
-const track = parseTrack(
-  JSON.parse(readFileSync("games/fuse-drivers/tracks/refinery.tmj", "utf8")),
-  "refinery",
-);
-
-function canonical(v: unknown): string {
-  return JSON.stringify(v, (_, val) =>
-    val && typeof val === "object" && !Array.isArray(val)
-      ? Object.fromEntries(
-          Object.keys(val)
-            .sort()
-            .map((k) => [k, val[k]]),
-        )
-      : val,
-  );
-}
-const hash = (s: RaceState) =>
-  createHash("sha256").update(canonical(s)).digest("hex").slice(0, 16);
-
-function deepFreeze<T>(o: T): T {
-  if (o && typeof o === "object") {
-    Object.freeze(o);
-    for (const v of Object.values(o as object)) deepFreeze(v);
-  }
-  return o;
-}
-
-/** Scripted inputs: two trucks, one steering a wobble, one holding right and nitro. */
-const script = (tick: number, slot: number): TruckInput => {
-  if (slot === 0)
-    return {
-      ...NEUTRAL_INPUT,
-      right: tick % 40 < 12,
-      left: tick % 40 >= 30,
-      nitro: tick === 100,
-    };
-  return { ...NEUTRAL_INPUT, right: tick % 30 < 20, nitro: tick > 85 };
-};
-
-function replay(ticks: number) {
-  let s = createRace(track, 42, [BASE_STATS, BASE_STATS]);
-  for (let i = 0; i < ticks; i++)
-    s = step(
-      deepFreeze(s),
-      [script(s.tick, 0), script(s.tick, 1)],
+// Digests from the original 8086 game.exe (a67ba31b021ed53d2d033cbe67ecb32a4537bf20593392bcf4ba85d3fd67836c).
+// Run its actor VM and occupancy update once per frame, seed zero. Record active trucks from grid setup through
+// the first four-lap finish; leave out the marshal's post-race animation. Each course variant appears once.
+// -1 and -2 are the opener with one and two human control ports respectively.
+const references = [
+  [
+    0,
+    3,
+    1679,
+    "f826e59a47bc4ba432c867767ec03993cb2fb4d24976c209ba974a6cb263be99",
+    [2, 1, 0, 3],
+  ],
+  [
+    1,
+    6,
+    1769,
+    "0956101a7e7f4e5323c617816f944508e379bd25f6449bb779444e3c7467d58e",
+    [1, 0, 3, 2],
+  ],
+  [
+    2,
+    11,
+    1604,
+    "c9cf6d64dceb2186da0aa47a89d368d3d7d60cb3c54fa918a881e5b7b901daa1",
+    [3, 1, 2, 0],
+  ],
+  [
+    3,
+    14,
+    1807,
+    "b1817db3754a7393b9d1c993cf2b1ee02ecd6347f18efda30d3b703d85fca51f",
+    [1, 0, 3, 2],
+  ],
+  [
+    4,
+    9,
+    1918,
+    "ed4c43b23071db145cc9bcccf41f09299af44627353c9c67b9b019a9a895404d",
+    [3, 1, 2, 0],
+  ],
+  [
+    7,
+    1,
+    1964,
+    "c9ce86457faff4c796cdb0314c3a3f0364f373f14f190da58126d7b235add79f",
+    [3, 2, 1, 0],
+  ],
+  [
+    8,
+    5,
+    1665,
+    "a32a927abdb9ab54854fb82c05c47b15ebe98268eabaccf5c6955f5e8d6e2b00",
+    [1, 0, 2, 3],
+  ],
+  [
+    12,
+    13,
+    1657,
+    "c1fb5572a70b6ed9d9422fe41366ce8918fc280c2109b64f804e83c3c5b21b7d",
+    [3, 2, 0, 1],
+  ],
+  [
+    13,
+    15,
+    1443,
+    "a5021d7a41238ab529457d0d884b050da25618bca7f922ba7e399faa43c11f4d",
+    [2, 3, 1, 0],
+  ],
+  [
+    18,
+    7,
+    1398,
+    "4f68bd2d2e2b5dd3447fe7ab8dd309bb6e338b021299c4594b6a6c3e248b6efb",
+    [3, 1, 2, 0],
+  ],
+  [
+    19,
+    4,
+    1501,
+    "b8f1e5543cb54ae2390dafa6612bd217bf82b61b2757d3fd4ea379b4743a3fe6",
+    [2, 3, 1, 0],
+  ],
+  [
+    25,
+    12,
+    1406,
+    "6f12d61fc42bcc64404348cc3a55e0ce80f6300edc4af81d7979197af6e067b9",
+    [3, 2, 1, 0],
+  ],
+  [
+    26,
+    8,
+    1560,
+    "95ddda8b88552a64ba28a9ad2fe482289b6136d62459fe08a0e7ee0cb6202d93",
+    [1, 2, 3, 0],
+  ],
+  [
+    33,
+    0,
+    1252,
+    "ff7d95f6a58b5f5a606511288f7d51dcb97a46b8850fe37aa5576df4a1f34295",
+    [2, 3, 1, 0],
+  ],
+  [
+    34,
+    2,
+    1425,
+    "0ab7cd0cd8382aa9f7f5410660a5f64e82363471b910abacf2d8bccfc69f5723",
+    [1, 2, 3, 0],
+  ],
+  [
+    42,
+    10,
+    1254,
+    "6bf224f82723acc25c1a69ffea21f88be1088ebdebe1261207b91d5bbaf88498",
+    [2, 1, 3, 0],
+  ],
+  [
+    -1,
+    3,
+    1626,
+    "05e2d3ed94f022aa3cd047194bd5679e1cfba48b9ec82fdb5b543cf87edc988d",
+    [2, 3, 1, 0],
+  ],
+  [
+    -2,
+    3,
+    1578,
+    "c31077da09fa7928043e8870c6b8979365ba9e27e7caf2b3faf8cc09169ed9c4",
+    [1, 3, 2, 0],
+  ],
+] as const;
+const humanInputs = new Map([
+  [1, 0],
+  [40, 8],
+  [50, 9],
+  [61, 8],
+  [67, 72],
+  [82, 8],
+  [90, 10],
+  [103, 8],
+  [110, 0],
+  [130, 9],
+  [170, 8],
+  [210, 10],
+  [230, 0],
+]);
+// The two human trucks start in the same lane. Slot 2 hits slot 0 at update 46,
+// while the CPU trucks steer independently in the other lane.
+const duoFront = new Map([
+  [1, 0],
+  [58, 8],
+  [72, 9],
+  [86, 8],
+  [97, 72],
+  [106, 10],
+  [119, 8],
+  [160, 0],
+  [280, 9],
+  [300, 0],
+]);
+const duoRear = new Map([
+  [1, 0],
+  [40, 72],
+  [56, 8],
+  [77, 10],
+  [94, 8],
+  [108, 9],
+  [136, 8],
+  [171, 0],
+  [247, 72],
+  [264, 0],
+]);
+for (const [stage, variant, finish, digest, officialOrder] of references) {
+  test(`DOS race replay matches every truck through the finish: stage ${stage}, variant ${variant}`, () => {
+    const track = getOffroadCourse(OFFROAD_COURSE_NAMES[variant]!).track;
+    const bots = [stage >= 0, true, stage !== -2, true];
+    const ports =
+      stage === -2
+        ? [duoFront, undefined, duoRear]
+        : stage === -1
+          ? [humanInputs]
+          : [];
+    let race = createRace(
       track,
-    ).state;
-  return s;
-}
-
-test("replay is deterministic and matches the recorded hash", () => {
-  const a = replay(600),
-    b = replay(600);
-  assert.equal(hash(a), hash(b));
-  assert.equal(
-    JSON.stringify(a),
-    JSON.stringify(JSON.parse(JSON.stringify(a))),
-  );
-  // Update this hash on purpose only, and say so in the commit message (AGENTS.md).
-  assert.equal(hash(a), "ff25a6f85bec7656");
-});
-
-test("countdown holds trucks and rocket start arms a boost", () => {
-  let s = createRace(track, 1);
-  const x0 = defined(s.trucks[0]).x;
-  for (let i = 0; i < config.countdownTicks - 1; i++)
-    s = step(s, [{ ...NEUTRAL_INPUT, nitro: i > 80 }], track).state;
-  assert.equal(s.phase, "countdown");
-  assert.equal(defined(s.trucks[0]).x, x0);
-  assert.equal(
-    defined(s.trucks[0]).boostUntilTick,
-    config.countdownTicks + config.truck.boostTicks,
-  );
-  s = step(s, [NEUTRAL_INPUT], track).state;
-  assert.equal(s.phase, "racing");
-});
-
-test("crosses detects segment intersection in either direction", () => {
-  const seg = { a: { x: 0, y: -10 }, b: { x: 0, y: 10 } };
-  assert.ok(crosses({ x: -1, y: 0 }, { x: 1, y: 0 }, seg));
-  assert.ok(crosses({ x: 1, y: 0 }, { x: -1, y: 0 }, seg));
-  assert.ok(!crosses({ x: 1, y: 0 }, { x: 2, y: 0 }, seg));
-});
-
-test("reaches counts a move that stops exactly on a checkpoint once", () => {
-  const line = { a: { x: 0, y: -1 }, b: { x: 0, y: 1 } };
-  // A wall slide left a bot exactly on the refinery.reverse finish line; strict crossing missed the lap.
-  assert.ok(reaches({ x: 2, y: 0 }, { x: 0, y: 0 }, line));
-  assert.ok(!reaches({ x: 0, y: 0 }, { x: -2, y: 0 }, line));
-  assert.ok(reaches({ x: 2, y: 0 }, { x: -2, y: 0 }, line));
-  assert.ok(!reaches({ x: 2, y: 0 }, { x: 1, y: 0 }, line));
-});
-
-test("walls keep a truck on the track and penalise contact", () => {
-  let s = createRace(track, 1);
-  s = { ...s, phase: "racing" };
-  const r = config.truck.radius;
-  for (let i = 0; i < 300; i++)
-    s = step(s, [{ ...NEUTRAL_INPUT, left: true }], track).state;
-  const t = defined(s.trucks[0]);
-  for (const w of track.walls) {
-    const dx = w.b.x - w.a.x,
-      dy = w.b.y - w.a.y,
-      len2 = dx * dx + dy * dy || 1;
-    const u = Math.max(
       0,
-      Math.min(1, ((t.x - w.a.x) * dx + (t.y - w.a.y) * dy) / len2),
+      Array.from({ length: 4 }, () => BASE_STATS),
+      bots,
+      Math.max(0, stage),
     );
-    assert.ok(
-      Math.hypot(t.x - (w.a.x + u * dx), t.y - (w.a.y + u * dy)) >= r - 1e-6,
-    );
-  }
-  assert.ok(t.speed < t.stats.topSpeed);
-});
-
-test("a truck driven along the waypoints completes laps in order and finishes", () => {
-  let s: RaceState = { ...createRace(track, 7), phase: "racing" };
-  let wp = 1;
-  let laps: number[] = [];
-  for (let i = 0; i < 30 * 120 && s.phase !== "finished"; i++) {
-    const t = defined(s.trucks[0]);
-    const target = defined(track.waypoints[wp % track.waypoints.length]);
-    if (Math.hypot(target.x - t.x, target.y - t.y) < 60) wp++;
-    const want = Math.atan2(target.y - t.y, target.x - t.x);
-    const err = Math.atan2(
-      Math.sin(want - t.heading),
-      Math.cos(want - t.heading),
-    );
-    const r = step(
-      s,
-      [{ ...NEUTRAL_INPUT, left: err < -0.1, right: err > 0.1 }],
-      track,
-    );
-    s = r.state;
-    laps.push(...r.events.filter((e) => e.type === "lap").map((e) => e.tick));
-    assert.ok(
-      !r.events.some((e) => e.type === "wrongWay"),
-      `wrong way at tick ${s.tick}`,
-    );
-  }
-  assert.equal(laps.length, config.laps);
-  assert.equal(s.phase, "finished");
-  assert.equal(defined(s.placements[0]), 0);
-  assert.ok(defined(s.trucks[0]).finishedTick > 0);
-});
-
-test("landing on another truck spins it out without damage", () => {
-  let s: RaceState = {
-    ...createRace(track, 1, [BASE_STATS, BASE_STATS]),
-    phase: "racing",
-    tick: 100,
-  };
-  const lander = {
-    ...defined(s.trucks[0]),
-    x: 700,
-    y: 437,
-    heading: 0,
-    speed: 300,
-    airborneUntilTick: 101,
-    landAtTick: 101,
-  };
-  const victim = {
-    ...defined(s.trucks[1]),
-    x: 715,
-    y: 437,
-    heading: 0,
-    speed: 300,
-  };
-  s = { ...s, trucks: [lander, victim] };
-  const r = step(s, [NEUTRAL_INPUT, NEUTRAL_INPUT], track);
-  assert.ok(defined(r.state.trucks[1]).spinUntilTick > r.state.tick);
-  assert.equal(defined(r.state.trucks[1]).armor, victim.armor);
-  assert.ok(r.events.some((e) => e.type === "hit" && e.item === "landing"));
-});
-
-// The upstream 'runner is frame-rate independent and bounds catch-up' test covered src/shared/runner.ts,
-// which this port leaves behind: the monorepo owns the fixed-step loop.
+    const hash = createHash("sha256");
+    const held = ports.map(() => 0);
+    for (let tick = 1; tick <= finish; tick++) {
+      const inputs = ports.map((port, slot) => {
+        const bits = port?.get(tick) ?? held[slot]!;
+        held[slot] = bits;
+        return {
+          ...NEUTRAL_INPUT,
+          gas: !!(bits & 8),
+          right: !!(bits & 1),
+          left: !!(bits & 2),
+          nitro: !!(bits & 64),
+        };
+      });
+      race = step(race, inputs, track, bots).state;
+      if (stage === -2 && tick === 46)
+        assert.ok(race.trucks[0]!.contactMask & 4);
+      assert.equal(race.tick, tick);
+      const trucks = race.trucks.map((t) => {
+        const m = t.motion;
+        const cashBcd = (Math.floor(t.cash / 10) << 4) | (t.cash % 10);
+        return [
+          m.x,
+          m.y,
+          m.heading,
+          m.momentum,
+          m.speed,
+          t.laps,
+          t.checkpoint,
+          m.nitros,
+          cashBcd,
+        ];
+      });
+      hash.update(JSON.stringify([tick, ...trucks]) + "\n");
+    }
+    assert.equal(hash.digest("hex"), digest);
+    assert.equal(race.phase, "finished");
+    assert.equal(race.raceEndTick, finish);
+    assert.deepEqual(race.placements, officialOrder);
+    assert.equal(step(race, [], track, bots).state, race);
+  });
+}

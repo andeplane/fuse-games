@@ -1,9 +1,8 @@
 /**
  * How long a log tick costs with a full grid, and what a worst-case rollback costs.
  *
- * The racer runs 30 Hz of simulation inside a 20 Hz log, so a tick folds two steps or one across five
- * trucks, their weapons and pickups. Rollback re-simulates up to forty ticks, which is the number that
- * has to stay inside a frame.
+ * Seven native updates run in each six-tick window of the 20 Hz input log. Measure a human truck
+ * and four CPU drivers through the race. Rollback may re-simulate up to forty log ticks.
  *
  *   npx tsx scripts/fuse-drivers-tick-cost.ts
  */
@@ -45,18 +44,29 @@ fold(room, { a: [[PRESENCE, "a", true, 1]] });
 fold(room, { a: [[ACTION, "start", "m1"]] });
 
 const TICKS = 2000;
-const turn = packControls({ ...NEUTRAL_INPUT, right: true });
+const straight = packControls({ ...NEUTRAL_INPUT, gas: true });
+const turn = packControls({ ...NEUTRAL_INPUT, gas: true, right: true });
 const start = performance.now();
-for (let i = 0; i < TICKS; i++)
+let ticks = 0;
+for (; ticks < TICKS && room.stage === "running"; ticks++)
   fold(
     room,
-    i % 40 === 0
-      ? { a: [[CONTROLS, room.matchId, room.round, i % 80 === 0 ? turn : 0]] }
+    ticks % 40 === 0
+      ? {
+          a: [
+            [
+              CONTROLS,
+              room.matchId,
+              room.round,
+              ticks % 80 === 0 ? turn : straight,
+            ],
+          ],
+        }
       : {},
   );
 const ms = performance.now() - start;
-const perTick = ms / TICKS;
-console.log(`five trucks, ${TICKS} log ticks in ${ms.toFixed(0)} ms`);
+const perTick = ms / ticks;
+console.log(`five trucks, ${ticks} log ticks in ${ms.toFixed(0)} ms`);
 console.log(`  ${perTick.toFixed(3)} ms per log tick (the budget is 50 ms)`);
 console.log(
   `  a 40-tick rollback re-simulates in ${(perTick * 40).toFixed(1)} ms`,

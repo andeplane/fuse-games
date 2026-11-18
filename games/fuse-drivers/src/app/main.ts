@@ -1,5 +1,13 @@
 import { createTopBar } from "fuse-ui";
 import {
+  bindAudioInput,
+  browserAudioDependencies,
+  createAudioControl,
+  createGameAudio,
+} from "fuse-ui/game-audio";
+import "fuse-ui/game-audio.css";
+import { createOffroadAudio } from "./offroad-audio.js";
+import {
   playtestInputBlocked,
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
@@ -15,6 +23,7 @@ import { createAppPortal } from "fuse-ui/portal";
 import { createPlayMetrics, startGameAnalytics } from "fuse-ui/play-metrics";
 import "fuse-ui/results.css";
 import "./fuseDrivers.css";
+import "./race-results.css";
 import QRCode from "qrcode";
 import {
   PeerTransport,
@@ -39,12 +48,19 @@ import {
   createNameEntry,
   createNotice,
   createResultsScreen,
+  createRoundControls,
   createRoster,
   createSharedTvOption,
   el,
 } from "fuse-ui";
-import { DEFAULT_SETTINGS, fuseDriversGame, seatName } from "../game/index.js";
-import { TRACK_NAMES } from "../game/tracks-data.js";
+import {
+  DEFAULT_SETTINGS,
+  fuseDriversGame,
+  seatName,
+  isBotId,
+} from "../game/index.js";
+import { createRaceOptions } from "./race-options.js";
+import { createPitShop } from "./pit-shop.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
 import type { RaceState } from "../game/sim/race.js";
 import {
@@ -90,6 +106,17 @@ const endpoints = createEndpoints(
   location.origin,
 );
 const store = safeStore(() => localStorage);
+const audio = createGameAudio(browserAudioDependencies(store), {
+  forceMute: query.has("mute"),
+});
+const audioControl = createAudioControl(document, audio, { music: false });
+const unbindAudio = bindAudioInput(audio, document, window);
+audio.setHidden(document.hidden);
+function gameLink(search = "") {
+  const url = new URL(endpoints.appUrl(search));
+  if (audio.forcedMute) url.searchParams.set("mute", "");
+  return url.href;
+}
 const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
@@ -111,32 +138,39 @@ function header(extra: HTMLElement[] = []): HTMLElement {
     }).element,
     brand,
     social.element(),
+    audioControl.element,
     ...extra,
   );
-  return createTopBar({ element: bar, gameId: GAME });
+  return createTopBar({
+    element: bar,
+    gameId: GAME,
+    sound: audioControl.sound,
+  });
 }
+
+const drivingGuide = {
+  goal: "Cross the finish line first after four laps. Lift off the gas for tight corners and spend nitro on the straights. Collect cash and spend your prize in the speed shop between races.",
+  controls: [
+    { keys: "A / ←", action: "Steer left" },
+    { keys: "D / →", action: "Steer right" },
+    { keys: "W / ↑", action: "Hold to accelerate, release to coast" },
+    { keys: "Shift / Space", action: "Use nitro" },
+  ],
+  touchControls: [
+    { keys: "◀ / ▶", action: "Steer while holding GAS" },
+    { keys: "GAS", action: "Hold to accelerate, release to coast" },
+    { keys: "NITRO", action: "Use nitro" },
+  ],
+};
 
 function landing(): void {
   const card = createLandingCard({
-    howToPlay: {
-      goal: "Race through every checkpoint in order to finish your laps.",
-      controls: [
-        { keys: "A / ←", action: "Steer left" },
-        { keys: "D / →", action: "Steer right" },
-        { keys: "S / ↓", action: "Brake" },
-        { keys: "Shift", action: "Nitro" },
-        { keys: "Space", action: "Use item" },
-        { keys: "↓ + Space", action: "Alternate item action" },
-      ],
-      touchControls: [
-        { keys: "LEFT / RIGHT", action: "Steer" },
-        { keys: "ITEM / NITRO", action: "Use an item or nitro" },
-      ],
-    },
+    howToPlay: drivingGuide,
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE DRIVERS",
-    tagline: "Offroad racing with weapons. Two to five drivers, one screen.",
+    tagline:
+      "Choose your course and race a series against computer drivers or friends. Up to five drivers share the grid.",
     soloText: "RACE THE CPU",
     async onCreate() {
       const room = await createRoom(endpoints.apiUrl, fetch, GAME).catch(
@@ -147,14 +181,14 @@ function landing(): void {
         },
       );
       store.setItem(names.host(room.code), room.token);
-      location.href = endpoints.appUrl(`?room=${room.code}`);
+      location.href = gameLink(`?room=${room.code}`);
     },
     onSolo: () => {
-      location.href = endpoints.appUrl("?solo=1");
+      location.href = gameLink("?solo=1");
     },
     valid: validRoomCode,
     onJoin: (code) => {
-      location.href = endpoints.appUrl(`?room=${code}`);
+      location.href = gameLink(`?room=${code}`);
     },
   });
   app.replaceChildren(header(), card.element);
@@ -176,7 +210,7 @@ function keyboardControls(blocked: () => boolean): {
     )
       return;
     down.add(key(event));
-    if ([" ", "arrowleft", "arrowright", "arrowdown"].includes(key(event)))
+    if ([" ", "arrowleft", "arrowright", "arrowup"].includes(key(event)))
       event.preventDefault();
   };
   const onUp = (event: KeyboardEvent) => down.delete(key(event));
@@ -189,10 +223,11 @@ function keyboardControls(blocked: () => boolean): {
     read: () => ({
       left: down.has("arrowleft") || down.has("a"),
       right: down.has("arrowright") || down.has("d"),
-      brake: down.has("arrowdown") || down.has("s"),
-      nitro: down.has("shift"),
-      item: down.has(" "),
-      itemAlt: down.has("arrowdown") && down.has(" "),
+      gas: down.has("arrowup") || down.has("w"),
+      nitro: down.has("shift") || down.has(" "),
+      brake: false,
+      item: false,
+      itemAlt: false,
     }),
     stop: () => {
       removeEventListener("keydown", onDown);
@@ -247,24 +282,24 @@ function room(solo: boolean): void {
       action: "add",
       slot: requestedRoomSlot(addAI),
     });
-  const track = el("select");
-  track.setAttribute("aria-label", "Track");
-  for (const id of TRACK_NAMES) {
-    const option = el("option", id);
-    option.value = id;
-    track.append(option);
+  let roomSettings = DEFAULT_SETTINGS;
+  let requestedSettings: typeof DEFAULT_SETTINGS | undefined;
+  function changeSettings(change: Partial<typeof DEFAULT_SETTINGS>) {
+    const next = { ...(requestedSettings ?? roomSettings), ...change };
+    if (!runtime.command({ type: "settings", settings: next })) return false;
+    requestedSettings = next;
+    raceOptions.update(next, true);
+    return true;
   }
-  track.onchange = () =>
-    runtime.command({
-      type: "settings",
-      settings: { display: viewer.shared, track: track.value },
-    });
+  const raceOptions = createRaceOptions((track, races) =>
+    changeSettings({ track, races }),
+  );
   const lobby = el("section", "", "fd-lobby");
   if (!solo)
     lobby.append(
       createInviteCard({
         code,
-        link: endpoints.appUrl(`?room=${code}`),
+        link: gameLink(`?room=${code}`),
         qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 360 }),
       }).element,
     );
@@ -274,15 +309,12 @@ function room(solo: boolean): void {
   const sharedTv = createSharedTvOption({
     className: "fd-tv-option",
     onChange: (display) => {
-      const sent = runtime.command({
-        type: "settings",
-        settings: { display, track: track.value },
-      });
+      const sent = changeSettings({ display });
       if (sent) store.setItem(names.shared, display ? "1" : "0");
       return sent;
     },
     onOpenScreen: () =>
-      window.open(endpoints.appUrl(`?room=${code}&display=1`), "_blank"),
+      window.open(gameLink(`?room=${code}&display=1`), "_blank"),
   });
 
   const nameEntry = createNameEntry({
@@ -304,19 +336,24 @@ function room(solo: boolean): void {
   canvas.className = "fd-arena";
   const hud = el("p", "", "fd-hud");
   // The result: the shared results screen over the page, on a phone controller and the TV too.
+  let shopView: Parameters<FuseDriversCallbacks["state"]>[0] | undefined;
+  const shop = createPitShop(
+    document,
+    (kind) => !!shopView && runtime.buyUpgrade(kind, shopView),
+  );
   const results = createResultsScreen({
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
     onBack: () => {
       runtime.stop();
-      location.href = endpoints.appUrl();
+      location.href = gameLink();
     },
     backText: "Leave",
-    onAction: (id) =>
-      runtime.command({
-        type: "action",
-        action: id === "rematch" ? "rematch" : "lobby",
-      }),
+    onAction: (id) => {
+      if (id === "shop") shop.focus();
+      else if (id === "rematch" || id === "lobby")
+        runtime.command({ type: "action", action: id });
+    },
   });
   /** What the results screen last showed: it is rebuilt only when the result itself changed. */
   let shownResult = "";
@@ -333,20 +370,26 @@ function room(solo: boolean): void {
     buttons: [
       {
         label: "◀",
+        keys: "ArrowLeft A",
+        title: "Steer left",
         onPress: () => {
           if (!modalInput.blocked()) touch.left = true;
         },
         onRelease: () => (touch.left = false),
       },
       {
-        label: "ITEM",
+        label: "GAS",
+        keys: "ArrowUp W",
+        title: "Hold to accelerate",
         onPress: () => {
-          if (!modalInput.blocked()) touch.item = true;
+          if (!modalInput.blocked()) touch.gas = true;
         },
-        onRelease: () => (touch.item = false),
+        onRelease: () => (touch.gas = false),
       },
       {
         label: "NITRO",
+        keys: "Shift Space",
+        title: "Use nitro",
         onPress: () => {
           if (!modalInput.blocked()) touch.nitro = true;
         },
@@ -354,6 +397,8 @@ function room(solo: boolean): void {
       },
       {
         label: "▶",
+        keys: "ArrowRight D",
+        title: "Steer right",
         onPress: () => {
           if (!modalInput.blocked()) touch.right = true;
         },
@@ -361,7 +406,9 @@ function room(solo: boolean): void {
       },
     ] as const,
   });
-  race.append(pad.element);
+  const roundControls = createRoundControls(drivingGuide);
+  const touchDevice = window.matchMedia("(pointer: coarse)");
+  race.append(pad.element, roundControls.element);
 
   const main = el("main", "", "fd-room");
   // Until the first view arrives there is nothing to show but the lobby: a room with no host yet would
@@ -391,7 +438,9 @@ function room(solo: boolean): void {
     // ADD FRIEND on a driver's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
     friends: social.friends,
     addAI,
-    settings: [track],
+    layout: "configuration",
+    configuration: [raceOptions.element],
+    settings: [raceOptions.settingsField],
     actions: [lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation and the drivers scroll under them.
     actionsInHeader: true,
@@ -409,8 +458,27 @@ function room(solo: boolean): void {
     arenaBox.hidden = canvas.hidden;
     roster.update(model.lobby.members);
     addAI.hidden = !viewer.host || display || model.lobby.members.length >= 5;
-    track.disabled = !viewer.host || display;
-    if (track.value !== model.lobby.track) track.value = model.lobby.track;
+    if (model.screen === "lobby") {
+      raceOptions.update(
+        requestedSettings ?? roomSettings,
+        viewer.host && !display,
+      );
+      for (const [id, row] of roster.entries()) {
+        if (!isBotId(id)) continue;
+        const existing = row.querySelector<HTMLButtonElement>(".fd-remove-ai");
+        if (!viewer.host || display) existing?.remove();
+        else if (!existing) {
+          const remove = button("Remove", "fd-remove-ai");
+          remove.setAttribute(
+            "aria-label",
+            `Remove ${model.lobby.members.find((m) => m.id === id)?.name ?? "AI"}`,
+          );
+          remove.onclick = () =>
+            runtime.command({ type: "bot", action: "remove", id });
+          row.append(remove);
+        }
+      }
+    }
     start.hidden = !model.lobby.showStart;
     start.disabled = !model.lobby.canStart;
     if (lobbyNote.textContent !== model.lobby.note)
@@ -418,12 +486,33 @@ function room(solo: boolean): void {
     lobbyNote.hidden = !model.lobby.note;
     main.dataset.screen = model.screen;
     sharedTv.update(
-      viewer.shared,
+      requestedSettings?.display ?? viewer.shared,
       viewer.host && !display && !solo && model.screen === "lobby",
     );
-    if (model.race)
-      hud.textContent = `LAP ${String(model.race.lap)}/${String(model.race.laps)}   POS ${String(model.race.place)}/${String(model.race.drivers.length)}`;
+    if (model.race) {
+      const mine = model.race.drivers.find((driver) => driver.you);
+      const lap = `LAP ${model.race.lap}/${model.race.laps}`;
+      hud.textContent = mine
+        ? `${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
+        : lap;
+    }
     const result = model.results;
+    const seat =
+      result && !display
+        ? latest?.drivers.find(
+            (driver) =>
+              driver.id === viewer.me &&
+              driver.connected &&
+              !driver.bot &&
+              driver.truck >= 0,
+          )
+        : undefined;
+    shopView =
+      seat && !latest?.seriesComplete && latest?.garage[seat.id]
+        ? latest
+        : undefined;
+    const wallet = shopView?.garage[viewer.me];
+    if (wallet) shop.update(wallet);
     if (!result) {
       if (results.open) results.hide();
       shownResult = "";
@@ -431,6 +520,7 @@ function room(solo: boolean): void {
       // The bar's own fields do not rebuild the report; an account that turns up after the race gets its button.
       const shown = JSON.stringify([
         { ...result, host: false, waiting: "" },
+        !!wallet,
         result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
       ]);
       if (shown !== shownResult) {
@@ -438,6 +528,7 @@ function room(solo: boolean): void {
         results.show(
           resultReport(result, {
             color: truckColor,
+            shop: wallet ? shop.element : undefined,
             friend: (id) => {
               const publicId = social.friends.publicIdOfMember(id);
               return publicId
@@ -447,11 +538,23 @@ function room(solo: boolean): void {
           }),
         );
       }
-      results.update(resultBar(result));
+      results.update(resultBar(result, !!wallet));
       // No focus on show: Space is a play key here, and a held one would press the primary button.
     }
     // A phone that is only a controller has no room for the arena.
-    pad.element.hidden = model.screen !== "race" || display;
+    const driving = model.screen === "race" && !!model.lobby.own && !display;
+    pad.element.hidden = !driving || !touchDevice.matches;
+    const guideParent =
+      !canvas.hidden && !display && !touchDevice.matches ? arenaBox : race;
+    if (roundControls.element.parentElement !== guideParent)
+      guideParent.append(roundControls.element);
+    roundControls.update({
+      round: latest?.matchId ?? "",
+      visible: model.screen === "race" && latest?.race?.phase === "countdown",
+      touch: touchDevice.matches,
+      spectator: !model.lobby.own,
+      display,
+    });
   };
 
   start.onclick = () => runtime.command({ type: "action", action: "start" });
@@ -463,6 +566,19 @@ function room(solo: boolean): void {
   let shownBefore: RaceState | undefined;
   const callbacks: FuseDriversCallbacks = {
     state(frame, settings) {
+      viewer.host = runtime.managing;
+      roomSettings = settings;
+      // The input log can publish an older frame between two quick edits.
+      // Keep the host's complete selection until that settings entry is applied.
+      if (
+        !viewer.host ||
+        frame.phase !== "lobby" ||
+        (requestedSettings &&
+          requestedSettings.track === settings.track &&
+          requestedSettings.races === settings.races &&
+          requestedSettings.display === settings.display)
+      )
+        requestedSettings = undefined;
       viewer.shared = settings.display;
       if (frame.race !== latest?.race) shownBefore = latest?.race;
       latest = frame;
@@ -516,11 +632,33 @@ function room(solo: boolean): void {
           displayOnly: display,
         }
       : {
+          autoStartSolo: false,
           humanName: social.playerName(store.getItem(names.name)) ?? undefined,
         },
   );
 
-  const board = keyboardControls(() => modalInput.blocked());
+  const board = keyboardControls(
+    () => latest?.phase !== "running" || modalInput.blocked(),
+  );
+  if (probe) {
+    Reflect.set(window, "__driversRaceProbe", () => {
+      const state = runtime.roomState();
+      const metrics = runtime.metrics();
+      return {
+        phase: state?.race?.phase,
+        track: state?.race?.trackName,
+        tick: state?.tick,
+        hashChecks: metrics.hashChecks,
+        mismatches: metrics.mismatches,
+        trucks: state?.race?.trucks.map((truck) => ({
+          x: truck.motion.x,
+          y: truck.motion.y,
+          nitros: truck.nitros,
+          tires: truck.upgrades?.tires,
+        })),
+      };
+    });
+  }
   const stopPlaytestInput = registerPlaytestInput(document, {
     cancel: () => {
       board.clear();
@@ -548,6 +686,7 @@ function room(solo: boolean): void {
     },
   });
   let arena: MountedArena | undefined;
+  const raceAudio = createOffroadAudio(audio);
   let stopped = false;
   const reports = createReportDispatcher({
     now: () => performance.now(),
@@ -593,16 +732,28 @@ function room(solo: boolean): void {
           : {
               left: board.read().left || touch.left,
               right: board.read().right || touch.right,
-              brake: board.read().brake || touch.brake,
+              gas: !!(board.read().gas || touch.gas),
+              brake: false,
               nitro: board.read().nitro || touch.nitro,
-              item: board.read().item || touch.item,
-              itemAlt: board.read().itemAlt || touch.itemAlt,
+              item: false,
+              itemAlt: false,
             },
       );
     const room = runtime.roomState();
+    const timing = runtime.frameTiming();
+    if (room && drawArena && !document.hidden) {
+      const own = room.grid.indexOf(runtime.self);
+      raceAudio.observe(
+        `${room.matchId}:${room.round}`,
+        room.race,
+        own >= 0 ? own : (room.race?.placements[0] ?? 0),
+        timing?.revision ?? 0,
+      );
+    } else {
+      raceAudio.stop();
+    }
     if (drawArena) {
       const now = performance.now(),
-        timing = runtime.frameTiming(),
         lead =
           drawAhead &&
           timing &&
@@ -672,22 +823,21 @@ function room(solo: boolean): void {
       observePlay(playFrame(room, runtime.self, mode), {
         frame: final && confirmedPlayFrame(final, runtime.self, mode),
       });
+      if (final && (session.kind === "room" || social.isSignedIn()))
+        reports.tick(
+          dueReports(final, runtime.self, final.tick, reports.completed),
+        );
     }
-    if (room && (session.kind === "room" || social.isSignedIn()))
-      reports.tick(
-        dueReports(
-          room,
-          runtime.self,
-          runtime.confirmedTick(),
-          reports.completed,
-        ),
-      );
   };
   requestAnimationFrame(frame);
 
   installRoomLifecycle(window, {
     stop: () => {
       stopped = true;
+      raceAudio.stop();
+      audio.setHidden(true);
+      unbindAudio();
+      audioControl.destroy();
       modalInput.dispose();
       stopPlaytestInput();
       board.stop();

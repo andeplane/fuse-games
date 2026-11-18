@@ -30,10 +30,7 @@ export interface DriverRow {
   place: number;
   lap: number;
   laps: number;
-  kills: number;
-  armor: number;
-  /** Wrecked and waiting to respawn. */
-  wrecked: boolean;
+  nitros: number;
   finished: boolean;
   you: boolean;
   bot: boolean;
@@ -41,7 +38,7 @@ export interface DriverRow {
 }
 
 export interface RaceModel {
-  /** Laps the leader is on, for the HUD. */
+  /** Lap of this driver, or the leader for a spectator. */
   lap: number;
   laps: number;
   /** This device's own place, or 0 when it is only watching. */
@@ -59,19 +56,20 @@ export interface ResultRow {
   name: string;
   you: boolean;
   bot: boolean;
-  /** 1 for the winner; trucks that crossed the line on the same tick share a place. */
+  /** One-based DOS classification written by the core race when the first truck finishes. */
   place: number;
   /** Seconds from the start signal to the finish line, or 0 for a truck that never finished. */
   time: number;
   laps: number;
-  kills: number;
-  wrecks: number;
   lapsLed: number;
   nitros: number;
 }
 
 export interface ResultModel {
   title: string;
+  seriesRace: number;
+  seriesLength: number;
+  seriesComplete: boolean;
   track: string;
   laps: number;
   rows: ResultRow[];
@@ -154,9 +152,7 @@ export function presentTable(
         place,
         lap: Math.min((car?.laps ?? 0) + 1, config.laps),
         laps: config.laps,
-        kills: car?.kills ?? 0,
-        armor: car?.armor ?? 0,
-        wrecked: (car?.respawnAtTick ?? 0) > 0,
+        nitros: car?.nitros ?? 0,
         finished: (car?.finishedTick ?? 0) > 0,
         you: driver.id === viewer.me,
         bot: driver.bot,
@@ -166,7 +162,7 @@ export function presentTable(
     rows.sort((a, b) => (a.place || 99) - (b.place || 99));
     const mine = rows.find((row) => row.you);
     model.race = {
-      lap: rows[0]?.lap ?? 1,
+      lap: mine?.lap ?? rows[0]?.lap ?? 1,
       laps: config.laps,
       place: mine?.place ?? 0,
       drivers: rows,
@@ -175,40 +171,34 @@ export function presentTable(
     };
     if (over) {
       const results: ResultRow[] = [];
-      let lastFinish = -1;
-      for (const row of rows) {
+      for (const row of view.finishers ?? []) {
         const car = race.trucks[row.truck];
         if (!car) continue;
-        const previous = results.at(-1);
         results.push({
           id: row.id,
           truck: row.truck,
           name: row.name,
-          you: row.you,
+          you: row.id === viewer.me,
           bot: row.bot,
-          place:
-            previous && car.finishedTick && car.finishedTick === lastFinish
-              ? previous.place
-              : results.length + 1,
+          place: row.place,
           time: car.finishedTick
             ? Math.max(0, car.finishedTick - race.countdownEndTick) / TICK_RATE
             : 0,
           laps: Math.min(car.laps, config.laps),
-          kills: car.kills,
-          wrecks: car.deaths,
           lapsLed: car.lapsLed,
           nitros: car.nitrosUsed,
         });
-        lastFinish = car.finishedTick;
       }
-      const winners = results.filter((row) => row.place === 1);
-      const winner = winners.length === 1 ? winners[0] : undefined;
+      const winner = results.find((row) => row.place === 1);
       model.results = {
+        seriesRace: view.seriesRace,
+        seriesLength: view.seriesLength,
+        seriesComplete: view.seriesComplete,
         title: winner
           ? winner.you
             ? "YOU WIN"
             : `${winner.name} WINS`
-          : "DEAD HEAT",
+          : "RACE COMPLETE",
         track: view.track,
         laps: config.laps,
         rows: results,

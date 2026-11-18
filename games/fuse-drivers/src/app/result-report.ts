@@ -5,19 +5,21 @@ import type {
   ResultsRow,
 } from "fuse-ui";
 import type { ResultModel, ResultRow } from "./presenter.js";
+import { courseLabel } from "./course-label.js";
 
 /** What the page lends the report: a truck's colour and the friend buttons. */
 export interface ReportParts {
   color(truck: number): string;
+  shop?: HTMLElement;
   /** FRIENDS or + ADD FRIEND for another driver whose account is known. */
   friend?(id: string): HTMLElement | undefined;
 }
 
 const count = (n: number, one: string, many = `${one}s`) =>
   `${n} ${n === 1 ? one : many}`;
-/** A race time as the standings show it: 1:23.4, or DNF for a truck that never crossed the line. */
+/** Only a truck crossing the line receives a finish time. Others are classified on completed laps. */
 const clock = (seconds: number) => {
-  if (seconds <= 0) return "DNF";
+  if (seconds <= 0) return "—";
   const tenths = Math.round(seconds * 10);
   return `${Math.floor(tenths / 600)}:${String(Math.floor((tenths % 600) / 10)).padStart(2, "0")}.${tenths % 10}`;
 };
@@ -38,8 +40,8 @@ export function resultReport(
     values: [
       clock(row.time),
       `${row.laps}/${result.laps}`,
-      String(row.kills),
-      String(row.wrecks),
+      String(row.lapsLed),
+      String(row.nitros),
     ],
   }));
   const cards: ResultsHighlight[] = [];
@@ -57,14 +59,6 @@ export function resultReport(
           .map((row) => ({ name: row.name, color: parts.color(row.truck) })),
       });
   };
-  most(
-    (row) => row.kills,
-    (best) => ({
-      icon: "✕",
-      title: "Road warrior",
-      detail: `Wrecked ${count(best, "truck")}.`,
-    }),
-  );
   most(
     (row) => row.lapsLed,
     (best) => ({
@@ -84,8 +78,10 @@ export function resultReport(
   const winner = result.rows.find((row) => row.truck === result.winnerTruck);
   return {
     game: "FUSE DRIVERS",
-    kicker: "RACE COMPLETE",
-    context: `${result.track} · ${count(result.laps, "lap")} · ${count(result.rows.length, "driver")}`,
+    kicker: result.seriesComplete
+      ? `SERIES COMPLETE · ${result.seriesLength} OF ${result.seriesLength}`
+      : `RACE ${result.seriesRace}${result.seriesLength ? ` OF ${result.seriesLength}` : ""} COMPLETE`,
+    context: `${courseLabel(result.track)} · ${count(result.laps, "lap")} · ${count(result.rows.length, "driver")}`,
     headline: result.title,
     ...(winner
       ? {
@@ -98,22 +94,34 @@ export function resultReport(
       : {}),
     standings: {
       nameLabel: "DRIVER",
-      columns: ["TIME", "LAPS", "KILLS", "WRECKS"],
+      columns: ["TIME", "LAPS", "LAPS LED", "NITROS USED"],
       rows,
     },
     highlights: { cards },
+    ...(parts.shop && !result.seriesComplete
+      ? { sections: [{ title: "Speed shop", content: [parts.shop] }] }
+      : {}),
   };
 }
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
-export function resultBar(result: ResultModel): ResultsBar {
+export function resultBar(result: ResultModel, hasShop = false): ResultsBar {
   return {
     ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "RACE AGAIN", primary: true },
-        ]
-      : [],
+    actions: [
+      ...(hasShop && !result.seriesComplete
+        ? [{ id: "shop", label: "Speed shop" }]
+        : []),
+      ...(result.host
+        ? [
+            ...(result.seriesComplete
+              ? [{ id: "lobby", label: "Back to lobby", primary: true }]
+              : [
+                  { id: "lobby", label: "Back to lobby" },
+                  { id: "rematch", label: "NEXT RACE", primary: true },
+                ]),
+          ]
+        : []),
+    ],
   };
 }

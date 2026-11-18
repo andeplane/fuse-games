@@ -1,10 +1,5 @@
 import type { MatchResult } from "fuse-platform";
-import {
-  isBotId,
-  matchResult,
-  roundResult,
-  type FuseDriversRoom,
-} from "../game/index.js";
+import { isBotId, resultFor, type FinishedRace } from "../game/index.js";
 import type { FuseDriversStats } from "../platform.js";
 
 /** One result this device owes the room service: a rated round receipt, or the whole match. */
@@ -26,25 +21,36 @@ export interface DueReport {
  * A device that did not race (the shared screen, a latecomer, a bot id) owes nothing.
  */
 export function dueReports(
-  room: FuseDriversRoom,
+  history: { recentFinishes: readonly FinishedRace[] },
   me: string,
   confirmedTick: number,
   sent: ReadonlySet<string>,
 ): DueReport[] {
   if (!me || isBotId(me)) return [];
-  if (room.stage !== "over" || confirmedTick < room.finishTick) return [];
-  if (!room.grid.includes(me)) return [];
-
   const due: DueReport[] = [];
-  const round = roundResult(room, room.round);
-  const roundKey = `${room.matchId}:${String(room.round)}`;
-  if (round && !sent.has(roundKey))
-    due.push({ key: roundKey, path: "round-results", result: round });
-
-  const match = matchResult(room);
-  const matchKey = room.matchId;
-  if (match && !sent.has(matchKey))
-    due.push({ key: matchKey, path: "results", result: match });
+  for (const finish of history.recentFinishes) {
+    if (
+      finish.tick > confirmedTick ||
+      !finish.players.some((player) => player.playerId === me)
+    )
+      continue;
+    const roundKey = `round:${finish.round}:${finish.matchId}`,
+      matchKey = `match:${finish.matchId}`;
+    if (sent.has(roundKey) && sent.has(matchKey)) continue;
+    const match = resultFor(finish.matchId, finish.players);
+    if (!sent.has(roundKey))
+      due.push({
+        key: roundKey,
+        path: "round-results",
+        result: {
+          ...match,
+          round: finish.round,
+          roundDuration: { version: 1, ticks: finish.duration },
+        },
+      });
+    if (!sent.has(matchKey))
+      due.push({ key: matchKey, path: "results", result: match });
+  }
 
   return due;
 }

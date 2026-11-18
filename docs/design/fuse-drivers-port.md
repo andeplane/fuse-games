@@ -1,5 +1,7 @@
 # Porting Fuse Drivers onto the shared netcode
 
+This historical note describes the first Fuse Drivers port. The current racing engine, supported courses and timing are documented in [the native engine status](../../games/fuse-drivers/PORT-STATUS.md).
+
 The `fuse-drivers-3` contract scopes control edges to match id and round, then applies them only from the admitted seat generation. A new page generation releases the old page's held controls; a new match causes the runtime to log even an unchanged held key again. Active physics, bots and rendering use the race's frozen track name while settings configure the next race. Checkpoints retain hidden-seat away flags and the frozen finish roster, so departing or renaming after a finish cannot change completed receipts. Report delivery uses the current service envelope and makes at most three attempts, with one- and two-second delays, retaining pending receipts across rematches.
 
 Fuse Drivers is a top-down offroad racer (Super Off Road with Mario Kart items) built outside this repo at

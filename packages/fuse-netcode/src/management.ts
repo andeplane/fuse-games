@@ -303,6 +303,12 @@ export interface ManagedRoom<Settings> {
   seats: Map<string, SeatRecord>;
   settings: Settings;
 }
+/** Position of an accepted management action relative to other actions in its author's stream. */
+export interface ManagementOrigin {
+  author: string;
+  generation: number;
+  seq: number;
+}
 /** How the game reacts to the lifecycle entries; each is applied on every replica alike, so none may read anything outside `room`. */
 export interface LifecycleHooks<Room, Settings> {
   stage(room: Room): Stage;
@@ -313,7 +319,7 @@ export interface LifecycleHooks<Room, Settings> {
   botAvatar?: string;
   /** `matchId` is the one the creator logged with the start (Fuse Riders keeps the lobby's). */
   start(room: Room, matchId: string): void;
-  rematch(room: Room, matchId: string): void;
+  rematch(room: Room, matchId: string, origin?: ManagementOrigin): void;
   lobby(room: Room, matchId: string): void;
 }
 const seatView = (seat: SeatRecord): Seat => seat;
@@ -347,20 +353,19 @@ export function applyManagementTick<
     const stream = streams.get(manager);
     if (!stream) continue;
     // Not gated by generation: a returning creator's new stream must be able to log its own presence.
-    for (const entry of [
-      ...(stream.retired ?? []).flatMap((old) => old.entries),
-      ...stream.entries,
-    ]) {
-      if (entry[1] !== tick || !isManagementKind(entry[2])) continue;
-      // Re-evaluated per entry: the creator's own return revokes the acting creator mid-tick.
-      if (!permitted(seats(), creatorId, manager, entry)) continue;
-      applyManagementEntry(
-        room,
-        entry as ManagementEntry<Settings>,
-        hooks,
-        manager,
-      );
-    }
+    for (const source of [...(stream.retired ?? []), stream])
+      for (const entry of source.entries) {
+        if (entry[1] !== tick || !isManagementKind(entry[2])) continue;
+        // Re-evaluated per entry: the creator's own return revokes the acting creator mid-tick.
+        if (!permitted(seats(), creatorId, manager, entry)) continue;
+        applyManagementEntry(
+          room,
+          entry as ManagementEntry<Settings>,
+          hooks,
+          manager,
+          source.generation,
+        );
+      }
   }
 }
 
@@ -373,6 +378,7 @@ export function applyManagementEntry<
   hooks: LifecycleHooks<Room, Settings>,
   /** The member whose stream carried the entry: its own `PRESENCE false` is a step away, not a departure. */
   author?: string,
+  generation?: number,
 ): void {
   const reclaimable = hooks.stage(room) !== "running",
     all = () => [...room.seats.values()],
@@ -479,7 +485,14 @@ export function applyManagementEntry<
         dropAbsent(true);
       } else if (action === "start") {
         if (hooks.stage(room) === "lobby") hooks.start(room, matchId);
-      } else if (hooks.stage(room) === "over") hooks.rematch(room, matchId);
+      } else if (hooks.stage(room) === "over")
+        hooks.rematch(
+          room,
+          matchId,
+          author !== undefined && generation !== undefined
+            ? { author, generation, seq: entry[0] }
+            : undefined,
+        );
       return;
     }
     case BOT: {

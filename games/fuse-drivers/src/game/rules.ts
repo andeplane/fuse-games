@@ -10,44 +10,64 @@ import {
   type LifecycleHooks,
   type ManagedRoom,
   type ManagementEntry,
+  type ManagementOrigin,
   type SeatRecord,
   type Stage,
   type StreamEntries,
 } from "fuse-netcode";
 import { CAPACITY, MAX_ROUNDS, MAX_WATCHERS, validName } from "./basics.js";
-import { botInput, createBotMemory, type BotMemory } from "./sim/bot.js";
 import { BASE_STATS } from "./sim/config.js";
+import {
+  freezeFinishedRace,
+  RETAINED_FINISHES,
+  type FinishedRace,
+} from "./result.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./sim/input.js";
 import { createRace, step, type RaceState } from "./sim/race.js";
-import { parseTrack, type Track } from "./sim/track.js";
-import { TRACK_DATA, TRACK_NAMES } from "./tracks-data.js";
+import type { Track } from "./sim/track.js";
+import {
+  getOffroadCourse,
+  isOffroadCourse,
+  OFFROAD_COURSE_NAMES,
+} from "./offroad/course.js";
+import {
+  buyOffroadUpgrade,
+  campaignVariant,
+  createOffroadDriver,
+  firstCampaignRace,
+  nextCampaignRace,
+  OFFROAD_SHOP,
+  payOffroadDriver,
+  type OffroadDriver,
+  type OffroadPurchase,
+} from "./offroad/campaign.js";
 
 export * from "./basics.js";
 
-/** Every peer parses the same committed maps, so a track is data in the bundle rather than a file read. */
-const TRACKS: Record<string, Track> = Object.fromEntries(
-  TRACK_NAMES.map((name) => [name, parseTrack(TRACK_DATA[name], name)]),
-);
-export const trackNames = (): readonly string[] => TRACK_NAMES;
+export const trackNames = (): readonly string[] => OFFROAD_COURSE_NAMES;
 export const trackFor = (name: string): Track =>
-  TRACKS[name] ?? TRACKS[TRACK_NAMES[0]]!;
+  getOffroadCourse(isOffroadCourse(name) ? name : DEFAULT_SETTINGS.track).track;
 
 /** The game's own entry kinds; 10-16 are the shared management ones. */
 export const CONTROLS = 0;
+export const PURCHASE = 1;
 
 /**
- * A driver's six controls as one bitmask. Thumbs change rarely, so a seat logs an entry only when its
- * controls differ from the ones it last logged, and a few bytes carry a whole change.
+ * Left, right, gas and nitro share one mask. Brake and both item bits retain their replay positions.
+ * Each seat logs a change only when its held controls differ from its previous entry.
  */
 export const LEFT = 1,
   RIGHT = 2,
   BRAKE = 4,
   NITRO = 8,
   ITEM = 16,
-  ITEM_ALT = 32;
-export const CONTROL_BITS = LEFT | RIGHT | BRAKE | NITRO | ITEM | ITEM_ALT;
+  ITEM_ALT = 32,
+  GAS = 64;
+export const CONTROL_BITS =
+  LEFT | RIGHT | BRAKE | NITRO | ITEM | ITEM_ALT | GAS;
 
 export const packControls = (input: TruckInput): number =>
+  (input.gas ? GAS : 0) |
   (input.left ? LEFT : 0) |
   (input.right ? RIGHT : 0) |
   (input.brake ? BRAKE : 0) |
@@ -56,6 +76,7 @@ export const packControls = (input: TruckInput): number =>
   (input.itemAlt ? ITEM_ALT : 0);
 
 export const unpackControls = (bits: number): TruckInput => ({
+  gas: (bits & GAS) !== 0,
   left: (bits & LEFT) !== 0,
   right: (bits & RIGHT) !== 0,
   brake: (bits & BRAKE) !== 0,
@@ -72,12 +93,22 @@ export type ControlsEntry = [
   round: number,
   bits: number,
 ];
+export type PurchaseEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof PURCHASE,
+  matchId: string,
+  round: number,
+  finishTick: number,
+  item: OffroadPurchase,
+  cash: number,
+  credits: number,
+  quantity: number,
+];
 export type FuseDriversEntry =
-  ManagementEntry<FuseDriversSettings> | ControlsEntry;
+  ManagementEntry<FuseDriversSettings> | ControlsEntry | PurchaseEntry;
 
 export type FuseDriversEvent =
-  | { type: "hit"; id: string; by: string }
-  | { type: "kill"; id: string; by: string }
   | { type: "pickup"; id: string }
   | { type: "lap"; id: string; lap: number }
   | { type: "finish"; id: string; place: number };
@@ -87,13 +118,28 @@ export interface FuseDriversSettings {
   track: string;
   /** One screen with phones as controllers. */
   display: boolean;
+  /** Races in a series. Zero keeps the original repeating campaign. */
+  races: number;
 }
+export const MAX_SERIES_RACES = 8;
+export const isSeriesLength = (value: unknown): value is number =>
+  uint32(value) && value <= MAX_SERIES_RACES;
 export const DEFAULT_SETTINGS: FuseDriversSettings = {
-  track: TRACK_NAMES[0],
+  track: "offroad-4", // Sidewinder opens the DOS campaign.
   display: false,
+  races: 3,
 };
 
 export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
+  recentFinishes: FinishedRace[];
+  /** -1 in the lobby. Each subsequent race follows the original schedule from the selected opener. */
+  campaignIndex: number;
+  /** Ordinal within the active series; independent of DOS course order and the receipt's round. */
+  seriesRace: number;
+  /** Locked at the first start; later setting changes configure the next series. Zero in the lobby. */
+  seriesLength: number;
+  /** Immutable snapshots keyed by the grid's member IDs. A reclaimed slot cannot inherit its wallet. */
+  garage: Record<string, OffroadDriver>;
   /** Roster at the finish, retained even when a driver leaves or renames afterwards. */
   finishSeats: FinishSeat[];
   /** Log tick that decided the result; later lobby management cannot delay its confirmation. */
@@ -109,8 +155,6 @@ export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
   grid: string[];
   /** The controls each seat last logged, so a seat that logs nothing keeps driving as it was. */
   controls: Record<string, number>;
-  /** Bot memory rides in the room so a rollback reproduces the same driving. */
-  bots: Record<string, BotMemory>;
 }
 
 export interface FinishSeat {
@@ -141,14 +185,23 @@ export function seatName(raw: string): string | undefined {
 export function parseSettings(raw: unknown): FuseDriversSettings | undefined {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return;
   const keys = Object.keys(raw);
-  const { track, display } = raw as Partial<FuseDriversSettings>;
-  if (keys.length !== 2 || !keys.includes("track") || !keys.includes("display"))
+  const { track, display, races } = raw as Partial<FuseDriversSettings>;
+  if (
+    !keys.includes("track") ||
+    !keys.includes("display") ||
+    keys.some((key) => key !== "track" && key !== "display" && key !== "races")
+  )
     return;
   if (typeof display !== "boolean") return;
-  if (typeof track !== "string" || !TRACK_NAMES.includes(track as never))
-    return;
-  return { track, display };
+  if (typeof track !== "string" || !isOffroadCourse(track)) return;
+  const length = keys.includes("races") ? races : DEFAULT_SETTINGS.races;
+  return isSeriesLength(length) ? { track, display, races: length } : undefined;
 }
+
+export const seriesComplete = (room: FuseDriversRoom): boolean =>
+  room.stage === "over" &&
+  room.seriesLength > 0 &&
+  room.seriesRace >= room.seriesLength;
 
 const payloads = {
   name: validName,
@@ -164,21 +217,40 @@ export function isFuseDriversEntry(raw: unknown): raw is FuseDriversEntry {
       raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
     return at < 0 || playerKey((raw as unknown[])[at]);
   }
-  return (
+  if (
     Array.isArray(raw) &&
-    raw.length === 6 &&
     uint32(raw[0]) &&
     raw[0] > 0 &&
     uint32(raw[1]) &&
     raw[1] > 0 &&
-    raw[2] === CONTROLS &&
     validMatchId(raw[3]) &&
     uint32(raw[4]) &&
     raw[4] > 0 &&
-    raw[4] <= MAX_ROUNDS &&
-    uint32(raw[5]) &&
-    (raw[5] & ~CONTROL_BITS) === 0
-  );
+    raw[4] <= MAX_ROUNDS
+  ) {
+    if (raw[2] === CONTROLS)
+      return (
+        raw.length === 6 && uint32(raw[5]) && (raw[5] & ~CONTROL_BITS) === 0
+      );
+    if (raw[2] === PURCHASE) {
+      const item: unknown = raw[6];
+      return (
+        raw.length === 10 &&
+        uint32(raw[5]) &&
+        raw[5] > 0 &&
+        raw[5] < raw[1] &&
+        typeof item === "string" &&
+        Object.hasOwn(OFFROAD_SHOP, item) &&
+        uint32(raw[7]) &&
+        raw[7] <= 9999 &&
+        uint32(raw[8]) &&
+        raw[8] <= 9 &&
+        uint32(raw[9]) &&
+        raw[9] <= OFFROAD_SHOP[item as OffroadPurchase].cap
+      );
+    }
+  }
+  return false;
 }
 
 /** Seats in an order derived from the room alone, never from map insertion or packet arrival. */
@@ -199,35 +271,68 @@ export function createRoom(
     matchId,
     round: 1,
     stage: "lobby",
+    recentFinishes: [],
+    campaignIndex: -1,
+    seriesRace: 0,
+    seriesLength: 0,
+    garage: {},
     seats: new Map(),
-    settings: { ...settings },
+    settings: { ...DEFAULT_SETTINGS, ...settings },
     grid: [],
     controls: {},
-    bots: {},
     finishSeats: [],
     finishTick: 0,
   };
 }
 
 /** Seeds a race from the match id, so every peer lines up the same grid on the same map. */
-function startRace(room: FuseDriversRoom, matchId: string): void {
+function startRace(
+  room: FuseDriversRoom,
+  matchId: string,
+  continuing: boolean,
+): void {
   room.matchId = matchId;
+  room.seriesRace = continuing ? room.seriesRace + 1 : 1;
+  if (!continuing) room.seriesLength = room.settings.races;
   const grid = players(room);
+  const previousOrder =
+    continuing && room.race
+      ? room.race.placements
+          .map((slot) => room.grid[slot])
+          .filter((id) => grid.some((seat) => seat.id === id))
+      : [];
+  const ranked = [
+    ...previousOrder,
+    ...grid.map((seat) => seat.id).filter((id) => !previousOrder.includes(id)),
+  ];
+  const gridOrder = continuing
+    ? grid.map((seat) => ranked.indexOf(seat.id))
+    : undefined;
+  room.campaignIndex = continuing
+    ? nextCampaignRace(room.campaignIndex)
+    : firstCampaignRace(OFFROAD_COURSE_NAMES.indexOf(room.settings.track));
+  room.garage = Object.fromEntries(
+    grid.map((seat) => [
+      seat.id,
+      (continuing ? room.garage[seat.id] : undefined) ?? createOffroadDriver(),
+    ]),
+  );
   room.grid = grid.map((seat) => seat.id);
   room.controls = {};
-  room.bots = {};
   room.finishSeats = [];
   room.finishTick = 0;
   let seed = 0x811c9dc5;
   for (let i = 0; i < matchId.length; i++)
     seed = Math.imul(seed ^ matchId.charCodeAt(i), 0x01000193) >>> 0;
   room.race = createRace(
-    trackFor(room.settings.track),
+    trackFor(OFFROAD_COURSE_NAMES[campaignVariant(room.campaignIndex)]!),
     seed,
     grid.map(() => BASE_STATS),
+    grid.map((seat) => seat.bot),
+    room.campaignIndex,
+    grid.map((seat) => (seat.bot ? undefined : room.garage[seat.id])),
+    gridOrder,
   );
-  for (const [slot, seat] of grid.entries())
-    if (seat.bot) room.bots[seat.id] = createBotMemory(seed, slot);
 }
 
 export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
@@ -237,49 +342,93 @@ export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
   botAvatar: "robot",
   start(room, matchId) {
     room.round = 1;
-    startRace(room, matchId);
+    startRace(room, matchId, false);
     room.stage = "running";
   },
   rematch(room, matchId) {
+    if (seriesComplete(room)) return;
+    // Fuse keeps the room's racers together for the next heat. The DOS continue
+    // countdown could retire a human here; credits in this room fund shop purchases.
     room.round = 1;
-    startRace(room, matchId);
+    startRace(room, matchId, true);
     room.stage = "running";
   },
   lobby(room, matchId) {
     room.matchId = matchId;
     room.round = 1;
     room.stage = "lobby";
+    room.campaignIndex = -1;
+    room.seriesRace = 0;
+    room.seriesLength = 0;
+    room.garage = {};
     delete room.race;
     room.grid = [];
     room.controls = {};
-    room.bots = {};
     room.finishSeats = [];
     room.finishTick = 0;
   },
 };
 
 /** A seat's entries for this tick, read from the stream generation that seat follows. */
-function controlEntries(
+function seatEntries(
   seat: SeatRecord,
   streams: ReadonlyMap<string, StreamEntries<FuseDriversEntry>>,
   tick: number,
-): ControlsEntry[] {
+): FuseDriversEntry[] {
   const stream = streams.get(seat.id);
   const source =
     stream?.generation === seat.generation
       ? stream
       : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? []).filter(
-    (entry): entry is ControlsEntry =>
-      entry[1] === tick && entry[2] === CONTROLS,
-  );
+  return (source?.entries ?? []).filter((entry) => entry[1] === tick);
+}
+
+function shop(
+  room: FuseDriversRoom,
+  streams: ReadonlyMap<string, StreamEntries<FuseDriversEntry>>,
+  tick: number,
+  closing?: ManagementOrigin,
+): void {
+  if (seriesComplete(room)) return;
+  for (const seat of players(room)) {
+    if (!seat.connected || seat.bot || !room.garage[seat.id]) continue;
+    const purchases = seatEntries(seat, streams, tick)
+      .filter((entry): entry is PurchaseEntry => entry[2] === PURCHASE)
+      .sort((a, b) => a[0] - b[0]);
+    for (const [
+      seq,
+      ,
+      ,
+      match,
+      round,
+      finish,
+      item,
+      cash,
+      credits,
+      quantity,
+    ] of purchases) {
+      const driver = room.garage[seat.id]!;
+      if (
+        (closing?.author === seat.id &&
+          (seat.generation !== closing.generation || seq >= closing.seq)) ||
+        match !== room.matchId ||
+        round !== room.round ||
+        finish !== room.finishTick ||
+        driver.cash !== cash ||
+        driver.credits !== credits ||
+        driver[item] !== quantity
+      )
+        continue;
+      const next = buyOffroadUpgrade(driver, item);
+      if (next) room.garage = { ...room.garage, [seat.id]: next };
+    }
+  }
 }
 
 /**
  * One log tick: management first, then each seat's control changes, then the race steps.
  *
- * The log runs at 20 Hz and the race at 30 Hz, so a tick runs two simulation steps when the log tick is
- * even and one when it is odd. `steps` in `game.ts` reports the same number before the tick runs.
+ * The 20 Hz log runs seven simulation steps per six ticks. The renderer uses the same schedule.
  */
 export function foldTick(
   room: FuseDriversRoom,
@@ -291,7 +440,19 @@ export function foldTick(
   const generations = new Map(
     [...room.seats.values()].map((seat) => [seat.id, seat.generation]),
   );
-  applyManagementTick(room, tick, creatorId, streams, lifecycle);
+  const hooks =
+    room.stage === "over"
+      ? {
+          ...lifecycle,
+          rematch(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
+            // The host's own earlier buys precede NEXT. Other active drivers have
+            // until this closing tick; all still have to quote the closing finish.
+            shop(r, streams, tick, origin);
+            lifecycle.rematch(r, id);
+          },
+        }
+      : lifecycle;
+  applyManagementTick(room, tick, creatorId, streams, hooks);
 
   // Held input belongs to the page generation that logged it. Admission of a new
   // page must release the previous page even when no disconnect was received.
@@ -302,12 +463,17 @@ export function foldTick(
   }
 
   const race = room.race;
+  if (room.stage === "over") shop(room, streams, tick);
   if (race && room.stage === "running") {
     const grid = players(room);
     for (const seat of grid) {
       if (seat.bot) continue;
-      for (const entry of controlEntries(seat, streams, tick))
-        if (entry[3] === room.matchId && entry[4] === room.round)
+      for (const entry of seatEntries(seat, streams, tick))
+        if (
+          entry[2] === CONTROLS &&
+          entry[3] === room.matchId &&
+          entry[4] === room.round
+        )
           room.controls[seat.id] = entry[5];
       if (!seat.connected) room.controls[seat.id] = 0;
     }
@@ -316,26 +482,11 @@ export function foldTick(
       if (!seat || !seat.bot) return unpackControls(room.controls[id] ?? 0);
       return NEUTRAL_INPUT;
     });
+    const botSlots = room.grid.map((id) => room.seats.get(id)?.bot === true);
+    const track = trackFor(race.trackName);
     let next = race;
     for (let s = 0; s < stepsForTick(tick); s++) {
-      // Bots decide inside the fold from room state alone, so a rollback reproduces their driving.
-      const withBots = inputs.map((input, slot) => {
-        const id = room.grid[slot];
-        const seat = id === undefined ? undefined : room.seats.get(id);
-        if (!seat?.bot || id === undefined) return input;
-        const memory = room.bots[id];
-        if (!memory) return input;
-        const [botControls, nextMemory] = botInput(
-          next,
-          slot,
-          memory,
-          trackFor(next.trackName),
-          "normal",
-        );
-        room.bots[id] = nextMemory;
-        return botControls;
-      });
-      const result = step(next, withBots, trackFor(next.trackName));
+      const result = step(next, inputs, track, botSlots);
       next = result.state;
       for (const event of result.events) {
         const id = "slot" in event ? (room.grid[event.slot] ?? "") : "";
@@ -344,14 +495,23 @@ export function foldTick(
         else if (event.type === "finish")
           events.push({ type: "finish", id, place: event.place });
         else if (event.type === "pickup") events.push({ type: "pickup", id });
-        else if (event.type === "kill")
-          events.push({ type: "kill", id, by: room.grid[event.by] ?? "" });
-        else if (event.type === "hit" && !event.absorbed)
-          events.push({ type: "hit", id, by: room.grid[event.by] ?? "" });
       }
     }
     room.race = next;
     if (next.phase === "finished") {
+      const garage = { ...room.garage };
+      for (const [place, slot] of next.placements.entries()) {
+        const id = room.grid[slot]!,
+          truck = next.trucks[slot]!;
+        if (room.seats.get(id)?.bot === false)
+          garage[id] = payOffroadDriver(
+            garage[id]!,
+            place + 1,
+            truck.cash,
+            truck.motion.nitros,
+          );
+      }
+      room.garage = garage;
       room.finishTick = tick;
       room.finishSeats = room.grid.flatMap((id) => {
         const seat = room.seats.get(id);
@@ -367,6 +527,12 @@ export function foldTick(
           : [];
       });
       room.stage = "over";
+      const finish = freezeFinishedRace(room);
+      if (finish)
+        room.recentFinishes = [
+          ...room.recentFinishes.slice(1 - RETAINED_FINISHES),
+          finish,
+        ];
     }
   }
 
@@ -374,5 +540,5 @@ export function foldTick(
   return events;
 }
 
-/** Two steps on an even log tick and one on an odd: three steps per 100 ms is exactly 30 Hz. */
-export const stepsForTick = (tick: number): number => (tick % 2 === 0 ? 2 : 1);
+/** The VGA game advances once per three retraces, approximately 70/3 updates per second. */
+export const stepsForTick = (tick: number): number => (tick % 6 === 0 ? 2 : 1);

@@ -19,30 +19,9 @@ export const SPRITE_CELL = 128;
 
 /** Frame indices in the split strips. */
 export const FRAMES = {
-  projectiles: {
-    missile: 0,
-    mineArmed: 2,
-    mineUnarmed: 3,
-    drone: 4,
-    shield: 5,
-    oil: 6,
-    emp: 7,
-  },
-  icons: {
-    missile: 0,
-    mine: 1,
-    oil: 2,
-    nitro: 3,
-    shield: 4,
-    drone: 5,
-    emp: 6,
-    empty: 7,
-  },
-  explosionFrames: [0, 1, 2, 3, 4],
   /** Brown dirt puffs in the dust strip. */
   dust: [1, 2, 3, 4],
-  /** bars strip: lit/unlit pairs; the armor pair for a truck colour sits at 2 * slot. */
-  bars: { nitro: 10, nitroEmpty: 11 },
+  bars: { nitro: 10 },
   countdown: { go: 3, finish: 4 },
 } as const;
 
@@ -56,28 +35,7 @@ export const HUD_CELL = {
 } as const;
 
 /** Nine-slice panels, one per truck colour plus the neutral frames. */
-export const PANELS = [
-  "grey",
-  "cyan",
-  "pink",
-  "lime",
-  "orange",
-  "violet",
-  "gold",
-  "bar",
-] as const;
-
-/** Frames in the decor strip. */
-export const DECOR = {
-  drum: 0,
-  tyres: 1,
-  pipe: 2,
-  elbow: 3,
-  tank: 4,
-  sign: 7,
-  light: 8,
-  crowd: [12, 13, 14],
-} as const;
+export const PANELS = ["grey", ...TRUCK_COLORS] as const;
 
 /** Made-up sponsors for the trackside boards: text, panel colour, text colour. */
 export const SPONSORS = [
@@ -109,22 +67,13 @@ export function queueArenaAssets(
   base: string,
 ): void {
   const url = (name: string): string => `${base}${name}.png`;
-  for (const name of ["grandstand", "fence", "wreck"])
-    load.image(name, url(name));
+  for (const name of ["grandstand", "fence"]) load.image(name, url(name));
   for (const color of TRUCK_COLORS)
     load.image(`truck-${color}`, url(`truck-${color}`));
-  for (const name of [
-    "itembox",
-    "projectiles",
-    "explosion",
-    "icons",
-    "dust",
-    "decor",
-  ])
-    load.spritesheet(name, url(name), {
-      frameWidth: SPRITE_CELL,
-      frameHeight: SPRITE_CELL,
-    });
+  load.spritesheet("dust", url("dust"), {
+    frameWidth: SPRITE_CELL,
+    frameHeight: SPRITE_CELL,
+  });
   for (const [name, size] of Object.entries(HUD_CELL))
     load.spritesheet(name, url(name), { frameWidth: size, frameHeight: size });
   for (const panel of PANELS)

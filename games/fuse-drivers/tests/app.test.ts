@@ -1,4 +1,5 @@
 import test from "node:test";
+import { LEAVE } from "fuse-netcode";
 import assert from "node:assert/strict";
 import { fuseDriversView } from "../src/game/index.js";
 import { presentTable, type Viewer } from "../src/app/presenter.js";
@@ -78,14 +79,14 @@ test("the screen reads the view, so a corrected race shows the correction", () =
   // A rollback re-folds to a different outcome; no event is emitted again, only the view changes.
   room.race = {
     ...race,
-    trucks: race.trucks.map((truck) => ({ ...truck, kills: 3 })),
+    trucks: race.trucks.map((truck) => ({ ...truck, nitros: 0 })),
   };
   const after = defined(
     presentTable(fuseDriversView(room), viewer()).race,
     "race",
   ).drivers[0];
   assert.notDeepEqual(after, before);
-  assert.equal(defined(after).kills, 3);
+  assert.equal(defined(after).nitros, 0);
 });
 
 test("a finished race shows the winner and offers the host another", () => {
@@ -96,31 +97,31 @@ test("a finished race shows the winner and offers the host another", () => {
     phase: "finished",
     trucks: race.trucks.map((truck) => ({
       ...truck,
-      finishedTick: race.countdownEndTick + 600,
+      finishedTick: race.countdownEndTick + 700,
     })),
   };
   fold(room);
   const model = presentTable(fuseDriversView(room), viewer());
   assert.equal(model.screen, "results");
   const results = defined(model.results, "results");
-  // Both crossed the line on the same tick: they share first place and nobody is named the winner.
-  assert.equal(results.title, "DEAD HEAT");
-  assert.equal(results.winnerTruck, -1);
+  // The DOS classification resolves equal finish ticks in a definite order.
+  assert.equal(results.title, "YOU WIN");
+  assert.equal(results.winnerTruck, 0);
   assert.deepEqual(
     results.rows.map((row) => [row.name, row.you, row.place, row.truck]),
     [
       ["Ada", true, 1, 0],
-      ["Bo", false, 1, 1],
+      ["Bo", false, 2, 1],
     ],
   );
   assert.ok(results.host);
-  // One truck a second behind: places split, and the winner is named with a race time.
+  // Seventy native updates span three seconds at the DOS VGA cadence.
   const finished = defined(room.race, "race");
   room.race = {
     ...finished,
     trucks: finished.trucks.map((truck) =>
       truck.slot === 1
-        ? { ...truck, finishedTick: truck.finishedTick + 30, kills: 2 }
+        ? { ...truck, finishedTick: truck.finishedTick + 70, nitrosUsed: 2 }
         : truck,
     ),
   };
@@ -131,7 +132,7 @@ test("a finished race shows the winner and offers the host another", () => {
   assert.equal(split.title, "Ada WINS");
   assert.equal(split.winnerTruck, 0);
   assert.deepEqual(
-    split.rows.map((row) => [row.place, row.kills, row.you]),
+    split.rows.map((row) => [row.place, row.nitros, row.you]),
     [
       [1, 0, false],
       [2, 2, true],
@@ -139,13 +140,39 @@ test("a finished race shows the winner and offers the host another", () => {
   );
   assert.equal(
     defined(split.rows[1], "row").time - defined(split.rows[0], "row").time,
-    1,
+    3,
   );
   const guest = presentTable(fuseDriversView(room), viewer({ host: false }));
   assert.equal(
     defined(guest.results, "results").waiting,
     "Waiting for the host",
   );
+});
+
+test("the winning guest stays first in the final standings after leaving the shop", () => {
+  const room = started();
+  const race = defined(room.race, "race");
+  room.race = {
+    ...race,
+    phase: "finished",
+    placements: [1, 0],
+    trucks: race.trucks.map((t) =>
+      t.slot === 1
+        ? { ...t, finishedTick: race.countdownEndTick + 700, laps: 4 }
+        : t,
+    ),
+  };
+  fold(room);
+  const before = defined(
+    presentTable(fuseDriversView(room), viewer()).results,
+    "results",
+  );
+  assert.equal(before.title, "Bo WINS");
+  fold(room, { a: [[LEAVE, "b"]] });
+  const view = fuseDriversView(room);
+  assert.ok(!view.drivers.some((driver) => driver.id === "b"));
+  const after = defined(presentTable(view, viewer()).results, "results");
+  assert.deepEqual(after, before);
 });
 
 test("a shared screen shows the race and is never asked for a name", () => {

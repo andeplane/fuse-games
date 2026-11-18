@@ -14,14 +14,15 @@ const row = (fields: Partial<ResultRow>): ResultRow => ({
   place: 1,
   time: 0,
   laps: 0,
-  kills: 0,
-  wrecks: 0,
   lapsLed: 0,
   nitros: 0,
   ...fields,
 });
 const result = (fields: Partial<ResultModel> = {}): ResultModel => ({
   title: "Bo WINS",
+  seriesRace: 1,
+  seriesLength: 3,
+  seriesComplete: false,
   track: "canyon",
   laps: 4,
   rows: [
@@ -31,7 +32,6 @@ const result = (fields: Partial<ResultModel> = {}): ResultModel => ({
       name: "Bo",
       time: 83.43,
       laps: 4,
-      kills: 2,
       lapsLed: 3,
       nitros: 2,
     }),
@@ -40,8 +40,6 @@ const result = (fields: Partial<ResultModel> = {}): ResultModel => ({
       place: 2,
       time: 90,
       laps: 4,
-      kills: 2,
-      wrecks: 1,
       lapsLed: 1,
     }),
     row({
@@ -51,7 +49,6 @@ const result = (fields: Partial<ResultModel> = {}): ResultModel => ({
       bot: true,
       place: 3,
       laps: 2,
-      wrecks: 3,
       nitros: 2,
     }),
   ],
@@ -66,15 +63,21 @@ const parts = {
     ({ textContent: `+ ADD FRIEND ${id}` }) as HTMLElement,
 };
 
-test("a race's result: the winner in their truck's colour, each driver's time, laps, kills and wrecks, and a friend button per other human", () => {
+test("the results show finish times, laps led, nitro spent and the other human drivers", () => {
   const report = resultReport(result(), parts);
   assert.equal(report.game, "FUSE DRIVERS");
+  assert.equal(report.kicker, "RACE 1 OF 3 COMPLETE");
   assert.equal(report.context, "canyon · 4 laps · 3 drivers");
   assert.equal(report.headline, "Bo WINS");
   assert.equal(report.summary, "1:23.4 over 4 laps");
   assert.equal(report.accent, COLORS[1]);
   const standings = defined(report.standings, "standings");
-  assert.deepEqual(standings.columns, ["TIME", "LAPS", "KILLS", "WRECKS"]);
+  assert.deepEqual(standings.columns, [
+    "TIME",
+    "LAPS",
+    "LAPS LED",
+    "NITROS USED",
+  ]);
   assert.deepEqual(
     standings.rows.map((entry) => [
       entry.placement,
@@ -91,10 +94,10 @@ test("a race's result: the winner in their truck's colour, each driver's time, l
         false,
         undefined,
         "+ ADD FRIEND b",
-        ["1:23.4", "4/4", "2", "0"],
+        ["1:23.4", "4/4", "3", "2"],
       ],
-      [2, "Ada", true, undefined, undefined, ["1:30.0", "4/4", "2", "1"]],
-      [3, "Diesel", false, "AI", undefined, ["DNF", "2/4", "0", "3"]],
+      [2, "Ada", true, undefined, undefined, ["1:30.0", "4/4", "1", "0"]],
+      [3, "Diesel", false, "AI", undefined, ["—", "2/4", "0", "2"]],
     ],
   );
   assert.deepEqual(
@@ -104,10 +107,27 @@ test("a race's result: the winner in their truck's colour, each driver's time, l
       card.detail,
     ]),
     [
-      ["Road warrior", ["Bo", "Ada"], "Wrecked 2 trucks."],
       ["Front runner", ["Bo"], "Led 3 laps."],
       ["Nitro junkie", ["Bo", "Diesel"], "Fired 2 nitros."],
     ],
+  );
+});
+
+test("the final heat closes the shop and sends the host back to the lobby", () => {
+  const finale = result({ seriesRace: 3, seriesComplete: true });
+  const report = resultReport(finale, {
+    ...parts,
+    shop: {} as HTMLElement,
+  });
+  assert.equal(report.kicker, "SERIES COMPLETE · 3 OF 3");
+  assert.equal(report.sections, undefined);
+  assert.deepEqual(resultBar(finale, true).actions, [
+    { id: "lobby", label: "Back to lobby", primary: true },
+  ]);
+  assert.deepEqual(resultBar({ ...finale, host: false }, true).actions, []);
+  assert.equal(
+    resultReport(result({ seriesRace: 12, seriesLength: 0 }), parts).kicker,
+    "RACE 12 COMPLETE",
   );
 });
 
@@ -130,7 +150,7 @@ test("the bar: the host races again or returns to the lobby, and a guest sees wh
   assert.deepEqual(resultBar(result()), {
     actions: [
       { id: "lobby", label: "Back to lobby" },
-      { id: "rematch", label: "RACE AGAIN", primary: true },
+      { id: "rematch", label: "NEXT RACE", primary: true },
     ],
   });
   assert.deepEqual(

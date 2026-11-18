@@ -54,6 +54,9 @@ const GAMES: Record<string, Game> = {
     // A truck does not turn before the green light, and is soon against a wall with nobody driving it.
     fresh: true,
     async ready(page) {
+      await page
+        .getByRole("button", { name: "START RACE", exact: true })
+        .click();
       await phase(page, "race", "racing");
       await page.waitForTimeout(150);
     },

@@ -10,14 +10,12 @@ import {
   LEFT,
   fuseDriversGame,
   fuseDriversView,
-  trackFor,
   type FuseDriversRoom,
 } from "../src/game/index.js";
 import {
-  botInput,
-  createBotMemory,
-  type BotMemory,
-} from "../src/game/sim/bot.js";
+  driveOffroadCpu,
+  type OffroadCpuState,
+} from "../src/game/offroad/cpu.js";
 import type { Truck } from "../src/game/sim/truck.js";
 import { defined } from "./fixtures/defined.js";
 import { SETTINGS } from "./fixtures/fuseDrivers.js";
@@ -39,7 +37,7 @@ function seeded(seed: number): () => number {
 }
 
 const NAMES: Record<string, string> = { a: "Ada", b: "Bo", c: "Cy", d: "Dee" };
-/** The countdown is 90 simulation steps, which is three seconds of mesh clock and 60 log ticks. */
+/** Let the room start and the trucks clear the countdown before impairing the link. */
 const COUNTDOWN_MS = 3200;
 /** How often a driver looks at its screen and moves its thumbs: every log tick, as a phone does. */
 const HAND_MS = 50;
@@ -65,7 +63,7 @@ interface Table {
 function table(): Table {
   const mesh = new FuseDriversMesh("a", SETTINGS);
   const runtimes = new Map<string, TestFuseDriversRuntime>();
-  const memories = new Map<string, BotMemory>();
+  const memories = new Map<string, { state: OffroadCpuState; seed: number }>();
   const join = (id: string): TestFuseDriversRuntime => {
     const runtime = mesh.join(id);
     assert.equal(
@@ -89,16 +87,24 @@ function table(): Table {
       if (!race || state.stage !== "running") continue;
       const slot = state.grid.indexOf(id);
       if (slot < 0) continue;
-      const memory = memories.get(id) ?? createBotMemory(0x5eed, slot);
-      const [input, next] = botInput(
-        race,
-        slot,
-        memory,
-        trackFor(state.settings.track),
-        "normal",
+      const truck = defined(race.trucks[slot], "local truck");
+      const memory = memories.get(id);
+      const next = driveOffroadCpu(
+        race.trackName,
+        memory?.state,
+        { ...truck.motion, region: truck.checkpoint },
+        memory?.seed ?? 0x5eed + slot,
       );
       memories.set(id, next);
-      if (runtime.steer(input)) changes++;
+      if (
+        runtime.steer({
+          gas: next.input.gas,
+          left: next.input.steer < 0,
+          right: next.input.steer > 0,
+          nitro: next.input.nitro,
+        })
+      )
+        changes++;
     }
     return changes;
   };
@@ -152,10 +158,6 @@ function racing(): Table {
   return room;
 }
 
-/** The race as bytes, which is what "the same race" has to mean across peers. */
-const raceBytes = (room: FuseDriversRoom): string =>
-  JSON.stringify(defined(room.race, "race"));
-
 const truckOf = (room: FuseDriversRoom, id: string): Truck =>
   defined(defined(room.race, "race").trucks[room.grid.indexOf(id)], "truck");
 
@@ -184,7 +186,11 @@ function assertOneRace(
       fuseDriversGame.hash(first),
       `${what}: hash`,
     );
-    assert.equal(raceBytes(room), raceBytes(first), `${what}: race bytes`);
+    assert.deepEqual(
+      room.race,
+      first.race,
+      `${what}: every authoritative truck and race field`,
+    );
     const metrics = peer.metrics();
     assert.equal(metrics.mismatches, 0, `${what}: no hash mismatch was seen`);
     assert.deepEqual(metrics.refused, [], `${what}: nobody was refused`);
@@ -194,15 +200,17 @@ function assertOneRace(
 
 /** Trucks that never left the grid would prove nothing: the field has to have driven a real stretch of track. */
 function assertDroveOn(room: FuseDriversRoom, what: string): void {
-  const made = room.grid.map((id) => truckOf(room, id).progress);
-  for (const [slot, id] of room.grid.entries())
+  const made = room.grid.map((id) => truckOf(room, id));
+  for (const [slot, id] of room.grid.entries()) {
+    const truck = defined(made[slot]);
     assert.ok(
-      defined(made[slot], "progress") > 0.5,
-      `${what}: ${id} pulled away from the starting grid`,
+      truck.laps > 0 || truck.checkpoint > 1,
+      `${what}: ${id} reached the first native checkpoint`,
     );
+  }
   assert.ok(
-    Math.max(...made) > 2,
-    `${what}: the race is checkpoints down the track (${made.map((one) => one.toFixed(1)).join(", ")})`,
+    made.some((truck) => truck.laps > 0 || truck.checkpoint > 3),
+    `${what}: the field has crossed multiple native checkpoints`,
   );
 }
 
@@ -379,14 +387,13 @@ test("a driver whose page goes away stops steering, and the peers that stay agre
     assert.equal(truckOf(state, "b").turnDir, 0, "and came out of the turn");
   }
 
-  const abandoned = truckOf(room.room("a"), "b");
   room.mesh.run(1000);
-  const rolling = truckOf(room.room("a"), "b");
-  assert.notEqual(rolling.x, abandoned.x, "the truck is still rolling");
+  const coasting = truckOf(room.room("a"), "b");
   assert.equal(
-    rolling.heading,
-    abandoned.heading,
-    "an absent driver is not left holding a turn",
+    coasting.motion.throttle,
+    0,
+    "the released pedal has returned to idle",
   );
+  assert.equal(coasting.turnDir, 0, "the absent driver stays off the wheel");
   assertOneRace(staying, "after a driver left");
 });

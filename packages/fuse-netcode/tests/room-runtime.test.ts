@@ -98,6 +98,8 @@ function assertConverged(runtimes: CounterRuntime[]): void {
 test("a second game gets rooms, seats, host succession and rematch from the package", () => {
   const mesh = new FakeMesh("host", { target: 12 });
   const [host, guest] = seated(mesh, ["host", "guest"]);
+  assert.equal(host!.managing, true);
+  assert.equal(guest!.managing, false);
   assert.deepEqual(
     [...room(host!).seats.values()].map((seat) => [seat.id, seat.slot]),
     [
@@ -142,6 +144,7 @@ test("a second game gets rooms, seats, host succession and rematch from the pack
   mesh.leave("host");
   mesh.run(7000);
   assert.equal(room(guest!).seats.get("host")?.connected, false);
+  assert.equal(guest!.managing, true);
   assert.equal(guest!.command({ type: "action", action: "lobby" }), true);
   mesh.run(300);
   assert.equal(room(guest!).stage, "lobby");
@@ -151,6 +154,19 @@ test("a second game gets rooms, seats, host succession and rematch from the pack
     false,
     "the guest is the acting creator, not the creator",
   );
+
+  const returning = mesh.join("host");
+  mesh.run(3000);
+  returning.command({ type: "join", name: "HOST" });
+  mesh.run(3000);
+  assert.equal(room(guest!).seats.get("host")?.connected, true);
+  assert.equal(returning.managing, true);
+  assert.equal(guest!.managing, false);
+  assert.equal(guest!.command({ type: "action", action: "start" }), false);
+  assert.equal(returning.command({ type: "action", action: "start" }), true);
+  mesh.run(300);
+  assert.equal(room(guest!).stage, "running");
+  assertConverged([returning, guest!]);
 });
 
 test("dropped, duplicated and reordered fast packets converge on one state", () => {
