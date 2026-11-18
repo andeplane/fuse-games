@@ -77,6 +77,20 @@ const playtest = installBrowserPlaytest({
 });
 const header = document.createElement("header");
 document.body.append(header);
+const start = document.createElement("button");
+start.textContent = "Start match";
+const arena = document.createElement("main");
+arena.tabIndex = -1;
+arena.hidden = true;
+start.onclick = () => {
+  start.hidden = true;
+  arena.hidden = false;
+  arena.focus();
+};
+arena.onkeydown = (event) => {
+  if (event.code === "Space") arena.textContent = "Jump";
+};
+document.body.append(start, arena);
 const offset = document.createElement("input");
 offset.type = "range";
 offset.setAttribute("aria-label", "Input offset");
@@ -94,6 +108,9 @@ createTopBar({
   music: false,
   radioControls: radio,
   playerOptions: () => localOptions,
+  onOpenChange: (open) => {
+    if (!open && !arena.hidden) arena.focus({ preventScroll: true });
+  },
 });
 function renderCounts() {
   document.body.dataset.starts = String(counts.starts);

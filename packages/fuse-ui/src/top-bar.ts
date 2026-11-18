@@ -23,7 +23,7 @@ export interface TopBarOptions {
   music?: readonly Song[] | false;
   /** The browser media boundary; tests and embedded hosts can supply their own player surface. */
   createMusicMedia?: () => MusicMedia;
-  /** Release held gameplay input before the modal takes keyboard focus. */
+  /** Release held inputs on open. On close a running game can focus its play surface. */
   onOpenChange?: (open: boolean) => void;
 }
 export interface TopBarSound {
@@ -390,15 +390,17 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   menu.dialog.addEventListener("close", () => {
     gameMenu();
     renderSound();
-    onOpenChange?.(false);
     toggle.setAttribute("aria-expanded", "false");
     for (const trigger of menu.body.querySelectorAll<HTMLElement>(
       '.fui-game-menu-trigger[aria-expanded="true"]',
     ))
       trigger.click();
-    // Keep focus where the game put it when it resumed; otherwise return it to the control that opened the dialog.
+    // Native close normally restores the opener. Preserve focus moved by a game action or another
+    // dialog, and let a running game choose its keyboard input surface after the fallback.
     const active = doc.activeElement;
-    if (!active || active === doc.body || root.contains(active)) toggle.focus();
+    if (!active || active === doc.body || menu.dialog.contains(active))
+      toggle.focus();
+    onOpenChange?.(false);
   });
   account.onclick = () => {
     source?.click();
