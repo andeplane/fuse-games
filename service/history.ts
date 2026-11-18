@@ -1,6 +1,7 @@
 import { diceRegistration } from "dice/platform";
 import { lieroRegistration } from "fusero/platform";
 import { fuseDriversRegistration } from "fuse-drivers/platform";
+import { fuserodRegistration } from "fuserod/platform";
 import { birdsRegistration } from "fuse-birds-game/platform";
 import { hookRegistration } from "hook-havok/platform";
 import { axeRegistration } from "fuse-axe/platform";
@@ -50,6 +51,7 @@ export const GAMES = [
   ballBrosRegistration,
   graveyardRegistration,
   fuseDriversRegistration,
+  fuserodRegistration,
   birdsRegistration,
   frontRegistration,
   fuseballRegistration,

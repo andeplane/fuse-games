@@ -11,6 +11,8 @@ import {
 
 export type Route = "strip" | "canyon" | "aqueduct";
 
+let canyonPanorama: HTMLImageElement | undefined;
+
 const skies = {
   strip: ["#292e55", "#94627a", "#e69376", "#ffd59b"],
   canyon: ["#252c4c", "#81576f", "#e28066", "#ffd395"],
@@ -24,6 +26,24 @@ export function horizon(
   route: Route,
   bend: number,
 ) {
+  if (route === "canyon") {
+    if (!canyonPanorama) {
+      canyonPanorama = new Image();
+      canyonPanorama.src = new URL(
+        "./canyon-sunset.webp",
+        import.meta.url,
+      ).href;
+    }
+    if (canyonPanorama.complete && canyonPanorama.naturalWidth) {
+      const sw = canyonPanorama.naturalWidth;
+      const sh = canyonPanorama.naturalHeight * 0.72;
+      const sample = Math.min(sw * 0.95, (sh * w) / h);
+      const left =
+        (sw - sample) * (0.5 + 0.24 * Math.max(-1, Math.min(1, bend)));
+      g.drawImage(canyonPanorama, left, 0, sample, sh, 0, 0, w, h + 1);
+      return;
+    }
+  }
   const colors = skies[route];
   rect(
     g,
