@@ -182,6 +182,22 @@ try {
     false,
     "landscape menu fits without the old scrolling strip",
   );
+  const header = phone.locator(".online-header");
+  assert.ok(
+    await header.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+    "landscape controller header fits horizontally",
+  );
+  const account = header.locator(".fui-top-bar-account");
+  assert.ok(
+    await account.evaluate(
+      (button) =>
+        button.clientWidth >= 44 &&
+        button.scrollWidth <= button.clientWidth + 1,
+    ),
+    "the controller account shortcut fits its label and touch target",
+  );
   for (const selector of [
     ".online-roster",
     ".online-announce",
