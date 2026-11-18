@@ -3,6 +3,8 @@ import { GOOD_GUY, PRISONER, STILL, VICTIM, hunt } from "./hostile.js";
 
 /** Only public simulation fields used by a Fuse teammate or dogfight opponent. */
 interface Fighter extends Position {
+  role: string;
+  escort?: string | null;
   seat: string | null;
   hp: number;
   dir: number;
@@ -217,6 +219,7 @@ export function botControls(world: BotWorld, seat: string): Intent {
   const enemy = (a: Fighter) =>
     a !== actor &&
     a.hp > 0 &&
+    a.role !== "hostage" &&
     (fight
       ? a.seat !== null
       : a.seat === null && !(a.skill.flags & (GOOD_GUY | PRISONER | VICTIM)));
@@ -226,6 +229,14 @@ export function botControls(world: BotWorld, seat: string): Intent {
     .filter(enemy)
     .sort((a, b) => dist(a, actor) - dist(b, actor));
   const goals: Goal[] = [];
+  for (const captive of world.actors)
+    if (
+      captive.role === "hostage" &&
+      captive.hp > 0 &&
+      !captive.escort &&
+      needed(captive.objectiveIndex)
+    )
+      goals.push({ ...captive, rank: 0, attack: false });
   // Once extraction is clear keep moving, except to fend off an immediate threat.
   for (const e of enemies) {
     const attack =

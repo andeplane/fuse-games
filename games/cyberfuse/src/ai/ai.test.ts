@@ -136,12 +136,14 @@ function sample() {
       {
         x: 24,
         y: 18,
-        seat: "bot:1",
+        seat: "bot:1" as string | null,
+        role: "player",
+        escort: null as string | null,
         hp: 100,
         dir: 2,
         lock: 0,
         weapon: 1,
-        objectiveIndex: null,
+        objectiveIndex: null as number | null,
         skill: { flags: 0 },
       },
     ],
@@ -214,6 +216,32 @@ test("bot picks a reachable key to unlock a mission objective", () => {
   assert.equal(botControls(w, "bot:1").dy, 1);
   w.keyring.push("red");
   assert.equal(botControls(w, "bot:1").dx, 1);
+});
+test("teammates approach a captive without firing and leave escorted captives with the squad", () => {
+  const w = sample();
+  w.keys = [];
+  w.objectives.push({ kind: "rescue", done: 0, required: 1 });
+  const captive = {
+    ...w.actors[0]!,
+    role: "hostage",
+    seat: null,
+    objectiveIndex: 0,
+    x: 40,
+  };
+  w.actors.push(captive);
+  assert.deepEqual(botControls(w, "bot:1"), {
+    dx: 1,
+    dy: 0,
+    fire: false,
+    special: false,
+  });
+  captive.escort = "bot:1";
+  assert.deepEqual(botControls(w, "bot:1"), {
+    dx: 0,
+    dy: 0,
+    fire: false,
+    special: false,
+  });
 });
 test("dogfight sees opponents, respects walls and shoots along eight-way aim", () => {
   const w = sample();
