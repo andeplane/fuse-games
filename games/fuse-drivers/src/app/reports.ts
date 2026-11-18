@@ -34,9 +34,10 @@ export function dueReports(
       !finish.players.some((player) => player.playerId === me)
     )
       continue;
-    const match = resultFor(finish.matchId, finish.players);
     const roundKey = `round:${finish.round}:${finish.matchId}`,
       matchKey = `match:${finish.matchId}`;
+    if (sent.has(roundKey) && sent.has(matchKey)) continue;
+    const match = resultFor(finish.matchId, finish.players);
     if (!sent.has(roundKey))
       due.push({
         key: roundKey,
