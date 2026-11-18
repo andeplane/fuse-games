@@ -4,6 +4,11 @@ export const COUNTDOWN_TICKS = 60;
 export const MAX_RACE_TICKS = 20 * 240;
 export const ROUTES = ["strip", "aqueduct", "canyon"] as const;
 export type Route = (typeof ROUTES)[number];
+export type RaceVariant = "street" | "timed" | "grudge" | "duel";
+export const validVariant = (route: Route, v: unknown): v is RaceVariant =>
+  route === "strip"
+    ? v === "street" || v === "timed" || v === "grudge"
+    : v === "duel";
 export type Grade = 0 | 1 | 2;
 export type Direction = -1 | 0 | 1;
 export interface DriveInput {
@@ -48,6 +53,10 @@ export const integer = (v: unknown, min: number, max: number): v is number =>
 
 export interface FuserodSettings {
   display: boolean;
+  variant: RaceVariant;
+  automatic: boolean;
+  dialInTicks: number;
+  king: boolean;
   route: Route;
   power: Grade;
   tires: Grade;
@@ -56,6 +65,10 @@ export interface FuserodSettings {
 }
 export const DEFAULT_SETTINGS: FuserodSettings = {
   display: false,
+  variant: "street",
+  automatic: false,
+  dialInTicks: 0,
+  king: false,
   route: "strip",
   power: 0,
   tires: 0,
@@ -63,18 +76,45 @@ export const DEFAULT_SETTINGS: FuserodSettings = {
   opponent: 0,
 };
 export function parseSettings(v: unknown): FuserodSettings | undefined {
-  if (!object(v) || Object.keys(v).length !== 6) return;
-  const { display, route, power, tires, gearbox, opponent } = v;
+  if (!object(v) || Object.keys(v).length !== 10) return;
+  const {
+    display,
+    route,
+    power,
+    tires,
+    gearbox,
+    opponent,
+    variant,
+    automatic,
+    dialInTicks,
+    king,
+  } = v;
   if (
     typeof display !== "boolean" ||
+    typeof automatic !== "boolean" ||
     !isRoute(route) ||
+    !validVariant(route, variant) ||
+    !integer(dialInTicks, 0, 1600) ||
+    (variant !== "grudge" && dialInTicks !== 0) ||
+    typeof king !== "boolean" ||
     !isGrade(power) ||
     !isGrade(tires) ||
     !isGrade(gearbox) ||
     !isGrade(opponent)
   )
     return;
-  return { display, route, power, tires, gearbox, opponent };
+  return {
+    display,
+    route,
+    power,
+    tires,
+    gearbox,
+    opponent,
+    variant,
+    automatic,
+    dialInTicks,
+    king,
+  };
 }
 /** Original race lengths in 64ths of a track segment. The Grudge Strip is a quarter mile. */
 export const FINISH: Record<Route, number> = {
@@ -82,6 +122,9 @@ export const FINISH: Record<Route, number> = {
   aqueduct: 21376,
   canyon: 37760,
 };
+export function finishUnits(route: Route, variant: RaceVariant): number {
+  return variant === "street" ? 11520 : FINISH[route];
+}
 export const metres = (units: number) => (units * 402.336) / 5120;
 
 /** Original Fuse bend profiles, sampled in integer road coordinates. Positive is a right-hand bend. */

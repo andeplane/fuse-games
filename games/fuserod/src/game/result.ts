@@ -1,5 +1,5 @@
 import type { MatchResult } from "fuse-platform";
-import { COUNTDOWN_TICKS, FINISH, metres } from "./basics.js";
+import { finishUnits, metres } from "./basics.js";
 import type { FuserodStats } from "./history-stats.js";
 import { rank, type Race } from "./race.js";
 export function raceResult(
@@ -7,8 +7,8 @@ export function raceResult(
   matchId: string,
   finishers: string[],
 ): MatchResult<FuserodStats> {
-  const route = race.settings.route;
-  const raceTicks = race.elapsed - COUNTDOWN_TICKS;
+  const { route, variant } = race.settings;
+  const raceTicks = race.elapsed - race.treeTicks;
   const positions = rank(race);
   return {
     matchId,
@@ -17,7 +17,7 @@ export function raceResult(
     finishers,
     players: race.racers.map((r) => {
       const distance = Math.floor(
-        metres(Math.min(FINISH[route], r.motor.position)),
+        metres(Math.min(finishUnits(route, variant), r.motor.position)),
       );
       return {
         playerId: r.id,
@@ -29,6 +29,7 @@ export function raceResult(
         matchPlacement: positions.indexOf(r) + 1,
         earlyExits: Number(!r.bot && !finishers.includes(r.id)),
         route,
+        variant,
         distance,
         raceTicks,
       };

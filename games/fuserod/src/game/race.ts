@@ -1,9 +1,27 @@
 import type { SeatRecord } from "fuse-netcode";
-import { advanceMotor, createMotor, type MotorState } from "../motor/index.js";
 import {
-  COUNTDOWN_TICKS,
-  FINISH,
+  advanceMotor,
+  createMotor,
+  slowMotor,
+  speedToStep,
+  type MotorState,
+  type MotorTune,
+} from "../motor/index.js";
+import {
+  bracketDelay,
+  policeStep,
+  recoveredRivalControls,
+  type PatrolState,
+} from "../motor/opponent.js";
+import {
+  channelStep,
+  courseContact,
+  courseFeatures,
+  rearEndContact,
+} from "../course/index.js";
+import {
   MAX_RACE_TICKS,
+  finishUnits,
   metres,
   released,
   roadCurve,
@@ -18,17 +36,30 @@ export interface Racer {
   slot: number;
   bot: boolean;
   motor: MotorState;
-  /** Signed thousandths of road half-width; the shoulder starts at ±1000. */
+  /** Signed thousandths of road half-width. */
   x: number;
+  bank: number;
   input: DriveInput;
+  crashed: boolean;
+  laneFault: boolean;
+  /** 20Hz ticks after this driver's green, or zero before crossing. */
+  finishTicks: number;
 }
 export interface Race {
   settings: FuserodSettings;
   startTick: number;
+  treeTicks: number;
   elapsed: number;
   racers: Racer[];
   winnerId: string | null;
   ended: boolean;
+  police: { phase: PatrolState; position: number };
+}
+export function seedForMatch(matchId: string): number {
+  let seed = 2166136261;
+  for (const letter of matchId)
+    seed = Math.imul(seed ^ letter.charCodeAt(0), 16777619);
+  return seed >>> 0;
 }
 export function createRace(
   roster: readonly SeatRecord[],
@@ -36,113 +67,306 @@ export function createRace(
   startTick: number,
   matchId: string,
 ): Race {
-  let seed = 2166136261;
-  for (const letter of matchId)
-    seed = Math.imul(seed ^ letter.charCodeAt(0), 16777619);
+  const seed = seedForMatch(matchId);
+  const grid =
+    settings.variant === "timed" ? roster.filter((r) => !r.bot) : roster;
+  const patrol =
+    settings.route === "canyon" &&
+    !settings.king &&
+    grid.filter((s) => !s.bot).length === 1 &&
+    grid.some((s) => s.bot) &&
+    (seed >>> 0) % 4 === 0;
   return {
     settings: { ...settings },
     startTick,
+    treeTicks: treeDuration(settings.variant, seed),
     elapsed: 0,
     ended: false,
     winnerId: null,
-    racers: roster.map((seat, i) => ({
-      id: seat.id,
-      name: seat.name,
-      slot: seat.slot,
-      bot: seat.bot,
-      x: Math.round(
-        (i - (roster.length - 1) / 2) *
-          (roster.length > 1 ? 1150 / (roster.length - 1) : 0),
-      ),
-      motor: createMotor((seed ^ seat.slot) >>> 0),
+    police: {
+      phase: patrol ? 1 : 0,
+      position: patrol ? (110 + ((seed >>> 8) % 240)) * 64 : 0,
+    },
+    racers: grid.map((s, i) => ({
+      id: s.id,
+      name: s.name,
+      slot: s.slot,
+      bot: s.bot,
+      x:
+        grid.length === 1 && settings.variant === "timed"
+          ? 450
+          : Math.round(
+              (i - (grid.length - 1) / 2) *
+                (grid.length > 1 ? 1150 / (grid.length - 1) : 0),
+            ),
+      bank: 0,
+      motor: createMotor((seed ^ s.slot) >>> 0),
       input: released(),
+      crashed: false,
+      laneFault: false,
+      finishTicks: 0,
     })),
   };
 }
-/** The local driver's wheel and pedals are the only inputs the opponent can use too. */
-function botInput(race: Race, driver: Racer): DriveInput {
-  const { motor } = driver;
-  const grade = race.settings.opponent;
-  const curve = roadCurve(race.settings.route, motor.position);
-  const targetX = (driver.slot % 2 ? 280 : -280) + Math.trunc(curve / 3);
-  const error = targetX - driver.x;
-  const steer: Direction = error > 45 ? 1 : error < -45 ? -1 : 0;
-  const maxGear = grade > 0 ? 4 : 3;
-  const shift: Direction =
-    motor.gear === 0 ||
-    (motor.rpm >= [4200, 4550, 4800][grade]! && motor.gear < maxGear)
-      ? 1
-      : motor.gear > 1 && motor.rpm < 1800
-        ? -1
-        : 0;
-  // A stronger rival reacts earlier to green and holds power deeper into bends.
-  const launchDelay = [12, 6, 2][grade]! + driver.slot;
-  return {
-    throttle:
-      race.elapsed >= COUNTDOWN_TICKS + launchDelay &&
-      (motor.speed < 66 + grade * 13 || Math.abs(curve) < 290),
-    brake: false,
-    steer,
-    shift,
-  };
+/** PIT ticks converted to the next 20Hz log tick. Qualifying and bracket trees include an 80-PIT-tick amber. */
+export function treeDuration(
+  variant: FuserodSettings["variant"],
+  seed: number,
+): number {
+  const pit =
+    variant === "grudge" || variant === "timed"
+      ? 190
+      : 110 + ((seed >>> 0) % 103);
+  return Math.ceil((pit * 16384 * 20) / 1193182);
+}
+export const raceLimit = (race: Race) =>
+  race.settings.variant === "timed" ? 1600 : MAX_RACE_TICKS;
+export const retired = (r: Racer) => r.crashed || r.laneFault || r.motor.broken;
+function tuneFor(race: Race, driver: Racer): MotorTune {
+  const g = race.settings.opponent;
+  return driver.bot ? { power: g, gearbox: g, tires: g } : race.settings;
+}
+/** Reference runs on the three Fuse powertrains take 403, 293 and 242 log ticks respectively. */
+function dial(race: Race, driver: Racer): number {
+  if (race.settings.variant !== "grudge" || !race.settings.dialInTicks)
+    return 0;
+  return driver.bot
+    ? [403, 293, 242][race.settings.opponent]!
+    : race.settings.dialInTicks;
+}
+export function greenTick(race: Race, driver: Racer): number {
+  const slowest = Math.max(...race.racers.map((r) => dial(race, r)));
+  return (
+    race.treeTicks +
+    Math.round(
+      (bracketDelay(
+        Math.trunc(dial(race, driver) / 2),
+        Math.trunc(slowest / 2),
+      ) *
+        16384 *
+        20) /
+        1193182,
+    )
+  );
+}
+export function brokeOut(race: Race, r: Racer): boolean {
+  return (
+    r.finishTicks > 0 &&
+    Math.trunc(r.finishTicks / 2) < Math.trunc(dial(race, r) / 2)
+  );
+}
+function aheadFeatures(race: Race, driver: Racer) {
+  const at = metres(driver.motor.position);
+  return courseFeatures(race.settings.route).filter(
+    (f) => f.end >= at && f.start <= at + 45,
+  );
+}
+function botInput(
+  race: Race,
+  driver: Racer,
+  player: Racer | undefined,
+): DriveInput {
+  const curve = roadCurve(race.settings.route, driver.motor.position);
+  let target = (driver.slot % 2 ? 280 : -280) + Math.trunc(curve / 3);
+  const features = aheadFeatures(race, driver);
+  for (const f of features) {
+    if (f.kind === "bridge") target = 0;
+    else if (f.kind === "rock" && Math.abs(target / 1000 - f.lane) < 0.3)
+      target = f.lane > 0 ? -120 : 120;
+  }
+  // A bot looks into a bend and countersteers against its steering-wheel momentum.
+  const error = target - driver.x - driver.motor.wheel * 12;
+  const steer: Direction = error > 35 ? 1 : error < -35 ? -1 : 0;
+  const previous = roadCurve(
+    race.settings.route,
+    Math.max(0, driver.motor.position - 64),
+  );
+  const controls = recoveredRivalControls(
+    driver.motor,
+    tuneFor(race, driver),
+    race.settings.opponent,
+    {
+      route: race.settings.route,
+      streetDrag: race.settings.variant === "street",
+      king: race.settings.king,
+      playerSpeed: player?.motor.speed ?? driver.motor.speed,
+      playerPosition: player?.motor.position ?? driver.motor.position,
+      turning: Math.abs(curve) > 100 && Math.abs(previous) <= 100,
+      slowSection: features.some((f) => f.kind === "rough"),
+      police: race.police.phase >= 2,
+    },
+  );
+  // Leave a margin below the rough-surface limit: an entire drivetrain interrupt may elapse before the next brake command.
+  const rough = features.some((f) => f.kind === "rough");
+  if (rough && driver.motor.speed >= 55)
+    return {
+      ...controls,
+      throttle: false,
+      brake: driver.motor.speed >= 58,
+      steer,
+    };
+  return { ...controls, steer };
 }
 export function rank(race: Race): Racer[] {
   return [...race.racers].sort(
     (a, b) =>
       Number(b.id === race.winnerId) - Number(a.id === race.winnerId) ||
+      Number(brokeOut(race, a)) - Number(brokeOut(race, b)) ||
       b.motor.position - a.motor.position ||
       a.slot - b.slot,
   );
 }
 export function advanceRace(race: Race): void {
   race.elapsed++;
-  if (race.elapsed <= COUNTDOWN_TICKS) return;
-  const finish = FINISH[race.settings.route];
-  let best: { id: string; remaining: number; travel: number } | undefined;
-  for (const driver of race.racers) {
-    if (driver.motor.broken) continue;
+  if (race.elapsed <= race.treeTicks) return;
+  const { route, variant } = race.settings;
+  const finish = finishUnits(route, variant);
+  const previous = race.racers.map((r) => r.motor);
+  // Select the nearest human from the previous tick before any car advances.
+  const humans = race.racers.filter((r) => !r.bot);
+  const controls = race.racers.map((driver) =>
+    driver.bot
+      ? botInput(
+          race,
+          driver,
+          humans.reduce<Racer | undefined>(
+            (best, h) =>
+              !best ||
+              Math.abs(h.motor.position - driver.motor.position) <
+                Math.abs(best.motor.position - driver.motor.position)
+                ? h
+                : best,
+            undefined,
+          ),
+        )
+      : driver.input,
+  );
+  let best: { driver: Racer; remaining: number; travel: number } | undefined;
+  for (const [i, driver] of race.racers.entries()) {
+    if (
+      retired(driver) ||
+      driver.finishTicks ||
+      race.elapsed <= greenTick(race, driver)
+    )
+      continue;
     const old = driver.motor;
-    const input = driver.bot ? botInput(race, driver) : driver.input;
-    const tune = driver.bot
-      ? {
-          power: race.settings.opponent,
-          gearbox: race.settings.opponent,
-          tires: race.settings.opponent,
-        }
-      : race.settings;
-    driver.motor = advanceMotor(
-      old,
-      { ...input, shoulder: Math.abs(driver.x) > 1000 },
-      tune,
-    );
+    const oldX = driver.x;
+    const tune = tuneFor(race, driver);
+    const shoulder = courseContact(
+      route,
+      driver.x,
+      old.speed,
+      metres(old.position),
+    ).shoulder;
+    driver.motor = advanceMotor(old, { ...controls[i]!, shoulder }, tune);
     driver.input.shift = 0;
     const travel = driver.motor.position - old.position;
-    const wheel = driver.motor.wheel;
-    const bend = roadCurve(race.settings.route, old.position);
+    const bend = roadCurve(route, old.position);
     driver.x = Math.max(
       -1450,
       Math.min(
         1450,
         driver.x +
-          Math.trunc((wheel * travel) / 25) -
-          Math.trunc((bend * travel) / (520 + 50 * tune.tires)),
+          Math.trunc((driver.motor.wheel * travel) / 18) -
+          Math.trunc((bend * travel) / (920 + 60 * (tune.tires ?? 0))),
       ),
     );
-    const remaining = finish - old.position;
+    const initialLane =
+      race.racers.length === 1 && variant === "timed"
+        ? 1
+        : Math.sign(i - (race.racers.length - 1) / 2);
     if (
-      remaining > 0 &&
-      travel >= remaining &&
-      (!best || remaining * best.travel < best.remaining * travel)
+      (variant === "grudge" || variant === "timed") &&
+      driver.x * initialLane < 0
     ) {
-      // Compare crossing fractions using integers. An exact tie goes to the lower grid slot.
-      best = { id: driver.id, remaining, travel };
+      driver.laneFault = true;
+      continue;
+    }
+    const remaining = finish - old.position;
+    if (remaining > 0 && travel >= remaining) {
+      driver.finishTicks = race.elapsed - greenTick(race, driver);
+      if (
+        !brokeOut(race, driver) &&
+        (!best || remaining * best.travel < best.remaining * travel)
+      )
+        best = { driver, remaining, travel };
+      continue;
+    }
+    if (
+      driver.motor.steps !== old.steps ||
+      (route === "aqueduct" && travel > 0)
+    ) {
+      const contact = courseContact(
+        route,
+        driver.x,
+        driver.motor.speed,
+        metres(driver.motor.position),
+      );
+      driver.x = contact.x;
+      driver.crashed = contact.crashed;
+      if (contact.speed < driver.motor.speed)
+        driver.motor = slowMotor(driver.motor, contact.speed, tune);
+      if (!driver.crashed && route === "aqueduct" && travel > 0) {
+        const channel = channelStep(oldX, driver.x, driver.motor.speed);
+        driver.x = channel.x;
+        driver.bank = channel.roll;
+        driver.motor = slowMotor(driver.motor, channel.speed, tune);
+      }
     }
   }
-  if (best) race.winnerId = best.id;
+  if (!best && variant !== "timed" && race.police.phase <= 1) {
+    const crashes = new Set<Racer>();
+    for (const [i, rear] of race.racers.entries()) {
+      if (retired(rear) || rear.finishTicks) continue;
+      for (const [j, lead] of race.racers.entries()) {
+        if (
+          i !== j &&
+          !retired(lead) &&
+          !lead.finishTicks &&
+          rearEndContact(
+            route,
+            rear.x,
+            lead.x,
+            previous[j]!.position - previous[i]!.position,
+            lead.motor.position - rear.motor.position,
+            speedToStep(rear.motor.speed),
+            speedToStep(lead.motor.speed),
+          )
+        )
+          crashes.add(rear);
+      }
+    }
+    for (const rear of crashes) rear.crashed = true;
+  }
+  if (
+    race.police.phase &&
+    race.racers.some((r, i) => previous[i]!.position !== r.motor.position)
+  ) {
+    const driver = humans[0]!;
+    const rival = race.racers.find((r) => r.bot)!;
+    race.police.phase = policeStep(
+      race.police.phase,
+      race.police.position,
+      driver.motor.position,
+      rival.motor.position,
+    );
+  }
+  if (best && race.police.phase !== 4) race.winnerId = best.driver.id;
+  const remaining = race.racers.filter(
+    (r) => !retired(r) && !brokeOut(race, r),
+  );
+  if (
+    !race.winnerId &&
+    race.police.phase !== 4 &&
+    race.racers.length > 1 &&
+    remaining.length === 1
+  )
+    race.winnerId = remaining[0]!.id;
   race.ended =
-    !!best ||
-    race.elapsed >= COUNTDOWN_TICKS + MAX_RACE_TICKS ||
-    race.racers.every((r) => r.motor.broken);
+    !!race.winnerId ||
+    race.police.phase === 4 ||
+    race.elapsed >= race.treeTicks + raceLimit(race) ||
+    remaining.length === 0;
 }
 export function racerViews(race: Race) {
   const positions = rank(race);
@@ -158,6 +382,14 @@ export function racerViews(race: Race) {
     gear: r.motor.gear,
     rpm: r.motor.rpm,
     broken: r.motor.broken,
+    crashed: r.crashed,
+    bank: r.bank,
+    police: race.police.phase >= 2 && r === race.racers.find((p) => p.bot),
+    laneFault: r.laneFault,
+    breakout: brokeOut(race, r),
+    elapsedTicks:
+      r.finishTicks || Math.max(0, race.elapsed - greenTick(race, r)),
+    countdown: Math.max(0, greenTick(race, r) - race.elapsed),
     place: positions.indexOf(r) + 1,
   }));
 }

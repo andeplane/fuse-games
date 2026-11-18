@@ -21,15 +21,20 @@ import {
   isEntry,
   parseSettings,
   type FuserodRoom,
+  type FuserodSettings,
   type FuserodEntry,
 } from "../src/game/index.js";
 import { fuserodRegistration } from "../src/platform.js";
 const empty = new Map<string, StreamEntries<FuserodEntry>>();
-function setup(bot = true) {
-  const r = createRoom("lobby", DEFAULT_SETTINGS);
+function setup(
+  bot = true,
+  settings: FuserodSettings = DEFAULT_SETTINGS,
+  matchId = "heat",
+) {
+  const r = createRoom("lobby", settings);
   const entries: FuserodEntry[] = [[1, 1, JOIN, "a", "Ada", 0, "robot", 1]];
   if (bot) entries.push([2, 1, BOT, "add", "bot:1", "Jet", 1]);
-  entries.push([3, 1, ACTION, "start", "heat"]);
+  entries.push([3, 1, ACTION, "start", matchId]);
   foldTick(r, "a", new Map([["a", { generation: 1, entries }]]));
   return r;
 }
@@ -45,7 +50,7 @@ function restore(r: FuserodRoom) {
 test("one room heat runs countdown, ordinary bot controls, two receipts and rematch", () => {
   const r = setup();
   assert.equal(r.stage, "running");
-  run(r, COUNTDOWN_TICKS - 1);
+  run(r, r.race!.treeTicks - 1);
   assert.equal(fuserodView(r).raceTicks, 0);
   assert.equal(r.race!.racers[1]!.motor.position, 0);
   while (r.stage === "running" && r.tick <= MAX_RACE_TICKS + COUNTDOWN_TICKS)
@@ -84,7 +89,7 @@ test("one seat time trial, held launch and release, checkpoint replay and heat f
     [4, 2, 0, "heat", true, false, 0, 1],
     [5, 2, 0, "heat", true, false, 0, 0],
     [6, 2, 0, "stale", false, true, 1, -1],
-    [7, 2, SETTINGS, { ...DEFAULT_SETTINGS, route: "canyon" }],
+    [7, 2, SETTINGS, { ...DEFAULT_SETTINGS, route: "canyon", variant: "duel" }],
   ];
   foldTick(r, "a", new Map([["a", { generation: 1, entries }]]));
   assert.equal(r.race!.racers[0]!.input.shift, 1);
@@ -170,5 +175,112 @@ test("solo timeout completes with no credited win", () => {
   assert.equal(r.stage, "over");
   assert.equal(r.history[1]!.result.winnerId, undefined);
   assert.equal(r.history[1]!.result.players[0]!.roundWins, 0);
+  restore(r);
+});
+test("all five event kinds use their own distance, field, qualifier deadline and bracket trees", () => {
+  const timed = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  assert.equal(timed.race!.racers.length, 1);
+  assert.equal(fuserodView(timed).finishDistance, 402.336);
+  run(timed, timed.race!.treeTicks + 1600);
+  assert.equal(timed.stage, "over");
+  assert.equal(timed.race!.winnerId, null);
+  restore(timed);
+  const bracket = setup(true, {
+    ...DEFAULT_SETTINGS,
+    variant: "grudge",
+    dialInTicks: 550,
+  });
+  const drivers = fuserodView(bracket).racers;
+  assert.ok(drivers[0]!.countdown < drivers[1]!.countdown);
+  const street = setup();
+  assert.ok(fuserodView(street).finishDistance > 900);
+  for (const route of ["aqueduct", "canyon"] as const) {
+    const road = setup(true, { ...DEFAULT_SETTINGS, variant: "duel", route });
+    assert.ok(fuserodView(road).finishDistance > 1600);
+    assert.equal(restore(road).race!.settings.variant, "duel");
+  }
+});
+test("crossing the center line on a qualifying run loses the round, freezes results and round-trips the checkpoint", () => {
+  const room = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  foldTick(
+    room,
+    "a",
+    new Map([
+      [
+        "a",
+        { generation: 1, entries: [[4, 2, 0, "heat", true, false, -1, 1]] },
+      ],
+    ]),
+  );
+  while (room.stage === "running") run(room, 1);
+  assert.equal(room.race!.racers[0]!.laneFault, true);
+  assert.equal(room.race!.winnerId, null);
+  restore(room);
+});
+test("a bracket racer who beats the declared time loses the heat even when crossing first", () => {
+  const r = setup(true, {
+    ...DEFAULT_SETTINGS,
+    variant: "grudge",
+    dialInTicks: 750,
+  });
+  while (r.stage === "running") {
+    const driver = r.race!.racers[0]!;
+    const gear = driver.motor.gear;
+    const shift = gear === 0 || (gear < 3 && driver.motor.rpm >= 4250) ? 1 : 0;
+    const tick = r.tick + 1;
+    foldTick(
+      r,
+      "a",
+      new Map([
+        [
+          "a",
+          {
+            generation: 1,
+            entries: [[tick + 3, tick, 0, "heat", true, false, 0, shift]],
+          },
+        ],
+      ]),
+    );
+  }
+  assert.equal(fuserodView(r).racers[0]!.breakout, true);
+  assert.equal(r.race!.winnerId, "bot:1");
+  restore(r);
+});
+test("rivals drive both road events past the visible hazards on championship power", () => {
+  for (const route of ["canyon", "aqueduct"] as const) {
+    const r = setup(
+      true,
+      {
+        ...DEFAULT_SETTINGS,
+        variant: "duel",
+        route,
+        opponent: 2,
+        king: true,
+      },
+      "race-4",
+    );
+    while (r.stage === "running") run(r, 1);
+    assert.equal(r.race!.winnerId, "bot:1");
+    assert.ok(r.race!.racers[1]!.finishTicks > 0);
+    assert.equal(r.race!.police.phase, 0);
+    assert.equal(r.race!.racers[1]!.crashed, false);
+    restore(r);
+  }
+});
+test("high-RPM rivals can lose a heat to a seeded gearbox failure", () => {
+  const r = setup(
+    true,
+    {
+      ...DEFAULT_SETTINGS,
+      variant: "duel",
+      route: "canyon",
+      king: true,
+      opponent: 2,
+    },
+    "heat",
+  );
+  while (r.stage === "running") run(r, 1);
+  assert.equal(r.race!.racers[1]!.motor.broken, true);
+  assert.equal(r.race!.winnerId, "a");
   restore(r);
 });

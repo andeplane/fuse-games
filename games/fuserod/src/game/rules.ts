@@ -11,8 +11,7 @@ import {
 import type { HistoryReceipt } from "fuse-platform/history-api";
 import {
   CAPACITY,
-  COUNTDOWN_TICKS,
-  FINISH,
+  finishUnits,
   isBotId,
   isDirection,
   matchId,
@@ -106,7 +105,11 @@ export function createRoom(
 }
 function start(room: FuserodRoom, id: string): void {
   const drivers = seats(room).filter((s) => s.connected && !s.watcher);
-  if (!drivers.length) return;
+  if (
+    !drivers.length ||
+    (room.settings.variant === "timed" && drivers.every((s) => s.bot))
+  )
+    return;
   room.matchId = id;
   room.stage = "running";
   room.race = createRace(drivers, room.settings, room.tick + 1, id);
@@ -175,7 +178,7 @@ export function foldTick(
             round: 1,
             roundDuration: {
               version: 1,
-              ticks: race.elapsed - COUNTDOWN_TICKS,
+              ticks: race.elapsed - race.treeTicks,
             },
           },
         },
@@ -189,7 +192,7 @@ export function foldTick(
 }
 export function fuserodView(room: FuserodRoom) {
   const { race } = room;
-  const route = race?.settings.route ?? room.settings.route;
+  const { route, variant } = race?.settings ?? room.settings;
   return {
     tick: room.tick,
     matchId: room.matchId,
@@ -197,10 +200,12 @@ export function fuserodView(room: FuserodRoom) {
     round: 1 as const,
     players: seats(room).map((s) => ({ ...s })),
     racers: race ? racerViews(race) : [],
-    countdown: race ? Math.max(0, COUNTDOWN_TICKS - race.elapsed) : 0,
-    raceTicks: race ? Math.max(0, race.elapsed - COUNTDOWN_TICKS) : 0,
-    finishDistance: metres(FINISH[route]),
+    countdown: race ? Math.max(0, race.treeTicks - race.elapsed) : 0,
+    raceTicks: race ? Math.max(0, race.elapsed - race.treeTicks) : 0,
+    finishDistance: metres(finishUnits(route, variant)),
     route,
+    variant,
+    policePhase: race?.police.phase ?? 0,
     winnerId: race?.winnerId ?? null,
     history: structuredClone(room.history),
   };

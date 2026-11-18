@@ -9,7 +9,9 @@ export const fuserodRegistration = {
     players.length <= CAPACITY &&
     players.every(
       (p) =>
-        p.route === players[0]!.route && p.raceTicks === players[0]!.raceTicks,
+        p.route === players[0]!.route &&
+        p.variant === players[0]!.variant &&
+        p.raceTicks === players[0]!.raceTicks,
     ),
   activity: (result: MatchResult<FuserodStats>) => ({
     context: { map: result.players[0]?.route ?? "strip" },

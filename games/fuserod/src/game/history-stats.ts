@@ -2,7 +2,9 @@ import { parseHistoryPlayer } from "fuse-platform/history-api";
 import type { PlayerResult } from "fuse-platform";
 import {
   CAPACITY,
-  FINISH,
+  finishUnits,
+  validVariant,
+  type RaceVariant,
   MAX_RACE_TICKS,
   integer,
   isRoute,
@@ -14,6 +16,7 @@ import {
 
 export interface FuserodStats extends PlayerResult {
   route: Route;
+  variant: RaceVariant;
   distance: number;
   raceTicks: number;
 }
@@ -22,7 +25,7 @@ export function parseFuserodStats(
   length: number,
 ): FuserodStats | undefined {
   if (!object(raw) || length !== 1) return;
-  const { route, distance, raceTicks, ...base } = raw;
+  const { route, variant, distance, raceTicks, ...base } = raw;
   const player = parseHistoryPlayer(base, length);
   if (
     !player ||
@@ -30,10 +33,11 @@ export function parseFuserodStats(
     player.slot >= CAPACITY ||
     player.roundsPlayed !== 1 ||
     !isRoute(route) ||
-    !integer(distance, 0, Math.ceil(metres(FINISH[route]))) ||
+    !validVariant(route, variant) ||
+    !integer(distance, 0, Math.ceil(metres(finishUnits(route, variant)))) ||
     distance !== player.matchScoreUnits ||
     !integer(raceTicks, 1, MAX_RACE_TICKS)
   )
     return;
-  return { ...player, route, distance, raceTicks };
+  return { ...player, route, variant, distance, raceTicks };
 }

@@ -1,10 +1,10 @@
 import { uint32, type SeatRecord } from "fuse-netcode";
 import { parseHistoryReceipts } from "fuse-platform/history-api";
-import { isMotorState } from "../motor/index.js";
+import { motorGears, isMotorState } from "../motor/index.js";
 import {
   CAPACITY,
   COUNTDOWN_TICKS,
-  FINISH,
+  finishUnits,
   MAX_RACE_TICKS,
   integer,
   isBotId,
@@ -17,7 +17,16 @@ import {
 } from "./basics.js";
 import { createRoom, isAvatar, seats, type FuserodRoom } from "./rules.js";
 import { parseFuserodStats } from "./history-stats.js";
-import type { Race, Racer } from "./race.js";
+import {
+  seedForMatch,
+  treeDuration,
+  retired,
+  greenTick,
+  brokeOut,
+  raceLimit,
+  type Race,
+  type Racer,
+} from "./race.js";
 
 function encodeSeat(s: SeatRecord) {
   return [
@@ -63,8 +72,20 @@ function decodeSeat(v: unknown): SeatRecord | undefined {
   };
 }
 function decodeRacer(v: unknown): Racer | undefined {
-  if (!object(v) || Object.keys(v).length !== 7) return;
-  const { id, name, slot, bot, x, input, motor } = v;
+  if (!object(v) || Object.keys(v).length !== 11) return;
+  const {
+    id,
+    name,
+    slot,
+    bot,
+    x,
+    input,
+    motor,
+    bank,
+    crashed,
+    laneFault,
+    finishTicks,
+  } = v;
   if (
     !validId(id) ||
     !validName(name) ||
@@ -72,6 +93,10 @@ function decodeRacer(v: unknown): Racer | undefined {
     typeof bot !== "boolean" ||
     bot !== isBotId(id) ||
     !integer(x, -1450, 1450) ||
+    !integer(bank, -48, 30) ||
+    typeof crashed !== "boolean" ||
+    typeof laneFault !== "boolean" ||
+    !integer(finishTicks, 0, MAX_RACE_TICKS) ||
     !object(input) ||
     Object.keys(input).length !== 4 ||
     typeof input.throttle !== "boolean" ||
@@ -94,12 +119,18 @@ function decodeRacer(v: unknown): Racer | undefined {
       shift: input.shift,
     },
     motor: structuredClone(motor),
+    bank,
+    crashed,
+    laneFault,
+    finishTicks,
   };
 }
 function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
-  if (!object(v) || Object.keys(v).length !== 6) return;
+  if (!object(v) || Object.keys(v).length !== 8) return;
   const {
     startTick,
+    treeTicks,
+    police,
     elapsed,
     ended,
     winnerId,
@@ -109,6 +140,12 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
   const settings = parseSettings(rawSettings);
   if (
     !settings ||
+    !integer(treeTicks, 1, COUNTDOWN_TICKS) ||
+    treeTicks !== treeDuration(settings.variant, seedForMatch(room.matchId)) ||
+    !object(police) ||
+    Object.keys(police).length !== 2 ||
+    !integer(police.phase, 0, 4) ||
+    !integer(police.position, 0, 37760) ||
     !integer(startTick, 1, room.tick) ||
     !integer(elapsed, 1, COUNTDOWN_TICKS + MAX_RACE_TICKS) ||
     elapsed > room.tick - startTick + 1 ||
@@ -129,25 +166,72 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
       const seat = room.seats.get(r.id);
       if (!seat || seat.slot !== r.slot || seat.bot !== r.bot) return;
     }
+    if (
+      (settings.route !== "aqueduct" && r.bank !== 0) ||
+      r.motor.gear >
+        motorGears(r.bot ? { gearbox: settings.opponent } : settings) ||
+      (settings.variant === "timed" && r.bot) ||
+      (r.laneFault &&
+        settings.variant !== "timed" &&
+        settings.variant !== "grudge")
+    )
+      return;
     racers.push(r);
   }
-  const finish = FINISH[settings.route];
-  const crossed = racers.filter((r) => r.motor.position >= finish);
+  const seed = seedForMatch(room.matchId);
+  const patrol =
+    settings.route === "canyon" &&
+    !settings.king &&
+    racers.filter((r) => !r.bot).length === 1 &&
+    racers.some((r) => r.bot) &&
+    seed % 4 === 0;
   if (
-    winnerId !== null &&
-    (!validId(winnerId) || !crossed.some((r) => r.id === winnerId))
+    police.position !== (patrol ? (110 + ((seed >>> 8) % 240)) * 64 : 0) ||
+    (!patrol && police.phase !== 0) ||
+    (winnerId !== null && !validId(winnerId))
   )
     return;
+  const race: Race = {
+    settings,
+    startTick,
+    treeTicks,
+    elapsed,
+    ended,
+    winnerId,
+    racers,
+    police: {
+      phase: police.phase as Race["police"]["phase"],
+      position: police.position,
+    },
+  };
+  const finish = finishUnits(settings.route, settings.variant);
+  for (const r of racers) {
+    if (
+      r.motor.position >= finish !== r.finishTicks > 0 ||
+      (r.finishTicks &&
+        (retired(r) || r.finishTicks > elapsed - greenTick(race, r))) ||
+      (elapsed <= greenTick(race, r) &&
+        (r.motor.steps !== 0 || r.motor.position !== 0))
+    )
+      return;
+  }
+  const eligible = racers.filter((r) => !retired(r) && !brokeOut(race, r));
+  const winner = eligible.find((r) => r.id === winnerId);
+  const finished = eligible.some((r) => r.finishTicks > 0);
+  const forfeit = racers.length > 1 && eligible.length === 1;
   if (
-    (winnerId !== null) !== crossed.length > 0 ||
+    elapsed > treeTicks + raceLimit(race) ||
+    (winnerId !== null && (!winner || (!winner.finishTicks && !forfeit))) ||
+    (winnerId !== null) !== (police.phase !== 4 && (finished || forfeit)) ||
     ended !==
-      (crossed.length > 0 ||
-        elapsed === COUNTDOWN_TICKS + MAX_RACE_TICKS ||
-        racers.every((r) => r.motor.broken)) ||
-    (ended && elapsed <= COUNTDOWN_TICKS)
+      (!!winnerId ||
+        police.phase === 4 ||
+        !eligible.length ||
+        elapsed === treeTicks + raceLimit(race)) ||
+    (ended && elapsed <= treeTicks)
   )
     return;
-  return { settings, startTick, elapsed, racers, winnerId, ended };
+  return race;
 }
 export function encodeRoom(r: FuserodRoom): unknown[] {
   return [

@@ -34,7 +34,14 @@ export class FuserodRuntime extends RoomRuntime<
     if (
       room?.stage !== "running" ||
       !this.player()?.connected ||
-      !room.race?.racers.some((r) => r.id === this.id && !r.motor.broken)
+      !room.race?.racers.some(
+        (r) =>
+          r.id === this.id &&
+          !r.motor.broken &&
+          !r.crashed &&
+          !r.laneFault &&
+          !r.finishTicks,
+      )
     )
       return false;
     if (
