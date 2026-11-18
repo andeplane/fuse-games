@@ -22,6 +22,8 @@ import type { TruckInput } from "./sim/input.js";
 import type { Drone, Mine, Missile, OilSlick } from "./sim/items.js";
 import type { Phase, RaceState } from "./sim/race.js";
 import type { ItemKind, Truck } from "./sim/truck.js";
+import type { OffroadMotion } from "./offroad/motion.js";
+import type { OffroadSuspension } from "./offroad/suspension.js";
 
 /**
  * The room as snapshot fields, and back. `decode` checks every field and how the fields fit together, and builds a
@@ -57,7 +59,7 @@ const MAX_COUNTER = 1_000_000;
 /** A truck's fields, grouped as `[core..., timers, tally]`. */
 const TIMER_COUNT = 14,
   TALLY_COUNT = 10,
-  TRUCK_FIELDS = 17,
+  TRUCK_FIELDS = 20,
   STAT_COUNT = 7,
   RACE_FIELDS = 15;
 
@@ -113,6 +115,12 @@ const encodeTruck = (truck: Truck): unknown[] => [
     truck.lapsLed,
     truck.nitrosUsed,
   ],
+  [truck.motion.x, truck.motion.y, truck.motion.heading, truck.motion.momentum,
+    truck.motion.speed, truck.motion.throttle, truck.motion.nitros, truck.motion.nitroTicks,
+    truck.motion.backwards, truck.motion.acceleration, truck.motion.vx, truck.motion.vy],
+  [truck.suspension.bodyHeight, truck.suspension.groundHeight,
+    ...truck.suspension.wheels.map(wheel => [wheel.height, wheel.velocity, wheel.clearance])],
+  truck.contactMask,
 ];
 
 const encodeRace = (race: RaceState): unknown[] => [
@@ -198,6 +206,33 @@ const timer = (value: unknown, tick: number): value is number =>
   uint32(value) && value <= tick + MAX_TIMER_AHEAD;
 const count = (value: unknown, most = MAX_COUNTER): value is number =>
   uint32(value) && value <= most;
+const word = (v: unknown): v is number => count(v, 65535);
+const signedWord = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && !Object.is(v, -0) && v >= -32768 && v <= 32767;
+
+function decodeMotion(raw: unknown): OffroadMotion | undefined {
+  if (!Array.isArray(raw) || raw.length !== 12) return;
+  const [x,y,heading,momentum,speed,throttle,nitros,nitroTicks,backwards,acceleration,vx,vy] = raw;
+  if (!word(x) || !word(y) || !word(heading) || !word(momentum) || !word(speed) ||
+    !count(throttle,256) || !count(nitros,255) || !count(nitroTicks,20) ||
+    typeof backwards !== "boolean" || !word(acceleration) || !signedWord(vx) || !signedWord(vy)) return;
+  return {x,y,heading,momentum,speed,throttle,nitros,nitroTicks,backwards,acceleration,vx,vy};
+}
+
+function decodeWheel(raw: unknown): OffroadSuspension["wheels"][number] | undefined {
+  if (!Array.isArray(raw) || raw.length !== 3) return;
+  const [height,velocity,clearance] = raw;
+  if (!word(height) || !signedWord(velocity) || !word(clearance)) return;
+  return {height,velocity,clearance};
+}
+
+function decodeSuspension(raw: unknown): OffroadSuspension | undefined {
+  if (!Array.isArray(raw) || raw.length !== 6) return;
+  const [bodyHeight,groundHeight] = raw;
+  const [a,b,c,d] = raw.slice(2).map(decodeWheel);
+  if (!word(bodyHeight) || !word(groundHeight) || !a || !b || !c || !d) return;
+  return {bodyHeight,groundHeight,wheels:[a,b,c,d]};
+}
 const turn = (value: unknown): value is -1 | 0 | 1 =>
   value === -1 || value === 1 || (value === 0 && !Object.is(value, -0));
 /** Control bits as a seat logs them: a bitmask with no unknown bit set. */
@@ -297,9 +332,15 @@ function decodeTruck(
     onBridge,
     rawTimers,
     rawTally,
+    rawMotion,
+    rawSuspension,
+    contactMask,
   ] = raw;
   const stats = decodeStats(rawStats);
+  const motion = decodeMotion(rawMotion);
+  const suspension = decodeSuspension(rawSuspension);
   if (
+    !motion || !suspension || !count(contactMask, (1 << CAPACITY) - 1) ||
     itsSlot !== slot ||
     !real(x) ||
     !real(y) ||
@@ -383,6 +424,9 @@ function decodeTruck(
     y,
     heading,
     speed,
+    motion,
+    suspension,
+    contactMask,
     stats,
     armor,
     nitros,
@@ -445,7 +489,7 @@ function decodeRace(
     rawDrones,
   ] = raw;
   if (
-    // The log runs at 20 Hz and the race at 30 Hz, so a race never advances more than twice per log tick.
+    // One log tick can contain up to two physics updates.
     !count(tick, roomTick * 2) ||
     !PHASES.includes(phase as Phase) ||
     !uint32(rngState) ||

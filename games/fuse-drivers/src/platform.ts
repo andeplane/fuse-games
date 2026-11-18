@@ -128,7 +128,7 @@ export const fuseDriversRegistration: GameRegistration<
   FuseDriversTotalsRecord
 > = {
   id: "fuse-drivers",
-  minRatedRoundTicks: 30, // game/sim/config.ts TICK_RATE
+  minRatedRoundTicks: 24, // One second at the VGA update rate of 70/3 Hz, rounded up.
   isBot: isBotId,
   parseStats: parseFuseDriversStats,
   emptyTotals: () => ({ totals: emptyFuseDriversTotals() }),

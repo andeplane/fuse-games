@@ -224,7 +224,7 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
       "a grid id that is a prototype name",
       (f) => (at(f, 3)[0] = "constructor"),
     ],
-    ["controls with an unknown bit", (f) => (at(f, 4, 0)[1] = 64)],
+    ["controls with an unknown bit", (f) => (at(f, 4, 0)[1] = 128)],
     ["controls keyed by __proto__", (f) => (at(f, 4, 0)[0] = "__proto__")],
     [
       "the same seat's controls twice",
@@ -261,6 +261,10 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
       (f) => (at(f, 6, 7, 0, 15)[0] = 1_000_000),
     ],
     ["a lap counted with a fraction", (f) => (at(f, 6, 7, 0, 16)[1] = 1.5)],
+    ["an overflowing throttle", (f) => (at(f,6,7,0,17)[5] = 257)],
+    ["a missing wheel", (f) => at(f,6,7,0,18).pop()],
+    ["an invalid wheel velocity", (f) => (at(f,6,7,0,18,2)[1] = 32768)],
+    ["a contact mask outside the grid capacity", (f) => (at(f,6,7,0)[19] = 32)],
     [
       "stats that are not numbers",
       (f) => (at(f, 6, 7, 0)[5] = ["fast", 1, 1, 1, 1, 1, 1]),

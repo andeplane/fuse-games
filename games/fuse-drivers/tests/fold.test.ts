@@ -43,7 +43,7 @@ test("controls pack into a bitmask and come back unchanged", () => {
   const held = { ...NEUTRAL_INPUT, left: true, nitro: true };
   assert.equal(packControls(held), LEFT | NITRO);
   assert.deepEqual(unpackControls(packControls(held)), held);
-  for (let bits = 0; bits < 64; bits++)
+  for (let bits = 0; bits < 128; bits++)
     assert.equal(packControls(unpackControls(bits)), bits);
 });
 
@@ -51,7 +51,7 @@ test("an entry is refused unless it is a known kind with bits in range", () => {
   assert.ok(isFuseDriversEntry([1, 1, CONTROLS, "m1", 1, LEFT | NITRO]));
   assert.ok(isFuseDriversEntry([1, 1, CONTROLS, "m1", 1, 0]));
   assert.ok(
-    !isFuseDriversEntry([1, 1, CONTROLS, "m1", 1, 64]),
+    !isFuseDriversEntry([1, 1, CONTROLS, "m1", 1, 128]),
     "an unknown bit",
   );
   assert.ok(
@@ -75,10 +75,10 @@ test("an entry is refused unless it is a known kind with bits in range", () => {
   assert.ok(!isFuseDriversEntry([1, 1, 99, 0]), "an unknown kind");
 });
 
-test("three steps per two log ticks is exactly the race's 30 Hz", () => {
+test("60 log ticks advance 70 VGA race updates", () => {
   let steps = 0;
-  for (let tick = 1; tick <= 20; tick++) steps += stepsForTick(tick);
-  assert.equal(steps, 30, "twenty log ticks is one second");
+  for (let tick = 1; tick <= 60; tick++) steps += stepsForTick(tick);
+  assert.equal(steps, 70);
 });
 
 test("controls from another match or round cannot change the active race", () => {

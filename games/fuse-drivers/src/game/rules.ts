@@ -19,18 +19,14 @@ import { botInput, createBotMemory, type BotMemory } from "./sim/bot.js";
 import { BASE_STATS } from "./sim/config.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./sim/input.js";
 import { createRace, step, type RaceState } from "./sim/race.js";
-import { parseTrack, type Track } from "./sim/track.js";
-import { TRACK_DATA, TRACK_NAMES } from "./tracks-data.js";
+import type { Track } from "./sim/track.js";
+import { getOffroadCourse, isOffroadCourse, OFFROAD_COURSE_NAMES } from "./offroad/course.js";
 
 export * from "./basics.js";
 
-/** Every peer parses the same committed maps, so a track is data in the bundle rather than a file read. */
-const TRACKS: Record<string, Track> = Object.fromEntries(
-  TRACK_NAMES.map((name) => [name, parseTrack(TRACK_DATA[name], name)]),
-);
-export const trackNames = (): readonly string[] => TRACK_NAMES;
+export const trackNames = (): readonly string[] => OFFROAD_COURSE_NAMES;
 export const trackFor = (name: string): Track =>
-  TRACKS[name] ?? TRACKS[TRACK_NAMES[0]]!;
+  getOffroadCourse(isOffroadCourse(name) ? name : DEFAULT_SETTINGS.track).track;
 
 /** The game's own entry kinds; 10-16 are the shared management ones. */
 export const CONTROLS = 0;
@@ -44,10 +40,12 @@ export const LEFT = 1,
   BRAKE = 4,
   NITRO = 8,
   ITEM = 16,
-  ITEM_ALT = 32;
-export const CONTROL_BITS = LEFT | RIGHT | BRAKE | NITRO | ITEM | ITEM_ALT;
+  ITEM_ALT = 32,
+  GAS = 64;
+export const CONTROL_BITS = LEFT | RIGHT | BRAKE | NITRO | ITEM | ITEM_ALT | GAS;
 
 export const packControls = (input: TruckInput): number =>
+  (input.gas ? GAS : 0) |
   (input.left ? LEFT : 0) |
   (input.right ? RIGHT : 0) |
   (input.brake ? BRAKE : 0) |
@@ -56,6 +54,7 @@ export const packControls = (input: TruckInput): number =>
   (input.itemAlt ? ITEM_ALT : 0);
 
 export const unpackControls = (bits: number): TruckInput => ({
+  gas: (bits & GAS) !== 0,
   left: (bits & LEFT) !== 0,
   right: (bits & RIGHT) !== 0,
   brake: (bits & BRAKE) !== 0,
@@ -89,7 +88,7 @@ export interface FuseDriversSettings {
   display: boolean;
 }
 export const DEFAULT_SETTINGS: FuseDriversSettings = {
-  track: TRACK_NAMES[0],
+  track: OFFROAD_COURSE_NAMES[0]!,
   display: false,
 };
 
@@ -145,7 +144,7 @@ export function parseSettings(raw: unknown): FuseDriversSettings | undefined {
   if (keys.length !== 2 || !keys.includes("track") || !keys.includes("display"))
     return;
   if (typeof display !== "boolean") return;
-  if (typeof track !== "string" || !TRACK_NAMES.includes(track as never))
+  if (typeof track !== "string" || !isOffroadCourse(track))
     return;
   return { track, display };
 }
@@ -278,8 +277,7 @@ function controlEntries(
 /**
  * One log tick: management first, then each seat's control changes, then the race steps.
  *
- * The log runs at 20 Hz and the race at 30 Hz, so a tick runs two simulation steps when the log tick is
- * even and one when it is odd. `steps` in `game.ts` reports the same number before the tick runs.
+ * The 20 Hz log runs seven simulation steps per six ticks. The renderer uses the same schedule.
  */
 export function foldTick(
   room: FuseDriversRoom,
@@ -374,5 +372,5 @@ export function foldTick(
   return events;
 }
 
-/** Two steps on an even log tick and one on an odd: three steps per 100 ms is exactly 30 Hz. */
-export const stepsForTick = (tick: number): number => (tick % 2 === 0 ? 2 : 1);
+/** The VGA game advances once per three retraces, approximately 70/3 updates per second. */
+export const stepsForTick = (tick: number): number => (tick % 6 === 0 ? 2 : 1);
