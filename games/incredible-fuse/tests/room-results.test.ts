@@ -26,7 +26,7 @@ test("solving one puzzle freezes a shared win, and rematch starts the next selec
     EDIT,
     "match-a",
     1,
-    { type: "place", kind: "ramp", x: 125, y: 100 },
+    { type: "place", kind: "ramp", x: 160, y: 140 },
   ]);
   a.append(4, [EDIT, "match-a", 1, { type: "run" }]);
   w.advance(60);

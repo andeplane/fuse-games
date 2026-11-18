@@ -102,7 +102,9 @@ def floor_scene(image):
         x, y = h.read(PART + 0x1E, "hh")
         vx, vy = h.read(PART + 0x36, "hh")
         hit, = h.read(PART + 0x84, "H")
-        trace.append({"tick": tick, "x": x, "y": y, "vx": vx, "vy": vy, "contact": hit == WALL})
+        x_fixed, y_fixed = h.read(PART + 0x16, "ii")
+        trace.append({"tick": tick, "x": x, "y": y, "x_fixed": x_fixed, "y_fixed": y_fixed,
+                      "vx": vx, "vy": vy, "contact": hit == WALL})
     return trace
 
 
@@ -140,11 +142,51 @@ def clock_probe(image):
     raise RuntimeError("Simulation gate remained closed")
 
 
+def atmosphere_probe(image):
+    """Measure all 58 DOS part entries for the 15 atmosphere pairs in the 87 puzzles."""
+    presets = (
+        (0, 144), (1, 147), (18, 115), (22, 195), (64, 272), (64, 275),
+        (65, 272), (65, 275), (66, 268), (66, 272), (66, 275), (67, 268),
+        (67, 272), (67, 275), (68, 272),
+    )
+    # Additional points distinguish the branches on either side of the air and gravity
+    # thresholds, including upward motion, zero density, and a neutral balloon.
+    boundaries = (
+        (0, 0), (18, 140), (69, 139), (70, 140), (70, 278), (70, 279),
+        (128, 512), (255, 512),
+    )
+    h = Harness(image)
+    result = {}
+    for air, gravity in presets + boundaries:
+        h.write(0x50B3, "HH", air, gravity)
+        h.call(0x50C0)
+        accelerations = []
+        limits = []
+        for kind in range(58):
+            h.init_part(PART, kind)
+            h.call(0x5239, PART)  # get actual velocity change from rest
+            acceleration, = h.read(PART + 0x38, "h")
+            h.write(PART + 0x36, "hh", 16000, -16000)
+            h.call(0x5239, PART)  # measure both axes' actual clamp
+            positive, negative = h.read(PART + 0x36, "hh")
+            if positive != -negative:
+                raise ValueError("Expected symmetric component limits")
+            accelerations.append(acceleration)
+            limits.append(positive)
+        result[f"{air}/{gravity}"] = {"accelerations": accelerations, "limits": limits}
+    return {
+        "density_by_id": [h.read(0xEA6 + 58 * kind, "h")[0] for kind in range(58)],
+        "campaign": {f"{a}/{g}": result[f"{a}/{g}"] for a, g in presets},
+        "boundaries": {f"{a}/{g}": result[f"{a}/{g}"] for a, g in boundaries},
+    }
+
+
 def measure(image):
     h = Harness(image)
     h.write(0x50B3, "HH", 67, 272)  # controlled air and gravity
     h.call(0x50C0)  # build per-part atmospheric constants
-    results = {"drops": [], "contacts": [], "floor_scene": floor_scene(image), "clock": clock_probe(image)}
+    results = {"drops": [], "contacts": [], "floor_scene": floor_scene(image), "clock": clock_probe(image),
+               "atmospheres": atmosphere_probe(image)}
     for kind in (0, 4, 9, 28, 44):
         h.init_part(PART, kind)
         h.write(PART + 0x16, "ii", 20 * 512, 100 * 512)
