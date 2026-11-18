@@ -240,6 +240,22 @@ function workshop() {
         ? initialPuzzle
         : 0,
   };
+  const openingFile =
+    solo &&
+    settings.puzzleIndex === FREE_WORKSHOP &&
+    query.get("local") === "1";
+  const blueprint = openingFile ? readLocalWorkshop() : undefined;
+  if (openingFile && !blueprint) {
+    app.replaceChildren(
+      header(),
+      el(
+        "p",
+        "This tab has no saved machine. Open the .TIM file again from Single player.",
+      ),
+      createBackLink({ href: pageUrl() }),
+    );
+    return;
+  }
   let me = "";
   let ownSeat: { slot: number; name: string } | undefined;
   const live = createNotice({ className: "machine-live" });
@@ -514,9 +530,7 @@ function workshop() {
       : {
           humanName: social.playerName(store.getItem(names.name)) ?? undefined,
         },
-    solo && settings.puzzleIndex === FREE_WORKSHOP && query.get("local") === "1"
-      ? readLocalWorkshop()
-      : undefined,
+    blueprint,
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),

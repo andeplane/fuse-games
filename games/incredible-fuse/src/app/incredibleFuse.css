@@ -44,6 +44,24 @@
   font-weight: normal;
   color: var(--fui-text-dim);
 }
+.machine-import {
+  margin-block-start: 0.75rem;
+  font: 0.95rem/1.45 var(--fui-font-sans);
+}
+.machine-import summary {
+  cursor: pointer;
+}
+.machine-import label {
+  display: grid;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+}
+.machine-import input {
+  max-width: 100%;
+}
+.machine-import p:empty {
+  display: none;
+}
 .machine-page:has(.machine-lobby:not([hidden])) .machine-live,
 .machine-live:empty {
   display: none;

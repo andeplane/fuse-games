@@ -72,7 +72,9 @@ type Recipe = (page: Page) => Promise<void>;
 const RECIPES: Record<string, Recipe> = {
   "incredible-fuse": async (page) => {
     await openPlayOptions(page, "single");
-    await page.getByRole("button", { name: "Start puzzle", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Start puzzle", exact: true })
+      .click();
     await page.getByRole("group", { name: "Machine workbench" }).waitFor();
   },
   "fuse-drivers": async (page) => {
