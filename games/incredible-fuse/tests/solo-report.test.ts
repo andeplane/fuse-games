@@ -9,9 +9,19 @@ test("solo receipts omit room capabilities and leave IDs for the shared identity
     result: {
       matchId: "solo-match",
       length: 1,
-      winnerId: "solo",
       finishers: ["solo"],
-      players: [],
+      players: [
+        {
+          playerId: "solo",
+          name: "Ada",
+          slot: 0,
+          roundsPlayed: 1,
+          roundWins: 1,
+          matchScoreUnits: 1,
+          matchPlacement: 1,
+          earlyExits: 0,
+        },
+      ],
     },
   };
   const calls: RequestInit[] = [];
@@ -19,11 +29,13 @@ test("solo receipts omit room capabilities and leave IDs for the shared identity
     calls.push(init ?? {});
     return Response.json({ status: "confirmed" });
   };
-  await sendReport("/api/games/incredible-fuse/me/results", report, { fetch: fetcher });
+  await sendReport("/api/games/incredible-fuse/me/results", report, {
+    fetch: fetcher,
+  });
   assert.equal(calls.length, 1);
   assert.equal(new Headers(calls[0]!.headers).has("Authorization"), false);
   assert.deepEqual(JSON.parse(String(calls[0]!.body)), {
     result: report.result,
   });
-  assert.equal(report.result.winnerId, "solo");
+  assert.deepEqual(report.result.finishers, ["solo"]);
 });

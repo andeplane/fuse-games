@@ -1,39 +1,17 @@
 import {
-  RoomRuntime,
   type Callbacks,
   type RoomTransport,
   type RuntimeDependencies,
   type TransportEvents,
 } from "fuse-netcode";
 import {
-  HOLD,
-  ROLL,
-  incredibleFuseGame,
-  type IncredibleFuseEntry,
   type IncredibleFuseEvent,
-  type IncredibleFuseRoom,
   type IncredibleFuseSettings,
   type IncredibleFuseView,
 } from "../../src/game/index.js";
 
-/** The incredibleFuse runtime as a test drives it: ROLL and HOLD name the turn the player sees. */
-export class TestIncredibleFuseRuntime extends RoomRuntime<
-  IncredibleFuseRoom,
-  IncredibleFuseEntry,
-  IncredibleFuseView,
-  IncredibleFuseEvent,
-  IncredibleFuseSettings
-> {
-  press(action: typeof ROLL | typeof HOLD): boolean {
-    const room = this.world?.state;
-    if (!room || !this.player()?.connected || room.turn !== this.id)
-      return false;
-    this.append(action, room.turnNo);
-    return true;
-  }
-  roomState(): IncredibleFuseRoom | undefined {
-    return this.world?.state;
-  }
+import { IncredibleFuseRuntime } from "../../src/app/runtime.js";
+export class TestIncredibleFuseRuntime extends IncredibleFuseRuntime {
   hashAt(tick: number): string | undefined {
     return this.world?.hashAt(tick);
   }
@@ -74,7 +52,11 @@ export class IncredibleFuseMesh {
   join(id: string): TestIncredibleFuseRuntime {
     const emitted: IncredibleFuseEvent[] = [];
     this.emitted.set(id, emitted);
-    const callbacks: Callbacks<IncredibleFuseView, IncredibleFuseEvent, IncredibleFuseSettings> = {
+    const callbacks: Callbacks<
+      IncredibleFuseView,
+      IncredibleFuseEvent,
+      IncredibleFuseSettings
+    > = {
       state: () => {},
       event: (event) => emitted.push(event),
       status: () => {},
@@ -92,7 +74,6 @@ export class IncredibleFuseMesh {
       onVisibilityChange: () => () => {},
     };
     const runtime = new TestIncredibleFuseRuntime(
-      incredibleFuseGame,
       "ROOM",
       this.settings,
       callbacks,
