@@ -305,8 +305,8 @@ SR2_SHP	3	3						1x7; 541 spans	role	Roadwork warning diamond	hazards.ts	race_ro
 SR2_SHP	4	4						1x7; 196 spans	role	Small roadside shrub	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	5	5						1x7; 667 spans	role	Speed-limit sign	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	6	6						1x7; 615 spans	role	Striped barricade	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	7	7						1x7; 120 spans	role	Small shrub / rock hazard	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	8	8						1x7; 293 spans	role	Bush	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	7	7						1x7; 120 spans	visual	Single grey rock, reused as a live lane hazard	hazards.ts	race_road.c:1149-1241; local HLINE/race-palette inspection
+SR2_SHP	8	8						1x7; 293 spans	visual	Cluster of grey rocks	street-furniture.ts	race_road.c:1149-1241; local HLINE/race-palette inspection
 SR2_SHP	9	9						1x7; 340 spans	role	Telephone pole	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	10	10						1x7; 692 spans	role	Tree	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	11	11						1x7; 933 spans	role	Large tree	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
@@ -318,9 +318,9 @@ SR2_SHP	16	16						1x7; 308 spans	role	Left chevron	street-furniture.ts	race_roa
 SR2_SHP	17	17						1x7; 307 spans	role	Right chevron	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	18	18						1x7; 372 spans	role	Winding-road warning, left first	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	19	19						1x7; 373 spans	role	Winding-road warning, right first	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	20	20						1x7; 146 spans	consumer	Secondary hit-test obstacle	street-furniture.ts	race_road.c:1149-1241
-SR2_SHP	21	21						1x7; 354 spans	consumer	Canyon roadside object from left/right flags	street-furniture.ts	race_road.c:1149-1241
-SR2_SHP	22	22						1x7; 463 spans	consumer	Distant canyon object from left/right flags	street-furniture.ts	race_road.c:1149-1241
+SR2_SHP	20	20						1x7; 146 spans	visual	Low grey road-surface obstacle, pothole-like depression	street-furniture.ts	race_road.c:1149-1241; local HLINE/race-palette inspection
+SR2_SHP	21	21						1x7; 354 spans	visual	Low spreading green canopy and woody trunk	street-furniture.ts	race_road.c:1149-1241; local HLINE/race-palette inspection
+SR2_SHP	22	22						1x7; 463 spans	visual	Compact domed green canopy and woody trunk	street-furniture.ts	race_road.c:1149-1241; local HLINE/race-palette inspection
 SR2_SHP	23	23						1x7; 1126 spans	role	Aqueduct sky, rotation frames	landscape.ts	race_render.md:1700-1702
 SR2_SHP	24	24						1x7; 448 spans	role	Aqueduct sky, rotation frames	landscape.ts	race_render.md:1700-1702
 SR2_SHP	25	25						9x7; 1324 spans	role	Aqueduct course shape, nine groups at seven angles	renderer.ts	race_render.md:1693

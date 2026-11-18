@@ -353,8 +353,8 @@ def shape_role(i):
         ("Small roadside shrub", "landscape.ts"),
         ("Speed-limit sign", "hazards.ts"),
         ("Striped barricade", "street-furniture.ts"),
-        ("Small shrub / rock hazard", "hazards.ts"),
-        ("Bush", "landscape.ts"),
+        ("Single grey rock, reused as a live lane hazard", "hazards.ts"),
+        ("Cluster of grey rocks", "street-furniture.ts"),
         ("Telephone pole", "street-furniture.ts"),
         ("Tree", "street-furniture.ts"),
         ("Large tree", "street-furniture.ts"),
@@ -368,6 +368,12 @@ def shape_role(i):
         ("Winding-road warning, right first", "street-furniture.ts"),
     ]
     if i < 20:
+        if i in (7, 8):
+            return (
+                *roles[i],
+                source + "; local HLINE/race-palette inspection",
+                "visual",
+            )
         return (
             *roles[i],
             ("race_road.c:903-908" if i in (12, 13, 14) else source)
@@ -388,12 +394,17 @@ def shape_role(i):
             "race_render.md:1693",
             "role",
         )
-    consumers = [
-        "Secondary hit-test obstacle",
-        "Canyon roadside object from left/right flags",
-        "Distant canyon object from left/right flags",
+    subjects = [
+        "Low grey road-surface obstacle, pothole-like depression",
+        "Low spreading green canopy and woody trunk",
+        "Compact domed green canopy and woody trunk",
     ]
-    return consumers[i - 20], "street-furniture.ts", source, "consumer"
+    return (
+        subjects[i - 20],
+        "street-furniture.ts",
+        source + "; local HLINE/race-palette inspection",
+        "visual",
+    )
 
 
 def generate(build, ref, mz):
