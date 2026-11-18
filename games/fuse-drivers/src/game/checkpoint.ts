@@ -19,6 +19,11 @@ import type { Phase, RaceState } from "./sim/race.js";
 import { createTruck, type Truck } from "./sim/truck.js";
 import { getOffroadCourse } from "./offroad/course.js";
 import {
+  decodeRecentFinishes,
+  encodeRecentFinishes,
+  freezeFinishedRace,
+} from "./result.js";
+import {
   campaignVariant,
   isCampaignIndex,
   isOffroadDriver,
@@ -167,6 +172,7 @@ export function encodeRoom(room: FuseDriversRoom): unknown[] {
         driver.topSpeed,
       ];
     }),
+    encodeRecentFinishes(room.recentFinishes),
   ];
 }
 
@@ -578,7 +584,7 @@ export function decodeRoom(
   fields: readonly unknown[],
   tick: number,
 ): FuseDriversRoom | undefined {
-  if (fields.length !== 9 || !uint32(tick)) return;
+  if (fields.length !== 10 || !uint32(tick)) return;
   const [
     header,
     rawSeats,
@@ -589,6 +595,7 @@ export function decodeRoom(
     rawFinishSeats,
     campaignIndex,
     rawGarage,
+    rawRecentFinishes,
   ] = fields;
   if (
     !Array.isArray(header) ||
@@ -607,6 +614,7 @@ export function decodeRoom(
     return;
   const [matchId, round, stage, finishTick] = header;
   const settings = parseSettings(rawSettings);
+  const recentFinishes = decodeRecentFinishes(rawRecentFinishes, tick);
   if (
     !validMatchId(matchId) ||
     !uint32(round) ||
@@ -617,7 +625,8 @@ export function decodeRoom(
     (stage === "over"
       ? finishTick < 1 || finishTick > tick
       : finishTick !== 0) ||
-    !settings
+    !settings ||
+    !recentFinishes
   )
     return;
 
@@ -723,6 +732,7 @@ export function decodeRoom(
       campaignIndex,
       finishSeats,
       finishTick,
+      recentFinishes,
     };
   }
   if (!racing || !isCampaignIndex(campaignIndex)) return;
@@ -758,7 +768,7 @@ export function decodeRoom(
         return;
     }
   }
-  return {
+  const room: FuseDriversRoom = {
     tick,
     matchId,
     round,
@@ -772,7 +782,20 @@ export function decodeRoom(
     campaignIndex,
     finishSeats,
     finishTick,
+    recentFinishes,
   };
+  if (stage === "over") {
+    const latest = recentFinishes.at(-1);
+    const current = freezeFinishedRace(room);
+    if (
+      !latest ||
+      !current ||
+      JSON.stringify(encodeRecentFinishes([latest])) !==
+        JSON.stringify(encodeRecentFinishes([current]))
+    )
+      return;
+  }
+  return room;
 }
 
 /** Canonical JSON (sorted keys, seats in slot then id order), then FNV-1a in two lanes: 16 hex characters. */

@@ -123,7 +123,7 @@ test("the four leading fields are the ones the snapshot puts before the streams"
   const fields = encodeRoom(racing(3));
   assert.equal(
     fields.length,
-    9,
+    10,
     "scalars, seats, settings, grid, then the rest",
   );
   assert.deepEqual(
@@ -286,6 +286,13 @@ test("the finished roster survives departures and checkpoint recovery without ch
   assert.equal(hashRoom(restored), hashRoom(room));
   assert.deepEqual(matchResult(restored), before);
   const fields = wire(room);
+  const withoutReceipt = wire(room);
+  withoutReceipt[9] = [];
+  assert.equal(
+    decodeRoom(withoutReceipt, room.tick),
+    undefined,
+    "a finished race must retain its receipt",
+  );
   (fields[6] as unknown[]).pop();
   assert.equal(
     decodeRoom(fields, room.tick),
@@ -439,6 +446,7 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
     ["an invalid campaign index", (f) => (f[7] = -1)],
     ["another driver's wallet", (f) => (at(f, 8, 0)[0] = "b")],
     ["a missing wallet", (f) => at(f, 8).pop()],
+    ["a malformed retained finish list", (f) => (f[9] = {})],
     ["a five-digit cash balance", (f) => (at(f, 8, 0)[1] = 10000)],
     ["a seventh tire grade", (f) => (at(f, 8, 0)[6] = 6)],
     ["a tick that is not a tick", () => {}, -1],
