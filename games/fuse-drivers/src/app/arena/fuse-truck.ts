@@ -1,85 +1,85 @@
 import type Phaser from "phaser";
 
-/** Slot liveries are shared by the trucks, timing tower and local-driver indicators. */
-export const STADIUM_LIVERIES = [
-  "#29f5dc",
-  "#ff60a1",
-  "#b2f750",
-  "#ffa454",
-  "#bb86ff",
-] as const;
+/** Slot paint also identifies each driver in the timing tower. */
+export const STADIUM_LIVERIES = ["#29f5dc", "#ff60a1", "#b2f750", "#ffa454", "#bb86ff"] as const;
+const HEADINGS = 48;
+const CELL = 96;
 
-/** An overhead desert racer: treaded spare, open bed, half cage, flared wheel pods and
- * a light bar at the nose. Each small part is sized to survive the TV downsample. */
+type Vertex = readonly [forward: number, across: number, height: number];
+type Face = { points: Vertex[]; paint: string };
+
+export function truckFrame(heading: number): number {
+  return ((Math.round(heading * HEADINGS / (2 * Math.PI)) % HEADINGS) + HEADINGS) % HEADINGS;
+}
+
+/** World-up stays vertical as the pickup turns. Each heading is baked once, including
+ * the sidewalls, axles and daylight below the lifted chassis. */
 export function fuseTruckTexture(scene: Phaser.Scene, slot: number): string {
-  const key = `fd-fuse-truck-${slot}`;
+  const key = `fd-monster-${slot}`;
   if (scene.textures.exists(key)) return key;
-  const texture = scene.textures.createCanvas(key, 64, 80);
-  if (!texture) throw new Error("Could not create the Fuse truck livery");
+  const texture = scene.textures.createCanvas(key, CELL*8, CELL*6);
+  if (!texture) throw new Error("Could not create monster truck atlas");
   const ctx = texture.getContext();
   const color = STADIUM_LIVERIES[slot % STADIUM_LIVERIES.length]!;
-  const rect = (x: number, y: number, w: number, h: number, fill: string) => {
-    ctx.fillStyle = fill;
-    ctx.fillRect(x, y, w, h);
-  };
-  const shell = (points: readonly number[], fill: string) => {
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.moveTo(points[0]!, points[1]!);
-    for (let i = 2; i < points.length; i += 2)
-      ctx.lineTo(points[i]!, points[i + 1]!);
-    ctx.closePath();
-    ctx.fill();
-  };
-  for (const x of [5, 48])
-    for (const y of [10, 52]) {
-      rect(x, y, 11, 20, "#0b121c");
-      for (let t = 2; t < 19; t += 4) rect(x + 1, y + t, 9, 2, "#415065");
+  const faces: Face[] = [];
+  const face = (paint:string, ...points:Vertex[]) => faces.push({paint,points});
+  // Cross-sections from the tailgate to the nose. Recess the bed and rake the windshield.
+  const sections = (stations: readonly Vertex[], bottom:number, flank:string, top:string) => {
+    for (let i=1;i<stations.length;i++) {
+      const [a,u,h] = stations[i-1]!, [b,v,k] = stations[i]!;
+      face(top,[a,-u,h],[b,-v,k],[b,v,k],[a,u,h]);
+      for (const side of [-1,1]) face(flank,[a,side*u,bottom],[b,side*v,bottom],[b,side*v,k],[a,side*u,h]);
     }
-  shell(
-    [
-      16, 7, 23, 4, 41, 4, 48, 7, 48, 19, 52, 29, 52, 49, 48, 55, 49, 71, 44,
-      76, 19, 76, 15, 72, 16, 54, 12, 48, 12, 29, 16, 20,
-    ],
-    "#101a27",
-  );
-  shell(
-    [
-      17, 9, 24, 6, 40, 6, 47, 9, 47, 20, 50, 29, 47, 50, 46, 72, 18, 72, 18,
-      50, 14, 47, 14, 29, 17, 20,
-    ],
-    color,
-  );
-  shell(
-    [20, 11, 25, 8, 39, 8, 44, 11, 44, 22, 40, 24, 23, 24, 20, 21],
-    "#304559",
-  );
-  rect(22, 9, 20, 3, "#fff5cc");
-  rect(30, 13, 4, 10, color);
-  shell([14, 28, 21, 21, 43, 21, 50, 28, 47, 43, 17, 43], "#162b42");
-  shell([20, 28, 24, 24, 41, 24, 46, 28, 44, 31, 21, 31], "#9ccbd7");
-  shell([20, 33, 44, 33, 42, 46, 21, 46], color);
-  rect(21, 33, 22, 2, "#e6ffff");
-  ctx.fillStyle = "#122039";
-  ctx.font = "bold 13px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(String(slot + 1), 32, 45);
-  shell([20, 48, 44, 48, 43, 68, 21, 68], "#1c2837");
-  for (const x of [20, 41]) rect(x, 48, 2, 20, "#8f9ba5");
-  ctx.fillStyle = "#080f1c";
-  ctx.beginPath();
-  ctx.arc(32, 58, 9, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#526277";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = "#a1abac";
-  ctx.beginPath();
-  ctx.arc(32, 58, 3, 0, Math.PI * 2);
-  ctx.fill();
-  rect(17, 69, 9, 3, "#ff5e65");
-  rect(38, 69, 9, 3, "#ff5e65");
-  rect(25, 72, 14, 2, "#aab8bb");
+    for(const [x,w,z] of [stations[0]!,stations.at(-1)!])
+      face(flank,[x,-w,bottom],[x,w,bottom],[x,w,z],[x,-w,z]);
+  };
+  sections([[-22,5,13],[22,5,13]],7,"#26313a","#66717a");
+  sections([[-28,11,22],[-24,12,24],[22,12,24],[28,10,21]],16,color,color);
+  face("#263746",[-25,-9,23.7],[-10,-9,24.4],[-10,9,24.4],[-25,9,23.7]);
+  for(const side of [-1,1]){
+    face("#fff1b2",[-24,side*12.1,19],[-12,side*12.1,22],[17,side*12.1,22],[7,side*12.1,19]);
+    face("#0c5770",[-10,side*9,24],[-6,side*8,32],[4,side*8,32],[10,side*9,24]);
+  }
+  face("#0d3446",[-10,-9,24],[-6,-8,32],[-6,8,32],[-10,9,24]);
+  face("#57a4bb",[4,-8,32],[10,-9,24],[10,9,24],[4,8,32]);
+  face(color,[-6.5,-8.8,32.5],[4.5,-8.8,32.5],[4.5,8.8,32.5],[-6.5,8.8,32.5]);
+  face("#fff1b2",[11,-3,24.3],[22,-3,24.3],[27,-2,21.6],[27,1,21.6],[11,1,24.3]);
+  for(const s of [-1,1]) {
+    face("#fff6ce",[28.1,s*9,18.5],[28.1,s*5,18.5],[28.1,s*5,21],[28.1,s*9,21]);
+    face("#ff4145",[-28.1,s*10,18],[-28.1,s*8,18],[-28.1,s*8,21],[-28.1,s*10,21]);
+  }
+  for(const axle of [-18,18]) for(const side of [-1,1]) {
+    const segments=16;
+    const ring=(i:number,offset:number,r:number):Vertex=>{
+      const a=i*2*Math.PI/segments;
+      return [axle+r*Math.cos(a),side*offset,10+r*Math.sin(a)];
+    };
+    for(let i=0;i<segments;i++){
+      const tread=i%2===0?"#43505b":"#161e2a";
+      face(tread,ring(i,7,10),ring(i+1,7,10),ring(i+1,18,10),ring(i,18,10));
+      face("#141c27",ring(i,18,10),ring(i+1,18,10),ring(i+1,18.6,5.4),ring(i,18.6,5.4));
+      face(i%2===0?"#b3c7c9":"#647987",ring(i,18.6,5.4),ring(i+1,18.6,5.4),[axle,side*19,10]);
+    }
+  }
+  for(let i=0;i<HEADINGS;i++){
+    const a=i*2*Math.PI/HEADINGS, c=Math.cos(a), s=Math.sin(a);
+    const x=(i%8)*CELL,y=Math.floor(i/8)*CELL;
+    const projected=faces.map(f=>{
+      let depth=0;
+      const points=f.points.map(([u,v,z])=>{
+        const d=u*s+v*c;
+        depth+=d*0.84+z*0.54;
+        return [x+48+u*c-v*s,y+53+d*0.54-z*0.84] as const;
+      });
+      return {points,paint:f.paint,depth:depth/f.points.length};
+    }).sort((a,b)=>a.depth-b.depth);
+    for (const {points,paint} of projected){
+      ctx.beginPath();
+      points.forEach(([x,y],j)=>j===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.closePath();ctx.fillStyle=paint;ctx.fill();ctx.strokeStyle=paint;ctx.lineWidth=.55;ctx.stroke();
+    }
+    texture.add(i,0,x,y,CELL,CELL);
+  }
   texture.refresh();
   return key;
 }

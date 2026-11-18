@@ -14,8 +14,8 @@ import type { ArenaFrame } from "./frame.js";
 import { createReferenceArt, type ReferenceArt } from "./reference-art.js";
 import { createTrackArt } from "./track-art.js";
 import type { StadiumTheme } from "./theme.js";
-import { fuseTruckTexture } from "./fuse-truck.js";
-import { paintBattleArt } from "./battle-art.js";
+import { fuseTruckTexture, truckFrame } from "./fuse-truck.js";
+import { paintBattleArt, paintTrackPickups } from "./battle-art.js";
 
 const TRUCK_SCALE = 44 / (TRUCK_CELL * 0.92);
 export const TILT = 0.72;
@@ -71,6 +71,7 @@ export class RaceScene extends Phaser.Scene {
   private referenceRequested = false;
   private theme?: StadiumTheme;
   private battleArt?: Phaser.GameObjects.Graphics;
+  private props?: Phaser.GameObjects.Graphics;
   private pickup?: Phaser.GameObjects.Image;
 
   constructor(
@@ -92,7 +93,10 @@ export class RaceScene extends Phaser.Scene {
   create(): void {
     if (this.referenceRequested) this.prepareReference();
     this.battleArt = this.add.graphics().setDepth(12);
+    this.props = this.add.graphics().setDepth(7);
     const money = this.make.graphics({}, false);
+    money.fillStyle(0x101321).fillEllipse(32,20,60,31);
+    money.generateTexture("fd-truck-shadow",64,40).clear();
     money.fillStyle(0x221b13).fillRect(0, 2, 13, 8);
     money.fillStyle(0x356139).fillRect(1, 2, 11, 6);
     money.fillStyle(0x9df082).fillRect(1, 1, 11, 5);
@@ -158,20 +162,20 @@ export class RaceScene extends Phaser.Scene {
         ? fuseTruckTexture(this, slot)
         : `truck-${TRUCK_COLORS[slot % TRUCK_COLORS.length]!}`;
       const copy = () =>
-        this.add.image(0, 0, key).setScale(fuse ? 0.59 : TRUCK_SCALE);
-      const shadowBody = copy().setTint(0x201008).setAlpha(0.42);
+        this.add.image(0, 0, key, fuse ? 0 : undefined).setScale(fuse ? 0.84 : TRUCK_SCALE);
+      const shadowBody = fuse ? this.add.image(0,0,"fd-truck-shadow").setScale(.8).setAlpha(.42) : copy().setTint(0x201008).setAlpha(0.42);
       const shadow = this.add
         .container(0, 0, [shadowBody])
         .setScale(1, TILT)
         .setDepth(9);
-      const layers = Array.from({ length: SIDE_LAYERS }, (_, i) =>
+      const layers = fuse ? [copy()] : Array.from({ length: SIDE_LAYERS }, (_, i) =>
         copy()
           .setTint(
             i === SIDE_LAYERS - 1 ? 0xffffff : i === 0 ? 0x282128 : 0x5d5654,
           )
           .setY(-i),
       );
-      const truck = this.add.container(0, 0, layers).setScale(1, TILT);
+      const truck = this.add.container(0, 0, layers).setScale(1, fuse ? 1 : TILT);
       return { truck, shadow, shadowBody, layers };
     });
   }
@@ -186,7 +190,7 @@ export class RaceScene extends Phaser.Scene {
       this.buildTrucks(count, theme);
     this.theme = theme;
     const active = race.pickups.active;
-    this.pickup?.setVisible(!!active);
+    this.pickup?.setVisible(theme !== "fuse" && !!active);
     if (active && this.pickup) {
       const terrain = getOffroadTerrain(track.name)!;
       const p = projectOffroad(
@@ -204,6 +208,7 @@ export class RaceScene extends Phaser.Scene {
         .setPosition(p.x, p.y);
     }
     if (privateClassic) this.reference?.paint(frame);
+    if (this.props) paintTrackPickups(this.props,frame,theme === "fuse");
     if (this.battleArt) paintBattleArt(this.battleArt, frame);
     if (privateClassic) return;
     race.trucks.forEach((truck, slot) => {
@@ -223,8 +228,10 @@ export class RaceScene extends Phaser.Scene {
       );
       sprite.truck.setPosition(p.x, p.y).setDepth(10 + truck.motion.y / 16384);
       const rotation = p.heading + Math.PI / 2;
-      sprite.shadowBody.setRotation(rotation);
-      for (const layer of sprite.layers) layer.setRotation(rotation);
+      sprite.shadowBody.setRotation(theme === "fuse" ? p.heading : rotation);
+      if (theme === "fuse")
+        sprite.layers[0]!.setFrame(truckFrame(Math.atan2(Math.sin(p.heading)/.54,Math.cos(p.heading))));
+      else for (const layer of sprite.layers) layer.setRotation(rotation);
       if (
         newTick &&
         Math.abs(truck.suspension.bodyHeight - truck.suspension.groundHeight) <
