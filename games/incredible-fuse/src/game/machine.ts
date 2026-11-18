@@ -13,6 +13,7 @@ import {
 } from "./machine-parts.js";
 export * from "./machine-parts.js";
 import { atmosphere } from "./machine-motion.js";
+import { stepCords } from "./machine-cords.js";
 import { evaluateObjective } from "./machine-goals.js";
 import {
   canonicalLink,
@@ -46,6 +47,7 @@ export interface Machine {
   bodies: Body[];
   active: number[];
   links: MachineLink[];
+  broken: number[];
   /** Only movable placements are saved. The fixed layout belongs to the puzzle. */
   undo: Part[][];
   undoLinks: MachineLink[][];
@@ -114,6 +116,7 @@ export function createMachine(puzzleIndex: number): Machine {
     bodies: [],
     active: [],
     links: (spec.links ?? []).map((link) => ({ ...link })),
+    broken: [],
     undo: [],
     undoLinks: [],
   };
@@ -125,8 +128,11 @@ export function available(m: Machine, kind: PartKind): number {
       m.parts.filter((p) => !p.fixed && p.kind === kind).length,
   );
 }
-function fits(kind: PartKind, x: number, y: number): boolean {
-  const { width, height } = PARTS[kind];
+function fits(
+  { width, height }: { width: number; height: number },
+  x: number,
+  y: number,
+): boolean {
   return (
     x >= width / 2 &&
     y >= height / 2 &&
@@ -155,6 +161,7 @@ export function applyMachine(m: Machine, c: MachineCommand): boolean {
     m.phase = 0;
     m.bodies = [];
     m.active = [];
+    m.broken = [];
     return true;
   }
   if (m.mode !== "build") return false;
@@ -191,7 +198,10 @@ export function applyMachine(m: Machine, c: MachineCommand): boolean {
       return false;
     const x = Math.round(c.x / 2) * 2,
       y = Math.round(c.y / 2) * 2;
-    if (!fits(kind, x, y) || (piece && piece.x === x && piece.y === y))
+    if (
+      !fits(piece ? partSize(piece) : PARTS[kind], x, y) ||
+      (piece && piece.x === x && piece.y === y)
+    )
       return false;
     // Parts can couple at their edges; the same point cannot hold two origins.
     if (
@@ -213,7 +223,16 @@ export function applyMachine(m: Machine, c: MachineCommand): boolean {
     return true;
   }
   if (!piece) return false;
-  if (c.type === "rotate" && !canRotate(piece.kind)) return false;
+  if (
+    c.type === "rotate" &&
+    (!canRotate(piece.kind) ||
+      !fits(
+        partSize({ ...piece, rotation: piece.rotation ? 0 : 1 }),
+        piece.x,
+        piece.y,
+      ))
+  )
+    return false;
   remember(m);
   if (c.type === "remove") {
     m.parts = m.parts.filter((p) => p.id !== piece.id);
@@ -362,13 +381,20 @@ function mechanisms(m: Machine) {
       fire(m, p.id);
       continue;
     }
-    if (driver.has(p.kind) && drivenBy("belt", driver)) {
+    if (p.kind !== "motor" && driver.has(p.kind) && drivenBy("belt", driver)) {
       fire(m, p.id);
       continue;
     }
     if (
       (pulled.has(p.kind) || cord.has(p.kind) || p.kind === "seesaw") &&
-      inputs("rope").some((id) => on.some((q) => q.id === id))
+      inputs("rope").some(
+        (id) =>
+          on.some((q) => q.id === id) &&
+          !m.broken.some((i) => {
+            const l = m.links[i]!;
+            return (l.a === p.id && l.b === id) || (l.b === p.id && l.a === id);
+          }),
+      )
     ) {
       fire(m, p.id);
       continue;
@@ -397,6 +423,8 @@ function mechanisms(m: Machine) {
       if (
         (driver.has(a.kind) &&
           driver.has(p.kind) &&
+          p.kind !== "motor" &&
+          (implicit || (a.kind === "gear" && p.kind === "gear")) &&
           coupled(a, p, implicit ? 12 : 1)) ||
         (implicit &&
           (cord.has(a.kind) || cord.has(p.kind)) &&
@@ -475,11 +503,6 @@ function motion(m: Machine, b: Body, p: Part) {
   const { width, height } = p.kind === "popper" ? PARTS[kind] : partSize(p),
     rx = width / 2,
     ry = height / 2;
-  if (
-    m.links.some((l) => l.kind === "rope" && (l.a === p.id || l.b === p.id)) &&
-    Math.hypot(b.x - p.x, b.y - p.y) > 3
-  )
-    fire(m, p.id);
   let ax = 0,
     ay = field.acceleration / UNIT;
   const animal = kind === "mouse" || kind === "cat";
@@ -557,6 +580,18 @@ function motion(m: Machine, b: Body, p: Part) {
         continue;
       }
       if (q.kind === "elbow" || q.kind === "pipe") {
+        if (q.kind === "pipe" && w > h) {
+          const entersLeft = b.vx > 0 && oldX <= q.x - w && b.x + rx >= q.x - w;
+          const entersRight =
+            b.vx < 0 && oldX >= q.x + w && b.x - rx <= q.x + w;
+          if ((entersLeft || entersRight) && Math.abs(b.y - q.y) <= h) {
+            fire(m, q.id);
+            b.x = q.x + (entersLeft ? 1 : -1) * (w + rx + 1);
+            b.y = q.y;
+            b.vy = 0;
+          }
+          continue;
+        }
         if (
           b.vy >= 0 &&
           oldY <= q.y - h &&
@@ -630,7 +665,10 @@ function motion(m: Machine, b: Body, p: Part) {
             const speed = beltSpeed(m, q);
             if (speed !== 0) fire(m, q.id);
             b.vx = speed;
-          } else b.vx = quant(b.vx * 0.98);
+          } else {
+            b.vx = quant(b.vx * 0.98);
+            if (flat) b.x = Math.floor(b.x) + (b.vx < 0 ? 0 : 511 / UNIT);
+          }
         }
       } else if (!inclined && Math.abs(b.y - q.y) < h + ry - 1) {
         if (oldX + rx <= q.x - w + 0.5 && b.x + rx >= q.x - w) {
@@ -698,6 +736,18 @@ export function stepPhysics(m: Machine): void {
         b = m.bodies[j]!;
       transfer(m, a, b, partOf.get(a.id)!, partOf.get(b.id)!);
     }
+  if (m.links.some((l) => l.kind === "rope")) {
+    stepCords({
+      parts: partOf,
+      bodies: new Map(m.bodies.map((b) => [b.id, b])),
+      links: m.links,
+      broken: m.broken,
+      active: m.active,
+      mass: (p) => (materials[bodyKind(p)] ?? looseMaterial).mass,
+      maximum: (p) => atmosphere(bodyKind(p), m.air, m.gravity).terminal / UNIT,
+      activate: (id) => fire(m, id),
+    });
+  }
   if (m.puzzle === FREE_WORKSHOP) return;
   const spec = getPuzzle(m.puzzle);
   if (spec.objective) m.mode = evaluateObjective(spec.objective, m);
@@ -814,7 +864,7 @@ function matchesLayout(
       return false;
     if (p.fixed) continue;
     if (
-      !fits(p.kind, p.x, p.y) ||
+      !fits(partSize(p), p.x, p.y) ||
       !Number.isInteger(p.x / 2) ||
       !Number.isInteger(p.y / 2)
     )
@@ -828,7 +878,7 @@ function matchesLayout(
 export function validMachine(raw: unknown): raw is Machine {
   if (
     !record(raw) ||
-    Object.keys(raw).length !== 13 ||
+    Object.keys(raw).length !== 14 ||
     !within(raw.puzzle, 0, FREE_WORKSHOP) ||
     typeof raw.imported !== "boolean" ||
     !(
@@ -845,6 +895,8 @@ export function validMachine(raw: unknown): raw is Machine {
     !validParts(raw.parts) ||
     !matchesLayout(raw.parts, raw.puzzle, raw.imported) ||
     !validLinks(raw.parts, raw.links) ||
+    !Array.isArray(raw.broken) ||
+    raw.broken.length > raw.links.length ||
     !Array.isArray(raw.active) ||
     raw.active.length > raw.parts.length ||
     !Array.isArray(raw.bodies) ||
@@ -859,6 +911,14 @@ export function validMachine(raw: unknown): raw is Machine {
     puzzle = raw.puzzle,
     imported = raw.imported;
   const ids = new Map(parts.map((p) => [p.id, p]));
+  const links = raw.links;
+  if (
+    !raw.broken.every(
+      (i) => within(i, 0, links.length - 1) && links[i]!.kind === "rope",
+    ) ||
+    new Set(raw.broken).size !== raw.broken.length
+  )
+    return false;
   if (
     !raw.active.every((id) => within(id, 1, 128) && ids.has(id)) ||
     new Set(raw.active).size !== raw.active.length
@@ -868,6 +928,7 @@ export function validMachine(raw: unknown): raw is Machine {
     raw.mode === "build" &&
     (raw.tick !== 0 ||
       raw.phase !== 0 ||
+      raw.broken.length ||
       raw.active.length ||
       raw.bodies.length)
   )

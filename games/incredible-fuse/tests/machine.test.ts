@@ -129,6 +129,7 @@ test("DOS bowling drop and brick contact reproduce measured positions and veloci
     const sample = samples.get(tick);
     if (sample) {
       assert.equal(b.vy * 512, sample[1]);
+      assert.equal((b.x - 16) * 512, tick === 10 ? 32768 : 33279);
       assert.equal(
         tick === 20 ? Math.floor(b.y) - 16 : (b.y - 16) * 512,
         sample[0],
@@ -218,13 +219,58 @@ test("plugging a lamp or fan into its own switch isolates each circuit", () => {
 });
 test("an incoming heavy ball transfers motion to a lighter ball", () => {
   const m = workshop([
-    piece(1, "bowling", 150, 90),
-    piece(2, "tennis", 173, 120),
+    piece(1, "bowling", 150, 60),
+    piece(2, "tennis", 166, 120),
     piece(3, "shelf", 180, 135),
   ]);
   edit(m, { type: "run" });
   for (let i = 0; i < 30; i++) stepPhysics(m);
   assert.ok(m.bodies[1]!.x > 180);
+});
+test("a pull cord holds a rising balloon against a fixed anchor and rewind restores a cut cord", () => {
+  const layout = [piece(1, "balloon", 160, 140), piece(2, "eyelet", 160, 260)];
+  const links: MachineLink[] = [{ kind: "rope", a: 1, b: 2 }];
+  const held = workshop(layout, links);
+  edit(held, { type: "run" });
+  for (let i = 0; i < 30; i++) stepPhysics(held);
+  assert.equal(held.bodies[0]!.y, 140);
+  assert.deepEqual(held.active, [1, 2]);
+  const cut = workshop(
+    [...layout, piece(3, "scissors", 160, 200), piece(4, "baseball", 184, 158)],
+    links,
+  );
+  edit(cut, { type: "run" });
+  for (let i = 0; i < 35; i++) stepPhysics(cut);
+  assert.deepEqual(cut.broken, [0]);
+  assert.ok(cut.bodies[0]!.y < 100);
+  const snapshot: unknown = JSON.parse(JSON.stringify(cut));
+  assert.ok(validMachine(snapshot));
+  stepPhysics(snapshot);
+  stepPhysics(cut);
+  assert.deepEqual(snapshot, cut);
+  edit(cut, { type: "rewind" });
+  assert.deepEqual(cut.broken, []);
+  assert.deepEqual(cut.links, links);
+});
+test("a cord sliding over its guide transfers weight to the other leg", () => {
+  const m = workshop(
+    [
+      piece(1, "crate", 140, 224),
+      piece(2, "pulley", 140, 120),
+      piece(3, "pulley", 220, 120),
+      piece(4, "balloon", 220, 224),
+    ],
+    [
+      { kind: "rope", a: 1, b: 2 },
+      { kind: "rope", a: 2, b: 3 },
+      { kind: "rope", a: 3, b: 4 },
+    ],
+  );
+  edit(m, { type: "run" });
+  for (let i = 0; i < 12; i++) stepPhysics(m);
+  const [weight, balloon] = m.bodies;
+  assert.ok(weight!.y > 224 && balloon!.y < 224);
+  assert.ok(Math.abs(weight!.y + balloon!.y - 448) < 0.005);
 });
 test("edits consume stock, cannot move a fixture and restore connections through undo", () => {
   const m = createMachine(0);
