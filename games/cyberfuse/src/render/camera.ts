@@ -42,8 +42,8 @@ export function frameCamera(
   const ymax = ys.length ? Math.max(...ys) : ymin;
   // Keep at least ten tiles across on a portrait phone. A large television opens up sideways.
   const zoom = Math.min(
-    width / Math.max(150, xmax - xmin + 66),
-    height / Math.max(134, ymax - ymin + 58),
+    width / Math.max(width > height ? 300 : 150, xmax - xmin + 66),
+    height / Math.max(200, ymax - ymin + 58),
   );
   const spanX = width / zoom;
   const spanY = height / zoom;
