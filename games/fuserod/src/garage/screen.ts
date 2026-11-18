@@ -37,7 +37,7 @@ import {
   partPrice,
   purse,
   repairPrice,
-  rivalCar,
+  dinerDriver,
   RIVALS,
   ROAD_WINS_NEEDED,
   ROUTES,
@@ -325,7 +325,12 @@ export function mountGarage(
           fittings: c?.fittings,
           driverName: s.driver,
           record: `${s.canyonWins + s.aqueductWins} road wins · Day ${s.day}`,
-          rival: Math.min(s.rank, rivalRank ?? s.rank, RIVALS.length - 1),
+          rival:
+            s.pending?.rivalId ??
+            dinerDriver(
+              s.day,
+              Math.min(unlockedRank(s), rivalRank ?? unlockedRank(s)),
+            ).id,
           progress: scene === "station" ? (c?.fuel ?? 0) / TANK : 0,
         };
         if (options.drawScene) options.drawScene(canvas, scene, appearance);
@@ -662,13 +667,14 @@ export function mountGarage(
     }
     const grid = node("div", "frg-race");
     const unlocked = unlockedRank(s),
-      rank = Math.min(unlocked, rivalRank ?? unlocked);
+      rank = Math.min(unlocked, rivalRank ?? unlocked),
+      driver = dinerDriver(s.day, rank);
     if (wager > s.cash) wager = 0;
     const rival = field(
       "Rival",
-      RIVALS.map((label, i) => ({
+      RIVALS.map((_, i) => ({
         value: String(i),
-        label: i > unlocked ? `${label} · locked` : label,
+        label: dinerDriver(s.day, i).name + (i > unlocked ? " · locked" : ""),
         disabled: i > unlocked,
       })),
       String(rank),
@@ -680,7 +686,7 @@ export function mountGarage(
     );
     const opponent = node("div", "frg-opponent");
     opponent.append(rival);
-    picture(opponent, "rival", rank);
+    picture(opponent, "rival", driver.id);
     grid.append(
       opponent,
       field(
@@ -715,7 +721,7 @@ export function mountGarage(
         },
       ),
     );
-    const offered = MODELS[rivalCar(rank)].title;
+    const offered = MODELS[driver.car].title;
     const isFinal = rank === RIVALS.length - 1;
     const c = activeCar(s)!;
     const accepted = rivalAccepts(s, c, rank, wager, pinkSlip);
@@ -741,14 +747,14 @@ export function mountGarage(
     if (!accepted)
       grid.append(
         notice(
-          `${RIVALS[rank]} declines these odds. Offer a smaller stake or switch cars.`,
+          `${driver.name} declines these odds. Offer a smaller stake or switch cars.`,
         ),
       );
     grid.append(
       control(
         c.fuel < needFuel
           ? `Fuel up · ${(needFuel / 10).toFixed(1)} gal needed`
-          : "Race " + RIVALS[rank],
+          : "Race " + driver.name,
         "race",
         () => {
           if (c.fuel < needFuel) {
@@ -975,7 +981,7 @@ export function mountGarage(
           "",
           bankrupt(s)
             ? "Your garage is empty and you cannot cover a replacement."
-            : `${s.rank} of ${RIVALS.length} rivals beaten.`,
+            : `${s.rank} of ${RIVALS.length} ranks cleared.`,
         ),
         control(
           "Start a new season",

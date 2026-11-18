@@ -69,6 +69,21 @@ test("the mounted garage lets a roadworthy driver leave and explains a workbench
     await blocked.close();
   }
 });
+test("the week-two diner offers Patch and enters the same opponent into the race", async () => {
+  const f = fixture((storage) => {
+    assert.ok(transact(storage, { type: "newspaper" }).ok);
+  });
+  try {
+    assert.equal(f.button("race").textContent, "Race Patch");
+    f.button("race").click();
+    const accepted = loadCampaign(f.storage).pending;
+    assert.equal(accepted?.rivalName, "Patch");
+    assert.equal(accepted?.rivalId, 5);
+    assert.equal(accepted?.rivalCar, "breaker");
+  } finally {
+    await f.close();
+  }
+});
 test("a pending race and a closed season also disable the mounted travel control in the logbook", async () => {
   const pending = fixture((storage) => {
     assert.ok(transact(storage, { type: "race", route: "strip", wager: 0 }).ok);

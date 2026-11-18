@@ -1,4 +1,6 @@
 import { uuid } from "fuse-netcode";
+import { DRIVERS, dinerDriver } from "./drivers.js";
+export { DRIVERS, dinerDriver } from "./drivers.js";
 import {
   factoryWorkshop,
   installedDrive,
@@ -96,6 +98,7 @@ export interface Challenge {
   route: Route;
   wager: number;
   rivalName: string;
+  rivalId: number;
   rivalRank: number;
   car: Setup;
   stakeKind: "cash" | "title" | "bracket";
@@ -203,8 +206,6 @@ export const eligible = (s: Campaign) =>
   s.canyonWins + s.aqueductWins >= Math.floor(s.roadStarts / 2);
 export const unlockedRank = (s: Campaign) =>
   Math.min(s.rank, eligible(s) ? RIVALS.length - 1 : RIVALS.length - 2);
-export const rivalCar = (rank: number): ModelId =>
-  (["kestrel", "marlin", "arrowhead", "meridian", "wildfire"] as const)[rank]!;
 const stockCar = (model: ModelId): Vehicle => ({
   model,
   driveVersion: 1,
@@ -243,7 +244,7 @@ export function rivalAccepts(
 ) {
   if ((!wager && !title) || rank === RIVALS.length - 1) return true;
   const motor = setup(c),
-    opponentHp = MODELS[rivalCar(rank)].hp;
+    opponentHp = MODELS[dinerDriver(s.day, rank).car].hp;
   const edge =
     (motor.power - opponentHp) / 5 + (s.rank - rank) * 3 + (motor.grip - 1) * 4;
   if (edge <= 12) return true;
@@ -318,18 +319,20 @@ function createChallenge(
   attemptId: string | undefined,
   heat = 0,
   dialInTicks = 0,
+  rival = dinerDriver(s.day, rivalRank),
 ): Challenge {
   return {
     id: attemptId ? `race-${s.next}-${attemptId}` : `race-${s.next}`,
     ...(attemptId ? { attemptId } : {}),
     route,
     wager,
-    rivalName: RIVALS[rivalRank]!,
+    rivalName: rival.name,
+    rivalId: rival.id,
     rivalRank,
     car: setup(c),
     stakeKind,
     heat,
-    rivalCar: rivalCar(rivalRank),
+    rivalCar: rival.car,
     variant:
       stakeKind === "bracket"
         ? heat === 0
@@ -467,6 +470,12 @@ function decode(v: unknown): Campaign | undefined {
     )
       return;
     if (p.attemptId !== undefined && !validAttempt(p.attemptId)) return;
+    const rivalId = p.rivalId === undefined ? p.rivalRank : p.rivalId;
+    if (
+      !integer(rivalId, 0, DRIVERS.length - 1) ||
+      DRIVERS[rivalId]!.rank !== p.rivalRank
+    )
+      return;
     const pending = createChallenge(
       s,
       selected,
@@ -477,6 +486,7 @@ function decode(v: unknown): Campaign | undefined {
       p.attemptId,
       p.heat,
       p.dialInTicks,
+      DRIVERS[rivalId],
     );
     if (p.id !== pending.id) return;
     if (
@@ -819,7 +829,7 @@ export function change(s: Campaign, a: LoggedAction): Result {
       return fail("Choose a cash stake or a car title.");
     if (!rivalAccepts(s, c, rank, a.wager, a.pinkSlip ?? false))
       return fail(
-        `${RIVALS[rank]} declined those odds. Lower the stake or choose another car.`,
+        `${dinerDriver(s.day, rank).name} declined those odds. Lower the stake or choose another car.`,
       );
     return success({
       ...s,

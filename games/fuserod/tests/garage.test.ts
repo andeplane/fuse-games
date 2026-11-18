@@ -20,6 +20,8 @@ import {
   motorSetup,
   purse,
   RIVALS,
+  DRIVERS,
+  dinerDriver,
   settleRace,
   setup,
   transact,
@@ -183,6 +185,54 @@ test("legacy saves retain loose fasteners, fitted equipment and body changes whi
     wear: 2800,
     removed: 5,
   });
+});
+test("the diner offers all 22 drivers and preserves the accepted driver's portrait and title on reload", () => {
+  const store = new Store();
+  const base = success(change(freshCampaign(), buy));
+  const seen = new Set<number>();
+  for (let day = 1; day <= 42; day += 7) {
+    for (let rank = 0; rank < 5; rank++) {
+      const ready = {
+        ...base,
+        day,
+        rank,
+        qualified: true,
+        canyonWins: 6,
+        aqueductWins: 6,
+        roadStarts: 12,
+      };
+      const started = success(
+        change(ready, {
+          type: "race",
+          route: "strip",
+          wager: 0,
+          rivalRank: rank,
+        }),
+      );
+      const ticket = started.pending!,
+        rival = dinerDriver(day, rank);
+      assert.equal(ticket.rivalName, rival.name);
+      assert.equal(ticket.rivalCar, rival.car);
+      seen.add(ticket.rivalId);
+      store.setItem("fuserod.garage.v1", JSON.stringify(started));
+      assert.deepEqual(loadCampaign(store).pending, ticket);
+    }
+  }
+  assert.equal(seen.size, 22);
+  assert.equal(new Set(DRIVERS.map((d) => d.car)).size, 22);
+  const late = { ...base, day: 8 };
+  const legacy = success(
+    change(late, { type: "race", route: "strip", wager: 0 }),
+  );
+  const { rivalId: _id, ...old } = legacy.pending!;
+  store.setItem(
+    "fuserod.garage.v1",
+    JSON.stringify({
+      ...legacy,
+      pending: { ...old, rivalName: "Finch", rivalCar: "kestrel" },
+    }),
+  );
+  assert.equal(loadCampaign(store).pending?.rivalName, "Finch");
 });
 test("resuming a wager reserves cash once; settling pays and advances once", () => {
   const storage = new Store();

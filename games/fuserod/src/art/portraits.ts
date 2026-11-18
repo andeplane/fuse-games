@@ -51,14 +51,314 @@ const haircuts = [
   "M44 68 Q32 55 42 39 Q30 21 49 23 Q62 6 84 10 Q118 6 121 27 Q123 39 108 45 Q102 36 92 36 Q78 42 64 49 L60 64 54 61 57 79Z",
 ] as const;
 
-/** Five original screen-printed portraits, each drawn in a 160 × 144 view. */
+// Name order follows the driver's licence number in garage/drivers.ts. Each
+// silhouette is inked from the forehead to the nape at the same print scale.
+const guests = [
+  {
+    skin: 1,
+    shirt: "#44818d",
+    ink: "#40323b",
+    hair: "M45 71 Q35 45 48 29 Q61 15 92 23 L112 37 107 46 87 43 66 51 55 73Z",
+    trim: "flatcap",
+    lean: -3,
+  },
+  {
+    skin: 0,
+    shirt: "#a55469",
+    ink: "#793d30",
+    hair: "M37 100 Q26 59 43 36 Q58 12 91 22 L106 36 Q91 32 73 48 L65 61 59 92 48 110Z",
+    trim: "scarf",
+    lean: 2,
+  },
+  {
+    skin: 3,
+    shirt: "#658d79",
+    ink: "#b4a39b",
+    hair: "M44 66 L41 40 50 29 54 32 59 22 66 26 72 18 82 23 95 20 108 32 111 44 99 41 83 42 66 50 55 68Z",
+    trim: "rounds",
+    lean: -2,
+  },
+  {
+    skin: 2,
+    shirt: "#be8155",
+    ink: "#272336",
+    hair: "M44 67 Q43 29 69 24 Q95 18 108 31 L111 40 95 38 69 44 56 60 52 72Z",
+    trim: "beard",
+    lean: 3,
+  },
+  {
+    skin: 0,
+    shirt: "#b95c48",
+    ink: "#813f37",
+    hair: "M28 84 Q21 66 38 57 Q26 39 42 35 Q37 22 52 25 Q59 9 77 21 Q94 10 105 28 L113 42 97 37 88 46 75 40 63 53 59 72 49 72 44 86Z",
+    trim: "freckles",
+    lean: 2,
+  },
+  {
+    skin: 2,
+    shirt: "#4e9696",
+    ink: "#352c3a",
+    hair: "M36 94 Q23 72 40 66 Q28 62 37 45 Q30 29 48 28 Q40 14 61 18 Q67 3 82 16 Q94 6 104 22 Q122 20 118 43 L102 52 95 39 78 43 65 55 54 85Z",
+    trim: "hoops",
+    lean: -2,
+  },
+  {
+    skin: 4,
+    shirt: "#7e8793",
+    ink: "#4b3933",
+    hair: "M45 62 L43 38 Q48 24 63 22 L97 19 109 28 111 42 90 40 76 43 63 48 57 62Z",
+    trim: "stache",
+    lean: 3,
+  },
+  {
+    skin: 3,
+    shirt: "#8b659a",
+    ink: "#262938",
+    hair: "M39 91 L35 55 Q33 27 55 20 Q86 7 106 28 L115 43 87 42 84 53 80 44 66 48 59 77 49 96Z",
+    trim: "cats",
+    lean: -2,
+  },
+  {
+    skin: 1,
+    shirt: "#587759",
+    ink: "#645347",
+    hair: "M44 72 Q37 49 48 29 Q68 13 91 24 L107 37 97 42 81 39 68 46 58 60 55 72Z",
+    trim: "beanie",
+    lean: 1,
+  },
+  {
+    skin: 4,
+    shirt: "#517eaa",
+    ink: "#453143",
+    hair: "M29 106 Q16 86 35 68 Q20 53 35 40 Q52 15 72 17 Q98 15 111 39 L99 46 90 41 77 46 66 54 53 81 47 106Z",
+    trim: "stripe",
+    lean: 3,
+  },
+  {
+    skin: 1,
+    shirt: "#cc9355",
+    ink: "#2d2c35",
+    hair: "M45 64 Q38 46 49 34 Q42 25 61 25 Q59 12 74 17 Q78 5 91 13 L109 27 112 44 90 39 72 47 59 59 55 72Z",
+    trim: "goggles",
+    lean: -3,
+  },
+  {
+    skin: 4,
+    shirt: "#c16776",
+    ink: "#88462d",
+    hair: "M38 91 Q23 65 40 41 Q32 29 52 25 Q51 13 69 18 Q79 5 97 13 Q115 17 118 30 Q106 40 85 36 L72 47 59 71 52 94Z",
+    trim: "flower",
+    lean: 1,
+  },
+  {
+    skin: 2,
+    shirt: "#62687e",
+    ink: "#262836",
+    hair: "M45 65 L44 41 Q47 29 57 27 L92 24 105 30 111 44 97 43 82 40 66 46 56 65Z",
+    trim: "goatee",
+    lean: 3,
+  },
+  {
+    skin: 0,
+    shirt: "#7f94a6",
+    ink: "#d1bca0",
+    hair: "M39 90 Q30 69 37 47 Q35 30 52 25 Q60 11 79 19 Q97 11 107 26 L110 39 96 34 88 46 84 37 71 48 62 67 53 93Z",
+    trim: "pearls",
+    lean: -3,
+  },
+  {
+    skin: 3,
+    shirt: "#55778b",
+    ink: "#523d38",
+    hair: "M41 76 Q36 43 49 32 Q63 17 89 24 L105 34 109 45 95 39 74 46 61 55 56 70Z",
+    trim: "sailor",
+    lean: 3,
+  },
+  {
+    skin: 1,
+    shirt: "#95675a",
+    ink: "#272938",
+    hair: "M45 73 Q30 45 46 31 Q34 16 55 19 Q71 2 91 15 Q116 9 120 24 Q121 41 100 42 L87 37 68 49 60 62 54 61 55 74Z",
+    trim: "lapels",
+    lean: 2,
+  },
+  {
+    skin: 4,
+    shirt: "#a48a58",
+    ink: "#443632",
+    hair: "M39 97 Q29 73 40 49 Q35 32 51 27 Q59 13 82 19 Q99 15 110 34 L113 44 97 39 77 46 66 55 61 78 52 101Z",
+    trim: "kerchief",
+    lean: -2,
+  },
+] as const;
+
+function detail(
+  g: Brush,
+  trim: (typeof guests)[number]["trim"],
+  ink: string,
+  accent: string,
+) {
+  switch (trim) {
+    case "flatcap":
+      fill(
+        g,
+        "#887557",
+        "M38 48 Q36 25 59 19 Q91 11 109 31 L121 35 115 40 90 40 55 52Z",
+      );
+      stroke(g, "#514a46", 2, "M46 47 Q77 27 110 33 M64 19 L73 35");
+      break;
+    case "scarf":
+    case "kerchief":
+      fill(
+        g,
+        trim === "scarf" ? "#e5c38d" : "#64948e",
+        "M56 99 L79 108 98 97 97 107 84 116 93 130 83 128 76 119 68 128 61 125 67 111Z",
+      );
+      break;
+    case "rounds":
+      stroke(
+        g,
+        ink,
+        2.5,
+        "M57 58 L63 58 M83 56 L94 54 M64 59 a9 8 0 1 0 18 -2 a9 8 0 1 0 -18 2 M94 55 a6 7 0 1 0 12 -2 a6 7 0 1 0 -12 2",
+      );
+      break;
+    case "beard":
+    case "goatee":
+      fill(
+        g,
+        ink,
+        trim === "beard"
+          ? "M56 68 L68 79 78 83 86 85 100 77 106 71 Q102 93 88 99 L75 97 63 89Z"
+          : "M77 84 Q88 88 98 80 L94 92 86 98 79 92Z",
+      );
+      break;
+    case "freckles":
+      for (const [x, y] of [
+        [68, 68],
+        [73, 71],
+        [77, 67],
+        [81, 69],
+        [100, 64],
+        [102, 67],
+      ] as const)
+        ellipse(g, "#985b4a", x, y, 1.2, 1);
+      break;
+    case "hoops":
+    case "pearls":
+      if (trim === "hoops")
+        stroke(
+          g,
+          "#edc073",
+          3,
+          "M54 74 C42 72 45 95 55 91 C62 86 61 77 54 74Z",
+        );
+      else
+        for (let i = 0; i < 11; i++)
+          ellipse(
+            g,
+            "#f1e0c4",
+            61 + i * 3.3,
+            101 + Math.sin((i * Math.PI) / 10) * 11,
+            2.1,
+            2.1,
+          );
+      break;
+    case "stache":
+      fill(
+        g,
+        ink,
+        "M74 78 Q78 72 86 73 L88 74 Q96 68 100 72 L103 75 Q97 73 93 78 L87 79 83 77Z",
+      );
+      break;
+    case "cats":
+      fill(
+        g,
+        "#8c494c",
+        "M58 53 L80 53 88 56 91 53 112 44 108 58 96 62 90 57 85 60 78 66 67 65Z",
+      );
+      break;
+    case "beanie":
+      fill(
+        g,
+        "#bb714d",
+        "M40 50 Q38 21 61 17 Q90 7 104 32 L111 40 104 44 94 39 74 42 48 53Z",
+      );
+      stroke(
+        g,
+        "#e8ad74",
+        2,
+        "M44 45 Q75 26 106 37 M59 21 L64 33 M71 17 L74 30 M84 17 L87 29",
+      );
+      break;
+    case "stripe":
+      fill(g, "#e7b888", "M43 53 Q53 22 78 20 Q59 33 55 53 L46 72Z");
+      break;
+    case "goggles":
+      stroke(g, "#463f40", 5, "M41 43 L66 32 108 33");
+      fill(
+        g,
+        "#c8c5ac",
+        "M61 29 L80 26 85 36 68 41Z M88 26 L104 25 108 32 93 36Z",
+      );
+      fill(
+        g,
+        "#5c8391",
+        "M66 31 L78 29 80 34 69 37Z M91 28 L102 27 105 31 94 33Z",
+      );
+      break;
+    case "flower":
+      for (let i = 0; i < 5; i++)
+        ellipse(
+          g,
+          "#e3a15f",
+          49 + Math.cos(i * 1.256) * 5,
+          42 + Math.sin(i * 1.256) * 5,
+          4,
+          4,
+        );
+      ellipse(g, "#efd79c", 49, 42, 3, 3);
+      break;
+    case "sailor":
+      fill(
+        g,
+        "#eee2c7",
+        "M38 39 L38 27 63 15 90 16 107 30 102 38 76 37 52 48Z",
+      );
+      stroke(g, "#547283", 3, "M40 36 Q71 20 101 29");
+      break;
+    case "lapels":
+      fill(
+        g,
+        "#ede4cb",
+        "M45 111 L58 103 72 124 59 118 53 121Z M99 103 L110 108 101 120 96 116 85 122Z",
+      );
+      break;
+  }
+  stroke(g, accent, 1.5, "M24 138 L39 128");
+}
+
+/** Original screen-printed driver portraits on a 160 × 144 view. */
 export function portrait(g: Brush, id: number) {
-  const index = Math.abs(Math.trunc(id)) % palettes.length,
-    p = palettes[index]!;
+  const index =
+      Number.isInteger(id) && id >= 0 && id < 5 + guests.length ? id : 0,
+    guest = guests[index - 5],
+    base = palettes[guest?.skin ?? index]!,
+    p = guest ? { ...base, shirt: guest.shirt, hair: guest.ink } : base,
+    hair = guest?.hair ?? haircuts[index]!;
   rect(g, metal(g, 0, 144, [0, p.bg], [1, "#202637"]), 0, 0, 160, 144);
   for (let i = 0; i < 6; i++)
     fill(g, "#dfb19213", `M${i * 48 - 140} 144 l96 -144 h6 l-96 144Z`);
   ellipse(g, "#f2b47b30", 94, 51, 43, 43);
+  g.save();
+  if (guest) {
+    if (index % 2) {
+      g.translate(160, 0);
+      g.scale(-1, 1);
+    }
+    g.transform(1, 0, guest.lean / 100, 1, -guest.lean, 0);
+    fill(g, p.hair, hair);
+  }
   if (index === 2 || index === 3) fill(g, p.hair, haircuts[index]!);
   // The face in three-quarter view is broken into ink, shadow and light planes.
   fill(
@@ -108,8 +408,9 @@ export function portrait(g: Brush, id: number) {
     "M77 78 Q84 76 87 77 L97 74 Q92 82 86 83Z",
   );
   stroke(g, "#543b41", 1.25, "M78 78 Q88 80 97 75");
-  fill(g, p.hair, haircuts[index]!);
-  if (index === 0) {
+  fill(g, p.hair, hair);
+  if (guest) detail(g, guest.trim, p.hair, p.light);
+  else if (index === 0) {
     fill(
       g,
       "#576f6a",
@@ -156,4 +457,5 @@ export function portrait(g: Brush, id: number) {
     "M75 114 L77 144 M53 109 L64 125 71 120 M103 106 L92 124 85 117",
   );
   stroke(g, "#d9d6c89c", 1.4, "M28 134 L47 124 M115 122 L130 132");
+  g.restore();
 }
