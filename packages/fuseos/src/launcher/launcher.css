@@ -2,8 +2,8 @@
  * Fusteam: the 2004 Steam client's olive "green skin", as an homage. The values are the
  * original client's scheme: GreenBG 76 88 68 for the window, DarkGreenBG 62 70 55 for inset
  * panes, DullGreen 216 222 211 for text, Maize 196 181 80 for headings and hover, MaizeBG
- * 145 134 60 for the selected row, BorderDark 40 46 34 for the unlit side of every bevel.
- * The light side is a touch brighter than the original's neutral grey so it reads on the olive.
+ * for the selected row, BorderDark 40 46 34 for the unlit side of every bevel.
+ * The selected row is darker and the light side is brighter so small text and edges read on the olive.
  */
 :root {
   --fst-bg: #4c5844;
@@ -13,7 +13,7 @@
   --fst-text-muted: #a0aa95;
   --fst-text-dim: #889180;
   --fst-maize: #c4b550;
-  --fst-maize-bg: #91863c;
+  --fst-maize-bg: #696027;
   --fst-border-light: #7f8c75;
   --fst-border-dark: #282e22;
   --fst-black: #1a1e16;
@@ -263,13 +263,9 @@
 }
 
 .fst-row-date {
-  color: var(--fst-text-dim);
+  color: var(--fst-text);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-}
-
-.fst-row.selected .fst-row-date {
-  color: var(--fst-text);
 }
 
 /* Column header over the list, like the client's list box header. */
@@ -280,20 +276,22 @@
   overflow-y: hidden;
   scrollbar-gutter: stable;
   background: var(--fst-bg-dark);
-  color: var(--fst-text-muted);
+  color: var(--fst-text);
   box-shadow:
     inset 1px 1px var(--fst-border-light),
     inset -1px -1px var(--fst-border-dark);
 }
 
-.fst-list-head button {
+.win98 .window .fst-list-head button {
   display: flex;
   align-items: center;
   gap: 4px;
   min-height: 24px;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
+  box-shadow: none;
   color: inherit;
   font: inherit;
   font-size: 10px;
@@ -307,8 +305,8 @@
   flex: 1;
 }
 
-.fst-list-head button:hover,
-.fst-list-head button[aria-pressed="true"] {
+.win98 .window .fst-list-head button:hover,
+.win98 .window .fst-list-head button[aria-pressed="true"] {
   color: var(--fst-maize);
 }
 
@@ -323,7 +321,7 @@
   transform: rotate(180deg);
 }
 
-.fst-list-head button:focus-visible {
+.win98 .window .fst-list-head button:focus-visible {
   outline: 1px dotted var(--fst-text);
   outline-offset: -2px;
 }
