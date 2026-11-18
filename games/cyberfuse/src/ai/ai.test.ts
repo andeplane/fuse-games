@@ -243,6 +243,22 @@ test("teammates approach a captive without firing and leave escorted captives wi
     special: false,
   });
 });
+test("rescuer leads a trailing hostage inside before holding extraction", () => {
+  const w = sample();
+  w.tiles[1] = "#..EEE#";
+  w.actors[0]!.x = 56;
+  const captive = {
+    ...w.actors[0]!,
+    x: 40,
+    role: "hostage",
+    seat: null,
+    escort: "bot:1",
+  };
+  w.actors.push(captive);
+  assert.equal(botControls(w, "bot:1").dx, 1);
+  captive.x = 52;
+  assert.equal(botControls(w, "bot:1").dx, 0);
+});
 test("dogfight sees opponents, respects walls and shoots along eight-way aim", () => {
   const w = sample();
   w.mode = "dogfight";

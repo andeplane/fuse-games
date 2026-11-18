@@ -253,15 +253,25 @@ export function botControls(world: BotWorld, seat: string): Intent {
     goals.push({ ...prop, rank: 0, attack: prop.kind === "reactor" });
   }
   if (complete) {
+    const exitAt = (p: Position) =>
+      tile(world, Math.floor(p.x / W), Math.floor(p.y / H)) === "E";
+    // The DOS follower stops within 32 pixels. A rescuer already on the near
+    // rim must keep leading it across that rim before the pickup timer runs.
+    const follower = exitAt(actor)
+      ? world.actors.find(
+          (a) => a.role === "hostage" && a.hp > 0 && a.escort && !exitAt(a),
+        )
+      : undefined;
     for (let y = 0; y < world.height; y++) {
       const row = world.tiles[y]!;
-      for (let x = row.indexOf("E"); x >= 0; x = row.indexOf("E", x + 1))
+      for (let x = row.indexOf("E"); x >= 0; x = row.indexOf("E", x + 1)) {
+        const point = { x: (x + 0.5) * W, y: (y + 0.5) * H };
         goals.push({
-          x: (x + 0.5) * W,
-          y: (y + 0.5) * H,
-          rank: 0,
+          ...point,
+          rank: follower ? -dist(point, follower) : 0,
           attack: false,
         });
+      }
     }
   }
   for (const key of world.keys) goals.push({ ...key, rank: 1, attack: false });
