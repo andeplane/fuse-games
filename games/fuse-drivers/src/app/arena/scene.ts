@@ -7,6 +7,7 @@ import { trackFor } from "../../game/rules.js";
 import { defaultAssetBase } from "./assets.js";
 import {
   focusTruck,
+  startingTruck,
   truckNames,
   type ArenaFrame,
   type ArenaLead,
@@ -135,6 +136,7 @@ export function createArena(
         ),
         track,
         focus: focusTruck(view, next, selfId),
+        startingTruck: startingTruck(view, next, selfId),
         newTick,
         names: truckNames(view, next.trucks.length),
       };

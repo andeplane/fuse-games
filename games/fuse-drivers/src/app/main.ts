@@ -560,8 +560,12 @@ function room(solo: boolean): void {
     if (model.race) {
       const mine = model.race.drivers.find((driver) => driver.you);
       const lap = `LAP ${model.race.lap}/${model.race.laps}`;
+      const identity =
+        mine && canvas.hidden && model.race.countdown > 0
+          ? `YOU · TRUCK ${mine.truck + 1}   `
+          : "";
       hud.textContent = mine
-        ? `${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
+        ? `${identity}${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
         : lap;
       const battle = latest?.race?.battle;
       const held = mine && battle?.slots[mine.truck]?.held;
@@ -880,7 +884,7 @@ function room(solo: boolean): void {
             y: 0,
           });
         }
-        arena?.render(latest, lead.alpha, runtime.self, {
+        arena?.render(latest, lead.alpha, display ? undefined : runtime.self, {
           previous: lead.previous,
           current: lead.race,
           place: (slot, pose) =>
@@ -898,7 +902,7 @@ function room(solo: boolean): void {
             y: 0,
           });
         }
-        arena?.render(latest, alpha, runtime.self);
+        arena?.render(latest, alpha, display ? undefined : runtime.self);
       }
     }
     if (room) {

@@ -74,6 +74,7 @@ export class RaceScene extends Phaser.Scene {
   private theme?: StadiumTheme;
   private battleArt?: Phaser.GameObjects.Graphics;
   private props?: Phaser.GameObjects.Graphics;
+  private identity?: Phaser.GameObjects.Text;
   private pickup?: Phaser.GameObjects.Image;
 
   constructor(
@@ -96,6 +97,18 @@ export class RaceScene extends Phaser.Scene {
     if (this.referenceRequested) this.prepareReference();
     this.battleArt = this.add.graphics().setDepth(12);
     this.props = this.add.graphics().setDepth(7);
+    this.identity = this.add
+      .text(0, 0, "YOU", {
+        fontFamily: "monospace",
+        fontStyle: "bold",
+        fontSize: "22px",
+        color: "#ffffff",
+        backgroundColor: "#102032",
+        padding: { x: 5, y: 1 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(18)
+      .setVisible(false);
     const money = this.make.graphics({}, false);
     money.fillStyle(0x101321).fillEllipse(32, 20, 60, 31);
     money.generateTexture("fd-truck-shadow", 64, 40).clear();
@@ -224,6 +237,21 @@ export class RaceScene extends Phaser.Scene {
     if (privateClassic) this.reference?.paint(frame);
     if (this.props) paintTrackPickups(this.props, frame, theme === "fuse");
     if (this.battleArt) paintBattleArt(this.battleArt, frame);
+    const self =
+      frame.startingTruck === undefined
+        ? undefined
+        : poses[frame.startingTruck];
+    this.identity?.setVisible(!!self);
+    if (self && this.identity && this.battleArt) {
+      const below = self.y < 65;
+      const sign = below ? -1 : 1;
+      const tip = self.y - sign * (below ? 14 : 25);
+      const base = tip - sign * 10;
+      this.battleArt
+        .fillStyle(0xffffff)
+        .fillTriangle(self.x, tip, self.x - 7, base, self.x + 7, base);
+      this.identity.setOrigin(0.5, below ? 0 : 1).setPosition(self.x, base);
+    }
     if (privateClassic) return;
     race.trucks.forEach((truck, slot) => {
       const p = poses[slot];

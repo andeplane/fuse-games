@@ -50,6 +50,8 @@ These workflow rules replace older process requirements in ADRs, review notes an
 
 ## UI across games
 
+Run the repository skill [Fuse consistency checklist](.agents/skills/fuse-consistency-checklist/SKILL.md) when adding a game or changing its menu, lobby, seat selection, round start, player identification, controls, HUD, shop or results, including changes to the shared components behind those screens. Use it to identify affected roles before editing and verify the relevant rows on the composed game before opening or updating the PR.
+
 - **How to Play must teach actual play.** Use `createHowToPlay` or the structured `howToPlay` option on `createLandingCard` / `createMainMenu`: provide the goal, actual keyboard/mouse bindings, touch controls and essential rules. Reuse the running game's control definitions; supply a factory when bindings or PC/Mac presets can change. Pointer-only games describe their gestures instead of inventing keys. A tagline is not instructions. Check the landing guide and any existing in-game Controls at desktop and phone widths, including Back/Escape. The Dice scaffold must demonstrate this contract. Fusero originally omitted controls because the landing wrapper did not forward help data and the menu silently displayed its description; do not rely on that fallback for a playable game.
 
 Most of the user's corrections in November 2026 were UI drift: a rule fixed on one screen or game came back on another. These rules exist to stop that.

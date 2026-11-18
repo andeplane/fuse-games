@@ -2,6 +2,7 @@ import type { FuseDriversView } from "../../game/game.js";
 import type { RaceState } from "../../game/sim/race.js";
 import type { Track } from "../../game/sim/track.js";
 import type { TruckPose } from "./interpolate.js";
+import { TICK_RATE } from "../../game/sim/config.js";
 
 /** Everything one drawn frame reads. Built once per `render` call and handed to both scenes. */
 export interface ArenaFrame {
@@ -15,6 +16,8 @@ export interface ArenaFrame {
   track: Track;
   /** The truck the personal panels follow: this device's, or the leader when it drives none. */
   focus: number;
+  /** Local driver's starting-grid marker, absent on the TV and spectator screens. */
+  startingTruck?: number;
   /** True on the first frame that shows a simulation tick the arena has not drawn yet. */
   newTick: boolean;
   /** One display name per truck slot. */
@@ -40,6 +43,22 @@ export function focusTruck(
   const own = view.drivers.find((driver) => driver.id === selfId);
   if (own && own.truck >= 0 && own.truck < race.trucks.length) return own.truck;
   return race.placements[0] ?? 0;
+}
+
+export function startingTruck(
+  view: FuseDriversView,
+  race: RaceState,
+  selfId?: string,
+): number | undefined {
+  if (
+    race.phase === "finished" ||
+    race.tick >= race.countdownEndTick + TICK_RATE
+  )
+    return;
+  const own = view.drivers.find(
+    (d) => d.id === selfId && d.connected && !d.bot,
+  );
+  if (own && own.truck >= 0 && own.truck < race.trucks.length) return own.truck;
 }
 
 /** Names in truck order, falling back to the slot when no seat drives it. */
