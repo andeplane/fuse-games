@@ -20,7 +20,9 @@ import {
   DEFAULT_SETTINGS,
   GAS,
   LEFT,
+  LAPS,
   NITRO,
+  PURCHASE,
   RIGHT,
   createRoom,
   trackNames,
@@ -48,7 +50,7 @@ const runTo = (room: FuseDriversRoom, tick: number): void => {
   while (room.tick < tick) fold(room);
 };
 
-/** A lobby with one seat in it: no race, no grid, no controls and no race controls. */
+/** A lobby with one seat and no running race or campaign. */
 function lobby(): FuseDriversRoom {
   const room = createRoom("m0", DEFAULT_SETTINGS);
   fold(room, { a: [[JOIN, "a", "Ada", 0, "fox", 1]] });
@@ -93,7 +95,18 @@ function over(): FuseDriversRoom {
     ...race,
     phase: "finished",
     raceEndTick: race.tick,
-    trucks: race.trucks.map((truck) => ({ ...truck, finishedTick: race.tick })),
+    placements: race.trucks.map((truck) => truck.slot),
+    trucks: race.trucks.map((truck) =>
+      truck.slot === 0
+        ? {
+            ...truck,
+            laps: LAPS,
+            checkpoint: 0,
+            progress: LAPS,
+            finishedTick: race.tick,
+          }
+        : truck,
+    ),
   };
   fold(room);
   return room;
@@ -110,7 +123,7 @@ test("the four leading fields are the ones the snapshot puts before the streams"
   const fields = encodeRoom(racing(3));
   assert.equal(
     fields.length,
-    7,
+    9,
     "scalars, seats, settings, grid, then the rest",
   );
   assert.deepEqual(
@@ -176,6 +189,51 @@ test("updating next-race settings preserves the current race's course at recover
   assert.equal(room.settings.track, "offroad-2");
   assert.equal(defined(room.race).trackName, DEFAULT_SETTINGS.track);
   assert.deepEqual(roundTrip(room), room);
+});
+
+test("a full CPU grid resumes the pace logic with its per-truck ranking registers", () => {
+  const room = createRoom("m0", DEFAULT_SETTINGS);
+  fold(room, {
+    a: [
+      [JOIN, "a", "Ada", 0, "fox", 1],
+      [BOT, "add", "bot:1", "CPU 1", 1],
+      [BOT, "add", "bot:2", "CPU 2", 2],
+      [BOT, "add", "bot:3", "CPU 3", 3],
+    ],
+  });
+  fold(room, { a: [[ACTION, "start", "m1"]] });
+  runTo(room, 500);
+  const restored = defined(roundTrip(room));
+  assert.ok(restored.race?.trucks[3]?.cpu);
+  runTo(restored, 620);
+  runTo(room, 620);
+  assert.equal(hashRoom(restored), hashRoom(room));
+});
+
+test("a purchase restored between races determines the next truck setup identically", () => {
+  const room = over();
+  const old = room.garage.a!;
+  fold(room, {
+    a: [
+      [
+        PURCHASE,
+        room.matchId,
+        room.round,
+        room.finishTick,
+        "tires",
+        old.cash,
+        old.credits,
+        old.tires,
+      ],
+    ],
+  });
+  assert.equal(room.garage.a!.tires, old.tires + 1);
+  const restored = defined(roundTrip(room));
+  for (const replica of [room, restored])
+    fold(replica, { a: [[ACTION, "rematch", "m2"]] });
+  assert.equal(restored.race?.trucks[0]?.upgrades?.tires, old.tires + 1);
+  assert.deepEqual(restored, room);
+  assert.deepEqual(roundTrip(restored), room);
 });
 
 /** Rewrites one encoded field of a running room; the result must be refused. */
@@ -279,6 +337,13 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
     ["an invalid wheel velocity", (f) => (at(f, 5, 6, 0, 4, 2)[1] = 32768)],
     ["a contact mask naming a missing slot", (f) => (at(f, 5, 6, 0)[5] = 8)],
     ["a contact with the truck itself", (f) => (at(f, 5, 6, 0)[5] = 1)],
+    [
+      "one-sided truck contact",
+      (f) => {
+        at(f, 5, 6, 0)[5] = 2;
+        at(f, 5, 6, 1)[5] = 0;
+      },
+    ],
     ["cash above the two-digit register", (f) => (at(f, 5, 6, 0)[6] = 100)],
     [
       "a human running a CPU program",
@@ -314,6 +379,24 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
       (f) => (at(f, 5)[8] = [2, 0, 0, ["cash", 896, 2048]]),
     ],
     ["an obsolete weapon list", (f) => at(f, 5).push([])],
+    [
+      "a ranking register outside its word",
+      (f) => (at(f, 5, 6, 0)[11] = 65536),
+    ],
+    ["a human carrying a CPU base level", (f) => (at(f, 5, 6, 0)[12] = 2)],
+    [
+      "a CPU carrying a human suspension purchase",
+      (f) => (at(f, 5, 6, 2)[13] = [0, 0, 1]),
+    ],
+    [
+      "a grade beyond the vehicle setup table",
+      (f) => (at(f, 5, 6, 0)[13] = [6, 0, 1]),
+    ],
+    ["an invalid campaign index", (f) => (f[7] = -1)],
+    ["another driver's wallet", (f) => (at(f, 8, 0)[0] = "b")],
+    ["a missing wallet", (f) => at(f, 8).pop()],
+    ["a five-digit cash balance", (f) => (at(f, 8, 0)[1] = 10000)],
+    ["a seventh tire grade", (f) => (at(f, 8, 0)[6] = 6)],
     ["a tick that is not a tick", () => {}, -1],
   ];
   for (const [what, change, tick] of refused)

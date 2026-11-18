@@ -18,9 +18,14 @@ import { config, type TruckStats } from "./sim/config.js";
 import type { Phase, RaceState } from "./sim/race.js";
 import { createTruck, type Truck } from "./sim/truck.js";
 import { getOffroadCourse } from "./offroad/course.js";
+import {
+  campaignVariant,
+  isCampaignIndex,
+  isOffroadDriver,
+} from "./offroad/campaign.js";
 import { isOffroadCpuState, type OffroadCpuState } from "./offroad/cpu.js";
 import { isOffroadPickups, type OffroadPickups } from "./offroad/pickups.js";
-import type { OffroadMotion } from "./offroad/motion.js";
+import type { OffroadMotion, OffroadUpgradeLevel } from "./offroad/motion.js";
 import type { OffroadSuspension } from "./offroad/suspension.js";
 
 /**
@@ -91,6 +96,11 @@ const encodeTruck = (t: Truck): unknown[] => [
     t.lapsLed,
     t.nitrosUsed,
   ],
+  t.dosProgress,
+  t.cpuBase ?? null,
+  t.upgrades
+    ? [t.upgrades.topSpeed, t.upgrades.tires, t.upgrades.shocks]
+    : null,
 ];
 
 const encodeRace = (race: RaceState): unknown[] => [
@@ -137,6 +147,21 @@ export function encodeRoom(room: FuseDriversRoom): unknown[] {
       seat.slot,
       seat.connected,
     ]),
+    room.campaignIndex,
+    room.grid.map((id) => {
+      const driver = room.garage[id]!;
+      return [
+        id,
+        driver.cash,
+        driver.careerEarnings,
+        driver.credits,
+        driver.nitros,
+        driver.shocks,
+        driver.tires,
+        driver.acceleration,
+        driver.topSpeed,
+      ];
+    }),
   ];
 }
 
@@ -151,6 +176,7 @@ const real = (value: unknown, limit = MAX_COORD): value is number =>
 const count = (value: unknown, most = MAX_COUNTER): value is number =>
   uint32(value) && value <= most;
 const word = (v: unknown): v is number => count(v, 65535);
+const grade = (v: unknown): v is OffroadUpgradeLevel => count(v, 5);
 const signedWord = (v: unknown): v is number =>
   typeof v === "number" &&
   Number.isInteger(v) &&
@@ -333,7 +359,7 @@ function decodeTruck(
   trackName: string,
   bot: boolean | undefined,
 ): Truck | undefined {
-  if (!Array.isArray(raw) || raw.length !== 11) return;
+  if (!Array.isArray(raw) || raw.length !== 14) return;
   const [
     itsSlot,
     pose,
@@ -346,6 +372,9 @@ function decodeTruck(
     steering,
     effects,
     progression,
+    dosProgress,
+    cpuBase,
+    rawUpgrades,
   ] = raw;
   if (
     itsSlot !== slot ||
@@ -376,6 +405,17 @@ function decodeTruck(
     suspension = decodeSuspension(rawSuspension);
   const cpu = decodeCpu(rawCpu, trackName);
   if (
+    rawUpgrades !== null &&
+    (!Array.isArray(rawUpgrades) ||
+      rawUpgrades.length !== 3 ||
+      !grade(rawUpgrades[0]) ||
+      !grade(rawUpgrades[1]) ||
+      !grade(rawUpgrades[2]) ||
+      cpu ||
+      bot === true)
+  )
+    return;
+  if (
     !stats ||
     !motion ||
     !suspension ||
@@ -386,6 +426,8 @@ function decodeTruck(
     !count(contactMask, (1 << slots) - 1) ||
     (contactMask & (1 << slot)) !== 0 ||
     !count(cash, 99) ||
+    !word(dosProgress) ||
+    (cpuBase !== null && (!cpu || !count(cpuBase, 17))) ||
     (rawCpu !== null && (!cpu || bot === false)) ||
     !turn(turnDir) ||
     typeof prevNitro !== "boolean" ||
@@ -397,7 +439,8 @@ function decodeTruck(
     !real(progress) ||
     !count(wrongWayTicks, tick) ||
     !count(finishedTick, tick) ||
-    !count(lapsLed) ||
+    !count(lapsLed, laps) ||
+    (finishedTick !== 0) !== (laps === LAPS) ||
     !count(nitrosUsed)
   )
     return;
@@ -406,6 +449,17 @@ function decodeTruck(
     speed,
     nitros: motion.nitros,
     cash,
+    dosProgress,
+    ...(cpuBase !== null ? { cpuBase } : {}),
+    ...(rawUpgrades !== null
+      ? {
+          upgrades: {
+            topSpeed: rawUpgrades[0],
+            tires: rawUpgrades[1],
+            shocks: rawUpgrades[2],
+          },
+        }
+      : {}),
     contactMask,
     ...(cpu ? { cpu } : {}),
     turnDir,
@@ -476,6 +530,20 @@ function decodeRace(
     if (!count(place, grid.length - 1) || placements.includes(place)) return;
     placements.push(place);
   }
+  // Contact entry must agree at both ends: the next step reads last frame's
+  // pair bit when deciding whether to exchange the trucks' momentum.
+  for (const a of trucks) {
+    for (const b of trucks.slice(a.slot + 1)) {
+      if (((a.contactMask >>> b.slot) & 1) !== ((b.contactMask >>> a.slot) & 1))
+        return;
+    }
+  }
+  const winner = trucks[placements[0]!]!;
+  if (
+    (phase === "finished") !== winner.finishedTick > 0 ||
+    trucks.some((t) => t.finishedTick !== 0 && t.finishedTick !== raceEndTick)
+  )
+    return;
   return {
     tick,
     phase: phase as Phase,
@@ -500,7 +568,7 @@ export function decodeRoom(
   fields: readonly unknown[],
   tick: number,
 ): FuseDriversRoom | undefined {
-  if (fields.length !== 7 || !uint32(tick)) return;
+  if (fields.length !== 9 || !uint32(tick)) return;
   const [
     header,
     rawSeats,
@@ -509,6 +577,8 @@ export function decodeRoom(
     rawControls,
     rawRace,
     rawFinishSeats,
+    campaignIndex,
+    rawGarage,
   ] = fields;
   if (
     !Array.isArray(header) ||
@@ -517,6 +587,8 @@ export function decodeRoom(
     rawSeats.length > CAPACITY + MAX_WATCHERS ||
     !Array.isArray(rawGrid) ||
     rawGrid.length > CAPACITY ||
+    !Array.isArray(rawGarage) ||
+    rawGarage.length !== rawGrid.length ||
     !Array.isArray(rawControls) ||
     rawControls.length > CAPACITY ||
     !Array.isArray(rawFinishSeats) ||
@@ -594,12 +666,40 @@ export function decodeRoom(
       return;
     controls[id] = bits;
   }
+  const garage: FuseDriversRoom["garage"] = {};
+  for (const [index, raw] of rawGarage.entries()) {
+    if (!Array.isArray(raw) || raw.length !== 9) return;
+    const [
+      id,
+      cash,
+      careerEarnings,
+      credits,
+      nitros,
+      shocks,
+      tires,
+      acceleration,
+      topSpeed,
+    ] = raw;
+    const driver = {
+      cash,
+      careerEarnings,
+      credits,
+      nitros,
+      shocks,
+      tires,
+      acceleration,
+      topSpeed,
+    };
+    if (id !== grid[index] || !isOffroadDriver(driver)) return;
+    garage[id] = driver;
+  }
 
   // A race exists exactly while one is being driven or has just been decided; the lobby holds none, and drops the
-  // grid, the controls with it.
+  // grid, controls and garage with it.
   const racing = stage === "running" || stage === "over";
   if (rawRace === null) {
-    if (racing || grid.length || rawControls.length) return;
+    if (racing || grid.length || rawControls.length || campaignIndex !== -1)
+      return;
     return {
       tick,
       matchId,
@@ -609,14 +709,21 @@ export function decodeRoom(
       settings,
       grid,
       controls,
+      garage,
+      campaignIndex,
       finishSeats,
       finishTick,
     };
   }
-  if (!racing) return;
+  if (!racing || !isCampaignIndex(campaignIndex)) return;
   const race = decodeRace(rawRace, grid, seats, tick);
   // The room calls the match over exactly when the race is: the fold sets one from the other.
-  if (!race || (race.phase === "finished") !== (stage === "over")) return;
+  if (
+    !race ||
+    race.trackName !== trackNames()[campaignVariant(campaignIndex)] ||
+    (race.phase === "finished") !== (stage === "over")
+  )
+    return;
   return {
     tick,
     matchId,
@@ -627,6 +734,8 @@ export function decodeRoom(
     race,
     grid,
     controls,
+    garage,
+    campaignIndex,
     finishSeats,
     finishTick,
   };
