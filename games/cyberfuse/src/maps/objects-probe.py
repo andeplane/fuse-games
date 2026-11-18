@@ -1,8 +1,11 @@
-"""Compile the DOS map/object routines against recording sinks and print original BEM object placements.
-Run python3 objects-probe.py /path/to/extracted/cdogssrc 0 (the zero-based mission).
-No game source or graphics are embedded in the fixture.
+"""Compile the DOS map/object routines against recording sinks.
+Print one BEM mission with: python3 objects-probe.py /path/to/extracted/cdogssrc 0
+Hash all shipped missions with: python3 objects-probe.py /path/to/extracted/cdogssrc /path/to/dos106
+The latter reads each 1324-byte mission record directly from the original CDOGS.EXE or CPN file.
 """
+import hashlib
 import pathlib
+import struct
 import subprocess
 import sys
 import tempfile
@@ -47,8 +50,15 @@ TTrigger *AddTrigger(int x,int y,int a) {
   TTrigger *t=calloc(1,sizeof(TTrigger)); t->x=x;t->y=y;t->actions=calloc(a,sizeof(TAction));return t;
 }
 int main(int argc,char **argv){
-  int mission=atoi(argv[1]);if(mission<0||mission>=9)return 1;
-  struct Mission *m=&BEM_missions[mission];gMission.missionData=m;
+  int mission=atoi(argv[1]);struct Mission fromDisk,*m=NULL;
+  if(argc>2){
+    if(sizeof(fromDisk)!=1324||fread(&fromDisk,sizeof(fromDisk),1,stdin)!=1)return 2;
+    m=&fromDisk;
+  }else{
+    if(mission<0||mission>=9)return 1;
+    m=&BEM_missions[mission];
+  }
+  gMission.missionData=m;
   seed=10*mission;
   if(m->exitLeft<=0){rand();rand();}
   gMission.keyPics=keyStyles[m->keyStyle];gMission.doorPics=doorStyles[m->doorStyle];
@@ -71,4 +81,28 @@ with tempfile.TemporaryDirectory() as tmp:
     c.write_text(program)
     exe = root / "probe"
     subprocess.run(["cc","-std=c99","-Wno-unknown-pragmas","-Wno-incompatible-pointer-types-discards-qualifiers","-Wno-ignored-qualifiers","-O0",str(c),"-o",str(exe)],check=True)
-    subprocess.run([str(exe),sys.argv[2]],check=True)
+    origin = pathlib.Path(sys.argv[2])
+    if not origin.is_dir():
+        subprocess.run([str(exe),sys.argv[2]],check=True)
+        sys.exit(0)
+    shipped = (origin / "CDOGS.EXE").read_bytes()
+    groups = []
+    def builtin(title):
+        start = shipped.index(title.encode("ascii")+b"\0")
+        count, pointer = struct.unpack_from("<ii", shipped, start+280)
+        groups.append((title, shipped, count, 238080+pointer))
+    builtin("Bug-Eyed Monsters")
+    builtin("Ogre Rampage")
+    for campaign in ["DISTRESS", "TERROR", "ZOMBIE"]:
+        data = (origin / (campaign+".CPN")).read_bytes()
+        count, = struct.unpack_from("<i",data,288)
+        groups.append((campaign,data,count,292))
+    builtin("Dogfight in the dungeon")
+    builtin("Cubicle wars")
+    for name,data,count,offset in groups:
+        digest = hashlib.sha256()
+        for i in range(count):
+            start=offset+1324*i
+            trace=subprocess.run([str(exe),str(i),"stdin"],input=data[start:start+1324],capture_output=True,timeout=4,check=True).stdout
+            digest.update(trace+b"\0")
+        print(name,count,digest.hexdigest())

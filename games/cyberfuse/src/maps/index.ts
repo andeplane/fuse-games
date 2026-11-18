@@ -41,6 +41,7 @@ function placeActors(
   characters: Character[],
   rng: DosRandom,
   dogfight: boolean,
+  seatCount: number,
 ) {
   const taken = objects.props
     .filter((p) => p.impassable)
@@ -146,7 +147,7 @@ function placeActors(
       });
     }
   }
-  for (let n = 0; n < 5; n++)
+  for (let n = 0; n < seatCount; n++)
     spawns.push(spawn((x, y) => map.cells[at(x, y)] === FLOOR));
   if (!dogfight && mission.enemies.length)
     for (let n = 0; n < Math.max(1, mission.enemyDensity); n++)
@@ -160,7 +161,10 @@ export function buildMission(
   dogfight = false,
   campaign?: number,
   layoutSeed = 0,
+  seatCount = 5,
 ) {
+  if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 5)
+    throw new RangeError("Expected 1–5 operators");
   const owner = dogfight
     ? undefined
     : getCampaignForMission(missionIndex, campaign);
@@ -179,6 +183,7 @@ export function buildMission(
     owner?.characters ?? [],
     actorStream,
     dogfight,
+    seatCount,
   );
   return {
     ...actors,

@@ -53,54 +53,61 @@ test("DOS 1.06 geometry, access values and extraction rectangle agree with the i
   }
 });
 
-test("each BEM mission reproduces the C reference's ordered props, keys and mission object coordinates", () => {
+test("all 75 DOS maps reproduce the native ordered prop, key and mission-object traces", () => {
   const hashes = [
-    "fa0c8a99f0427838b1e79a8ef58c7773feb1eebf07e1fdda5674ac5cf010d3c9",
-    "296126d744951a3e78ada72e154ab026f0e15b285a1eb9452402d6f220df8d40",
-    "f81ef53a46580c51bdaf6207ebf22c91fd71e3720851c3bb0657a58353743e33",
-    "ee2665c16bd315409b0665eb468f66c64d3de34e6d6c3de2653d863e0d02e759",
-    "ed2562944ead471a99d2ebe5724d6aeca8c0b08bdbb23a1a9f56a6d8baeef80b",
-    "8ffd00ee43514e3c8983aa273a573aaf30075893f0009a68ee1e77f4b2c3d9a4",
-    "7ec45ae8be5632e1c64b88d2a04463fca72f6ee873fce6fcea51f49d8122231e",
-    "89fd95ab1fd7d977c0d5db6e8284614bbe1e0bb32ae3d8413001f72c45357dcf",
-    "fa32e2bbab312e36af0363a1b5af662583108cb5f95ed99e4a973974840f7b67",
+    "ee13b53c5d865afbf3a9383e19d853313592a93381c1148fc1408caa763720b7",
+    "54b2862d2defedbb4505f20fa08258c093bc27455cda4f3d3911f164f5bd80cf",
+    "093423f82163ca23426d3ee6ac3dcb53a91c98783dcc20cc888842f4be0547dc",
+    "8ca43bbb7cb394cdd57bd1c385d3bdce49212e10d37df609ae67972935228248",
+    "1b0a74e23697b7715fabb9885bd1415fce68b69e54f1ef7db2028a84ca1c7452",
+    "153c9c5777624fe7bd33dd201a85f457413a7289f6e252c3aca4e97324fd7136",
+    "a1e463c45d3b3f8f99e85e211d5279819acf8a89dde6b670815416aca61aca0d",
   ];
-  for (const [mission, hash] of hashes.entries()) {
-    const spec = getMission(mission),
-      map = buildMission(mission, 123);
-    const tileFlags = (flags: number) =>
-      (flags & 2 ? 1 : 0) | (flags & 4 ? 2 : 0);
-    const rows = map.props.map((p) => [
-      "P",
-      p.pixelX,
-      p.pixelY,
-      PROP_DEFS[p.objectIndex]!.sprite.id,
-      tileFlags(p.objectFlags),
-    ]);
-    for (const item of map.items) {
-      if (item.kind === "hostage") continue;
-      const flags = (item.objectiveIndex + 1) << 3;
-      rows.push([
-        item.kind === "core" ? "I" : "P",
-        item.pixelX,
-        item.pixelY,
-        item.sprite,
-        flags | (item.kind === "core" ? 4 : tileFlags(item.objectFlags)),
+  const groups = [
+    ...CAMPAIGNS.map((c) => c.missions),
+    ...DOGFIGHTS.map((m) => [m]),
+  ];
+  for (const [group, missions] of groups.entries()) {
+    const trace = createHash("sha256");
+    for (const [mission, spec] of missions.entries()) {
+      const dogfight = group >= CAMPAIGNS.length;
+      const map = buildMission(
+        dogfight ? group - CAMPAIGNS.length : mission,
+        123,
+        dogfight,
+        group,
+      );
+      const tileFlags = (flags: number) =>
+        (flags & 2 ? 1 : 0) | (flags & 4 ? 2 : 0);
+      const rows = map.props.map((p) => [
+        "P",
+        p.pixelX,
+        p.pixelY,
+        PROP_DEFS[p.objectIndex]!.sprite.id,
+        tileFlags(p.objectFlags),
       ]);
+      for (const item of map.items) {
+        if (item.kind === "hostage") continue;
+        const flags = (item.objectiveIndex + 1) << 3;
+        rows.push([
+          item.kind === "core" ? "I" : "P",
+          item.pixelX,
+          item.pixelY,
+          item.sprite,
+          flags | (item.kind === "core" ? 4 : tileFlags(item.objectFlags)),
+        ]);
+      }
+      for (const key of map.keys)
+        rows.push([
+          "I",
+          key.x * 16 + 8,
+          key.y * 12 + 6,
+          KEY_SPRITES[spec.keyStyle]![COLORS.indexOf(key.color)]!.id,
+          4,
+        ]);
+      trace.update(rows.map((row) => row.join(" ") + "\n").join("") + "\0");
     }
-    for (const key of map.keys)
-      rows.push([
-        "I",
-        key.x * 16 + 8,
-        key.y * 12 + 6,
-        KEY_SPRITES[spec.keyStyle]![COLORS.indexOf(key.color)]!.id,
-        4,
-      ]);
-    assert.equal(
-      digest(rows.map((row) => row.join(" ") + "\n").join("")),
-      hash,
-      "BEM mission " + (mission + 1),
-    );
+    assert.equal(trace.digest("hex"), hashes[group], group.toString());
   }
 });
 
