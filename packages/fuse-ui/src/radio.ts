@@ -48,6 +48,7 @@ export function createRadio(
   volume.value = String(Math.round(player.volume * 100));
   volume.setAttribute("aria-label", "Radio volume");
   label.textContent = "Radio volume ";
+  label.className = "fui-radio-volume";
   label.append(volume);
   element.append(button, next, title, select, label);
   const render = () => {

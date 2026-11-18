@@ -77,10 +77,23 @@ const playtest = installBrowserPlaytest({
 });
 const header = document.createElement("header");
 document.body.append(header);
+const offset = document.createElement("input");
+offset.type = "range";
+offset.setAttribute("aria-label", "Input offset");
+offset.value = "50";
+const localOptions = document.createElement("div");
+const touchOnly = document.createElement("button");
+touchOnly.textContent = "Touch controls";
+touchOnly.style.display = "none";
+localOptions.append(offset, touchOnly);
+const radio = document.createElement("button");
+radio.textContent = "Play radio";
 createTopBar({
   element: header,
   gameId: role === "desktop" ? "fuseos" : "fuse-riders",
   music: false,
+  radioControls: radio,
+  playerOptions: () => localOptions,
 });
 function renderCounts() {
   document.body.dataset.starts = String(counts.starts);

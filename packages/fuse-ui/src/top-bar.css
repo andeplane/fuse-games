@@ -136,9 +136,15 @@
 .fui-player-custom:empty {
   display: none;
 }
-.fui-top-bar-detail .fui-audio-more,
-.fui-top-bar-detail .fui-audio-toggle {
-  display: none;
+.fui-top-bar-detail .fui-radio-volume {
+  display: grid;
+  gap: 4px;
+}
+.fui-top-bar-detail .fui-radio-volume input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
 }
 .fui-top-bar-detail select,
 .fui-top-bar-detail input[type="range"] {

@@ -113,7 +113,19 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   menu.dialog.classList.add("fui-top-bar-menu");
   menu.body.classList.add("fui-top-bar-actions");
   // Heard on the dialog: the bar keeps its keys from the page, and a modal holds the focus in here anyway.
-  menuKeys(menu.body, { scope: menu.dialog, document: doc });
+  menuKeys(menu.dialog, {
+    scope: menu.dialog,
+    document: doc,
+    items: () =>
+      [
+        ...menu.dialog.querySelectorAll<HTMLElement>(
+          "button, a[href], input, select",
+        ),
+      ].filter(
+        (item) =>
+          item.checkVisibility?.({ visibilityProperty: true }) !== false,
+      ),
+  });
   const radioEntry = button("Radio", "fui-top-bar-radio", doc);
   const optionsEntry = button(
     "Player options",
@@ -123,8 +135,6 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   const detailClass = "fui-dialog-body fui-top-bar-actions fui-top-bar-detail";
   const channel = el("div", "", detailClass, doc);
   const preferences = el("div", "", detailClass, doc);
-  menuKeys(channel, { scope: menu.dialog, document: doc });
-  menuKeys(preferences, { scope: menu.dialog, document: doc });
   const master = button("", "fui-player-sound", doc);
   const custom = el("div", "", "fui-player-custom", doc);
   preferences.append(master, custom);
@@ -275,6 +285,10 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
           ".fui-audio-panel",
         );
         if (panel) {
+          for (const trigger of (
+            child as HTMLElement
+          ).querySelectorAll<HTMLElement>(".fui-audio-toggle, .fui-audio-more"))
+            trigger.hidden = true;
           panel.hidden = false;
           preferences.insertBefore(child, custom);
           continue;

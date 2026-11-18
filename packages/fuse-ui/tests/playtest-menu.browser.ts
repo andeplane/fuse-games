@@ -43,6 +43,31 @@ try {
   const game = page.frameLocator("#game");
   const childToggle = game.locator(".fui-playtest-recording-toggle");
   await game.locator(".fui-top-bar-toggle").click();
+  const back = game.getByRole("button", { name: "Back", exact: true });
+  const radio = game.getByRole("button", { name: "Radio", exact: true });
+  const options = game.getByRole("button", {
+    name: "Player options",
+    exact: true,
+  });
+  await expect(back).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(radio).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(back).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(game.getByRole("button", { name: "Play radio" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(radio).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(options).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("End");
+  const slider = game.getByRole("slider", { name: "Input offset" });
+  await expect(slider).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(slider).toHaveValue("51");
+  await back.click();
+  await expect(options).toBeFocused();
   await expect(childToggle).toBeVisible();
   await expect(childToggle).toHaveText("Start recording");
   await expect(page.locator("body")).toHaveAttribute("data-starts", "0");
