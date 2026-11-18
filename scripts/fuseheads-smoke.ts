@@ -25,6 +25,19 @@ const pageFor = async (touch = false) => {
 };
 const playfield = (page: Page) =>
   page.locator('.fuseheads-arena[data-ready="true"]');
+async function checkTouchOverlay(page: Page) {
+  const arena = await playfield(page).boundingBox();
+  assert.ok(arena);
+  for (const name of ["Left", "Right", "Jump"]) {
+    const control = await page
+      .getByRole("button", { name, exact: true })
+      .boundingBox();
+    assert.ok(control && control.width >= 44 && control.height >= 44);
+    assert.ok(control.x >= arena.x && control.y >= arena.y);
+    assert.ok(control.x + control.width <= arena.x + arena.width);
+    assert.ok(control.y + control.height <= arena.y + arena.height);
+  }
+}
 const enter = async (page: Page) => {
   await page.goto(new URL("?mute", root).href);
 };
@@ -58,12 +71,14 @@ try {
   await solo.getByRole("button", { name: "START GAME", exact: true }).click();
   await playfield(solo).waitFor();
   assert.equal(await downArrowConsumed(solo), "true");
+  await checkTouchOverlay(solo);
   await solo.getByRole("button", { name: "Jump", exact: true }).tap();
   const canvasBox = await playfield(solo).boundingBox();
   const barBox = await solo.locator(".fui-top-bar").boundingBox();
   assert.ok(barBox && canvasBox && canvasBox.y >= barBox.y + barBox.height);
   assert.ok((await solo.locator("body").boundingBox())!.width <= 360);
   await solo.setViewportSize({ width: 844, height: 390 });
+  await checkTouchOverlay(solo);
   await solo.getByRole("button", { name: "Right", exact: true }).tap();
   await solo
     .getByRole("button", { name: "Open game menu", exact: true })

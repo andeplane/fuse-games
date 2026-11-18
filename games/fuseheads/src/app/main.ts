@@ -325,7 +325,9 @@ function room(solo: boolean): void {
     })),
     className: "fui-controller fuseheads-pad",
   });
-  table.append(canvas, roundLine, pad.element);
+  const viewport = el("div", "", "fuseheads-viewport");
+  viewport.append(canvas, pad.element);
+  table.append(viewport, roundLine);
 
   // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({

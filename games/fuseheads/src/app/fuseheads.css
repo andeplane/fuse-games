@@ -38,9 +38,13 @@ body.fuseheads-page {
 .fuseheads-pad[hidden] {
   display: none;
 }
+.fuseheads-viewport {
+  position: relative;
+  width: min(100%, calc((100dvh - 7.5rem) * 4 / 3));
+}
 .fuseheads-arena {
   display: block;
-  width: min(100%, calc((100dvh - 7.5rem) * 4 / 3));
+  width: 100%;
   height: auto;
   aspect-ratio: 4/3;
   background: #171520;
@@ -65,9 +69,33 @@ body.fuseheads-page {
 .fuseheads-pad button:last-child {
   margin-left: 1rem;
 }
+.fuseheads-room[data-controller="false"] .fuseheads-pad {
+  position: absolute;
+  inset: auto 0.35rem 14%;
+  width: auto;
+  min-height: 0;
+  pointer-events: none;
+}
+.fui-app .fuseheads-room[data-controller="false"] .fuseheads-pad button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 0.75rem;
+  background: rgb(6 16 35 / 72%);
+  pointer-events: auto;
+}
+.fui-app .fuseheads-room[data-controller="false"] .fuseheads-pad button.active {
+  background: var(--fui-cyan-deep);
+}
+.fuseheads-room[data-controller="false"] .fuseheads-pad button:last-child {
+  margin-left: auto;
+}
 .fuseheads-room[data-controller="true"] .fuseheads-play {
   min-height: 55dvh;
   justify-content: center;
+}
+.fuseheads-room[data-controller="true"] .fuseheads-viewport {
+  width: min(100%, 32rem);
 }
 .fuseheads-room[data-controller="true"] .fuseheads-pad button {
   min-height: 5rem;
@@ -75,11 +103,6 @@ body.fuseheads-page {
 @media (min-width: 760px) and (pointer: fine) {
   .fuseheads-room[data-controller="false"] .fuseheads-pad {
     display: none;
-  }
-}
-@media (pointer: coarse), (max-width: 759px) {
-  .fuseheads-arena {
-    width: min(100%, calc((100dvh - 10.2rem) * 4 / 3));
   }
 }
 @media (max-width: 620px) {
@@ -94,33 +117,14 @@ body.fuseheads-page {
 
 @media (max-height: 500px) and (orientation: landscape) {
   .fuseheads-play {
-    position: relative;
     margin-top: 62px;
     padding: 0 0.5rem;
   }
   .fuseheads-round {
     font-size: 0.6rem;
   }
-  .fuseheads-pad {
-    min-height: 3rem;
-  }
-  .fuseheads-arena {
-    width: min(66vw, calc((100dvh - 6.8rem) * 4 / 3));
-  }
-  .fuseheads-room[data-controller="false"] .fuseheads-pad {
-    position: absolute;
-    inset: auto 0 0;
-    width: 100%;
-    pointer-events: none;
-    display: flex;
-  }
-  .fuseheads-pad button {
-    flex: none;
-    min-width: 3.2rem;
-    pointer-events: auto;
-  }
-  .fuseheads-pad button:last-child {
-    margin-left: auto;
+  .fuseheads-viewport {
+    width: min(100%, calc((100dvh - 6.2rem) * 4 / 3));
   }
 }
 
