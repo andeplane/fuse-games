@@ -3,7 +3,7 @@
  * tests/reference/road-seed.py verifies the behavior against the DOS build. */
 import { courseFeatures } from "../course/index.js";
 import { trafficDodge } from "../motor/opponent.js";
-import { integer, metres, object, type Route } from "./basics.js";
+import { courseLayout, integer, metres, object, type Route } from "./basics.js";
 export interface RoadObstacle {
   segment: number;
   kind: "rock" | "debris" | "warning" | "bush";
@@ -83,10 +83,12 @@ export function buildTraffic(route: Route, seed: number): TrafficState {
   );
   return { seedAfter: state, obstacles };
 }
-/** The DOS course pass clears lane and verge flags on its bridge deck. Fuse has its own bridge locations. */
+/** The DOS course pass clears lane and verge flags on its bridge deck. */
 export function raceTraffic(route: Route, seed: number): TrafficState {
   const traffic = buildTraffic(route, seed);
-  const bridges = courseFeatures(route).filter((f) => f.kind === "bridge");
+  const bridges = courseFeatures(route, courseLayout(route, seed)).filter(
+    (f) => f.kind === "bridge",
+  );
   traffic.obstacles = traffic.obstacles.filter(
     (o) =>
       !bridges.some(

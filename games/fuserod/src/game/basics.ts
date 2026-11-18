@@ -1,3 +1,5 @@
+import { nativeCourseSample } from "../course/geometry.js";
+import { isCarCalibration, type CarCalibration } from "../motor/calibration.js";
 /** Fuserod's room uses 20 log ticks per second. */
 export const CAPACITY = 5;
 export const COUNTDOWN_TICKS = 60;
@@ -52,6 +54,7 @@ export const integer = (v: unknown, min: number, max: number): v is number =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= max;
 
 export interface FuserodSettings {
+  calibration?: CarCalibration;
   display: boolean;
   variant: RaceVariant;
   automatic: boolean;
@@ -76,7 +79,16 @@ export const DEFAULT_SETTINGS: FuserodSettings = {
   opponent: 0,
 };
 export function parseSettings(v: unknown): FuserodSettings | undefined {
-  if (!object(v) || Object.keys(v).length !== 10) return;
+  if (!object(v)) return;
+  const calibrated = Object.hasOwn(v, "calibration");
+  const calibration = isCarCalibration(v.calibration)
+    ? v.calibration
+    : undefined;
+  if (
+    Object.keys(v).length !== (calibrated ? 11 : 10) ||
+    (calibrated && !calibration)
+  )
+    return;
   const {
     display,
     route,
@@ -104,6 +116,7 @@ export function parseSettings(v: unknown): FuserodSettings | undefined {
   )
     return;
   return {
+    ...(calibration && { calibration: structuredClone(calibration) }),
     display,
     route,
     power,
@@ -127,22 +140,16 @@ export function finishUnits(route: Route, variant: RaceVariant): number {
 }
 export const metres = (units: number) => (units * 402.336) / 5120;
 
-/** Original Fuse bend profiles, sampled in integer road coordinates. Positive is a right-hand bend. */
-const BENDS: Record<Route, readonly number[]> = {
-  strip: [0],
-  aqueduct: [0, 0, 190, 270, 40, -180, -280, -90, 120, 240, 0, 0],
-  canyon: [0, 130, 460, 300, -80, -420, -480, 40, 400, 500, 80, -460, -140, 0],
-};
-export function roadCurve(route: Route, position: number): number {
-  const nodes = BENDS[route];
-  const offset =
-    Math.max(0, Math.min(FINISH[route], position)) * (nodes.length - 1);
-  const idx = Math.floor(offset / FINISH[route]);
-  const next = nodes[Math.min(nodes.length - 1, idx + 1)]!;
-  return (
-    nodes[idx]! +
-    Math.trunc(
-      ((next - nodes[idx]!) * (offset % FINISH[route])) / FINISH[route],
-    )
+/** Translate native heading deltas into the signed steering scale used by the Fuse controls. */
+export function roadCurve(route: Route, position: number, layout = 0): number {
+  return Math.max(
+    -500,
+    Math.min(
+      500,
+      Math.round((nativeCourseSample(route, position, layout).bend * 500) / 7),
+    ),
   );
+}
+export function courseLayout(route: Route, seed: number): number {
+  return route === "canyon" ? seed % 10 : 0;
 }

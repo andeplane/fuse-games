@@ -1,3 +1,4 @@
+import { nativeCourseSample } from "../course/geometry.js";
 import {
   raceTraffic,
   dodgeTraffic,
@@ -29,6 +30,7 @@ import {
 } from "../course/index.js";
 import {
   MAX_RACE_TICKS,
+  courseLayout,
   finishUnits,
   metres,
   released,
@@ -56,6 +58,7 @@ export interface Racer {
   finishTicks: number;
 }
 export interface Race {
+  layout: number;
   settings: FuserodSettings;
   startTick: number;
   treeTicks: number;
@@ -101,7 +104,8 @@ export function createRace(
     grid.some((s) => s.bot) &&
     (seed >>> 0) % 4 === 0;
   return {
-    settings: { ...settings },
+    settings: structuredClone(settings),
+    layout: courseLayout(settings.route, seed),
     startTick,
     treeTicks: treeDuration(settings.variant, seed),
     elapsed: 0,
@@ -124,7 +128,7 @@ export function createRace(
               (grid.length > 1 ? 1150 / (grid.length - 1) : 0),
           ),
       bank: 0,
-      motor: createMotor((seed ^ s.slot) >>> 0),
+      motor: createMotor((seed ^ s.slot) >>> 0, s.bot ? undefined : settings),
       input: released(),
       crashed: false,
       laneFault: false,
@@ -184,7 +188,7 @@ export function brokeOut(race: Race, r: Racer): boolean {
 }
 function aheadFeatures(race: Race, driver: Racer) {
   const at = metres(driver.motor.position);
-  return courseFeatures(race.settings.route).filter(
+  return courseFeatures(race.settings.route, race.layout).filter(
     (f) => f.end >= at && f.start <= at + 45,
   );
 }
@@ -193,7 +197,11 @@ function botInput(
   driver: Racer,
   player: Racer | undefined,
 ): DriveInput {
-  const curve = roadCurve(race.settings.route, driver.motor.position);
+  const curve = roadCurve(
+    race.settings.route,
+    driver.motor.position + 4 * 64,
+    race.layout,
+  );
   let target = sanctioned(race.settings.variant)
     ? sanctionedGridX(race.racers.indexOf(driver), race.racers.length)
     : (driver.slot % 2 ? 280 : -280) + Math.trunc(curve / 3);
@@ -216,11 +224,21 @@ function botInput(
         driver.motor.speed,
       )
     : target - driver.x;
-  const error = desired - driver.motor.wheel * 12;
+  const bendWheel = Math.trunc(
+    (roadCurve(race.settings.route, driver.motor.position, race.layout) * 18) /
+      (920 + 60 * (tuneFor(race, driver).tires ?? 0)),
+  );
+  const error = desired - (driver.motor.wheel - bendWheel) * 12;
   const steer: Direction = error > 35 ? 1 : error < -35 ? -1 : 0;
-  const previous = roadCurve(
+  const geometry = nativeCourseSample(
+    race.settings.route,
+    driver.motor.position,
+    race.layout,
+  );
+  const previous = nativeCourseSample(
     race.settings.route,
     Math.max(0, driver.motor.position - 64),
+    race.layout,
   );
   const controls = recoveredRivalControls(
     driver.motor,
@@ -232,8 +250,9 @@ function botInput(
       king: race.settings.king,
       playerSpeed: player?.motor.speed ?? driver.motor.speed,
       playerPosition: player?.motor.position ?? driver.motor.position,
-      turning: Math.abs(curve) > 100 && Math.abs(previous) <= 100,
-      slowSection: features.some((f) => f.kind === "rough"),
+      turning: geometry.bend !== 0 && previous.bend === 0,
+      slowSection:
+        race.settings.route === "canyon" && !!(geometry.flags & 0x60),
       police: race.police.phase >= 2,
     },
   );
@@ -346,6 +365,7 @@ export function advanceRace(race: Race): void {
       driver.x,
       old.speed,
       metres(old.position),
+      race.layout,
     ).shoulder;
     const control = controls[i]!;
     const shift =
@@ -354,7 +374,7 @@ export function advanceRace(race: Race): void {
     if (driver.motor.gear > 0 || control.shift < 0) driver.stagedFirst = false;
     driver.input.shift = 0;
     const travel = driver.motor.position - old.position;
-    const bend = roadCurve(route, old.position);
+    const bend = roadCurve(route, old.position, race.layout);
     driver.x = Math.max(
       -1450,
       Math.min(
@@ -408,13 +428,22 @@ export function advanceRace(race: Race): void {
         driver.x,
         driver.motor.speed,
         metres(driver.motor.position),
+        race.layout,
       );
       driver.x = contact.x;
       driver.crashed = contact.crashed;
       if (contact.speed < driver.motor.speed)
         driver.motor = slowMotor(driver.motor, contact.speed, tune);
       if (!driver.crashed && route === "aqueduct" && travel > 0) {
-        const channel = channelStep(oldX, driver.x, driver.motor.speed);
+        const channel = channelStep(
+          oldX,
+          driver.x,
+          driver.motor.speed,
+          !(
+            nativeCourseSample(route, driver.motor.position, race.layout)
+              .flags & 2
+          ),
+        );
         driver.x = channel.x;
         driver.bank = channel.roll;
         driver.motor = slowMotor(driver.motor, channel.speed, tune);
@@ -486,7 +515,13 @@ export function racerViews(race: Race) {
     distance: metres(r.motor.position),
     speed: r.motor.speed * 1.609344,
     lateral: r.x / 1000,
-    curve: roadCurve(race.settings.route, r.motor.position) / 500,
+    curve: roadCurve(race.settings.route, r.motor.position, race.layout) / 500,
+    layout: race.layout,
+    grade: nativeCourseSample(
+      race.settings.route,
+      r.motor.position,
+      race.layout,
+    ).grade,
     gear: r.motor.gear || Number(r.stagedFirst),
     rpm: r.motor.rpm,
     broken: r.motor.broken,

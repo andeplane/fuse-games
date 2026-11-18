@@ -149,6 +149,7 @@ test("corrupt motor, sorted grid and elapsed bounds reject recovery without chan
   const before = hashRoom(r);
   for (const bad of [
     { ...r.race, elapsed: 5000 },
+    { ...r.race, layout: 1 },
     { ...r.race, racers: [r.race!.racers[0], r.race!.racers[0]] },
     {
       ...r.race,
@@ -409,4 +410,77 @@ test("every sanctioned racer has an assigned side, including the middle driver o
       }
       assert.equal(hashRoom(room), hashRoom(peer));
     }
+});
+test("native canyon layouts produce distinct, replayable cornering and projected grades", () => {
+  const settings: FuserodSettings = {
+    ...DEFAULT_SETTINGS,
+    variant: "duel",
+    route: "canyon",
+    king: true,
+    automatic: true,
+  };
+  const first = setup(false, settings, "run-a"),
+    second = setup(false, settings, "run-b");
+  assert.notEqual(first.race!.layout, second.race!.layout);
+  const peer = restore(first);
+  for (const r of [first, peer, second]) {
+    const tick = r.tick + 1;
+    foldTick(
+      r,
+      "a",
+      new Map([
+        [
+          "a",
+          {
+            generation: 1,
+            entries: [[4, tick, 0, r.matchId, true, false, 0, 0]],
+          },
+        ],
+      ]),
+    );
+  }
+  const bends: number[][] = [[], []];
+  let rise = false;
+  for (let i = 0; i < 800; i++) {
+    for (const [j, r] of [first, second].entries()) {
+      run(r, 1);
+      const driver = fuserodView(r).racers[0]!;
+      bends[j]!.push(driver.curve);
+      rise ||= driver.grade !== 0;
+    }
+    run(peer, 1);
+  }
+  assert.ok(rise);
+  assert.notDeepEqual(bends[0], bends[1]);
+  assert.equal(hashRoom(first), hashRoom(peer));
+});
+test("a car's installed drive calibration and starting wear survive race recovery", () => {
+  const calibration = {
+    model: 0,
+    manifold: 1,
+    carb: 1 as const,
+    exhaust: 1 as const,
+    muffler: 0 as const,
+    differential: 0 as const,
+    timing: 0,
+    wear: 750,
+    removed: 0,
+  };
+  const settings = { ...DEFAULT_SETTINGS, calibration };
+  const race = setup(true, settings);
+  calibration.wear = 1000;
+  assert.equal(race.settings.calibration!.wear, 750);
+  assert.equal(race.race!.racers[0]!.motor.engineWear, 750);
+  assert.equal(race.race!.racers[1]!.motor.engineWear, 0);
+  const peer = restore(race);
+  assert.deepEqual(
+    peer.race!.settings.calibration,
+    race.race!.settings.calibration,
+  );
+  for (const bad of [null, {}, { ...calibration, wear: 10001 }]) {
+    assert.equal(parseSettings({ ...settings, calibration: bad }), undefined);
+    const data = encodeRoom(race);
+    data[4] = { ...race.race, settings: { ...settings, calibration: bad } };
+    assert.equal(decodeRoom(data, race.tick), undefined);
+  }
 });

@@ -5,6 +5,7 @@ import { motorGears, isMotorState } from "../motor/index.js";
 import {
   CAPACITY,
   COUNTDOWN_TICKS,
+  courseLayout,
   finishUnits,
   MAX_RACE_TICKS,
   integer,
@@ -134,8 +135,9 @@ function decodeRacer(v: unknown): Racer | undefined {
   };
 }
 function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
-  if (!object(v) || Object.keys(v).length !== 9) return;
+  if (!object(v) || Object.keys(v).length !== 10) return;
   const {
+    layout,
     startTick,
     treeTicks,
     police,
@@ -149,6 +151,8 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
   const settings = parseSettings(rawSettings);
   if (
     !settings ||
+    !integer(layout, 0, 9) ||
+    layout !== courseLayout(settings.route, seedForMatch(room.matchId)) ||
     !integer(treeTicks, 1, COUNTDOWN_TICKS) ||
     treeTicks !== treeDuration(settings.variant, seedForMatch(room.matchId)) ||
     !object(police) ||
@@ -203,6 +207,7 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
   const traffic = decodeTraffic(rawTraffic, settings.route, seed);
   if (!traffic) return;
   const race: Race = {
+    layout,
     traffic,
     settings,
     startTick,
@@ -254,7 +259,7 @@ export function encodeRoom(r: FuserodRoom): unknown[] {
   return [
     r.matchId,
     r.stage,
-    { ...r.settings },
+    structuredClone(r.settings),
     seats(r).map(encodeSeat),
     structuredClone(r.race),
     structuredClone(r.history),

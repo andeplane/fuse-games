@@ -96,7 +96,7 @@ export function createRoom(
 ): FuserodRoom {
   return {
     matchId,
-    settings: { ...settings },
+    settings: structuredClone(settings),
     seats: new Map(),
     tick: 0,
     stage: "lobby",
