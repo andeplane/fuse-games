@@ -37,8 +37,8 @@ def extract(index):
     regions = []
     pos = entry(0x6B24)
     while len(regions) < 64:
-        left, right, bottom, top, _, _, flags = data[pos:pos + 7]
-        regions.append([left, right, top, bottom])
+        left, right, bottom, top, start, span, flags = data[pos:pos + 7]
+        regions.append([left, right, top, bottom, start, span, flags & 15])
         pos += 7
         if flags & 128:
             break
@@ -75,7 +75,7 @@ def extract(index):
             steps = max(1, math.ceil(8 * math.dist(point, last)))
             for j in range(1, steps + 1):
                 ax, ay = [math.floor(a + (b - a) * j / steps) for a, b in zip(last, point)]
-                left, right, top, bottom = regions[goal]
+                left, right, top, bottom = regions[goal][:4]
                 if left <= ax < right and top <= ay <= bottom:
                     goal += 1
                     if goal == len(regions):

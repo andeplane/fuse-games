@@ -1,12 +1,33 @@
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import {
   OFFROAD_COURSE_NAMES,
   getOffroadCourse,
   nativeRegionContains,
+  nativeRegionProgress,
   projectOffroad,
   unprojectOffroad,
 } from "../src/game/offroad/course.js";
+
+test("original 8086 lap-position readings for every inside and surrounding grid cell", () => {
+  const values = [];
+  for (const name of OFFROAD_COURSE_NAMES) {
+    for (const r of getOffroadCourse(name).regions) {
+      for (let x = r.left - 1; x <= r.right; x++) {
+        for (let y = r.top - 1; y <= r.bottom + 1; y++) {
+          values.push((nativeRegionProgress(r, x * 256, y * 256) ?? -1) + 1);
+        }
+      }
+    }
+  }
+  assert.equal(values.length, 50072);
+  // GAME.EXE file 0x23dc, run under Unicorn 2.1.4. Zero encodes carry set.
+  assert.equal(
+    createHash("sha256").update(Uint8Array.from(values)).digest("hex"),
+    "1dfb2c878e14cb74b4f687947d5f8dcb38a7286dab75502a7e6f892e3af0b362",
+  );
+});
 
 test("every grid seat, including the fifth Fuse seat, has four unobstructed wheels", () => {
   assert.equal(OFFROAD_COURSE_NAMES.length, 16);
