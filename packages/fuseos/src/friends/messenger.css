@@ -135,6 +135,33 @@
   min-width: 0;
   flex: 1;
 }
+.msn-search-hint {
+  margin: 3px 0;
+}
+.msn-search-results {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.msn-search-results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 0;
+}
+.msn-search-results li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.msn-search-results small {
+  display: block;
+}
+.msn-search-results button {
+  flex-shrink: 0;
+}
 
 /* The contact list: groups with round toggles, a person per buddy. */
 .msn-contact-list {
