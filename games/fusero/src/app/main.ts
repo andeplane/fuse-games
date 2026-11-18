@@ -185,9 +185,33 @@ const TOUCH = [
 const GOAL =
   "Classic deathmatch: choose five weapons, dig, shoot and swing through the cave. The default match ends at 15 kills or six minutes, with automatic respawn after 2.5 seconds. Weapon charge and reload advance only for the selected slot.";
 
+function keyboardOptions(changed?: () => void): HTMLElement {
+  const keyboardChoice = el("select");
+  keyboardChoice.setAttribute("aria-label", "Keyboard preset");
+  for (const [value, label] of [
+    ["pc", "Original PC / web"],
+    ["mac", "Original Mac"],
+  ]) {
+    const option = el("option", label);
+    option.value = value!;
+    keyboardChoice.append(option);
+  }
+  keyboardChoice.value = keyboardPlatform;
+  keyboardChoice.onchange = () => {
+    keyboardPlatform = keyboardChoice.value === "mac" ? "mac" : "pc";
+    KEY_BITS = keyboardBindings(keyboardPlatform);
+    store.setItem(`${GAME}-keyboard`, keyboardPlatform);
+    changed?.();
+  };
+  const keyboardLabel = el("label", "Keyboard", "liero-keyboard-preset");
+  keyboardLabel.append(keyboardChoice);
+  return keyboardLabel;
+}
+
 function header(
   extra: HTMLElement[] = [],
   onOpenChange?: (open: boolean) => void,
+  onKeyboardChange?: () => void,
 ) {
   const bar = el("header", "", "liero-top"),
     brand = el("a", "FUSERO", "liero-brand");
@@ -208,6 +232,7 @@ function header(
     gameId: GAME,
     onOpenChange,
     sound: audio,
+    playerOptions: () => keyboardOptions(onKeyboardChange),
   });
 }
 
@@ -346,34 +371,18 @@ function room(solo: boolean) {
   menu.element
     .querySelector(".fui-game-menu-navigation")!
     .append(changeWeapons);
-  const keyboardChoice = el("select");
-  keyboardChoice.setAttribute("aria-label", "Keyboard preset");
-  for (const [value, label] of [
-    ["pc", "Original PC / web"],
-    ["mac", "Original Mac"],
-  ]) {
-    const option = el("option", label);
-    option.value = value!;
-    keyboardChoice.append(option);
-  }
-  keyboardChoice.value = keyboardPlatform;
-  keyboardChoice.onchange = () => {
-    controls.release();
-    keyboardHeld.clear();
-    keyboardPlatform = keyboardChoice.value === "mac" ? "mac" : "pc";
-    KEY_BITS = keyboardBindings(keyboardPlatform);
-    store.setItem(`${GAME}-keyboard`, keyboardPlatform);
-    hints.textContent = keyboardHint();
-  };
-  const keyboardLabel = el("label", "Keyboard", "liero-keyboard-preset");
-  keyboardLabel.append(keyboardChoice);
-  menu.element
-    .querySelector(".fui-game-menu-navigation")!
-    .append(keyboardLabel);
-  const top = header([menu.element], (open) => {
-    if (open) controls.release();
-    else if (last?.stage === "running") canvas.focus({ preventScroll: true });
-  });
+  const top = header(
+    [menu.element],
+    (open) => {
+      if (open) controls.release();
+      else if (last?.stage === "running") canvas.focus({ preventScroll: true });
+    },
+    () => {
+      controls.release();
+      keyboardHeld.clear();
+      hints.textContent = keyboardHint();
+    },
+  );
   const main = el("main", "", "liero-room"),
     lobby = el("section", "", "liero-lobby");
   main.dataset.display = String(display);
