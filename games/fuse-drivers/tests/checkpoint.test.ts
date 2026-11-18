@@ -210,6 +210,24 @@ test("a full CPU grid resumes the pace logic with its per-truck ranking register
   assert.equal(hashRoom(restored), hashRoom(room));
 });
 
+test("the CPU's retained tie order is independent of displayed placements and contributes to the room hash", () => {
+  const room = racing(140);
+  const before = hashRoom(room);
+  const race = defined(room.race);
+  room.race = {
+    ...race,
+    paceOrder: race.paceOrder.slice(1).concat(race.paceOrder[0]!),
+  };
+  assert.notEqual(hashRoom(room), before);
+  const restored = defined(roundTrip(room));
+  assert.deepEqual(restored.race?.paceOrder, room.race.paceOrder);
+  assert.deepEqual(restored.race?.placements, race.placements);
+  const tick = room.tick + 60;
+  runTo(room, tick);
+  runTo(restored, tick);
+  assert.equal(hashRoom(restored), hashRoom(room));
+});
+
 test("a purchase restored between races determines the next truck setup identically", () => {
   const room = over();
   const old = room.garage.a!;
@@ -384,6 +402,32 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
       (f) => (at(f, 5, 6, 0)[11] = 65536),
     ],
     ["a human carrying a CPU base level", (f) => (at(f, 5, 6, 0)[12] = 2)],
+    [
+      "a bot losing its complete control program",
+      (f) => {
+        at(f, 5, 6, 2)[7] = null;
+        at(f, 5, 6, 2)[12] = null;
+      },
+    ],
+    [
+      "a bot missing its original difficulty",
+      (f) => (at(f, 5, 6, 2)[12] = null),
+    ],
+    [
+      "a bot with the wrong starting difficulty for this race",
+      (f) => (at(f, 5, 6, 2)[12] = 17),
+    ],
+    ["a human missing the vehicle setup", (f) => (at(f, 5, 6, 0)[13] = null)],
+    [
+      "a human racing with tires absent from the wallet",
+      (f) => (at(f, 5, 6, 0)[13] = [0, 4, 0]),
+    ],
+    ["a repeated slot in the CPU tie order", (f) => (at(f, 5)[9] = [0, 0, 2])],
+    ["a missing slot in the CPU tie order", (f) => (at(f, 5)[9] = [2, 1])],
+    [
+      "an unoccupied slot in the CPU tie order",
+      (f) => (at(f, 5)[9] = [0, 2, 3]),
+    ],
     [
       "a CPU carrying a human suspension purchase",
       (f) => (at(f, 5, 6, 2)[13] = [0, 0, 1]),

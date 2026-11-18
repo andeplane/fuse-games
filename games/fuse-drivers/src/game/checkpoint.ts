@@ -23,7 +23,11 @@ import {
   isCampaignIndex,
   isOffroadDriver,
 } from "./offroad/campaign.js";
-import { isOffroadCpuState, type OffroadCpuState } from "./offroad/cpu.js";
+import {
+  isOffroadCpuState,
+  offroadStartingLevel,
+  type OffroadCpuState,
+} from "./offroad/cpu.js";
 import { isOffroadPickups, type OffroadPickups } from "./offroad/pickups.js";
 import type { OffroadMotion, OffroadUpgradeLevel } from "./offroad/motion.js";
 import type { OffroadSuspension } from "./offroad/suspension.js";
@@ -120,6 +124,7 @@ const encodeRace = (race: RaceState): unknown[] => [
       ? [race.pickups.active.kind, race.pickups.active.x, race.pickups.active.y]
       : null,
   ],
+  [...race.paceOrder],
 ];
 
 export function encodeRoom(room: FuseDriversRoom): unknown[] {
@@ -351,6 +356,31 @@ function decodePickups(
     : undefined;
 }
 
+function decodeDriverSetup(
+  rawCpu: unknown,
+  cpuBase: unknown,
+  rawUpgrades: unknown,
+  trackName: string,
+  bot: boolean | undefined,
+): Pick<Truck, "cpu" | "cpuBase" | "upgrades"> | undefined {
+  if (rawCpu !== null) {
+    const cpu = decodeCpu(rawCpu, trackName);
+    if (bot === false || !cpu || !count(cpuBase, 17) || rawUpgrades !== null)
+      return;
+    return { cpu, cpuBase };
+  }
+  if (
+    bot === true ||
+    cpuBase !== null ||
+    !Array.isArray(rawUpgrades) ||
+    rawUpgrades.length !== 3
+  )
+    return;
+  const [topSpeed, tires, shocks] = rawUpgrades;
+  if (!grade(topSpeed) || !grade(tires) || !grade(shocks)) return;
+  return { upgrades: { topSpeed, tires, shocks } };
+}
+
 function decodeTruck(
   raw: unknown,
   slot: number,
@@ -403,22 +433,12 @@ function decodeTruck(
   const stats = decodeStats(rawStats),
     motion = decodeMotion(rawMotion),
     suspension = decodeSuspension(rawSuspension);
-  const cpu = decodeCpu(rawCpu, trackName);
-  if (
-    rawUpgrades !== null &&
-    (!Array.isArray(rawUpgrades) ||
-      rawUpgrades.length !== 3 ||
-      !grade(rawUpgrades[0]) ||
-      !grade(rawUpgrades[1]) ||
-      !grade(rawUpgrades[2]) ||
-      cpu ||
-      bot === true)
-  )
-    return;
+  const setup = decodeDriverSetup(rawCpu, cpuBase, rawUpgrades, trackName, bot);
   if (
     !stats ||
     !motion ||
     !suspension ||
+    !setup ||
     !real(x) ||
     !real(y) ||
     !real(heading, MAX_ANGLE) ||
@@ -427,8 +447,6 @@ function decodeTruck(
     (contactMask & (1 << slot)) !== 0 ||
     !count(cash, 99) ||
     !word(dosProgress) ||
-    (cpuBase !== null && (!cpu || !count(cpuBase, 17))) ||
-    (rawCpu !== null && (!cpu || bot === false)) ||
     !turn(turnDir) ||
     typeof prevNitro !== "boolean" ||
     !count(nitroUntilTick, tick + 20) ||
@@ -450,18 +468,8 @@ function decodeTruck(
     nitros: motion.nitros,
     cash,
     dosProgress,
-    ...(cpuBase !== null ? { cpuBase } : {}),
-    ...(rawUpgrades !== null
-      ? {
-          upgrades: {
-            topSpeed: rawUpgrades[0],
-            tires: rawUpgrades[1],
-            shocks: rawUpgrades[2],
-          },
-        }
-      : {}),
+    ...setup,
     contactMask,
-    ...(cpu ? { cpu } : {}),
     turnDir,
     prevNitro,
     nitroUntilTick,
@@ -477,13 +485,24 @@ function decodeTruck(
   };
 }
 
+/** Both the published order and Ivan's retained tie order rank each slot exactly once. */
+function decodeOrder(raw: unknown, slots: number): number[] | undefined {
+  if (!Array.isArray(raw) || raw.length !== slots) return;
+  const order: number[] = [];
+  for (const place of raw) {
+    if (!count(place, slots - 1) || order.includes(place)) return;
+    order.push(place);
+  }
+  return order;
+}
+
 function decodeRace(
   raw: unknown,
   grid: readonly string[],
   seats: ReadonlyMap<string, SeatRecord>,
   roomTick: number,
 ): RaceState | undefined {
-  if (!Array.isArray(raw) || raw.length !== 9 || !grid.length) return;
+  if (!Array.isArray(raw) || raw.length !== 10 || !grid.length) return;
   const [
     tick,
     phase,
@@ -494,6 +513,7 @@ function decodeRace(
     rawTrucks,
     rawPlacements,
     rawPickups,
+    rawPaceOrder,
   ] = raw;
   if (
     !count(tick, roomTick * 2) ||
@@ -505,9 +525,7 @@ function decodeRace(
     (phase === "countdown") !== tick < countdownEndTick ||
     (phase === "finished" ? raceEndTick !== tick : raceEndTick !== 0) ||
     !Array.isArray(rawTrucks) ||
-    rawTrucks.length !== grid.length ||
-    !Array.isArray(rawPlacements) ||
-    rawPlacements.length !== grid.length
+    rawTrucks.length !== grid.length
   )
     return;
   const pickups = decodePickups(rawPickups, trackName);
@@ -525,11 +543,9 @@ function decodeRace(
     if (!truck) return;
     trucks.push(truck);
   }
-  const placements: number[] = [];
-  for (const place of rawPlacements) {
-    if (!count(place, grid.length - 1) || placements.includes(place)) return;
-    placements.push(place);
-  }
+  const placements = decodeOrder(rawPlacements, grid.length);
+  const paceOrder = decodeOrder(rawPaceOrder, grid.length);
+  if (!placements || !paceOrder) return;
   // Contact entry must agree at both ends: the next step reads last frame's
   // pair bit when deciding whether to exchange the trucks' momentum.
   for (const a of trucks) {
@@ -553,6 +569,7 @@ function decodeRace(
     raceEndTick,
     trucks,
     placements,
+    paceOrder,
     pickups,
   };
 }
@@ -717,6 +734,30 @@ export function decodeRoom(
     (race.phase === "finished") !== (stage === "over")
   )
     return;
+  const botSlots = race.trucks.map((t) => t.cpu !== undefined);
+  for (const truck of race.trucks) {
+    if (truck.cpu) {
+      if (
+        truck.cpuBase !==
+        offroadStartingLevel(
+          race.trackName,
+          truck.slot,
+          botSlots,
+          campaignIndex,
+        )
+      )
+        return;
+    } else if (stage === "running") {
+      // A finished truck keeps the setup it raced with while its driver shops.
+      const driver = garage[grid[truck.slot]!]!;
+      if (
+        driver.topSpeed !== truck.upgrades!.topSpeed ||
+        driver.tires !== truck.upgrades!.tires ||
+        driver.shocks !== truck.upgrades!.shocks
+      )
+        return;
+    }
+  }
   return {
     tick,
     matchId,
