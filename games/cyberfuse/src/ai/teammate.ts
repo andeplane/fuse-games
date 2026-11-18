@@ -27,6 +27,7 @@ interface BotWorld {
   outcome: string;
   actors: readonly Fighter[];
   items: readonly Prop[];
+  props: readonly (Position & { impassable: boolean; w: number; h: number })[];
   objectives: readonly { done: number; required: number; kind: string }[];
   doors: readonly { x: number; y: number; key: string | null; timer: number }[];
   keys: readonly Position[];
@@ -117,8 +118,35 @@ function route(
     if (!prev || goal.rank < prev.rank) targets.set(i, goal);
   }
   const blocked = new Set(
-    world.items.filter((p) => p.solid && p.hp > 0).map((p) => cell(width, p)),
+    world.items.filter((p) => p.solid).map((p) => cell(width, p)),
   );
+  // A wall-mounted fixture may be anchored away from the centre of its tile.
+  // Mark every tile centre at which the player's 7×5 half-hull overlaps it.
+  for (const prop of world.props) {
+    if (!prop.impassable) continue;
+    blocked.add(cell(width, prop));
+    const rx = prop.w + 7,
+      ry = prop.h + 5;
+    for (
+      let y = Math.max(0, Math.floor((prop.y - ry) / H));
+      y <= Math.min(height - 1, Math.floor((prop.y + ry) / H));
+      y++
+    ) {
+      for (
+        let x = Math.max(0, Math.floor((prop.x - rx) / W));
+        x <= Math.min(width - 1, Math.floor((prop.x + rx) / W));
+        x++
+      ) {
+        const tile = y * width + x;
+        const point = center(width, tile);
+        if (
+          Math.abs(point.x - Math.floor(prop.x)) < rx &&
+          Math.abs(point.y - Math.floor(prop.y)) < ry
+        )
+          blocked.add(tile);
+      }
+    }
+  }
   const minRank = goals.reduce(
     (best, g) => Math.min(best, g.rank),
     explore ? 0 : Infinity,

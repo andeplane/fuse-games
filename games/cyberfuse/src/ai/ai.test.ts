@@ -146,6 +146,13 @@ function sample() {
       },
     ],
     keys: [{ x: 24, y: 42 }],
+    props: [] as {
+      x: number;
+      y: number;
+      impassable: boolean;
+      w: number;
+      h: number;
+    }[],
     keyring: [] as string[],
     doors: [{ x: 3, y: 1, key: "red", timer: 0 }],
     objectives: [] as { kind: string; done: number; required: number }[],
@@ -182,6 +189,14 @@ test("route to extraction respects a locked door; acquiring its key opens the sh
     fire: false,
     special: false,
   });
+});
+test("an impassable prop deflects the extraction route until it is destroyed", () => {
+  const w = sample();
+  w.keyring.push("red");
+  w.props.push({ x: 40, y: 18, w: 6, h: 5, impassable: true });
+  assert.equal(botControls(w, "bot:1").dy, 1);
+  w.props[0]!.impassable = false;
+  assert.equal(botControls(w, "bot:1").dx, 1);
 });
 test("bot picks a reachable key to unlock a mission objective", () => {
   const w = sample();
