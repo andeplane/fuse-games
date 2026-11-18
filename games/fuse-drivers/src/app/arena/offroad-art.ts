@@ -4,6 +4,15 @@ import type {
   OffroadTerrainSample,
 } from "../../game/offroad/terrain.js";
 import type { Point, Track } from "../../game/sim/track.js";
+import type { StadiumTheme } from "./theme.js";
+import {
+  deckMaterial,
+  drawFuseRails,
+  finishFuseMaterials,
+  floodlitFacet,
+  furnishStadium,
+  markFuseTrack,
+} from "./fuse-materials.js";
 
 const CELL = 256;
 const GRID = 44;
@@ -109,19 +118,25 @@ export function paintOffroadGround(
   ctx: CanvasRenderingContext2D,
   track: Track,
   terrain: OffroadTerrain,
+  theme: StadiumTheme = "classic",
 ): void {
+  const fuse = theme === "fuse";
+  const resolution = fuse ? 3 : 1;
   const canvas = ctx.canvas.ownerDocument.createElement("canvas");
-  canvas.width = WIDTH;
-  canvas.height = HEIGHT;
+  canvas.width = WIDTH * resolution;
+  canvas.height = HEIGHT * resolution;
   const pixel = canvas.getContext("2d");
   if (!pixel) return;
+  pixel.scale(resolution, resolution);
+  const deck = fuse ? deckMaterial(pixel) : "#82430e";
+  const footprint = fuse ? new Path2D() : undefined;
   const scaleX = WIDTH / ctx.canvas.width;
   const scaleY = HEIGHT / ctx.canvas.height;
   const project = (x: number, y: number, height: number): Point => {
     const point = projectOffroad(track.name, x, y, height);
     return { x: point.x * scaleX, y: point.y * scaleY };
   };
-  pixel.fillStyle = "#82430e";
+  pixel.fillStyle = deck;
   pixel.fillRect(0, 0, WIDTH, HEIGHT);
   pixel.lineWidth = 0.7;
   const reachable = raceway(terrain, getOffroadCourse(track.name).spawns[0]!);
@@ -168,12 +183,21 @@ export function paintOffroadGround(
           );
         const p = corner(a);
         const q = corner(b);
-        if (reachable[(row * GRID + col) * 4 + face]) {
+        const onCourse = !!reachable[(row * GRID + col) * 4 + face];
+        if (onCourse) {
+          footprint?.moveTo(mid.x, mid.y);
+          footprint?.lineTo(p.x, p.y);
+          footprint?.lineTo(q.x, q.y);
+          footprint?.closePath();
           outsideEdge(x + a[0], y + a[1], x + b[0], y + b[1], p, q);
           outsideEdge(x + 128, y + 128, x + a[0], y + a[1], mid, p);
           outsideEdge(x + 128, y + 128, x + b[0], y + b[1], mid, q);
         }
-        pixel.fillStyle = pixel.strokeStyle = paintFacet(sample);
+        pixel.fillStyle = pixel.strokeStyle = fuse
+          ? onCourse || sample.kind === 2
+            ? floodlitFacet(sample, onCourse)
+            : deck
+          : paintFacet(sample);
         pixel.beginPath();
         pixel.moveTo(mid.x, mid.y);
         pixel.lineTo(p.x, p.y);
@@ -184,29 +208,36 @@ export function paintOffroadGround(
       }
     }
   }
-  // A sparse one-pixel dither gives flat dirt a surface without obscuring the shading on jumps.
-  const dirt = pixel.getImageData(0, 0, WIDTH, HEIGHT);
-  let noise = 417;
-  for (let i = 0; i < dirt.data.length; i += 4) {
-    noise = (Math.imul(noise, 1664525) + 1013904223) >>> 0;
-    const grain = noise >>> 28;
-    if (grain > 2) continue;
-    const delta = grain === 0 ? 18 : -15;
-    dirt.data[i] = dirt.data[i]! + delta;
-    dirt.data[i + 1] = dirt.data[i + 1]! + delta;
-    dirt.data[i + 2] = dirt.data[i + 2]! + delta / 2;
-  }
-  pixel.putImageData(dirt, 0, 0);
-  pixel.lineCap = "round";
-  for (const offset of [0, -2]) {
-    for (const line of edges.values()) {
-      pixel.strokeStyle =
-        offset === 0 ? "#602508" : line.stripe ? "#c93715" : "#f5d8aa";
-      pixel.lineWidth = offset === 0 ? 2.8 : 2;
-      pixel.beginPath();
-      pixel.moveTo(line.a.x, line.a.y + offset);
-      pixel.lineTo(line.b.x, line.b.y + offset);
-      pixel.stroke();
+  if (footprint) {
+    furnishStadium(pixel, footprint);
+    markFuseTrack(pixel, footprint, track, scaleX, scaleY);
+    finishFuseMaterials(pixel);
+    drawFuseRails(pixel, [...edges.values()]);
+  } else {
+    // A sparse one-pixel dither gives flat dirt a surface without obscuring the shading on jumps.
+    const dirt = pixel.getImageData(0, 0, WIDTH, HEIGHT);
+    let noise = 417;
+    for (let i = 0; i < dirt.data.length; i += 4) {
+      noise = (Math.imul(noise, 1664525) + 1013904223) >>> 0;
+      const grain = noise >>> 28;
+      if (grain > 2) continue;
+      const delta = grain === 0 ? 18 : -15;
+      dirt.data[i] = dirt.data[i]! + delta;
+      dirt.data[i + 1] = dirt.data[i + 1]! + delta;
+      dirt.data[i + 2] = dirt.data[i + 2]! + delta / 2;
+    }
+    pixel.putImageData(dirt, 0, 0);
+    pixel.lineCap = "round";
+    for (const offset of [0, -2]) {
+      for (const line of edges.values()) {
+        pixel.strokeStyle =
+          offset === 0 ? "#602508" : line.stripe ? "#c93715" : "#f5d8aa";
+        pixel.lineWidth = offset === 0 ? 2.8 : 2;
+        pixel.beginPath();
+        pixel.moveTo(line.a.x, line.a.y + offset);
+        pixel.lineTo(line.b.x, line.b.y + offset);
+        pixel.stroke();
+      }
     }
   }
   const finish = track.checkpoints.at(-1)!;
@@ -216,6 +247,13 @@ export function paintOffroadGround(
   pixel.save();
   pixel.translate(finish.a.x * scaleX, finish.a.y * scaleY);
   pixel.rotate(Math.atan2(dy, dx));
+  if (fuse) {
+    pixel.fillStyle = "#192134";
+    pixel.fillRect(-1, -3, length + 2, 6);
+    pixel.fillStyle = "#ffe76a";
+    pixel.fillRect(-1, -3, length + 2, 0.6);
+    pixel.fillRect(-1, 2.4, length + 2, 0.6);
+  }
   for (let d = 0; d < length; d += 2) {
     for (let row = 0; row < 2; row++) {
       pixel.fillStyle = (d / 2 + row) % 2 ? "#f9ecd2" : "#282025";
@@ -223,6 +261,6 @@ export function paintOffroadGround(
     }
   }
   pixel.restore();
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = fuse;
   ctx.drawImage(canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
 }

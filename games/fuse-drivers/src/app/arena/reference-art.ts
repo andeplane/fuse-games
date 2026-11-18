@@ -42,6 +42,7 @@ export function poseAxis(difference: number): number {
 
 export interface ReferenceArt {
   paint(frame: ArenaFrame): void;
+  setVisible(visible: boolean): void;
 }
 
 /** Only the separate loopback development launcher supplies this optional, client-local artwork. */
@@ -63,9 +64,8 @@ export function createReferenceArt(
     HEIGHT,
   );
   if (!texture) throw new Error("Could not initialize local off-road art");
-  scene.game.canvas.style.imageRendering = "pixelated";
   texture.setFilter(1); // NEAREST, including at fractional viewport zoom.
-  scene.add
+  const background = scene.add
     .image(0, 0, texture.key)
     .setOrigin(0)
     .setScale(SCALE_X, SCALE_Y)
@@ -148,6 +148,9 @@ export function createReferenceArt(
     }
   }
   return {
+    setVisible(visible) {
+      background.setVisible(visible);
+    },
     paint(frame) {
       const { race, track, poses } = frame;
       const id = OFFROAD_COURSE_NAMES.indexOf(track.name) % 8;

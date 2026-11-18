@@ -10,6 +10,8 @@ import {
 import type { ArenaFrame } from "./frame.js";
 import { courseLabel } from "../course-label.js";
 import { raceViewport } from "./race-scene.js";
+import { buildFuseTimingBoard } from "./fuse-hud.js";
+import type { StadiumTheme } from "./theme.js";
 
 const FONT: Phaser.Types.GameObjects.Text.TextStyle = {
   ...BASE_FONT,
@@ -70,6 +72,7 @@ export class HudScene extends Phaser.Scene {
   private readonly onReady: () => void;
 
   private built = "";
+  private theme: StadiumTheme = "classic";
   private clock?: Phaser.GameObjects.Text;
   private course?: Phaser.GameObjects.Text;
   private bigImage?: Phaser.GameObjects.Image;
@@ -120,7 +123,10 @@ export class HudScene extends Phaser.Scene {
    * and its sponsor boards along the bottom, and crowd strips down both sides.
    */
   private drawStands(frame: ArenaFrame, width: number, height: number): void {
-    const cam = raceViewport(frame.track);
+    const cam = raceViewport(
+      frame.track,
+      import.meta.env.DEV && import.meta.env.VITE_OFFROAD_REFERENCE === "1",
+    );
     const top = TOP + TOP_H + 2,
       bottom = cam.y;
     if (this.textures.exists("grandstand")) {
@@ -181,6 +187,33 @@ export class HudScene extends Phaser.Scene {
     this.chipNames = [];
     const { width, height } = config.screen;
     const trucks = frame.race.trucks;
+    if (this.theme === "fuse") {
+      const board = buildFuseTimingBoard(this, frame);
+      this.clock = board.clock;
+      this.course = board.course;
+      this.chipNames = board.names;
+      this.chipStats = board.stats;
+      this.badge = undefined;
+      this.bigImage = undefined;
+      this.bigText = this.add
+        .text(width / 2, height * 0.38, "", {
+          ...BIG,
+          fontStyle: "bold italic",
+          color: "#f4ffea",
+          stroke: "#13293a",
+          strokeThickness: 7,
+          shadow: {
+            offsetX: 4,
+            offsetY: 5,
+            color: "#0c6267",
+            fill: true,
+            stroke: true,
+          },
+        })
+        .setOrigin(0.5)
+        .setVisible(false);
+      return;
+    }
     this.drawStands(frame, width, height);
 
     // One scoreboard across the top leaves the entire course visible, including the start line.
@@ -277,7 +310,22 @@ export class HudScene extends Phaser.Scene {
   private show(flashed: Flash | undefined): void {
     const image = this.bigImage,
       text = this.bigText;
-    if (!image || !text) return;
+    if (!text) return;
+    if (this.theme === "fuse") {
+      text.setVisible(!!flashed);
+      if (flashed) {
+        const what = flashed.what;
+        text
+          .setText(
+            typeof what === "string"
+              ? what
+              : (["3", "2", "1", "GO", "FINISH"][what] ?? ""),
+          )
+          .setAlpha(flashed.alpha);
+      }
+      return;
+    }
+    if (!image) return;
     if (!flashed) {
       image.setVisible(false);
       text.setVisible(false);
@@ -312,8 +360,9 @@ export class HudScene extends Phaser.Scene {
     this.lastTick = race.tick;
   }
 
-  paint(frame: ArenaFrame): void {
-    const shape = `${frame.track.name}:${frame.race.trucks.length}`;
+  paint(frame: ArenaFrame, theme: StadiumTheme): void {
+    this.theme = theme;
+    const shape = `${frame.track.name}:${frame.race.trucks.length}:${theme}`;
     if (this.built !== shape) {
       this.build(frame);
       this.built = shape;

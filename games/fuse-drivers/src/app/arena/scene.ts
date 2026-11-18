@@ -14,12 +14,16 @@ import {
 import { HudScene } from "./hud-scene.js";
 import { renderSnapshot } from "./interpolate.js";
 import { RaceScene } from "./race-scene.js";
+import { readStadiumTheme, type StadiumTheme } from "./theme.js";
+import { safeStore } from "../session.js";
 
 export interface ArenaEngineOptions {
   /** Where the art is served from; ends with a slash. Defaults to `assets/` under the page's base. */
   assetBase?: string;
   /** Force the Canvas backend, for a device whose WebGL is unusable. */
   renderer?: "auto" | "canvas";
+  /** A device-local paint choice; changing it does not restart the race. */
+  theme?: () => StadiumTheme;
 }
 
 export interface ArenaEngine {
@@ -59,10 +63,16 @@ export function createArena(
     resolveReady();
   };
   // Phaser starts only the first scene of the config array, so the race scene starts the HUD beside it.
-  const race = new RaceScene(options.assetBase ?? defaultAssetBase(), () => {
-    if (!game.scene.isActive(HudScene.KEY)) game.scene.start(HudScene.KEY);
-    sceneReady();
-  });
+  const defaultStyle = readStadiumTheme(safeStore(() => window.localStorage));
+  const theme = options.theme ?? (() => defaultStyle);
+  const race = new RaceScene(
+    options.assetBase ?? defaultAssetBase(),
+    theme,
+    () => {
+      if (!game.scene.isActive(HudScene.KEY)) game.scene.start(HudScene.KEY);
+      sceneReady();
+    },
+  );
   const hud = new HudScene(sceneReady);
   const context =
     options.renderer === "canvas"
@@ -128,8 +138,9 @@ export function createArena(
         newTick,
         names: truckNames(view, next.trucks.length),
       };
-      race.paint(frame);
-      hud.paint(frame);
+      const style = theme();
+      race.paint(frame, style);
+      hud.paint(frame, style);
       const now = performance.now();
       game.step(
         now,
