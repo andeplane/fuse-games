@@ -215,7 +215,9 @@ const COLLISION_BOUNDS = [
   [-9, 4, -7, 3],
 ] as const;
 
-function collisionBounds(truck: Readonly<OffroadMotion>) {
+export function offroadTruckBounds(
+  truck: Readonly<Pick<OffroadMotion, "x" | "y" | "heading">>,
+) {
   const shape = (((truck.heading >>> 8) + 8) >>> 4) & 7;
   const [dx, width, dy, height] = COLLISION_BOUNDS[shape]!;
   const left = ((truck.x >>> 5) + dx) >> 2;
@@ -228,8 +230,8 @@ export function offroadTrucksOverlap(
   a: Readonly<OffroadMotion>,
   b: Readonly<OffroadMotion>,
 ): boolean {
-  const one = collisionBounds(a);
-  const two = collisionBounds(b);
+  const one = offroadTruckBounds(a);
+  const two = offroadTruckBounds(b);
   return (
     one.left < two.right &&
     two.left < one.right &&
