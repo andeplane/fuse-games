@@ -73,7 +73,7 @@
       "name": "Desktop keyboard steering and firing",
       "command": "pnpm exec tsx scripts/keyboard-smoke.ts",
       "browsers": ["chromium", "webkit"],
-      "env": {},
+      "env": { "KEYBOARD_MODAL_QUARANTINE": "1" },
       "serviceUrlEnv": "HOME_URL",
       "timeoutMinutes": 20,
       "retries": 1

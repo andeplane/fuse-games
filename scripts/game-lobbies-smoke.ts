@@ -94,6 +94,7 @@ try {
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
       const configurationRoom = [
+        "fuse-drivers",
         "fusemania",
         "elasto-fuse",
         "fuse-front",
