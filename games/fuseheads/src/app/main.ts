@@ -657,7 +657,8 @@ function room(solo: boolean): void {
           event.target instanceof HTMLSelectElement))
     )
       return;
-    if (inputs.key(event.code, down)) event.preventDefault();
+    if (inputs.key(event.code, down) || (down && event.code === "ArrowDown"))
+      event.preventDefault();
   }
   document.addEventListener("keydown", key);
   document.addEventListener("keyup", key);

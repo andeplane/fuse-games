@@ -28,6 +28,23 @@ const playfield = (page: Page) =>
 const enter = async (page: Page) => {
   await page.goto(new URL("?mute", root).href);
 };
+async function downArrowConsumed(page: Page) {
+  await page.evaluate(() => {
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        queueMicrotask(() => {
+          document.body.dataset.downArrowConsumed = String(
+            event.defaultPrevented,
+          );
+        });
+      },
+      { once: true },
+    );
+  });
+  await page.keyboard.press("ArrowDown");
+  return page.locator("body").getAttribute("data-down-arrow-consumed");
+}
 try {
   const solo = await pageFor(true);
   await enter(solo);
@@ -35,11 +52,12 @@ try {
   assert.match(await solo.locator("dialog[open]").innerText(), /stun|bump/i);
   await solo.keyboard.press("Escape");
   await openPlayOptions(solo, "single");
-  await solo
-    .getByRole("combobox", { name: "Level pack" })
-    .selectOption("bonus");
+  const pack = solo.getByRole("combobox", { name: "Level pack" });
+  await pack.press("ArrowDown");
+  assert.equal(await pack.inputValue(), "bonus");
   await solo.getByRole("button", { name: "START GAME", exact: true }).click();
   await playfield(solo).waitFor();
+  assert.equal(await downArrowConsumed(solo), "true");
   await solo.getByRole("button", { name: "Jump", exact: true }).tap();
   const canvasBox = await playfield(solo).boundingBox();
   const barBox = await solo.locator(".fui-top-bar").boundingBox();
