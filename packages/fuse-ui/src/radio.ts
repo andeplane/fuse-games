@@ -5,6 +5,8 @@ import {
   type MusicMedia,
 } from "fuse-music";
 export type MusicPlayer = MusicMedia;
+import type { SafeStorage } from "./safe-storage.js";
+const RADIO_VOLUME = "fuse-radio-volume";
 /** Shared radio controls; the music library owns playback, games choose the catalogue. */
 export function createRadio(
   document: Document,
@@ -12,6 +14,7 @@ export function createRadio(
   media: MusicMedia | (() => MusicMedia),
   muted = false,
   songs: readonly Song[] = ALL_SONGS,
+  storage?: Pick<SafeStorage, "getItem" | "setItem">,
 ) {
   const player = createMusicPlayer(songs, {
     base: baseUrl,
@@ -39,9 +42,13 @@ export function createRadio(
   volume.type = "range";
   volume.min = "0";
   volume.max = "100";
-  volume.value = "18";
-  volume.setAttribute("aria-label", "Music volume");
-  label.textContent = "Music ";
+  const stored = storage?.getItem(RADIO_VOLUME);
+  if (stored && /^\d{1,3}$/.test(stored) && Number(stored) <= 100)
+    player.setVolume(Number(stored) / 100);
+  volume.value = String(Math.round(player.volume * 100));
+  volume.setAttribute("aria-label", "Radio volume");
+  label.textContent = "Radio volume ";
+  label.className = "fui-radio-volume";
   label.append(volume);
   element.append(button, next, title, select, label);
   const render = () => {
@@ -60,14 +67,18 @@ export function createRadio(
     const index = songs.findIndex((song) => song.id === player.song?.id);
     player.select(songs[(index + 1) % songs.length]!.id);
   };
-  select.onchange = () => player.play(select.value);
-  volume.oninput = () => player.setVolume(Number(volume.value) / 100);
+  select.onchange = () => player.select(select.value);
+  volume.oninput = () => {
+    player.setVolume(Number(volume.value) / 100);
+    if (!muted) storage?.setItem(RADIO_VOLUME, volume.value);
+  };
   for (const control of [button, next, select, volume])
     control.disabled = muted || songs.length === 0;
   const unsubscribe = player.subscribe(render);
   render();
   return {
     element,
+    volumeControl: label,
     player,
     pause: () => player.pause(),
     setMuted: (value: boolean) => player.setMuted(value),

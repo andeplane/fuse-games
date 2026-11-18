@@ -57,15 +57,27 @@ test("a draw plays its own neutral cue, not the defeat", () => {
 test("the match bar mutes and unmutes sound and saves the choice", async () => {
   const f = fixture();
   await f.startSkirmish();
-  const button = () =>
-    f.root.querySelector<HTMLElement>('[data-action="toggle-mute"]')!;
-  assert.equal(button().getAttribute("aria-label"), "Unmute sound");
-  f.click('[data-action="toggle-mute"]');
+  const button = () => f.root.querySelector<HTMLElement>(".fui-top-bar-sound")!;
+  assert.equal(button().getAttribute("aria-label"), "Sound off");
+  f.click(".fui-top-bar-sound");
   assert.deepEqual(f.written, [false]);
-  assert.equal(button().getAttribute("aria-label"), "Mute sound");
+  assert.equal(button().getAttribute("aria-label"), "Sound on");
   assert.ok(f.played.includes("toggle"));
-  f.click('[data-action="toggle-mute"]');
+  f.click(".fui-top-bar-sound");
   assert.deepEqual(f.written, [false, true]);
+});
+
+test("closing the top-right menu returns focus to a playing board", async () => {
+  const f = fixture();
+  await f.startSkirmish();
+  const dialog = f.root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  const board = f.root.querySelector<SVGSVGElement>("#nd-board")!;
+  // linkedom does not implement focus on SVG elements.
+  board.focus = () => f.focus(board);
+  f.focus(f.root.querySelector(".fui-top-bar-toggle"));
+  dialog.dispatchEvent(new f.root.ownerDocument.defaultView!.Event("close"));
+  assert.equal(f.active(), board);
+  f.app.dispose();
 });
 
 test("dialogs open and close with their own interface cues", async () => {
@@ -266,7 +278,6 @@ test("a room change closes How to play", () => {
 test("every page under the menu has Back at the top left, and New game has Start beside it", () => {
   const f = fixture();
   for (const [open, title] of [
-    ["settings", "Player options"],
     ["guide", "How to play"],
     ["new-game", "New game"],
   ] as const) {
@@ -287,16 +298,17 @@ test("every page under the menu has Back at the top left, and New game has Start
     f.click('[data-action="back-menu"]');
     assert.ok(f.root.querySelector('[data-action="new-game"]'), "on the menu");
   }
-  f.click('[data-action="settings"]');
-  // The app portal's open grid takes this Escape; so does a field being used.
+  f.click('[data-action="new-game"]');
+  // The app portal's open grid takes this Escape.
   const grid = f.root.ownerDocument.createElement("div");
   grid.className = "fui-portal-panel";
   f.root.ownerDocument.body.append(grid);
   f.press("Escape", "body");
-  assert.ok(f.root.querySelector(".settings-panel"), "the portal is open");
+  assert.equal(
+    f.root.querySelector(".screen-heading h1")?.textContent,
+    "New game",
+  );
   grid.remove();
-  f.press("Escape", '[data-setting="volume"]');
-  assert.ok(f.root.querySelector(".settings-panel"), "a field has the key");
   f.press("Escape", "body");
   assert.ok(
     f.root.querySelector('[data-action="new-game"]'),

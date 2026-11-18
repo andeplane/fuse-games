@@ -54,6 +54,11 @@ test("radio is opt-in, uses base path/catalog, adjusts volume, pauses and tears 
   assert.equal(p.media.src, "");
   assert.equal(p.plays, 0);
   const [play, next] = radio.element.querySelectorAll("button");
+  const select = radio.element.querySelector("select")!;
+  select.dispatchEvent(event(window, "change"));
+  next!.click();
+  assert.equal(p.plays, 0, "browsing songs keeps playback opt-in");
+  radio.player.select(MUSIC_TRACKS[0].id);
   play!.click();
   assert.equal(p.plays, 1);
   assert.equal(p.media.src, "/party/" + MUSIC_TRACKS[0].path.slice(1));

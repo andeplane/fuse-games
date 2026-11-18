@@ -186,6 +186,7 @@ for (const { name, kind } of BOTH_ENGINES) {
           await phone
             .getByRole("button", { name: "Back", exact: true })
             .click();
+          await phone.keyboard.press("Escape");
           await phone.screenshot({
             path: `artifacts/shared-phone-host-${name}-${viewport.width}x${viewport.height}.png`,
           });

@@ -1,5 +1,6 @@
 import { openPlayOptions } from "./lib/main-menu.js";
 import { readyRoom } from "./lib/ready-room.js";
+import { openTopMenu } from "./lib/top-menu.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { launchSelected, browserKind } from "./lib/browser.js";
@@ -57,7 +58,16 @@ try {
     localStorage.setItem("fuse-riders-player-name", "Arcade Rider"),
   );
   await phone.goto(invite.href);
-  await phone.locator(".online-join").waitFor({ state: "hidden" });
+  // The hidden join form is also absent before admission. Wait for both peers to see the actual seat
+  // and for the phone's own readiness vote, before adding an opponent and starting the match.
+  for (const page of [phone, host])
+    await page
+      .locator(".room-rider strong")
+      .filter({ hasText: "Arcade Rider" })
+      .waitFor();
+  await phone
+    .locator(".room-ready-button:not([hidden])")
+    .waitFor({ state: "attached" });
   await host
     .getByRole("button", { name: /^Add AI$/i, exact: true })
     .first()
@@ -172,6 +182,22 @@ try {
     false,
     "landscape menu fits without the old scrolling strip",
   );
+  const header = phone.locator(".online-header");
+  assert.ok(
+    await header.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+    "landscape controller header fits horizontally",
+  );
+  const account = header.locator(".fui-top-bar-account");
+  assert.ok(
+    await account.evaluate(
+      (button) =>
+        button.clientWidth >= 44 &&
+        button.scrollWidth <= button.clientWidth + 1,
+    ),
+    "the controller account shortcut fits its label and touch target",
+  );
   for (const selector of [
     ".online-roster",
     ".online-announce",
@@ -184,9 +210,15 @@ try {
       false,
       `${selector} belongs on TV`,
     );
+  assert.equal(
+    await phone.locator(".rider-round-controls").isVisible(),
+    false,
+    "countdown guidance yields to the open controller menu",
+  );
   await phone.screenshot({
     path: `artifacts/arcade-landscape-menu-${kind}.png`,
   });
+  await openTopMenu(phone);
   await phone
     .getByRole("button", { name: "Player options", exact: true })
     .click();
@@ -217,6 +249,7 @@ try {
   });
   await phone.getByLabel("Landscape bomb side").selectOption("left");
   await phone.getByRole("button", { name: "Back", exact: true }).click();
+  await phone.keyboard.press("Escape");
   if (await phone.locator(".mobile-tools-open").count())
     await phone.locator(".mobile-tools-toggle").click();
   await layout(false, "left");

@@ -21,8 +21,7 @@ interface EntranceOptions {
   join: HTMLButtonElement;
   radio: HTMLElement;
   atmosphere: HTMLInputElement;
-  touch: HTMLInputElement;
-  controls: HTMLSelectElement;
+  playerOptions(): HTMLElement;
   fresh(): void;
 }
 
@@ -34,17 +33,13 @@ export function createEntrance(o: EntranceOptions) {
   root.innerHTML = `<img class="entrance-art" alt="" aria-hidden="true"><div class="entrance-shade"></div><div class="entrance-motes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
     <a class="entrance-home">← Back to the party</a>
     <div class="entrance-content"><p class="entrance-kicker">THE LANTERN BELFRY</p><h1><span>Hook</span><span>Havok</span></h1><p class="entrance-tagline">Find your foothold.<br>Take theirs.</p><p class="entrance-description">A moonlit arena. A hook in your hand.<br>Bring up to four friends—or explore on your own.</p>
-    <div data-slot="name"></div><nav class="entrance-actions" aria-label="Play"><div data-slot="start"></div><button id="menu-join" type="button">Join room <span aria-hidden="true">↗</span></button><div class="entrance-secondary"><button id="menu-help" type="button">How to play</button><button id="menu-settings" type="button">Settings</button></div></nav>
+    <div data-slot="name"></div><nav class="entrance-actions" aria-label="Play"><div data-slot="start"></div><button id="menu-join" type="button">Join room <span aria-hidden="true">↗</span></button><div class="entrance-secondary"><button id="menu-help" type="button">How to play</button></div></nav>
     <div class="entrance-status" data-slot="status"></div><div data-slot="retry"></div><button id="menu-fresh" type="button" hidden>Create a different room</button>
     <p class="entrance-art-status" role="status"></p><button id="retry-entrance-art" type="button" hidden>Retry illustration</button></div>
     <p class="entrance-footer">JUMP <b>✦</b> HOOK <b>✦</b> OUTPLAY <span>1–5 KEEPERS</span></p>
     <dialog id="entrance-join" aria-labelledby="join-title"><button class="dialog-close" type="button" aria-label="Close join room">×</button><p class="entrance-kicker">ANOTHER LIGHT IN THE BELFRY</p><h2 id="join-title">Join your friends</h2><p>Enter the code your friend shared.</p><form id="menu-join-form"><div data-slot="code"></div><div data-slot="join"></div></form><p class="join-error" role="alert"></p></dialog>
-    <dialog id="entrance-help" aria-labelledby="help-title"><button class="dialog-close" type="button" aria-label="Close how to play">×</button><p class="entrance-kicker">A KEEPER'S FIELD GUIDE</p><h2 id="help-title">Keep your footing.</h2><dl><dt>Move & jump</dt><dd>A / D or arrows to run. Space to jump through ledges; hold for height, press again in the air for a second jump. ↓ + Space drops through one ledge.</dd><dt>Hook & swing</dt><dd>Aim with WASD or the arrows and hold J, or point and hold left click. The rope catches you and reels you in; steer to swing, jump to leap off, release to let go. Its spikes pop orbs anywhere along the rope.</dd><dt>Throw a bomb</dt><dd>Hold K, or right click, to charge; release to throw along your aim. A tap lobs it short, a full charge (0.6 s) throws a third of the arena, and a swing slings it further. After 1.5 s it knocks out every keeper in the red ring, you included. Next bomb in 2.5 s.</dd><dt>Bring a little havoc</dt><dd>Hook rivals to knock them back, bomb them off the map. Try free play, last keeper standing, or timed scoring once inside.</dd><dt>On a phone</dt><dd>Enable Touch controls in Settings. Left pad: move, up to jump, down to drop. Right pad: drag to aim and hook, release to let go. Bomb button beside it: hold to charge, release to throw along your last aim.</dd><dt>Try the glowing orbs</dt><dd>Orbs bounce around the arena. Hooks, spikes and blasts split them into smaller ones. Balls do not hurt keepers.</dd></dl><p class="entrance-note">Create a room to explore solo, then share its invite whenever you're ready for company.</p></dialog>
-    <dialog id="entrance-settings" aria-labelledby="settings-title"><button class="dialog-close" type="button" aria-label="Close settings">×</button><p class="entrance-kicker">SET THE MOOD</p><h2 id="settings-title">Settings</h2><div data-slot="atmosphere"></div><div data-slot="touch"></div><div data-slot="radio"></div><p class="entrance-note">Reduced motion follows your device preference. Music starts only when you press Play radio. These controls also remain available inside the room.</p></dialog>`;
+    <dialog id="entrance-help" aria-labelledby="help-title"><button class="dialog-close" type="button" aria-label="Close how to play">×</button><p class="entrance-kicker">A KEEPER'S FIELD GUIDE</p><h2 id="help-title">Keep your footing.</h2><dl><dt>Move & jump</dt><dd>A / D or arrows to run. Space to jump through ledges; hold for height, press again in the air for a second jump. ↓ + Space drops through one ledge.</dd><dt>Hook & swing</dt><dd>Aim with WASD or the arrows and hold J, or point and hold left click. The rope catches you and reels you in; steer to swing, jump to leap off, release to let go. Its spikes pop orbs anywhere along the rope.</dd><dt>Throw a bomb</dt><dd>Hold K, or right click, to charge; release to throw along your aim. A tap lobs it short, a full charge (0.6 s) throws a third of the arena, and a swing slings it further. After 1.5 s it knocks out every keeper in the red ring, you included. Next bomb in 2.5 s.</dd><dt>Bring a little havoc</dt><dd>Hook rivals to knock them back, bomb them off the map. Try free play, last keeper standing, or timed scoring once inside.</dd><dt>On a phone</dt><dd>Enable Touch controls in Game menu → Player options. Left pad: move, up to jump, down to drop. Right pad: drag to aim and hook, release to let go. Bomb button beside it: hold to charge, release to throw along your last aim.</dd><dt>Try the glowing orbs</dt><dd>Orbs bounce around the arena. Hooks, spikes and blasts split them into smaller ones. Balls do not hurt keepers.</dd></dl><p class="entrance-note">Create a room to explore solo, then share its invite whenever you're ready for company.</p></dialog>`;
   document.body.prepend(root);
-  const controlSlot = document.createElement("div");
-  controlSlot.dataset.slot = "controls";
-  root.querySelector('[data-slot="touch"]')!.after(controlSlot);
   const trialHelp = document.createElement("p");
   trialHelp.className = "entrance-note";
   trialHelp.textContent =
@@ -75,6 +70,8 @@ export function createEntrance(o: EntranceOptions) {
     brand: home,
     gameId: "hook-havok",
     sound: o.sound,
+    playerOptions: o.playerOptions,
+    radioControls: o.radio,
   });
   const placements = Object.entries({
     start: o.start,
@@ -83,10 +80,6 @@ export function createEntrance(o: EntranceOptions) {
     name: o.name.closest("label")!,
     code: o.code.closest("label")!,
     join: o.join,
-    atmosphere: o.atmosphere.closest("label")!,
-    touch: o.touch.closest("label")!,
-    radio: o.radio,
-    controls: o.controls.closest("label")!,
   }).map(([slot, node]) => {
     const marker = document.createComment(`entrance-${slot}`);
     node.before(marker);
@@ -94,7 +87,7 @@ export function createEntrance(o: EntranceOptions) {
   });
   const dialogs = [...root.querySelectorAll<HTMLDialogElement>("dialog")];
   const close = () => dialogs.forEach((d) => d.close());
-  for (const kind of ["join", "help", "settings"]) {
+  for (const kind of ["join", "help"]) {
     const dialog = root.querySelector<HTMLDialogElement>(`#entrance-${kind}`)!;
     root.querySelector<HTMLButtonElement>(`#menu-${kind}`)!.onclick = () => {
       dialog.showModal();
@@ -103,12 +96,7 @@ export function createEntrance(o: EntranceOptions) {
     const back = createBackButton({ onBack: () => dialog.close(), document });
     const head = createPageHeader({
       back,
-      title:
-        kind === "join"
-          ? "Join room"
-          : kind === "help"
-            ? "How to play"
-            : "Player options",
+      title: kind === "join" ? "Join room" : "How to play",
       document,
     });
     dialog.querySelector(".dialog-close")!.remove();
@@ -179,8 +167,6 @@ export function createEntrance(o: EntranceOptions) {
     },
     onHowToPlay: () =>
       root.querySelector<HTMLDialogElement>("#entrance-help")!.showModal(),
-    onSettings: () =>
-      root.querySelector<HTMLDialogElement>("#entrance-settings")!.showModal(),
   });
   menuMarker.replaceWith(menu.element);
   dialogs.push(menu.dialog);
@@ -198,6 +184,8 @@ export function createEntrance(o: EntranceOptions) {
       brand: home,
       gameId: "hook-havok",
       sound: o.sound,
+      playerOptions: o.playerOptions,
+      radioControls: o.radio,
     });
     root.hidden = false;
     root.setAttribute("role", "main");
@@ -241,6 +229,8 @@ export function createEntrance(o: EntranceOptions) {
           element: roomBar,
           gameId: "hook-havok",
           sound: o.sound,
+          playerOptions: o.playerOptions,
+          radioControls: o.radio,
         });
       root.hidden = true;
       root.removeAttribute("role");

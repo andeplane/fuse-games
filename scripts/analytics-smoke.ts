@@ -150,12 +150,11 @@ assert.equal(
   2,
   "tab B is reporting too",
 );
-await other
-  .getByRole("button", { name: /Room settings/ })
-  .first()
-  .click();
-await other.locator("details.settings-privacy > summary").click();
-const otherToggle = other.locator("details.settings-privacy > button");
+await other.getByRole("button", { name: "Open game menu" }).click();
+await other.getByRole("button", { name: /^player options$/i }).click();
+const otherToggle = other
+  .getByRole("dialog", { name: /^player options$/i })
+  .getByRole("button", { name: /^analytics (on|off)$/i });
 assert.equal(await otherToggle.textContent(), "ANALYTICS ON");
 // Tab A queues an event in its own client batch, and tab B opts out before A's five-second flush.
 await openResults();
@@ -186,6 +185,7 @@ assert.equal(await analyticsToggle.textContent(), "ANALYTICS ON");
 await page.keyboard.press("Enter");
 assert.equal(await analyticsToggle.textContent(), "ANALYTICS OFF");
 await closeDialog();
+await page.keyboard.press("Escape");
 await openResults(); // would be another Recap Reopened
 await page.waitForTimeout(6000);
 const sdkFetches: string[] = [];

@@ -61,15 +61,27 @@
 .lounge-content #round-status {
   margin: 0;
 }
-.lounge-content [data-radio] {
-  font:
-    11px system-ui,
-    sans-serif;
-}
+
 .personal-controls {
-  font:
-    12px system-ui,
-    sans-serif;
+  display: grid;
+  gap: 12px;
+  font: inherit;
+}
+.personal-controls label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.personal-controls select {
+  min-width: 0;
+  max-width: 68%;
+}
+.personal-controls input[type="checkbox"] {
+  order: 1;
+}
+.personal-controls [hidden] {
+  display: none;
 }
 #development-workshop {
   margin-top: 20px;

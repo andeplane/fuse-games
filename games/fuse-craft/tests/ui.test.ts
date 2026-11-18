@@ -739,10 +739,12 @@ test("menu uses Fuse controls and actual board scenery without starting a simula
   assert.ok(f.root.classList.contains("fui-app"));
   assert.deepEqual(
     Array.from(
-      f.root.querySelectorAll(".fui-main-menu-nav:not(.fui-play-menu) button"),
+      f.root.querySelectorAll(
+        ".fui-main-menu-nav:not(.fui-play-menu) button:not([hidden])",
+      ),
       (b) => b.textContent,
     ),
-    ["Play", "How to play", "About", "Player options"],
+    ["Play", "How to play", "About"],
   );
   assert.ok(
     f.root
@@ -752,10 +754,8 @@ test("menu uses Fuse controls and actual board scenery without starting a simula
   assert.ok(f.root.querySelector("#nd-attract-board .terrain-layer"));
   assert.ok(f.root.querySelector("#nd-attract-board .structure-layer"));
   assert.deepEqual(f.counts(), { created: 0, requestedFrames: 0 });
-  f.click("settings");
-  assert.equal(f.root.querySelector("h1")?.textContent, "Player options");
-  f.click("back-menu");
-  assert.deepEqual(f.counts(), { created: 0, requestedFrames: 0 });
+  assert.equal(f.root.querySelector('[data-action="settings"]'), null);
+  assert.ok(f.root.querySelector(".fui-top-bar-toggle"));
   f.app.dispose();
 });
 

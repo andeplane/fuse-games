@@ -241,6 +241,14 @@ const host = el<HTMLDivElement>("scene"),
 const query = new URLSearchParams(location.search),
   muted = query.has("mute");
 const store = sessionStore(() => sessionStorage);
+const preferences = sessionStore(() => localStorage);
+const readVolume = (key: string, fallback: number) => {
+  const saved = preferences.getItem(key);
+  const value = Number(saved);
+  return saved !== null && Number.isFinite(value) && value >= 0 && value <= 100
+    ? value
+    : fallback;
+};
 let roomCode = query.get("room")?.trim().toUpperCase(),
   display = query.has("display"),
   selfId = "",
@@ -261,32 +269,43 @@ const radio = createRadio(
   new Audio(),
   muted,
 );
-let soundEnabled = !muted;
+let soundEnabled = !muted && preferences.getItem("hook-havok.sound") !== "off";
+if (!soundEnabled) {
+  effects.setMuted(true);
+  radio.setMuted(true);
+}
 const sound = {
   forcedMute: muted,
   enabled: () => soundEnabled,
   setEnabled(on: boolean) {
     if (muted) return;
     soundEnabled = on;
+    preferences.setItem("hook-havok.sound", on ? "on" : "off");
     effects.setMuted(!on);
     radio.setMuted(!on);
   },
 };
 const effectLabel = document.createElement("label"),
   effectVolume = document.createElement("input");
-effectLabel.textContent = "Effects ";
+effectLabel.textContent = "Effects volume ";
 effectVolume.type = "range";
 effectVolume.min = "0";
 effectVolume.max = "100";
-effectVolume.value = "30";
+effectVolume.value = String(readVolume("hook-havok.effects-volume", 30));
+effects.setVolume(Number(effectVolume.value) / 100);
 effectVolume.disabled = muted;
 effectVolume.setAttribute("aria-label", "Effects volume");
-effectVolume.oninput = () =>
+effectVolume.oninput = () => {
+  preferences.setItem("hook-havok.effects-volume", effectVolume.value);
   effects.setVolume(Number(effectVolume.value) / 100);
+};
 effectLabel.append(effectVolume);
-radio.element.append(effectLabel);
-radio.element.dataset.radio = "";
-el("status").after(radio.element);
+const musicVolume = radio.volumeControl.querySelector("input")!;
+musicVolume.value = String(readVolume("hook-havok.music-volume", 18));
+radio.player.setVolume(Number(musicVolume.value) / 100);
+musicVolume.addEventListener("input", () =>
+  preferences.setItem("hook-havok.music-volume", musicVolume.value),
+);
 document.addEventListener("pointerdown", () => effects.unlock());
 document.addEventListener("keydown", () => effects.unlock());
 el<HTMLAnchorElement>("home").href =
@@ -308,13 +327,6 @@ el<HTMLAnchorElement>("study").href = `?showcase=1${muted ? "&mute" : ""}`;
 el("home").textContent = "HOOK HAVOK";
 const gameHeader = homeBar.closest<HTMLElement>("header")!;
 gameHeader.replaceChildren(homeBar);
-createTopBar({
-  music: false,
-  element: gameHeader,
-  brand: el("home"),
-  gameId: "hook-havok",
-  sound,
-});
 const tuning = el<HTMLFormElement>("tuning");
 const experiment = el<HTMLSelectElement>("experiment");
 experiment.add(new Option("Arena ricochets · gentle", "ricochet"));
@@ -372,6 +384,9 @@ let mousePointer: number | undefined;
 const buttons = new ButtonMerge();
 let touchState: TouchState | undefined;
 const keyboard = new KeyboardInput();
+keyboardMode.value =
+  preferences.getItem("hook-havok.controls") === "mouse" ? "mouse" : "keyboard";
+keyboard.mode = keyboardMode.value === "mouse" ? "mouse" : "keyboard";
 host.dataset.controls = keyboard.mode;
 const chest = () => latest.feet - latest.body.height * 0.6;
 const sampleKeyboard = () =>
@@ -487,12 +502,13 @@ const modalInput = createModalInputGate({
   cancel: clear,
 });
 const stopPlaytestInput = registerPlaytestInput(document, { cancel: clear });
+const aimLabel = el("aim-label");
 function touchLayout() {
   clear();
   const enabled = touchToggle.checked;
   document.body.classList.toggle("touch-trial", enabled);
   touchDeck.hidden = !enabled;
-  el("aim-label").hidden = !enabled;
+  aimLabel.hidden = !enabled;
   el("touch-help").hidden = !enabled;
   touch?.enable(
     enabled &&
@@ -502,10 +518,22 @@ function touchLayout() {
   );
   refreshGuides();
 }
+const savedTouch = preferences.getItem("hook-havok.touch");
 touchToggle.checked =
-  query.has("touch") || matchMedia("(any-pointer: coarse)").matches;
-touchToggle.onchange = touchLayout;
-el<HTMLSelectElement>("aim-mode").onchange = (event) => {
+  query.has("touch") ||
+  (savedTouch === null
+    ? matchMedia("(any-pointer: coarse)").matches
+    : savedTouch === "on");
+touchToggle.onchange = () => {
+  preferences.setItem("hook-havok.touch", touchToggle.checked ? "on" : "off");
+  touchLayout();
+};
+const aimMode = el<HTMLSelectElement>("aim-mode");
+aimMode.value =
+  preferences.getItem("hook-havok.aim") === "free" ? "free" : "eight";
+touch?.mode(aimMode.value === "free" ? "free" : "eight");
+aimMode.onchange = (event) => {
+  preferences.setItem("hook-havok.aim", aimMode.value);
   clear();
   touch?.mode(
     (event.target as HTMLSelectElement).value === "free" ? "free" : "eight",
@@ -675,7 +703,7 @@ async function graphics() {
     scene = createShowcase(host, {
       paused: false,
       idleOnly: false,
-      atmosphere: el<HTMLInputElement>("atmosphere").checked,
+      atmosphere: atmosphere.checked,
       view: sample,
       debug: () => el<HTMLInputElement>("debug").checked,
       keyboardAim: () =>
@@ -1264,28 +1292,42 @@ for (const input of powerInputs)
     tuning.requestSubmit();
   };
 for (const box of zoneBoxes) box.onchange = () => tuning.requestSubmit();
+followCam.checked = preferences.getItem("hook-havok.follow") === "on";
 followCam.onchange = () => {
+  preferences.setItem("hook-havok.follow", followCam.checked ? "on" : "off");
   scene?.setFollow(followCam.checked);
-  host.focus();
 };
-keyboardMode.onchange = () => {
+const controlHelp = el("control-help");
+function updateKeyboardHelp() {
   clear();
   keyboard.mode = keyboardMode.value === "keyboard" ? "keyboard" : "mouse";
-  el("control-help").textContent =
+  controlHelp.textContent =
     keyboard.mode === "keyboard"
       ? KEYS_SHORT
       : "Mouse aims · left click hooks · right click bombs · Space jumps · S / ↓ drops.";
   host.dataset.controls = keyboard.mode;
   document.querySelector(".desktop-help")!.textContent =
     keyboard.mode === "keyboard" ? KEYS_HELP : mouseHelp;
-  host.focus();
+}
+updateKeyboardHelp();
+keyboardMode.onchange = () => {
+  preferences.setItem("hook-havok.controls", keyboardMode.value);
+  updateKeyboardHelp();
 };
 retry.onclick = () => void graphics();
-el<HTMLInputElement>("atmosphere").checked = !matchMedia(
-  "(prefers-reduced-motion: reduce)",
-).matches;
-el<HTMLInputElement>("atmosphere").onchange = (e) =>
-  scene?.setAtmosphere((e.target as HTMLInputElement).checked);
+const atmosphere = el<HTMLInputElement>("atmosphere");
+const savedAtmosphere = preferences.getItem("hook-havok.atmosphere");
+atmosphere.checked =
+  savedAtmosphere === null
+    ? !matchMedia("(prefers-reduced-motion: reduce)").matches
+    : savedAtmosphere === "on";
+atmosphere.onchange = () => {
+  preferences.setItem(
+    "hook-havok.atmosphere",
+    atmosphere.checked ? "on" : "off",
+  );
+  scene?.setAtmosphere(atmosphere.checked);
+};
 host.addEventListener("keydown", (e) => {
   if (menu.isOpen() || modalInput.blocked()) return;
   if (!keyboard.accepts(e.code)) return;
@@ -1395,6 +1437,13 @@ window.addEventListener("pagehide", () => {
 window.addEventListener("pageshow", (e) => {
   if (e.persisted) location.reload();
 });
+const optionsPanel = document.createElement("section");
+optionsPanel.className = "personal-controls";
+optionsPanel.append(radio.volumeControl, effectLabel);
+for (const field of [keyboardMode, touchToggle, aimMode, atmosphere, followCam])
+  optionsPanel.append(field.closest("label")!);
+optionsPanel.append(controlHelp);
+const playerOptions = () => optionsPanel;
 const matchShell = createMatchShell({
   playerName: () => social.playerName(undefined) ?? undefined,
   leave: () => el<HTMLButtonElement>("leave-room").click(),
@@ -1426,6 +1475,24 @@ const matchShell = createMatchShell({
   },
 });
 const knockoutFeed = createKnockoutFeed(document.querySelector(".stage")!);
+function menuInputChanged(open: boolean) {
+  clear();
+  // Both Back and Escape resume movement at the arena, whichever menu was open.
+  const resume =
+    !open &&
+    !!runtime &&
+    !display &&
+    matchShell.arenaVisible() &&
+    !modalInput.blocked();
+  if (resume) host.focus({ preventScroll: true });
+  const local = latest.keepers.find((keeper) => keeper.id === selfId);
+  touch?.enable(
+    resume &&
+      touchToggle.checked &&
+      (latest.contest.rules === "free" ||
+        (latest.contest.phase === "active" && !!local?.playing)),
+  );
+}
 const menu = createGameMenu({
   controls: HOOK_CONTROLS,
   touchControls: HOOK_TOUCH_CONTROLS,
@@ -1434,21 +1501,7 @@ const menu = createGameMenu({
     matchShell.open(true);
   },
   onLeave: () => el<HTMLButtonElement>("leave-room").click(),
-  onOpenChange(open) {
-    clear();
-    // Movement keys are handled on the arena, so resuming must return keyboard focus there.
-    if (!open && runtime && !display) host.focus({ preventScroll: true });
-    const local = latest.keepers.find((keeper) => keeper.id === selfId);
-    touch?.enable(
-      !open &&
-        !modalInput.blocked() &&
-        !display &&
-        touchToggle.checked &&
-        !!runtime &&
-        (latest.contest.rules === "free" ||
-          (latest.contest.phase === "active" && !!local?.playing)),
-    );
-  },
+  onOpenChange: menuInputChanged,
 });
 const roundControls = createRoundControls({
   controls: HOOK_CONTROLS,
@@ -1474,6 +1527,16 @@ function refreshGuides() {
 document.querySelector("header")!.append(menu.element);
 document.querySelector("main")!.append(roundControls.element);
 menu.update({ canLobby: false, canLeave: false, touch: touchToggle.checked });
+createTopBar({
+  element: gameHeader,
+  onOpenChange: menuInputChanged,
+  brand: el("home"),
+  music: false,
+  gameId: "hook-havok",
+  sound,
+  playerOptions,
+  radioControls: radio.element,
+});
 const entrance = createEntrance({
   sound,
   main: document.querySelector("main")!,
@@ -1484,9 +1547,8 @@ const entrance = createEntrance({
   code: el<HTMLInputElement>("room-code"),
   join: el<HTMLButtonElement>("join-room"),
   radio: radio.element,
-  atmosphere: el<HTMLInputElement>("atmosphere"),
-  touch: touchToggle,
-  controls: keyboardMode,
+  atmosphere,
+  playerOptions,
   fresh() {
     roomCode = undefined;
     display = false;

@@ -171,5 +171,5 @@ export function createOptionsMenu(options: {
   content: readonly Node[];
   onOpenChange?: (open: boolean) => void;
 }): OptionsMenu {
-  return createPlayerOptions(options);
+  return createPlayerOptions({ ...options, label: "Scroll speed" });
 }
