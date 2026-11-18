@@ -23,6 +23,8 @@ const pestFrames: Readonly<
   27: [1250, 1258, 1274, 1266],
   52: [4000, 4010, 4030, 4020],
   56: [4040, 4050, 4070, 4060],
+  66: [6000, 6008, 6000, 6016],
+  74: [6025, 6033, 6025, 6041],
 };
 
 const specialTiles: Readonly<Record<number, number>> = {
@@ -112,14 +114,28 @@ export function createArena(canvas: HTMLCanvasElement): {
 
   function boss(enemy: Enemy, id: number, pose: number) {
     if (id === 3500) {
-      // Each tyrannosaur frame is three contiguous cuts of one 200 px wide drawing.
-      const base = (enemy.facing === -1 ? 3500 : 3550) + 3 * pose;
-      let left = Math.round(enemy.x - 100);
-      for (let i = 0; i < 3; i++) {
-        const part = spriteFrame(base + i)!;
-        sprite(base + i, left, enemy.y - 56);
-        left += part.width;
-      }
+      // SynchAnims applies a separate pair of offsets to the torso and tail for every head pose.
+      const ys = [-3, -3, -3, -3, -4, 0, -4, 3, -4, -4, -3, -1, -3, 0, -4, 2];
+      const leftOffsets = [
+        67, 150, 75, 141, 78, 128, 73, 138, 66, 150, 76, 139, 78, 128, 73, 138,
+      ];
+      const rightOffsets = [
+        -83, -133, -66, -125, -50, -122, -65, -127, -84, -134, -63, -124, -50,
+        -122, -65, -127,
+      ];
+      const left = enemy.facing === -1;
+      const head = (left ? 3500 : 3552) + 3 * pose,
+        stride = left ? 1 : -1;
+      const x = left ? enemy.x - 100 : enemy.x + 100 - spriteFrame(head)!.width;
+      const y = enemy.y - 56,
+        offsets = left ? leftOffsets : rightOffsets;
+      sprite(head, x, y);
+      sprite(head + stride, x + offsets[2 * pose]!, y + ys[2 * pose]!);
+      sprite(
+        head + 2 * stride,
+        x + offsets[2 * pose + 1]!,
+        y + ys[2 * pose + 1]!,
+      );
     } else {
       const facing = enemy.facing === -1 && id === 3000 ? 8 : 0;
       sprite(id + facing + pose, enemy.x, enemy.y, true);
@@ -171,9 +187,13 @@ export function createArena(canvas: HTMLCanvasElement): {
     if (bat) sprite(2500 + (Math.floor(world.tick / 3) % 6), bat.x, bat.y);
     if (tire) sprite(128 + (Math.floor(world.tick / 2) % 12), tire.x, tire.y);
     for (const gem of world.pickups) {
-      const kind = gem.type >= 17 && gem.type <= 22 ? gem.type - 6 : gem.type;
-      const id = kind >= 11 && kind <= 16 ? 700 + kind - 11 : 1000 + phase;
-      sprite(id, (gem.column + 0.5) * TILE_WIDTH, gem.row * TILE_HEIGHT, true);
+      sprite(700 + gem.type - 11, (gem.column + 0.5) * TILE_WIDTH, gem.y, true);
+    }
+    for (const bomb of world.explosions) {
+      const x = bomb.column * TILE_WIDTH,
+        y = bomb.row * TILE_HEIGHT;
+      if (bomb.age < 32) sprite(200 + Math.floor(bomb.age / 4), x, y);
+      else sprite(208 + bomb.age - 32, x - 10, y - 18);
     }
     for (const enemy of world.enemies) {
       const frames = pestFrames[enemy.type];
@@ -184,7 +204,14 @@ export function createArena(canvas: HTMLCanvasElement): {
           : enemy.stun
             ? frames[2]
             : frames[enemy.facing > 0 ? 0 : 1];
-        sprite(base + pose, enemy.x, enemy.y, true);
+        const shake =
+          enemy.stun > 0 &&
+          enemy.stun <= 250 &&
+          !enemy.kicked &&
+          world.tick % 4 < 2
+            ? 1
+            : 0;
+        sprite(base + pose, enemy.x + shake, enemy.y, true);
       } else if (level.boss && enemy.id === -1) {
         const state = enemy.ruler;
         if (state) {
