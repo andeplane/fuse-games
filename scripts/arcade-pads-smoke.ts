@@ -58,7 +58,16 @@ try {
     localStorage.setItem("fuse-riders-player-name", "Arcade Rider"),
   );
   await phone.goto(invite.href);
-  await phone.locator(".online-join").waitFor({ state: "hidden" });
+  // The hidden join form is also absent before admission. Wait for both peers to see the actual seat
+  // and for the phone's own readiness vote, before adding an opponent and starting the match.
+  for (const page of [phone, host])
+    await page
+      .locator(".room-rider strong")
+      .filter({ hasText: "Arcade Rider" })
+      .waitFor();
+  await phone
+    .locator(".room-ready-button:not([hidden])")
+    .waitFor({ state: "attached" });
   await host
     .getByRole("button", { name: /^Add AI$/i, exact: true })
     .first()
