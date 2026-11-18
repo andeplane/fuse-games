@@ -1,5 +1,5 @@
 import { defaultText, type RollbackGame, type Stage } from "fuse-netcode";
-import { BOT_PREFIX, CAPACITY, MAX_WATCHERS } from "./basics.js";
+import { BOT_PREFIX, CAPACITY, MAX_WATCHERS, isBotId } from "./basics.js";
 import { decodeRoom, encodeRoom, hashRoom } from "./checkpoint.js";
 import {
   DEFAULT_SETTINGS,
@@ -45,6 +45,10 @@ export interface FuseDriversView {
   track: string;
   drivers: FuseDriversDriverView[];
   watchers: { id: string; name: string; connected: boolean }[];
+  /** Identities and places from the finish tick, retained through renames and departures in the shop. */
+  finishers?: (Pick<FuseDriversDriverView, "id" | "name" | "truck" | "bot"> & {
+    place: number;
+  })[];
   /** The race as of this tick, or undefined in the lobby. */
   race?: RaceState;
 }
@@ -68,6 +72,26 @@ export function fuseDriversView(room: FuseDriversRoom): FuseDriversView {
       connected: seat.connected,
       truck: room.grid.indexOf(seat.id),
     })),
+    ...(room.stage === "over" && room.race
+      ? {
+          finishers: room.race.placements.flatMap((truck, index) => {
+            const seat = room.finishSeats.find(
+              (driver) => driver.id === room.grid[truck],
+            );
+            return seat
+              ? [
+                  {
+                    id: seat.id,
+                    name: seat.name,
+                    truck,
+                    bot: isBotId(seat.id),
+                    place: index + 1,
+                  },
+                ]
+              : [];
+          }),
+        }
+      : {}),
     watchers: [...room.seats.values()]
       .filter((seat) => seat.watcher)
       .map((seat) => ({

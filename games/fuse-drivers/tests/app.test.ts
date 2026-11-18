@@ -1,4 +1,5 @@
 import test from "node:test";
+import { LEAVE } from "fuse-netcode";
 import assert from "node:assert/strict";
 import { fuseDriversView } from "../src/game/index.js";
 import { presentTable, type Viewer } from "../src/app/presenter.js";
@@ -103,14 +104,14 @@ test("a finished race shows the winner and offers the host another", () => {
   const model = presentTable(fuseDriversView(room), viewer());
   assert.equal(model.screen, "results");
   const results = defined(model.results, "results");
-  // Both crossed the line on the same tick: they share first place and nobody is named the winner.
-  assert.equal(results.title, "DEAD HEAT");
-  assert.equal(results.winnerTruck, -1);
+  // The DOS classification resolves equal finish ticks in a definite order.
+  assert.equal(results.title, "YOU WIN");
+  assert.equal(results.winnerTruck, 0);
   assert.deepEqual(
     results.rows.map((row) => [row.name, row.you, row.place, row.truck]),
     [
       ["Ada", true, 1, 0],
-      ["Bo", false, 1, 1],
+      ["Bo", false, 2, 1],
     ],
   );
   assert.ok(results.host);
@@ -146,6 +147,32 @@ test("a finished race shows the winner and offers the host another", () => {
     defined(guest.results, "results").waiting,
     "Waiting for the host",
   );
+});
+
+test("the winning guest stays first in the final standings after leaving the shop", () => {
+  const room = started();
+  const race = defined(room.race, "race");
+  room.race = {
+    ...race,
+    phase: "finished",
+    placements: [1, 0],
+    trucks: race.trucks.map((t) =>
+      t.slot === 1
+        ? { ...t, finishedTick: race.countdownEndTick + 700, laps: 4 }
+        : t,
+    ),
+  };
+  fold(room);
+  const before = defined(
+    presentTable(fuseDriversView(room), viewer()).results,
+    "results",
+  );
+  assert.equal(before.title, "Bo WINS");
+  fold(room, { a: [[LEAVE, "b"]] });
+  const view = fuseDriversView(room);
+  assert.ok(!view.drivers.some((driver) => driver.id === "b"));
+  const after = defined(presentTable(view, viewer()).results, "results");
+  assert.deepEqual(after, before);
 });
 
 test("a shared screen shows the race and is never asked for a name", () => {
