@@ -2,6 +2,7 @@ import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
+import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import type { Page } from "playwright";
 
 interface RaceProbe {
@@ -35,6 +36,7 @@ async function renderedArena(page: Page): Promise<void> {
 const origin = process.env.ONLINE_URL ?? "http://localhost:8797/";
 const browser = await launchSelected("chrome");
 const failures: string[] = [];
+const collectCoverage: (() => Promise<void>)[] = [];
 await mkdir("artifacts/fuse-drivers", { recursive: true });
 const contexts = await Promise.all([
   browser.newContext({ viewport: { width: 1440, height: 900 } }),
@@ -49,8 +51,12 @@ try {
   const host = await contexts[0]!.newPage();
   const peer = await contexts[1]!.newPage();
   const tv = await contexts[2]!.newPage();
-  for (const page of [host, peer, tv])
+  for (const page of [host, peer, tv]) {
     page.on("pageerror", (error) => failures.push(error.message));
+    collectCoverage.push(
+      await startGameCoverage(page, { gameId: "fuse-drivers" }),
+    );
+  }
   await host.goto(new URL("fuse-drivers/?mute", origin).href);
   await host.getByRole("button", { name: "Fuse games", exact: true }).click();
   await host.getByRole("link", { name: /Fuse Drivers/ }).click();
@@ -340,6 +346,9 @@ try {
     }
   throw error;
 } finally {
-  await Promise.all(contexts.map((context) => context.close()));
-  await browser.close();
+  try {
+    await Promise.all(collectCoverage.map((collect) => collect()));
+  } finally {
+    await browser.close();
+  }
 }
