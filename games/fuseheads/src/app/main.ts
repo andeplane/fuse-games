@@ -159,11 +159,11 @@ function landing(): void {
     location.href = link({ solo: "1", continue: "1" });
   };
   const card = createLandingCard({
-    howToPlay: {
+    howToPlay: () => ({
       goal,
-      controls: localPair ? coopControls : controls,
+      controls: players.value === "2" ? coopControls : controls,
       touchControls,
-    },
+    }),
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
     title: "FUSEHEADS",
@@ -387,9 +387,13 @@ function room(solo: boolean): void {
   let joinSent = false;
   let canControl = false;
   let lastSave = "";
+  let resumedMatchId: string | undefined;
   let inputScope = "";
   const callbacks: FuseheadsCallbacks = {
     state(frame, settings) {
+      if (resume && resumedMatchId === undefined && frame.phase === "running") {
+        resumedMatchId = frame.matchId;
+      }
       observeConfirmedPlay(
         reportPlay,
         frame,
@@ -400,7 +404,10 @@ function room(solo: boolean): void {
           roundEnded: frame.phase === "between" || frame.phase === "over",
           active: frame.phase === "running",
           ended: frame.phase === "over",
-          round: resume ? frame.round - resume.nextLevel + 1 : frame.round,
+          round:
+            resume && frame.matchId === resumedMatchId
+              ? frame.round - resume.nextLevel + 1
+              : frame.round,
           roundKey: frame.round,
           playerCount: frame.players.filter(
             (seat) => seat.participating && seat.connected,

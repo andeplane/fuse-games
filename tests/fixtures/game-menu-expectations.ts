@@ -51,6 +51,7 @@ export const gameMenus: Readonly<Record<string, GameMenu>> = {
   },
   "fuse-volley": radioAndEffects,
   fuseball: radioAndEffects,
+  fuseheads: sharedRadio,
   fusemania: {
     radio: false,
     controls: [
