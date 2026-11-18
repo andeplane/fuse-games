@@ -214,7 +214,7 @@ function begin(room: CyberfuseRoom): void {
     room.roster.map((p) => p.id),
     room.mode,
     index,
-    { campaign: room.campaign, loadouts },
+    { campaign: room.campaign, loadouts, gameplay: room.settings.gameplay },
   );
   room.stage = "running";
 }

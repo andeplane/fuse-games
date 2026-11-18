@@ -1,3 +1,7 @@
+import {
+  parseGameplayOptions,
+  type GameplayOptions,
+} from "../options/index.js";
 import { CAMPAIGNS, DOGFIGHTS, WEAPONS } from "../campaign/index.js";
 export const CAPACITY = 5;
 export const MAX_WATCHERS = 8;
@@ -20,6 +24,7 @@ export interface CyberfuseSettings {
   /** Zero-based source mission selected by a campaign password. */
   startMission?: number;
   loadout?: number[];
+  gameplay?: GameplayOptions;
 }
 export const DEFAULT_SETTINGS: CyberfuseSettings = {
   display: false,
@@ -32,13 +37,22 @@ export function parseSettings(raw: unknown): CyberfuseSettings | undefined {
     !plain(raw) ||
     Object.keys(raw).some(
       (k) =>
-        !["display", "mode", "campaign", "loadout", "startMission"].includes(k),
+        ![
+          "display",
+          "mode",
+          "campaign",
+          "loadout",
+          "startMission",
+          "gameplay",
+        ].includes(k),
     ) ||
     typeof raw.display !== "boolean" ||
     (raw.mode !== "campaign" && raw.mode !== "dogfight")
   )
     return;
   const { campaign, loadout, startMission } = raw;
+  const gameplay = parseGameplayOptions(raw.gameplay);
+  if (raw.gameplay !== undefined && !gameplay) return;
   if (
     campaign !== undefined &&
     (typeof campaign !== "number" ||
@@ -70,6 +84,7 @@ export function parseSettings(raw: unknown): CyberfuseSettings | undefined {
   )
     return;
   return {
+    ...(gameplay ? { gameplay } : {}),
     display: raw.display,
     mode: raw.mode,
     ...(campaign !== undefined ? { campaign } : {}),

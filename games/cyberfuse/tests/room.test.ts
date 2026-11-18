@@ -1,3 +1,4 @@
+import { DEFAULT_GAMEPLAY } from "../src/options/index.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { finishRound } from "../src/game/result.js";
@@ -341,5 +342,51 @@ test("confirmed campaign scores carry DOS performance bonuses and reset a revive
   assert.equal(
     parseCyberfuseStats({ ...next, matchScoreUnits: -1 }, 1),
     undefined,
+  );
+});
+
+test("room difficulty is validated and frozen at dispatch on each replica", () => {
+  const gameplay = { ...DEFAULT_GAMEPLAY, playerHp: 150 };
+  assert.equal(
+    parseSettings({
+      ...DEFAULT_SETTINGS,
+      gameplay: { ...gameplay, playerHp: 151 },
+    }),
+    undefined,
+  );
+  const room = replica({ ...DEFAULT_SETTINGS, gameplay });
+  room.advance(2);
+  const hp = room.state.world!.actors.find((a) => a.seat === "peer")!.maxHp;
+  assert.equal(hp, 300);
+  cyberfuseGame.createTicker()(
+    room.state,
+    "host",
+    new Map([
+      [
+        "host",
+        {
+          generation: 1,
+          entries: [
+            [
+              3,
+              3,
+              13,
+              { ...DEFAULT_SETTINGS, gameplay: { ...gameplay, playerHp: 25 } },
+            ],
+          ],
+        },
+      ],
+    ]),
+  );
+  assert.equal(
+    room.state.world!.actors.find((a) => a.seat === "peer")!.maxHp,
+    300,
+  );
+  assert.equal(room.state.settings.gameplay!.playerHp, 25);
+  assert.ok(
+    cyberfuseGame.checkpoint.decode(
+      cyberfuseGame.checkpoint.encode(room.state),
+      room.state.tick,
+    ),
   );
 });
