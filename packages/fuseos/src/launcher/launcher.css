@@ -186,7 +186,7 @@
 
 .fst-games {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 245px minmax(0, 1fr);
   gap: 10px;
   flex: 1;
   min-height: 0;
@@ -204,6 +204,8 @@
 }
 
 .fst-list-col {
+  --fst-last-played-width: 86px;
+
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -222,6 +224,7 @@
     inset 1px 1px var(--fst-border-dark),
     inset -1px -1px var(--fst-border-light);
   scrollbar-color: var(--fst-border-light) var(--fst-bg-dark);
+  scrollbar-gutter: stable;
 }
 
 .fst-list:focus-visible {
@@ -255,14 +258,17 @@
   text-overflow: ellipsis;
 }
 
-/* The old list's Status column: every game here is ready. */
-.fst-row-status {
-  flex-shrink: 0;
-  color: var(--fst-text-dim);
-  font-size: 10px;
+.fst-last-played {
+  flex: 0 0 var(--fst-last-played-width);
 }
 
-.fst-row.selected .fst-row-status {
+.fst-row-date {
+  color: var(--fst-text-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fst-row.selected .fst-row-date {
   color: var(--fst-text);
 }
 
@@ -270,15 +276,56 @@
 .fst-list-head {
   display: flex;
   justify-content: space-between;
-  padding: 2px 6px;
+  padding: 0 6px;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
   background: var(--fst-bg-dark);
   color: var(--fst-text-muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   box-shadow:
     inset 1px 1px var(--fst-border-light),
     inset -1px -1px var(--fst-border-dark);
+}
+
+.fst-list-head button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.fst-list-head button:first-child {
+  flex: 1;
+}
+
+.fst-list-head button:hover,
+.fst-list-head button[aria-pressed="true"] {
+  color: var(--fst-maize);
+}
+
+.fst-list-head button[aria-pressed="true"]::after {
+  content: "";
+  border: 3px solid transparent;
+  border-top: 0;
+  border-bottom-color: currentColor;
+}
+
+.fst-list-head .fst-last-played[aria-pressed="true"]::after {
+  transform: rotate(180deg);
+}
+
+.fst-list-head button:focus-visible {
+  outline: 1px dotted var(--fst-text);
+  outline-offset: -2px;
 }
 
 .fst-tile {
