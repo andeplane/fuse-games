@@ -34,6 +34,35 @@ class Player implements MusicPlayer {
     this.loads++;
   }
 }
+test("player options restore music volume without starting playback, and previews preserve the saved choice", () => {
+  const { document, window } = parseHTML("<html><body></body></html>");
+  const store = new Map<string, string>();
+  const preferences = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+  };
+  const player = new Player();
+  const radio = createRadio(document, "/", player, { store: preferences });
+  const slider = radio.volumeControl.querySelector("input")!;
+  slider.value = "37";
+  slider.dispatchEvent(new window.Event("input"));
+  assert.equal(player.plays, 0);
+  radio.element.querySelector("button")!.click();
+  assert.equal(player.volume, 0.37);
+  radio.destroy();
+  const preview = createRadio(document, "/", new Player(), {
+    store: preferences,
+    preview: true,
+  });
+  const restored = preview.volumeControl.querySelector("input")!;
+  assert.equal(restored.value, "37");
+  assert.equal(restored.disabled, true);
+  assert.ok(preview.element.querySelector("button")!.disabled);
+  preview.destroy();
+});
+
 test("master mute preserves an opted-in radio for unmute", () => {
   const { document } = parseHTML("<html><body></body></html>");
   const player = new Player(),

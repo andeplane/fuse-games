@@ -12,7 +12,14 @@ export function createRadio(
   document: Document,
   baseUrl: string,
   media: MusicPlayer,
-): Radio {
+  options: {
+    store?: {
+      getItem(key: string): string | null;
+      setItem(key: string, value: string): void;
+    };
+    preview?: boolean;
+  } = {},
+) {
   const element = document.createElement("div"),
     button = document.createElement("button"),
     next = document.createElement("button"),
@@ -28,29 +35,61 @@ export function createRadio(
     base: baseUrl,
     createMedia: () => media,
   });
+  const volumeControl = document.createElement("label");
+  const volume = document.createElement("input");
+  const key = "ball-bros-radio-volume";
+  const saved = options.store?.getItem(key);
+  const level = saved == null ? player.volume : Number(saved);
+  volume.type = "range";
+  volume.min = "0";
+  volume.max = "100";
+  volume.value = String(
+    Math.round(
+      100 *
+        (Number.isFinite(level)
+          ? Math.max(0, Math.min(1, level))
+          : player.volume),
+    ),
+  );
+  volume.setAttribute("aria-label", "Music volume");
+  volumeControl.textContent = "Music volume";
+  volumeControl.append(volume);
+  player.setVolume(Number(volume.value) / 100);
+  volume.oninput = () => {
+    if (options.preview) return;
+    const nextLevel = Number(volume.value) / 100;
+    player.setVolume(nextLevel);
+    options.store?.setItem(key, String(nextLevel));
+  };
   let enabled = true;
+  volume.disabled = button.disabled = next.disabled = Boolean(options.preview);
   const render = () => {
     button.textContent = player.playing ? "RADIO ON" : "RADIO OFF";
     title.textContent = player.error || player.song?.title || "";
   };
   const unsubscribe = player.subscribe(render);
   button.onclick = () => {
-    if (enabled) {
+    if (enabled && !options.preview) {
       if (player.playing) player.pause();
       else player.play();
     }
   };
   next.onclick = () => {
+    if (!enabled || options.preview) return;
     const index = ALL_SONGS.findIndex((song) => song.id === player.song?.id);
     player.select(ALL_SONGS[(index + 1) % ALL_SONGS.length]!.id);
   };
   render();
   return {
     element,
-    setMuted: (value) => player.setMuted(value),
-    enable(value) {
+    volumeControl,
+    setMuted: (value: boolean) =>
+      player.setMuted(value || Boolean(options.preview)),
+    enable(value: boolean) {
       enabled = value;
+      button.disabled = next.disabled = !value || Boolean(options.preview);
       element.hidden = !value;
+      volumeControl.hidden = !value;
       if (!value) player.pause();
     },
     destroy() {

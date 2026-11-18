@@ -150,7 +150,7 @@ export class AudioDirector {
   }
   /** Next track, wrapping; also the old Next tune. */
   nextTrack(): void {
-    this.select(followingTrack(this.radio, "next")!);
+    this.select(followingTrack(this.radio, "next")!, this.radio.paused);
   }
   /** Restarts the song, or goes back a track when it has only just started. */
   previousTrack(): void {
@@ -158,6 +158,7 @@ export class AudioDirector {
       this.position() > RESTART_THRESHOLD
         ? this.radio.track
         : precedingTrack(this.radio),
+      this.radio.paused,
     );
   }
   play(id: TrackId, source?: RadioSource): void {

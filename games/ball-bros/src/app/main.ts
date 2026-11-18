@@ -81,8 +81,15 @@ function render() {
   const mounted = ++generation;
   destroy();
   activeAudio = undefined;
-  activeRadio = undefined;
-  destroy = () => {};
+  const radio = createRadio(
+    document,
+    import.meta.env.BASE_URL,
+    new window.Audio(),
+    { store, preview: muted },
+  );
+  activeRadio = radio;
+  radio.setMuted(!soundEnabled);
+  destroy = radio.destroy;
   root.replaceChildren();
   root.className = "";
   delete root.dataset.phase;
@@ -128,11 +135,7 @@ function render() {
       settings,
       qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 240 }),
       audio: (activeAudio = new Audio(!soundEnabled)),
-      radio: (activeRadio = createRadio(
-        document,
-        import.meta.env.BASE_URL,
-        new window.Audio(),
-      )),
+      radio: activeRadio,
       renderer: (parent) => createRenderer(parent, import.meta.env.BASE_URL),
       runtime: (callbacks) =>
         new BallRuntime(
@@ -195,6 +198,8 @@ function render() {
     if (brand) brand.textContent = "BALL BROS";
     createTopBar({
       music: false,
+      radioControls: radio.element,
+      playerOptions: () => radio.volumeControl,
       element: top,
       brand: brand ?? undefined,
       gameId: "ball-bros",

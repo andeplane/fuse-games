@@ -17,7 +17,7 @@ import { createAccountPanel } from "./account-panel.js";
 import { createFriendsPanel } from "./friends-panel.js";
 import { isRiderAvatarId } from "../engine/avatar-id.js";
 import { validRiderName } from "../engine/rider-name.js";
-import { labelSettingsAction, createTopBar } from "fuse-ui";
+import { labelSettingsAction, createTopBar, openTopBarRadio } from "fuse-ui";
 import { requestedRoomSlot } from "fuse-ui";
 import {
   accountUsername,
@@ -57,11 +57,9 @@ import {
 } from "../client/rider-colors.js";
 import {
   applyThemeProperties,
-  themes,
   type ThemeDefinition,
-  type ThemeId,
 } from "../render/themes.js";
-import { selectedTheme, storeTheme } from "../client/theme-choice.js";
+import { selectedTheme } from "../client/theme-choice.js";
 import { createGameAudio, type GameAudio } from "../client/game-audio.js";
 import {
   loadRoomSettings,
@@ -87,11 +85,10 @@ import {
 } from "./dialogs/rider-color.js";
 import { createNameDialog } from "./dialogs/rider-name.js";
 import { createMenuDialog } from "./dialogs/menu.js";
-import { createRadioDialog } from "./dialogs/radio.js";
+import { createRiderOptions } from "./player-options.js";
 import { createRecapDialog } from "./dialogs/recap.js";
 import { createDialogRegistry, type RoomDialogId } from "./dialogs/registry.js";
 import { createRoomSettingsDialog } from "./dialogs/room-settings.js";
-import { createSettingsDialog } from "./dialogs/settings.js";
 import { createShortcutsDialog } from "./dialogs/shortcuts.js";
 import { createVoiceDialog } from "./dialogs/voice.js";
 import { ReplayDirector, describeClip } from "../client/replay.js";
@@ -144,7 +141,6 @@ import { createAppPortal, createNameEntry } from "fuse-ui";
 import { MAX_LOGGED_NAME_UNITS, seatRiderName } from "../engine/rider-name.js";
 import { safeStorage } from "../client/safe-storage.js";
 import { reportGraphics, startAnalytics, track } from "./analytics.js";
-import { createAnalyticsSetting } from "./analytics-setting.js";
 import { connectStatus } from "./analytics-text.js";
 import { createFunnel } from "./funnel.js";
 import { announcementFor, eliminationLine } from "../client/arena-announcer.js";
@@ -352,8 +348,7 @@ export async function startOnline(): Promise<void> {
   const title = node("strong", "", "room-brand"),
     status = node("span", "Connecting…", "online-status"),
     results = node("button", "RESULTS"),
-    menu = node("button", solo ? "EXIT" : "ROOM"),
-    prefsButton = node("button", "SETTINGS");
+    menu = node("button", solo ? "EXIT" : "ROOM");
   // Players read three link states (connected / connecting / trouble); the runtime's full wording stays in the tooltip and the ROOM diagnostics.
   const statusAction = node("button", "RETRY", "online-status-action");
   statusAction.hidden = true;
@@ -539,30 +534,10 @@ export async function startOnline(): Promise<void> {
   let theme: ThemeDefinition = selectedTheme();
   // Both styles' textures are preloaded by the Phaser arena and every palette is read per frame, so switching needs no reload.
   applyThemeProperties(theme);
-  const styleIds = Object.keys(themes) as ThemeId[];
-  // Visual style is one of the device preferences behind SETTINGS: two pressed/unpressed options instead of a cycling header button.
-  const styleHeading = node("h3", "VISUAL STYLE", "settings-group"),
-    styleRow = node("div", "", "settings-style");
-  const applyStyle = (next: ThemeDefinition) => {
+  const audio = sharedAudio();
+  const preferences = createRiderOptions(audio.mixer, (next) => {
     theme = next;
-    storeTheme(next.id);
-    applyThemeProperties(next);
-    paintStyle();
-  };
-  const styleOptions = styleIds.map((styleId) => {
-    const option = node("button", themes[styleId].label.toUpperCase());
-    option.type = "button";
-    option.setAttribute("aria-label", `Visual style: ${themes[styleId].label}`);
-    option.onclick = () => applyStyle(themes[styleId]);
-    styleRow.append(option);
-    return option;
   });
-  const paintStyle = () => {
-    styleOptions.forEach((option, index) =>
-      option.setAttribute("aria-pressed", String(styleIds[index] === theme.id)),
-    );
-  };
-  paintStyle();
   // Instant replay (ADR 044): presentation only. A controller-only phone has no arena and records nothing.
   const replay = new ReplayDirector(),
     replayOverlay = createReplayOverlay();
@@ -794,7 +769,6 @@ export async function startOnline(): Promise<void> {
     addAI = node("button", "ADD AI");
   // The same name wherever the button sits: "Settings" in the room's header, "Game settings" among the host's buttons.
   labelSettingsAction(settingsButton, "room");
-  labelSettingsAction(prefsButton, "player");
   const readyButton = node("button", "READY");
   const primaryPlay = node("div", "", "room-primary-play");
   readyButton.type = "button";
@@ -902,7 +876,7 @@ export async function startOnline(): Promise<void> {
   riderControls.append(nameButton, avatarButton, colorButton);
   riderControls.hidden = true;
   switchButton.before(riderControls);
-  header.append(prefsButton, menu, help);
+  header.append(menu, help);
   // Every menu is its own dialog (dialogs/*), and which one is open is the registry's state: never read from a
   // dialog's title, classes or contents. They sit where the one shared dialog used to, right after the phone HUD.
   const dialogs = createDialogRegistry<RoomDialogId>();
@@ -1103,8 +1077,7 @@ export async function startOnline(): Promise<void> {
     setIfChanged(sharedLobby, "hidden", !next.lobbyCard);
     setIfChanged(roster, "hidden", next.lobbyCard);
     // VISUAL STYLE only changes the arena, which a shared-TV controller never draws, lobby included.
-    setIfChanged(styleHeading, "hidden", next.arenaController);
-    setIfChanged(styleRow, "hidden", next.arenaController);
+    setIfChanged(preferences.style, "hidden", next.arenaController);
     setIfChanged(
       controllerLayoutSetting,
       "hidden",
@@ -1153,14 +1126,10 @@ export async function startOnline(): Promise<void> {
   const roomAccount = createPlayerAccountPanel(roomFriends.friendButton);
   roomAccount.button.classList.add("player-account");
   app.append(roomAccount.dialog, roomFriends.dialog, roomFriends.banner);
+  const voice = solo ? undefined : new VoiceChat();
   const topMenu = node("nav", "", "game-top-menu");
   topMenu.setAttribute("aria-label", "Player menu");
-  const topRadio = node("button", "♫ RADIO");
-  topRadio.type = "button";
-  topRadio.onclick = () => radioDialog.open();
   topMenu.append(
-    topRadio,
-    prefsButton,
     roomAccount.matchesButton,
     roomAccount.leaderboardButton,
     roomFriends.button,
@@ -1176,7 +1145,12 @@ export async function startOnline(): Promise<void> {
     brand: title,
     account: roomAccount.button,
     gameId: GAME_ID,
-    sound: sharedAudio().master,
+    sound: audio.master,
+    radioControls: audio.controls,
+    playerOptions: () => {
+      if (voice) preferences.element.append(voice.controls);
+      return preferences.refresh();
+    },
   });
   const headerContext = header.querySelector<HTMLElement>(
     ".fui-top-bar-context",
@@ -1184,7 +1158,6 @@ export async function startOnline(): Promise<void> {
   const topBarDialog =
     header.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
   for (const extra of [
-    topRadio,
     roomAccount.matchesButton,
     roomAccount.leaderboardButton,
     results,
@@ -1204,56 +1177,13 @@ export async function startOnline(): Promise<void> {
     },
     { once: true },
   );
-  const audio = sharedAudio();
-  const radioDialog = createRadioDialog(dialogs, audio);
-  radioToggle = radioDialog.toggle;
-  // Device preferences: music, effects, radio, visual style and fullscreen are this device's own and change nothing shared, so
-  // they sit behind one SETTINGS button instead of five in the header. Built once; the dialog body adopts the same nodes each open.
-  const prefs = node("div", "", "settings-list");
-  const musicButton = node("button"),
-    effectsButton = node("button"),
-    muteButton = node("button"),
-    radioButton = node("button", "♫ RADIO"),
-    fullscreen = node("button", "FULLSCREEN");
-  audio.bindMusicToggle(musicButton);
-  audio.bindEffectsToggle(effectsButton);
-  audio.bindMuteToggle(muteButton);
-  radioButton.onclick = radioDialog.open; // The same ♫ MUSIC ON / OFF toggle as the landing page.
-  // iPhone Safari has no element fullscreen (#142): a button that can do nothing is not shown.
-  fullscreen.hidden = !document.fullscreenEnabled;
-  fullscreen.onclick = () =>
-    void (
-      document.fullscreenElement
-        ? document.exitFullscreen()
-        : document.documentElement.requestFullscreen()
-    )?.catch(() => {});
-  document.addEventListener("fullscreenchange", () => {
-    fullscreen.textContent = document.fullscreenElement
-      ? "EXIT FULLSCREEN"
-      : "FULLSCREEN";
-  });
-  const privacy = createAnalyticsSetting();
-  prefs.append(
-    musicButton,
-    effectsButton,
-    muteButton,
-    radioButton,
-    styleHeading,
-    styleRow,
-    fullscreen,
-    privacy.element,
-    controllerLayoutSetting,
-  );
-  const voice = solo ? undefined : new VoiceChat();
+  radioToggle = () => openTopBarRadio(header);
+  preferences.element.append(controllerLayoutSetting);
   const voiceDialog = voice
     ? createVoiceDialog(dialogs, voice.controls)
     : undefined;
   if (voice && voiceDialog) {
-    prefs.prepend(node("h3", "GAME AUDIO", "settings-group"));
-    muteButton.title =
-      "Music and effects only; use DEAFEN in voice chat to silence voice.";
-    prefs.append(voice.controls);
-    topMenu.insertBefore(voice.button, prefsButton);
+    topMenu.prepend(voice.button);
     voice.button.onclick = voiceDialog.open;
     voice.setChanged(() => {
       for (const [playerId, row] of rosterEntries)
@@ -1262,12 +1192,6 @@ export async function startOnline(): Promise<void> {
         entry.dataset.voice = voice.indicator(playerId);
     });
   }
-  const settingsDialog = createSettingsDialog(dialogs, {
-    content: prefs,
-    ...(voice ? { voiceControls: voice.controls } : {}),
-    beforeOpen: () => privacy.render(),
-  });
-  prefsButton.onclick = settingsDialog.open;
   const recapDialog = createRecapDialog(dialogs, {
     rematch: () => {
       if (solo) start.click();
@@ -2126,8 +2050,6 @@ export async function startOnline(): Promise<void> {
   // Every dialog now exists: they take the place the one shared dialog had, right after the phone HUD.
   const dialogElements = [
     shortcutsDialog.element,
-    settingsDialog.element,
-    radioDialog.element,
     ...(voiceDialog ? [voiceDialog.element] : []),
     menuDialog.element,
     avatarDialog.element,

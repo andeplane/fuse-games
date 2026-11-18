@@ -117,7 +117,6 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     home,
   );
 
-  if (options.radio) top.append(options.radio.element);
   const retry = el("button", "RECONNECT", "quiet-button");
   retry.hidden = !options.online;
   retry.onclick = () => {
