@@ -39,6 +39,30 @@ export function aqueductBank(lateral: number) {
   return 0;
 }
 
+/** Update the driver's camera and motor once per moving road frame. The DOS
+ * projection scales all four near-row probes identically, so their lateral
+ * order can be compared directly on Fuserod's level channel floor. */
+export function channelStep(oldX: number, x: number, speed: number) {
+  const previous = 2118 + Math.round((oldX * 927) / 1000);
+  const camera = 2118 + Math.round((x * 927) / 1000);
+  const left = camera - 110,
+    right = camera + 520;
+  let shift = 0;
+  if (left <= 1480) shift = left < 1300 ? 40 : 15;
+  else if (right >= 3320) shift = right > 3456 ? -40 : -15;
+  let roll = aqueductBank(x / 1000);
+  const side = (wheel: number) => (wheel < 2360 ? -1 : wheel > 2440 ? 1 : 0);
+  const leftSide = side(left),
+    rightSide = side(right);
+  if (leftSide === 0 || leftSide + side(previous - 110) === 0) roll = 4;
+  if (rightSide === 0 || rightSide + side(previous + 520) === 0) roll = -4;
+  return {
+    x: shift === 0 ? x : Math.round(((camera + shift - 2118) * 1000) / 927),
+    speed: roll !== 0 && speed > 10 ? speed - 2 : speed,
+    roll,
+  };
+}
+
 /** True for a faster car closing on a rival directly ahead. Both gaps use
  * original 1/64-segment units. A moving pair can cross between snapshots. */
 export function rearEndContact(

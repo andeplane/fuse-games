@@ -6,6 +6,7 @@ import {
   aqueductBank,
   rearEndContact,
   courseFeatures,
+  channelStep,
 } from "../src/course/index.js";
 
 const expected = {
@@ -13,6 +14,21 @@ const expected = {
   aqueduct: "f6bd63a12a928b30a475b93dd4b6008ebafec448650bb1656ff4712002a2d220",
   canyon: "bcade4e214b96ddcb9e1adda378fbdaf28d0bd327a0cca7da9303a69869c7df3",
 };
+
+test("channel climb and trough crossings match 729 DOS camera and speed updates", () => {
+  const rows = [];
+  for (let lane = -1000; lane <= 1000; lane += 25) {
+    for (const delta of [-180, 0, 180])
+      for (const speed of [10, 11, 60]) {
+        const step = channelStep(lane - delta, lane, speed);
+        rows.push([step.x, step.speed, step.roll]);
+      }
+  }
+  assert.equal(
+    createHash("sha256").update(JSON.stringify(rows)).digest("hex"),
+    "c41c1411b7367caf9094880f16524cb7702f10949ee05b86a6df21e819c728d6",
+  );
+});
 
 test("authored canyon hazards retain DOS clear, crash and scrape thresholds", () => {
   const expected = {
