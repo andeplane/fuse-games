@@ -273,12 +273,33 @@ async function keyboardCoop(page: Page) {
     name: "Single player",
     exact: true,
   });
-  await brief
-    .getByRole("checkbox", {
-      name: "Two players on this keyboard",
-      exact: true,
-    })
-    .check();
+  const secondPlayer = brief.getByRole("checkbox", {
+    name: "Two players on this keyboard",
+    exact: true,
+  });
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 360, height: 780 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    assert.ok(
+      await secondPlayer.evaluate((input) => {
+        const label = input.closest("label")!;
+        const range = document.createRange();
+        range.selectNodeContents(label.lastChild!);
+        const text = range.getBoundingClientRect(),
+          box = input.getBoundingClientRect();
+        return (
+          box.height <= 20 &&
+          box.right < text.left &&
+          Math.abs((box.top + box.bottom - text.top - text.bottom) / 2) <= 2
+        );
+      }),
+      "shared-keyboard checkbox sits beside its label",
+    );
+  }
+  await secondPlayer.check();
   await brief.getByRole("button", { name: "Deploy", exact: true }).click();
   await phase(page, "lobby");
   assert.ok(

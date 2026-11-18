@@ -25,7 +25,11 @@ export function createDifficulty(
   let editable = true;
   function label(text: string, input: HTMLElement) {
     const wrapper = doc.createElement("label");
-    wrapper.append(doc.createTextNode(text), input);
+    if (input.matches('input[type="checkbox"]')) {
+      wrapper.append(input, doc.createTextNode(text));
+    } else {
+      wrapper.append(doc.createTextNode(text), input);
+    }
     fields.append(wrapper);
   }
   function set(patch: Partial<GameplayOptions>) {
