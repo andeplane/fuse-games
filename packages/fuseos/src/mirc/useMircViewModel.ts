@@ -59,8 +59,8 @@ export function welcomeBanner(network: IrcNetwork): string[] {
     ...art.map((row, index) => colorize(row, [12, 12, 2, 2, 6][index] ?? 2)),
     "",
     `${BOLD}Welcome to mIRC${RESET} - FuseOS edition. ${colorize("Shareware", 4)}: please register!`,
-    `- Server list: ${network.name} is selected. Press the ${colorize("lightning bolt", 7)} or type /server to connect.`,
-    `- Web pages can't open IRC connections, so FuseOS simulates the networks. Try ${BOLD}/join ${DDR_CHANNEL}${BOLD}.`,
+    `- Connecting to ${network.name} and joining ${BOLD}${DDR_CHANNEL}${BOLD}. The ${colorize("lightning bolt", 7)} connects again.`,
+    "- Web pages can't open IRC connections, so FuseOS simulates the networks.",
     "- /help lists the commands; Ctrl+K colours, Ctrl+B bold, Ctrl+U underline.",
     "- /list shows the channel list (a 2001 snapshot while you're offline).",
     "",
@@ -126,6 +126,8 @@ export function useMircViewModel(deps: MircDeps) {
   const [client] = useState(() => {
     const brain: RegularsBrain = {
       describe: () => brainRef.current.describe(),
+      usesModel: () => brainRef.current.usesModel(),
+      prepare: (signal) => brainRef.current.prepare(signal),
       reply: (request, signal) => brainRef.current.reply(request, signal),
       dispose: () => undefined,
     };
@@ -172,15 +174,6 @@ export function useMircViewModel(deps: MircDeps) {
   const [maximized, setMaximized] = useState(false);
   const [minimized, setMinimized] = useState<ReadonlySet<string>>(new Set());
 
-  // Pop the Channels Folder up once per successful connection, as mIRC 6 did.
-  const wasOnline = useRef(false);
-  useEffect(() => {
-    const online = state.phase === "online";
-    if (online && !wasOnline.current && prefsRef.current.folderOnConnect)
-      setDialog({ type: "folder" });
-    wasOnline.current = online;
-  }, [state.phase]);
-
   const savePrefs = useCallback(
     (next: MircPrefs) => {
       setPrefsState(next);
@@ -204,6 +197,29 @@ export function useMircViewModel(deps: MircDeps) {
     },
     [client, network],
   );
+
+  // Opening mIRC connects to the chosen network (EFnet on a fresh install) and joins #ddrnorway.
+  // A later manual connect still pops the Channels Folder, as mIRC 6 did.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    connect();
+  }, [connect]);
+
+  const wasOnline = useRef(false);
+  const autoJoin = useRef(true);
+  useEffect(() => {
+    const online = state.phase === "online";
+    if (online && !wasOnline.current) {
+      if (autoJoin.current) {
+        autoJoin.current = false;
+        client.join("#ddrnorway");
+      } else if (prefsRef.current.folderOnConnect)
+        setDialog({ type: "folder" });
+    }
+    wasOnline.current = online;
+  }, [state.phase, client]);
 
   /** A child's rectangle: where it was dragged, else cascaded and sized to most of the workspace. */
   const rectFor = useCallback(

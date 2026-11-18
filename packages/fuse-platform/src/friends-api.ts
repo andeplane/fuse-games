@@ -113,3 +113,17 @@ export function cleanStatus(value: unknown): string | undefined {
 export const MAX_FRIENDS = 100;
 /** Requests an account may have waiting, sent or received. */
 export const MAX_PENDING = 50;
+/** Exclusive Unicode prefix bound, including supplementary characters such as emoji. */
+export function searchPrefixEnd(prefix: string): string | undefined {
+  const points = Array.from(prefix, (char) => char.codePointAt(0)!);
+  for (let index = points.length - 1; index >= 0; index--) {
+    if (points[index]! < 0x10ffff) {
+      const next = points[index]! + 1;
+      return String.fromCodePoint(
+        ...points.slice(0, index),
+        next === 0xd800 ? 0xe000 : next,
+      );
+    }
+  }
+  return undefined;
+}

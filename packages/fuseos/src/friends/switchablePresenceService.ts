@@ -46,6 +46,7 @@ export function createSwitchablePresenceService(
     signIn: () => active().signIn(),
     signOut: () => active().signOut(),
     refresh: () => active().refresh(),
+    searchFriends: (query) => active().searchFriends(query),
     addFriend: (publicId) => active().addFriend(publicId),
     removeFriend: (publicId) => active().removeFriend(publicId),
     dismissInvite: (id) => active().dismissInvite(id),

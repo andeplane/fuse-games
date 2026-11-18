@@ -25,6 +25,7 @@ function recordingService(): PresenceService & {
     signIn: async () => void calls.push("signIn"),
     signOut: async () => void calls.push("signOut"),
     refresh: () => void calls.push("refresh"),
+    searchFriends: async () => [],
     addFriend: async (id) => void calls.push(`add:${id}`),
     removeFriend: async (id) => void calls.push(`remove:${id}`),
     dismissInvite: async (id) => void calls.push(`dismiss:${id}`),

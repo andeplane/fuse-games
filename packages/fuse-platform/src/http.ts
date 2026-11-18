@@ -215,7 +215,7 @@ export function createHistoryHttp(
 }
 
 const FRIENDS_ROUTE =
-  /^\/api\/(?:friends(?:\/sync|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
+  /^\/api\/(?:friends(?:\/sync|\/search|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
 
 /**
  * Friends, presence and invites: account routes, so shared by every game and never under `/api/games/:gameId/`.
@@ -232,6 +232,11 @@ export function createFriendsHttp(
     ROOM_LOOKUP_BURST,
     ROOM_LOOKUP_PER_SECOND,
   );
+  const nameLookups = new AddressBudget(
+    dependencies.now,
+    ROOM_LOOKUP_BURST,
+    ROOM_LOOKUP_PER_SECOND,
+  );
   return {
     methods: ["DELETE"],
     headers: ["X-Fuse-Identity", "X-Fuse-Account"],
@@ -239,6 +244,13 @@ export function createFriendsHttp(
       const url = new URL(req.url ?? "/", "http://gateway"),
         pathname = url.pathname;
       if (!FRIENDS_ROUTE.test(pathname)) return false;
+      const search = pathname === "/api/friends/search";
+      if (search) {
+        if (req.method !== "GET") return false;
+        // Protect identity verification as well as the database, independently of room invites.
+        if (!nameLookups.take(clientAddress))
+          throw new RoomError(429, "Too many searches; try later");
+      }
       const json = (value: unknown, status = 200) => {
         res.writeHead(status, {
           "Content-Type": "application/json",
@@ -279,6 +291,10 @@ export function createFriendsHttp(
       }
       if (pathname === "/api/friends/sync" && req.method === "POST") {
         json(await store.sync(uid, await readJson(req)));
+        return true;
+      }
+      if (search) {
+        json({ players: await store.search(uid, url.searchParams.get("q")) });
         return true;
       }
       if (pathname === "/api/friends" && req.method === "POST") {

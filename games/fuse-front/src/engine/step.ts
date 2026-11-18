@@ -7,19 +7,11 @@
  * one as a snapshot. Once the match has a winner a step only advances the clock. Bots (`bot.ts`) send ordinary
  * commands.
  */
-import { MAX_ID, isInt } from "./codec.js";
-import { chase, dropFocus, enemyAt } from "./focus.js";
-import {
-  advanceOrders,
-  castable,
-  clearQueue,
-  enqueue,
-  startAttack,
-  startMove,
-} from "./orders.js";
+import { applyCommands, type Command } from "./commands.js";
+import { chase } from "./focus.js";
+import { advanceOrders } from "./orders.js";
 import { fight } from "./combat.js";
-import { OVERCLOCK_PERCENT, cast, tickMines, tickSpells } from "./spells.js";
-import { openTile } from "./flow.js";
+import { OVERCLOCK_PERCENT, tickMines, tickSpells } from "./spells.js";
 import { alive, gainXp, moveHeroes, tendHeroes } from "./hero.js";
 import { flagAt, type GameMap } from "./map.js";
 import { div } from "./math.js";
@@ -27,16 +19,13 @@ import { centreOf, chooseGoals, moveUnits, tileOf } from "./move.js";
 import { laneMap, spawnWaves } from "./waves.js";
 import { guarded, tendCamps } from "./jungle.js";
 import { earn } from "./gold.js";
-import { ITEMS, ITEM_SLOTS } from "./items.js";
-import { buy, sell, tickItems, useItem } from "./shop.js";
+import { tickItems } from "./shop.js";
 import {
   CAPTURE_XP,
-  COMMANDS_PER_SEAT,
   GOLD,
   OVERTIME_AFTER,
   OVERTIME_GROWTH,
   OVERTIME_MAX,
-  STEER_MAX,
   STEPS_PER_SECOND,
   STEPS_PER_TICK,
   TILE,
@@ -45,7 +34,6 @@ import {
   teamOf,
 } from "./tuning.js";
 import {
-  MARKS,
   NEUTRAL,
   NO_WINNER,
   defaultOrder,
@@ -56,43 +44,7 @@ import {
   type World,
 } from "./world.js";
 
-/**
- * What a player sends (v3 dropped the factory orders and stances; the army is the waves): a walk for the hero to a
- * tile (`move`, in tiles), or the held stick direction (`steer`, each axis -STEER_MAX..STEER_MAX,
- * (0, 0) releasing it). A move releases the stick and a steer cancels the move, so the latest wins. Both apply to a
- * dead hero too: the stick stays held, and a move made while dead is walked after the respawn. `cast` fires the
- * hero's slot 0–3 (Q, W, E, R) aimed at a tile (`spells.ts`); one that cannot be cast does nothing. `attack` focuses
- * the living hero on an enemy (`MARKS` index and id, `focus.ts`), which a later `move`, `attackMove`, held `steer` or
- * `attack` replaces; `attackMove` is a `move` on which the hero stands to fight whatever comes in range. A `move`,
- * `attackMove`, `attack` or `cast` marked `queued` goes behind the hero's current order instead (`orders.ts`).
- * `buy` an `ITEMS` id, `sell` a slot's item and `useItem` a slot's active aimed at a tile go to the shop
- * (`shop.ts`), which refuses one it may not do.
- */
-export type Command =
-  | { seat: number; type: "move"; x: number; y: number; queued?: boolean }
-  | { seat: number; type: "steer"; dx: number; dy: number }
-  | { seat: number; type: "attack"; of: number; id: number; queued?: boolean }
-  | {
-      seat: number;
-      type: "attackMove";
-      x: number;
-      y: number;
-      queued?: boolean;
-    }
-  | {
-      seat: number;
-      type: "cast";
-      slot: number;
-      x: number;
-      y: number;
-      /** A `unit` spell's chosen target (`MARKS` index and id); without it the spell takes what stands nearest the aim. */
-      of?: number;
-      id?: number;
-      queued?: boolean;
-    }
-  | { seat: number; type: "buy"; item: number }
-  | { seat: number; type: "sell"; slot: number }
-  | { seat: number; type: "useItem"; slot: number; x: number; y: number };
+export type { Command } from "./commands.js";
 
 export function step(
   map: GameMap,
@@ -153,106 +105,6 @@ export function stepTick(
     events.push(...next.events);
   }
   return { ...next, events };
-}
-
-/**
- * Commands in the order given, each checked against the world (the log is trusted, but a stale order — a factory
- * lost since it was sent — must do nothing). Past `COMMANDS_PER_SEAT` a seat's commands are dropped.
- */
-function applyCommands(
-  map: GameMap,
-  world: World,
-  commands: readonly Command[],
-): void {
-  const used = new Map<number, number>();
-  for (const command of commands) {
-    const player = world.players.find((each) => each.seat === command.seat);
-    if (player === undefined) continue;
-    const count = used.get(player.seat) ?? 0;
-    if (count >= COMMANDS_PER_SEAT) continue;
-    used.set(player.seat, count + 1);
-    if (command.type === "move" || command.type === "attackMove") {
-      const hero = world.heroes.find((each) => each.seat === player.seat)!;
-      const { x, y } = command;
-      if (!isInt(x, 0, map.width - 1) || !isInt(y, 0, map.height - 1)) continue;
-      if (!openTile(map, x, y)) continue;
-      if (command.queued) enqueue(hero, { type: command.type, x, y });
-      else {
-        clearQueue(hero);
-        startMove(map, hero, x, y, command.type === "attackMove");
-      }
-    } else if (command.type === "steer") {
-      const hero = world.heroes.find((each) => each.seat === player.seat)!;
-      const { dx, dy } = command;
-      if (!isInt(dx, -STEER_MAX, STEER_MAX)) continue;
-      if (!isInt(dy, -STEER_MAX, STEER_MAX)) continue;
-      // Releasing the stick leaves a move or focus alone; holding it cancels them.
-      if (dx !== 0 || dy !== 0) {
-        dropFocus(hero);
-        clearQueue(hero);
-        [hero.goal, hero.sweep] = [-1, 0];
-      }
-      [hero.steerX, hero.steerY] = [dx, dy];
-    } else if (command.type === "attack") {
-      const hero = world.heroes.find((each) => each.seat === player.seat)!;
-      const { of, id } = command;
-      if (!alive(hero) || !isInt(of, 0, MARKS.length - 1)) continue;
-      if (!isInt(id, 0, MAX_ID)) continue;
-      if (enemyAt(map, world, teamOf(hero.seat), of, id) === undefined)
-        continue;
-      if (command.queued) enqueue(hero, { type: "attack", of, id });
-      else {
-        clearQueue(hero);
-        startAttack(hero, of, id);
-      }
-    } else if (command.type === "buy" || command.type === "sell") {
-      const hero = world.heroes.find((each) => each.seat === player.seat)!;
-      if (command.type === "buy") {
-        if (isInt(command.item, 0, ITEMS.length - 1))
-          buy(map, hero, command.item);
-      } else if (isInt(command.slot, 0, ITEM_SLOTS - 1))
-        sell(map, hero, command.slot);
-    } else if (command.type === "useItem") {
-      const { slot, x, y } = command;
-      if (!isInt(slot, 0, ITEM_SLOTS - 1) || !isInt(x, 0, map.width - 1))
-        continue;
-      if (!isInt(y, 0, map.height - 1)) continue;
-      const hero = world.heroes.find((each) => each.seat === player.seat)!;
-      useItem(map, world, hero, slot, x, y);
-    } else if (command.type === "cast") {
-      const { slot, x, y, of, id } = command;
-      if (!isInt(slot, 0, 3) || !isInt(x, 0, map.width - 1)) continue;
-      if (!isInt(y, 0, map.height - 1)) continue;
-      // A chosen target comes as both its kind and id, or not at all.
-      const chosen = of !== undefined || id !== undefined;
-      if (chosen && (!isInt(of, 0, MARKS.length - 1) || !isInt(id, 0, MAX_ID)))
-        continue;
-      const hero = world.heroes.find((h) => h.seat === player.seat)!;
-      if (command.queued) {
-        // A stored target must be one a checkpoint admits; a plain cast at a bogus one just does nothing.
-        const inPlay = (seat: number) =>
-          world.players.some((each) => each.seat === seat);
-        if (chosen && !castable(map, world.nextId, inPlay, of!, id!)) continue;
-        enqueue(hero, {
-          type: "cast",
-          slot,
-          x,
-          y,
-          of: chosen ? of! : -1,
-          id: chosen ? id! : -1,
-        });
-      } else
-        cast(
-          map,
-          world,
-          hero,
-          slot,
-          x,
-          y,
-          chosen ? { of: of!, id: id! } : undefined,
-        );
-    }
-  }
 }
 
 /**
