@@ -1,3 +1,7 @@
+import {
+  offroadVehicleSetup,
+  type OffroadDriver,
+} from "../offroad/campaign.js";
 import { offroadCpuStats } from "../offroad/cpu.js";
 import {
   advanceOffroadMotion,
@@ -37,6 +41,8 @@ export function startTruck(
   slot: number,
   stats: TruckStats,
   bot: boolean,
+  driver?: OffroadDriver,
+  gridIndex = slot < 4 ? 3 - slot : slot,
 ): Truck {
   const projected = track.spawns[slot]!;
   if (!isOffroadCourse(track.name))
@@ -47,14 +53,12 @@ export function startTruck(
       projected.heading,
       stats,
     );
-  const spawn = getOffroadCourse(track.name).spawns[
-    slot < 4 ? 3 - slot : slot
-  ]!;
+  const spawn = getOffroadCourse(track.name).spawns[gridIndex]!;
   const motion = createOffroadMotion(
     spawn.x,
     spawn.y,
     spawn.heading,
-    bot ? 10 : stats.nitros,
+    bot ? 10 : (driver?.nitros ?? stats.nitros),
   );
   // Race setup runs the tire probes once, even for trucks resting on a sloping grid.
   const { suspension } = stepOffroadSuspension(
@@ -62,8 +66,9 @@ export function startTruck(
     motion,
     getOffroadCourse(track.name).terrain.sample,
     0,
+    driver ? offroadVehicleSetup(driver).suspension : undefined,
   );
-  return placeTruck(
+  const vehicle = placeTruck(
     track,
     createTruck(
       slot,
@@ -76,6 +81,16 @@ export function startTruck(
     ),
     motion,
   );
+  return driver && !bot
+    ? {
+        ...vehicle,
+        upgrades: {
+          topSpeed: driver.topSpeed,
+          tires: driver.tires,
+          shocks: driver.shocks,
+        },
+      }
+    : vehicle;
 }
 
 export function placeTruck(
@@ -122,6 +137,9 @@ export function driveTruck(
     nitro: input.nitro,
   };
   const cpu = truck.cpu ? offroadCpuStats(truck.cpu.level) : undefined;
+  const human = truck.upgrades
+    ? offroadVehicleSetup(truck.upgrades)
+    : undefined;
   const moving = advanceOffroadMotion(
     cpu ? { ...truck.motion, acceleration: cpu.acceleration } : truck.motion,
     controls,
@@ -134,7 +152,7 @@ export function driveTruck(
     moving,
     sample,
     seed,
-    cpu ? { ...cpu, topSpeed: cpu.speedLimit } : undefined,
+    cpu ? { ...cpu, topSpeed: cpu.speedLimit } : human?.suspension,
   );
   const resolved = {
     ...contact.motion,
@@ -145,7 +163,7 @@ export function driveTruck(
     resolved,
     controls,
     contact.groundMask,
-    cpu,
+    cpu ?? human?.drive,
   );
   const hitWall = contact.stopX || contact.stopY;
   const next = placeTruck(

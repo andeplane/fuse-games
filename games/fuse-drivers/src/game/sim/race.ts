@@ -1,14 +1,17 @@
+import type { OffroadDriver } from "../offroad/campaign.js";
 import {
   createOffroadCpu,
   driveOffroadCpu,
   offroadCpuStats,
+  offroadStartingLevel,
+  offroadPaceProgress,
   offroadCatchupLevel,
 } from "../offroad/cpu.js";
 import { BASE_STATS, config, type TruckStats } from "./config.js";
 import { closestOnSegment, crosses, reaches } from "./geometry.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./input.js";
 import type { Drone, Mine, Missile, OilSlick } from "./items.js";
-import { wrapAngle, type ItemKind, type Truck } from "./truck.js";
+import type { ItemKind, Truck } from "./truck.js";
 import type { Point, Track } from "./track.js";
 import { atan2, cos, hypot, sin } from "./deterministic-math.js";
 import { driveTruck, placeTruck, startTruck } from "./drive.js";
@@ -80,20 +83,25 @@ export interface StepResult {
   events: RaceEvent[];
 }
 
-function cpuLevel(slot: number, botSlots: readonly boolean[]): number {
-  const human = botSlots.includes(false);
-  return Math.max(0, (human ? 2 : -1) + slot);
-}
-
 export function createRace(
   track: Track,
   seed: number,
   stats: TruckStats[] = [BASE_STATS],
   botSlots: readonly boolean[] = [],
+  campaignIndex = 0,
+  drivers: readonly (OffroadDriver | undefined)[] = [],
+  gridOrder?: readonly number[],
 ): RaceState {
   let rng = seed & 0xffff;
   const trucks = stats.map((s, i) => {
-    let truck = startTruck(track, i, s, botSlots[i] === true);
+    let truck = startTruck(
+      track,
+      i,
+      s,
+      botSlots[i] === true,
+      drivers[i],
+      gridOrder?.[i],
+    );
     if (!isOffroadCourse(track.name)) return truck;
     const course = getOffroadCourse(track.name);
     const distance = nativeRegionProgress(
@@ -106,9 +114,15 @@ export function createRace(
         ...truck,
         checkpoint: 1,
         progress: distance / course.lapDistance,
+        dosProgress: distance,
       };
     if (botSlots[i]) {
-      const difficulty = cpuLevel(i, botSlots);
+      const difficulty = offroadStartingLevel(
+        track.name,
+        i,
+        botSlots,
+        campaignIndex,
+      );
       const result = createOffroadCpu(
         track.name,
         { ...truck.motion, region: truck.checkpoint, difficulty },
@@ -118,6 +132,7 @@ export function createRace(
       truck = {
         ...truck,
         cpu: result.state,
+        cpuBase: difficulty,
         motion: {
           ...truck.motion,
           acceleration: offroadCpuStats(difficulty).acceleration,
@@ -280,6 +295,7 @@ function applyCheckpoints(
   const x = (prev.motion.x + t.motion.vx) & 0xffff,
     y = (prev.motion.y + t.motion.vy) & 0xffff;
   let progress = t.progress;
+  let dosProgress = t.dosProgress;
   if (!t.finishedTick) {
     const cp = track.checkpoints[t.checkpoint]!; // The truck's checkpoint indexes the ring.
     const nextDistance = course
@@ -294,12 +310,16 @@ function applyCheckpoints(
           x,
           y,
         );
-      if (distance !== null) progress = t.laps + distance / course.lapDistance;
+      if (distance !== null) {
+        dosProgress = distance;
+        progress = t.laps + distance / course.lapDistance;
+      }
     }
     if (entered) {
       if (t.checkpoint === n - 1) {
         const laps = t.laps + 1;
         progress = laps;
+        dosProgress = 0;
         n2 = { ...t, laps, checkpoint: 0 };
         events.push({ tick, type: "lap", slot: t.slot, lap: laps });
         if (state.placements[0] === t.slot)
@@ -319,6 +339,7 @@ function applyCheckpoints(
   return {
     ...n2,
     wrongWayTicks,
+    dosProgress,
     progress: course ? progress : progressOf(n2, track),
   };
 }
@@ -413,15 +434,31 @@ export function step(
       }
     }
   }
-  let trucks = starting.map((t, i) => {
-    if (t.finishedTick) return t;
+  const trucks = starting;
+  for (let i = 0; i < trucks.length; i++) {
+    let t = trucks[i]!;
+    if (t.finishedTick) continue;
     let input = inputs[i] ?? NEUTRAL_INPUT;
     if (original && (botSlots[i] || t.cpu)) {
-      const human = state.placements.find(
-        (slot) => !botSlots[slot] && !prev[slot]!.cpu,
-      );
-      const leader = human === undefined ? undefined : prev[human];
-      const base = cpuLevel(i, botSlots);
+      const distance = getOffroadCourse(track.name).lapDistance;
+      const normalize = (value: number) => offroadPaceProgress(value, distance);
+      // Ivan compares against the leading human, or the last ranked CPU in an exhibition.
+      const ranked =
+        i === 3
+          ? state.placements
+              .slice()
+              .sort(
+                (a, b) =>
+                  trucks[b]!.laps - trucks[a]!.laps ||
+                  normalize(trucks[b]!.dosProgress) -
+                    normalize(trucks[a]!.dosProgress),
+              )
+          : [];
+      const challenger =
+        ranked.find((slot) => !botSlots[slot] && !trucks[slot]!.cpu) ??
+        ranked.at(-1);
+      const leader = challenger === undefined ? undefined : trucks[challenger];
+      const base = t.cpuBase ?? offroadStartingLevel(track.name, i, botSlots);
       const cpu = driveOffroadCpu(
         track.name,
         t.cpu,
@@ -434,9 +471,16 @@ export function step(
                 catchupLevel: offroadCatchupLevel(
                   base,
                   t.laps,
-                  Math.floor((t.progress - t.laps) * 256),
+                  normalize(t.dosProgress) >>> 8,
                   leader.laps,
-                  Math.floor((leader.progress - leader.laps) * 256),
+                  normalize(leader.dosProgress) >>> 8,
+                ),
+                repeatedCatchupLevel: offroadCatchupLevel(
+                  base,
+                  t.laps,
+                  normalize(normalize(t.dosProgress)) >>> 8,
+                  leader.laps,
+                  normalize(normalize(leader.dosProgress)) >>> 8,
                 ),
               }
             : {}),
@@ -444,7 +488,16 @@ export function step(
         rng,
       );
       rng = cpu.seed;
-      t = { ...t, cpu: cpu.state };
+      if (i === 3 && leader) {
+        for (let pace = 0; pace < cpu.paceCount; pace++) {
+          for (let j = 0; j < trucks.length; j++)
+            trucks[j] = {
+              ...trucks[j]!,
+              dosProgress: normalize(trucks[j]!.dosProgress),
+            };
+        }
+      }
+      t = { ...trucks[i]!, cpu: cpu.state, cpuBase: base };
       input = {
         ...NEUTRAL_INPUT,
         gas: cpu.input.gas,
@@ -459,37 +512,40 @@ export function step(
       events.push({ tick, type: "wall", slot: t.slot });
     if (t.airborneUntilTick && !moved.airborneUntilTick)
       events.push({ tick, type: "land", slot: t.slot });
-    if (original) return moved;
-
-    // Tiled authoring fixtures express their walls in screen space; native courses probe their contour data.
-    const [resolved, touched] = resolveWalls(moved, t, track, t.wallTicks > 0);
-    const wall = touched
-      ? {
-          ...resolved,
-          wallTicks: t.wallTicks + 1,
-          motion: {
-            ...resolved.motion,
-            x: Math.round(resolved.x * 16),
-            y: Math.round(resolved.y * 16),
-            speed: Math.round((resolved.speed / resolved.stats.topSpeed) * 134),
-          },
-        }
-      : resolved;
-    return updateBridge(wall, t, track);
-  });
-
-  trucks = trucks.map((t, i) => {
-    if (t.finishedTick) return t;
-    return applyCheckpoints(
+    let placed = moved;
+    if (!original) {
+      // Tiled authoring fixtures express their walls in screen space; native courses probe their contour data.
+      const [resolved, touched] = resolveWalls(
+        moved,
+        t,
+        track,
+        t.wallTicks > 0,
+      );
+      const wall = touched
+        ? {
+            ...resolved,
+            wallTicks: t.wallTicks + 1,
+            motion: {
+              ...resolved.motion,
+              x: Math.round(resolved.x * 16),
+              y: Math.round(resolved.y * 16),
+              speed: Math.round(
+                (resolved.speed / resolved.stats.topSpeed) * 134,
+              ),
+            },
+          }
+        : resolved;
+      placed = updateBridge(wall, t, track);
+    }
+    trucks[i] = applyCheckpoints(
       prev[i]!,
-      { ...t, contactMask: masks[i]! },
+      { ...placed, contactMask: masks[i]! },
       track,
       tick,
       events,
       state,
     );
-  });
-
+  }
   const placements = rank(trucks, state.placements);
   let raceEndTick = state.raceEndTick;
   for (const t of trucks) {
@@ -504,11 +560,6 @@ export function step(
     }
   }
   const phase: Phase = raceEndTick ? "finished" : "racing";
-  const heading = trucks.map((t) => wrapAngle(t.heading));
-  trucks = trucks.map((t, i) => {
-    const h = heading[i]!; // One wrapped heading per truck, in truck order.
-    return t.heading === h ? t : { ...t, heading: h };
-  });
 
   return {
     state: {

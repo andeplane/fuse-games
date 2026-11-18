@@ -1,3 +1,4 @@
+import type { OffroadDriver } from "../offroad/campaign.js";
 import type { OffroadCpuState } from "../offroad/cpu.js";
 import { BASE_STATS, type TruckStats } from "./config.js";
 import { createOffroadMotion, type OffroadMotion } from "../offroad/motion.js";
@@ -17,6 +18,9 @@ export interface Truck {
   contactMask: number;
   cash: number;
   cpu?: OffroadCpuState;
+  cpuBase?: number;
+  upgrades?: Pick<OffroadDriver, "topSpeed" | "tires" | "shocks">;
+  dosProgress: number;
   x: number;
   y: number;
   /** Radians, 0 = +x, clockwise positive (y down). */
@@ -81,6 +85,7 @@ export function createTruck(
     suspension,
     contactMask: 0,
     cash: 0,
+    dosProgress: 0,
     x,
     y,
     heading,
