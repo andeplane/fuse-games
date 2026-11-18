@@ -4,6 +4,7 @@ import { menuKeys } from "./menu-keys.js";
 import { ALL_SONGS, type Song, type MusicMedia } from "fuse-music";
 import { createRadio } from "./radio.js";
 import { browserPlaytestFor } from "./playtest.js";
+import { safeStorage } from "./safe-storage.js";
 
 export interface TopBarOptions {
   element: HTMLElement;
@@ -12,6 +13,12 @@ export interface TopBarOptions {
   gameId?: string;
   /** This game's master switch: music and effects change together. */
   sound?: TopBarSound;
+  /** Local controls, refreshed each time Player options opens. */
+  playerOptions?: () => HTMLElement;
+  /** Release an active binding capture or calibration when leaving Player options. */
+  onPlayerOptionsClose?: () => void;
+  /** Existing radio playback controls for a game that supplies its own music player. */
+  radioControls?: HTMLElement;
   /** Omit for the full shared catalogue, pass a game's selection, or false for a custom radio UI. */
   music?: readonly Song[] | false;
   /** The browser media boundary; tests and embedded hosts can supply their own player surface. */
@@ -27,10 +34,16 @@ export interface TopBarSound {
 }
 interface InstalledBar {
   refresh(options: TopBarOptions): void;
+  openRadio(): void;
 }
 const installed = new WeakMap<HTMLElement, InstalledBar>();
 const bindings = new WeakMap<HTMLElement, () => void>();
 const radios = new WeakMap<Document, ReturnType<typeof createRadio>>();
+
+/** Opens the shared Radio view from a game's keyboard shortcut. */
+export function openTopBarRadio(element: HTMLElement): void {
+  installed.get(element)?.openRadio();
+}
 
 /** Shared overlay navigation. Existing game/account controls retain their handlers and game-specific data. */
 /** The keys that press a focused button. */
@@ -50,7 +63,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   if (previous) installed.delete(root);
   const doc = root.ownerDocument;
   const customRadio = options.music === false;
-  let radio = radios.get(doc);
+  let radio = customRadio ? undefined : radios.get(doc);
   if (
     !radio &&
     !customRadio &&
@@ -66,6 +79,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       options.createMusicMedia ?? (() => new win.Audio()),
       preview,
       options.music || ALL_SONGS,
+      safeStorage(() => win.localStorage),
     );
     radios.set(doc, radio);
     win.addEventListener("pagehide", (event) => {
@@ -100,6 +114,70 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   menu.body.classList.add("fui-top-bar-actions");
   // Heard on the dialog: the bar keeps its keys from the page, and a modal holds the focus in here anyway.
   menuKeys(menu.body, { scope: menu.dialog, document: doc });
+  const radioEntry = button("Radio", "fui-top-bar-radio", doc);
+  const optionsEntry = button(
+    "Player options",
+    "fui-top-bar-player-options",
+    doc,
+  );
+  const detailClass = "fui-dialog-body fui-top-bar-actions fui-top-bar-detail";
+  const channel = el("div", "", detailClass, doc);
+  const preferences = el("div", "", detailClass, doc);
+  menuKeys(channel, { scope: menu.dialog, document: doc });
+  menuKeys(preferences, { scope: menu.dialog, document: doc });
+  const master = button("", "fui-player-sound", doc);
+  const custom = el("div", "", "fui-player-custom", doc);
+  preferences.append(master, custom);
+  if (radio) {
+    channel.append(radio.element);
+    preferences.insertBefore(radio.volumeControl, custom);
+  }
+  channel.hidden = preferences.hidden = true;
+  menu.body.append(radioEntry, optionsEntry);
+  menu.dialog.append(channel, preferences);
+  let activeEntry: HTMLButtonElement | undefined;
+  let transport = options.radioControls ?? radio?.element;
+  let playerOptions = options.playerOptions;
+  let onPlayerOptionsClose = options.onPlayerOptionsClose;
+  const gameMenu = () => {
+    if (activeEntry === optionsEntry) onPlayerOptionsClose?.();
+    activeEntry = undefined;
+    channel.hidden = preferences.hidden = true;
+    menu.body.hidden = false;
+  };
+  const back = () => {
+    const from = activeEntry;
+    if (!from) return menu.dialog.close();
+    gameMenu();
+    menu.show({ title: "Game menu" });
+    from.focus();
+  };
+  menu.back.onclick = back;
+  menu.dialog.addEventListener("cancel", (event) => {
+    if (activeEntry) {
+      event.preventDefault();
+      back();
+    }
+  });
+  const enter = (entry: HTMLButtonElement, detail: HTMLElement) => {
+    if (activeEntry) gameMenu();
+    activeEntry = entry;
+    menu.body.hidden = true;
+    detail.hidden = false;
+    menu.show({ title: entry.textContent! });
+    menu.back.focus();
+  };
+  radioEntry.onclick = () => {
+    if (transport && transport.parentElement !== channel)
+      channel.replaceChildren(transport);
+    enter(radioEntry, channel);
+  };
+  optionsEntry.onclick = () => {
+    if (radio && radio.volumeControl.parentElement !== preferences)
+      preferences.insertBefore(radio.volumeControl, custom);
+    if (playerOptions) custom.replaceChildren(playerOptions());
+    enter(optionsEntry, preferences);
+  };
   const owned = new Set<Node>([left, right, context, menu.dialog]);
   let source: HTMLElement | undefined;
   let soundControl: TopBarSound | undefined;
@@ -118,13 +196,26 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
     sound.title = soundControl?.forcedMute
       ? "Sound off for this preview"
       : "Toggle music and sound effects";
+    master.textContent = on ? "Sound on" : "Sound off";
+    master.hidden = sound.hidden;
+    master.disabled = sound.disabled;
+    master.setAttribute("aria-pressed", String(on));
   };
   let onOpenChange = options.onOpenChange;
   let report: HTMLButtonElement | undefined;
   let recording: HTMLButtonElement | undefined;
   let releaseAccount: (() => void) | undefined;
   const refresh = (next: TopBarOptions) => {
-    onOpenChange = next.onOpenChange;
+    onOpenChange = next.onOpenChange ?? onOpenChange;
+    playerOptions = next.playerOptions ?? playerOptions;
+    custom.hidden = !playerOptions;
+    onPlayerOptionsClose = next.onPlayerOptionsClose ?? onPlayerOptionsClose;
+    if (next.radioControls) {
+      transport = next.radioControls;
+      if (root.contains(transport) && transport.parentElement !== channel)
+        channel.replaceChildren(transport);
+    }
+    radioEntry.hidden = !transport;
     if (next.sound && next.sound !== soundControl) {
       releaseSound?.();
       soundControl = next.sound;
@@ -178,6 +269,19 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       if (owned.has(child)) continue;
       if (
         child.nodeType === 1 &&
+        (child as HTMLElement).matches(".fui-audio")
+      ) {
+        const panel = (child as HTMLElement).querySelector<HTMLElement>(
+          ".fui-audio-panel",
+        );
+        if (panel) {
+          panel.hidden = false;
+          preferences.insertBefore(child, custom);
+          continue;
+        }
+      }
+      if (
+        child.nodeType === 1 &&
         !(child as HTMLElement).matches("button,input,select,a,details") &&
         !(child as HTMLElement).querySelector("button,input,select,a,details")
       ) {
@@ -187,6 +291,11 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       menu.body.append(child);
     }
     root.classList.add("fui-top-bar");
+    optionsEntry.hidden =
+      !playerOptions &&
+      !soundControl &&
+      !radio &&
+      preferences.childElementCount === 2;
     root.dataset.fuiPreserve = "true";
     if (next.gameId) root.dataset.gameId = next.gameId;
     if (next.gameId && !report) {
@@ -229,7 +338,6 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   };
   right.append(sound, account, toggle);
   refresh(options);
-  if (radio && !customRadio) menu.body.prepend(radio.element);
   root.append(left, right, context, menu.dialog);
   // Header controls keep native keyboard activation while the match continues
   // behind them. Keyup still reaches the game so previously held keys release.
@@ -266,6 +374,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
     true,
   );
   menu.dialog.addEventListener("close", () => {
+    gameMenu();
     renderSound();
     onOpenChange?.(false);
     toggle.setAttribute("aria-expanded", "false");
@@ -287,6 +396,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       renderSound();
     }
   };
+  master.onclick = () => sound.click();
   menu.body.addEventListener("click", () => {
     if (
       [...doc.querySelectorAll<HTMLDialogElement>("dialog[open]")].some(
@@ -296,6 +406,13 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
     )
       menu.dialog.close();
   });
-  installed.set(root, { refresh });
+  installed.set(root, {
+    refresh,
+    openRadio() {
+      if (radioEntry.hidden || activeEntry === radioEntry) return;
+      if (!menu.dialog.open) toggle.click();
+      radioEntry.click();
+    },
+  });
   return root;
 }
