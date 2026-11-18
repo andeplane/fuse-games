@@ -862,17 +862,12 @@ function room(solo: boolean): void {
             y: 0,
           });
         }
-        arena?.render(
-          latest,
-          lead.alpha,
-          runtime.self,
-          {
-            previous: lead.previous,
-            current: lead.race,
-            place: (slot, pose) =>
-              slot === own ? pose : smoother.place(slot, pose),
-          },
-        );
+        arena?.render(latest, lead.alpha, runtime.self, {
+          previous: lead.previous,
+          current: lead.race,
+          place: (slot, pose) =>
+            slot === own ? pose : smoother.place(slot, pose),
+        });
       } else {
         // Views arrive one log tick apart; alpha is how far into that gap this frame falls.
         const alpha = Math.min(1, Math.max(0, (now - viewAt) / TICK_MS));

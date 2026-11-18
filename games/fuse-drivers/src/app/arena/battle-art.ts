@@ -4,6 +4,11 @@ import { getOffroadTerrain } from "../../game/offroad/courses.js";
 import { BATTLE } from "../../game/sim/battle.js";
 import type { ArenaFrame } from "./frame.js";
 
+const blastRing = Array.from({ length: 24 }, (_, i) => ({
+  x: BATTLE.blastRadius * Math.cos((i * Math.PI) / 12),
+  y: BATTLE.blastRadius * Math.sin((i * Math.PI) / 12),
+}));
+
 /** Battle objects use the same ground projection and folded clock as the trucks. */
 export function paintBattleArt(
   g: Phaser.GameObjects.Graphics,
@@ -37,24 +42,24 @@ export function paintBattleArt(
   }
   for (const bomb of battle.bombs) {
     const { x, y } = ground(bomb.x, bomb.y);
-    const outline = Array.from({ length: 24 }, (_, i) => {
-      const angle = (i * Math.PI) / 12;
-      return ground(
-        bomb.x + BATTLE.blastRadius * Math.cos(angle),
-        bomb.y + BATTLE.blastRadius * Math.sin(angle),
-      );
-    });
+    g.beginPath();
+    for (const [i, offset] of blastRing.entries()) {
+      const point = ground(bomb.x + offset.x, bomb.y + offset.y);
+      if (i === 0) g.moveTo(point.x, point.y);
+      else g.lineTo(point.x, point.y);
+    }
+    g.closePath();
     if (tick < bomb.detonateAt) {
       const pulse = 0.5 + 0.5 * Math.cos((bomb.detonateAt - tick) * 0.75);
-      g.lineStyle(3, 0xffb148, 0.55 + 0.45 * pulse).strokePoints(outline, true);
+      g.lineStyle(3, 0xffb148, 0.55 + 0.45 * pulse).strokePath();
       g.fillStyle(0x30162a).fillCircle(x, y - 5, 9);
       g.lineStyle(3, 0xff773d).strokeCircle(x, y - 5, 9);
       g.fillStyle(0xffefae).fillCircle(x + 6, y - 15, 3);
     } else {
       const life =
         (bomb.expiresAt - tick) / Math.max(1, bomb.expiresAt - bomb.detonateAt);
-      g.fillStyle(0xff4534, 0.42 * life).fillPoints(outline, true);
-      g.lineStyle(4, 0xffbc58, life).strokePoints(outline, true);
+      g.fillStyle(0xff4534, 0.42 * life).fillPath();
+      g.lineStyle(4, 0xffbc58, life).strokePath();
       g.fillStyle(0xffed9a, life).fillTriangle(
         x - 13,
         y + 3,
