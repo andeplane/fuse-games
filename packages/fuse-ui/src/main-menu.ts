@@ -43,7 +43,7 @@ export interface MainMenuOptions {
   hostingOptions?: HTMLElement;
   onHowToPlay?: () => void;
   onSettings?: () => void;
-  /** Preferences are personal by default; room creation defaults may opt into room scope. */
+  /** Landing settings configure the next room. Device preferences belong in the top bar. */
   settingsScope?: SettingsScope;
   document?: Document;
 }
@@ -65,7 +65,7 @@ export function createMainMenu(options: MainMenuOptions) {
   const play = button("Play", "fui-menu-primary", doc);
   const how = button("How to play", "", doc);
   const about = button("About", "", doc);
-  const scope = options.settingsScope ?? "player";
+  const scope = options.settingsScope ?? "room";
   const settingsButton = button("", "", doc);
   labelSettingsAction(settingsButton, scope);
   const choices = el("nav", "", "fui-main-menu-nav fui-play-menu", doc);

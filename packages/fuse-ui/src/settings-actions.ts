@@ -28,16 +28,21 @@ let nextOptions = 0;
 export function createPlayerOptions(options: {
   document: Document;
   content: readonly Node[];
+  /** Name of the specific preference when this disclosure is a contextual shortcut. */
+  label?: string;
   onOpenChange?: (open: boolean) => void;
 }) {
   const doc = options.document;
   const element = el("span", "", "fui-player-options", doc);
   const toggle = button("", "fui-button fui-player-options-toggle", doc);
   labelSettingsAction(toggle, "player");
+  const label = options.label ?? settingsLabel("player");
+  toggle.querySelector("span")!.textContent = label;
+  toggle.setAttribute("aria-label", label);
   const panel = el("section", "", "fui-player-options-panel", doc);
   panel.id = `fui-player-options-${++nextOptions}`;
   panel.hidden = true;
-  panel.setAttribute("aria-label", settingsLabel("player"));
+  panel.setAttribute("aria-label", label);
   panel.append(...options.content);
   toggle.setAttribute("aria-expanded", "false");
   toggle.setAttribute("aria-controls", panel.id);
