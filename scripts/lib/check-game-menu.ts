@@ -6,12 +6,11 @@ import { gameMenus } from "../../tests/fixtures/game-menu-expectations.js";
 export async function checkGameMenu(page: Page, game: string): Promise<void> {
   const expected = gameMenus[game];
   assert.ok(expected, `Declare the menu capabilities of ${game}`);
-  const speaker = page.locator(
-    ".fui-top-bar:visible .fui-top-bar-sound:visible",
-  );
+  const speaker = page.getByRole("button", { name: /^sound (on|off)$/i });
   const soundState = (await speaker.count())
     ? await speaker.getAttribute("aria-pressed")
     : null;
+  const soundDisabled = soundState !== null && (await speaker.isDisabled());
   const toggle = page.getByRole("button", {
     name: "Open game menu",
     exact: true,
@@ -30,7 +29,7 @@ export async function checkGameMenu(page: Page, game: string): Promise<void> {
   );
   if (soundState !== null) {
     assert.equal(await sound.getAttribute("aria-pressed"), soundState);
-    assert.equal(await sound.isDisabled(), await speaker.isDisabled());
+    assert.equal(await sound.isDisabled(), soundDisabled);
   }
   for (const [role, name] of expected.controls) {
     await options.getByRole(role, { name }).waitFor();
