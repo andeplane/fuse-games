@@ -339,6 +339,10 @@ function room(solo: boolean) {
       settings = roomSettings;
       const isHost = host || frame.managerId === me;
       const inLobby = frame.phase === "lobby";
+      const state = runtime.roomState();
+      const confirmedTick = runtime.confirmedTick();
+      const resultConfirmed =
+        state?.stage === "over" && state.decidedTick <= confirmedTick;
       const fighter = frame.fighters.findIndex((seat) => seat.id === me);
       ownSeat = frame.players.find((seat) => seat.id === me);
       nameEntry.form.hidden = !inLobby || display || Boolean(ownSeat);
@@ -367,7 +371,8 @@ function room(solo: boolean) {
       battleSection.hidden = inLobby || frame.phase === "over";
       live.element.hidden = inLobby;
       menu.update({
-        canLobby: isHost && !display && !inLobby,
+        canLobby:
+          isHost && !display && (frame.phase === "running" || resultConfirmed),
         display,
         touch: settings.display || matchMedia("(pointer: coarse)").matches,
         spectator: display || fighter < 0,
@@ -431,8 +436,7 @@ function room(solo: boolean) {
       }
       if (frame.phase === "over" && frame.battle) {
         const battle = frame.battle;
-        const result = runtime.roomState();
-        const nextKey = `${frame.matchId}:${result?.decidedTick}:${battle.winner}:${battle.cores.map((core) => [core.hp, core.kills])}`;
+        const nextKey = `${frame.matchId}:${state?.decidedTick}:${battle.winner}:${battle.cores.map((core) => [core.hp, core.kills])}`;
         if (nextKey !== resultKey) {
           resultKey = nextKey;
           const winner = frame.fighters[battle.winner ?? -1];
@@ -477,11 +481,17 @@ function room(solo: boolean) {
           });
         }
         results.update({
+          status: resultConfirmed ? undefined : "Confirming match results…",
           actions:
             isHost && !display
               ? [
-                  { id: "lobby", label: "Room" },
-                  { id: "rematch", label: "Play again", primary: true },
+                  { id: "lobby", label: "Room", disabled: !resultConfirmed },
+                  {
+                    id: "rematch",
+                    label: "Play again",
+                    primary: true,
+                    disabled: !resultConfirmed,
+                  },
                 ]
               : [],
         });
@@ -489,14 +499,8 @@ function room(solo: boolean) {
         results.hide();
         resultKey = "";
       }
-      const state = runtime.roomState();
       if (!display && state && (session.kind === "room" || social.isSignedIn()))
-        for (const report of dueReports(
-          state,
-          me,
-          runtime.confirmedTick(),
-          sent,
-        )) {
+        for (const report of dueReports(state, me, confirmedTick, sent)) {
           sent.add(report.key);
           void sendReport(
             endpoints.apiUrl(

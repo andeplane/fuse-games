@@ -78,7 +78,9 @@ export function createBattleCharts(
       (p) => {
         const value = p[key];
         return typeof value === "number" && Number.isFinite(value)
-          ? value
+          ? key === "capPressure"
+            ? 100 * value
+            : value
           : null;
       },
       step,

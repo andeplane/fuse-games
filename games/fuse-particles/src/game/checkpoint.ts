@@ -158,6 +158,19 @@ export function decodeRoom(
     )
       return;
     if (
+      stage === "running" &&
+      fighters.some((fighter) => {
+        const seat = seats.get(fighter.id);
+        return (
+          !seat ||
+          seat.watcher ||
+          seat.slot !== fighter.slot ||
+          seat.bot !== fighter.bot
+        );
+      })
+    )
+      return;
+    if (
       stage === "running"
         ? battle.winner !== null || decidedTick !== 0 || finishers.length !== 0
         : battle.winner === null || decidedTick === 0

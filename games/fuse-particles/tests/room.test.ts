@@ -91,3 +91,15 @@ test("invalid player and bot identifiers are refused before folding", () => {
     false,
   );
 });
+
+test("checkpoint refuses an impossible winner or a missing running fighter", () => {
+  const impossible = start();
+  impossible.stage = "over";
+  impossible.decidedTick = impossible.tick;
+  impossible.battle!.winner = 0;
+  assert.equal(decodeRoom(encodeRoom(impossible), impossible.tick), undefined);
+
+  const missing = start();
+  missing.seats.delete("host");
+  assert.equal(decodeRoom(encodeRoom(missing), missing.tick), undefined);
+});

@@ -44,7 +44,11 @@ export function parseFuseParticlesStats(
     (stats.roundWins === 1 && stats.roundsPlayed === 0)
   )
     return;
-  return stats as unknown as FuseParticlesStats;
+  const player = { playerId: stats.playerId, name: stats.name };
+  return {
+    ...player,
+    ...Object.fromEntries(Object.keys(bounds).map((key) => [key, stats[key]])),
+  } as FuseParticlesStats;
 }
 const empty = (): Totals => ({ matches: 0, wins: 0, kills: 0 });
 export const fuseParticlesRegistration: GameRegistration<
@@ -56,6 +60,24 @@ export const fuseParticlesRegistration: GameRegistration<
   minRatedRoundTicks: TICKS_PER_SECOND,
   isBot: isBotId,
   parseStats: parseFuseParticlesStats,
+  validField(players) {
+    if (
+      players.length < 2 ||
+      players.length > CAPACITY ||
+      new Set(players.map((player) => player.slot)).size !== players.length
+    )
+      return false;
+    return players.every((player) => {
+      const ahead = players.filter((other) => other.hp > player.hp).length;
+      const tied = players.filter((other) => other.hp === player.hp).length;
+      return (
+        player.matchScoreUnits === player.hp &&
+        player.roundsPlayed === 1 &&
+        player.matchPlacement === ahead + 1 &&
+        player.roundWins === (ahead === 0 && tied === 1 ? 1 : 0)
+      );
+    });
+  },
   emptyTotals: () => ({ totals: empty() }),
   credit: (player) => ({
     matches: 1,

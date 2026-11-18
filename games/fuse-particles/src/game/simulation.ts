@@ -986,13 +986,7 @@ export function tickBattle(s: BattleState): void {
   s.particles = s.particles.filter((p) => p.hp > 0 && s.cores[p.owner]!.hp > 0);
   s.towers = s.towers.filter((t) => s.cores[t.owner]!.hp > 0);
   territory(s);
-  const living = s.cores.flatMap((c, i) => (c.hp > 0 ? [i] : []));
-  if (living.length < 2 && s.cores.length > 1) s.winner = living[0] ?? -1;
-  else if (s.tick >= BATTLE_TIMEOUT_TICKS) {
-    const best = Math.max(...s.cores.map((c) => c.hp)),
-      tied = s.cores.flatMap((c, i) => (c.hp === best ? [i] : []));
-    s.winner = tied.length === 1 ? tied[0]! : -1;
-  }
+  s.winner = battleOutcome(s);
   // Counters are captured every second, while chart points use a five-second cadence.
   if (s.tick % 100 === 0 || s.winner !== null) sample(s);
   if (s.tick % 20 === 0)
@@ -1155,6 +1149,19 @@ const validState = fields<BattleState>({
   samples: list(validSample, 1, BATTLE_TIMEOUT_TICKS / 100 + 2),
   affinities: list(list(integer(0, 100), 6, 6), 1, 4),
 });
+function battleOutcome(state: BattleState): number | null {
+  const living = state.cores.flatMap((core, index) =>
+    core.hp > 0 ? [index] : [],
+  );
+  if (living.length < 2 && state.cores.length > 1) return living[0] ?? -1;
+  if (state.tick < BATTLE_TIMEOUT_TICKS) return null;
+  const best = Math.max(...state.cores.map((core) => core.hp));
+  const tied = state.cores.flatMap((core, index) =>
+    core.hp === best ? [index] : [],
+  );
+  return tied.length === 1 ? tied[0]! : -1;
+}
+
 export function decodeBattle(raw: unknown): BattleState | undefined {
   if (!validState(raw)) return;
   const n = raw.cores.length,
@@ -1164,7 +1171,7 @@ export function decodeBattle(raw: unknown): BattleState | undefined {
     rows !== (n > 2 ? 48 : 32) ||
     raw.walls.length !== cols * rows ||
     raw.ownership.length !== cols * rows ||
-    (raw.winner !== null && raw.winner >= n) ||
+    raw.winner !== battleOutcome(raw) ||
     raw.affinities.length !== n
   )
     return;
