@@ -42,6 +42,7 @@ import {
   CAPACITY,
   DEFAULT_SETTINGS,
   incredibleFuseGame,
+  matchResult,
   seatName,
 } from "../game/index.js";
 import { FREE_WORKSHOP, getPuzzle, PUZZLES } from "../game/machine.js";
@@ -297,9 +298,7 @@ function workshop() {
   const stage = el("section", "", "machine-stage");
   stage.hidden = true;
   const bench = createBench({
-    onCommand: (command) => {
-      runtime.play(command);
-    },
+    onCommand: (command) => runtime.play(command),
   });
   stage.append(bench.element);
   const save = button("Save machine", "fui-button");
@@ -472,11 +471,12 @@ function workshop() {
       if (playing)
         bench.update(frame.machine, !display && Boolean(mine?.connected));
       if (frame.phase === "over") {
-        const record = runtime.roomState()?.history.at(-1);
-        const key = JSON.stringify([frame.matchId, record?.players]);
+        const state = runtime.roomState();
+        const result = state && matchResult(state);
+        const key = JSON.stringify([frame.matchId, result?.players]);
         if (key !== resultKey) {
           resultKey = key;
-          const puzzle = getPuzzle(settings.puzzleIndex);
+          const puzzle = getPuzzle(frame.machine.puzzle);
           results.show({
             game: TITLE,
             kicker: "Puzzle complete",
@@ -488,12 +488,12 @@ function workshop() {
               title: "Workshop crew",
               nameLabel: "Builder",
               columns: [],
-              rows: (record?.players ?? frame.players).map((p) => ({
-                id: p.id,
-                placement: 1,
+              rows: (result?.players ?? []).map((p) => ({
+                id: p.playerId,
+                placement: p.matchPlacement,
                 name: p.name,
                 color: roleColor(p.slot),
-                you: p.id === me,
+                you: p.playerId === me,
                 values: [],
               })),
             },
