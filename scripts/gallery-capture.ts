@@ -70,6 +70,13 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  "fuse-drivers": async (page) => {
+    await openPlayOptions(page, "single");
+    await page.locator('.fd-arena[data-ready="true"]').waitFor();
+    await page.locator('[data-race="racing"]').waitFor();
+    await hold(page, ["ArrowUp"], 1250);
+    await page.waitForTimeout(900);
+  },
   fusero: async (page) => {
     await openPlayOptions(page, "single");
     await page
