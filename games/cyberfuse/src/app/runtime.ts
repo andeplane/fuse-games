@@ -1,6 +1,9 @@
 import { RoomRuntime, type Callbacks, type RuntimeOptions } from "fuse-netcode";
 import {
   ADVANCE,
+  EQUIP,
+  armory,
+  validLoadout,
   PLAY,
   cyberfuseGame,
   validBits,
@@ -69,6 +72,29 @@ export class CyberfuseRuntime extends RoomRuntime<
     };
     this.append(PLAY, r.matchId, r.round, this.bits);
     this.sendPackets(this.deps.now());
+  }
+
+  equip(weaponIds: number[]): boolean {
+    const room = this.world?.state,
+      seat = this.player();
+    if (
+      !room ||
+      !seat?.connected ||
+      seat.watcher ||
+      this.hiddenState ||
+      !validLoadout(weaponIds)
+    )
+      return false;
+    const shop = armory(room);
+    if (
+      !shop ||
+      !weaponIds.every((id) => shop.spec.allowedWeapons.includes(id)) ||
+      (room.stage === "between" && !room.roster.some((p) => p.id === seat.id))
+    )
+      return false;
+    this.append(EQUIP, room.matchId, room.round, shop.key, [...weaponIds]);
+    this.sendPackets(this.deps.now());
+    return true;
   }
   nextMission(): boolean {
     const r = this.world?.state;

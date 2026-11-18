@@ -1,13 +1,11 @@
 import { uint32, type SeatRecord, type Stage } from "fuse-netcode";
-import {
-  parseHistoryPlayer,
-  parseHistoryReceipts,
-} from "fuse-platform/history-api";
+import { parseHistoryReceipts } from "fuse-platform/history-api";
 import {
   DOGFIGHT_WIN_TARGET,
   MAX_DOGFIGHT_ROUNDS,
   standings,
 } from "./result.js";
+import { parseCyberfuseStats } from "./stats.js";
 import { isMissionState } from "../sim/index.js";
 import { CAMPAIGNS, DOGFIGHTS } from "../campaign/index.js";
 import {
@@ -20,6 +18,8 @@ import {
   validBits,
 } from "./basics.js";
 import {
+  armory,
+  validLoadout,
   bySlot,
   playerKey,
   validMatchId,
@@ -113,13 +113,16 @@ export function encodeRoom(r: CyberfuseRoom): unknown[] {
     r.held,
     r.world,
     r.history,
+    r.firstRound,
+    r.armoryKey,
+    r.loadouts,
   ];
 }
 export function decodeRoom(
   fields: readonly unknown[],
   tick: number,
 ): CyberfuseRoom | undefined {
-  if (fields.length !== 11 || !uint32(tick)) return;
+  if (fields.length !== 14 || !uint32(tick)) return;
   const [
     matchId,
     round,
@@ -132,12 +135,19 @@ export function decodeRoom(
     rawHeld,
     rawWorld,
     rawHistory,
+    firstRound,
+    armoryKey,
+    rawLoadouts,
   ] = fields;
   const settings = parseSettings(rawSettings);
   if (
     !settings ||
     !validMatchId(matchId) ||
     !uint32(round) ||
+    !uint32(firstRound) ||
+    firstRound < 1 ||
+    (stage === "lobby" ? firstRound !== 1 : firstRound > round) ||
+    (mode === "dogfight" && firstRound !== 1) ||
     typeof stage !== "string" ||
     !["lobby", "running", "between", "over"].includes(stage) ||
     (mode !== "campaign" && mode !== "dogfight") ||
@@ -151,6 +161,9 @@ export function decodeRoom(
     rawSeats.length > CAPACITY + MAX_WATCHERS ||
     !Array.isArray(rawRoster) ||
     rawRoster.length > CAPACITY ||
+    typeof armoryKey !== "string" ||
+    !plain(rawLoadouts) ||
+    Object.keys(rawLoadouts).length > CAPACITY ||
     !plain(rawHeld)
   )
     return;
@@ -179,6 +192,32 @@ export function decodeRoom(
       return;
     roster.push(entry);
   }
+
+  const loadouts: CyberfuseRoom["loadouts"] = {};
+  const shop = armory({
+    stage: stage as Stage,
+    round,
+    settings,
+    mode,
+    campaign,
+  });
+  if (armoryKey !== "" && armoryKey !== shop?.key) return;
+  for (const [id, kit] of Object.entries(rawLoadouts)) {
+    const seat = seats.get(id);
+    if (
+      !seat ||
+      seat.bot ||
+      seat.watcher ||
+      !armoryKey ||
+      !shop ||
+      !validLoadout(kit) ||
+      !kit.length ||
+      !kit.every((w) => shop.spec.allowedWeapons.includes(w)) ||
+      (stage === "between" && !roster.some((p) => p.id === id))
+    )
+      return;
+    loadouts[id] = [...kit];
+  }
   const held: CyberfuseRoom["held"] = {};
   if (Object.keys(rawHeld).length > CAPACITY) return;
   for (const [id, raw] of Object.entries(rawHeld)) {
@@ -198,7 +237,7 @@ export function decodeRoom(
   const history = parseHistoryReceipts(
     rawHistory,
     tick,
-    parseHistoryPlayer,
+    parseCyberfuseStats,
     playerKey,
     isBotId,
     128,
@@ -220,10 +259,11 @@ export function decodeRoom(
   const completed = current.filter((h) => h.result.round !== undefined);
   if (
     stage !== "lobby" &&
-    (completed.length !== (stage === "running" ? round - 1 : round) ||
+    (completed.length !==
+      (stage === "running" ? round - firstRound : round - firstRound + 1) ||
       completed.some(
         (h, index) =>
-          h.result.round !== index + 1 ||
+          h.result.round !== index + firstRound ||
           h.result.players.length !== roster.length ||
           h.result.players.some(
             (p) =>
@@ -283,6 +323,9 @@ export function decodeRoom(
     seats,
     mode,
     campaign,
+    firstRound,
+    armoryKey,
+    loadouts,
     roster,
     held,
     world: world && structuredClone(world),

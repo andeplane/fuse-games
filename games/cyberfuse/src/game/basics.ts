@@ -17,6 +17,8 @@ export interface CyberfuseSettings {
   display: boolean;
   mode: "campaign" | "dogfight";
   campaign?: number;
+  /** Zero-based source mission selected by a campaign password. */
+  startMission?: number;
   loadout?: number[];
 }
 export const DEFAULT_SETTINGS: CyberfuseSettings = {
@@ -29,13 +31,14 @@ export function parseSettings(raw: unknown): CyberfuseSettings | undefined {
   if (
     !plain(raw) ||
     Object.keys(raw).some(
-      (k) => !["display", "mode", "campaign", "loadout"].includes(k),
+      (k) =>
+        !["display", "mode", "campaign", "loadout", "startMission"].includes(k),
     ) ||
     typeof raw.display !== "boolean" ||
     (raw.mode !== "campaign" && raw.mode !== "dogfight")
   )
     return;
-  const { campaign, loadout } = raw;
+  const { campaign, loadout, startMission } = raw;
   if (
     campaign !== undefined &&
     (typeof campaign !== "number" ||
@@ -43,6 +46,17 @@ export function parseSettings(raw: unknown): CyberfuseSettings | undefined {
       campaign < 0 ||
       campaign >=
         (raw.mode === "campaign" ? CAMPAIGNS.length : DOGFIGHTS.length))
+  )
+    return;
+  if (
+    startMission !== undefined &&
+    (typeof startMission !== "number" ||
+      !Number.isInteger(startMission) ||
+      startMission < 0 ||
+      startMission >=
+        (raw.mode === "campaign"
+          ? CAMPAIGNS[campaign ?? 0]!.missions.length
+          : 1))
   )
     return;
   if (
@@ -59,6 +73,7 @@ export function parseSettings(raw: unknown): CyberfuseSettings | undefined {
     display: raw.display,
     mode: raw.mode,
     ...(campaign !== undefined ? { campaign } : {}),
+    ...(startMission !== undefined ? { startMission } : {}),
     ...(loadout !== undefined ? { loadout: [...loadout] } : {}),
   };
 }

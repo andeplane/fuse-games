@@ -16,6 +16,7 @@ import {
   type Stage,
   type StreamEntries,
 } from "fuse-netcode";
+import type { CyberfuseStats } from "./stats.js";
 import type { HistoryReceipt } from "fuse-platform/history-api";
 import {
   botControl,
@@ -43,7 +44,8 @@ import {
 import { finishRound } from "./result.js";
 
 export const PLAY = 0,
-  ADVANCE = 1;
+  ADVANCE = 1,
+  EQUIP = 2;
 export const validMatchId = (raw: unknown): raw is string =>
   typeof raw === "string" && /^[\x21-\x7e]{1,64}$/.test(raw);
 export const playerKey = (raw: unknown): raw is string =>
@@ -52,7 +54,8 @@ export const isAvatar = (raw: unknown): raw is string => raw === "robot";
 export type CyberfuseEntry =
   | ManagementEntry<CyberfuseSettings>
   | [number, number, typeof PLAY, string, number, number]
-  | [number, number, typeof ADVANCE, string, number];
+  | [number, number, typeof ADVANCE, string, number]
+  | [number, number, typeof EQUIP, string, number, string, number[]];
 export type CyberfuseEvent = never;
 export interface Operative {
   id: string;
@@ -70,7 +73,10 @@ export interface CyberfuseRoom extends ManagedRoom<CyberfuseSettings> {
   held: Record<string, { bits: number; generation: number }>;
   mode: CyberfuseSettings["mode"];
   campaign: number;
-  history: HistoryReceipt[];
+  firstRound: number;
+  loadouts: Record<string, number[]>;
+  armoryKey: string;
+  history: HistoryReceipt<CyberfuseStats>[];
 }
 export const bySlot = (
   a: { id: string; slot: number },
@@ -78,6 +84,34 @@ export const bySlot = (
 ) => a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 export const players = (room: CyberfuseRoom) =>
   [...room.seats.values()].filter((s) => !s.watcher).sort(bySlot);
+
+export const validLoadout = (v: unknown): v is number[] =>
+  Array.isArray(v) &&
+  v.length <= 3 &&
+  new Set(v).size === v.length &&
+  v.every((id) => uint32(id) && id < 16);
+export function armory(
+  room: Pick<
+    CyberfuseRoom,
+    "stage" | "settings" | "campaign" | "mode" | "round"
+  >,
+) {
+  if (room.stage !== "lobby" && room.stage !== "between") return;
+  const { mode, campaign = 0 } = room.stage === "lobby" ? room.settings : room;
+  const mission =
+    mode === "dogfight"
+      ? campaign
+      : room.stage === "between"
+        ? room.round
+        : (room.settings.startMission ?? 0);
+  const spec =
+    mode === "dogfight"
+      ? DOGFIGHTS[mission]
+      : CAMPAIGNS[campaign]?.missions[mission];
+  return spec
+    ? { key: mode + "/" + campaign + "/" + mission, spec }
+    : undefined;
+}
 export function isCyberfuseEntry(raw: unknown): raw is CyberfuseEntry {
   if (
     isManagementEntry(raw, {
@@ -100,14 +134,25 @@ export function isCyberfuseEntry(raw: unknown): raw is CyberfuseEntry {
       return typeof id === "string" && !isBotId(id);
     return true;
   }
+
+  if (
+    !Array.isArray(raw) ||
+    !uint32(raw[0]) ||
+    !raw[0] ||
+    !uint32(raw[1]) ||
+    !raw[1] ||
+    !validMatchId(raw[3]) ||
+    !uint32(raw[4])
+  )
+    return false;
+  if (raw[2] === EQUIP)
+    return (
+      raw.length === 7 &&
+      typeof raw[5] === "string" &&
+      /^(campaign|dogfight)\/\d{1,2}\/\d{1,2}$/.test(raw[5]) &&
+      validLoadout(raw[6])
+    );
   return (
-    Array.isArray(raw) &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
-    validMatchId(raw[3]) &&
-    uint32(raw[4]) &&
     raw[4] > 0 &&
     ((raw[2] === PLAY && raw.length === 6 && validBits(raw[5])) ||
       (raw[2] === ADVANCE && raw.length === 5))
@@ -135,6 +180,9 @@ export function createRoom(
     roster: [],
     mode: settings.mode,
     campaign: settings.campaign ?? 0,
+    armoryKey: "",
+    loadouts: {},
+    firstRound: 1,
     history: [],
   };
 }
@@ -150,10 +198,17 @@ function begin(room: CyberfuseRoom): void {
   const loadouts = Object.fromEntries(
     room.roster.map((p, i) => [
       p.id,
-      selected.length ? selected : defaultLoadout(i, mission),
+      room.armoryKey === room.mode + "/" + room.campaign + "/" + index &&
+      room.loadouts[p.id]?.length
+        ? room.loadouts[p.id]!
+        : selected.length
+          ? selected
+          : defaultLoadout(i, mission),
     ]),
   );
   room.held = {};
+  room.loadouts = {};
+  room.armoryKey = "";
   room.world = createMission(
     seedFor(room.matchId, room.round),
     room.roster.map((p) => p.id),
@@ -184,7 +239,9 @@ function start(room: CyberfuseRoom, matchId: string) {
   }
   room.roster = roster;
   room.matchId = matchId;
-  room.round = 1;
+  room.firstRound =
+    room.mode === "campaign" ? (room.settings.startMission ?? 0) + 1 : 1;
+  room.round = room.firstRound;
   begin(room);
 }
 const lifecycle: LifecycleHooks<CyberfuseRoom, CyberfuseSettings> = {
@@ -197,6 +254,9 @@ const lifecycle: LifecycleHooks<CyberfuseRoom, CyberfuseSettings> = {
     Object.assign(room, {
       matchId,
       round: 0,
+      firstRound: 1,
+      loadouts: {},
+      armoryKey: "",
       stage: "lobby",
       world: null,
       held: {},
@@ -225,13 +285,47 @@ function ownEntries(
       : stream?.retired?.find((old) => old.generation === seat?.generation);
   return batch?.entries.filter((e) => e[1] === tick) ?? [];
 }
+function foldEquipment(
+  room: CyberfuseRoom,
+  streams: ReadonlyMap<string, StreamEntries<CyberfuseEntry>>,
+  tick: number,
+) {
+  const shop = armory(room);
+  if (!shop) return;
+  if (room.armoryKey !== shop.key) {
+    room.armoryKey = shop.key;
+    room.loadouts = {};
+  }
+  for (const id of Object.keys(room.loadouts))
+    if (!room.seats.has(id)) delete room.loadouts[id];
+  for (const seat of room.seats.values()) {
+    if (!seat.connected || seat.bot || seat.watcher) continue;
+    if (room.stage === "between" && !room.roster.some((p) => p.id === seat.id))
+      continue;
+    for (const entry of ownEntries(seat.id, seat, streams, tick)) {
+      if (
+        entry[2] !== EQUIP ||
+        entry[3] !== room.matchId ||
+        entry[4] !== room.round ||
+        entry[5] !== shop.key ||
+        !entry[6].every((id) => shop.spec.allowedWeapons.includes(id))
+      )
+        continue;
+      if (entry[6].length) room.loadouts[seat.id] = [...entry[6]];
+      else delete room.loadouts[seat.id];
+    }
+  }
+}
 export function foldTick(
   room: CyberfuseRoom,
   creatorId: string,
   streams: ReadonlyMap<string, StreamEntries<CyberfuseEntry>>,
 ): never[] {
   const tick = room.tick + 1;
+  // Include an already-seated player's pick stamped on the same tick as launch.
+  foldEquipment(room, streams, tick);
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
+  foldEquipment(room, streams, tick);
   if (room.stage === "between") {
     const manager = roomManager(room.seats.values(), creatorId);
     for (const id of new Set([creatorId, manager])) {

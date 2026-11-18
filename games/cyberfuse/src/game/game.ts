@@ -31,13 +31,22 @@ export function cyberfuseView(room: CyberfuseRoom) {
       .filter((s) => s.watcher)
       .sort(bySlot)
       .map((seat) => ({ ...seat })),
+    loadouts: structuredClone(room.loadouts),
+    campaign:
+      room.stage === "lobby" ? (room.settings.campaign ?? 0) : room.campaign,
+    mode: room.stage === "lobby" ? room.settings.mode : room.mode,
     world: room.world,
     outcome: room.world?.outcome ?? null,
-    winners: room.world?.winners ?? [],
+    winners:
+      room.stage === "over" && room.mode === "dogfight"
+        ? standings(room)
+            .filter((p, _, rows) => rows.every((other) => other.wins <= p.wins))
+            .map((p) => p.id)
+        : (room.world?.winners ?? []),
     results: standings(room).map((p) => ({
       ...p,
       score:
-        p.score +
+        (room.stage === "running" && !p.survived ? 0 : p.score) +
         (room.stage === "running"
           ? (room.world?.actors.find((a) => a.seat === p.id)?.score ?? 0)
           : 0),

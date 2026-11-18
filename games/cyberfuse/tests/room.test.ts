@@ -13,6 +13,7 @@ import {
   FIRE,
   PLAY,
   ADVANCE,
+  EQUIP,
   isCyberfuseEntry,
   parseSettings,
   type CyberfuseEntry,
@@ -64,7 +65,7 @@ test("a late release rolls back a solo operative and the recovered snapshot cont
   assert.equal(cyberfuseGame.hash(restored), cyberfuseGame.hash(timely.state));
   assert.equal(
     cyberfuseGame.checkpoint.decode(
-      [...fields.slice(0, 9), {}, fields[10]],
+      [...fields.slice(0, 9), {}, ...fields.slice(10)],
       14,
     ),
     undefined,
@@ -175,4 +176,90 @@ test("dogfight plays to five and keeps each finished receipt available to confir
   assert.equal(state.stage, "running");
   assert.equal(state.round, 1);
   assert.equal(dueReports(state, "peer", state.tick, new Set()).length, 6);
+});
+
+test("a campaign password opens its source mission and the receipt only counts missions played", () => {
+  const room = replica({ ...DEFAULT_SETTINGS, campaign: 1, startMission: 2 });
+  room.advance(2);
+  assert.equal(room.state.round, 3);
+  assert.equal(room.state.world?.mission, 2);
+  const snapshot = cyberfuseGame.checkpoint.encode(room.state);
+  assert.ok(cyberfuseGame.checkpoint.decode(snapshot, 2));
+  room.state.world = { ...room.state.world!, outcome: "defeat", winners: [] };
+  finishRound(room.state, room.tick);
+  const reports = dueReports(room.state, "peer", room.tick, new Set());
+  assert.equal(reports[0]?.result.round, 3);
+  assert.equal(reports[1]?.result.length, 1);
+  assert.equal(
+    parseSettings({ ...DEFAULT_SETTINGS, campaign: 1, startMission: 8e9 }),
+    undefined,
+  );
+});
+
+test("each operative launches with their own legal loadout; campaign changes invalidate stale armory entries", () => {
+  const room = createRoom("lobby", DEFAULT_SETTINGS);
+  const tick = cyberfuseGame.createTicker();
+  tick(
+    room,
+    "a",
+    new Map([
+      [
+        "a",
+        {
+          generation: 1,
+          entries: [
+            [1, 1, JOIN, "a", "Ana", 0, "robot", 1],
+            [2, 1, JOIN, "b", "Bo", 1, "robot", 2],
+          ],
+        },
+      ],
+    ]),
+  );
+  const key = room.armoryKey;
+  tick(
+    room,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[3, 2, EQUIP, "lobby", 0, key, [1]]] }],
+      ["b", { generation: 2, entries: [[1, 2, EQUIP, "lobby", 0, key, [4]]] }],
+    ]),
+  );
+  assert.deepEqual(room.loadouts, { a: [1], b: [4] });
+  assert.ok(
+    cyberfuseGame.checkpoint.decode(cyberfuseGame.checkpoint.encode(room), 2),
+  );
+  const start = structuredClone(room);
+  tick(
+    start,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[4, 3, ACTION, "start", "equipped"]] }],
+    ]),
+  );
+  assert.deepEqual(
+    start.world?.actors.filter((p) => p.seat !== null).map((p) => p.inventory),
+    [[1], [4]],
+  );
+  tick(
+    room,
+    "a",
+    new Map([
+      [
+        "a",
+        {
+          generation: 1,
+          entries: [[4, 3, 13, { ...DEFAULT_SETTINGS, campaign: 1 }]],
+        },
+      ],
+    ]),
+  );
+  assert.deepEqual(room.loadouts, {});
+  tick(
+    room,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[5, 4, EQUIP, "lobby", 0, key, [1]]] }],
+    ]),
+  );
+  assert.deepEqual(room.loadouts, {});
 });
