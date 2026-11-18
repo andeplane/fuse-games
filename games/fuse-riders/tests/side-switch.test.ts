@@ -33,7 +33,15 @@ import {
 // behaviour under test had played out.
 const settings = { ...defaultRoomSettings(), map: "classic" as const };
 const HOST = "a-host",
-  RIDERS = ["b-rider", "c-rider", "d-rider", "e-rider", "f-rider"],
+  RIDERS = [
+    "b-rider",
+    "c-rider",
+    "d-rider",
+    "e-rider",
+    "f-rider",
+    "g-rider",
+    "h-rider",
+  ],
   WATCHERS = ["p-watch", "q-watch", "r-watch", "s-watch", "t-watch"];
 
 function room(
@@ -382,7 +390,7 @@ test("a watcher takes the seat of a rider the room lists absent", () => {
   }
 });
 
-test("a watcher is refused a seat while the room has five riders, and keeps its place", () => {
+test("a watcher is refused a seat while the room is full of riders, and keeps its place", () => {
   const { net, join, watch } = room();
   join(HOST, "Host");
   net.step(200);
@@ -395,7 +403,11 @@ test("a watcher is refused a seat while the room has five riders, and keeps its 
   watcher.command({ type: "join", name: "Watcher" });
   net.step(1500);
 
-  assert.equal(riders(net, HOST).length, MAX_PLAYERS, "still five riders");
+  assert.equal(
+    riders(net, HOST).length,
+    MAX_PLAYERS,
+    "still a full room of riders",
+  );
   assert.deepEqual(
     watching(net, WATCHERS[0]!),
     ["Watcher"],

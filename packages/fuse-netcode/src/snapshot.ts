@@ -6,7 +6,7 @@ import { memberId, uint32 } from "./wire.js";
 import { DEFAULT_LOG_TIMING, logTiming, type LogTiming } from "./timing.js";
 
 export const SNAPSHOT_CHUNK_BYTES = 16_000,
-  MAX_SNAPSHOT_BYTES = 2_600_000,
+  MAX_SNAPSHOT_BYTES = 3_400_000,
   MAX_SNAPSHOT_ENTRIES = 512;
 export interface SnapshotChunk {
   type: "snapshot";

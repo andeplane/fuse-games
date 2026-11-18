@@ -536,7 +536,16 @@ export function playerStats(
     );
     more.append(
       element("p", "Round finishes", "stats-muted"),
-      bars(stats.combat.roundPlaces, ["#1", "#2", "#3", "#4", "#5", "#6"]),
+      bars(stats.combat.roundPlaces, [
+        "#1",
+        "#2",
+        "#3",
+        "#4",
+        "#5",
+        "#6",
+        "#7",
+        "#8",
+      ]),
     );
     content.append(more);
   };

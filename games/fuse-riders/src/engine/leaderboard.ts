@@ -1,7 +1,7 @@
 export const POINT_UNIT = 60;
 
 /** Every seat of a full room (`MAX_PLAYERS` in `tuning.ts`, which imports the state this module's types feed). */
-const MAX_PARTICIPANTS = 6;
+const MAX_PARTICIPANTS = 8;
 
 export interface SessionLeaderboardEntry {
   id: string;
@@ -31,7 +31,7 @@ export function rankRound(
   participants: readonly RoundParticipant[],
 ): RoundPlacement[] {
   if (participants.length < 2 || participants.length > MAX_PARTICIPANTS) {
-    throw new RangeError("A round has two to six participants");
+    throw new RangeError("A round has two to eight participants");
   }
   const ids = new Set<string>();
   for (const participant of participants) {
@@ -102,7 +102,7 @@ export function applyRoundScores(
       placement.place < 1 ||
       placement.place > MAX_PARTICIPANTS
     ) {
-      throw new RangeError("Round placement must be between one and six");
+      throw new RangeError("Round placement must be between one and eight");
     }
     if (
       !Number.isSafeInteger(placement.scoreUnits) ||

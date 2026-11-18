@@ -12,7 +12,7 @@ type Storage = Pick<SafeStorage, "getItem" | "setItem">;
  * account's username: the field shows it and is not editable here, so they are the same name in every room and on
  * every device. It is changed where the account lives, under MY GAMES on the home page.
  *
- * `onSpectate` adds the second way in, under the first: watch the room by name without taking one of its six seats.
+ * `onSpectate` adds the second way in, under the first: watch the room by name without taking one of its eight seats.
  */
 export function createJoinForm(
   storage: Storage,

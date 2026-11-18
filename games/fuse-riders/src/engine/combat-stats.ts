@@ -1,10 +1,10 @@
 import { WEAPONS, type Weapon } from "./shot-log.js";
 import { MAX_PLAYERS } from "./tuning.js";
 /**
- * How many places a record written while a room sat five riders counts. Stored careers and match details from then are
- * still read: `parseCombat` pads them with an empty sixth place.
+ * How many places a record written while a room sat five, then six, riders counts. Stored careers and match details
+ * from then are still read: `parseCombat` pads them with empty places up to `MAX_PLAYERS`.
  */
-const LEGACY_ROUND_PLACES = 5;
+const LEGACY_ROUND_PLACES: readonly number[] = [5, 6];
 export const KILL_METHODS = [
   ...WEAPONS,
   "trail",
@@ -104,7 +104,7 @@ export function parseCombat(
     return;
   if (
     !Array.isArray(raw.roundPlaces) ||
-    (raw.roundPlaces.length !== LEGACY_ROUND_PLACES &&
+    (!LEGACY_ROUND_PLACES.includes(raw.roundPlaces.length) &&
       raw.roundPlaces.length !== MAX_PLAYERS) ||
     !raw.roundPlaces.every(count)
   )

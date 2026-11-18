@@ -5,6 +5,7 @@ import {
 } from "../src/engine/power-progression.js";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MAX_PLAYERS } from "../src/engine/tuning.ts";
 import { POINT_UNIT } from "../src/engine/leaderboard.ts";
 import { defaultRoomSettings } from "../src/engine/room-settings.ts";
 import {
@@ -1165,7 +1166,7 @@ test("overtime inset updates before collision and a 90-second unresolved round d
 test("lifecycle commands enforce phase, capacity, identity, and connected-player guards", () => {
   assert.throws(() => createGame("", classicSettings()), /matchId/);
   const state = createGame("guards", classicSettings());
-  assert.throws(() => startMatch(state), /requires 2-6/);
+  assert.throws(() => startMatch(state), /requires 2-8/);
   addPlayer(state, { id: "a", name: "A", slot: 0, color: RIDER_COLORS[0] });
   assert.throws(
     () =>
@@ -1178,7 +1179,13 @@ test("lifecycle commands enforce phase, capacity, identity, and connected-player
     /duplicate/,
   );
   assert.throws(
-    () => addPlayer(state, { id: "bad", name: "bad", slot: 7, color: "red" }),
+    () =>
+      addPlayer(state, {
+        id: "bad",
+        name: "bad",
+        slot: MAX_PLAYERS,
+        color: "red",
+      }),
     /invalid slot/,
   );
   assert.throws(
@@ -1192,7 +1199,7 @@ test("lifecycle commands enforce phase, capacity, identity, and connected-player
     toView(state).players.find((player) => player.id === "b")!.connected,
     false,
   );
-  assert.throws(() => startMatch(state), /requires 2-6/);
+  assert.throws(() => startMatch(state), /requires 2-8/);
   setPlayerConnected(state, "b", true);
   assert.throws(
     () => setPlayerConnected(state, "missing", true),

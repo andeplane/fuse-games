@@ -37,7 +37,7 @@ export interface RoomDevice {
   touch: boolean;
   width: number;
   height: number;
-  /** `(min-width: 1000px) and (hover: hover) and (pointer: fine)`: the compact desktop game bar may apply. */
+  /** A fine pointer with hover in a wide or short landscape window can use the desktop game bar. */
   desktopPointer: boolean;
 }
 

@@ -184,9 +184,10 @@ test("the phone lobby drops BACK TO LOBBY and TV VIEW, solo has no TV VIEW, and 
     ...five,
     players: [
       ...five.players,
-      { ...five.players[2]!, id: "bot:2" },
-      { ...five.players[2]!, id: "bot:3" },
-      { ...five.players[2]!, id: "bot:4" },
+      ...Array.from({ length: MAX_RIDERS - five.players.length }, (_, i) => ({
+        ...five.players[2]!,
+        id: `bot:${i}`,
+      })),
     ],
   };
   assert.equal(full.players.length, MAX_RIDERS);
@@ -857,7 +858,7 @@ test("changing sides is one button about this device, beside READY, and says why
     frame({
       phase: "lobby",
       tick: 0,
-      players: [0, 1, 2, 3, 4, 5].map((slot) => ({
+      players: Array.from({ length: MAX_RIDERS }, (_, slot) => ({
         ...frame().players[0]!,
         id: `p${slot}`,
         slot,
@@ -865,7 +866,10 @@ test("changing sides is one button about this device, beside READY, and says why
     }),
     { spectators: watchers, playerId: "w1" },
   );
-  assert.equal(fullRoom.actions.switchSide.title, "Room is full (6 players)");
+  assert.equal(
+    fullRoom.actions.switchSide.title,
+    `Room is full (${MAX_RIDERS} players)`,
+  );
 
   // Solo is one device and five AI, and a display is not a member: neither has a side to change.
   assert.equal(present(lobby, { solo: true }).actions.switchSide.hidden, true);
