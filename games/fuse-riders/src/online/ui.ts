@@ -943,7 +943,8 @@ export async function startOnline(): Promise<void> {
   help.onclick = () => shortcutsDialog.open();
   // Move the existing actions, keeping their handlers and mobile/lobby destinations intact.
   const desktopQuery = matchMedia(
-    "(min-width: 1000px) and (hover: hover) and (pointer: fine)",
+    "(min-width: 1000px) and (hover: hover) and (pointer: fine), " +
+      "(min-width: 800px) and (orientation: landscape) and (max-height: 550px) and (hover: hover) and (pointer: fine)",
   );
   // Where the movable parts of the page sit on this screen. Pure placement: what the screen is was decided by `roomScreen`.
   const placeElements = (screen: RoomScreen) => {
