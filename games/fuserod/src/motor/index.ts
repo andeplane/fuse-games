@@ -1,7 +1,18 @@
 /** Street Rod 2 drivetrain. See tests/reference for parity evidence and license. */
+import {
+  lowBandFor,
+  performanceFor,
+  type CarCalibration,
+} from "./calibration.js";
+export {
+  stockDrive,
+  isCarCalibration,
+  type CarCalibration,
+} from "./calibration.js";
 export type Grade = 0 | 1 | 2;
 export type Direction = -1 | 0 | 1;
 export interface MotorTune {
+  calibration?: CarCalibration;
   automatic?: boolean;
   power?: Grade;
   gearbox?: Grade;
@@ -35,7 +46,7 @@ export interface MotorState {
   pendingShift: Direction;
 }
 
-export function createMotor(seed = 37): MotorState {
+export function createMotor(seed = 37, tune: MotorTune = {}): MotorState {
   return {
     rpm: 1500,
     speed: 0,
@@ -43,7 +54,7 @@ export function createMotor(seed = 37): MotorState {
     band: 0,
     wheel: 0,
     steerInput: 0,
-    engineWear: 0,
+    engineWear: tune.calibration?.wear ?? 0,
     gearWear: 0,
     limiter: 0,
     broken: false,
@@ -92,16 +103,6 @@ export function motorGears(tune: MotorTune = {}): number {
   return !tune.automatic && tune.gearbox ? 4 : 3;
 }
 
-// DOS car_setup for fresh class-2 cars with standard bodywork, induction,
-// exhaust and street differential. SR2 grade zero is the three-speed automatic.
-function carPerformance(engine: Grade, transmission: Grade, automatic = false) {
-  const score =
-    (automatic ? 0 : [33, 66, 100][transmission]!) * 15 +
-    (88 + 55) * 10 +
-    engine * 50 * 25;
-  return div(div(score, 100) * (automatic ? 24 : 30), 100) + 70;
-}
-
 function curve(state: MotorState, tune: MotorTune, performance: number) {
   const gear = state.gear;
   const peak = div(torque[tune.power ?? 0][gear]! * performance, 100);
@@ -110,7 +111,9 @@ function curve(state: MotorState, tune: MotorTune, performance: number) {
     (gear === 1 ? (tune.tires === 2 ? 3 : 2) : 1);
   const up =
     state.band === 0
-      ? low
+      ? tune.calibration
+        ? lowBandFor(low, tune.calibration)
+        : low
       : state.band === 1
         ? peak
         : div(peak, gear === 0 ? 1 : 10);
@@ -125,13 +128,7 @@ function ratioFor(gear: number, gearbox: Grade, performance: number) {
 }
 
 export function motorTopSpeed(tune: MotorTune): number {
-  return Math.min(
-    130,
-    div(
-      carPerformance(tune.power ?? 0, tune.gearbox ?? 0, tune.automatic) * 13,
-      10,
-    ),
-  );
+  return Math.min(130, div(performanceFor(tune) * 13, 10));
 }
 
 /** Road contacts slow the powered wheels and the connected engine together. */
@@ -144,11 +141,7 @@ export function slowMotor(
   if (speed === state.speed) return state;
   const gearbox = tune.automatic ? 0 : (tune.gearbox ?? 0);
   const power = tune.power ?? 0;
-  const ratio = ratioFor(
-    state.gear,
-    gearbox,
-    carPerformance(power, gearbox, tune.automatic),
-  );
+  const ratio = ratioFor(state.gear, gearbox, performanceFor(tune));
   const rpm =
     state.gear === 0 ? 1500 + speed * 30 : Math.max(1500, speed * ratio);
   const [lower, upper] = thresholds[power];
@@ -159,7 +152,7 @@ function physics(s: MotorState, input: MotorControls, tune: MotorTune) {
   if (s.broken) return;
   const power = tune.power ?? 0;
   const gearbox = tune.automatic ? 0 : (tune.gearbox ?? 0);
-  const performance = carPerformance(power, gearbox, tune.automatic);
+  const performance = performanceFor(tune);
   let { up, down } = curve(s, tune, performance);
   s.steps++;
   if (s.rpm > 5000) {
