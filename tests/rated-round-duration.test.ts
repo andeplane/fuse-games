@@ -31,5 +31,9 @@ test("F-06 each rated game uses one second in its own tick units", () => {
     [killerFuseRegistration, killerHz],
     [fuseSurgeRegistration, surgeHz],
   ] as const)
-    assert.equal(registration.minRatedRoundTicks, hz, registration.id);
+    assert.equal(
+      registration.minRatedRoundTicks,
+      Math.ceil(hz),
+      registration.id,
+    );
 });
