@@ -162,11 +162,6 @@ try {
   );
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
-  await peer.getByRole("button", { name: "Speed shop", exact: true }).click();
-  const guestShop = peer.getByRole("dialog", { name: "Speed shop" });
-  await guestShop.getByRole("button", { name: /^Shocks/ }).click();
-  await guestShop.getByRole("button", { name: /^Shocks.*Level 1/ }).waitFor();
-  await guestShop.getByRole("button", { name: "Back", exact: true }).click();
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
   await rules.selectOption("battle");
   const guestRules = peer.getByLabel("Rules", { exact: true });
@@ -177,6 +172,10 @@ try {
   );
   assert.equal(await guestRules.isDisabled(), true);
   await peer.getByLabel("Graphics", { exact: true }).selectOption("classic");
+  await peer.getByRole("button", { name: "Speed shop", exact: true }).click();
+  const guestShop = peer.getByRole("dialog", { name: "Speed shop" });
+  await guestShop.getByRole("button", { name: /^Shocks/ }).click();
+  await guestShop.getByRole("button", { name: /^Shocks.*Level 1/ }).waitFor();
   assert.equal(await graphics.inputValue(), "fuse");
   if (process.env.OFFROAD_CAMPAIGN_SMOKE === "1") {
     await host
@@ -195,6 +194,7 @@ try {
   );
   await host.screenshot({ path: "artifacts/fuse-drivers/room-lobby.png" });
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
+  await guestShop.waitFor({ state: "hidden" });
   await Promise.all(
     [host, peer].map((page) =>
       page.locator(".fd-hud").filter({ hasText: "LAP" }).waitFor(),

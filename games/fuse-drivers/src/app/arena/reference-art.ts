@@ -72,6 +72,18 @@ export function createReferenceArt(
     .setDepth(1);
   const context = texture.getContext();
   const bitmap = context.createImageData(WIDTH, HEIGHT);
+  // Props live between the stadium and the trucks. Keep the visible body pixels
+  // on a transparent foreground so a passing truck can cover a crate or cash bag.
+  const front = scene.textures.createCanvas("fd-local-trucks", WIDTH, HEIGHT);
+  if (!front) throw new Error("Could not initialize local truck art");
+  front.setFilter(1);
+  const truckLayer = scene.add
+    .image(0, 0, front.key)
+    .setOrigin(0)
+    .setScale(SCALE_X, SCALE_Y)
+    .setDepth(10);
+  const frontImage = front.getContext().createImageData(WIDTH, HEIGHT);
+  const frontPixels = new Uint32Array(frontImage.data.buffer);
   const colors = new Uint32Array(17);
   const rgba = new Uint8ClampedArray(colors.buffer);
   for (let i = 0; i < colors.length; i++) {
@@ -121,6 +133,8 @@ export function createReferenceArt(
         : indexed[offset]! === 16
           ? 16
           : indexed[offset]! | 1;
+      if (paint || frontPixels[offset])
+        frontPixels[offset] = colors[indexed[offset]!]!;
     }
   }
   // Tiny numerals keep the four counters legible inside the painted one-screen stadium.
@@ -150,6 +164,7 @@ export function createReferenceArt(
   return {
     setVisible(visible) {
       background.setVisible(visible);
+      truckLayer.setVisible(visible);
     },
     paint(frame) {
       const { race, track, poses } = frame;
@@ -158,6 +173,7 @@ export function createReferenceArt(
       if (!course)
         throw new Error(`Missing local reference course ${track.name}`);
       indexed.set(course.pixels);
+      frontPixels.fill(0);
       const order = race.trucks
         .map((truck, slot) => ({ truck, slot }))
         .sort((a, b) => a.truck.motion.y - b.truck.motion.y);
@@ -216,6 +232,8 @@ export function createReferenceArt(
       for (let i = 0; i < output.length; i++) output[i] = colors[indexed[i]!]!;
       context.putImageData(bitmap, 0, 0);
       texture.refresh();
+      front.getContext().putImageData(frontImage, 0, 0);
+      front.refresh();
     },
   };
 }
