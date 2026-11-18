@@ -57,13 +57,8 @@ import {
 import { RHYTHM_POLICIES } from "./rhythm-policies.js";
 import { completeRhythmEvents } from "./complete-rhythm.js";
 import type { RhythmRequest, RhythmReply } from "./rhythm-worker.js";
-import {
-  parseResume,
-  resumeHash,
-  revealTop,
-  seekDelta,
-  typingIn,
-} from "./playback.js";
+import { parseResume, resumeHash, revealTop, typingIn } from "./playback.js";
+import { labShortcut } from "./shortcuts.js";
 import { hiddenAtStart, parseShown } from "./shown.js";
 import { NOTES_UPLOAD_PATH, writeNotesUpload } from "./notes-upload.js";
 import {
@@ -74,7 +69,6 @@ import {
   removeSpan,
   removeTap,
   tapAt,
-  tapColumn,
   tapGridBeat,
   writeTaps,
   type Tap,
@@ -2856,114 +2850,92 @@ for (const control of [rhythmMode, rhythmVoice, rhythmSensitivity, rhythmGap])
       "Settings changed. Press Detect rhythm to analyse again.";
   };
 
+function setRecording(enabled: boolean): void {
+  recordInput.checked = enabled;
+  recordInput.onchange?.(new Event("change"));
+}
+
+/** Set the recording start at the playhead, or remove it when pressed again near the line. */
+function toggleRecordingStart(): void {
+  const here = Math.max(0, heardTime());
+  if (recordFrom !== undefined && Math.abs(recordFrom - here) < 0.3) {
+    recordFrom = undefined;
+    save(RECORD_FROM_KEY(songId), null);
+    say("recording start line removed");
+  } else {
+    recordFrom = here;
+    save(RECORD_FROM_KEY(songId), here.toFixed(3));
+    if (!recordInput.checked) setRecording(true);
+    say(
+      `recording starts at ${here.toFixed(2)} s: taps before it are not kept`,
+    );
+  }
+  draw();
+}
+
 window.addEventListener("keydown", (event) => {
   const target = event.target instanceof HTMLElement ? event.target : null;
   if (typingIn(target)) return;
-  const delta = seekDelta(event);
-  // A focused button, menu or slider would take space and the arrows for itself: playback owns them here.
-  if ((event.key === " " || delta !== undefined) && target !== document.body)
-    target?.blur();
-  if (event.key === " ") {
-    event.preventDefault();
-    if (!event.repeat) togglePlay();
-  } else if (delta !== undefined) {
-    event.preventDefault();
-    seekBy(delta);
-  } else if (
-    (event.key === "Backspace" || event.key === "Delete") &&
-    deleteSelectedTaps()
-  ) {
-    event.preventDefault();
-  } else if (
-    event.key.toLowerCase() === "z" &&
-    (event.metaKey || event.ctrlKey) &&
-    !event.shiftKey &&
-    !event.altKey
-  ) {
-    event.preventDefault();
-    undoTap();
-  } else if (
-    event.key.toLowerCase() === "r" &&
-    event.shiftKey &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey
-  ) {
-    // Recording starts here: taps before this line are not kept. Pressed again on the line, it goes away.
-    const here = Math.max(0, heardTime());
-    if (recordFrom !== undefined && Math.abs(recordFrom - here) < 0.3) {
-      recordFrom = undefined;
-      save(RECORD_FROM_KEY(songId), null);
-      say("recording start line removed");
-    } else {
-      recordFrom = here;
-      save(RECORD_FROM_KEY(songId), here.toFixed(3));
-      if (!recordInput.checked) {
-        recordInput.checked = true;
-        recordInput.onchange?.(new Event("change"));
-      }
-      say(
-        `recording starts at ${here.toFixed(2)} s: taps before it are not kept`,
-      );
-    }
-    draw();
-  } else if (
-    event.key.toLowerCase() === "r" &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey
-  ) {
-    recordInput.checked = !recordInput.checked;
-    recordInput.onchange?.(new Event("change"));
-  } else if (
-    pickedTap &&
-    !source &&
-    (event.key.toLowerCase() === "w" || event.key.toLowerCase() === "s") &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey
-  ) {
-    // With a Custom arrow selected and the song paused, W and S move it earlier and later (while it plays they
-    // tap). The arrow keys never move it: they scroll.
-    event.preventDefault();
-    nudgePickedTap(event.key.toLowerCase() === "s" ? 1 : -1, event.shiftKey);
-  } else if (
-    recordInput.checked &&
-    tapColumn(event.key) !== undefined &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey
-  ) {
-    event.preventDefault();
-    if (!event.repeat) recordTap(tapColumn(event.key)!);
-  } else if (
-    event.key.toLowerCase() === "x" &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey
-  ) {
-    // Mark this moment, to come back to with enter.
-    marker = Math.max(0, heardTime());
-    save(MARKER_KEY(songId), marker.toFixed(3));
-    draw();
-  } else if (event.key === "Enter" && marker !== undefined) {
-    // Back to the marker (in the note's text box enter saves the note instead; it never reaches here).
-    event.preventDefault();
-    if (target !== document.body) target?.blur();
-    seekBy(marker - heardTime());
-  } else if (event.key === "+" || event.key === "=") zoom(1.25);
-  else if (event.key === "-") zoom(0.8);
-  else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    follow = false;
-    topTime += (event.key === "ArrowDown" ? 1 : -1) * viewSeconds() * 0.15;
-    clampView();
-    draw();
-  } else if (event.key === "Escape") {
-    selection = undefined;
-    flux = undefined;
-    renderSelection();
-    draw();
+  const shortcut = labShortcut(event, {
+    canNudge: Boolean(pickedTap && !source),
+    recording: recordInput.checked,
+    marker,
+  });
+  switch (shortcut?.type) {
+    case "play":
+    case "seek":
+      // Playback takes precedence over the focused button, menu, or slider.
+      if (target !== document.body) target?.blur();
+      event.preventDefault();
+      if (shortcut.type === "seek") seekBy(shortcut.seconds);
+      else if (!event.repeat) togglePlay();
+      return;
+    case "delete":
+      if (deleteSelectedTaps()) event.preventDefault();
+      return;
+    case "undo":
+      event.preventDefault();
+      undoTap();
+      return;
+    case "record-from":
+      toggleRecordingStart();
+      return;
+    case "record":
+      setRecording(!recordInput.checked);
+      return;
+    case "nudge":
+      event.preventDefault();
+      nudgePickedTap(shortcut.direction, shortcut.fine);
+      return;
+    case "tap":
+      event.preventDefault();
+      if (!event.repeat) recordTap(shortcut.column);
+      return;
+    case "mark":
+      marker = Math.max(0, heardTime());
+      save(MARKER_KEY(songId), marker.toFixed(3));
+      draw();
+      return;
+    case "return-to-marker":
+      event.preventDefault();
+      if (target !== document.body) target?.blur();
+      seekBy(shortcut.time - heardTime());
+      return;
+    case "zoom":
+      zoom(shortcut.factor);
+      return;
+    case "scroll":
+      event.preventDefault();
+      follow = false;
+      topTime += shortcut.direction * viewSeconds() * 0.15;
+      clampView();
+      draw();
+      return;
+    case "clear-selection":
+      selection = undefined;
+      flux = undefined;
+      renderSelection();
+      draw();
   }
 });
 
