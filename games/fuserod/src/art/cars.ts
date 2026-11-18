@@ -166,6 +166,7 @@ export function tail(
   width: number,
   color: string,
   model: number,
+  police = false,
 ) {
   g.save();
   g.translate(x, y);
@@ -201,6 +202,13 @@ export function tail(
   rect(g, "#b7bdaf", -9, -25, 18, 8);
   rect(g, "#373e46", -6, -22, 12, 2);
   stroke(g, steel(g, -17, -7), 5, "M-65 -16 Q-5 -9 64 -16");
+  if (police) {
+    fill(g, "#d9dcc8", "M-46 -43 Q0 -48 47 -43 L39 -36 -38 -36Z");
+    type(g, "PATROL", 0, -29, 6.5, "#f1edd8", "center");
+    rect(g, "#26323d", -19, -80, 38, 4);
+    rect(g, "#fc7065", -17, -85, 14, 5);
+    rect(g, "#85b5eb", 3, -85, 14, 5);
+  }
   g.restore();
 }
 

@@ -175,9 +175,11 @@ function repair(g: Brush) {
 
 export function partPicture(g: Brush, name: string) {
   const key = name.toLowerCase();
+  if (benchPart(g, key)) return;
   if (/tire|tyre|wheel|grip/.test(key)) tyre(g);
   else if (/gearbox|trans|shift/.test(key)) transmission(g);
   else if (/final|ratio|drive|differential/.test(key)) pinion(g);
   else if (/repair|condition|service|wrench/.test(key)) repair(g);
   else engine(g);
 }
+import { benchPart } from "./tools";

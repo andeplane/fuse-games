@@ -9,6 +9,7 @@ export function front(
   paint: string,
   model: number,
   yaw = 0,
+  police = false,
 ) {
   g.save();
   g.translate(x, y);
@@ -63,6 +64,13 @@ export function front(
   }
   stroke(g, "#cad7ca", 4, "M-77 -17 Q0 -7 77 -17");
   rect(g, "#dad1b9", -8, -19, 16, 6);
+  if (police) {
+    fill(g, "#e2e1cf", "M-46 -46 Q0 -53 46 -46 L35 -40 -35 -40Z");
+    rect(g, "#293342", -20, -80, 40, 5);
+    rect(g, "#fc6b64", -18, -86, 15, 6);
+    rect(g, "#86b9ec", 3, -86, 15, 6);
+    stroke(g, "#fbefcd", 1.7, "M-16 -85 h9 M5 -85 h9");
+  }
   rect(g, "#59606b", -5, -17, 10, 2);
   g.restore();
 }

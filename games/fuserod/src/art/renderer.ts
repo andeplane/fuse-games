@@ -1,5 +1,6 @@
 import { gauge, tail } from "./cars";
 import { front } from "./front";
+import { destination, type TownStopArt } from "./town-art";
 import {
   approach,
   boulder,
@@ -26,6 +27,7 @@ export { drawGarage, type GarageArt } from "./garage";
 export type { Route } from "./landscape";
 
 export interface RoadOpponent {
+  police?: boolean;
   /** Absolute distance along the course in metres. */
   distance: number;
   /** Lane centre in half-road widths, from -1 (left) to +1 (right). */
@@ -35,6 +37,7 @@ export interface RoadOpponent {
 }
 
 export interface RaceArt {
+  townStop?: TownStopArt;
   /** Upcoming and active route features, in metres and half-road widths. */
   features?: readonly RoadFeature[];
   /** Positive camera bank when climbing the right aqueduct slope, in degrees. */
@@ -213,10 +216,11 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       b = proj((i + 1) * segment - dist);
     if (route === "aqueduct") {
       for (const s of [-1, 1]) {
+        const foot = s < 0 ? -0.57 : 0.74;
         polygon(g, i % 4 === 0 ? "#827d86" : "#a29a98", [
-          edge(a, s),
+          edge(a, foot),
           y(a),
-          edge(b, s),
+          edge(b, foot),
           y(b),
           edge(b, s * 1.6),
           y(b) - b * 140,
@@ -244,13 +248,20 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       across(a, b, -1.2, -1, i % 3 === 0 ? "#bf9b7f" : "#bb9379");
       across(a, b, 1, 1.2, i % 3 === 0 ? "#bf9b7f" : "#bb9379");
     }
-    across(a, b, -1, 1, i % 2 === 0 ? "#525160" : "#555462");
-    // The two shoulders and worn centre stripe remain visible into a bend.
-    for (const s of [-1, 1]) {
-      across(a, b, s * 0.977, s * 0.998, "#d4bead");
-      if (i % 5 === 0) across(a, b, s * 0.64, s * 0.643, "#69636e");
+    if (route === "aqueduct") {
+      across(a, b, -0.57, 0.74, i % 3 === 0 ? "#8b8688" : "#90898a");
+      across(a, b, 0.257, 0.274, "#665e66");
+      across(a, b, 0.274, 0.328, "#595963");
+      across(a, b, 0.328, 0.343, "#aba29b");
+      if (i % 3 === 0) across(a, a + (b - a) * 0.035, -0.57, 0.74, "#716e77");
+    } else {
+      across(a, b, -1, 1, i % 2 === 0 ? "#525160" : "#555462");
+      for (const s of [-1, 1]) {
+        across(a, b, s * 0.977, s * 0.998, "#d4bead");
+        if (i % 5 === 0) across(a, b, s * 0.64, s * 0.643, "#69636e");
+      }
+      if (i % 4 < 2) across(a, b, -0.011, 0.011, "#f4c897");
     }
-    if (i % 4 < 2) across(a, b, -0.011, 0.011, "#f4c897");
     for (const f of features) {
       const at = (i + 0.5) * segment;
       if (at < f.start || at > f.end) continue;
@@ -353,6 +364,17 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       });
     }
   }
+  const stop = state.townStop;
+  if (stop) {
+    const z = stop.distance - dist;
+    if (z >= -4 && z <= 330) {
+      const p = proj(Math.max(2, z));
+      objects.push({
+        z,
+        draw: () => destination(g, edge(p, 1.48), y(p), p * 1.6, stop),
+      });
+    }
+  }
   for (const car of state.opponents) {
     const z = car.distance - dist;
     if (z < -1.5 || z > 340) continue;
@@ -365,8 +387,9 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
           edge(p, car.lateral),
           y(p),
           bottom * p * 0.45,
-          car.paint ?? "#5aa99f",
+          car.police ? "#303d4b" : (car.paint ?? "#5aa99f"),
           car.model ?? 0,
+          car.police,
         ),
     });
   }
@@ -457,9 +480,10 @@ function rearview(g: Brush, w: number, h: number, state: RaceArt) {
       px,
       y + mh * (0.6 + 0.41 * p),
       mw * 0.45 * p,
-      car.paint ?? "#5aa99f",
+      car.police ? "#303d4b" : (car.paint ?? "#5aa99f"),
       car.model ?? 0,
       (car.lateral - state.lateral) * 0.4,
+      car.police,
     );
   }
   g.restore();
