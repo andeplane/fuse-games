@@ -145,6 +145,7 @@ export class SimServer {
   private sceneBusy = false;
   private modelReady = false;
   private preparing: Promise<boolean> | undefined;
+  private channelTalk: AbortController | undefined;
   /** The join and the lines still due in the current hello. */
   private beats: SceneBeat[] = [];
   private stopped = false;
@@ -210,6 +211,7 @@ export class SimServer {
   stop() {
     this.stopped = true;
     this.abort.abort();
+    this.stopChannelTalk();
     for (const handle of this.timers) this.deps.scheduler.clearTimeout(handle);
     this.timers.clear();
   }
@@ -400,8 +402,11 @@ export class SimServer {
       this.numeric("333", channel.name, channel.topicBy, "1099000000");
     }
     this.names(channel.name);
-    if (ircEquals(channel.name, DDR_CHANNEL)) this.greet(channel);
-    this.bootTalk();
+    if (ircEquals(channel.name, DDR_CHANNEL)) {
+      this.channelTalk = new AbortController();
+      this.greet(channel, this.channelTalk.signal);
+      this.bootTalk();
+    }
   }
 
   private names(name: string) {
@@ -436,6 +441,7 @@ export class SimServer {
       return;
     }
     channel.members.delete(ircLower(this.nick));
+    if (ircEquals(channel.name, DDR_CHANNEL)) this.stopChannelTalk();
     this.send(
       `:${this.selfPrefix} PART ${channel.name}${reason ? ` :${reason}` : ""}`,
     );
@@ -543,15 +549,16 @@ export class SimServer {
       channel.history.splice(0, channel.history.length - HISTORY);
   }
 
-  private greet(channel: SimChannel) {
+  private greet(channel: SimChannel, signal: AbortSignal) {
     const ccbs = findRegular("CCBSbot");
     const last = latest();
     if (ccbs && last)
-      this.later(800, () =>
+      this.later(800, () => {
+        if (signal.aborted) return;
         this.send(
           `:${this.prefixOf(ccbs)} NOTICE ${this.nick} :Velkommen til ${channel.name}! Siste turnering: ${describe(last)}. Skriv !ccbs for kommandoer.`,
-        ),
-      );
+        );
+      });
   }
 
   /** A listed player comes into #ddrnorway. The people already there can then say hei. */
@@ -562,7 +569,8 @@ export class SimServer {
       nick: regular.nick,
       prefix: regular.prefix,
     });
-    this.send(`:${this.prefixOf(regular)} JOIN :${channel.name}`);
+    if (channel.members.has(ircLower(this.nick)))
+      this.send(`:${this.prefixOf(regular)} JOIN :${channel.name}`);
   }
 
   private onPrivmsg(target: string, text: string) {
@@ -602,6 +610,7 @@ export class SimServer {
     if (regular.away) {
       this.numeric("301", regular.nick, regular.away);
     }
+    if (regular.host === "players.ddr.no") this.arrive(regular);
     this.reply(regular, this.nick, [{ nick: this.nick, text: body }]);
   }
 
@@ -643,6 +652,10 @@ export class SimServer {
     history: readonly ChatTurn[],
   ) {
     const started = this.deps.now();
+    const signal =
+      ircEquals(target, DDR_CHANNEL) && this.channelTalk
+        ? this.channelTalk.signal
+        : this.abort.signal;
     void this.deps.brain
       .reply(
         {
@@ -651,30 +664,44 @@ export class SimServer {
           userNick: this.nick,
           history: [...history],
         },
-        this.abort.signal,
+        signal,
       )
       .then((text) => {
         const spoken = text ? scrubGuestNick(text, this.nick) : undefined;
-        if (!spoken || this.stopped) return;
+        if (!spoken || signal.aborted) return;
         const waited = this.deps.now() - started;
         this.later(
           Math.max(0, between(TYPING_MS, this.deps.random) - waited),
-          () => this.say(regular, target, spoken),
+          () => {
+            if (!signal.aborted) this.say(regular, target, spoken);
+          },
         );
       });
   }
 
+  private stopChannelTalk() {
+    this.channelTalk?.abort();
+    this.channelTalk = undefined;
+    for (const handle of [this.idleTimer, this.sceneTimer]) {
+      if (handle === undefined) continue;
+      this.deps.scheduler.clearTimeout(handle);
+      this.timers.delete(handle);
+    }
+    this.idleTimer = this.sceneTimer = undefined;
+    this.sceneBusy = this.modelReady = false;
+    this.preparing = undefined;
+    this.beats = [];
+  }
+
   /** Canned idling, or a model conversation once web-llm can answer. */
   private bootTalk() {
-    if (this.stopped || this.idleTimer || this.sceneTimer || this.sceneBusy)
-      return;
+    const signal = this.channelTalk?.signal;
+    if (!signal || this.idleTimer || this.sceneTimer || this.sceneBusy) return;
     if (this.deps.brain.usesModel()) {
-      this.preparing ??= this.deps.brain
-        .prepare(this.abort.signal)
-        .then((ready) => {
-          if (!ready) this.preparing = undefined;
-          return ready;
-        });
+      this.preparing ??= this.deps.brain.prepare(signal).then((ready) => {
+        if (!ready && !signal.aborted) this.preparing = undefined;
+        return ready;
+      });
       this.armScene();
       return;
     }
@@ -697,15 +724,18 @@ export class SimServer {
    * test can advance the clock instead of waiting on the event loop. The next gap starts after the line.
    */
   private playSceneLine() {
-    if (this.stopped || this.sceneBusy) return;
+    const signal = this.channelTalk?.signal;
+    if (!signal || this.sceneBusy) return;
     this.sceneBusy = true;
     const pending = this.modelReady
       ? Promise.resolve(true)
       : (this.preparing ?? Promise.resolve(false));
-    void pending.then((ready) => this.deliverScene(ready));
+    void pending.then((ready) => {
+      if (!signal.aborted) this.deliverScene(ready, signal);
+    });
   }
 
-  private deliverScene(ready: boolean) {
+  private deliverScene(ready: boolean, signal: AbortSignal) {
     if (this.stopped) {
       this.sceneBusy = false;
       return;
@@ -753,12 +783,12 @@ export class SimServer {
           company: beat.company,
           hint: beat.hint,
         },
-        this.abort.signal,
+        signal,
       )
       .then((text) => {
         this.later(0, () => {
+          if (signal.aborted) return;
           this.sceneBusy = false;
-          if (this.stopped) return;
           const spoken = text ? scrubGuestNick(text, this.nick) : undefined;
           if (
             spoken &&
@@ -770,6 +800,7 @@ export class SimServer {
       })
       .catch(() => {
         this.later(0, () => {
+          if (signal.aborted) return;
           this.sceneBusy = false;
           if (!this.stopped) this.armScene();
         });

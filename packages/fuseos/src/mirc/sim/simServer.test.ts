@@ -279,12 +279,67 @@ describe("simulated network", () => {
     expect(text(client.getState(), channelId("#ddrnorway"))).toContain(
       "<Bonzo> hei hei",
     );
-    client.submit(STATUS_ID, "/msg Snute hei");
+    const members = () =>
+      findWindow(client.getState(), channelId("#ddrnorway"))?.members;
+    expect(members()?.some((member) => member.nick === "Duckling")).toBe(false);
+    client.submit(STATUS_ID, "/msg Duckling hei");
     await flush();
     scheduler.advance(5000);
-    expect(text(client.getState(), queryId("Snute"))).toContain(
-      "<Snute> hei hei",
+    expect(members()?.some((member) => member.nick === "Duckling")).toBe(true);
+    expect(text(client.getState(), queryId("Duckling"))).toContain(
+      "<Duckling> hei hei",
     );
+  });
+
+  it("ends pending DDR talk on part and restarts only on rejoin", async () => {
+    let deliver: (line: string) => void = () => undefined;
+    const signals: AbortSignal[] = [];
+    class PendingBrain extends ScriptedBrain {
+      override reply(request: BrainRequest, signal?: AbortSignal) {
+        void super.reply(request);
+        if (signal) signals.push(signal);
+        return new Promise<string>((resolve) => {
+          deliver = resolve;
+        });
+      }
+    }
+    const brain = new PendingBrain();
+    brain.model = true;
+    const { client, scheduler } = setup(() => 0, brain);
+    const ddr = channelId("#ddrnorway");
+    client.join("#elsewhere");
+    scheduler.advance(120_000);
+    await posted(scheduler);
+    expect(brain.prepares).toBe(0);
+
+    client.join("#ddrnorway");
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests).toHaveLength(1);
+    client.submit(ddr, "/part");
+    scheduler.advance(0);
+    expect(signals[0]?.aborted).toBe(true);
+    scheduler.advance(120_000);
+    await posted(scheduler);
+    expect(brain.requests).toHaveLength(1);
+    expect(brain.prepares).toBe(1);
+
+    client.join("#ddrnorway");
+    scheduler.advance(0);
+    expect(brain.prepares).toBe(2);
+    deliver("A line from the previous visit");
+    await posted(scheduler);
+    expect(text(client.getState(), ddr).join("\n")).not.toContain(
+      "A line from the previous visit",
+    );
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests).toHaveLength(2);
+    expect(signals[1]?.aborted).toBe(false);
   });
 
   it("has a listed player join, RiChY say hei, and the joiner reply", async () => {
