@@ -1,5 +1,10 @@
 # FuseOS game icons
 
+Cyberfuse uses the three-quarter helmet and shoulders of its cyan operative,
+painted for `games/cyberfuse/src/art/cyberfuse-atlas.png`. The taskbar icon
+crops to the helmet so its luminous visor and crest survive at 16 px. Both
+sizes have a transparent background and a one-pixel dark outline.
+
 Fusero (2026-11-15): original code-drawn neon worm and rope from
 `games/fusero/art/icon.svg`, rasterized to 64×64 and 32×32 transparent RGBA PNGs.
 
