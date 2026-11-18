@@ -99,7 +99,7 @@ export function createArena(
     ready,
     render(view, alpha, selfId, lead) {
       if (!booted || destroyed) return;
-      const next = view.race;
+      const next = lead?.current ?? view.race;
       if (!next) return;
       const track = trackFor(next.trackName);
       let newTick = true;

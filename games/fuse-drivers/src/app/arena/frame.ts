@@ -26,6 +26,7 @@ export interface ArenaFrame {
  * one in the view, and may move each truck's pose (to hide a correction) before it is drawn.
  */
 export interface ArenaLead {
+  current?: RaceState;
   previous: RaceState | undefined;
   place?(slot: number, pose: TruckPose): TruckPose;
 }

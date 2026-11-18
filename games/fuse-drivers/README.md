@@ -10,6 +10,12 @@ For shared-screen play, the host ticks **Shared TV** in the room, under the invi
 
 Solo opens the same race setup as a room. Start with three CPU opponents, add or remove drivers, and choose one of eight opening courses in either direction. A series defaults to three races. Set one to eight races or choose Continuous to keep following the DOS calendar. Each race has four laps. Controls appear during every countdown.
 
+## Race rules and graphics
+
+The host chooses **Classic** or **Battle** for the series. Both use the same finish line, laps, nitro and speed shop. In Battle, everyone starts each race with a firebomb. Press **E** or tap **ITEM** to drop it where you are. The flashing ring marks the blast area before it slows nearby rivals. Drive through a crate with an empty item slot to collect another firebomb or a temporary shield. CPU drivers use the same items.
+
+Each screen chooses its own **Graphics** in the lobby. **Fuse** uses the neon stadium presentation and **Classic** uses the dirt circuit presentation. Both draw the same physical course, so players with different graphics can share a race.
+
 ## Between races
 
 The first truck through four laps wins. The other drivers are classified by their race progress and take a place prize. Cash bags add to the payout, and nitro pickups refill the truck during the race. Open **Speed shop** on the results screen to buy nitro bottles, shocks, tires, acceleration or top speed. Each player spends their own wallet. Drivers start with 25 nitros and two credits. When a purchase exceeds the available cash, one credit adds $200,000 to the wallet before the purchase. Unspent cash and nitros carry to the next race. The shop closes when the series finishes. **Next race** advances the campaign and carries each driver's truck to the next grid. **Back to lobby** starts a fresh campaign.

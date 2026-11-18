@@ -60,6 +60,7 @@ import {
   isBotId,
 } from "../game/index.js";
 import { createRaceOptions } from "./race-options.js";
+import { readStadiumTheme, storeStadiumTheme } from "./arena/theme.js";
 import { createPitShop } from "./pit-shop.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
 import type { RaceState } from "../game/sim/race.js";
@@ -163,9 +164,26 @@ const drivingGuide = {
   ],
 };
 
+const battleGuide = {
+  ...drivingGuide,
+  controls: [
+    ...drivingGuide.controls,
+    { keys: "E", action: "Use your Battle item" },
+  ],
+  touchControls: [
+    ...drivingGuide.touchControls,
+    { keys: "ITEM", action: "Use your Battle item" },
+  ],
+};
+
 function landing(): void {
   const card = createLandingCard({
-    howToPlay: drivingGuide,
+    howToPlay: {
+      ...battleGuide,
+      goal:
+        drivingGuide.goal +
+        " In Battle, drop a timed firebomb or activate a shield. Drive through an item crate to refill.",
+    },
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE DRIVERS",
@@ -195,7 +213,10 @@ function landing(): void {
 }
 
 /** The keys a driver holds, read every frame rather than on each event, so a held turn keeps turning. */
-function keyboardControls(blocked: () => boolean): {
+function keyboardControls(
+  blocked: () => boolean,
+  itemChanged: () => void,
+): {
   read: () => TruckInput;
   clear: () => void;
   stop: () => void;
@@ -210,10 +231,13 @@ function keyboardControls(blocked: () => boolean): {
     )
       return;
     down.add(key(event));
+    if (key(event) === "e" && !event.repeat) itemChanged();
     if ([" ", "arrowleft", "arrowright", "arrowup"].includes(key(event)))
       event.preventDefault();
   };
-  const onUp = (event: KeyboardEvent) => down.delete(key(event));
+  const onUp = (event: KeyboardEvent) => {
+    if (down.delete(key(event)) && key(event) === "e") itemChanged();
+  };
   const clear = () => down.clear();
   addEventListener("keydown", onDown);
   addEventListener("keyup", onUp);
@@ -226,7 +250,7 @@ function keyboardControls(blocked: () => boolean): {
       gas: down.has("arrowup") || down.has("w"),
       nitro: down.has("shift") || down.has(" "),
       brake: false,
-      item: false,
+      item: down.has("e"),
       itemAlt: false,
     }),
     stop: () => {
@@ -291,8 +315,18 @@ function room(solo: boolean): void {
     raceOptions.update(next, true);
     return true;
   }
-  const raceOptions = createRaceOptions((track, races) =>
-    changeSettings({ track, races }),
+  const previewTheme = query.get("theme");
+  let stadiumTheme =
+    previewTheme === "classic" || previewTheme === "fuse"
+      ? previewTheme
+      : readStadiumTheme(store);
+  const raceOptions = createRaceOptions(
+    changeSettings,
+    stadiumTheme,
+    (theme) => {
+      stadiumTheme = theme;
+      storeStadiumTheme(store, theme);
+    },
   );
   const lobby = el("section", "", "fd-lobby");
   if (!solo)
@@ -404,6 +438,21 @@ function room(solo: boolean): void {
         },
         onRelease: () => (touch.right = false),
       },
+      {
+        label: "ITEM",
+        keys: "E",
+        title: "Use your Battle item",
+        onPress: () => {
+          if (!modalInput.blocked()) {
+            touch.item = true;
+            drive();
+          }
+        },
+        onRelease: () => {
+          touch.item = false;
+          drive();
+        },
+      },
     ] as const,
   });
   const roundControls = createRoundControls(drivingGuide);
@@ -430,7 +479,11 @@ function room(solo: boolean): void {
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
-      (await import("./attract.js")).createAttract(host),
+      (await import("./attract.js")).createAttract(
+        host,
+        undefined,
+        () => stadiumTheme,
+      ),
     element: lobby,
     roster,
     capacity: 5,
@@ -495,6 +548,12 @@ function room(solo: boolean): void {
       hud.textContent = mine
         ? `${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
         : lap;
+      const battle = latest?.race?.battle;
+      const held = mine && battle?.slots[mine.truck]?.held;
+      pad.buttons[4].hidden = !battle;
+      pad.buttons[4].disabled = !held;
+      if (mine && battle)
+        hud.textContent += "   ITEM " + (held?.toUpperCase() ?? "EMPTY");
     }
     const result = model.results;
     const seat =
@@ -551,6 +610,12 @@ function room(solo: boolean): void {
     roundControls.update({
       round: latest?.matchId ?? "",
       visible: model.screen === "race" && latest?.race?.phase === "countdown",
+      controls: latest?.race?.battle
+        ? battleGuide.controls
+        : drivingGuide.controls,
+      touchControls: latest?.race?.battle
+        ? battleGuide.touchControls
+        : drivingGuide.touchControls,
       touch: touchDevice.matches,
       spectator: !model.lobby.own,
       display,
@@ -576,6 +641,7 @@ function room(solo: boolean): void {
         (requestedSettings &&
           requestedSettings.track === settings.track &&
           requestedSettings.races === settings.races &&
+          requestedSettings.mode === settings.mode &&
           requestedSettings.display === settings.display)
       )
         requestedSettings = undefined;
@@ -639,7 +705,25 @@ function room(solo: boolean): void {
 
   const board = keyboardControls(
     () => latest?.phase !== "running" || modalInput.blocked(),
+    drive,
   );
+  function drive() {
+    if (display || !latest) return;
+    const keys = board.read();
+    runtime.drive(
+      modalInput.blocked()
+        ? NEUTRAL_INPUT
+        : {
+            left: keys.left || touch.left,
+            right: keys.right || touch.right,
+            gas: !!(keys.gas || touch.gas),
+            brake: false,
+            nitro: keys.nitro || touch.nitro,
+            item: !!(latest.race?.battle && (keys.item || touch.item)),
+            itemAlt: false,
+          },
+    );
+  }
   if (probe) {
     Reflect.set(window, "__driversRaceProbe", () => {
       const state = runtime.roomState();
@@ -647,6 +731,10 @@ function room(solo: boolean): void {
       return {
         phase: state?.race?.phase,
         track: state?.race?.trackName,
+        mode: state?.settings.mode,
+        theme: stadiumTheme,
+        held: state?.race?.battle?.slots.map((slot) => slot.held),
+        bombs: state?.race?.battle?.bombs.length,
         tick: state?.tick,
         hashChecks: metrics.hashChecks,
         mismatches: metrics.mismatches,
@@ -715,6 +803,7 @@ function room(solo: boolean): void {
     const drawArena = !viewer.shared || display || solo;
     if (!arena && drawArena)
       arena = mountArena(canvas, {
+        theme: () => stadiumTheme,
         onReady: () => {
           canvas.dataset.ready = "true";
         },
@@ -725,20 +814,7 @@ function room(solo: boolean): void {
           say("The arena could not start", "error");
         },
       });
-    if (!display)
-      runtime.drive(
-        modalInput.blocked()
-          ? NEUTRAL_INPUT
-          : {
-              left: board.read().left || touch.left,
-              right: board.read().right || touch.right,
-              gas: !!(board.read().gas || touch.gas),
-              brake: false,
-              nitro: board.read().nitro || touch.nitro,
-              item: false,
-              itemAlt: false,
-            },
-      );
+    drive();
     const room = runtime.roomState();
     const timing = runtime.frameTiming();
     if (room && drawArena && !document.hidden) {
@@ -787,11 +863,12 @@ function room(solo: boolean): void {
           });
         }
         arena?.render(
-          { ...latest, race: lead.race },
+          latest,
           lead.alpha,
           runtime.self,
           {
             previous: lead.previous,
+            current: lead.race,
             place: (slot, pose) =>
               slot === own ? pose : smoother.place(slot, pose),
           },

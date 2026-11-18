@@ -83,6 +83,20 @@ test("recoveries and rollbacks reset cue edges and never replay a contact", () =
   assert.equal(cues.length, 1);
 });
 
+test("the firebomb sounds on detonation once, even when a frame skips its first flame tick", () => {
+  const { speaker, cues, race } = fixture();
+  const battle = {
+    slots: [],
+    crates: [],
+    bombs: [{ owner: 1, x: 0, y: 0, detonateAt: 42, expiresAt: 54 }],
+  };
+  speaker.observe("m1", { ...race, battle }, 0, 0);
+  speaker.observe("m1", { ...race, battle, tick: 44 }, 0, 0);
+  speaker.observe("m1", { ...race, battle, tick: 44 }, 0, 0);
+  speaker.observe("m1", { ...race, battle, tick: 45 }, 0, 0);
+  assert.equal(cues.length, 1);
+});
+
 test("self occupancy is quiet, cash pickup sounds, leaving stops the motor", () => {
   const { speaker, cues, motor, truck, race } = fixture();
   speaker.observe("m1", race, 0, 0);
