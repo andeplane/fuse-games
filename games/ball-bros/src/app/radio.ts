@@ -51,8 +51,8 @@ export function createRadio(
           : player.volume),
     ),
   );
-  volume.setAttribute("aria-label", "Music volume");
-  volumeControl.textContent = "Music volume";
+  volume.setAttribute("aria-label", "Radio volume");
+  volumeControl.textContent = "Radio volume";
   volumeControl.append(volume);
   player.setVolume(Number(volume.value) / 100);
   volume.oninput = () => {

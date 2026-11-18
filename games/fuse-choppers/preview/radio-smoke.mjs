@@ -62,7 +62,7 @@ try {
   await desktop
     .getByRole("button", { name: "Player options", exact: true })
     .click();
-  await desktop.getByLabel("Music volume").fill("35");
+  await desktop.getByLabel("Radio volume").fill("35");
   await desktop.reload();
   await show(desktop);
   assert.equal(await desktop.getByLabel("Radio track").inputValue(), "4");
@@ -70,7 +70,7 @@ try {
   await desktop
     .getByRole("button", { name: "Player options", exact: true })
     .click();
-  assert.equal(await desktop.getByLabel("Music volume").inputValue(), "35");
+  assert.equal(await desktop.getByLabel("Radio volume").inputValue(), "35");
   await desktop.getByRole("button", { name: "Back", exact: true }).click();
   await desktop.getByRole("button", { name: "Radio", exact: true }).click();
   await desktop.getByRole("button", { name: "PLAY", exact: true }).waitFor();

@@ -107,8 +107,8 @@ export function createChopperRadio(options: {
   volume.min = "0";
   volume.max = "100";
   volume.value = String(Math.round(level * 100));
-  volume.setAttribute("aria-label", "Music volume");
-  label.textContent = "MUSIC VOLUME";
+  volume.setAttribute("aria-label", "Radio volume");
+  label.textContent = "RADIO VOLUME";
   label.append(volume);
   volume.oninput = () => {
     if (options.muted || disposed) return;

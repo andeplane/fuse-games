@@ -46,6 +46,7 @@ test("player options restore music volume without starting playback, and preview
   const player = new Player();
   const radio = createRadio(document, "/", player, { store: preferences });
   const slider = radio.volumeControl.querySelector("input")!;
+  assert.equal(slider.getAttribute("aria-label"), "Radio volume");
   slider.value = "37";
   slider.dispatchEvent(new window.Event("input"));
   assert.equal(player.plays, 0);
