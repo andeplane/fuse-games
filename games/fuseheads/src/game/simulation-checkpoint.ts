@@ -1,5 +1,6 @@
 import { getLevel, levelCount } from "../levels/index.js";
 import { validHazards } from "./hazards.js";
+import { validRulerState } from "./rulers.js";
 import type { World } from "./simulation.js";
 
 const plain = (v: unknown): v is Record<string, unknown> =>
@@ -133,7 +134,9 @@ export function validWorld(raw: unknown): raw is World {
   for (const e of raw.enemies) {
     if (
       !plain(e) ||
-      !exact(e, enemyFields) ||
+      !(e.id === -1
+        ? exact(e, [...enemyFields, "ruler"]) && validRulerState(e.ruler)
+        : exact(e, enemyFields)) ||
       !body(e) ||
       !integer(e.id, -1, raw.nextPest - 1) ||
       ids.has(e.id) ||

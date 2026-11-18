@@ -1,5 +1,11 @@
 import { getLevel, tileAt } from "../levels/index.js";
 import {
+  bonkRuler,
+  createRuler,
+  stepRuler,
+  type RulerState,
+} from "./rulers.js";
+import {
   blastBat,
   createHazards,
   stepHazards,
@@ -51,6 +57,7 @@ export interface Player extends Body {
   powerTicks: number;
 }
 export interface Enemy extends Body {
+  ruler?: RulerState;
   id: number;
   type: number;
   stun: number;
@@ -115,6 +122,7 @@ export function createWorld(
   pack: Pack = "original",
 ): World {
   const level = levelFor({ pack, levelIndex });
+  const ruler = createRuler(level);
   return {
     pack,
     levelIndex,
@@ -131,26 +139,7 @@ export function createWorld(
           previous?.players.find((p) => p.slot === slot),
         ),
       ),
-    enemies: level.boss
-      ? [
-          {
-            id: -1,
-            type: level.boss.spriteId,
-            x: level.boss.x + 48,
-            y: level.boss.y + 96,
-            vx: 0,
-            vy: 0,
-            grounded: false,
-            facing: -1,
-            stun: 0,
-            anger: 0,
-            hp: level.boss.hp,
-            kicked: false,
-            phase: 0,
-            variation: 0,
-          },
-        ]
-      : [],
+    enemies: ruler ? [ruler] : [],
     nextPest: 0,
     nextSpawnAt: level.pests[0]?.spacing ?? 0,
     tnt: previous ? Math.min(3, previous.tnt + (level.stage === 6 ? 1 : 0)) : 3,
@@ -235,6 +224,10 @@ function bonk(world: World, level: Level, column: number, row: number) {
   }
   if (code === 8) shiftBlock(world, level, column, row, -1);
   for (const enemy of world.enemies) {
+    if (enemy.ruler) {
+      bonkRuler(enemy, column, row, blast);
+      continue;
+    }
     if (
       !enemy.grounded ||
       (!blast &&
@@ -515,6 +508,11 @@ function pestMotion(world: World, level: Level, e: Enemy, speed: number) {
   e.vx = e.facing * speed;
 }
 function enemyStep(world: World, level: Level, enemy: Enemy) {
+  if (enemy.ruler) {
+    if (enemy.hp > 0)
+      stepRuler(world, level, enemy, (p) => damage(world, level, p));
+    return;
+  }
   const spec = level.pests[enemy.id];
   if (enemy.kicked) {
     enemy.x += enemy.vx;
@@ -529,18 +527,10 @@ function enemyStep(world: World, level: Level, enemy: Enemy) {
   const speed =
     (Math.abs(spec?.speed ?? 24) + enemy.anger * (spec?.temper ?? 5)) *
     SIXTEENTH;
-  const boss = enemy.id === -1;
-  const height = boss ? 96 : ENEMY_HEIGHT,
-    radius = boss ? 36 : ENEMY_RADIUS;
-  if (boss && !enemy.stun && enemy.grounded) {
-    if (world.tick % 70 === 0) enemy.vy = -12;
-    const target = world.players.find((p) => p.lives && p.respawn === "active");
-    if (target) enemy.facing = target.x < enemy.x ? -1 : 1;
-  }
-  if (walk(world, level, enemy, radius, height))
+  if (walk(world, level, enemy, ENEMY_RADIUS, ENEMY_HEIGHT))
     enemy.facing = enemy.facing === 1 ? -1 : 1;
   enemy.y += enemy.vy;
-  floorMotion(world, level, enemy, radius);
+  floorMotion(world, level, enemy, ENEMY_RADIUS);
   pestMotion(world, level, enemy, speed);
   if (enemy.x - 16 < -24 || enemy.x - 16 > 639) {
     const left = enemy.x < 0;
@@ -563,10 +553,10 @@ function enemyStep(world: World, level: Level, enemy: Enemy) {
     if (
       !p.lives ||
       p.respawn !== "active" ||
-      Math.abs(enemy.x - p.x) >= xLimit + (boss ? 32 : 0) ||
+      Math.abs(enemy.x - p.x) >= xLimit ||
       enemy.y - (enemy.stun ? 0 : 3) <=
         p.y - PLAYER_HEIGHT + (enemy.stun ? 10 : 15) ||
-      enemy.y - height + (enemy.stun ? 5 : 10) >= p.y - 5
+      enemy.y - ENEMY_HEIGHT + (enemy.stun ? 5 : 10) >= p.y - 5
     )
       continue;
     if (enemy.stun) {
