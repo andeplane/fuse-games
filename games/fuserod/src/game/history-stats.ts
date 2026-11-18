@@ -36,7 +36,7 @@ export function parseFuserodStats(
     !validVariant(route, variant) ||
     !integer(distance, 0, Math.ceil(metres(finishUnits(route, variant)))) ||
     distance !== player.matchScoreUnits ||
-    !integer(raceTicks, 1, MAX_RACE_TICKS)
+    !integer(raceTicks, 0, MAX_RACE_TICKS)
   )
     return;
   return { ...player, route, variant, distance, raceTicks };

@@ -202,13 +202,15 @@ test("all five event kinds use their own distance, field, qualifier deadline and
 });
 test("crossing the center line on a qualifying run loses the round, freezes results and round-trips the checkpoint", () => {
   const room = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  run(room, room.race!.treeTicks - 1);
+  const green = room.tick + 1;
   foldTick(
     room,
     "a",
     new Map([
       [
         "a",
-        { generation: 1, entries: [[4, 2, 0, "heat", true, false, -1, 1]] },
+        { generation: 1, entries: [[4, green, 0, "heat", true, false, -1, 1]] },
       ],
     ]),
   );
@@ -223,6 +225,7 @@ test("a bracket racer who beats the declared time loses the heat even when cross
     variant: "grudge",
     dialInTicks: 750,
   });
+  run(r, r.race!.treeTicks - 1);
   while (r.stage === "running") {
     const driver = r.race!.racers[0]!;
     const gear = driver.motor.gear;
@@ -282,5 +285,71 @@ test("high-RPM rivals can lose a heat to a seeded gearbox failure", () => {
   while (r.stage === "running") run(r, 1);
   assert.equal(r.race!.racers[1]!.motor.broken, true);
   assert.equal(r.race!.winnerId, "a");
+  restore(r);
+});
+test("sanctioned tree permits neutral revs, braked preselection and an on-green launch", () => {
+  const r = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  const press = (throttle: boolean, brake: boolean, shift: -1 | 0 | 1) => {
+    const at = r.tick + 1;
+    foldTick(
+      r,
+      "a",
+      new Map([
+        [
+          "a",
+          {
+            generation: 1,
+            entries: [[at + 4, at, 0, "heat", throttle, brake, 0, shift]],
+          },
+        ],
+      ]),
+    );
+  };
+  press(true, false, 0);
+  run(r, 10);
+  assert.equal(r.race!.racers[0]!.falseStart, false);
+  assert.ok(r.race!.racers[0]!.motor.rpm > 1500);
+  press(true, true, 1);
+  run(r, 7);
+  assert.equal(fuserodView(r).racers[0]!.gear, 1);
+  restore(r);
+  run(r, r.race!.treeTicks - r.race!.elapsed);
+  press(true, false, 0);
+  run(r, 20);
+  assert.equal(r.stage, "running");
+  assert.ok(r.race!.racers[0]!.motor.position > 0);
+});
+test("an unbraked launch on a red bracket lane disqualifies before green and settles a recoverable zero-duration heat", () => {
+  const r = setup(true, {
+    ...DEFAULT_SETTINGS,
+    variant: "grudge",
+    dialInTicks: 340,
+  });
+  foldTick(
+    r,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[4, 2, 0, "heat", true, false, 0, 1]] }],
+    ]),
+  );
+  run(r, 6);
+  assert.equal(r.stage, "over");
+  assert.ok(r.race!.racers[0]!.falseStart);
+  assert.equal(r.race!.winnerId, "bot:1");
+  assert.equal(r.history[0]!.result.roundDuration?.ticks, 0);
+  restore(r);
+});
+test("throttle alone launches and shifts an automatic in a standard street head-to-head", () => {
+  const r = setup(false, { ...DEFAULT_SETTINGS, automatic: true });
+  foldTick(
+    r,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[4, 2, 0, "heat", true, false, 0, 0]] }],
+    ]),
+  );
+  while (r.stage === "running") run(r, 1);
+  assert.equal(r.race!.winnerId, "a");
+  assert.equal(r.race!.racers[0]!.motor.gear, 3);
   restore(r);
 });

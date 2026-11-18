@@ -8,7 +8,7 @@ export function raceResult(
   finishers: string[],
 ): MatchResult<FuserodStats> {
   const { route, variant } = race.settings;
-  const raceTicks = race.elapsed - race.treeTicks;
+  const raceTicks = Math.max(0, race.elapsed - race.treeTicks);
   const positions = rank(race);
   return {
     matchId,

@@ -178,7 +178,7 @@ export function foldTick(
             round: 1,
             roundDuration: {
               version: 1,
-              ticks: race.elapsed - race.treeTicks,
+              ticks: Math.max(0, race.elapsed - race.treeTicks),
             },
           },
         },

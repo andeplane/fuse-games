@@ -21,6 +21,7 @@ import {
   seedForMatch,
   treeDuration,
   retired,
+  soloFinish,
   greenTick,
   brokeOut,
   raceLimit,
@@ -72,7 +73,7 @@ function decodeSeat(v: unknown): SeatRecord | undefined {
   };
 }
 function decodeRacer(v: unknown): Racer | undefined {
-  if (!object(v) || Object.keys(v).length !== 11) return;
+  if (!object(v) || Object.keys(v).length !== 13) return;
   const {
     id,
     name,
@@ -84,6 +85,8 @@ function decodeRacer(v: unknown): Racer | undefined {
     bank,
     crashed,
     laneFault,
+    falseStart,
+    stagedFirst,
     finishTicks,
   } = v;
   if (
@@ -96,6 +99,8 @@ function decodeRacer(v: unknown): Racer | undefined {
     !integer(bank, -48, 30) ||
     typeof crashed !== "boolean" ||
     typeof laneFault !== "boolean" ||
+    typeof falseStart !== "boolean" ||
+    typeof stagedFirst !== "boolean" ||
     !integer(finishTicks, 0, MAX_RACE_TICKS) ||
     !object(input) ||
     Object.keys(input).length !== 4 ||
@@ -122,6 +127,8 @@ function decodeRacer(v: unknown): Racer | undefined {
     bank,
     crashed,
     laneFault,
+    falseStart,
+    stagedFirst,
     finishTicks,
   };
 }
@@ -171,7 +178,7 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
       r.motor.gear >
         motorGears(r.bot ? { gearbox: settings.opponent } : settings) ||
       (settings.variant === "timed" && r.bot) ||
-      (r.laneFault &&
+      ((r.laneFault || r.falseStart || r.stagedFirst) &&
         settings.variant !== "timed" &&
         settings.variant !== "grudge")
     )
@@ -211,24 +218,29 @@ function decodeRace(v: unknown, room: FuserodRoom): Race | undefined {
       (r.finishTicks &&
         (retired(r) || r.finishTicks > elapsed - greenTick(race, r))) ||
       (elapsed <= greenTick(race, r) &&
-        (r.motor.steps !== 0 || r.motor.position !== 0))
+        (r.motor.position !== 0 || (r.bot && r.motor.steps !== 0)))
     )
       return;
   }
   const eligible = racers.filter((r) => !retired(r) && !brokeOut(race, r));
+  const original = soloFinish(race);
   const winner = eligible.find((r) => r.id === winnerId);
   const finished = eligible.some((r) => r.finishTicks > 0);
   const forfeit = racers.length > 1 && eligible.length === 1;
   if (
     elapsed > treeTicks + raceLimit(race) ||
-    (winnerId !== null && (!winner || (!winner.finishTicks && !forfeit))) ||
-    (winnerId !== null) !== (police.phase !== 4 && (finished || forfeit)) ||
+    (original && police.phase !== 4 && winnerId !== original) ||
+    (!original &&
+      winnerId !== null &&
+      (!winner || (!winner.finishTicks && !forfeit))) ||
+    (winnerId !== null) !==
+      (police.phase !== 4 && (finished || forfeit || !!original)) ||
     ended !==
       (!!winnerId ||
         police.phase === 4 ||
         !eligible.length ||
         elapsed === treeTicks + raceLimit(race)) ||
-    (ended && elapsed <= treeTicks)
+    (ended && elapsed <= treeTicks && !racers.some((r) => r.falseStart))
   )
     return;
   return race;

@@ -40,6 +40,7 @@ export class FuserodRuntime extends RoomRuntime<
           !r.motor.broken &&
           !r.crashed &&
           !r.laneFault &&
+          !r.falseStart &&
           !r.finishTicks,
       )
     )

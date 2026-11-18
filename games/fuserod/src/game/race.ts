@@ -8,7 +8,9 @@ import {
   type MotorTune,
 } from "../motor/index.js";
 import {
+  bracketAdvance,
   bracketDelay,
+  finishAhead,
   policeStep,
   recoveredRivalControls,
   type PatrolState,
@@ -42,6 +44,8 @@ export interface Racer {
   input: DriveInput;
   crashed: boolean;
   laneFault: boolean;
+  falseStart: boolean;
+  stagedFirst: boolean;
   /** 20Hz ticks after this driver's green, or zero before crossing. */
   finishTicks: number;
 }
@@ -104,6 +108,8 @@ export function createRace(
       input: released(),
       crashed: false,
       laneFault: false,
+      falseStart: false,
+      stagedFirst: false,
       finishTicks: 0,
     })),
   };
@@ -121,7 +127,8 @@ export function treeDuration(
 }
 export const raceLimit = (race: Race) =>
   race.settings.variant === "timed" ? 1600 : MAX_RACE_TICKS;
-export const retired = (r: Racer) => r.crashed || r.laneFault || r.motor.broken;
+export const retired = (r: Racer) =>
+  r.crashed || r.laneFault || r.falseStart || r.motor.broken;
 function tuneFor(race: Race, driver: Racer): MotorTune {
   const g = race.settings.opponent;
   return driver.bot ? { power: g, gearbox: g, tires: g } : race.settings;
@@ -216,9 +223,58 @@ export function rank(race: Race): Racer[] {
       a.slot - b.slot,
   );
 }
+/** Race kind 2/4 tests actual wheel motion while the lane is red. Neutral revs and a braked preselection are safe. */
+function stageDriver(race: Race, driver: Racer): void {
+  if (
+    driver.bot ||
+    retired(driver) ||
+    (race.settings.variant !== "grudge" && race.settings.variant !== "timed")
+  )
+    return;
+  const control = driver.input;
+  if (control.shift) driver.stagedFirst = control.shift > 0;
+  const moving =
+    control.throttle &&
+    !control.brake &&
+    (driver.stagedFirst || race.settings.automatic);
+  // A stationary driver can preselect first with the clutch held. Releasing with throttle engages it.
+  const motor = advanceMotor(
+    { ...driver.motor, pendingShift: 0 },
+    {
+      throttle: control.throttle,
+      brake: false,
+      steer: 0,
+      shift: moving ? 1 : 0,
+    },
+    { ...race.settings, automatic: false },
+  );
+  driver.motor = { ...motor, position: 0 };
+  driver.falseStart = moving && motor.speed > 0;
+  driver.input.shift = 0;
+}
+
+/** In a driver-versus-AI race the DOS finish routine judges both cars at the same road frame. */
+export function soloFinish(race: Race): string | undefined {
+  if (race.racers.length !== 2 || !race.racers.some((r) => r.finishTicks))
+    return;
+  const human = race.racers.find((r) => !r.bot),
+    rival = race.racers.find((r) => r.bot);
+  if (!human || !rival || retired(human) || retired(rival)) return;
+  let won = finishAhead(human.motor.position, rival.motor.position);
+  if (race.settings.variant === "grudge" && race.settings.dialInTicks) {
+    const elapsed =
+      human.finishTicks || Math.max(0, race.elapsed - greenTick(race, human));
+    won = bracketAdvance(
+      won,
+      Math.trunc(race.settings.dialInTicks / 2),
+      Math.trunc(elapsed / 2),
+    );
+  }
+  return won ? human.id : rival.id;
+}
 export function advanceRace(race: Race): void {
   race.elapsed++;
-  if (race.elapsed <= race.treeTicks) return;
+
   const { route, variant } = race.settings;
   const finish = finishUnits(route, variant);
   const previous = race.racers.map((r) => r.motor);
@@ -243,12 +299,11 @@ export function advanceRace(race: Race): void {
   );
   let best: { driver: Racer; remaining: number; travel: number } | undefined;
   for (const [i, driver] of race.racers.entries()) {
-    if (
-      retired(driver) ||
-      driver.finishTicks ||
-      race.elapsed <= greenTick(race, driver)
-    )
+    if (retired(driver) || driver.finishTicks) continue;
+    if (race.elapsed <= greenTick(race, driver)) {
+      stageDriver(race, driver);
       continue;
+    }
     const old = driver.motor;
     const oldX = driver.x;
     const tune = tuneFor(race, driver);
@@ -258,7 +313,11 @@ export function advanceRace(race: Race): void {
       old.speed,
       metres(old.position),
     ).shoulder;
-    driver.motor = advanceMotor(old, { ...controls[i]!, shoulder }, tune);
+    const control = controls[i]!;
+    const shift =
+      control.shift || (driver.stagedFirst && old.gear === 0 ? 1 : 0);
+    driver.motor = advanceMotor(old, { ...control, shift, shoulder }, tune);
+    if (driver.motor.gear > 0 || control.shift < 0) driver.stagedFirst = false;
     driver.input.shift = 0;
     const travel = driver.motor.position - old.position;
     const bend = roadCurve(route, old.position);
@@ -351,7 +410,8 @@ export function advanceRace(race: Race): void {
       rival.motor.position,
     );
   }
-  if (best && race.police.phase !== 4) race.winnerId = best.driver.id;
+  if (race.police.phase !== 4)
+    race.winnerId = soloFinish(race) ?? best?.driver.id ?? null;
   const remaining = race.racers.filter(
     (r) => !retired(r) && !brokeOut(race, r),
   );
@@ -379,13 +439,14 @@ export function racerViews(race: Race) {
     speed: r.motor.speed * 1.609344,
     lateral: r.x / 1000,
     curve: roadCurve(race.settings.route, r.motor.position) / 500,
-    gear: r.motor.gear,
+    gear: r.motor.gear || Number(r.stagedFirst),
     rpm: r.motor.rpm,
     broken: r.motor.broken,
     crashed: r.crashed,
     bank: r.bank,
     police: race.police.phase >= 2 && r === race.racers.find((p) => p.bot),
     laneFault: r.laneFault,
+    falseStart: r.falseStart,
     breakout: brokeOut(race, r),
     elapsedTicks:
       r.finishTicks || Math.max(0, race.elapsed - greenTick(race, r)),
