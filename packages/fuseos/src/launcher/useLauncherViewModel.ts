@@ -14,13 +14,10 @@ import { useWindowCommands } from "../windows/useWindowCommands";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 
 import { LauncherDepsContext } from "./launcherDepsContext";
-import {
-  fakeDiskUsage,
-  formatLastPlayed,
-  LAUNCHER_TITLE,
-} from "./launcherFacts";
+import { fakeDiskUsage, LAUNCHER_TITLE } from "./launcherFacts";
 
 export type LauncherTab = "games" | "friends" | "servers" | "news";
+export type LauncherSort = "lastPlayed" | "name";
 
 export const LAUNCHER_TABS: readonly { id: LauncherTab; label: string }[] = [
   { id: "games", label: "My Games" },
@@ -42,12 +39,12 @@ export type LauncherGame = {
   screenshotUrls: readonly string[];
   /** The game's own page, for the LINKS column. */
   url: string;
+  lastPlayed: number | undefined;
 };
 
 export type LauncherDetails = {
   status: string;
   diskUsage: string;
-  lastPlayed: string;
 };
 
 /** The pages Fusteam draws itself; the other tabs open programs of their own. */
@@ -72,6 +69,9 @@ export type LauncherViewModel = {
   openFriends: () => void;
   openLeaderboard: () => void;
   games: LauncherGame[];
+  now: number;
+  sort: LauncherSort;
+  setSort: (sort: LauncherSort) => void;
   selected: LauncherGame | undefined;
   details: LauncherDetails | undefined;
   select: (gameId: string) => void;
@@ -102,9 +102,19 @@ export function useLauncherViewModel(): LauncherViewModel {
   const { viewport } = useContext(WindowManagerContext);
   const { launch } = useFuseGameLauncher();
 
-  const games = useMemo<LauncherGame[]>(
-    () =>
-      registry.games.map((game) => ({
+  const [sort, setSort] = useState<LauncherSort>("lastPlayed");
+  const [lastPlayed, setLastPlayed] = useState(() =>
+    launcherDeps.lastPlayed.get(),
+  );
+  const games = useMemo<LauncherGame[]>(() => {
+    return [...registry.games]
+      .sort((a, b) => {
+        if (sort === "name") return a.name.localeCompare(b.name);
+        const first = lastPlayed[a.id] ?? -Infinity;
+        const second = lastPlayed[b.id] ?? -Infinity;
+        return first === second ? 0 : second - first;
+      })
+      .map((game) => ({
         id: game.id,
         name: game.name,
         tagline: game.tagline,
@@ -114,18 +124,14 @@ export function useLauncherViewModel(): LauncherViewModel {
         screenshotUrl: registry.screenshotUrl(game),
         screenshotUrls: registry.screenshotUrls(game),
         url: registry.embedUrl(game),
-      })),
-    [registry],
-  );
+        lastPlayed: lastPlayed[game.id],
+      }));
+  }, [registry, sort, lastPlayed]);
 
   const [tab, setTab] = useState<LauncherPage>("games");
   const [selectedId, setSelectedId] = useState<string | undefined>(
     games[0]?.id,
   );
-  const [lastPlayed, setLastPlayed] = useState(() =>
-    launcherDeps.lastPlayed.get(),
-  );
-
   const index = games.findIndex((game) => game.id === selectedId);
   const selected = games[index];
 
@@ -214,10 +220,6 @@ export function useLauncherViewModel(): LauncherViewModel {
     ? {
         status: "Ready to play",
         diskUsage: fakeDiskUsage(selected.id),
-        lastPlayed: formatLastPlayed(
-          lastPlayed[selected.id],
-          desktopDeps.now(),
-        ),
       }
     : undefined;
 
@@ -227,6 +229,9 @@ export function useLauncherViewModel(): LauncherViewModel {
     openFriends,
     openLeaderboard,
     games,
+    now: desktopDeps.now(),
+    sort,
+    setSort,
     selected,
     details,
     select,
