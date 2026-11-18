@@ -16,6 +16,7 @@ import {
   type FuseDriversRoom,
   type FuseDriversSettings,
 } from "./rules.js";
+import type { FinishedRace } from "./result.js";
 import type { RaceState } from "./sim/race.js";
 
 export interface FuseDriversDriverView {
@@ -36,6 +37,7 @@ export interface FuseDriversDriverView {
 export interface FuseDriversView {
   matchId: string;
   finishTick: number;
+  recentFinishes: readonly FinishedRace[];
   campaignIndex: number;
   garage: Readonly<FuseDriversRoom["garage"]>;
   /** The log tick, which is this game's clock. */
@@ -57,6 +59,7 @@ export function fuseDriversView(room: FuseDriversRoom): FuseDriversView {
   return {
     matchId: room.matchId,
     finishTick: room.finishTick,
+    recentFinishes: room.recentFinishes,
     campaignIndex: room.campaignIndex,
     garage: room.garage,
     tick: room.tick,
