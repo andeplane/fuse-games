@@ -185,6 +185,9 @@ export function createBattleCharts(
   addSection("Match timeline", timeline);
   addSection("Upgrades", upgrades);
   addSection("Strategy profiles", profiles, true);
+  shell.dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") event.stopPropagation();
+  });
   shell.dialog.addEventListener("close", () => {
     active = undefined;
     if (keyboard) origin?.focus({ preventScroll: true });
