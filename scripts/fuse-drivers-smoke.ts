@@ -97,6 +97,41 @@ try {
     return race?.track === "offroad-7-reverse" && race.trucks?.length === 3;
   });
   assert.equal(await host.locator(".fd-pad").isVisible(), false);
+  await peer.goto(new URL("fuse-drivers/?solo=1&mute&probe", origin).href);
+  await peer.getByLabel("Rules", { exact: true }).selectOption("battle");
+  await peer.getByRole("button", { name: "START RACE", exact: true }).click();
+  await peer.getByRole("button", { name: "ITEM", exact: true }).waitFor();
+  for (const viewport of [
+    { width: 360, height: 800 },
+    { width: 844, height: 390 },
+    { width: 667, height: 375 },
+  ]) {
+    await peer.setViewportSize(viewport);
+    await peer.waitForFunction(
+      () => {
+        const buttons = [
+          ...document.querySelectorAll<HTMLButtonElement>(".fd-pad button"),
+        ];
+        return (
+          buttons.length === 5 &&
+          buttons.every((b) => {
+            const rect = b.getBoundingClientRect();
+            return (
+              rect.width >= 44 &&
+              rect.height >= 44 &&
+              rect.left >= 0 &&
+              rect.right <= innerWidth &&
+              rect.top >= 0 &&
+              rect.bottom <= innerHeight
+            );
+          })
+        );
+      },
+      undefined,
+      { timeout: 5000 },
+    );
+  }
+  await peer.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await host
       .locator(".fui-round-controls")
