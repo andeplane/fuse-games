@@ -1,6 +1,7 @@
 /** Run against a local Cyberfuse preview with its room service: ONLINE_URL=http://localhost:<port>/ pnpm exec tsx scripts/cyberfuse-smoke.ts */
 import assert from "node:assert/strict";
 import { launchBrowser } from "./lib/browser.js";
+import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import type { Page } from "playwright";
 
@@ -563,7 +564,11 @@ try {
       browser.newPage({ viewport: { width: 480, height: 360 } }),
     ),
   );
-  for (const p of [host, peer, tv, arena, ...extra]) {
+  const pages = [host, peer, tv, arena, ...extra];
+  const coverage = await Promise.all(
+    pages.map((page) => startGameCoverage(page, { gameId: "cyberfuse" })),
+  );
+  for (const p of pages) {
     p.setDefaultTimeout(15000);
     p.on("pageerror", (e) => errors.push(e.message));
   }
@@ -576,6 +581,7 @@ try {
       .then(() => online(host, peer, tv, extra)),
   ]);
   assert.deepEqual(errors, []);
+  await Promise.all(coverage.map((finish) => finish()));
 } catch (error) {
   for (const context of browser.contexts()) {
     for (const page of context.pages()) {
