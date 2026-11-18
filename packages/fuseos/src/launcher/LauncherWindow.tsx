@@ -10,7 +10,7 @@ import {
 import { AppIcon } from "../ui/icons";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 
-import { centeredLauncherRect } from "./launcherFacts";
+import { centeredLauncherRect, formatLastPlayed } from "./launcherFacts";
 import type { LauncherGame, LauncherViewModel } from "./useLauncherViewModel";
 import { LAUNCHER_TABS, useLauncherViewModel } from "./useLauncherViewModel";
 
@@ -211,7 +211,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
                   id={`fst-game-played-${game.id}`}
                   className="fst-row-date fst-last-played"
                 >
-                  {game.lastPlayed}
+                  {formatLastPlayed(game.lastPlayed, vm.now)}
                 </span>
               </li>
             );
@@ -254,7 +254,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
                 <dt>Disk usage:</dt>
                 <dd>{details.diskUsage}</dd>
                 <dt>Last played:</dt>
-                <dd>{selected.lastPlayed}</dd>
+                <dd>{formatLastPlayed(selected.lastPlayed, vm.now)}</dd>
               </dl>
             </div>
             <nav className="fst-links" aria-label="Links">

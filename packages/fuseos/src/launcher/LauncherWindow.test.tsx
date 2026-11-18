@@ -304,7 +304,9 @@ describe("LauncherWindow", () => {
 
   it("sorts My Games by most recent launch and lets the player switch to name order", async () => {
     const user = userEvent.setup();
+    let now = Date.UTC(1998, 5, 25, 12, 34);
     const { inside } = renderLauncher({
+      desktopDeps: { now: () => now },
       launcherDeps: {
         lastPlayed: new MemoryLastPlayedStore({
           fuseball: Date.UTC(1998, 5, 24, 8, 0),
@@ -341,6 +343,10 @@ describe("LauncherWindow", () => {
     expect(rows()).toEqual([birds, riders, ball]);
     expect(birds).toHaveAttribute("aria-selected", "true");
     expect(birds).toHaveAccessibleDescription("Today, 12:34");
+
+    now = Date.UTC(1998, 5, 26);
+    await user.click(ball);
+    expect(birds).toHaveAccessibleDescription("Yesterday");
   });
 
   it("opens Fuse Messenger and Network Neighborhood from their tabs, dialling in first, and stays on My Games", async () => {

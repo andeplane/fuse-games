@@ -14,11 +14,7 @@ import { useWindowCommands } from "../windows/useWindowCommands";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 
 import { LauncherDepsContext } from "./launcherDepsContext";
-import {
-  fakeDiskUsage,
-  formatLastPlayed,
-  LAUNCHER_TITLE,
-} from "./launcherFacts";
+import { fakeDiskUsage, LAUNCHER_TITLE } from "./launcherFacts";
 
 export type LauncherTab = "games" | "friends" | "servers" | "news";
 export type LauncherSort = "lastPlayed" | "name";
@@ -43,7 +39,7 @@ export type LauncherGame = {
   screenshotUrls: readonly string[];
   /** The game's own page, for the LINKS column. */
   url: string;
-  lastPlayed: string;
+  lastPlayed: number | undefined;
 };
 
 export type LauncherDetails = {
@@ -73,6 +69,7 @@ export type LauncherViewModel = {
   openFriends: () => void;
   openLeaderboard: () => void;
   games: LauncherGame[];
+  now: number;
   sort: LauncherSort;
   setSort: (sort: LauncherSort) => void;
   selected: LauncherGame | undefined;
@@ -109,9 +106,7 @@ export function useLauncherViewModel(): LauncherViewModel {
   const [lastPlayed, setLastPlayed] = useState(() =>
     launcherDeps.lastPlayed.get(),
   );
-  const { now } = desktopDeps;
   const games = useMemo<LauncherGame[]>(() => {
-    const currentTime = now();
     return [...registry.games]
       .sort((a, b) => {
         if (sort === "name") return a.name.localeCompare(b.name);
@@ -129,9 +124,9 @@ export function useLauncherViewModel(): LauncherViewModel {
         screenshotUrl: registry.screenshotUrl(game),
         screenshotUrls: registry.screenshotUrls(game),
         url: registry.embedUrl(game),
-        lastPlayed: formatLastPlayed(lastPlayed[game.id], currentTime),
+        lastPlayed: lastPlayed[game.id],
       }));
-  }, [registry, sort, lastPlayed, now]);
+  }, [registry, sort, lastPlayed]);
 
   const [tab, setTab] = useState<LauncherPage>("games");
   const [selectedId, setSelectedId] = useState<string | undefined>(
@@ -234,6 +229,7 @@ export function useLauncherViewModel(): LauncherViewModel {
     openFriends,
     openLeaderboard,
     games,
+    now: desktopDeps.now(),
     sort,
     setSort,
     selected,
