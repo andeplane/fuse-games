@@ -16,7 +16,7 @@ export const DEFAULT_ROOM_SOCKETS = sockets(6, 5);
 
 /** The games whose roster is not the default's, by game id. */
 export const ROOM_SOCKETS: Readonly<Record<string, number>> = {
-  cyberfuse: sockets(5, 8),
+  cyberfuse: sockets(6, 7),
   dice: sockets(5, 8),
   "fuse-lane": sockets(5, 8),
   "fuse-drivers": sockets(5, 8),

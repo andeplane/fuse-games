@@ -39,14 +39,15 @@ test("distant DOS seats get ordered half-screens at the same scale as local play
   }
 });
 
-test("three to five seats share only mutually close viewpoints and use every panel once", () => {
+test("three to six seats share only mutually close viewpoints and use every panel once", () => {
   const a = { x: 100, y: 200 },
     b = { x: 116, y: 204 },
     c = { x: 310, y: 205 },
     d = { x: 510, y: 203 },
-    e = { x: 810, y: 400 };
-  for (const n of [3, 4, 5]) {
-    const operators = [a, b, c, d, e].slice(0, n);
+    e = { x: 810, y: 400 },
+    f = { x: 490, y: 750 };
+  for (const n of [3, 4, 5, 6]) {
+    const operators = [a, b, c, d, e, f].slice(0, n);
     const panels = cameraPanels(operators, 1440, 810);
     assert.deepEqual(
       panels.flatMap((p) => p.party),

@@ -11,7 +11,15 @@ type Context = CanvasRenderingContext2D;
 type Item = MissionState["items"][number];
 type Shot = MissionState["shots"][number];
 
-const TEAM = ["#4bf3cb", "#ffb753", "#96baff", "#d7a2ff", "#ff8ea5"] as const;
+const TEAM = [
+  "#4bf3cb",
+  "#ffb753",
+  "#96baff",
+  "#d7a2ff",
+  "#ff8ea5",
+  "#d3f578",
+] as const;
+const TEAM_FACES = [0, 1, 8, 12, 16, 4] as const;
 // Classic loadouts carry either a blade, a visible blaster, or a thrown/placed weapon.
 const GUNS = [1, 0, -1, 0, 0, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1, 0] as const;
 const SUITS = [
@@ -78,7 +86,7 @@ export function drawOperator(
     ctx.globalAlpha = 1;
   }
   const face = allied
-    ? [0, 1, 8, 12, 16][Math.max(0, seatIndex) % 5]
+    ? TEAM_FACES[Math.max(0, seatIndex) % TEAM_FACES.length]
     : (character?.face ?? 6);
   const effect = actor.flamed
     ? "#ff854e"

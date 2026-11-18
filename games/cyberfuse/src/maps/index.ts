@@ -1,3 +1,4 @@
+import { CAPACITY } from "../capacity.js";
 import {
   DOGFIGHTS,
   getCampaignForMission,
@@ -163,11 +164,11 @@ export function buildMission(
   dogfight = false,
   campaign?: number,
   layoutSeed = 0,
-  seatCount = 5,
+  seatCount: number = CAPACITY,
   density = 100,
 ) {
-  if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 5)
-    throw new RangeError("Expected 1–5 operators");
+  if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > CAPACITY)
+    throw new RangeError(`Expected 1–${CAPACITY} operators`);
   const owner = dogfight
     ? undefined
     : getCampaignForMission(missionIndex, campaign);

@@ -99,7 +99,14 @@ const audio = createGameAudio(
 );
 bindAudioInput(audio, document, window);
 const volume = createAudioControl(document, audio, { music: false });
-const colors = ["#5ce4dc", "#ff8b63", "#b5ef80", "#d5a7ff", "#ffe28a"];
+const colors = [
+  "#5ce4dc",
+  "#ff8b63",
+  "#b5ef80",
+  "#d5a7ff",
+  "#ffe28a",
+  "#94baff",
+];
 const background = async (host: HTMLElement) =>
   (await import("./attract.js")).createAttract(host);
 const home = (qs = "") => {

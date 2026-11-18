@@ -2,6 +2,8 @@
 
 Cyberfuse brings Ronny Wester’s DOS C-Dogs v1.06 to Fuse. Play a campaign solo or with a squad, or play a first-to-five dogfight. Original mission briefings lead into the armory. Pick up to three weapons, complete the required objectives and gather the surviving players at extraction.
 
+Online campaigns and Dogfight support up to six players. Two players can share one keyboard.
+
 ## Play
 
 From the repository root run `pnpm install`, then `pnpm dev`. Open the printed server URL followed by `/cyberfuse/`. Choose **Play → Single player**, select a campaign or arena and choose **Deploy**. To play together, choose **Host room** and share the invite. The room host can open a shared TV from the lobby. Two players at one computer can select **Two players on this keyboard** before deploying. Player 1 uses the arrows, Space and Shift. Player 2 uses WASD, F and G. Each player chooses a kit in the lobby. Shared screens split when the operatives move too far apart.

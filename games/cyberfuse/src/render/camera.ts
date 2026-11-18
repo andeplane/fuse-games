@@ -40,7 +40,7 @@ function localScale(width: number, height: number) {
 }
 
 /** GAME.C uses strict 300 × 180 world-pixel bounds for the two DOS seats. For three
- * to five Fuse operators, merge the closest compatible groups while preserving seat
+ * to six Fuse operators, merge the closest compatible groups while preserving seat
  * order for the final panels. A chain of neighbours cannot join across a larger gap. */
 export function cameraPanels<T extends Point>(
   party: readonly T[],

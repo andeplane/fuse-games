@@ -1,3 +1,4 @@
+import { CAPACITY } from "../capacity.js";
 import { isBrain } from "../ai/index.js";
 import { parseGameplayOptions } from "../options/index.js";
 import { CAMPAIGNS, DOGFIGHTS, MISSION_COUNT } from "../campaign/index.js";
@@ -221,7 +222,7 @@ export function isMissionState(s: unknown): s is MissionState {
     return false;
   if (
     !players.length ||
-    players.length > 5 ||
+    players.length > CAPACITY ||
     !distinct(players.map((a) => a.seat))
   )
     return false;
@@ -274,7 +275,7 @@ export function isMissionState(s: unknown): s is MissionState {
   if (
     !integer(s.extraction, 0, 350) ||
     !option(s.outcome, ["playing", "victory", "defeat"]) ||
-    !array(s.winners, 5) ||
+    !array(s.winners, CAPACITY) ||
     !distinct(s.winners) ||
     !s.winners.every((w) => players.some((a) => a.seat === w && a.hp > 0))
   )

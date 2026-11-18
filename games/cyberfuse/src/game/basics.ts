@@ -3,8 +3,8 @@ import {
   type GameplayOptions,
 } from "../options/index.js";
 import { CAMPAIGNS, DOGFIGHTS, WEAPONS } from "../campaign/index.js";
-export const CAPACITY = 5;
-export const MAX_WATCHERS = 8;
+export { CAPACITY } from "../capacity.js";
+export const MAX_WATCHERS = 7;
 export const isBotId = (id: string): boolean =>
   /^bot:[1-9][0-9]{0,5}$/.test(id);
 export const validName = (raw: unknown): raw is string =>

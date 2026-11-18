@@ -1,3 +1,4 @@
+import { CAPACITY } from "../capacity.js";
 import type { PlayerResult } from "fuse-platform";
 import { parseHistoryPlayer } from "fuse-platform/history-api";
 export interface CyberfuseStats extends PlayerResult {
@@ -30,7 +31,7 @@ export function parseCyberfuseStats(
     typeof survived !== "boolean" ||
     !integer(kills) ||
     !integer(friendlies) ||
-    player.slot >= 5 ||
+    player.slot >= CAPACITY ||
     player.roundWins > player.roundsPlayed ||
     player.matchScoreUnits !== Math.max(0, score)
   )

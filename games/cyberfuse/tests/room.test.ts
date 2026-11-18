@@ -2,6 +2,7 @@ import { DEFAULT_GAMEPLAY } from "../src/options/index.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { finishRound } from "../src/game/result.js";
+import { cyberfuseRegistration } from "../src/platform.js";
 import { isMissionState } from "../src/sim/index.js";
 import { parseCyberfuseStats } from "../src/game/stats.js";
 import { dueReports } from "../src/app/reports.js";
@@ -151,6 +152,34 @@ test("one seated dogfighter receives a real AI opponent and room controls remain
   );
   assert.equal(isCyberfuseEntry([1, 1, PLAY, "m", 1, 64]), false);
   assert.equal(isCyberfuseEntry([1, 1, ADVANCE, "m", 1]), true);
+});
+
+test("the platform accepts six-player mission and campaign results", () => {
+  const room = new World(
+    cyberfuseGame,
+    createRoom("lobby", DEFAULT_SETTINGS),
+    "host",
+    "host",
+  );
+  const host = room.stream("host", 1);
+  for (let slot = 0; slot < 6; slot++)
+    host.append(1, [JOIN, "peer" + slot, "Player " + slot, slot, "robot", 1]);
+  host.append(2, [ACTION, "start", "mission"]);
+  host.through = 2;
+  room.advance(2);
+  assert.equal(room.state.roster.length, 6);
+  room.state.world = { ...room.state.world!, outcome: "defeat", winners: [] };
+  finishRound(room.state, room.tick);
+  assert.equal(room.state.history.length, 2);
+  for (const { result } of room.state.history) {
+    assert.equal(result.players.length, 6);
+    for (const row of result.players)
+      assert.deepEqual(
+        cyberfuseRegistration.parseStats(row, result.length),
+        row,
+      );
+    assert.ok(cyberfuseRegistration.validField(result.players));
+  }
 });
 
 test("dogfight plays to five and keeps each finished receipt available to confirmed participants through a rematch", () => {

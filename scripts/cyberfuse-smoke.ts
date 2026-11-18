@@ -445,7 +445,7 @@ async function finishWithDynamite(page: Page, mode: "campaign" | "dogfight") {
       : "Campaign defeat report and rematch passed",
   );
 }
-async function online(host: Page, peer: Page, tv: Page) {
+async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   await host.goto(address());
   await openPlayOptions(host);
   await host.getByRole("button", { name: "Host room", exact: true }).click();
@@ -479,13 +479,30 @@ async function online(host: Page, peer: Page, tv: Page) {
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
+  for (const [index, page] of extra.entries()) {
+    const name = "Operative " + (index + 3);
+    await page.goto(address("room=" + code));
+    await page.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
+    await takeHostSeat(page, name);
+    await host.locator(".fui-roster-name", { hasText: name }).waitFor();
+  }
   await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
   await tv.goto(address("room=" + code + "&display=1"));
   await phase(tv, "lobby");
   await host
     .getByRole("button", { name: "Start mission", exact: true })
     .click();
-  await Promise.all([host, peer, tv].map((p) => phase(p, "running")));
+  const players = [host, peer, ...extra];
+  await Promise.all([...players, tv].map((p) => phase(p, "running")));
+  for (const page of [...players, tv]) {
+    const seats = await page.evaluate(() =>
+      window.__cyberfuseProbe!()
+        .actors.map((a) => a.seat)
+        .filter(Boolean),
+    );
+    assert.equal(new Set(seats).size, 6);
+  }
+  await Promise.all(extra.map(hashAgreement));
   await frameFits(peer);
   await frameFits(tv);
   assert.equal(
@@ -518,7 +535,7 @@ async function online(host: Page, peer: Page, tv: Page) {
     "recovery did not duplicate player",
   );
   console.log(
-    "One-player room, host/guest/TV, touch movement, phone landscape and post-reconnect hash convergence passed",
+    "Six seated browsers plus TV, touch movement, phone landscape and post-reconnect hash convergence passed",
   );
 }
 const browser = await launchBrowser("chrome", {
@@ -541,7 +558,12 @@ try {
     contexts.map((c) => c.newPage()),
   );
   assert.ok(host && peer && tv && arena);
-  for (const p of [host, peer, tv, arena]) {
+  const extra = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      browser.newPage({ viewport: { width: 480, height: 360 } }),
+    ),
+  );
+  for (const p of [host, peer, tv, arena, ...extra]) {
     p.setDefaultTimeout(15000);
     p.on("pageerror", (e) => errors.push(e.message));
   }
@@ -551,7 +573,7 @@ try {
     ),
     solo(host)
       .then(() => keyboardCoop(host))
-      .then(() => online(host, peer, tv)),
+      .then(() => online(host, peer, tv, extra)),
   ]);
   assert.deepEqual(errors, []);
 } catch (error) {

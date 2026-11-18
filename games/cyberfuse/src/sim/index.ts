@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // C-Dogs DOS 1.06 simulation adapter. Reference provenance is in docs/design/cyberfuse-reference.md.
+import { CAPACITY } from "../capacity.js";
 import { botControls, chooseEnemyControl, createBrain } from "../ai/index.js";
 import {
   defaultLoadout,
@@ -106,11 +107,11 @@ export function createMission(
 ): MissionState {
   if (
     seats.length < 1 ||
-    seats.length > 5 ||
+    seats.length > CAPACITY ||
     new Set(seats).size !== seats.length ||
     seats.some((seat) => typeof seat !== "string" || !seat || seat.length > 128)
   )
-    throw new RangeError("Cyberfuse requires one to five distinct seats");
+    throw new RangeError(`Cyberfuse requires 1–${CAPACITY} distinct seats`);
   const gameplay = parseGameplayOptions(
     options.gameplay === undefined ? DEFAULT_GAMEPLAY : options.gameplay,
   );

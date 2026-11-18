@@ -116,7 +116,7 @@ test("all campaigns and both dogfight arenas generate playable deterministic spa
     const dogfight = index >= MISSION_COUNT,
       mission = dogfight ? index - MISSION_COUNT : index;
     const map = buildMission(mission, 29, dogfight);
-    assert.equal(map.spawns.length, 5);
+    assert.equal(map.spawns.length, 6);
     assert.equal(map.tiles.length, 64);
     assert.ok(map.tiles.every((row) => row.length === 64));
     if (!dogfight)
