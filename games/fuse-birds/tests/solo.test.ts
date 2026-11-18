@@ -31,7 +31,8 @@ test("local room owns AI seats, ordinary turns, a result and a rematch", () => {
     },
   );
   battle.start();
-  assert.equal(frame!.stage, "lobby");
+  const stage = () => frame.stage;
+  assert.equal(stage(), "lobby");
   assert.equal(
     battle.command({ type: "bot", action: "remove", id: "ai-1" }),
     true,
@@ -49,7 +50,7 @@ test("local room owns AI seats, ordinary turns, a result and a rematch", () => {
   tick();
   assert.equal(frame!.logTick, 0);
   active = true;
-  for (let i = 0; i < 30000 && frame!.stage !== "over"; i++) {
+  for (let i = 0; i < 30000 && stage() !== "over"; i++) {
     const world = frame!.world!;
     if (world.phase === "aiming" && world.players[world.active]?.id === "solo")
       assert.ok(
