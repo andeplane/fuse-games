@@ -5,8 +5,9 @@ import {
   VIEW_H,
   VIEW_W,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster } from "./kit.js";
+import { firstTile, bayer, dither, hash, Raster } from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, WINDBLOWN, type Fire } from "./fire.js";
 
 /**
  * Stage 2, Wyrmbone Pass: a cold dawn on a mountain road through the bones of a dead giant wyrm. Far to near: the sky
@@ -51,7 +52,7 @@ const SKY = [
 const ROAD = [0x1c1e36, 0x252842, 0x2f3350, 0x3a3f5e, 0x464c6c, 0x535a7c];
 const PINE = 0x141c2c;
 const WOOD = 0x3a2a3a;
-const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"];
+const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"] as const;
 /** The mist's colour, which no flame or snowflake shares. */
 const MIST = "#56628c";
 
@@ -608,15 +609,6 @@ function verge(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [
-  x: number,
-  w: number,
-  base: number,
-  height: number,
-  seed: number,
-];
-
 /** The campfire, the torches either side of the gate, and the fires lit in the skull's eye sockets. */
 export const FIRES: readonly Fire[] = [
   [CAMPFIRE_X - 4, 9, FLOOR - 3, 14, 3],
@@ -625,50 +617,6 @@ export const FIRES: readonly Fire[] = [
     [GATE_X + side * 27 - 4, 9, FLOOR - EYE_V + 3, 7, 40 + i],
   ]),
 ];
-
-const tone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-function burn(
-  brush: Brush,
-  [x0, w, base, height, seed]: Fire,
-  cam: number,
-  t: number,
-) {
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const x = x0 + i - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.25 * Math.sin((x0 + i) * 0.9 + seed + t * 9);
-    const sway = 0.18 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 6);
-    const h = Math.max(1, Math.round(height * env * (0.6 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = tone(j, h, env);
-      let k = j + 1;
-      while (k < h && tone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 4; i++) {
-    const life = (t * (0.4 + hash(i, seed) * 0.4) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 9 + i) * 2;
-    const x = Math.round(x0 + w / 2 + drift + life * 10) - cam;
-    const y = Math.round(base - height * 0.6 - life * 34);
-    if (y < 0 || x < 0 || x >= VIEW_W) continue;
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    brush.fillRect(x, y, 1, 1);
-  }
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 const WISP_ROWS = [-2, -1, 1, 2] as const;
 
@@ -727,7 +675,7 @@ export const WYRMBONE_PASS: StageArt = {
   animate(brush, camX, frame) {
     const t = frame / 60;
     mist(brush, camX, t);
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME, motion: WINDBLOWN });
     snow(brush, camX, t);
   },
 };
