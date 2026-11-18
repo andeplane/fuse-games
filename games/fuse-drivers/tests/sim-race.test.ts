@@ -12,7 +12,7 @@ import { createRace, step } from "../src/game/sim/race.js";
 // Digests from the original 8086 game.exe (a67ba31b021ed53d2d033cbe67ecb32a4537bf20593392bcf4ba85d3fd67836c).
 // Run its actor VM and occupancy update once per frame, seed zero. Record active trucks from grid setup through
 // the first four-lap finish; leave out the marshal's post-race animation. Each course variant appears once.
-// -1 is the opener with the recorded human pedal, steering and nitro inputs below.
+// -1 and -2 are the opener with one and two human control ports respectively.
 const references = [
   [
     0,
@@ -116,6 +116,12 @@ const references = [
     1626,
     "05e2d3ed94f022aa3cd047194bd5679e1cfba48b9ec82fdb5b543cf87edc988d",
   ],
+  [
+    -2,
+    3,
+    1578,
+    "c31077da09fa7928043e8870c6b8979365ba9e27e7caf2b3faf8cc09169ed9c4",
+  ],
 ] as const;
 const humanInputs = new Map([
   [1, 0],
@@ -132,10 +138,42 @@ const humanInputs = new Map([
   [210, 10],
   [230, 0],
 ]);
+// The two human trucks start in the same lane. Slot 2 hits slot 0 at update 46,
+// while the CPU trucks steer independently in the other lane.
+const duoFront = new Map([
+  [1, 0],
+  [58, 8],
+  [72, 9],
+  [86, 8],
+  [97, 72],
+  [106, 10],
+  [119, 8],
+  [160, 0],
+  [280, 9],
+  [300, 0],
+]);
+const duoRear = new Map([
+  [1, 0],
+  [40, 72],
+  [56, 8],
+  [77, 10],
+  [94, 8],
+  [108, 9],
+  [136, 8],
+  [171, 0],
+  [247, 72],
+  [264, 0],
+]);
 for (const [stage, variant, finish, digest] of references) {
   test(`DOS race replay matches every truck through the finish: stage ${stage}, variant ${variant}`, () => {
     const track = getOffroadCourse(OFFROAD_COURSE_NAMES[variant]!).track;
-    const bots = [stage >= 0, true, true, true];
+    const bots = [stage >= 0, true, stage !== -2, true];
+    const ports =
+      stage === -2
+        ? [duoFront, undefined, duoRear]
+        : stage === -1
+          ? [humanInputs]
+          : [];
     let race = createRace(
       track,
       0,
@@ -144,17 +182,22 @@ for (const [stage, variant, finish, digest] of references) {
       Math.max(0, stage),
     );
     const hash = createHash("sha256");
-    let bits = 0;
+    const held = ports.map(() => 0);
     for (let tick = 1; tick <= finish; tick++) {
-      bits = humanInputs.get(tick) ?? bits;
-      const human = {
-        ...NEUTRAL_INPUT,
-        gas: !!(bits & 8),
-        right: !!(bits & 1),
-        left: !!(bits & 2),
-        nitro: !!(bits & 64),
-      };
-      race = step(race, stage < 0 ? [human] : [], track, bots).state;
+      const inputs = ports.map((port, slot) => {
+        const bits = port?.get(tick) ?? held[slot]!;
+        held[slot] = bits;
+        return {
+          ...NEUTRAL_INPUT,
+          gas: !!(bits & 8),
+          right: !!(bits & 1),
+          left: !!(bits & 2),
+          nitro: !!(bits & 64),
+        };
+      });
+      race = step(race, inputs, track, bots).state;
+      if (stage === -2 && tick === 46)
+        assert.ok(race.trucks[0]!.contactMask & 4);
       assert.equal(race.tick, tick);
       const trucks = race.trucks.map((t) => {
         const m = t.motion;
