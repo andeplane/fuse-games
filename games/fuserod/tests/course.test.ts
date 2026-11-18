@@ -30,15 +30,14 @@ test("channel climb and trough crossings match 729 DOS camera and speed updates"
   );
 });
 
-test("authored canyon hazards retain DOS clear, crash and scrape thresholds", () => {
+test("canyon bridges, rough surfaces and guardrails retain DOS contact thresholds", () => {
   const expected = {
     bridge: "5964722b645a337eff869063af4e5e0186dbb11339854df2b1a4e650d5dfe6a4",
     rough: "cb1840eaf3ffa955b1c88075b942966b42ed02b8a093d9a274400411e8c1bd86",
-    rock: "a7cb6fe8753e9b2469954c261dd4f6576ffa1096de6ffb6fd1802d560ec0fc8f",
     guardrail:
       "2817154fb858d880043bc09596859ff9641c805187b8617bdd9e00f4815e5d50",
   };
-  for (const feature of ["bridge", "rough", "rock", "guardrail"] as const) {
+  for (const feature of ["bridge", "rough", "guardrail"] as const) {
     const position = courseFeatures("canyon").find(
       (f) => f.kind === feature,
     )!.start;

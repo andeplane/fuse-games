@@ -82,15 +82,22 @@ test("canyon bank relief and right-drop guardrails follow the native constructor
     assert.equal(hash.digest("hex"), banks[layout], String(layout));
   }
 });
-test("published bridge and rough-surface spans follow each layout", () => {
+test("every fixed canyon feature comes from the selected layout's geometric flags", () => {
   for (let layout = 0; layout < 10; layout++)
     for (let s = 0; s < 590; s++) {
       const metre = ((s + 0.5) * 402.336) / 80;
-      const flag = nativeCourseSample("canyon", s * 64, layout).flags;
+      const { flags, guardrail } = nativeCourseSample("canyon", s * 64, layout);
       const feature = courseFeatures("canyon", layout).find(
         (f) => f.start <= metre && metre < f.end,
       );
-      assert.equal(feature?.kind === "bridge", Boolean(flag & 0x80));
-      assert.equal(feature?.kind === "rough", Boolean(flag & 0x60));
+      const expected =
+        flags & 0x80
+          ? "bridge"
+          : flags & 0x60
+            ? "rough"
+            : guardrail
+              ? "guardrail"
+              : undefined;
+      assert.equal(feature?.kind, expected);
     }
 });

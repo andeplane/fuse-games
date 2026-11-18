@@ -4,7 +4,7 @@ import { nativeCourseSample } from "./geometry.js";
 export type Course = "strip" | "aqueduct" | "canyon";
 
 export interface RoadFeature {
-  kind: "bridge" | "guardrail" | "rock" | "rough" | "bank";
+  kind: "bridge" | "guardrail" | "rough" | "bank";
   start: number;
   end: number;
   lane: number;
@@ -35,15 +35,7 @@ function canyonFeatures(layout: number) {
     else
       features.push({ kind, start, end, lane: kind === "guardrail" ? 1 : 0 });
   }
-  // Fuse's loose rocks stand in for the original seed-dependent obstacles.
-  for (const rock of [
-    { kind: "rock" as const, start: 604, end: 612, lane: -0.28 },
-    { kind: "rock" as const, start: 1752, end: 1760, lane: 0.45 },
-  ]) {
-    if (!features.some((f) => f.start < rock.end && f.end > rock.start))
-      features.push(rock);
-  }
-  return features.sort((a, b) => a.start - b.start);
+  return features;
 }
 const canyons = Array.from({ length: 10 }, (_, i) => canyonFeatures(i));
 const features: Record<Exclude<Course, "canyon">, readonly RoadFeature[]> = {
@@ -154,12 +146,6 @@ export function courseContact(
     if (!crashed) {
       shoulder = left < edgeL || right > edgeR;
       if (feature?.kind === "rough" && speed > 60) crashed = true;
-      if (
-        feature?.kind === "rock" &&
-        Math.abs(x / 1000 - feature.lane) <= 0.14 &&
-        speed > 30
-      )
-        crashed = true;
       if (
         (route === "strip" && right >= edgeR - 180) ||
         (feature?.kind === "guardrail" && right >= edgeR)
