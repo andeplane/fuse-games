@@ -72,6 +72,19 @@ export function seedForMatch(matchId: string): number {
     seed = Math.imul(seed ^ letter.charCodeAt(0), 16777619);
   return seed >>> 0;
 }
+function sanctionedGridX(index: number, count: number): number {
+  if (count === 1) return 450;
+  const right = index % 2 === 1;
+  const sideCount = right ? Math.floor(count / 2) : Math.ceil(count / 2);
+  const offset =
+    sideCount === 1
+      ? 575
+      : 180 + Math.round((Math.floor(index / 2) * 395) / (sideCount - 1));
+  return right ? offset : -offset;
+}
+function sanctioned(variant: FuserodSettings["variant"]): boolean {
+  return variant === "grudge" || variant === "timed";
+}
 export function createRace(
   roster: readonly SeatRecord[],
   settings: FuserodSettings,
@@ -104,13 +117,12 @@ export function createRace(
       name: s.name,
       slot: s.slot,
       bot: s.bot,
-      x:
-        grid.length === 1 && settings.variant === "timed"
-          ? 450
-          : Math.round(
-              (i - (grid.length - 1) / 2) *
-                (grid.length > 1 ? 1150 / (grid.length - 1) : 0),
-            ),
+      x: sanctioned(settings.variant)
+        ? sanctionedGridX(i, grid.length)
+        : Math.round(
+            (i - (grid.length - 1) / 2) *
+              (grid.length > 1 ? 1150 / (grid.length - 1) : 0),
+          ),
       bank: 0,
       motor: createMotor((seed ^ s.slot) >>> 0),
       input: released(),
@@ -182,7 +194,9 @@ function botInput(
   player: Racer | undefined,
 ): DriveInput {
   const curve = roadCurve(race.settings.route, driver.motor.position);
-  let target = (driver.slot % 2 ? 280 : -280) + Math.trunc(curve / 3);
+  let target = sanctioned(race.settings.variant)
+    ? sanctionedGridX(race.racers.indexOf(driver), race.racers.length)
+    : (driver.slot % 2 ? 280 : -280) + Math.trunc(curve / 3);
   const features = aheadFeatures(race, driver);
   for (const f of features) {
     if (f.kind === "bridge") target = 0;
@@ -368,13 +382,9 @@ export function advanceRace(race: Race): void {
         continue;
       }
     }
-    const initialLane =
-      race.racers.length === 1 && variant === "timed"
-        ? 1
-        : Math.sign(i - (race.racers.length - 1) / 2);
     if (
-      (variant === "grudge" || variant === "timed") &&
-      driver.x * initialLane < 0
+      sanctioned(variant) &&
+      driver.x * sanctionedGridX(i, race.racers.length) < 0
     ) {
       driver.laneFault = true;
       continue;

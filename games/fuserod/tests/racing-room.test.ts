@@ -353,3 +353,60 @@ test("throttle alone launches and shifts an automatic in a standard street head-
   assert.equal(r.race!.racers[0]!.motor.gear, 3);
   restore(r);
 });
+test("every sanctioned racer has an assigned side, including the middle driver of odd grids", () => {
+  for (const variant of ["timed", "grudge"] as const)
+    for (const count of [1, 3, 5]) {
+      const room = createRoom("lobby", { ...DEFAULT_SETTINGS, variant });
+      const names = ["a", "b", "c", "d", "e"].slice(0, count);
+      const starters: FuserodEntry[] = names.map((id, slot) => [
+        slot + 1,
+        1,
+        JOIN,
+        id,
+        id,
+        slot,
+        "robot",
+        1,
+      ]);
+      starters.push([count + 1, 1, ACTION, "start", "heat"]);
+      foldTick(
+        room,
+        "a",
+        new Map([["a", { generation: 1, entries: starters }]]),
+      );
+      const middle = Math.floor(count / 2);
+      const start = fuserodView(room).racers;
+      assert.ok(
+        start.every((r) => r.lateral !== 0),
+        variant + " " + count + " seated on lane",
+      );
+      assert.equal(new Set(start.map((r) => r.lateral)).size, count);
+      run(room, room.race!.treeTicks - 1);
+      const peer = restore(room);
+      const id = names[middle]!;
+      const steer = start[middle]!.lateral > 0 ? -1 : 1;
+      for (const state of [room, peer]) {
+        const tick = state.tick + 1;
+        foldTick(
+          state,
+          "a",
+          new Map([
+            [
+              id,
+              {
+                generation: 1,
+                entries: [[count + 2, tick, 0, "heat", true, false, steer, 1]],
+              },
+            ],
+          ]),
+        );
+        for (let i = 0; i < 400 && !state.race!.racers[middle]!.laneFault; i++)
+          run(state, 1);
+        assert.ok(
+          state.race!.racers[middle]!.laneFault,
+          variant + " crossing on grid of " + count,
+        );
+      }
+      assert.equal(hashRoom(room), hashRoom(peer));
+    }
+});
