@@ -45,6 +45,7 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
   assert.deepEqual(platform.gameIds, [
     GAME_ID,
     diceGame.id,
+    "fuse-particles",
     "fusero",
     "hook-havok",
     "fuse-choppers",
