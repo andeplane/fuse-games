@@ -166,7 +166,7 @@ function landing(): void {
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE DRIVERS",
     tagline:
-      "Four laps of stadium dirt. Race up to four friends or take on the CPU.",
+      "Race solo against three computer drivers, or play with friends in a room for up to five drivers total.",
     soloText: "RACE THE CPU",
     async onCreate() {
       const room = await createRoom(endpoints.apiUrl, fetch, GAME).catch(

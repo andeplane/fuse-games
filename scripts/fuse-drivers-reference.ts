@@ -15,7 +15,7 @@ const app = await createServer({
   define: { "import.meta.env.VITE_OFFROAD_REFERENCE": JSON.stringify("1") },
   server: {
     host: "127.0.0.1",
-    open: process.argv.includes("--open") ? "/fusedrivers/?mute" : false,
+    open: process.argv.includes("--open") ? "/fusedrivers/" : false,
     port: Number(process.env.PORT ?? 8787),
     proxy: { "/api": { target: `http://127.0.0.1:${roomPort}`, ws: true } },
   },
@@ -47,7 +47,7 @@ try {
   const address = app.httpServer?.address();
   if (address && typeof address === "object") {
     console.log(
-      `Native Fuse Drivers with local reference art: http://127.0.0.1:${address.port}/fusedrivers/?mute`,
+      `Native Fuse Drivers with local reference art: http://127.0.0.1:${address.port}/fusedrivers/`,
     );
   }
 } catch (error) {
