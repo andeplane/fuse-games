@@ -120,6 +120,53 @@ function evidence(
     };
   });
 }
+
+interface ActionCursor {
+  recording: string;
+  action: string;
+}
+const RECORDINGS_PER_ACTION_PAGE = 20;
+
+function decodeActionCursor(
+  encoded: string | undefined,
+): ActionCursor | undefined {
+  if (!encoded) return;
+  try {
+    if (encoded.length > 500) throw new Error();
+    const parsed: unknown = JSON.parse(
+      Buffer.from(encoded, "base64url").toString(),
+    );
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("recording" in parsed) ||
+      !("action" in parsed) ||
+      !actionIdentifier(parsed.recording) ||
+      typeof parsed.action !== "string" ||
+      parsed.action.length > 150
+    )
+      throw new Error();
+    return { recording: parsed.recording, action: parsed.action };
+  } catch {
+    throw new RoomError(400, "Invalid action cursor");
+  }
+}
+
+async function readActionPageStates(
+  db: ActionDatabase,
+  recordingId: string | undefined,
+  cursor: ActionCursor | undefined,
+): Promise<ActionState[]> {
+  if (recordingId) {
+    const state = await db.read(recordingId);
+    return state ? [state] : [];
+  }
+  // An unscoped page resumes inside the cursor's recording before scanning subsequent recordings.
+  const first = cursor ? await db.read(cursor.recording) : undefined;
+  const rest = await db.list(cursor?.recording, RECORDINGS_PER_ACTION_PAGE);
+  return first ? [first, ...rest] : rest;
+}
+
 export function createActionService(options: ActionServiceOptions) {
   const db = options.database,
     now = options.now ?? Date.now,
@@ -445,43 +492,14 @@ export function createActionService(options: ActionServiceOptions) {
           throw new RoomError(403, "Action token scope denied");
         query = { ...query, gameId: principal.gameId };
       }
-      let cursor: { recording: string; action: string } | undefined;
-      if (query.cursor) {
-        try {
-          if (query.cursor.length > 500) throw new Error();
-          const parsed: unknown = JSON.parse(
-            Buffer.from(query.cursor, "base64url").toString(),
-          );
-          if (
-            !parsed ||
-            typeof parsed !== "object" ||
-            !("recording" in parsed) ||
-            !("action" in parsed) ||
-            !actionIdentifier(parsed.recording) ||
-            typeof parsed.action !== "string" ||
-            parsed.action.length > 150
-          )
-            throw new Error();
-          cursor = { recording: parsed.recording, action: parsed.action };
-        } catch {
-          throw new RoomError(400, "Invalid action cursor");
-        }
-      }
+      const cursor = decodeActionCursor(query.cursor);
       if (query.recordingId && cursor && cursor.recording !== query.recordingId)
         throw new RoomError(400, "Action cursor scope mismatch");
       const limit = query.limit ?? 50,
         actions: ActionItem[] = [],
         at = now();
-      const first = cursor ? await db.read(cursor.recording) : undefined;
-      const states = query.recordingId
-        ? [await db.read(query.recordingId)].filter(
-            (state): state is ActionState => !!state,
-          )
-        : [
-            ...(first ? [first] : []),
-            ...(await db.list(cursor?.recording, 20)),
-          ];
-      let last: { recording: string; action: string } | undefined;
+      const states = await readActionPageStates(db, query.recordingId, cursor);
+      let last: ActionCursor | undefined;
       for (const state of states) {
         for (const original of [...state.items].sort((a, b) =>
           a.id < b.id ? -1 : 1,
@@ -515,7 +533,9 @@ export function createActionService(options: ActionServiceOptions) {
       }
       return {
         actions,
-        ...(states.length >= 20 && !query.recordingId && last
+        ...(states.length >= RECORDINGS_PER_ACTION_PAGE &&
+        !query.recordingId &&
+        last
           ? {
               nextCursor: Buffer.from(JSON.stringify(last)).toString(
                 "base64url",

@@ -1062,66 +1062,70 @@ export class RoomRuntime<
     const seat = this.world && this.game.seat(this.world.state, this.id);
     return seat?.watcher ? undefined : seat;
   }
+  private requestSeat(
+    command: Extract<RoomCommand<Settings>, { type: "join" | "spectate" }>,
+  ): boolean {
+    if (this.options.displayOnly) return false;
+    // The first slot request may already be logged by the manager. Keep it stable until admission or refusal.
+    if (
+      command.type === "join" &&
+      command.slot !== undefined &&
+      this.pendingJoin &&
+      !this.pendingJoin.spectator
+    )
+      return this.pendingJoin.slot === command.slot;
+    // A member the room already lists, asking for the other side, is switching rather than arriving. Whether it may
+    // is answered here as well as at the writer, because the one refusal no writer can deliver is the one about
+    // having nobody to write it: that request would be addressed to this device itself and answered by nobody.
+    // Everything else is re-checked where the entries are written, against the fold they are written on.
+    if (
+      this.management.switchingSides(
+        command.type === "spectate",
+        command.type === "join" ? command.slot : undefined,
+      )
+    ) {
+      const refusal = this.management.switchable(
+        this.id,
+        command.type === "spectate"
+          ? this.text.watchInRound
+          : this.text.takeSeatInRound,
+      );
+      if (refusal) {
+        this.status.notice(refusal);
+        return false;
+      }
+    }
+    // A rename moves something the seat already has, so the "am I seated on the right side?" test that admits an
+    // arrival cannot see whether it landed: a request the manager never heard would never be retried and the name
+    // would quietly snap back. A rename waits on the name itself instead. Only a request that really does move the
+    // name may wait on it — a game that leaves `seating.renameable` out never renames anyone, and a name the
+    // normaliser rejects is never logged, so either would wait for something that is not coming.
+    const seated = this.world && this.game.seat(this.world.state, this.id);
+    const wanted = this.game.seating.seatName(command.name);
+    this.pendingJoin = {
+      name: command.name,
+      slot: command.type === "join" ? command.slot : undefined,
+      avatarId: command.type === "join" ? command.avatarId : undefined,
+      spectator: command.type === "spectate",
+      rename:
+        command.type === "join" &&
+        seated !== undefined &&
+        seated.watcher !== true &&
+        this.game.seating.renameable !== undefined &&
+        !!wanted &&
+        wanted !== seated.name,
+      sentAt: -Infinity,
+    };
+    // A rename is not a move: the seat its form still carries from the click that first seated it is not asked for.
+    if (this.pendingJoin.rename) this.pendingJoin.slot = undefined;
+    if (this.creator || this.solo) return this.sendJoin();
+    this.sendJoin();
+    return true;
+  }
   command(command: RoomCommand<Settings>): boolean {
     if (!command || typeof command !== "object") return false;
-    if (command.type === "join" || command.type === "spectate") {
-      if (this.options.displayOnly) return false;
-      // The first slot request may already be logged by the manager. Keep it stable until admission or refusal.
-      if (
-        command.type === "join" &&
-        command.slot !== undefined &&
-        this.pendingJoin &&
-        !this.pendingJoin.spectator
-      )
-        return this.pendingJoin.slot === command.slot;
-      // A member the room already lists, asking for the other side, is switching rather than arriving. Whether it may
-      // is answered here as well as at the writer, because the one refusal no writer can deliver is the one about
-      // having nobody to write it: that request would be addressed to this device itself and answered by nobody.
-      // Everything else is re-checked where the entries are written, against the fold they are written on.
-      if (
-        this.management.switchingSides(
-          command.type === "spectate",
-          command.type === "join" ? command.slot : undefined,
-        )
-      ) {
-        const refusal = this.management.switchable(
-          this.id,
-          command.type === "spectate"
-            ? this.text.watchInRound
-            : this.text.takeSeatInRound,
-        );
-        if (refusal) {
-          this.status.notice(refusal);
-          return false;
-        }
-      }
-      // A rename moves something the seat already has, so the "am I seated on the right side?" test that admits an
-      // arrival cannot see whether it landed: a request the manager never heard would never be retried and the name
-      // would quietly snap back. A rename waits on the name itself instead. Only a request that really does move the
-      // name may wait on it — a game that leaves `seating.renameable` out never renames anyone, and a name the
-      // normaliser rejects is never logged, so either would wait for something that is not coming.
-      const seated = this.world && this.game.seat(this.world.state, this.id);
-      const wanted = this.game.seating.seatName(command.name);
-      this.pendingJoin = {
-        name: command.name,
-        slot: command.type === "join" ? command.slot : undefined,
-        avatarId: command.type === "join" ? command.avatarId : undefined,
-        spectator: command.type === "spectate",
-        rename:
-          command.type === "join" &&
-          seated !== undefined &&
-          seated.watcher !== true &&
-          this.game.seating.renameable !== undefined &&
-          !!wanted &&
-          wanted !== seated.name,
-        sentAt: -Infinity,
-      };
-      // A rename is not a move: the seat its form still carries from the click that first seated it is not asked for.
-      if (this.pendingJoin.rename) this.pendingJoin.slot = undefined;
-      if (this.creator || this.solo) return this.sendJoin();
-      this.sendJoin();
-      return true;
-    }
+    if (command.type === "join" || command.type === "spectate")
+      return this.requestSeat(command);
     if (!this.world) {
       this.status.notice(this.text.loading);
       return false;
@@ -1382,6 +1386,62 @@ export class RoomRuntime<
       this.passEnded = this.deps.now();
     }
   }
+  private recoverWorld(now: number): void {
+    // Creator included: a room whose members all connected together has no world anywhere until every linked peer has said so.
+    const candidates = this.members.compatible();
+    if (
+      !this.sync.requesting &&
+      candidates.some(
+        (id) => this.transport!.linked(id) && !this.saidNoWorld(id),
+      )
+    )
+      this.requestSnapshot();
+    if (this.creator && this.transport && !this.sync.requesting) {
+      // A fresh world is opened only when nobody can have one: the room is empty, or every linked member answered
+      // that it holds none. A returning creator with peers waits for their snapshot however long the links take;
+      // opening a lobby on a timer would let the authority serve that lobby over the match its peers are playing.
+      // Members refused for their rules count as nobody: whatever world they hold is not this game's.
+      const linked = candidates.filter((id) => this.transport!.linked(id));
+      const nobodyHasIt =
+        linked.length > 0 && linked.every((id) => this.saidNoWorld(id));
+      if (candidates.length === 0 || nobodyHasIt) {
+        this.createWorld(this.settings);
+        this.publish();
+      } else if (now - this.welcomeAt > FRESH_WORLD_WAIT_MS)
+        this.status.recurring(
+          fill(this.text.recovering, {
+            who: linked.length
+              ? this.text.recoverFromOne
+              : this.text.recoverFromAll,
+            peer: this.transport.explain(candidates.sort()[0]!),
+          }),
+        );
+    }
+    if (this.staleRequest(now)) this.retrySnapshot();
+    else if (
+      !this.sync.requesting &&
+      !this.creator &&
+      now - this.welcomeAt > SNAPSHOT_RETRY_MS
+    ) {
+      // Nobody compatible can serve the game and a linked member was refused for its rules: that is why this page
+      // waits, and it stays on screen (the notice at the hello is gone after a few seconds).
+      const refused = [...this.members].some(
+        ([id, member]) => member.refused && this.transport!.linked(id),
+      );
+      this.status.recurring(
+        refused &&
+          !candidates.some(
+            (id) => this.transport!.linked(id) && !this.saidNoWorld(id),
+          )
+          ? this.mismatchStatus(true)
+          : fill(this.text.waitingForHost, {
+              peer: this.transport!.explain(this.hostId),
+            }),
+      );
+    }
+    if (this.pendingJoin && now - this.pendingJoin.sentAt > JOIN_RETRY_MS)
+      this.sendJoin();
+  }
   private tickPass(): void {
     const now = this.deps.now();
     this.status.refresh();
@@ -1393,60 +1453,7 @@ export class RoomRuntime<
       this.greet(id, member);
     }
     if (this.needsWorld()) {
-      // Creator included: a room whose members all connected together has no world anywhere until every linked peer has said so.
-      const candidates = this.members.compatible();
-      if (
-        !this.sync.requesting &&
-        candidates.some(
-          (id) => this.transport!.linked(id) && !this.saidNoWorld(id),
-        )
-      )
-        this.requestSnapshot();
-      if (this.creator && this.transport && !this.sync.requesting) {
-        // A fresh world is opened only when nobody can have one: the room is empty, or every linked member answered
-        // that it holds none. A returning creator with peers waits for their snapshot however long the links take;
-        // opening a lobby on a timer would let the authority serve that lobby over the match its peers are playing.
-        // Members refused for their rules count as nobody: whatever world they hold is not this game's.
-        const linked = candidates.filter((id) => this.transport!.linked(id));
-        const nobodyHasIt =
-          linked.length > 0 && linked.every((id) => this.saidNoWorld(id));
-        if (candidates.length === 0 || nobodyHasIt) {
-          this.createWorld(this.settings);
-          this.publish();
-        } else if (now - this.welcomeAt > FRESH_WORLD_WAIT_MS)
-          this.status.recurring(
-            fill(this.text.recovering, {
-              who: linked.length
-                ? this.text.recoverFromOne
-                : this.text.recoverFromAll,
-              peer: this.transport.explain(candidates.sort()[0]!),
-            }),
-          );
-      }
-      if (this.staleRequest(now)) this.retrySnapshot();
-      else if (
-        !this.sync.requesting &&
-        !this.creator &&
-        now - this.welcomeAt > SNAPSHOT_RETRY_MS
-      ) {
-        // Nobody compatible can serve the game and a linked member was refused for its rules: that is why this page
-        // waits, and it stays on screen (the notice at the hello is gone after a few seconds).
-        const refused = [...this.members].some(
-          ([id, member]) => member.refused && this.transport!.linked(id),
-        );
-        this.status.recurring(
-          refused &&
-            !candidates.some(
-              (id) => this.transport!.linked(id) && !this.saidNoWorld(id),
-            )
-            ? this.mismatchStatus(true)
-            : fill(this.text.waitingForHost, {
-                peer: this.transport!.explain(this.hostId),
-              }),
-        );
-      }
-      if (this.pendingJoin && now - this.pendingJoin.sentAt > JOIN_RETRY_MS)
-        this.sendJoin();
+      this.recoverWorld(now);
       return;
     }
     const world = this.world!;

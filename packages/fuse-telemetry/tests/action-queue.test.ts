@@ -64,8 +64,8 @@ function fixture(
   extract: ActionExtractor["extract"] = async (value) => [
     candidate(value.segments.at(-1)!.text, value.currentSequence),
   ],
+  database = new MemoryActionDatabase(),
 ) {
-  const database = new MemoryActionDatabase();
   let time = 1000,
     calls = 0;
   const transcripts = new Map<number, TranscriptActionSegment>();
@@ -867,6 +867,35 @@ test("bounded action pagination resumes without missing items and supports updat
     f.service.list({ cursor: "bad" }, admin),
     /Invalid action cursor/,
   );
+});
+
+test("a recording-scoped continuation reads that recording once", async () => {
+  const reads: string[] = [];
+  class CountingDatabase extends MemoryActionDatabase {
+    override read(recordingId: string) {
+      reads.push(recordingId);
+      return super.read(recordingId);
+    }
+  }
+  const f = fixture(
+    async (value) => [
+      candidate(value.segments.at(-1)!.text, value.currentSequence, {
+        title: `Task ${value.currentSequence}`,
+      }),
+    ],
+    new CountingDatabase(),
+  );
+  const first = segment(0, "Fix the stuck menu.");
+  await f.process(first);
+  await f.process(segment(1, "Add a pause button."));
+  const principal = { ...admin, recordingId: first.recordingId };
+  const page = await f.service.list({ limit: 1 }, principal);
+  assert.ok(page.nextCursor);
+  reads.length = 0;
+  const next = await f.service.list({ cursor: page.nextCursor }, principal);
+  assert.deepEqual(reads, [first.recordingId]);
+  assert.equal(next.actions.length, 1);
+  assert.notEqual(next.actions[0]!.id, page.actions[0]!.id);
 });
 
 test("corrupt or oversized stored action state is rejected atomically and healthy state survives", async () => {
