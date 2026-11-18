@@ -127,3 +127,31 @@ leaps. Only the decision routine is advanced in this fixture.
 The isolated CPU cases establish these behaviors for the pinned build and
 inputs. They leave full campaign timing, boss AI parity, hazards, powerups,
 two-player interactions, input-to-display latency and sound timing unmeasured.
+
+## Opening match on the unmodified application
+
+On November 18, 2026 the pinned executable ran to Game Over under SheepShaver
+on an emulated Power Macintosh 9500, Mac OS 9.0, 128 MB RAM, at 640×480.
+The emulator was muted. To repeat, copy the executable, BDX_Data and Original
+Levels onto the same HFS folder with Finder types, creator and resource forks
+intact. An HFS image made with hfsutils and MacBinary copies worked. Launch
+the application, select **1 Player**, then **OK** in the Surfaceville
+briefing. Release every gameplay key and let the whole match run.
+
+| Observed state          | What the screen showed                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| Entry                   | Surfaceville, level 1, Grag on the lower left, score 0, two spare trolls              |
+| First death and return  | One spare, score 0, bulldogs still on the map, Grag hanging from the bottom-left edge |
+| Second death and return | Zero spares, score 0, same level and continuing pests                                 |
+| Last death              | Game Over illustration                                                                |
+| Exit                    | Automatic return to the Bonkheads Deluxe title menu                                   |
+
+As a separate comparison, running Fuse simulation revision `f275c18f`
+with `createWorld(0, [0], 1)` and `stepWorld(world, [0])` until loss yields
+three deaths on updates 1019, 2210, and 3136. The score remains zero and the
+surviving troll stays on the first level between deaths. The first two losses
+pass through rising, waiting, climbing and active before the next loss.
+This matches the observed reserve sequence and losing outcome. The Mac
+capture used the default application RNG and wall-clock screen samples.
+Individual death ticks, pest positions each tick and successful level
+completion have no cross-build comparison in this run.
