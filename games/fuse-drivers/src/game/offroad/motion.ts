@@ -7,6 +7,9 @@
 export interface OffroadMotion {
   x: number;
   y: number;
+  /** Last proposed displacement, before any wall rejects the move. */
+  vx: number;
+  vy: number;
   heading: number;
   momentum: number;
   speed: number;
@@ -46,13 +49,21 @@ export function offroadDriveStats(
 
 const STOCK = offroadDriveStats();
 const WORD = 0xffff;
-// Signed Q14 samples read by 0x1871, first quadrant of DS:2faa.
-const QUARTER = [0, 3196, 6269, 9102, 11585, 13622, 15136, 16069, 16384];
+// DS:2faa, signed Q14. Motion samples every eighth direction; collision
+// response searches the full 256-direction table to recover a motion angle.
+const QUARTER = [
+  0, 402, 803, 1205, 1605, 2005, 2404, 2801, 3196, 3589, 3980, 4369, 4756, 5139,
+  5519, 5896, 6269, 6639, 7005, 7366, 7723, 8075, 8423, 8765, 9102, 9434, 9759,
+  10079, 10393, 10701, 11002, 11297, 11585, 11866, 12139, 12406, 12665, 12916,
+  13159, 13395, 13622, 13842, 14053, 14255, 14449, 14634, 14810, 14978, 15136,
+  15286, 15426, 15557, 15678, 15790, 15892, 15985, 16069, 16142, 16206, 16260,
+  16305, 16339, 16364, 16379, 16384,
+];
 
-function sin32(index: number): number {
-  const i = index & 15;
-  const value = QUARTER[i <= 8 ? i : 16 - i]!;
-  return index & 16 ? -value : value;
+function sine(index: number): number {
+  const i = index & 127;
+  const value = QUARTER[i <= 64 ? i : 128 - i]!;
+  return index & 128 ? -value : value;
 }
 
 export function createOffroadMotion(
@@ -64,6 +75,8 @@ export function createOffroadMotion(
   return {
     x: x & WORD,
     y: y & WORD,
+    vx: 0,
+    vy: 0,
     heading: heading & WORD,
     momentum: heading & WORD,
     speed: 0,
@@ -105,14 +118,18 @@ export function advanceOffroadMotion(
 
   // 0x1871 uses the old motion angle. Discard the fractional angle byte
   // before rounding the high byte UP to an eight-step boundary.
-  const direction = (((momentum >>> 8) + 7) >>> 3) & 31;
+  const direction = ((momentum >>> 8) + 7) & 248;
   const signedSpeed = (speed << 16) >> 16;
-  const x = (state.x + ((signedSpeed * sin32(direction + 8)) >> 14)) & WORD;
-  const y = (state.y + ((signedSpeed * sin32(direction)) >> 14)) & WORD;
+  const vx = (signedSpeed * sine(direction + 64)) >> 14;
+  const vy = (signedSpeed * sine(direction)) >> 14;
+  const x = (state.x + vx) & WORD;
+  const y = (state.y + vy) & WORD;
   return {
     ...state,
     x,
     y,
+    vx,
+    vy,
     momentum,
     speed,
     throttle,
@@ -182,4 +199,104 @@ export function stepOffroadMotion(
     groundMask,
     stats,
   );
+}
+
+// DS:5302 contains eight distinct shapes; the second half-turn repeats them.
+// Offsets are in eighths of a contour cell (simulation coordinates >> 5);
+// widths and heights count four-unit occupancy buckets.
+const COLLISION_BOUNDS = [
+  [-8, 4, -4, 2],
+  [-9, 4, -7, 3],
+  [-8, 4, -8, 4],
+  [-7, 3, -9, 4],
+  [-4, 2, -8, 4],
+  [-7, 3, -9, 4],
+  [-8, 4, -8, 4],
+  [-9, 4, -7, 3],
+] as const;
+
+function collisionBounds(truck: Readonly<OffroadMotion>) {
+  const shape = (((truck.heading >>> 8) + 8) >>> 4) & 7;
+  const [dx, width, dy, height] = COLLISION_BOUNDS[shape]!;
+  const left = ((truck.x >>> 5) + dx) >> 2;
+  const top = ((truck.y >>> 5) + dy) >> 2;
+  return { left, right: left + width, top, bottom: top + height };
+}
+
+/** Overlap of DOS X and Y occupancy buckets, 0x0d97 and 0x0e25. */
+export function offroadTrucksOverlap(
+  a: Readonly<OffroadMotion>,
+  b: Readonly<OffroadMotion>,
+): boolean {
+  const one = collisionBounds(a);
+  const two = collisionBounds(b);
+  return (
+    one.left < two.right &&
+    two.left < one.right &&
+    one.top < two.bottom &&
+    two.top < one.bottom
+  );
+}
+
+function contactMotion(
+  state: Readonly<OffroadMotion>,
+  vx: number,
+  vy: number,
+): OffroadMotion {
+  // 0x0f3e inverse polar conversion. DOS takes up to four integer Newton
+  // steps; even a zero Y velocity can yield a heading one unit off the axis.
+  let speed = 0;
+  let direction = 0;
+  if (vx !== 0 || vy !== 0) {
+    const squared = vx * vx + vy * vy;
+    speed = ((Math.abs(vx) + Math.abs(vy)) >> 1) + 16;
+    for (let i = 0; i < 4; i++) {
+      const quotient = Math.floor(squared / speed);
+      speed = (speed + quotient) >>> 1;
+      if (speed === quotient) break;
+    }
+    const ratio = Math.trunc((vy * 16384) / speed) & WORD;
+    direction = vx < 0 ? 96 : 32;
+    let delta = vx < 0 ? -16 : 16;
+    if (ratio & 0x8000) direction ^= 192;
+    for (let i = 0; i < 5; i++) {
+      const sample = sine(direction) & WORD;
+      if (ratio === sample) break;
+      direction += ratio < sample ? -delta : delta;
+      delta >>= 1;
+    }
+  }
+  return {
+    ...state,
+    momentum: ((direction & 255) << 8) | (state.momentum & 255),
+    speed,
+    throttle: Math.max(state.throttle, 32),
+  };
+}
+
+/**
+ * First contact, 0x16dc. Exchange three quarters of the component differences
+ * between the last proposed velocities. The caller owns enter/stay tracking.
+ * Keep the input order: the arithmetic right shift rounds a negative difference down.
+ */
+export function resolveOffroadTruckContact(
+  a: Readonly<OffroadMotion>,
+  b: Readonly<OffroadMotion>,
+): [OffroadMotion, OffroadMotion] {
+  const dx = ((b.vx - a.vx) << 16) >> 16;
+  const dy = ((b.vy - a.vy) << 16) >> 16;
+  const transferX = dx - (dx >> 2);
+  const transferY = dy - (dy >> 2);
+  return [
+    contactMotion(
+      a,
+      ((a.vx + transferX) << 16) >> 16,
+      ((a.vy + transferY) << 16) >> 16,
+    ),
+    contactMotion(
+      b,
+      ((b.vx - transferX) << 16) >> 16,
+      ((b.vy - transferY) << 16) >> 16,
+    ),
+  ];
 }

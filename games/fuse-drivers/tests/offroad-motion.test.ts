@@ -3,6 +3,8 @@ import { test } from "node:test";
 import {
   createOffroadMotion,
   offroadDriveStats,
+  offroadTrucksOverlap,
+  resolveOffroadTruckContact,
   stepOffroadMotion,
 } from "../src/game/offroad/motion.js";
 
@@ -41,6 +43,39 @@ test("matches the DOS four-wheel acceleration, turn and coast trace", () => {
     const { throttle, x, y, heading, momentum, speed } = state;
     assert.deepEqual([throttle, x, y, heading, momentum, speed], row);
   }
+});
+
+test("first contact matches DOS vector exchange and inverse-angle conversion", () => {
+  const stock = createOffroadMotion(1000, 1000, 0);
+  // Captured from CS:169d with BP selecting slot one, SI the slot-zero actor.
+  // The sole skipped call at 16e3 plays the impact sound.
+  const cases = [
+    [134, 0, 0, 0, 0x01ab, 34, 0x01ac, 100],
+    [90, 31, -75, -30, 0x91ab, 35, 0x0dac, 50],
+    [0, 0, 0, 0, 0x00ab, 0, 0x00ac, 0],
+    [0, -256, -76, 96, 0x7bab, 57, 0xbbac, 169],
+    [294, 414, -98, 920, 0x3fab, 794, 0x31ac, 574],
+  ] as const;
+  for (const [vxA, vyA, vxB, vyB, angleA, speedA, angleB, speedB] of cases) {
+    const [a, b] = resolveOffroadTruckContact(
+      { ...stock, vx: vxA, vy: vyA, momentum: 0x77ab, throttle: 14 },
+      { ...stock, vx: vxB, vy: vyB, momentum: 0x77ac, throttle: 48 },
+    );
+    assert.deepEqual([a.momentum, a.speed, a.throttle], [angleA, speedA, 32]);
+    assert.deepEqual([b.momentum, b.speed, b.throttle], [angleB, speedB, 48]);
+  }
+});
+
+test("heading selects the footprint and touching adjacent occupancy buckets stays clear", () => {
+  const a = createOffroadMotion(1024, 1024, 0);
+  assert.equal(offroadTrucksOverlap(a, { ...a, x: 1024 + 511 }), true);
+  assert.equal(offroadTrucksOverlap(a, { ...a, x: 1024 + 512 }), false);
+  assert.equal(offroadTrucksOverlap(a, { ...a, y: 1024 + 256 }), false);
+  const vertical = { ...a, heading: 16384 };
+  assert.equal(
+    offroadTrucksOverlap(vertical, { ...vertical, y: 1024 + 256 }),
+    true,
+  );
 });
 
 test("steering and drive axles respond separately to the contact mask", () => {
