@@ -96,7 +96,7 @@ export function safeStore(open: () => Storage): Store {
 
 /** What a player is told when the room service does not host this game yet (a production service before launch). */
 export const NOT_OPEN =
-  "Online rooms are not open yet for this game. Play solo against bots meanwhile.";
+  "Online rooms are not open yet for this game. Open Single player to solve a puzzle.";
 /** A room service refusal, in the words this page shows. */
 export function roomFailure(message: string): string {
   if (/unknown game/i.test(message)) return NOT_OPEN;

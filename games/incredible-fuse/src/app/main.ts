@@ -1,20 +1,12 @@
-import { createTopBar } from "fuse-ui";
-import { playtestInputBlocked } from "fuse-ui/playtest-input";
-import { requestedRoomSlot } from "fuse-ui";
-import { createGameSocial } from "fuse-ui/social";
-import "fuse-ui/social.css";
-import {
-  observeConfirmedPlay,
-  startGameAnalytics,
-  createPlayMetrics,
-} from "fuse-ui/play-metrics";
 import "@fontsource/press-start-2p/latin.css";
 import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/results.css";
+import "fuse-ui/social.css";
 import "./incredibleFuse.css";
 import QRCode from "qrcode";
+import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
   PeerTransport,
   createEndpoints,
@@ -22,57 +14,53 @@ import {
   installRoomLifecycle,
   validRoomCode,
 } from "fuse-network-fe";
-import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
   button,
   createAppPortal,
-  createControllerRow,
+  createBackLink,
   createGameMenu,
   createInviteCard,
   createLandingCard,
-  createRoomLayout,
   createNameEntry,
   createNotice,
   createResultsScreen,
+  createRoomLayout,
   createRoster,
   createSharedTvOption,
-  createRoundControls,
+  createTopBar,
   el,
+  requestedRoomSlot,
 } from "fuse-ui";
+import { gamePagePath } from "fuse-ui/game-path";
 import {
+  createPlayMetrics,
+  observeConfirmedPlay,
+  startGameAnalytics,
+} from "fuse-ui/play-metrics";
+import { createGameSocial } from "fuse-ui/social";
+import {
+  CAPACITY,
   DEFAULT_SETTINGS,
   incredibleFuseGame,
   seatName,
-  type IncredibleFuseSettings,
 } from "../game/index.js";
-import {
-  createRoundControlGuide,
-  presentTable,
-  type TableModel,
-  type Viewer,
-} from "./presenter.js";
+import { PUZZLES } from "../game/machine.js";
+import { createAttract } from "./attract.js";
+import { createBench } from "./bench.js";
 import { dueReports, sendReport } from "./reports.js";
-import { resultBar, resultReport } from "./result-report.js";
-import { IncredibleFuseRuntime, type IncredibleFuseCallbacks } from "./runtime.js";
 import {
-  NOT_OPEN,
-  keys,
-  roomFailure,
-  safeStore,
-  sessionFor,
-} from "./session.js";
+  IncredibleFuseRuntime,
+  type IncredibleFuseCallbacks,
+} from "./runtime.js";
+import { keys, roomFailure, safeStore, sessionFor } from "./session.js";
 
-/**
- * The incredibleFuse page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to the
- * transport the way Fuse Riders does, and hands every frame to `presentTable`. The decisions live in the presenter,
- * the reports and the session modules, which are unit-tested; this file only puts their answers on the page.
- */
 const GAME = incredibleFuseGame.id;
+const TITLE = "The Incredible Fuse";
 const analytics = startGameAnalytics(GAME);
-const reportPlay = createPlayMetrics(analytics.track, () => performance.now());
+const observePlay = createPlayMetrics(analytics.track, () => performance.now());
 const endpoints = createEndpoints(
   {
-    basePath: `${import.meta.env.BASE_URL}${GAME.replaceAll("-", "")}/`,
+    basePath: import.meta.env.BASE_URL + gamePagePath(GAME),
     apiOrigin: import.meta.env.VITE_API_ORIGIN,
   },
   location.origin,
@@ -88,26 +76,57 @@ const social = createGameSocial({
 });
 const store = safeStore(() => localStorage);
 const names = keys(GAME);
-const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
-const COLORS = ["#16e7ff", "#ff2e9d", "#b6ff4d", "#ffe46b", "#a78bfa"];
 const app = document.querySelector<HTMLElement>("#app")!;
-const CONTROLS = [
-  { keys: "Space / R", action: "Roll the die" },
-  { keys: "H / Enter", action: "Hold to bank your turn total" },
-];
-const TOUCH_CONTROLS = [
-  { keys: "ROLL", action: "Roll the die" },
-  { keys: "HOLD", action: "Bank your turn total" },
-];
-const GOAL =
-  "Roll to build your total; a 1 loses it. Hold to bank points. First to 50 wins the round.";
+const query = new URLSearchParams(location.search);
+const colors = ["#5bd7d1", "#ffb365", "#add876", "#ef88aa", "#b59ce3"];
+const roleColor = (slot: number) => colors[slot % colors.length]!;
+const help = {
+  goal: "Arrange the spare parts so the running machine reaches the puzzle’s goal. In a room, everyone works on the same machine. Rewind a run to keep editing.",
+  controls: [
+    {
+      keys: "Click / drag",
+      action:
+        "Choose a spare part and place it on the bench. Select a placed part to move it.",
+    },
+    {
+      keys: "Arrows / Enter",
+      action:
+        "With the board focused, move the cursor and place, select or move a part.",
+    },
+    { keys: "F / Delete", action: "Flip or remove the selected part." },
+    { keys: "Cmd/Ctrl + Z", action: "Undo the most recent edit." },
+    {
+      keys: "Space",
+      action: "Run or rewind the machine while the board is focused.",
+    },
+  ],
+  touchControls: [
+    { keys: "Tap", action: "Pick a spare part and tap the board to place it." },
+    {
+      keys: "Drag",
+      action: "Move a placed part, or select it and tap its destination.",
+    },
+    {
+      keys: "Flip / Remove / Undo",
+      action: "Change the selected part or undo an edit.",
+    },
+    {
+      keys: "Run machine / Rewind",
+      action: "Test your machine and return to the workbench.",
+    },
+  ],
+};
 
-function header(extra: HTMLElement[] = []): HTMLElement {
-  const bar = el("header", "", "incredibleFuse-top"),
-    brand = el("a", "", "incredibleFuse-brand");
-  brand.href = endpoints.appUrl();
-  brand.append(el("span", "PIG"), el("small", "A FUSE GAME"));
-  // Every game opens the app portal top left; it lists the games that have a portal.json.
+function pageUrl(params: Record<string, string> = {}) {
+  const next = new URLSearchParams(params);
+  if (query.has("mute")) next.set("mute", "");
+  return endpoints.appUrl(next.size ? "?" + next.toString() : "");
+}
+
+function header(extra: HTMLElement[] = []) {
+  const bar = el("header", "", "machine-header");
+  const brand = el("a", TITLE, "machine-brand");
+  brand.href = pageUrl();
   const portal = createAppPortal({
     document,
     current: GAME,
@@ -118,19 +137,34 @@ function header(extra: HTMLElement[] = []): HTMLElement {
   return createTopBar({ element: bar, gameId: GAME });
 }
 
-function landing(): void {
+function puzzleChoice(initial: number) {
+  const label = el("label", "Puzzle", "machine-puzzle-choice");
+  const select = el("select");
+  select.setAttribute("aria-label", "Puzzle");
+  const goal = el("small");
+  PUZZLES.forEach((puzzle, index) => {
+    const option = el("option", index + 1 + ". " + puzzle.title);
+    option.value = String(index);
+    select.append(option);
+  });
+  function update(index: number) {
+    select.value = String(index);
+    goal.textContent = PUZZLES[index]!.goal;
+  }
+  select.addEventListener("change", () => update(select.selectedIndex));
+  update(initial);
+  label.append(select, goal);
+  return { element: label, select, update };
+}
+
+function landing() {
+  const choice = puzzleChoice(0);
   const card = createLandingCard({
-    howToPlay: {
-      goal: GOAL,
-      controls: CONTROLS,
-      touchControls: TOUCH_CONTROLS,
-    },
-    background: async (host) =>
-      (await import("./attract.js")).createAttract(host),
-    title: "ROLL OR HOLD",
+    title: TITLE,
     tagline:
-      "Roll as often as you dare: every roll adds up, but a 1 loses the lot. Hold to bank it. First to 50 wins the round, two rounds win the match.",
-    soloText: "PLAY SOLO VS BOTS",
+      "One goal. A bench full of spare parts. Build the chain reaction that makes it work.",
+    howToPlay: help,
+    background: createAttract,
     async onCreate() {
       const room = await createRoom(endpoints.apiUrl, fetch, GAME).catch(
         (error: unknown) => {
@@ -140,465 +174,282 @@ function landing(): void {
         },
       );
       store.setItem(names.host(room.code), room.token);
-      location.href = endpoints.appUrl(`?room=${room.code}`);
+      location.href = pageUrl({ room: room.code });
     },
+    soloText: "Start puzzle",
+    soloInBar: true,
     onSolo: () => {
-      location.href = endpoints.appUrl("?solo=1");
+      location.href = pageUrl({ solo: "1", puzzle: choice.select.value });
     },
     valid: validRoomCode,
     onJoin: (code) => {
-      location.href = endpoints.appUrl(`?room=${code}`);
+      location.href = pageUrl({ room: code });
     },
   });
-  const back = el("a", "All games", "incredibleFuse-back");
-  back.href = import.meta.env.BASE_URL;
-  app.replaceChildren(header([back]), card.element);
+  card.soloDetails.append(choice.element);
+  app.replaceChildren(header(), card.element);
 }
 
-/** A die face: nine cells, lit per the presenter's pips. */
-function createDie() {
-  const element = el("div", "", "incredibleFuse-die");
-  const cells = Array.from({ length: 9 }, () => el("span", "", "incredibleFuse-pip"));
-  element.append(...cells);
-  element.setAttribute("role", "img");
-  let key = "";
-  return {
-    element,
-    render(model: TableModel["die"]) {
-      element.classList.toggle("blank", !model);
-      element.classList.toggle("bust", model?.bust === true);
-      element.setAttribute(
-        "aria-label",
-        model ? `${model.by} rolled ${model.value}` : "No roll yet",
-      );
-      cells.forEach((cell, index) =>
-        cell.classList.toggle("on", model?.pips[index] ?? false),
-      );
-      if (model && model.key !== key) {
-        element.classList.remove("rolled");
-        void element.offsetWidth; // restart the roll animation
-        element.classList.add("rolled");
-      }
-      key = model?.key ?? "";
-    },
-  };
-}
-
-function room(solo: boolean): void {
-  const session = solo
-    ? ({ kind: "solo" } as const)
-    : sessionFor(location.search, store, GAME, validRoomCode, secret);
-  if (session.kind === "invalid" || session.kind === "landing") {
-    app.replaceChildren(header(), el("p", "Invalid room code", "incredibleFuse-error"));
+function workshop() {
+  const session = sessionFor(
+    location.search,
+    store,
+    GAME,
+    validRoomCode,
+    () => uuid().replaceAll("-", "") + uuid().replaceAll("-", ""),
+  );
+  if (session.kind === "invalid") {
+    app.replaceChildren(
+      header(),
+      el("p", "Invalid room code"),
+      createBackLink({ href: pageUrl() }),
+    );
     return;
   }
-  const code = session.kind === "room" ? session.code : "SOLO",
-    role = session.kind === "room" ? session.role : "host",
-    display = role === "display";
-  document.body.classList.toggle("incredibleFuse-display", display);
-  const viewer: Viewer = {
-    me: "",
-    host: solo,
-    solo,
-    display,
-    shared: false,
+  if (session.kind === "landing") return landing();
+  const solo = session.kind === "solo";
+  const display = session.kind === "room" && session.role === "display";
+  const code = session.kind === "room" ? session.code : "SOLO";
+  const initialPuzzle = Number(query.get("puzzle"));
+  let settings = {
+    ...DEFAULT_SETTINGS,
+    display:
+      session.kind === "room" &&
+      session.role === "host" &&
+      store.getItem(names.shared) === "1",
+    puzzleIndex:
+      solo && Number.isInteger(initialPuzzle) && PUZZLES[initialPuzzle]
+        ? initialPuzzle
+        : 0,
   };
-
-  // ---- the page ----
-  // The room's line is at the room's foot; during a match the same words are in the bar. `say` writes both, and
-  // once the room is over nothing later replaces that.
-  const status = createNotice({ className: "incredibleFuse-room-status" }),
-    live = createNotice({ className: "incredibleFuse-status" }),
-    toast = createNotice({ holdMs: 2200, className: "incredibleFuse-toast" });
-  let over = false;
-  const say = (text: string, tone: "info" | "error", last = false) => {
-    if (over) return;
-    over = last;
-    status.show(text, tone);
-    live.show(text, tone);
+  let me = "";
+  let ownSeat: { slot: number; name: string } | undefined;
+  const live = createNotice({ className: "machine-live" });
+  const status = createNotice();
+  const leave = () => {
+    runtime.stop();
+    location.href = pageUrl();
   };
   const menu = createGameMenu({
-    controls: CONTROLS,
-    touchControls: TOUCH_CONTROLS,
-    goal: GOAL,
+    ...help,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onLeave: () => {
-      runtime.stop();
-      location.href = endpoints.appUrl();
-    },
-    onOpenChange: (open) => {
-      // The table owns Space/Enter after resuming; MENU must not consume the next roll or hold.
-      if (!open && main.dataset.phase === "running")
-        main.focus({ preventScroll: true });
+    onLeave: leave,
+  });
+  const main = el("main", "", "machine-room");
+  const lobby = el("section", "", "machine-lobby");
+  const stage = el("section", "", "machine-stage");
+  stage.hidden = true;
+  const bench = createBench({
+    onCommand: (command) => {
+      runtime.play(command);
     },
   });
-  const roundControls = createRoundControls({
-    controls: CONTROLS,
-    touchControls: TOUCH_CONTROLS,
-    goal: GOAL,
+  stage.append(bench.element);
+  const results = createResultsScreen({
+    document,
+    onBack: leave,
+    backText: "Leave",
+    onAction: (id) =>
+      runtime.command({
+        type: "action",
+        action: id === "replay" ? "rematch" : "lobby",
+      }),
   });
-  const showRoundControls = createRoundControlGuide();
-  const top = header([live.element, menu.element]);
-
-  // Lobby: invitation, roster with bot controls, name entry, start.
-  const lobby = el("section", "", "incredibleFuse-lobby"),
-    roster = createRoster({ emptyText: "Nobody has joined yet" }),
-    addBot = button("+ ADD BOT", "incredibleFuse-add-bot"),
-    start = button("START MATCH", "fui-button-primary incredibleFuse-start"),
-    lobbyNote = el("p", "", "fui-lobby-note");
-  // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
-  // The choice is remembered for the next room this device creates, once the room has taken it.
-  const sharedTv = createSharedTvOption({
-    className: "incredibleFuse-tv-option",
+  const controlled = () => !display && runtime.managing;
+  const roster = createRoster({ emptyText: "Waiting for builders" });
+  const choice = puzzleChoice(settings.puzzleIndex);
+  choice.select.onchange = () => {
+    if (
+      !runtime.command({
+        type: "settings",
+        settings: { ...settings, puzzleIndex: choice.select.selectedIndex },
+      })
+    )
+      choice.update(settings.puzzleIndex);
+  };
+  const start = button("Start puzzle", "fui-button-primary");
+  start.onclick = () => runtime.command({ type: "action", action: "start" });
+  const name = createNameEntry({
+    normalize: (raw) => seatName(raw) ?? "",
+    initial: social.playerName(store.getItem(names.name)) ?? "",
+    onInput: (value) => store.setItem(names.name, value),
+    onSubmit: (value) => {
+      store.setItem(names.name, value);
+      runtime.command({
+        type: "join",
+        name: value,
+        slot: requestedRoomSlot(name.form),
+      });
+    },
+  });
+  name.form.hidden = true;
+  const shared = createSharedTvOption({
     onChange: (display) => {
       const sent = runtime.command({
         type: "settings",
-        settings: { ...roomSettings, display },
+        settings: { ...settings, display },
       });
       if (sent) store.setItem(names.shared, display ? "1" : "0");
       return sent;
     },
     onOpenScreen: () =>
-      window.open(
-        endpoints.appUrl(`?room=${code}&display=1`),
-        "_blank",
-        "noopener",
-      ),
+      window.open(pageUrl({ room: code, display: "1" }), "_blank", "noopener"),
   });
-  const link = endpoints.appUrl(`?room=${code}`);
-  if (!solo) {
-    const invite = createInviteCard({
-      code,
-      link,
-      qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 360 }),
-    });
-    lobby.append(invite.element);
-  }
-  const nameEntry = createNameEntry({
-    normalize: (raw) => seatName(raw) ?? "",
-    initial: social.playerName(store.getItem(names.name)) ?? "",
-    onInput: (value) => store.setItem(names.name, value),
-    buttonText: "JOIN",
-    onSubmit: (name) => {
-      store.setItem(names.name, name);
-      runtime.command({
-        type: "join",
-        name,
-        slot: requestedRoomSlot(nameEntry.form),
+  const invite = solo
+    ? undefined
+    : createInviteCard({
+        code,
+        link: endpoints.appUrl("?room=" + code),
+        qr: (text) => QRCode.toDataURL(text, { width: 360, margin: 1 }),
       });
-    },
-  });
-  lobby.append(roster.element);
-  addBot.onclick = () =>
-    runtime.command({
-      type: "bot",
-      action: "add",
-      slot: requestedRoomSlot(addBot),
-    });
-  start.onclick = () => runtime.command({ type: "action", action: "start" });
-
-  // Table: scores, the die, the turn total, the timer and the buttons.
-  const table = el("section", "", "incredibleFuse-table"),
-    roundLine = el("p", "", "incredibleFuse-round"),
-    headline = el("h1", "", "incredibleFuse-headline"),
-    detail = el("p", "", "incredibleFuse-detail"),
-    board = el("div", "", "incredibleFuse-board"),
-    die = createDie(),
-    total = el("div", "", "incredibleFuse-total"),
-    totalValue = el("strong", "0"),
-    timer = el("div", "", "incredibleFuse-timer"),
-    timerFill = el("span"),
-    timerText = el("small", "", "incredibleFuse-timer-text");
-  total.append(el("small", "TURN TOTAL"), totalValue);
-  timer.append(timerFill);
-  timer.setAttribute("aria-hidden", "true");
-  const centre = el("div", "", "incredibleFuse-centre");
-  centre.append(die.element, total, toast.element);
-  const pad = createControllerRow({
-    buttons: [
-      {
-        label: "ROLL",
-        keys: "Space R",
-        title: "Roll the die (Space)",
-        onPress: () => runtime.play("roll"),
-      },
-      {
-        label: "HOLD",
-        keys: "H Enter",
-        title: "Bank the turn total (H)",
-        onPress: () => runtime.play("hold"),
-      },
-    ] as const,
-    className: "fui-controller incredibleFuse-pad",
-  });
-  const [rollButton, holdButton] = pad.buttons;
-  rollButton.classList.add("incredibleFuse-roll");
-  holdButton.classList.add("incredibleFuse-hold");
-  table.append(
-    roundLine,
-    roundControls.element,
-    headline,
-    detail,
-    board,
-    centre,
-    timer,
-    timerText,
-    pad.element,
-  );
-  const cards = new Map<string, Record<string, HTMLElement>>();
-
-  // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
-  const results = createResultsScreen({
-    document,
-    // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      runtime.stop();
-      location.href = endpoints.appUrl();
-    },
-    backText: "Leave",
-    onAction: (id) =>
-      runtime.command({
-        type: "action",
-        action: id === "rematch" ? "rematch" : "lobby",
-      }),
-  });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
-
-  const main = el("main", "", "incredibleFuse-room");
-  main.tabIndex = -1;
-  main.append(nameEntry.form, lobby, table, results.element);
-  app.replaceChildren(top, main);
-  /** This device's own seat in the lobby, as the last frame had it. */
-  let ownSeat: { name: string; slot: number } | undefined;
-  createRoomLayout({
-    primaryAction: start,
-    playerName: () => social.playerName(undefined) ?? undefined,
-    background: async (host) =>
-      (await import("./attract.js")).createAttract(host),
+  main.append(name.form, lobby, stage, results.element);
+  app.replaceChildren(header([live.element, menu.element]), main);
+  const layout = createRoomLayout({
     element: lobby,
     roster,
-    capacity: 5,
-    join: nameEntry.form,
-    // Seated already: any open seat is a move.
+    capacity: CAPACITY,
+    compact: solo,
+    join: name.form,
+    friends: social.friends,
+    background: createAttract,
+    mainMenuHref: pageUrl(),
+    heading: solo ? "Solo workshop" : "Workshop room",
     ownSlot: () => ownSeat?.slot,
     onMove: (slot) => {
-      if (ownSeat) runtime.command({ type: "join", name: ownSeat.name, slot });
+      if (ownSeat) runtime.command({ type: "join", slot, name: ownSeat.name });
     },
-    addAI: addBot,
-    friends: social.friends,
-    settings: [el("p", GOAL)],
-    actions: [lobbyNote],
+    playerName: () => social.playerName(store.getItem(names.name)) ?? undefined,
+    primaryAction: start,
     actionsInHeader: true,
+    invite: invite?.element,
+    extras: solo ? [] : [shared.element],
+    layout: "configuration",
+    configuration: [choice.element],
     status: status.element,
-    ...(solo
-      ? { compact: true, heading: "Solo match" }
-      : { heading: "Room", extras: [sharedTv.element] }),
   });
-  table.hidden = true;
-  nameEntry.form.hidden = true;
-
-  const render = (model: TableModel, managerId: string) => {
-    main.dataset.layout = model.layout;
-    main.dataset.screen = model.screen;
-    lobby.hidden = model.screen !== "lobby";
-    table.hidden = model.screen !== "table";
-    nameEntry.form.hidden = !model.askName;
-    // Lobby.
-    roster.update(
-      model.lobby.members.map((member) => ({
-        ...member,
-        host: member.id === managerId,
-        color: COLORS[(member.slot ?? 0) % COLORS.length]!,
-      })),
-    );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".incredibleFuse-remove");
-      const removable = model.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "incredibleFuse-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
-    addBot.hidden = !model.lobby.canAddBot;
-    start.hidden = !model.lobby.showStart;
-    start.disabled = !model.lobby.canStart;
-    lobbyNote.textContent = model.lobby.note;
-    lobbyNote.hidden = !model.lobby.note;
-    sharedTv.update(
-      viewer.shared,
-      viewer.host && !display && !solo && model.screen === "lobby",
-    );
-    // Table.
-    roundLine.textContent = model.round;
-    headline.textContent = model.headline;
-    detail.textContent = model.detail;
-    for (const [id, card] of cards)
-      if (!model.players.some((player) => player.id === id)) {
-        card.root!.remove();
-        cards.delete(id);
-      }
-    model.players.forEach((player, index) => {
-      let card = cards.get(player.id);
-      if (!card) {
-        const root = el("article", "", "incredibleFuse-player");
-        card = {
-          root,
-          name: el("strong", "", "incredibleFuse-player-name"),
-          score: el("b", "", "incredibleFuse-player-score"),
-          wins: el("span", "", "incredibleFuse-player-wins"),
-          bar: el("i", "", "incredibleFuse-player-bar"),
-        };
-        const meter = el("span", "", "incredibleFuse-player-meter");
-        meter.append(card.bar!);
-        root.append(card.name!, card.wins!, card.score!, meter);
-        cards.set(player.id, card);
-        board.append(root);
-      }
-      const root = card.root!;
-      root.style.setProperty("--rider-color", COLORS[index % COLORS.length]!);
-      root.style.order = String(index);
-      root.classList.toggle("current", player.current);
-      root.classList.toggle("you", player.you);
-      root.classList.toggle("away", player.away);
-      root.classList.toggle("winner", player.winner);
-      card.name!.textContent = player.you
-        ? `${player.name} (you)`
-        : player.name;
-      card.score!.textContent = String(player.score);
-      card.wins!.textContent = player.wins;
-      card.wins!.setAttribute("aria-label", `${player.roundWins} round wins`);
-      card.bar!.style.width = `${Math.round(player.progress * 100)}%`;
-    });
-    die.render(model.die);
-    totalValue.textContent = String(model.turnTotal);
-    timerFill.style.width = `${(model.timer * 100).toFixed(1)}%`;
-    timer.classList.toggle("low", model.timer > 0 && model.timer < 0.3);
-    timerText.textContent = model.seconds ? `${model.seconds}s` : "";
-    pad.element.hidden = !model.controls.visible;
-    rollButton.disabled = !model.controls.roll;
-    holdButton.disabled = !model.controls.hold;
-    // Result.
-    const result = model.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: (slot) => COLORS[slot % COLORS.length]!,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
-  };
-
-  // ---- the runtime ----
   const sent = new Set<string>();
-  const remembered = seatName(
-    social.playerName(store.getItem(names.name)) ?? "",
-  );
-  let lastDie = "",
-    joinSent = false;
+  let resultKey = "";
   const callbacks: IncredibleFuseCallbacks = {
-    state(frame, settings) {
+    ready(id) {
+      me = id;
+    },
+    state(frame, nextSettings) {
+      const waiting = frame.phase === "lobby";
+      const playing = frame.phase === "running";
+      const canManage = controlled();
+      settings = nextSettings;
+      const mine = frame.players.find((player) => player.id === me);
+      ownSeat = waiting ? mine : undefined;
       observeConfirmedPlay(
-        reportPlay,
+        observePlay,
         frame,
         () => runtime.confirmedFrame(),
-        (frame) => ({
-          matchId: frame.matchId,
-          roundActive: frame.phase === "running",
-          roundEnded: frame.phase === "between" || frame.phase === "over",
-          active: frame.phase === "running",
-          ended: frame.phase === "over",
-          round: frame.round,
-          playerCount: frame.players.length,
-          botCount: frame.players.filter((seat) => seat.bot).length,
-          seated: frame.players.some((seat) => seat.id === viewer.me),
-          mode: solo ? "solo" : settings.display ? "shared" : "online",
-        }),
+        (view) => {
+          const seated =
+            !display && view.players.some((player) => player.id === me);
+          return {
+            matchId: view.matchId,
+            round: view.round,
+            roundActive: seated && view.phase === "running",
+            roundEnded: seated && view.phase === "over",
+            active: seated && view.phase === "running",
+            ended: seated && view.phase === "over",
+            playerCount: view.players.length,
+            botCount: 0,
+            seated,
+            mode: solo ? "solo" : nextSettings.display ? "shared" : "online",
+          };
+        },
       );
-      viewer.shared = settings.display;
-      roomSettings = settings;
-      const model = presentTable(frame, viewer);
-      ownSeat =
-        frame.phase === "lobby"
-          ? frame.players.find((seat) => seat.id === viewer.me)
-          : undefined;
-      const state = runtime.roomState();
-      const touch =
-        viewer.shared || window.matchMedia("(pointer: coarse)").matches;
-      menu.update({
-        canLobby: viewer.host && !display && frame.phase !== "lobby",
-        display,
-        touch,
-        spectator: display || !model.seated,
-      });
-      roundControls.update({
-        round: `${state?.matchId ?? code}:${frame.round}`,
-        visible: showRoundControls(frame, state?.matchId),
-        display,
-        touch,
-        spectator: display || !model.seated,
-      });
-      // For the browser smoke (scripts/incredibleFuse-smoke.ts) and the stylesheet.
       main.dataset.phase = frame.phase;
-      main.dataset.round = String(frame.round);
-      if (model.die && model.die.key !== lastDie && model.die.bust)
-        toast.flash(`${model.die.by} rolled a 1: BUST!`, "warn");
-      lastDie = model.die?.key ?? "";
-      // A page that loads into a room with a name remembered from before (a reload frees a lobby seat) joins under it
-      // once; a name typed on this page joins only through JOIN.
-      // The host is seated like anyone else who has a name: opening a room is taking its first seat.
-      if (model.askName && remembered && !joinSent) {
-        joinSent = true;
-        runtime.command({
-          type: "join",
-          slot: requestedRoomSlot(nameEntry.form),
-          name: remembered,
+      if (lobby.hidden === waiting) lobby.hidden = !waiting;
+      stage.hidden = !playing;
+      name.form.hidden = !me || display || Boolean(mine) || !waiting;
+      start.hidden = !canManage;
+      start.disabled = !waiting || !frame.players.some((p) => p.connected);
+      shared.update(settings.display, canManage && !solo && waiting);
+      choice.select.disabled = !canManage;
+      if (choice.select.value !== String(settings.puzzleIndex))
+        choice.update(settings.puzzleIndex);
+      menu.update({
+        canLobby: canManage && !waiting,
+        display,
+        spectator: !mine,
+        touch: window.matchMedia("(pointer:coarse)").matches,
+      });
+      if (waiting)
+        roster.update(
+          frame.players.map((p) => ({
+            id: p.id,
+            slot: p.slot,
+            name: p.name,
+            avatar: p.avatarId,
+            host: p.id === frame.managerId,
+            ready: p.connected,
+            status: p.connected ? "Ready" : "Offline",
+            color: roleColor(p.slot),
+          })),
+        );
+      if (playing)
+        bench.update(frame.machine, !display && Boolean(mine?.connected));
+      if (frame.phase === "over") {
+        const record = runtime.roomState()?.history.at(-1);
+        const key = JSON.stringify([frame.matchId, record?.players]);
+        if (key !== resultKey) {
+          resultKey = key;
+          const puzzle = PUZZLES[settings.puzzleIndex]!;
+          results.show({
+            game: TITLE,
+            kicker: "Puzzle complete",
+            headline: puzzle.title,
+            summary: puzzle.goal,
+            accent: "#70ddd3",
+            emblem: "✓",
+            standings: {
+              title: "Workshop crew",
+              nameLabel: "Builder",
+              columns: [],
+              rows: (record?.players ?? frame.players).map((p) => ({
+                id: p.id,
+                placement: 1,
+                name: p.name,
+                color: roleColor(p.slot),
+                you: p.id === me,
+                values: [],
+              })),
+            },
+          });
+        }
+        results.update({
+          actions: canManage
+            ? [
+                { id: "lobby", label: "Choose puzzle" },
+                { id: "replay", label: "Replay", primary: true },
+              ]
+            : [],
+          status: canManage ? "" : "Waiting for the host",
         });
+      } else if (results.open) {
+        results.hide();
+        resultKey = "";
       }
-      if (model.seated) joinSent = false;
-      render(model, frame.managerId);
+      const state = runtime.roomState();
       if (
-        role !== "display" &&
         state &&
+        !display &&
         (session.kind === "room" || social.isSignedIn())
-      )
+      ) {
         for (const report of dueReports(
           state,
-          viewer.me,
+          me,
           runtime.confirmedTick(),
           sent,
         )) {
           sent.add(report.key);
+          const route = session.kind === "room" ? "rooms/" + code : "me";
           void sendReport(
             endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
+              "/api/games/" + GAME + "/" + route + "/" + report.path,
             ),
             report,
             {
@@ -607,58 +458,39 @@ function room(solo: boolean): void {
             },
           );
         }
+      }
     },
-    event() {
-      // Everything shown comes from the view: a rollback can change a roll after its event was emitted.
+    status(message) {
+      const text = roomFailure(message);
+      const tone = text === message ? "info" : "error";
+      status.show(text, tone);
+      live.show(text, tone);
     },
-    status(text) {
-      const shown = roomFailure(text);
-      say(shown, shown === text ? "info" : "error");
-    },
-    ready(id, host) {
-      viewer.me = id;
-      viewer.host = host;
-    },
+    event() {},
     ended() {
-      say("Room ended", "error", true);
-      // A service that does not host this game closes the socket the same way: its game routes say which it was.
-      void fetch(endpoints.apiUrl(`/api/games/${GAME}/leaderboard`))
-        .then(async (response) => {
-          const body = (await response.json()) as { error?: unknown };
-          const text = roomFailure(String(body.error ?? ""));
-          if (text === NOT_OPEN) {
-            status.show(text, "error");
-            live.show(text, "error");
-          }
-        })
-        .catch(() => {
-          /* offline: "Room ended" stands */
-        });
+      live.show("Room ended", "error");
+      status.show("Room ended", "error");
     },
   };
-  const shared =
-    !solo && role === "host" && store.getItem(names.shared) === "1";
-  /** The room's settings as the last frame had them: the Shared TV tick changes one of them and keeps the rest. */
-  let roomSettings: IncredibleFuseSettings = { ...DEFAULT_SETTINGS, display: shared };
   const runtime = new IncredibleFuseRuntime(
     code,
-    roomSettings,
+    settings,
     callbacks,
     session.kind === "room"
       ? {
+          displayOnly: display,
           transport: (events) =>
             social.transport(
               code,
               session.token,
               events,
-              (events) =>
-                new PeerTransport(code, session.token, events, {
+              (handlers) =>
+                new PeerTransport(code, session.token, handlers, {
                   apiUrl: endpoints.apiUrl,
                   gameId: GAME,
                   maxFastBytes: MAX_PACKET_BYTES,
                 }),
             ),
-          displayOnly: display,
         }
       : {
           humanName: social.playerName(store.getItem(names.name)) ?? undefined,
@@ -666,34 +498,15 @@ function room(solo: boolean): void {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => menu.dispose(),
+    destroy: () => {
+      menu.dispose();
+      bench.dispose();
+      layout.dispose();
+    },
     reload: () => location.reload(),
-  });
-  document.addEventListener("keydown", (event) => {
-    if (
-      playtestInputBlocked(document) ||
-      document.querySelector("dialog[open]")
-    )
-      return;
-    // A focused control answers its own keys: Enter or Space on ROLL must not also HOLD, and Space must still press
-    // START or REMATCH.
-    if (
-      event.target instanceof HTMLInputElement ||
-      event.target instanceof HTMLButtonElement ||
-      menu.isOpen() ||
-      event.repeat
-    )
-      return;
-    const key = event.key.toLowerCase();
-    if (key === " " || key === "r") {
-      event.preventDefault();
-      runtime.play("roll");
-    } else if (key === "h" || key === "enter") runtime.play("hold");
   });
   runtime.start();
 }
 
-const query = new URLSearchParams(location.search);
-if (query.get("solo") === "1") room(true);
-else if (query.has("room")) room(false);
+if (query.has("room") || query.get("solo") === "1") workshop();
 else landing();
