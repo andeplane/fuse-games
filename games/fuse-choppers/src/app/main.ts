@@ -92,7 +92,7 @@ import {
   roomFailure,
   safeStore,
   sessionFor,
-} from "./session.js";
+} from "fuse-ui/room-session";
 
 /**
  * The page's glue: it reads the query, builds the screens from fuse-ui components and its own HUD, wires the

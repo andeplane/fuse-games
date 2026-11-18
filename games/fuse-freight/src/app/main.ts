@@ -100,7 +100,7 @@ import {
   roomFailure,
   safeStore,
   sessionFor,
-} from "./session.js";
+} from "fuse-ui/room-session";
 
 const controllerGuide = {
   controls: [

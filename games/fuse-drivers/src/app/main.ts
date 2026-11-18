@@ -75,7 +75,7 @@ import { presentTable, type TableModel, type Viewer } from "./presenter.js";
 import { resultBar, resultReport } from "./result-report.js";
 import { createReportDispatcher, dueReports, sendReport } from "./reports.js";
 import { FuseDriversRuntime, type FuseDriversCallbacks } from "./runtime.js";
-import { keys, roomFailure, safeStore, sessionFor } from "./session.js";
+import { keys, roomFailure, safeStore, sessionFor } from "fuse-ui/room-session";
 import { playFrame, confirmedPlayFrame } from "./play-metrics.js";
 
 /**

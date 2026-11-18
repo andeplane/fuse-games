@@ -1,4 +1,4 @@
-import type { Store } from "../session.js";
+import type { Store } from "fuse-ui/room-session";
 
 export type StadiumTheme = "classic" | "fuse";
 const KEY = "fuse-drivers-stadium-theme";

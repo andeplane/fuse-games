@@ -16,7 +16,7 @@ import { HudScene } from "./hud-scene.js";
 import { renderSnapshot } from "./interpolate.js";
 import { RaceScene } from "./race-scene.js";
 import { readStadiumTheme, type StadiumTheme } from "./theme.js";
-import { safeStore } from "../session.js";
+import { safeStore } from "fuse-ui/room-session";
 
 export interface ArenaEngineOptions {
   /** Where the art is served from; ends with a slash. Defaults to `assets/` under the page's base. */

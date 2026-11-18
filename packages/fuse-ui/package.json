@@ -25,6 +25,7 @@
     "./analytics": "./src/analytics.ts",
     "./analytics-text": "./src/analytics-text.ts",
     "./safe-storage": "./src/safe-storage.ts",
+    "./room-session": "./src/room-session.ts",
     "./play-metrics": "./src/play-metrics.ts",
     "./playtest": "./src/playtest.ts",
     "./playtest.css": "./src/playtest.css",

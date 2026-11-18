@@ -71,7 +71,7 @@ import {
 import { fuseroGame, type View } from "../online/game.js";
 import { seatName } from "../online/names.js";
 import { FuseroRuntime, type FuseroCallbacks } from "../online/runtime.js";
-import { keys, safeStore, sessionFor, roomFailure } from "./session.js";
+import { keys, safeStore, sessionFor, roomFailure } from "fuse-ui/room-session";
 import {
   createArena,
   interpolateArena,

@@ -122,7 +122,7 @@ import {
   roomFailure,
   safeStore,
   sessionFor,
-} from "./session.js";
+} from "fuse-ui/room-session";
 
 /**
  * The Fuse Volley page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
