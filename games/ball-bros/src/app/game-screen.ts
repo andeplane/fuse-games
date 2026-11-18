@@ -75,6 +75,10 @@ export interface ScreenOptions {
   qr(link: string): Promise<string>;
   audio: Pick<Audio, "muted" | "unlock" | "play" | "destroy">;
   radio?: Radio;
+  attachHeader?(
+    header: HTMLElement,
+    onOpenChange: (open: boolean) => void,
+  ): void;
   /** The results screen's friend buttons, in a room. */
   friends?: {
     publicIdOfMember(memberId: string): string | undefined;
@@ -346,6 +350,16 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       .querySelectorAll(".pressed")
       .forEach((b) => b.classList.remove("pressed"));
   };
+  root.tabIndex = -1;
+  options.attachHeader?.(top, (open) => {
+    if (open) cancel();
+    else if (
+      playing &&
+      top.contains(document.activeElement) &&
+      !document.querySelector("dialog[open]")
+    )
+      root.focus({ preventScroll: true });
+  });
   document.addEventListener(
     "keydown",
     (e) => {

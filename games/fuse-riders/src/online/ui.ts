@@ -1126,6 +1126,7 @@ export async function startOnline(): Promise<void> {
   const roomAccount = createPlayerAccountPanel(roomFriends.friendButton);
   roomAccount.button.classList.add("player-account");
   app.append(roomAccount.dialog, roomFriends.dialog, roomFriends.banner);
+  app.tabIndex = -1;
   const voice = solo ? undefined : new VoiceChat();
   const topMenu = node("nav", "", "game-top-menu");
   topMenu.setAttribute("aria-label", "Player menu");
@@ -1147,6 +1148,15 @@ export async function startOnline(): Promise<void> {
     gameId: GAME_ID,
     sound: audio.master,
     radioControls: audio.controls,
+    onOpenChange(open) {
+      if (open) clearControls();
+      else if (
+        (screen.kind === "arena" || screen.kind === "controller") &&
+        header.contains(document.activeElement) &&
+        !document.querySelector("dialog[open]")
+      )
+        app.focus({ preventScroll: true });
+    },
     playerOptions: () => {
       if (voice) preferences.element.append(voice.controls);
       return preferences.refresh();

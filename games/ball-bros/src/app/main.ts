@@ -95,6 +95,27 @@ function render() {
   root.replaceChildren();
   root.className = "";
   delete root.dataset.phase;
+  const attachHeader = (
+    top: HTMLElement,
+    onOpenChange?: (open: boolean) => void,
+  ) => {
+    top.append(social.element());
+    const brand =
+      ([...top.children].find((node) => node.tagName === "A") as
+        HTMLElement | undefined) ??
+      top.querySelector<HTMLElement>(".fui-top-bar-brand");
+    if (brand) brand.textContent = "BALL BROS";
+    createTopBar({
+      ...(onOpenChange ? { onOpenChange } : {}),
+      music: false,
+      radioControls: radio.element,
+      playerOptions: () => radio.volumeControl,
+      element: top,
+      brand: brand ?? undefined,
+      gameId: "ball-bros",
+      sound,
+    });
+  };
   const mode = session(location.search, store, memberToken);
   if (mode.kind === "landing" || mode.kind === "invalid") {
     const screen = landing(root, {
@@ -105,6 +126,8 @@ function render() {
       navigate,
       active: () => generation === mounted,
     });
+    const top = root.querySelector<HTMLElement>("header");
+    if (top) attachHeader(top);
     if (mode.kind === "invalid")
       screen.error.textContent =
         "Invalid room code. Check your invite or create a new room.";
@@ -125,6 +148,7 @@ function render() {
       now: () => performance.now(),
     });
     const stop = mountGame(root, {
+      attachHeader,
       online: online && {
         ...online,
         link: link(`?room=${online.code}`),
@@ -189,24 +213,6 @@ function render() {
       history.dispose();
     };
     activeRadio?.setMuted(!soundEnabled);
-  }
-  root.querySelector("header")?.append(social.element());
-  const top = root.querySelector<HTMLElement>("header");
-  if (top) {
-    const brand =
-      ([...top.children].find((node) => node.tagName === "A") as
-        HTMLElement | undefined) ??
-      top.querySelector<HTMLElement>(".fui-top-bar-brand");
-    if (brand) brand.textContent = "BALL BROS";
-    createTopBar({
-      music: false,
-      radioControls: radio.element,
-      playerOptions: () => radio.volumeControl,
-      element: top,
-      brand: brand ?? undefined,
-      gameId: "ball-bros",
-      sound,
-    });
   }
 }
 window.addEventListener("popstate", render);

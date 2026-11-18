@@ -479,7 +479,12 @@ function room(solo: boolean): void {
       if (open) {
         controls.clear();
         captured.clear();
-      }
+      } else if (
+        model?.flying &&
+        top.contains(document.activeElement) &&
+        !document.querySelector("dialog[open]")
+      )
+        main.focus({ preventScroll: true });
     },
   });
   const modalOpen = () =>
@@ -740,6 +745,7 @@ function room(solo: boolean): void {
   );
   closed.hidden = true;
   const main = el("main", "", "fc-room");
+  main.tabIndex = -1;
   // The name form stands above every screen: a newcomer mid-match picks a name and flies from the next round.
   screen.append(roundControls.element);
   main.append(

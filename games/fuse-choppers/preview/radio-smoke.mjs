@@ -45,6 +45,12 @@ try {
   await muted.keyboard.up("Space");
   assert.equal(await muted.getByRole("dialog").isVisible(), true);
   await muted.getByRole("button", { name: "Back", exact: true }).click();
+  await muted.keyboard.press("Escape");
+  await muted.waitForFunction(() =>
+    document.activeElement?.matches("main.fc-room"),
+  );
+  await muted.keyboard.press("Space");
+  assert.equal(await muted.locator("dialog[open]").count(), 0);
 
   const desktop = await open("", { viewport: { width: 1280, height: 800 } });
   const audio = desktop.waitForResponse((response) =>
