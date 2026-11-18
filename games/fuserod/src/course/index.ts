@@ -1,3 +1,5 @@
+import { nativeCourseSample } from "./geometry.js";
+
 /** Signed thousandths of the usable road half-width in Fuserod's driving view. */
 export type Course = "strip" | "aqueduct" | "canyon";
 
@@ -7,23 +9,52 @@ export interface RoadFeature {
   end: number;
   lane: number;
 }
-/** An original Fuserod course. All distances are metres along the route. */
-const features: Record<Course, readonly RoadFeature[]> = {
+// A quarter mile spans 80 native segments. Exclusive feature ends are in metres.
+const segmentMetres = 402.336 / 80;
+function canyonFeatures(layout: number) {
+  const features: RoadFeature[] = [];
+  for (let offset = 0; offset <= 590; offset++) {
+    const { flags, guardrail } = nativeCourseSample(
+      "canyon",
+      offset * 64,
+      layout,
+    );
+    const kind =
+      flags & 0x80
+        ? "bridge"
+        : flags & 0x60
+          ? "rough"
+          : guardrail
+            ? "guardrail"
+            : undefined;
+    if (!kind) continue;
+    const start = offset * segmentMetres,
+      end = (offset + 1) * segmentMetres;
+    const last = features.at(-1);
+    if (last && last.kind === kind && last.end === start) last.end = end;
+    else
+      features.push({ kind, start, end, lane: kind === "guardrail" ? 1 : 0 });
+  }
+  // Fuse's loose rocks stand in for the original seed-dependent obstacles.
+  for (const rock of [
+    { kind: "rock" as const, start: 604, end: 612, lane: -0.28 },
+    { kind: "rock" as const, start: 1752, end: 1760, lane: 0.45 },
+  ]) {
+    if (!features.some((f) => f.start < rock.end && f.end > rock.start))
+      features.push(rock);
+  }
+  return features.sort((a, b) => a.start - b.start);
+}
+const canyons = Array.from({ length: 10 }, (_, i) => canyonFeatures(i));
+const features: Record<Exclude<Course, "canyon">, readonly RoadFeature[]> = {
   strip: [],
-  aqueduct: [{ kind: "bank", start: 0, end: 1680, lane: 0 }],
-  canyon: [
-    { kind: "guardrail", start: 270, end: 421, lane: 1 },
-    { kind: "rock", start: 604, end: 612, lane: -0.28 },
-    { kind: "bridge", start: 935, end: 994, lane: 0 },
-    { kind: "rough", start: 1430, end: 1505, lane: 0 },
-    { kind: "rock", start: 1752, end: 1760, lane: 0.45 },
-    { kind: "guardrail", start: 1880, end: 2050, lane: 1 },
-    { kind: "bridge", start: 2340, end: 2390, lane: 0 },
-    { kind: "rough", start: 2640, end: 2705, lane: 0 },
-  ],
+  aqueduct: [{ kind: "bank", start: 0, end: 334 * segmentMetres, lane: 0 }],
 };
-export const courseFeatures = (route: Course): readonly RoadFeature[] =>
-  features[route];
+export const courseFeatures = (
+  route: Course,
+  layout = 0,
+): readonly RoadFeature[] =>
+  route === "canyon" ? (canyons[layout] ?? canyons[0]!) : features[route];
 
 /** Angle of the driver's vehicle (negative left), relative to the channel floor.
  * The DOS camera uses the opposite sign to rotate the world. The two slopes have
@@ -42,7 +73,12 @@ export function aqueductBank(lateral: number) {
 /** Update the driver's camera and motor once per moving road frame. The DOS
  * projection scales all four near-row probes identically, so their lateral
  * order can be compared directly on Fuserod's level channel floor. */
-export function channelStep(oldX: number, x: number, speed: number) {
+export function channelStep(
+  oldX: number,
+  x: number,
+  speed: number,
+  hasTrough = true,
+) {
   const previous = 2118 + Math.round((oldX * 927) / 1000);
   const camera = 2118 + Math.round((x * 927) / 1000);
   const left = camera - 110,
@@ -54,11 +90,13 @@ export function channelStep(oldX: number, x: number, speed: number) {
   const side = (wheel: number) => (wheel < 2360 ? -1 : wheel > 2440 ? 1 : 0);
   const leftSide = side(left),
     rightSide = side(right);
-  if (leftSide === 0 || leftSide + side(previous - 110) === 0) roll = 4;
-  if (rightSide === 0 || rightSide + side(previous + 520) === 0) roll = -4;
+  if (hasTrough && (leftSide === 0 || leftSide + side(previous - 110) === 0))
+    roll = 4;
+  if (hasTrough && (rightSide === 0 || rightSide + side(previous + 520) === 0))
+    roll = -4;
   return {
     x: shift === 0 ? x : Math.round(((camera + shift - 2118) * 1000) / 927),
-    speed: roll !== 0 && speed > 10 ? speed - 2 : speed,
+    speed: hasTrough && roll !== 0 && speed > 10 ? speed - 2 : speed,
     roll,
   };
 }
@@ -90,6 +128,7 @@ export function courseContact(
   x: number,
   speed: number,
   positionMetres = 0,
+  layout = 0,
 ) {
   let shoulder = false;
   let crashed = false;
@@ -102,7 +141,7 @@ export function courseContact(
     const camera = 2380 + Math.round((x * 850) / 1000);
     const left = camera - 30;
     const right = camera + 70;
-    const feature = courseFeatures(route).find(
+    const feature = courseFeatures(route, layout).find(
       (f) => positionMetres >= f.start && positionMetres < f.end,
     );
     const bridge = feature?.kind === "bridge";
