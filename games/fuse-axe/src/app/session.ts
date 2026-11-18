@@ -22,4 +22,4 @@ export const keys = (gameId: string) => ({
 
 export const NOT_OPEN = SOLO_NOT_OPEN;
 export const roomFailure = (message: string): string =>
-  describeRoomFailure(message, NOT_OPEN);
+  describeRoomFailure(message, { unavailable: NOT_OPEN });

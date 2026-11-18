@@ -26,7 +26,7 @@ export const keys = (gameId: string) => ({
 
 export const NOT_OPEN = SOLO_NOT_OPEN;
 export const roomFailure = (message: string): string =>
-  describeRoomFailure(message, NOT_OPEN);
+  describeRoomFailure(message, { unavailable: NOT_OPEN });
 
 /** This device's best rating on a chart, or nothing when there is none (or the stored value is not one). */
 export function bestRating(store: Store, key: string): number | undefined {

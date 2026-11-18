@@ -23,7 +23,13 @@ export function sessionFor(
   valid: (code: string) => boolean,
   secret: () => string,
 ): Session {
-  return readRoomSession(search, store, gameId, valid, secret, "one");
+  return readRoomSession(
+    search,
+    store,
+    { id: gameId, displayValue: "1" },
+    valid,
+    secret,
+  );
 }
 
 /** Decimal text only: no coercion of empty strings, exponents, signs, fractions or hex. */

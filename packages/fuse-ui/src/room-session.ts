@@ -35,10 +35,9 @@ export type Session =
 export function sessionFor(
   search: string,
   store: Store,
-  gameId: string,
+  game: string | { id: string; displayValue: "1" },
   valid: (code: string) => boolean,
   secret: () => string,
-  displayParam: "present" | "one" = "present",
 ): Session {
   const query = new URLSearchParams(search);
   if (query.get("solo") === "1") return { kind: "solo" };
@@ -46,12 +45,14 @@ export function sessionFor(
   if (raw === null) return { kind: "landing" };
   const code = raw.trim().toUpperCase();
   if (!valid(code)) return { kind: "invalid", code };
+  const { id, displayValue } =
+    typeof game === "string" ? { id: game, displayValue: undefined } : game;
   const display =
-    displayParam === "one"
-      ? query.get("display") === "1"
-      : query.has("display");
+    displayValue === undefined
+      ? query.has("display")
+      : query.get("display") === displayValue;
   if (display) return { kind: "room", code, role: "display", token: secret() };
-  const names = keys(gameId);
+  const names = keys(id);
   const host = store.getItem(names.host(code));
   if (host) return { kind: "room", code, role: "host", token: host };
   let token = store.getItem(names.peer(code));
@@ -81,7 +82,7 @@ export const SOLO_NOT_OPEN =
 /** A room service refusal, in the words this page shows. */
 export function roomFailure(
   message: string,
-  unavailable: string = NOT_OPEN,
+  { unavailable = NOT_OPEN }: { unavailable?: string } = {},
 ): string {
   if (/unknown game/i.test(message)) return unavailable;
   if (/another game/i.test(message))
