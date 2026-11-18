@@ -1,4 +1,5 @@
 import { isBrain } from "../ai/index.js";
+import { parseGameplayOptions } from "../options/index.js";
 import { CAMPAIGNS, DOGFIGHTS, MISSION_COUNT } from "../campaign/index.js";
 import { isShot, MAX_SHOTS } from "../ordnance/index.js";
 import type { Actor, Item, MissionState, Objective, Prop } from "./types.js";
@@ -144,12 +145,13 @@ export function isMissionState(s: unknown): s is MissionState {
     !record(s) ||
     !keys(
       s,
-      "mode campaign mission seed rng tick nextEnemy goodGuysPresent width height tiles decor props seen seenCount surveyArea actors shots items doors keys keyring objectives objective extraction outcome winners",
+      "mode campaign mission seed rng tick nextEnemy goodGuysPresent gameplay width height tiles decor props seen seenCount surveyArea actors shots items doors keys keyring objectives objective extraction outcome winners",
     )
   )
     return false;
   if (
     !option(s.mode, ["campaign", "dogfight"]) ||
+    !parseGameplayOptions(s.gameplay) ||
     !integer(s.campaign, -1, CAMPAIGNS.length - 1) ||
     !integer(
       s.mission,

@@ -1,5 +1,6 @@
 import type { Brain } from "../ai/index.js";
 import type { Shot } from "../ordnance/index.js";
+import type { GameplayOptions } from "../options/index.js";
 export type { Shot };
 
 export const SIM_HZ = 70;
@@ -102,6 +103,7 @@ export interface Objective {
   flags: number;
 }
 export interface MissionState {
+  gameplay: GameplayOptions;
   mode: Mode;
   campaign: number;
   mission: number;
@@ -131,6 +133,7 @@ export interface MissionState {
   winners: string[];
 }
 export interface MissionOptions {
+  gameplay?: GameplayOptions;
   campaign?: number;
   loadouts?: Readonly<Record<string, readonly number[]>>;
 }

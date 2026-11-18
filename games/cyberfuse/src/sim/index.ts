@@ -9,6 +9,12 @@ import {
   type Character,
 } from "../campaign/index.js";
 import { buildMission } from "../maps/index.js";
+import {
+  DEFAULT_GAMEPLAY,
+  parseGameplayOptions,
+  scaledHp,
+  enemyCount,
+} from "../options/index.js";
 import { collect, command, random, tickShots, updateActor } from "./combat.js";
 import {
   canStand,
@@ -105,6 +111,10 @@ export function createMission(
     seats.some((seat) => typeof seat !== "string" || !seat || seat.length > 128)
   )
     throw new RangeError("Cyberfuse requires one to five distinct seats");
+  const gameplay = parseGameplayOptions(
+    options.gameplay === undefined ? DEFAULT_GAMEPLAY : options.gameplay,
+  );
+  if (!gameplay) throw new RangeError("Invalid Cyberfuse gameplay settings");
   const world = buildMission(
     mission,
     seed >>> 0,
@@ -112,6 +122,7 @@ export function createMission(
     options.campaign,
     0,
     seats.length,
+    gameplay.density,
   );
   const spec =
     mode === "dogfight"
@@ -130,7 +141,7 @@ export function createMission(
       "player",
       { x: world.spawns[i]!.pixelX, y: world.spawns[i]!.pixelY },
       valid.length ? valid : defaultLoadout(i, spec),
-      mode === "dogfight" ? 500 : 200,
+      mode === "dogfight" ? 500 : scaledHp(200, gameplay.playerHp),
     );
   });
   const objectives: Objective[] =
@@ -147,6 +158,7 @@ export function createMission(
         ]
       : world.objectives.map((o) => ({ ...o, done: 0 }));
   const s: MissionState = {
+    gameplay,
     mode,
     mission,
     campaign: options.campaign ?? -1,
@@ -248,7 +260,9 @@ function spawnEnemy(
           : "guard",
     p,
     [c.gun],
-    Math.max(1, c.hp),
+    prisoner && s.doors.some((d) => d.key !== null)
+      ? Math.max(1, c.hp)
+      : scaledHp(c.hp, s.gameplay.npcHp),
   );
   a.speed = c.speed;
   a.skill = {
@@ -287,7 +301,8 @@ function replenish(s: MissionState, players: Actor[]) {
   );
   if (
     !m.enemies.length ||
-    present.length >= m.enemyDensity ||
+    m.enemyDensity === 0 ||
+    present.length >= enemyCount(m.enemyDensity, s.gameplay.density) ||
     s.actors.length >= 256
   )
     return;
@@ -426,6 +441,7 @@ export function stepMission(
       const next = chooseEnemyControl(a, targets, a.skill, {
         visible,
         goodGuysPresent: s.goodGuysPresent,
+        difficulty: s.gameplay.difficulty,
         canStand: (x, y) => canStand(s, a, x, y),
         random: () => random(s),
       });

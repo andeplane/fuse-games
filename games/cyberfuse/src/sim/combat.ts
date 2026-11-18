@@ -98,7 +98,7 @@ function hitActor(
     !shot.always &&
     !(flags & (1 << 22)) &&
     friendly(actor) === friendly(owner) &&
-    (s.mode !== "dogfight" || !actor.seat || !owner.seat)
+    (!friendly(actor) || (s.mode !== "dogfight" && !s.gameplay.friendlyFire))
   )
     return true;
   injure(s, actor, shot.power);
