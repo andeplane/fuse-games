@@ -7,7 +7,7 @@ import { combatEffect } from "../src/render/combat-effects.js";
 import { shieldShell } from "../src/render/shield-shell.js";
 import { siegeImpact } from "../src/render/siege-impact.js";
 import { wreckCollapse } from "../src/render/wreck-collapse.js";
-import { renderBoard } from "../src/render/board.js";
+import { hexCenter, renderBoard } from "../src/render/board.js";
 import { createMatch, loadMap, encodeState } from "../src/engine/index.js";
 
 test("a collapsing silhouette retains its footprint and can seek presentation time", () => {
@@ -278,6 +278,22 @@ test("a Siege gun destroyed in its firing tick retains its weapon effect without
       cell: 14,
       amount: 4,
     },
+    {
+      tick: world.tick,
+      playerId: "solo",
+      type: "damage",
+      fromCell: 26,
+      cell: 14,
+      amount: 8,
+    },
+    {
+      tick: world.tick,
+      playerId: "solo",
+      type: "damage",
+      fromCell: 15,
+      cell: 14,
+      amount: 8,
+    },
     { tick: world.tick, playerId: "solo", type: "destroyed", cell: 14 },
     {
       tick: world.tick,
@@ -308,6 +324,20 @@ test("a Siege gun destroyed in its firing tick retains its weapon effect without
     );
   }
   frame.animate(250);
+  const rightContact = shieldShell(
+    document,
+    hexCenter(world.map.width, 14),
+    "#63cfff",
+    hexCenter(world.map.width, 15),
+  ).element.querySelector(".shield-contact")!;
+  const contact = svg.querySelector(".shield-contact")!;
+  for (const coordinate of ["cx", "cy"]) {
+    assert.equal(
+      contact.getAttribute(coordinate),
+      rightContact.getAttribute(coordinate),
+      "the contact faces the lower source cell of the two strongest hits",
+    );
+  }
   assert.ok(
     Number(svg.querySelector(".shield-shell")!.getAttribute("opacity")) > 0,
   );
