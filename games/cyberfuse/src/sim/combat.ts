@@ -8,6 +8,7 @@ import {
   type Shot,
 } from "../ordnance/index.js";
 import {
+  approaches,
   obstacle,
   overlaps,
   tileX,
@@ -92,6 +93,10 @@ function hitActor(
   )
     return true;
   injure(s, actor, shot.power);
+  if (actor.hp === 0 && owner.seat) {
+    if (friendly(actor) || flags & (1 << 21)) owner.friendlies++;
+    else owner.kills++;
+  }
   if (owner.seat && !friendly(actor))
     owner.score += (flags & (1 << 21) ? -3 : 1) * shot.power;
   return true;
@@ -103,8 +108,12 @@ function hitObject(
   power: number,
   generated: Shot[],
 ) {
-  object.hp = Math.max(0, object.hp - power);
-  if (object.hp > 0) return;
+  const hp = Math.max(0, object.hp - power);
+  if (hp > 0) {
+    if ("id" in object) object.hp = hp;
+    else s.props = s.props.map((p) => (p === object ? { ...p, hp } : p));
+    return;
+  }
   if ("id" in object) {
     progress(s, object.objectiveIndex);
     if (object.objectiveIndex !== null && owner.seat) owner.score += 50;
@@ -114,13 +123,11 @@ function hitObject(
   const kind =
     flags & 1
       ? "explosion"
-      : flags & 2
+      : flags & (1 << 12)
         ? "fire"
-        : flags & 4
+        : flags & (1 << 13)
           ? "poison"
-          : flags & 8
-            ? "confuse"
-            : null;
+          : null;
   if (kind)
     generated.unshift(
       ...burst(kind, owner.id, object.x, object.y, () => random(s)),
@@ -146,6 +153,7 @@ export function tickShots(s: MissionState) {
       for (const a of s.actors)
         if (
           a.hp > 0 &&
+          approaches(shot, point, a) &&
           overlaps(point, a, shot.radiusX + 7, shot.radiusY + 5) &&
           hitActor(s, a, owner, shot)
         )
@@ -160,6 +168,7 @@ export function tickShots(s: MissionState) {
         s.props.find(
           (p) =>
             p.hp > 0 &&
+            !!(p.objectFlags & 4) &&
             overlaps(point, p, shot.radiusX + p.w, shot.radiusY + p.h),
         );
       if (obj) {
@@ -189,7 +198,10 @@ function motion(s: MissionState, actor: Actor, proposed: Point) {
           dx: 0,
           dy: 0,
         });
-      else if (target.hp > 0 && !(target.objectFlags & 31))
+      else if (
+        target.hp > 0 &&
+        !(target.objectFlags & (1 | (1 << 12) | (1 << 13)))
+      )
         hitObject(s, target, actor, 2, []);
       return;
     }

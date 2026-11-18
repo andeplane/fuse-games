@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // C-Dogs DOS 1.06 simulation adapter. Reference provenance is in docs/design/cyberfuse-reference.md.
 import { botControls, chooseEnemyControl, createBrain } from "../ai/index.js";
-import { defaultLoadout, DOGFIGHTS, getMission } from "../campaign/index.js";
+import {
+  defaultLoadout,
+  DOGFIGHTS,
+  getCampaignForMission,
+  getMission,
+  type Character,
+} from "../campaign/index.js";
 import { buildMission } from "../maps/index.js";
 import { collect, command, random, tickShots, updateActor } from "./combat.js";
 import {
@@ -35,6 +41,7 @@ export { isMissionState } from "./validate.js";
 export { visibleTile } from "./space.js";
 export const botControl = botControls;
 const center = (p: Point) => ({ x: p.x * W + W / 2, y: p.y * H + H / 2 });
+const DEATH_TICKS = 37;
 const exitObjective = (): Objective => ({
   kind: "collect",
   description: "Reach extraction",
@@ -53,7 +60,7 @@ function actor(
   hp: number,
 ): Actor {
   return {
-    ...center(p),
+    ...p,
     id,
     seat,
     role,
@@ -71,6 +78,8 @@ function actor(
     lastShot: -1,
     deathTick: -1,
     score: 0,
+    kills: 0,
+    friendlies: 0,
     speed: 256,
     skill: { move: 0, track: 0, shoot: 0, delay: 0, flags: 0 },
     brain: createBrain(false),
@@ -101,6 +110,8 @@ export function createMission(
     seed >>> 0,
     mode === "dogfight",
     options.campaign,
+    0,
+    seats.length,
   );
   const spec =
     mode === "dogfight"
@@ -117,7 +128,7 @@ export function createMission(
       "player-" + i,
       seat,
       "player",
-      world.spawns[i]!,
+      { x: world.spawns[i]!.pixelX, y: world.spawns[i]!.pixelY },
       valid.length ? valid : defaultLoadout(i, spec),
       mode === "dogfight" ? 500 : 200,
     );
@@ -142,6 +153,8 @@ export function createMission(
     seed: seed >>> 0,
     rng: seed >>> 0,
     tick: 0,
+    nextEnemy: 0,
+    goodGuysPresent: false,
     width: world.tiles[0]!.length,
     height: world.tiles.length,
     tiles: [...world.tiles],
@@ -185,33 +198,113 @@ export function createMission(
   };
   if (mode === "campaign")
     for (const [i, e] of world.enemies.entries()) {
-      const a = actor(
-        "enemy-" + i,
-        null,
-        e.role,
+      const a = spawnEnemy(
+        s,
+        e.characterIndex,
         e,
-        [e.weapon],
-        Math.max(1, e.hp),
+        { x: e.pixelX, y: e.pixelY },
+        i + mission * 4,
       );
-      a.characterIndex = e.characterIndex;
-      a.speed = e.speed;
       a.objectiveIndex = e.objectiveIndex ?? null;
-      a.skill = {
-        move: e.move,
-        track: e.track,
-        shoot: e.shoot,
-        delay: e.delay,
-        flags: e.flags,
-      };
-      a.brain = createBrain(
-        !(e.flags & (1 << 25)) &&
-          (!!(e.flags & (1 << 24)) || random(s) % 100 >= i + mission * 4),
-      );
-      a.dir = random(s) % 8;
-      s.actors.push(a);
     }
   for (const a of s.actors) if (a.seat) reveal(s, a);
   return s;
+}
+function spawnEnemy(
+  s: MissionState,
+  index: number,
+  c: Character,
+  p: Point,
+  wakeChance: number,
+): Actor {
+  const a = actor(
+    "enemy-" + s.nextEnemy++,
+    null,
+    c.hp >= 100 ? "heavy" : c.speed > 256 ? "scout" : "guard",
+    p,
+    [c.gun],
+    Math.max(1, c.hp),
+  );
+  a.speed = c.speed;
+  a.skill = {
+    move: c.move,
+    track: c.track,
+    shoot: c.shoot,
+    delay: c.delay,
+    flags: c.flags,
+  };
+  a.characterIndex = index;
+  a.brain = createBrain(
+    !(c.flags & (1 << 25)) &&
+      (!!(c.flags & (1 << 24)) || random(s) % 100 >= wakeChance),
+  );
+  s.actors.push(a);
+  return a;
+}
+function replenish(s: MissionState, players: Actor[]) {
+  if (s.mode !== "campaign") return;
+  const campaign = s.campaign < 0 ? undefined : s.campaign;
+  const m = getMission(s.mission, campaign);
+  // Corpses still occupy an AI slot throughout the nine death frames.
+  const present = s.actors.filter(
+    (a) => !a.seat && (a.hp > 0 || s.tick - a.deathTick < DEATH_TICKS),
+  );
+  const owners = new Set(s.shots.map((v) => v.owner));
+  s.actors = s.actors.filter(
+    (a) =>
+      a.seat !== null ||
+      a.hp > 0 ||
+      s.tick - a.deathTick < DEATH_TICKS ||
+      owners.has(a.id),
+  );
+  if (
+    !m.enemies.length ||
+    present.length >= m.enemyDensity ||
+    s.actors.length >= 256
+  )
+    return;
+  const index = m.enemies[random(s) % m.enemies.length]!;
+  const c = getCampaignForMission(s.mission, campaign).characters[index];
+  if (!c) return;
+  // A crowded or malformed checkpoint can never stall the simulation on placement.
+  for (let i = 0; i < 256; i++) {
+    const p = { x: random(s) % (s.width * W), y: random(s) % (s.height * H) };
+    if (
+      players.some(
+        (a) => Math.max(Math.abs(a.x - p.x), Math.abs(a.y - p.y)) < 150,
+      ) ||
+      wallContact(s, p.x, p.y) ||
+      s.actors.some(
+        (a) => a.hp > 0 && Math.abs(a.x - p.x) < 14 && Math.abs(a.y - p.y) < 10,
+      ) ||
+      s.props.some(
+        (o) =>
+          o.impassable &&
+          Math.abs(o.x - p.x) < o.w + 7 &&
+          Math.abs(o.y - p.y) < o.h + 5,
+      ) ||
+      s.items.some(
+        (o) => o.solid && Math.abs(o.x - p.x) < 12 && Math.abs(o.y - p.y) < 9,
+      )
+    )
+      continue;
+    spawnEnemy(
+      s,
+      index,
+      c,
+      p,
+      Math.max(
+        0,
+        s.nextEnemy -
+          s.objectives.reduce(
+            (v, o) => v + (o.kind === "kill" ? o.count : 0),
+            0,
+          ),
+      ) +
+        s.mission * 4,
+    );
+    return;
+  }
 }
 function nextFrame(s: MissionState): MissionState {
   return {
@@ -221,7 +314,6 @@ function nextFrame(s: MissionState): MissionState {
     seen: [...s.seen],
     actors: s.actors.map((a) => ({ ...a })),
     items: s.items.map((i) => ({ ...i })),
-    props: s.props.map((p) => ({ ...p })),
     doors: s.doors.map((d) => ({ ...d })),
     keyring: [...s.keyring],
     objectives: s.objectives.map((o) => ({ ...o })),
@@ -246,7 +338,7 @@ function finish(s: MissionState, players: Actor[]) {
       s.objectives.every((o) => o.done >= o.required) &&
       players.every((a) => tileAt(s, a.x, a.y) === "E") &&
       s.items.every(
-        (item) => item.escort === null || tileAt(s, item.x, item.y) === "E",
+        (item) => item.kind !== "hostage" || tileAt(s, item.x, item.y) === "E",
       );
     s.extraction = ready ? s.extraction + 1 : 0;
   }
@@ -304,20 +396,22 @@ export function stepMission(
       hp: a.hp,
       fire: Object.hasOwn(controls, a.seat!) && !!controls[a.seat!]?.fire,
     }));
-  const goodGuysPresent = s.actors.some(
+  s.goodGuysPresent ||= s.actors.some(
     (a) =>
       !a.seat &&
       !!(a.skill.flags & ((1 << 17) | (1 << 22))) &&
       !(a.skill.flags & (1 << 18)),
   );
-  for (const a of s.actors)
+  // AddActor links new characters at the head, so the latest NPC decides first.
+  for (let index = s.actors.length - 1; index >= 0; index--) {
+    const a = s.actors[index]!;
     if (!a.seat && a.hp) {
       const visible = targets.some((p) =>
         visibleTile(s, p, tileX(a.x), tileY(a.y)),
       );
       const next = chooseEnemyControl(a, targets, a.skill, {
         visible,
-        goodGuysPresent,
+        goodGuysPresent: s.goodGuysPresent,
         canStand: (x, y) => canStand(s, a, x, y),
         random: () => random(s),
       });
@@ -326,7 +420,12 @@ export function stepMission(
       a.lock = next.lock;
       command(s, a, next.control);
     }
+  }
   escort(
+    s,
+    players.filter((a) => a.hp > 0),
+  );
+  replenish(
     s,
     players.filter((a) => a.hp > 0),
   );

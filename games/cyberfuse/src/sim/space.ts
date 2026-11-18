@@ -39,14 +39,29 @@ export function overlaps(a: Point, b: Point, w: number, h: number): boolean {
 }
 export function obstacle(s: MissionState, actor: Actor, x: number, y: number) {
   const p = { x, y };
+  const collides = (target: Point, w: number, h: number) =>
+    approaches(actor, p, target) && overlaps(p, target, w, h);
   return (
     s.actors.find(
-      (other) => other !== actor && other.hp > 0 && overlaps(p, other, 14, 10),
+      (other) => other !== actor && other.hp > 0 && collides(other, 14, 10),
     ) ??
-    s.items.find((item) => item.solid && overlaps(p, item, 12, 9)) ??
+    s.items.find((item) => item.solid && collides(item, 12, 9)) ??
     s.props.find(
-      (prop) => prop.impassable && overlaps(p, prop, 7 + prop.w, 5 + prop.h),
+      (prop) => prop.impassable && collides(prop, 7 + prop.w, 5 + prop.h),
     )
+  );
+}
+/** Overlapping items moving apart on both axes do not obstruct each other. */
+export function approaches(
+  previous: Point,
+  next: Point,
+  other: Point,
+): boolean {
+  const x = Math.floor(other.x),
+    y = Math.floor(other.y);
+  return (
+    Math.abs(Math.floor(next.x) - x) <= Math.abs(Math.floor(previous.x) - x) ||
+    Math.abs(Math.floor(next.y) - y) <= Math.abs(Math.floor(previous.y) - y)
   );
 }
 export function canStand(s: MissionState, actor: Actor, x: number, y: number) {
@@ -109,20 +124,24 @@ export function nearest<T extends Point>(
 export function updateDoors(s: MissionState) {
   let changed = false;
   for (const door of s.doors) {
-    const close =
-      s.actors.some(
-        (a) =>
-          a.hp > 0 &&
-          Math.abs(tileX(a.x) - door.x) + Math.abs(tileY(a.y) - door.y) <= 1,
-      ) ||
-      s.items.some(
-        (a) =>
-          a.escort !== null &&
-          Math.abs(tileX(a.x) - door.x) + Math.abs(tileY(a.y) - door.y) <= 1,
-      );
-    if (close && (door.key === null || s.keyring.includes(door.key)))
-      door.timer = 30;
-    else if (door.timer > 0) door.timer--;
+    // HorzDoor and VertDoor watch the three cells across their threshold.
+    const onThreshold = (p: Point) => {
+      const dx = Math.abs(tileX(p.x) - door.x),
+        dy = Math.abs(tileY(p.y) - door.y);
+      return door.horizontal ? dx === 0 && dy <= 1 : dy === 0 && dx <= 1;
+    };
+    const occupied =
+      s.actors.some((a) => a.hp > 0 && onThreshold(a)) ||
+      s.items.some((i) => i.escort !== null && onThreshold(i));
+    if (occupied && (door.key === null || s.keyring.includes(door.key)))
+      door.timer = 1;
+    else if (
+      door.timer &&
+      !s.items.some(onThreshold) &&
+      !s.props.some(onThreshold) &&
+      !s.keys.some(onThreshold)
+    )
+      door.timer = 0;
     const mark = door.timer > 0 ? "+" : "D";
     if (s.tiles[door.y]![door.x] !== mark) {
       setTile(s.tiles, door.x, door.y, mark);

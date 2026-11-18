@@ -31,7 +31,7 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
     !record(a) ||
     !keys(
       a,
-      "id seat role dir hp maxHp inventory weapon lock slideX slideY specialHeld usedSpecial walking lastShot deathTick score speed skill brain objectiveIndex characterIndex flamed poisoned petrified confused x y",
+      "id seat role dir hp maxHp inventory weapon lock slideX slideY specialHeld usedSpecial walking lastShot deathTick score kills friendlies speed skill brain objectiveIndex characterIndex flamed poisoned petrified confused x y",
     )
   )
     return false;
@@ -39,7 +39,7 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
   return (
     pos(a) &&
     text(a.id, 32) &&
-    /^(player|enemy)-[0-9]{1,4}$/.test(a.id) &&
+    /^(player|enemy)-[0-9]{1,10}$/.test(a.id) &&
     (a.seat === null
       ? option(a.role, ["guard", "heavy", "scout"])
       : text(a.seat, 128) && a.seat.length > 0 && a.role === "player") &&
@@ -62,6 +62,8 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
     integer(a.deathTick, -1, tick) &&
     (a.hp === 0) === (a.deathTick !== -1) &&
     integer(a.score, -0x7fffffff, 0x7fffffff) &&
+    integer(a.kills, 0, 0x7fffffff) &&
+    integer(a.friendlies, 0, 0x7fffffff) &&
     integer(a.speed, 1, 2048) &&
     record(skill) &&
     keys(skill, "move track shoot delay flags") &&
@@ -141,7 +143,7 @@ export function isMissionState(s: unknown): s is MissionState {
     !record(s) ||
     !keys(
       s,
-      "mode campaign mission seed rng tick width height tiles decor props seen seenCount surveyArea actors shots items doors keys keyring objectives objective extraction outcome winners",
+      "mode campaign mission seed rng tick nextEnemy goodGuysPresent width height tiles decor props seen seenCount surveyArea actors shots items doors keys keyring objectives objective extraction outcome winners",
     )
   )
     return false;
@@ -160,6 +162,8 @@ export function isMissionState(s: unknown): s is MissionState {
     !integer(s.seed, 0, 0xffffffff) ||
     !integer(s.rng, 0, 0xffffffff) ||
     !integer(s.tick, 0, 0x7fffffff) ||
+    !integer(s.nextEnemy, 0, s.tick + 256) ||
+    !flag(s.goodGuysPresent) ||
     s.width !== 64 ||
     s.height !== 64 ||
     !rows(s.tiles, /^[#.ED+]+$/) ||
@@ -190,6 +194,15 @@ export function isMissionState(s: unknown): s is MissionState {
   )
     return false;
   const players = actors.filter((a) => a.seat !== null);
+  const nextEnemy = s.nextEnemy;
+  if (
+    actors.some((a) =>
+      a.seat === null
+        ? !a.id.startsWith("enemy-") || Number(a.id.slice(6)) >= nextEnemy
+        : !a.id.startsWith("player-"),
+    )
+  )
+    return false;
   if (
     !players.length ||
     players.length > 5 ||

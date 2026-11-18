@@ -53,6 +53,8 @@ export interface Actor extends Point {
   lastShot: number;
   deathTick: number;
   score: number;
+  kills: number;
+  friendlies: number;
   speed: number;
   skill: Skill;
   brain: Brain;
@@ -105,6 +107,8 @@ export interface MissionState {
   seed: number;
   rng: number;
   tick: number;
+  nextEnemy: number;
+  goodGuysPresent: boolean;
   width: number;
   height: number;
   tiles: string[];
