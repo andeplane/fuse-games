@@ -62,12 +62,17 @@ try {
   await host.waitForURL(/room=/);
   const code = new URL(host.url()).searchParams.get("room")!;
   await takeHostSeat(host, "Ada");
-  await peer.goto(new URL(`fuse-drivers/?room=${code}&mute&probe`, origin).href);
+  await peer.goto(
+    new URL(`fuse-drivers/?room=${code}&mute&probe`, origin).href,
+  );
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
   if (process.env.OFFROAD_CAMPAIGN_SMOKE === "1") {
-    await host.getByRole("button", { name: /^add ai$/i }).first().click();
+    await host
+      .getByRole("button", { name: /^add ai$/i })
+      .first()
+      .click();
     await host.locator(".fui-roster-name", { hasText: "CPU" }).waitFor();
   }
   // Shared TV is the room's choice: the host ticks it in the room, and the button beside it opens the screen.
@@ -90,14 +95,18 @@ try {
   await host.locator(".fd-arena").waitFor({ state: "hidden" });
   await peer.locator(".fd-arena").waitFor({ state: "hidden" });
   await tv.locator(".fd-pad").waitFor({ state: "hidden" });
-  await peer.waitForFunction(() => window.__driversRaceProbe?.().phase === "racing");
-  const start = await tv.evaluate(() => window.__driversRaceProbe?.().trucks?.[1]);
+  await peer.waitForFunction(
+    () => window.__driversRaceProbe?.().phase === "racing",
+  );
+  const start = await tv.evaluate(
+    () => window.__driversRaceProbe?.().trucks?.[1],
+  );
   assert.ok(start, "the TV has the second driver's grid position");
   const gas = peer.getByRole("button", { name: "GAS", exact: true });
   await gas.hover();
   await peer.mouse.down();
   try {
-    await tv.waitForFunction(({x,y}) => {
+    await tv.waitForFunction(({ x, y }) => {
       const truck = window.__driversRaceProbe?.().trucks?.[1];
       return !!truck && (truck.x !== x || truck.y !== y);
     }, start);
@@ -107,15 +116,26 @@ try {
   await peer.getByRole("button", { name: "NITRO", exact: true }).hover();
   await peer.mouse.down();
   try {
-    await tv.waitForFunction(stock =>
-      (window.__driversRaceProbe?.().trucks?.[1]?.nitros ?? stock) < stock, start.nitros);
+    await tv.waitForFunction(
+      (stock) =>
+        (window.__driversRaceProbe?.().trucks?.[1]?.nitros ?? stock) < stock,
+      start.nitros,
+    );
   } finally {
     await peer.mouse.up();
   }
   // Compare actual accepted game-state hashes after the controls have crossed the mesh.
-  const checked = await peer.evaluate(() => window.__driversRaceProbe!().hashChecks);
-  await peer.waitForFunction(n => window.__driversRaceProbe!().hashChecks > n + 2, checked);
-  assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
+  const checked = await peer.evaluate(
+    () => window.__driversRaceProbe!().hashChecks,
+  );
+  await peer.waitForFunction(
+    (n) => window.__driversRaceProbe!().hashChecks > n + 2,
+    checked,
+  );
+  assert.equal(
+    await peer.evaluate(() => window.__driversRaceProbe!().mismatches),
+    0,
+  );
   await peer.screenshot({ path: "artifacts/fuse-drivers/phone-race.png" });
   await host.screenshot({ path: "artifacts/fuse-drivers/room-race.png" });
   await tv.screenshot({ path: "artifacts/fuse-drivers/tv-race.png" });
@@ -131,22 +151,32 @@ try {
     1,
     "recovery does not duplicate the driver's roster row",
   );
-  await peer.waitForFunction(stock => {
+  await peer.waitForFunction((stock) => {
     const state = window.__driversRaceProbe?.();
-    return !!state && state.hashChecks >= 2 && (state.trucks?.[1]?.nitros ?? stock) < stock;
+    return (
+      !!state &&
+      state.hashChecks >= 2 &&
+      (state.trucks?.[1]?.nitros ?? stock) < stock
+    );
   }, start.nitros);
-  assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
+  assert.equal(
+    await peer.evaluate(() => window.__driversRaceProbe!().mismatches),
+    0,
+  );
   assert.deepEqual(failures, []);
   if (process.env.OFFROAD_CAMPAIGN_SMOKE === "1") {
     const shop = peer.getByRole("button", { name: "Speed shop", exact: true });
-    await shop.waitFor({timeout: 180000});
+    await shop.waitFor({ timeout: 180000 });
     await shop.click();
-    const tires = peer.getByRole("button", {name: /^Tires/i});
+    const tires = peer.getByRole("button", { name: /^Tires/i });
     await tires.click();
-    await tires.filter({hasText: "Level 1/5"}).waitFor();
-    assert.equal(await tv.getByRole("button", {name: "Speed shop", exact: true}).count(), 0);
+    await tires.filter({ hasText: "Level 1/5" }).waitFor();
+    assert.equal(
+      await tv.getByRole("button", { name: "Speed shop", exact: true }).count(),
+      0,
+    );
     await peer.screenshot({ path: "artifacts/fuse-drivers/phone-shop.png" });
-    await host.getByRole("button", {name:/^NEXT RACE/i}).click();
+    await host.getByRole("button", { name: /^NEXT RACE/i }).click();
     await tv.waitForFunction(() => {
       const state = window.__driversRaceProbe?.();
       return state?.track === "offroad-7" && state.trucks?.[1]?.tires === 1;
@@ -154,11 +184,20 @@ try {
     await peer.reload();
     await peer.waitForFunction(() => {
       const state = window.__driversRaceProbe?.();
-      return state?.track === "offroad-7" && state.trucks?.[1]?.tires === 1 && state.hashChecks >= 2;
+      return (
+        state?.track === "offroad-7" &&
+        state.trucks?.[1]?.tires === 1 &&
+        state.hashChecks >= 2
+      );
     });
-    assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
+    assert.equal(
+      await peer.evaluate(() => window.__driversRaceProbe!().mismatches),
+      0,
+    );
     assert.deepEqual(failures, []);
-    console.log("Four laps, classified standings, guest purchase, next course and restored upgraded truck passed");
+    console.log(
+      "Four laps, classified standings, guest purchase, next course and restored upgraded truck passed",
+    );
   }
   console.log(
     "Fuse Drivers solo, portal, two-peer room and reload smoke passed",

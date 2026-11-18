@@ -6,15 +6,15 @@ Fuse Drivers runs a TypeScript reconstruction of the 1990 DOS racing simulation 
 
 The reference GAME.EXE has SHA-256 `a67ba31b021ed53d2d033cbe67ecb32a4537bf20593392bcf4ba85d3fd67836c`. For gameplay segment 0000, add 0x400 to an instruction offset to find its file offset. The supplied executable, disassembly, decompiler output and decoded artwork stay outside this repository.
 
-| Subsystem | Original location | Native source |
-| --- | --- | --- |
-| Truck update, throttle, nitro and translation | CS:152c, 1769, 17a1, 1871 | `src/game/offroad/motion.ts` |
-| Four wheel contacts, suspension and body pose | CS:18df, 1c8b, 1d73 | `src/game/offroad/suspension.ts` |
-| Track contour grids and facet lookup | File 0x229b and 0x1d0a | `src/game/offroad/terrain.ts` |
-| Pair contacts and velocity transfer | CS:169d | `src/game/offroad/motion.ts` |
-| Lap regions, progress and isometric projection | File 0x235a and 0x1a5f | `src/game/offroad/course.ts` |
-| CPU route interpreter | CS:2189, 21f3 | `src/game/offroad/cpu.ts` |
-| Cash bags and nitro pickups | CS:0508, 056e | `src/game/offroad/pickups.ts` |
+| Subsystem                                      | Original location         | Native source                    |
+| ---------------------------------------------- | ------------------------- | -------------------------------- |
+| Truck update, throttle, nitro and translation  | CS:152c, 1769, 17a1, 1871 | `src/game/offroad/motion.ts`     |
+| Four wheel contacts, suspension and body pose  | CS:18df, 1c8b, 1d73       | `src/game/offroad/suspension.ts` |
+| Track contour grids and facet lookup           | File 0x229b and 0x1d0a    | `src/game/offroad/terrain.ts`    |
+| Pair contacts and velocity transfer            | CS:169d                   | `src/game/offroad/motion.ts`     |
+| Lap regions, progress and isometric projection | File 0x235a and 0x1a5f    | `src/game/offroad/course.ts`     |
+| CPU route interpreter                          | CS:2189, 21f3             | `src/game/offroad/cpu.ts`        |
+| Cash bags and nitro pickups                    | CS:0508, 056e             | `src/game/offroad/pickups.ts`    |
 
 The measurement scripts in `scripts/fuse-drivers-*` read a supplied local copy. Committed course data describes the functional contact surfaces, routes and gates for eight circuits in both directions. The default renderer draws its own dirt, banks and barriers from the physics surfaces.
 

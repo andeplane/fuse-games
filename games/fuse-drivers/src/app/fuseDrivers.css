@@ -483,10 +483,9 @@ body.fuseDrivers-display .fuseDrivers-die {
 @media (orientation: landscape) and (max-height: 550px) {
   .fd-race:has(.fd-arena-box:not([hidden])):has(.fd-pad:not([hidden])) {
     display: grid;
-    grid-template-columns: minmax(3.5rem, 1fr) minmax(
-        0,
-        min(72vw, calc((100dvh - 5.5rem) * 16 / 9))
-      ) minmax(3.5rem, 1fr);
+    grid-template-columns:
+      minmax(3.5rem, 1fr) minmax(0, min(72vw, calc((100dvh - 5.5rem) * 16 / 9)))
+      minmax(3.5rem, 1fr);
     grid-template-rows: 1fr 1fr auto;
     align-items: stretch;
     column-gap: var(--fui-space-2);

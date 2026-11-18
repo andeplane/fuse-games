@@ -97,7 +97,11 @@ test("changing the lobby course leaves the active heat and its campaign sequence
   };
   fold(changed);
   fold(changed, { a: [[ACTION, "rematch", "m2"]] });
-  assert.equal(changed.race?.trackName, "offroad-7", "Sidewinder leads to Wipeout");
+  assert.equal(
+    changed.race?.trackName,
+    "offroad-7",
+    "Sidewinder leads to Wipeout",
+  );
   assert.equal(changed.settings.track, next, "the lobby retains its selection");
 });
 
