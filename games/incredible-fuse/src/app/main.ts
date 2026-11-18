@@ -92,9 +92,14 @@ const help = {
     {
       keys: "Arrows / Enter",
       action:
-        "With the board focused, move the cursor and place, select or move a part.",
+        "On the board, move the cursor and place or select a part. Hold Shift for fine adjustments.",
     },
     { keys: "F / Delete", action: "Flip or remove the selected part." },
+    {
+      keys: "Attach wire / belt / rope",
+      action:
+        "Select one part, choose an attachment, then select the other part. Select a connected part to detach the link.",
+    },
     { keys: "Cmd/Ctrl + Z", action: "Undo the most recent edit." },
     {
       keys: "Space",
@@ -110,6 +115,10 @@ const help = {
     {
       keys: "Flip / Remove / Undo",
       action: "Change the selected part or undo an edit.",
+    },
+    {
+      keys: "Attach wire / belt / rope",
+      action: "Tap a part, choose its attachment, then tap the other part.",
     },
     {
       keys: "Run machine / Rewind",
@@ -202,6 +211,13 @@ function landing() {
       },
     }),
   );
+  choice.select.addEventListener("change", () => {
+    if (card.solo)
+      card.solo.textContent =
+        choice.select.selectedIndex === FREE_WORKSHOP
+          ? "Open workshop"
+          : "Start puzzle";
+  });
   app.replaceChildren(header(), card.element);
 }
 
@@ -409,6 +425,11 @@ function workshop() {
       if (name.form.hidden === needsSeat) name.form.hidden = !needsSeat;
       start.hidden = !canManage;
       start.disabled = !waiting || !frame.players.some((p) => p.connected);
+      const action =
+        settings.puzzleIndex === FREE_WORKSHOP
+          ? "Open workshop"
+          : "Start puzzle";
+      if (start.textContent !== action) start.textContent = action;
       shared.update(settings.display, canManage && !solo && waiting);
       choice.select.disabled = !canManage;
       if (choice.select.value !== String(settings.puzzleIndex))
