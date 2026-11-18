@@ -42,6 +42,7 @@ import {
 import {
   button,
   createControllerRow,
+  createDialog,
   createInviteCard,
   createLandingCard,
   createRoomLayout,
@@ -375,6 +376,12 @@ function room(solo: boolean): void {
     document,
     (kind) => !!shopView && runtime.buyUpgrade(kind, shopView),
   );
+  const lobbyShopButton = button("Speed shop", "fui-button");
+  const lobbyShop = createDialog({ title: "Speed shop", document });
+  lobbyShopButton.onclick = () => {
+    if (shopView?.phase === "lobby")
+      lobbyShop.show({ title: "Speed shop", content: [shop.element] });
+  };
   const results = createResultsScreen({
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
@@ -464,7 +471,14 @@ function room(solo: boolean): void {
   // otherwise show an empty arena and an empty results table at the same time.
   race.hidden = true;
   start.hidden = true;
-  main.append(problem.element, nameEntry.form, lobby, race, results.element);
+  main.append(
+    problem.element,
+    nameEntry.form,
+    lobby,
+    race,
+    results.element,
+    lobbyShop.dialog,
+  );
   // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
   // state only while a race is on.
   app.replaceChildren(header([live.element]), main);
@@ -487,6 +501,7 @@ function room(solo: boolean): void {
     element: lobby,
     roster,
     capacity: 5,
+    slotColor: truckColor,
     join: nameEntry.form,
     // ADD FRIEND on a driver's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
     friends: social.friends,
@@ -494,7 +509,7 @@ function room(solo: boolean): void {
     layout: "configuration",
     configuration: [raceOptions.element],
     settings: [raceOptions.settingsField],
-    actions: [lobbyNote],
+    actions: [lobbyShopButton, lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation and the drivers scroll under them.
     actionsInHeader: true,
     extras: [sharedTv.element],
@@ -557,13 +572,13 @@ function room(solo: boolean): void {
     }
     const result = model.results;
     const seat =
-      result && !display
+      (result || model.screen === "lobby") && !display
         ? latest?.drivers.find(
             (driver) =>
               driver.id === viewer.me &&
               driver.connected &&
               !driver.bot &&
-              driver.truck >= 0,
+              (model.screen === "lobby" || driver.truck >= 0),
           )
         : undefined;
     shopView =
@@ -571,6 +586,9 @@ function room(solo: boolean): void {
         ? latest
         : undefined;
     const wallet = shopView?.garage[viewer.me];
+    lobbyShopButton.hidden = model.screen !== "lobby" || !wallet;
+    if (lobbyShopButton.hidden && lobbyShop.dialog.open)
+      lobbyShop.dialog.close();
     if (wallet) shop.update(wallet);
     if (!result) {
       if (results.open) results.hide();

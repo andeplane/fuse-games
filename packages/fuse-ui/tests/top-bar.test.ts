@@ -5,6 +5,23 @@ import { page } from "./dom-fixture.js";
 import { ALL_SONGS } from "fuse-music";
 import type { MusicPlayer } from "../src/radio.js";
 
+test("the game menu spells out the compact audio settings control", () => {
+  const { document } = page();
+  const header = document.createElement("header");
+  const audio = document.createElement("div");
+  const more = document.createElement("button");
+  more.className = "fui-audio-more";
+  more.textContent = "⋯";
+  audio.append(more);
+  header.append(audio);
+  document.body.append(header);
+  createTopBar({ element: header, music: false });
+  assert.equal(
+    header.querySelector(".fui-top-bar-actions .fui-audio-more")?.textContent,
+    "Sound settings",
+  );
+});
+
 test("the default radio survives header replacement without constructing a second player", () => {
   const { document } = page();
   let creates = 0,

@@ -8,7 +8,7 @@ Hold `W` or `↑` for gas, release to coast, and steer with `A`/`D` or `←`/`�
 
 For shared-screen play, the host ticks **Shared TV** in the room, under the invitation, and opens **OPEN TV SCREEN** on the TV. The TV shows the arena and phones show controls.
 
-Solo opens the same race setup as a room. Start with three CPU opponents, add or remove drivers, and choose one of eight opening courses in either direction. A series defaults to three races. Set one to eight races or choose Continuous to keep following the DOS calendar. Each race has four laps. Controls appear during every countdown.
+Solo opens the same race setup as a room. Start with three CPU opponents, add or remove drivers, and choose one of eight opening courses in either direction. A series defaults to three races. Set one to eight races or choose Continuous to keep following the DOS calendar. Each race has four laps. Controls appear during every countdown. Before starting, each seated driver can open **Speed shop** and use their starting credits to upgrade their truck. Shopping is optional.
 
 ## Race rules and graphics
 

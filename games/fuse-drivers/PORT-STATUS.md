@@ -20,7 +20,7 @@ The measurement scripts in `scripts/fuse-drivers-*` read a supplied local copy. 
 
 ## Timing and multiplayer
 
-Rules version `fuse-drivers-6` adds Battle mode. Its item inventory, crate availability, firebombs and shield timers travel in the race checkpoint. Classic follows the reconstructed DOS rules. The graphics preference is local to each screen. A room runs seven physics updates per six 50 ms log ticks, corresponding to one DOS update per three nominal 70 Hz VGA retraces. The presenter interpolates between updates. Every wheel, both headings, the CPU program counter, pickups and the shared random state travel in validated snapshots. Each peer uses the same simulation for replay and local prediction.
+Rules version `fuse-drivers-7` supports purchases by seated drivers in the opening lobby and carries them onto the first grid. Battle mode adds refill crates, firebombs and shields. Its item inventory, crate availability, firebombs and shield timers travel in the race checkpoint. Classic follows the reconstructed DOS rules. The graphics preference is local to each screen. A room runs seven physics updates per six 50 ms log ticks, corresponding to one DOS update per three nominal 70 Hz VGA retraces. The presenter interpolates between updates. Every wheel, both headings, the CPU program counter, pickups and the shared random state travel in validated snapshots. Each peer uses the same simulation for replay and local prediction.
 
 The original grid has four trucks. Fuse adds a fifth start position for five-driver rooms. Hardware retrace jitter, physical input latency and the network transport are outside the DOS instruction comparisons.
 

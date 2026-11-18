@@ -230,6 +230,11 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       ".fui-game-menu-trigger",
     ))
       trigger.textContent = "Game controls";
+    for (const trigger of menu.body.querySelectorAll<HTMLElement>(
+      ".fui-audio-more",
+    ))
+      if (trigger.textContent !== "Sound settings")
+        trigger.textContent = "Sound settings";
   };
   right.append(sound, account, toggle);
   refresh(options);

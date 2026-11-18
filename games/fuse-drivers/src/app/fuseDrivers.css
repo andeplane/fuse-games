@@ -482,6 +482,27 @@ body.fuseDrivers-display .fuseDrivers-die {
   flex-wrap: wrap;
   gap: 1rem;
 }
+.fd-race-options[data-theme="fuse"] .fui-picker-option {
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  border-color: color-mix(in srgb, var(--fd-course-accent) 45%, #203348);
+  background: color-mix(in srgb, var(--fd-course-accent) 14%, #0b1625);
+}
+.fd-race-options[data-theme="fuse"] .fui-picker-option span {
+  padding: 0.35rem 0.18rem;
+  border-top: 2px solid var(--fd-course-accent);
+}
+.fd-race-options[data-theme="fuse"] .fui-picker-option[aria-pressed="true"] {
+  outline: 2px solid var(--fd-course-accent);
+  outline-offset: -2px;
+  background: var(--fd-course-accent);
+  color: #091520;
+}
+.fd-race-options[data-theme="fuse"] .fui-picker-option:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 2px;
+}
 .fd-series-options label {
   display: grid;
   gap: 0.35rem;

@@ -125,6 +125,11 @@
   display: grid;
   gap: 10px;
 }
+.fui-top-bar-actions .fui-audio-panel {
+  position: static;
+  width: 100%;
+  box-sizing: border-box;
+}
 .fui-top-bar-actions > :is(div, nav, section):not(.fui-radio, [hidden]) {
   display: grid !important;
   grid-template-columns: 1fr !important;

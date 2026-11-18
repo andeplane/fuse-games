@@ -5,6 +5,7 @@ import {
   type FuseDriversSettings,
 } from "../game/rules.js";
 import { courseLabel } from "./course-label.js";
+import { courseAccent } from "./arena/course-palette.js";
 import { coursePreviewUrl, type StadiumTheme } from "./arena/theme.js";
 
 /** The host picks the opening circuit; subsequent races follow the DOS calendar. */
@@ -14,6 +15,7 @@ export function createRaceOptions(
   changeTheme: (theme: StadiumTheme) => void,
 ) {
   const element = el("section", "", "fd-race-options");
+  element.dataset.theme = initialTheme;
   const previews = new Map<string, HTMLImageElement>();
   const courses = createPicker({
     legend: "Opening course",
@@ -30,6 +32,11 @@ export function createRaceOptions(
     },
     onPick: send,
   });
+  for (const card of courses.buttons)
+    card.style.setProperty(
+      "--fd-course-accent",
+      courseAccent(card.dataset.choice!),
+    );
   function select(label: string, choices: [string, string][]) {
     const field = el("label", label);
     const control = el("select");
@@ -66,6 +73,7 @@ export function createRaceOptions(
   theme.control.value = initialTheme;
   theme.control.onchange = () => {
     const selected = theme.control.value === "classic" ? "classic" : "fuse";
+    element.dataset.theme = selected;
     for (const [id, thumbnail] of previews)
       thumbnail.src = coursePreviewUrl(id, selected);
     changeTheme(selected);

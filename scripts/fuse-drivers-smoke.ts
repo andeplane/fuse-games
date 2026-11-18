@@ -57,6 +57,11 @@ try {
   assert.equal(new URL(host.url()).searchParams.has("mute"), true);
   await host.goto(new URL("fuse-drivers/?solo=1&mute&probe", origin).href);
   const rules = host.getByLabel("Rules", { exact: true });
+  await host.getByRole("button", { name: "Speed shop", exact: true }).click();
+  const soloShop = host.getByRole("dialog", { name: "Speed shop" });
+  await soloShop.getByRole("button", { name: /^Tires/ }).click();
+  await soloShop.getByRole("button", { name: /^Tires.*Level 1/ }).waitFor();
+  await host.keyboard.press("Escape");
   assert.equal(await rules.inputValue(), "classic");
   const graphics = host.getByLabel("Graphics", { exact: true });
   await graphics.selectOption("classic");
@@ -78,6 +83,9 @@ try {
   await host.getByRole("button", { name: "Remove CPU 4" }).click();
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
   await host.locator(".fui-round-controls").waitFor({ state: "visible" });
+  await host.waitForFunction(
+    () => window.__driversRaceProbe?.().trucks?.[0]?.tires === 1,
+  );
   const centered = await host
     .locator(".fd-arena-box > .fui-round-controls")
     .evaluate((guide) => {
@@ -154,6 +162,11 @@ try {
   );
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
+  await peer.getByRole("button", { name: "Speed shop", exact: true }).click();
+  const guestShop = peer.getByRole("dialog", { name: "Speed shop" });
+  await guestShop.getByRole("button", { name: /^Shocks/ }).click();
+  await guestShop.getByRole("button", { name: /^Shocks.*Level 1/ }).waitFor();
+  await guestShop.getByRole("button", { name: "Back", exact: true }).click();
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
   await rules.selectOption("battle");
   const guestRules = peer.getByLabel("Rules", { exact: true });
