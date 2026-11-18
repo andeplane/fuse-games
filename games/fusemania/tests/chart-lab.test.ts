@@ -38,6 +38,7 @@ import {
   typingIn,
   type TransportKey,
 } from "../src/lab/playback.js";
+import { labShortcut } from "../src/lab/shortcuts.js";
 
 import { hiddenAtStart, parseShown } from "../src/lab/shown.js";
 
@@ -278,6 +279,60 @@ test("chart lab: other keys, and the browser's own ⌘/ctrl arrows, do not seek"
   assert.equal(seekDelta(press("ArrowUp")), undefined);
   assert.equal(seekDelta(press("ArrowLeft", { metaKey: true })), undefined);
   assert.equal(seekDelta(press("ArrowRight", { ctrlKey: true })), undefined);
+});
+
+test("chart lab: a selected tap takes W/S while paused, including fine adjustment", () => {
+  const state = { canNudge: true, recording: true, marker: undefined };
+  assert.deepEqual(labShortcut(press("w"), state), {
+    type: "nudge",
+    direction: -1,
+    fine: false,
+  });
+  assert.deepEqual(labShortcut(press("S", { shiftKey: true }), state), {
+    type: "nudge",
+    direction: 1,
+    fine: true,
+  });
+  assert.deepEqual(labShortcut(press("s"), { ...state, canNudge: false }), {
+    type: "tap",
+    column: 1,
+  });
+  assert.equal(labShortcut(press("s", { altKey: true }), state), undefined);
+  assert.deepEqual(labShortcut(press("ArrowDown"), state), {
+    type: "scroll",
+    direction: 1,
+  });
+});
+
+test("chart lab: modifiers distinguish recording, undo and browser shortcuts", () => {
+  const state = { canNudge: false, recording: false, marker: 0 };
+  assert.deepEqual(labShortcut(press("r"), state), { type: "record" });
+  assert.deepEqual(labShortcut(press("R", { shiftKey: true }), state), {
+    type: "record-from",
+  });
+  assert.equal(labShortcut(press("r", { ctrlKey: true }), state), undefined);
+  assert.deepEqual(labShortcut(press("z", { metaKey: true }), state), {
+    type: "undo",
+  });
+  assert.deepEqual(labShortcut(press("z", { ctrlKey: true }), state), {
+    type: "undo",
+  });
+  assert.equal(
+    labShortcut(press("Z", { ctrlKey: true, shiftKey: true }), state),
+    undefined,
+  );
+  assert.equal(
+    labShortcut(press("ArrowLeft", { metaKey: true }), state),
+    undefined,
+  );
+  assert.deepEqual(labShortcut(press("Enter"), state), {
+    type: "return-to-marker",
+    time: 0,
+  });
+  assert.equal(
+    labShortcut(press("Enter"), { ...state, marker: undefined }),
+    undefined,
+  );
 });
 
 test("chart lab: text fields keep their keys, other controls give them to playback", () => {
