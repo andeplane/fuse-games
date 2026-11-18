@@ -58,6 +58,20 @@ try {
   await host.getByRole("button", { name: "Remove CPU 4" }).click();
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
   await host.locator(".fui-round-controls").waitFor({ state: "visible" });
+  const centered = await host
+    .locator(".fd-arena-box > .fui-round-controls")
+    .evaluate((guide) => {
+      const box = guide.parentElement!.getBoundingClientRect();
+      const hint = guide.getBoundingClientRect();
+      return (
+        Math.abs(hint.top + hint.height / 2 - box.top - box.height / 2) < 2 &&
+        Math.abs(hint.left + hint.width / 2 - box.left - box.width / 2) < 2
+      );
+    });
+  assert.ok(
+    centered,
+    "the desktop countdown guide sits in the middle of the track",
+  );
   await host.waitForFunction(() => {
     const race = window.__driversRaceProbe?.();
     return race?.track === "offroad-7-reverse" && race.trucks?.length === 3;

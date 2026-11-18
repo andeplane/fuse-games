@@ -544,6 +544,10 @@ function room(solo: boolean): void {
     // A phone that is only a controller has no room for the arena.
     const driving = model.screen === "race" && !!model.lobby.own && !display;
     pad.element.hidden = !driving || !touchDevice.matches;
+    const guideParent =
+      !canvas.hidden && !display && !touchDevice.matches ? arenaBox : race;
+    if (roundControls.element.parentElement !== guideParent)
+      guideParent.append(roundControls.element);
     roundControls.update({
       round: latest?.matchId ?? "",
       visible: model.screen === "race" && latest?.race?.phase === "countdown",
