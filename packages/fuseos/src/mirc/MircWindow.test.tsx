@@ -19,6 +19,12 @@ class ScriptedBrain implements RegularsBrain {
   describe() {
     return "a test script";
   }
+  usesModel() {
+    return false;
+  }
+  prepare() {
+    return Promise.resolve(false);
+  }
   reply(request: BrainRequest) {
     this.requests.push(request);
     return Promise.resolve(`svar fra ${request.regular.nick}`);
@@ -88,16 +94,20 @@ async function settle(env: Env, ms: number) {
   run(env, ms);
 }
 
+/** Finish the connection mIRC started on open. The toolbar says Disconnect once that has begun. */
 function connect(env: Env) {
   dismissNag();
-  fireEvent.click(mirc().getByRole("button", { name: "Connect" }));
+  const button = mirc().queryByRole("button", { name: "Connect" });
+  if (button) fireEvent.click(button);
   run(env, 400);
+  run(env);
 }
 
+/** mIRC connects and joins #ddrnorway on its own. The join is sent when the link comes up, so the clock is advanced twice. */
 function joinDdr(env: Env) {
-  connect(env);
-  fireEvent.click(mirc().getByRole("button", { name: "Join" }));
-  run(env, 8000);
+  dismissNag();
+  run(env, 2000);
+  run(env);
 }
 
 /** Opens a menu-bar menu and chooses an item (plain and checkable items alike). */
@@ -105,13 +115,6 @@ function pick(menu: string, item: string | RegExp) {
   fireEvent.click(mirc().getByRole("menuitem", { name: menu }));
   fireEvent.click(
     within(screen.getByRole("menu", { name: menu })).getByLabelText(item),
-  );
-}
-
-function closeFolder() {
-  const dialog = mirc().getByRole("dialog", { name: "mIRC Channels Folder" });
-  fireEvent.click(
-    within(dialog).getAllByRole("button", { name: "Close" })[0] as HTMLElement,
   );
 }
 
@@ -145,7 +148,7 @@ describe("mIRC window", () => {
     ).toHaveTextContent("Nothing to buy");
     fireEvent.click(mirc().getByRole("button", { name: "OK" }));
     expect(log("Status")).toContain("Welcome to mIRC");
-    expect(log("Status")).toContain("/join #ddrnorway");
+    expect(log("Status")).toContain("joining #ddrnorway");
     expect(env.prefsStore.get()?.firstRun).toBe(0);
   });
 
@@ -160,9 +163,9 @@ describe("mIRC window", () => {
     );
   });
 
-  it("connects to the simulated EFnet, says so, and pops up the Channels Folder", () => {
+  it("connects to the simulated EFnet and joins #ddrnorway on its own", () => {
     const env = setup();
-    connect(env);
+    joinDdr(env);
     expect(env.transport.links).toHaveLength(0);
     expect(log("Status")).toContain("(simulated)");
     expect(log("Status")).toContain(
@@ -171,9 +174,8 @@ describe("mIRC window", () => {
     expect(
       mirc().getByRole("tab", { name: "EFnet Guest4242" }),
     ).toBeInTheDocument();
-    expect(
-      mirc().getByRole("dialog", { name: "mIRC Channels Folder" }),
-    ).toBeInTheDocument();
+    expect(mirc().getByRole("tab", { name: "#ddrnorway" })).toBeInTheDocument();
+    expect(log("#ddrnorway")).not.toContain("hei Guest4242");
   });
 
   it("goes through the bridge when the site has one", () => {
@@ -190,16 +192,21 @@ describe("mIRC window", () => {
     const nicks = within(
       mirc().getByRole("listbox", { name: "Nicklist" }),
     ).getAllByRole("option");
-    expect(nicks.map((nick) => nick.textContent)).toEqual([
-      "@Andeplane",
-      "@RiChY",
-      "+CCBSbot",
-      "+Zredna",
-      "FootieFox",
-      "Guest4242",
-      "stepzilla",
-    ]);
-    expect(log("#ddrnorway")).toContain("<@RiChY> hei Guest4242 :)");
+    const labels = nicks.map((nick) => nick.textContent);
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "@Andeplane",
+        "@RiChY",
+        "+CCBSbot",
+        "+Zredna",
+        "FootieFox",
+        "Guest4242",
+        "stepzilla",
+      ]),
+    );
+    // The house regulars and the user. Listed players join one at a time.
+    expect(labels).toHaveLength(7);
+    expect(log("#ddrnorway")).not.toContain("hei Guest4242");
     type("#ddrnorway", "Andeplane: hvem vant reunion?");
     await settle(env, 5000);
     expect(env.brain.requests.at(-1)?.regular.nick).toBe("Andeplane");
@@ -376,7 +383,9 @@ describe("mIRC window", () => {
       pointerId: 1,
     });
     fireEvent.doubleClick(caption);
-    expect(screen.getAllByText("mIRC - [Status]").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/mIRC - \[Status: Guest4242 on EFnet/).length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows the offline channel list, and the server's list once connected", () => {
@@ -392,11 +401,9 @@ describe("mIRC window", () => {
       within(offline).getAllByRole("option")[0] as HTMLElement,
     );
     expect(log("Status")).toContain("* /join: not connected to server");
-    fireEvent.click(mirc().getByRole("button", { name: "Connect" }));
     pick("Tools", "Channels List");
     expect(mirc().queryByText("Retrieving channels...")).toBeNull();
     run(env, 400);
-    closeFolder();
     fireEvent.click(mirc().getByRole("button", { name: "List Channels" }));
     expect(mirc().getByText("Retrieving channels...")).toBeInTheDocument();
     run(env);
@@ -534,7 +541,6 @@ describe("mIRC window", () => {
     dismissNag();
     pick("Tools", /Smart regulars \(downloads \d+ MB\)/);
     expect(env.prefsStore.get()?.smartRegulars).toBe(true);
-    fireEvent.click(mirc().getByRole("button", { name: "Connect" }));
     run(env, 400);
     expect(log("Status")).toContain(
       "Regulars are thinking with: Qwen 2.5 0.5B, running in this browser",
@@ -566,12 +572,11 @@ describe("mIRC window", () => {
   it("disconnects from the toolbar and closes from File > Exit", () => {
     const env = setup();
     connect(env);
-    closeFolder();
     fireEvent.click(mirc().getByRole("button", { name: "Disconnect" }));
     run(env);
     expect(log("Status")).toContain("* Disconnected");
     pick("Help", "Contents");
-    expect(log("Status")).toContain("Commands:");
+    expect(log("#ddrnorway")).toContain("Commands:");
     fireEvent.click(mirc().getByRole("button", { name: "Help" }));
     pick("File", "Exit");
     expect(screen.queryByTestId("mirc")).toBeNull();
@@ -601,7 +606,7 @@ describe("captions", () => {
   it("formats Status, channel, query and list captions and switchbar labels", () => {
     expect(
       welcomeBanner({ id: "n", name: "Net", servers: [] }).join("\n"),
-    ).toContain("Net is selected");
+    ).toContain("Connecting to Net");
     const state = {
       phase: "online" as const,
       nick: "me",
