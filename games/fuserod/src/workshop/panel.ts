@@ -18,9 +18,14 @@ type SceneArt = (
   kind: "workshop",
   options: { part: string; progress: number },
 ) => void;
-export const createBenchView = (): { station: Station; grade: Grade } => ({
+export const createBenchView = (): {
+  station: Station;
+  grade: Grade;
+  wrench: -1 | 1;
+} => ({
   station: "carb",
   grade: 0,
+  wrench: -1,
 });
 export function workshopPanel(
   doc: Document,
@@ -42,6 +47,13 @@ export function workshopPanel(
     const b = create("button", label);
     b.type = "button";
     b.disabled = disabled;
+    b.dataset.garageKey = [
+      "bench",
+      cmd.type,
+      "station" in cmd ? cmd.station : "",
+      "index" in cmd ? cmd.index : "",
+      "delta" in cmd ? cmd.delta : "",
+    ].join("-");
     b.onclick = () => run(cmd);
     return b;
   };
@@ -79,6 +91,8 @@ export function workshopPanel(
     const preview = create("div");
     preview.className = "fr-workbench-preview";
     if (drawScene) {
+      const diagram = create("div");
+      diagram.className = "fr-workbench-diagram";
       const canvas = create("canvas");
       canvas.width = 720;
       canvas.height = 300;
@@ -87,7 +101,46 @@ export function workshopPanel(
         d.bay === "under" ? "Under the car" : "Engine bay",
       );
       canvas.setAttribute("role", "img");
-      preview.append(canvas);
+      diagram.append(canvas);
+      if (mount.part !== null) {
+        for (const [index, turns] of mount.bolts.entries()) {
+          const cmd: WorkshopCommand = {
+            type: "bolt",
+            station: s,
+            index,
+            delta: view.wrench,
+          };
+          const hit = action(
+            "",
+            cmd,
+            view.wrench < 0 ? turns === 0 : turns === 3,
+          );
+          hit.className = "fr-workbench-bolt";
+          hit.dataset.garageKey += "-diagram";
+          hit.setAttribute(
+            "aria-label",
+            (view.wrench < 0 ? "Loosen " : "Tighten ") +
+              d.fasteners[index] +
+              " on diagram",
+          );
+          hit.style.left =
+            (mount.bolts.length === 1 ? 50 : index === 0 ? 43 : 57) + "%";
+          hit.style.setProperty("--turn", String(turns * 30) + "deg");
+          diagram.append(hit);
+        }
+      }
+      const wrench = field(
+        "Ratchet direction",
+        [
+          ["-1", "Loosen"],
+          ["1", "Tighten"],
+        ],
+        String(view.wrench),
+        (v) => {
+          view.wrench = v === "1" ? 1 : -1;
+        },
+      );
+      preview.append(diagram, wrench);
       doc.defaultView?.requestAnimationFrame(() => {
         if (canvas.isConnected)
           drawScene(canvas, "workshop", {

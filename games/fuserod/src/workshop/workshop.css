@@ -18,6 +18,34 @@
 .fr-workbench-preview:empty {
   display: none;
 }
+.fr-workbench-diagram {
+  position: relative;
+}
+.fr-workbench .fr-workbench-bolt {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  width: 2.7rem;
+  min-height: 2.7rem;
+  padding: 0;
+  border: 2px solid #ffeeaa;
+  background: #28222ad9;
+  box-shadow: 0 0 0.45rem #fb9f49;
+}
+.fr-workbench-bolt::before {
+  content: "";
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: auto;
+  transform: rotate(var(--turn));
+  background: linear-gradient(90deg, #e8c38d 43%, #694d33 43% 57%, #f9e8bb 57%);
+  clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
+}
+.fr-workbench .fr-workbench-bolt:disabled {
+  opacity: 0.6;
+}
 .fr-workbench-fields,
 .fr-workbench-shelf {
   display: grid;
