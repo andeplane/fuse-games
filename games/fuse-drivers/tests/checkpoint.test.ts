@@ -7,6 +7,7 @@ import {
   LEAVE,
   PRESENCE,
   SPECTATOR,
+  SETTINGS,
   packMessage,
   unpackMessage,
   type StreamEntries,
@@ -17,11 +18,12 @@ import {
   BRAKE,
   CONTROLS,
   DEFAULT_SETTINGS,
-  ITEM,
+  GAS,
   LEFT,
   NITRO,
   RIGHT,
   createRoom,
+  trackNames,
   foldTick,
   type FuseDriversEntry,
   type FuseDriversRoom,
@@ -46,7 +48,7 @@ const runTo = (room: FuseDriversRoom, tick: number): void => {
   while (room.tick < tick) fold(room);
 };
 
-/** A lobby with one seat in it: no race, no grid, no controls and no bot memory. */
+/** A lobby with one seat in it: no race, no grid, no controls and no race controls. */
 function lobby(): FuseDriversRoom {
   const room = createRoom("m0", DEFAULT_SETTINGS);
   fold(room, { a: [[JOIN, "a", "Ada", 0, "fox", 1]] });
@@ -55,10 +57,10 @@ function lobby(): FuseDriversRoom {
 
 /**
  * Two drivers, a bot and a watcher, driving long enough that the lights have gone out: past the countdown the
- * trucks are moving, the bots have steered and the item boxes have been armed.
+ * trucks are moving, the bots have steered and the CPU has entered its route program.
  */
-function racing(ticks = 80): FuseDriversRoom {
-  const room = createRoom("m0", DEFAULT_SETTINGS);
+function racing(ticks = 80, track = DEFAULT_SETTINGS.track): FuseDriversRoom {
+  const room = createRoom("m0", { ...DEFAULT_SETTINGS, track });
   fold(room, {
     a: [
       [JOIN, "a", "Ada", 0, "fox", 1],
@@ -75,7 +77,7 @@ function racing(ticks = 80): FuseDriversRoom {
       at % 5 === 0
         ? {
             a: [[CONTROLS, "m1", 1, at % 10 === 0 ? LEFT | NITRO : RIGHT]],
-            b: [[CONTROLS, "m1", 1, at % 15 === 0 ? BRAKE : ITEM]],
+            b: [[CONTROLS, "m1", 1, at % 15 === 0 ? BRAKE : GAS]],
           }
         : {},
     );
@@ -90,6 +92,7 @@ function over(): FuseDriversRoom {
   room.race = {
     ...race,
     phase: "finished",
+    raceEndTick: race.tick,
     trucks: race.trucks.map((truck) => ({ ...truck, finishedTick: race.tick })),
   };
   fold(room);
@@ -107,7 +110,7 @@ test("the four leading fields are the ones the snapshot puts before the streams"
   const fields = encodeRoom(racing(3));
   assert.equal(
     fields.length,
-    8,
+    7,
     "scalars, seats, settings, grid, then the rest",
   );
   assert.deepEqual(
@@ -143,8 +146,8 @@ test("a room in every stage survives the checkpoint whole: the same hash, and it
   );
   assert.equal(defined(started.race, "race").trucks.length, 3);
   assert.ok(
-    Object.keys(started.bots).length === 1,
-    "the bot remembers its steering",
+    defined(started.race).trucks.filter((t) => t.cpu).length === 1,
+    "the bot remembers its course program",
   );
 
   // The decoded room shares nothing with the fields it came from.
@@ -154,6 +157,25 @@ test("a room in every stage survives the checkpoint whole: the same hash, and it
   defined(decoded.race, "race").trucks[0]!.x = 1;
   defined(decoded.seats.get("a"), "seat").name = "Changed";
   assert.deepEqual(decodeRoom(fields, started.tick), roundTrip(started));
+});
+
+test("every course and reverse route restores an active CPU and continues the same race", () => {
+  for (const track of trackNames()) {
+    const room = racing(150, track);
+    const restored = defined(roundTrip(room), track);
+    const tick = room.tick + 12;
+    runTo(room, tick);
+    runTo(restored, tick);
+    assert.equal(hashRoom(restored), hashRoom(room), track);
+  }
+});
+
+test("updating next-race settings preserves the current race's course at recovery", () => {
+  const room = racing();
+  fold(room, { a: [[SETTINGS, { ...room.settings, track: "offroad-2" }]] });
+  assert.equal(room.settings.track, "offroad-2");
+  assert.equal(defined(room.race).trackName, DEFAULT_SETTINGS.track);
+  assert.deepEqual(roundTrip(room), room);
 });
 
 /** Rewrites one encoded field of a running room; the result must be refused. */
@@ -188,7 +210,7 @@ test("the finished roster survives departures and checkpoint recovery without ch
   assert.equal(hashRoom(restored), hashRoom(room));
   assert.deepEqual(matchResult(restored), before);
   const fields = wire(room);
-  (fields[7] as unknown[]).pop();
+  (fields[6] as unknown[]).pop();
   assert.equal(
     decodeRoom(fields, room.tick),
     undefined,
@@ -230,99 +252,81 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
       "the same seat's controls twice",
       (f) => (f[4] as unknown[]).push(at(f, 4, 0)),
     ],
-    ["bot memory for a seat off the grid", (f) => (at(f, 5, 0)[0] = "w")],
-    ["bot memory for a human", (f) => (at(f, 5, 0)[0] = "a")],
-    [
-      "a bot steering queue past any delay",
-      (f) => (at(f, 5, 0)[1] = Array(65).fill(0)),
-    ],
     ["a race in a room with no grid", (f) => (f[3] = [])],
-    ["no race while the room is running", (f) => (f[6] = null)],
-    ["a race that is not a list", (f) => (f[6] = "vroom")],
-    ["a race on a track nobody has", (f) => (at(f, 6)[3] = "moon")],
-    ["a race further ahead than the log", (f) => (at(f, 6)[0] = 100_000)],
-    ["a finished race in a running room", (f) => (at(f, 6)[1] = "finished")],
-    ["a countdown that is already over", (f) => (at(f, 6)[1] = "countdown")],
+    ["no race while the room is running", (f) => (f[5] = null)],
+    ["a race that is not a list", (f) => (f[5] = "vroom")],
+    ["a race naming an unknown course", (f) => (at(f, 5)[3] = "moon")],
+    ["a race further ahead than the log", (f) => (at(f, 5)[0] = 100_000)],
+    ["a seed past the DOS register", (f) => (at(f, 5)[2] = 65536)],
+    ["a finished race in a running room", (f) => (at(f, 5)[1] = "finished")],
+    ["a countdown that is already over", (f) => (at(f, 5)[1] = "countdown")],
+    ["fewer trucks than the grid", (f) => at(f, 5, 6).pop()],
+    ["more trucks than the grid", (f) => at(f, 5, 6).push(at(f, 5, 6)[0])],
+    ["a truck claiming another slot", (f) => (at(f, 5, 6, 1)[0] = 0)],
     [
-      "fewer trucks than the grid",
-      (f) => (at(f, 6)[7] = at(f, 6, 7).slice(0, 2)),
+      "an infinite projected position",
+      (f) => (at(f, 5, 6, 0, 1)[0] = Infinity),
     ],
-    ["more trucks than the grid", (f) => at(f, 6, 7).push(at(f, 6, 7)[0])],
-    ["a truck claiming another slot", (f) => (at(f, 6, 7, 1)[0] = 0)],
-    ["a truck at an infinite position", (f) => (at(f, 6, 7, 0)[1] = Infinity)],
-    ["a truck at no position at all", (f) => (at(f, 6, 7, 0)[2] = NaN)],
-    ["a truck at negative zero", (f) => (at(f, 6, 7, 0)[1] = -0)],
-    ["a truck off the edge of the world", (f) => (at(f, 6, 7, 0)[1] = 1e9)],
-    ["armor past the truck's own maximum", (f) => (at(f, 6, 7, 0)[6] = 99)],
-    ["an item nobody stocks", (f) => (at(f, 6, 7, 0)[8] = "banana")],
-    ["a steering direction of two", (f) => (at(f, 6, 7, 0)[9] = 2)],
+    ["a nonfinite projected position", (f) => (at(f, 5, 6, 0, 1)[1] = NaN)],
+    ["negative zero in a projection", (f) => (at(f, 5, 6, 0, 1)[0] = -0)],
     [
-      "a timer armed past any effect",
-      (f) => (at(f, 6, 7, 0, 15)[0] = 1_000_000),
+      "a native truck position beyond its coordinate register",
+      (f) => (at(f, 5, 6, 0, 3)[0] = 65536),
     ],
-    ["a lap counted with a fraction", (f) => (at(f, 6, 7, 0, 16)[1] = 1.5)],
-    ["an overflowing throttle", (f) => (at(f,6,7,0,17)[5] = 257)],
-    ["a missing wheel", (f) => at(f,6,7,0,18).pop()],
-    ["an invalid wheel velocity", (f) => (at(f,6,7,0,18,2)[1] = 32768)],
-    ["a contact mask outside the grid capacity", (f) => (at(f,6,7,0)[19] = 32)],
+    ["an overflowing throttle", (f) => (at(f, 5, 6, 0, 3)[5] = 257)],
+    ["three-digit nitro stock", (f) => (at(f, 5, 6, 0, 3)[6] = 100)],
+    ["a missing wheel", (f) => at(f, 5, 6, 0, 4).pop()],
+    ["an invalid wheel velocity", (f) => (at(f, 5, 6, 0, 4, 2)[1] = 32768)],
+    ["a contact mask naming a missing slot", (f) => (at(f, 5, 6, 0)[5] = 8)],
+    ["a contact with the truck itself", (f) => (at(f, 5, 6, 0)[5] = 1)],
+    ["cash above the two-digit register", (f) => (at(f, 5, 6, 0)[6] = 100)],
+    [
+      "a human running a CPU program",
+      (f) => (at(f, 5, 6, 0)[7] = at(f, 5, 6, 2)[7]),
+    ],
+    [
+      "a CPU targeting an invalid opcode",
+      (f) => (at(f, 5, 6, 2, 7)[2] = 65535),
+    ],
+    ["an invalid turn direction", (f) => (at(f, 5, 6, 0, 8)[0] = 2)],
+    [
+      "a nitro effect implausibly far ahead",
+      (f) => (at(f, 5, 6, 0, 9)[0] = 1_000_000),
+    ],
+    ["a fraction of a lap", (f) => (at(f, 5, 6, 0, 10)[0] = 1.5)],
+    ["a lap region beyond this course", (f) => (at(f, 5, 6, 0, 10)[1] = 255)],
     [
       "stats that are not numbers",
-      (f) => (at(f, 6, 7, 0)[5] = ["fast", 1, 1, 1, 1, 1, 1]),
+      (f) => (at(f, 5, 6, 0)[2] = ["fast", 1, 1, 1, 1, 1, 1]),
     ],
-    ["placements that rank one slot twice", (f) => (at(f, 6)[8] = [0, 0, 1])],
-    ["placements naming a slot off the grid", (f) => (at(f, 6)[8] = [0, 1, 9])],
-    ["an item-held flag per nobody", (f) => (at(f, 6)[9] = [true, false])],
+    ["placements that rank one slot twice", (f) => (at(f, 5)[7] = [0, 0, 1])],
+    ["placements naming a slot off the grid", (f) => (at(f, 5)[7] = [0, 1, 9])],
     [
-      "a box cooldown grid of the wrong size",
-      (f) => (at(f, 6)[10] = [0, 0, 0]),
-    ],
-    [
-      "more mines than a race could ever hold",
-      (f) =>
-        (at(f, 6)[12] = Array.from({ length: 2000 }, () => [
-          1,
-          0,
-          0,
-          0,
-          0,
-          false,
-        ])),
+      "a pickup in an invented location",
+      (f) => (at(f, 5)[8] = [0, 0, 0, ["cash", 0, 0]]),
     ],
     [
-      "a missile with an id the race never issued",
-      (f) => (at(f, 6)[11] = [[999_999, 0, 10, 10, 0, 1, null, false]]),
+      "a pickup carrying a removed weapon",
+      (f) => (at(f, 5)[8] = [0, 0, 0, ["mine", 896, 2048]]),
     ],
     [
-      "a missile owned by nobody on the grid",
-      (f) => (at(f, 6)[11] = [[1, 9, 10, 10, 0, 1, null, false]]),
+      "an active pickup while the spawn timer runs",
+      (f) => (at(f, 5)[8] = [2, 0, 0, ["cash", 896, 2048]]),
     ],
-    [
-      "two projectiles sharing one id",
-      (f) => {
-        at(f, 6)[11] = [[1, 0, 10, 10, 0, 1, null, false]];
-        at(f, 6)[12] = [[1, 0, 10, 10, 1, false]];
-        at(f, 6)[6] = 9;
-      },
-    ],
-    [
-      "a drone that remembers zaps for trucks that are not racing",
-      (f) => (at(f, 6)[14] = [[1, 0, 1, 0, [0, 0, 0, 0, 0]]]),
-    ],
+    ["an obsolete weapon list", (f) => at(f, 5).push([])],
     ["a tick that is not a tick", () => {}, -1],
   ];
   for (const [what, change, tick] of refused)
     assert.equal(tampered(change, tick), undefined, what);
 
-  // The projectiles the refusals above bend out of shape: in shape, they are carried through.
   assert.ok(
     tampered((f) => {
-      at(f, 6)[6] = 5;
-      at(f, 6)[11] = [[1, 0, 100, 120, 0.5, 4, 2, false]];
-      at(f, 6)[12] = [[2, 1, 110, 130, 6, true]];
-      at(f, 6)[13] = [[3, 2, 120, 140, 8]];
-      at(f, 6)[14] = [[4, 0, 9, 1, [0, 0, 7]]];
+      at(f, 5)[8] = [0, 9, 8, ["nitro", 896, 2048]];
+      at(f, 5, 6, 0, 3)[6] = 99;
+      at(f, 5, 6, 0, 3)[0] = 65456;
+      at(f, 5, 6, 0)[6] = 99;
     }),
-    "a race under fire decodes",
+    "valid upper-limit inventory and a course pickup survive",
   );
 
   // A lobby carries no race, and nothing that only a race can fill.
@@ -336,7 +340,7 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
     "a grid with no race",
   );
   const withRace = wire(empty);
-  withRace[6] = wire(racing())[6];
+  withRace[5] = wire(racing())[5];
   assert.equal(
     decodeRoom(withRace, empty.tick),
     undefined,
@@ -347,7 +351,7 @@ test("a corrupt or hostile checkpoint is refused whole", () => {
   const decided = over(),
     ended = wire(decided);
   assert.ok(decodeRoom(ended, decided.tick), "the finished race decodes");
-  at(ended, 6)[1] = "racing";
+  at(ended, 5)[1] = "racing";
   assert.equal(
     decodeRoom(ended, decided.tick),
     undefined,
