@@ -353,7 +353,48 @@ try {
         ),
         "phone room overflows horizontally",
       );
-      assert.deepEqual(errors, [], "browser exceptions");
+      if (game === "ball-bros") {
+        step = "shared TV controller audio";
+        await room.getByRole("checkbox", { name: /shared tv/i }).check();
+        await room.getByRole("button", { name: /^start match$/i }).click();
+        await page.locator("#app.controller-mode").waitFor();
+        await page
+          .getByRole("button", { name: "Open game menu", exact: true })
+          .click();
+        const menu = page.getByRole("dialog", { name: /^game menu$/i });
+        await menu.getByRole("button", { name: /^player options$/i }).click();
+        const options = page.getByRole("dialog", { name: /^player options$/i });
+        await options.waitFor();
+        assert.equal(
+          await options
+            .getByRole("slider", { name: /^music volume$/i })
+            .count(),
+          0,
+          "controller volume is managed on the TV",
+        );
+        await options.getByRole("button", { name: /^back$/i }).click();
+        await menu.getByRole("button", { name: /^radio$/i }).click();
+        const radio = page.getByRole("dialog", { name: /^radio$/i });
+        await radio
+          .getByText("Use the radio on the shared TV.", { exact: true })
+          .waitFor();
+        assert.equal(
+          await radio
+            .getByRole("button", {
+              name: /^(radio (on|off)|next radio track)$/i,
+            })
+            .count(),
+          0,
+          "a controller never drives TV playback",
+        );
+        await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
+      }
+      assert.deepEqual(
+        errors,
+        [],
+        "browser exceptions after menu interactions",
+      );
       results.push({
         game,
         ai: quarantineAI

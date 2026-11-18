@@ -4,7 +4,6 @@ interface GameMenu {
   radio: boolean;
   controls: readonly [PreferenceRole, RegExp][];
 }
-const radio: GameMenu = { radio: true, controls: [] };
 const sharedRadio: GameMenu = {
   radio: true,
   controls: [["slider", /^radio volume$/i]],
@@ -14,7 +13,7 @@ const radioAndEffects: GameMenu = {
   controls: [...sharedRadio.controls, ["slider", /effects/i]],
 };
 export const gameMenus: Readonly<Record<string, GameMenu>> = {
-  "ball-bros": radio,
+  "ball-bros": { radio: true, controls: [["slider", /^music volume$/i]] },
   dice: sharedRadio,
   "elasto-fuse": radioAndEffects,
   "fuse-axe": sharedRadio,
