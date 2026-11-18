@@ -1,5 +1,6 @@
 import { openPlayOptions } from "./lib/main-menu.js";
 import { readyRoom } from "./lib/ready-room.js";
+import { openTopMenu } from "./lib/top-menu.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { launchSelected, browserKind } from "./lib/browser.js";
@@ -187,6 +188,7 @@ try {
   await phone.screenshot({
     path: `artifacts/arcade-landscape-menu-${kind}.png`,
   });
+  await openTopMenu(phone);
   await phone
     .getByRole("button", { name: "Player options", exact: true })
     .click();
