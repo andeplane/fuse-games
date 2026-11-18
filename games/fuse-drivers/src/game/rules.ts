@@ -120,6 +120,7 @@ export interface FuseDriversSettings {
   display: boolean;
   /** Races in a series. Zero keeps the original repeating campaign. */
   races: number;
+  mode: "classic" | "battle";
 }
 export const MAX_SERIES_RACES = 8;
 export const isSeriesLength = (value: unknown): value is number =>
@@ -128,6 +129,7 @@ export const DEFAULT_SETTINGS: FuseDriversSettings = {
   track: "offroad-4", // Sidewinder opens the DOS campaign.
   display: false,
   races: 3,
+  mode: "classic",
 };
 
 export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
@@ -185,17 +187,27 @@ export function seatName(raw: string): string | undefined {
 export function parseSettings(raw: unknown): FuseDriversSettings | undefined {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return;
   const keys = Object.keys(raw);
-  const { track, display, races } = raw as Partial<FuseDriversSettings>;
+  const { track, display, races, mode } = raw as Partial<FuseDriversSettings>;
   if (
     !keys.includes("track") ||
     !keys.includes("display") ||
-    keys.some((key) => key !== "track" && key !== "display" && key !== "races")
+    keys.some(
+      (key) =>
+        key !== "track" &&
+        key !== "display" &&
+        key !== "races" &&
+        key !== "mode",
+    )
   )
     return;
   if (typeof display !== "boolean") return;
   if (typeof track !== "string" || !isOffroadCourse(track)) return;
   const length = keys.includes("races") ? races : DEFAULT_SETTINGS.races;
-  return isSeriesLength(length) ? { track, display, races: length } : undefined;
+  const raceMode = keys.includes("mode") ? mode : DEFAULT_SETTINGS.mode;
+  if (raceMode !== "classic" && raceMode !== "battle") return;
+  return isSeriesLength(length)
+    ? { track, display, races: length, mode: raceMode }
+    : undefined;
 }
 
 export const seriesComplete = (room: FuseDriversRoom): boolean =>
@@ -237,7 +249,6 @@ export function isFuseDriversEntry(raw: unknown): raw is FuseDriversEntry {
       return (
         raw.length === 10 &&
         uint32(raw[5]) &&
-        raw[5] > 0 &&
         raw[5] < raw[1] &&
         typeof item === "string" &&
         Object.hasOwn(OFFROAD_SHOP, item) &&
@@ -314,7 +325,7 @@ function startRace(
   room.garage = Object.fromEntries(
     grid.map((seat) => [
       seat.id,
-      (continuing ? room.garage[seat.id] : undefined) ?? createOffroadDriver(),
+      room.garage[seat.id] ?? createOffroadDriver(),
     ]),
   );
   room.grid = grid.map((seat) => seat.id);
@@ -332,6 +343,11 @@ function startRace(
     room.campaignIndex,
     grid.map((seat) => (seat.bot ? undefined : room.garage[seat.id])),
     gridOrder,
+    continuing
+      ? room.race?.battle
+        ? "battle"
+        : "classic"
+      : room.settings.mode,
   );
 }
 
@@ -425,6 +441,22 @@ function shop(
   }
 }
 
+/** Reconnects keep their own wallet. A new lobby or a new seat owner starts with the DOS allowance. */
+function syncLobbyGarage(room: FuseDriversRoom): void {
+  const drivers = players(room).filter((seat) => !seat.bot);
+  if (
+    drivers.length === Object.keys(room.garage).length &&
+    drivers.every((seat) => room.garage[seat.id])
+  )
+    return;
+  room.garage = Object.fromEntries(
+    drivers.map((seat) => [
+      seat.id,
+      room.garage[seat.id] ?? createOffroadDriver(),
+    ]),
+  );
+}
+
 /**
  * One log tick: management first, then each seat's control changes, then the race steps.
  *
@@ -440,18 +472,20 @@ export function foldTick(
   const generations = new Map(
     [...room.seats.values()].map((seat) => [seat.id, seat.generation]),
   );
-  const hooks =
-    room.stage === "over"
-      ? {
-          ...lifecycle,
-          rematch(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
-            // The host's own earlier buys precede NEXT. Other active drivers have
-            // until this closing tick; all still have to quote the closing finish.
-            shop(r, streams, tick, origin);
-            lifecycle.rematch(r, id);
-          },
-        }
-      : lifecycle;
+  const hooks = {
+    ...lifecycle,
+    start(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
+      syncLobbyGarage(r);
+      shop(r, streams, tick, origin);
+      lifecycle.start(r, id);
+    },
+    rematch(r: FuseDriversRoom, id: string, origin?: ManagementOrigin) {
+      // The host's own earlier buys precede NEXT. Other active drivers have
+      // until this closing tick; all still have to quote the closing finish.
+      shop(r, streams, tick, origin);
+      lifecycle.rematch(r, id);
+    },
+  };
   applyManagementTick(room, tick, creatorId, streams, hooks);
 
   // Held input belongs to the page generation that logged it. Admission of a new
@@ -463,9 +497,18 @@ export function foldTick(
   }
 
   const race = room.race;
-  if (room.stage === "over") shop(room, streams, tick);
+  // The mode is a series rule: only a lobby can change it, including in a tick
+  // that contains both the selection and START.
+  if (race) {
+    const mode = race.battle ? "battle" : "classic";
+    if (room.settings.mode !== mode) room.settings = { ...room.settings, mode };
+  }
+  if (room.stage === "lobby") syncLobbyGarage(room);
+  if (room.stage === "lobby" || room.stage === "over")
+    shop(room, streams, tick);
   if (race && room.stage === "running") {
     const grid = players(room);
+    const pressed = new Set<string>();
     for (const seat of grid) {
       if (seat.bot) continue;
       for (const entry of seatEntries(seat, streams, tick))
@@ -473,8 +516,15 @@ export function foldTick(
           entry[2] === CONTROLS &&
           entry[3] === room.matchId &&
           entry[4] === room.round
-        )
+        ) {
+          if (
+            seat.connected &&
+            entry[5] & ITEM &&
+            !((room.controls[seat.id] ?? 0) & ITEM)
+          )
+            pressed.add(seat.id);
           room.controls[seat.id] = entry[5];
+        }
       if (!seat.connected) room.controls[seat.id] = 0;
     }
     const inputs: TruckInput[] = room.grid.map((id) => {
@@ -483,10 +533,19 @@ export function foldTick(
       return NEUTRAL_INPUT;
     });
     const botSlots = room.grid.map((id) => room.seats.get(id)?.bot === true);
+    const itemPresses = pressed.size
+      ? room.grid.map((id) => pressed.has(id))
+      : undefined;
     const track = trackFor(race.trackName);
     let next = race;
     for (let s = 0; s < stepsForTick(tick); s++) {
-      const result = step(next, inputs, track, botSlots);
+      const result = step(
+        next,
+        inputs,
+        track,
+        botSlots,
+        s === 0 ? itemPresses : undefined,
+      );
       next = result.state;
       for (const event of result.events) {
         const id = "slot" in event ? (room.grid[event.slot] ?? "") : "";

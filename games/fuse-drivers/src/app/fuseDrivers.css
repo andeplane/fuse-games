@@ -482,6 +482,27 @@ body.fuseDrivers-display .fuseDrivers-die {
   flex-wrap: wrap;
   gap: 1rem;
 }
+.fd-race-options[data-theme="fuse"] .fui-picker-option {
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  border-color: color-mix(in srgb, var(--fd-course-accent) 45%, #203348);
+  background: color-mix(in srgb, var(--fd-course-accent) 14%, #0b1625);
+}
+.fd-race-options[data-theme="fuse"] .fui-picker-option span {
+  padding: 0.35rem 0.18rem;
+  border-top: 2px solid var(--fd-course-accent);
+}
+.fd-race-options[data-theme="fuse"] .fui-picker-option[aria-pressed="true"] {
+  outline: 2px solid var(--fd-course-accent);
+  outline-offset: -2px;
+  background: var(--fd-course-accent);
+  color: #091520;
+}
+.fd-race-options[data-theme="fuse"] .fui-picker-option:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 2px;
+}
 .fd-series-options label {
   display: grid;
   gap: 0.35rem;
@@ -545,6 +566,17 @@ body.fuseDrivers-display .fuseDrivers-die {
 }
 .fd-pad {
   width: min(100%, 60rem);
+  grid-auto-columns: minmax(0, 1fr);
+}
+@media (max-width: 38rem) {
+  .fui-app .fd-pad {
+    gap: 0.25rem;
+  }
+  .fui-app .fd-pad button {
+    min-width: 0;
+    padding-inline: 0.125rem;
+    font-size: clamp(0.625rem, 2.65vw, 1rem);
+  }
 }
 .fd-hud {
   text-align: center;
@@ -582,6 +614,35 @@ body.fuseDrivers-display .fuseDrivers-die {
   }
   .fd-pad button:nth-child(4) {
     grid-area: 2 / 1;
+  }
+  .fd-race:has(.fd-arena-box:not([hidden])):has(
+      .fd-pad:not([hidden]) button:nth-child(5):not([hidden])
+    ) {
+    --fd-track-width: min(72vw, calc((100dvh - 7rem) * 16 / 9));
+    grid-template-columns: 1fr minmax(0, var(--fd-track-width)) 1fr;
+    grid-template-rows: repeat(6, calc(var(--fd-track-width) * 9 / 96)) auto;
+    row-gap: 0;
+    .fd-arena-box {
+      grid-area: 1 / 2 / span 6;
+    }
+    .fd-hud {
+      grid-area: 7 / 1 / 8 / 4;
+    }
+    .fd-pad button:nth-child(1) {
+      grid-area: 1 / 1 / span 3;
+    }
+    .fd-pad button:nth-child(4) {
+      grid-area: 4 / 1 / span 3;
+    }
+    .fd-pad button:nth-child(2) {
+      grid-area: 1 / 3 / span 2;
+    }
+    .fd-pad button:nth-child(3) {
+      grid-area: 3 / 3 / span 2;
+    }
+    .fd-pad button:nth-child(5) {
+      grid-area: 5 / 3 / span 2;
+    }
   }
   .fd-race:has(.fd-arena-box:not([hidden])) .fd-pad button {
     max-height: 7rem;

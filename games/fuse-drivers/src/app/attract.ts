@@ -2,7 +2,12 @@ import { createAttractGame } from "fuse-netcode";
 import { awaitAttractReady, demoCanvas } from "fuse-ui";
 import { fuseDriversGame, DEFAULT_SETTINGS } from "../game/index.js";
 import { mountArena } from "./arena/index.js";
-export async function createAttract(host: HTMLElement, signal?: AbortSignal) {
+import type { StadiumTheme } from "./arena/theme.js";
+export async function createAttract(
+  host: HTMLElement,
+  signal?: AbortSignal,
+  theme?: () => StadiumTheme,
+) {
   const demo = createAttractGame(fuseDriversGame, DEFAULT_SETTINGS, {
     warmup: 180,
   });
@@ -10,6 +15,7 @@ export async function createAttract(host: HTMLElement, signal?: AbortSignal) {
   let renderer!: ReturnType<typeof mountArena>;
   const ready = new Promise<void>((resolve, reject) => {
     renderer = mountArena(canvas, {
+      ...(theme ? { theme } : {}),
       assetBase: `${import.meta.env.BASE_URL}fuse-drivers/assets/`,
       onReady: resolve,
       onError: reject,

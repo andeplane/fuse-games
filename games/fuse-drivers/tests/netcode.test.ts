@@ -13,9 +13,11 @@ import {
 } from "fuse-netcode";
 import {
   GAS,
+  ITEM,
   CONTROLS,
   LEFT,
   NITRO,
+  PURCHASE,
   RIGHT,
   createRoom,
   fuseDriversGame,
@@ -45,10 +47,14 @@ const ROOM = 4;
  * A replica of one room: the creator `a` (not seated) seats `b` at slot 0 and a bot at slot 1 at tick 1 and starts the
  * race at tick 2, so only `b`'s stream is remote and only `b` can stall the world.
  */
-function replica(self = "a", matchId = "m1"): FuseDriversWorld {
+function replica(
+  self = "a",
+  matchId = "m1",
+  settings = SETTINGS,
+): FuseDriversWorld {
   const world = new World(
     fuseDriversGame,
-    createRoom("m0", SETTINGS),
+    createRoom("m0", settings),
     "a",
     self,
   );
@@ -116,6 +122,78 @@ const promise = (
 ): void => void world.receive(id, [], lastSeq, through, through);
 
 const raceOf = (room: FuseDriversRoom): RaceState => defined(room.race, "race");
+
+test("a delayed opening purchase rolls back through START and converges on the upgraded grid", () => {
+  const setup = () => {
+    const world = new World(
+      fuseDriversGame,
+      createRoom("lobby", SETTINGS),
+      "a",
+      "a",
+    );
+    const host = world.stream("a", 1);
+    world.stream("b", 1);
+    host.append(1, [JOIN, "b", "Bo", 0, "cat", 1]);
+    host.append(1, [BOT, "add", "bot:1", "CPU 2", 1]);
+    host.append(30, [ACTION, "start", "race"]);
+    host.through = 100;
+    return world;
+  };
+  const onTime = setup(),
+    late = setup();
+  const buy: FuseDriversEntry = [
+    1,
+    25,
+    PURCHASE,
+    "lobby",
+    1,
+    0,
+    "topSpeed",
+    0,
+    2,
+    0,
+  ];
+  onTime.receive("b", [buy], 1, 100, 100);
+  promise(late, "b", 0, 24);
+  onTime.advance(55);
+  late.advance(55);
+  assert.equal(late.state.race!.trucks[0]!.upgrades?.topSpeed, 0);
+  assert.ok(late.receive("b", [buy], 1, 100, 100).rollbackTicks > 0);
+  assert.equal(late.receive("b", [buy], 1, 100, 100).rollbackTicks, 0);
+  assert.equal(late.state.race!.trucks[0]!.upgrades?.topSpeed, 1);
+  assert.equal(
+    fuseDriversGame.hash(late.state),
+    fuseDriversGame.hash(onTime.state),
+  );
+});
+
+test("a late Battle item tap rewinds its hazard exactly once, including a same-tick release", () => {
+  const settings = { ...SETTINGS, mode: "battle" as const };
+  const timely = replica("a", "m1", settings),
+    late = replica("a", "m1", settings);
+  const tap: FuseDriversEntry[] = [
+    [1, 70, CONTROLS, "m1", 1, ITEM],
+    [2, 70, CONTROLS, "m1", 1, 0],
+  ];
+  timely.receive("b", tap, 2, 150, 150);
+  timely.advance(80);
+  promise(late, "b", 0, 69);
+  late.advance(80);
+  assert.equal(
+    late.state.race!.battle!.bombs.some((b) => b.owner === 0),
+    false,
+  );
+  assert.ok(late.receive("b", tap, 2, 150, 150).rollbackTicks > 0);
+  assert.ok(timely.state.race!.battle!.bombs.some((b) => b.owner === 0));
+  assert.deepEqual(late.state.race, timely.state.race);
+  assert.equal(late.receive("b", tap, 2, 150, 150).rollbackTicks, 0);
+  late.advance(150);
+  timely.advance(150);
+  assert.equal(
+    fuseDriversGame.hash(late.state),
+    fuseDriversGame.hash(timely.state),
+  );
+});
 /** Total laps, including the fractional progress in the current lap. */
 const progress = (world: FuseDriversWorld, slot: number): number =>
   defined(raceOf(world.state).trucks[slot], "truck").progress;
@@ -288,7 +366,7 @@ test("a replica far behind recovers the race from a snapshot and folds on identi
   );
 
   const chunks = encodeSnapshot(source, ROOM);
-  assert.equal(defined(chunks[0]).rules, "fuse-drivers-5");
+  assert.equal(defined(chunks[0]).rules, "fuse-drivers-7");
   const assembler = new SnapshotAssembler(fuseDriversGame, ROOM);
   let complete: { tick: number; bytes: Uint8Array } | undefined;
   for (const chunk of chunks) complete = assembler.accept(chunk);
