@@ -12,11 +12,14 @@ import {
   type Body,
 } from "./machine-parts.js";
 export * from "./machine-parts.js";
+import { atmosphere } from "./machine-motion.js";
+import { evaluateObjective } from "./machine-goals.js";
 import {
   canonicalLink,
   canLink,
   compareLinks,
   connectedNeighbors,
+  isLinkKind,
   linkedParts,
   validLinks,
   type LinkKind,
@@ -80,7 +83,7 @@ export function validCommand(raw: unknown): raw is MachineCommand {
     case "disconnect":
       return (
         fields === 4 &&
-        ["wire", "belt", "rope"].includes(String(raw.kind)) &&
+        isLinkKind(raw.kind) &&
         within(raw.a, 1, 128) &&
         within(raw.b, 1, 128) &&
         raw.a !== raw.b
@@ -98,10 +101,7 @@ const copyParts = (parts: Part[]) => parts.map((p) => ({ ...p }));
 export function createMachine(puzzleIndex: number): Machine {
   if (!within(puzzleIndex, 0, FREE_WORKSHOP))
     throw new RangeError("Unknown workshop puzzle");
-  const links: MachineLink[] = [];
-  if (puzzleIndex === 4 || puzzleIndex === 11)
-    links.push(canonicalLink("wire", 2, 3));
-  if (puzzleIndex === 6) links.push(canonicalLink("wire", 3, 4));
+  const spec = getPuzzle(puzzleIndex);
   return {
     puzzle: puzzleIndex,
     mode: "build",
@@ -110,10 +110,10 @@ export function createMachine(puzzleIndex: number): Machine {
     air: 67,
     gravity: 272,
     imported: false,
-    parts: copyParts(getPuzzle(puzzleIndex).parts),
+    parts: copyParts(spec.parts),
     bodies: [],
     active: [],
-    links,
+    links: (spec.links ?? []).map((link) => ({ ...link })),
     undo: [],
     undoLinks: [],
   };
@@ -160,7 +160,7 @@ export function applyMachine(m: Machine, c: MachineCommand): boolean {
   if (m.mode !== "build") return false;
   if (c.type === "run") {
     m.mode = "running";
-    m.bodies = m.parts.filter((p) => isDynamic(p.kind)).map(initialBody);
+    m.bodies = m.parts.filter(isDynamic).map(initialBody);
     return true;
   }
   if (c.type === "undo") {
@@ -225,29 +225,30 @@ export function applyMachine(m: Machine, c: MachineCommand): boolean {
 
 /** Motion is expressed in the original 1/512-pixel lattice per simulation tick. */
 const UNIT = 512;
-const LIMIT = 9695 / UNIT;
 const quant = (n: number) => Math.round(n * UNIT) / UNIT;
-const limit = (n: number) => quant(Math.max(-LIMIT, Math.min(LIMIT, n)));
+const clampVelocity = (n: number, maximum: number) =>
+  quant(Math.max(-maximum, Math.min(maximum, n)));
 interface Material {
-  gravity: number;
   bounce: number;
   mass: number;
 }
 const materials: Partial<Record<PartKind, Material>> = {
-  bowling: { gravity: 269, bounce: 128, mass: 16 },
-  basketball: { gravity: 266, bounce: 192, mass: 4 },
-  baseball: { gravity: 268, bounce: 128, mass: 3 },
-  tennis: { gravity: 266, bounce: 192, mass: 1 },
-  balloon: { gravity: -198, bounce: 24, mass: 1 },
-  heart: { gravity: -198, bounce: 24, mass: 1 },
-  ball: { gravity: 269, bounce: 128, mass: 4 },
-  crate: { gravity: 269, bounce: 0, mass: 8 },
-  pumpkin: { gravity: 268, bounce: 36, mass: 6 },
-  mouse: { gravity: 240, bounce: 0, mass: 1 },
-  cat: { gravity: 250, bounce: 0, mass: 4 },
-  rocket: { gravity: 260, bounce: 0, mass: 1 },
+  bowling: { bounce: 128, mass: 16 },
+  basketball: { bounce: 192, mass: 4 },
+  baseball: { bounce: 128, mass: 3 },
+  tennis: { bounce: 192, mass: 1 },
+  balloon: { bounce: 24, mass: 1 },
+  heart: { bounce: 24, mass: 1 },
+  ball: { bounce: 128, mass: 4 },
+  crate: { bounce: 0, mass: 8 },
+  pumpkin: { bounce: 36, mass: 6 },
+  mouse: { bounce: 0, mass: 1 },
+  cat: { bounce: 0, mass: 4 },
+  rocket: { bounce: 0, mass: 1 },
 };
-const isDynamic = (kind: PartKind) => Object.hasOwn(materials, kind);
+const looseMaterial: Material = { bounce: 32, mass: 3 };
+const isDynamic = (part: Part) =>
+  part.mobile ?? Object.hasOwn(materials, part.kind);
 export function bodyKind(part: Part): PartKind {
   return part.kind === "popper" ? "tennis" : part.kind;
 }
@@ -468,7 +469,9 @@ const inert = new Set<PartKind>([
 ]);
 function motion(m: Machine, b: Body, p: Part) {
   const kind = bodyKind(p),
-    mat = materials[kind]!;
+    mat = materials[kind] ?? looseMaterial;
+  const field = atmosphere(kind, m.air, m.gravity);
+  const limit = (value: number) => clampVelocity(value, field.terminal / UNIT);
   const { width, height } = p.kind === "popper" ? PARTS[kind] : partSize(p),
     rx = width / 2,
     ry = height / 2;
@@ -478,11 +481,7 @@ function motion(m: Machine, b: Body, p: Part) {
   )
     fire(m, p.id);
   let ax = 0,
-    ay =
-      (mat.gravity +
-        (m.gravity - 272) -
-        (m.air - 67) * (mat.gravity < 0 ? 7 : 0.1)) /
-      UNIT;
+    ay = field.acceleration / UNIT;
   const animal = kind === "mouse" || kind === "cat";
   if (animal) {
     const seek = m.parts.find((q) =>
@@ -527,7 +526,7 @@ function motion(m: Machine, b: Body, p: Part) {
     b.x += b.vx / steps;
     b.y += b.vy / steps;
     for (const q of m.parts) {
-      if (q.id === p.id || isDynamic(q.kind)) continue;
+      if (q.id === p.id || isDynamic(q)) continue;
       const shape = partSize(q),
         w = shape.width / 2,
         h = shape.height / 2;
@@ -653,11 +652,11 @@ function motion(m: Machine, b: Body, p: Part) {
   b.vy = limit(b.vy);
 }
 
-function transfer(a: Body, b: Body, pa: Part, pb: Part) {
+function transfer(m: Machine, a: Body, b: Body, pa: Part, pb: Part) {
   const ka = bodyKind(pa),
     kb = bodyKind(pb),
-    ma = materials[ka]!,
-    mb = materials[kb]!;
+    ma = materials[ka] ?? looseMaterial,
+    mb = materials[kb] ?? looseMaterial;
   const distance = Math.hypot(a.x - b.x, a.y - b.y);
   const radius =
     (Math.min(PARTS[ka].width, PARTS[ka].height) +
@@ -675,10 +674,12 @@ function transfer(a: Body, b: Body, pa: Part, pb: Part) {
   b.y = quant(b.y + (depth * ny * ma.mass) / total);
   if (speed <= 0) return;
   const impulse = (speed * (1 + Math.min(ma.bounce, mb.bounce) / 256)) / total;
-  a.vx = limit(a.vx - impulse * mb.mass * nx);
-  a.vy = limit(a.vy - impulse * mb.mass * ny);
-  b.vx = limit(b.vx + impulse * ma.mass * nx);
-  b.vy = limit(b.vy + impulse * ma.mass * ny);
+  const aMax = atmosphere(ka, m.air, m.gravity).terminal / UNIT;
+  const bMax = atmosphere(kb, m.air, m.gravity).terminal / UNIT;
+  a.vx = clampVelocity(a.vx - impulse * mb.mass * nx, aMax);
+  a.vy = clampVelocity(a.vy - impulse * mb.mass * ny, aMax);
+  b.vx = clampVelocity(b.vx + impulse * ma.mass * nx, bMax);
+  b.vy = clampVelocity(b.vy + impulse * ma.mass * ny, bMax);
 }
 export function stepPhysics(m: Machine): void {
   if (m.mode !== "running") return;
@@ -695,17 +696,21 @@ export function stepPhysics(m: Machine): void {
     for (let j = i + 1; j < m.bodies.length; j++) {
       const a = m.bodies[i]!,
         b = m.bodies[j]!;
-      transfer(a, b, partOf.get(a.id)!, partOf.get(b.id)!);
+      transfer(m, a, b, partOf.get(a.id)!, partOf.get(b.id)!);
     }
   if (m.puzzle === FREE_WORKSHOP) return;
-  if (getPuzzle(m.puzzle).targets.every((id) => has(m, id))) m.mode = "solved";
-  else if (
-    m.tick >= MAX_STEPS ||
-    (m.tick > 12 &&
-      m.bodies.length > 0 &&
-      m.bodies.every(
-        (b) => b.x < -80 || b.x > WIDTH + 80 || b.y < -80 || b.y > HEIGHT + 80,
-      ))
+  const spec = getPuzzle(m.puzzle);
+  if (spec.objective) m.mode = evaluateObjective(spec.objective, m);
+  else if (spec.targets.every((id) => has(m, id))) m.mode = "solved";
+  if (
+    m.mode === "running" &&
+    (m.tick >= MAX_STEPS ||
+      (m.tick > 12 &&
+        m.bodies.length > 0 &&
+        m.bodies.every(
+          (b) =>
+            b.x < -80 || b.x > WIDTH + 80 || b.y < -80 || b.y > HEIGHT + 80,
+        )))
   )
     m.mode = "failed";
 }
@@ -732,6 +737,7 @@ function validParts(raw: unknown): raw is Part[] {
       (p.height !== undefined && !within(p.height, 1, 320)) ||
       (p.rotation !== undefined &&
         (!(p.rotation === 0 || p.rotation === 1) || !canRotate(p.kind))) ||
+      (p.mobile !== undefined && typeof p.mobile !== "boolean") ||
       Object.keys(p).some(
         (k) =>
           ![
@@ -744,6 +750,7 @@ function validParts(raw: unknown): raw is Part[] {
             "width",
             "height",
             "rotation",
+            "mobile",
           ].includes(k),
       )
     )
@@ -791,14 +798,20 @@ function matchesLayout(
           p.kind === q.kind &&
           p.x === q.x &&
           p.y === q.y &&
-          p.flip === q.flip,
+          p.flip === q.flip &&
+          p.rotation === q.rotation,
       ),
     )
   )
     return false;
   const counts = new Map<PartKind, number>();
   for (const p of parts) {
-    if (p.width !== undefined || p.height !== undefined) return false;
+    if (
+      p.width !== undefined ||
+      p.height !== undefined ||
+      p.mobile !== undefined
+    )
+      return false;
     if (p.fixed) continue;
     if (
       !fits(p.kind, p.x, p.y) ||
@@ -818,7 +831,12 @@ export function validMachine(raw: unknown): raw is Machine {
     Object.keys(raw).length !== 13 ||
     !within(raw.puzzle, 0, FREE_WORKSHOP) ||
     typeof raw.imported !== "boolean" ||
-    !["build", "running", "failed", "solved"].includes(String(raw.mode)) ||
+    !(
+      raw.mode === "build" ||
+      raw.mode === "running" ||
+      raw.mode === "failed" ||
+      raw.mode === "solved"
+    ) ||
     !within(raw.tick, 0, 0x7fffffff) ||
     !within(raw.phase, 0, CLOCK_DENOMINATOR - 1) ||
     !within(raw.air, 0, 255) ||
@@ -854,7 +872,7 @@ export function validMachine(raw: unknown): raw is Machine {
       raw.bodies.length)
   )
     return false;
-  const expected = parts.filter((p) => isDynamic(p.kind));
+  const expected = parts.filter(isDynamic);
   if (raw.mode !== "build" && raw.bodies.length < expected.length) return false;
   const bodyIds = new Set<number>();
   for (const b of raw.bodies) {
@@ -865,28 +883,34 @@ export function validMachine(raw: unknown): raw is Machine {
       bodyIds.has(b.id) ||
       !lattice(b.x, -1024, WIDTH + 1024) ||
       !lattice(b.y, -1024, HEIGHT + 1024) ||
-      !lattice(b.vx, -LIMIT, LIMIT) ||
-      !lattice(b.vy, -LIMIT, LIMIT)
+      !lattice(b.vx, -24, 24) ||
+      !lattice(b.vy, -24, 24)
     )
       return false;
     const p = ids.get(b.id);
     if (
       !p ||
-      !(isDynamic(p.kind) || (p.kind === "popper" && raw.active.includes(p.id)))
+      !(isDynamic(p) || (p.kind === "popper" && raw.active.includes(p.id)))
     )
       return false;
     bodyIds.add(b.id);
+    const maximum =
+      atmosphere(bodyKind(p), raw.air, raw.gravity).terminal / UNIT;
+    if (Math.abs(b.vx) > maximum || Math.abs(b.vy) > maximum) return false;
   }
   if (raw.mode !== "build" && !expected.every((p) => bodyIds.has(p.id)))
     return false;
-  if (
-    raw.mode === "solved" &&
-    (puzzle === FREE_WORKSHOP ||
-      !getPuzzle(puzzle).targets.every((id) =>
-        (raw.active as number[]).includes(id),
-      ))
-  )
-    return false;
+  if (raw.mode === "solved") {
+    if (puzzle === FREE_WORKSHOP) return false;
+    const spec = getPuzzle(puzzle);
+    const state = { tick: raw.tick, active: raw.active, bodies: raw.bodies };
+    if (
+      spec.objective
+        ? evaluateObjective(spec.objective, state) !== "solved"
+        : !spec.targets.every((id) => state.active.includes(id))
+    )
+      return false;
+  }
   const fixed = parts.filter((p) => p.fixed),
     undoLinks = raw.undoLinks;
   return raw.undo.every((entry, i) => {

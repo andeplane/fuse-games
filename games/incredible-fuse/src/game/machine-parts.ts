@@ -1,3 +1,7 @@
+import { GOAL_PUZZLES, type MachineObjective } from "./machine-goals.js";
+import type { MachineLink } from "./machine-links.js";
+import { SHOWCASE_PUZZLE } from "./machine-showcase.js";
+
 /** All dimensions describe the workshop drawing and its contact geometry in pixels. */
 function part(name: string, width: number, height: number, hint: string) {
   return { name, width, height, hint };
@@ -237,6 +241,8 @@ export interface Part {
   width?: number;
   height?: number;
   rotation?: 0 | 1;
+  /** DOS freeform files keep static and mobile objects in separate lists. */
+  mobile?: boolean;
 }
 export const canRotate = (kind: PartKind): boolean =>
   ["shelf", "timber", "wall", "pipe", "driveBelt", "rope"].includes(kind);
@@ -259,6 +265,8 @@ export interface Puzzle {
   stock: Partial<Record<PartKind, number>>;
   /** All of these fixed parts must have activated. */
   targets: number[];
+  objective?: MachineObjective;
+  links?: MachineLink[];
 }
 
 const WORKSHOP: Puzzle = {
@@ -282,12 +290,14 @@ function puzzle(
   placements: Placement[],
   stock: Puzzle["stock"],
   targets: number[],
+  links: MachineLink[] = [],
 ): Puzzle {
   return {
     title,
     goal,
     stock,
     targets,
+    links,
     parts: placements.map(([kind, x, y, flip = false], index) => ({
       kind,
       x,
@@ -351,6 +361,7 @@ export const PUZZLES: readonly Puzzle[] = [
     ],
     { ramp: 1, belt: 1 },
     [2, 3],
+    [{ kind: "wire", a: 2, b: 3 }],
   ),
   puzzle(
     "The last domino",
@@ -375,6 +386,7 @@ export const PUZZLES: readonly Puzzle[] = [
     ],
     { gear: 2, driveBelt: 1 },
     [2, 3, 4],
+    [{ kind: "wire", a: 3, b: 4 }],
   ),
   puzzle(
     "Workshop sunrise",
@@ -432,6 +444,9 @@ export const PUZZLES: readonly Puzzle[] = [
     ],
     { ramp: 1, belt: 1, shelf: 1 },
     [2, 5],
+    [{ kind: "wire", a: 2, b: 3 }],
   ),
+  ...GOAL_PUZZLES,
+  SHOWCASE_PUZZLE,
 ];
 export const FREE_WORKSHOP = PUZZLES.length;
