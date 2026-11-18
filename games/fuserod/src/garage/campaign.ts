@@ -1,3 +1,4 @@
+import { uuid } from "fuse-netcode";
 import {
   MODELS,
   PAINTS,
@@ -82,6 +83,8 @@ export interface Setup {
   condition: number;
 }
 export interface Challenge {
+  /** Absent only on sequence-only tickets written before attempt IDs were introduced. */
+  attemptId?: string;
   id: string;
   route: Route;
   wager: number;
@@ -144,6 +147,14 @@ export type Action =
   | { type: "restart" };
 export type Result =
   { ok: true; state: Campaign } | { ok: false; error: string };
+type StartAction = Extract<Action, { type: "race" | "grudge" }>;
+type LoggedAction =
+  Exclude<Action, StartAction> | (StartAction & { attemptId: string });
+const validAttempt = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+    value,
+  );
 export const freshCampaign = (): Campaign => ({
   jailed: false,
   driver: "Driver",
@@ -165,9 +176,19 @@ export const freshCampaign = (): Campaign => ({
 export const activeCar = (s: Campaign) =>
   s.fleet.find((c) => c.model === s.selected);
 export const bankrupt = (s: Campaign) =>
-  !s.fleet.length && s.cash < MODELS.kestrel.price;
+  !s.fleet.length &&
+  !listings(s.day).some((model) => dealerQuote(s.day, model) <= s.cash);
 export const finished = (s: Campaign) =>
   s.jailed || s.rank === RIVALS.length || s.day > FINAL_DAY || bankrupt(s);
+export function cruiseBlockReason(s: Campaign): string {
+  if (finished(s)) return "The season has ended.";
+  if (s.pending)
+    return "Finish or retire your active race before driving into town.";
+  const car = activeCar(s);
+  return car
+    ? inspectWorkshop(car.workshop).reason
+    : "Buy a car in the classifieds before driving into town.";
+}
 export const eligible = (s: Campaign) =>
   s.qualified &&
   s.canyonWins >= ROAD_WINS_NEEDED &&
@@ -298,11 +319,13 @@ function createChallenge(
   wager: number,
   rivalRank: number,
   stakeKind: Challenge["stakeKind"],
+  attemptId: string | undefined,
   heat = 0,
   dialInTicks = 0,
 ): Challenge {
   return {
-    id: `race-${s.next}`,
+    id: attemptId ? `race-${s.next}-${attemptId}` : `race-${s.next}`,
+    ...(attemptId ? { attemptId } : {}),
     route,
     wager,
     rivalName: RIVALS[rivalRank]!,
@@ -434,6 +457,7 @@ function decode(v: unknown): Campaign | undefined {
         : p.heat !== 0 || p.dialInTicks !== 0 || p.rivalRank > unlockedRank(s)
     )
       return;
+    if (p.attemptId !== undefined && !validAttempt(p.attemptId)) return;
     const pending = createChallenge(
       s,
       selected,
@@ -441,6 +465,7 @@ function decode(v: unknown): Campaign | undefined {
       Number(p.wager),
       p.rivalRank,
       p.stakeKind,
+      p.attemptId,
       p.heat,
       p.dialInTicks,
     );
@@ -474,7 +499,9 @@ export function parseSave(raw: string): Campaign {
 }
 const fail = (error: string): Result => ({ ok: false, error });
 const success = (state: Campaign): Result => ({ ok: true, state });
-export function change(s: Campaign, a: Action): Result {
+export function change(s: Campaign, a: LoggedAction): Result {
+  if ((a.type === "race" || a.type === "grudge") && !validAttempt(a.attemptId))
+    return fail("Invalid race attempt.");
   if (a.type === "name") {
     const driver = a.driver.trim();
     if (!validDriver(driver))
@@ -509,6 +536,9 @@ export function change(s: Campaign, a: Action): Result {
       if (
         !Number.isFinite(a.speedingMph) ||
         a.speedingMph < 0 ||
+        a.won ||
+        route !== "canyon" ||
+        king ||
         stakeKind === "bracket"
       )
         return fail("Invalid patrol result.");
@@ -549,6 +579,7 @@ export function change(s: Campaign, a: Action): Result {
           0,
           heat,
           "bracket",
+          s.pending.attemptId,
           heat + 1,
           heat === 0 ? a.elapsedTicks! : dialInTicks,
         );
@@ -608,6 +639,7 @@ export function change(s: Campaign, a: Action): Result {
             0,
             rivalRank,
             leg === 2 ? "title" : "cash",
+            s.pending.attemptId,
           ),
           receipt: `Beat Redline on ${ROUTES[route].name}. Next: ${ROUTES[CHAMPIONSHIP[leg]].name}.`,
         });
@@ -734,7 +766,7 @@ export function change(s: Campaign, a: Action): Result {
       fleet: s.fleet.map((v) =>
         v === c ? { ...v, fuel: v.fuel - FUEL.grudge } : v,
       ),
-      pending: createChallenge(s, c, "strip", 0, 0, "bracket"),
+      pending: createChallenge(s, c, "strip", 0, 0, "bracket", a.attemptId),
       receipt: "",
     });
   }
@@ -764,6 +796,7 @@ export function change(s: Campaign, a: Action): Result {
           0,
           rank,
           s.finalLeg === 2 ? "title" : "cash",
+          a.attemptId,
         ),
         receipt: "",
       });
@@ -790,6 +823,7 @@ export function change(s: Campaign, a: Action): Result {
         a.wager,
         rank,
         a.pinkSlip ? "title" : "cash",
+        a.attemptId,
       ),
       receipt: "",
     });
@@ -856,9 +890,17 @@ export function change(s: Campaign, a: Action): Result {
     receipt,
   });
 }
-export function transact(storage: StoragePort, action: Action): Result {
+export function transact(
+  storage: StoragePort,
+  action: Action,
+  issueAttempt: () => string = uuid,
+): Result {
   try {
-    const out = change(loadCampaign(storage), action);
+    const logged =
+      action.type === "race" || action.type === "grudge"
+        ? { ...action, attemptId: issueAttempt() }
+        : action;
+    const out = change(loadCampaign(storage), logged);
     if (out.ok) storage.setItem(KEY, JSON.stringify(out.state));
     return out;
   } catch (error) {

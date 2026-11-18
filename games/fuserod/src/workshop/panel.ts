@@ -13,7 +13,6 @@ import {
   type Station,
   type Grade,
 } from "./mechanics.js";
-import "./workshop.css";
 type ItemArt = (kind: "part", item: string) => Element;
 type SceneArt = (
   canvas: HTMLCanvasElement,

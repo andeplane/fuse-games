@@ -5,7 +5,7 @@ import {
   activeCar,
   dealerQuote,
   rivalAccepts,
-  change,
+  change as reduce,
   FINAL_DAY,
   finished,
   freshCampaign,
@@ -36,11 +36,61 @@ class Store implements StoragePort {
     this.values.set(key, value);
   }
 }
+const fixtureAttempt = "00000000-0000-4000-8000-000000000001";
+function change(state: Campaign, action: Action): Result {
+  return reduce(
+    state,
+    action.type === "race" || action.type === "grudge"
+      ? { ...action, attemptId: fixtureAttempt }
+      : action,
+  );
+}
 function success(r: Result): Campaign {
   assert.ok(r.ok, r.ok ? "" : r.error);
   return r.state;
 }
 const buy: Action = { type: "buy", model: "kestrel" };
+test("restoring the same slot sequence in diverging tabs issues distinct wagers and rejects the older finisher", () => {
+  const older = new Store();
+  success(transact(older, buy));
+  success(saveSlot(older, 1, false));
+  const newer = new Store();
+  newer.values = new Map(older.values);
+  success(restoreSlot(older, 1, "current"));
+  success(restoreSlot(newer, 1, "current"));
+  const previous = success(
+    transact(
+      older,
+      { type: "race", route: "strip", wager: 0 },
+      () => fixtureAttempt,
+    ),
+  );
+  const current = success(
+    transact(
+      newer,
+      { type: "race", route: "aqueduct", wager: 100 },
+      () => "00000000-0000-4000-8000-000000000002",
+    ),
+  );
+  assert.equal(previous.next, current.next);
+  assert.notEqual(previous.pending!.id, current.pending!.id);
+  assert.deepEqual(loadCampaign(newer).pending, current.pending);
+  assert.equal(
+    settleRace(newer, current.pending!.id, { won: false, speedingMph: 81 }).ok,
+    false,
+  );
+  assert.equal(
+    settleRace(newer, previous.pending!.id, { won: true }).ok,
+    false,
+  );
+  assert.deepEqual(loadCampaign(newer), current);
+  const legacy = JSON.parse(JSON.stringify(previous));
+  delete legacy.pending.attemptId;
+  legacy.pending.id = `race-${legacy.next}`;
+  older.setItem("fuserod.garage.v1", JSON.stringify(legacy));
+  assert.equal(loadCampaign(older).pending!.id, legacy.pending.id);
+  success(settleRace(older, legacy.pending.id, { won: true }));
+});
 test("a car, fitted parts, gearing and wear feed the race setup", () => {
   const initial = freshCampaign();
   assert.equal(
