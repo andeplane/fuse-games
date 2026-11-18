@@ -440,6 +440,252 @@ function choose(
   return best;
 }
 
+interface CastEffect {
+  map: GameMap;
+  world: World;
+  hero: Hero;
+  spell: Spell;
+  tx: number;
+  ty: number;
+  aim: Spot;
+  chosen: Chosen | undefined;
+  duration: number;
+  power: number;
+  damage: number;
+}
+
+/** The cast event lands on the effect's target, or on the caster's original position. */
+type Impact = Spot | "origin" | "refused";
+
+function unitTargets(
+  world: World,
+  eligible: (unit: Unit) => boolean,
+): Target[] {
+  return world.units.filter(eligible).map((at) => ({ of: "unit", at }));
+}
+
+function hasUnitCapacity(world: World, seat: number): boolean {
+  // Lane waves have their own cap.
+  let owned = 0;
+  for (const unit of world.units)
+    if (unit.owner === seat && unit.lane < 0) owned++;
+  return owned < unitCap(world, seat);
+}
+
+function shockwave({
+  map,
+  world,
+  hero,
+  spell,
+  duration,
+  power,
+  damage,
+}: CastEffect): void {
+  const team = teamOf(hero.seat);
+  for (const unit of world.units) {
+    const foe = teamOf(unit.owner);
+    if (foe === team || !within(unit, hero, spell.radius)) continue;
+    unit.hp -= div(damage * hideOf(world, unit, foe), 100);
+    if (!UNITS[unit.kind].robot) continue;
+    unit.stun = most(unit.stun, duration);
+    let dx = unit.x - hero.x,
+      dy = unit.y - hero.y;
+    const length = isqrt(dx * dx + dy * dy);
+    const [ex, ey] = DIRS[unit.id % DIRS.length]!;
+    if (length === 0) [dx, dy] = [ex * power, ey * power];
+    else [dx, dy] = [div(dx * power, length), div(dy * power, length)];
+    [unit.x, unit.y] = settle(map, unit.x, unit.y, unit.x + dx, unit.y + dy);
+  }
+}
+
+function snipe({
+  map,
+  world,
+  hero,
+  spell,
+  aim,
+  chosen,
+  power,
+  damage,
+}: CastEffect): Impact {
+  const seat = hero.seat;
+  const team = teamOf(seat);
+  const enemies = unitTargets(world, (unit) => teamOf(unit.owner) !== team);
+  const heroes = world.heroes
+    .filter((h) => teamOf(h.seat) !== team && alive(h) && h.cloak === 0)
+    .map((at): Target => ({ of: "hero", at }));
+  const target = choose(hero, aim, spell, [...enemies, ...heroes], chosen);
+  if (target === undefined) return "refused";
+  const impact = spotOf(target);
+  if (target.of === "unit") {
+    const unit = target.at;
+    const hit = UNITS[unit.kind].robot ? damage : div(damage * power, 100);
+    unit.hp -= div(hit * hideOf(world, unit, teamOf(unit.owner)), 100);
+  } else if (target.of === "hero") {
+    const victim = target.at;
+    const foe = teamOf(victim.seat);
+    const hit = div(damage * hideOf(world, victim, foe), 100);
+    victim.quiet = 0;
+    hurtBy(victim, seat);
+    if (hit < victim.hp) victim.hp -= hit;
+    else
+      award(
+        map,
+        world,
+        seat,
+        foe,
+        victim.x,
+        victim.y,
+        fell(world, victim, seat),
+      );
+  }
+  return impact;
+}
+
+function dropUnit(
+  { map, world, hero }: CastEffect,
+  kind: "lightTank" | "sentry",
+): Impact {
+  if (!hasUnitCapacity(world, hero.seat)) return "refused";
+  if (
+    kind === "sentry" &&
+    world.units.filter(
+      (unit) => unit.owner === hero.seat && unit.kind === "sentry",
+    ).length >= SENTRIES_PER_HERO
+  )
+    return "refused";
+  const [fx, fy] = DIRS[hero.facing]!;
+  const [hx, hy] = [tileOf(hero.x), tileOf(hero.y)];
+  let [tx, ty] = [hx + fx, hy + fy];
+  // The faced tile must be open and, across a diagonal, reachable without cutting a rock's corner.
+  const reachable =
+    openTile(map, tx, ty) &&
+    (fx === 0 || fy === 0 || (openTile(map, tx, hy) && openTile(map, hx, ty)));
+  if (!reachable) [tx, ty] = [hx, hy];
+  const impact = { x: centreOf(tx), y: centreOf(ty) };
+  world.units.push({
+    id: world.nextId++,
+    kind,
+    owner: hero.seat,
+    ...impact,
+    hp: kind === "lightTank" ? DROP_HP : UNITS[kind].hp,
+    cooldown: 0,
+    goal: -1,
+    stun: 0,
+    rally: 0,
+    lane: -1,
+    wave: 0,
+  });
+  return impact;
+}
+
+function applyEffect(cast: CastEffect): Impact {
+  const { map, world, hero, spell, tx, ty, aim, chosen, duration, power } =
+    cast;
+  const seat = hero.seat;
+  const team = teamOf(seat);
+  switch (spell.effect) {
+    case "shockwave":
+      shockwave(cast);
+      return "origin";
+    case "rally":
+      for (const unit of world.units)
+        if (
+          UNITS[unit.kind].robot &&
+          teamOf(unit.owner) === team &&
+          within(unit, hero, spell.radius)
+        )
+          unit.rally = most(unit.rally, duration);
+      return "origin";
+    case "snipe":
+      return snipe(cast);
+    case "cloak":
+      hero.cloak = duration;
+      return "origin";
+    case "stickyMine": {
+      if (!openTile(map, tx, ty)) return "refused";
+      const laid = world.mines.filter((mine) => mine.owner === seat);
+      if (laid.length >= MINES_PER_HERO)
+        world.mines.splice(world.mines.indexOf(laid[0]!), 1);
+      world.mines.push({ owner: seat, ...aim, life: duration, stuck: -1 });
+      return aim;
+    }
+    case "hijack": {
+      if (!hasUnitCapacity(world, seat)) return "refused";
+      // A wave's tank belongs to its lane. Only a drop or a factory tank can be taken.
+      const tanks = unitTargets(
+        world,
+        (unit) =>
+          teamOf(unit.owner) !== team &&
+          unit.kind === "lightTank" &&
+          unit.lane < 0,
+      );
+      const target = choose(hero, aim, spell, tanks, chosen);
+      if (target === undefined) return "refused";
+      const impact = spotOf(target);
+      Object.assign(target.at, {
+        owner: seat,
+        goal: -1,
+        stun: 0,
+        rally: 0,
+        lane: -1,
+        wave: 0,
+      });
+      return impact;
+    }
+    case "repair": {
+      const friendly = unitTargets(
+        world,
+        (unit) => teamOf(unit.owner) === team,
+      );
+      const target = choose(
+        hero,
+        aim,
+        spell,
+        mends(map, world, team, friendly),
+        chosen,
+      );
+      if (target === undefined) return "refused";
+      target.at.hp = least(target.at.hp + power, mostHp(map, target));
+      return spotOf(target);
+    }
+    case "fortify": {
+      const sector = map.sectorOf[tileOf(hero.y) * map.width + tileOf(hero.x)]!;
+      const flag = map.flags[sector];
+      const owner = world.sectors[sector] ?? NEUTRAL;
+      if (flag === undefined || owner < 0 || teamOf(owner) !== team)
+        return "refused";
+      const post = { x: centreOf(flag.x), y: centreOf(flag.y) };
+      if (!within(post, hero, spell.radius)) return "refused";
+      world.fortified[sector] = most(world.fortified[sector]!, duration);
+      return post;
+    }
+    case "overclock":
+      world.overclock[team] = most(world.overclock[team]!, duration);
+      return "origin";
+    case "dash":
+      dash(map, hero, spell.range, tx, ty);
+      return "origin";
+    case "flare":
+      if (!openTile(map, tx, ty)) return "refused";
+      [hero.flare, hero.flareLeft] = [ty * map.width + tx, duration];
+      for (const unit of world.units)
+        if (unit.owner === seat && UNITS[unit.kind].robot && unit.lane < 0)
+          unit.goal = FLARE;
+      return aim;
+    case "blitz":
+      hero.blitz = duration;
+      return "origin";
+    case "orbitalDrop":
+      return dropUnit(cast, "lightTank");
+    case "turretDrop":
+      return dropUnit(cast, "sentry");
+    case "ironHide":
+    case "spotter":
+      return "refused";
+  }
+}
+
 /** Casts `hero`'s slot `slot` aimed at tile (`tx`, `ty`) if it can be cast; returns whether it was. */
 export function cast(
   map: GameMap,
@@ -455,165 +701,30 @@ export function cast(
   if (spell === undefined || spell.passive || !alive(hero)) return false;
   if (level < spell.unlock || hero.spells[slot]! > 0) return false;
   if (hero.energy < spell.energy) return false;
-  const { seat } = hero;
-  const team = teamOf(seat);
-  const { duration, power, damage } = scaled(spell, level);
   const aim = { x: centreOf(tx), y: centreOf(ty) };
   // A point spell aimed beyond its reach is refused, so it lands where the aiming circle said.
-  const reach = spell.range + AIM_SLACK;
-  if (spell.targeting === "point" && !within(aim, hero, reach)) return false;
-  const pick = (candidates: readonly Target[]) =>
-    choose(hero, aim, spell, candidates, chosen);
-  let owned = 0;
-  // Lane waves (`waves.ts`) have their own cap, so they never block a drop.
-  for (const unit of world.units)
-    if (unit.owner === seat && unit.lane < 0) owned++;
-  // Where the spell lands, for the cast event (presentation only).
-  let to: Spot = { x: hero.x, y: hero.y };
-  const units = (ours: boolean): Target[] =>
-    world.units
-      .filter((unit) => (teamOf(unit.owner) === team) === ours)
-      .map((at) => ({ of: "unit", at }));
-  const enemies = units(false);
-  const near = (unit: Unit): boolean => {
-    const dx = unit.x - hero.x,
-      dy = unit.y - hero.y;
-    return dx * dx + dy * dy <= spell.radius * spell.radius;
-  };
-  if (spell.effect === "snipe") {
-    const heroes = world.heroes
-      .filter((h) => teamOf(h.seat) !== team && alive(h) && h.cloak === 0)
-      .map((at): Target => ({ of: "hero", at }));
-    const target = pick([...enemies, ...heroes]);
-    if (target === undefined) return false;
-    to = spotOf(target);
-    if (target.of === "unit") {
-      const unit = target.at;
-      const hit = UNITS[unit.kind].robot ? damage : div(damage * power, 100);
-      unit.hp -= div(hit * hideOf(world, unit, teamOf(unit.owner)), 100);
-    } else if (target.of === "hero") {
-      const victim = target.at;
-      const foe = teamOf(victim.seat);
-      const hit = div(damage * hideOf(world, victim, foe), 100);
-      victim.quiet = 0;
-      hurtBy(victim, seat);
-      if (hit < victim.hp) victim.hp -= hit;
-      else
-        award(
-          map,
-          world,
-          seat,
-          foe,
-          victim.x,
-          victim.y,
-          fell(world, victim, seat),
-        );
-    }
-  } else if (spell.effect === "cloak") hero.cloak = duration;
-  else if (spell.effect === "stickyMine") {
-    if (!openTile(map, tx, ty)) return false;
-    const laid = world.mines.filter((each) => each.owner === seat);
-    if (laid.length >= MINES_PER_HERO)
-      world.mines.splice(world.mines.indexOf(laid[0]!), 1);
-    const [x, y] = [aim.x, aim.y];
-    world.mines.push({ owner: seat, x, y, life: duration, stuck: -1 });
-    to = { x, y };
-  } else if (spell.effect === "hijack") {
-    // A wave's tank (`jungle.ts`) belongs to its lane, so only a drop or a v2 factory's can be taken.
-    const tanks = enemies.filter(
-      (each) =>
-        each.of === "unit" && each.at.kind === "lightTank" && each.at.lane < 0,
-    );
-    const target = owned < unitCap(world, seat) && pick(tanks);
-    if (!target) return false;
-    to = spotOf(target);
-    Object.assign(target.at, {
-      owner: seat,
-      goal: -1,
-      stun: 0,
-      rally: 0,
-      lane: -1,
-      wave: 0,
-    });
-  } else if (spell.effect === "repair") {
-    const target = pick(mends(map, world, team, units(true)));
-    if (target === undefined) return false;
-    to = spotOf(target);
-    target.at.hp = least(target.at.hp + power, mostHp(map, target));
-  } else if (spell.effect === "fortify") {
-    const sector = map.sectorOf[tileOf(hero.y) * map.width + tileOf(hero.x)]!;
-    const flag = map.flags[sector];
-    const owner = world.sectors[sector] ?? -1;
-    if (flag === undefined || owner < 0 || teamOf(owner) !== team) return false;
-    const post = { x: centreOf(flag.x), y: centreOf(flag.y) };
-    if (!within(post, hero, spell.radius)) return false;
-    to = post;
-    world.fortified[sector] = most(world.fortified[sector]!, duration);
-  } else if (spell.effect === "overclock")
-    world.overclock[team] = most(world.overclock[team]!, duration);
-  else if (spell.effect === "dash") dash(map, hero, spell.range, tx, ty);
-  // `to` stays at DASH's start: the caster's position before it moved.
-  else if (spell.effect === "flare") {
-    if (!openTile(map, tx, ty)) return false;
-    [hero.flare, hero.flareLeft] = [ty * map.width + tx, duration];
-    to = aim;
-    for (const unit of world.units)
-      if (unit.owner === seat && UNITS[unit.kind].robot && unit.lane < 0)
-        unit.goal = FLARE;
-  } else if (spell.effect === "blitz") hero.blitz = duration;
-  else if (spell.effect === "orbitalDrop" || spell.effect === "turretDrop") {
-    const kind = spell.effect === "orbitalDrop" ? "lightTank" : "sentry";
-    let sentries = 0;
-    for (const unit of world.units)
-      if (unit.owner === seat && unit.kind === "sentry") sentries++;
-    if (owned >= unitCap(world, hero.seat)) return false;
-    if (kind === "sentry" && sentries >= SENTRIES_PER_HERO) return false;
-    const [fx, fy] = DIRS[hero.facing]!;
-    const [hx, hy] = [tileOf(hero.x), tileOf(hero.y)];
-    let [tx, ty] = [hx + fx, hy + fy];
-    // The faced tile must be open and, across a diagonal, reachable without cutting a rock's corner.
-    const reachable =
-      openTile(map, tx, ty) &&
-      (fx === 0 ||
-        fy === 0 ||
-        (openTile(map, tx, hy) && openTile(map, hx, ty)));
-    if (!reachable) [tx, ty] = [hx, hy];
-    to = { x: centreOf(tx), y: centreOf(ty) };
-    world.units.push({
-      id: world.nextId++,
-      kind,
-      owner: hero.seat,
-      x: centreOf(tx),
-      y: centreOf(ty),
-      hp: kind === "lightTank" ? DROP_HP : UNITS[kind].hp,
-      cooldown: 0,
-      goal: -1,
-      stun: 0,
-      rally: 0,
-      lane: -1,
-      wave: 0,
-    });
-  }
-  for (const unit of world.units) {
-    if (!near(unit)) continue;
-    const ally = teamOf(unit.owner) === team;
-    if (spell.effect === "shockwave" && !ally)
-      unit.hp -= div(damage * hideOf(world, unit, teamOf(unit.owner)), 100);
-    if (!UNITS[unit.kind].robot) continue;
-    if (spell.effect === "rally" && ally)
-      unit.rally = unit.rally > duration ? unit.rally : duration;
-    if (spell.effect !== "shockwave" || ally) continue;
-    unit.stun = unit.stun > duration ? unit.stun : duration;
-    let dx = unit.x - hero.x,
-      dy = unit.y - hero.y;
-    const length = isqrt(dx * dx + dy * dy);
-    const [ex, ey] = DIRS[unit.id % DIRS.length]!;
-    if (length === 0) [dx, dy] = [ex * power, ey * power];
-    else [dx, dy] = [div(dx * power, length), div(dy * power, length)];
-    [unit.x, unit.y] = settle(map, unit.x, unit.y, unit.x + dx, unit.y + dy);
-  }
+  if (
+    spell.targeting === "point" &&
+    !within(aim, hero, spell.range + AIM_SLACK)
+  )
+    return false;
+  const origin = { x: hero.x, y: hero.y };
+  const impact = applyEffect({
+    map,
+    world,
+    hero,
+    spell,
+    tx,
+    ty,
+    aim,
+    chosen,
+    ...scaled(spell, level),
+  });
+  if (impact === "refused") return false;
+  // DASH reports its original position as the target and its new position as the caster.
+  const to = impact === "origin" ? origin : impact;
   // Units the spell killed die now, in id order, and earn the caster their XP.
-  bury(map, world, seat);
+  bury(map, world, hero.seat);
   hero.energy -= spell.energy;
   hero.spells[slot] = spellCooldown(hero, rankedCooldown(spell, level));
   world.events.push({
