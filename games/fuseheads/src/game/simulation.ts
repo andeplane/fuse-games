@@ -85,7 +85,14 @@ export interface World {
   broken: number[];
   moved: number[];
   revealed: number[];
-  pickups: { column: number; row: number; type: number }[];
+  pickups: {
+    column: number;
+    row: number;
+    type: number;
+    y: number;
+    vy: number;
+    age: number;
+  }[];
   explosions: { column: number; row: number; age: number }[];
 }
 
@@ -281,6 +288,9 @@ function bonk(world: World, level: Level, column: number, row: number) {
         column,
         row,
         type: code === 23 ? 17 : code >= 17 ? code - 6 : code,
+        y: row * TILE_HEIGHT,
+        vy: -(Math.trunc(level.physics.springJump / 2) + 80) * SIXTEENTH,
+        age: 0,
       });
   }
 }
@@ -722,14 +732,37 @@ export function stepWorld(
     () => random(world),
   );
   for (const pickup of [...world.pickups]) {
-    const x = (pickup.column + 0.5) * TILE_WIDTH,
-      y = pickup.row * TILE_HEIGHT;
+    const x = (pickup.column + 0.5) * TILE_WIDTH;
+    if (pickup.age > 0) {
+      pickup.y += pickup.vy;
+      const floor = Math.floor(pickup.y / TILE_HEIGHT);
+      if (pickup.vy >= 0 && solid(tile(world, level, pickup.column, floor))) {
+        pickup.vy = 0;
+        pickup.y = floor * TILE_HEIGHT;
+      } else {
+        const ceiling = Math.floor((pickup.y - TILE_HEIGHT) / TILE_HEIGHT);
+        if (
+          pickup.vy < 0 &&
+          solid(tile(world, level, pickup.column, ceiling))
+        ) {
+          pickup.y = (ceiling + 2) * TILE_HEIGHT;
+          pickup.vy = 0;
+        } else if (pickup.vy + 17 * SIXTEENTH < 15)
+          pickup.vy += 2 * level.physics.gravity * SIXTEENTH;
+      }
+    }
+    pickup.age++;
+    if (pickup.age > level.gemDuration || pickup.y > HEIGHT + TILE_HEIGHT) {
+      world.pickups.splice(world.pickups.indexOf(pickup), 1);
+      continue;
+    }
     const p = world.players.find(
       (p) =>
         p.lives &&
-        Math.abs(x - p.x) < 22 &&
-        y > p.y - PLAYER_HEIGHT - 6 &&
-        y <= p.y + 4,
+        p.respawn === "active" &&
+        Math.abs(x - p.x) < 37 &&
+        pickup.y - 5 > p.y - PLAYER_HEIGHT &&
+        pickup.y - TILE_HEIGHT + 5 < p.y,
     );
     if (p) {
       if (pickup.type === 11 || pickup.type === 13) {
@@ -744,8 +777,23 @@ export function stepWorld(
         }
       else if (pickup.type === 14) addScore(p, 5000);
       else if (pickup.type === 15) p.lives = Math.min(99, p.lives + 1);
-      else if (pickup.type === 16) world.tnt = Math.min(3, world.tnt + 1);
-      else if (pickup.type === 17) p.invincible = 302;
+      else if (pickup.type === 16 && level.tiles.includes(50)) {
+        const cell = level.tiles.indexOf(50),
+          left = (cell % COLUMNS) * TILE_WIDTH,
+          top = Math.floor(cell / COLUMNS) * TILE_HEIGHT;
+        const obstructed =
+          world.tnt === 0 &&
+          world.players.some(
+            (p) =>
+              p.lives &&
+              p.respawn === "active" &&
+              p.x + PLAYER_RADIUS > left &&
+              p.x - PLAYER_RADIUS < left + 64 &&
+              p.y > top &&
+              p.y - PLAYER_HEIGHT < top + 32,
+          );
+        if (!obstructed) world.tnt = Math.min(3, world.tnt + 1);
+      } else if (pickup.type === 17) p.invincible = 302;
       world.pickups.splice(world.pickups.indexOf(pickup), 1);
     }
   }

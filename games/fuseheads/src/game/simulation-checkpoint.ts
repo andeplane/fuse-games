@@ -199,9 +199,12 @@ export function validWorld(raw: unknown): raw is World {
     raw.pickups.every(
       (p) =>
         plain(p) &&
-        exact(p, ["column", "row", "type"]) &&
+        exact(p, ["column", "row", "type", "y", "vy", "age"]) &&
         cell(p) &&
-        integer(p.type, 11, 17),
+        integer(p.type, 11, 17) &&
+        fixed(p.y, -1024, 496) &&
+        fixed(p.vy, -64, 64) &&
+        integer(p.age, 0, level.gemDuration),
     )
   );
 }
