@@ -208,8 +208,6 @@ function botInput(
   const features = aheadFeatures(race, driver);
   for (const f of features) {
     if (f.kind === "bridge") target = 0;
-    else if (f.kind === "rock" && Math.abs(target / 1000 - f.lane) < 0.3)
-      target = f.lane > 0 ? -120 : 120;
   }
   // A bot looks into a bend and countersteers against its steering-wheel momentum.
   const street =
@@ -515,6 +513,7 @@ export function racerViews(race: Race) {
     distance: metres(r.motor.position),
     speed: r.motor.speed * 1.609344,
     lateral: r.x / 1000,
+    steering: r.motor.wheel / 24,
     curve: roadCurve(race.settings.route, r.motor.position, race.layout) / 500,
     layout: race.layout,
     grade: nativeCourseSample(

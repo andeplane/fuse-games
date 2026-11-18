@@ -2,9 +2,13 @@
 
 Start from **Play → Single player**. In the classifieds buy a Kestrel Six. The garage holds your cars, parts and cash across visits on the same browser. Choose a rival, course and stake. Losing a title race can cost you the car.
 
-Shift from neutral to first with **X** or **Space**. Hold **W / ↑** for gas, steer with **A/D** or **←/→**, brake with **S / ↓** and downshift with **Z**. Phones use the six on-screen controls. Watch the rev counter when shifting. The cockpit mirror shows a rival approaching from behind.
+Hold **W / ↑** for gas, steer with **A/D** or **←/→** and brake with **S / ↓**. An automatic shifts when you accelerate. In a manual, use **X** or **Space** to shift from neutral to first, watch the rev counter and downshift with **Z**. On phones the pedals, steering and manual gear controls are under the cockpit. The mirror shows a rival approaching from behind.
+
+The classifieds cover 22 car models. In the workshop you can change tyres, adjust ignition timing and swap components from the 64-part catalogue. Check the car is off the jack, bolted together and ready to start before leaving. The logbook holds your licence and 15 save slots.
 
 Wednesday's Grudge Night starts with a timed quarter mile. Your qualifying time sets your dial-in for the elimination races. Winning the grudge event and beating rivals on the two road courses opens the championship. The garage shows the remaining qualifying requirements.
+
+The quarter mile is straight. The aqueduct has steep banks and a drainage trough. Mulholland picks one of ten canyon layouts with different bends, rises and worksites. The [course verification notes](src/course/README.md) include a reproducible comparison with the DOS road builder.
 
 **Play → Host room** creates a separate race for up to five drivers. Choose a course in room settings, race alone or add an AI driver, or invite friends with the room code. Shared TV displays the race while seated devices drive. A race is one analytics round and one match. The room uses the shared 20 Hz rollback log and confirmed results. Career money and title stakes belong to solo play.
 

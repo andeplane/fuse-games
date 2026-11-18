@@ -89,6 +89,43 @@
   text-shadow: 0 0.04em 0.1em #56241c;
   pointer-events: none;
 }
+.rod-tree {
+  position: absolute;
+  left: 67%;
+  top: 17%;
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.45rem 0.3rem;
+  border: 1px solid #786d61;
+  border-radius: 0.3rem;
+  background: linear-gradient(90deg, #27272c, #3d3938 48%, #242528);
+  box-shadow: 0 0.13rem 0.3rem #211b2499;
+}
+.rod-lamp {
+  --lamp: #ffc05b;
+  display: flex;
+  gap: 0.24rem;
+}
+.rod-lamp[data-color="green"] {
+  --lamp: #8dff9f;
+}
+.rod-lamp[data-color="red"] {
+  --lamp: #ff7163;
+}
+.rod-lamp::before,
+.rod-lamp::after {
+  content: "";
+  width: clamp(0.48rem, 1.2vw, 1rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--lamp) 19%, #16151a);
+  box-shadow: inset 0 2px 3px #16151a;
+}
+.rod-lamp.lit::before,
+.rod-lamp.lit::after {
+  background: var(--lamp);
+  box-shadow: 0 0 0.45rem var(--lamp);
+}
 .rod-dash,
 .rod-pad {
   display: grid;
@@ -145,7 +182,7 @@
     padding: 0.2rem;
   }
   .rod-canvas {
-    height: calc(100svh - 9.2rem);
+    height: calc(100svh - 11.25rem - env(safe-area-inset-bottom));
     min-height: 120px;
   }
   .rod-pad button {

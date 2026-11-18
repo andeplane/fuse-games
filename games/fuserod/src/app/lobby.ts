@@ -25,6 +25,16 @@ export function raceLobby(opts: {
   let own: { slot: number; name: string } | undefined;
   let occupied = new Set<number>();
   let current: FuserodSettings;
+  let requested: FuserodSettings | undefined;
+  let tick = 0,
+    expires = 0;
+  function configure(patch: Partial<FuserodSettings>) {
+    const next = { ...(requested ?? current), ...patch };
+    if (runtime().command({ type: "settings", settings: next })) {
+      requested = next;
+      expires = tick + 40;
+    }
+  }
   const element = el("section"),
     roster = createRoster({ emptyText: "Waiting for drivers" });
   const add = button("+ ADD BOT"),
@@ -49,11 +59,7 @@ export function raceLobby(opts: {
     },
   });
   const tv = createSharedTvOption({
-    onChange: (display) =>
-      runtime().command({
-        type: "settings",
-        settings: { ...current, display },
-      }),
+    onChange: (display) => configure({ display }),
     onOpenScreen: () => window.open(opts.displayLink, "_blank", "noopener"),
   });
   const select = el("select"),
@@ -83,33 +89,15 @@ export function raceLobby(opts: {
     automatic = el("input");
   automatic.type = "checkbox";
   gearboxLabel.prepend(automatic);
-  automatic.onchange = () =>
-    runtime().command({
-      type: "settings",
-      settings: { ...current, automatic: automatic.checked },
-    });
+  automatic.onchange = () => configure({ automatic: automatic.checked });
   dial.onchange = () => {
     if (dial.reportValidity())
-      runtime().command({
-        type: "settings",
-        settings: {
-          ...current,
-          dialInTicks: Math.round(Number(dial.value) * 20),
-        },
-      });
+      configure({ dialInTicks: Math.round(Number(dial.value) * 20) });
   };
   select.onchange = () => {
     const event = events.find(([v, r]) => v + "-" + r === select.value);
     if (event)
-      runtime().command({
-        type: "settings",
-        settings: {
-          ...current,
-          route: event[1],
-          variant: event[0],
-          dialInTicks: 0,
-        },
-      });
+      configure({ route: event[1], variant: event[0], dialInTicks: 0 });
   };
   start.onclick = () => runtime().command({ type: "action", action: "start" });
   add.onclick = () =>
@@ -149,6 +137,19 @@ export function raceLobby(opts: {
       manager: string,
     ) {
       current = settings;
+      tick = frame.tick;
+      if (
+        requested &&
+        (!host ||
+          tick >= expires ||
+          (requested.variant === settings.variant &&
+            requested.automatic === settings.automatic &&
+            requested.route === settings.route &&
+            requested.dialInTicks === settings.dialInTicks &&
+            requested.display === settings.display))
+      )
+        requested = undefined;
+      settings = requested ?? settings;
       const players = frame.players.filter((p) => !p.watcher);
       occupied = new Set(players.map((p) => p.slot));
       own = players.find((p) => p.id === me);

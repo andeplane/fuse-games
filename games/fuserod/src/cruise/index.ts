@@ -89,6 +89,7 @@ export function mountCruise(
   const skip = button("Skip drive");
   skip.onclick = arrive;
   const assisted = el("label", " Shift assist");
+  pad.transmission(!!options.tune?.automatic);
   const toggle = el("input");
   toggle.type = "checkbox";
   toggle.checked = true;
@@ -105,7 +106,11 @@ export function mountCruise(
   view.append(canvas, sign);
   const help = el(
     "p",
-    "W/↑ gas · S/↓ brake · A/D or ←/→ steer. With shift assist off, use X/Z to shift. Brake at the destination, then park.",
+    "W/↑ gas · S/↓ brake · A/D or ←/→ steer. " +
+      (options.tune?.automatic
+        ? "Automatic transmission. "
+        : "With shift assist off, use X/Z to shift. ") +
+      "Brake at the destination, then park.",
     "town-help",
   );
   const status = el("p", "", "town-readout");

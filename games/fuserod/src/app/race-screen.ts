@@ -2,6 +2,7 @@ import { el } from "fuse-ui";
 import type { FrameTiming } from "fuse-netcode";
 import { drawRace } from "../art/renderer.js";
 import { courseFeatures } from "../course/index.js";
+import { nativeCourseSample } from "../course/geometry.js";
 import type { FuserodView } from "../game/index.js";
 import type { VehicleFittings } from "../art/vehicle-families.js";
 export const colors = ["#f17a42", "#40d7da", "#e9ba62", "#b9a0ee", "#70d996"];
@@ -20,7 +21,15 @@ export function paintRace(
   const driver = frame.racers.find((r) => r.id === me) ?? frame.racers[0];
   drawRace(canvas, {
     route: frame.route,
-    features: courseFeatures(frame.route),
+    features: courseFeatures(frame.route, driver?.layout ?? 0),
+    sampleRoad: (distance: number) =>
+      nativeCourseSample(
+        frame.route,
+        (distance * 5120) / 402.336,
+        driver?.layout ?? 0,
+      ),
+    grade: (driver?.grade ?? 0) / 2,
+    steering: driver?.steering ?? 0,
     traffic: frame.traffic,
     wrecked: driver?.crashed,
     ticketed: frame.policePhase === 4,
@@ -56,6 +65,14 @@ export function raceScreen() {
   progress.setAttribute("aria-label", "Distance to finish");
   const light = el("strong", "", "rod-light");
   const callout = el("span", "", "rod-callout");
+  const tree = el("div", "", "rod-tree");
+  tree.setAttribute("aria-hidden", "true");
+  const lamps = ["amber", "amber", "amber", "green", "red"].map((color) => {
+    const row = el("i", "", "rod-lamp");
+    row.dataset.color = color;
+    tree.append(row);
+    return row;
+  });
   const dash = el("div", "", "rod-dash");
   const instruments = ["Position", "Speed", "Gear", "RPM", "Remaining"].map(
     (label) => {
@@ -66,7 +83,7 @@ export function raceScreen() {
       return value;
     },
   );
-  viewport.append(canvas, light, callout, progress);
+  viewport.append(canvas, tree, light, callout, progress);
   element.append(viewport, dash);
   return {
     element,
@@ -127,6 +144,19 @@ export function raceScreen() {
       progress.value = Math.min(frame.finishDistance, driver.distance);
       const sanctioned =
         frame.variant === "timed" || frame.variant === "grudge";
+      tree.hidden =
+        !sanctioned || (driver.countdown === 0 && driver.elapsedTicks > 14);
+      if (!tree.hidden) {
+        const lit = driver.falseStart
+          ? 4
+          : driver.countdown === 0
+            ? 3
+            : driver.countdown > 30
+              ? -1
+              : 2 - Math.floor((driver.countdown - 1) / 10);
+        lamps.forEach((lamp, i) => lamp.classList.toggle("lit", i === lit));
+        if (!driver.falseStart && driver.countdown > 0) light.hidden = true;
+      }
       const cue =
         driver.countdown > 0
           ? sanctioned

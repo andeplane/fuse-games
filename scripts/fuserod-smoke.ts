@@ -55,6 +55,11 @@ try {
   await drive(solo);
   await solo.setViewportSize({ width: 844, height: 390 });
   assert(await solo.locator(".rod-pad").isVisible());
+  const pedals = await solo.locator(".rod-pad").boundingBox();
+  assert(
+    pedals && pedals.y + pedals.height <= 390,
+    "Landscape pedals fit on screen",
+  );
   await solo
     .locator('.fui-results button[data-action="garage"]')
     .click({ timeout: 90000 });
@@ -77,15 +82,26 @@ try {
   await host
     .getByLabel("Race event", { exact: true })
     .selectOption("timed-strip");
+  await host.getByLabel("Automatic transmission").check();
   await host.keyboard.press("Escape");
   await start.and(host.locator(":disabled")).waitFor();
+  await host.getByRole("button", { name: "Remove bot" }).click();
+  await takeHostSeat(host, "Driver One");
+  await start.click();
+  await ready(host);
+  await host.locator('.rod-lamp[data-color="green"].lit').waitFor();
+  assert(!(await host.getByRole("button", { name: "Gear +" }).isVisible()));
+  await host.keyboard.down("w");
+  await host.getByText("You win", { exact: true }).waitFor({ timeout: 65000 });
+  await host.keyboard.up("w");
+  await host.locator('.fui-results button[data-action="lobby"]').click();
+  await start.waitFor();
   await host.getByRole("button", { name: "Room settings" }).click();
+  await host.getByLabel("Automatic transmission").uncheck();
   await host
     .getByLabel("Race event", { exact: true })
     .selectOption("street-strip");
   await host.keyboard.press("Escape");
-  await host.getByRole("button", { name: "Remove bot" }).click();
-  await takeHostSeat(host, "Driver One");
   await start.click();
   await ready(host);
   await drive(host);
