@@ -102,7 +102,7 @@ export function raceScreen() {
       });
       paintRace(canvas, { ...newer, racers }, me, car, rival);
     },
-    render(frame: FuserodView, me: string, automatic:boolean) {
+    render(frame: FuserodView, me: string, automatic: boolean) {
       const driver = frame.racers.find((r) => r.id === me) ?? frame.racers[0];
       if (!driver) return;
       light.hidden =
@@ -125,14 +125,24 @@ export function raceScreen() {
                 : String(Math.ceil(driver.countdown / 20));
       progress.max = frame.finishDistance;
       progress.value = Math.min(frame.finishDistance, driver.distance);
-      const sanctioned=frame.variant==="timed" || frame.variant==="grudge";
-      const cue=driver.countdown>0 ? sanctioned?"Stage on the brake · wait for green":"Get ready"
-        : frame.policePhase===3?"Patrol pursuit"
-        : driver.gear===0 && !automatic?"Shift into first"
-        : driver.rpm>=4450 && !automatic?"Shift up"
-        : driver.elapsedTicks<20?"Green · go":"";
-      callout.hidden=!cue;
-      if(callout.textContent!==cue)callout.textContent=cue;
+      const sanctioned =
+        frame.variant === "timed" || frame.variant === "grudge";
+      const cue =
+        driver.countdown > 0
+          ? sanctioned
+            ? "Stage on the brake · wait for green"
+            : "Get ready"
+          : frame.policePhase === 3
+            ? "Patrol pursuit"
+            : driver.gear === 0 && !automatic
+              ? "Shift into first"
+              : driver.rpm >= 4450 && !automatic
+                ? "Shift up"
+                : driver.elapsedTicks < 20
+                  ? "Green · go"
+                  : "";
+      callout.hidden = !cue;
+      if (callout.textContent !== cue) callout.textContent = cue;
       const values = [
         driver.place + "/" + frame.racers.length,
         Math.round(driver.speed) + " km/h",
@@ -141,7 +151,7 @@ export function raceScreen() {
         Math.max(0, Math.ceil(frame.finishDistance - driver.distance)) + " m",
       ];
       instruments.forEach((node, i) => {
-        if(node.textContent!==values[i])node.textContent = values[i]!;
+        if (node.textContent !== values[i]) node.textContent = values[i]!;
       });
     },
   };

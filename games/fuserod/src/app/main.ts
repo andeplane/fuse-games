@@ -5,6 +5,7 @@ import "fuse-ui/portal.css";
 import "fuse-ui/social.css";
 import "fuse-ui/results.css";
 import "./fuserod.css";
+import "../art/cursor.css";
 import {
   createAppPortal,
   createBackLink,
@@ -71,9 +72,8 @@ const url = (search = "") =>
   endpoints.appUrl(
     search + (query.has("mute") ? (search ? "&mute" : "?mute") : ""),
   );
-import { drawScene } from "../art/scenes.js";
-import "../art/cursor.css";
 const app = document.querySelector<HTMLElement>("#app")!;
+app.classList.add("fuserod-pointer");
 const storage = safeStore(() => localStorage),
   names = keys(gameId);
 const campaignStorage = {
@@ -135,7 +135,6 @@ const header = (
   });
 };
 function landing() {
-  app.classList.add("fuserod-pointer");
   const card = createLandingCard({
     title: "FUSEROD",
     tagline:
@@ -281,17 +280,20 @@ function play() {
         socialName: () => social.playerName(undefined) ?? undefined,
       })
     : null;
+  let retrySettlement = () => {};
   const results = createResultsScreen({
     document,
     onBack: leave,
     backText: online ? "Leave" : "Garage",
     onAction: (id) =>
-      id === "garage"
-        ? leave()
-        : runtime.command({
-            type: "action",
-            action: id === "retry" ? "rematch" : "lobby",
-          }),
+      id === "save"
+        ? retrySettlement()
+        : id === "garage"
+          ? leave()
+          : runtime.command({
+              type: "action",
+              action: id === "retry" ? "rematch" : "lobby",
+            }),
   });
   const main = el("main", "", "rod-main");
   if (lobby) main.append(lobby.element);
@@ -354,7 +356,10 @@ function play() {
               ? v.players.filter((p) => !p.watcher)
               : v.racers;
           const entrant = v.racers.find((r) => r.id === me);
-          const active = v.phase === "running" && entrant?.countdown === 0 && !entrant.falseStart;
+          const active =
+            v.phase === "running" &&
+            entrant?.countdown === 0 &&
+            !entrant.falseStart;
           return {
             matchId: v.matchId,
             round: 1,
@@ -399,7 +404,7 @@ function play() {
           display || !frame.players.some((p) => p.id === me && !p.watcher),
       });
       sound.update(frame, me);
-      if (frame.phase === "running") track.render(frame, me,config.automatic);
+      if (frame.phase === "running") track.render(frame, me, config.automatic);
       if (
         final?.phase !== "over" ||
         final.matchId !== frame.matchId ||
@@ -412,21 +417,48 @@ function play() {
       if (resultKey === final.matchId) return;
       resultKey = final.matchId;
       let receipt = "";
+      let saveFailed = false;
       const self = final.racers.find((r) => r.id === me);
       if (challenge && self) {
         const save = settleRace(campaignStorage, challenge.id, {
           won: final.winnerId === me,
           elapsedTicks: self.elapsedTicks,
+          speedingMph:
+            final.policePhase === 4 ? self.speed / 1.609344 : undefined,
           damage: self.broken || self.crashed ? 24 : 2,
         });
         receipt = save.ok ? save.state.receipt : save.error;
+        saveFailed = !save.ok;
+        retrySettlement = () => {
+          resultKey = "";
+          callbacks.state(frame, config);
+        };
       }
       const winner = final.racers.find((r) => r.id === final.winnerId);
-      const incident = final.policePhase === 4 ? "ticket" : self?.crashed ? "wreck" : undefined;
+      const incident =
+        final.policePhase === 4
+          ? "ticket"
+          : self?.crashed
+            ? "wreck"
+            : undefined;
       const picture = el("canvas", "", "rod-story");
-      const ruling = self?.falseStart ? "False start" : self?.breakout ? "Dial-in breakout" : self?.laneFault ? "Lane fault" : self?.broken ? "Engine failure" : incident === "wreck" ? "Crash" : incident === "ticket" ? "Caught by patrol" : "";
+      const ruling = self?.falseStart
+        ? "False start"
+        : self?.breakout
+          ? "Dial-in breakout"
+          : self?.laneFault
+            ? "Lane fault"
+            : self?.broken
+              ? "Engine failure"
+              : incident === "wreck"
+                ? "Crash"
+                : incident === "ticket"
+                  ? "Caught by patrol"
+                  : "";
       results.show({
-        ...(incident ? { sections: [{ title: ruling, content: [picture] }] } : {}),
+        ...(incident
+          ? { sections: [{ title: ruling, content: [picture] }] }
+          : {}),
         game: "FUSEROD",
         headline: winner
           ? winner.id === me
@@ -459,7 +491,9 @@ function play() {
       if (incident) drawScene(picture, incident, appearance);
       results.update({
         actions: !online
-          ? [{ id: "garage", label: "Return to garage", primary: true }]
+          ? saveFailed
+            ? [{ id: "save", label: "Retry saving result", primary: true }]
+            : [{ id: "garage", label: "Return to garage", primary: true }]
           : host && !display
             ? [
                 { id: "lobby", label: "Room" },
