@@ -6,7 +6,7 @@ The slingshot-only correction is playable in [PR #407](https://github.com/andepl
 
 ## Play locally
 
-For one-player shooting, click **1 PLAYER PRACTICE** on the landing screen, or open `/fuse-birds/?practice=1&mute`. It starts immediately with one stationary bird and no room or opponent. Fire Pebbles, try your three Scatter Bombs and shoot refill crates. There is no timer, self-damage or rising water. **NEW MAP** generates fresh terrain and restores ammunition.
+Choose **Play → Single Player** to open a local battle room with one AI opponent. Add or remove AI birds before starting a two-to-five-bird battle. Rematch keeps the seats. For one-player shooting, choose **Play → Target Practice**, or open `/fuse-birds/?practice=1&mute`. It starts immediately with one stationary bird and no room or opponent. Fire Pebbles, try your three Scatter Bombs and shoot refill crates. There is no timer, self-damage or rising water. **NEW MAP** generates fresh terrain and restores ammunition.
 
 From the repository root, run `pnpm dev`. Open the URL printed by the server with `/fuse-birds/?mute` appended. The server chooses a free port when necessary. Create a room and join its code on a second device/tab. Start with 2–5 players. Tick **Shared TV** in the room, under the invitation, and **OPEN TV SCREEN** opens the full-map display; each phone retains its own map view. The room is the shared `fuse-ui` room: Back, Settings and START BATTLE lead it, the code is by the QR, and RETRY and LEAVE are in the bar's menu.
 

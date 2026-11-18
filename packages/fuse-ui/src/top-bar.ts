@@ -13,6 +13,8 @@ export interface TopBarOptions {
   /** This game's master switch: music and effects change together. */
   sound?: TopBarSound;
   /** Omit for the full shared catalogue, pass a game's selection, or false for a custom radio UI. */
+  /** Place the shared radio inside game-provided audio settings. */
+  radioHost?: HTMLElement;
   music?: readonly Song[] | false;
   /** The browser media boundary; tests and embedded hosts can supply their own player surface. */
   createMusicMedia?: () => MusicMedia;
@@ -178,7 +180,9 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       if (owned.has(child)) continue;
       if (
         child.nodeType === 1 &&
-        !(child as HTMLElement).matches("button,input,select,a,details") &&
+        !(child as HTMLElement).matches(
+          "button,input,select,a,details,[data-fui-menu-content]",
+        ) &&
         !(child as HTMLElement).querySelector("button,input,select,a,details")
       ) {
         context.append(child);
@@ -229,7 +233,8 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   };
   right.append(sound, account, toggle);
   refresh(options);
-  if (radio && !customRadio) menu.body.prepend(radio.element);
+  if (radio && !customRadio)
+    (options.radioHost ?? menu.body).prepend(radio.element);
   root.append(left, right, context, menu.dialog);
   // Header controls keep native keyboard activation while the match continues
   // behind them. Keyup still reaches the game so previously held keys release.

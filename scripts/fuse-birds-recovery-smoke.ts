@@ -76,7 +76,7 @@ try {
   }
   async function leave(page: Page) {
     await page.getByRole("button", { name: "Open game menu" }).click();
-    await page.getByRole("button", { name: "LEAVE", exact: true }).click();
+    await page.getByRole("button", { name: /^Leave (room|battle)$/i }).click();
     await openPlayOptions(page);
     await page.getByRole("button", { name: "Host room" }).waitFor();
   }

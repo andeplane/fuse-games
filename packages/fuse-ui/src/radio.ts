@@ -49,7 +49,8 @@ export function createRadio(
     button.setAttribute("aria-pressed", String(player.playing));
     title.textContent = muted
       ? "Audio muted by preview URL"
-      : player.error || player.song?.title || "No songs available";
+      : player.error || (player.song ? "" : "No songs available");
+    title.hidden = !title.textContent;
     for (const option of select.querySelectorAll("option"))
       option.selected = option.value === player.song?.id;
   };
