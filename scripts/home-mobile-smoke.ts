@@ -448,7 +448,7 @@ for (const { name: browserName, kind } of BOTH_ENGINES) {
           if (name === "Player options") {
             await inside(
               page,
-              page.getByRole("button", { name: "EFFECTS OFF", exact: true }),
+              dialog.getByRole("button", { name: "Mute effects", exact: true }),
             );
             for (const name of [/music volume/i, /effects volume/i]) {
               const slider = dialog.getByRole("slider", { name });
