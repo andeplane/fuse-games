@@ -18,6 +18,11 @@ import {
   AIM_SLOW_RAMP_TICKS,
   ARENA_WIDTH,
   ARENA_HEIGHT,
+  MAX_ARENA_WIDTH,
+  MAX_ARENA_HEIGHT,
+  MIN_PLAYERS,
+  arenaSize,
+  isArenaSize,
   GRAVITY_FIELD_TICKS,
   GRAVITY_MAX_RADIUS,
   GRAVITY_MIN_RADIUS,
@@ -73,9 +78,11 @@ import {
   type MomentKind,
 } from "../moments.js";
 
-/** Six riders at the trail cap encode to about 2.2 MB; `MAX_SNAPSHOT_BYTES` in `fuse-netcode` carries this text. */
-export const MAX_CHECKPOINT_BYTES = 2_600_000;
+/** Eight riders at the trail cap encode to about 3 MB (six did to about 2.2 MB); `MAX_SNAPSHOT_BYTES` in `fuse-netcode` carries this text. */
+export const MAX_CHECKPOINT_BYTES = 3_400_000;
 export const MAX_CHECKPOINT_TRAILS = MAX_TRAIL_SEGMENTS;
+// A fully detached segment visits ten nodes. Reserve additional nodes for the rest of the world.
+const MAX_CHECKPOINT_NODES = MAX_PLAYERS * MAX_CHECKPOINT_TRAILS * 10 + 30_000;
 const MAX_HISTORY = 128;
 type Guard = (value: unknown) => boolean;
 const record = (v: unknown): v is Record<string, unknown> =>
@@ -122,7 +129,7 @@ const map =
     v instanceof Map &&
     v.size <= max &&
     [...v].every(([key, value]) => keyGuard(key) && valueGuard(value));
-const position = range(-1000, ARENA_WIDTH + 1000);
+const position = range(-1000, MAX_ARENA_WIDTH + 1000);
 const portalPair: Guard = shape({
   id: text,
   gates: (v) =>
@@ -291,7 +298,7 @@ const momentFields = {
   tick: integer,
   elapsed: integer,
   playerId: text,
-  targetIds: array(text, 4),
+  targetIds: array(text, MAX_PLAYERS - 1),
   value: integer,
 } satisfies Record<keyof Moment, Guard>;
 const moment = shape(momentFields);
@@ -308,7 +315,7 @@ const shotRecord = shape({
   fuseLevel: count(2),
   rangeLevel: count(MAX_RANGE_LEVEL),
   grip: boolean,
-  kills: array(shape({ victimId: text, elapsed: integer }), 4),
+  kills: array(shape({ victimId: text, elapsed: integer }), MAX_PLAYERS - 1),
 } satisfies Record<keyof RoundShot, Guard>);
 /**
  * Required, and whole. Every game a peer on these rules can hold was created with settings and only ever replaced them
@@ -335,15 +342,18 @@ const railMotion: Guard = shape({
   kind: (v) => v === "rail",
   // Loose here; the walk over the decoded state below holds both to the round's own railway.
   track: count(MAX_TRACKS - 1),
-  along: range(0, ARENA_WIDTH * 4),
+  along: range(0, MAX_ARENA_WIDTH * 4),
   speed: moverSpeed,
   train: count(MAX_TRAINS - 1),
 });
 const motion: Guard = (v) => bounceMotion(v) || railMotion(v);
-/** Every rail point keeps a car centred on it wholly on the board, so no admitted track can carry a car off it. */
+/**
+ * Every rail point keeps a car centred on it wholly on the board, so no admitted track can carry a car off it. Bounded
+ * here by the biggest arena; the walk over the decoded state holds it to the round's own.
+ */
 const railPoint: Guard = shape({
-  x: range(TRAIN_CAR_HALF_SIZE, ARENA_WIDTH - TRAIN_CAR_HALF_SIZE),
-  y: range(TRAIN_CAR_HALF_SIZE, ARENA_HEIGHT - TRAIN_CAR_HALF_SIZE),
+  x: range(TRAIN_CAR_HALF_SIZE, MAX_ARENA_WIDTH - TRAIN_CAR_HALF_SIZE),
+  y: range(TRAIN_CAR_HALF_SIZE, MAX_ARENA_HEIGHT - TRAIN_CAR_HALF_SIZE),
 });
 const track: Guard = shape({
   points: (v) =>
@@ -355,8 +365,8 @@ const obstacleShape: Guard = shape({
     typeof v === "string" && (OBSTACLE_KINDS as readonly string[]).includes(v),
   x: position,
   y: position,
-  halfWidth: range(1, ARENA_WIDTH / 2),
-  halfHeight: range(1, ARENA_HEIGHT / 2),
+  halfWidth: range(1, MAX_ARENA_WIDTH / 2),
+  halfHeight: range(1, MAX_ARENA_HEIGHT / 2),
   motion: optional(motion),
 } satisfies Record<keyof Obstacle, Guard>);
 /**
@@ -385,9 +395,10 @@ const gameShape = shape({
     ["lobby", "countdown", "playing", "roundOver", "matchOver"].includes(v),
   phaseEndsAtTick: optional(integer),
   roundStartedTick: optional(integer),
-  width: (v) => v === ARENA_WIDTH,
-  height: (v) => v === ARENA_HEIGHT,
-  boundaryInset: range(0, ARENA_HEIGHT / 2 - 1),
+  // One of the arenas a round is played on (`arenaSize`); the pair is checked together in `gameInvariants`.
+  width: range(ARENA_WIDTH, MAX_ARENA_WIDTH),
+  height: range(ARENA_HEIGHT, MAX_ARENA_HEIGHT),
+  boundaryInset: range(0, MAX_ARENA_HEIGHT / 2 - 1),
   map: (v) =>
     typeof v === "string" && (ARENA_MAPS as readonly string[]).includes(v),
   obstacles: array(obstacle, MAX_OBSTACLES),
@@ -467,7 +478,7 @@ const gameShape = shape({
 
 /** A bounded traversal precedes map construction and catches deep/large hostile storage. */
 function decodeTree(value: unknown, depth = 0, budget = { nodes: 0 }): unknown {
-  if (++budget.nodes > 150_000 || depth > 16)
+  if (++budget.nodes > MAX_CHECKPOINT_NODES || depth > 16)
     throw new Error("Checkpoint complexity limit");
   if (Array.isArray(value)) {
     if (value.length > MAX_CHECKPOINT_TRAILS)
@@ -687,6 +698,27 @@ function gameInvariants(game: GameState): boolean {
   // A railway belongs to the trains map, and every loop of it is long enough to run along.
   if (game.tracks.length > 0 && game.map !== "trains") return false;
   if (game.tracks.some((loop) => !(trackLength(loop) > 0))) return false;
+  // The board is one a round can be played on, its walls have not met, and every rail stays on it.
+  if (!isArenaSize(game.width, game.height)) return false;
+  // And the one this round's riders are played on: `prepareRound` sizes it from them, and a room with no round yet
+  // (the lobby, whose participants are empty) is on the standard board.
+  const board = arenaSize(
+    game.roundParticipants.size >= MIN_PLAYERS
+      ? game.roundParticipants.size
+      : 0,
+  );
+  if (game.width !== board.width || game.height !== board.height) return false;
+  if (game.boundaryInset >= game.height / 2) return false;
+  if (
+    game.tracks.some((loop) =>
+      loop.points.some(
+        (point) =>
+          point.x > game.width - TRAIN_CAR_HALF_SIZE ||
+          point.y > game.height - TRAIN_CAR_HALF_SIZE,
+      ),
+    )
+  )
+    return false;
   // IDs select fixed catalog variants and identify destroyed pieces for the renderer.
   // Validate their dimensions and keep every obstacle inside the arena.
   const obstacleIds = new Set<number>();
@@ -770,7 +802,7 @@ function gameInvariants(game: GameState): boolean {
         (p) =>
           p.place > standings.length ||
           !/^#[0-9a-fA-F]{6}$/.test(p.color) ||
-          p.scoreUnits > 300,
+          p.scoreUnits > standings.length * POINT_UNIT,
       )
     )
       return false;

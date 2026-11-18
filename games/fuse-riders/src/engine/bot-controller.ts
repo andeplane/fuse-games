@@ -13,7 +13,7 @@ import {
   TRAIL_WIDTH,
   TICK_HZ,
   OVERTIME_START_TICK,
-  OVERTIME_INSET_PER_TICK,
+  overtimeInsetPerTick,
   segmentDistanceSquared,
   type GameState,
   type InputIntent,
@@ -394,7 +394,7 @@ function chooseSteering(
         game.boundaryInset +
         (Math.max(0, elapsed + future - OVERTIME_START_TICK) -
           Math.max(0, elapsed - OVERTIME_START_TICK)) *
-          OVERTIME_INSET_PER_TICK;
+          overtimeInsetPerTick(game);
       // Open edges stay open for as long as this plan looks: the walls only come in with overtime, and then from the
       // very edge, where the inset above already has them.
       let clearance =

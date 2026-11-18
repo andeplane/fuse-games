@@ -157,7 +157,7 @@ const TRANSPORT_COPY = {
   linking: "Connected · linking riders",
   protocolChanged: "Game protocol changed — reload this page",
   roomEnded: "Room ended — return to menu to start again",
-  roomFull: "Room full (six players, five spectators and TV)",
+  roomFull: "Room full (eight players, five spectators and TV)",
   hostAbsent: "the creator is not in the room yet",
 };
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
@@ -665,7 +665,7 @@ export async function startOnline(): Promise<void> {
   });
   const lobbyRiders = lobbyRoster.element;
   const lobbyCount = node("span", "Waiting for riders");
-  // The watching list: the rider row's height in neutral grey, no colour, no avatar and no READY, so the six seats stay
+  // The watching list: the rider row's height in neutral grey, no colour, no avatar and no READY, so the eight seats stay
   // the thing being read. It lives inside the rider column (the lobby grid has one cell per column) and CSS `order` keeps it last.
   const watchers = createRoster({
     title: "WATCHING",
@@ -692,7 +692,7 @@ export async function startOnline(): Promise<void> {
   const watcherRemoves = new Map<string, HTMLButtonElement>();
   const lobbyShell = createLobbyShell({
     intro: [
-      node("p", "PHONE PARTY // 2–6 RIDERS", "room-eyebrow"),
+      node("p", "PHONE PARTY // 2–8 RIDERS", "room-eyebrow"),
       lobbyHeading,
       node(
         "p",

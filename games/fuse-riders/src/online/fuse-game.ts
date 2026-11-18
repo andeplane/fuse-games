@@ -42,7 +42,7 @@ import {
 } from "../engine/room-settings.js";
 import { stepsPerTick } from "../engine/game.js";
 import { MAX_STEPS_PER_TICK, stepsCover } from "../engine/tick-driver.js";
-import { MAX_PLAYERS } from "../engine/tuning.js";
+import { MAX_PLAYERS, SOLO_RIDERS } from "../engine/tuning.js";
 import { toView, type GameEvent, type WorldView } from "../engine/view.js";
 import type { PlayerState } from "../engine/state.js";
 import { isAvatarId, isRiderAvatarId } from "../engine/avatar-id.js";
@@ -330,7 +330,7 @@ export const fuseGame: RollbackGame<
       return `${BOT_ID_PREFIX}${number}`;
     },
     botName: (slot) => botDisplayName(BOT_NAMES[slot]!),
-    solo: { name: "You", bots: MAX_PLAYERS - 1 },
+    solo: { name: "You", bots: SOLO_RIDERS - 1 },
   },
   text: {
     // No number: the room lets a solo rider drop and add rivals.

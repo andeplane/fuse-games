@@ -3,6 +3,7 @@ import { fuseGame } from "./fuse-game.js";
 import { BOT_NAMES, createRoomState } from "../engine/apply-tick.js";
 import { ACTION, BOT } from "../engine/input-log.js";
 import { defaultRoomSettings } from "../engine/room-settings.js";
+import { SOLO_RIDERS } from "../engine/tuning.js";
 import { mountArenaPresentation } from "../render/phaser/presentation.js";
 import { selectedTheme } from "../client/theme-choice.js";
 import { reportGraphics } from "./analytics.js";
@@ -19,7 +20,8 @@ export async function startAttract(
     "attract",
   );
   const log = world.stream("attract", 1);
-  for (let slot = 0; slot < BOT_NAMES.length; slot++)
+  // As many as a solo match, so the attract screen shows the standard arena.
+  for (let slot = 0; slot < SOLO_RIDERS; slot++)
     log.append(1, [
       BOT,
       "add",

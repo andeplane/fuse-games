@@ -107,7 +107,7 @@ export function showLanding(host: LandingHost): void {
   intro.append(
     "Outrun your friends. Blow up their plans.",
     node("br"),
-    "One arena. Six riders. Absolutely no brakes.",
+    "One arena. Eight riders. Absolutely no brakes.",
   );
   const soloLink = link(
     appUrl(SOLO_QUERY),
