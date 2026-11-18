@@ -1,11 +1,12 @@
-/** What `localStorage` offers, or a stand-in when the browser refuses it (Safari with every cookie blocked). */
-export interface Store {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
+import {
+  createMemoryStorage,
+  safeStorage,
+  type SafeStorage as Store,
+} from "./safe-storage.js";
 
-/** Storage keys, per game, so two games on one origin never share a room token or a name. (As in the Pig template.) */
+export type { SafeStorage as Store } from "./safe-storage.js";
+
+/** Storage keys, per game, so two games on one origin never share a room token or a name. */
 export const keys = (gameId: string) => ({
   name: `${gameId}-player-name`,
   shared: `${gameId}-shared-screen`,
@@ -37,6 +38,7 @@ export function sessionFor(
   gameId: string,
   valid: (code: string) => boolean,
   secret: () => string,
+  displayParam: "present" | "one" = "present",
 ): Session {
   const query = new URLSearchParams(search);
   if (query.get("solo") === "1") return { kind: "solo" };
@@ -44,9 +46,12 @@ export function sessionFor(
   if (raw === null) return { kind: "landing" };
   const code = raw.trim().toUpperCase();
   if (!valid(code)) return { kind: "invalid", code };
+  const display =
+    displayParam === "one"
+      ? query.get("display") === "1"
+      : query.has("display");
+  if (display) return { kind: "room", code, role: "display", token: secret() };
   const names = keys(gameId);
-  if (query.has("display"))
-    return { kind: "room", code, role: "display", token: secret() };
   const host = store.getItem(names.host(code));
   if (host) return { kind: "room", code, role: "host", token: host };
   let token = store.getItem(names.peer(code));
@@ -57,49 +62,28 @@ export function sessionFor(
   return { kind: "room", code, role: "joiner", token };
 }
 
-/** Storage that never throws: a browser that refuses it gets an in-memory map for this page's life. */
-export function safeStore(open: () => Storage): Store {
-  const memory = new Map<string, string>();
-  let backing: Storage | undefined;
+/** Probe storage once at startup. An unavailable store falls back for the life of this page. */
+export function safeStore(open: () => Store): Store {
   try {
-    backing = open();
+    const backing = open();
     backing.getItem("probe");
+    return safeStorage(() => backing);
   } catch {
-    backing = undefined;
+    return createMemoryStorage();
   }
-  const attempt = <T>(use: (storage: Storage) => T, fallback: () => T): T => {
-    if (!backing) return fallback();
-    try {
-      return use(backing);
-    } catch {
-      return fallback();
-    }
-  };
-  return {
-    getItem: (key) =>
-      attempt(
-        (storage) => storage.getItem(key),
-        () => memory.get(key) ?? null,
-      ),
-    setItem: (key, value) =>
-      attempt(
-        (storage) => storage.setItem(key, value),
-        () => void memory.set(key, value),
-      ),
-    removeItem: (key) =>
-      attempt(
-        (storage) => storage.removeItem(key),
-        () => void memory.delete(key),
-      ),
-  };
 }
 
 /** What a player is told when the room service does not host this game yet (a production service before launch). */
 export const NOT_OPEN =
   "Online rooms are not open yet for this game. Play solo against bots meanwhile.";
+export const SOLO_NOT_OPEN =
+  "Online rooms are not open yet for this game. Play solo meanwhile.";
 /** A room service refusal, in the words this page shows. */
-export function roomFailure(message: string): string {
-  if (/unknown game/i.test(message)) return NOT_OPEN;
+export function roomFailure(
+  message: string,
+  unavailable: string = NOT_OPEN,
+): string {
+  if (/unknown game/i.test(message)) return unavailable;
   if (/another game/i.test(message))
     return "That code is a room of another game";
   return message;

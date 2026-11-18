@@ -34,6 +34,16 @@ Riders keeps its rich statistics adapter while importing the same `browser-accou
 notifications and `social-friends` composition. Existing sign-in and alert storage keys remain in place for
 current players. Games never import another game's client for these features.
 
+## Room sessions
+
+`fuse-ui/room-session` provides the room query parser, per-game storage keys,
+and room refusal messages used by Pig and its sibling games. A room link is
+validated before storage is read. Shared TV uses a fresh token on each load.
+The parser can require `display=1` for games that distinguish it from a bare flag.
+
+`safeStore` probes and captures browser storage once per page. Use
+`fuse-ui/safe-storage` directly when storage must be reacquired on each operation.
+
 ## Product metrics
 
 Each game starts one client with `startGameAnalytics(gameId)` from `fuse-ui/play-metrics`, which reports `fuse.App Opened`.

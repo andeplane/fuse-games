@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readStadiumTheme, storeStadiumTheme } from "../src/app/arena/theme.js";
-import type { Store } from "../src/app/session.js";
+import type { Store } from "fuse-ui/room-session";
 import {
   courseAccent,
   coursePalette,
