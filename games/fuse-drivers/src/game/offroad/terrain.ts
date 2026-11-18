@@ -14,6 +14,8 @@ const SLOPE_LIMITS = [
   [15, 30],
 ] as const;
 
+export type OffroadFacet = Omit<OffroadTerrainSample, "height">;
+
 export interface OffroadTerrainSample {
   /** Unsigned 16-bit terrain plane height. Collision overrides it for blocked contacts. */
   readonly height: number;
@@ -90,6 +92,35 @@ export function decodeOffroadTerrain(
       rowHeight -= 128 * (slope(first, 0, 3) + slope(first + SIDE, 3, 3));
   }
   const [bias, limit] = limits;
+  const facets: OffroadFacet[] = [];
+  for (let p = 0; p < polygons.byteLength; p += 4) {
+    const kind = polygons.getUint8(p);
+    const slopeX = polygons.getInt8(p + 2);
+    const slopeY = polygons.getInt8(p + 3);
+    facets.push({
+      kind,
+      direction: polygons.getUint8(p + 1),
+      slopeX,
+      slopeY,
+      blocked:
+        (kind & 128) !== 0 ||
+        ((bias + slopeX) & 255) >= limit ||
+        ((bias + slopeY) & 255) >= limit,
+    });
+  }
+  return terrainFromFacets(
+    centers,
+    sectors.map((offset) => offset / 4),
+    facets,
+  );
+}
+
+/** Compose a contact sampler from precomputed grid heights and four facets per cell. */
+export function terrainFromFacets(
+  centers: Uint8Array,
+  sectors: Uint16Array,
+  facets: readonly OffroadFacet[],
+): OffroadTerrain {
   return {
     sample(x, y) {
       if (
@@ -105,27 +136,13 @@ export function decodeOffroadTerrain(
       const fx = x & 255;
       const fy = y & 255;
       const sector = (fx + fy < 256 ? 2 : 0) + (fx >= fy ? 1 : 0);
-      const p = sectors[cell * 4 + sector]!;
-      const kind = polygons.getUint8(p);
-      const slopeX = polygons.getInt8(p + 2);
-      const slopeY = polygons.getInt8(p + 3);
-      const blocked =
-        (kind & 128) !== 0 ||
-        ((bias + slopeX) & 255) >= limit ||
-        ((bias + slopeY) & 255) >= limit;
+      const facet = facets[sectors[cell * 4 + sector]!]!;
       const height =
         ((centers[cell]! << 8) +
-          ((fx & 254) - 128) * slopeX +
-          ((fy & 254) - 128) * slopeY) &
+          ((fx & 254) - 128) * facet.slopeX +
+          ((fy & 254) - 128) * facet.slopeY) &
         65535;
-      return {
-        height,
-        blocked,
-        kind,
-        direction: polygons.getUint8(p + 1),
-        slopeX,
-        slopeY,
-      };
+      return { height, ...facet };
     },
   };
 }
