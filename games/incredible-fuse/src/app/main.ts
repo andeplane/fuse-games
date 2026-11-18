@@ -98,7 +98,10 @@ const help = {
       action:
         "On the board, move the cursor and place or select a part. Hold Shift for fine adjustments.",
     },
-    { keys: "F / Delete", action: "Flip or remove the selected part." },
+    {
+      keys: "R / F / Delete",
+      action: "Rotate, flip or remove the selected part.",
+    },
     {
       keys: "Attach wire / belt / rope",
       action:
@@ -117,7 +120,7 @@ const help = {
       action: "Move a placed part, or select it and tap its destination.",
     },
     {
-      keys: "Flip / Remove / Undo",
+      keys: "Rotate / Flip / Remove / Undo",
       action: "Change the selected part or undo an edit.",
     },
     {
