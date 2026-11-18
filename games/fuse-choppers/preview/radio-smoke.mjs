@@ -106,9 +106,8 @@ try {
   await touch.route("**/music/coin-op-swing.m4a", (route) => route.abort());
   await touch.getByRole("button", { name: "NEXT", exact: true }).click();
   await touch
-    .getByText(
-      "Track unavailable. Press PLAY to retry or choose another track.",
-    )
+    .getByRole("status")
+    .filter({ hasText: /unavailable.*retry/i })
     .waitFor();
   await touch.unroute("**/music/coin-op-swing.m4a");
   const retry = touch.waitForResponse((response) =>
