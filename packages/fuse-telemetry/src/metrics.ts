@@ -38,6 +38,25 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRIVATE_KEY =
   /^(?:name|username|displayname|playername|ridername|email|uid|userid|sessionid|room|roomcode|roomid|invite|inviteurl|url|.*(?:token|password|secret|authorization|capability|url)|matchid|roundid|peerid)$/i;
+const EVENT_FIELDS = new Set([
+  "v",
+  "id",
+  "gameId",
+  "userId",
+  "accountUid",
+  "sessionId",
+  "name",
+  "occurredAt",
+  "properties",
+]);
+const RESERVED_PROPERTY_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+const MAX_EVENT_PROPERTIES = 24;
+const MAX_PROPERTY_TEXT_LENGTH = 200;
+const MAX_EVENT_CLOCK_SKEW_MS = 300_000;
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export const emptyMetricCounts = (): MetricCounts => ({
@@ -70,7 +89,81 @@ export function scrubTelemetryText(value: string): string {
     .replace(/[\w-]{40,}/g, "[token]")
     .replace(/[\s\p{Cc}]+/gu, " ")
     .trim()
-    .slice(0, 200);
+    .slice(0, MAX_PROPERTY_TEXT_LENGTH);
+}
+function validAccountUid(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === "string" &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(value) &&
+      !/^__.*__$/.test(value))
+  );
+}
+function parseEventProperties(
+  value: unknown,
+): Record<string, TelemetryProperty> {
+  const input = record(value);
+  if (!input || Object.keys(input).length > MAX_EVENT_PROPERTIES)
+    throw new RoomError(400, "Invalid event properties");
+  const properties: Record<string, TelemetryProperty> = {};
+  for (const key of Object.keys(input).sort()) {
+    const item = input[key];
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]{0,47}$/.test(key) ||
+      RESERVED_PROPERTY_KEYS.has(key)
+    )
+      throw new RoomError(400, "Invalid property key");
+    if (PRIVATE_KEY.test(key.replace(/_/g, ""))) continue;
+    if (typeof item === "string" && item.length <= MAX_PROPERTY_TEXT_LENGTH)
+      properties[key] = scrubTelemetryText(item);
+    else if (
+      typeof item === "boolean" ||
+      item === null ||
+      (typeof item === "number" &&
+        Number.isFinite(item) &&
+        Math.abs(item) <= Number.MAX_SAFE_INTEGER)
+    )
+      properties[key] = item;
+    else
+      throw new RoomError(400, "Properties must be bounded primitive values");
+  }
+  return properties;
+}
+function parseTelemetryEvent(
+  raw: unknown,
+  games: ReadonlySet<string>,
+  now: number,
+): TelemetryEvent {
+  const e = record(raw);
+  if (
+    !e ||
+    Object.keys(e).some((key) => !EVENT_FIELDS.has(key)) ||
+    e.v !== 1 ||
+    !validAccountUid(e.accountUid) ||
+    ![e.id, e.userId, e.sessionId].every(
+      (id) => typeof id === "string" && UUID.test(id),
+    ) ||
+    typeof e.gameId !== "string" ||
+    !games.has(e.gameId) ||
+    typeof e.name !== "string" ||
+    !/^fuse\.[A-Za-z][A-Za-z0-9 ._-]{0,89}$/.test(e.name) ||
+    !Number.isSafeInteger(e.occurredAt) ||
+    Number(e.occurredAt) < now - EVENT_RETENTION ||
+    Number(e.occurredAt) > now + MAX_EVENT_CLOCK_SKEW_MS
+  )
+    throw new RoomError(400, "Invalid telemetry event");
+  const properties = parseEventProperties(e.properties);
+  return {
+    v: 1,
+    id: String(e.id).toLowerCase(),
+    gameId: e.gameId,
+    userId: String(e.userId).toLowerCase(),
+    ...(typeof e.accountUid === "string" ? { accountUid: e.accountUid } : {}),
+    sessionId: String(e.sessionId).toLowerCase(),
+    name: e.name,
+    occurredAt: Number(e.occurredAt),
+    properties,
+  };
 }
 export function parseTelemetryEvents(
   value: unknown,
@@ -86,78 +179,7 @@ export function parseTelemetryEvents(
     body.events.length > MAX_EVENT_BATCH
   )
     throw new RoomError(400, "Expected 1–50 telemetry events");
-  return body.events.map((raw) => {
-    const e = record(raw);
-    if (
-      !e ||
-      Object.keys(e).some(
-        (key) =>
-          ![
-            "v",
-            "id",
-            "gameId",
-            "userId",
-            "accountUid",
-            "sessionId",
-            "name",
-            "occurredAt",
-            "properties",
-          ].includes(key),
-      ) ||
-      e.v !== 1 ||
-      (e.accountUid !== undefined &&
-        (typeof e.accountUid !== "string" ||
-          !/^[A-Za-z0-9_-]{1,128}$/.test(e.accountUid) ||
-          /^__.*__$/.test(e.accountUid))) ||
-      ![e.id, e.userId, e.sessionId].every(
-        (id) => typeof id === "string" && UUID.test(id),
-      ) ||
-      typeof e.gameId !== "string" ||
-      !games.has(e.gameId) ||
-      typeof e.name !== "string" ||
-      !/^fuse\.[A-Za-z][A-Za-z0-9 ._-]{0,89}$/.test(e.name) ||
-      !Number.isSafeInteger(e.occurredAt) ||
-      Number(e.occurredAt) < now - EVENT_RETENTION ||
-      Number(e.occurredAt) > now + 300_000
-    )
-      throw new RoomError(400, "Invalid telemetry event");
-    const input = record(e.properties);
-    if (!input || Object.keys(input).length > 24)
-      throw new RoomError(400, "Invalid event properties");
-    const properties: Record<string, TelemetryProperty> = {};
-    for (const key of Object.keys(input).sort()) {
-      const item = input[key];
-      if (
-        !/^[A-Za-z_][A-Za-z0-9_]{0,47}$/.test(key) ||
-        ["__proto__", "constructor", "prototype"].includes(key)
-      )
-        throw new RoomError(400, "Invalid property key");
-      if (PRIVATE_KEY.test(key.replace(/_/g, ""))) continue;
-      if (typeof item === "string" && item.length <= 200)
-        properties[key] = scrubTelemetryText(item);
-      else if (
-        typeof item === "boolean" ||
-        item === null ||
-        (typeof item === "number" &&
-          Number.isFinite(item) &&
-          Math.abs(item) <= Number.MAX_SAFE_INTEGER)
-      )
-        properties[key] = item;
-      else
-        throw new RoomError(400, "Properties must be bounded primitive values");
-    }
-    return {
-      v: 1,
-      id: String(e.id).toLowerCase(),
-      gameId: e.gameId,
-      userId: String(e.userId).toLowerCase(),
-      ...(typeof e.accountUid === "string" ? { accountUid: e.accountUid } : {}),
-      sessionId: String(e.sessionId).toLowerCase(),
-      name: e.name,
-      occurredAt: Number(e.occurredAt),
-      properties,
-    };
-  });
+  return body.events.map((raw) => parseTelemetryEvent(raw, games, now));
 }
 export function periodStart(time: number, period: MetricsPeriod): number {
   const date = new Date(time);
