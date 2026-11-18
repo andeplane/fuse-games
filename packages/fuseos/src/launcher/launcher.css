@@ -282,7 +282,7 @@
     inset -1px -1px var(--fst-border-dark);
 }
 
-.win98 .window .fst-list-head button {
+.win98 .window .fst-root .fst-list-head button {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -305,8 +305,8 @@
   flex: 1;
 }
 
-.win98 .window .fst-list-head button:hover,
-.win98 .window .fst-list-head button[aria-pressed="true"] {
+.win98 .window .fst-root .fst-list-head button:hover,
+.win98 .window .fst-root .fst-list-head button[aria-pressed="true"] {
   color: var(--fst-maize);
 }
 
@@ -321,7 +321,7 @@
   transform: rotate(180deg);
 }
 
-.win98 .window .fst-list-head button:focus-visible {
+.win98 .window .fst-root .fst-list-head button:focus-visible {
   outline: 1px dotted var(--fst-text);
   outline-offset: -2px;
 }
