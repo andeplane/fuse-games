@@ -55,8 +55,10 @@ export interface Player extends Body {
   respawnTicks: number;
   power: number;
   powerTicks: number;
+  reversed: number;
 }
 export interface Enemy extends Body {
+  slowed?: true;
   ruler?: RulerState;
   id: number;
   type: number;
@@ -84,6 +86,7 @@ export interface World {
   moved: number[];
   revealed: number[];
   pickups: { column: number; row: number; type: number }[];
+  explosions: { column: number; row: number; age: number }[];
 }
 
 const levelFor = (world: Pick<World, "pack" | "levelIndex">): Level =>
@@ -111,6 +114,7 @@ function spawnPlayer(
     respawnTicks: 0,
     power: 0,
     powerTicks: 0,
+    reversed: 0,
   };
 }
 
@@ -148,6 +152,7 @@ export function createWorld(
     moved: [],
     revealed: [],
     pickups: [],
+    explosions: [],
   };
 }
 
@@ -157,6 +162,7 @@ function tile(world: World, level: Level, col: number, row: number) {
   if (world.moved.includes(index)) return 8;
   const code = tileAt(level, col, row);
   if (world.broken.includes(index)) return 0;
+  if (world.revealed.includes(index)) return 3;
   const above = code === 1 ? tileAt(level, col, row - 1) : 0;
   if (code === 50 || code === 51 || above === 50 || above === 51)
     return world.tnt === 0 ? 0 : code === 1 ? above : code;
@@ -198,6 +204,7 @@ function toggleStun(enemy: Enemy, level: Level, column?: number) {
   if (enemy.kicked) return;
   if (enemy.stun > 0) {
     enemy.stun = 0;
+    delete enemy.slowed;
     enrage(enemy, level);
   } else {
     enemy.stun = 501;
@@ -219,9 +226,10 @@ function bonk(world: World, level: Level, column: number, row: number) {
     world.tnt--;
     blastBat(world.hazards);
   }
-  if (code === 9 || code === 26) {
+  if (code === 9) {
     world.broken.push(row * COLUMNS + column);
   }
+  if (code === 26) armExplosion(world, column, row);
   if (code === 8) shiftBlock(world, level, column, row, -1);
   for (const enemy of world.enemies) {
     if (enemy.ruler) {
@@ -235,9 +243,33 @@ function bonk(world: World, level: Level, column: number, row: number) {
           Math.abs(enemy.x - (column + 0.5) * TILE_WIDTH) > TILE_WIDTH))
     )
       continue;
-    toggleStun(enemy, level, blast ? undefined : column);
+    if (blast && enemy.id >= 1000) enemy.hp = 0;
+    else toggleStun(enemy, level, blast ? undefined : column);
   }
   const index = row * COLUMNS + column;
+  if ((code === 27 || code === 28) && !world.revealed.includes(index)) {
+    world.revealed.push(index);
+    if (!level.boss && world.enemies.filter((e) => !e.kicked).length <= 7) {
+      const speed = level.pests[Math.floor(world.nextPest / 2)]?.speed ?? 12;
+      const facing: Facing = speed < 0 ? -1 : 1;
+      world.enemies.push({
+        id: 1000 + index,
+        type: code === 27 ? 66 : 74,
+        x: (column + 0.5) * TILE_WIDTH,
+        y: row * TILE_HEIGHT,
+        vx: facing * Math.max(12, Math.abs(speed) + 8) * SIXTEENTH,
+        vy: -level.physics.springJump * SIXTEENTH,
+        facing,
+        grounded: false,
+        hp: 1,
+        stun: 0,
+        anger: 0,
+        kicked: false,
+        phase: 0,
+        variation: 0,
+      });
+    }
+  }
   if (code >= 11 && code <= 23 && !world.revealed.includes(index)) {
     world.revealed.push(index);
     if (
@@ -251,6 +283,47 @@ function bonk(world: World, level: Level, column: number, row: number) {
         type: code === 23 ? 17 : code >= 17 ? code - 6 : code,
       });
   }
+}
+function armExplosion(world: World, column: number, row: number) {
+  if (!world.explosions.some((b) => b.column === column && b.row === row))
+    world.explosions.push({ column, row, age: 0 });
+}
+function stepExplosions(world: World, level: Level) {
+  for (const bomb of world.explosions) {
+    bomb.age++;
+    if (bomb.age < 32) continue;
+    const left = bomb.column * TILE_WIDTH - 10,
+      top = bomb.row * TILE_HEIGHT - 18;
+    const overlaps = (b: Body, radius: number, height: number) =>
+      b.x + radius > left &&
+      b.x - radius < left + 52 &&
+      b.y > top &&
+      b.y - height < top + 52;
+    for (const p of world.players)
+      if (overlaps(p, PLAYER_RADIUS, PLAYER_HEIGHT)) damage(world, level, p);
+    for (const e of world.enemies) {
+      if (
+        !e.hp ||
+        e.kicked ||
+        !overlaps(e, e.ruler ? 48 : ENEMY_RADIUS, e.ruler ? 96 : ENEMY_HEIGHT)
+      )
+        continue;
+      if (e.ruler) {
+        if (!e.ruler.guard && !e.ruler.flash) {
+          e.hp--;
+          e.ruler.guard = 24;
+          e.vy = -8;
+          e.grounded = false;
+        }
+      } else {
+        e.hp = 0;
+        e.kicked = true;
+        e.vy = -level.physics.springJump * SIXTEENTH;
+        e.grounded = false;
+      }
+    }
+  }
+  world.explosions = world.explosions.filter((b) => b.age < 40);
 }
 function shiftBlock(
   world: World,
@@ -353,6 +426,13 @@ function movePlayer(world: World, level: Level, p: Player, keys: number) {
   if (p.invincible) p.invincible--;
   const jump = Boolean(keys & INPUT_JUMP && !(p.held & INPUT_JUMP));
   p.held = keys;
+  if (p.reversed > 0) {
+    p.reversed--;
+    keys =
+      (keys & INPUT_JUMP) |
+      (keys & INPUT_LEFT ? INPUT_RIGHT : 0) |
+      (keys & INPUT_RIGHT ? INPUT_LEFT : 0);
+  }
   if (p.respawn !== "active") {
     p.respawnTicks++;
     if (p.respawn === "rising") {
@@ -397,6 +477,7 @@ function movePlayer(world: World, level: Level, p: Player, keys: number) {
     const col = Math.floor(p.x / TILE_WIDTH),
       row = Math.floor(p.y / TILE_HEIGHT);
     if (under === 8) shiftBlock(world, level, col, row, 1);
+    else if (under === 26) armExplosion(world, col, row);
     else if (!world.broken.includes(row * COLUMNS + col))
       world.broken.push(row * COLUMNS + col);
   }
@@ -505,7 +586,7 @@ function pestMotion(world: World, level: Level, e: Enemy, speed: number) {
     e.grounded = false;
     return;
   }
-  e.vx = e.facing * speed;
+  if (e.id < 1000) e.vx = e.facing * speed;
 }
 function enemyStep(world: World, level: Level, enemy: Enemy) {
   if (enemy.ruler) {
@@ -520,13 +601,18 @@ function enemyStep(world: World, level: Level, enemy: Enemy) {
     if (enemy.vy < 15) enemy.vy += level.physics.gravity * SIXTEENTH;
     return;
   }
+  if (enemy.hp === 0) return;
   if (enemy.stun) {
     enemy.stun--;
-    if (!enemy.stun) enrage(enemy, level);
+    if (!enemy.stun) {
+      delete enemy.slowed;
+      enrage(enemy, level);
+    }
   }
-  const speed =
-    (Math.abs(spec?.speed ?? 24) + enemy.anger * (spec?.temper ?? 5)) *
-    SIXTEENTH;
+  const speed = enemy.slowed
+    ? 6 * SIXTEENTH
+    : (Math.abs(spec?.speed ?? 24) + enemy.anger * (spec?.temper ?? 5)) *
+      SIXTEENTH;
   if (walk(world, level, enemy, ENEMY_RADIUS, ENEMY_HEIGHT))
     enemy.facing = enemy.facing === 1 ? -1 : 1;
   enemy.y += enemy.vy;
@@ -534,7 +620,12 @@ function enemyStep(world: World, level: Level, enemy: Enemy) {
   pestMotion(world, level, enemy, speed);
   if (enemy.x - 16 < -24 || enemy.x - 16 > 639) {
     const left = enemy.x < 0;
+    if (enemy.id >= 1000 && enemy.y - ENEMY_HEIGHT > 370) {
+      enemy.hp = 0;
+      return;
+    }
     if (spec && enemy.y - ENEMY_HEIGHT > 302) {
+      delete enemy.slowed;
       enrage(enemy, level);
       enemy.facing = left ? 1 : -1;
       const entry = left ? spec.left : spec.right;
@@ -542,12 +633,20 @@ function enemyStep(world: World, level: Level, enemy: Enemy) {
       enemy.y = entry.y + ENEMY_HEIGHT;
       enemy.grounded = false;
       enemy.vy = 0;
+      enemy.vx =
+        enemy.facing *
+        (Math.abs(spec.speed) + enemy.anger * spec.temper) *
+        SIXTEENTH;
     } else enemy.x = (left ? 639 : -20) + 16;
   }
   if (enemy.y > HEIGHT + ENEMY_HEIGHT) {
     enemy.hp = 0;
     return;
   }
+}
+function touchPest(world: World, level: Level, enemy: Enemy) {
+  if (enemy.ruler || enemy.kicked || !enemy.hp) return;
+  const spec = level.pests[enemy.id];
   for (const p of world.players) {
     const xLimit = enemy.stun ? 34 : 35;
     if (
@@ -559,19 +658,20 @@ function enemyStep(world: World, level: Level, enemy: Enemy) {
       enemy.y - ENEMY_HEIGHT + (enemy.stun ? 5 : 10) >= p.y - 5
     )
       continue;
-    if (enemy.stun) {
-      enemy.hp--;
+    if (enemy.type === 74 && !p.invincible) {
+      p.reversed = 302;
+      enemy.hp = 0;
+      break;
+    }
+    if (enemy.stun || p.invincible) {
+      enemy.hp = 0;
       enemy.stun = 0;
-      addScore(p, (spec?.points ?? 1000) + enemy.anger * 50);
-      if (enemy.hp === 0) {
-        enemy.kicked = true;
-        enemy.grounded = false;
-        enemy.vx = p.vx;
-        enemy.vy = -level.physics.springJump * SIXTEENTH;
-        break;
-      }
-      enemy.facing = enemy.x > p.x ? 1 : -1;
-      p.invincible = Math.max(p.invincible, 25);
+      if (spec) addScore(p, spec.points + enemy.anger * 50);
+      enemy.kicked = true;
+      enemy.grounded = false;
+      enemy.vx = p.vx;
+      enemy.vy = -level.physics.springJump * SIXTEENTH;
+      break;
     } else damage(world, level, p);
   }
 }
@@ -586,6 +686,7 @@ export function stepWorld(
   if (world.outcome !== "playing") return;
   world.tick++;
   world.bumps = world.bumps.filter((b) => b.until > world.tick);
+  for (const enemy of world.enemies) enemyStep(world, level, enemy);
   for (const p of world.players)
     movePlayer(world, level, p, (inputs[p.slot] ?? 0) & 7);
   for (const lower of world.players) {
@@ -605,7 +706,8 @@ export function stepWorld(
       }
     }
   }
-  for (const enemy of world.enemies) enemyStep(world, level, enemy);
+  for (const enemy of world.enemies) touchPest(world, level, enemy);
+  stepExplosions(world, level);
   world.enemies = world.enemies.filter(
     (e) =>
       e.hp > 0 ||
@@ -632,10 +734,13 @@ export function stepWorld(
     if (p) {
       if (pickup.type === 11 || pickup.type === 13) {
         p.power = pickup.type;
-        p.powerTicks = 800;
+        p.powerTicks = level.gemDuration;
       } else if (pickup.type === 12)
         for (const e of world.enemies) {
-          if (!e.kicked && !e.stun) toggleStun(e, level);
+          if (!e.kicked && !e.stun && !e.ruler && e.type !== 11) {
+            e.slowed = true;
+            e.vx = e.facing * 6 * SIXTEENTH;
+          }
         }
       else if (pickup.type === 14) addScore(p, 5000);
       else if (pickup.type === 15) p.lives = Math.min(99, p.lives + 1);
@@ -647,7 +752,7 @@ export function stepWorld(
   if (
     world.outcome === "playing" &&
     world.nextPest === level.pests.length &&
-    !world.enemies.length
+    !world.enemies.some((e) => e.id < 1000)
   )
     world.outcome = "cleared";
 }

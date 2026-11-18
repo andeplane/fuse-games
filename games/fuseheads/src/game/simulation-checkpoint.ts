@@ -24,6 +24,7 @@ const playerFields = [
   "respawnTicks",
   "power",
   "powerTicks",
+  "reversed",
 ];
 const enemyFields = [
   ...bodyFields,
@@ -53,6 +54,7 @@ const worldFields = [
   "revealed",
   "pickups",
   "hazards",
+  "explosions",
 ];
 const body = (v: Record<string, unknown>) =>
   fixed(v.x, -256, 896) &&
@@ -93,6 +95,8 @@ export function validWorld(raw: unknown): raw is World {
     raw.bumps.length > 600 ||
     !Array.isArray(raw.pickups) ||
     raw.pickups.length > 600 ||
+    !Array.isArray(raw.explosions) ||
+    raw.explosions.length > 600 ||
     !cellIds(raw.broken) ||
     !cellIds(raw.revealed) ||
     !cellIds(raw.moved) ||
@@ -102,7 +106,8 @@ export function validWorld(raw: unknown): raw is World {
   const level = getLevel(raw.levelIndex + 1, raw.pack);
   if (
     !integer(raw.nextPest, 0, level.pests.length) ||
-    raw.enemies.length > raw.nextPest + (level.boss ? 1 : 0)
+    raw.enemies.length >
+      raw.nextPest + raw.revealed.length + (level.boss ? 1 : 0)
   )
     return false;
   const slots = new Set<number>(),
@@ -126,20 +131,34 @@ export function validWorld(raw: unknown): raw is World {
       ) ||
       !integer(p.respawnTicks, 0, 901) ||
       !(p.power === 0 || p.power === 11 || p.power === 13) ||
-      !integer(p.powerTicks, 0, 65535)
+      !integer(p.powerTicks, 0, 65535) ||
+      !integer(p.reversed, 0, 302)
     )
       return false;
     slots.add(p.slot);
   }
   for (const e of raw.enemies) {
+    if (!plain(e) || !integer(e.id, -1, 1599) || ids.has(e.id)) return false;
+    const special = e.id >= 1000;
+    const sourceCell = special ? level.tiles[e.id - 1000] : 0;
+    const type =
+      e.id === -1
+        ? level.boss?.spriteId
+        : special
+          ? sourceCell === 27
+            ? 66
+            : sourceCell === 28
+              ? 74
+              : undefined
+          : level.pests[e.id]?.type;
+    const expectedFields =
+      e.slowed === true ? [...enemyFields, "slowed"] : enemyFields;
     if (
-      !plain(e) ||
       !(e.id === -1
         ? exact(e, [...enemyFields, "ruler"]) && validRulerState(e.ruler)
-        : exact(e, enemyFields)) ||
+        : exact(e, expectedFields)) ||
       !body(e) ||
-      !integer(e.id, -1, raw.nextPest - 1) ||
-      ids.has(e.id) ||
+      (special ? !raw.revealed.includes(e.id - 1000) : e.id >= raw.nextPest) ||
       !integer(e.hp, 0, level.boss?.hp ?? 1) ||
       !integer(e.anger, 0, 32) ||
       !integer(e.stun, 0, 501) ||
@@ -147,8 +166,7 @@ export function validWorld(raw: unknown): raw is World {
       !integer(e.variation, 0, 31) ||
       typeof e.kicked !== "boolean" ||
       e.kicked !== (e.hp === 0) ||
-      e.type !==
-        (e.id === -1 ? level.boss?.spriteId : level.pests[e.id]?.type) ||
+      e.type !== type ||
       typeof e.type !== "number"
     )
       return false;
@@ -158,11 +176,19 @@ export function validWorld(raw: unknown): raw is World {
     return false;
   if (
     raw.outcome === "cleared" &&
-    (raw.enemies.length || raw.nextPest !== level.pests.length)
+    (raw.enemies.some((e) => e.id < 1000) ||
+      raw.nextPest !== level.pests.length)
   )
     return false;
   const tick = raw.tick;
   return (
+    raw.explosions.every(
+      (b) =>
+        plain(b) &&
+        exact(b, ["column", "row", "age"]) &&
+        cell(b) &&
+        integer(b.age, 0, 39),
+    ) &&
     raw.bumps.every(
       (b) =>
         plain(b) &&

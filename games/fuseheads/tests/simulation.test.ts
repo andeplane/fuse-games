@@ -11,6 +11,7 @@ import {
   type Enemy,
 } from "../src/game/simulation.js";
 import { getLevel, type FuseLevel } from "../src/levels/index.js";
+import oracle from "./reference/deluxe.json" with { type: "json" };
 
 function referenceBoard(): FuseLevel {
   const level = getLevel(1);
@@ -32,28 +33,16 @@ test("Deluxe 68k ProcessSprite then Player1Processor trace, 640×480 coordinate 
   world.nextSpawnAt = 1000;
   assert.equal(SIM_HZ, 30);
   // Tuples from the independent CPU probe, in native top-left sixteenths.
-  const samples = new Map([
-    [0, [1920, 3072, 0, 0]],
-    [1, [1920, 3072, 24, 0]],
-    [2, [1944, 3056, 48, -236]],
-    [3, [1992, 2820, 72, -221]],
-    [4, [2064, 2599, 96, -206]],
-    [5, [2160, 2393, 96, -191]],
-    [18, [2784, 1080, 0, 4]],
-    [34, [2784, 2944, 0, 244]],
-    [35, [2784, 3072, 0, 0]],
-  ]);
-  for (let frame = 0; frame < 36; frame++) {
+  for (let frame = 0; frame < oracle.motion.length; frame++) {
     const input =
       (frame >= 1 && frame <= 5 ? INPUT_RIGHT : 0) |
       (frame >= 2 && frame <= 4 ? INPUT_JUMP : 0);
     stepWorld(world, [input], level);
-    if (samples.has(frame))
-      assert.deepEqual(
-        [(p.x - 24) * 16, (p.y - 48) * 16, p.vx * 16, p.vy * 16],
-        samples.get(frame),
-        `frame ${frame}`,
-      );
+    assert.deepEqual(
+      [(p.x - 24) * 16, (p.y - 48) * 16, p.vx * 16, p.vy * 16],
+      oracle.motion[frame],
+      `frame ${frame}`,
+    );
   }
 });
 
@@ -65,6 +54,104 @@ test("Surfaceville's first dog spawns only after its ten-tick entrance delay", (
   assert.equal(world.enemies[0]?.type, 7);
   assert.equal(world.enemies[0]?.id, 0);
   assert.equal(world.nextPest, 1);
+});
+
+test("Deluxe dog bonk, recovery, lower exit and one-pixel kick threshold", () => {
+  const base = referenceBoard(),
+    tiles = Array.from(base.tiles);
+  tiles[4 + 20 * 15] = 3;
+  const level = {
+    ...base,
+    tiles,
+    pests: [{ ...base.pests[0]!, speed: 16, temper: 7, points: 150 }],
+  };
+  const world = createWorld(0, [0], 1),
+    p = world.players[0]!;
+  world.nextSpawnAt = 0;
+  stepWorld(world, [0], level);
+  const e = world.enemies[0]!;
+  Object.assign(e, { x: 144, y: 240, vx: 0, vy: 0, grounded: true });
+  Object.assign(p, { x: 144, y: 304, vy: -2 });
+  stepWorld(world, [0], level);
+  assert.deepEqual(
+    [e.vx * 16, e.vy * 16, e.stun],
+    [oracle.pests.bonk.vx16, oracle.pests.bonk.vy16, 501],
+  );
+  Object.assign(p, { x: 450, y: 240, vy: 0 });
+  Object.assign(e, { stun: 2, y: 240, vy: 0 });
+  stepWorld(world, [0], level);
+  assert.equal(e.stun, 1);
+  stepWorld(world, [0], level);
+  assert.equal(e.vx * 16, oracle.pests.awake.vx16);
+  Object.assign(e, { x: -9, y: 335, vx: 0, vy: 0 });
+  stepWorld(world, [0], level);
+  assert.deepEqual(
+    [(e.x - 16) * 16, (e.y - 32) * 16, e.vx * 16],
+    oracle.pests.escaped,
+  );
+  Object.assign(e, { x: 116, y: 72, vx: 0, vy: 0, stun: 200 });
+  Object.assign(p, { x: 150, y: 78, vx: 0, vy: 0 });
+  stepWorld(world, [0], level);
+  assert.equal(Number(e.kicked), oracle.pests.kickEdge);
+  Object.assign(p, { x: 146, y: 78, vx: 3, vy: 0 });
+  stepWorld(world, [INPUT_RIGHT], level);
+  assert.equal(Number(e.kicked), oracle.pests.kickOverlap);
+  assert.deepEqual(
+    [e.vx * 16, e.vy * 16, p.score],
+    [
+      oracle.pests.kicked.vx16,
+      oracle.pests.kicked.vy16,
+      oracle.pests.scoreDelta[0],
+    ],
+  );
+  for (let i = 0; i < 200 && world.outcome === "playing"; i++)
+    stepWorld(world, [0], level);
+  assert.equal(world.outcome, "cleared");
+});
+
+test("a spent final life ends the run and ordinary respawns require emergence", () => {
+  const level = referenceBoard(),
+    world = createWorld(0, [0], 3),
+    p = world.players[0]!;
+  world.nextSpawnAt = 0;
+  stepWorld(world, [0], level);
+  const e = world.enemies[0]!;
+  const contact = () => {
+    Object.assign(e, { x: 145, y: 240, vx: 0, vy: 0 });
+    Object.assign(p, { x: 145, y: 240, vx: 0, vy: 0 });
+    stepWorld(world, [0], level);
+  };
+  contact();
+  assert.equal(p.respawn, "rising");
+  assert.equal(p.lives, 2);
+  for (let i = 0; i < 10; i++) stepWorld(world, [0], level);
+  assert.equal(p.respawn, "waiting");
+  stepWorld(world, [INPUT_JUMP], level);
+  for (let i = 0; i < 16; i++) stepWorld(world, [0], level);
+  assert.equal(p.respawn, "active");
+  p.lives = 1;
+  contact();
+  assert.equal(world.outcome, "lost");
+});
+
+test("bonus explosive arms locally and its later blast respects shield immunity", () => {
+  const base = referenceBoard(),
+    tiles = Array.from(base.tiles);
+  tiles[4 + 20 * 15] = 26;
+  const level = { ...base, tiles },
+    world = createWorld(0, [0, 1], 1);
+  const [p, q] = world.players as [
+    (typeof world.players)[number],
+    (typeof world.players)[number],
+  ];
+  Object.assign(p, { x: 144, y: 240 });
+  Object.assign(q, { x: 150, y: 240, invincible: 100 });
+  stepWorld(world, [0, 0], level);
+  assert.equal(world.explosions[0]!.age, 1);
+  assert.equal(p.lives, 3);
+  for (let i = 0; i < 31; i++) stepWorld(world, [0, 0], level);
+  assert.equal(p.lives, 2);
+  assert.equal(q.lives, 3);
 });
 
 test("a checkpoint in midair retains the jump latch and reproduces every subsequent state", () => {
@@ -129,6 +216,8 @@ test("TNT bonks toggle only grounded pests, use one charge and preserve charges 
   assert.ok(enemy.stun > 0);
   assert.equal(world.enemies[1]!.stun, 0);
   enemy.grounded = true;
+  enemy.y = 240;
+  enemy.vy = 0;
   underCrate();
   stepWorld(world, [0], level);
   assert.equal(world.tnt, 1);
