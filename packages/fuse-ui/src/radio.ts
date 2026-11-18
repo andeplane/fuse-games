@@ -7,6 +7,7 @@ import {
 export type MusicPlayer = MusicMedia;
 import type { SafeStorage } from "./safe-storage.js";
 const RADIO_VOLUME = "fuse-radio-volume";
+const RADIO_PAUSED = "fuse-radio-paused";
 /** Shared radio controls; the music library owns playback, games choose the catalogue. */
 export function createRadio(
   document: Document,
@@ -15,10 +16,13 @@ export function createRadio(
   muted = false,
   songs: readonly Song[] = ALL_SONGS,
   storage?: Pick<SafeStorage, "getItem" | "setItem">,
+  playOnUnlock = false,
 ) {
   const player = createMusicPlayer(songs, {
     base: baseUrl,
     muted,
+    playOnUnlock: playOnUnlock && storage?.getItem(RADIO_PAUSED) !== "true",
+    retryOnGesture: playOnUnlock,
     createMedia: typeof media === "function" ? media : () => media,
   });
   const element = document.createElement("div"),
@@ -61,7 +65,12 @@ export function createRadio(
     for (const option of select.querySelectorAll("option"))
       option.selected = option.value === player.song?.id;
   };
-  button.onclick = () => (player.playing ? player.pause() : player.play());
+  button.onclick = () => {
+    if (player.playing) player.pause();
+    else player.play();
+    if (playOnUnlock && !muted)
+      storage?.setItem(RADIO_PAUSED, String(!player.playing));
+  };
   next.onclick = () => {
     if (!songs.length) return;
     const index = songs.findIndex((song) => song.id === player.song?.id);

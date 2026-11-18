@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createGameMenu, createTopBar } from "fuse-ui";
-import { page } from "./dom-fixture.js";
+import { event, page } from "./dom-fixture.js";
 import { ALL_SONGS } from "fuse-music";
 import type { MusicPlayer } from "../src/radio.js";
 
@@ -49,7 +49,7 @@ test("Radio and Player options are sibling views and Back returns to the game me
 });
 
 test("the default radio survives header replacement without constructing a second player", () => {
-  const { document } = page();
+  const { document, window } = page();
   let creates = 0,
     plays = 0,
     paused = true;
@@ -82,7 +82,7 @@ test("the default radio survives header replacement without constructing a secon
     first.querySelectorAll(".fui-radio option").length,
     ALL_SONGS.length,
   );
-  first.querySelector<HTMLButtonElement>(".fui-radio button")!.click();
+  document.dispatchEvent(event(window, "keydown"));
   assert.equal(creates, 1);
   assert.equal(plays, 1);
   const second = document.createElement("header");
