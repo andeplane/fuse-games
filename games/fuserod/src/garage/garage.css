@@ -1,15 +1,14 @@
 .fr-garage {
-  --shop-teal: #66eedc;
-  --shop-ink: #071315;
-  --shop-edge: #35504f;
-  --shop-muted: #aec5c0;
+  --shop-accent: #ffc589;
+  --shop-ink: #211710;
+  --shop-edge: #795b47;
+  --shop-muted: #e0c8ae;
   box-sizing: border-box;
-  width: min(56rem, 100%);
+  width: min(100rem, 100%);
   margin: 0 auto;
   padding: clamp(0.75rem, 2.5vw, 1.75rem);
-  color: #eff9f4;
-  background: #101c20;
-  border: 1px solid var(--shop-edge);
+  color: #fff0d3;
+  background: #171520;
   font:
     500 1rem/1.45 "Barlow",
     system-ui,
@@ -59,6 +58,15 @@
 .frg-stats {
   gap: clamp(0.75rem, 3vw, 2rem);
 }
+.fr-garage .frg-car-hotspot {
+  position: absolute;
+  top: 53%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1e1923e0;
+  border-color: #ffe2ae;
+  color: #ffe2ae;
+}
 .frg-heading .frg-wallet {
   margin-left: auto;
 }
@@ -80,38 +88,49 @@
   font-weight: 700;
 }
 .frg-wallet .frg-metric:last-child dd {
-  color: var(--shop-teal);
+  color: var(--shop-accent);
 }
 .frg-hero {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  background: linear-gradient(138deg, #1e363d, #09232a 60%, #334047);
+  background: #292430;
   border: 1px solid var(--shop-edge);
 }
 .frg-art {
   display: block;
   width: 100%;
-  height: clamp(10rem, 26vw, 17rem);
+  height: clamp(14rem, 62svh, 46rem);
 }
 .frg-car-title {
-  padding: 1rem 1.1rem 0.4rem;
+  position: absolute;
+  top: 0.65rem;
+  left: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-left: 2px solid var(--shop-accent);
+  background: #211922e6;
 }
 .frg-car-title h2 {
-  font-size: clamp(1.5rem, 4vw, 2.55rem);
+  font-size: clamp(1.12rem, 2vw, 2.1rem);
   letter-spacing: -0.035em;
 }
 .frg-stats {
-  padding: 0.25rem 1.1rem 1rem;
+  position: absolute;
+  inset: auto 0 0;
+  padding: 0.45rem 0.75rem;
+  background: #1f1821ed;
 }
 .frg-notice {
   margin-top: 0.65rem !important;
   color: #a9f2e4;
 }
 .frg-tabs {
-  gap: 0;
-  border-bottom: 1px solid var(--shop-edge);
-  margin-top: 0.75rem;
+  position: absolute;
+  inset: auto 0 3.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.35rem;
 }
 .fr-garage button,
 .fr-garage select {
@@ -125,11 +144,11 @@
   border: 1px solid var(--shop-edge);
   border-radius: 3px;
   padding: 0.65rem 0.9rem;
-  color: #eaf5ee;
-  background: #25363b;
+  color: #ffebce;
+  background: #3a2a27;
 }
 .fr-garage button:hover:enabled {
-  border-color: var(--shop-teal);
+  border-color: var(--shop-accent);
 }
 .fr-garage button:focus-visible,
 .fr-garage select:focus-visible {
@@ -141,24 +160,71 @@
   cursor: default;
 }
 .fr-garage button.frg-primary {
-  background: var(--shop-teal);
+  background: var(--shop-accent);
   color: var(--shop-ink);
-  border-color: var(--shop-teal);
+  border-color: var(--shop-accent);
 }
-.frg-tabs button {
-  flex: 1 1 0;
-  border: 0;
-  border-radius: 0;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  padding-inline: 0.25rem;
+.fr-garage .frg-tabs button {
+  background: #231e24f5;
+  border: 1px solid #c99161;
+  border-bottom: 3px solid #af6840;
+  padding-inline: 0.45rem;
+  text-transform: uppercase;
+  font-size: clamp(0.68rem, 1vw, 0.82rem);
+  letter-spacing: 0.035em;
 }
-.frg-tabs button[aria-pressed="true"] {
-  border-color: var(--shop-teal);
-  color: var(--shop-teal);
+.fr-garage .frg-tabs button[aria-pressed="true"] {
+  color: #211710;
+  background: var(--shop-accent);
 }
 .frg-panel {
-  padding-top: 0.9rem;
+  padding: 1rem;
+}
+.frg-console {
+  background: #271e23;
+  border: 1px solid var(--shop-edge);
+  min-width: 0;
+  scrollbar-color: #9c7658 #271e23;
+}
+.frg-console > :is(.frg-notice, .frg-travel, .frg-end) {
+  margin-inline: 1rem;
+  margin-bottom: 0.75rem;
+}
+.frg-panel .frg-panel-title {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #b88562;
+  font:
+    italic 850 clamp(1.3rem, 3vw, 1.95rem)/1.05 system-ui,
+    sans-serif;
+  color: #ffe2ae;
+}
+.fr-garage[data-area="Classifieds"] .frg-panel {
+  --shop-muted: #4f3d33;
+  color: #2b201b;
+  background: #e9cf9f;
+}
+.fr-garage[data-area="Classifieds"] :is(.frg-panel-title, .frg-row) {
+  color: #3e281f;
+  border-color: #9b7558;
+}
+.fr-garage[data-area="Classifieds"] .frg-panel-title {
+  font-family: Georgia, serif;
+  font-style: normal;
+}
+@media (min-width: 780px) {
+  .fr-garage {
+    display: grid;
+    grid-template-columns: minmax(0, 1.85fr) minmax(20rem, 1fr);
+    gap: 0.55rem;
+  }
+  .frg-heading {
+    grid-column: 1 / -1;
+  }
+  .frg-console {
+    height: clamp(14rem, 62svh, 46rem);
+    overflow: auto;
+  }
 }
 .frg-rows,
 .frg-race,
@@ -252,6 +318,9 @@
   .frg-tabs {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    position: relative;
+    inset: auto;
+    background: #302329;
   }
   .frg-heading {
     gap: 0.35rem;
@@ -273,7 +342,11 @@
     grid-template-columns: 1fr;
   }
   .frg-art {
-    height: 10rem;
+    height: min(23rem, 39svh);
+  }
+  .frg-stats {
+    position: relative;
+    inset: auto;
   }
   .frg-car-title,
   .frg-stats {
@@ -312,21 +385,12 @@
 }
 @media (max-height: 460px) and (min-width: 600px) {
   .frg-art {
-    height: 8.5rem;
+    height: clamp(12rem, 57svh, 18rem);
   }
   .fr-garage {
     padding: 0.65rem 1rem;
   }
-  .frg-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-content: center;
-  }
-  .frg-art {
-    grid-row: span 2;
-  }
-  .frg-car-title,
-  .frg-stats {
-    align-self: center;
+  .frg-console {
+    height: clamp(12rem, 57svh, 18rem);
   }
 }

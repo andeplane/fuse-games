@@ -693,7 +693,7 @@ export function mountGarage(
         "Course",
         (Object.keys(ROUTES) as Route[]).map((value) => ({
           value,
-          label: `${ROUTES[value].name} · ${ROUTES[value].description}`,
+          label: ROUTES[value].name,
         })),
         route,
         "course",
@@ -950,6 +950,7 @@ export function mountGarage(
     if (!c && tab !== "Logbook") tab = "Classifieds";
     if (s.pending)
       tab = s.pending.stakeKind === "bracket" ? "Grudge Night" : "Challenge";
+    root.dataset.area = tab;
     const title = node("header", "frg-heading"),
       wallet = node("dl", "frg-wallet");
     title.append(node("h1", "", "Garage"));
@@ -960,8 +961,10 @@ export function mountGarage(
       metric("Cash", money(s.cash)),
     );
     title.append(wallet);
-    root.append(title, hero(s, c));
-    if (error || s.receipt) root.append(notice(error || s.receipt));
+    const scene = hero(s, c);
+    const console = node("div", "frg-console");
+    root.append(title, scene, console);
+    if (error || s.receipt) console.append(notice(error || s.receipt));
     if (finished(s) && tab !== "Logbook") {
       const end = node("div", "frg-end");
       end.append(
@@ -1003,7 +1006,7 @@ export function mountGarage(
           render();
         }),
       );
-      root.append(end);
+      console.append(end);
     } else {
       const nav = node("nav", "frg-tabs");
       nav.setAttribute("aria-label", "Garage areas");
@@ -1032,6 +1035,15 @@ export function mountGarage(
       }
       const panel = node("section", "frg-panel");
       panel.setAttribute("aria-label", tab);
+      const sceneNames: Record<Tab, string> = {
+        Challenge: "The drive-in",
+        Workshop: "Service bay",
+        Classifieds: "Motor classifieds",
+        Station: "Filling station",
+        "Grudge Night": "Wednesday night drags",
+        Logbook: "Driver’s logbook",
+      };
+      panel.append(node("h2", "frg-panel-title", sceneNames[tab]));
       panel.append(
         tab === "Logbook"
           ? logbook(s)
@@ -1045,7 +1057,16 @@ export function mountGarage(
                   ? strip(s, c)
                   : classifieds(s),
       );
-      root.append(nav, panel);
+      if (c && !s.pending && !finished(s) && tab === "Classifieds") {
+        const inspect = control("Inspect car", "inspect-car", () => {
+          tab = "Workshop";
+          render();
+        });
+        inspect.classList.add("frg-car-hotspot");
+        scene.append(inspect);
+      }
+      scene.append(nav);
+      console.append(panel);
       if (finished(s))
         panel.append(
           control("Season results", "season-results", () => {
@@ -1070,7 +1091,7 @@ export function mountGarage(
         drive.setAttribute("aria-describedby", message.id);
         travel.append(message);
       }
-      root.append(travel);
+      console.append(travel);
     }
     if (focused)
       root

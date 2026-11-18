@@ -144,8 +144,6 @@ const header = (
 function landing() {
   const card = createLandingCard({
     title: "FUSEROD",
-    tagline:
-      "Tune a hot rod in your garage, then take it to the strip or the canyon.",
     soloText: "OPEN GARAGE",
     soloInBar: true,
     background: createAttract,
@@ -166,6 +164,7 @@ function landing() {
     credits.prepend(canvas);
     drawScene(canvas, "credits");
   });
+  card.element.classList.add("rod-title-screen");
   app.replaceChildren(header(), card.element);
 }
 function garage(startAt?: TownStop) {

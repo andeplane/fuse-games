@@ -94,8 +94,8 @@ export function raceScreen() {
       return value;
     },
   );
-  viewport.append(canvas, tree, light, callout, progress);
-  element.append(viewport, dash);
+  viewport.append(canvas, tree, light, callout, dash, progress);
+  element.append(viewport);
   return {
     element,
     paint(

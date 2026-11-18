@@ -15,6 +15,7 @@ import { partPicture } from "./parts";
 import type { VehicleFittings } from "./vehicle-families";
 
 export interface StoryOptions {
+  showTitle?: boolean;
   model?: number;
   paint?: string;
   fittings?: VehicleFittings;
@@ -87,13 +88,15 @@ export function story(
     const titleSize = Math.min(w * 0.135, 116),
       tx = w * 0.5,
       ty = h * 0.26;
-    g.save();
-    g.translate(tx, ty);
-    g.transform(1, 0, -0.18, 1, 0, 0);
-    type(g, "FUSEROD", 3, 5, titleSize, "#554051", "center", 900);
-    type(g, "FUSEROD", 0, 0, titleSize, "#f8d7a2", "center", 900);
-    rect(g, "#f2b386", -titleSize * 2.22, 10, titleSize * 4.44, 3);
-    g.restore();
+    if (options.showTitle !== false) {
+      g.save();
+      g.translate(tx, ty);
+      g.transform(1, 0, -0.18, 1, 0, 0);
+      type(g, "FUSEROD", 3, 5, titleSize, "#554051", "center", 900);
+      type(g, "FUSEROD", 0, 0, titleSize, "#f8d7a2", "center", 900);
+      rect(g, "#f2b386", -titleSize * 2.22, 10, titleSize * 4.44, 3);
+      g.restore();
+    }
     front(
       g,
       w * 0.5,

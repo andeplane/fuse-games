@@ -28,6 +28,7 @@ export type SceneLocation =
   | "wreck"
   | StoryPage;
 export interface SceneOptions extends GarageArt {
+  showTitle?: boolean;
   animationFrame?: number;
   driverName?: string;
   record?: string;

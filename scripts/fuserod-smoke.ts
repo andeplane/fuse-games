@@ -122,7 +122,7 @@ try {
   await Promise.all([drive(host), drive(guest)]);
   await guest.reload();
   await ready(guest);
-  await host.getByRole("button", { name: "Gear +", exact: true }).click();
+  await host.keyboard.press("x");
   await host.keyboard.down("w");
   await host.keyboard.press("x");
   await host

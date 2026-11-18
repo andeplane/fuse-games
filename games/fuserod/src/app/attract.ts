@@ -16,7 +16,7 @@ export function createAttract(host: HTMLElement) {
     render() {
       const frame = game.view();
       if (frame.tick < 155) {
-        drawScene(canvas, "title");
+        drawScene(canvas, "title", { showTitle: false });
         return;
       }
       paintRace(canvas, frame, frame.racers[0]?.id ?? "");
