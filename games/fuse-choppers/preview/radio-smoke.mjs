@@ -18,16 +18,13 @@ const open = async (search, options = {}) => {
   await page.goto(new URL(`fuse-choppers/${search}`, base).href);
   return page;
 };
-const show = async (page) => {
-  await page
-    .getByRole("button", { name: "♫ RADIO", exact: true })
-    .filter({ visible: true })
-    .first()
-    .click();
-  await page.getByRole("dialog", { name: "Fuse Choppers Radio" }).waitFor();
+const show = async (page, panel = "Radio") => {
+  await page.getByRole("button", { name: "Open game menu" }).click();
+  await page.getByRole("button", { name: panel, exact: true }).click();
+  await page.getByRole("dialog", { name: panel, exact: true }).waitFor();
 };
 try {
-  const muted = await open("?mute");
+  const muted = await open("?solo=1&mute");
   await show(muted);
   assert.equal(
     await muted.getByRole("button", { name: "PLAY", exact: true }).isDisabled(),
@@ -41,33 +38,47 @@ try {
     /preview URL/,
   );
   await muted.keyboard.press("Escape");
-  await muted.getByRole("button", { name: "PLAY SOLO VS BOTS" }).click();
+  await muted.keyboard.press("Escape");
   await muted.locator('main[data-phase="play"]').waitFor();
   await muted.keyboard.down("Space");
   await muted.keyboard.press("Control+a");
   await muted.keyboard.up("Space");
   assert.equal(await muted.getByRole("dialog").isVisible(), true);
-  await muted
-    .getByRole("button", { name: "BACK TO GAME", exact: true })
-    .click();
+  await muted.getByRole("button", { name: "Back", exact: true }).click();
+  await muted.keyboard.press("Escape");
+  await muted.waitForFunction(() =>
+    document.activeElement?.matches("main.fc-room"),
+  );
+  await muted.keyboard.press("Space");
+  assert.equal(await muted.locator("dialog[open]").count(), 0);
 
   const desktop = await open("", { viewport: { width: 1280, height: 800 } });
   const audio = desktop.waitForResponse((response) =>
     response.url().endsWith("/music/pixel-sax-parade.m4a"),
   );
   await show(desktop);
+  await desktop.getByRole("button", { name: "PLAY", exact: true }).click();
   assert.ok((await audio).ok());
   await desktop.getByRole("button", { name: "PAUSE", exact: true }).waitFor();
   await desktop.getByRole("button", { name: "NEXT", exact: true }).click();
   assert.equal(await desktop.getByLabel("Radio track").inputValue(), "1");
   await desktop.getByLabel("Radio track").selectOption("4");
   await desktop.getByRole("button", { name: "REPEAT SONG OFF" }).click();
-  await desktop.getByLabel("Music volume").fill("35");
-  await desktop.getByRole("button", { name: "PAUSE", exact: true }).click();
+  await desktop.getByRole("button", { name: "Back", exact: true }).click();
+  await desktop
+    .getByRole("button", { name: "Player options", exact: true })
+    .click();
+  await desktop.getByLabel("Radio volume").fill("35");
   await desktop.reload();
   await show(desktop);
   assert.equal(await desktop.getByLabel("Radio track").inputValue(), "4");
-  assert.equal(await desktop.getByLabel("Music volume").inputValue(), "35");
+  await desktop.getByRole("button", { name: "Back", exact: true }).click();
+  await desktop
+    .getByRole("button", { name: "Player options", exact: true })
+    .click();
+  assert.equal(await desktop.getByLabel("Radio volume").inputValue(), "35");
+  await desktop.getByRole("button", { name: "Back", exact: true }).click();
+  await desktop.getByRole("button", { name: "Radio", exact: true }).click();
   await desktop.getByRole("button", { name: "PLAY", exact: true }).waitFor();
   if (shots) await desktop.screenshot({ path: `${shots}/radio-desktop.png` });
 
@@ -101,9 +112,8 @@ try {
   await touch.route("**/music/coin-op-swing.m4a", (route) => route.abort());
   await touch.getByRole("button", { name: "NEXT", exact: true }).click();
   await touch
-    .getByText(
-      "Track unavailable. Press PLAY to retry or choose another track.",
-    )
+    .getByRole("status")
+    .filter({ hasText: /unavailable.*retry/i })
     .waitFor();
   await touch.unroute("**/music/coin-op-swing.m4a");
   const retry = touch.waitForResponse((response) =>

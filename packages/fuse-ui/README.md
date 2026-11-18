@@ -66,6 +66,12 @@ Fuse Riders loads both files, without `fui-app` (its page has its own base style
 
 ## Menu patterns
 
+The shared top-right Game menu owns Player options (device preferences) and Radio (opt-in playback and track selection).
+Put audio levels in Player options and bind the header Sound shortcut to the same master state. Games contribute their
+device controls through `createTopBar`'s `playerOptions` factory and can supply their own radio transport through
+`radioControls`. Keep match rules in Room settings. A contextual editing shortcut reuses the same preference and
+handler. Record the game's expected controls in `tests/fixtures/game-menu-expectations.ts` so the real menu is checked.
+
 Every menu, dialog, room and page in every game follows one set of patterns. Use these before adding a button style, a close control or a header of a game's own; a game's CSS arranges its screens and does not restyle them.
 
 - **Back** is the one way out of a page or a dialog: `createBackButton` or `createBackLink` (`.fui-back`), a chevron and the word, the first control at the top left. There is no CLOSE, no ✕ and no "Main menu" button. A view nested inside a dialog names where its Back returns to (`label: "Matches"`), because the dialog around it already has a plain Back.

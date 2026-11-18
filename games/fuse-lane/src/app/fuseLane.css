@@ -249,11 +249,9 @@ body:has(.fl-room[data-phase]:not([data-phase="lobby"])) .fl-top.fui-top-bar {
   width: min(32rem, 100%);
   margin: 0 auto;
 }
-/*
- * The room is the shared fuse-ui room, in its own colours: Fusetown's paper theme stops at the room's edge, so a
- * room here reads like a room in every other game, its Settings and seat dialogs included.
- */
-.fl-lobby.fui-room-layout {
+/* The shared room and Game menu use the same dark palette across games. */
+.fl-lobby.fui-room-layout,
+.fl-page .fui-top-bar-menu {
   --fui-text: #eefaff;
   --fui-text-bright: #effcff;
   --fui-text-muted: #b6cce3;

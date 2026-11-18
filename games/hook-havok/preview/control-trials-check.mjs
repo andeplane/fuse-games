@@ -16,9 +16,11 @@ try {
   };
   const host = await make(base + "hook-havok/?mute");
   await host.locator('#status[data-state="ready"]').waitFor();
-  await host.locator("#menu-settings").click();
+  await host.getByRole("button", { name: "Open game menu" }).click();
+  await host.getByRole("button", { name: /^player options$/i }).click();
   await host.locator("#keyboard-mode").selectOption("keyboard");
-  await host.locator("#entrance-settings .dialog-close").click();
+  await host.keyboard.press("Escape");
+  await host.keyboard.press("Escape");
   await host.locator("#start").click();
   await host.locator('#status[data-state="playing"]').waitFor();
   const guest = await make(await host.locator("#invite-url").inputValue());

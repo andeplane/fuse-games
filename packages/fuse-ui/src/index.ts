@@ -158,6 +158,7 @@ export {
 } from "./game-menu.js";
 export {
   createTopBar,
+  openTopBarRadio,
   type TopBarOptions,
   type TopBarSound,
 } from "./top-bar.js";

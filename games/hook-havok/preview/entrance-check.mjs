@@ -34,11 +34,14 @@ try {
     await page.evaluate(() => document.activeElement.id),
     "menu-help",
   );
-  await page.locator("#menu-settings").click();
+  await page.getByRole("button", { name: "Open game menu" }).click();
+  await page.getByRole("button", { name: /^radio$/i }).click();
   assert.equal(
     await page.getByRole("button", { name: "Play radio" }).isDisabled(),
     true,
   );
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: /^player options$/i }).click();
   await page.locator("#atmosphere").uncheck();
   assert.equal(
     await page
@@ -60,6 +63,7 @@ try {
     path: "games/hook-havok/docs/evidence/entrance-settings.png",
     fullPage: true,
   });
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await page.locator("#menu-join").click();
   await page.locator("#room-code").fill("!");
@@ -185,9 +189,11 @@ try {
     path: "games/hook-havok/docs/evidence/entrance-phone.png",
     fullPage: true,
   });
-  await phone.locator("#menu-settings").tap();
+  await phone.getByRole("button", { name: "Open game menu" }).tap();
+  await phone.getByRole("button", { name: /^player options$/i }).tap();
   assert.equal(await phone.locator("#touch-toggle").isChecked(), true);
-  await phone.locator("#entrance-settings .dialog-close").tap();
+  await phone.getByRole("button", { name: "Back", exact: true }).tap();
+  await phone.getByRole("button", { name: "Back", exact: true }).tap();
   await phone.setViewportSize({ width: 844, height: 390 });
   assert.ok(
     await phone.evaluate(
