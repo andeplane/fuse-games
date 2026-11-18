@@ -47,8 +47,8 @@ export const CONTROLS = 0;
 export const PURCHASE = 1;
 
 /**
- * A driver's six controls as one bitmask. Thumbs change rarely, so a seat logs an entry only when its
- * controls differ from the ones it last logged, and a few bytes carry a whole change.
+ * Left, right, gas and nitro share one mask. Brake and both item bits retain their replay positions.
+ * Each seat logs a change only when its held controls differ from its previous entry.
  */
 export const LEFT = 1,
   RIGHT = 2,

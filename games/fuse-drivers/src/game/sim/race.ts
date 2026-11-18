@@ -158,8 +158,18 @@ function applyCheckpoints(
   let progress = t.progress;
   let dosProgress = t.dosProgress;
   if (!t.finishedTick) {
-    const nextDistance = nativeRegionProgress(course.regions[t.checkpoint]!, x, y);
-    const distance = nextDistance ?? nativeRegionProgress(course.regions[Math.max(0, t.checkpoint - 1)]!, x, y);
+    const nextDistance = nativeRegionProgress(
+      course.regions[t.checkpoint]!,
+      x,
+      y,
+    );
+    const distance =
+      nextDistance ??
+      nativeRegionProgress(
+        course.regions[Math.max(0, t.checkpoint - 1)]!,
+        x,
+        y,
+      );
     if (distance !== null) {
       dosProgress = distance;
       progress = t.laps + distance / course.lapDistance;

@@ -77,12 +77,19 @@ test("a cash or nitro pickup reaches the screen on its committed room tick", () 
     const truck = defined(race.trucks[0]);
     room.race = {
       ...race,
-      pickups: { ...race.pickups, waitTicks: 0, active: { kind, x: truck.motion.x, y: truck.motion.y } },
+      pickups: {
+        ...race.pickups,
+        waitTicks: 0,
+        active: { kind, x: truck.motion.x, y: truck.motion.y },
+      },
     };
     const prediction = defined(forward(room, 1, "a", 0));
     assert.equal(prediction.race.pickups.active?.kind, kind);
     const events = fold(room);
-    assert.deepEqual(events.filter(event => event.type === "pickup"), [{ type: "pickup", id: "a" }]);
+    assert.deepEqual(
+      events.filter((event) => event.type === "pickup"),
+      [{ type: "pickup", id: "a" }],
+    );
     assert.equal(room.race.pickups.active, null);
     const paid = defined(room.race.trucks[0]);
     if (kind === "cash") assert.equal(paid.cash, truck.cash + 1);

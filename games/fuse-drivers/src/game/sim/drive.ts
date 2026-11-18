@@ -13,10 +13,7 @@ import {
   createOffroadSuspension,
   stepOffroadSuspension,
 } from "../offroad/suspension.js";
-import {
-  getOffroadCourse,
-  projectOffroad,
-} from "../offroad/course.js";
+import { getOffroadCourse, projectOffroad } from "../offroad/course.js";
 import { atan2, cos, sin } from "./deterministic-math.js";
 import type { TruckStats } from "./config.js";
 import type { TruckInput } from "./input.js";
@@ -87,7 +84,12 @@ export function placeTruck(
   const angle = motion.heading * TURN;
   const height = truck.suspension.bodyHeight;
   const pose = projectOffroad(track.name, motion.x, motion.y, height);
-  const nose = projectOffroad(track.name, motion.x + 256 * cos(angle), motion.y + 256 * sin(angle), height);
+  const nose = projectOffroad(
+    track.name,
+    motion.x + 256 * cos(angle),
+    motion.y + 256 * sin(angle),
+    height,
+  );
   const heading = atan2(nose.y - pose.y, nose.x - pose.x);
   return {
     ...truck,

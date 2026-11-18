@@ -52,7 +52,16 @@ for (; ticks < TICKS && room.stage === "running"; ticks++)
   fold(
     room,
     ticks % 40 === 0
-      ? { a: [[CONTROLS, room.matchId, room.round, ticks % 80 === 0 ? turn : straight]] }
+      ? {
+          a: [
+            [
+              CONTROLS,
+              room.matchId,
+              room.round,
+              ticks % 80 === 0 ? turn : straight,
+            ],
+          ],
+        }
       : {},
   );
 const ms = performance.now() - start;

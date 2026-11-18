@@ -47,7 +47,7 @@ export function forward(
   const folded = room.race;
   if (!folded) return undefined;
   const track = trackFor(folded.trackName);
-  const botSlots = room.grid.map(id => room.seats.get(id)?.bot === true);
+  const botSlots = room.grid.map((id) => room.seats.get(id)?.bot === true);
   const held = room.grid.map((id) => {
     const seat = room.seats.get(id);
     if (seat?.bot) return 0;

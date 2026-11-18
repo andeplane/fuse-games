@@ -19,10 +19,7 @@ export function renderTruck(
   next: Truck,
   alpha: number,
 ): TruckPose {
-  if (
-    !prev ||
-    Math.hypot(next.x - prev.x, next.y - prev.y) > SNAP_DISTANCE
-  )
+  if (!prev || Math.hypot(next.x - prev.x, next.y - prev.y) > SNAP_DISTANCE)
     return { x: next.x, y: next.y, heading: next.heading };
   return {
     x: lerp(prev.x, next.x, alpha),
