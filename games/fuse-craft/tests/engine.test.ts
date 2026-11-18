@@ -368,6 +368,41 @@ test("frontline tower builds with one connected neighbor", () => {
   assert.equal(w.players[0]!.queue.length, 0);
   assert.equal(w.structures.find((s) => s.cell === 10)!.kind, "tower");
 });
+
+test("particle allocation breaks equal priorities from home and sends overflow back to the brain", () => {
+  for (const [slot, brain, first, second] of [
+    [0, 9, 8, 10],
+    [3, 54, 55, 53],
+  ] as const) {
+    let w = createMatch(map(), { instantConstruction: true }, [
+      { id: "a", slot },
+    ]);
+    for (const [sequence, cell] of [first, second].entries()) {
+      w = step(w, [
+        command(sequence, { type: "queueConstruction", cell, kind: "neuron" }),
+      ]);
+      w.structures.find((s) => s.cell === cell)!.kind = "tower";
+    }
+    w = step(w, [
+      command(2, { type: "setPriority", cell: second, weight: 2 }),
+      command(3, { type: "setPriority", cell: first, weight: 2 }),
+    ]);
+    assert.deepEqual(
+      w.particles.map((particle) => particle.destination),
+      [
+        ...Array<number>(RULES.nodeCapacity).fill(first),
+        ...Array<number>(RULES.nodeCapacity).fill(second),
+        ...Array<number>(RULES.particleCount - 2 * RULES.nodeCapacity).fill(
+          brain,
+        ),
+      ],
+    );
+    assert.equal(
+      hashState(run(w, 20)),
+      hashState(run(decodeState(encodeState(w)), 20)),
+    );
+  }
+});
 test("checkpoint rejects conservation, ownership and coordinate corruption atomically", () => {
   const w = start();
   const original = hashState(w);
