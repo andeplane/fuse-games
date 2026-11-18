@@ -170,6 +170,72 @@ export interface AnalyzeDebug {
   slotShare: readonly number[];
 }
 
+function harmonyChange(before: Float64Array, after: Float64Array): number {
+  let dot = 0,
+    afterPower = 0,
+    beforePower = 0;
+  for (let pitch = 0; pitch < 12; pitch++) {
+    dot += after[pitch]! * before[pitch]!;
+    afterPower += after[pitch]! * after[pitch]!;
+    beforePower += before[pitch]! * before[pitch]!;
+  }
+  return afterPower > 0 && beforePower > 0
+    ? 1 - dot / Math.sqrt(afterPower * beforePower)
+    : 0;
+}
+
+/** Choose which of the four bar positions has the strongest energy and harmony changes. */
+function findPhraseStart(
+  energy: readonly number[],
+  barChroma: (bar: number) => Float64Array,
+): number {
+  const turn = new Array<number>(4).fill(0);
+  if (energy.length < 2) return 0;
+  let before = barChroma(0);
+  for (let bar = 1; bar < energy.length; bar++) {
+    const after = barChroma(bar);
+    turn[bar % 4]! +=
+      Math.abs(energy[bar]! - energy[bar - 1]!) +
+      2 * harmonyChange(before, after);
+    before = after;
+  }
+  return turn.indexOf(Math.max(...turn));
+}
+
+const PREVIEW_SECONDS = 12;
+const PREVIEW_TAIL_SECONDS = 2;
+
+/** Pick the loudest preview on a bar line, with a small preference for phrase starts. */
+function selectPreviewBar(
+  energy: readonly number[],
+  timeOfBar: (bar: number) => number,
+  duration: number,
+  phrase: number,
+): number {
+  let sampleBar = 0,
+    sampleScore = -1;
+  for (let bar = 0; bar < energy.length; bar++) {
+    const from = timeOfBar(bar);
+    if (from + (PREVIEW_SECONDS + PREVIEW_TAIL_SECONDS) > duration) break;
+    let sum = 0,
+      count = 0;
+    for (
+      let other = bar;
+      other < energy.length && timeOfBar(other) < from + PREVIEW_SECONDS;
+      other++
+    ) {
+      sum += energy[other]!;
+      count++;
+    }
+    const score = sum / Math.max(1, count) + (bar % 4 === phrase ? 0.03 : 0);
+    if (score > sampleScore + 1e-9) {
+      sampleScore = score;
+      sampleBar = bar;
+    }
+  }
+  return sampleBar;
+}
+
 export function analyzeSamples(
   id: string,
   x: Float32Array,
@@ -407,61 +473,17 @@ export function analyzeSamples(
     Math.max(0, Math.min(1, (value - (top - 24)) / 24)),
   );
 
-  // Four-bar phrases start where the loudness and the harmony turn over.
+  const timeOfBar = (bar: number) => beatSeconds(timing(), bar * 4);
   const barChroma = (bar: number): Float64Array => {
     const out = new Float64Array(12);
-    const first = Math.max(
-        0,
-        Math.round(beatSeconds(timing(), bar * 4) * STFT_RATE),
-      ),
-      last = Math.min(
-        frames - 1,
-        Math.round(beatSeconds(timing(), bar * 4 + 4) * STFT_RATE),
-      );
+    const first = Math.max(0, Math.round(timeOfBar(bar) * STFT_RATE)),
+      last = Math.min(frames - 1, Math.round(timeOfBar(bar + 1) * STFT_RATE));
     for (let frame = first; frame <= last; frame++)
       for (let p = 0; p < 12; p++) out[p] = out[p]! + chroma[frame * 12 + p]!;
     return out;
   };
-  const turn = new Array<number>(4).fill(0);
-  for (let bar = 1; bar < bars; bar++) {
-    const a = barChroma(bar),
-      b = barChroma(bar - 1);
-    let dot = 0,
-      aa = 0,
-      bb = 0;
-    for (let p = 0; p < 12; p++) {
-      dot += a[p]! * b[p]!;
-      aa += a[p]! * a[p]!;
-      bb += b[p]! * b[p]!;
-    }
-    const harmonyTurn = aa > 0 && bb > 0 ? 1 - dot / Math.sqrt(aa * bb) : 0;
-    turn[bar % 4]! +=
-      Math.abs(energy[bar]! - energy[bar - 1]!) + 2 * harmonyTurn;
-  }
-  const phrase = turn.indexOf(Math.max(...turn));
-
-  // The preview: the loudest twelve seconds that start on a bar line (a phrase start, if one is as loud).
-  let sampleBar = 0,
-    sampleScore = -1;
-  for (let bar = 0; bar < bars; bar++) {
-    const from = beatSeconds(timing(), bar * 4);
-    if (from + 14 > duration) break;
-    let sum = 0,
-      count = 0;
-    for (
-      let other = bar;
-      other < bars && beatSeconds(timing(), other * 4) < from + 12;
-      other++
-    ) {
-      sum += energy[other]!;
-      count++;
-    }
-    const score = sum / Math.max(1, count) + (bar % 4 === phrase ? 0.03 : 0);
-    if (score > sampleScore + 1e-9) {
-      sampleScore = score;
-      sampleBar = bar;
-    }
-  }
+  const phrase = findPhraseStart(energy, barChroma);
+  const sampleBar = selectPreviewBar(energy, timeOfBar, duration, phrase);
 
   debug?.({
     metre,
@@ -479,7 +501,7 @@ export function analyzeSamples(
     slotsPerBeat,
     levels,
     phrase,
-    sample: [round(beatSeconds(timing(), sampleBar * 4), 3), 12],
+    sample: [round(timeOfBar(sampleBar), 3), PREVIEW_SECONDS],
     quality: {
       align: round(onGrid / Math.max(1, considered), 3),
       chance: round(chance, 3),
