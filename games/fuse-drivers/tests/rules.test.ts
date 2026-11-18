@@ -71,7 +71,7 @@ test("a driver's controls hold until they log a change", () => {
   assert.equal(room.controls.a, 0);
 });
 
-test("track settings apply to the next race while the current race keeps its map", () => {
+test("changing the lobby course leaves the active heat and its campaign sequence intact", () => {
   const original = DEFAULT_SETTINGS.track;
   const next = trackNames().find((track) => track !== original)!;
   const changed = started(DEFAULT_SETTINGS, [addBot("bot:1", 2)]);
@@ -97,8 +97,8 @@ test("track settings apply to the next race while the current race keeps its map
   };
   fold(changed);
   fold(changed, { a: [[ACTION, "rematch", "m2"]] });
-  assert.equal(changed.race?.trackName, next);
-  assert.equal(fuseDriversView(changed).track, next);
+  assert.equal(changed.race?.trackName, "offroad-7", "Sidewinder leads to Wipeout");
+  assert.equal(changed.settings.track, next, "the lobby retains its selection");
 });
 
 test("a race that finishes ends the match, and only then may it be replayed", () => {

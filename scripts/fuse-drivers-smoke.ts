@@ -6,10 +6,11 @@ import type { Page } from "playwright";
 
 interface RaceProbe {
   phase?: string;
+  track?: string;
   tick: number;
   hashChecks: number;
   mismatches: number;
-  trucks?: { x: number; y: number; nitros: number }[];
+  trucks?: { x: number; y: number; nitros: number; tires?: number }[];
 }
 
 declare global {
@@ -46,8 +47,7 @@ try {
   const tv = await contexts[2]!.newPage();
   for (const page of [host, peer, tv])
     page.on("pageerror", (error) => failures.push(error.message));
-  await host.goto(new URL("?mute", origin).href);
-  await host.getByRole("link", { name: /Fuse Drivers/ }).click();
+  await host.goto(new URL("fuse-drivers/?mute", origin).href);
   await host.getByRole("button", { name: "Fuse games", exact: true }).click();
   await host.getByRole("link", { name: /Fuse Drivers/ }).click();
   assert.equal(new URL(host.url()).searchParams.has("mute"), true);
@@ -63,8 +63,13 @@ try {
   const code = new URL(host.url()).searchParams.get("room")!;
   await takeHostSeat(host, "Ada");
   await peer.goto(new URL(`fuse-drivers/?room=${code}&mute&probe`, origin).href);
+  await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
+  if (process.env.OFFROAD_CAMPAIGN_SMOKE === "1") {
+    await host.getByRole("button", { name: /^add ai$/i }).first().click();
+    await host.locator(".fui-roster-name", { hasText: "CPU" }).waitFor();
+  }
   // Shared TV is the room's choice: the host ticks it in the room, and the button beside it opens the screen.
   await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
   await host
@@ -132,6 +137,29 @@ try {
   }, start.nitros);
   assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
   assert.deepEqual(failures, []);
+  if (process.env.OFFROAD_CAMPAIGN_SMOKE === "1") {
+    const shop = peer.getByRole("button", { name: "Speed shop", exact: true });
+    await shop.waitFor({timeout: 180000});
+    await shop.click();
+    const tires = peer.getByRole("button", {name: /^Tires/i});
+    await tires.click();
+    await tires.filter({hasText: "Level 1/5"}).waitFor();
+    assert.equal(await tv.getByRole("button", {name: "Speed shop", exact: true}).count(), 0);
+    await peer.screenshot({ path: "artifacts/fuse-drivers/phone-shop.png" });
+    await host.getByRole("button", {name:"NEXT RACE",exact:true}).click();
+    await tv.waitForFunction(() => {
+      const state = window.__driversRaceProbe?.();
+      return state?.track === "offroad-7" && state.trucks?.[1]?.tires === 1;
+    });
+    await peer.reload();
+    await peer.waitForFunction(() => {
+      const state = window.__driversRaceProbe?.();
+      return state?.track === "offroad-7" && state.trucks?.[1]?.tires === 1 && state.hashChecks >= 2;
+    });
+    assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
+    assert.deepEqual(failures, []);
+    console.log("Four laps, classified standings, guest purchase, next course and restored upgraded truck passed");
+  }
   console.log(
     "Fuse Drivers solo, portal, two-peer room and reload smoke passed",
   );

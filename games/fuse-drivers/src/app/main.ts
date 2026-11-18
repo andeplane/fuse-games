@@ -567,6 +567,7 @@ function room(solo: boolean): void {
       const metrics = runtime.metrics();
       return {
         phase: state?.race?.phase,
+        track: state?.race?.trackName,
         tick: state?.tick,
         hashChecks: metrics.hashChecks,
         mismatches: metrics.mismatches,
@@ -574,6 +575,7 @@ function room(solo: boolean): void {
           x: truck.motion.x,
           y: truck.motion.y,
           nitros: truck.nitros,
+          tires: truck.upgrades?.tires,
         })),
       };
     });
