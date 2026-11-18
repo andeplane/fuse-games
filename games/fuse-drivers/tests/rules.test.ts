@@ -28,6 +28,7 @@ test("settings name a committed track and nothing else", () => {
   assert.deepEqual(parseSettings({ track, display: false }), {
     track,
     display: false,
+    races: 3,
   });
   assert.equal(parseSettings({ track: "nowhere", display: false }), undefined);
   assert.equal(parseSettings({ track }), undefined, "display is required");

@@ -72,6 +72,7 @@ type Recipe = (page: Page) => Promise<void>;
 const RECIPES: Record<string, Recipe> = {
   "fuse-drivers": async (page) => {
     await openPlayOptions(page, "single");
+    await page.getByRole("button", { name: "START RACE", exact: true }).click();
     await page.locator('.fd-arena[data-ready="true"]').waitFor();
     await page.locator('[data-race="racing"]').waitFor();
     await hold(page, ["ArrowUp"], 1250);

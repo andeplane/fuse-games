@@ -78,7 +78,9 @@ export function resultReport(
   const winner = result.rows.find((row) => row.truck === result.winnerTruck);
   return {
     game: "FUSE DRIVERS",
-    kicker: "RACE COMPLETE",
+    kicker: result.seriesComplete
+      ? `SERIES COMPLETE · ${result.seriesLength} OF ${result.seriesLength}`
+      : `RACE ${result.seriesRace}${result.seriesLength ? ` OF ${result.seriesLength}` : ""} COMPLETE`,
     context: `${courseLabel(result.track)} · ${count(result.laps, "lap")} · ${count(result.rows.length, "driver")}`,
     headline: result.title,
     ...(winner
@@ -96,7 +98,7 @@ export function resultReport(
       rows,
     },
     highlights: { cards },
-    ...(parts.shop
+    ...(parts.shop && !result.seriesComplete
       ? { sections: [{ title: "Speed shop", content: [parts.shop] }] }
       : {}),
   };
@@ -107,11 +109,17 @@ export function resultBar(result: ResultModel, hasShop = false): ResultsBar {
   return {
     ...(result.waiting ? { status: result.waiting } : {}),
     actions: [
-      ...(hasShop ? [{ id: "shop", label: "Speed shop" }] : []),
+      ...(hasShop && !result.seriesComplete
+        ? [{ id: "shop", label: "Speed shop" }]
+        : []),
       ...(result.host
         ? [
-            { id: "lobby", label: "Back to lobby" },
-            { id: "rematch", label: "NEXT RACE", primary: true },
+            ...(result.seriesComplete
+              ? [{ id: "lobby", label: "Back to lobby", primary: true }]
+              : [
+                  { id: "lobby", label: "Back to lobby" },
+                  { id: "rematch", label: "NEXT RACE", primary: true },
+                ]),
           ]
         : []),
     ],

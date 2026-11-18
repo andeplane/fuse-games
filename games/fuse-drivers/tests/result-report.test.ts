@@ -20,6 +20,9 @@ const row = (fields: Partial<ResultRow>): ResultRow => ({
 });
 const result = (fields: Partial<ResultModel> = {}): ResultModel => ({
   title: "Bo WINS",
+  seriesRace: 1,
+  seriesLength: 3,
+  seriesComplete: false,
   track: "canyon",
   laps: 4,
   rows: [
@@ -63,6 +66,7 @@ const parts = {
 test("the results show finish times, laps led, nitro spent and the other human drivers", () => {
   const report = resultReport(result(), parts);
   assert.equal(report.game, "FUSE DRIVERS");
+  assert.equal(report.kicker, "RACE 1 OF 3 COMPLETE");
   assert.equal(report.context, "canyon · 4 laps · 3 drivers");
   assert.equal(report.headline, "Bo WINS");
   assert.equal(report.summary, "1:23.4 over 4 laps");
@@ -106,6 +110,24 @@ test("the results show finish times, laps led, nitro spent and the other human d
       ["Front runner", ["Bo"], "Led 3 laps."],
       ["Nitro junkie", ["Bo", "Diesel"], "Fired 2 nitros."],
     ],
+  );
+});
+
+test("the final heat closes the shop and sends the host back to the lobby", () => {
+  const finale = result({ seriesRace: 3, seriesComplete: true });
+  const report = resultReport(finale, {
+    ...parts,
+    shop: {} as HTMLElement,
+  });
+  assert.equal(report.kicker, "SERIES COMPLETE · 3 OF 3");
+  assert.equal(report.sections, undefined);
+  assert.deepEqual(resultBar(finale, true).actions, [
+    { id: "lobby", label: "Back to lobby", primary: true },
+  ]);
+  assert.deepEqual(resultBar({ ...finale, host: false }, true).actions, []);
+  assert.equal(
+    resultReport(result({ seriesRace: 12, seriesLength: 0 }), parts).kicker,
+    "RACE 12 COMPLETE",
   );
 });
 

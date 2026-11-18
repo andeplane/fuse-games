@@ -26,7 +26,7 @@ export function createPitShop(
   const list = el("div", "", "fd-shop-list", doc);
   const credit = el(
     "p",
-    "When cash runs short, one credit adds $200,000 to your wallet.",
+    "You start with 25 nitros and 2 credits. When a purchase costs more than your cash, 1 credit adds $200,000 before payment.",
     "fd-shop-credit",
     doc,
   );
@@ -58,7 +58,6 @@ export function createPitShop(
     update(driver: OffroadDriver) {
       const summary = `${cash(driver.cash)} · ${driver.credits} ${driver.credits === 1 ? "credit" : "credits"}`;
       if (balance.textContent !== summary) balance.textContent = summary;
-      credit.hidden = !driver.credits;
       for (const { kind, control, owned, price } of offers) {
         const { cost, cap } = OFFROAD_SHOP[kind];
         const n = driver[kind];

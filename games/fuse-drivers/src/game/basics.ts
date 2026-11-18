@@ -9,7 +9,7 @@ export const MAX_LAPS = 64;
 export const CAPACITY = 5;
 /** Watchers hold no grid slot and nothing waits on their stream. */
 export const MAX_WATCHERS = 8;
-/** A race is one round today; a series of them is the next feature. */
+/** Upper bound for receipt round identifiers. Each campaign heat has its own match and round-one receipt. */
 export const MAX_ROUNDS = 8;
 /** Progress is laps and checkpoints in hundredths, so this is far past anything a legal race reaches. */
 export const MAX_PROGRESS_UNITS = 100_000;

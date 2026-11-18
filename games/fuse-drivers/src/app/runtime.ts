@@ -2,6 +2,7 @@ import { RoomRuntime, type Callbacks, type RuntimeOptions } from "fuse-netcode";
 import {
   CONTROLS,
   PURCHASE,
+  seriesComplete,
   fuseDriversGame,
   packControls,
   type FuseDriversEntry,
@@ -108,6 +109,7 @@ export class FuseDriversRuntime extends RoomRuntime<
     if (
       !room ||
       room.stage !== "over" ||
+      seriesComplete(room) ||
       !seat?.connected ||
       seat.watcher ||
       seat.bot ||

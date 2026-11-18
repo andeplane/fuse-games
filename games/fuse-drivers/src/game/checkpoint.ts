@@ -7,6 +7,7 @@ import {
   MAX_WATCHERS,
   isAvatar,
   parseSettings,
+  isSeriesLength,
   playerKey,
   players,
   trackNames,
@@ -44,7 +45,7 @@ import type { OffroadSuspension } from "./offroad/suspension.js";
  * The race is the bulk of it, and every peer hashes it: a number that is not finite, or is `-0`, would fold on to a
  * different race elsewhere, so it is refused here rather than carried into the simulation.
  */
-const STAGES: readonly Stage[] = ["lobby", "running", "between", "over"];
+const STAGES: readonly Stage[] = ["lobby", "running", "over"];
 const PHASES: readonly Phase[] = ["countdown", "racing", "finished"];
 const MAX_COORD = 100_000;
 const MAX_SPEED = 100_000;
@@ -134,7 +135,14 @@ const encodeRace = (race: RaceState): unknown[] => [
 
 export function encodeRoom(room: FuseDriversRoom): unknown[] {
   return [
-    [room.matchId, room.round, room.stage, room.finishTick],
+    [
+      room.matchId,
+      room.round,
+      room.stage,
+      room.finishTick,
+      room.seriesRace,
+      room.seriesLength,
+    ],
     players(room)
       .concat([...room.seats.values()].filter((seat) => seat.watcher))
       .map((seat) => [
@@ -599,7 +607,7 @@ export function decodeRoom(
   ] = fields;
   if (
     !Array.isArray(header) ||
-    header.length !== 4 ||
+    header.length !== 6 ||
     !Array.isArray(rawSeats) ||
     rawSeats.length > CAPACITY + MAX_WATCHERS ||
     !Array.isArray(rawGrid) ||
@@ -612,11 +620,18 @@ export function decodeRoom(
     rawFinishSeats.length > CAPACITY
   )
     return;
-  const [matchId, round, stage, finishTick] = header;
+  const [matchId, round, stage, finishTick, seriesRace, seriesLength] = header;
   const settings = parseSettings(rawSettings);
   const recentFinishes = decodeRecentFinishes(rawRecentFinishes, tick);
   if (
     !validMatchId(matchId) ||
+    !uint32(seriesRace) ||
+    seriesRace > tick ||
+    !isSeriesLength(seriesLength) ||
+    (stage === "lobby"
+      ? seriesRace !== 0 || seriesLength !== 0
+      : seriesRace === 0 ||
+        (seriesLength !== 0 && seriesRace > seriesLength)) ||
     !uint32(round) ||
     round < 1 ||
     round > MAX_ROUNDS ||
@@ -730,6 +745,8 @@ export function decodeRoom(
       controls,
       garage,
       campaignIndex,
+      seriesRace,
+      seriesLength,
       finishSeats,
       finishTick,
       recentFinishes,
@@ -781,6 +798,8 @@ export function decodeRoom(
     garage,
     campaignIndex,
     finishSeats,
+    seriesRace,
+    seriesLength,
     finishTick,
     recentFinishes,
   };

@@ -10,6 +10,7 @@ import {
   parseSettings,
   players,
   seatName,
+  seriesComplete,
   stepsForTick,
   type FuseDriversEntry,
   type FuseDriversEvent,
@@ -39,6 +40,9 @@ export interface FuseDriversView {
   finishTick: number;
   recentFinishes: readonly FinishedRace[];
   campaignIndex: number;
+  seriesRace: number;
+  seriesLength: number;
+  seriesComplete: boolean;
   garage: Readonly<FuseDriversRoom["garage"]>;
   /** The log tick, which is this game's clock. */
   tick: number;
@@ -61,6 +65,10 @@ export function fuseDriversView(room: FuseDriversRoom): FuseDriversView {
     finishTick: room.finishTick,
     recentFinishes: room.recentFinishes,
     campaignIndex: room.campaignIndex,
+    seriesRace: room.seriesRace,
+    seriesLength:
+      room.stage === "lobby" ? room.settings.races : room.seriesLength,
+    seriesComplete: seriesComplete(room),
     garage: room.garage,
     tick: room.tick,
     phase: room.stage,
@@ -117,7 +125,7 @@ export const fuseDriversGame: RollbackGame<
   FuseDriversSettings
 > = {
   id: "fuse-drivers",
-  rules: "fuse-drivers-4",
+  rules: "fuse-drivers-5",
   isEntry: isFuseDriversEntry,
   createRoom,
   createTicker: () => foldTick,

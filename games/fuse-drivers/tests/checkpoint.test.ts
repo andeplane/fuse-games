@@ -128,7 +128,7 @@ test("the four leading fields are the ones the snapshot puts before the streams"
   );
   assert.deepEqual(
     at(fields, 0),
-    ["m1", 1, "running", 0],
+    ["m1", 1, "running", 0, 1, 3],
     "the scalars, less the tick",
   );
   assert.ok(Array.isArray(fields[1]), "the seats");

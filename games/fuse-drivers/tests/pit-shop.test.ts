@@ -24,6 +24,8 @@ test("the speed shop quotes each upgrade, credit spend and caps, retaining each 
   shop.update(wallet);
   const controls = Array.from(shop.element.querySelectorAll("button"));
   assert.equal(controls.length, 5);
+  assert.match(shop.element.textContent!, /start with 25 nitros and 2 credits/);
+  assert.match(shop.element.textContent!, /1 credit adds \$200,000/);
   assert.match(
     shop.element.querySelector('[role="status"]')!.textContent!,
     /\$20,000 · 1 credit/,
@@ -43,6 +45,9 @@ test("the speed shop quotes each upgrade, credit spend and caps, retaining each 
 test("a non-host driver can open the speed shop while TV results are read-only", () => {
   const result = {
     title: "WINNER",
+    seriesRace: 1,
+    seriesLength: 3,
+    seriesComplete: false,
     track: "offroad-4",
     laps: 4,
     rows: [],

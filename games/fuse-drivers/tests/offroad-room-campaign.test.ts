@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ACTION, JOIN, LEAVE, PRESENCE, SPECTATOR } from "fuse-netcode";
+import {
+  ACTION,
+  JOIN,
+  LEAVE,
+  PRESENCE,
+  SETTINGS,
+  SPECTATOR,
+} from "fuse-netcode";
 import {
   createOffroadDriver,
   type OffroadPurchase,
@@ -8,10 +15,13 @@ import {
 import {
   DEFAULT_SETTINGS,
   PURCHASE,
+  decodeRoom,
+  encodeRoom,
   foldTick,
   fuseDriversView,
   isFuseDriversEntry,
   matchResult,
+  parseSettings,
   type FuseDriversRoom,
 } from "../src/game/index.js";
 import { addBot, fold, started } from "./fixtures/fuseDrivers.js";
@@ -42,6 +52,81 @@ const roomWithFive = () =>
     addBot("bot:2", 3),
     addBot("bot:3", 4),
   ]);
+
+test("a finite series freezes its chosen length, preserves each receipt and ends shopping at the finish", () => {
+  const room = started({ ...DEFAULT_SETTINGS, races: 2 }, [
+    addBot("bot:1", 2),
+    addBot("bot:2", 3),
+  ]);
+  assert.equal(fuseDriversView(room).seriesRace, 1);
+  fold(room, { a: [[SETTINGS, { ...DEFAULT_SETTINGS, races: 8 }]] });
+  assert.equal(room.seriesLength, 2);
+  finish(room);
+  assert.equal(fuseDriversView(room).seriesComplete, false);
+  fold(room, { a: [[ACTION, "rematch", "heat2"]] });
+  const restored = decodeRoom(encodeRoom(room), room.tick)!;
+  assert.equal(restored.seriesRace, 2);
+  assert.equal(restored.seriesLength, 2);
+  finish(restored);
+  assert.equal(fuseDriversView(restored).seriesComplete, true);
+  assert.deepEqual(
+    restored.recentFinishes.map((f) => [f.matchId, f.round]),
+    [
+      ["m1", 1],
+      ["heat2", 1],
+    ],
+  );
+  const prior = { ...restored.garage };
+  fold(restored, {
+    a: [[...quote(restored, "a", "shocks")], [ACTION, "rematch", "extra"]],
+  });
+  assert.equal(restored.matchId, "heat2");
+  assert.equal(restored.stage, "over");
+  assert.deepEqual(restored.garage, prior);
+  fold(restored, { a: [[ACTION, "lobby", "lobby"]] });
+  assert.equal(fuseDriversView(restored).seriesRace, 0);
+  assert.equal(fuseDriversView(restored).seriesLength, 8);
+  fold(restored, { a: [[ACTION, "start", "fresh"]] });
+  assert.equal(restored.seriesRace, 1);
+  assert.equal(restored.seriesLength, 8);
+});
+
+test("one-race ends immediately; continuous mode continues beyond the default three races", () => {
+  const one = started({ ...DEFAULT_SETTINGS, races: 1 }, [addBot("bot:1", 2)]);
+  finish(one);
+  assert.equal(fuseDriversView(one).seriesComplete, true);
+  const continuous = started({ ...DEFAULT_SETTINGS, races: 0 }, [
+    addBot("bot:1", 2),
+    addBot("bot:2", 3),
+  ]);
+  for (let index = 1; index <= 3; index++) {
+    finish(continuous);
+    assert.equal(fuseDriversView(continuous).seriesComplete, false);
+    fold(continuous, { a: [[ACTION, "rematch", `heat${index + 1}`]] });
+  }
+  assert.equal(continuous.stage, "running");
+  assert.equal(continuous.seriesRace, 4);
+});
+
+test("settings and checkpoints refuse invalid series lengths and impossible active race ordinals", () => {
+  for (const races of [-1, -0, 9, 2.5, null, undefined, "3"]) {
+    assert.equal(parseSettings({ ...DEFAULT_SETTINGS, races }), undefined);
+  }
+  const room = roomWithFive();
+  for (const [ordinal, length] of [
+    [0, 3],
+    [4, 3],
+    [1, 9],
+    [1, -1],
+    [room.tick + 1, 0],
+  ]) {
+    const fields = encodeRoom(room);
+    const header = fields[0] as unknown[];
+    header[4] = ordinal;
+    header[5] = length;
+    assert.equal(decodeRoom(fields, room.tick), undefined);
+  }
+});
 
 test("a five-seat campaign pays human drivers once and purchases follow the owner into the next grid", () => {
   const room = roomWithFive();

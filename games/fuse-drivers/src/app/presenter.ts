@@ -67,6 +67,9 @@ export interface ResultRow {
 
 export interface ResultModel {
   title: string;
+  seriesRace: number;
+  seriesLength: number;
+  seriesComplete: boolean;
   track: string;
   laps: number;
   rows: ResultRow[];
@@ -188,6 +191,9 @@ export function presentTable(
       }
       const winner = results.find((row) => row.place === 1);
       model.results = {
+        seriesRace: view.seriesRace,
+        seriesLength: view.seriesLength,
+        seriesComplete: view.seriesComplete,
         title: winner
           ? winner.you
             ? "YOU WIN"

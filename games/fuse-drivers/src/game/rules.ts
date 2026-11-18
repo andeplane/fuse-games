@@ -118,16 +118,26 @@ export interface FuseDriversSettings {
   track: string;
   /** One screen with phones as controllers. */
   display: boolean;
+  /** Races in a series. Zero keeps the original repeating campaign. */
+  races: number;
 }
+export const MAX_SERIES_RACES = 8;
+export const isSeriesLength = (value: unknown): value is number =>
+  uint32(value) && value <= MAX_SERIES_RACES;
 export const DEFAULT_SETTINGS: FuseDriversSettings = {
   track: "offroad-4", // Sidewinder opens the DOS campaign.
   display: false,
+  races: 3,
 };
 
 export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
   recentFinishes: FinishedRace[];
   /** -1 in the lobby. Each subsequent race follows the original schedule from the selected opener. */
   campaignIndex: number;
+  /** Ordinal within the active series; independent of DOS course order and the receipt's round. */
+  seriesRace: number;
+  /** Locked at the first start; later setting changes configure the next series. Zero in the lobby. */
+  seriesLength: number;
   /** Immutable snapshots keyed by the grid's member IDs. A reclaimed slot cannot inherit its wallet. */
   garage: Record<string, OffroadDriver>;
   /** Roster at the finish, retained even when a driver leaves or renames afterwards. */
@@ -175,13 +185,23 @@ export function seatName(raw: string): string | undefined {
 export function parseSettings(raw: unknown): FuseDriversSettings | undefined {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return;
   const keys = Object.keys(raw);
-  const { track, display } = raw as Partial<FuseDriversSettings>;
-  if (keys.length !== 2 || !keys.includes("track") || !keys.includes("display"))
+  const { track, display, races } = raw as Partial<FuseDriversSettings>;
+  if (
+    !keys.includes("track") ||
+    !keys.includes("display") ||
+    keys.some((key) => key !== "track" && key !== "display" && key !== "races")
+  )
     return;
   if (typeof display !== "boolean") return;
   if (typeof track !== "string" || !isOffroadCourse(track)) return;
-  return { track, display };
+  const length = keys.includes("races") ? races : DEFAULT_SETTINGS.races;
+  return isSeriesLength(length) ? { track, display, races: length } : undefined;
 }
+
+export const seriesComplete = (room: FuseDriversRoom): boolean =>
+  room.stage === "over" &&
+  room.seriesLength > 0 &&
+  room.seriesRace >= room.seriesLength;
 
 const payloads = {
   name: validName,
@@ -253,9 +273,11 @@ export function createRoom(
     stage: "lobby",
     recentFinishes: [],
     campaignIndex: -1,
+    seriesRace: 0,
+    seriesLength: 0,
     garage: {},
     seats: new Map(),
-    settings: { ...settings },
+    settings: { ...DEFAULT_SETTINGS, ...settings },
     grid: [],
     controls: {},
     finishSeats: [],
@@ -270,6 +292,8 @@ function startRace(
   continuing: boolean,
 ): void {
   room.matchId = matchId;
+  room.seriesRace = continuing ? room.seriesRace + 1 : 1;
+  if (!continuing) room.seriesLength = room.settings.races;
   const grid = players(room);
   const previousOrder =
     continuing && room.race
@@ -322,6 +346,7 @@ export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
     room.stage = "running";
   },
   rematch(room, matchId) {
+    if (seriesComplete(room)) return;
     // Fuse keeps the room's racers together for the next heat. The DOS continue
     // countdown could retire a human here; credits in this room fund shop purchases.
     room.round = 1;
@@ -333,6 +358,8 @@ export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
     room.round = 1;
     room.stage = "lobby";
     room.campaignIndex = -1;
+    room.seriesRace = 0;
+    room.seriesLength = 0;
     room.garage = {};
     delete room.race;
     room.grid = [];
@@ -362,6 +389,7 @@ function shop(
   tick: number,
   closing?: ManagementOrigin,
 ): void {
+  if (seriesComplete(room)) return;
   for (const seat of players(room)) {
     if (!seat.connected || seat.bot || !room.garage[seat.id]) continue;
     const purchases = seatEntries(seat, streams, tick)

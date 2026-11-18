@@ -8,9 +8,11 @@ Hold `W` or `↑` for gas, release to coast, and steer with `A`/`D` or `←`/`�
 
 For shared-screen play, the host ticks **Shared TV** in the room, under the invitation, and opens **OPEN TV SCREEN** on the TV. The TV shows the arena and phones show controls.
 
+Solo opens the same race setup as a room. Start with three CPU opponents, add or remove drivers, and choose one of eight opening courses in either direction. A series defaults to three races. Set one to eight races or choose Continuous to keep following the DOS calendar. Each race has four laps. Controls appear during every countdown.
+
 ## Between races
 
-The first truck through four laps wins. The other drivers are classified by their race progress and take a place prize. Cash bags add to the payout, and nitro pickups refill the truck during the race. Open **Speed shop** on the results screen to buy nitro bottles, shocks, tires, acceleration or top speed. Each player spends their own wallet. When a purchase needs a credit, the shop shows that on the price. **Next race** advances the campaign and carries each driver's truck to the next grid. **Back to lobby** starts a fresh campaign.
+The first truck through four laps wins. The other drivers are classified by their race progress and take a place prize. Cash bags add to the payout, and nitro pickups refill the truck during the race. Open **Speed shop** on the results screen to buy nitro bottles, shocks, tires, acceleration or top speed. Each player spends their own wallet. Drivers start with 25 nitros and two credits. When a purchase exceeds the available cash, one credit adds $200,000 to the wallet before the purchase. Unspent cash and nitros carry to the next race. The shop closes when the series finishes. **Next race** advances the campaign and carries each driver's truck to the next grid. **Back to lobby** starts a fresh campaign.
 
 ## How it fits the shared packages
 
@@ -47,4 +49,4 @@ python3 scripts/fuse-drivers-reference.py /path/to/OFFROAD /path/to/OFFROAD_scre
 pnpm exec tsx scripts/fuse-drivers-reference.ts /private/path/offroad-reference.json --open
 ```
 
-Four trucks use the DOS paint schemes. A fifth Fuse driver uses violet. The shared Fuse controls, race HUD, pickups and results stay available. Use the host's Room Settings to choose Wipeout for comparison with the DOS screenshot.
+Four trucks use the DOS paint schemes. A fifth Fuse driver uses violet. The shared Fuse controls, race HUD, pickups and results stay available. Choose Wipeout in the lobby's opening course picker for comparison with the DOS screenshot.
