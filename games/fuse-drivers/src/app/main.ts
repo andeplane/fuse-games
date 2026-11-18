@@ -1,5 +1,13 @@
 import { createTopBar } from "fuse-ui";
 import {
+  bindAudioInput,
+  browserAudioDependencies,
+  createAudioControl,
+  createGameAudio,
+} from "fuse-ui/game-audio";
+import "fuse-ui/game-audio.css";
+import { createOffroadAudio } from "./offroad-audio.js";
+import {
   playtestInputBlocked,
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
@@ -96,6 +104,17 @@ const endpoints = createEndpoints(
   location.origin,
 );
 const store = safeStore(() => localStorage);
+const audio = createGameAudio(browserAudioDependencies(store), {
+  forceMute: query.has("mute"),
+});
+const audioControl = createAudioControl(document, audio, { music: false });
+const unbindAudio = bindAudioInput(audio, document, window);
+audio.setHidden(document.hidden);
+function gameLink(search = "") {
+  const url = new URL(endpoints.appUrl(search));
+  if (audio.forcedMute) url.searchParams.set("mute", "");
+  return url.href;
+}
 const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
@@ -117,9 +136,14 @@ function header(extra: HTMLElement[] = []): HTMLElement {
     }).element,
     brand,
     social.element(),
+    audioControl.element,
     ...extra,
   );
-  return createTopBar({ element: bar, gameId: GAME });
+  return createTopBar({
+    element: bar,
+    gameId: GAME,
+    sound: audioControl.sound,
+  });
 }
 
 function landing(): void {
@@ -153,14 +177,14 @@ function landing(): void {
         },
       );
       store.setItem(names.host(room.code), room.token);
-      location.href = endpoints.appUrl(`?room=${room.code}`);
+      location.href = gameLink(`?room=${room.code}`);
     },
     onSolo: () => {
-      location.href = endpoints.appUrl("?solo=1");
+      location.href = gameLink("?solo=1");
     },
     valid: validRoomCode,
     onJoin: (code) => {
-      location.href = endpoints.appUrl(`?room=${code}`);
+      location.href = gameLink(`?room=${code}`);
     },
   });
   app.replaceChildren(header(), card.element);
@@ -271,7 +295,7 @@ function room(solo: boolean): void {
     lobby.append(
       createInviteCard({
         code,
-        link: endpoints.appUrl(`?room=${code}`),
+        link: gameLink(`?room=${code}`),
         qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 360 }),
       }).element,
     );
@@ -289,7 +313,7 @@ function room(solo: boolean): void {
       return sent;
     },
     onOpenScreen: () =>
-      window.open(endpoints.appUrl(`?room=${code}&display=1`), "_blank"),
+      window.open(gameLink(`?room=${code}&display=1`), "_blank"),
   });
 
   const nameEntry = createNameEntry({
@@ -321,7 +345,7 @@ function room(solo: boolean): void {
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
     onBack: () => {
       runtime.stop();
-      location.href = endpoints.appUrl();
+      location.href = gameLink();
     },
     backText: "Leave",
     onAction: (id) => {
@@ -607,6 +631,7 @@ function room(solo: boolean): void {
     },
   });
   let arena: MountedArena | undefined;
+  const raceAudio = createOffroadAudio(audio);
   let stopped = false;
   const reports = createReportDispatcher({
     now: () => performance.now(),
@@ -660,9 +685,20 @@ function room(solo: boolean): void {
             },
       );
     const room = runtime.roomState();
+    const timing = runtime.frameTiming();
+    if (room && drawArena && !document.hidden) {
+      const own = room.grid.indexOf(runtime.self);
+      raceAudio.observe(
+        `${room.matchId}:${room.round}`,
+        room.race,
+        own >= 0 ? own : (room.race?.placements[0] ?? 0),
+        timing?.revision ?? 0,
+      );
+    } else {
+      raceAudio.stop();
+    }
     if (drawArena) {
       const now = performance.now(),
-        timing = runtime.frameTiming(),
         lead =
           drawAhead &&
           timing &&
@@ -748,6 +784,10 @@ function room(solo: boolean): void {
   installRoomLifecycle(window, {
     stop: () => {
       stopped = true;
+      raceAudio.stop();
+      audio.setHidden(true);
+      unbindAudio();
+      audioControl.destroy();
       modalInput.dispose();
       stopPlaytestInput();
       board.stop();
