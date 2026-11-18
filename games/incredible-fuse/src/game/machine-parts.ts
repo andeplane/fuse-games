@@ -45,9 +45,14 @@ export const PARTS = {
     "Conveyor",
     100,
     20,
-    "Carries objects along its top. Flip to reverse.",
+    "In free workshop, belt it to a powered motor. Flip the motor to send objects right. Puzzle conveyors without a drive belt have their own power.",
   ),
-  fan: part("Desk fan", 44, 48, "Blows to the right. Flip it to face left."),
+  fan: part(
+    "Desk fan",
+    44,
+    48,
+    "Wire it to a powered switch to blow air. Unplugged puzzle fans have their own power. Flip to blow left.",
+  ),
   magnet: part(
     "Horseshoe magnet",
     42,

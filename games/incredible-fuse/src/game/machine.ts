@@ -44,6 +44,8 @@ export interface Machine {
   gravity: number;
   parts: Part[];
   imported: boolean;
+  /** A removed or undone placement never lends its identity to a later part. */
+  nextPartId: number;
   bodies: Body[];
   active: number[];
   links: MachineLink[];
@@ -60,6 +62,8 @@ export type MachineCommand =
   | { type: "run" | "rewind" | "undo" };
 const MAX_UNDO = 8;
 const MAX_STEPS = 600;
+const MAX_PARTS = 128;
+const MAX_PART_ID = 0x7fffffff;
 const within = (value: unknown, low: number, high: number): value is number =>
   typeof value === "number" &&
   Number.isInteger(value) &&
@@ -80,26 +84,28 @@ export function validCommand(raw: unknown): raw is MachineCommand {
     case "remove":
     case "flip":
     case "rotate":
-      return fields === 2 && within(raw.id, 1, 128);
+      return fields === 2 && within(raw.id, 1, MAX_PART_ID);
     case "connect":
     case "disconnect":
       return (
         fields === 4 &&
         isLinkKind(raw.kind) &&
-        within(raw.a, 1, 128) &&
-        within(raw.b, 1, 128) &&
+        within(raw.a, 1, MAX_PART_ID) &&
+        within(raw.b, 1, MAX_PART_ID) &&
         raw.a !== raw.b
       );
     case "place":
       return fields === 4 && isPartKind(raw.kind) && position(raw);
     case "move":
-      return fields === 4 && within(raw.id, 1, 128) && position(raw);
+      return fields === 4 && within(raw.id, 1, MAX_PART_ID) && position(raw);
     default:
       return false;
   }
 }
 
 const copyParts = (parts: Part[]) => parts.map((p) => ({ ...p }));
+const nextAfter = (parts: Part[]) =>
+  1 + parts.reduce((largest, p) => Math.max(largest, p.id), 0);
 export function createMachine(puzzleIndex: number): Machine {
   if (!within(puzzleIndex, 0, FREE_WORKSHOP))
     throw new RangeError("Unknown workshop puzzle");
@@ -113,6 +119,7 @@ export function createMachine(puzzleIndex: number): Machine {
     gravity: 272,
     imported: false,
     parts: copyParts(spec.parts),
+    nextPartId: nextAfter(spec.parts),
     bodies: [],
     active: [],
     links: (spec.links ?? []).map((link) => ({ ...link })),
@@ -141,6 +148,39 @@ function fits(
   );
 }
 const editable = (m: Machine) => m.parts.filter((p) => !p.fixed);
+type PlacementCommand = Extract<MachineCommand, { type: "place" | "move" }>;
+const snap = (value: number) => Math.round(value / 2) * 2;
+/** The editor previews the same placement decision the authoritative reducer applies. */
+export function placementIssue(
+  m: Machine,
+  c: PlacementCommand,
+): string | undefined {
+  if (m.mode !== "build") return "Rewind the machine before editing.";
+  if (!validCommand(c)) return "Choose a point inside the workbench.";
+  const piece =
+    c.type === "move" ? m.parts.find((p) => p.id === c.id) : undefined;
+  if (c.type === "move" && !piece) return "This part has been removed.";
+  if (piece?.fixed) return "This part is fixed to the bench.";
+  if (c.type === "place") {
+    if (m.parts.length >= MAX_PARTS) return "The bench holds up to 128 parts.";
+    if (m.nextPartId > MAX_PART_ID)
+      return "Start a new workshop to add more parts.";
+    if (available(m, c.kind) <= 0) return "No more of this part in the tray.";
+  }
+  const x = snap(c.x),
+    y = snap(c.y);
+  const size = c.type === "place" ? PARTS[c.kind] : partSize(piece!);
+  if (!fits(size, x, y)) return "Keep the whole part inside the bench.";
+  if (piece?.x === x && piece.y === y)
+    return "Choose a new position for this part.";
+  if (
+    m.parts.some(
+      (p) =>
+        p.id !== piece?.id && Math.abs(p.x - x) < 5 && Math.abs(p.y - y) < 5,
+    )
+  )
+    return "Another part is centered here. Place it beside that part.";
+}
 function remember(m: Machine) {
   m.undo.push(copyParts(editable(m)));
   m.undoLinks.push(m.links.map((l) => ({ ...l })));
@@ -190,36 +230,22 @@ export function applyMachine(m: Machine, c: MachineCommand): boolean {
   const piece =
     "id" in c ? m.parts.find((p) => p.id === c.id && !p.fixed) : undefined;
   if (c.type === "place" || c.type === "move") {
-    const kind = c.type === "place" ? c.kind : piece?.kind;
-    if (
-      !kind ||
-      (c.type === "place" && (m.parts.length >= 128 || available(m, kind) <= 0))
-    )
-      return false;
-    const x = Math.round(c.x / 2) * 2,
-      y = Math.round(c.y / 2) * 2;
-    if (
-      !fits(piece ? partSize(piece) : PARTS[kind], x, y) ||
-      (piece && piece.x === x && piece.y === y)
-    )
-      return false;
-    // Parts can couple at their edges; the same point cannot hold two origins.
-    if (
-      m.parts.some(
-        (p) =>
-          p.id !== piece?.id && Math.abs(p.x - x) < 5 && Math.abs(p.y - y) < 5,
-      )
-    )
-      return false;
+    if (placementIssue(m, c)) return false;
+    const x = snap(c.x),
+      y = snap(c.y);
     remember(m);
     if (piece) {
       piece.x = x;
       piece.y = y;
-    } else {
-      let id = 1;
-      while (m.parts.some((p) => p.id === id)) id++;
-      m.parts.push({ id, kind, x, y, flip: false, fixed: false });
-    }
+    } else if (c.type === "place")
+      m.parts.push({
+        id: m.nextPartId++,
+        kind: c.kind,
+        x,
+        y,
+        flip: false,
+        fixed: false,
+      });
     return true;
   }
   if (!piece) return false;
@@ -338,12 +364,14 @@ function switchedOn(m: Machine, p: Part): boolean {
   );
   return plugged ? has(m, p.id) : m.puzzle !== FREE_WORKSHOP;
 }
-function blowing(m: Machine, p: Part): boolean {
+export function isBlowing(m: Machine, p: Part): boolean {
+  if (m.mode === "build") return false;
   return p.kind === "fan"
     ? switchedOn(m, p)
     : p.kind === "bellows" && has(m, p.id);
 }
-function beltSpeed(m: Machine, p: Part): number {
+export function conveyorSpeed(m: Machine, p: Part): number {
+  if (m.mode === "build" || p.kind !== "belt") return 0;
   const shaft = linkedParts(m.links, "belt", p.id);
   const motor = m.parts.find((q) => q.kind === "motor" && shaft.includes(q.id));
   if (motor) return has(m, motor.id) ? -sign(motor) * 8 : 0;
@@ -401,7 +429,7 @@ function mechanisms(m: Machine) {
     }
     if (
       p.kind === "windmill" &&
-      m.parts.some((a) => blowing(m, a) && air(a, p))
+      m.parts.some((a) => isBlowing(m, a) && air(a, p))
     ) {
       fire(m, p.id);
       continue;
@@ -522,7 +550,7 @@ function motion(m: Machine, b: Body, p: Part) {
   }
   for (const q of m.parts) {
     if (q.id === b.id) continue;
-    if (blowing(m, q) && air(q, b))
+    if (isBlowing(m, q) && air(q, b))
       ax += (sign(q) * 0.65) / Math.sqrt(mat.mass);
     if (
       q.kind === "magnet" &&
@@ -662,7 +690,7 @@ function motion(m: Machine, b: Body, p: Part) {
             : -Math.max(0, Math.floor((b.vy * UNIT * mat.bounce) / 256) - 64) /
               UNIT;
           if (q.kind === "belt") {
-            const speed = beltSpeed(m, q);
+            const speed = conveyorSpeed(m, q);
             if (speed !== 0) fire(m, q.id);
             b.vx = speed;
           } else {
@@ -771,12 +799,12 @@ const lattice = (value: unknown, min: number, max: number): value is number =>
   value >= min &&
   value <= max;
 function validParts(raw: unknown): raw is Part[] {
-  if (!Array.isArray(raw) || raw.length > 128) return false;
+  if (!Array.isArray(raw) || raw.length > MAX_PARTS) return false;
   const ids = new Set<number>();
   for (const p of raw) {
     if (
       !record(p) ||
-      !within(p.id, 1, 128) ||
+      !within(p.id, 1, MAX_PART_ID) ||
       ids.has(p.id) ||
       !isPartKind(p.kind) ||
       !lattice(p.x, -160, WIDTH + 160) ||
@@ -828,6 +856,7 @@ export function createWorkshop(blueprint: WorkshopBlueprint): Machine {
     air: blueprint.air,
     gravity: blueprint.gravity,
     parts: copyParts(blueprint.parts),
+    nextPartId: nextAfter(blueprint.parts),
     links: blueprint.links.map((l) => ({ ...l })),
   };
 }
@@ -878,7 +907,7 @@ function matchesLayout(
 export function validMachine(raw: unknown): raw is Machine {
   if (
     !record(raw) ||
-    Object.keys(raw).length !== 14 ||
+    Object.keys(raw).length !== 15 ||
     !within(raw.puzzle, 0, FREE_WORKSHOP) ||
     typeof raw.imported !== "boolean" ||
     !(
@@ -893,6 +922,7 @@ export function validMachine(raw: unknown): raw is Machine {
     !within(raw.gravity, 0, 512) ||
     (!raw.imported && (raw.air !== 67 || raw.gravity !== 272)) ||
     !validParts(raw.parts) ||
+    !within(raw.nextPartId, nextAfter(raw.parts), MAX_PART_ID + 1) ||
     !matchesLayout(raw.parts, raw.puzzle, raw.imported) ||
     !validLinks(raw.parts, raw.links) ||
     !Array.isArray(raw.broken) ||
@@ -920,7 +950,7 @@ export function validMachine(raw: unknown): raw is Machine {
   )
     return false;
   if (
-    !raw.active.every((id) => within(id, 1, 128) && ids.has(id)) ||
+    !raw.active.every((id) => within(id, 1, MAX_PART_ID) && ids.has(id)) ||
     new Set(raw.active).size !== raw.active.length
   )
     return false;
@@ -940,7 +970,7 @@ export function validMachine(raw: unknown): raw is Machine {
     if (
       !record(b) ||
       Object.keys(b).length !== 5 ||
-      !within(b.id, 1, 128) ||
+      !within(b.id, 1, MAX_PART_ID) ||
       bodyIds.has(b.id) ||
       !lattice(b.x, -1024, WIDTH + 1024) ||
       !lattice(b.y, -1024, HEIGHT + 1024) ||
@@ -974,8 +1004,10 @@ export function validMachine(raw: unknown): raw is Machine {
   }
   const fixed = parts.filter((p) => p.fixed),
     undoLinks = raw.undoLinks;
+  const nextPartId = raw.nextPartId;
   return raw.undo.every((entry, i) => {
-    if (!validParts(entry) || entry.some((p) => p.fixed)) return false;
+    if (!validParts(entry) || entry.some((p) => p.fixed || p.id >= nextPartId))
+      return false;
     const layout = [...fixed, ...entry];
     return (
       validParts(layout) &&

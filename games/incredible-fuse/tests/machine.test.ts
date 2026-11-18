@@ -10,6 +10,7 @@ import {
   stepPhysics,
   validMachine,
   validCommand,
+  placementIssue,
   validWorkshopBlueprint,
   type Machine,
   type Part,
@@ -339,4 +340,66 @@ test("untrusted commands, forged stock, body IDs and excessive history fail vali
     }),
     false,
   );
+});
+test("stale moves and wire edits cannot retarget reused positions after an undo or replacement", () => {
+  const m = createMachine(FREE_WORKSHOP);
+  edit(m, { type: "place", kind: "switch", x: 80, y: 80 });
+  edit(m, { type: "place", kind: "motor", x: 160, y: 80 });
+  const removed = m.parts[1]!.id;
+  edit(m, { type: "remove", id: removed });
+  edit(m, { type: "place", kind: "motor", x: 160, y: 80 });
+  const replacement = m.parts[1]!.id;
+  assert.ok(replacement > removed);
+  assert.equal(
+    applyMachine(m, { type: "move", id: removed, x: 180, y: 80 }),
+    false,
+  );
+  assert.equal(
+    applyMachine(m, {
+      type: "connect",
+      kind: "wire",
+      a: m.parts[0]!.id,
+      b: removed,
+    }),
+    false,
+  );
+  assert.equal(m.parts[1]!.x, 160);
+  edit(m, { type: "undo" });
+  edit(m, { type: "undo" });
+  assert.equal(m.parts[1]!.id, removed);
+  assert.ok(validMachine(m));
+  edit(m, { type: "remove", id: removed });
+  edit(m, { type: "place", kind: "motor", x: 160, y: 80 });
+  assert.ok(m.parts[1]!.id > replacement);
+  const next = JSON.parse(JSON.stringify(m)) as unknown;
+  assert.ok(validMachine(next));
+  for (let i = 0; i < 135; i++) {
+    edit(next, { type: "remove", id: next.parts[1]!.id });
+    edit(next, { type: "place", kind: "motor", x: 160, y: 80 });
+  }
+  edit(next, {
+    type: "connect",
+    kind: "wire",
+    a: next.parts[0]!.id,
+    b: next.parts[1]!.id,
+  });
+  assert.ok(validMachine(next));
+  assert.equal(validMachine({ ...next, nextPartId: next.parts[1]!.id }), false);
+  edit(next, { type: "remove", id: next.parts[1]!.id });
+  assert.equal(validMachine({ ...next, nextPartId: 2 }), false);
+});
+test("placement feedback and the reducer agree on edge, stock, fixed, and occupied positions", () => {
+  const m = createMachine(0);
+  const edge = { type: "place", kind: "ramp", x: 10, y: 10 } as const;
+  const occupied = { type: "place", kind: "ramp", x: 160, y: 60 } as const;
+  const fixed = { type: "move", id: 1, x: 200, y: 60 } as const;
+  assert.match(placementIssue(m, edge)!, /whole part/);
+  assert.match(placementIssue(m, occupied)!, /centered here/);
+  assert.match(placementIssue(m, fixed)!, /fixed/);
+  for (const input of [edge, occupied, fixed])
+    assert.equal(applyMachine(m, input), false);
+  const success = { type: "place", kind: "ramp", x: 160, y: 140 } as const;
+  assert.equal(placementIssue(m, success), undefined);
+  edit(m, success);
+  assert.match(placementIssue(m, success)!, /tray/);
 });
