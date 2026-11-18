@@ -16,6 +16,7 @@ import {
   type Point,
 } from "./layout.js";
 import { placeObjects, rows, terrain } from "./placement.js";
+import { enemyCount } from "../options/index.js";
 
 export { DosRandom, geometry } from "./layout.js";
 export type { Bounds, Color, Point } from "./layout.js";
@@ -42,6 +43,7 @@ function placeActors(
   rng: DosRandom,
   dogfight: boolean,
   seatCount: number,
+  density: number,
 ) {
   const taken = objects.props
     .filter((p) => p.impassable)
@@ -150,7 +152,7 @@ function placeActors(
   for (let n = 0; n < seatCount; n++)
     spawns.push(spawn((x, y) => map.cells[at(x, y)] === FLOOR));
   if (!dogfight && mission.enemies.length)
-    for (let n = 0; n < Math.max(1, mission.enemyDensity); n++)
+    for (let n = 0; n < enemyCount(mission.enemyDensity, density); n++)
       enemy(mission.enemies);
   return { spawns, enemies };
 }
@@ -162,6 +164,7 @@ export function buildMission(
   campaign?: number,
   layoutSeed = 0,
   seatCount = 5,
+  density = 100,
 ) {
   if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 5)
     throw new RangeError("Expected 1–5 operators");
@@ -184,6 +187,7 @@ export function buildMission(
     actorStream,
     dogfight,
     seatCount,
+    density,
   );
   return {
     ...actors,
