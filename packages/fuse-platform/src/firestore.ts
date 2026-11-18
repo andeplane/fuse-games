@@ -15,7 +15,7 @@ import {
   type PresenceRecord,
   storedPresence,
 } from "./friends.js";
-import { validPublicId } from "./friends-api.js";
+import { searchPrefixEnd, validPublicId } from "./friends-api.js";
 import { parseConversation, type FriendMessage } from "./messages-api.js";
 import type { FeedCursor, FeedRow, HistoryDatabase } from "./history.js";
 import { validUid } from "./identity.js";
@@ -498,6 +498,15 @@ export class FirestoreFriendsDatabase implements FriendsDatabase {
   }
   async setPresence(record: PresenceRecord): Promise<void> {
     await this.presenceCollection().doc(record.uid).set(record);
+  }
+  async searchNames(prefix: string, limit: number): Promise<PresenceRecord[]> {
+    let query = this.presenceCollection().orderBy("searchName").startAt(prefix);
+    const end = searchPrefixEnd(prefix);
+    if (end !== undefined) query = query.endBefore(end);
+    const result = await query.limit(limit).get();
+    return result.docs.flatMap((doc) =>
+      FirestoreFriendsDatabase.readable(storedPresence, doc.data()),
+    );
   }
   async resolve(publicId: string): Promise<string | undefined> {
     const docs = (

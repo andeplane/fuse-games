@@ -9,6 +9,7 @@ import { createFriendsClient } from "fuse-ui/friends-client";
 import type {
   AccountStatus,
   Buddy,
+  PlayerCard,
   PresenceService,
   PresenceSnapshot,
 } from "./presenceService";
@@ -149,6 +150,7 @@ export function createRealPresenceService(
     ...(options.pollMs ? { pollMs: options.pollMs } : {}),
   });
   let signedIn = false,
+    accountGeneration = 0,
     suspended = false,
     disposed = false;
   const apply = () => {
@@ -181,6 +183,7 @@ export function createRealPresenceService(
   // The watch reports "nobody" at once, before a remembered sign-in has been restored; that is not a sign-out.
   let restoring = store.get().account.kind === "restoring";
   const stopAuth = auth.watch((account) => {
+    accountGeneration++;
     // Auth notifications can switch directly from account A to B (even with the same display name). End the old
     // polling generation and clear its private lists before starting the new account's request.
     if (signedIn && account) client.setSignedIn(false);
@@ -226,6 +229,46 @@ export function createRealPresenceService(
   };
   return {
     capabilities: { away: true, demo: false },
+    async searchFriends(query): Promise<PlayerCard[]> {
+      if (!signedIn || disposed) throw new Error("Sign in first");
+      const account = accountGeneration;
+      const token = await auth.token();
+      if (!token || account !== accountGeneration || disposed)
+        throw new Error("Sign in first");
+      const response = await options.fetch(
+        options.apiUrl(`/api/friends/search?q=${encodeURIComponent(query)}`),
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (!response.ok)
+        throw new Error("Could not search for friends. Try Search again.");
+      const body: unknown = await response.json();
+      if (!signedIn || disposed || accountGeneration !== account)
+        throw new Error("Your account changed. Search again.");
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        !("players" in body) ||
+        !Array.isArray(body.players) ||
+        body.players.length > 20
+      )
+        throw new Error("Invalid search results. Try Search again.");
+      return body.players.map((value: unknown) => {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          !("publicId" in value) ||
+          typeof value.publicId !== "string" ||
+          !isPublicId(value.publicId) ||
+          !("name" in value) ||
+          typeof value.name !== "string" ||
+          value.name.length > 128
+        )
+          throw new Error("Invalid search results. Try Search again.");
+        return { publicId: value.publicId, name: value.name };
+      });
+    },
     snapshot: () => store.get(),
     subscribe: (listener) => store.subscribe(listener),
     warmSignIn: () => auth.warm(),
