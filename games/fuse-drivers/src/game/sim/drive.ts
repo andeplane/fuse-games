@@ -15,7 +15,6 @@ import {
 } from "../offroad/suspension.js";
 import {
   getOffroadCourse,
-  isOffroadCourse,
   projectOffroad,
 } from "../offroad/course.js";
 import { atan2, cos, sin } from "./deterministic-math.js";
@@ -25,17 +24,7 @@ import type { Track } from "./track.js";
 import { createTruck, wrapAngle, type Truck } from "./truck.js";
 
 const TURN = (2 * Math.PI) / 65536;
-const FLAT = {
-  height: 0x8000,
-  blocked: false,
-  kind: 0,
-  direction: 0,
-  slopeX: 0,
-  slopeY: 0,
-};
-const sampleFlat = () => FLAT;
-
-/** Tiled maps use 16 engine units per map unit. DOS courses retain their integer world coordinates. */
+/** Grid positions retain the original integer terrain coordinates. */
 export function startTruck(
   track: Track,
   slot: number,
@@ -45,14 +34,6 @@ export function startTruck(
   gridIndex = slot < 4 ? 3 - slot : slot,
 ): Truck {
   const projected = track.spawns[slot]!;
-  if (!isOffroadCourse(track.name))
-    return createTruck(
-      slot,
-      projected.x,
-      projected.y,
-      projected.heading,
-      stats,
-    );
   const spawn = getOffroadCourse(track.name).spawns[gridIndex]!;
   const motion = createOffroadMotion(
     spawn.x,
@@ -105,19 +86,9 @@ export function placeTruck(
 ): Truck {
   const angle = motion.heading * TURN;
   const height = truck.suspension.bodyHeight;
-  const pose = isOffroadCourse(track.name)
-    ? projectOffroad(track.name, motion.x, motion.y, height)
-    : { x: motion.x / 16, y: motion.y / 16 };
-  let heading = angle;
-  if (isOffroadCourse(track.name)) {
-    const nose = projectOffroad(
-      track.name,
-      motion.x + 256 * cos(angle),
-      motion.y + 256 * sin(angle),
-      height,
-    );
-    heading = atan2(nose.y - pose.y, nose.x - pose.x);
-  }
+  const pose = projectOffroad(track.name, motion.x, motion.y, height);
+  const nose = projectOffroad(track.name, motion.x + 256 * cos(angle), motion.y + 256 * sin(angle), height);
+  const heading = atan2(nose.y - pose.y, nose.x - pose.x);
   return {
     ...truck,
     ...pose,
@@ -149,9 +120,7 @@ export function driveTruck(
     cpu ? { ...truck.motion, acceleration: cpu.acceleration } : truck.motion,
     controls,
   );
-  const sample = isOffroadCourse(track.name)
-    ? getOffroadCourse(track.name).terrain.sample
-    : sampleFlat;
+  const sample = getOffroadCourse(track.name).terrain.sample;
   const contact = stepOffroadSuspension(
     truck.suspension,
     moving,

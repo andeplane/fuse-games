@@ -7,23 +7,20 @@ export interface TruckPose {
   heading: number;
 }
 
-/** Further than a truck can travel in one tick, so a respawn or a teleport is never smeared across the map. */
+/** Further than a truck can travel in one tick, so a teleport is never smeared across the map. */
 const SNAP_DISTANCE = 200;
 
 /**
- * Positions lerp, headings lerp by the shortest arc, respawns and teleports snap. The rule the game has
- * always drawn by; a rollback that rewrote the truck's place lands as a jump larger than `SNAP_DISTANCE`
+ * Positions lerp, headings lerp by the shortest arc, teleports snap. A rollback that rewrote the truck's place lands as a jump larger than `SNAP_DISTANCE`
  * and snaps rather than sliding the truck across the track.
  */
 export function renderTruck(
   prev: Truck | undefined,
   next: Truck,
-  nextTick: number,
   alpha: number,
 ): TruckPose {
   if (
     !prev ||
-    next.respawnedTick === nextTick ||
     Math.hypot(next.x - prev.x, next.y - prev.y) > SNAP_DISTANCE
   )
     return { x: next.x, y: next.y, heading: next.heading };
@@ -43,6 +40,6 @@ export function renderSnapshot(
   alpha: number,
 ): TruckPose[] {
   return next.trucks.map((truck, slot) =>
-    renderTruck(prev?.trucks[slot], truck, next.tick, alpha),
+    renderTruck(prev?.trucks[slot], truck, alpha),
   );
 }

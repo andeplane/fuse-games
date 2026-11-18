@@ -31,8 +31,6 @@ export interface DriverRow {
   lap: number;
   laps: number;
   nitros: number;
-  /** Wrecked and waiting to respawn. */
-  wrecked: boolean;
   finished: boolean;
   you: boolean;
   bot: boolean;
@@ -63,8 +61,6 @@ export interface ResultRow {
   /** Seconds from the start signal to the finish line, or 0 for a truck that never finished. */
   time: number;
   laps: number;
-  kills: number;
-  wrecks: number;
   lapsLed: number;
   nitros: number;
 }
@@ -154,7 +150,6 @@ export function presentTable(
         lap: Math.min((car?.laps ?? 0) + 1, config.laps),
         laps: config.laps,
         nitros: car?.nitros ?? 0,
-        wrecked: (car?.respawnAtTick ?? 0) > 0,
         finished: (car?.finishedTick ?? 0) > 0,
         you: driver.id === viewer.me,
         bot: driver.bot,
@@ -192,8 +187,6 @@ export function presentTable(
             ? Math.max(0, car.finishedTick - race.countdownEndTick) / TICK_RATE
             : 0,
           laps: Math.min(car.laps, config.laps),
-          kills: car.kills,
-          wrecks: car.deaths,
           lapsLed: car.lapsLed,
           nitros: car.nitrosUsed,
         });

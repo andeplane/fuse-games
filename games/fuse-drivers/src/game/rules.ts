@@ -103,8 +103,6 @@ export type FuseDriversEntry =
   ManagementEntry<FuseDriversSettings> | ControlsEntry | PurchaseEntry;
 
 export type FuseDriversEvent =
-  | { type: "hit"; id: string; by: string }
-  | { type: "kill"; id: string; by: string }
   | { type: "pickup"; id: string }
   | { type: "lap"; id: string; lap: number }
   | { type: "finish"; id: string; place: number };
@@ -446,10 +444,6 @@ export function foldTick(
         else if (event.type === "finish")
           events.push({ type: "finish", id, place: event.place });
         else if (event.type === "pickup") events.push({ type: "pickup", id });
-        else if (event.type === "kill")
-          events.push({ type: "kill", id, by: room.grid[event.by] ?? "" });
-        else if (event.type === "hit" && !event.absorbed)
-          events.push({ type: "hit", id, by: room.grid[event.by] ?? "" });
       }
     }
     room.race = next;

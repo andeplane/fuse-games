@@ -1,5 +1,5 @@
 import { config } from "../sim/config.js";
-import type { Point, Track, Wall } from "../sim/track.js";
+import type { Point, Track } from "../sim/track.js";
 import routes from "./courses-data.json" with { type: "json" };
 import { getOffroadTerrain } from "./courses.js";
 
@@ -125,54 +125,6 @@ export interface OffroadCourse {
   waypointRegion: number[];
 }
 
-/** Remove internal edges of the four triangular surface sectors in each cell. */
-function boundaryWalls(terrain: Terrain, project: (p: Point) => Point): Wall[] {
-  const edges = new Map<number, [Point, Point]>();
-  // Corners and centers sit on a 89×89 half-cell lattice.
-  const keyOf = (p: Point) => (p.y / 128) * 89 + p.x / 128;
-  function toggle(a: Point, b: Point) {
-    const aKey = keyOf(a),
-      bKey = keyOf(b);
-    const key = Math.min(aKey, bKey) * 8192 + Math.max(aKey, bKey);
-    if (!edges.delete(key)) edges.set(key, [a, b]);
-  }
-  for (let y = 0; y < WIDTH; y += UNIT) {
-    for (let x = 0; x < WIDTH; x += UNIT) {
-      const center = { x: x + 128, y: y + 128 };
-      const corners = [
-        { x, y },
-        { x: x + UNIT, y },
-        { x: x + UNIT, y: y + UNIT },
-        { x, y: y + UNIT },
-      ];
-      for (let i = 0; i < 4; i++) {
-        const a = corners[i]!,
-          b = corners[(i + 1) % 4]!;
-        const sample = terrain.sample(
-          Math.floor((center.x + a.x + b.x) / 3),
-          Math.floor((center.y + a.y + b.y) / 3),
-        );
-        if (!sample || sample.blocked) continue;
-        toggle(a, b);
-        toggle(b, center);
-        toggle(center, a);
-      }
-    }
-  }
-  return Array.from(edges.values(), ([start, end]) => {
-    const a = project(start),
-      b = project(end);
-    return {
-      a,
-      b,
-      minX: Math.min(a.x, b.x),
-      maxX: Math.max(a.x, b.x),
-      minY: Math.min(a.y, b.y),
-      maxY: Math.max(a.y, b.y),
-    };
-  });
-}
-
 function makeCourse(name: string): OffroadCourse {
   const data = route(name),
     terrain = getOffroadTerrain(name);
@@ -226,16 +178,12 @@ function makeCourse(name: string): OffroadCourse {
     cols,
     rows,
     tile: config.tile,
-    surface: Array.from({ length: cols * rows }, () => "dirt"),
-    walls: boundaryWalls(terrain, ground),
     checkpoints,
     spawns: spawns.map((p) => ({
       ...projectOffroad(name, p.x, p.y, p.height),
       heading: p.heading === 0 ? 0 : Math.PI,
     })),
     waypoints: waypoints.map(ground),
-    items: [],
-    bridges: [],
   };
   return {
     track,

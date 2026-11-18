@@ -252,11 +252,6 @@ export class HudScene extends Phaser.Scene {
         45,
         20,
       );
-    if (me.respawnAtTick)
-      return flash(
-        "WRECKED",
-        config.truck.respawnTicks - (me.respawnAtTick - race.tick),
-      );
     const lapTick = this.lapTick[focus];
     if (lapTick !== undefined && me.laps > 0)
       return (

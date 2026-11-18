@@ -35,8 +35,9 @@ export function matchResult(
       matchPlacement: placement > 0 ? placement : room.grid.length,
       earlyExits: seat.connected ? 0 : 1,
       laps: car.laps,
-      kills: car.kills,
-      deaths: car.deaths,
+      // The shared career schema retains historical combat totals.
+      kills: 0,
+      deaths: 0,
       lapsLed: car.lapsLed,
       nitrosUsed: car.nitrosUsed,
     });

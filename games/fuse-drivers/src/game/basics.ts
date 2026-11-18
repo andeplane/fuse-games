@@ -13,7 +13,7 @@ export const MAX_WATCHERS = 8;
 export const MAX_ROUNDS = 8;
 /** Progress is laps and checkpoints in hundredths, so this is far past anything a legal race reaches. */
 export const MAX_PROGRESS_UNITS = 100_000;
-/** Weapons and wrecks are bounded by how long a race can run. */
+/** Bound event counts in historical and current career receipts. */
 export const MAX_EVENTS = 1_000;
 export const MAX_NAME = 18;
 

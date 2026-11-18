@@ -18,7 +18,7 @@ import type { TruckPose } from "./arena/interpolate.js";
  * the bots driving as the fold drives them, and that is drawn: a press shows on the next animation frame. Every step
  * returns a new race, so the room's is never touched and nothing here reaches it.
  *
- * The run never crosses anything the room decides: the green light, a lap, a finish, a pickup, a hit or a kill is
+ * The run never crosses anything the room decides: the green light, a lap, a finish or a pickup is
  * shown when the room has folded it, never on a guess.
  */
 export interface Lead {
@@ -35,8 +35,6 @@ const DECIDES: ReadonlySet<RaceEvent["type"]> = new Set([
   "lap",
   "finish",
   "pickup",
-  "hit",
-  "kill",
 ]);
 
 /** A run of the room's race `ahead` log ticks (0–2, fractional) past its newest fold. `live` is this device's controls now. */
@@ -87,7 +85,7 @@ export function forward(
   return { race, previous, alpha: 1 };
 }
 
-/** Corrections decay with this time constant; a jump larger than `TELEPORT` pixels (a respawn) is shown as it is. */
+/** Corrections decay with this time constant; a jump larger than `TELEPORT` pixels is shown as it is. */
 export const DECAY_MS = 45,
   TELEPORT = 200;
 

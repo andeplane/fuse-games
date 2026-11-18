@@ -42,7 +42,7 @@ function racing(): {
 }
 
 test("positions lerp between the two races the page handed over", () => {
-  const pose = renderTruck(truck(10, 20), truck(30, 50), 7, 0.25);
+  const pose = renderTruck(truck(10, 20), truck(30, 50), 0.25);
   assert.equal(pose.x, 15);
   assert.equal(pose.y, 27.5);
 });
@@ -50,12 +50,12 @@ test("positions lerp between the two races the page handed over", () => {
 test("alpha of 0 and 1 give exactly the older and the newer pose", () => {
   const prev = truck(10, 20, 0.5),
     next = truck(30, 50, 1.25);
-  assert.deepEqual(renderTruck(prev, next, 7, 0), {
+  assert.deepEqual(renderTruck(prev, next, 0), {
     x: 10,
     y: 20,
     heading: 0.5,
   });
-  assert.deepEqual(renderTruck(prev, next, 7, 1), {
+  assert.deepEqual(renderTruck(prev, next, 1), {
     x: 30,
     y: 50,
     heading: 1.25,
@@ -65,13 +65,13 @@ test("alpha of 0 and 1 give exactly the older and the newer pose", () => {
 test("a heading takes the shortest arc, including across the wrap", () => {
   // Just under a full turn to just past zero: the short way is forward through the wrap, not back
   // most of a turn. A naive lerp would put this halfway pose near pi, pointing the other way.
-  const forward = renderTruck(truck(0, 0, 6.2), truck(0, 0, 0.1), 7, 0.5);
+  const forward = renderTruck(truck(0, 0, 6.2), truck(0, 0, 0.1), 0.5);
   assert.ok(
     Math.abs(forward.heading - 0.00840734641020705) < 1e-9,
     `crossed the wrap forward, got ${String(forward.heading)}`,
   );
 
-  const back = renderTruck(truck(0, 0, 0.1), truck(0, 0, 6.2), 7, 0.5);
+  const back = renderTruck(truck(0, 0, 0.1), truck(0, 0, 6.2), 0.5);
   assert.ok(
     Math.abs(back.heading - 0.00840734641020705) < 1e-9,
     `crossed the wrap backward, got ${String(back.heading)}`,
@@ -85,45 +85,32 @@ test("a heading takes the shortest arc, including across the wrap", () => {
     );
 
   // Within the range, the arc is the plain one.
-  const plain = renderTruck(truck(0, 0, 0.5), truck(0, 0, 1.5), 7, 0.5);
+  const plain = renderTruck(truck(0, 0, 0.5), truck(0, 0, 1.5), 0.5);
   assert.ok(Math.abs(plain.heading - 1) < 1e-12);
   // And the long way round is never taken: half a turn each side of pi.
-  const across = renderTruck(truck(0, 0, 3), truck(0, 0, -3.1), 7, 0.5);
+  const across = renderTruck(truck(0, 0, 3), truck(0, 0, -3.1), 0.5);
   assert.ok(
     Math.abs(across.heading - 3.09159265358979) < 1e-9,
     `stayed near pi, got ${String(across.heading)}`,
   );
 });
 
-test("a first frame, a respawn and a teleport snap rather than sliding", () => {
+test("a first frame and a teleport snap rather than sliding", () => {
   const next = truck(400, 500, 1.25);
   assert.deepEqual(
-    renderTruck(undefined, next, 7, 0.5),
+    renderTruck(undefined, next, 0.5),
     { x: 400, y: 500, heading: 1.25 },
     "nothing to interpolate from",
   );
 
-  // A respawn moves the truck back to the grid; the tick it happened on is drawn at the new place.
-  const respawned = truck(12, 20, 1.25, { respawnedTick: 7 });
-  assert.deepEqual(
-    renderTruck(truck(10, 20, 0.5), respawned, 7, 0.5),
-    { x: 12, y: 20, heading: 1.25 },
-    "a respawn on this very tick",
-  );
-  assert.equal(
-    renderTruck(truck(10, 20), respawned, 8, 0.5).x,
-    11,
-    "an older respawn still lerps",
-  );
-
   // A rollback that rewrote the truck's place lands as a jump larger than the snap distance.
   assert.deepEqual(
-    renderTruck(truck(0, 0), truck(0, SNAP_DISTANCE + 1), 7, 0.5),
+    renderTruck(truck(0, 0), truck(0, SNAP_DISTANCE + 1), 0.5),
     { x: 0, y: SNAP_DISTANCE + 1, heading: 0 },
     "a teleport past the snap distance",
   );
   assert.equal(
-    renderTruck(truck(0, 0), truck(0, SNAP_DISTANCE), 7, 0.5).y,
+    renderTruck(truck(0, 0), truck(0, SNAP_DISTANCE), 0.5).y,
     SNAP_DISTANCE / 2,
     "a move of exactly the snap distance still lerps",
   );

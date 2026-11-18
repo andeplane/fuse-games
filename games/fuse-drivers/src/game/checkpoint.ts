@@ -554,13 +554,6 @@ function decodeRace(
     trucks,
     placements,
     pickups,
-    missiles: [],
-    mines: [],
-    oils: [],
-    drones: [],
-    boxCooldowns: [],
-    itemHeld: grid.map(() => false),
-    nextId: 1,
   };
 }
 

@@ -70,6 +70,26 @@ test("the green light is shown when the room folds it, never on a guess", () => 
   assert.equal(room.race?.phase, "racing");
 });
 
+test("a cash or nitro pickup reaches the screen on its committed room tick", () => {
+  for (const kind of ["cash", "nitro"] as const) {
+    const room = racing();
+    const race = defined(room.race);
+    const truck = defined(race.trucks[0]);
+    room.race = {
+      ...race,
+      pickups: { ...race.pickups, waitTicks: 0, active: { kind, x: truck.motion.x, y: truck.motion.y } },
+    };
+    const prediction = defined(forward(room, 1, "a", 0));
+    assert.equal(prediction.race.pickups.active?.kind, kind);
+    const events = fold(room);
+    assert.deepEqual(events.filter(event => event.type === "pickup"), [{ type: "pickup", id: "a" }]);
+    assert.equal(room.race.pickups.active, null);
+    const paid = defined(room.race.trucks[0]);
+    if (kind === "cash") assert.equal(paid.cash, truck.cash + 1);
+    else assert.equal(paid.motion.nitros, truck.motion.nitros + 1);
+  }
+});
+
 test("a correction to another truck is spread over a few frames", () => {
   const smoother = createSmoother(),
     pose = (x: number) => ({ x, y: 50, heading: 1 });
