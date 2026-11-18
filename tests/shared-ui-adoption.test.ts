@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { gameMenus } from "./fixtures/game-menu-expectations.js";
 
 // Every game on the portal is built from the same fuse-ui pieces: the top bar, the room, the results screen and the
 // portal button. A game that grows its own lobby, header or end screen drifts from the others, and every rule Anders
 // sets for "all games" then has to be ported by hand. This test catches a new game, or a rewrite, that skips one.
-// Pig (`games/dice`) has no portal.json and is not checked, though it uses them too.
+// Include the Dice scaffold, which has a playable entry but no portal listing.
 
 const gamesDir = join(import.meta.dirname, "..", "games");
 
@@ -42,15 +43,19 @@ const sourceOf = (dir: string): string => {
   return text;
 };
 
-const portalGames = readdirSync(gamesDir).filter((id) =>
-  existsSync(join(gamesDir, id, "portal.json")),
+const playableGames = readdirSync(gamesDir).filter((id) =>
+  existsSync(join(gamesDir, id, "index.html")),
 );
 
-test("there are portal games to check", () => {
-  assert.ok(portalGames.length > 1, "found no games/<id>/portal.json");
+test("each playable entry declares the menus its players can reach", () => {
+  assert.deepEqual(
+    Object.keys(gameMenus).sort(),
+    [...playableGames].sort(),
+    "Declare each game's radio availability and custom device controls in tests/fixtures/game-menu-expectations.ts",
+  );
 });
 
-for (const id of portalGames) {
+for (const id of playableGames) {
   test(`${id} uses the shared fuse-ui top bar, room, results screen and portal`, () => {
     const source = sourceOf(join(gamesDir, id, "src"));
     assert.match(

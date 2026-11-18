@@ -268,6 +268,7 @@ function logo(): HTMLElement {
   );
   return brand;
 }
+let lookPicker: HTMLElement | undefined;
 function header(
   extra: HTMLElement[] = [],
   onOpenChange?: (open: boolean) => void,
@@ -291,6 +292,7 @@ function header(
     gameId: GAME,
     onOpenChange,
     sound: audioControl.sound,
+    playerOptions: () => (lookPicker ??= createLookPicker()),
   });
 }
 
@@ -409,6 +411,7 @@ function landing(): void {
   const card = createLandingCard({
     background: attractIn,
     title: "FUSE SURGE",
+    settingsScope: "room",
     howToPlay: GUIDE,
     tagline:
       "Surges sweep the deck, faster and faster. Jump the low ones, duck the high ones: every hit throws you a step toward the pit. Two to five riders: friends online, on one TV with phones as pads, or bots.",
@@ -442,12 +445,7 @@ function landing(): void {
   });
   picker.update(chosen, true);
   const rules = el("section", "", "fs-landing-rules");
-  rules.append(
-    el("h2", "MATCH", "fui-lobby-title"),
-    picker.element,
-    el("h2", "LOOK", "fui-lobby-title"),
-    createLookPicker(),
-  );
+  rules.append(el("h2", "MATCH", "fui-lobby-title"), picker.element);
   card.menu.addSettings(rules);
   const back = el("a", "← ALL GAMES", "fs-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
@@ -586,14 +584,11 @@ function room(solo: boolean): void {
       settings: { ...next, display: settings.display },
     });
   });
-  /** How this device draws the match: its own choice, so every rider can change it, host or not. */
-  const lookPicker = createLookPicker();
   const lobbyActions = el("div", "", "fs-actions");
   lobbyActions.append(tvLink, start);
   lobbySide.append(
     el("h2", "MATCH", "fui-lobby-title"),
     picker.element,
-    lookPicker,
     lobbyNote,
     lobbyActions,
     keyHelp(),
@@ -711,7 +706,7 @@ function room(solo: boolean): void {
     join: nameEntry.form,
     addAI: addBot,
     modes: [],
-    settings: [picker.element, lookPicker],
+    settings: [picker.element],
     actions: [lobbyNote, tvLink, start],
   });
   lobby.hidden = true;

@@ -5,21 +5,47 @@ import { page } from "./dom-fixture.js";
 import { ALL_SONGS } from "fuse-music";
 import type { MusicPlayer } from "../src/radio.js";
 
-test("the game menu spells out the compact audio settings control", () => {
-  const { document } = page();
-  const header = document.createElement("header");
-  const audio = document.createElement("div");
-  const more = document.createElement("button");
-  more.className = "fui-audio-more";
-  more.textContent = "⋯";
-  audio.append(more);
-  header.append(audio);
-  document.body.append(header);
-  createTopBar({ element: header, music: false });
-  assert.equal(
-    header.querySelector(".fui-top-bar-actions .fui-audio-more")?.textContent,
-    "Sound settings",
-  );
+test("Radio and Player options are sibling views and Back returns to the game menu", () => {
+  const { document, window } = page();
+  const root = document.createElement("header");
+  document.body.append(root);
+  const controls = document.createElement("select");
+  const transport = document.createElement("button");
+  let closed = 0;
+  createTopBar({
+    element: root,
+    music: false,
+    radioControls: transport,
+    playerOptions: () => controls,
+    onPlayerOptionsClose: () => closed++,
+  });
+  const menu = root.querySelector("dialog")!;
+  Object.defineProperty(menu, "open", { get: () => true });
+  const actions = menu.querySelector<HTMLElement>(".fui-top-bar-actions")!;
+  const radio = actions.querySelector<HTMLButtonElement>(".fui-top-bar-radio")!;
+  const options = actions.querySelector<HTMLButtonElement>(
+    ".fui-top-bar-player-options",
+  )!;
+  assert.equal(options.hidden || radio.hidden, false);
+  options.click();
+  assert.equal(menu.getAttribute("aria-label"), "Player options");
+  assert.equal(actions.hidden, true);
+  assert.equal(controls.closest("[hidden]"), null);
+  createTopBar({ element: root });
+  const escape = new window.Event("cancel", { cancelable: true });
+  menu.dispatchEvent(escape);
+  assert.ok(escape.defaultPrevented);
+  assert.equal(actions.hidden, false);
+  assert.equal(menu.getAttribute("aria-label"), "Game menu");
+  assert.equal(closed, 1);
+  radio.click();
+  assert.equal(menu.getAttribute("aria-label"), "Radio");
+  assert.equal(transport.closest("dialog"), menu);
+  assert.equal(transport.closest("[hidden]"), null);
+  assert.ok(controls.closest("[hidden]"));
+  menu.querySelector<HTMLButtonElement>(".fui-dialog-back")!.click();
+  assert.equal(menu.getAttribute("aria-label"), "Game menu");
+  assert.equal(closed, 1);
 });
 
 test("the default radio survives header replacement without constructing a second player", () => {
@@ -113,11 +139,13 @@ test("one master sound button controls both channels and survives header refresh
     },
   });
   const sound = root.querySelector<HTMLButtonElement>(".fui-top-bar-sound")!;
-  sound.click();
+  const master = root.querySelector<HTMLButtonElement>(".fui-player-sound")!;
+  master.click();
   assert.deepEqual(state, { music: false, effects: false });
   assert.equal(sound.getAttribute("aria-label"), "Sound off");
   createTopBar({ element: root });
   sound.click();
+  assert.equal(master.getAttribute("aria-pressed"), "true");
   assert.deepEqual(state, { music: true, effects: true });
   assert.equal(root.querySelectorAll(".fui-top-bar-sound").length, 1);
 });

@@ -1323,7 +1323,9 @@ details.audio-controls > .audio-panel.radio {
     0 0.875rem 2.5rem #000c,
     0 0 1.625rem #ff2e9d33;
 }
-.game-dialog details.audio-controls > .audio-panel.radio {
+.fui-top-bar-menu .audio-panel.radio {
+  position: static;
+  min-width: 0;
   width: auto;
   max-height: none;
   overflow: visible;

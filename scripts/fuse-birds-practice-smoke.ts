@@ -189,10 +189,11 @@ try {
   assert.ok(
     await gameMenu.getByRole("combobox", { name: "Radio song" }).isHidden(),
   );
-  await gameMenu.getByRole("button", { name: "Audio", exact: true }).click();
+  await gameMenu.getByRole("button", { name: "Radio", exact: true }).click();
   assert.ok(
     await gameMenu.getByRole("combobox", { name: "Radio song" }).isVisible(),
   );
+  await page.keyboard.press("Escape");
   await gameMenu.getByRole("button", { name: "Resume" }).click();
   await page.waitForFunction(
     () => document.activeElement?.tagName === "CANVAS",
