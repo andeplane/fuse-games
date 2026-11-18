@@ -277,7 +277,7 @@
   display: none !important;
 }
 @media (pointer: fine) {
-  .rod-main[data-phase="running"] .rod-race .rod-pad {
+  .rod-race .rod-pad {
     display: none;
   }
 }

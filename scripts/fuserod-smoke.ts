@@ -44,6 +44,9 @@ try {
   await solo.keyboard.press("Escape");
   await openPlayOptions(solo, "single");
   await solo.locator('[data-garage-key="kestrel"]').click();
+  await solo.getByRole("button", { name: "Drive into town" }).click();
+  assert(await solo.locator(".rod-town .rod-pad").isVisible());
+  await solo.keyboard.press("Escape");
   await solo.getByRole("button", { name: "Workshop", exact: true }).click();
   await solo.locator('[data-garage-key="engine"]').click();
   await solo.getByRole("button", { name: "Challenge", exact: true }).click();
@@ -69,6 +72,18 @@ try {
     "Solo garage purchase, engine upgrade, driving, results and settlement passed.",
   );
   const host = await page(1440, 900);
+  await host.goto(new URL("?solo=1&mute", url).href);
+  await host.locator('[data-garage-key="kestrel"]').click();
+  await host.getByRole("button", { name: "Drive into town" }).click();
+  assert(!(await host.locator(".rod-town .rod-pad").isVisible()));
+  await host.keyboard.down("w");
+  await host.waitForFunction(
+    () =>
+      Number.parseInt(
+        document.querySelector(".town-readout")?.textContent ?? "",
+      ) > 5,
+  );
+  await host.keyboard.up("w");
   await host.goto(url.href);
   await openPlayOptions(host);
   await host.getByRole("button", { name: /^host room$/i }).click();
