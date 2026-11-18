@@ -6,8 +6,51 @@ import {
   driveOffroadCpu,
   isOffroadCpuState,
   offroadCpuStats,
+  offroadStartingLevel,
+  offroadPaceProgress,
+  offroadCatchupLevel,
   type OffroadCpuState,
 } from "../src/game/offroad/cpu.js";
+
+test("the CPU grid skips humans when handing out per-course difficulty tiers", () => {
+  const all = [true, true, true, true];
+  assert.deepEqual(
+    all.map((_, slot) => offroadStartingLevel("offroad-4", slot, all)),
+    [0, 0, 1, 2],
+  );
+  const mixed = [true, false, true, false];
+  assert.equal(offroadStartingLevel("offroad-4", 0, mixed), 4);
+  assert.equal(offroadStartingLevel("offroad-4", 2, mixed), 5);
+  assert.equal(offroadStartingLevel("offroad-7-reverse", 2, mixed), 4);
+});
+
+test("pace mutates previously normalized out-of-region progress again on the next frame", () => {
+  // GAME.EXE full race 0, mixed-human trace, updates 180 and 181.
+  const human = offroadPaceProgress(27, 141);
+  assert.equal(human, 12549);
+  assert.equal(
+    offroadCatchupLevel(
+      5,
+      0,
+      offroadPaceProgress(58, 141) >>> 8,
+      0,
+      human >>> 8,
+    ),
+    4,
+  );
+  const stillOutside = offroadPaceProgress(human, 141);
+  assert.equal(stillOutside, 65535);
+  assert.equal(
+    offroadCatchupLevel(
+      5,
+      0,
+      offroadPaceProgress(59, 141) >>> 8,
+      0,
+      stillOutside >>> 8,
+    ),
+    3,
+  );
+});
 
 test("all 16 CPU programs reproduce 1,920 original route and input decisions", () => {
   let sequence = 417;

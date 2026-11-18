@@ -90,6 +90,27 @@ const levels = speed.map((speedLimit, i) => ({
 export function offroadCpuStats(level: number) {
   return levels[level]!;
 }
+
+/** CS:20c6 gives the highest-numbered CPU the top difficulty, skipping human slots. */
+export function offroadStartingLevel(
+  course: string,
+  slot: number,
+  botSlots: readonly boolean[],
+  raceIndex = 0,
+  humanTier = 6,
+) {
+  // The eight physical-course offsets are shared by the reverse variants.
+  const courseBonus =
+    course === "offroad-7" || course === "offroad-7-reverse" ? 1 : 2;
+  const top = Math.min(
+    17,
+    courseBonus +
+      (raceIndex >>> 2) +
+      (botSlots.includes(false) ? humanTier >>> 1 : 0),
+  );
+  const earlierInOrder = botSlots.slice(slot + 1).filter(Boolean).length;
+  return Math.max(0, top - earlierInOrder);
+}
 /** CS:3848 replaces the previous raw checkpoint progress in place, saturating on a repeat. */
 export function offroadPaceProgress(raw: number, lapDistance: number) {
   return raw >= lapDistance ? 65535 : Math.floor((raw * 65536) / lapDistance);
