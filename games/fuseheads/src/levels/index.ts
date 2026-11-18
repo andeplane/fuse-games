@@ -1,6 +1,6 @@
 import campaign from "./campaign.json" with { type: "json" };
 
-export type LevelPack = keyof typeof campaign;
+export type LevelPack = "original" | "bonus";
 export const COLUMNS = 20;
 export const ROWS = 30;
 export const TILE_WIDTH = 32;
@@ -28,6 +28,10 @@ export interface FuseLevel {
   readonly stage: number;
   readonly backgroundId: number;
   readonly platformId: number;
+  readonly tireFrequency: number;
+  readonly batFrequency: number;
+  readonly batDifficulty: number;
+  readonly gemDuration: number;
   /** One tile per cell, in screen row order. */
   readonly tiles: readonly number[];
   /** Top-left sprite origins, in original 640×480 screen coordinates. */
@@ -80,7 +84,7 @@ export function levelCount(pack: LevelPack = "original"): number {
   return campaign[pack].length;
 }
 
-/** One-based campaign index. The normal campaign ends with the six-ruler gauntlet and Grand Finale. */
+/** One-based playable map. The six final rulers are rounds 139–144. */
 export function getLevel(
   round: number,
   pack: LevelPack = "original",
@@ -89,6 +93,17 @@ export function getLevel(
   if (cached) return cached;
   const data = campaign[pack][round - 1];
   if (!data) throw new RangeError(`Unknown ${pack} round ${round}`);
+  const level = decodeLevel(data);
+  decoded[pack].set(round, level);
+  return level;
+}
+
+/** Background and level resources for the scripted post-victory scene. */
+export function getFinale(): FuseLevel {
+  return decodeLevel(campaign.finale);
+}
+
+function decodeLevel(data: (typeof campaign.original)[number]): FuseLevel {
   const start = data.starts;
   const env = data.environment;
   const boss = data.boss;
@@ -98,6 +113,10 @@ export function getLevel(
     stage: data.stage,
     backgroundId: data.backgroundId,
     platformId: data.platformId,
+    tireFrequency: data.tireFrequency,
+    batFrequency: data.batFrequency,
+    batDifficulty: data.batDifficulty,
+    gemDuration: data.gemDuration,
     // MapSetup copies all cells and then fills the four rows below the playable area.
     tiles: Array.from(data.tiles, (code, i) =>
       i >= FLOOR_ROW * COLUMNS ? 2 : code.charCodeAt(0) - 65,
@@ -129,7 +148,6 @@ export function getLevel(
         }
       : {}),
   };
-  decoded[pack].set(round, level);
   return level;
 }
 

@@ -64,10 +64,6 @@ def build_pack(path, original):
             pests = b"" if slot == 5 else archive["ENDT"][world[6 + slot]][1]
             campaign.append(level(name, world, archive["BKMP"][map_id][1], map_id, slot, pests, boss))
         current = world[25]
-    if original:
-        name, record = archive["MLST"][15000]
-        world = words(record)
-        campaign.append(level(name, world, archive["BKMP"][world[0]][1], world[0], 0, archive["ENDT"][world[6]][1], b""))
     return campaign
 
 
@@ -83,6 +79,10 @@ def level(name, world, bitmap, map_id, slot, pests, boss):
         "stage": slot + 1,
         "backgroundId": world[5],
         "platformId": world[13],
+        "tireFrequency": world[14],
+        "batFrequency": world[15],
+        "batDifficulty": world[17],
+        "gemDuration": world[30],
         "starts": world[19:23],
         "environment": [world[i] for i in (23, 24, 27, 28, 29, 16)],
         "tiles": tiles,
@@ -97,5 +97,11 @@ if __name__ == "__main__":
         "original": build_pack(root / "Original Levels.rsrc", True),
         "bonus": build_pack(root / "Bonus Levels.rsrc", False),
     }
+    # DoGrandFinale switches to the BDX_Data fork before loading this scripted scene.
+    shared = resources(root / "BDX_Data.rsrc")
+    name, record = shared["MLST"][15000]
+    world = words(record)
+    campaign["finale"] = level(name, world, shared["BKMP"][world[0]][1], world[0],
+                               0, shared["ENDT"][world[6]][1], b"")
     out = Path(__file__).with_name("campaign.json")
     out.write_text(json.dumps(campaign, indent=2, ensure_ascii=False) + "\n")
