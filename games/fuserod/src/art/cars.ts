@@ -49,8 +49,8 @@ export function profile(
   upgrade: number,
 ) {
   g.save();
-  const roadster = Math.abs(Math.floor(model)) % 3 === 1;
-  const wagon = Math.abs(Math.floor(model)) % 3 === 2;
+  const fastback = Math.abs(Math.floor(model)) % 3 === 1;
+  const hardtop = Math.abs(Math.floor(model)) % 3 === 2;
   ellipse(g, "#0d1018aa", 250, 159, 242, 19);
   wheel(g, 100, 134, 36);
   wheel(g, 399, 134, 36);
@@ -89,10 +89,10 @@ export function profile(
   fill(
     g,
     steel(g, 27, 72),
-    wagon
+    hardtop
       ? "M122 71 L141 34 Q148 23 174 22 L280 23 Q298 23 311 34 L367 74Z"
-      : roadster
-        ? "M160 72 L161 52 273 49 303 28 312 31 366 74Z"
+      : fastback
+        ? "M92 75 Q130 58 173 37 Q207 20 262 23 Q295 25 312 36 L366 74Z"
         : "M135 71 Q158 40 184 30 Q211 22 274 24 Q296 25 310 35 L366 74Z",
   );
   const glass = metal(
@@ -103,18 +103,18 @@ export function profile(
     [0.58, "#355064"],
     [1, "#829699"],
   );
-  if (roadster) {
+  if (fastback) {
     fill(
       g,
-      "#3a2931",
-      "M147 72 Q156 52 173 51 Q188 51 194 67 L210 67 Q210 46 222 47 Q237 47 243 66 L287 65 302 34 312 35 332 71Z",
+      glass,
+      "M119 69 Q176 38 212 31 L221 32 208 66Z M229 31 Q289 26 305 42 L337 67 216 66Z",
     );
-    fill(g, glass, "M294 66 L307 33 316 39 348 68Z");
+    fill(g, "#d3e5cd40", "M264 32 L280 33 253 65 241 65Z");
   } else {
     fill(
       g,
       glass,
-      wagon
+      hardtop
         ? "M136 66 L150 34 Q153 29 173 29 L220 29 219 67Z"
         : "M151 67 Q171 41 192 34 Q205 30 220 30 L219 67Z",
     );
@@ -170,21 +170,21 @@ export function tail(
   g.save();
   g.translate(x, y);
   g.scale(width / 140, width / 140);
-  const wagon = Math.abs(Math.floor(model)) % 3 === 2;
+  const hardtop = Math.abs(Math.floor(model)) % 3 === 2;
   ellipse(g, "#160f2180", 0, -1, 78, 7);
   rect(g, "#100f19", -55, -25, 17, 25);
   rect(g, "#100f19", 38, -25, 17, 25);
   fill(
     g,
     color,
-    wagon
+    hardtop
       ? "M-65 -18 L-63 -43 -48 -47 -44 -72 Q0 -78 45 -72 L49 -46 63 -43 67 -18 60 -9 -57 -9Z"
       : "M-65 -18 L-63 -44 -48 -48 -34 -65 Q-3 -73 32 -66 L49 -47 62 -44 66 -18 60 -9 -57 -9Z",
   );
   fill(
     g,
     "#293748",
-    wagon
+    hardtop
       ? "M-39 -67 Q0 -72 40 -66 L42 -49 -43 -49Z"
       : "M-31 -62 Q0 -67 29 -62 L42 -48 -42 -48Z",
   );

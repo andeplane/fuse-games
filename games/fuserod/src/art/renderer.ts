@@ -1,4 +1,14 @@
 import { gauge, tail } from "./cars";
+import { front } from "./front";
+import {
+  approach,
+  boulder,
+  girders,
+  warningSign,
+  warningLabel,
+  type RoadFeature,
+} from "./hazards";
+export type { RoadFeature } from "./hazards";
 import {
   ellipse,
   fill,
@@ -25,6 +35,10 @@ export interface RoadOpponent {
 }
 
 export interface RaceArt {
+  /** Upcoming and active route features, in metres and half-road widths. */
+  features?: readonly RoadFeature[];
+  /** Positive camera bank when climbing the right aqueduct slope, in degrees. */
+  bank?: number;
   distance: number;
   speed: number;
   lateral: number;
@@ -120,6 +134,9 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
   const { g, w, h } = frame,
     route = state.route ?? "strip";
   const dist = Math.max(0, state.distance);
+  const features = (state.features ?? []).filter(
+    (f) => f.end >= dist - 6 && f.start <= dist + 420,
+  );
   const bend = Math.max(-1, Math.min(1, state.curve));
   const cameraLane = Math.max(-1.7, Math.min(1.7, state.lateral));
   const sky = h * 0.46,
@@ -153,6 +170,22 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
     ]);
   };
   g.save();
+  g.save();
+  const bank = Math.max(-60, Math.min(60, state.bank ?? 0));
+  if (bank) {
+    g.translate(w / 2, sky);
+    g.rotate((bank * Math.PI) / 180);
+    g.translate(-w / 2, -sky);
+    rect(g, "#19384d", -w, -w, w * 3, w + 1);
+    // Continue the horizon past the windscreen edges during steep roll.
+    for (const origin of [0, 2 * w]) {
+      g.save();
+      g.translate(origin, 0);
+      g.scale(-1, 1);
+      horizon(g, w, sky + 1, route, bend);
+      g.restore();
+    }
+  }
   horizon(g, w, sky + 1, route, bend);
   rect(
     g,
@@ -164,20 +197,49 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       [0.35, route === "aqueduct" ? "#847f83" : "#aa8271"],
       [1, route === "aqueduct" ? "#595c6b" : "#745a5d"],
     ),
-    0,
+    bank ? -w : 0,
     sky,
-    w,
-    roadH,
+    bank ? 3 * w : w,
+    bank ? roadH + w : roadH,
   );
   const segment = 5;
   const near = Math.floor(dist / segment),
     far = near + 70;
   for (let i = far; i >= near; i--) {
-    const a = proj(Math.max(0, i * segment - dist)),
+    const a =
+        i === near && bank
+          ? 1 + w / (2 * roadH)
+          : proj(Math.max(0, i * segment - dist)),
       b = proj((i + 1) * segment - dist);
     if (route === "aqueduct") {
-      across(a, b, -1.8, -1, i % 4 === 0 ? "#978a85" : "#aa9c95");
-      across(a, b, 1, 1.8, i % 4 === 0 ? "#8e8085" : "#9e9192");
+      for (const s of [-1, 1]) {
+        polygon(g, i % 4 === 0 ? "#827d86" : "#a29a98", [
+          edge(a, s),
+          y(a),
+          edge(b, s),
+          y(b),
+          edge(b, s * 1.6),
+          y(b) - b * 140,
+          edge(a, s * 1.6),
+          y(a) - a * 140,
+        ]);
+        polygon(g, "#e4c3a3", [
+          edge(a, s * 1.6),
+          y(a) - a * 140,
+          edge(b, s * 1.6),
+          y(b) - b * 140,
+          edge(b, s * 1.62),
+          y(b) - b * 138,
+          edge(a, s * 1.62),
+          y(a) - a * 138,
+        ]);
+      }
+    } else if (route === "canyon") {
+      for (const s of [-1, 1]) {
+        across(a, b, s, s * 1.176, i % 3 === 0 ? "#c29c80" : "#b18b76");
+        across(a, b, s * 1.176, s * 1.2, "#e1b58b");
+        across(a, b, s * 1.2, s * 1.43, i % 4 === 0 ? "#755a60" : "#83696a");
+      }
     } else {
       across(a, b, -1.2, -1, i % 3 === 0 ? "#bf9b7f" : "#bb9379");
       across(a, b, 1, 1.2, i % 3 === 0 ? "#bf9b7f" : "#bb9379");
@@ -189,9 +251,91 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       if (i % 5 === 0) across(a, b, s * 0.64, s * 0.643, "#69636e");
     }
     if (i % 4 < 2) across(a, b, -0.011, 0.011, "#f4c897");
+    for (const f of features) {
+      const at = (i + 0.5) * segment;
+      if (at < f.start || at > f.end) continue;
+      if (f.kind === "bridge") {
+        across(a, b, -1.2, -0.36, "#514b59");
+        across(a, b, 0.36, 1.2, "#514b59");
+        across(a, b, -0.36, -0.34, "#dabd98");
+        across(a, b, 0.34, 0.36, "#dabd98");
+      } else if (f.kind === "rough") {
+        across(a, b, -0.97, 0.97, i % 2 === 0 ? "#817378" : "#756970");
+        for (let k = 0; k < 5; k++) {
+          const lane = Math.sin(((i % 9) + k) * 42) * 0.8,
+            p = a + ((b - a) * (k + 1)) / 7;
+          stroke(
+            g,
+            "#564f58",
+            Math.max(0.5, p * 2),
+            `M${edge(p, lane)} ${y(p)} l${8 * p} ${3 * p} ${11 * p} ${-3 * p}`,
+          );
+        }
+      } else if (f.kind === "guardrail") {
+        const side = f.lane < 0 ? -1 : 1;
+        polygon(g, "#a8a6a0", [
+          edge(a, side),
+          y(a) - a * 22,
+          edge(b, side),
+          y(b) - b * 22,
+          edge(b, side),
+          y(b) - b * 30,
+          edge(a, side),
+          y(a) - a * 30,
+        ]);
+        rect(g, "#53505a", edge(a, side), y(a) - a * 23, 3 * a, 23 * a);
+      }
+    }
+    if (route === "strip") {
+      // The right concrete rail marks the drag collision edge. Its front is shaded
+      // and has expansion joints and amber reflectors for depth at speed.
+      polygon(g, i % 4 === 0 ? "#7c7480" : "#908894", [
+        edge(a, 0.87),
+        y(a),
+        edge(b, 0.87),
+        y(b),
+        edge(b, 0.875),
+        y(b) - b * 27,
+        edge(a, 0.875),
+        y(a) - a * 27,
+      ]);
+      polygon(g, "#d5bc9e", [
+        edge(a, 0.875),
+        y(a) - a * 27,
+        edge(b, 0.875),
+        y(b) - b * 27,
+        edge(b, 0.9),
+        y(b) - b * 27,
+        edge(a, 0.9),
+        y(a) - a * 27,
+      ]);
+      if (i % 3 === 0)
+        rect(g, "#f8b973", edge(a, 0.875), y(a) - a * 21, 3 * a, 7 * a);
+    }
   }
   type ObjectOnRoad = { z: number; draw: () => void };
   const objects: ObjectOnRoad[] = [];
+  const addFeatureObject = (at: number, draw: (p: number) => void) => {
+    const z = at - dist;
+    if (z >= 0 && z <= 360) objects.push({ z, draw: () => draw(proj(z)) });
+  };
+  for (const f of features) {
+    if (warningLabel(f)) {
+      addFeatureObject(f.start - 22, (p) =>
+        warningSign(g, edge(p, -1.13), y(p), p * 2.2, f),
+      );
+    }
+    if (f.kind === "rock")
+      addFeatureObject(f.start, (p) =>
+        boulder(g, edge(p, f.lane), y(p), p * 2.5),
+      );
+    if (f.kind === "bridge") {
+      for (let at = f.start; at <= f.end; at += 12)
+        addFeatureObject(at, (p) =>
+          girders(g, edge(p, -0.36), edge(p, 0.36), y(p), p),
+        );
+    }
+  }
   for (
     let i = Math.floor(dist / 20) + 1;
     i <= Math.floor((dist + 250) / 20);
@@ -256,6 +400,67 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
   }
   objects.sort((a, b) => b.z - a.z);
   for (const object of objects) object.draw();
+  g.restore();
+  rearview(g, w, h, state);
+  approach(g, w, dist, features);
   cockpit(g, w, h, state);
+  g.restore();
+}
+
+function rearview(g: Brush, w: number, h: number, state: RaceArt) {
+  const mw = Math.min(w * 0.24, 164),
+    mh = mw * 0.27,
+    x = (w - mw) / 2,
+    y = h * 0.038;
+  rect(g, "#444955", w * 0.5 - 2, 0, 4, y + 5);
+  g.save();
+  g.beginPath();
+  g.roundRect(x, y, mw, mh, mh * 0.19);
+  g.fillStyle = "#202c39";
+  g.fill();
+  g.clip();
+  rect(
+    g,
+    metal(
+      g,
+      y,
+      y + mh,
+      [0, "#717385"],
+      [0.57, "#e7bca1"],
+      [0.58, "#736b74"],
+      [1, "#6f6370"],
+    ),
+    x + 3,
+    y + 3,
+    mw - 6,
+    mh - 6,
+  );
+  polygon(g, "#555562", [
+    x + mw * 0.5,
+    y + mh * 0.58,
+    x + mw * 0.84,
+    y + mh - 3,
+    x + mw * 0.16,
+    y + mh - 3,
+  ]);
+  const behind = state.opponents
+    .filter(
+      (c) =>
+        c.distance < state.distance - 1.5 && c.distance > state.distance - 85,
+    )
+    .sort((a, b) => a.distance - b.distance);
+  for (const car of behind) {
+    const p = 6 / (state.distance - car.distance + 7);
+    const px = x + mw * 0.5 - (car.lateral - state.lateral) * mw * 0.35 * p;
+    front(
+      g,
+      px,
+      y + mh * (0.6 + 0.41 * p),
+      mw * 0.45 * p,
+      car.paint ?? "#5aa99f",
+      car.model ?? 0,
+      (car.lateral - state.lateral) * 0.4,
+    );
+  }
   g.restore();
 }
