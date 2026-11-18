@@ -34,6 +34,10 @@ export interface FuseDriversDriverView {
  * corrects history without emitting the events again.
  */
 export interface FuseDriversView {
+  matchId: string;
+  finishTick: number;
+  campaignIndex: number;
+  garage: Readonly<FuseDriversRoom["garage"]>;
   /** The log tick, which is this game's clock. */
   tick: number;
   phase: Stage;
@@ -47,6 +51,10 @@ export interface FuseDriversView {
 
 export function fuseDriversView(room: FuseDriversRoom): FuseDriversView {
   return {
+    matchId: room.matchId,
+    finishTick: room.finishTick,
+    campaignIndex: room.campaignIndex,
+    garage: room.garage,
     tick: room.tick,
     phase: room.stage,
     round: room.round,
@@ -122,7 +130,7 @@ export const fuseDriversGame: RollbackGame<
     },
     botName: (slot) => `CPU ${slot + 1}`,
     // A full grid against the computer, which is how the arcade original is played.
-    solo: { name: "You", bots: 4 },
+    solo: { name: "You", bots: 3 },
   },
   text: defaultText,
 };

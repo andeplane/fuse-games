@@ -19,7 +19,22 @@ import { BASE_STATS } from "./sim/config.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./sim/input.js";
 import { createRace, step, type RaceState } from "./sim/race.js";
 import type { Track } from "./sim/track.js";
-import { getOffroadCourse, isOffroadCourse, OFFROAD_COURSE_NAMES } from "./offroad/course.js";
+import {
+  getOffroadCourse,
+  isOffroadCourse,
+  OFFROAD_COURSE_NAMES,
+} from "./offroad/course.js";
+import {
+  buyOffroadUpgrade,
+  campaignVariant,
+  createOffroadDriver,
+  firstCampaignRace,
+  nextCampaignRace,
+  OFFROAD_SHOP,
+  payOffroadDriver,
+  type OffroadDriver,
+  type OffroadPurchase,
+} from "./offroad/campaign.js";
 
 export * from "./basics.js";
 
@@ -29,6 +44,7 @@ export const trackFor = (name: string): Track =>
 
 /** The game's own entry kinds; 10-16 are the shared management ones. */
 export const CONTROLS = 0;
+export const PURCHASE = 1;
 
 /**
  * A driver's six controls as one bitmask. Thumbs change rarely, so a seat logs an entry only when its
@@ -41,7 +57,8 @@ export const LEFT = 1,
   ITEM = 16,
   ITEM_ALT = 32,
   GAS = 64;
-export const CONTROL_BITS = LEFT | RIGHT | BRAKE | NITRO | ITEM | ITEM_ALT | GAS;
+export const CONTROL_BITS =
+  LEFT | RIGHT | BRAKE | NITRO | ITEM | ITEM_ALT | GAS;
 
 export const packControls = (input: TruckInput): number =>
   (input.gas ? GAS : 0) |
@@ -70,8 +87,20 @@ export type ControlsEntry = [
   round: number,
   bits: number,
 ];
+export type PurchaseEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof PURCHASE,
+  matchId: string,
+  round: number,
+  finishTick: number,
+  item: OffroadPurchase,
+  cash: number,
+  credits: number,
+  quantity: number,
+];
 export type FuseDriversEntry =
-  ManagementEntry<FuseDriversSettings> | ControlsEntry;
+  ManagementEntry<FuseDriversSettings> | ControlsEntry | PurchaseEntry;
 
 export type FuseDriversEvent =
   | { type: "hit"; id: string; by: string }
@@ -92,6 +121,10 @@ export const DEFAULT_SETTINGS: FuseDriversSettings = {
 };
 
 export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
+  /** -1 in the lobby. Each subsequent race follows the original schedule from the selected opener. */
+  campaignIndex: number;
+  /** Immutable snapshots keyed by the grid's member IDs. A reclaimed slot cannot inherit its wallet. */
+  garage: Record<string, OffroadDriver>;
   /** Roster at the finish, retained even when a driver leaves or renames afterwards. */
   finishSeats: FinishSeat[];
   /** Log tick that decided the result; later lobby management cannot delay its confirmation. */
@@ -141,8 +174,7 @@ export function parseSettings(raw: unknown): FuseDriversSettings | undefined {
   if (keys.length !== 2 || !keys.includes("track") || !keys.includes("display"))
     return;
   if (typeof display !== "boolean") return;
-  if (typeof track !== "string" || !isOffroadCourse(track))
-    return;
+  if (typeof track !== "string" || !isOffroadCourse(track)) return;
   return { track, display };
 }
 
@@ -160,21 +192,40 @@ export function isFuseDriversEntry(raw: unknown): raw is FuseDriversEntry {
       raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
     return at < 0 || playerKey((raw as unknown[])[at]);
   }
-  return (
+  if (
     Array.isArray(raw) &&
-    raw.length === 6 &&
     uint32(raw[0]) &&
     raw[0] > 0 &&
     uint32(raw[1]) &&
     raw[1] > 0 &&
-    raw[2] === CONTROLS &&
     validMatchId(raw[3]) &&
     uint32(raw[4]) &&
     raw[4] > 0 &&
-    raw[4] <= MAX_ROUNDS &&
-    uint32(raw[5]) &&
-    (raw[5] & ~CONTROL_BITS) === 0
-  );
+    raw[4] <= MAX_ROUNDS
+  ) {
+    if (raw[2] === CONTROLS)
+      return (
+        raw.length === 6 && uint32(raw[5]) && (raw[5] & ~CONTROL_BITS) === 0
+      );
+    if (raw[2] === PURCHASE) {
+      const item: unknown = raw[6];
+      return (
+        raw.length === 10 &&
+        uint32(raw[5]) &&
+        raw[5] > 0 &&
+        raw[5] < raw[1] &&
+        typeof item === "string" &&
+        Object.hasOwn(OFFROAD_SHOP, item) &&
+        uint32(raw[7]) &&
+        raw[7] <= 9999 &&
+        uint32(raw[8]) &&
+        raw[8] <= 9 &&
+        uint32(raw[9]) &&
+        raw[9] <= OFFROAD_SHOP[item as OffroadPurchase].cap
+      );
+    }
+  }
+  return false;
 }
 
 /** Seats in an order derived from the room alone, never from map insertion or packet arrival. */
@@ -195,6 +246,8 @@ export function createRoom(
     matchId,
     round: 1,
     stage: "lobby",
+    campaignIndex: -1,
+    garage: {},
     seats: new Map(),
     settings: { ...settings },
     grid: [],
@@ -205,9 +258,35 @@ export function createRoom(
 }
 
 /** Seeds a race from the match id, so every peer lines up the same grid on the same map. */
-function startRace(room: FuseDriversRoom, matchId: string): void {
+function startRace(
+  room: FuseDriversRoom,
+  matchId: string,
+  continuing: boolean,
+): void {
   room.matchId = matchId;
   const grid = players(room);
+  const previousOrder =
+    continuing && room.race
+      ? room.race.placements
+          .map((slot) => room.grid[slot])
+          .filter((id) => grid.some((seat) => seat.id === id))
+      : [];
+  const ranked = [
+    ...previousOrder,
+    ...grid.map((seat) => seat.id).filter((id) => !previousOrder.includes(id)),
+  ];
+  const gridOrder = continuing
+    ? grid.map((seat) => ranked.indexOf(seat.id))
+    : undefined;
+  room.campaignIndex = continuing
+    ? nextCampaignRace(room.campaignIndex)
+    : firstCampaignRace(OFFROAD_COURSE_NAMES.indexOf(room.settings.track));
+  room.garage = Object.fromEntries(
+    grid.map((seat) => [
+      seat.id,
+      (continuing ? room.garage[seat.id] : undefined) ?? createOffroadDriver(),
+    ]),
+  );
   room.grid = grid.map((seat) => seat.id);
   room.controls = {};
   room.finishSeats = [];
@@ -216,10 +295,13 @@ function startRace(room: FuseDriversRoom, matchId: string): void {
   for (let i = 0; i < matchId.length; i++)
     seed = Math.imul(seed ^ matchId.charCodeAt(i), 0x01000193) >>> 0;
   room.race = createRace(
-    trackFor(room.settings.track),
+    trackFor(OFFROAD_COURSE_NAMES[campaignVariant(room.campaignIndex)]!),
     seed,
     grid.map(() => BASE_STATS),
-    grid.map(seat => seat.bot),
+    grid.map((seat) => seat.bot),
+    room.campaignIndex,
+    grid.map((seat) => (seat.bot ? undefined : room.garage[seat.id])),
+    gridOrder,
   );
 }
 
@@ -230,18 +312,22 @@ export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
   botAvatar: "robot",
   start(room, matchId) {
     room.round = 1;
-    startRace(room, matchId);
+    startRace(room, matchId, false);
     room.stage = "running";
   },
   rematch(room, matchId) {
+    // Fuse keeps the room's racers together for the next heat. The DOS continue
+    // countdown could retire a human here; credits in this room fund shop purchases.
     room.round = 1;
-    startRace(room, matchId);
+    startRace(room, matchId, true);
     room.stage = "running";
   },
   lobby(room, matchId) {
     room.matchId = matchId;
     room.round = 1;
     room.stage = "lobby";
+    room.campaignIndex = -1;
+    room.garage = {};
     delete room.race;
     room.grid = [];
     room.controls = {};
@@ -251,20 +337,55 @@ export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
 };
 
 /** A seat's entries for this tick, read from the stream generation that seat follows. */
-function controlEntries(
+function seatEntries(
   seat: SeatRecord,
   streams: ReadonlyMap<string, StreamEntries<FuseDriversEntry>>,
   tick: number,
-): ControlsEntry[] {
+): FuseDriversEntry[] {
   const stream = streams.get(seat.id);
   const source =
     stream?.generation === seat.generation
       ? stream
       : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? []).filter(
-    (entry): entry is ControlsEntry =>
-      entry[1] === tick && entry[2] === CONTROLS,
-  );
+  return (source?.entries ?? []).filter((entry) => entry[1] === tick);
+}
+
+function shop(
+  room: FuseDriversRoom,
+  streams: ReadonlyMap<string, StreamEntries<FuseDriversEntry>>,
+  tick: number,
+): void {
+  for (const seat of players(room)) {
+    if (!seat.connected || seat.bot || !room.garage[seat.id]) continue;
+    const purchases = seatEntries(seat, streams, tick)
+      .filter((entry): entry is PurchaseEntry => entry[2] === PURCHASE)
+      .sort((a, b) => a[0] - b[0]);
+    for (const [
+      ,
+      ,
+      ,
+      match,
+      round,
+      finish,
+      item,
+      cash,
+      credits,
+      quantity,
+    ] of purchases) {
+      const driver = room.garage[seat.id]!;
+      if (
+        match !== room.matchId ||
+        round !== room.round ||
+        finish !== room.finishTick ||
+        driver.cash !== cash ||
+        driver.credits !== credits ||
+        driver[item] !== quantity
+      )
+        continue;
+      const next = buyOffroadUpgrade(driver, item);
+      if (next) room.garage = { ...room.garage, [seat.id]: next };
+    }
+  }
 }
 
 /**
@@ -293,12 +414,17 @@ export function foldTick(
   }
 
   const race = room.race;
+  if (room.stage === "over") shop(room, streams, tick);
   if (race && room.stage === "running") {
     const grid = players(room);
     for (const seat of grid) {
       if (seat.bot) continue;
-      for (const entry of controlEntries(seat, streams, tick))
-        if (entry[3] === room.matchId && entry[4] === room.round)
+      for (const entry of seatEntries(seat, streams, tick))
+        if (
+          entry[2] === CONTROLS &&
+          entry[3] === room.matchId &&
+          entry[4] === room.round
+        )
           room.controls[seat.id] = entry[5];
       if (!seat.connected) room.controls[seat.id] = 0;
     }
@@ -307,7 +433,7 @@ export function foldTick(
       if (!seat || !seat.bot) return unpackControls(room.controls[id] ?? 0);
       return NEUTRAL_INPUT;
     });
-    const botSlots = room.grid.map(id => room.seats.get(id)?.bot === true);
+    const botSlots = room.grid.map((id) => room.seats.get(id)?.bot === true);
     const track = trackFor(race.trackName);
     let next = race;
     for (let s = 0; s < stepsForTick(tick); s++) {
@@ -328,6 +454,19 @@ export function foldTick(
     }
     room.race = next;
     if (next.phase === "finished") {
+      const garage = { ...room.garage };
+      for (const [place, slot] of next.placements.entries()) {
+        const id = room.grid[slot]!,
+          truck = next.trucks[slot]!;
+        if (room.seats.get(id)?.bot === false)
+          garage[id] = payOffroadDriver(
+            garage[id]!,
+            place + 1,
+            truck.cash,
+            truck.motion.nitros,
+          );
+      }
+      room.garage = garage;
       room.finishTick = tick;
       room.finishSeats = room.grid.flatMap((id) => {
         const seat = room.seats.get(id);
