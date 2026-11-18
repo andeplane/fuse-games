@@ -2,10 +2,19 @@ import "./garage.css";
 import { backOnEscape, createBackLink } from "fuse-ui";
 import { createBenchView, workshopPanel } from "../workshop/panel.js";
 import {
+  saveSlot,
+  restoreSlot,
+  slotSummary,
+  SLOT_COUNT,
+  hasRecovery,
+} from "./slots.js";
+import {
   activeCar,
   bankrupt,
   CHAMPIONSHIP,
   daysToGrudge,
+  dealerQuote,
+  rivalAccepts,
   FINAL_DAY,
   finished,
   FUEL,
@@ -39,6 +48,7 @@ import {
   type Action,
   type Campaign,
   type Challenge,
+  type ModelId,
   type Paint,
   type Part,
   type Route,
@@ -55,7 +65,14 @@ export interface GarageOptions {
   onCruise?: (from: TownStop) => void;
   drawScene?: (
     canvas: HTMLCanvasElement,
-    scene: "garage" | "diner" | "station" | "champion" | "workshop",
+    scene:
+      | "garage"
+      | "diner"
+      | "station"
+      | "champion"
+      | "workshop"
+      | "licence"
+      | "jail",
     appearance: {
       model?: number;
       paint?: string;
@@ -63,6 +80,8 @@ export interface GarageOptions {
       rival?: number;
       progress?: number;
       part?: string;
+      driverName?: string;
+      record?: string;
       fittings?: Fittings;
     },
   ) => void;
@@ -90,7 +109,12 @@ export interface GarageOptions {
 }
 export type TownStop = "garage" | "diner" | "station" | "strip";
 type Tab =
-  "Challenge" | "Workshop" | "Classifieds" | "Station" | "Grudge Night";
+  | "Challenge"
+  | "Workshop"
+  | "Classifieds"
+  | "Station"
+  | "Grudge Night"
+  | "Logbook";
 const tabForStop: Record<TownStop, Tab> = {
   garage: "Workshop",
   diner: "Challenge",
@@ -103,6 +127,7 @@ const locationForTab: Record<Tab, TownStop> = {
   Challenge: "diner",
   Station: "station",
   "Grudge Night": "strip",
+  Logbook: "garage",
 };
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 export function mountGarage(
@@ -110,6 +135,10 @@ export function mountGarage(
   options: GarageOptions,
 ): () => void {
   const doc = host.ownerDocument;
+  let slot = 1,
+    confirm = "",
+    deal: ModelId | null = null,
+    counter: number | null = null;
   const bench = createBenchView();
   const undo: { before: Campaign; after: Campaign }[] = [];
   let tab: Tab = options.startAt ? tabForStop[options.startAt] : "Challenge",
@@ -212,6 +241,10 @@ export function mountGarage(
     }
     const result = transact(options.storage, a);
     if (result.ok) {
+      if (a.type === "buy" || a.type === "sell" || a.type === "newspaper") {
+        deal = null;
+        counter = null;
+      }
       if (before) {
         undo.push({ before, after: result.state });
         if (undo.length > 16) undo.shift();
@@ -252,15 +285,19 @@ export function mountGarage(
     if (options.drawCar || options.drawScene) {
       const canvas = node("canvas", "frg-art");
       const scene =
-        s.rank === RIVALS.length
-          ? "champion"
-          : !c || tab === "Classifieds"
-            ? "garage"
-            : tab === "Workshop"
-              ? "workshop"
-              : tab === "Station"
-                ? "station"
-                : "diner";
+        tab === "Logbook"
+          ? "licence"
+          : s.jailed
+            ? "jail"
+            : s.rank === RIVALS.length
+              ? "champion"
+              : !c || tab === "Classifieds"
+                ? "garage"
+                : tab === "Workshop"
+                  ? "workshop"
+                  : tab === "Station"
+                    ? "station"
+                    : "diner";
       canvas.setAttribute("aria-label", `${model.title} · ${scene}`);
       canvas.setAttribute("role", "img");
       section.append(canvas);
@@ -276,6 +313,8 @@ export function mountGarage(
           paint: c?.paint ?? model.paint,
           upgrade: c?.engine ?? 0,
           fittings: c?.fittings,
+          driverName: s.driver,
+          record: `${s.canyonWins + s.aqueductWins} road wins · Day ${s.day}`,
           rival: Math.min(s.rank, rivalRank ?? s.rank, RIVALS.length - 1),
           progress: scene === "station" ? (c?.fuel ?? 0) / TANK : 0,
         };
@@ -369,6 +408,17 @@ export function mountGarage(
           ),
         );
       }
+      info.append(
+        control(
+          deal === id ? "Close offer" : "Negotiate",
+          `haggle-${id}`,
+          () => {
+            deal = deal === id ? null : id;
+            counter = null;
+            render();
+          },
+        ),
+      );
       picture(
         row,
         "car",
@@ -377,6 +427,47 @@ export function mountGarage(
         owned?.fittings,
       );
       list.append(row);
+      if (deal === id) {
+        const form = node("form", "frg-deal"),
+          label = node(
+            "label",
+            "frg-field",
+            owned ? "Your asking price" : "Your offer",
+          );
+        const input = node("input");
+        input.type = "number";
+        input.min = "1";
+        input.step = "1";
+        input.required = true;
+        input.value = String(
+          counter ?? (owned ? sellPrice(owned) : model.price),
+        );
+        const send = node(
+          "button",
+          "",
+          counter === null ? "Make offer" : `Accept · ${money(counter)}`,
+        );
+        send.type = "submit";
+        label.append(input);
+        form.append(label, send);
+        form.onsubmit = (e) => {
+          e.preventDefault();
+          const amount = input.valueAsNumber,
+            limit = dealerQuote(s.day, id, owned);
+          if (owned ? amount > limit : amount < limit) {
+            counter = limit;
+            render(
+              `${owned ? "Buyer" : "Seller"} counteroffers ${money(limit)}.`,
+            );
+            return;
+          }
+          execute(
+            { type: owned ? "sell" : "buy", model: id, offer: amount },
+            owned ? "Classifieds" : "Challenge",
+          );
+        };
+        list.append(form);
+      }
     }
     return list;
   }
@@ -619,6 +710,7 @@ export function mountGarage(
     const offered = MODELS[rivalCar(rank)].title;
     const isFinal = rank === RIVALS.length - 1;
     const c = activeCar(s)!;
+    const accepted = rivalAccepts(s, c, rank, wager, pinkSlip);
     const needFuel = isFinal ? FUEL.championship : FUEL[route];
     if (isFinal) {
       grid.replaceChildren(
@@ -638,6 +730,12 @@ export function mountGarage(
         : `Win ${money(purse(rank) + 2 * wager)} including your stake. Each race takes one day.`,
     );
     if (!isFinal) grid.append(prize);
+    if (!accepted)
+      grid.append(
+        notice(
+          `${RIVALS[rank]} declines these odds. Offer a smaller stake or switch cars.`,
+        ),
+      );
     grid.append(
       control(
         c.fuel < needFuel
@@ -651,7 +749,7 @@ export function mountGarage(
           } else
             execute({ type: "race", route, wager, rivalRank: rank, pinkSlip });
         },
-        false,
+        !accepted,
         true,
       ),
     );
@@ -703,6 +801,110 @@ export function mountGarage(
     );
     return event;
   }
+  function logbook(s?: Campaign) {
+    const list = node("div", "frg-rows");
+    if (s) {
+      const identity = node("form", "frg-deal"),
+        name = node("input"),
+        label = node("label", "frg-field", "Driver name"),
+        save = node("button", "", "Update licence");
+      name.value = s.driver;
+      name.maxLength = 48;
+      name.required = true;
+      label.append(name);
+      save.type = "submit";
+      identity.append(label, save);
+      identity.onsubmit = (e) => {
+        e.preventDefault();
+        execute({ type: "name", driver: name.value });
+      };
+      list.append(identity);
+    }
+    const slots = Array.from({ length: SLOT_COUNT }, (_, i) =>
+        slotSummary(options.storage, i + 1),
+      ),
+      current = slots[slot - 1]!;
+    list.append(
+      field(
+        "Save slot",
+        slots.map((info, i) => ({
+          value: String(i + 1),
+          label: `${i + 1}. ${info.label}`,
+        })),
+        String(slot),
+        "slot",
+        (v) => {
+          slot = Number(v);
+          confirm = "";
+          render();
+        },
+      ),
+    );
+    const actions = node("div", "frg-bodywork");
+    function load(source: "current" | "previous" | "recovery") {
+      if (confirm !== source) {
+        confirm = source;
+        render("Loading will keep your current garage in the recovery backup.");
+        return;
+      }
+      const out = restoreSlot(options.storage, slot, source);
+      confirm = "";
+      undo.length = 0;
+      render(out.ok ? "Garage loaded." : out.error);
+    }
+    if (s)
+      actions.append(
+        control(
+          current.occupied
+            ? confirm === "replace"
+              ? "Confirm replacement"
+              : "Replace slot"
+            : "Save to slot",
+          "save-slot",
+          () => {
+            if (current.occupied && confirm !== "replace") {
+              confirm = "replace";
+              render("The existing slot will be kept as its previous version.");
+              return;
+            }
+            const out = saveSlot(options.storage, slot, current.occupied);
+            confirm = "";
+            render(out.ok ? `Garage saved to slot ${slot}.` : out.error);
+          },
+          !current.valid,
+        ),
+      );
+    if (current.occupied && current.valid)
+      actions.append(
+        control(
+          confirm === "current" ? "Confirm load" : "Load slot",
+          "load-slot",
+          () => load("current"),
+        ),
+      );
+    if (current.backup)
+      actions.append(
+        control(
+          confirm === "previous"
+            ? "Confirm previous version"
+            : "Load previous version",
+          "load-previous",
+          () => load("previous"),
+        ),
+      );
+    if (hasRecovery(options.storage))
+      actions.append(
+        control(
+          confirm === "recovery"
+            ? "Confirm recovery"
+            : "Recover garage before load",
+          "load-backup",
+          () => load("recovery"),
+        ),
+      );
+    list.append(actions);
+    return list;
+  }
   function render(error = "") {
     if (disposed) return;
     const focused =
@@ -716,16 +918,21 @@ export function mountGarage(
     try {
       s = loadCampaign(options.storage);
     } catch (reason) {
+      if (back) root.append(back);
       root.append(
         notice(
-          reason instanceof Error ? reason.message : "Garage save unavailable.",
+          error ||
+            (reason instanceof Error
+              ? reason.message
+              : "Garage save unavailable."),
         ),
         control("Retry", "retry", () => render()),
+        logbook(),
       );
       return;
     }
     const c = activeCar(s);
-    if (!c) tab = "Classifieds";
+    if (!c && tab !== "Logbook") tab = "Classifieds";
     if (s.pending)
       tab = s.pending.stakeKind === "bracket" ? "Grudge Night" : "Challenge";
     const title = node("header", "frg-heading"),
@@ -740,17 +947,19 @@ export function mountGarage(
     title.append(wallet);
     root.append(title, hero(s, c));
     if (error || s.receipt) root.append(notice(error || s.receipt));
-    if (finished(s)) {
+    if (finished(s) && tab !== "Logbook") {
       const end = node("div", "frg-end");
       end.append(
         node(
           "h2",
           "",
-          s.rank === RIVALS.length
-            ? "Season champion"
-            : bankrupt(s)
-              ? "Out of cars"
-              : "Season complete",
+          s.jailed
+            ? "Detained for unpaid fines"
+            : s.rank === RIVALS.length
+              ? "Season champion"
+              : bankrupt(s)
+                ? "Out of cars"
+                : "Season complete",
         ),
         node(
           "p",
@@ -773,6 +982,12 @@ export function mountGarage(
           true,
         ),
       );
+      end.append(
+        control("Open logbook", "open-logbook", () => {
+          tab = "Logbook";
+          render();
+        }),
+      );
       root.append(end);
     } else {
       const nav = node("nav", "frg-tabs");
@@ -783,15 +998,19 @@ export function mountGarage(
         "Classifieds",
         "Station",
         "Grudge Night",
+        "Logbook",
       ] as const) {
         const b = control(
           section,
           section,
           () => {
             tab = section;
+            confirm = "";
             render();
           },
-          (!c && section !== "Classifieds") || (!!s.pending && section !== tab),
+          (!c && section !== "Classifieds" && section !== "Logbook") ||
+            (!!s.pending && section !== tab) ||
+            (finished(s) && section !== "Logbook"),
         );
         b.setAttribute("aria-pressed", String(tab === section));
         nav.append(b);
@@ -799,15 +1018,17 @@ export function mountGarage(
       const panel = node("section", "frg-panel");
       panel.setAttribute("aria-label", tab);
       panel.append(
-        tab === "Challenge" || s.pending
-          ? challenge(s)
-          : tab === "Workshop" && c
-            ? workshop(s, c)
-            : tab === "Station" && c
-              ? station(s, c)
-              : tab === "Grudge Night" && c
-                ? strip(s, c)
-                : classifieds(s),
+        tab === "Logbook"
+          ? logbook(s)
+          : tab === "Challenge" || s.pending
+            ? challenge(s)
+            : tab === "Workshop" && c
+              ? workshop(s, c)
+              : tab === "Station" && c
+                ? station(s, c)
+                : tab === "Grudge Night" && c
+                  ? strip(s, c)
+                  : classifieds(s),
       );
       if (options.onCruise && c && !s.pending)
         panel.append(
@@ -816,6 +1037,13 @@ export function mountGarage(
           ),
         );
       root.append(nav, panel);
+      if (finished(s))
+        panel.append(
+          control("Season results", "season-results", () => {
+            tab = "Challenge";
+            render();
+          }),
+        );
     }
     if (focused)
       root

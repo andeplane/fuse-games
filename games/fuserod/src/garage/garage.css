@@ -288,6 +288,28 @@
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+.frg-deal {
+  display: flex;
+  gap: 0.6rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.frg-deal .frg-field {
+  flex: 1;
+  min-width: 7rem;
+}
+.frg-deal input {
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  color: inherit;
+  background: #1b2e32;
+  border: 1px solid var(--shop-edge);
+  padding: 0.4rem;
+}
+.frg-deal input:focus-visible {
+  outline: 2px solid #ffda7a;
+}
 @media (max-height: 460px) and (min-width: 600px) {
   .frg-art {
     height: 8.5rem;

@@ -44,6 +44,7 @@ export const grudgeNight = (day: number) =>
   day <= FINAL_DAY && (day - 1) % 7 === 2;
 export const daysToGrudge = (day: number) => (2 - ((day - 1) % 7) + 7) % 7;
 const KEY = "fuserod.garage.v1";
+export const ACTIVE_SAVE = KEY;
 export const TANK = 170;
 export const FUEL = {
   strip: 7,
@@ -95,6 +96,8 @@ export interface Challenge {
   king: boolean;
 }
 export interface Campaign {
+  jailed: boolean;
+  driver: string;
   version: 1;
   day: number;
   cash: number;
@@ -111,10 +114,11 @@ export interface Campaign {
   receipt: string;
 }
 export type Action =
+  | { type: "name"; driver: string }
   | { type: "workbench"; command: WorkshopCommand }
   | { type: "body"; fitting: keyof Fittings }
   | { type: "newspaper" }
-  | { type: "buy" | "select" | "sell"; model: ModelId }
+  | { type: "buy" | "select" | "sell"; model: ModelId; offer?: number }
   | { type: "paint"; paint: Paint }
   | { type: "refuel" }
   | { type: "upgrade"; part: Part }
@@ -134,12 +138,15 @@ export type Action =
       id: string;
       won: boolean;
       damage: number;
+      speedingMph?: number;
       elapsedTicks?: number;
     }
   | { type: "restart" };
 export type Result =
   { ok: true; state: Campaign } | { ok: false; error: string };
 export const freshCampaign = (): Campaign => ({
+  jailed: false,
+  driver: "Driver",
   version: 1,
   day: 1,
   cash: 1100,
@@ -160,7 +167,7 @@ export const activeCar = (s: Campaign) =>
 export const bankrupt = (s: Campaign) =>
   !s.fleet.length && s.cash < MODELS.kestrel.price;
 export const finished = (s: Campaign) =>
-  s.rank === RIVALS.length || s.day > FINAL_DAY || bankrupt(s);
+  s.jailed || s.rank === RIVALS.length || s.day > FINAL_DAY || bankrupt(s);
 export const eligible = (s: Campaign) =>
   s.qualified &&
   s.canyonWins >= ROAD_WINS_NEEDED &&
@@ -190,6 +197,39 @@ export const sellPrice = (c: Vehicle) =>
   Math.floor(MODELS[c.model].price * (0.35 + 0.0015 * c.condition)) +
   100 * c.engine +
   65 * c.tyres;
+/** Each weekly listing has a stable dealer reserve. Returning to the ad cannot reroll the offer. */
+export function dealerQuote(day: number, model: ModelId, car?: Vehicle) {
+  const week = Math.floor((day - 1) / 7),
+    n = (MODELS[model].sprite * 11 + week * 7) % 15;
+  return car
+    ? Math.round((sellPrice(car) * (1 + (n + 1) / 100)) / 5) * 5
+    : Math.floor((MODELS[model].price * (0.8 + n / 100)) / 5) * 5;
+}
+export function rivalAccepts(
+  s: Campaign,
+  c: Vehicle,
+  rank: number,
+  wager: number,
+  title: boolean,
+) {
+  if ((!wager && !title) || rank === RIVALS.length - 1) return true;
+  const motor = setup(c),
+    opponentHp = MODELS[rivalCar(rank)].hp;
+  const edge =
+    (motor.power - opponentHp) / 5 + (s.rank - rank) * 3 + (motor.grip - 1) * 4;
+  if (edge <= 12) return true;
+  const chance = Math.max(
+    5,
+    Math.min(95, 90 - edge * (title ? 1.6 : wager >= 300 ? 1.25 : 0.65)),
+  );
+  return (s.day * 29 + rank * 13 + MODELS[c.model].sprite * 17) % 100 < chance;
+}
+const validDriver = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value === value.trim() &&
+  Array.from(value).length >= 1 &&
+  Array.from(value).length <= 24 &&
+  !/[\u0000-\u001f\u007f\p{Cs}]/u.test(value);
 export function fuelQuote(c: Vehicle, cash: number) {
   const amount = Math.min(TANK - c.fuel, Math.max(0, cash - 10) * 20);
   return { amount, price: amount ? 10 + Math.ceil(amount / 20) : 0 };
@@ -291,6 +331,8 @@ function decode(v: unknown): Campaign | undefined {
       !("roadStarts" in v);
     v = {
       qualified: false,
+      driver: "Driver",
+      jailed: false,
       roadStarts: 0,
       canyonWins: 0,
       aqueductWins: 0,
@@ -320,6 +362,8 @@ function decode(v: unknown): Campaign | undefined {
   if (
     !record(v) ||
     v.version !== 1 ||
+    !validDriver(v.driver) ||
+    typeof v.jailed !== "boolean" ||
     !integer(v.day, 1, FINAL_DAY + 1) ||
     !integer(v.cash, 0, 1_000_000) ||
     !integer(v.rank, 0, RIVALS.length) ||
@@ -341,6 +385,8 @@ function decode(v: unknown): Campaign | undefined {
   const selected = v.fleet.find((c) => c.model === v.selected);
   if (v.fleet.length ? !selected : v.selected !== null) return;
   const s: Campaign = {
+    jailed: v.jailed,
+    driver: v.driver,
     version: 1,
     day: v.day,
     cash: v.cash,
@@ -413,6 +459,9 @@ function decode(v: unknown): Campaign | undefined {
 export function loadCampaign(storage: StoragePort): Campaign {
   const raw = storage.getItem(KEY);
   if (raw === null) return freshCampaign();
+  return parseSave(raw);
+}
+export function parseSave(raw: string): Campaign {
   try {
     if (raw.length <= 65_536) {
       const state = decode(JSON.parse(raw));
@@ -426,10 +475,16 @@ export function loadCampaign(storage: StoragePort): Campaign {
 const fail = (error: string): Result => ({ ok: false, error });
 const success = (state: Campaign): Result => ({ ok: true, state });
 export function change(s: Campaign, a: Action): Result {
+  if (a.type === "name") {
+    const driver = a.driver.trim();
+    if (!validDriver(driver))
+      return fail("Use a driver name between 1 and 24 characters.");
+    return success({ ...s, driver, receipt: "Licence updated." });
+  }
   if (a.type === "restart") {
     if (!finished(s))
       return fail("Finish this season before starting a new one.");
-    return success({ ...freshCampaign(), next: s.next });
+    return success({ ...freshCampaign(), next: s.next, driver: s.driver });
   }
   if (finished(s)) return fail("The season has ended.");
   const c = activeCar(s);
@@ -450,6 +505,30 @@ export function change(s: Campaign, a: Action): Result {
     const worked = s.fleet.map((v) =>
       v === c ? { ...v, condition: Math.max(0, v.condition - wear) } : v,
     );
+    if (a.speedingMph !== undefined) {
+      if (
+        !Number.isFinite(a.speedingMph) ||
+        a.speedingMph < 0 ||
+        stakeKind === "bracket"
+      )
+        return fail("Invalid patrol result.");
+      const fine = a.speedingMph > 80 ? 75 : a.speedingMph > 50 ? 50 : 20,
+        wallet = s.cash + wager,
+        jailed = fine > wallet;
+      return success({
+        ...s,
+        pending: null,
+        next: s.next + 1,
+        day: s.day + 1,
+        finalLeg: 0,
+        fleet: worked,
+        cash: Math.max(0, wallet - fine),
+        jailed,
+        receipt: jailed
+          ? `Unable to pay the $${fine} speeding ticket.`
+          : `Patrol stopped the race. $${fine} speeding fine paid.`,
+      });
+    }
     if (stakeKind === "bracket") {
       const next = { ...s, fleet: worked, next: s.next + 1, pending: null };
       if (heat === 0 && a.won && !integer(a.elapsedTicks, 1, 72_000))
@@ -581,13 +660,18 @@ export function change(s: Campaign, a: Action): Result {
     if (s.fleet.some((v) => v.model === a.model))
       return fail("This model is already in your garage.");
     const car = MODELS[a.model];
-    if (car.price > s.cash) return fail("You need more cash for this car.");
+    const price = a.offer ?? car.price,
+      reserve = dealerQuote(s.day, a.model);
+    if (!integer(price, 1, car.price))
+      return fail("Enter a whole-dollar offer up to the asking price.");
+    if (price < reserve) return fail(`Seller's counteroffer: $${reserve}.`);
+    if (price > s.cash) return fail("You need more cash for this car.");
     return success({
       ...s,
-      cash: s.cash - car.price,
+      cash: s.cash - price,
       selected: a.model,
       fleet: [...s.fleet, stockCar(a.model)],
-      receipt: `Bought ${car.title}.`,
+      receipt: `Bought ${car.title} for $${price}.`,
     });
   }
   if (a.type === "select") {
@@ -599,7 +683,11 @@ export function change(s: Campaign, a: Action): Result {
     const car = s.fleet.find((v) => v.model === a.model);
     if (!car) return fail("This car is no longer in your garage.");
     const fleet = s.fleet.filter((v) => v !== car),
-      price = sellPrice(car);
+      reserve = dealerQuote(s.day, a.model, car),
+      price = a.offer ?? sellPrice(car);
+    if (!integer(price, 1, 1_000_000))
+      return fail("Enter a positive whole-dollar asking price.");
+    if (price > reserve) return fail(`Buyer's counteroffer: $${reserve}.`);
     return success({
       ...s,
       fleet,
@@ -687,6 +775,10 @@ export function change(s: Campaign, a: Action): Result {
       return fail("Choose a stake you can cover.");
     if (a.pinkSlip && a.wager !== 0)
       return fail("Choose a cash stake or a car title.");
+    if (!rivalAccepts(s, c, rank, a.wager, a.pinkSlip ?? false))
+      return fail(
+        `${RIVALS[rank]} declined those odds. Lower the stake or choose another car.`,
+      );
     return success({
       ...s,
       fleet,
@@ -796,7 +888,12 @@ export function undoWorkshop(
 export function settleRace(
   storage: StoragePort,
   id: string,
-  outcome: { won: boolean; damage?: number; elapsedTicks?: number },
+  outcome: {
+    won: boolean;
+    damage?: number;
+    elapsedTicks?: number;
+    speedingMph?: number;
+  },
 ): Result {
   return transact(storage, {
     type: "settle",
@@ -804,5 +901,6 @@ export function settleRace(
     won: outcome.won,
     damage: outcome.damage ?? 0,
     elapsedTicks: outcome.elapsedTicks,
+    speedingMph: outcome.speedingMph,
   });
 }

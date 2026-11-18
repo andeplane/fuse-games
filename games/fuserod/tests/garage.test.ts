@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { saveSlot, restoreSlot, slotSummary } from "../src/garage/slots.js";
 import {
   activeCar,
+  dealerQuote,
+  rivalAccepts,
   change,
   FINAL_DAY,
   finished,
@@ -422,4 +425,102 @@ test("an earlier saved car retains its tuning and gets stock equipment and bodyw
   assert.equal(c.paint, MODELS.kestrel.paint);
   assert.equal(c.workshop.wired, true);
   assert.equal(c.fittings.frontBumper, true);
+});
+test("fifteen labelled slots keep the previous save and the displaced active career", () => {
+  const storage = new Store();
+  success(transact(storage, { type: "name", driver: "Ada" }));
+  const first = success(transact(storage, buy));
+  success(saveSlot(storage, 15, false));
+  assert.match(slotSummary(storage, 15).label, /Ada/);
+  const painted = success(
+    transact(storage, { type: "paint", paint: "#738bdd" }),
+  );
+  assert.equal(saveSlot(storage, 15, false).ok, false);
+  success(saveSlot(storage, 15, true));
+  assert.ok(slotSummary(storage, 15).backup);
+  const tuned = success(transact(storage, { type: "upgrade", part: "engine" }));
+  const restored = success(restoreSlot(storage, 15, "previous"));
+  assert.equal(restored.cash, first.cash);
+  assert.equal(activeCar(restored)!.paint, MODELS.kestrel.paint);
+  assert.equal(success(restoreSlot(storage, 15, "recovery")).cash, tuned.cash);
+  assert.equal(success(restoreSlot(storage, 15, "current")).cash, painted.cash);
+  assert.equal(saveSlot(storage, 16, false).ok, false);
+  const before = loadCampaign(storage);
+  storage.setItem("fuserod.garage.slot.3", "broken");
+  assert.equal(slotSummary(storage, 3).valid, false);
+  assert.equal(restoreSlot(storage, 3, "current").ok, false);
+  assert.deepEqual(loadCampaign(storage), before);
+  assert.equal(saveSlot(storage, 3, true).ok, false);
+  assert.equal(storage.getItem("fuserod.garage.slot.3"), "broken");
+});
+test("weekly seller and buyer counteroffers protect the same transactions used by the UI", () => {
+  let s = freshCampaign();
+  const price = dealerQuote(s.day, "kestrel");
+  assert.ok(price < MODELS.kestrel.price);
+  assert.equal(
+    change(s, { type: "buy", model: "kestrel", offer: price - 5 }).ok,
+    false,
+  );
+  s = success(change(s, { type: "buy", model: "kestrel", offer: price }));
+  assert.equal(s.cash, 1100 - price);
+  const buyback = dealerQuote(s.day, "kestrel", activeCar(s));
+  assert.equal(
+    change(s, { type: "sell", model: "kestrel", offer: buyback + 5 }).ok,
+    false,
+  );
+  s = success(change(s, { type: "sell", model: "kestrel", offer: buyback }));
+  assert.equal(s.cash, 1100 - price + buyback);
+});
+test("a heavily advantaged driver can renegotiate a declined title race down to a free run", () => {
+  const base = success(
+    change(
+      { ...freshCampaign(), cash: 10000 },
+      { type: "buy", model: "meteor" },
+    ),
+  );
+  let s = success(change(base, { type: "upgrade", part: "engine" }));
+  s = success(change(s, { type: "upgrade", part: "engine" }));
+  const car = activeCar(s)!;
+  assert.equal(rivalAccepts(s, car, 0, 0, true), false);
+  assert.equal(
+    change(s, { type: "race", route: "strip", wager: 0, pinkSlip: true }).ok,
+    false,
+  );
+  assert.equal(change(s, { type: "race", route: "strip", wager: 0 }).ok, true);
+});
+test("speeding fines refund abandoned stakes, preserve titles, and end a season only for unpaid debt", () => {
+  for (const [speed, fine] of [
+    [50, 20],
+    [51, 50],
+    [81, 75],
+  ] as const) {
+    const store = new Store();
+    success(transact(store, buy));
+    const s = success(
+      transact(store, { type: "race", route: "canyon", wager: 100 }),
+    );
+    const end = success(
+      settleRace(store, s.pending!.id, { won: false, speedingMph: speed }),
+    );
+    assert.equal(end.cash, 400 - fine);
+    assert.equal(end.jailed, false);
+    assert.equal(end.fleet.length, 1);
+  }
+  let s = success(change({ ...freshCampaign(), cash: 720 }, buy));
+  s = success(
+    change(s, { type: "race", route: "canyon", wager: 0, pinkSlip: true }),
+  );
+  s = success(
+    change(s, {
+      type: "settle",
+      id: s.pending!.id,
+      won: false,
+      damage: 0,
+      speedingMph: 100,
+    }),
+  );
+  assert.equal(s.jailed, true);
+  assert.equal(s.cash, 0);
+  assert.ok(finished(s));
+  assert.equal(s.fleet.length, 1);
 });
