@@ -130,9 +130,7 @@ export function updateDoors(s: MissionState) {
         dy = Math.abs(tileY(p.y) - door.y);
       return door.horizontal ? dx === 0 && dy <= 1 : dy === 0 && dx <= 1;
     };
-    const occupied =
-      s.actors.some((a) => a.hp > 0 && onThreshold(a)) ||
-      s.items.some((i) => i.escort !== null && onThreshold(i));
+    const occupied = s.actors.some((a) => a.hp > 0 && onThreshold(a));
     if (occupied && (door.key === null || s.keyring.includes(door.key)))
       door.timer = 1;
     else if (

@@ -39,7 +39,16 @@ function injure(s: MissionState, actor: Actor, power: number) {
   if (actor.hp === 0 && actor.deathTick < 0) {
     actor.deathTick = s.tick;
     actor.walking = false;
-    progress(s, actor.objectiveIndex);
+    if (actor.role === "hostage") {
+      const objective =
+        actor.objectiveIndex === null
+          ? undefined
+          : s.objectives[actor.objectiveIndex];
+      if (objective && objective.required > 0) {
+        s.outcome = "defeat";
+        s.extraction = 0;
+      }
+    } else progress(s, actor.objectiveIndex);
   }
 }
 export function updateActor(s: MissionState, a: Actor) {
@@ -189,6 +198,20 @@ function motion(s: MissionState, actor: Actor, proposed: Point) {
   }
   const target = obstacle(s, actor, x, y);
   if (target) {
+    if (
+      actor.seat &&
+      "role" in target &&
+      target.role === "hostage" &&
+      target.escort === null
+    ) {
+      target.escort = actor.id;
+      target.skill = {
+        ...target.skill,
+        flags: target.skill.flags & ~(1 << 18),
+      };
+      target.brain = { ...target.brain, sleeping: false };
+      progress(s, target.objectiveIndex);
+    }
     if (actor.weapon === 0) {
       if ("seat" in target)
         hitActor(s, target, actor, {
@@ -282,10 +305,6 @@ export function collect(s: MissionState, a: Actor) {
     }
   for (const item of s.items)
     if (overlaps(a, item, 12, 9)) {
-      if (item.kind === "hostage" && !item.escort) {
-        item.escort = a.id;
-        progress(s, item.objectiveIndex);
-      }
       if (item.kind === "core" || item.kind === "medkit") {
         if (item.kind === "medkit" && a.hp === a.maxHp) continue;
         if (item.kind === "core") a.score += 10;

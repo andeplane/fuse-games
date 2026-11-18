@@ -7,7 +7,7 @@ export const TILE_WIDTH = 16;
 export const TILE_HEIGHT = 12;
 export const EXTRACTION_TICKS = 350;
 export type Mode = "campaign" | "dogfight";
-export type Role = "player" | "guard" | "heavy" | "scout";
+export type Role = "player" | "guard" | "heavy" | "scout" | "hostage";
 export type KeyColor = "yellow" | "green" | "blue" | "red";
 export type ItemKind = "core" | "reactor" | "medkit" | "hostage";
 export type ObjectiveKind =
@@ -39,6 +39,7 @@ export interface Actor extends Point {
   id: string;
   seat: string | null;
   role: Role;
+  escort: string | null;
   dir: number;
   hp: number;
   maxHp: number;

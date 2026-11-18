@@ -31,7 +31,7 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
     !record(a) ||
     !keys(
       a,
-      "id seat role dir hp maxHp inventory weapon lock slideX slideY specialHeld usedSpecial walking lastShot deathTick score kills friendlies speed skill brain objectiveIndex characterIndex flamed poisoned petrified confused x y",
+      "id seat role escort dir hp maxHp inventory weapon lock slideX slideY specialHeld usedSpecial walking lastShot deathTick score kills friendlies speed skill brain objectiveIndex characterIndex flamed poisoned petrified confused x y",
     )
   )
     return false;
@@ -39,11 +39,12 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
   return (
     pos(a) &&
     text(a.id, 32) &&
-    /^(player|enemy)-[0-9]{1,10}$/.test(a.id) &&
+    /^(player|enemy|prisoner)-[0-9]{1,10}$/.test(a.id) &&
     (a.seat === null
-      ? option(a.role, ["guard", "heavy", "scout"])
+      ? option(a.role, ["guard", "heavy", "scout", "hostage"])
       : text(a.seat, 128) && a.seat.length > 0 && a.role === "player") &&
     integer(a.dir, 0, 7) &&
+    (a.escort === null || (a.role === "hostage" && text(a.escort, 32))) &&
     integer(a.maxHp, 1, 10000) &&
     integer(a.hp, 0, a.maxHp) &&
     array(a.inventory, 3) &&
@@ -197,9 +198,15 @@ export function isMissionState(s: unknown): s is MissionState {
   const nextEnemy = s.nextEnemy;
   if (
     actors.some((a) =>
-      a.seat === null
-        ? !a.id.startsWith("enemy-") || Number(a.id.slice(6)) >= nextEnemy
-        : !a.id.startsWith("player-"),
+      a.role === "hostage"
+        ? a.id !== "prisoner-0" ||
+          a.objectiveIndex === null ||
+          os[a.objectiveIndex]?.kind !== "rescue" ||
+          (a.escort === null) !== !!(a.skill.flags & (1 << 18)) ||
+          (a.escort !== null && !players.some((p) => p.id === a.escort))
+        : a.seat === null
+          ? !a.id.startsWith("enemy-") || Number(a.id.slice(6)) >= nextEnemy
+          : !a.id.startsWith("player-"),
     )
   )
     return false;

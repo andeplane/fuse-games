@@ -12,7 +12,6 @@ import { buildMission } from "../maps/index.js";
 import { collect, command, random, tickShots, updateActor } from "./combat.js";
 import {
   canStand,
-  nearest,
   reveal,
   tileAt,
   tileX,
@@ -64,6 +63,7 @@ function actor(
     id,
     seat,
     role,
+    escort: null,
     dir: 4,
     inventory,
     weapon: inventory[0]!,
@@ -175,18 +175,20 @@ export function createMission(
     surveyArea: world.width * world.height,
     actors,
     shots: [],
-    items: world.items.map((p, i) => ({
-      x: p.pixelX ?? center(p).x,
-      y: p.pixelY ?? center(p).y,
-      id: "item-" + i,
-      kind: p.kind,
-      hp: p.hp,
-      objectiveIndex: p.objectiveIndex ?? null,
-      sprite: p.sprite,
-      objectFlags: p.objectFlags,
-      solid: p.solid,
-      escort: null,
-    })),
+    items: world.items
+      .filter((p) => p.kind !== "hostage")
+      .map((p, i) => ({
+        x: p.pixelX ?? center(p).x,
+        y: p.pixelY ?? center(p).y,
+        id: "item-" + i,
+        kind: p.kind,
+        hp: p.hp,
+        objectiveIndex: p.objectiveIndex ?? null,
+        sprite: p.sprite,
+        objectFlags: p.objectFlags,
+        solid: p.solid,
+        escort: null,
+      })),
     keyring: [],
     doors: world.doors.map((p) => ({ ...p, timer: 0 })),
     keys: world.keys.map((k) => ({ ...center(k), color: k.color })),
@@ -207,6 +209,22 @@ export function createMission(
       );
       a.objectiveIndex = e.objectiveIndex ?? null;
     }
+  const prisoner = world.items.find((p) => p.kind === "hostage");
+  if (prisoner && mode === "campaign") {
+    const index = spec.objectives[prisoner.objectiveIndex]!.index;
+    const c = getCampaignForMission(mission, options.campaign).characters[
+      index
+    ]!;
+    const a = spawnEnemy(
+      s,
+      index,
+      c,
+      { x: prisoner.pixelX, y: prisoner.pixelY },
+      0,
+      true,
+    );
+    a.objectiveIndex = prisoner.objectiveIndex;
+  }
   for (const a of s.actors) if (a.seat) reveal(s, a);
   return s;
 }
@@ -216,11 +234,18 @@ function spawnEnemy(
   c: Character,
   p: Point,
   wakeChance: number,
+  prisoner = false,
 ): Actor {
   const a = actor(
-    "enemy-" + s.nextEnemy++,
+    prisoner ? "prisoner-0" : "enemy-" + s.nextEnemy++,
     null,
-    c.hp >= 100 ? "heavy" : c.speed > 256 ? "scout" : "guard",
+    prisoner
+      ? "hostage"
+      : c.hp >= 100
+        ? "heavy"
+        : c.speed > 256
+          ? "scout"
+          : "guard",
     p,
     [c.gun],
     Math.max(1, c.hp),
@@ -247,7 +272,10 @@ function replenish(s: MissionState, players: Actor[]) {
   const m = getMission(s.mission, campaign);
   // Corpses still occupy an AI slot throughout the nine death frames.
   const present = s.actors.filter(
-    (a) => !a.seat && (a.hp > 0 || s.tick - a.deathTick < DEATH_TICKS),
+    (a) =>
+      !a.seat &&
+      !(a.skill.flags & (1 << 18)) &&
+      (a.hp > 0 || s.tick - a.deathTick < DEATH_TICKS),
   );
   const owners = new Set(s.shots.map((v) => v.owner));
   s.actors = s.actors.filter(
@@ -337,8 +365,9 @@ function finish(s: MissionState, players: Actor[]) {
     const ready =
       s.objectives.every((o) => o.done >= o.required) &&
       players.every((a) => tileAt(s, a.x, a.y) === "E") &&
-      s.items.every(
-        (item) => item.kind !== "hostage" || tileAt(s, item.x, item.y) === "E",
+      s.actors.every(
+        (a) =>
+          a.role !== "hostage" || a.hp === 0 || tileAt(s, a.x, a.y) === "E",
       );
     s.extraction = ready ? s.extraction + 1 : 0;
   }
@@ -349,21 +378,6 @@ function finish(s: MissionState, players: Actor[]) {
   if (s.extraction >= EXTRACTION_TICKS) {
     s.outcome = "victory";
     s.winners = players.map((a) => a.seat!);
-  }
-}
-function escort(s: MissionState, players: Actor[]) {
-  for (const item of s.items) {
-    if (item.escort === null) continue;
-    const rider =
-      players.find((a) => a.id === item.escort) ?? nearest(item, players);
-    if (!rider) continue;
-    item.escort = rider.id;
-    if (Math.abs(rider.x - item.x) < 5 && Math.abs(rider.y - item.y) < 5)
-      continue;
-    const dx = Math.sign(rider.x - item.x),
-      dy = Math.sign(rider.y - item.y);
-    if (!wallContact(s, item.x + dx, item.y)) item.x += dx;
-    if (!wallContact(s, item.x, item.y + dy)) item.y += dy;
   }
 }
 export function stepMission(
@@ -421,10 +435,6 @@ export function stepMission(
       command(s, a, next.control);
     }
   }
-  escort(
-    s,
-    players.filter((a) => a.hp > 0),
-  );
   replenish(
     s,
     players.filter((a) => a.hp > 0),
