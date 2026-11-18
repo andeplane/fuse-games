@@ -11,6 +11,7 @@ import {
   queueArenaAssets,
 } from "./assets.js";
 import type { ArenaFrame } from "./frame.js";
+import { createReferenceArt, type ReferenceArt } from "./reference-art.js";
 import { createTrackArt } from "./track-art.js";
 
 const TRUCK_SCALE = 44 / (TRUCK_CELL * 0.92);
@@ -18,24 +19,30 @@ export const TILT = 0.72;
 const SIDE_LAYERS = 4;
 export const STANDS = { top: 100, side: 16 } as const;
 
+const localReference =
+  import.meta.env.DEV && import.meta.env.VITE_OFFROAD_REFERENCE === "1";
+
 export function raceViewport(track: Track): {
   x: number;
   y: number;
   width: number;
   height: number;
   zoom: number;
+  zoomY: number;
 } {
   const worldW = track.cols * config.tile,
     worldH = track.rows * config.tile;
+  const aspect = localReference ? worldW / 320 / (worldH / 200) : 1;
   const zoom = Math.min(
     (config.screen.width - 2 * STANDS.side) / worldW,
-    (config.screen.height - STANDS.top) / worldH,
+    (config.screen.height - STANDS.top) / (worldH * aspect),
   );
   return {
     x: (config.screen.width - worldW * zoom) / 2,
-    y: config.screen.height - worldH * zoom,
+    y: config.screen.height - worldH * zoom * aspect,
     width: worldW * zoom,
-    height: worldH * zoom,
+    height: worldH * zoom * aspect,
+    zoomY: zoom * aspect,
     zoom,
   };
 }
@@ -54,6 +61,7 @@ export class RaceScene extends Phaser.Scene {
   private artTrack?: string;
   private trucks: TruckSprite[] = [];
   private dust?: Phaser.GameObjects.Particles.ParticleEmitter;
+  private reference?: ReferenceArt;
   private pickup?: Phaser.GameObjects.Image;
 
   constructor(
@@ -65,9 +73,16 @@ export class RaceScene extends Phaser.Scene {
 
   preload(): void {
     queueArenaAssets(this.load, this.assetBase);
+    if (localReference)
+      this.load.json("fd-local-reference-pack", "/__offroad-reference.json");
   }
 
   create(): void {
+    if (localReference)
+      this.reference = createReferenceArt(
+        this,
+        this.cache.json.get("fd-local-reference-pack"),
+      );
     const money = this.make.graphics({}, false);
     money.fillStyle(0x221b13).fillRect(0, 2, 13, 8);
     money.fillStyle(0x356139).fillRect(1, 2, 11, 6);
@@ -94,12 +109,12 @@ export class RaceScene extends Phaser.Scene {
 
   private buildTrack(track: Track): void {
     this.art?.destroy();
-    this.art = createTrackArt(this, track);
+    if (!this.reference) this.art = createTrackArt(this, track);
     this.artTrack = track.name;
     const view = raceViewport(track);
     this.cameras.main
       .setViewport(view.x, view.y, view.width, view.height)
-      .setZoom(view.zoom)
+      .setZoom(view.zoom, view.zoomY)
       .centerOn((track.cols * track.tile) / 2, (track.rows * track.tile) / 2);
   }
 
@@ -131,7 +146,7 @@ export class RaceScene extends Phaser.Scene {
   paint(frame: ArenaFrame): void {
     const { race, track, poses, newTick } = frame;
     if (this.artTrack !== track.name) this.buildTrack(track);
-    if (this.trucks.length !== race.trucks.length)
+    if (!this.reference && this.trucks.length !== race.trucks.length)
       this.buildTrucks(race.trucks.length);
     const active = race.pickups.active;
     this.pickup?.setVisible(!!active);
@@ -150,6 +165,10 @@ export class RaceScene extends Phaser.Scene {
         )
         .setDisplaySize(active.kind === "cash" ? 27 : 21, 21)
         .setPosition(p.x, p.y);
+    }
+    if (this.reference) {
+      this.reference.paint(frame);
+      return;
     }
     race.trucks.forEach((truck, slot) => {
       const p = poses[slot];

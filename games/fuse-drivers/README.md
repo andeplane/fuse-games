@@ -39,3 +39,14 @@ ONLINE_URL=http://localhost:PORT/ pnpm exec tsx scripts/fuse-drivers-smoke.ts
 `sim-*.test.ts` are the simulation's own suite, carried over from the game's first home, including a
 recorded replay hash that pins its physics. The rest cover the fold, the checkpoint, the mesh and the
 page.
+
+### Local DOS artwork comparison
+
+The local reference launcher runs the same native race and room service with track surfaces, sprite poses and shadows decoded from a local 1990 DOS installation. It binds to loopback and reads a private art pack outside this repository. Supply the EGA release directory and its indexed race screenshot for palette calibration.
+
+```sh
+python3 scripts/fuse-drivers-reference.py /path/to/OFFROAD /path/to/OFFROAD_screenshot.png /private/path/offroad-reference.json
+pnpm exec tsx scripts/fuse-drivers-reference.ts /private/path/offroad-reference.json --open
+```
+
+Four trucks use the DOS paint schemes. A fifth Fuse driver uses violet. The shared Fuse controls, race HUD, pickups and results stay available. Use the host's Room Settings to choose Wipeout for comparison with the DOS screenshot.
