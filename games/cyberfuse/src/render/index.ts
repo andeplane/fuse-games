@@ -8,7 +8,15 @@ import {
 } from "../campaign/index.js";
 import type { MissionState } from "../sim/index.js";
 import { visibleTile } from "../sim/space.js";
-import { TILE_H, TILE_W, followedActors, frameCamera } from "./camera.js";
+import {
+  TILE_H,
+  TILE_W,
+  cameraPanels,
+  followedActors,
+  frameCamera,
+  type Actor,
+  type Panel,
+} from "./camera.js";
 import {
   drawDeck,
   drawDeckLight,
@@ -32,13 +40,12 @@ function paintWorld(
   art: Art,
   materials: Materials,
   vapor: Vapor,
-  width: number,
-  height: number,
+  panel: Panel<Actor>,
   world: MissionState,
   me?: string,
 ): void {
-  const party = followedActors(world, me);
-  const camera = frameCamera(world, party, width, height);
+  const { width, height, party, localZoom } = panel;
+  const camera = frameCamera(world, party, width, height, localZoom);
   const zoom = camera.zoom;
   const x0 = Math.max(0, Math.floor(camera.left / TILE_W) - 1);
   const y0 = Math.max(0, Math.floor(camera.top / TILE_H) - 1);
@@ -145,7 +152,7 @@ function paintWorld(
         ctx,
         art,
         actor,
-        world.tick,
+        world,
         seats.indexOf(actor.id),
         characters[actor.characterIndex],
         me,
@@ -238,7 +245,19 @@ export function createScene(canvas: HTMLCanvasElement) {
         };
         schedule();
       }
-      paintWorld(ctx, art, materials, vapor, width, height, view, local);
+      for (const panel of cameraPanels(
+        followedActors(view, local),
+        width,
+        height,
+      )) {
+        ctx.save();
+        ctx.translate(panel.x, panel.y);
+        ctx.beginPath();
+        ctx.rect(0, 0, panel.width, panel.height);
+        ctx.clip();
+        paintWorld(ctx, art, materials, vapor, panel, view, local);
+        ctx.restore();
+      }
     } else {
       ctx.fillStyle = "#b3d3d3";
       ctx.font = "13px monospace";

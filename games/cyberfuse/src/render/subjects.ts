@@ -49,11 +49,13 @@ export function drawOperator(
   ctx: Context,
   art: Art,
   actor: Actor,
-  tick: number,
+  world: MissionState,
   seatIndex: number,
   character: Character | undefined,
   me?: string,
 ): void {
+  const tick = world.tick;
+  const captive = actor.role === "hostage";
   const own = actor.seat !== null && actor.seat === me;
   const allied = actor.seat !== null;
   const team = allied
@@ -92,11 +94,25 @@ export function drawOperator(
     dir: actor.dir,
     state: pose,
     face,
-    gun: GUNS[actor.weapon] ?? 0,
+    gun: captive ? -1 : (GUNS[actor.weapon] ?? 0),
     team: effect,
     death,
   });
   ctx.globalAlpha = 1;
+  if (
+    captive &&
+    !down &&
+    actor.objectiveIndex !== null &&
+    !((world.objectives[actor.objectiveIndex]?.flags ?? 0) & 1)
+  ) {
+    ctx.strokeStyle = actor.escort === null ? "#ffdc9c" : "#a3e6ba";
+    ctx.lineWidth = 0.65;
+    ctx.beginPath();
+    ctx.moveTo(actor.x - 1.7, actor.y - 22);
+    ctx.lineTo(actor.x, actor.y - 20.6);
+    ctx.lineTo(actor.x + 1.7, actor.y - 22);
+    ctx.stroke();
+  }
   if (down || fired > 2 || GUNS[actor.weapon] !== 0) return;
   const angle = (actor.dir * Math.PI) / 4 - Math.PI / 2;
   const x = actor.x + Math.cos(angle) * 6;
