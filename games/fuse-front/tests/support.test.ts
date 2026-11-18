@@ -138,6 +138,23 @@ test("DASH bounds to an aim within four tiles, along its facing when aimed at it
   assert.equal(tileOf(dash(0, 6, 2).x), 1, "the wall");
 });
 
+test("DASH reports its destination as the caster and its start as the effect origin", () => {
+  const world = arena("tally");
+  const start = world.heroes[0]!;
+  const [cast, after] = fire(world, 0, 7, 6);
+  assert.equal(cast, true);
+  assert.deepEqual(after.events.at(-1), {
+    type: "cast",
+    seat: 0,
+    slot: 0,
+    effect: "dash",
+    x: centreOf(7),
+    y: centreOf(6),
+    toX: start.x,
+    toY: start.y,
+  });
+});
+
 test("FLARE draws the owner's pushing robots to its tile until it goes out", () => {
   let world = arena("tally");
   const grunt = addUnit(world, 0, "grunt", 3, 6);
