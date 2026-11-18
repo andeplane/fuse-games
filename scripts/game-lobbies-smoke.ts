@@ -367,7 +367,7 @@ try {
         await options.waitFor();
         assert.equal(
           await options
-            .getByRole("slider", { name: /^music volume$/i })
+            .getByRole("slider", { name: /^radio volume$/i })
             .count(),
           0,
           "controller volume is managed on the TV",

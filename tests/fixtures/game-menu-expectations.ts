@@ -13,13 +13,13 @@ const radioAndEffects: GameMenu = {
   controls: [...sharedRadio.controls, ["slider", /effects/i]],
 };
 export const gameMenus: Readonly<Record<string, GameMenu>> = {
-  "ball-bros": { radio: true, controls: [["slider", /^music volume$/i]] },
+  "ball-bros": sharedRadio,
   dice: sharedRadio,
   "elasto-fuse": radioAndEffects,
   "fuse-axe": sharedRadio,
   "fuse-birds": sharedRadio,
   "fuse-bombers": sharedRadio,
-  "fuse-choppers": { radio: true, controls: [["slider", /music volume/i]] },
+  "fuse-choppers": sharedRadio,
   "fuse-craft": {
     radio: true,
     controls: [
