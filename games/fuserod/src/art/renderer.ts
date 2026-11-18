@@ -1,4 +1,5 @@
 import { gauge, tail } from "./cars";
+import { vehicleBody, type VehicleFittings } from "./vehicle-families";
 import { front } from "./front";
 import { destination, type TownStopArt } from "./town-art";
 import {
@@ -11,7 +12,6 @@ import {
 } from "./hazards";
 export type { RoadFeature } from "./hazards";
 import {
-  ellipse,
   fill,
   metal,
   polygon,
@@ -27,6 +27,7 @@ export { drawGarage, type GarageArt } from "./garage";
 export type { Route } from "./landscape";
 
 export interface RoadOpponent {
+  fittings?: VehicleFittings;
   police?: boolean;
   /** Absolute distance along the course in metres. */
   distance: number;
@@ -37,6 +38,7 @@ export interface RoadOpponent {
 }
 
 export interface RaceArt {
+  fittings?: VehicleFittings;
   townStop?: TownStopArt;
   /** Upcoming and active route features, in metres and half-road widths. */
   features?: readonly RoadFeature[];
@@ -56,8 +58,9 @@ export interface RaceArt {
 }
 
 function cockpit(g: Brush, w: number, h: number, state: RaceArt) {
+  const body = vehicleBody(state.model ?? 0);
   const paint = state.paint ?? "#ce614d",
-    hoodY = h * 0.838;
+    hoodY = h * (0.836 + (body.frontAxle - 399) * 0.00042);
   // Raised fenders and two pressed bonnet creases track the vehicle, not the scenery.
   fill(
     g,
@@ -84,6 +87,18 @@ function cockpit(g: Brush, w: number, h: number, state: RaceArt) {
     `M${w * 0.23} ${hoodY + 8} L${w * 0.14} ${hoodY + 38} M${w * 0.76} ${hoodY + 8} L${w * 0.85} ${hoodY + 38}`,
   );
   const dashY = h * 0.9;
+  if (state.fittings?.hoodScoop ?? body.style === "drag") {
+    fill(
+      g,
+      paint,
+      `M${w * 0.41} ${hoodY + 17} L${w * 0.445} ${hoodY - 7} H${w * 0.555} L${w * 0.59} ${hoodY + 17}Z`,
+    );
+    fill(
+      g,
+      "#313440",
+      `M${w * 0.444} ${hoodY - 5} H${w * 0.556} L${w * 0.565} ${hoodY + 1} H${w * 0.435}Z`,
+    );
+  }
   fill(
     g,
     metal(
@@ -390,6 +405,7 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
           car.police ? "#303d4b" : (car.paint ?? "#5aa99f"),
           car.model ?? 0,
           car.police,
+          car.fittings,
         ),
     });
   }
@@ -484,6 +500,7 @@ function rearview(g: Brush, w: number, h: number, state: RaceArt) {
       car.model ?? 0,
       (car.lateral - state.lateral) * 0.4,
       car.police,
+      car.fittings,
     );
   }
   g.restore();

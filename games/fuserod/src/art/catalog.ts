@@ -1,4 +1,5 @@
 import { profile } from "./cars";
+import type { VehicleFittings } from "./vehicle-families";
 import { front } from "./front";
 import { metal, rect, stroke } from "./drawing";
 import { partPicture } from "./parts";
@@ -6,6 +7,7 @@ import { portrait } from "./portraits";
 
 type ArtKind = "rival" | "part" | "car";
 interface ArtOptions {
+  fittings?: VehicleFittings;
   paint?: string;
   angle?: "side" | "front" | "quarter";
 }
@@ -53,11 +55,13 @@ export function artCanvas(
         paint,
         model,
         options.angle === "quarter" ? 0.6 : 0,
+        false,
+        options.fittings,
       );
     else {
       g.translate(7, 21);
       g.scale(0.535, 0.535);
-      profile(g, paint, model, 0);
+      profile(g, paint, model, 0, options.fittings);
     }
   }
   return c;

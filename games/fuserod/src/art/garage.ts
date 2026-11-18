@@ -1,4 +1,5 @@
 import { profile } from "./cars";
+import type { VehicleFittings } from "./vehicle-families";
 import {
   ellipse,
   fill,
@@ -12,6 +13,7 @@ import {
 import { horizon } from "./landscape";
 
 export interface GarageArt {
+  fittings?: VehicleFittings;
   paint?: string;
   model?: number;
   upgrade?: number;
@@ -90,12 +92,24 @@ export function drawGarage(canvas: HTMLCanvasElement, car: GarageArt = {}) {
   g.translate(w * 0.5 - carW * 0.5, baseline + 8);
   g.scale(scale, -scale * 0.18);
   g.globalAlpha = 0.13;
-  profile(g, car.paint ?? "#dd604b", car.model ?? 0, car.upgrade ?? 0);
+  profile(
+    g,
+    car.paint ?? "#dd604b",
+    car.model ?? 0,
+    car.upgrade ?? 0,
+    car.fittings,
+  );
   g.restore();
   g.save();
   g.translate(w * 0.5 - carW * 0.5, baseline - 170 * scale);
   g.scale(scale, scale);
-  profile(g, car.paint ?? "#dd604b", car.model ?? 0, car.upgrade ?? 0);
+  profile(
+    g,
+    car.paint ?? "#dd604b",
+    car.model ?? 0,
+    car.upgrade ?? 0,
+    car.fittings,
+  );
   g.restore();
   // Diagonal stripe painted along the threshold in the foreground.
   fill(g, "#d7a87575", `M0 488 L${w} 442 L${w} 445 L0 497Z`);

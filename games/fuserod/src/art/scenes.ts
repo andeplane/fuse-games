@@ -204,7 +204,13 @@ export function drawScene(
     cx = kind === "station" ? w * 0.63 : w * 0.5,
     base = 433;
   positioned(g, cx - 250 * carScale, base - 171 * carScale, carScale, () =>
-    profile(g, paint, options.model ?? 0, options.upgrade ?? 0),
+    profile(
+      g,
+      paint,
+      options.model ?? 0,
+      options.upgrade ?? 0,
+      options.fittings,
+    ),
   );
   if (kind === "station") {
     const px = Math.max(40 * s, cx - 266 * carScale),

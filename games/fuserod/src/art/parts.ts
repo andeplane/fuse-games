@@ -1,4 +1,5 @@
 import { ellipse, fill, metal, rect, stroke, type Brush } from "./drawing";
+import { benchPart } from "./tools";
 
 function bolt(g: Brush, x: number, y: number, r: number) {
   ellipse(g, "#283541", x, y, r, r * 0.75);
@@ -182,4 +183,3 @@ export function partPicture(g: Brush, name: string) {
   else if (/repair|condition|service|wrench/.test(key)) repair(g);
   else engine(g);
 }
-import { benchPart } from "./tools";
