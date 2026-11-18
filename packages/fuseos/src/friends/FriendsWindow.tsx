@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 
 import { ContextMenu } from "../windows/ContextMenu";
 import type { ContextMenuItem } from "../windows/ContextMenu";
@@ -12,8 +12,8 @@ import { FriendsDepsContext } from "./friendsDepsContext";
 import { BuddyIcon, FuseMessengerMark, ToolbarIcon } from "./messengerArt";
 import "./messenger.css";
 import { MessengerGameContext } from "./MessengerGameContext";
-import type { Buddy, BuddyStatus } from "./presenceService";
-import { STATUS_LABEL } from "./presenceService";
+import type { Buddy, BuddyStatus, PlayerCard } from "./presenceService";
+import { isPublicId, STATUS_LABEL } from "./presenceService";
 import type { FriendsViewModel } from "./useFriendsViewModel";
 import { useFriendsViewModel } from "./useFriendsViewModel";
 
@@ -177,29 +177,67 @@ function AddFriendForm({
   onDone: () => void;
 }) {
   const [value, setValue] = useState("");
+  const [results, setResults] = useState<PlayerCard[]>();
+  const [error, setError] = useState<string>();
+  const [searching, setSearching] = useState(false);
+  const generation = useRef(0);
+  useEffect(
+    () => () => {
+      generation.current++;
+    },
+    [],
+  );
+  const add = async (id: string) => {
+    const mine = ++generation.current;
+    if ((await vm.addFriend(id)) && mine === generation.current) onDone();
+  };
+  const search = async () => {
+    const mine = ++generation.current;
+    setSearching(true);
+    setResults(undefined);
+    setError(undefined);
+    try {
+      const found = await vm.searchFriends(value.trim());
+      if (mine === generation.current) setResults(found);
+    } catch (cause) {
+      if (mine === generation.current)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not search. Try Search again.",
+        );
+    } finally {
+      if (mine === generation.current) setSearching(false);
+    }
+  };
   return (
     <form
       className="msn-add"
       aria-label="Add a Contact"
       onSubmit={(event) => {
         event.preventDefault();
-        if (vm.addFriend(value)) {
-          setValue("");
-          onDone();
-        }
+        if (isPublicId(value.trim().toLowerCase())) void add(value);
+        else if (value.trim().length >= 2 && value.length <= 64) void search();
       }}
     >
-      <label htmlFor="friends-add-id">Add a Contact by player id:</label>
+      <label htmlFor="friends-add-id">Find a friend by name:</label>
       <div className="msn-add-row">
         <input
           id="friends-add-id"
           type="text"
-          placeholder="friend's player id"
+          placeholder="Name or player id"
           value={value}
           autoComplete="off"
           spellCheck={false}
           autoFocus
-          onChange={(event) => setValue(event.target.value)}
+          maxLength={64}
+          onChange={(event) => {
+            generation.current++;
+            setValue(event.target.value);
+            setResults(undefined);
+            setError(undefined);
+            setSearching(false);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.stopPropagation();
@@ -207,13 +245,67 @@ function AddFriendForm({
             }
           }}
         />
-        <button type="submit" disabled={vm.busy || value.trim().length === 0}>
-          Add
+        <button
+          type="submit"
+          disabled={vm.busy || searching || value.trim().length < 2}
+        >
+          {isPublicId(value.trim().toLowerCase()) ? "Add" : "Search"}
         </button>
         <button type="button" onClick={onDone}>
           Cancel
         </button>
       </div>
+      <p className="msn-search-hint">
+        Enter at least 2 characters from the start of their name.
+      </p>
+      <div role="status">
+        {searching
+          ? "Searching..."
+          : results?.length === 0
+            ? "No players found. Try another name."
+            : null}
+        {results?.length === 20
+          ? "Showing the first 20 matches. Type more of the name to narrow your search."
+          : null}
+      </div>
+      {error ? <p role="alert">{error}</p> : null}
+      {results && results.length > 0 ? (
+        <ul className="msn-search-results" aria-label="Player search results">
+          {results.map((card) => {
+            const friend = vm.snapshot.buddies.some(
+              (b) => b.publicId === card.publicId,
+            );
+            const pending = vm.snapshot.outgoing.some(
+              (b) => b.publicId === card.publicId,
+            );
+            const incoming = vm.snapshot.incoming.some(
+              (b) => b.publicId === card.publicId,
+            );
+            return (
+              <li key={card.publicId}>
+                <span>
+                  <strong>{card.name}</strong>
+                  <small>{card.publicId}</small>
+                </span>
+                <button
+                  type="button"
+                  disabled={vm.busy || friend || pending}
+                  onClick={() => void add(card.publicId)}
+                  aria-label={`${incoming ? "Accept" : "Add"} ${card.name} (${card.publicId})`}
+                >
+                  {friend
+                    ? "Already friends"
+                    : pending
+                      ? "Request sent"
+                      : incoming
+                        ? "Accept"
+                        : "Add"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </form>
   );
 }
@@ -399,7 +491,7 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
           onSelect: () =>
             commands.showInfo(
               "About Fuse Messenger",
-              "Friends from every Fuse game, in one list. Add a contact with their player id, accept the request, and double-click their name to chat. A message from a friend opens its own window.\n\nYour Fuse world account is shared with the games. Contacts refresh every 20 seconds and an open conversation every few seconds. Messages are plain text; a conversation keeps up to 80 messages from the last seven days. Removing a friend clears that conversation.",
+              "Friends from every Fuse game, in one list. Search for a contact by name, send a request, and double-click their name to chat once accepted. You can also paste a player id. A message from a friend opens its own window.\n\nYour Fuse world account is shared with the games. Contacts refresh every 20 seconds and an open conversation every few seconds. Messages are plain text; a conversation keeps up to 80 messages from the last seven days. Removing a friend clears that conversation.",
             ),
         },
       ],
@@ -571,7 +663,11 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
             </ul>
           ) : null}
           {adding ? (
-            <AddFriendForm vm={vm} onDone={() => setAdding(false)} />
+            <AddFriendForm
+              key={`${vm.snapshot.mode}:${vm.snapshot.me?.publicId ?? vm.snapshot.account.kind}`}
+              vm={vm}
+              onDone={() => setAdding(false)}
+            />
           ) : null}
           <div className="msn-contact-list">
             {snapshot.incoming.length > 0 || snapshot.outgoing.length > 0 ? (
@@ -586,7 +682,7 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
                       <button
                         type="button"
                         aria-label={`Accept ${card.name}`}
-                        onClick={() => vm.addFriend(card.publicId)}
+                        onClick={() => void vm.addFriend(card.publicId)}
                       >
                         Accept
                       </button>
@@ -624,8 +720,8 @@ export function FriendsWindow({ windowId }: FriendsWindowProps) {
               </p>
             ) : snapshot.buddies.length === 0 ? (
               <p className="msn-list-note">
-                No contacts yet. Press Add and type a friend&apos;s player id,
-                or send yours to a friend.
+                No contacts yet. Press Add and search for a friend by name, or
+                send yours to a friend.
               </p>
             ) : null}
             {snapshot.loaded ? (
