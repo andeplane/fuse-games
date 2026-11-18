@@ -61,7 +61,13 @@ import {
 } from "../online/game.js";
 import { BirdsRuntime, type Play, type Session } from "../online/runtime.js";
 import { createArena } from "../render/arena.js";
-import { constrainCamera, followShot, zoomAt } from "../render/camera.js";
+import {
+  constrainCamera,
+  followShot,
+  turnCamera,
+  zoomAt,
+  type Camera,
+} from "../render/camera.js";
 import {
   cancelGesture,
   resetGesture,
@@ -513,6 +519,9 @@ function room(
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let following = true,
     previousPaint = 0;
+  let preferredZoom = 1;
+  let handoff: { from: Camera; to: Camera; start: number } | undefined;
+  let lastWheel = -Infinity;
   let me = "",
     host = false,
     view: WorldView | null = null,
@@ -544,6 +553,10 @@ function room(
     keyboardAim = undefined;
     cancelGesture(gestures);
   };
+  const cancelAim = () => {
+    keyboardAim = undefined;
+    if (gestures.mode === "aim") cancelGesture(gestures);
+  };
   const canPlay = () =>
     !modalInput.blocked() &&
     canPlayTurn(currentFrame, me, display, battlefieldReady, runtime);
@@ -572,7 +585,7 @@ function room(
     if (!runtime.play(action)) say("Wait for your turn before playing.");
   };
   const select = (next: Weapon) => {
-    cancel();
+    cancelAim();
     weapon = next;
     pebble.setAttribute("aria-pressed", String(next === "pebble"));
     scatter.setAttribute("aria-pressed", String(next === "scatter"));
@@ -594,6 +607,7 @@ function room(
   };
   const zoom = (factor: number) => {
     if (!view || display) return;
+    handoff = undefined;
     following = false;
     cancel();
     const vp = viewport();
@@ -604,14 +618,19 @@ function room(
       view,
       vp,
     );
+    preferredZoom = gestures.camera.zoom;
   };
   zoomIn.onclick = () => zoom(1.4);
   zoomOut.onclick = () => zoom(1 / 1.4);
   recenter.onclick = () => {
+    handoff = undefined;
     following = true;
     centerBird();
+    preferredZoom = gestures.camera.zoom;
   };
   full.onclick = () => {
+    handoff = undefined;
+    preferredZoom = 1;
     following = false;
     cancel();
     gestures.camera = { x: 768, y: 384, zoom: 1 };
@@ -622,6 +641,7 @@ function room(
   };
   canvas.onpointerdown = (e) => {
     if (!view || display) return;
+    handoff = undefined;
     if (keyboardAim) cancel();
     audio.unlock();
     e.preventDefault();
@@ -635,6 +655,7 @@ function room(
   };
   canvas.onpointermove = (e) => {
     if (view && !display) pointerMove(gestures, point(e), view, viewport());
+    if (gestures.mode === "pinch") preferredZoom = gestures.camera.zoom;
   };
   canvas.onpointerup = (e) => {
     const shot = pointerUp(gestures, e.pointerId);
@@ -657,6 +678,8 @@ function room(
     "wheel",
     (e) => {
       if (display || !view) return;
+      handoff = undefined;
+      lastWheel = performance.now();
       following = false;
       e.preventDefault();
       cancel();
@@ -668,6 +691,7 @@ function room(
         view,
         viewport(),
       );
+      preferredZoom = gestures.camera.zoom;
     },
     { passive: false },
   );
@@ -741,12 +765,19 @@ function room(
         );
     },
     state(frame, settings) {
+      const previousWorld = currentFrame?.world;
       if (
         currentFrame?.matchId !== frame.matchId ||
         currentFrame?.world?.round !== frame.world?.round
       ) {
         shotFeedback("");
         shotOutcome = undefined;
+        handoff = undefined;
+        if (solo) {
+          gestures.camera = { x: 768, y: 384, zoom: 1 };
+          preferredZoom = 1;
+          following = true;
+        }
       }
       currentFrame = frame;
       host = frame.managerId === me;
@@ -869,7 +900,27 @@ function room(
       const player = view.players[view.active]!,
         key = `${view.id}:${view.round}:${view.turn}`;
       if (turnKey !== key) {
-        cancel();
+        handoff = undefined;
+        cancelAim();
+        if (
+          solo &&
+          player.id === me &&
+          previousWorld?.id === view.id &&
+          previousWorld.round === view.round &&
+          previousWorld.turn !== view.turn &&
+          !gestures.pointers.size &&
+          performance.now() - lastWheel > 180
+        ) {
+          const to = {
+            x: player.x / UNIT,
+            y: player.y / UNIT,
+            zoom: preferredZoom,
+          };
+          if (reducedMotion)
+            gestures.camera = constrainCamera(to, view, viewport());
+          else
+            handoff = { from: gestures.camera, to, start: performance.now() };
+        }
         if (player.ammo === 0) select("pebble");
         if (
           !solo &&
@@ -882,7 +933,8 @@ function room(
         }
         turnKey = key;
       }
-      if (!canPlay() || (weapon === "scatter" && player.ammo === 0)) cancel();
+      if (!canPlay() || (weapon === "scatter" && player.ammo === 0))
+        cancelAim();
       scorebar.replaceChildren(
         ...view.players.map((p) => {
           let card = cards.get(p.id);
@@ -1042,6 +1094,7 @@ function room(
       e.preventDefault();
       zoom(key === "-" ? 1 / 1.4 : 1.4);
     } else if (canAim() && ["i", "j", "k", "l"].includes(key)) {
+      handoff = undefined;
       e.preventDefault();
       audio.unlock();
       const bird = view!.players[view!.active]!;
@@ -1066,7 +1119,11 @@ function room(
   });
   function paint(now: number): void {
     if (stopped) return;
-    if (
+    if (handoff && view?.phase === "aiming") {
+      const next = turnCamera(handoff.from, handoff.to, now - handoff.start);
+      gestures.camera = constrainCamera(next, view, viewport());
+      if (next === handoff.to) handoff = undefined;
+    } else if (
       view &&
       following &&
       !display &&
