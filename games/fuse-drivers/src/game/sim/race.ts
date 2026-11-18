@@ -381,7 +381,7 @@ export function step(
       state,
     );
   }
-  const finishing = original && trucks.some((t) => t.finishedTick === tick);
+  const finishing = trucks.some((t) => t.finishedTick === tick);
   if (finishing)
     paceOrder = nativeOrder(
       trucks,

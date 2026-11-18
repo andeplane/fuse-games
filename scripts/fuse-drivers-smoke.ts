@@ -146,7 +146,7 @@ try {
     await tires.filter({hasText: "Level 1/5"}).waitFor();
     assert.equal(await tv.getByRole("button", {name: "Speed shop", exact: true}).count(), 0);
     await peer.screenshot({ path: "artifacts/fuse-drivers/phone-shop.png" });
-    await host.getByRole("button", {name:"NEXT RACE",exact:true}).click();
+    await host.getByRole("button", {name:/^NEXT RACE/i}).click();
     await tv.waitForFunction(() => {
       const state = window.__driversRaceProbe?.();
       return state?.track === "offroad-7" && state.trucks?.[1]?.tires === 1;
