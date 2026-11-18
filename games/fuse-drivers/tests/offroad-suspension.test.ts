@@ -170,3 +170,33 @@ test("a wheel reaching column 44 samples column zero of the next row with its or
   );
   assert.equal(edge.stopX && edge.stopY, true);
 });
+
+test("observed Y overrun rows use the original default barrier normal inside the 44 course columns", () => {
+  const state = createOffroadSuspension();
+  for (const y of [44 * 256 + 128, 45 * 256 - 1, 65535]) {
+    const result = stepOffroadSuspension(
+      state,
+      { ...motion, y },
+      () => flat,
+      1,
+    );
+    // With heading zero and the polygon-zero normal (+Y), the wheel routine
+    // restores momentum along the body without pinning either position axis.
+    assert.equal(result.stopX || result.stopY, false);
+    assert.equal(result.groundMask, 15);
+  }
+  const distant = stepOffroadSuspension(
+    state,
+    { ...motion, y: 48 * 256 },
+    () => flat,
+    1,
+  );
+  assert.equal(distant.stopX && distant.stopY, true);
+  const corner = stepOffroadSuspension(
+    state,
+    { ...motion, x: 48 * 256, y: 44 * 256 + 220 },
+    () => flat,
+    1,
+  );
+  assert.equal(corner.stopX && corner.stopY, true);
+});

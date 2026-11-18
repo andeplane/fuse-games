@@ -51,6 +51,17 @@ const i16 = (v: number) => (v << 16) >> 16;
 const i8 = (v: number) => (v << 24) >> 24;
 const WHEEL_PHASE = [20, 12, 28, 4] as const;
 const GRID_SIDE = 44;
+// Stock polygon zero. At the observed Y row overruns the DOS row lookup
+// indexes zero-filled words beyond the contour table, selecting this facet.
+// Reproduce those border contacts without consulting unrelated process memory.
+const BORDER_FACET: Surface = {
+  height: 0,
+  kind: 0,
+  blocked: true,
+  direction: 64,
+  slopeX: 0,
+  slopeY: 32,
+};
 /** Quarter wave of round(256 * sin(index * pi/16)). */
 const QUARTER = [0, 50, 98, 142, 181, 213, 237, 251, 256] as const;
 const sineOffset = (index: number): number => {
@@ -70,7 +81,11 @@ function sampleWheel(
 ): Surface | null {
   const col = x >>> 8;
   const row = y >>> 8;
-  if (row >= GRID_SIDE) return null;
+  if (row >= GRID_SIDE) {
+    const nearBorder =
+      row === GRID_SIDE || row === GRID_SIDE + 1 || row === 255;
+    return col < GRID_SIDE && nearBorder ? BORDER_FACET : null;
+  }
   if (col < GRID_SIDE) return sample(x, y);
   const cell = row * GRID_SIDE + col;
   if (cell >= GRID_SIDE * GRID_SIDE) return null;
