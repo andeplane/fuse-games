@@ -1734,6 +1734,341 @@ export function mountFuseCraft(
       ?.focus?.();
   }
 
+  function switchPanel(next: string) {
+    placement = null;
+    placementCell = null;
+    switch (next) {
+      case "inspect":
+      case "build":
+      case "research":
+      case "activity":
+      case "particles":
+        panel = panel === next ? "inspect" : next;
+    }
+    dependencies.audio?.play(panel === "inspect" ? "back" : "panel");
+    commandPage = 0;
+    renderGame();
+    if (panel !== "inspect")
+      root
+        .querySelector<HTMLButtonElement>(
+          '.command-card [data-action="close-panel"]',
+        )
+        ?.focus?.();
+  }
+
+  function setupFromMenu() {
+    screen = "setup";
+    mode = "skirmish";
+    selectedId = DEFAULT_MAP;
+    void loadCatalog();
+  }
+
+  function chooseMode(next: GameMode, mapId: string) {
+    mode = next;
+    void loadSelectedMap(mapId);
+  }
+
+  const slotAt = (target: Element): number =>
+    Number(target.closest<HTMLElement>("[data-slot]")?.dataset.slot);
+
+  function takeSlot(target: Element) {
+    if (!online) return;
+    playerName = dependencies.online?.savedName() || playerName;
+    roomJoinSlot = slotAt(target);
+    const name = playerName.trim();
+    if (name) online.join(name, roomJoinSlot);
+    else {
+      root.querySelector<HTMLDialogElement>("[data-room-name]")?.showModal();
+      root.querySelector<HTMLInputElement>("#player-name")?.focus();
+    }
+  }
+
+  function moveSlot(target: Element) {
+    if (!online) return;
+    const room = online.room();
+    const own = room.seats.find(
+      (seat) => seat.id === room.self && !seat.watcher,
+    );
+    const slot = slotAt(target);
+    if (own && Number.isInteger(slot)) online.join(own.name, slot);
+  }
+
+  function closeRoomName() {
+    root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
+  }
+
+  function confirmSeat() {
+    if (!online) return;
+    const name = playerName.trim();
+    if (!name) return;
+    dependencies.online?.saveName(name);
+    online.join(name, roomJoinSlot);
+    closeRoomName();
+  }
+
+  function changeReportMetric(target: Element) {
+    const metric = target.closest<HTMLElement>("[data-metric]")?.dataset.metric;
+    const chosen = REPORT_METRICS.find((m) => m.id === metric);
+    if (chosen) reportMetric = chosen.id;
+    if (shownReport)
+      updateContent(
+        reportChart,
+        chartPanelMarkup(shownReport.world, shownReport.players, reportMetric),
+      );
+  }
+
+  function renderAndFocusBoard() {
+    renderGame();
+    root
+      .querySelector<SVGSVGElement>("#nd-board")
+      ?.focus?.({ preventScroll: true });
+  }
+
+  function beginPlacement(kind: string) {
+    const owner = session
+      ?.view()
+      .players.find((p) => p.id === session?.localPlayerId);
+    if (
+      !isBuildKind(kind) ||
+      !owner ||
+      !constructionAvailability(owner, kind).allowed
+    ) {
+      dependencies.audio?.play("invalid");
+      return;
+    }
+    dependencies.audio?.play("panel");
+    placement = kind;
+    placementCell = null;
+    renderAndFocusBoard();
+  }
+
+  function selectedOwnStructure() {
+    if (!session || selectedCell === null) return;
+    const world = session.view();
+    const owner = world.players.find((p) => p.id === session?.localPlayerId);
+    if (!owner) return;
+    const structure = world.structures.find(
+      (s) => s.cell === selectedCell && s.ownerId === owner.id,
+    );
+    if (structure) return { owner, structure };
+  }
+
+  function askToExit(next: "reset" | "leave") {
+    if (session?.view().finished) {
+      if (next === "reset") restart();
+      else showMenu();
+      return;
+    }
+    pending = next;
+    render();
+  }
+
+  const clickActions = new Map<string, (target: Element) => void>([
+    // Setup, tutorial, and navigation.
+    [
+      "guide",
+      () => {
+        screen = "guide";
+        render();
+      },
+    ],
+    [
+      "guide-section",
+      (target) => {
+        const section =
+          target.closest<HTMLElement>("[data-section]")?.dataset.section;
+        if (isGuideSection(section)) guideSection = section;
+        render();
+      },
+    ],
+    ["help", openHelp],
+    ["close-help", closeHelp],
+    ["fullscreen", () => dependencies.fullscreen?.toggle()],
+    ["tutorial", () => void startTutorial()],
+    [
+      "tutorial-next",
+      () => {
+        if (!tutorial) return;
+        tutorial = {
+          step: Math.min(tutorial.step + 1, TUTORIAL_STEPS.length - 1),
+        };
+        renderGame();
+      },
+    ],
+    [
+      "tutorial-close",
+      () => {
+        tutorial = null;
+        renderGame();
+      },
+    ],
+    [
+      "tutorial-play",
+      () => {
+        tutorial = null;
+        disposeSession();
+        aiStrategy = "economy";
+        setupFromMenu();
+      },
+    ],
+    ["new-game", setupFromMenu],
+    ["back-menu", showMenu],
+    ["retry-catalog", () => void loadCatalog()],
+    [
+      "retry-map",
+      () => {
+        if (selectedId) void loadSelectedMap(selectedId);
+      },
+    ],
+    ["mode-sandbox", () => chooseMode("sandbox", "sandbox-12")],
+    ["mode-combat-lab", () => chooseMode("combat-lab", "combat-lab-12")],
+    ["mode-skirmish", () => chooseMode("skirmish", DEFAULT_MAP)],
+    ["mode-watch", () => chooseMode("watch", DEFAULT_MAP)],
+    ["start", launch],
+
+    // Room seats and lifecycle.
+    [
+      "multiplayer",
+      () => {
+        roomError = null;
+        screen = "multiplayer";
+        render();
+      },
+    ],
+    ["create-room", () => void createRoom()],
+    ["join-room", joinRoom],
+    ["take-slot", takeSlot],
+    ["move-slot", moveSlot],
+    ["close-room-name", closeRoomName],
+    ["join-seat", confirmSeat],
+    ["add-bot", (target) => online?.addBot(slotAt(target))],
+    [
+      "remove-bot",
+      (target) => {
+        const id = target.closest<HTMLElement>("[data-bot-id]")?.dataset.botId;
+        if (id) online?.removeBot(id);
+      },
+    ],
+    ["start-room", () => online?.start()],
+    ["rematch-room", () => online?.rematch()],
+    ["lobby-room", () => online?.lobby()],
+    ["leave-room", showMenu],
+    ["invite-friends", () => dependencies.friends?.open?.()],
+    [
+      "copy-room-link",
+      () => {
+        if (!online) return;
+        const link = dependencies.online?.roomLink(online.code) ?? "";
+        void navigator.clipboard?.writeText(link).catch(() => {});
+      },
+    ],
+
+    // Board and match controls.
+    ["close-panel", closePanel],
+    [
+      "next-command-page",
+      () => {
+        commandPage = (commandPage + 1) % commandPageCount(panel);
+        renderGame();
+      },
+    ],
+    [
+      "cancel-placement",
+      () => {
+        placement = null;
+        placementCell = null;
+        renderAndFocusBoard();
+      },
+    ],
+    [
+      "auto-expand",
+      () => {
+        const selected = selectedOwnStructure();
+        if (selected?.structure.kind === "brain")
+          dispatch({
+            type: "setAutoExpand",
+            enabled: !selected.owner.autoExpand,
+          });
+      },
+    ],
+    [
+      "charge",
+      () => {
+        const selected = selectedOwnStructure();
+        if (!selected) return;
+        const cell = selected.structure.cell;
+        dispatch({
+          type: "setPriority",
+          cell,
+          weight: selected.owner.priorities[cell] === 3 ? 0 : 3,
+        });
+      },
+    ],
+    [
+      "cancel-build",
+      () => {
+        if (selectedCell !== null)
+          dispatch({ type: "cancelConstruction", cell: selectedCell });
+      },
+    ],
+    ["cancel-research", () => dispatch({ type: "cancelResearch" })],
+    ["reset", () => askToExit("reset")],
+    ["leave", () => askToExit("leave")],
+    [
+      "cancel-confirm",
+      () => {
+        pending = null;
+        render();
+      },
+    ],
+    ["confirm-reset", restart],
+    ["confirm-leave", showMenu],
+    ["report-metric", changeReportMetric],
+  ]);
+
+  function onActionClick(button: HTMLElement, target: Element) {
+    const action = button.dataset.action;
+    if (action === "open-room-settings" || action === "close-room-settings") {
+      const settings = root.querySelector<HTMLDialogElement>(
+        "[data-room-settings]",
+      );
+      if (action === "open-room-settings") settings?.showModal();
+      else settings?.close();
+      return;
+    }
+    if (button.getAttribute("aria-disabled") === "true") {
+      dependencies.audio?.play("invalid");
+      button.focus?.();
+      return;
+    }
+    if (action?.startsWith("panel-")) {
+      switchPanel(action.slice(6));
+      return;
+    }
+    const cue = actionCue(action);
+    if (cue) dependencies.audio?.play(cue);
+    if (action?.startsWith("build-")) beginPlacement(action.slice(6));
+    else if (action?.startsWith("particle-")) {
+      const kind = action.slice(9);
+      if (kind === "pulse" || kind === "heavy" || kind === "swift")
+        dispatch({ type: "setParticleKind", kind });
+    } else if (action?.startsWith("research-")) {
+      const research = action.slice(9);
+      if (isResearchKind(research))
+        dispatch({ type: "startResearch", research });
+    } else if (action) clickActions.get(action)?.(target);
+  }
+
+  function focusWatchedCell(
+    world: Readonly<World>,
+    cell: number | null | undefined,
+  ) {
+    if (cell === null || cell === undefined) return;
+    selectedCell = cell;
+    camera?.focusCell(world.map.width, cell);
+    renderGame();
+  }
+
   function onClick(event: MouseEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
     dependencies.audio?.unlock();
@@ -1747,12 +2082,7 @@ export function mountFuseCraft(
       !pending
     ) {
       const world = session.view();
-      const cell = battleFocusCell(world);
-      if (cell !== null) {
-        selectedCell = cell;
-        camera?.focusCell(world.map.width, cell);
-        renderGame();
-      }
+      focusWatchedCell(world, battleFocusCell(world));
       return;
     }
     if (watchedId && session && !session.canControl && !pending) {
@@ -1763,11 +2093,7 @@ export function mountFuseCraft(
           (s) => s.ownerId === watchedId && s.kind === "brain",
         )?.cell ??
         world.map.spawns.find((s) => s.slot === player?.slot)?.cellIndex;
-      if (cell !== undefined) {
-        selectedCell = cell;
-        camera?.focusCell(world.map.width, cell);
-        renderGame();
-      }
+      focusWatchedCell(world, cell);
       return;
     }
     const tactical = target.closest<SVGSVGElement>("#nd-minimap");
@@ -1776,275 +2102,17 @@ export function mountFuseCraft(
       return;
     }
     const button = target.closest<HTMLElement>("[data-action]");
-    if (button?.dataset.action === "open-room-settings") {
-      root
-        .querySelector<HTMLDialogElement>("[data-room-settings]")
-        ?.showModal();
+    if (button) return onActionClick(button, target);
+    if (screen !== "game") return;
+    const tile = target.closest<SVGElement>("[data-cell]");
+    if (!tile) return;
+    selectedCell = Number(tile.dataset.cell);
+    if (placement) {
+      placeAt(selectedCell, event.shiftKey);
       return;
     }
-    if (button?.dataset.action === "close-room-settings") {
-      root.querySelector<HTMLDialogElement>("[data-room-settings]")?.close();
-      return;
-    }
-    if (button?.getAttribute("aria-disabled") === "true") {
-      dependencies.audio?.play("invalid");
-      button.focus?.();
-      return;
-    }
-    if (button?.dataset.action?.startsWith("panel-")) {
-      placement = null;
-      placementCell = null;
-      const next = button.dataset.action.slice(6);
-      if (
-        next === "inspect" ||
-        next === "build" ||
-        next === "research" ||
-        next === "activity" ||
-        next === "particles"
-      )
-        panel = panel === next ? "inspect" : next;
-      dependencies.audio?.play(panel === "inspect" ? "back" : "panel");
-      commandPage = 0;
-      renderGame();
-      if (panel !== "inspect") {
-        root
-          .querySelector<HTMLButtonElement>(
-            '.command-card [data-action="close-panel"]',
-          )
-          ?.focus?.();
-      }
-      return;
-    }
-    if (button) {
-      const action = button.dataset.action;
-      const cue = actionCue(action);
-      if (cue) dependencies.audio?.play(cue);
-      if (action === "close-panel") {
-        closePanel();
-      } else if (action === "next-command-page") {
-        commandPage = (commandPage + 1) % commandPageCount(panel);
-        renderGame();
-      } else if (action === "guide") {
-        screen = "guide";
-        render();
-      } else if (action === "guide-section") {
-        const section =
-          target.closest<HTMLElement>("[data-section]")?.dataset.section;
-        if (isGuideSection(section)) guideSection = section;
-        render();
-      } else if (action === "fullscreen") {
-        dependencies.fullscreen?.toggle();
-      } else if (action === "help") openHelp();
-      else if (action === "close-help") closeHelp();
-      else if (action === "tutorial") void startTutorial();
-      else if (action === "tutorial-next" && tutorial) {
-        tutorial = {
-          step: Math.min(tutorial.step + 1, TUTORIAL_STEPS.length - 1),
-        };
-        renderGame();
-      } else if (action === "tutorial-close") {
-        tutorial = null;
-        renderGame();
-      } else if (action === "tutorial-play") {
-        tutorial = null;
-        disposeSession();
-        screen = "setup";
-        mode = "skirmish";
-        aiStrategy = "economy";
-        selectedId = DEFAULT_MAP;
-        void loadCatalog();
-      } else if (action === "new-game") {
-        screen = "setup";
-        mode = "skirmish";
-        selectedId = DEFAULT_MAP;
-        void loadCatalog();
-      } else if (action === "multiplayer") {
-        roomError = null;
-        screen = "multiplayer";
-        render();
-      } else if (action === "create-room") void createRoom();
-      else if (action === "join-room") joinRoom();
-      else if (action === "take-slot" && online) {
-        playerName = dependencies.online?.savedName() || playerName;
-        roomJoinSlot = Number(
-          target.closest<HTMLElement>("[data-slot]")?.dataset.slot,
-        );
-        if (playerName.trim()) online.join(playerName.trim(), roomJoinSlot);
-        else {
-          root
-            .querySelector<HTMLDialogElement>("[data-room-name]")
-            ?.showModal();
-          root.querySelector<HTMLInputElement>("#player-name")?.focus();
-        }
-      } else if (action === "move-slot" && online) {
-        const room = online.room();
-        const own = room.seats.find(
-          (seat) => seat.id === room.self && !seat.watcher,
-        );
-        const slot = Number(
-          target.closest<HTMLElement>("[data-slot]")?.dataset.slot,
-        );
-        if (own && Number.isInteger(slot)) online.join(own.name, slot);
-      } else if (action === "close-room-name")
-        root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
-      else if (action === "join-seat" && online) {
-        const name = playerName.trim();
-        if (name) {
-          dependencies.online?.saveName(name);
-          online.join(name, roomJoinSlot);
-          root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
-        }
-      } else if (action === "add-bot")
-        online?.addBot(
-          Number(target.closest<HTMLElement>("[data-slot]")?.dataset.slot),
-        );
-      else if (action === "remove-bot") {
-        const id = target.closest<HTMLElement>("[data-bot-id]")?.dataset.botId;
-        if (id) online?.removeBot(id);
-      } else if (action === "start-room") online?.start();
-      else if (action === "rematch-room") online?.rematch();
-      else if (action === "report-metric") {
-        const metric =
-          target.closest<HTMLElement>("[data-metric]")?.dataset.metric;
-        const chosen = REPORT_METRICS.find((m) => m.id === metric);
-        if (chosen) reportMetric = chosen.id;
-        if (shownReport)
-          updateContent(
-            reportChart,
-            chartPanelMarkup(
-              shownReport.world,
-              shownReport.players,
-              reportMetric,
-            ),
-          );
-      } else if (action === "lobby-room") online?.lobby();
-      else if (action === "leave-room") showMenu();
-      else if (action === "invite-friends") dependencies.friends?.open?.();
-      else if (action === "copy-room-link" && online) {
-        const link = dependencies.online?.roomLink(online.code) ?? "";
-        void navigator.clipboard?.writeText(link).catch(() => {});
-      } else if (action === "back-menu") showMenu();
-      else if (action === "retry-catalog") void loadCatalog();
-      else if (action === "retry-map" && selectedId)
-        void loadSelectedMap(selectedId);
-      else if (
-        action === "mode-sandbox" ||
-        action === "mode-combat-lab" ||
-        action === "mode-skirmish" ||
-        action === "mode-watch"
-      ) {
-        mode =
-          action === "mode-watch"
-            ? "watch"
-            : action === "mode-skirmish"
-              ? "skirmish"
-              : action === "mode-sandbox"
-                ? "sandbox"
-                : "combat-lab";
-        const id =
-          mode === "skirmish" || mode === "watch"
-            ? DEFAULT_MAP
-            : mode === "sandbox"
-              ? "sandbox-12"
-              : "combat-lab-12";
-        void loadSelectedMap(id);
-      } else if (action === "start") launch();
-      else if (action?.startsWith("build-")) {
-        const kind = action.slice(6);
-        const owner = session
-          ?.view()
-          .players.find((p) => p.id === session?.localPlayerId);
-        if (
-          isBuildKind(kind) &&
-          owner &&
-          constructionAvailability(owner, kind).allowed
-        ) {
-          dependencies.audio?.play("panel");
-          placement = kind;
-          placementCell = null;
-          renderGame();
-          root
-            .querySelector<SVGSVGElement>("#nd-board")
-            ?.focus?.({ preventScroll: true });
-        } else dependencies.audio?.play("invalid");
-      } else if (action === "cancel-placement") {
-        placement = null;
-        placementCell = null;
-        renderGame();
-        root
-          .querySelector<SVGSVGElement>("#nd-board")
-          ?.focus?.({ preventScroll: true });
-      } else if (action === "auto-expand" && session) {
-        const world = session.view();
-        const player = world.players.find(
-          (p) => p.id === session?.localPlayerId,
-        );
-        if (
-          player &&
-          world.structures.some(
-            (s) =>
-              s.cell === selectedCell &&
-              s.kind === "brain" &&
-              s.ownerId === player.id,
-          )
-        )
-          dispatch({ type: "setAutoExpand", enabled: !player.autoExpand });
-      } else if (action === "charge" && session && selectedCell !== null) {
-        const world = session.view();
-        const owner = world.players.find(
-          (p) => p.id === session?.localPlayerId,
-        );
-        if (
-          owner &&
-          world.structures.some(
-            (s) => s.cell === selectedCell && s.ownerId === owner.id,
-          )
-        )
-          dispatch({
-            type: "setPriority",
-            cell: selectedCell,
-            weight: owner.priorities[selectedCell] === 3 ? 0 : 3,
-          });
-      } else if (action === "cancel-build" && selectedCell !== null)
-        dispatch({ type: "cancelConstruction", cell: selectedCell });
-      else if (action?.startsWith("particle-")) {
-        const kind = action.slice(9);
-        if (kind === "pulse" || kind === "heavy" || kind === "swift")
-          dispatch({ type: "setParticleKind", kind });
-      } else if (action?.startsWith("research-")) {
-        const research = action.slice(9);
-        if (isResearchKind(research))
-          dispatch({ type: "startResearch", research });
-      } else if (action === "cancel-research")
-        dispatch({ type: "cancelResearch" });
-      else if (action === "reset" || action === "leave") {
-        if (session?.view().finished) {
-          if (action === "reset") restart();
-          else showMenu();
-          return;
-        }
-        pending = action;
-        render();
-      } else if (action === "cancel-confirm") {
-        pending = null;
-        render();
-      } else if (action === "confirm-reset") {
-        restart();
-      } else if (action === "confirm-leave") showMenu();
-      return;
-    }
-    if (screen === "game") {
-      const tile = target.closest<SVGElement>("[data-cell]");
-      if (tile) {
-        selectedCell = Number(tile.dataset.cell);
-        if (placement) {
-          placeAt(selectedCell, event.shiftKey);
-          return;
-        }
-        if (panel !== "build") panel = "inspect";
-        renderGame();
-      }
-    }
+    if (panel !== "build") panel = "inspect";
+    renderGame();
   }
 
   function placeAt(cell: number, keepPlacing = false) {
