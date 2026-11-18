@@ -29,6 +29,9 @@ import {
   type RoadTraffic,
 } from "./street-furniture";
 import { fracturedGlass } from "./story-art";
+import { paintSurfaceBand, desertPatch } from "./road-surface";
+import { roadProfile, type SampleRoad } from "./road-profile";
+import { wheel, consoleTrim } from "./cockpit";
 
 export { drawGarage, type GarageArt } from "./garage";
 export type { Route } from "./landscape";
@@ -45,6 +48,9 @@ export interface RoadOpponent {
 }
 
 export interface RaceArt {
+  grade?: number;
+  steering?: number;
+  sampleRoad?: SampleRoad;
   traffic?: readonly RoadTraffic[];
   wrecked?: boolean;
   ticketed?: boolean;
@@ -70,7 +76,7 @@ export interface RaceArt {
 function cockpit(g: Brush, w: number, h: number, state: RaceArt) {
   const body = vehicleBody(state.model ?? 0);
   const paint = state.paint ?? "#ce614d",
-    hoodY = h * (0.836 + (body.frontAxle - 399) * 0.00042);
+    hoodY = h * (0.78 + (body.frontAxle - 399) * 0.00042);
   // Raised fenders and two pressed bonnet creases track the vehicle, not the scenery.
   fill(
     g,
@@ -96,7 +102,7 @@ function cockpit(g: Brush, w: number, h: number, state: RaceArt) {
     2,
     `M${w * 0.23} ${hoodY + 8} L${w * 0.14} ${hoodY + 38} M${w * 0.76} ${hoodY + 8} L${w * 0.85} ${hoodY + 38}`,
   );
-  const dashY = h * 0.9;
+  const dashY = h * 0.865;
   if (state.fittings?.hoodScoop ?? body.style === "drag") {
     fill(
       g,
@@ -123,12 +129,14 @@ function cockpit(g: Brush, w: number, h: number, state: RaceArt) {
     ),
     `M0 ${dashY + 2} Q${w * 0.5} ${dashY - 16} ${w} ${dashY + 2} V${h} H0Z`,
   );
-  const d = Math.min(29, w * 0.075),
-    cluster = w * 0.52;
-  gauge(g, cluster - d * 2.45, h - 23, d, state.speed, 230, "KM/H", 0.9);
-  gauge(g, cluster + d * 0.27, h - 24, d, state.rpm ?? 0, 8000, "RPM", 0.79);
-  const gearX = cluster + 2.25 * d,
-    gearY = h - 24;
+  const d = Math.min(40, w * 0.069),
+    cluster = w * 0.52,
+    cy = h - d * 0.98 - 3;
+  consoleTrim(g, w, h, cluster, cy, d);
+  gauge(g, cluster - d * 1.17, cy, d, state.speed, 240, "KM/H", 0.9);
+  gauge(g, cluster + d * 1.17, cy, d, state.rpm ?? 0, 8000, "RPM", 0.79);
+  const gearX = cluster + 3.12 * d,
+    gearY = cy;
   rect(g, "#111c27", gearX - d * 0.48, gearY - d * 0.49, d * 0.96, d * 0.98);
   type(
     g,
@@ -139,21 +147,7 @@ function cockpit(g: Brush, w: number, h: number, state: RaceArt) {
     "#efc693",
     "center",
   );
-  // Only the upper rim of the driving wheel enters the view.
-  const wheelX = w * 0.22,
-    wheelR = Math.min(w * 0.178, 88),
-    wheelY = h + wheelR * 0.64;
-  g.beginPath();
-  g.arc(wheelX, wheelY, wheelR, Math.PI * 1.04, Math.PI * 1.96);
-  g.strokeStyle = "#0e1620";
-  g.lineWidth = 13;
-  g.stroke();
-  g.strokeStyle = "#765754";
-  g.lineWidth = 7;
-  g.stroke();
-  g.strokeStyle = "#bf9c80";
-  g.lineWidth = 1.2;
-  g.stroke();
+  wheel(g, w * 0.245, h - 10, Math.min(w * 0.116, 94), state.steering ?? 0);
 }
 
 export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
@@ -167,18 +161,25 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
   );
   const bend = Math.max(-1, Math.min(1, state.curve));
   const cameraLane = Math.max(-1.7, Math.min(1.7, state.lateral));
-  const sky = h * 0.46,
+  const grade = Math.max(-1, Math.min(1, state.grade ?? 0));
+  const sky = h * (0.46 + grade * 0.032),
     roadH = h - sky;
-  const vanishing = w * (0.5 + bend * 0.14),
-    bottom = Math.max(w * 0.79, 365);
-  const proj = (z: number) => 10 / (z + 10);
-  const y = (p: number) => sky + p * roadH;
+  const native = state.sampleRoad
+    ? roadProfile(dist, state.sampleRoad, w, h)
+    : undefined;
+  const vanishing = w * (native ? 0.5 : 0.5 + bend * 0.14),
+    bottom = Math.max(245, Math.min(w * 0.76, 530));
+  const proj = (z: number) => 14 / (z + 14);
+  const depth = (p: number) => (p > 0 ? Math.max(0, 14 / p - 14) : 350);
+  const y = (p: number) => sky + p * roadH + (native?.y(depth(p)) ?? 0);
   const center = (p: number) =>
     vanishing +
     (w * 0.5 - vanishing) * p +
-    bend * w * 0.08 * p * (1 - p) -
+    (native ? native.x(depth(p)) : bend * w * 0.08 * p * (1 - p)) -
     cameraLane * p * bottom;
   const edge = (p: number, lane: number) => center(p) + bottom * p * lane;
+  const surface = { edge, y, p: proj, halfWidth: bottom };
+  const horizonY = y(0);
   const across = (
     p: number,
     q: number,
@@ -214,25 +215,47 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       g.restore();
     }
   }
-  horizon(g, w, sky + 1, route, bend);
+  horizon(g, w, horizonY + 1, route, bend);
   rect(
     g,
     metal(
       g,
-      sky,
+      horizonY,
       h,
-      [0, "#a78885"],
-      [0.35, route === "aqueduct" ? "#847f83" : "#aa8271"],
+      [0, route === "canyon" ? "#b67855" : "#a78885"],
+      [
+        0.35,
+        route === "aqueduct"
+          ? "#847f83"
+          : route === "canyon"
+            ? "#ae7454"
+            : "#aa8271",
+      ],
       [1, route === "aqueduct" ? "#595c6b" : "#745a5d"],
     ),
     bank ? -w : 0,
-    sky,
+    horizonY,
     bank ? 3 * w : w,
-    bank ? roadH + w : roadH,
+    bank ? roadH + w : h - horizonY,
   );
   const segment = 5;
   const near = Math.floor(dist / segment),
     far = near + 70;
+  // The terrain is continuous beneath the tarmac. Paint it first so antialiased
+  // segment boundaries never leave orange seams on top of the road.
+  if (route === "canyon") {
+    for (let i = far; i >= near; i--)
+      paintSurfaceBand(
+        g,
+        "ground",
+        route,
+        surface,
+        i * segment,
+        (i + 1) * segment,
+        dist,
+        w,
+      );
+  }
   for (let i = far; i >= near; i--) {
     const a =
         i === near && bank
@@ -265,9 +288,9 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       }
     } else if (route === "canyon") {
       for (const s of [-1, 1]) {
-        across(a, b, s, s * 1.176, i % 3 === 0 ? "#c29c80" : "#b18b76");
-        across(a, b, s * 1.176, s * 1.2, "#e1b58b");
-        across(a, b, s * 1.2, s * 1.43, i % 4 === 0 ? "#755a60" : "#83696a");
+        across(a, b, s, s * 1.176, i % 3 === 0 ? "#bb916d" : "#b98d69");
+        across(a, b, s * 1.176, s * 1.19, "#cc9d71");
+        across(a, b, s * 1.19, s * 1.25, i % 4 === 0 ? "#906650" : "#926a54");
       }
     } else {
       across(a, b, -1.2, -1, i % 3 === 0 ? "#bf9b7f" : "#bb9379");
@@ -281,6 +304,18 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       if (i % 3 === 0) across(a, a + (b - a) * 0.035, -0.57, 0.74, "#716e77");
     } else {
       across(a, b, -1, 1, i % 2 === 0 ? "#525160" : "#555462");
+      paintSurfaceBand(
+        g,
+        "asphalt",
+        route,
+        surface,
+        i * segment,
+        (i + 1) * segment,
+        dist,
+        w,
+      );
+      for (const rut of [-0.62, -0.32, 0.32, 0.62])
+        across(a, b, rut - 0.035, rut + 0.035, "#29293419");
       for (const s of [-1, 1]) {
         across(a, b, s * 0.977, s * 0.998, "#d4bead");
         if (i % 5 === 0) across(a, b, s * 0.64, s * 0.643, "#69636e");
@@ -351,6 +386,26 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
   }
   type ObjectOnRoad = { z: number; draw: () => void };
   const objects: ObjectOnRoad[] = [];
+  if (route === "canyon") {
+    for (
+      let i = Math.floor(dist / 6) + 1;
+      i <= Math.floor((dist + 190) / 6);
+      i++
+    ) {
+      const z = i * 6 - dist,
+        p = proj(z);
+      for (const side of [-1, 1]) {
+        const id = i * 7 + (side + 1) * 8;
+        const lane = side * (1.26 + ((id * 23) % 37) / 27),
+          x = edge(p, lane);
+        if (x < -70 || x > w + 70) continue;
+        objects.push({
+          z,
+          draw: () => desertPatch(g, x, y(p), p * (0.95 + (id % 6) * 0.2), id),
+        });
+      }
+    }
+  }
   const addFeatureObject = (at: number, draw: (p: number) => void) => {
     const z = at - dist;
     if (z >= 0 && z <= 360) objects.push({ z, draw: () => draw(proj(z)) });
@@ -361,10 +416,6 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
         warningSign(g, edge(p, -1.13), y(p), p * 2.2, f),
       );
     }
-    if (f.kind === "rock")
-      addFeatureObject(f.start, (p) =>
-        boulder(g, edge(p, f.lane), y(p), p * 2.5),
-      );
     if (f.kind === "bridge") {
       for (let at = f.start; at <= f.end; at += 12)
         addFeatureObject(at, (p) =>
@@ -422,7 +473,7 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
           g,
           edge(p, car.lateral),
           y(p),
-          bottom * p * 0.45,
+          bottom * p * 0.55,
           car.police ? "#303d4b" : (car.paint ?? "#5aa99f"),
           car.model ?? 0,
           car.police,
@@ -459,7 +510,28 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
     }
   }
   objects.sort((a, b) => b.z - a.z);
-  for (const object of objects) object.draw();
+  // A rising nearer segment hides the bottoms of objects on the far slope.
+  // Walk near-to-far once to derive the crest, then paint objects back-to-front.
+  const crest: number[] = [];
+  if (native) {
+    let ceiling = h;
+    for (let z = 0; z <= 360; z += 2) {
+      ceiling = Math.min(ceiling, y(proj(z)));
+      crest.push(ceiling);
+    }
+  }
+  for (const object of objects) {
+    const clip =
+      crest[Math.min(crest.length - 1, Math.max(0, Math.floor(object.z / 2)))];
+    if (clip !== undefined && clip + 1 < y(proj(Math.max(0, object.z)))) {
+      g.save();
+      g.beginPath();
+      g.rect(-w, -h, w * 3, h + clip);
+      g.clip();
+      object.draw();
+      g.restore();
+    } else object.draw();
+  }
   g.restore();
   rearview(g, w, h, state);
   if (state.wrecked) fracturedGlass(g, w, h);

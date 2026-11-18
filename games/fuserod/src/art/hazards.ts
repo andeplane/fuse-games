@@ -7,9 +7,10 @@ import {
   type,
   type Brush,
 } from "./drawing";
+import { vergeSprite } from "./verge";
 
 export interface RoadFeature {
-  kind: "bridge" | "rough" | "rock" | "bank" | "guardrail";
+  kind: "bridge" | "rough" | "bank" | "guardrail";
   start: number;
   end: number;
   lane: number;
@@ -21,8 +22,6 @@ export function warningLabel(feature: RoadFeature) {
       return "NARROW BRIDGE";
     case "rough":
       return "ROUGH · 60 MPH";
-    case "rock":
-      return "ROCK · 30 MPH";
     default:
       return "";
   }
@@ -49,21 +48,13 @@ export function warningSign(
       "M-10 -111 L-6 -105 -6 -95 -10 -89 M10 -111 L6 -105 6 -95 10 -89",
     );
   } else {
-    type(
-      g,
-      feature.kind === "rock" ? "30" : "60",
-      0,
-      -94,
-      17,
-      "#453d46",
-      "center",
-      900,
-    );
+    type(g, "60", 0, -94, 17, "#453d46", "center", 900);
   }
   g.restore();
 }
 
 export function boulder(g: Brush, x: number, y: number, scale: number) {
+  if (vergeSprite(g, x, y, scale * 62, 3)) return;
   g.save();
   g.translate(x, y);
   g.scale(scale, scale);

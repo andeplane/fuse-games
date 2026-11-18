@@ -103,6 +103,20 @@ export function gauge(
   ellipse(g, steel(g, y - r, y + r), x, y, r, r);
   ellipse(g, "#101823", x, y, r * 0.93, r * 0.93);
   ellipse(g, "#1b2630", x, y, r * 0.79, r * 0.79);
+  for (let i = 0; i <= 4; i++) {
+    const theta = from + (arc * i) / 4,
+      mark = max === 8000 ? i * 2 : i * 60;
+    type(
+      g,
+      String(mark),
+      x + Math.cos(theta) * r * 0.55,
+      y + Math.sin(theta) * r * 0.55 + r * 0.058,
+      r * 0.16,
+      "#d9d3ba",
+      "center",
+      600,
+    );
+  }
   for (let i = 0; i <= 24; i++) {
     const a = from + (arc * i) / 24;
     const outer = r * 0.84,
@@ -114,7 +128,7 @@ export function gauge(
       `M${x + Math.cos(a) * inner} ${y + Math.sin(a) * inner} L${x + Math.cos(a) * outer} ${y + Math.sin(a) * outer}`,
     );
   }
-  type(g, label, x, y + r * 0.47, r * 0.22, "#c8d6cc", "center");
+  type(g, label, x, y + r * 0.36, r * 0.17, "#c8d6cc", "center");
   const angle = from + arc * Math.min(1, Math.max(0, value / max));
   stroke(
     g,

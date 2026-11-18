@@ -8,6 +8,7 @@ import {
   type Brush,
 } from "./drawing";
 import { roadside, type Route } from "./landscape";
+import { vergeSprite } from "./verge";
 
 export interface RoadTraffic {
   kind: "rock" | "debris" | "warning" | "bush";
@@ -34,8 +35,9 @@ export function trafficProp(
   g.translate(x, y);
   g.scale(s, s);
   if (kind === "warning") barricade(g);
-  else if (kind === "bush") roadside(g, 0, 0, 1, 4, "canyon", 1);
-  else {
+  else if (kind === "bush") {
+    if (!vergeSprite(g, 0, 0, 54, 2)) roadside(g, 0, 0, 1, 4, "canyon", 1);
+  } else {
     ellipse(g, "#24253568", 0, 0, 35, 6);
     fill(g, "#72574d", "M-32 -2 L11 -16 30 -11 -13 4Z");
     fill(g, "#c39168", "M-32 -4 L10 -18 29 -13 -14 2Z");
@@ -100,6 +102,37 @@ export function furniture(
   bend: number,
 ) {
   const slot = id % 12;
+  if (route === "canyon") {
+    const vegetation =
+      slot === 4 || slot === 5
+        ? 0
+        : slot === 2
+          ? 1
+          : slot === 1 || slot === 6 || slot === 10
+            ? 2
+            : slot === 11
+              ? 3
+              : undefined;
+    if (
+      vegetation !== undefined &&
+      vergeSprite(
+        g,
+        x,
+        y,
+        s *
+          (vegetation === 0
+            ? slot === 5
+              ? 114
+              : 77
+            : vegetation === 1
+              ? 68
+              : 43),
+        vegetation,
+        id % 3 === 0,
+      )
+    )
+      return;
+  }
   if (slot === 0 || slot === 1 || slot === 2) {
     roadside(
       g,
