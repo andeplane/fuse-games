@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { finishRound } from "../src/game/result.js";
+import { parseCyberfuseStats } from "../src/game/stats.js";
 import { dueReports } from "../src/app/reports.js";
-import { ACTION, JOIN, PRESENCE, World } from "fuse-netcode";
+import {
+  ACTION,
+  JOIN,
+  PRESENCE,
+  World,
+  encodeSnapshot,
+  decodeSnapshot,
+  SnapshotAssembler,
+} from "fuse-netcode";
 import {
   createRoom,
   cyberfuseGame,
@@ -262,4 +271,75 @@ test("each operative launches with their own legal loadout; campaign changes inv
     ]),
   );
   assert.deepEqual(room.loadouts, {});
+});
+
+test("a joining peer installs the running mission from a retried snapshot and continues on the host clock", () => {
+  const source = replica();
+  source.receive("peer", [[1, 3, PLAY, "mission", 1, FIRE]], 1, 60, 60);
+  source.advance(40);
+  const snapshot = encodeSnapshot(source, 4);
+  const assembler = new SnapshotAssembler(cyberfuseGame, 4);
+  let complete: { tick: number; bytes: Uint8Array } | undefined;
+  assert.ok(snapshot.length > 1);
+  assert.equal(assembler.accept(snapshot[1]!), undefined);
+  for (const chunk of snapshot) complete = assembler.accept(chunk);
+  assert.ok(complete);
+  const decoded = decodeSnapshot(cyberfuseGame, complete.bytes, 4);
+  assert.ok(decoded);
+  const resumed = new World(cyberfuseGame, decoded.state, "host", "peer");
+  const sourceState = structuredClone(source.servable().state);
+  const tick = cyberfuseGame.createTicker();
+  for (let i = 0; i < 8; i++) {
+    tick(sourceState, "host", new Map());
+    tick(resumed.state, "host", new Map());
+  }
+  assert.equal(
+    cyberfuseGame.hash(sourceState),
+    cyberfuseGame.hash(resumed.state),
+  );
+  assert.equal(decodeSnapshot(cyberfuseGame, complete.bytes, 5), undefined);
+});
+
+test("confirmed campaign scores carry DOS performance bonuses and reset a revived player's score at the next mission", () => {
+  const room = replica();
+  room.advance(2);
+  const state = room.state;
+  const world = state.world!;
+  state.world = {
+    ...world,
+    outcome: "victory",
+    winners: ["peer"],
+    actors: world.actors.map((actor) =>
+      actor.seat === "peer" ? { ...actor, score: 90, hp: 0 } : actor,
+    ),
+  };
+  finishRound(state, state.tick);
+  const captured = state.history[0]!.result.players[0]!;
+  assert.equal(captured.score, 90);
+  assert.equal(captured.survived, false);
+  assert.equal(captured.bonus, 0);
+  assert.deepEqual(parseCyberfuseStats(captured, 1), captured);
+  cyberfuseGame.createTicker()(
+    state,
+    "host",
+    new Map([
+      [
+        "host",
+        {
+          generation: 1,
+          entries: [[3, state.tick + 1, ADVANCE, "mission", 1]],
+        },
+      ],
+    ]),
+  );
+  assert.equal(cyberfuseGame.view(state).results[0]!.score, 0);
+  state.world = { ...state.world!, outcome: "victory", winners: ["peer"] };
+  finishRound(state, state.tick);
+  const next = state.history[1]!.result.players[0]!;
+  assert.ok(next.bonus > 0);
+  assert.equal(cyberfuseGame.view(state).results[0]!.score, next.score);
+  assert.equal(
+    parseCyberfuseStats({ ...next, matchScoreUnits: -1 }, 1),
+    undefined,
+  );
 });
