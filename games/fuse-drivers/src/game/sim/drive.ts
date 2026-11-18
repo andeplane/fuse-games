@@ -40,7 +40,7 @@ export function startTruck(
   track: Track,
   slot: number,
   stats: TruckStats,
-  bot: boolean,
+  cpuLevel: number | undefined,
   driver?: OffroadDriver,
   gridIndex = slot < 4 ? 3 - slot : slot,
 ): Truck {
@@ -58,15 +58,20 @@ export function startTruck(
     spawn.x,
     spawn.y,
     spawn.heading,
-    bot ? 10 : (driver?.nitros ?? stats.nitros),
+    cpuLevel !== undefined ? 10 : (driver?.nitros ?? stats.nitros),
   );
   // Race setup runs the tire probes once, even for trucks resting on a sloping grid.
+  const cpu = cpuLevel === undefined ? undefined : offroadCpuStats(cpuLevel);
   const { suspension } = stepOffroadSuspension(
     createOffroadSuspension(spawn.height),
     motion,
     getOffroadCourse(track.name).terrain.sample,
     0,
-    driver ? offroadVehicleSetup(driver).suspension : undefined,
+    cpu
+      ? { ...cpu, topSpeed: cpu.speedLimit }
+      : driver
+        ? offroadVehicleSetup(driver).suspension
+        : undefined,
   );
   const vehicle = placeTruck(
     track,
@@ -81,7 +86,7 @@ export function startTruck(
     ),
     motion,
   );
-  return driver && !bot
+  return driver && cpuLevel === undefined
     ? {
         ...vehicle,
         upgrades: {

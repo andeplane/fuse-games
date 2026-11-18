@@ -94,14 +94,10 @@ export function createRace(
 ): RaceState {
   let rng = seed & 0xffff;
   const trucks = stats.map((s, i) => {
-    let truck = startTruck(
-      track,
-      i,
-      s,
-      botSlots[i] === true,
-      drivers[i],
-      gridOrder?.[i],
-    );
+    const difficulty = botSlots[i]
+      ? offroadStartingLevel(track.name, i, botSlots, campaignIndex)
+      : undefined;
+    let truck = startTruck(track, i, s, difficulty, drivers[i], gridOrder?.[i]);
     if (!isOffroadCourse(track.name)) return truck;
     const course = getOffroadCourse(track.name);
     const distance = nativeRegionProgress(
@@ -116,13 +112,7 @@ export function createRace(
         progress: distance / course.lapDistance,
         dosProgress: distance,
       };
-    if (botSlots[i]) {
-      const difficulty = offroadStartingLevel(
-        track.name,
-        i,
-        botSlots,
-        campaignIndex,
-      );
+    if (difficulty !== undefined) {
       const result = createOffroadCpu(
         track.name,
         { ...truck.motion, region: truck.checkpoint, difficulty },
