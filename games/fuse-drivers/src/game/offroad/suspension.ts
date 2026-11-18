@@ -48,6 +48,7 @@ const u16 = (v: number) => v & 0xffff;
 const i16 = (v: number) => (v << 16) >> 16;
 const i8 = (v: number) => (v << 24) >> 24;
 const WHEEL_PHASE = [20, 12, 28, 4] as const;
+const GRID_SIDE = 44;
 /** Quarter wave of round(256 * sin(index * pi/16)). */
 const QUARTER = [0, 50, 98, 142, 181, 213, 237, 251, 256] as const;
 const sineOffset = (index: number): number => {
@@ -55,6 +56,27 @@ const sineOffset = (index: number): number => {
   const magnitude = QUARTER[phase <= 8 ? phase : 16 - phase]!;
   return (index & 16) === 0 ? magnitude : -magnitude;
 };
+
+/** CS:190a selects a Y row, then adds the wheel's X cell to its address.
+ * An X overrun can therefore reach the next row within the same contour table.
+ * Keep addresses outside the table on the normal missing-contact path.
+ */
+function sampleWheel(
+  sample: (x: number, y: number) => Surface | null,
+  x: number,
+  y: number,
+): Surface | null {
+  const col = x >>> 8;
+  const row = y >>> 8;
+  if (row >= GRID_SIDE) return null;
+  if (col < GRID_SIDE) return sample(x, y);
+  const cell = row * GRID_SIDE + col;
+  if (cell >= GRID_SIDE * GRID_SIDE) return null;
+  return sample(
+    (cell % GRID_SIDE) * 256 + (x & 255),
+    Math.floor(cell / GRID_SIDE) * 256 + (y & 255),
+  );
+}
 
 export function createOffroadSuspension(height = 0x8000): OffroadSuspension {
   const wheel = (): OffroadWheel => ({ height, velocity: 0, clearance: 0 });
@@ -174,7 +196,8 @@ export function stepOffroadSuspension<T extends Motion>(
   let groundMask = 0;
   for (const [i, phase] of WHEEL_PHASE.entries()) {
     const angle = (hit.motion.heading >>> 11) + phase;
-    const surface = sample(
+    const surface = sampleWheel(
+      sample,
       u16(candidate.x + sineOffset(angle + 8)),
       u16(candidate.y + sineOffset(angle)),
     );

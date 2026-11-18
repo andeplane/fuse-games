@@ -141,3 +141,32 @@ test("an out-of-grid probe keeps the previous ground and blocks travel on both a
   assert.equal(result.groundMask, 15);
   assert.deepEqual(result.motion, motion);
 });
+
+test("a wheel reaching column 44 samples column zero of the next row with its original fraction", () => {
+  const points: number[][] = [];
+  const state = createOffroadSuspension();
+  const moved = { ...motion, x: 44 * 256 - 90 };
+  const result = stepOffroadSuspension(
+    state,
+    moved,
+    (x, y) => {
+      points.push([x, y]);
+      return x < 256 ? { ...flat, height: 0x9000 } : flat;
+    },
+    1,
+  );
+  assert.deepEqual(points.slice(2), [
+    [91, 1099],
+    [91, 1461],
+  ]);
+  assert.equal(result.suspension.groundHeight, 0x8800);
+  assert.equal(result.stopX || result.stopY, false);
+  // A wheel beyond the last row has no valid contour record to alias.
+  const edge = stepOffroadSuspension(
+    state,
+    { ...moved, y: 44 * 256 - 181 },
+    () => null,
+    1,
+  );
+  assert.equal(edge.stopX && edge.stopY, true);
+});
