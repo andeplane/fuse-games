@@ -270,7 +270,9 @@
 }
 .online-app.mobile-play.controller-only.mobile-tools-open
   .online-header
-  > .online-status {
+  > .online-status,
+.online-app.mobile-play.controller-only.mobile-tools-open
+  .rider-round-controls {
   display: none;
 }
 

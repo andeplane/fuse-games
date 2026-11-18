@@ -210,6 +210,11 @@ try {
       false,
       `${selector} belongs on TV`,
     );
+  assert.equal(
+    await phone.locator(".rider-round-controls").isVisible(),
+    false,
+    "countdown guidance yields to the open controller menu",
+  );
   await phone.screenshot({
     path: `artifacts/arcade-landscape-menu-${kind}.png`,
   });
