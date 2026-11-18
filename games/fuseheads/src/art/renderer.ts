@@ -1,4 +1,8 @@
-import type { Enemy, World } from "../game/simulation.js";
+import {
+  simulationTileAt,
+  type Enemy,
+  type World,
+} from "../game/simulation.js";
 import {
   COLUMNS,
   FLOOR_ROW,
@@ -22,15 +26,16 @@ const pestFrames: Readonly<
 };
 
 const specialTiles: Readonly<Record<number, number>> = {
-  4: 2900,
-  5: 2901,
-  6: 2902,
-  7: 2903,
-  8: 2904,
-  9: 2905,
-  24: 2906,
-  25: 2814,
-  26: 2815,
+  2: 2900,
+  4: 2901,
+  5: 2902,
+  6: 2903,
+  7: 2904,
+  8: 2905,
+  9: 2906,
+  24: 2814,
+  25: 2815,
+  26: 2816,
 };
 
 /** The one presentation clock is the current authoritative/predicted world tick. */
@@ -139,17 +144,10 @@ export function createArena(canvas: HTMLCanvasElement): {
     ctx.rect(0, 0, canvas.width, FLOOR_ROW * TILE_HEIGHT);
     ctx.clip();
     for (let cell = 0; cell < FLOOR_ROW * COLUMNS; cell++) {
-      const tile = level.tiles[cell]!;
-      if (
-        tile === 0 ||
-        tile === 1 ||
-        tile === 51 ||
-        tile === 10 ||
-        world.broken.includes(cell)
-      )
-        continue;
       const column = cell % COLUMNS,
         row = Math.floor(cell / COLUMNS);
+      const tile = simulationTileAt(world, level, column, row);
+      if (tile === 0 || tile === 1 || tile === 51 || tile === 10) continue;
       const bump = world.bumps.find(
         (b) =>
           b.row === row &&
@@ -161,7 +159,7 @@ export function createArena(canvas: HTMLCanvasElement): {
       const x = column * TILE_WIDTH,
         y = row * TILE_HEIGHT - lift;
       if (tile === 50) {
-        if (world.tnt > 0)
+        if (world.tnt > 0 && level.tiles[cell] === 50)
           ctx.drawImage(panels, (3 - world.tnt) * 64, 48, 64, 32, x, y, 64, 32);
       } else {
         // The editor marks gem-bearing tiles. In play their contents stay hidden until a bonk.
@@ -169,6 +167,9 @@ export function createArena(canvas: HTMLCanvasElement): {
       }
     }
     const phase = Math.floor(world.tick / 4) % 8;
+    const { bat, tire } = world.hazards;
+    if (bat) sprite(2500 + (Math.floor(world.tick / 3) % 6), bat.x, bat.y);
+    if (tire) sprite(128 + (Math.floor(world.tick / 2) % 12), tire.x, tire.y);
     for (const gem of world.pickups) {
       const kind = gem.type >= 17 && gem.type <= 22 ? gem.type - 6 : gem.type;
       const id = kind >= 11 && kind <= 16 ? 700 + kind - 11 : 1000 + phase;
@@ -185,7 +186,21 @@ export function createArena(canvas: HTMLCanvasElement): {
             : frames[enemy.facing > 0 ? 0 : 1];
         sprite(base + pose, enemy.x, enemy.y, true);
       } else if (level.boss && enemy.id === -1) {
-        boss(enemy, enemy.type, pose);
+        const state = enemy.ruler;
+        if (state) {
+          for (const shot of state.shots) {
+            const spriteId =
+              shot.kind === "fire"
+                ? 970 + (phase % 4)
+                : 950 + (phase % 4) + (shot.vx < 0 ? 4 : 0);
+            sprite(spriteId, shot.x, shot.y, true);
+          }
+        }
+        if (state?.flash) {
+          const progress = state.flash > 9 ? 18 - state.flash : state.flash - 1;
+          sprite(3120 + Math.min(7, progress), enemy.x, enemy.y, true);
+        } else if (!state?.guard || world.tick % 4 < 2)
+          boss(enemy, enemy.type, pose);
       }
     }
     for (const player of world.players) {
