@@ -2,6 +2,8 @@ import {
   GRADES,
   STATIONS,
   STATION,
+  assemblyAt,
+  carbCount,
   inspectWorkshop,
   stockIndex,
   price,
@@ -22,10 +24,12 @@ export const createBenchView = (): {
   station: Station;
   grade: Grade;
   wrench: -1 | 1;
+  port: number;
 } => ({
   station: "carb",
   grade: 0,
   wrench: -1,
+  port: 0,
 });
 export function workshopPanel(
   doc: Document,
@@ -54,7 +58,12 @@ export function workshopPanel(
       "index" in cmd ? cmd.index : "",
       "delta" in cmd ? cmd.delta : "",
     ].join("-");
-    b.onclick = () => run(cmd);
+    b.onclick = () =>
+      run(
+        "station" in cmd && cmd.station === "carb"
+          ? { ...cmd, port: view.port }
+          : cmd,
+      );
     return b;
   };
   const field = (
@@ -85,7 +94,7 @@ export function workshopPanel(
   function render() {
     const s = view.station,
       d = STATION[s],
-      mount = workshop.mounts[s],
+      mount = assemblyAt(workshop, s, view.port),
       g = view.grade;
     root.replaceChildren(create("h3", "Mechanic’s bench"));
     const preview = create("div");
@@ -164,10 +173,30 @@ export function workshopPanel(
         s,
         (v) => {
           view.station = v as Station;
+          view.port = 0;
           view.grade = workshop.mounts[view.station].part ?? 0;
         },
       ),
     );
+    if (s === "carb" && carbCount(workshop) > 1) {
+      main.append(
+        field(
+          "Carburettor position",
+          Array.from({ length: carbCount(workshop) }, (_, i) => [
+            String(i),
+            "Mount " + (i + 1),
+          ]),
+          String(view.port),
+          (v) => {
+            view.port = Number(v);
+            view.grade = assemblyAt(workshop, "carb", view.port).part ?? 0;
+          },
+        ),
+      );
+    } else if (s === "carb" && workshop.mounts.intake.part === 7)
+      main.append(
+        create("p", "Mechanical fuel injection feeds the intake directly."),
+      );
     main.append(
       create(
         "p",

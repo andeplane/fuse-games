@@ -56,7 +56,7 @@ export const STATION: Record<Station, StationDef> = {
       "Split plenum",
       "Cross-ram",
       "Ported cross-ram",
-      "Tunnel ram",
+      "Mechanical injection",
     ],
   },
   carb: {
@@ -163,6 +163,7 @@ export interface Assembly {
 }
 export interface Workshop {
   mounts: Record<Station, Assembly>;
+  extraCarbs?: [Assembly, Assembly];
   /** Catalogue order, eight parts for each kind. */
   spares: number[];
   wired: boolean;
@@ -172,9 +173,30 @@ export interface Workshop {
 export type WorkshopCommand =
   | { type: "jack" | "wire" }
   | { type: "timing"; delta: -1 | 1 }
-  | { type: "bolt"; station: Station; index: number; delta: -1 | 1 }
-  | { type: "remove"; station: Station }
-  | { type: "fit" | "buy" | "sell"; station: Station; grade: Grade };
+  | {
+      type: "bolt";
+      station: Station;
+      index: number;
+      delta: -1 | 1;
+      port?: number;
+    }
+  | { type: "remove"; station: Station; port?: number }
+  | {
+      type: "fit" | "buy" | "sell";
+      station: Station;
+      grade: Grade;
+      port?: number;
+    };
+const emptyCarb = (): Assembly => ({ part: null, bolts: [0] });
+export function carbCount(w: Workshop): number {
+  const intake = w.mounts.intake.part;
+  return intake === null ? 0 : [1, 1, 3, 2, 2, 1, 2, 0][intake]!;
+}
+export function assemblyAt(w: Workshop, s: Station, port = 0): Assembly {
+  return s === "carb" && port > 0
+    ? (w.extraCarbs?.[port - 1] ?? emptyCarb())
+    : w.mounts[s];
+}
 function mapStations<T>(make: (station: Station) => T): Record<Station, T> {
   return Object.fromEntries(STATIONS.map((s) => [s, make(s)])) as Record<
     Station,
@@ -216,6 +238,20 @@ export function isWorkshop(v: unknown): v is Workshop {
   )
     return false;
   const mounts = v.mounts;
+  if (
+    v.extraCarbs !== undefined &&
+    (!Array.isArray(v.extraCarbs) ||
+      v.extraCarbs.length !== 2 ||
+      !v.extraCarbs.every(
+        (m) =>
+          object(m) &&
+          (m.part === null || integer(m.part, 0, 7)) &&
+          Array.isArray(m.bolts) &&
+          m.bolts.length === 1 &&
+          integer(m.bolts[0], 0, m.part === null ? 0 : 3),
+      ))
+  )
+    return false;
   return STATIONS.every((s) => {
     const m = mounts[s];
     return (
@@ -250,6 +286,18 @@ export function inspectWorkshop(w: Workshop) {
   else
     for (const s of STATIONS) {
       if (s === "muffler" && w.mounts[s].part === null) continue;
+      if (s === "carb") {
+        for (let i = 0; i < carbCount(w); i++) {
+          const m = assemblyAt(w, s, i);
+          if (m.part === null || m.bolts[0] !== 3) {
+            reason =
+              "Fit and tighten carburettor " + (i + 1) + " before racing.";
+            break;
+          }
+        }
+        if (reason) break;
+        continue;
+      }
       if (!secured(w, s)) {
         reason =
           "Fit and tighten the " +
@@ -262,6 +310,10 @@ export function inspectWorkshop(w: Workshop) {
     grade("engine") * 12 +
     grade("intake") * 3 +
     grade("carb") * 4 +
+    (w.extraCarbs ?? []).reduce(
+      (total, m) => total + (m.part === null ? 0 : 4 + 2 * m.part),
+      0,
+    ) +
     grade("header") * 2 +
     grade("muffler") -
     Math.abs(w.timing - (grade("engine") >= 3 ? 2 : 0)) * 4;
@@ -311,7 +363,11 @@ export function workshopAction(
   }
   if (!("station" in action)) return fail("Unknown workshop operation.");
   const s = action.station,
-    m = w.mounts[s];
+    port = action.port ?? 0;
+  if (!integer(port, 0, 2) || (s !== "carb" && port !== 0))
+    return fail("Choose a valid mounting position.");
+  if (s === "carb" && port > 0) w.extraCarbs ??= [emptyCarb(), emptyCarb()];
+  const m = assemblyAt(w, s, port);
   const spareCount = w.spares.reduce((sum, n) => sum + n, 0);
   if (
     action.type === "buy" ||
@@ -337,6 +393,8 @@ export function workshopAction(
   if (STATION[s].bay === "under" && !w.jacked)
     return fail("Raise the car on its jack to work underneath.");
   if (action.type === "fit") {
+    if (s === "carb" && port >= carbCount(w))
+      return fail("This intake has no carburettor mount in that position.");
     if (m.part !== null) return fail("Remove the fitted part first.");
     const error = fitError(w, s, action.grade);
     if (error) return fail(error);
@@ -351,6 +409,8 @@ export function workshopAction(
     if (!integer(action.index, 0, m.bolts.length - 1))
       return fail("Choose a mounting bolt.");
     if (action.delta < 0) {
+      if (s === "intake" && w.extraCarbs?.some((c) => c.part !== null))
+        return fail("Remove the carburettors first.");
       const child = STATIONS.find(
         (other) => needs[other] === s && w.mounts[other].part !== null,
       );

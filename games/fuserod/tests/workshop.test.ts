@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { carbCount } from "../src/workshop/mechanics.js";
 import {
   STATIONS,
   GRADES,
@@ -28,6 +29,36 @@ function bench() {
     },
   };
 }
+test("a triple-carb intake requires three separately fitted and secured carburettors", () => {
+  const b = bench();
+  const turn = (
+    s: "intake" | "carb",
+    index: number,
+    delta: -1 | 1,
+    n: number,
+    port = 0,
+  ) => {
+    for (let i = 0; i < n; i++)
+      assert(b.apply({ type: "bolt", station: s, index, delta, port }).ok);
+  };
+  turn("carb", 0, -1, 3);
+  assert(b.apply({ type: "remove", station: "carb" }).ok);
+  for (const i of [0, 1]) turn("intake", i, -1, 3);
+  assert(b.apply({ type: "remove", station: "intake" }).ok);
+  assert(b.apply({ type: "buy", station: "intake", grade: 2 }).ok);
+  assert(b.apply({ type: "fit", station: "intake", grade: 2 }).ok);
+  for (const i of [0, 1]) turn("intake", i, 1, 2);
+  assert.equal(carbCount(b.state()), 3);
+  for (let port = 0; port < 3; port++) {
+    assert(!inspectWorkshop(b.state()).ready);
+    if (port) assert(b.apply({ type: "buy", station: "carb", grade: 0 }).ok);
+    assert(b.apply({ type: "fit", station: "carb", grade: 0, port }).ok);
+    turn("carb", 0, 1, 2, port);
+  }
+  assert.equal(inspectWorkshop(b.state()).ready, true);
+  assert.equal(isWorkshop(JSON.parse(JSON.stringify(b.state()))), true);
+  assert(!b.apply({ type: "bolt", station: "intake", index: 0, delta: -1 }).ok);
+});
 test("all 64 named parts have a price and a unique shelf position", () => {
   const names = new Set<string>(),
     parts = new Set<number>();
