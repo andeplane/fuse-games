@@ -1,7 +1,7 @@
 # FuseOS game icons
 
 Cyberfuse uses the three-quarter helmet and shoulders of its cyan operative,
-painted for `games/cyberfuse/src/art/cyberfuse-atlas.png`. The taskbar icon
+painted for the game's sprite sheet in `games/cyberfuse/src/art/`. The taskbar icon
 crops to the helmet so its luminous visor and crest survive at 16 px. Both
 sizes have a transparent background and a one-pixel dark outline.
 
