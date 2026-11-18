@@ -5,14 +5,24 @@ import type { SessionState } from "../irc/session";
 import { channelId, findWindow, queryId, STATUS_ID } from "../irc/session";
 
 import type { BrainRequest, RegularsBrain } from "./brain";
-import { IDLE_MS } from "./simServer";
+import { regularsIn } from "./regulars";
+import { IDLE_MS, reactionSpeaker } from "./simServer";
 import { createSimTransport, simHost, SimServer } from "./simServer";
 
 class ScriptedBrain implements RegularsBrain {
   readonly requests: BrainRequest[] = [];
   answer: string | undefined = "hei hei";
+  model = false;
+  prepares = 0;
   describe() {
     return "a script";
+  }
+  usesModel() {
+    return this.model;
+  }
+  prepare() {
+    this.prepares += 1;
+    return Promise.resolve(this.model);
   }
   reply(request: BrainRequest) {
     this.requests.push(request);
@@ -23,9 +33,8 @@ class ScriptedBrain implements RegularsBrain {
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-function setup(random = () => 0) {
+function setup(random = () => 0, brain = new ScriptedBrain()) {
   const scheduler = new ManualScheduler();
-  const brain = new ScriptedBrain();
   const transport = createSimTransport(
     { scheduler, now: scheduler.now, random, brain },
     simNetwork,
@@ -45,11 +54,17 @@ function setup(random = () => 0) {
 const text = (state: SessionState, id: string) =>
   findWindow(state, id)?.lines.map((l) => l.text) ?? [];
 
-function joined() {
-  const env = setup();
+function joined(brain = new ScriptedBrain()) {
+  const env = setup(() => 0, brain);
   env.client.join("#ddrnorway");
   env.scheduler.advance(8000);
   return env;
+}
+
+/** Lets the model promise schedule its line, then the manual clock posts it. */
+async function posted(scheduler: ManualScheduler) {
+  await flush();
+  scheduler.advance(0);
 }
 
 describe("simulated network", () => {
@@ -83,7 +98,14 @@ describe("simulated network", () => {
     scheduler.advance(0);
     const lines = text(client.getState(), channelId("#ddrnorway")).join("\n");
     expect(lines).toContain("-CCBSbot- Velkommen til #ddrnorway!");
-    expect(lines).toContain("<@RiChY> hei Guest1 :)");
+    expect(lines).not.toContain("hei Guest1");
+    const nicks = new Set(window?.members.map((m) => m.nick.toLowerCase()));
+    const house = regularsIn("#ddrnorway").filter(
+      (regular) => regular.host !== "players.ddr.no",
+    );
+    expect(window?.members).toHaveLength(house.length + 1);
+    expect(nicks.has("snute")).toBe(false);
+    expect(nicks.has("tha_dragon")).toBe(false);
   });
 
   it("lets a mentioned regular answer through the brain, with the channel's recent lines", async () => {
@@ -236,6 +258,133 @@ describe("simulated network", () => {
     scheduler.advance(10);
     expect(client.getState().phase).toBe("offline");
     expect(scheduler.pending).toBe(0);
+  });
+
+  it("answers anyone who is named or queried, and not a nick hidden inside a word", async () => {
+    const { client, scheduler, brain } = joined();
+    client.submit(channelId("#ddrnorway"), "skal vi ta butterfly?");
+    await flush();
+    scheduler.advance(5000);
+    expect(
+      brain.requests.some((request) => request.regular.nick === "Al"),
+    ).toBe(false);
+    client.submit(channelId("#ddrnorway"), "Snute og Al, kommer dere?");
+    await flush();
+    scheduler.advance(5000);
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Snute");
+    client.submit(channelId("#ddrnorway"), "Bonzo, kommer du?");
+    await flush();
+    scheduler.advance(5000);
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Bonzo");
+    expect(text(client.getState(), channelId("#ddrnorway"))).toContain(
+      "<Bonzo> hei hei",
+    );
+    const members = () =>
+      findWindow(client.getState(), channelId("#ddrnorway"))?.members;
+    expect(members()?.some((member) => member.nick === "Duckling")).toBe(false);
+    client.submit(STATUS_ID, "/msg Duckling hei");
+    await flush();
+    scheduler.advance(5000);
+    expect(members()?.some((member) => member.nick === "Duckling")).toBe(true);
+    expect(text(client.getState(), queryId("Duckling"))).toContain(
+      "<Duckling> hei hei",
+    );
+  });
+
+  it("ends pending DDR talk on part and restarts only on rejoin", async () => {
+    let deliver: (line: string) => void = () => undefined;
+    const signals: AbortSignal[] = [];
+    class PendingBrain extends ScriptedBrain {
+      override reply(request: BrainRequest, signal?: AbortSignal) {
+        void super.reply(request);
+        if (signal) signals.push(signal);
+        return new Promise<string>((resolve) => {
+          deliver = resolve;
+        });
+      }
+    }
+    const brain = new PendingBrain();
+    brain.model = true;
+    const { client, scheduler } = setup(() => 0, brain);
+    const ddr = channelId("#ddrnorway");
+    client.join("#elsewhere");
+    scheduler.advance(120_000);
+    await posted(scheduler);
+    expect(brain.prepares).toBe(0);
+
+    client.join("#ddrnorway");
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests).toHaveLength(1);
+    client.submit(ddr, "/part");
+    scheduler.advance(0);
+    expect(signals[0]?.aborted).toBe(true);
+    scheduler.advance(120_000);
+    await posted(scheduler);
+    expect(brain.requests).toHaveLength(1);
+    expect(brain.prepares).toBe(1);
+
+    client.join("#ddrnorway");
+    scheduler.advance(0);
+    expect(brain.prepares).toBe(2);
+    deliver("A line from the previous visit");
+    await posted(scheduler);
+    expect(text(client.getState(), ddr).join("\n")).not.toContain(
+      "A line from the previous visit",
+    );
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests).toHaveLength(2);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it("has a listed player join, RiChY say hei, and the joiner reply", async () => {
+    const brain = new ScriptedBrain();
+    brain.model = true;
+    const { client, scheduler } = joined(brain);
+    expect(brain.prepares).toBe(1);
+    const lines = () => text(client.getState(), channelId("#ddrnorway"));
+    expect(lines().some((line) => line.includes("Abra"))).toBe(false);
+    scheduler.advance(2_000);
+    await posted(scheduler);
+    expect(lines().join("\n")).toContain("Abra");
+    expect(lines().join("\n")).toContain("has joined");
+    expect(lines().some((line) => line.startsWith("<@RiChY>"))).toBe(false);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(lines()).toContain("<@RiChY> hei hei");
+    expect(brain.requests.at(-1)?.regular.nick).toBe("RiChY");
+    expect(brain.requests.at(-1)?.hint).toContain("Abra");
+    expect(brain.requests.at(-1)?.hint).not.toContain("Guest");
+    expect(brain.requests.at(-1)?.company).toEqual(["Abra", "Andeplane"]);
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(lines()).toContain("<Abra> hei hei");
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Abra");
+    scheduler.advance(10_000);
+    await posted(scheduler);
+    expect(brain.requests.at(-1)?.regular.nick).toBe("Andeplane");
+    expect(lines().join("\n")).not.toMatch(/<@RiChY> hei Guest/);
+    expect(brain.prepares).toBe(1);
+  });
+
+  it("keeps an unprompted reply inside the regulars who have canned lines", () => {
+    const seated = regularsIn("#ddrnorway");
+    const canned = seated.filter((regular) => regular.lines.length > 0);
+    let roll = 0;
+    const speaker = reactionSpeaker(seated, "hei alle sammen", () => {
+      roll += 1;
+      return roll === 1 ? 0 : 0.999;
+    });
+    expect(speaker?.nick).toBe(canned.at(-1)?.nick);
+    expect(speaker?.lines.length).toBeGreaterThan(0);
+    expect(reactionSpeaker(seated, "skal vi ta butterfly?", () => 0.9)).toBe(
+      undefined,
+    );
   });
 
   it("refuses commands before registration and ignores garbage", () => {
