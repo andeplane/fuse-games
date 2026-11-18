@@ -24,6 +24,9 @@
 .machine-room [hidden] {
   display: none !important;
 }
+.machine-room[data-phase="running"] {
+  padding-top: calc(max(12px, env(safe-area-inset-top)) + 56px);
+}
 .machine-puzzle-choice {
   display: grid;
   gap: 0.5rem;

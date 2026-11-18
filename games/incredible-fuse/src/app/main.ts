@@ -398,7 +398,14 @@ function workshop() {
       main.dataset.phase = frame.phase;
       if (lobby.hidden === waiting) lobby.hidden = !waiting;
       stage.hidden = !playing;
-      const needsSeat = Boolean(me) && !display && !mine && waiting;
+      const needsSeat =
+        Boolean(me) &&
+        !display &&
+        !mine &&
+        (waiting ||
+          (playing &&
+            frame.players.length < CAPACITY &&
+            !frame.watchers.some((watcher) => watcher.id === me)));
       if (name.form.hidden === needsSeat) name.form.hidden = !needsSeat;
       start.hidden = !canManage;
       start.disabled = !waiting || !frame.players.some((p) => p.connected);
