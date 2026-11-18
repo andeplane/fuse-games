@@ -1,54 +1,21 @@
-# Pig, the template game
+# The Incredible Fuse
 
-Pig is a incredibleFuse game for 2–5 players, bots included. On your turn you roll a die as often as you like, each roll adding to the turn's total. A 1 loses the total and passes the turn; **HOLD** banks it. The first to 50 banked points wins the round, and two round wins take the match. An idle turn holds by itself when its timer runs out.
+Build a working chain reaction from a tray of spare parts. Each puzzle begins with fixed machinery and a goal. Arrange the available parts, connect sockets, then run the machine. Rewind restores the starting arrangement for another try. Free workshop opens the whole parts tray for experiments.
 
-It is the smallest complete game on this repo's packages, and the one to copy when you start a new game. It uses the rollback netcode (`fuse-netcode`), the WebRTC room client (`fuse-network-fe`), the shared backend (`fuse-platform`) and the menus and styles (`fuse-ui`). It has no Phaser, and imports nothing from `service/` or from another game.
+## Play
 
-## Run it
+Run `pnpm install --frozen-lockfile` and `pnpm dev` from the repository root, then open `/incrediblefuse/?mute` on the printed local origin.
 
-```sh
-npm ci
-npm run dev          # builds, then serves every game; open the printed URL plus /incredibleFuse/
-```
+- Choose **Play → Single player**, select a puzzle, then choose **Start puzzle**. Choose **Free workshop** to build your own machine.
+- Choose a part in the tray, then click or tap its position on the board. Select a movable part to reposition, flip or remove it. Select a socket-bearing part, choose its connection type, and select the other endpoint.
+- With the board focused, arrows move the cursor, Enter places or selects, F flips, Delete removes, and Space runs or rewinds. Cmd/Ctrl+Z undoes an edit.
+- In a room, up to five builders work on one shared machine. One person can also start a room alone. Shared TV opens a read-only board while seated players edit on their devices.
+- In a solo free workshop, **Save machine** downloads an editable Fuse blueprint. To reopen one, use **Open a saved machine** in Single player. The same picker accepts locally supplied v1.02 DOS freeform `.TIM` files and describes conversion differences before opening them. The file stays on that device.
 
-`npx tsx service/dev.ts --port 8890` serves an existing `dist/` and walks to the next free port if that one is taken. Open `/incredibleFuse/?mute` and pick one of:
+A scored puzzle is one round and one cooperative match. A rewind is another attempt in the same round. Everyone who participates shares the result. Free workshop has no victory condition.
 
-- **PLAY SOLO VS BOTS**: one bot, no room service. **Back to lobby** on the result screen lets you add more bots.
-- **CREATE ROOM**: a room with a QR invite. Others join by the code or the link, the creator adds bots and starts. The room is the shared `fuse-ui` room: Back, Settings and START MATCH in its header, the invitation with INVITE FRIENDS beside the seats, the connection line at its foot. Tick **Shared TV** under the invitation to play on one screen: **OPEN TV SCREEN** opens `?room=CODE&display=1`, and every phone becomes a big ROLL/HOLD controller.
+## Implementation
 
-Space or R rolls and H or Enter holds on a keyboard. Each round opens with a brief controls guide; **MENU** keeps the controls available during play and offers the host **LOBBY**, plus **LEAVE ROOM** for every device. The menu does not pause the shared game. A refreshed device rejoins the running match from a peer.
+The deterministic machine, part definitions, connections, and puzzles live in `src/game/`. The room log runs at 20 Hz. A checkpointed phase schedules the machine steps at the measured DOS timer cadence. The editor sends commands through the same room fold in solo and online play. The renderer draws original parts from the current machine view.
 
-## Layout
-
-| Path                     | What it is                                                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `src/game/rules.ts`      | The rules as one pure fold per log tick: turns, rolls from the room's seeded generator, the timer, bots, rounds and stats |
-| `src/game/game.ts`       | `incredibleFuseGame`, the `RollbackGame` the netcode runs, and `incredibleFuseView`, what the page renders                                    |
-| `src/game/checkpoint.ts` | The room as snapshot fields and back, validated whole                                                                     |
-| `src/game/result.ts`     | Round receipts and match results for the backend                                                                          |
-| `src/game/basics.ts`     | Constants and id rules with no imports, for the service                                                                   |
-| `src/platform.ts`        | The `GameRegistration` for `fuse-platform`: per-player stats and account totals (exported as `incredibleFuse/platform`)             |
-| `src/app/`               | The page: `presenter.ts` (view to screen, pure), `session.ts`, `reports.ts`, `runtime.ts` (ROLL/HOLD) and `main.ts` (DOM) |
-| `index.html`             | The page's entry; Vite builds it to `dist/incredibleFuse/index.html`                                                                |
-| `tests/`                 | Rules, checkpoint, rollback over lossy links, the presenter, reports, session and runtime                                 |
-
-The page renders every frame from the view, never from events: a rollback can change a roll after it was shown, and the netcode deduplicates events by position, so only the view carries the correction. IncredibleFuse come from a generator in the room state, so every device rolls the same numbers, and any member could compute the next roll. That fits the trust model: every member is trusted with the shared log.
-
-Checks: `npx tsx --test games/incredible-fuse/tests/*.test.ts tests/incredibleFuse-service.test.ts`, and the browser smoke `ONLINE_URL=http://localhost:8890/ npx tsx scripts/incredibleFuse-smoke.ts` (`BROWSER=webkit` for WebKit).
-
-## Start a new game
-
-```sh
-npx tsx scripts/new-game.ts snake-eyes
-```
-
-This copies this folder to `games/snake-eyes` with every id and name renamed (`"incredible-fuse"` becomes `"snake-eyes"`, `incredibleFuseGame` becomes `snakeEyesGame`, `incredibleFuse.css` becomes `snakeEyes.css`). The copy is Pig under the new name, with its tests passing. Then:
-
-1. Run `npm install`. The root workspaces include `games/*`.
-2. Add `COPY games/snake-eyes/package.json ./games/snake-eyes/` to `Dockerfile.cloud` beside the incredibleFuse line.
-3. Register its backend: add `snakeEyesRegistration` from `snake-eyes/platform` to `GAMES` in `service/history.ts`. The dev service and production both serve every game in `GAMES`, so its rooms open online when the pull request merges and deploys; there is no variable to set. `tests/registered-games.test.ts` fails if this step is missed.
-4. Change the rules in `src/game/`, keep `rules` in `game.ts` at `<id>-<n>`, and bump `n` when a change would make two builds disagree.
-5. Edit `portal.json` (name, tagline, a one-to-three-character `mark`, `accent` colour). It puts the game on the app portal, the dot-grid button top left in every game. Pig has none because it is the demo.
-6. Update `CONTROLS`, `TOUCH_CONTROLS` and `GOAL` in `src/app/main.ts` for the new game. Keep the shared menu and round controls guide so players can learn its controls at each round start.
-
-`npm run build` emits its page at `dist/snake-eyes/index.html` without any configuration, and the dev service serves it at `/snake-eyes/`.
+The [reference study](../../docs/design/incredible-fuse-reference.md) gives the pinned build, motion and contact probes, and the graphics inventory. Run the focused rules and recovery tests with `pnpm exec tsx --test games/incredible-fuse/tests/*.test.ts`.
