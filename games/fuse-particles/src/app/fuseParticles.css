@@ -23,7 +23,26 @@
 }
 .fp-match {
   width: min(100% - 1rem, 88rem);
-  margin: 0.75rem auto 2rem;
+  margin: calc(76px + env(safe-area-inset-top)) auto 2rem;
+}
+.fuseParticles-page:has(.fp-match:not([hidden])) .fui-top-bar::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: calc(68px + env(safe-area-inset-top));
+  background: #101615;
+  z-index: -1;
+}
+@media (max-height: 540px) and (min-width: 640px) {
+  .fp-match:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
+    align-items: start;
+    gap: 0.5rem;
+  }
+  .fp-match .fp-commands {
+    margin-block-start: 0;
+  }
 }
 .fp-map-tools,
 .fp-command-bar,

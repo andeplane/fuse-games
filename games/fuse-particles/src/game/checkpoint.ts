@@ -152,6 +152,8 @@ export function decodeRoom(
       !battle ||
       fighters.length < 2 ||
       battle.cores.length !== fighters.length ||
+      battle.cores.some((core, index) => core.bot !== fighters[index]?.bot) ||
+      battle.tick > (stage === "over" ? decidedTick : tick) ||
       fighters.every((f) => f.bot)
     )
       return;
