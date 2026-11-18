@@ -4,6 +4,7 @@ import { JOIN, PRESENCE, ACTION, type StreamEntries } from "fuse-netcode";
 import {
   CONTROLS,
   DEFAULT_SETTINGS,
+  GAS,
   LEFT,
   NITRO,
   createRoom,
@@ -11,7 +12,6 @@ import {
   isFuseDriversEntry,
   packControls,
   stepsForTick,
-  trackNames,
   unpackControls,
   type FuseDriversEntry,
   type FuseDriversRoom,
@@ -40,8 +40,8 @@ function roomWithDriver(): {
 
 test("controls pack into a bitmask and come back unchanged", () => {
   assert.equal(packControls(NEUTRAL_INPUT), 0);
-  const held = { ...NEUTRAL_INPUT, left: true, nitro: true };
-  assert.equal(packControls(held), LEFT | NITRO);
+  const held = { ...NEUTRAL_INPUT, gas: true, left: true, nitro: true };
+  assert.equal(packControls(held), GAS | LEFT | NITRO);
   assert.deepEqual(unpackControls(packControls(held)), held);
   for (let bits = 0; bits < 128; bits++)
     assert.equal(packControls(unpackControls(bits)), bits);
@@ -132,7 +132,11 @@ test("starting a match seeds a race, grids every seat and runs it", () => {
   const race = defined(room.race, "race");
   assert.equal(room.grid.length, 1);
   assert.equal(defined(room.grid[0]), "a");
-  assert.equal(race.trackName, defined(trackNames()[0]));
+  assert.equal(
+    race.trackName,
+    "offroad-4",
+    "the DOS series opens on Sidewinder",
+  );
   const before = race.tick;
   fold();
   assert.equal(

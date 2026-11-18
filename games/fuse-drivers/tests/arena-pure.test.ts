@@ -10,7 +10,7 @@ import {
   type ArenaFrame,
 } from "../src/app/arena/frame.js";
 import { renderSnapshot, renderTruck } from "../src/app/arena/interpolate.js";
-import { runTo, started } from "./fixtures/fuseDrivers.js";
+import { drive, fold, runTo, started } from "./fixtures/fuseDrivers.js";
 import { defined } from "./fixtures/defined.js";
 
 /** Further than a truck travels in one tick; `interpolate.ts` snaps rather than smearing a jump this large. */
@@ -30,7 +30,9 @@ function racing(): {
   view: FuseDriversView;
 } {
   const room = started();
-  runTo(room, room.tick + 120);
+  while (room.race?.phase === "countdown") fold(room);
+  fold(room, { a: [drive({ gas: true })], b: [drive({ gas: true })] });
+  runTo(room, room.tick + 3);
   const previous = defined(room.race, "race");
   runTo(room, room.tick + 1);
   const next = defined(room.race, "race");

@@ -85,7 +85,10 @@ test("track settings apply to the next race while the current race keeps its map
   assert.equal(changed.settings.track, next);
   assert.equal(fuseDriversView(changed).track, original);
   assert.deepEqual(changed.race, baseline.race);
-  assert.deepEqual(changed.bots, baseline.bots);
+  assert.ok(
+    changed.race?.trucks[2]?.cpu,
+    "the compared race includes DOS CPU state",
+  );
   const race = defined(changed.race);
   changed.race = {
     ...race,
@@ -127,13 +130,18 @@ test("a bot takes a grid slot and drives without logging anything", () => {
   fold(room, { a: [[PRESENCE, "a", true, 1]] });
   fold(room, { a: [[ACTION, "start", "m1"]] });
   assert.deepEqual(room.grid, ["a", "bot:1"]);
-  assert.ok(room.bots["bot:1"], "the bot has memory in the room");
-  const before = JSON.stringify(defined(room.race, "race").trucks[1]);
-  runTo(room, room.tick + 60);
-  assert.notEqual(
-    JSON.stringify(defined(room.race, "race").trucks[1]),
-    before,
-    "the bot drove",
+  const before = defined(defined(room.race).trucks[1]);
+  assert.ok(before.cpu, "the CPU carries its own waypoint state");
+  runTo(room, room.tick + 120);
+  const after = defined(defined(room.race).trucks[1]);
+  assert.notDeepEqual(
+    [after.motion.x, after.motion.y],
+    [before.motion.x, before.motion.y],
+  );
+  assert.equal(
+    room.controls["bot:1"],
+    undefined,
+    "CPU driving needs no network stream",
   );
 });
 

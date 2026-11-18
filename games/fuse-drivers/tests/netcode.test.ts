@@ -12,7 +12,7 @@ import {
   encodeSnapshot,
 } from "fuse-netcode";
 import {
-  BRAKE,
+  GAS,
   CONTROLS,
   LEFT,
   NITRO,
@@ -26,6 +26,7 @@ import {
   type FuseDriversView,
 } from "../src/game/index.js";
 import type { RaceState } from "../src/game/sim/race.js";
+import { encodeRoom } from "../src/game/checkpoint.js";
 import { defined } from "./fixtures/defined.js";
 import { SETTINGS } from "./fixtures/fuseDrivers.js";
 
@@ -61,22 +62,22 @@ function replica(self = "a", matchId = "m1"): FuseDriversWorld {
 }
 
 /**
- * What `b` holds on the wheel through a race: a rocket start, then a few hundred ticks of steering. A seat logs only
+ * What `b` holds on the wheel through a race: gas, steering, coasting and nitro. A seat logs only
  * when its controls change, so each of these is one entry and the truck keeps driving on it until the next one.
  */
 const DRIVING: readonly number[] = [
-  NITRO,
-  RIGHT,
+  GAS,
+  GAS | RIGHT,
+  GAS | LEFT,
+  GAS,
+  GAS | LEFT,
+  GAS | NITRO,
+  GAS | LEFT,
+  GAS,
+  GAS | LEFT,
   LEFT,
-  0,
-  LEFT,
-  NITRO,
-  LEFT,
-  0,
-  LEFT,
-  BRAKE | LEFT,
-  RIGHT,
-  LEFT,
+  GAS | RIGHT,
+  GAS | LEFT,
 ];
 /** Those controls as `b`'s log: seq 1 upwards, the first inside the countdown and the rest spread over the race. */
 const drivingLog: readonly FuseDriversEntry[] = DRIVING.map((bits, index) => [
@@ -115,10 +116,7 @@ const promise = (
 ): void => void world.receive(id, [], lastSeq, through, through);
 
 const raceOf = (room: FuseDriversRoom): RaceState => defined(room.race, "race");
-/** The race as bytes, which is what "the same race" has to mean across replicas. */
-const raceText = (world: FuseDriversWorld): string =>
-  JSON.stringify(raceOf(world.state));
-/** How far a truck has come, in laps and checkpoints: a race nobody drove would leave this near zero. */
+/** Total laps, including the fractional progress in the current lap. */
 const progress = (world: FuseDriversWorld, slot: number): number =>
   defined(raceOf(world.state).trucks[slot], "truck").progress;
 
@@ -143,7 +141,7 @@ test("the same log folds to the same race and hash on every replica, however the
     fuseDriversGame.hash(whole.state),
     fuseDriversGame.hash(trickled.state),
   );
-  assert.equal(raceText(whole), raceText(trickled));
+  assert.deepEqual(raceOf(whole.state), raceOf(trickled.state));
   // Not only the newest tick: the two agree at every tick both still retain.
   for (let tick = 360; tick <= 400; tick += 4)
     assert.equal(
@@ -153,7 +151,10 @@ test("the same log folds to the same race and hash on every replica, however the
     );
   assert.deepEqual(defined(whole.view()[0]), defined(trickled.view()[0]));
   assert.equal(raceOf(whole.state).phase, "racing", "the race is still on");
-  assert.ok(progress(whole, 0) > 1, "b steered its truck past a checkpoint");
+  assert.ok(
+    defined(raceOf(whole.state).trucks[0]).checkpoint > 1,
+    "b steered its truck past a checkpoint",
+  );
   assert.ok(
     progress(whole, 1) > progress(whole, 0),
     "and the bot drove a race of its own out in front",
@@ -212,17 +213,17 @@ test("dropped, reordered and duplicated packets converge on the on-time race", (
     fuseDriversGame.hash(lossy.state),
     fuseDriversGame.hash(onTime.state),
   );
-  assert.equal(raceText(lossy), raceText(onTime));
+  assert.deepEqual(raceOf(lossy.state), raceOf(onTime.state));
   assert.equal(lossy.hashAt(396), onTime.hashAt(396));
 });
 
 test("a late entry inside the rollback window rewrites history and every replica agrees afterwards", () => {
-  // `b` brakes into a corner at tick 60; on the late replica that entry is still in flight at tick 99.
-  const brake: FuseDriversEntry = [1, 60, CONTROLS, "m1", 1, BRAKE | LEFT];
+  // The gas and left turn at tick 60 are still in flight on the late replica at tick 99.
+  const turn: FuseDriversEntry = [1, 60, CONTROLS, "m1", 1, GAS | LEFT];
   const after: FuseDriversEntry = [2, 130, CONTROLS, "m1", 1, NITRO];
 
   const onTime = replica();
-  onTime.receive("b", [brake], 1, 120, 120);
+  onTime.receive("b", [turn], 1, 120, 120);
   onTime.advance(120);
 
   const late = replica();
@@ -240,19 +241,19 @@ test("a late entry inside the rollback window rewrites history and every replica
     fuseDriversGame.hash(onTime.state),
   );
 
-  const corrected = late.receive("b", [brake], 1, 120, 120);
+  const corrected = late.receive("b", [turn], 1, 120, 120);
   assert.equal(corrected.status, "accepted");
   assert.ok(
     corrected.rollbackTicks >= 99 - 60,
     "history was re-simulated from the entry's own tick",
   );
   late.advance(120);
-  assert.equal(late.state.controls.b, brake[5]);
+  assert.equal(late.state.controls.b, turn[5]);
   assert.equal(
     fuseDriversGame.hash(late.state),
     fuseDriversGame.hash(onTime.state),
   );
-  assert.equal(raceText(late), raceText(onTime));
+  assert.deepEqual(raceOf(late.state), raceOf(onTime.state));
   assert.equal(late.hashAt(116), onTime.hashAt(116));
   assert.deepEqual(
     defined(late.view()[0]),
@@ -260,7 +261,7 @@ test("a late entry inside the rollback window rewrites history and every replica
     "the arena shows the corrected race",
   );
   // The same packet again is not a second rollback.
-  const again = late.receive("b", [brake], 1, 120, 120);
+  const again = late.receive("b", [turn], 1, 120, 120);
   assert.equal(again.rollbackTicks, 0);
   assert.deepEqual(again.events, []);
 
@@ -273,7 +274,7 @@ test("a late entry inside the rollback window rewrites history and every replica
     fuseDriversGame.hash(late.state),
     fuseDriversGame.hash(onTime.state),
   );
-  assert.equal(raceText(late), raceText(onTime));
+  assert.deepEqual(raceOf(late.state), raceOf(onTime.state));
 });
 
 test("a replica far behind recovers the race from a snapshot and folds on identically", () => {
@@ -281,7 +282,10 @@ test("a replica far behind recovers the race from a snapshot and folds on identi
   deliver(source, "b", drivingLog);
   promise(source, "b", LAST_SEQ);
   source.advance(240);
-  assert.ok(progress(source, 1) > 1, "there is a real race to carry");
+  assert.ok(
+    progress(source, 1) > 0.5,
+    "the snapshot carries a CPU half a lap into the race",
+  );
 
   const chunks = encodeSnapshot(source, ROOM);
   assert.equal(defined(chunks[0]).rules, "fuse-drivers-4");
@@ -337,7 +341,12 @@ test("a replica far behind recovers the race from a snapshot and folds on identi
     fuseDriversGame.hash(joiner.state),
     fuseDriversGame.hash(source.state),
   );
-  assert.equal(raceText(joiner), raceText(source));
+  assert.deepEqual(raceOf(joiner.state), raceOf(source.state));
+  assert.equal(
+    JSON.stringify(encodeRoom(joiner.state)),
+    JSON.stringify(encodeRoom(source.state)),
+    "the recovered and uninterrupted replicas serialize to the same checkpoint bytes",
+  );
   assert.equal(joiner.hashAt(396), source.hashAt(396));
 
   // A snapshot altered in flight is refused rather than installed.

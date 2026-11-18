@@ -96,7 +96,7 @@ test("a finished race shows the winner and offers the host another", () => {
     phase: "finished",
     trucks: race.trucks.map((truck) => ({
       ...truck,
-      finishedTick: race.countdownEndTick + 600,
+      finishedTick: race.countdownEndTick + 700,
     })),
   };
   fold(room);
@@ -114,13 +114,13 @@ test("a finished race shows the winner and offers the host another", () => {
     ],
   );
   assert.ok(results.host);
-  // One truck a second behind: places split, and the winner is named with a race time.
+  // Seventy native updates span three seconds at the DOS VGA cadence.
   const finished = defined(room.race, "race");
   room.race = {
     ...finished,
     trucks: finished.trucks.map((truck) =>
       truck.slot === 1
-        ? { ...truck, finishedTick: truck.finishedTick + 30, kills: 2 }
+        ? { ...truck, finishedTick: truck.finishedTick + 70, nitrosUsed: 2 }
         : truck,
     ),
   };
@@ -131,7 +131,7 @@ test("a finished race shows the winner and offers the host another", () => {
   assert.equal(split.title, "Ada WINS");
   assert.equal(split.winnerTruck, 0);
   assert.deepEqual(
-    split.rows.map((row) => [row.place, row.kills, row.you]),
+    split.rows.map((row) => [row.place, row.nitros, row.you]),
     [
       [1, 0, false],
       [2, 2, true],
@@ -139,7 +139,7 @@ test("a finished race shows the winner and offers the host another", () => {
   );
   assert.equal(
     defined(split.rows[1], "row").time - defined(split.rows[0], "row").time,
-    1,
+    3,
   );
   const guest = presentTable(fuseDriversView(room), viewer({ host: false }));
   assert.equal(

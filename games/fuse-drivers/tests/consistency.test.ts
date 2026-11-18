@@ -41,7 +41,7 @@ type FuseDriversWorld = World<
   FuseDriversSettings
 >;
 
-/** Long enough for the countdown, a rocket start and a few hundred ticks of driving. */
+/** Long enough for the countdown and several hundred DOS truck updates. */
 const TICKS = 320;
 /** Past every scripted tick and past the stall bound at `TICKS`, so nothing waits on `b`. */
 const THROUGH = TICKS + 80;
@@ -58,24 +58,24 @@ interface Press {
  * alongside. A seat logs only when its controls change, so a press holds until the next one for that seat.
  */
 const SCRIPT: readonly Press[] = [
-  { tick: 6, who: "a", input: { nitro: true } },
-  { tick: 8, who: "b", input: { nitro: true } },
-  { tick: 62, who: "a", input: {} },
-  { tick: 64, who: "b", input: {} },
-  { tick: 150, who: "a", input: { left: true } },
-  { tick: 156, who: "b", input: { left: true } },
-  { tick: 170, who: "a", input: { left: true, nitro: true } },
-  { tick: 176, who: "b", input: { left: true, item: true } },
-  { tick: 190, who: "a", input: {} },
-  { tick: 196, who: "b", input: {} },
-  { tick: 230, who: "a", input: { left: true } },
-  { tick: 236, who: "b", input: { left: true } },
-  { tick: 250, who: "a", input: { left: true, brake: true } },
-  { tick: 256, who: "b", input: { right: true } },
-  { tick: 270, who: "a", input: {} },
-  { tick: 276, who: "b", input: {} },
-  { tick: 310, who: "a", input: { left: true } },
-  { tick: 316, who: "b", input: { left: true } },
+  { tick: 6, who: "a", input: { gas: true } },
+  { tick: 8, who: "b", input: { gas: true } },
+  { tick: 62, who: "a", input: { gas: true, nitro: true } },
+  { tick: 64, who: "b", input: { gas: true, nitro: true } },
+  { tick: 150, who: "a", input: { gas: true, left: true } },
+  { tick: 156, who: "b", input: { gas: true, left: true } },
+  { tick: 170, who: "a", input: { left: true } },
+  { tick: 176, who: "b", input: { right: true } },
+  { tick: 190, who: "a", input: { gas: true } },
+  { tick: 196, who: "b", input: { gas: true } },
+  { tick: 230, who: "a", input: { gas: true, left: true } },
+  { tick: 236, who: "b", input: { gas: true, left: true } },
+  { tick: 250, who: "a", input: { left: true } },
+  { tick: 256, who: "b", input: { gas: true, right: true } },
+  { tick: 270, who: "a", input: { gas: true } },
+  { tick: 276, who: "b", input: { gas: true } },
+  { tick: 310, who: "a", input: { gas: true, left: true } },
+  { tick: 316, who: "b", input: { gas: true, left: true } },
 ];
 const pressTicks = [...new Set(SCRIPT.map((press) => press.tick))].sort(
   (a, b) => a - b,
@@ -149,7 +149,7 @@ function deliver(
 
 const raceText = (room: FuseDriversRoom): string =>
   JSON.stringify(defined(room.race, "race"));
-/** How far a truck has come, in laps and checkpoints. */
+/** Total laps, including the fractional progress in the current lap. */
 const progress = (room: FuseDriversRoom, slot: number): number =>
   defined(defined(room.race, "race").trucks[slot], "truck").progress;
 
@@ -159,20 +159,25 @@ test("two replicas folding the same log independently land on byte-identical roo
   assert.equal(one.tick, TICKS);
   assert.equal(hashRoom(one), hashRoom(two));
   assert.equal(raceText(one), raceText(two));
-  // Bot memory rides in the room, so two replicas that agree must agree on how the bots drove too.
-  assert.equal(JSON.stringify(one.bots), JSON.stringify(two.bots));
   assert.deepEqual(one.controls, two.controls);
   assert.deepEqual(one.grid, ["a", "b", "bot:1", "bot:2"]);
 
   // And the race those bytes describe is a real one: four trucks, well past the countdown, all of them driving.
   const race = defined(one.race, "race");
   assert.equal(race.phase, "racing");
-  assert.ok(race.tick > race.countdownEndTick + 300, "a few hundred ticks in");
+  assert.ok(
+    race.tick > race.countdownEndTick + 200,
+    "over two hundred native driving ticks",
+  );
+  assert.deepEqual(
+    race.trucks.map((truck) => Boolean(truck.cpu)),
+    [false, false, true, true],
+  );
   assert.equal(race.trucks.length, 4);
-  for (const slot of [0, 1, 2, 3])
+  for (const truck of race.trucks)
     assert.ok(
-      progress(one, slot) >= 1,
-      `truck ${String(slot)} drove past a checkpoint`,
+      truck.laps > 0 || truck.checkpoint > 1,
+      `truck ${String(truck.slot)} advanced past its first native checkpoint`,
     );
   assert.ok(
     progress(one, 2) > progress(one, 0),
@@ -189,7 +194,6 @@ test("the netcode's world folds that log into the very same bytes as a plain fol
   assert.equal(world.tick, TICKS);
   assert.equal(hashRoom(world.state), hashRoom(plain));
   assert.equal(raceText(world.state), raceText(plain));
-  assert.equal(JSON.stringify(world.state.bots), JSON.stringify(plain.bots));
 });
 
 test("a replica that rolled back through the race ends on the same bytes as one that never did", () => {
@@ -227,7 +231,6 @@ test("a replica that rolled back through the race ends on the same bytes as one 
   assert.equal(world.tick, TICKS);
   assert.equal(hashRoom(world.state), hashRoom(plain));
   assert.equal(raceText(world.state), raceText(plain));
-  assert.equal(JSON.stringify(world.state.bots), JSON.stringify(plain.bots));
   // Every retained tick agrees too, not only the newest one.
   const straight = worldRoom();
   deliver(straight, presses, 1);

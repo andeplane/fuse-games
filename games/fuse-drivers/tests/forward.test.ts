@@ -23,11 +23,11 @@ function racing() {
 test("a whole tick played forward is the tick the fold produces, bots included, and the room is left alone", () => {
   const room = racing();
   fold(room, { a: [drive({ left: true })] });
-  const before = JSON.stringify([room.race, room.bots, room.controls]);
+  const before = JSON.stringify([room.race, room.controls]);
   const one = defined(forward(room, 1, "a", LEFT), "lead"),
     two = defined(forward(room, 2, "a", LEFT), "lead");
   assert.equal(
-    JSON.stringify([room.race, room.bots, room.controls]),
+    JSON.stringify([room.race, room.controls]),
     before,
     "the forward run never touches the room",
   );
