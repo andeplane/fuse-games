@@ -1,3 +1,5 @@
+import { nextOffroadSeed } from "./rng.js";
+
 /** Fixed-point wheel contact, from GAME.EXE CS:18be–1b95 and 1d73–1de2. */
 export interface OffroadWheel {
   height: number;
@@ -119,7 +121,7 @@ function hitBarrier<T extends Motion>(
     m.throttle = 0;
     m.nitroTicks = 0;
     // The shared DOS random routine at 0434:063e returns its next state minus one.
-    hit.randomSeed = (u16(hit.randomSeed + 1) * 171) % 30323;
+    hit.randomSeed = nextOffroadSeed(hit.randomSeed);
     const turn = ((hit.randomSeed - 1) & 32) !== 0 ? 8192 : -8192;
     m.heading = u16(m.heading + turn);
     m.backwards = !m.backwards;

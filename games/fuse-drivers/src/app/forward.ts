@@ -8,7 +8,6 @@ import {
   unpackControls,
   type FuseDriversRoom,
 } from "../game/index.js";
-import { botInput, type BotMemory } from "../game/sim/bot.js";
 import { step, type RaceEvent, type RaceState } from "../game/sim/race.js";
 import type { TruckPose } from "./arena/interpolate.js";
 
@@ -49,8 +48,8 @@ export function forward(
 ): Lead | undefined {
   const folded = room.race;
   if (!folded) return undefined;
-  const track = trackFor(folded.trackName),
-    bots: Record<string, BotMemory | undefined> = { ...room.bots };
+  const track = trackFor(folded.trackName);
+  const botSlots = room.grid.map(id => room.seats.get(id)?.bot === true);
   const held = room.grid.map((id) => {
     const seat = room.seats.get(id);
     if (seat?.bot) return 0;
@@ -59,22 +58,12 @@ export function forward(
   });
   /** One step as the fold takes it, or undefined when the step decides something. */
   const advance = (race: RaceState): RaceState | undefined => {
-    const memories: [string, BotMemory][] = [];
-    const inputs = held.map((bits, slot) => {
-      const id = room.grid[slot]!,
-        memory = room.seats.get(id)?.bot ? bots[id] : undefined;
-      if (!memory) return unpackControls(bits);
-      const [controls, next] = botInput(race, slot, memory, track, "normal");
-      memories.push([id, next]);
-      return controls;
-    });
-    const result = step(race, inputs, track);
+    const result = step(race, held.map(unpackControls), track, botSlots);
     if (
       result.state.phase !== race.phase ||
       result.events.some((event) => DECIDES.has(event.type))
     )
       return undefined;
-    for (const [id, memory] of memories) bots[id] = memory;
     return result.state;
   };
   let race = folded,

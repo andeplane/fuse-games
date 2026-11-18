@@ -15,7 +15,6 @@ import {
   type StreamEntries,
 } from "fuse-netcode";
 import { CAPACITY, MAX_ROUNDS, MAX_WATCHERS, validName } from "./basics.js";
-import { botInput, createBotMemory, type BotMemory } from "./sim/bot.js";
 import { BASE_STATS } from "./sim/config.js";
 import { NEUTRAL_INPUT, type TruckInput } from "./sim/input.js";
 import { createRace, step, type RaceState } from "./sim/race.js";
@@ -88,7 +87,7 @@ export interface FuseDriversSettings {
   display: boolean;
 }
 export const DEFAULT_SETTINGS: FuseDriversSettings = {
-  track: OFFROAD_COURSE_NAMES[0]!,
+  track: "offroad-4", // Sidewinder opens the DOS campaign.
   display: false,
 };
 
@@ -108,8 +107,6 @@ export interface FuseDriversRoom extends ManagedRoom<FuseDriversSettings> {
   grid: string[];
   /** The controls each seat last logged, so a seat that logs nothing keeps driving as it was. */
   controls: Record<string, number>;
-  /** Bot memory rides in the room so a rollback reproduces the same driving. */
-  bots: Record<string, BotMemory>;
 }
 
 export interface FinishSeat {
@@ -202,7 +199,6 @@ export function createRoom(
     settings: { ...settings },
     grid: [],
     controls: {},
-    bots: {},
     finishSeats: [],
     finishTick: 0,
   };
@@ -214,7 +210,6 @@ function startRace(room: FuseDriversRoom, matchId: string): void {
   const grid = players(room);
   room.grid = grid.map((seat) => seat.id);
   room.controls = {};
-  room.bots = {};
   room.finishSeats = [];
   room.finishTick = 0;
   let seed = 0x811c9dc5;
@@ -224,9 +219,8 @@ function startRace(room: FuseDriversRoom, matchId: string): void {
     trackFor(room.settings.track),
     seed,
     grid.map(() => BASE_STATS),
+    grid.map(seat => seat.bot),
   );
-  for (const [slot, seat] of grid.entries())
-    if (seat.bot) room.bots[seat.id] = createBotMemory(seed, slot);
 }
 
 export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
@@ -251,7 +245,6 @@ export const lifecycle: LifecycleHooks<FuseDriversRoom, FuseDriversSettings> = {
     delete room.race;
     room.grid = [];
     room.controls = {};
-    room.bots = {};
     room.finishSeats = [];
     room.finishTick = 0;
   },
@@ -314,26 +307,11 @@ export function foldTick(
       if (!seat || !seat.bot) return unpackControls(room.controls[id] ?? 0);
       return NEUTRAL_INPUT;
     });
+    const botSlots = room.grid.map(id => room.seats.get(id)?.bot === true);
+    const track = trackFor(race.trackName);
     let next = race;
     for (let s = 0; s < stepsForTick(tick); s++) {
-      // Bots decide inside the fold from room state alone, so a rollback reproduces their driving.
-      const withBots = inputs.map((input, slot) => {
-        const id = room.grid[slot];
-        const seat = id === undefined ? undefined : room.seats.get(id);
-        if (!seat?.bot || id === undefined) return input;
-        const memory = room.bots[id];
-        if (!memory) return input;
-        const [botControls, nextMemory] = botInput(
-          next,
-          slot,
-          memory,
-          trackFor(next.trackName),
-          "normal",
-        );
-        room.bots[id] = nextMemory;
-        return botControls;
-      });
-      const result = step(next, withBots, trackFor(next.trackName));
+      const result = step(next, inputs, track, botSlots);
       next = result.state;
       for (const event of result.events) {
         const id = "slot" in event ? (room.grid[event.slot] ?? "") : "";
