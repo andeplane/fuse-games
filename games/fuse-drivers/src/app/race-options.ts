@@ -5,12 +5,18 @@ import {
   type FuseDriversSettings,
 } from "../game/rules.js";
 import { courseLabel } from "./course-label.js";
+import { courseAccent } from "./arena/course-palette.js";
+import { coursePreviewUrl, type StadiumTheme } from "./arena/theme.js";
 
 /** The host picks the opening circuit; subsequent races follow the DOS calendar. */
 export function createRaceOptions(
-  change: (track: string, races: number) => void,
+  change: (settings: Partial<FuseDriversSettings>) => void,
+  initialTheme: StadiumTheme,
+  changeTheme: (theme: StadiumTheme) => void,
 ) {
   const element = el("section", "", "fd-race-options");
+  element.dataset.theme = initialTheme;
+  const previews = new Map<string, HTMLImageElement>();
   const courses = createPicker({
     legend: "Opening course",
     choices: trackNames()
@@ -20,14 +26,17 @@ export function createRaceOptions(
     art(id) {
       const thumbnail = el("img");
       thumbnail.alt = "";
-      thumbnail.src = new URL(
-        `./course-previews/${id}.webp`,
-        import.meta.url,
-      ).href;
+      thumbnail.src = coursePreviewUrl(id, initialTheme);
+      previews.set(id, thumbnail);
       return thumbnail;
     },
     onPick: send,
   });
+  for (const card of courses.buttons)
+    card.style.setProperty(
+      "--fd-course-accent",
+      courseAccent(card.dataset.choice!),
+    );
   function select(label: string, choices: [string, string][]) {
     const field = el("label", label);
     const control = el("select");
@@ -53,18 +62,38 @@ export function createRaceOptions(
     ["0", "Continuous"],
   ];
   const length = select("Races", lengths);
+  const mode = select("Rules", [
+    ["classic", "Classic"],
+    ["battle", "Battle"],
+  ]);
+  const theme = select("Graphics", [
+    ["fuse", "Fuse"],
+    ["classic", "Classic"],
+  ]);
+  theme.control.value = initialTheme;
+  theme.control.onchange = () => {
+    const selected = theme.control.value === "classic" ? "classic" : "fuse";
+    element.dataset.theme = selected;
+    for (const [id, thumbnail] of previews)
+      thumbnail.src = coursePreviewUrl(id, selected);
+    changeTheme(selected);
+  };
   const settingsLength = select("Series length", lengths);
   settingsLength.control.onchange = () =>
-    change(selectedTrack(), Number(settingsLength.control.value));
+    change({ races: Number(settingsLength.control.value) });
   const fields = el("div", "", "fd-series-options");
-  fields.append(direction.field, length.field);
+  fields.append(mode.field, direction.field, length.field, theme.field);
   const hint = el("p", "", "fd-series-hint");
   element.append(courses.element, fields, hint);
   function selectedTrack() {
     return courses.selected() + direction.control.value;
   }
   function send() {
-    change(selectedTrack(), Number(length.control.value));
+    change({
+      track: selectedTrack(),
+      races: Number(length.control.value),
+      mode: mode.control.value === "battle" ? "battle" : "classic",
+    });
   }
   return {
     element,
@@ -75,6 +104,8 @@ export function createRaceOptions(
         ? "-reverse"
         : "";
       length.control.value = String(settings.races);
+      mode.control.value = settings.mode;
+      mode.control.disabled = !canEdit;
       settingsLength.control.value = length.control.value;
       courses.element.disabled =
         direction.control.disabled =
@@ -85,7 +116,12 @@ export function createRaceOptions(
         settings.races === 1
           ? "One four-lap race."
           : "Four laps per race. Spend your winnings between races as the series moves to the next course.";
-      if (hint.textContent !== text) hint.textContent = text;
+      const rules =
+        settings.mode === "battle"
+          ? "Drop a timed firebomb or use a shield. Drive through crates to refill."
+          : "Race with nitro and cash pickups.";
+      const description = rules + " " + text;
+      if (hint.textContent !== description) hint.textContent = description;
     },
   };
 }

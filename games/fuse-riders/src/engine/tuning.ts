@@ -4,11 +4,47 @@ import { sortedPlayers, type GameState } from "./state.js";
 import { type HasEffects, speedMultiplier } from "./effects.js";
 
 export const TICK_HZ = 20;
-export const MAX_PLAYERS = 6;
+export const MAX_PLAYERS = 8;
 export const MIN_PLAYERS = 2;
+/**
+ * How many riders AI fills a solo or local match up to: six, so a match on one device stays on the standard arena.
+ * More people on one screen still all ride, up to `MAX_PLAYERS`, with no AI beside them.
+ */
+export const SOLO_RIDERS = 6;
 
+/** The arena of a round of up to `ARENA_SIZE_RIDERS` riders, and of the lobby. */
 export const ARENA_WIDTH = 1600;
 export const ARENA_HEIGHT = 900;
+/** Up to this many riders a round is on the standard arena; above it the arena grows (`arenaSize`). */
+export const ARENA_SIZE_RIDERS = 6;
+/**
+ * The arena of a round, by how many riders start it. Above six it grows to keep the floor each rider has at six,
+ * 1600 × 900 / 6 = 240,000 square units, at very nearly 16:9: a bots-only measurement at eight riders on the standard
+ * arena doubled the crashes of the first ten seconds. A table rather than a square root, so every replica and the
+ * checkpoint guard agree on exactly these sizes.
+ */
+const GROWN_ARENAS: Readonly<Record<number, readonly [number, number]>> = {
+  7: [1728, 972],
+  8: [1848, 1040],
+};
+export const MAX_ARENA_WIDTH = 1848;
+export const MAX_ARENA_HEIGHT = 1040;
+export function arenaSize(riders: number): {
+  width: number;
+  height: number;
+} {
+  const grown = GROWN_ARENAS[riders];
+  return grown
+    ? { width: grown[0], height: grown[1] }
+    : { width: ARENA_WIDTH, height: ARENA_HEIGHT };
+}
+/** Whether a width and height are an arena some round could be played on. */
+export function isArenaSize(width: number, height: number): boolean {
+  return (
+    (width === ARENA_WIDTH && height === ARENA_HEIGHT) ||
+    Object.values(GROWN_ARENAS).some(([w, h]) => w === width && h === height)
+  );
+}
 export const INITIAL_BOUNDARY_INSET = 20;
 /**
  * The ten colours a rider may wear, and the order a free one is handed out in. Colour is the rider's own, not its
@@ -140,6 +176,15 @@ export const ROUND_OVER_TICKS = 60;
 export const MATCH_WINNER_TICKS = 60;
 export const OVERTIME_START_TICK = 1200;
 export const OVERTIME_INSET_PER_TICK = 0.5;
+/**
+ * How fast overtime brings each wall in on an arena this tall: `OVERTIME_INSET_PER_TICK` on the standard arena, and
+ * proportionally faster on a grown one, so the walls have closed the same share of the field by `ROUND_DRAW_TICK`.
+ */
+export function overtimeInsetPerTick(arena: { height: number }): number {
+  return arena.height === ARENA_HEIGHT
+    ? OVERTIME_INSET_PER_TICK
+    : (OVERTIME_INSET_PER_TICK * arena.height) / ARENA_HEIGHT;
+}
 export const ROUND_DRAW_TICK = 1800;
 /**
  * Riders speed up through every round, from normal pace at the start to SPEED_RAMP_MAX when overtime begins, and hold it.

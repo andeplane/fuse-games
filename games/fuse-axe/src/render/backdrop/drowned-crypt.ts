@@ -6,8 +6,17 @@ import {
   gravesPx,
   stageLengthPx,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster, rgbAt } from "./kit.js";
+import {
+  firstTile,
+  worldRow,
+  bayer,
+  dither,
+  hash,
+  Raster,
+  rgbAt,
+} from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, type Fire } from "./fire.js";
 
 /**
  * Stage 3, Drowned Crypt: a cold night in a flooded graveyard under a broken cathedral. Far to near: the sky and a pale
@@ -52,7 +61,7 @@ const IRON = 0x22263a;
 const IRON_LIT = 0x3e4458;
 const BONE = 0xb8b0a8;
 const GLOW = [0x0c2a22, 0x1e5a44, 0x48b080];
-const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"];
+const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"] as const;
 /** The fog's, the ripples' and the drips' colours, which nothing else draws. */
 const FOG = "#2e4448";
 const RIPPLE = ["#6a8e92", "#41606a", "#273c44"];
@@ -569,56 +578,8 @@ function reeds(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [number, number, number, number, number];
-
 /** The green fires in the braziers, the last two flanking the great doors. */
 export const FIRES = BRAZIERS.map((x, i): Fire => [x - 4, 9, BANK - 17, 13, i]);
-
-const tone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-function burn(brush: Brush, fire: Fire, cam: number, t: number) {
-  const [x0, w, base, height, seed] = fire;
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const x = x0 + i - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.3 * Math.sin((x0 + i) * 0.9 + seed + t * 11);
-    const sway = 0.2 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 7);
-    const h = Math.max(1, Math.round(height * env * (0.55 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = tone(j, h, env);
-      let k = j + 1;
-      while (k < h && tone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 3; i++) {
-    const life = (t * (0.3 + hash(i, seed) * 0.3) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 7 + i) * 3;
-    const x = Math.round(x0 + w / 2 + drift) - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    brush.fillRect(x, Math.round(base - height * 0.6 - life * 30), 1, 1);
-  }
-}
-
-/** One row of world pixels from `x0` to `x1`, clipped to the screen at camera `cam`. */
-function run(brush: Brush, x0: number, x1: number, y: number, cam: number) {
-  const [from, to] = [Math.max(x0 - cam, 0), Math.min(x1 - cam, VIEW_W)];
-  if (to > from) brush.fillRect(from, y, to - from, 1);
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 /** Banks of fog drifting over the graves and the black water, thin as a dither, each swelling and fading. */
 function fog(brush: Brush, cam: number, t: number) {
@@ -634,7 +595,7 @@ function fog(brush: Brush, cam: number, t: number) {
       for (let row = -2; row <= 2; row++) {
         const a = Math.abs(row);
         for (let s = a * 12 + (row & 1); s < len - a * 12; s += a > 1 ? 4 : 2)
-          run(brush, left + s, left + s + 1, y + row, cam);
+          worldRow(brush, left + s, left + s + 1, y + row, cam);
       }
     }
 }
@@ -643,8 +604,8 @@ function fog(brush: Brush, cam: number, t: number) {
 function ring(brush: Brush, x: number, y: number, life: number, cam: number) {
   const w = 1 + Math.floor(life * 6);
   brush.fillStyle = RIPPLE[Math.min(2, Math.floor(life * 3))]!;
-  run(brush, x - w - 1, x - w + 1, y, cam);
-  run(brush, x + w, x + w + 2, y, cam);
+  worldRow(brush, x - w - 1, x - w + 1, y, cam);
+  worldRow(brush, x + w, x + w + 2, y, cam);
 }
 
 /** Rings spreading on the black water behind the causeway and in front of it. */
@@ -666,10 +627,10 @@ function drips(brush: Brush, cam: number, t: number) {
     const f = (life - 0.6) / 0.12;
     const y = top + Math.round((bottom - top) * f * f);
     brush.fillStyle = DROP;
-    if (life > 0.3 && life < 0.6) run(brush, x, x + 1, top, cam);
+    if (life > 0.3 && life < 0.6) worldRow(brush, x, x + 1, top, cam);
     else if (life >= 0.6 && life < 0.72) {
-      run(brush, x, x + 1, y - 1, cam);
-      run(brush, x, x + 1, y, cam);
+      worldRow(brush, x, x + 1, y - 1, cam);
+      worldRow(brush, x, x + 1, y, cam);
     } else if (life >= 0.72) ring(brush, x, bottom, (life - 0.72) / 0.28, cam);
   }
 }
@@ -686,7 +647,7 @@ export const DROWNED_CRYPT: StageArt = {
     const t = frame / 60;
     ripples(brush, camX, t);
     fog(brush, camX, t);
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME });
     drips(brush, camX, t);
   },
 };

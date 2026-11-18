@@ -9,9 +9,12 @@ import { STRUCTURES, attackCells, planSupport } from "../engine/catalog.js";
 import { neighbors } from "../engine/map.js";
 import { structureArt, teamSvgFilter, svgArtFilters } from "./art.js";
 import { terrainArt, WALKABLE_GROUND } from "./terrain-art.js";
-import { combatEffect } from "./combat-effects.js";
+import {
+  addTickEffects,
+  weaponKey,
+  type TickEffectState,
+} from "./tick-effects.js";
 import { damagePlume, damageAnimation } from "./damage-plume.js";
-import { weaponFlightMs } from "./weapon-trail.js";
 import { rockRelief, rockReliefMarkup } from "./terrain-relief.js";
 import {
   networkPath,
@@ -42,16 +45,9 @@ import {
 } from "./creep.js";
 import { CreepLayer, type CreepSource } from "./creep-layer.js";
 import { arrangeChildren, KeyedLayer, type KeyedItem } from "./keyed-layer.js";
-import { organicBurst } from "./organic-burst.js";
 import { SPORE_POD, sporeMarkup } from "./spore-art.js";
 import { buildingRoots, buildingRootsMarkup } from "./building-roots.js";
-import {
-  claimLabelMarkup,
-  POWERUP_STYLE,
-  powerupDefs,
-  powerupMarkup,
-} from "./powerup-art.js";
-import { POWERUP_PRESENTATION, isPowerupKind } from "../engine/powerups.js";
+import { POWERUP_STYLE, powerupDefs, powerupMarkup } from "./powerup-art.js";
 import {
   bloodTravel,
   heartbeat,
@@ -61,13 +57,8 @@ import {
   type Vessel,
 } from "./vessels.js";
 import {
-  CYTOPLASM,
-  EMBERS,
   LightField,
   rgb,
-  SPARKS,
-  SPORES,
-  SPROUT,
   type LightRenderer,
   type LightTransform,
   type Rgb,
@@ -86,25 +77,11 @@ type Moving = {
   departedAt: number;
   arrivesAt: number;
 };
-type Pulse = {
-  element: SVGElement;
-  born: number;
-  duration?: number;
-  arrival?: boolean;
-  ground?: SVGElement;
-  body?: SVGElement;
-  animate?: (age: number) => void;
-};
-interface BoardCache {
+interface BoardCache extends TickEffectState {
+  light: LightField;
   key: string;
-  tick: number;
   particleLayer: SVGGElement;
-  effectLayer: SVGGElement;
-  groundEffects: SVGGElement;
-  arrivalAt: Map<number, number>;
   movers: Map<string, SVGGElement>;
-  prior: Map<number, number>;
-  pulses: Pulse[];
   structures: SVGGElement;
   /** Structure and construction-site elements, one per item, reused when unchanged. */
   structureItems: KeyedLayer;
@@ -116,8 +93,6 @@ interface BoardCache {
   firingRange: SVGGElement;
   territory: SVGGElement;
   terrainObjects: SVGElement[];
-  recoil: Map<number, { born: number; dx: number; dy: number }>;
-  weaponKinds: Map<string, StructureKind>;
   /** First presentation time of structures, dendrites and links; -Infinity when present at load. */
   born: Map<string, number>;
   creep: CreepLayer;
@@ -126,7 +101,6 @@ interface BoardCache {
   /** Neuron forms by cell, team and neighbours, reused while unchanged. */
   memo: { neurons: NeuronMemo };
   fresh: boolean;
-  light: LightField;
   spores: readonly Spore[];
   vessels: readonly Vessel[];
 }
@@ -167,22 +141,6 @@ const LINK_GROW_MS = 900;
 const decorKey = (kind: number, index: number) =>
   kind * 0x1000000 + (index & 0xffffff);
 const caches = new WeakMap<SVGSVGElement, BoardCache>();
-function weaponStyle(
-  world: Readonly<World>,
-  cache: BoardCache,
-  owner: string,
-  cell: number | undefined,
-): "siege" | "relay" | "spore" | "pulse" {
-  const kind =
-    world.structures.find((s) => s.ownerId === owner && s.cell === cell)
-      ?.kind ??
-    (world.tick === cache.tick + 1
-      ? cache.weaponKinds.get(`${owner}:${cell}`)
-      : undefined);
-  return kind === "siege" || kind === "relay" || kind === "spore"
-    ? kind
-    : "pulse";
-}
 const escaped = (text: string) =>
   text.replace(
     /[&<>"']/g,
@@ -482,6 +440,7 @@ export interface BoardAnimation {
 }
 
 /** Render exact simulation journeys. RAF only interpolates one tick; it never launches or resolves a particle. */
+
 export function renderBoard(
   svg: SVGSVGElement,
   world: Readonly<World>,
@@ -727,272 +686,27 @@ export function renderBoard(
       })
       .join(""),
   );
-  if (world.tick !== cache.tick && !reducedMotion)
-    for (const claimed of world.outcomes)
-      if (
-        claimed.type === "claimed" &&
-        claimed.cell !== undefined &&
-        isPowerupKind(claimed.reason) &&
-        cache.pulses.length < 48
-      ) {
-        const { x, y } = hexCenter(width, claimed.cell);
-        const style = POWERUP_STYLE[claimed.reason];
-        const label = svg.ownerDocument.createElementNS(ns, "g");
-        label.setAttribute("class", "claim-effect");
-        label.innerHTML = claimLabelMarkup(
-          POWERUP_PRESENTATION[claimed.reason].label,
-          claimed.reason,
-          x,
-          y,
-        );
-        cache.effectLayer.append(label);
-        cache.pulses.push({
-          element: label,
-          born: now,
-          duration: 1600,
-          animate: (t) => {
-            label.setAttribute(
-              "transform",
-              `translate(0 ${(-t * 26).toFixed(1)})`,
-            );
-            label.setAttribute(
-              "opacity",
-              String(t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85),
-            );
-          },
-        });
-        if (light) {
-          const color = rgb(style.color);
-          cache.light.flash(x, y - 16, now, 70, color, 1, 520);
-          cache.light.burst(x, y - 16, now, world.tick * 7 + claimed.cell, {
-            ...SPROUT(color),
-            count: 34,
-            speed: [30, 110],
-            lift: [40, 120],
-            gravity: 60,
-          });
-        }
-      }
-  if (world.tick !== cache.tick && !reducedMotion)
-    for (const p of world.particles) {
-      if (
-        cache.prior.has(p.id) &&
-        p.mode === "stationed" &&
-        p.cell === cache.prior.get(p.id) &&
-        now - (cache.arrivalAt.get(p.cell) ?? -Infinity) >= 160 &&
-        cache.pulses.length < 48
-      ) {
-        const circle = svg.ownerDocument.createElementNS(ns, "circle"),
-          { x, y } = hexCenter(width, p.cell);
-        circle.setAttribute("cx", String(x));
-        circle.setAttribute("cy", String(y));
-        circle.setAttribute("class", "arrival-pulse");
-        circle.setAttribute(
-          "stroke",
-          colors[world.players.find((o) => o.id === p.ownerId)?.slot ?? 0]!,
-        );
-        cache.arrivalAt.set(p.cell, now);
-        cache.groundEffects.append(circle);
-        cache.pulses.push({
-          element: circle,
-          born: now,
-          duration: 260,
-          arrival: true,
-        });
-      }
-    }
-  // A Spore pod is one projectile: it flies to the primary target (the
-  // shooter's hardest hit this tick) and its splash hits burst from there.
-  const primaryHit = new Map<string, (typeof world.outcomes)[number]>();
-  for (const outcome of world.outcomes)
-    if (outcome.type === "damage" && outcome.fromCell !== undefined) {
-      const shooter = `${outcome.playerId}:${outcome.fromCell}`;
-      const best = primaryHit.get(shooter);
-      if (!best || (outcome.amount ?? 0) > (best.amount ?? 0))
-        primaryHit.set(shooter, outcome);
-    }
-  if (world.tick !== cache.tick && !reducedMotion)
-    for (const outcome of world.outcomes) {
-      if (
-        !["damage", "shielded", "destroyed", "constructed"].includes(
-          outcome.type,
-        ) ||
-        outcome.cell === undefined ||
-        cache.pulses.length >= 48
-      )
-        continue;
-      if (
-        outcome.type !== "damage" &&
-        outcome.type !== "shielded" &&
-        outcome.type !== "destroyed" &&
-        outcome.type !== "constructed"
-      )
-        continue;
-      const at = hexCenter(width, outcome.cell);
-      const splash =
-        outcome.type === "damage" &&
-        weaponStyle(world, cache, outcome.playerId, outcome.fromCell) ===
-          "spore" &&
-        primaryHit.get(`${outcome.playerId}:${outcome.fromCell}`) !== outcome;
-      const from =
-        outcome.type === "damage" && outcome.fromCell !== undefined && !splash
-          ? hexCenter(width, outcome.fromCell)
-          : undefined;
-      const hits = world.outcomes.filter(
-        (hit) =>
-          hit.type === "damage" &&
-          hit.cell === outcome.cell &&
-          hit.fromCell !== undefined,
-      );
-      const incoming = hits.sort(
-        (a, b) =>
-          (b.amount ?? 0) - (a.amount ?? 0) || a.fromCell! - b.fromCell!,
-      )[0]?.fromCell;
-      const lostKind =
-        world.tick === cache.tick + 1 && outcome.type === "destroyed"
-          ? cache.weaponKinds.get(`${outcome.playerId}:${outcome.cell}`)
-          : undefined;
-      let wreck: SVGElement | undefined;
-      if (lostKind && lostKind !== "neuron") {
-        wreck = svg.ownerDocument.createElementNS(ns, "g");
-        wreck.innerHTML = structureArtwork(
-          width,
-          outcome.cell,
-          lostKind,
-          world.players.find((p) => p.id === outcome.playerId)?.slot ?? 0,
-          sprites,
-        );
-      }
-      const effect = combatEffect(
-        svg.ownerDocument,
-        outcome.type,
-        at,
-        outcome.type === "destroyed"
-          ? "#ffb767"
-          : colors[
-              world.players.find((p) => p.id === outcome.playerId)?.slot ?? 0
-            ]!,
-        world.tick * 31 + outcome.cell,
-        from,
-        {
-          wreck: wreck
-            ? { artwork: wreck, foot: { x: at.x, y: at.y + buildingFoot } }
-            : undefined,
-          weapon: weaponStyle(world, cache, outcome.playerId, outcome.fromCell),
-          incoming:
-            incoming === undefined ? undefined : hexCenter(width, incoming),
-          impactDelay: splash
-            ? weaponFlightMs.spore
-            : outcome.type === "destroyed" || outcome.type === "shielded"
-              ? Math.max(
-                  0,
-                  ...hits.map(
-                    (hit) =>
-                      weaponFlightMs[
-                        weaponStyle(world, cache, hit.playerId, hit.fromCell)
-                      ],
-                  ),
-                )
-              : undefined,
-        },
-      );
-      cache.effectLayer.append(effect.element);
-      effect.body?.setAttribute("data-depth", String(outcome.cell));
-      cache.groundEffects.append(effect.ground);
-      cache.pulses.push({ ...effect, born: now });
-      if (light) {
-        const slot =
-          world.players.find((p) => p.id === outcome.playerId)?.slot ?? 0;
-        const team = rgb(TEAM_PALETTES[slot]!.glow);
-        const arrival =
-          outcome.type === "damage"
-            ? weaponFlightMs[
-                weaponStyle(world, cache, outcome.playerId, outcome.fromCell)
-              ]
-            : Math.max(
-                0,
-                ...hits.map(
-                  (hit) =>
-                    weaponFlightMs[
-                      weaponStyle(world, cache, hit.playerId, hit.fromCell)
-                    ],
-                ),
-              );
-        const seed = world.tick * 977 + outcome.cell * 31;
-        const hit = now + arrival;
-        const fire: Rgb = [1, 0.55, 0.2];
-        if (outcome.type === "damage") {
-          if (from)
-            cache.light.flash(from.x, from.y - 22, now, 22, team, 0.7, 150);
-          const style = weaponStyle(
-            world,
-            cache,
-            outcome.playerId,
-            outcome.fromCell,
-          );
-          if (style === "spore") {
-            cache.light.flash(at.x, at.y - 8, hit, 40, [0.5, 1, 0.4], 0.6, 420);
-            cache.light.burst(at.x, at.y - 4, hit, seed, SPORES);
-          } else {
-            cache.light.flash(at.x, at.y - 10, hit, 34, fire, 0.75, 260);
-            cache.light.burst(at.x, at.y - 6, hit, seed, SPARKS(fire));
-          }
-        } else if (outcome.type === "shielded")
-          cache.light.flash(
-            at.x,
-            at.y - 14,
-            hit,
-            44,
-            [0.45, 0.85, 1],
-            0.8,
-            320,
-          );
-        else if (outcome.type === "destroyed") {
-          cache.light.flash(at.x, at.y - 12, hit, 110, fire, 1, 560);
-          cache.light.burst(at.x, at.y, hit, seed, EMBERS);
-          if (lostKind === "neuron")
-            cache.light.burst(at.x, at.y, hit, seed + 1, CYTOPLASM(team));
-        } else if (outcome.type === "constructed") {
-          cache.light.flash(at.x, at.y - 6, now, 40, team, 0.55, 700);
-          cache.light.burst(at.x, at.y, now, seed, SPROUT(team));
-        }
-      }
-      if (lostKind === "neuron") {
-        const burst = organicBurst(
-          svg.ownerDocument,
-          at,
-          world.players.find((p) => p.id === outcome.playerId)?.slot ?? 0,
-          world.tick * 131 + outcome.cell,
-          Math.max(
-            0,
-            ...hits.map(
-              (hit) =>
-                weaponFlightMs[
-                  weaponStyle(world, cache, hit.playerId, hit.fromCell)
-                ],
-            ),
-          ),
-        );
-        cache.effectLayer.append(burst.element);
-        cache.groundEffects.append(burst.ground);
-        burst.animate(0);
-        cache.pulses.push({
-          element: burst.element,
-          ground: burst.ground,
-          born: now,
-          duration: burst.duration,
-          animate: burst.animate,
-        });
-      }
-      if (from && outcome.fromCell !== undefined) {
-        const length = Math.max(1, Math.hypot(at.x - from.x, at.y - from.y));
-        cache.recoil.set(outcome.fromCell, {
-          born: now,
-          dx: ((from.x - at.x) / length) * 2.5,
-          dy: ((from.y - at.y) / length) * 2.5,
-        });
-      }
-    }
+  const currentKinds = new Map(
+    world.structures.map(({ ownerId, cell, kind }) => [
+      weaponKey(ownerId, cell),
+      kind,
+    ]),
+  );
+  if (world.tick !== cache.tick && !reducedMotion) {
+    const document = svg.ownerDocument;
+    addTickEffects(cache, {
+      document,
+      world,
+      currentKinds,
+      now,
+      light: light ? cache.light : undefined,
+      wreck(kind, cell, slot, { x, y }) {
+        const artwork = document.createElementNS(ns, "g");
+        artwork.innerHTML = structureArtwork(width, cell, kind, slot, sprites);
+        return { artwork, foot: { x, y: y + buildingFoot } };
+      },
+    });
+  }
   // Solid silhouettes (structures, sites, terrain objects and persistent
   // wrecks) share ground-depth ordering; smoke/sparks remain above it. Other
   // items (cocoons) sit beneath them. Only out-of-place elements move, since
@@ -1023,9 +737,7 @@ export function renderBoard(
       .map((p) => [p.id, p.to]),
   );
   cache.tick = world.tick;
-  cache.weaponKinds = new Map(
-    world.structures.map((s) => [`${s.ownerId}:${s.cell}`, s.kind]),
-  );
+  cache.weaponKinds = currentKinds;
   const moving: Moving[] = world.particles
     .filter((p) => p.mode === "transit")
     .map((p) => ({

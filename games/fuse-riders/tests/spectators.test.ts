@@ -48,46 +48,56 @@ const world = (runtime: RoomRuntime) => runtime.sync.world!;
 const watching = (net: FakeNetwork, id: string) =>
   (net.frame(id)?.spectators ?? []).map((seat) => seat.name);
 
-test("a sixth rider takes the last seat on every replica, and a seventh is turned away and may watch instead", () => {
+test("an eighth rider takes the last seat on every replica, and a ninth is turned away and may watch instead", () => {
   const { net, join } = room();
   const riders = (id: string) => net.frame(id)!.players;
   const host = join(HOST, "Host");
   net.step(200);
-  const guests = ["b-rider", "c-rider", "d-rider", "e-rider", "f-rider"];
+  const guests = [
+    "b-rider",
+    "c-rider",
+    "d-rider",
+    "e-rider",
+    "f-rider",
+    "g-rider",
+    "h-rider",
+  ];
+  assert.equal(guests.length, MAX_PLAYERS - 1);
   for (const [index, id] of guests.entries()) join(id, `Rider ${index + 2}`);
   net.step(2500);
+  const seats = Array.from({ length: MAX_PLAYERS }, (_, slot) => slot);
   for (const id of [HOST, ...guests]) {
-    assert.equal(riders(id).length, 6, `${id} seats six riders`);
+    assert.equal(riders(id).length, MAX_PLAYERS, `${id} seats eight riders`);
     assert.deepEqual(
       riders(id).map((rider) => rider.slot),
-      [0, 1, 2, 3, 4, 5],
-      `${id} fills seats one to six`,
+      seats,
+      `${id} fills seats one to eight`,
     );
     assert.equal(
       new Set(riders(id).map((rider) => rider.color)).size,
-      6,
+      MAX_PLAYERS,
       `${id} gives every rider its own colour`,
     );
   }
-  assert.equal(riders(HOST)[5]!.name, "Rider 6");
+  assert.equal(riders(HOST)[MAX_PLAYERS - 1]!.name, "Rider 8");
 
-  const seventh = join("g-rider", "Rider 7");
+  const ninth = join("i-rider", "Rider 9");
   net.step(2500);
-  for (const id of [HOST, ...guests, "g-rider"]) {
-    assert.equal(riders(id).length, 6, `${id} still seats six`);
+  for (const id of [HOST, ...guests, "i-rider"]) {
+    assert.equal(riders(id).length, MAX_PLAYERS, `${id} still seats eight`);
     assert.equal(
-      riders(id).some((rider) => rider.name === "Rider 7"),
+      riders(id).some((rider) => rider.name === "Rider 9"),
       false,
-      `${id} gave the seventh no seat`,
+      `${id} gave the ninth no seat`,
     );
   }
-  seventh.command({ type: "spectate", name: "Rider 7" });
+  ninth.command({ type: "spectate", name: "Rider 9" });
   net.step(1500);
-  for (const id of [HOST, "f-rider", "g-rider"])
-    assert.deepEqual(watching(net, id), ["Rider 7"], `${id} lists the watcher`);
-  assert.equal(riders(HOST).length, 6, "and the seats are untouched");
+  for (const id of [HOST, "h-rider", "i-rider"])
+    assert.deepEqual(watching(net, id), ["Rider 9"], `${id} lists the watcher`);
+  assert.equal(riders(HOST).length, MAX_PLAYERS, "and the seats are untouched");
 
-  // And the six play: a round is placed and scored for six on every replica, with no divergence.
+  // And the eight play: a round is placed and scored for eight on every replica, with no divergence.
   assert.equal(host.command({ type: "action", action: "start" }), true);
   const scored = () => {
     const frame = net.frame(HOST)!;
@@ -95,19 +105,19 @@ test("a sixth rider takes the last seat on every replica, and a seventh is turne
   };
   for (let elapsed = 0; elapsed < 120_000 && !scored(); elapsed += 500)
     net.step(500);
-  assert.ok(scored(), "the first round of six ended");
+  assert.ok(scored(), "the first round of eight ended");
   net.step(1000);
   const points = (id: string) =>
     riders(id)
       .map((rider) => rider.matchScoreUnits)
       .join(",");
-  for (const id of [...guests, "g-rider"])
+  for (const id of [...guests, "i-rider"])
     assert.equal(points(id), points(HOST), `${id} scored the round alike`);
   for (const [id, runtime] of net.runtimes)
     assert.equal(runtime.metrics().mismatches, 0, `${id} never diverged`);
 });
 
-test("the room service admits every member the game can list: six riders, five watchers and a display", () => {
+test("the room service admits every member the game can list: eight riders, five watchers and a display", () => {
   assert.equal(
     roomSockets("fuse-riders"),
     MAX_PLAYERS + MAX_SPECTATORS + 1,

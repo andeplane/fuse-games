@@ -29,6 +29,7 @@ test("settings name a committed track and nothing else", () => {
     track,
     display: false,
     races: 3,
+    mode: "classic",
   });
   assert.equal(parseSettings({ track: "nowhere", display: false }), undefined);
   assert.equal(parseSettings({ track }), undefined, "display is required");

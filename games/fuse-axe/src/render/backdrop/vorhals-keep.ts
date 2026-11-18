@@ -6,8 +6,17 @@ import {
   gravesPx,
   stageLengthPx,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster, rgbAt } from "./kit.js";
+import {
+  firstTile,
+  worldRow,
+  bayer,
+  dither,
+  hash,
+  Raster,
+  rgbAt,
+} from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, type Fire } from "./fire.js";
 
 /**
  * Stage 4, Vorhal's Keep: torch-lit halls inside the warlord's fortress, cold blue-black stone under warm firelight.
@@ -66,7 +75,7 @@ const IRON = 0x181a24;
 const IRON_LIT = 0x3a3e4c;
 const IRON_WARM = 0x8a4a28;
 const WOOD = [0x2a1810, 0x4a2c1a];
-const FLAME = ["#fff2c4", "#ffbc3a", "#ea6020", "#962a1a"];
+const FLAME = ["#fff2c4", "#ffbc3a", "#ea6020", "#962a1a"] as const;
 const EMBER = ["#ffb04c", "#f06c22", "#a8341a"];
 /** The broken axe's glow at its dimmest to its brightest. */
 export const SHARD_GLOW = ["#4e1a10", "#7e2c14", "#b8481c", "#f07c2c"];
@@ -751,58 +760,11 @@ function bases(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [number, number, number, number, number];
-
 /** The torches' flames, then the braziers'. */
 export const FIRES: readonly Fire[] = [
   ...TORCHES.map((x, i): Fire => [x - 2, 5, TORCH_Y - 1, 12, i]),
   ...BRAZIERS.map((x, i): Fire => [x - 5, 11, BOWL_Y - 2, 14, 20 + i]),
 ];
-
-/** The flame's colour in `FLAME` at row `j` of a column `h` tall: bright in the heart, dark at the tips and edges. */
-const flameTone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-/** One row of world pixels from `x0` to `x1`, clipped to the screen at camera `cam`. */
-function run(brush: Brush, x0: number, x1: number, y: number, cam: number) {
-  const [from, to] = [Math.max(x0 - cam, 0), Math.min(x1 - cam, VIEW_W)];
-  if (to > from) brush.fillRect(from, y, to - from, 1);
-}
-
-function burn(brush: Brush, fire: Fire, cam: number, t: number) {
-  const [x0, w, base, height, seed] = fire;
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.3 * Math.sin((x0 + i) * 0.9 + seed + t * 11);
-    const sway = 0.2 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 7);
-    const h = Math.max(1, Math.round(height * env * (0.55 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = flameTone(j, h, env);
-      let k = j + 1;
-      while (k < h && flameTone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      const x = x0 + i - cam;
-      if (x >= 0 && x < VIEW_W) brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 3; i++) {
-    const life = (t * (0.3 + hash(i, seed) * 0.3) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 7 + i) * 3;
-    const x = Math.round(x0 + w / 2 + drift);
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    run(brush, x, x + 1, Math.round(base - height * 0.6 - life * 30), cam);
-  }
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 /** Embers drifting up through the halls, swaying, cooling from gold to dark red as they rise. */
 function embers(brush: Brush, cam: number, t: number) {
@@ -814,7 +776,7 @@ function embers(brush: Brush, cam: number, t: number) {
       const x = k * VIEW_W + Math.floor(hash(seed, 142) * VIEW_W) + sway;
       const y = Math.round(KERB - 4 - life * 66 - hash(seed, 143) * 10);
       brush.fillStyle = EMBER[Math.min(2, Math.floor(life * 3))]!;
-      run(brush, x, x + 1, y, cam);
+      worldRow(brush, x, x + 1, y, cam);
     }
 }
 
@@ -824,7 +786,7 @@ function shards(brush: Brush, cam: number, t: number) {
   for (const [x0, x1, y, s] of GLOW_RUNS) {
     const pulse = Math.sin(t * 1.6 - s * 0.6) * 0.5 + 0.5;
     brush.fillStyle = SHARD_GLOW[Math.min(3, Math.floor(pulse * 4))]!;
-    run(brush, x0, x1, y, cam);
+    worldRow(brush, x0, x1, y, cam);
   }
 }
 
@@ -838,7 +800,7 @@ export const VORHALS_KEEP: StageArt = {
   front: { rate: [5, 4], top: VIEW_H - 16, height: 16, paint: bases },
   animate(brush, camX, frame) {
     const t = frame / 60;
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME });
     shards(brush, camX, t);
     embers(brush, camX, t);
   },
