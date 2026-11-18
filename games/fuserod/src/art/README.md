@@ -26,6 +26,10 @@ When a race view supplies course features, narrow bridge girders, rocks, rough p
 
 `artCanvas(kind, item, options?)` in [catalog.ts](./catalog.ts) creates artwork for a labelled control. A `rival` takes its index. A `car` takes its catalogue index, with optional paint, fittings and side, front or quarter view. A `part` takes its component name. [scenes.ts](./scenes.ts) exports `drawScene` for larger illustrations.
 
+The title scene shows the Fuserod marque and a front-quarter car. Credits use a workshop drawing board. The garage licence is an illustrated race log with space for the current driver's name and record. Separate citation, jail-window and fractured-windscreen views support a police stop, career retirement and wreck. Scope the illustrated pointer to the game root with `cursor.css` and `.fuserod-pointer`.
+
+[street-furniture.ts](./street-furniture.ts) supplies original counterparts for hydrants, low and high trees, reflectors, telephone poles, striped work barricades, loose debris, bend chevrons, winding-road warnings and an overhead county/city/route banner. [hazards.ts](./hazards.ts) supplies narrow-road and speed warning signs and boulders. Palms, shrubs, ridgelines, streetlights, sun and sky use [landscape.ts](./landscape.ts). Seeded rocks, debris, barricades and shrubs use the positions received from the race view. Separately placed scenic objects do not change the simulation.
+
 ## Reference roles and current coverage
 
 | Reference role                                                      | Fuserod art                                                                                                                                            | Differences                                                                |

@@ -21,7 +21,14 @@ import {
   type,
   type Brush,
 } from "./drawing";
-import { horizon, roadside, type Route } from "./landscape";
+import { horizon, type Route } from "./landscape";
+import {
+  furniture,
+  routeBanner,
+  trafficProp,
+  type RoadTraffic,
+} from "./street-furniture";
+import { fracturedGlass } from "./story-art";
 
 export { drawGarage, type GarageArt } from "./garage";
 export type { Route } from "./landscape";
@@ -38,6 +45,9 @@ export interface RoadOpponent {
 }
 
 export interface RaceArt {
+  traffic?: readonly RoadTraffic[];
+  wrecked?: boolean;
+  ticketed?: boolean;
   fittings?: VehicleFittings;
   townStop?: TownStopArt;
   /** Upcoming and active route features, in metres and half-road widths. */
@@ -375,11 +385,22 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
       if (x < -100 || x > w + 100) continue;
       objects.push({
         z,
-        draw: () => roadside(g, x, y(p), p * 3.3, id, route, side),
+        draw: () => furniture(g, x, y(p), p * 3.3, id, route, side, bend),
       });
     }
   }
   const stop = state.townStop;
+  if (!stop)
+    addFeatureObject(40, (p) =>
+      routeBanner(g, edge(p, -1.02), edge(p, 1.02), y(p), p, route, bend),
+    );
+  for (const item of state.traffic ?? []) {
+    addFeatureObject(item.distance, (p) => {
+      const x = edge(p, item.lateral);
+      if (item.kind === "rock") boulder(g, x, y(p), p * 2.5);
+      else trafficProp(g, x, y(p), p * 2.1, item.kind);
+    });
+  }
   if (stop) {
     const z = stop.distance - dist;
     if (z >= -4 && z <= 330) {
@@ -441,8 +462,18 @@ export function drawRace(canvas: HTMLCanvasElement, state: RaceArt) {
   for (const object of objects) object.draw();
   g.restore();
   rearview(g, w, h, state);
+  if (state.wrecked) fracturedGlass(g, w, h);
   approach(g, w, dist, features);
   cockpit(g, w, h, state);
+  if (state.ticketed) {
+    g.save();
+    g.translate(w * 0.8, h * 0.85);
+    g.rotate(-0.1);
+    rect(g, "#e3c5a5", -35, -24, 70, 39);
+    rect(g, "#ab7565", -35, -24, 70, 6);
+    type(g, "CITATION", 0, 0, 10, "#725957", "center");
+    g.restore();
+  }
   g.restore();
 }
 

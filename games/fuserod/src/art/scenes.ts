@@ -15,10 +15,20 @@ import { horizon } from "./landscape";
 import { portrait } from "./portraits";
 import { landmark } from "./town-art";
 import { workshop } from "./workshop";
+import { story, type StoryPage } from "./story-art";
+import { drawRace } from "./renderer";
 
 export type SceneLocation =
-  "garage" | "diner" | "station" | "champion" | "workshop";
+  | "garage"
+  | "diner"
+  | "station"
+  | "champion"
+  | "workshop"
+  | "wreck"
+  | StoryPage;
 export interface SceneOptions extends GarageArt {
+  driverName?: string;
+  record?: string;
   rival?: number;
   part?: string;
   /** Fraction complete for optional fuel, repair or timing animation. */
@@ -139,6 +149,21 @@ export function drawScene(
     drawGarage(canvas, options);
     return;
   }
+  if (kind === "wreck") {
+    drawRace(canvas, {
+      distance: 0,
+      speed: 0,
+      lateral: 0.92,
+      curve: -0.3,
+      route: "canyon",
+      opponents: [],
+      wrecked: true,
+      paint: options.paint,
+      model: options.model,
+      fittings: options.fittings,
+    });
+    return;
+  }
   const frame = setup(canvas);
   if (!frame) return;
   const { g, w, h } = frame,
@@ -146,6 +171,17 @@ export function drawScene(
     s = Math.min(1.36, w / 730),
     p = Math.max(0, Math.min(1, options.progress ?? 0));
   g.save();
+  if (
+    kind === "title" ||
+    kind === "credits" ||
+    kind === "licence" ||
+    kind === "ticket" ||
+    kind === "jail"
+  ) {
+    story(g, w, h, kind, options);
+    g.restore();
+    return;
+  }
   if (kind === "workshop") {
     rect(
       g,
