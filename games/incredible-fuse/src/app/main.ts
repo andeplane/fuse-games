@@ -366,8 +366,9 @@ function workshop() {
         link: endpoints.appUrl("?room=" + code),
         qr: (text) => QRCode.toDataURL(text, { width: 360, margin: 1 }),
       });
+  if (!solo) stage.prepend(live.element);
   main.append(name.form, lobby, stage, results.element);
-  app.replaceChildren(header([live.element, menu.element]), main);
+  app.replaceChildren(header([menu.element]), main);
   const layout = createRoomLayout({
     element: lobby,
     roster,

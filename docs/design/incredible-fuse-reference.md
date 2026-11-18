@@ -18,6 +18,8 @@ The controlled floor scene calls the DOS geometry constructors and full simulati
 
 The timer probe runs the original initialization, IRQ handler and frame gate against emulated port I/O. The timer receives divisor 5,041. Seven interrupts leave the gate closed, and the eighth releases it. A nominal 1,193,182 Hz PC timer gives approximately 29.59 steps per second. This frequency is a calculation from the programmed timer. No physical DOS machine was timed.
 
+The atmospheric probe also checks 58 table entries at the 15 campaign settings and eight boundary settings, giving 1,334 combinations. Fuse tests compare its movable materials against the resulting acceleration and speed limits. Rope constraints, pipe contacts and creature AI remain approximations.
+
 ## Power transmission
 
 The drive probe invokes the original switch, motor and conveyor callbacks in sequence and supplies an existing basketball contact on the conveyor. The switched outlet feeds the motor through a socket, and a belt joins the motor to the conveyor. Opening the switch or removing the belt gives horizontal speed zero. Closing the switch with the belt attached gives −4,096 internal units per step, or +4,096 when the motor is flipped. The eight cases isolate connection and direction behavior. They do not exercise a whole puzzle or establish every callback's scheduling priority.

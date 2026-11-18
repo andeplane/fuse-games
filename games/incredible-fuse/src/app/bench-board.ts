@@ -185,7 +185,8 @@ export function paintMachine(
   c.scale(desiredWidth / WIDTH, desiredHeight / HEIGHT);
   const parts = new Map(machine.parts.map((part) => [part.id, part]));
   const bodies = new Map(machine.bodies.map((body) => [body.id, body]));
-  for (const link of machine.links) {
+  for (const [index, link] of machine.links.entries()) {
+    if (machine.broken.includes(index)) continue;
     const a = parts.get(link.a),
       b = parts.get(link.b);
     if (!a || !b) continue;
