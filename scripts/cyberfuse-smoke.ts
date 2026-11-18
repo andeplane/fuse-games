@@ -168,8 +168,26 @@ async function solo(page: Page) {
     name: "Single player",
     exact: true,
   });
-  const missionTitle = await brief.locator(".cf-briefing h3").innerText();
-  assert.ok(missionTitle.length > 0);
+  await brief
+    .getByRole("combobox", { name: "Campaign", exact: true })
+    .selectOption({ label: "Ogre Rampage" });
+  await brief.getByText("Mission password", { exact: true }).click();
+  const password = brief.getByLabel("Password", { exact: true });
+  await password.fill("bad-code");
+  await brief
+    .getByRole("button", { name: "Use password", exact: true })
+    .click();
+  assert.match(
+    await brief.locator(".cf-resume [role=status]").innerText(),
+    /unknown password/i,
+  );
+  // DOS seed zero, one-player Ogre Rampage, mission two.
+  await password.fill("Q4SKDB");
+  await password.press("Enter");
+  const missionTitle = "Retrieve the stolen data";
+  await brief
+    .getByRole("heading", { name: missionTitle, exact: true })
+    .waitFor();
   assert.ok((await brief.locator("fieldset input:checked").count()) >= 2);
   await brief.getByRole("button", { name: "Deploy", exact: true }).click();
   await phase(page, "running");
@@ -216,20 +234,25 @@ async function dogfight(page: Page) {
     name: "Single player",
     exact: true,
   });
-  await brief.getByLabel("Game mode", { exact: true }).selectOption("dogfight");
-  await brief.getByLabel("Arena", { exact: true }).selectOption("0");
+  await brief
+    .getByRole("combobox", { name: "Game mode", exact: true })
+    .selectOption("dogfight");
+  await brief
+    .getByRole("combobox", { name: "Arena", exact: true })
+    .selectOption("0");
   const guns = brief.locator("fieldset");
   // Choose dynamite through the armory; repeated point-blank blasts end a real round.
-  const current = guns.locator("input:checked");
-  while ((await current.count()) > 1) await current.first().uncheck();
-  await guns.getByLabel("Dynamite", { exact: true }).check();
-  for (const label of await guns.locator("label").all()) {
-    if (
-      (await label.innerText()) !== "Dynamite" &&
-      (await label.locator("input").isChecked())
-    )
-      await label.locator("input").uncheck();
-  }
+  const original = await guns
+    .locator("label:has(input:checked)")
+    .allTextContents();
+  for (const name of original.slice(1))
+    await guns.getByRole("checkbox", { name, exact: true }).click();
+  await guns.getByRole("checkbox", { name: "Dynamite", exact: true }).click();
+  await guns.getByRole("checkbox", { name: original[0]!, exact: true }).click();
+  assert.deepEqual(
+    await guns.locator("label:has(input:checked)").allTextContents(),
+    ["Dynamite"],
+  );
   await brief.getByRole("button", { name: "Deploy", exact: true }).click();
   await phase(page, "running");
   assert.equal(
@@ -290,6 +313,7 @@ async function online(host: Page, peer: Page, tv: Page) {
   await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await phase(host, "lobby");
   await peer.goto(address("room=" + code));
+  await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
   await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
@@ -354,13 +378,38 @@ try {
     contexts.map((c) => c.newPage()),
   );
   assert.ok(host && peer && tv && arena);
-  for (const p of [host, peer, tv, arena])
+  for (const p of [host, peer, tv, arena]) {
+    p.setDefaultTimeout(15000);
     p.on("pageerror", (e) => errors.push(e.message));
+  }
   await Promise.all([
     dogfight(arena),
     solo(host).then(() => online(host, peer, tv)),
   ]);
   assert.deepEqual(errors, []);
+} catch (error) {
+  for (const context of browser.contexts()) {
+    for (const page of context.pages()) {
+      const summary = await page
+        .evaluate(() => {
+          const probe = window.__cyberfuseProbe?.();
+          return {
+            path: location.pathname,
+            phase: probe?.phase,
+            tick: probe?.tick,
+            checks: probe?.hashChecks,
+            mismatches: probe?.mismatches,
+            actors: probe?.actors
+              .filter((a) => a.seat !== null)
+              .map((a) => ({ hp: a.hp, weapon: a.weapon })),
+            visibleText: document.body.innerText.slice(-1000),
+          };
+        })
+        .catch(() => null);
+      console.error("Cyberfuse browser at failure", summary);
+    }
+  }
+  throw error;
 } finally {
   await browser.close();
 }
