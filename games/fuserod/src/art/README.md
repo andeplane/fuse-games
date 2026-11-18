@@ -50,3 +50,7 @@ The title scene shows the Fuserod marque and a front-quarter car. Credits use a 
 | Fuel station and career ending                                      | A fuel station with pump, hose and nozzle; a trophy scene with the player's car and flags                                                              | Both are original illustrations.                                           |
 
 Original resource roles are described in the reference implementation's [garage study](https://github.com/kylofon/street-rod-2-sdl3/blob/9a3d488143d108985422c2eeb9501e4aa5a0fe72/port/spec/garage.md) and [game-flow study](https://github.com/kylofon/street-rod-2-sdl3/blob/9a3d488143d108985422c2eeb9501e4aa5a0fe72/port/spec/game_flow.md).
+
+## Character motion
+
+The original carhop tables describe 11 approach poses and 10 departure poses, each played across 77 steps of five PIT interrupts. Fuserod draws both passes with its own uniform, tray and jointed figure. The hold at the window and repeat interval are artistic choices. The private `SR2_END` file contains 84 source rectangles and 183 script records, including 98 visible updates at ten interrupts per composition. The 62nd visible update switches artwork. Fuserod uses those beats for a driver waving, boarding and driving off, followed by the championship trophy. The street starter raises and drops a checkered flag against the actual driver's green tick. Reduced motion holds the carhop and championship in settled poses and preserves the starter's ready and go signals.

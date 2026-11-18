@@ -1,3 +1,4 @@
+import { scenePlayback } from "./scene-playback";
 import { backOnEscape, createBackLink } from "fuse-ui";
 import { createBenchView, workshopPanel } from "../workshop/panel.js";
 import {
@@ -84,6 +85,7 @@ export interface GarageOptions {
       upgrade?: number;
       rival?: number;
       progress?: number;
+      animationFrame?: number;
       part?: string;
       driverName?: string;
       record?: string;
@@ -160,7 +162,7 @@ export function mountGarage(
     ? createBackLink({ href: options.backHref, document: doc })
     : undefined;
   const stopEscape = back ? backOnEscape(back, { document: doc }) : undefined;
-  let artSize: ResizeObserver | undefined;
+  let stopArt: (() => void) | undefined;
   function node<K extends keyof HTMLElementTagNameMap>(
     tag: K,
     cls = "",
@@ -306,14 +308,17 @@ export function mountGarage(
       canvas.setAttribute("aria-label", `${model.title} · ${scene}`);
       canvas.setAttribute("role", "img");
       section.append(canvas);
-      const draw = () => {
+      const draw = (animationFrame: number) => {
         if (disposed || !canvas.isConnected) return;
         const box = canvas.getBoundingClientRect();
         if (!box.width || !box.height) return;
         const scale = Math.min(2, doc.defaultView?.devicePixelRatio ?? 1);
-        canvas.width = Math.round(box.width * scale);
-        canvas.height = Math.round(box.height * scale);
+        const width = Math.round(box.width * scale),
+          height = Math.round(box.height * scale);
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
         const appearance = {
+          animationFrame,
           model: model.sprite,
           paint: c?.paint ?? model.paint,
           upgrade: c?.engine ?? 0,
@@ -326,11 +331,7 @@ export function mountGarage(
         if (options.drawScene) options.drawScene(canvas, scene, appearance);
         else options.drawCar?.(canvas, appearance);
       };
-      const Observer = doc.defaultView?.ResizeObserver;
-      if (Observer) {
-        artSize = new Observer(draw);
-        artSize.observe(canvas);
-      } else queueMicrotask(draw);
+      stopArt = scenePlayback(canvas, scene, draw);
     }
     const title = node("div", "frg-car-title");
     title.append(
@@ -920,7 +921,7 @@ export function mountGarage(
       root.contains(doc.activeElement)
         ? doc.activeElement.dataset.garageKey
         : undefined;
-    artSize?.disconnect();
+    stopArt?.();
     root.replaceChildren();
     let s: Campaign;
     try {
@@ -1077,7 +1078,7 @@ export function mountGarage(
     doc.removeEventListener("keydown", keys);
     stopEscape?.();
     disposed = true;
-    artSize?.disconnect();
+    stopArt?.();
     root.remove();
   };
 }

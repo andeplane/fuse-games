@@ -10,7 +10,8 @@ import {
   type,
   type Brush,
 } from "./drawing";
-import { profile } from "./cars";
+import { carhop, championDriver } from "./characters";
+import { profile, tail } from "./cars";
 import { horizon } from "./landscape";
 import { portrait } from "./portraits";
 import { landmark } from "./town-art";
@@ -27,6 +28,7 @@ export type SceneLocation =
   | "wreck"
   | StoryPage;
 export interface SceneOptions extends GarageArt {
+  animationFrame?: number;
   driverName?: string;
   record?: string;
   rival?: number;
@@ -140,6 +142,82 @@ function finish(g: Brush, w: number, s: number) {
   });
 }
 
+function ending(g: Brush, w: number, s: number, options: SceneOptions) {
+  const frame = options.animationFrame ?? 97;
+  const departure = Math.max(0, Math.min(1, (frame - 61) / 27));
+  const depth = 1 - departure * departure;
+  const x = w * (0.48 + depth * 0.16);
+  const y = 302 + 127 * depth;
+  const carWidth = Math.min(w * 0.36, 285) * (0.11 + 0.89 * depth);
+  fill(
+    g,
+    "#b7998b",
+    `M${w * 0.47} 302 L${w * 0.51} 302 Q${w * 0.49} 318 ${w * 0.56} 325 L${w * 1.12} 540 H${w * 0.03} Q${w * 0.33} 396 ${w * 0.49} 330 Q${w * 0.53} 319 ${w * 0.47} 302Z`,
+  );
+  if (frame >= 61 && frame < 88) {
+    for (let i = 0; i < 12; i++) {
+      g.save();
+      g.globalAlpha = Math.sin(Math.PI * departure) * (0.15 + noise(i) * 0.22);
+      ellipse(
+        g,
+        "#f3d9ae",
+        x + (noise(20 + i) - 0.5) * 77 * s,
+        y + departure * (i + 1) * s,
+        (3 + noise(i) * 14) * s,
+        (2 + noise(33 + i) * 7) * s,
+      );
+      g.restore();
+    }
+  }
+  tail(
+    g,
+    x,
+    y,
+    carWidth,
+    options.paint ?? "#4ba99e",
+    options.model ?? 0,
+    false,
+    options.fittings,
+  );
+  if (frame < 61) {
+    const walk = Math.min(1, frame / 42);
+    const enter = Math.max(0, (frame - 48) / 13);
+    const door = Math.max(0, Math.min(1, (frame - 38) / 8, (61 - frame) / 7));
+    if (door > 0) {
+      g.save();
+      g.translate(x - carWidth * 0.43, y - carWidth * 0.17);
+      g.scale((door * carWidth) / 150, carWidth / 150);
+      fill(
+        g,
+        options.paint ?? "#4ba99e",
+        "M0 -24 L-13 -22 L-23 -13 L-21 1 L0 4Z",
+      );
+      fill(g, "#465568", "M-2 -22 L-12 -20 L-18 -13 L-1 -14Z");
+      g.restore();
+    }
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, w, y + 4);
+    g.clip();
+    championDriver(
+      g,
+      w * 0.23 +
+        (x - carWidth * 0.51 - w * 0.23) * walk +
+        enter * carWidth * 0.04,
+      y + enter * 35 * s,
+      s * (1.2 - 0.7 * enter),
+      frame,
+    );
+    g.restore();
+  }
+  if (frame >= 81) {
+    g.save();
+    g.globalAlpha = Math.min(1, (frame - 80) / 13);
+    finish(g, w, s);
+    g.restore();
+  }
+}
+
 export function drawScene(
   canvas: HTMLCanvasElement,
   kind: SceneLocation,
@@ -235,7 +313,11 @@ export function drawScene(
       ellipse(g, "#dba27c", 0, -134, 31, 13);
       type(g, "OCTANE", 0, -130, 10, "#52363c", "center", 900);
     });
-  } else finish(g, w, s);
+  } else if (kind === "champion") {
+    ending(g, w, s, options);
+    g.restore();
+    return;
+  }
   const carScale = Math.min((w * 0.75) / 500, 1.35),
     cx = kind === "station" ? w * 0.63 : w * 0.5,
     base = 433;
@@ -248,6 +330,7 @@ export function drawScene(
       options.fittings,
     ),
   );
+  if (kind === "diner") carhop(g, w, s, options.animationFrame ?? 76);
   if (kind === "station") {
     const px = Math.max(40 * s, cx - 266 * carScale),
       py = base - 3 * s;

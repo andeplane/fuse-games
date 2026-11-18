@@ -1,5 +1,6 @@
 import { el } from "fuse-ui";
 import type { FrameTiming } from "fuse-netcode";
+import { drawStarter } from "../art/characters.js";
 import { drawRace } from "../art/renderer.js";
 import { courseFeatures } from "../course/index.js";
 import { nativeCourseSample } from "../course/geometry.js";
@@ -55,6 +56,16 @@ export function paintRace(
         ...(r.bot ? rival : undefined),
       })),
   });
+  if (driver && frame.variant !== "grudge" && frame.variant !== "timed")
+    drawStarter(
+      canvas,
+      driver.countdown,
+      driver.elapsedTicks,
+      driver.distance,
+      canvas.ownerDocument.defaultView?.matchMedia?.(
+        "(prefers-reduced-motion: reduce)",
+      ).matches ?? false,
+    );
 }
 export function raceScreen() {
   const element = el("section", "", "rod-race");
