@@ -116,6 +116,7 @@ test("winning the ladder or running down the calendar closes a season", () => {
   for (const won of [true, false]) {
     let s = success(change(freshCampaign(), buy));
     for (let i = 0; i < (won ? 12 : FINAL_DAY); i++) {
+      if (activeCar(s)!.fuel < 40) s = success(change(s, { type: "refuel" }));
       if (won && i === 2) {
         s = success(change(s, { type: "grudge" }));
         for (let heat = 0; heat <= 4; heat++) {
@@ -144,6 +145,7 @@ test("winning the ladder or running down the calendar closes a season", () => {
       );
     }
     if (won) {
+      if (activeCar(s)!.fuel < 36) s = success(change(s, { type: "refuel" }));
       s = success(
         change(s, { type: "race", route: "strip", wager: 0, rivalRank: 4 }),
       );
@@ -202,6 +204,7 @@ test("car title stakes transfer ownership, settle a duplicate or end a broke sea
     s.fleet.map((c) => c.model),
     ["kestrel", "marlin"],
   );
+  s = success(change(s, { type: "refuel" }));
   s = title(s, false);
   assert.equal(s.selected, "marlin");
   assert.equal(finished(s), false);
@@ -222,10 +225,11 @@ test("Wednesday bracket tickets survive reloads without double entry fees or hea
     assert.equal(before.pending!.route, "strip");
     assert.equal(before.pending!.variant, heat === 0 ? "timed" : "grudge");
     assert.equal(before.pending!.dialInTicks, heat === 0 ? 0 : 320);
-    assert.equal(
-      settleRace(storage, before.pending!.id, { won: true }).ok,
-      false,
-    );
+    if (heat === 0)
+      assert.equal(
+        settleRace(storage, before.pending!.id, { won: true }).ok,
+        false,
+      );
     s = success(
       settleRace(storage, before.pending!.id, {
         won: true,
@@ -251,12 +255,45 @@ test("a breakout eliminates the driver even when the finish line was crossed fir
   const heat = success(
     settleRace(storage, time.pending!.id, { won: true, elapsedTicks: 375 }),
   );
+  const walkover = success(
+    settleRace(storage, heat.pending!.id, { won: true }),
+  );
+  assert.equal(walkover.pending?.heat, 2);
   const breakout = success(
-    settleRace(storage, heat.pending!.id, { won: true, elapsedTicks: 374 }),
+    settleRace(storage, walkover.pending!.id, {
+      won: false,
+      elapsedTicks: 374,
+    }),
   );
   assert.equal(breakout.pending, null);
   assert.match(breakout.receipt, /Breakout/);
   assert.equal(breakout.cash, 370);
+});
+test("fuel is reserved once per ticket and the pump, paint and resale follow the selected car", () => {
+  const storage = new Store();
+  success(transact(storage, buy));
+  const paint = success(transact(storage, { type: "paint", paint: "#738bdd" }));
+  assert.equal(paint.cash, 380);
+  let s = success(
+    transact(storage, { type: "race", route: "canyon", wager: 0 }),
+  );
+  assert.equal(s.pending!.car.paint, "#738bdd");
+  assert.equal(activeCar(s)!.fuel, 23);
+  assert.equal(activeCar(loadCampaign(storage))!.fuel, 23);
+  s = success(settleRace(storage, s.pending!.id, { won: false }));
+  s = success(transact(storage, { type: "race", route: "canyon", wager: 0 }));
+  s = success(settleRace(storage, s.pending!.id, { won: false }));
+  assert.equal(
+    transact(storage, { type: "race", route: "strip", wager: 0 }).ok,
+    false,
+  );
+  s = success(transact(storage, { type: "refuel" }));
+  assert.equal(activeCar(s)!.fuel, 170);
+  assert.equal(s.cash, 361);
+  assert.equal(transact(storage, { type: "refuel" }).ok, false);
+  s = success(transact(storage, { type: "sell", model: "kestrel" }));
+  assert.equal(s.fleet.length, 0);
+  assert.equal(s.selected, null);
 });
 test("Redline requires the four earlier rivals and a Grudge Night win", () => {
   let s = success(change(freshCampaign(), buy));
@@ -271,6 +308,7 @@ test("Redline requires the four earlier rivals and a Grudge Night win", () => {
     false,
   );
   s = success(change(s, { type: "wait" }));
+  s = success(change(s, { type: "refuel" }));
   s = success(change(s, { type: "grudge" }));
   const eliminated = success(
     change(s, { type: "settle", id: s.pending!.id, won: false, damage: 0 }),

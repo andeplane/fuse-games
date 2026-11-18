@@ -50,12 +50,30 @@ export const grudgeNight = (day: number) =>
   day <= FINAL_DAY && (day - 1) % 7 === 2;
 export const daysToGrudge = (day: number) => (2 - ((day - 1) % 7) + 7) % 7;
 const KEY = "fuserod.garage.v1";
+export const TANK = 170;
+export const FUEL = {
+  strip: 7,
+  canyon: 17,
+  aqueduct: 12,
+  grudge: 24,
+  championship: 36,
+} as const;
+export const PAINTS = {
+  "#4ce1d3": "Glacier",
+  "#e8a255": "Copper",
+  "#eb6999": "Orchid",
+  "#f2ebe0": "Ivory",
+  "#738bdd": "Indigo",
+} as const;
+export type Paint = keyof typeof PAINTS;
 export const GEARS = ["short", "street", "tall"] as const;
 type Gearing = (typeof GEARS)[number];
 export type Part = "engine" | "tyres";
 type Grade = 0 | 1 | 2;
 export type StoragePort = Pick<Storage, "getItem" | "setItem">;
 export interface Vehicle {
+  fuel: number;
+  paint: Paint;
   model: ModelId;
   engine: Grade;
   tyres: Grade;
@@ -63,6 +81,7 @@ export interface Vehicle {
   condition: number;
 }
 export interface Setup {
+  paint: Paint;
   model: ModelId;
   power: number;
   grip: Grade;
@@ -100,7 +119,9 @@ export interface Campaign {
   receipt: string;
 }
 export type Action =
-  | { type: "buy" | "select"; model: ModelId }
+  | { type: "buy" | "select" | "sell"; model: ModelId }
+  | { type: "paint"; paint: Paint }
+  | { type: "refuel" }
   | { type: "upgrade"; part: Part }
   | { type: "gear"; gearing: Gearing }
   | { type: "repair" }
@@ -156,6 +177,8 @@ export const rivalCar = (rank: number): ModelId =>
   (["kestrel", "marlin", "kestrel", "meteor", "meteor"] as const)[rank]!;
 const stockCar = (model: ModelId): Vehicle => ({
   model,
+  fuel: 40,
+  paint: MODELS[model].paint,
   engine: 0,
   tyres: 0,
   gearing: "street",
@@ -166,8 +189,17 @@ export const stakes = [0, 100, 300] as const;
 export const partPrice = (c: Vehicle, p: Part) =>
   (p === "engine" ? 230 : 145) * (1 + c[p]);
 export const repairPrice = (c: Vehicle) => 3 * (100 - c.condition);
+export const sellPrice = (c: Vehicle) =>
+  Math.floor(MODELS[c.model].price * (0.35 + 0.0015 * c.condition)) +
+  100 * c.engine +
+  65 * c.tyres;
+export function fuelQuote(c: Vehicle, cash: number) {
+  const amount = Math.min(TANK - c.fuel, Math.max(0, cash - 10) * 20);
+  return { amount, price: amount ? 10 + Math.ceil(amount / 20) : 0 };
+}
 export function setup(c: Vehicle): Setup {
   return {
+    paint: c.paint,
     model: c.model,
     power: MODELS[c.model].hp + 55 * c.engine,
     grip: c.tyres,
@@ -197,6 +229,8 @@ function isCar(v: unknown): v is Vehicle {
   return (
     record(v) &&
     own(MODELS, v.model) &&
+    own(PAINTS, v.paint) &&
+    integer(v.fuel, 0, TANK) &&
     integer(v.engine, 0, 2) &&
     integer(v.tyres, 0, 2) &&
     (GEARS as readonly unknown[]).includes(v.gearing) &&
@@ -236,6 +270,19 @@ function createChallenge(
   };
 }
 function decode(v: unknown): Campaign | undefined {
+  if (record(v) && Array.isArray(v.fleet) && v.fleet.length <= 3) {
+    v = {
+      ...v,
+      fleet: v.fleet.map((car) =>
+        record(car) &&
+        own(MODELS, car.model) &&
+        !("fuel" in car) &&
+        !("paint" in car)
+          ? { ...car, fuel: 40, paint: MODELS[car.model as ModelId].paint }
+          : car,
+      ),
+    };
+  }
   if (
     !record(v) ||
     v.version !== 1 ||
@@ -371,7 +418,7 @@ export function change(s: Campaign, a: Action): Result {
     );
     if (stakeKind === "bracket") {
       const next = { ...s, fleet: worked, next: s.next + 1, pending: null };
-      if (a.won && !integer(a.elapsedTicks, 1, 72_000))
+      if (heat === 0 && a.won && !integer(a.elapsedTicks, 1, 72_000))
         return fail("A strip finish time is needed to settle this run.");
       const breakout =
         heat > 0 &&
@@ -379,7 +426,8 @@ export function change(s: Campaign, a: Action): Result {
         a.elapsedTicks < dialInTicks;
       const tooSlow =
         heat === 0 && a.elapsedTicks !== undefined && a.elapsedTicks > 1600;
-      const advanced = a.won && !breakout && !tooSlow;
+      // A rival can break out before this car crosses the stripe. The race engine owns the winner.
+      const advanced = a.won && !tooSlow;
       if (advanced && heat < 4) {
         const following = createChallenge(
           next,
@@ -502,6 +550,19 @@ export function change(s: Campaign, a: Action): Result {
       return fail("Buy this car before selecting it.");
     return success({ ...s, selected: a.model, receipt: "" });
   }
+  if (a.type === "sell") {
+    const car = s.fleet.find((v) => v.model === a.model);
+    if (!car) return fail("This car is no longer in your garage.");
+    const fleet = s.fleet.filter((v) => v !== car),
+      price = sellPrice(car);
+    return success({
+      ...s,
+      fleet,
+      selected: car === c ? (fleet[0]?.model ?? null) : s.selected,
+      cash: s.cash + price,
+      receipt: `Sold ${MODELS[car.model].title} for $${price}.`,
+    });
+  }
   if (!c) return fail("Buy a car in the classifieds first.");
   if (a.type === "wait") {
     const days = daysToGrudge(s.day);
@@ -516,9 +577,14 @@ export function change(s: Campaign, a: Action): Result {
   if (a.type === "grudge") {
     if (!grudgeNight(s.day) || s.cash < GRUDGE_FEE)
       return fail("Enter Grudge Night on Wednesday with the entry fee.");
+    if (c.fuel < FUEL.grudge)
+      return fail("Grudge Night needs 2.4 gal. Visit the workshop fuel pump.");
     return success({
       ...s,
       cash: s.cash - GRUDGE_FEE,
+      fleet: s.fleet.map((v) =>
+        v === c ? { ...v, fuel: v.fuel - FUEL.grudge } : v,
+      ),
       pending: createChallenge(s, c, "strip", 0, 0, "bracket"),
       receipt: "",
     });
@@ -529,9 +595,19 @@ export function change(s: Campaign, a: Action): Result {
       return fail(
         "Beat the next rival and qualify at Grudge Night to reach the champion.",
       );
+    if (!own(ROUTES, a.route)) return fail("Unknown course.");
+    const fuel = rank === RIVALS.length - 1 ? FUEL.championship : FUEL[a.route];
+    if (c.fuel < fuel)
+      return fail(
+        `This event needs ${(fuel / 10).toFixed(1)} gal. Visit the workshop fuel pump.`,
+      );
+    const fleet = s.fleet.map((v) =>
+      v === c ? { ...v, fuel: v.fuel - fuel } : v,
+    );
     if (rank === RIVALS.length - 1)
       return success({
         ...s,
+        fleet,
         pending: createChallenge(
           s,
           c,
@@ -552,6 +628,7 @@ export function change(s: Campaign, a: Action): Result {
       return fail("Choose a cash stake or a car title.");
     return success({
       ...s,
+      fleet,
       cash: s.cash - a.wager,
       pending: createChallenge(
         s,
@@ -568,6 +645,23 @@ export function change(s: Campaign, a: Action): Result {
   let cost = 0;
   let receipt = "";
   switch (a.type) {
+    case "paint":
+      if (!own(PAINTS, a.paint) || c.paint === a.paint)
+        return fail("Choose another paint colour.");
+      cost = 20;
+      replacement = { ...c, paint: a.paint };
+      receipt = "Paintwork finished.";
+      break;
+    case "refuel": {
+      if (c.fuel === TANK) return fail("Your tank is full.");
+      const quote = fuelQuote(c, s.cash);
+      if (!quote.amount)
+        return fail("The station needs $11 for fuel and service.");
+      cost = quote.price;
+      replacement = { ...c, fuel: c.fuel + quote.amount };
+      receipt = `Added ${(quote.amount / 10).toFixed(1)} gal.`;
+      break;
+    }
     case "gear":
       replacement = { ...c, gearing: a.gearing };
       receipt = "Final drive adjusted.";

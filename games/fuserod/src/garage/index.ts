@@ -7,6 +7,11 @@ import {
   daysToGrudge,
   FINAL_DAY,
   finished,
+  FUEL,
+  fuelQuote,
+  PAINTS,
+  TANK,
+  sellPrice,
   GEARS,
   GRUDGE_FEE,
   GRUDGE_PURSE,
@@ -29,6 +34,7 @@ import {
   type Campaign,
   type Challenge,
   type ModelId,
+  type Paint,
   type Part,
   type Route,
   type StoragePort,
@@ -39,6 +45,20 @@ export { loadCampaign, settleRace, motorSetup } from "./campaign.js";
 export type { Campaign, Challenge, Setup, StoragePort } from "./campaign.js";
 
 export interface GarageOptions {
+  startAt?: TownStop;
+  onCruise?: (from: TownStop) => void;
+  drawScene?: (
+    canvas: HTMLCanvasElement,
+    scene: "garage" | "diner" | "station" | "champion" | "workshop",
+    appearance: {
+      model?: number;
+      paint?: string;
+      upgrade?: number;
+      rival?: number;
+      progress?: number;
+      part?: string;
+    },
+  ) => void;
   backHref?: string;
   storage: StoragePort;
   onRace: (challenge: Challenge) => void;
@@ -52,14 +72,29 @@ export interface GarageOptions {
     options?: { paint?: string; angle?: "side" | "front" | "quarter" },
   ) => Element;
 }
-type Tab = "Challenge" | "Workshop" | "Classifieds";
+export type TownStop = "garage" | "diner" | "station" | "strip";
+type Tab =
+  "Challenge" | "Workshop" | "Classifieds" | "Station" | "Grudge Night";
+const tabForStop: Record<TownStop, Tab> = {
+  garage: "Workshop",
+  diner: "Challenge",
+  station: "Station",
+  strip: "Grudge Night",
+};
+const locationForTab: Record<Tab, TownStop> = {
+  Workshop: "garage",
+  Classifieds: "garage",
+  Challenge: "diner",
+  Station: "station",
+  "Grudge Night": "strip",
+};
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 export function mountGarage(
   host: HTMLElement,
   options: GarageOptions,
 ): () => void {
   const doc = host.ownerDocument;
-  let tab: Tab = "Challenge",
+  let tab: Tab = options.startAt ? tabForStop[options.startAt] : "Challenge",
     route: Route = "strip",
     wager = 0,
     pinkSlip = false,
@@ -157,9 +192,19 @@ export function mountGarage(
     const selected = c?.model ?? "kestrel",
       model = MODELS[selected];
     const section = node("div", "frg-hero");
-    if (options.drawCar) {
+    if (options.drawCar || options.drawScene) {
       const canvas = node("canvas", "frg-art");
-      canvas.setAttribute("aria-label", `${model.title} in the garage`);
+      const scene =
+        s.rank === RIVALS.length
+          ? "champion"
+          : !c || tab === "Classifieds"
+            ? "garage"
+            : tab === "Workshop"
+              ? "workshop"
+              : tab === "Station"
+                ? "station"
+                : "diner";
+      canvas.setAttribute("aria-label", `${model.title} · ${scene}`);
       canvas.setAttribute("role", "img");
       section.append(canvas);
       const draw = () => {
@@ -169,11 +214,15 @@ export function mountGarage(
         const scale = Math.min(2, doc.defaultView?.devicePixelRatio ?? 1);
         canvas.width = Math.round(box.width * scale);
         canvas.height = Math.round(box.height * scale);
-        options.drawCar?.(canvas, {
+        const appearance = {
           model: model.sprite,
-          paint: model.paint,
+          paint: c?.paint ?? model.paint,
           upgrade: c?.engine ?? 0,
-        });
+          rival: Math.min(s.rank, rivalRank ?? s.rank, RIVALS.length - 1),
+          progress: scene === "station" ? (c?.fuel ?? 0) / TANK : 0,
+        };
+        if (options.drawScene) options.drawScene(canvas, scene, appearance);
+        else options.drawCar?.(canvas, appearance);
       };
       const Observer = doc.defaultView?.ResizeObserver;
       if (Observer) {
@@ -193,6 +242,7 @@ export function mountGarage(
         metric("Power", `${setup(c).power} hp`),
         metric("Tyres", ["Stock", "Sport", "Race"][c.tyres]!),
         metric("Condition", `${c.condition}%`),
+        metric("Fuel", `${(c.fuel / 10).toFixed(1)} gal`),
       );
     else
       stats.append(
@@ -207,7 +257,7 @@ export function mountGarage(
     const list = node("div", "frg-rows");
     for (const id of Object.keys(MODELS) as ModelId[]) {
       const model = MODELS[id],
-        owned = s.fleet.some((c) => c.model === id),
+        owned = s.fleet.find((c) => c.model === id),
         driving = s.selected === id;
       const row = node("div", "frg-row"),
         info = node("div");
@@ -230,9 +280,51 @@ export function mountGarage(
           !owned && model.price <= s.cash,
         ),
       );
-      picture(row, "car", model.sprite, model.paint);
+      if (owned) {
+        const sale = sellPrice(owned),
+          ends = s.fleet.length === 1 && s.cash + sale < MODELS.kestrel.price;
+        info.append(
+          control(
+            ends
+              ? `Sell · ${money(sale)} (ends season)`
+              : `Sell · ${money(sale)}`,
+            `sell-${id}`,
+            () => execute({ type: "sell", model: id }),
+          ),
+        );
+      }
+      picture(row, "car", model.sprite, owned?.paint ?? model.paint);
       list.append(row);
     }
+    return list;
+  }
+  function station(s: Campaign, c: Vehicle) {
+    const list = node("div", "frg-rows");
+    const pump = node("div", "frg-row"),
+      pumpInfo = node("div"),
+      quote = fuelQuote(c, s.cash);
+    pumpInfo.append(
+      node("h3", "", "Fuel pump"),
+      node(
+        "p",
+        "",
+        `${(c.fuel / 10).toFixed(1)} / ${TANK / 10} gal · $10 service plus $1 per 2 gal`,
+      ),
+    );
+    pump.append(
+      pumpInfo,
+      control(
+        c.fuel === TANK
+          ? "Tank full"
+          : quote.amount
+            ? `Fill · ${money(quote.price)}`
+            : "Need $11",
+        "refuel",
+        () => execute({ type: "refuel" }),
+        !quote.amount,
+      ),
+    );
+    list.append(pump);
     return list;
   }
   function workshop(s: Campaign, c: Vehicle) {
@@ -298,6 +390,19 @@ export function mountGarage(
     );
     picture(row, "part", "repair");
     list.append(row);
+    list.append(
+      field(
+        "Paint · $20",
+        Object.entries(PAINTS).map(([value, label]) => ({
+          value,
+          label,
+          disabled: s.cash < 20 && value !== c.paint,
+        })),
+        c.paint,
+        "paint",
+        (v) => execute({ type: "paint", paint: v as Paint }),
+      ),
+    );
     return list;
   }
   function challenge(s: Campaign) {
@@ -372,6 +477,7 @@ export function mountGarage(
         "course",
         (v) => {
           route = v as Route;
+          render();
         },
       ),
       field(
@@ -395,6 +501,8 @@ export function mountGarage(
     );
     const offered = MODELS[rivalCar(rank)].title;
     const isFinal = rank === RIVALS.length - 1;
+    const c = activeCar(s)!;
+    const needFuel = isFinal ? FUEL.championship : FUEL[route];
     if (isFinal) {
       grid.replaceChildren(
         opponent,
@@ -415,14 +523,32 @@ export function mountGarage(
     if (!isFinal) grid.append(prize);
     grid.append(
       control(
-        "Race " + RIVALS[rank],
+        c.fuel < needFuel
+          ? `Fuel up · ${(needFuel / 10).toFixed(1)} gal needed`
+          : "Race " + RIVALS[rank],
         "race",
-        () =>
-          execute({ type: "race", route, wager, rivalRank: rank, pinkSlip }),
+        () => {
+          if (c.fuel < needFuel) {
+            tab = "Station";
+            render();
+          } else
+            execute({ type: "race", route, wager, rivalRank: rank, pinkSlip });
+        },
         false,
         true,
       ),
     );
+    if (s.rank >= RIVALS.length - 2)
+      grid.append(
+        node(
+          "p",
+          "frg-standing",
+          `Redline requirements · Summit wins ${s.canyonWins}/${ROAD_WINS_NEEDED} · Spillway wins ${s.aqueductWins}/${ROAD_WINS_NEEDED} · road wins ${s.canyonWins + s.aqueductWins}/${s.roadStarts} (half needed) · Grudge Night ${s.qualified ? "won" : "pending"}.`,
+        ),
+      );
+    return grid;
+  }
+  function strip(s: Campaign, c: Vehicle) {
     const event = node("div", "frg-event"),
       info = node("div");
     info.append(
@@ -438,7 +564,9 @@ export function mountGarage(
     const until = daysToGrudge(s.day),
       available = grudgeNight(s.day);
     const label = available
-      ? `Enter · ${money(GRUDGE_FEE)}`
+      ? c.fuel < FUEL.grudge
+        ? "Fuel up · 2.4 gal needed"
+        : `Enter · ${money(GRUDGE_FEE)}`
       : s.day + until <= FINAL_DAY
         ? `Wait ${until}d to enter`
         : "Closed for season";
@@ -447,20 +575,16 @@ export function mountGarage(
       control(
         label,
         "grudge",
-        () => execute({ type: available ? "grudge" : "wait" }),
+        () => {
+          if (available && c.fuel < FUEL.grudge) {
+            tab = "Station";
+            render();
+          } else execute({ type: available ? "grudge" : "wait" });
+        },
         available ? s.cash < GRUDGE_FEE : s.day + until > FINAL_DAY,
       ),
     );
-    grid.append(event);
-    if (s.rank >= RIVALS.length - 2)
-      grid.append(
-        node(
-          "p",
-          "frg-standing",
-          `Redline requirements · Summit wins ${s.canyonWins}/${ROAD_WINS_NEEDED} · Spillway wins ${s.aqueductWins}/${ROAD_WINS_NEEDED} · road wins ${s.canyonWins + s.aqueductWins}/${s.roadStarts} (half needed) · Grudge Night ${s.qualified ? "won" : "pending"}.`,
-        ),
-      );
-    return grid;
+    return event;
   }
   function render(error = "") {
     if (disposed) return;
@@ -484,6 +608,9 @@ export function mountGarage(
       return;
     }
     const c = activeCar(s);
+    if (!c) tab = "Classifieds";
+    if (s.pending)
+      tab = s.pending.stakeKind === "bracket" ? "Grudge Night" : "Challenge";
     const title = node("header", "frg-heading"),
       wallet = node("dl", "frg-wallet");
     title.append(node("h1", "", "Garage"));
@@ -531,11 +658,15 @@ export function mountGarage(
       );
       root.append(end);
     } else {
-      if (!c) tab = "Classifieds";
-      if (s.pending) tab = "Challenge";
       const nav = node("nav", "frg-tabs");
       nav.setAttribute("aria-label", "Garage areas");
-      for (const section of ["Challenge", "Workshop", "Classifieds"] as const) {
+      for (const section of [
+        "Challenge",
+        "Workshop",
+        "Classifieds",
+        "Station",
+        "Grudge Night",
+      ] as const) {
         const b = control(
           section,
           section,
@@ -543,8 +674,7 @@ export function mountGarage(
             tab = section;
             render();
           },
-          (!c && section !== "Classifieds") ||
-            (!!s.pending && section !== "Challenge"),
+          (!c && section !== "Classifieds") || (!!s.pending && section !== tab),
         );
         b.setAttribute("aria-pressed", String(tab === section));
         nav.append(b);
@@ -552,12 +682,22 @@ export function mountGarage(
       const panel = node("section", "frg-panel");
       panel.setAttribute("aria-label", tab);
       panel.append(
-        tab === "Challenge"
+        tab === "Challenge" || s.pending
           ? challenge(s)
           : tab === "Workshop" && c
             ? workshop(s, c)
-            : classifieds(s),
+            : tab === "Station" && c
+              ? station(s, c)
+              : tab === "Grudge Night" && c
+                ? strip(s, c)
+                : classifieds(s),
       );
+      if (options.onCruise && c && !s.pending)
+        panel.append(
+          control("Drive into town", "cruise", () =>
+            options.onCruise?.(locationForTab[tab]),
+          ),
+        );
       root.append(nav, panel);
     }
     if (focused)
