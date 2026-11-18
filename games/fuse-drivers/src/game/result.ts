@@ -1,7 +1,7 @@
 import type { MatchResult } from "fuse-platform";
 import { playerKey, validMatchId, type FuseDriversRoom } from "./rules.js";
 import { CAPACITY, MAX_ROUNDS, isBotId } from "./basics.js";
-import { parseFuseDriversStats, type FuseDriversStats } from "../platform.js";
+import { parseRaceStats, type FuseDriversStats } from "./result-stats.js";
 import { uint32 } from "fuse-netcode";
 
 export const RETAINED_FINISHES = 4;
@@ -97,7 +97,7 @@ export function decodeRecentFinishes(
         lapsLed,
         nitrosUsed,
       ] = fields;
-      const player = parseFuseDriversStats(
+      const player = parseRaceStats(
         {
           playerId,
           name,
@@ -115,6 +115,7 @@ export function decodeRecentFinishes(
         },
         1,
         playerKey,
+        roster.length,
       );
       if (
         !player ||
