@@ -151,8 +151,7 @@ const CRAFT_CONTROLS = [
 const CRAFT_GOAL =
   "Grow a connected network beside resources. Destroy rival brains or hold dominant territory.";
 
-type Screen =
-  "menu" | "settings" | "setup" | "game" | "multiplayer" | "room" | "guide";
+type Screen = "menu" | "setup" | "game" | "multiplayer" | "room" | "guide";
 type LoadState<T> =
   | { status: "loading" }
   | { status: "error"; message: string }
@@ -278,7 +277,6 @@ export function actionCue(action: string | undefined): SoundCue | null {
     action === "guide-section" ||
     action === "next-command-page" ||
     action === "report-metric" ||
-    action === "settings" ||
     action.startsWith("mode-")
   )
     return "panel";
@@ -375,6 +373,15 @@ export function mountFuseCraft(
     ],
     goal: CRAFT_GOAL,
   };
+  function menuInputChanged(open: boolean) {
+    for (const direction of Object.values(ARROWS))
+      camera?.hold(direction, false);
+    camera?.setEdgeScroll(
+      !open &&
+        !root.querySelector(".fui-top-bar-menu[open]") &&
+        preferences.edgeScroll,
+    );
+  }
   const gameMenu = createGameMenu({
     ...controlsOptions,
     onLobby: () => online?.lobby(),
@@ -385,11 +392,7 @@ export function mountFuseCraft(
         render();
       }
     },
-    onOpenChange: (open) => {
-      for (const direction of ["left", "right", "up", "down"] as const)
-        camera?.hold(direction, false);
-      camera?.setEdgeScroll(!open && preferences.edgeScroll);
-    },
+    onOpenChange: menuInputChanged,
   });
   const roundControls = createRoundControls(controlsOptions);
   // The result: the shared results screen over the battlefield.
@@ -765,11 +768,14 @@ export function mountFuseCraft(
   }
 
   function menuMarkup(): string {
-    return `<div class="attract-scene" aria-hidden="true"><svg id="nd-attract-board"></svg></div><div class="attract-shade"></div>${header()}<main class="menu-layout fui-landing"><p class="eyebrow">GROW · CONNECT · DEFEND</p><h1 class="fui-landing-title">FUSE<br><span>CRAFT</span></h1><p class="fui-landing-tagline">Build your network.<br>Keep the signal alive.</p><nav class="fui-landing-actions" aria-label="Main menu"><button data-action="new-game" class="fui-button-primary menu-button"><span aria-hidden="true">▶</span> Single player</button>${dependencies.online ? '<button data-action="multiplayer" class="menu-button">Multiplayer</button>' : ""}<button data-action="tutorial" class="menu-button">Tutorial</button><button data-action="guide" class="menu-button">How to play</button><button data-action="settings" class="menu-button">Settings</button></nav></main><footer class="menu-footer">A FUSE GAME <span>${dependencies.online ? "PLAYER VS AI · ONLINE VERSUS" : "SKIRMISH · PLAYER VS AI"}</span></footer>`;
+    return `<div class="attract-scene" aria-hidden="true"><svg id="nd-attract-board"></svg></div><div class="attract-shade"></div>${header()}<main class="menu-layout fui-landing"><p class="eyebrow">GROW · CONNECT · DEFEND</p><h1 class="fui-landing-title">FUSE<br><span>CRAFT</span></h1><p class="fui-landing-tagline">Build your network.<br>Keep the signal alive.</p><nav class="fui-landing-actions" aria-label="Main menu"><button data-action="new-game" class="fui-button-primary menu-button"><span aria-hidden="true">▶</span> Single player</button>${dependencies.online ? '<button data-action="multiplayer" class="menu-button">Multiplayer</button>' : ""}<button data-action="tutorial" class="menu-button">Tutorial</button><button data-action="guide" class="menu-button">How to play</button></nav></main><footer class="menu-footer">A FUSE GAME <span>${dependencies.online ? "PLAYER VS AI · ONLINE VERSUS" : "SKIRMISH · PLAYER VS AI"}</span></footer>`;
   }
 
-  function settingsMarkup(): string {
-    return `${header("Player options")}<main class="nd-panel settings-panel"><p>Preferences stay on this device.</p>${dependencies.forcedMute ? '<p class="debug-note">This preview URL forces audio off.</p>' : ""}<label class="setting-row"><span><strong>Mute sound</strong><small>Interface, construction and combat cues</small></span><input type="checkbox" data-setting="mute" ${preferences.mute ? "checked" : ""}></label><label class="setting-row"><span><strong>Volume</strong></span><input type="range" min="0" max="1" step="0.05" data-setting="volume" value="${preferences.volume}"></label><label class="setting-row"><span><strong>Reduced motion</strong><small>Reduce particle animation and flashes</small></span><input type="checkbox" data-setting="reducedMotion" ${preferences.reducedMotion ? "checked" : ""}></label><label class="setting-row"><span><strong>Edge scrolling</strong><small>Move the camera when the mouse rests at the board's edge</small></span><input type="checkbox" data-setting="edgeScroll" ${preferences.edgeScroll ? "checked" : ""}></label></main>`;
+  function playerOptions(): HTMLElement {
+    const panel = root.ownerDocument.createElement("div");
+    panel.className = "settings-panel";
+    panel.innerHTML = `<label class="setting-row"><span>Effects volume</span><input type="range" min="0" max="1" step="0.05" data-setting="volume" value="${preferences.volume}" ${dependencies.forcedMute ? "disabled" : ""}></label><label class="setting-row"><span><strong>Reduced motion</strong><small>Reduce particle animation and flashes</small></span><input type="checkbox" data-setting="reducedMotion" ${preferences.reducedMotion ? "checked" : ""}></label><label class="setting-row"><span><strong>Edge scrolling</strong><small>Move the camera when the mouse rests at the board's edge</small></span><input type="checkbox" data-setting="edgeScroll" ${preferences.edgeScroll ? "checked" : ""}></label>`;
+    return panel;
   }
 
   function setupMarkup(): string {
@@ -837,12 +843,12 @@ export function mountFuseCraft(
       : catalog?.status === "ready"
         ? catalog.value.find((m) => m.id === selectedId)?.title
         : undefined;
-    return `<main class="game-layout" aria-label="${escape(title ?? "Neural field")} battlefield" ${pending ? "inert" : ""}>
+    return `${header()}<main class="game-layout" aria-label="${escape(title ?? "Neural field")} battlefield" ${pending ? "inert" : ""}>
       <section class="board-shell">
       <div id="nd-viewport" class="board-scroll"><svg id="nd-board" class="nd-board" tabindex="0" aria-label="Hex board. Use arrow keys to move selection."></svg><canvas id="nd-light" class="nd-light" aria-hidden="true"></canvas></div>
       <div id="dominance-banner" class="dominance-banner" role="status" hidden></div><aside id="tutorial-coach" class="tutorial-coach" aria-live="polite" hidden></aside>
       </section>
-      <aside id="game-sidebar" class="game-sidebar"></aside><div id="craft-menu"></div></main><div id="game-modal">${modal()}</div>`;
+      <aside id="game-sidebar" class="game-sidebar"></aside></main><div id="game-modal">${modal()}</div>`;
   }
 
   function fullscreenButton(): string {
@@ -852,20 +858,13 @@ export function mountFuseCraft(
     return `<button data-action="fullscreen" class="secondary" aria-pressed="${on}" aria-label="${on ? "Leave full screen" : "Full screen"}" title="${on ? "Leave full screen (F)" : "Full screen (F)"}">⛶</button>`;
   }
 
-  function muteButton(): string {
-    if (!dependencies.audio || dependencies.forcedMute) return "";
-    const muted = preferences.mute;
-    return `<button data-action="toggle-mute" class="secondary" aria-pressed="${muted}" aria-label="${muted ? "Unmute sound" : "Mute sound"}" title="${muted ? "Unmute sound (M)" : "Mute sound (M)"}">${muted ? "🔇" : "🔊"}</button>`;
-  }
-
   function toggleMute() {
     preferences = { ...preferences, mute: !preferences.mute };
     dependencies.preferences.write(preferences);
     dependencies.audio?.configure(preferences);
     dependencies.audio?.unlock();
     dependencies.audio?.play("toggle");
-    if (screen === "game") renderGame();
-    else render();
+    decorate();
   }
 
   /** Places board sounds relative to what the camera shows. */
@@ -975,7 +974,7 @@ export function mountFuseCraft(
         ? '<button data-action="reset" class="secondary">Lobby</button>'
         : ""
       : '<button data-action="reset" class="secondary">Restart</button>';
-    return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${muteButton()}${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
+    return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
   }
 
   function sidebarMarkup(world: Readonly<World>): string {
@@ -1110,7 +1109,7 @@ export function mountFuseCraft(
           : panel === "research"
             ? `<div class="command-context"><strong>Research</strong><p>${player.researchJob ? `${researchNames[player.researchJob.kind]} · researching` : "Choose an upgrade"}</p><small>${player.research.length ? `Complete: ${player.research.map((r) => researchNames[r]).join(", ")}` : "Hover or focus a command for its requirements."}</small></div>`
             : `<div class="command-context"><strong>Recent activity</strong><ul class="event-list" aria-live="polite">${outcomes || "<li>No recent activity.</li>"}</ul></div>`;
-    return `<div class="battle-topbar"><div class="resource-row"><div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}</div><div class="hud-mini"></div>${dependencies.debug ? '<div class="debug-note"></div>' : ""}<div class="session-controls">${muteButton()}${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : '<button data-action="reset" class="secondary">Reset</button>'}</div></div>
+    return `<div class="battle-topbar"><div class="resource-row"><div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}</div><div class="hud-mini"></div>${dependencies.debug ? '<div class="debug-note"></div>' : ""}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : '<button data-action="reset" class="secondary">Reset</button>'}</div></div>
       <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${panel === "inspect" || panel === "build" ? "Selected hex" : panel === "research" ? "Research" : "Recent activity"}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${panel === "research" ? "Research commands" : panel === "build" ? "Build commands" : panel === "activity" ? "Activity commands" : "Commands"}">${commands}</nav></div>`;
   }
 
@@ -1199,10 +1198,6 @@ export function mountFuseCraft(
           ?.focus?.();
     }
     updateContent(sidebar, sidebarMarkup(world));
-    // Keep the menu outside the reconciled HUD so focused controls survive ticks.
-    const menuHost = root.querySelector("#craft-menu");
-    if (menuHost && menuHost.firstElementChild !== gameMenu.element)
-      menuHost.append(gameMenu.element);
     gameMenu.update({
       canLobby: !!online?.room().manager,
       spectator: !playing,
@@ -1536,17 +1531,15 @@ export function mountFuseCraft(
     root.innerHTML =
       screen === "menu"
         ? menuMarkup()
-        : screen === "settings"
-          ? settingsMarkup()
-          : screen === "setup"
-            ? setupMarkup()
-            : screen === "multiplayer"
-              ? multiplayerMarkup()
-              : screen === "guide"
-                ? guideScreenMarkup()
-                : screen === "room"
-                  ? roomMarkup()
-                  : gameMarkup();
+        : screen === "setup"
+          ? setupMarkup()
+          : screen === "multiplayer"
+            ? multiplayerMarkup()
+            : screen === "guide"
+              ? guideScreenMarkup()
+              : screen === "room"
+                ? roomMarkup()
+                : gameMarkup();
     decorate();
     if (screen === "menu") {
       const play = root.querySelector<HTMLElement>(".menu-layout")!;
@@ -1585,10 +1578,6 @@ export function mountFuseCraft(
             },
         onHowToPlay: () => {
           screen = "guide";
-          render();
-        },
-        onSettings: () => {
-          screen = "settings";
           render();
         },
       });
@@ -1657,8 +1646,12 @@ export function mountFuseCraft(
       portal ??= dependencies.portal();
       if (!head.contains(portal)) head.prepend(portal);
     }
-    if (head)
+    if (head) {
+      if (screen === "game" && !head.contains(gameMenu.element))
+        head.append(gameMenu.element);
       createTopBar({
+        playerOptions,
+        onOpenChange: menuInputChanged,
         element: head as HTMLElement,
         gameId: "fuse-craft",
         sound: dependencies.audio
@@ -1671,6 +1664,7 @@ export function mountFuseCraft(
             }
           : undefined,
       });
+    }
   }
 
   /**
@@ -1832,8 +1826,7 @@ export function mountFuseCraft(
         render();
       } else if (action === "fullscreen") {
         dependencies.fullscreen?.toggle();
-      } else if (action === "toggle-mute") toggleMute();
-      else if (action === "help") openHelp();
+      } else if (action === "help") openHelp();
       else if (action === "close-help") closeHelp();
       else if (action === "tutorial") void startTutorial();
       else if (action === "tutorial-next" && tutorial) {
@@ -1922,9 +1915,6 @@ export function mountFuseCraft(
       else if (action === "copy-room-link" && online) {
         const link = dependencies.online?.roomLink(online.code) ?? "";
         void navigator.clipboard?.writeText(link).catch(() => {});
-      } else if (action === "settings") {
-        screen = "settings";
-        render();
       } else if (action === "back-menu") showMenu();
       else if (action === "retry-catalog") void loadCatalog();
       else if (action === "retry-map" && selectedId)
@@ -2179,12 +2169,7 @@ export function mountFuseCraft(
       target.value = target.getAttribute("value") ?? "0";
     } else if (target.dataset.setting) {
       const setting = target.dataset.setting;
-      if (setting === "mute")
-        preferences = {
-          ...preferences,
-          mute: (target as HTMLInputElement).checked,
-        };
-      else if (setting === "reducedMotion")
+      if (setting === "reducedMotion")
         preferences = {
           ...preferences,
           reducedMotion: (target as HTMLInputElement).checked,
@@ -2194,13 +2179,16 @@ export function mountFuseCraft(
           ...preferences,
           edgeScroll: (target as HTMLInputElement).checked,
         };
-        camera?.setEdgeScroll(preferences.edgeScroll);
+        camera?.setEdgeScroll(
+          !root.querySelector(".fui-top-bar-menu[open]") &&
+            preferences.edgeScroll,
+        );
       } else if (setting === "volume")
         preferences = { ...preferences, volume: Number(target.value) };
       dependencies.preferences.write(preferences);
       dependencies.audio?.configure(preferences);
       dependencies.audio?.unlock();
-      render();
+      if (screen === "game") renderGame();
     }
   }
 
@@ -2230,7 +2218,8 @@ export function mountFuseCraft(
 
   function onKeyDown(event: KeyboardEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
-    if (gameMenu.isOpen()) return;
+    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
+      return;
     // The results screen covers the game: no camera or command key acts behind it.
     if (results.open) return;
     // How to play is modal: no game shortcut acts behind it.

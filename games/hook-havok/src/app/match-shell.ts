@@ -56,18 +56,6 @@ export function createMatchShell(actions: {
     controls,
     document.querySelector(".room-entry")!,
   );
-  const preferences = document.createElement("section");
-  preferences.className = "controls personal-controls";
-  preferences.setAttribute("aria-label", "Your controls and atmosphere");
-  for (const id of [
-    "keyboard-mode",
-    "touch-toggle",
-    "aim-mode",
-    "atmosphere",
-    "follow-cam",
-  ])
-    preferences.append(get(id).closest("label")!);
-  preferences.append(get("control-help"));
   // The invitation is made once the room has its code; INVITE FRIENDS is added under it and stays.
   const inviteHolder = document.createElement("div"),
     inviteCard = document.createElement("div");
@@ -139,13 +127,7 @@ export function createMatchShell(actions: {
     join: join.form,
     playerName: actions.playerName,
     addAI,
-    settings: [
-      experimentSection,
-      rulesSection,
-      preferences,
-      document.querySelector<HTMLElement>("[data-radio]")!,
-      workshop,
-    ],
+    settings: [experimentSection, rulesSection, workshop],
     actions: [note],
     actionsInHeader: true,
     heading: "Room",
