@@ -1,15 +1,15 @@
 library	directory_index	runtime_id	EGA_px	CGA_px	mask_flag	EGA_packed_size	CGA_packed_size	shape_structure	evidence_level	reference_role	Fuse_role_module	reference_evidence
-LIB1	0	1	320x200	320x200	0	18897	8885		role	Title illustration	app/main.ts	game_flow.md:670; sr2port/src/game/flow_data.c:39 title_sequence
-LIB1	1	2	16x48	16x48	1	231	273		role	Mouse pointer bank		platform/screen.c:279; sr2port/src/platform/screen.c:279 cursor_init
-LIB1	2	3	256x97	256x97	0	3061	2253		role	Publisher title card		game_flow.md:668; sr2port/src/game/flow_data.c:35 title_sequence
-LIB1	3	4	320x200	320x200	0	21158	9435		role	Credits panel		game_flow.md:675; sr2port/src/game/flow_data.c:45 title_sequence
+LIB1	0	1	320x200	320x200	0	18897	8885		role	Title illustration	story-art.ts	game_flow.md:670; sr2port/src/game/flow_data.c:39 title_sequence
+LIB1	1	2	16x48	16x48	1	231	273		role	Mouse pointer bank	cursor.css	platform/screen.c:279; sr2port/src/platform/screen.c:279 cursor_init
+LIB1	2	3	256x97	256x97	0	3061	2253		role	Publisher title card	story-art.ts	game_flow.md:668; sr2port/src/game/flow_data.c:35 title_sequence
+LIB1	3	4	320x200	320x200	0	21158	9435		role	Credits panel	story-art.ts	game_flow.md:675; sr2port/src/game/flow_data.c:45 title_sequence
 LIB2	0	1000	72x58	72x58	1	1320	1180		role	Pump-number background	town-art.ts	game_flow.md:1033; sr2port/src/game/event15.c:297 event15_run
-LIB2	1	1001	312x185	312x185	0	7021	6037		role	Licence or save-book interface		game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:151 load_game_screen; sr2port/src/game/flow_save.c:236 save_game_screen
-LIB2	2	1002	288x150	288x150	0	6266	4509		role	Licence or save-book interface		game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_state.c:187 new_game_prompt
-LIB2	3	1003	168x18	168x18	0	258	68		role	Licence or save-book interface		game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:237 save_game_screen
-LIB2	4	1004	56x39	56x39	0	520	319		role	Licence or save-book interface		game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:153 load_game_screen
-LIB2	5	1005	56x39	56x39	0	473	285		role	Licence or save-book interface		game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:238 save_game_screen
-LIB2	6	1006	56x39	56x39	0	552	304		role	Licence or save-book interface		game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:154 load_game_screen; sr2port/src/game/flow_save.c:239 save_game_screen
+LIB2	1	1001	312x185	312x185	0	7021	6037		role	Licence or save-book interface	story-art.ts; garage/index.ts	game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:151 load_game_screen; sr2port/src/game/flow_save.c:236 save_game_screen
+LIB2	2	1002	288x150	288x150	0	6266	4509		role	Licence or save-book interface	story-art.ts; garage/index.ts	game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_state.c:187 new_game_prompt
+LIB2	3	1003	168x18	168x18	0	258	68		role	Licence or save-book interface	story-art.ts; garage/index.ts	game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:237 save_game_screen
+LIB2	4	1004	56x39	56x39	0	520	319		role	Licence or save-book interface	story-art.ts; garage/index.ts	game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:153 load_game_screen
+LIB2	5	1005	56x39	56x39	0	473	285		role	Licence or save-book interface	story-art.ts; garage/index.ts	game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:238 save_game_screen
+LIB2	6	1006	56x39	56x39	0	552	304		role	Licence or save-book interface	story-art.ts; garage/index.ts	game_flow.md:476; flow_save.c:151-154,236-239; sr2port/src/game/flow_save.c:154 load_game_screen; sr2port/src/game/flow_save.c:239 save_game_screen
 LIB2	7	1007	320x136	320x136	0	4437	4798		role	Classified newspaper backdrop	garage/index.ts	garage.md:631; garage_classifieds.c:66; sr2port/src/game/garage_classifieds.c:422 newspaper_front
 LIB2	8	1008	320x31	320x31	0	1363	1050		role	Weekly newspaper front page	garage/index.ts	garage.md:647 DS:4C5A
 LIB2	9	1009	320x31	320x31	0	1409	1192		role	Weekly newspaper front page	garage/index.ts	garage.md:647 DS:4C5A
@@ -22,37 +22,37 @@ LIB2	15	1015	32x26	32x26	1	273	257		role	Wheel service animation	tools.ts	garage
 LIB2	16	1016	32x26	32x26	1	273	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
 LIB2	17	1017	32x26	32x26	1	273	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
 LIB2	18	1018	320x190	320x190	0	18651	11085		role	Garage wall/floor layer	garage.ts	garage.md:979,1013; sr2port/src/game/garage_bay_draw.c:395 under_car_slide_in; sr2port/src/game/garage_main.c:99 garage_screen; sr2port/src/game/garage_tire.c:228 tire_change_anim
-LIB2	19	1019	24x18	24x18	1	124	97		role	front bumper / model 0	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	19	1019	24x18	24x18	1	124	97		role	front bumper / model 0	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
 LIB2	20	1020	32x23	32x23	1	258	204		role	Car jack animation / Garage wall/floor layer	garage.ts; tools.ts	garage.md:1741 DS:79E6; garage.md:979,1013; sr2port/src/game/garage_bay_draw.c:412 under_car_slide_in
 LIB2	21	1021	32x23	32x23	1	265	217		role	Car jack animation	tools.ts	garage.md:1741 DS:79E6
 LIB2	22	1022	32x23	32x23	1	281	224		role	Car jack animation	tools.ts	garage.md:1741 DS:79E6
-LIB2	23	1023	24x12	24x12	1	95	75		role	rear bumper / model 0	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	24	1024	104x16	104x16	1	303	330		role	roof / model 0	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	25	1025	256x61	256x61	1	2159	2496		role	Side profile / model 0	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	26	1026	256x55	256x55	1	1829	1961		role	Side profile / model 1	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	27	1027	16x14	16x14	1	64	67		role	rear bumper / model 1	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	28	1028	16x14	16x14	1	63	56		role	front bumper / model 1	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	29	1029	88x12	88x12	1	200	202		role	roof / model 1	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	30	1030	24x12	24x12	1	75	56		role	front bumper / model 2	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	31	1031	16x11	16x11	1	58	56		role	rear bumper / model 2	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	32	1032	96x10	96x10	1	141	153		role	roof / model 2	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	33	1033	256x55	256x55	1	1654	1881		role	Side profile / model 2	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	34	1034	240x57	240x57	1	1830	1988		role	Side profile / model 3	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	35	1035	16x12	16x12	1	70	71		role	front bumper / model 3	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	36	1036	16x14	16x14	1	80	81		role	rear bumper / model 3	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	37	1037	24x11	24x11	1	64	49		role	front bumper / model 4	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	38	1038	16x15	16x15	1	90	86		role	rear bumper / model 4	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	39	1039	248x58	248x58	1	1930	2073		role	Side profile / model 4	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	40	1040	248x54	248x54	1	1618	1999		role	Side profile / model 5	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	41	1041	16x15	16x15	1	89	87		role	rear bumper / model 5	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	42	1042	16x10	16x10	1	58	58		role	front bumper / model 5	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	43	1043	16x13	16x13	1	74	71		role	rear bumper / model 6	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	44	1044	96x9	96x9	1	134	146		role	roof / model 6	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	45	1045	248x56	248x56	1	1896	1973		role	Side profile / model 6	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	46	1046	256x51	256x51	1	1810	1902		role	Side profile / model 7	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	47	1047	96x13	96x13	1	232	233		role	roof / model 7	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	48	1048	24x16	24x16	1	113	112		role	rear bumper / model 8	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	49	1049	16x16	16x16	1	86	85		role	front bumper / model 8	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	23	1023	24x12	24x12	1	95	75		role	rear bumper / model 0	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	24	1024	104x16	104x16	1	303	330		role	roof / model 0	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	25	1025	256x61	256x61	1	2159	2496		role	Side profile / model 0	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	26	1026	256x55	256x55	1	1829	1961		role	Side profile / model 1	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	27	1027	16x14	16x14	1	64	67		role	rear bumper / model 1	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	28	1028	16x14	16x14	1	63	56		role	front bumper / model 1	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	29	1029	88x12	88x12	1	200	202		role	roof / model 1	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	30	1030	24x12	24x12	1	75	56		role	front bumper / model 2	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	31	1031	16x11	16x11	1	58	56		role	rear bumper / model 2	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	32	1032	96x10	96x10	1	141	153		role	roof / model 2	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	33	1033	256x55	256x55	1	1654	1881		role	Side profile / model 2	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	34	1034	240x57	240x57	1	1830	1988		role	Side profile / model 3	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	35	1035	16x12	16x12	1	70	71		role	front bumper / model 3	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	36	1036	16x14	16x14	1	80	81		role	rear bumper / model 3	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	37	1037	24x11	24x11	1	64	49		role	front bumper / model 4	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	38	1038	16x15	16x15	1	90	86		role	rear bumper / model 4	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	39	1039	248x58	248x58	1	1930	2073		role	Side profile / model 4	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	40	1040	248x54	248x54	1	1618	1999		role	Side profile / model 5	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	41	1041	16x15	16x15	1	89	87		role	rear bumper / model 5	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	42	1042	16x10	16x10	1	58	58		role	front bumper / model 5	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	43	1043	16x13	16x13	1	74	71		role	rear bumper / model 6	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	44	1044	96x9	96x9	1	134	146		role	roof / model 6	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	45	1045	248x56	248x56	1	1896	1973		role	Side profile / model 6	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	46	1046	256x51	256x51	1	1810	1902		role	Side profile / model 7	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	47	1047	96x13	96x13	1	232	233		role	roof / model 7	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	48	1048	24x16	24x16	1	113	112		role	rear bumper / model 8	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	49	1049	16x16	16x16	1	86	85		role	front bumper / model 8	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
 LIB2	50	1050	32x26	32x26	1	265	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
 LIB2	51	1051	32x26	32x26	1	265	256		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
 LIB2	52	1052	32x26	32x26	1	267	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
@@ -91,62 +91,62 @@ LIB2	84	1084	32x26	32x26	1	275	257		role	Wheel service animation	tools.ts	garage
 LIB2	85	1085	32x26	32x26	1	275	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
 LIB2	86	1086	32x26	32x26	1	275	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
 LIB2	87	1087	32x26	32x26	1	275	257		role	Wheel service animation	tools.ts	garage.md:1110 DS:4D30
-LIB2	88	1088	88x10	88x10	1	136	125		role	roof / model 8	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	89	1089	256x54	256x54	1	1691	1678		role	Side profile / model 8	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	90	1090	240x55	240x55	1	1785	1903		role	Side profile / model 9	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	91	1091	16x11	16x11	1	57	54		role	rear bumper / model 9	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	92	1092	24x19	24x19	1	122	119		role	front bumper / model 9	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	93	1093	88x12	88x12	1	186	202		role	roof / model 9	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	94	1094	232x59	232x59	1	2033	2026		role	Side profile / model 10	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	95	1095	248x55	248x55	1	1699	1706		role	Side profile / model 11	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	96	1096	16x13	16x13	1	73	69		role	rear bumper / model 11	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	97	1097	24x12	24x12	1	96	84		role	front bumper / model 11	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	98	1098	96x10	96x10	1	162	149		role	roof / model 11	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	99	1099	16x11	16x11	1	62	60		role	rear bumper / model 12	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	100	1100	88x14	88x14	1	241	235		role	roof / model 12	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	101	1101	240x50	240x50	1	1863	1749		role	Side profile / model 12	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	102	1102	248x56	248x56	1	1788	1893		role	Side profile / model 13	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	103	1103	16x16	16x16	1	96	96		role	rear bumper / model 13	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	104	1104	16x13	16x13	1	63	66		role	front bumper / model 13	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	105	1105	104x13	104x13	1	236	222		role	roof / model 13	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	106	1106	24x15	24x15	1	116	112		role	rear bumper / model 14	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	107	1107	96x12	96x12	1	214	196		role	roof / model 14	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	108	1108	248x56	248x56	1	1588	1763		role	Side profile / model 15	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	109	1109	16x13	16x13	1	73	75		role	rear bumper / model 15	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	88	1088	88x10	88x10	1	136	125		role	roof / model 8	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	89	1089	256x54	256x54	1	1691	1678		role	Side profile / model 8	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	90	1090	240x55	240x55	1	1785	1903		role	Side profile / model 9	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	91	1091	16x11	16x11	1	57	54		role	rear bumper / model 9	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	92	1092	24x19	24x19	1	122	119		role	front bumper / model 9	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	93	1093	88x12	88x12	1	186	202		role	roof / model 9	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	94	1094	232x59	232x59	1	2033	2026		role	Side profile / model 10	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	95	1095	248x55	248x55	1	1699	1706		role	Side profile / model 11	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	96	1096	16x13	16x13	1	73	69		role	rear bumper / model 11	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	97	1097	24x12	24x12	1	96	84		role	front bumper / model 11	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	98	1098	96x10	96x10	1	162	149		role	roof / model 11	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	99	1099	16x11	16x11	1	62	60		role	rear bumper / model 12	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	100	1100	88x14	88x14	1	241	235		role	roof / model 12	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	101	1101	240x50	240x50	1	1863	1749		role	Side profile / model 12	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	102	1102	248x56	248x56	1	1788	1893		role	Side profile / model 13	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	103	1103	16x16	16x16	1	96	96		role	rear bumper / model 13	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	104	1104	16x13	16x13	1	63	66		role	front bumper / model 13	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	105	1105	104x13	104x13	1	236	222		role	roof / model 13	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	106	1106	24x15	24x15	1	116	112		role	rear bumper / model 14	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	107	1107	96x12	96x12	1	214	196		role	roof / model 14	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	108	1108	248x56	248x56	1	1588	1763		role	Side profile / model 15	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	109	1109	16x13	16x13	1	73	75		role	rear bumper / model 15	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
 LIB2	110	1110	24x12	24x12	1	91	82		role	Fuel station and pump components	town-art.ts	game_flow.md:1032-1036
 LIB2	111	1111	8x7	8x7	1	21	21		role	Fuel station and pump components	town-art.ts	game_flow.md:1032-1036
 LIB2	112	1112	320x52	320x52	2	654	803		role	Drive-in carhop background/compositing strip	town-art.ts	garage_draw.c:373-417; garage.md:1691
 LIB2	113	1113	192x104	192x104	1	5850	4411		role	Drive-in carhop actor animation sheet	town-art.ts	garage.md:1687
 LIB2	114	1114	320x52	320x52	1	4705	3607		role	Drive-in carhop actor animation sheet	town-art.ts	garage.md:1687
-LIB2	115	1115	16x14	16x14	1	72	81		role	front bumper / model 15	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	116	1116	88x15	88x15	1	222	245		role	roof / model 15	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	117	1117	256x54	256x54	1	1630	1726		role	Side profile / model 16	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	118	1118	16x14	16x14	1	77	78		role	rear bumper / model 16	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	119	1119	16x14	16x14	1	82	80		role	front bumper / model 16	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	120	1120	96x10	96x10	1	159	178		role	roof / model 16	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	121	1121	248x56	248x56	1	1666	1942		role	Side profile / model 17	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	122	1122	24x15	24x15	1	107	102		role	rear bumper / model 17	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	123	1123	32x11	32x11	1	107	82		role	front bumper / model 17	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	124	1124	112x15	112x15	1	256	236		role	roof / model 17	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	125	1125	24x9	24x9	1	75	67		role	rear bumper / model 18	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	126	1126	24x11	24x11	1	91	79		role	front bumper / model 18	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	127	1127	88x11	88x11	1	160	179		role	roof / model 18	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	128	1128	256x56	256x56	1	2103	2159		role	Side profile / model 18	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	129	1129	264x55	264x55	1	2019	2131		role	Side profile / model 19	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	130	1130	32x14	32x14	1	132	138		role	rear bumper / model 19	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	131	1131	32x10	32x10	1	112	81		role	front bumper / model 19	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	132	1132	104x14	104x14	1	263	270		role	roof / model 19	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	133	1133	16x14	16x14	1	84	83		role	rear bumper / model 20	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	134	1134	16x14	16x14	1	76	77		role	front bumper / model 20	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	135	1135	96x12	96x12	1	171	171		role	roof / model 20	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	136	1136	256x54	256x54	1	1626	1954		role	Side profile / model 20	cars.ts	garage_draw.c:152; SR2_DATA model +16
-LIB2	137	1137	16x12	16x12	1	64	64		role	front bumper / model 6	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	115	1115	16x14	16x14	1	72	81		role	front bumper / model 15	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	116	1116	88x15	88x15	1	222	245		role	roof / model 15	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	117	1117	256x54	256x54	1	1630	1726		role	Side profile / model 16	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	118	1118	16x14	16x14	1	77	78		role	rear bumper / model 16	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	119	1119	16x14	16x14	1	82	80		role	front bumper / model 16	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	120	1120	96x10	96x10	1	159	178		role	roof / model 16	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	121	1121	248x56	248x56	1	1666	1942		role	Side profile / model 17	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	122	1122	24x15	24x15	1	107	102		role	rear bumper / model 17	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	123	1123	32x11	32x11	1	107	82		role	front bumper / model 17	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	124	1124	112x15	112x15	1	256	236		role	roof / model 17	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	125	1125	24x9	24x9	1	75	67		role	rear bumper / model 18	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	126	1126	24x11	24x11	1	91	79		role	front bumper / model 18	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	127	1127	88x11	88x11	1	160	179		role	roof / model 18	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	128	1128	256x56	256x56	1	2103	2159		role	Side profile / model 18	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	129	1129	264x55	264x55	1	2019	2131		role	Side profile / model 19	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	130	1130	32x14	32x14	1	132	138		role	rear bumper / model 19	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	131	1131	32x10	32x10	1	112	81		role	front bumper / model 19	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	132	1132	104x14	104x14	1	263	270		role	roof / model 19	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	133	1133	16x14	16x14	1	84	83		role	rear bumper / model 20	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	134	1134	16x14	16x14	1	76	77		role	front bumper / model 20	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	135	1135	96x12	96x12	1	171	171		role	roof / model 20	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	136	1136	256x54	256x54	1	1626	1954		role	Side profile / model 20	profile.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	137	1137	16x12	16x12	1	64	64		role	front bumper / model 6	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
 LIB2	138	1138	152x6	152x6	1	28	29		role	Wheel shadow or hub	cars.ts	garage_tire.c:234,267; sr2port/src/game/garage_draw.c:185 car_compose; sr2port/src/game/garage_tire.c:234 tire_change_anim
-LIB2	139	1139	24x11	24x11	1	82	84		role	hood scoop / model 1 / hood scoop / model 12 / hood scoop / model 14 / hood scoop / model 20 / hood scoop / model 7 / hood scoop / model 9	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	140	1140	24x10	24x10	1	67	79		role	hood scoop / model 10 / hood scoop / model 11 / hood scoop / model 13 / hood scoop / model 3	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	141	1141	24x11	24x11	1	83	88		role	hood scoop / model 15 / hood scoop / model 17 / hood scoop / model 19 / hood scoop / model 2 / hood scoop / model 4	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	142	1142	24x10	24x10	1	73	68		role	hood scoop / model 0 / hood scoop / model 16 / hood scoop / model 18 / hood scoop / model 5 / hood scoop / model 6 / hood scoop / model 8	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	143	1143	256x56	256x56	1	2118	1892		role	Side profile / model 21	cars.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	139	1139	24x11	24x11	1	82	84		role	hood scoop / model 1 / hood scoop / model 12 / hood scoop / model 14 / hood scoop / model 20 / hood scoop / model 7 / hood scoop / model 9	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	140	1140	24x10	24x10	1	67	79		role	hood scoop / model 10 / hood scoop / model 11 / hood scoop / model 13 / hood scoop / model 3	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	141	1141	24x11	24x11	1	83	88		role	hood scoop / model 15 / hood scoop / model 17 / hood scoop / model 19 / hood scoop / model 2 / hood scoop / model 4	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	142	1142	24x10	24x10	1	73	68		role	hood scoop / model 0 / hood scoop / model 16 / hood scoop / model 18 / hood scoop / model 5 / hood scoop / model 6 / hood scoop / model 8	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	143	1143	256x56	256x56	1	2118	1892		role	Side profile / model 21	profile.ts	garage_draw.c:152; SR2_DATA model +16
 LIB2	144	1144	168x150	168x150	0	5897	3912		role	Calendar month/mark	garage/index.ts	game_flow.md:600
 LIB2	145	1145	24x9	24x9	1	80	75		role	Calendar month/mark	garage/index.ts	game_flow.md:600
 LIB2	146	1146	168x150	168x150	0	5950	3998		role	Calendar month/mark	garage/index.ts	game_flow.md:600
@@ -156,14 +156,14 @@ LIB2	149	1149	24x43	24x43	1	421	361		role	Drive-in dancing sign	town-art.ts	race
 LIB2	150	1150	144x20	144x20	0	1346	680		role	Fuel station and pump components	town-art.ts	game_flow.md:1032-1036; sr2port/src/game/event15.c:287 event15_run
 LIB2	151	1151	32x4	32x4	1	14	17		role	Tool or hand overlay	tools.ts	garage_bay_draw.c:378; garage_tire.c:75; sr2port/src/game/garage_tire.c:75 tc_wheel_swap
 LIB2	152	1152	24x18	24x18	1	195	160		role	Driver portrait / record 20	portraits.ts	event17_screens.c:162; SR2_DATA person +4
-LIB2	153	1153	64x149	64x149	0	3202	2168		role	Jail bars and trim		race_bob.c:459-467; race.md:188; sr2port/src/game/race_bob.c:460 jail
-LIB2	154	1154	320x41	320x41	0	2961	2388		role	Jail bars and trim		race_bob.c:459-467; race.md:188; sr2port/src/game/race_bob.c:463 jail
-LIB2	155	1155	16x149	16x149	0	895	594		role	Jail bars and trim		race_bob.c:459-467; race.md:188; sr2port/src/game/race_bob.c:461 jail
-LIB2	156	1156	96x15	96x15	1	294	293		role	roof / model 3	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	157	1157	104x12	104x12	1	167	191		role	roof / model 5	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	158	1158	16x19	16x19	1	109	122		role	rear bumper / model 7	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	159	1159	32x14	32x14	1	123	91		role	front bumper / model 7	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	160	1160	96x12	96x12	1	199	209		role	roof / model 4	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	153	1153	64x149	64x149	0	3202	2168		role	Jail bars and trim	story-art.ts	race_bob.c:459-467; race.md:188; sr2port/src/game/race_bob.c:460 jail
+LIB2	154	1154	320x41	320x41	0	2961	2388		role	Jail bars and trim	story-art.ts	race_bob.c:459-467; race.md:188; sr2port/src/game/race_bob.c:463 jail
+LIB2	155	1155	16x149	16x149	0	895	594		role	Jail bars and trim	story-art.ts	race_bob.c:459-467; race.md:188; sr2port/src/game/race_bob.c:461 jail
+LIB2	156	1156	96x15	96x15	1	294	293		role	roof / model 3	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	157	1157	104x12	104x12	1	167	191		role	roof / model 5	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	158	1158	16x19	16x19	1	109	122		role	rear bumper / model 7	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	159	1159	32x14	32x14	1	123	91		role	front bumper / model 7	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	160	1160	96x12	96x12	1	199	209		role	roof / model 4	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
 LIB2	161	1161	24x18	24x18	1	158	114		role	Driver portrait / record 0	portraits.ts	event17_screens.c:162; SR2_DATA person +4
 LIB2	162	1162	24x18	24x18	1	161	122		role	Driver portrait / record 1	portraits.ts	event17_screens.c:162; SR2_DATA person +4
 LIB2	163	1163	24x17	24x17	1	204	137		role	Driver portrait / record 2	portraits.ts	event17_screens.c:162; SR2_DATA person +4
@@ -186,9 +186,9 @@ LIB2	179	1179	24x18	24x18	1	169	132		role	Driver portrait / record 18	portraits.
 LIB2	180	1180	24x18	24x18	1	182	157		role	Driver portrait / record 19	portraits.ts	event17_screens.c:162; SR2_DATA person +4
 LIB2	181	1181	296x173	296x173	1	12815	12705		role	Ending animation or scene	town-art.ts	flow_end.c:225,226,277; sr2port/src/game/flow_end.c:225 ending_anim
 LIB2	182	1182	40x17	40x17	1	305	172		role	Driver portrait / record 21	portraits.ts	event17_screens.c:162; SR2_DATA person +4
-LIB2	183	1183	32x14	32x14	1	116	129		role	rear bumper / model 10	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	184	1184	24x13	24x13	1	105	109		role	front bumper / model 10	cars.ts	garage_draw.c:155-162; SR2_DATA overlay
-LIB2	185	1185	256x53	256x53	1	1838	1807		role	Side profile / model 14	cars.ts	garage_draw.c:152; SR2_DATA model +16
+LIB2	183	1183	32x14	32x14	1	116	129		role	rear bumper / model 10	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	184	1184	24x13	24x13	1	105	109		role	front bumper / model 10	profile.ts	garage_draw.c:155-162; SR2_DATA overlay
+LIB2	185	1185	256x53	256x53	1	1838	1807		role	Side profile / model 14	profile.ts	garage_draw.c:152; SR2_DATA model +16
 LIB2	186	1186	16x12	16x12	1	94	97		role	Workshop bolt	tools.ts	garage_bay_draw.c:29,195; sr2port/src/game/garage_bay_draw.c:195 bay_bolt_draw; sr2port/src/game/garage_bay_draw.c:232 bay_bolt_remove_anim
 LIB2	187	1187	320x31	320x31	1	1187	965		role	Weekly newspaper front page	garage/index.ts	garage.md:647 DS:4C5A
 LIB2	188	1188	320x23	320x23	1	1359	1067		role	Newspaper lower strip	garage/index.ts	garage_classifieds.c:425; sr2port/src/game/garage_classifieds.c:425 newspaper_front
@@ -224,7 +224,7 @@ LIB3	5	2005	80x27	80x27	0	198	144		role	Rear-view mirror or backdrop	renderer.ts
 LIB3	6	2006	96x46	96x46	1	888	1040		role	racing body 0 / rear	cars.ts	race_road.c:395-419; SR2_DATA angle table
 LIB3	7	2007	40x18	40x18	1	213	208		role	racing body 0 / front	front.ts	race_road.c:395-419; SR2_DATA angle table
 LIB3	8	2008	40x18	40x18	1	284	217		role	racing body 1 / front	front.ts	race_road.c:395-419; SR2_DATA angle table
-LIB3	9	2009	136x141	136x141	1	2841	2516		role	Speeding ticket paper		race_results.c:75-87; sr2port/src/game/race_results.c:75 ticket_show
+LIB3	9	2009	136x141	136x141	1	2841	2516		role	Speeding ticket paper	story-art.ts	race_results.c:75-87; sr2port/src/game/race_results.c:75 ticket_show
 LIB3	10	2010	104x82	104x82	1	2323	1712		role	racing body 1 / side	cars.ts	race_road.c:395-419; SR2_DATA angle table
 LIB3	11	2011	320x90	320x90	0	8267	5387		role	Instrument panel	renderer.ts	race_drive.c:318 DS:78C8
 LIB3	12	2012	320x90	320x90	0	7871	5655		role	Instrument panel	renderer.ts	race_drive.c:318 DS:78C8
@@ -263,13 +263,13 @@ LIB3	44	2044	40x18	40x18	1	284	219		role	racing body 2 / front / racing body 3 /
 LIB3	45	2045	96x46	96x46	1	1113	1088		role	racing body 3 / rear	cars.ts	race_road.c:395-419; SR2_DATA angle table
 LIB3	46	2046	120x46	120x46	1	1454	1287		role	racing body 3 / rear three-quarter	cars.ts	race_road.c:395-419; SR2_DATA angle table
 LIB3	47	2047	264x43	264x43	0	2560	1189		role	Location road sign sheet	landscape.ts	race_render.md:1087 DS:7E1A
-LIB3	48	2048	256x29	256x29	1	1847	1938		role	Crash cockpit composition		race_results.c:99-118; sr2port/src/game/race_results.c:103 crash_show
+LIB3	48	2048	256x29	256x29	1	1847	1938		role	Crash cockpit composition	scenes.ts; story-art.ts	race_results.c:99-118; sr2port/src/game/race_results.c:103 crash_show
 LIB3	49	2049	264x43	264x43	0	3398	1349		role	Roadside advertising	landscape.ts	race_road.c:386; sr2port/src/game/race_road.c:386 road_load_graphics
 LIB3	50	2050	264x43	264x43	0	3127	1831		role	Roadside advertising	landscape.ts	race_road.c:386; sr2port/src/game/race_road.c:387 road_load_graphics
-LIB3	51	2051	88x75	88x75	1	1373	1358		role	Speeding ticket scene portrait/figure		race_results.c:75-81; sr2port/src/game/race_results.c:76 ticket_show
-LIB3	52	2052	32x80	32x80	1	550	741		role	Collision windshield crack		race.md:187 DS:5136
-LIB3	53	2053	40x23	40x23	1	149	227		role	Collision windshield crack		race.md:187 DS:5136
-LIB3	54	2054	32x32	32x32	1	190	301		role	Collision windshield crack		race.md:187 DS:5136
+LIB3	51	2051	88x75	88x75	1	1373	1358		role	Speeding ticket scene portrait/figure	story-art.ts	race_results.c:75-81; sr2port/src/game/race_results.c:76 ticket_show
+LIB3	52	2052	32x80	32x80	1	550	741		role	Collision windshield crack	story-art.ts	race.md:187 DS:5136
+LIB3	53	2053	40x23	40x23	1	149	227		role	Collision windshield crack	story-art.ts	race.md:187 DS:5136
+LIB3	54	2054	32x32	32x32	1	190	301		role	Collision windshield crack	story-art.ts	race.md:187 DS:5136
 LIB3	55	2055	320x37	320x37	0	1937	2649		role	Sky, town roofs or horizon	landscape.ts	race_road.c:356-371; sr2port/src/game/race_road.c:360 road_load_graphics
 LIB3	56	2056	320x118	320x118	0	13992	7866		role	Sky, town roofs or horizon	landscape.ts	race_road.c:356-371; sr2port/src/game/race_road.c:371 road_load_graphics
 LIB3	57	2057	8x11	8x11	1	29	45		role	Starter distance variant	renderer.ts	race_opp.c:28-32; race_render.md:2035-2036
@@ -279,9 +279,9 @@ LIB3	60	2060	32x44	32x44	0	288	254		role	Cockpit overlay	renderer.ts	race_render
 LIB3	61	2061	256x7	256x7	1	143	382		role	Cockpit overlay	renderer.ts	race_render.md:1118 DS:78E0
 LIB3	62	2062	256x7	256x7	1	162	339		role	Cockpit overlay	renderer.ts	race_render.md:1118 DS:78E0
 LIB3	63	2063	80x11	80x11	0	149	221		role	Rear-view mirror or backdrop	renderer.ts	race_road.c:338-343
-LIB3	64	2064	320x108	320x108	1	9323	11940		role	Crash cockpit composition		race_results.c:99-118; sr2port/src/game/race_results.c:100 crash_show
-LIB3	65	2065	256x29	256x29	1	1992	1800		role	Crash cockpit composition		race_results.c:99-118; sr2port/src/game/race_results.c:104 crash_show
-LIB3	66	2066	48x21	48x21	0	381	253		role	Crash cockpit composition		race_results.c:99-118; sr2port/src/game/race_results.c:101 crash_show
+LIB3	64	2064	320x108	320x108	1	9323	11940		role	Crash cockpit composition	scenes.ts; story-art.ts	race_results.c:99-118; sr2port/src/game/race_results.c:100 crash_show
+LIB3	65	2065	256x29	256x29	1	1992	1800		role	Crash cockpit composition	scenes.ts; story-art.ts	race_results.c:99-118; sr2port/src/game/race_results.c:104 crash_show
+LIB3	66	2066	48x21	48x21	0	381	253		role	Crash cockpit composition	scenes.ts; story-art.ts	race_results.c:99-118; sr2port/src/game/race_results.c:101 crash_show
 LIB3	67	2067	48x82	48x82	0	1425	946		role	Start-line character/starting equipment	renderer.ts	race_render.md:2037-2046,2516
 LIB3	68	2068	144x82	144x82	1	3108	2919		role	Start-line character/starting equipment	renderer.ts	race_render.md:2037-2046,2516; sr2port/src/game/race_opp.c:29 start_props_load
 LIB3	69	2069	176x87	176x87	1	4727	3418		role	Start-line character/starting equipment	renderer.ts	race_render.md:2037-2046,2516
@@ -299,28 +299,28 @@ LIB3	80	2080	8x11	8x11	1	31	45		role	Starter distance variant	renderer.ts	race_o
 LIB3	81	2081	8x5	8x5	1	18	21		role	Starter distance variant	renderer.ts	race_opp.c:28-32; race_render.md:2035-2036
 LIB3	82	2082	104x82	104x82	1	1323	1263		role	racing body 0 / side	cars.ts	race_road.c:395-419; SR2_DATA angle table
 SR2_SHP	0	0						1x7; 707 spans	role	Palm tree	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	1	1						1x7; 48 spans	role	Reflector post	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	2	2						1x8; 388 spans	role	Hydrant		race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	1	1						1x7; 48 spans	role	Reflector post	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	2	2						1x8; 388 spans	role	Hydrant	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	3	3						1x7; 541 spans	role	Roadwork warning diamond	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	4	4						1x7; 196 spans	role	Small roadside shrub	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	5	5						1x7; 667 spans	role	Speed-limit sign	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	6	6						1x7; 615 spans	role	Striped barricade	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	6	6						1x7; 615 spans	role	Striped barricade	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	7	7						1x7; 120 spans	role	Small shrub / rock hazard	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	8	8						1x7; 293 spans	role	Bush	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	9	9						1x7; 340 spans	role	Telephone pole	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	10	10						1x7; 692 spans	role	Tree	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	11	11						1x7; 933 spans	role	Large tree	landscape.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	12	12						1x7; 417 spans	role	Overhead left-route banner		race_road.c:903-908; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	13	13						1x7; 715 spans	role	City boundary banner		race_road.c:903-908; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	14	14						1x7; 413 spans	role	Overhead straight-route banner		race_road.c:903-908; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	9	9						1x7; 340 spans	role	Telephone pole	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	10	10						1x7; 692 spans	role	Tree	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	11	11						1x7; 933 spans	role	Large tree	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	12	12						1x7; 417 spans	role	Overhead left-route banner	street-furniture.ts	race_road.c:903-908; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	13	13						1x7; 715 spans	role	City boundary banner	street-furniture.ts	race_road.c:903-908; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	14	14						1x7; 413 spans	role	Overhead straight-route banner	street-furniture.ts	race_road.c:903-908; race_render.md:1297-1312; SR1 race_render.md:1487-1506
 SR2_SHP	15	15						1x7; 598 spans	role	Road narrowing warning	hazards.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	16	16						1x7; 308 spans	role	Left chevron		race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	17	17						1x7; 307 spans	role	Right chevron		race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	18	18						1x7; 372 spans	role	Winding-road warning, left first		race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	19	19						1x7; 373 spans	role	Winding-road warning, right first		race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
-SR2_SHP	20	20						1x7; 146 spans	consumer	Secondary hit-test obstacle		race_road.c:1149-1241
-SR2_SHP	21	21						1x7; 354 spans	consumer	Canyon roadside object from left/right flags		race_road.c:1149-1241
-SR2_SHP	22	22						1x7; 463 spans	consumer	Distant canyon object from left/right flags		race_road.c:1149-1241
+SR2_SHP	16	16						1x7; 308 spans	role	Left chevron	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	17	17						1x7; 307 spans	role	Right chevron	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	18	18						1x7; 372 spans	role	Winding-road warning, left first	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	19	19						1x7; 373 spans	role	Winding-road warning, right first	street-furniture.ts	race_road.c:1149-1241; race_render.md:1297-1312; SR1 race_render.md:1487-1506
+SR2_SHP	20	20						1x7; 146 spans	consumer	Secondary hit-test obstacle	street-furniture.ts	race_road.c:1149-1241
+SR2_SHP	21	21						1x7; 354 spans	consumer	Canyon roadside object from left/right flags	street-furniture.ts	race_road.c:1149-1241
+SR2_SHP	22	22						1x7; 463 spans	consumer	Distant canyon object from left/right flags	street-furniture.ts	race_road.c:1149-1241
 SR2_SHP	23	23						1x7; 1126 spans	role	Aqueduct sky, rotation frames	landscape.ts	race_render.md:1700-1702
 SR2_SHP	24	24						1x7; 448 spans	role	Aqueduct sky, rotation frames	landscape.ts	race_render.md:1700-1702
 SR2_SHP	25	25						9x7; 1324 spans	role	Aqueduct course shape, nine groups at seven angles	renderer.ts	race_render.md:1693

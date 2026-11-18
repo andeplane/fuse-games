@@ -131,14 +131,14 @@ def metadata(data, ds):
         add(
             u16(data, 0x18C + 20 * i + 16),
             f"Side profile / model {i}",
-            "cars.ts",
+            "profile.ts",
             "garage_draw.c:152; SR2_DATA model +16",
         )
         for n, name in enumerate(("roof", "hood scoop", "rear bumper", "front bumper")):
             add(
                 u16(data, 0x344 + i * 10 + 2 + n * 2),
                 f"{name} / model {i}",
-                "cars.ts",
+                "profile.ts",
                 "garage_draw.c:155-162; SR2_DATA overlay",
             )
     for row in range(6):
@@ -189,7 +189,7 @@ def metadata(data, ds):
         ),
         (0x1CD2, 3, 10, "Shifter gate", "renderer.ts", "race.md:196"),
         (0x1CD4, 3, 10, "Gearshift knob", "renderer.ts", "race.md:196"),
-        (0x5136, 3, 6, "Collision windshield crack", "", "race.md:187"),
+        (0x5136, 3, 6, "Collision windshield crack", "story-art.ts", "race.md:187"),
     ]:
         table(address, count, stride, role, owner, site)
     return roles, add
@@ -198,15 +198,15 @@ def metadata(data, ds):
 def static_roles(add):
     # Picture roles resolved from explicit loads / ids in the pinned reconstruction.
     groups = [
-        ([1], "Title illustration", "app/main.ts", "game_flow.md:670"),
-        ([2], "Mouse pointer bank", "", "platform/screen.c:279"),
-        ([3], "Publisher title card", "", "game_flow.md:668"),
-        ([4], "Credits panel", "", "game_flow.md:675"),
+        ([1], "Title illustration", "story-art.ts", "game_flow.md:670"),
+        ([2], "Mouse pointer bank", "cursor.css", "platform/screen.c:279"),
+        ([3], "Publisher title card", "story-art.ts", "game_flow.md:668"),
+        ([4], "Credits panel", "story-art.ts", "game_flow.md:675"),
         ([1000], "Pump-number background", "town-art.ts", "game_flow.md:1033"),
         (
             [1001, 1002, 1003, 1004, 1005, 1006],
             "Licence or save-book interface",
-            "",
+            "story-art.ts; garage/index.ts",
             "game_flow.md:476; flow_save.c:151-154,236-239",
         ),
         (
@@ -270,7 +270,7 @@ def static_roles(add):
         (
             [1153, 1154, 1155],
             "Jail bars and trim",
-            "",
+            "story-art.ts",
             "race_bob.c:459-467; race.md:188",
         ),
         (
@@ -323,13 +323,18 @@ def static_roles(add):
             "renderer.ts",
             "race_opp.c:28-32; race_render.md:2035-2036",
         ),
-        ([2009], "Speeding ticket paper", "", "race_results.c:75-87"),
-        ([2051], "Speeding ticket scene portrait/figure", "", "race_results.c:75-81"),
+        ([2009], "Speeding ticket paper", "story-art.ts", "race_results.c:75-87"),
+        (
+            [2051],
+            "Speeding ticket scene portrait/figure",
+            "story-art.ts",
+            "race_results.c:75-81",
+        ),
         ([2013], "Top cockpit framing strip", "renderer.ts", "race_drive.c:313"),
         (
             [2048, 2064, 2065, 2066],
             "Crash cockpit composition",
-            "",
+            "scenes.ts; story-art.ts",
             "race_results.c:99-118",
         ),
     ]
@@ -342,25 +347,25 @@ def shape_role(i):
     source = "race_road.c:1149-1241"
     roles = [
         ("Palm tree", "landscape.ts"),
-        ("Reflector post", "landscape.ts"),
-        ("Hydrant", ""),
+        ("Reflector post", "street-furniture.ts"),
+        ("Hydrant", "street-furniture.ts"),
         ("Roadwork warning diamond", "hazards.ts"),
         ("Small roadside shrub", "landscape.ts"),
         ("Speed-limit sign", "hazards.ts"),
-        ("Striped barricade", "hazards.ts"),
+        ("Striped barricade", "street-furniture.ts"),
         ("Small shrub / rock hazard", "hazards.ts"),
         ("Bush", "landscape.ts"),
-        ("Telephone pole", "landscape.ts"),
-        ("Tree", "landscape.ts"),
-        ("Large tree", "landscape.ts"),
-        ("Overhead left-route banner", ""),
-        ("City boundary banner", ""),
-        ("Overhead straight-route banner", ""),
+        ("Telephone pole", "street-furniture.ts"),
+        ("Tree", "street-furniture.ts"),
+        ("Large tree", "street-furniture.ts"),
+        ("Overhead left-route banner", "street-furniture.ts"),
+        ("City boundary banner", "street-furniture.ts"),
+        ("Overhead straight-route banner", "street-furniture.ts"),
         ("Road narrowing warning", "hazards.ts"),
-        ("Left chevron", ""),
-        ("Right chevron", ""),
-        ("Winding-road warning, left first", ""),
-        ("Winding-road warning, right first", ""),
+        ("Left chevron", "street-furniture.ts"),
+        ("Right chevron", "street-furniture.ts"),
+        ("Winding-road warning, left first", "street-furniture.ts"),
+        ("Winding-road warning, right first", "street-furniture.ts"),
     ]
     if i < 20:
         return (
@@ -388,7 +393,7 @@ def shape_role(i):
         "Canyon roadside object from left/right flags",
         "Distant canyon object from left/right flags",
     ]
-    return consumers[i - 20], "", source, "consumer"
+    return consumers[i - 20], "street-furniture.ts", source, "consumer"
 
 
 def generate(build, ref, mz):
