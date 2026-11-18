@@ -521,6 +521,21 @@ function room(solo: boolean): void {
   );
 
   const board = keyboardControls(() => modalInput.blocked());
+  if (probe) {
+    Reflect.set(window, "__driversRaceProbe", () => {
+      const state = runtime.roomState();
+      const metrics = runtime.metrics();
+      return {
+        phase: state?.race?.phase,
+        tick: state?.tick,
+        hashChecks: metrics.hashChecks,
+        mismatches: metrics.mismatches,
+        trucks: state?.race?.trucks.map(truck => ({
+          x: truck.motion.x, y: truck.motion.y, nitros: truck.nitros,
+        })),
+      };
+    });
+  }
   const stopPlaytestInput = registerPlaytestInput(document, {
     cancel: () => {
       board.clear();

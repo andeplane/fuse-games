@@ -4,6 +4,20 @@ import { mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
 import type { Page } from "playwright";
 
+interface RaceProbe {
+  phase?: string;
+  tick: number;
+  hashChecks: number;
+  mismatches: number;
+  trucks?: { x: number; y: number; nitros: number }[];
+}
+
+declare global {
+  interface Window {
+    __driversRaceProbe?: () => RaceProbe;
+  }
+}
+
 async function renderedArena(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const canvas = document.querySelector<HTMLCanvasElement>(".fd-arena");
@@ -48,7 +62,7 @@ try {
   await host.waitForURL(/room=/);
   const code = new URL(host.url()).searchParams.get("room")!;
   await takeHostSeat(host, "Ada");
-  await peer.goto(new URL(`fuse-drivers/?room=${code}&mute`, origin).href);
+  await peer.goto(new URL(`fuse-drivers/?room=${code}&mute&probe`, origin).href);
   await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
   // Shared TV is the room's choice: the host ticks it in the room, and the button beside it opens the screen.
@@ -57,7 +71,7 @@ try {
     .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
     .waitFor();
   await tv.goto(
-    new URL(`fuse-drivers/?room=${code}&display=1&mute`, origin).href,
+    new URL(`fuse-drivers/?room=${code}&display=1&mute&probe`, origin).href,
   );
   await host.screenshot({ path: "artifacts/fuse-drivers/room-lobby.png" });
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
@@ -71,6 +85,32 @@ try {
   await host.locator(".fd-arena").waitFor({ state: "hidden" });
   await peer.locator(".fd-arena").waitFor({ state: "hidden" });
   await tv.locator(".fd-pad").waitFor({ state: "hidden" });
+  await peer.waitForFunction(() => window.__driversRaceProbe?.().phase === "racing");
+  const start = await tv.evaluate(() => window.__driversRaceProbe?.().trucks?.[1]);
+  assert.ok(start, "the TV has the second driver's grid position");
+  const gas = peer.getByRole("button", { name: "GAS", exact: true });
+  await gas.hover();
+  await peer.mouse.down();
+  try {
+    await tv.waitForFunction(({x,y}) => {
+      const truck = window.__driversRaceProbe?.().trucks?.[1];
+      return !!truck && (truck.x !== x || truck.y !== y);
+    }, start);
+  } finally {
+    await peer.mouse.up();
+  }
+  await peer.getByRole("button", { name: "NITRO", exact: true }).hover();
+  await peer.mouse.down();
+  try {
+    await tv.waitForFunction(stock =>
+      (window.__driversRaceProbe?.().trucks?.[1]?.nitros ?? stock) < stock, start.nitros);
+  } finally {
+    await peer.mouse.up();
+  }
+  // Compare actual accepted game-state hashes after the controls have crossed the mesh.
+  const checked = await peer.evaluate(() => window.__driversRaceProbe!().hashChecks);
+  await peer.waitForFunction(n => window.__driversRaceProbe!().hashChecks > n + 2, checked);
+  assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
   await peer.screenshot({ path: "artifacts/fuse-drivers/phone-race.png" });
   await host.screenshot({ path: "artifacts/fuse-drivers/room-race.png" });
   await tv.screenshot({ path: "artifacts/fuse-drivers/tv-race.png" });
@@ -86,6 +126,11 @@ try {
     1,
     "recovery does not duplicate the driver's roster row",
   );
+  await peer.waitForFunction(stock => {
+    const state = window.__driversRaceProbe?.();
+    return !!state && state.hashChecks >= 2 && (state.trucks?.[1]?.nitros ?? stock) < stock;
+  }, start.nitros);
+  assert.equal(await peer.evaluate(() => window.__driversRaceProbe!().mismatches), 0);
   assert.deepEqual(failures, []);
   console.log(
     "Fuse Drivers solo, portal, two-peer room and reload smoke passed",
