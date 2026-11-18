@@ -1,4 +1,4 @@
-import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
+import { requestedRoomSlot } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -469,7 +469,11 @@ function logo(): HTMLElement {
   );
   return brand;
 }
-function header(extra: HTMLElement[] = []): HTMLElement {
+function header(
+  extra: HTMLElement[] = [],
+  getSettings?: () => ReturnType<typeof settingsPanel>,
+): HTMLElement {
+  let panel: ReturnType<typeof settingsPanel> | undefined;
   const bar = el("header", "", "fm-top");
   const portal = createAppPortal({
     document,
@@ -490,15 +494,13 @@ function header(extra: HTMLElement[] = []): HTMLElement {
     element: bar,
     gameId: GAME,
     sound: audioControl.sound,
+    playerOptions: () => {
+      panel ??= getSettings?.() ?? settingsPanel();
+      panel.refresh();
+      return panel.element;
+    },
+    onPlayerOptionsClose: () => panel?.cancel(),
   });
-}
-
-function keyHelp(): HTMLElement {
-  const list = el("div");
-  const fill = () => list.replaceChildren(createHowToPlay(guide()));
-  fill();
-  list.addEventListener("fm-refresh", fill);
-  return list;
 }
 
 /** The keys, the scroll and the timing offsets, saved the moment they change. */
@@ -729,7 +731,6 @@ function landing(): void {
   const settings = settingsPanel(() => {
     showOptions();
   });
-  card.menu.addSettings(settings.element);
   /** The select sits in the menu's own dialog: only another one on top takes the keys away. */
   const otherDialogOpen = () =>
     [...document.querySelectorAll("dialog[open]")].some(
@@ -761,7 +762,10 @@ function landing(): void {
   allGames.href = BASE + (muted ? "?mute" : "");
   const menu = createGameMenu(guide());
   menu.update({ canLobby: false, canLeave: false, touch: coarse() });
-  app.replaceChildren(header([allGames, menu.element]), card.element);
+  app.replaceChildren(
+    header([allGames, menu.element], () => settings),
+    card.element,
+  );
   picker.update({ ...choice, host: true });
   showOptions();
   preview.show(choice.song);
@@ -958,7 +962,7 @@ function enterRoom(
   });
   const roundControls = createRoundControls(quickGuide());
   // The room's code is on its invitation and its state at the lobby's foot: the bar holds neither.
-  const top = header([menu.element]);
+  const top = header([menu.element], () => panel);
   createTopBar({
     music: false,
     element: top,
@@ -1120,19 +1124,12 @@ function enterRoom(
     picker: picker.element,
     options: options.element,
     session: lobbySession.element,
-    onOpenChange: (open) => {
-      if (open) panel.refresh();
-      else panel.cancel();
-    },
   });
   lobby.append(lobbyMain);
-  const help = keyHelp();
   const panel = settingsPanel(() => {
-    help.dispatchEvent(new Event("fm-refresh"));
     showOptions();
+    playMenu.speed(prefs.speed);
   });
-
-  lobbyBar.menu.panel.append(panel.element, help);
   lobbyBar.menu.element.hidden = display;
 
   // The song: the canvas, the result over it, the touch pads under it.
