@@ -67,6 +67,19 @@ test("the match bar mutes and unmutes sound and saves the choice", async () => {
   assert.deepEqual(f.written, [false, true]);
 });
 
+test("closing the top-right menu returns focus to a playing board", async () => {
+  const f = fixture();
+  await f.startSkirmish();
+  const dialog = f.root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  const board = f.root.querySelector<SVGSVGElement>("#nd-board")!;
+  // linkedom does not implement focus on SVG elements.
+  board.focus = () => f.focus(board);
+  f.focus(f.root.querySelector(".fui-top-bar-toggle"));
+  dialog.dispatchEvent(new f.root.ownerDocument.defaultView!.Event("close"));
+  assert.equal(f.active(), board);
+  f.app.dispose();
+});
+
 test("dialogs open and close with their own interface cues", async () => {
   const f = fixture();
   await f.startSkirmish();

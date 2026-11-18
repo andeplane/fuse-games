@@ -203,6 +203,7 @@ export function createMatchShell(actions: {
     /** Shows the room over the arena, or the arena. */
     open,
     isOpen: () => !lounge.hidden,
+    arenaVisible: () => lounge.hidden && !results.open,
     /** The room's line: the connection, as the room reports it. */
     say(text: string) {
       status.textContent = text;

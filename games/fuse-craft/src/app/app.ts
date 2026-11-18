@@ -376,11 +376,19 @@ export function mountFuseCraft(
   function menuInputChanged(open: boolean) {
     for (const direction of Object.values(ARROWS))
       camera?.hold(direction, false);
-    camera?.setEdgeScroll(
-      !open &&
-        !root.querySelector(".fui-top-bar-menu[open]") &&
-        preferences.edgeScroll,
-    );
+    const blocked = open || !!root.ownerDocument.querySelector("dialog[open]");
+    camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
+    if (
+      !blocked &&
+      screen === "game" &&
+      session?.canControl &&
+      !pending &&
+      !helpOpen &&
+      !results.open
+    )
+      root
+        .querySelector<SVGSVGElement>("#nd-board")
+        ?.focus?.({ preventScroll: true });
   }
   const gameMenu = createGameMenu({
     ...controlsOptions,

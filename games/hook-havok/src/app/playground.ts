@@ -1475,6 +1475,24 @@ const matchShell = createMatchShell({
   },
 });
 const knockoutFeed = createKnockoutFeed(document.querySelector(".stage")!);
+function menuInputChanged(open: boolean) {
+  clear();
+  // Both Back and Escape resume movement at the arena, whichever menu was open.
+  const resume =
+    !open &&
+    !!runtime &&
+    !display &&
+    matchShell.arenaVisible() &&
+    !modalInput.blocked();
+  if (resume) host.focus({ preventScroll: true });
+  const local = latest.keepers.find((keeper) => keeper.id === selfId);
+  touch?.enable(
+    resume &&
+      touchToggle.checked &&
+      (latest.contest.rules === "free" ||
+        (latest.contest.phase === "active" && !!local?.playing)),
+  );
+}
 const menu = createGameMenu({
   controls: HOOK_CONTROLS,
   touchControls: HOOK_TOUCH_CONTROLS,
@@ -1483,21 +1501,7 @@ const menu = createGameMenu({
     matchShell.open(true);
   },
   onLeave: () => el<HTMLButtonElement>("leave-room").click(),
-  onOpenChange(open) {
-    clear();
-    // Movement keys are handled on the arena, so resuming must return keyboard focus there.
-    if (!open && runtime && !display) host.focus({ preventScroll: true });
-    const local = latest.keepers.find((keeper) => keeper.id === selfId);
-    touch?.enable(
-      !open &&
-        !modalInput.blocked() &&
-        !display &&
-        touchToggle.checked &&
-        !!runtime &&
-        (latest.contest.rules === "free" ||
-          (latest.contest.phase === "active" && !!local?.playing)),
-    );
-  },
+  onOpenChange: menuInputChanged,
 });
 const roundControls = createRoundControls({
   controls: HOOK_CONTROLS,
@@ -1525,6 +1529,7 @@ document.querySelector("main")!.append(roundControls.element);
 menu.update({ canLobby: false, canLeave: false, touch: touchToggle.checked });
 createTopBar({
   element: gameHeader,
+  onOpenChange: menuInputChanged,
   brand: el("home"),
   music: false,
   gameId: "hook-havok",
