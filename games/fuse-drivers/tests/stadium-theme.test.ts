@@ -2,6 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readStadiumTheme, storeStadiumTheme } from "../src/app/arena/theme.js";
 import type { Store } from "../src/app/session.js";
+import {
+  courseAccent,
+  coursePalette,
+} from "../src/app/arena/course-palette.js";
+
+test("course previews and arena rails share a distinct palette in both directions", () => {
+  const courses = Array.from({ length: 8 }, (_, i) => "offroad-" + (i + 1));
+  assert.equal(new Set(courses.map(courseAccent)).size, 8);
+  assert.equal(new Set(courses.map((id) => coursePalette(id).dirt[3])).size, 8);
+  for (const id of courses) {
+    assert.equal(coursePalette(id + "-reverse"), coursePalette(id));
+    assert.equal(courseAccent(id), coursePalette(id).accent);
+  }
+});
 
 test("the public stadium and private reference launcher have distinct first-run themes", () => {
   const store = { getItem: () => null };

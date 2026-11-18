@@ -5,6 +5,7 @@ import type {
 } from "../../game/offroad/terrain.js";
 import type { Point, Track } from "../../game/sim/track.js";
 import type { StadiumTheme } from "./theme.js";
+import { coursePalette } from "./course-palette.js";
 import {
   deckMaterial,
   drawFuseRails,
@@ -128,7 +129,8 @@ export function paintOffroadGround(
   const pixel = canvas.getContext("2d");
   if (!pixel) return;
   pixel.scale(resolution, resolution);
-  const deck = fuse ? deckMaterial(pixel) : "#82430e";
+  const palette = coursePalette(track.name);
+  const deck = fuse ? deckMaterial(pixel, palette) : "#82430e";
   const footprint = fuse ? new Path2D() : undefined;
   const scaleX = WIDTH / ctx.canvas.width;
   const scaleY = HEIGHT / ctx.canvas.height;
@@ -195,7 +197,7 @@ export function paintOffroadGround(
         }
         pixel.fillStyle = pixel.strokeStyle = fuse
           ? onCourse || sample.kind === 2
-            ? floodlitFacet(sample, onCourse)
+            ? floodlitFacet(sample, palette)
             : deck
           : paintFacet(sample);
         pixel.beginPath();
@@ -209,10 +211,10 @@ export function paintOffroadGround(
     }
   }
   if (footprint) {
-    furnishStadium(pixel, footprint);
-    markFuseTrack(pixel, footprint, track, scaleX, scaleY);
+    furnishStadium(pixel, footprint, palette);
+    markFuseTrack(pixel, footprint, track, scaleX, scaleY, palette);
     finishFuseMaterials(pixel);
-    drawFuseRails(pixel, [...edges.values()]);
+    drawFuseRails(pixel, [...edges.values()], palette);
   } else {
     // A sparse one-pixel dither gives flat dirt a surface without obscuring the shading on jumps.
     const dirt = pixel.getImageData(0, 0, WIDTH, HEIGHT);

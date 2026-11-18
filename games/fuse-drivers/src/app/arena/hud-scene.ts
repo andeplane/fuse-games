@@ -10,7 +10,7 @@ import {
 import type { ArenaFrame } from "./frame.js";
 import { courseLabel } from "../course-label.js";
 import { raceViewport } from "./race-scene.js";
-import { buildFuseTimingBoard } from "./fuse-hud.js";
+import { buildFuseTimingBoard, drawFuseCrowd } from "./fuse-hud.js";
 import type { StadiumTheme } from "./theme.js";
 
 const FONT: Phaser.Types.GameObjects.Text.TextStyle = {
@@ -188,6 +188,11 @@ export class HudScene extends Phaser.Scene {
     const { width, height } = config.screen;
     const trucks = frame.race.trucks;
     if (this.theme === "fuse") {
+      drawFuseCrowd(
+        this,
+        frame.track.name,
+        raceViewport(frame.track, false, true),
+      );
       const board = buildFuseTimingBoard(this, frame);
       this.clock = board.clock;
       this.course = board.course;

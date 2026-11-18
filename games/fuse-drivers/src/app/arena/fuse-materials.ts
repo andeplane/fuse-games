@@ -1,59 +1,43 @@
 import type { OffroadTerrainSample } from "../../game/offroad/terrain.js";
 import type { Point } from "../../game/sim/track.js";
 import type { Track } from "../../game/sim/track.js";
+import type { CoursePalette } from "./course-palette.js";
 
 /** Each terraced stadium is lit from the upper left. The plateau, approach and far face
  * deliberately have different values so a crest remains readable without its rail. */
-const ASPHALT = [
-  "#182037",
-  "#29344c",
-  "#3b4661",
-  "#515d78",
-  "#626e89",
-  "#8492a8",
-  "#becbda",
-];
-const WATER = [
-  "#093047",
-  "#095067",
-  "#0e687a",
-  "#198b96",
-  "#38a5a8",
-  "#65bbbc",
-  "#a2dcce",
-];
-
 export function floodlitFacet(
   sample: OffroadTerrainSample,
-  onCourse: boolean,
+  palette: CoursePalette,
 ): string {
   const grade = Math.round(3 - (sample.slopeX + 1.6 * sample.slopeY) / 6);
-  if (sample.kind === 2) return WATER[Math.min(6, Math.max(0, grade))]!;
-  return onCourse ? ASPHALT[Math.min(6, Math.max(0, grade))]! : "#1d2537";
+  return (sample.kind === 2 ? palette.water : palette.dirt)[
+    Math.min(6, Math.max(0, grade))
+  ]!;
 }
 
 /** A maintenance deck visible between the bends. Repeating panels, cooling slots and
  * seam fasteners share one tiny material swatch; the driving surface stays quieter. */
 export function deckMaterial(
   ctx: CanvasRenderingContext2D,
+  palette: CoursePalette,
 ): CanvasPattern | string {
   const tile = ctx.canvas.ownerDocument.createElement("canvas");
   tile.width = 32;
   tile.height = 20;
   const ink = tile.getContext("2d");
-  if (!ink) return "#1d2537";
-  ink.fillStyle = "#192235";
+  if (!ink) return palette.deck;
+  ink.fillStyle = palette.deck;
   ink.fillRect(0, 0, 32, 20);
-  ink.fillStyle = "#222d41";
+  ink.fillStyle = palette.panel;
   ink.fillRect(1, 1, 30, 17);
-  ink.fillStyle = "#2d394e";
+  ink.fillStyle = palette.trim;
   ink.fillRect(2, 1, 26, 1);
-  ink.fillStyle = "#111b2d";
+  ink.fillStyle = palette.seam;
   for (let i = 0; i < 4; i++) ink.fillRect(5 + i * 3, 13, 2, 3);
-  ink.fillStyle = "#4c5b6e";
+  ink.fillStyle = palette.accent;
   ink.fillRect(27, 4, 1, 1);
   ink.fillRect(27, 15, 1, 1);
-  return ctx.createPattern(tile, "repeat") ?? "#1d2537";
+  return ctx.createPattern(tile, "repeat") ?? palette.deck;
 }
 
 export interface StadiumEdge {
@@ -67,6 +51,7 @@ export interface StadiumEdge {
 export function drawFuseRails(
   ctx: CanvasRenderingContext2D,
   edges: readonly StadiumEdge[],
+  palette: CoursePalette,
 ): void {
   ctx.lineCap = "round";
   function strip(
@@ -91,9 +76,9 @@ export function drawFuseRails(
       ctx.stroke();
     }
   }
-  strip(0.9, 2.5, () => "#161b2b");
-  strip(-0.45, 2.1, () => "#354459");
-  strip(-1.25, 1.1, (e) => (e.stripe ? "#28e5d4" : "#ffa865"), 0.045);
+  strip(0.9, 2.5, () => palette.seam);
+  strip(-0.45, 2.1, () => palette.trim);
+  strip(-1.25, 1.1, (e) => (e.stripe ? palette.accent : palette.kerb), 0.045);
   strip(-1.55, 0.32, (e) => (e.stripe ? "#b5fff0" : "#fff0c4"), 0.075);
 }
 
@@ -119,9 +104,42 @@ export function markFuseTrack(
   track: Track,
   sx: number,
   sy: number,
+  palette: CoursePalette,
 ): void {
   ctx.save();
   ctx.clip(footprint);
+  // Small aggregate clusters, sediment ripples and ice fissures break up the flat stretches.
+  // They are translucent so the underlying takeoff slopes and water crossings stay legible.
+  let seed = 0x4f913;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  };
+  ctx.lineWidth = 0.28;
+  for (let i = 0; i < 2300; i++) {
+    const x = random() * 320,
+      y = random() * 200,
+      size = random();
+    ctx.strokeStyle = i % 3 ? palette.dirt[0]! + "46" : palette.dirt[6]! + "82";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    switch (palette.surface) {
+      case "sand":
+        ctx.quadraticCurveTo(x + 1.1, y - 0.65, x + 2.2 + size, y - 0.35);
+        break;
+      case "ice":
+        ctx.lineTo(x + 1.1, y - 0.5);
+        ctx.lineTo(x + 2.3 + size, y - 0.35);
+        break;
+      case "stone":
+        ctx.lineTo(x + 0.5, y - size * 0.65);
+        ctx.lineTo(x + 1.2, y);
+        break;
+      case "clay":
+        ctx.lineTo(x + 0.35 + 0.8 * size, y - 0.15);
+    }
+    ctx.stroke();
+  }
   const waypoints = track.waypoints.map((p) => ({ x: p.x * sx, y: p.y * sy }));
   const tireBand = (offset: number, width: number, color: string) => {
     ctx.save();
@@ -175,6 +193,7 @@ export function markFuseTrack(
 export function furnishStadium(
   ctx: CanvasRenderingContext2D,
   footprint: Path2D,
+  palette: CoursePalette,
 ): void {
   const mask = ctx.canvas.ownerDocument.createElement("canvas");
   mask.width = 320;
@@ -200,12 +219,18 @@ export function furnishStadium(
     ctx.fillRect(x, y, w, h);
   };
   function grandstand(x: number, y: number) {
-    rect(x + 1, y + 1, 21, 7, "#111a29");
+    rect(x + 1, y + 1, 21, 7, palette.seam);
     for (let row = 0; row < 3; row++) {
-      rect(x, y + row * 2.1, 21, 1.75, "#415368");
+      rect(x, y + row * 2.1, 21, 1.75, palette.trim);
       rect(x, y + row * 2.1 + 1.4, 21, 0.5, "#111b2a");
       for (let seat = 0; seat < 12; seat++) {
-        const colors = ["#53aaac", "#a0aaaa", "#bd917a", "#586b89", "#ba7387"];
+        const colors = [
+          palette.accent,
+          "#ff567f",
+          "#ffc337",
+          "#61d6ff",
+          palette.kerb,
+        ];
         const hash = (seat * 7 + row * 23 + x + y + seat * row) % 17;
         if (hash % 6 === 0) continue;
         rect(
@@ -215,10 +240,17 @@ export function furnishStadium(
           1.3,
           colors[hash % colors.length]!,
         );
+        rect(
+          x + 0.85 + seat * 1.65,
+          y + row * 2.1 - 0.1,
+          0.63,
+          0.52,
+          hash % 3 ? "#ffcb9d" : "#be815c",
+        );
       }
     }
     rect(x, y + 6.3, 21, 0.75, "#0b1828");
-    rect(x + 0.5, y + 6.3, 20, 0.35, "#63c2c1");
+    rect(x + 0.5, y + 6.3, 20, 0.35, palette.accent);
   }
   // Stadium galleries form continuous rows around the outside, with access corridors
   // through the ends. Blocks inside hairpins face the cars from a lower terrace.
@@ -232,8 +264,8 @@ export function furnishStadium(
     for (let x = 9; x < 312; x += 18) {
       if (!plot(x, y, 12, 8)) continue;
       rect(x + 1, y + 3, 10, 4, "#0e1826");
-      rect(x + 1, y + 2, 9, 3.8, "#3a4e60");
-      rect(x + 2, y + 1, 7, 1.8, "#61717b");
+      rect(x + 1, y + 2, 9, 3.8, palette.trim);
+      rect(x + 2, y + 1, 7, 1.8, palette.kerb);
       for (let vent = 0; vent < 4; vent++)
         rect(x + 2 + vent * 1.7, y + 2.5, 0.7, 2, "#172437");
       rect(x + 1.5, y + 5.5, 2.5, 0.5, "#efaa63");

@@ -28,6 +28,7 @@ const localReference =
 export function raceViewport(
   track: Track,
   reference = false,
+  spectatorSeats = false,
 ): {
   x: number;
   y: number;
@@ -40,8 +41,9 @@ export function raceViewport(
     worldH = track.rows * config.tile;
   const aspect = reference ? worldW / 320 / (worldH / 200) : 1;
   const zoom = Math.min(
-    (config.screen.width - 2 * STANDS.side) / worldW,
-    (config.screen.height - STANDS.top) / (worldH * aspect),
+    (config.screen.width - 2 * (spectatorSeats ? 39 : STANDS.side)) / worldW,
+    (config.screen.height - (spectatorSeats ? 153 : STANDS.top)) /
+      (worldH * aspect),
   );
   return {
     x: (config.screen.width - worldW * zoom) / 2,
@@ -144,7 +146,7 @@ export class RaceScene extends Phaser.Scene {
     this.game.canvas.style.imageRendering = reference ? "pixelated" : "";
     if (!reference) this.art = createTrackArt(this, track, theme);
     this.artTrack = track.name;
-    const view = raceViewport(track, reference);
+    const view = raceViewport(track, reference, theme === "fuse");
     this.cameras.main
       .setViewport(view.x, view.y, view.width, view.height)
       .setZoom(view.zoom, view.zoomY)
