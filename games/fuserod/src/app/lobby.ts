@@ -30,10 +30,10 @@ export function raceLobby(opts: {
     expires = 0;
   function configure(patch: Partial<FuserodSettings>) {
     const next = { ...(requested ?? current), ...patch };
-    if (runtime().command({ type: "settings", settings: next })) {
-      requested = next;
-      expires = tick + 40;
-    }
+    if (!runtime().command({ type: "settings", settings: next })) return false;
+    requested = next;
+    expires = tick + 40;
+    return true;
   }
   const element = el("section"),
     roster = createRoster({ emptyText: "Waiting for drivers" });
