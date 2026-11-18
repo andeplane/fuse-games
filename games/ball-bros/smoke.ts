@@ -52,13 +52,22 @@ try {
   await page
     .getByText("SPACE TO LAUNCH", { exact: true })
     .waitFor({ state: "hidden" });
-  // The radio sits in the header's game menu. Checked once the ball is away, so the countdown steps above keep
-  // the arena's keys; closing the menu leaves focus on the header, so hand it back to the arena.
+  // The silent preview exposes the radio controls and prevents playback or skipping tracks.
   await gameMenu.click();
-  await page.getByRole("button", { name: "Next radio track" }).click();
-  await page.getByRole("button", { name: "RADIO OFF", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Radio", exact: true }).click();
+  const radio = page.getByRole("dialog", { name: "Radio", exact: true });
+  assert.equal(
+    await radio.getByRole("button", { name: "Next radio track" }).isDisabled(),
+    true,
+  );
+  assert.equal(
+    await radio
+      .getByRole("button", { name: "RADIO OFF", exact: true })
+      .isDisabled(),
+    true,
+  );
   await page.keyboard.press("Escape");
-  await page.locator(".canvas-host").click({ position: { x: 20, y: 20 } });
+  await page.keyboard.press("Escape");
   await page.waitForFunction(
     () =>
       [...document.querySelectorAll(".scorecard strong")].some(

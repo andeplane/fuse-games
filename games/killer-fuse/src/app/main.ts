@@ -218,19 +218,13 @@ function header(extra: HTMLElement[] = []): HTMLElement {
   return createTopBar({
     element: bar,
     gameId: GAME,
+    playerOptions: () => preferences(),
     sound: {
       forcedMute,
-      enabled: () => {
-        const choices = soundChoices();
-        return !choices.muted && (choices.musicOn || choices.effectsOn);
-      },
+      enabled: () => !soundChoices().muted,
       setEnabled: (on) => {
         if (forcedMute) return;
         store.setItem(MUTED, on ? "0" : "1");
-        if (on) {
-          store.setItem(MUSIC_ON, "1");
-          store.setItem(EFFECTS_ON, "1");
-        }
       },
     },
   });
@@ -284,73 +278,27 @@ const probe = query.has("probe");
 const forcedMute = query.has("mute");
 interface SoundChoices {
   muted: boolean;
-  musicOn: boolean;
   effectsOn: boolean;
-}
-interface SoundButtons {
-  mute: HTMLButtonElement;
-  music: HTMLButtonElement;
-  effects: HTMLButtonElement;
 }
 /** This device's stored sound choices, with `?mute` overriding the master one. */
 const soundChoices = (): SoundChoices => ({
-  muted: forcedMute || store.getItem(MUTED) === "1",
-  musicOn: store.getItem(MUSIC_ON) !== "0",
+  muted:
+    forcedMute ||
+    (store.getItem(MUTED) === null
+      ? store.getItem(MUSIC_ON) === "0" && store.getItem(EFFECTS_ON) === "0"
+      : store.getItem(MUTED) === "1"),
   effectsOn: store.getItem(EFFECTS_ON) !== "0",
 });
-/** The three sound buttons' text and pressed state; the master switch hushes the other two. */
-function showSoundChoices(
-  buttons: SoundButtons,
-  { muted, musicOn, effectsOn }: SoundChoices,
-): void {
-  buttons.mute.textContent = muted ? "SOUND OFF" : "SOUND ON";
-  buttons.mute.setAttribute("aria-pressed", String(muted));
-  buttons.mute.title = muted ? "Turn the sound on" : "Turn the sound off";
-  buttons.music.textContent = musicOn ? "MUSIC" : "MUSIC OFF";
-  buttons.music.setAttribute("aria-pressed", String(!musicOn));
-  buttons.music.title = musicOn ? "Turn the music off" : "Turn the music on";
-  buttons.effects.textContent = effectsOn ? "SFX" : "SFX OFF";
-  buttons.effects.setAttribute("aria-pressed", String(!effectsOn));
-  buttons.effects.title = effectsOn
-    ? "Turn the sound effects off"
-    : "Turn the sound effects on";
-  for (const toggle of [buttons.music, buttons.effects])
-    toggle.disabled = muted;
-}
-
-/** The row of sound buttons, each writing its choice to this device's storage. */
-function soundRow(onChange: () => void = () => undefined): HTMLElement {
-  const row = el("div", "", "kf-sound"),
-    buttons: SoundButtons = {
-      mute: button("", "kf-mute"),
-      music: button("", "kf-mute kf-sub-toggle"),
-      effects: button("", "kf-mute kf-sub-toggle"),
-    };
-  const show = () => showSoundChoices(buttons, soundChoices());
-  const write = (key: string, on: boolean) => {
-    store.setItem(key, on ? "1" : "0");
-    show();
-    onChange();
-  };
-  buttons.mute.onclick = () => write(MUTED, !soundChoices().muted);
-  buttons.music.onclick = () => write(MUSIC_ON, !soundChoices().musicOn);
-  buttons.effects.onclick = () => write(EFFECTS_ON, !soundChoices().effectsOn);
-  show();
-  row.append(buttons.effects);
-  return row;
-}
-
-/**
- * The main menu's Settings: this device's preferences, the sound switches and Hold to flap. Shared TV is a room's
- * choice and is made in the room.
- */
-function preferences(): HTMLElement[] {
-  return [
-    el("p", "SOUND", "kf-pref-title"),
-    soundRow(),
-    el("p", "CONTROLS", "kf-pref-title"),
-    holdToFlapToggle(),
-  ];
+/** Device controls apply immediately, including when opened over a running match. */
+function preferences(onEffectsChange?: (on: boolean) => void): HTMLElement {
+  const panel = el("div", "", "kf-preferences");
+  const effects = checkbox("Sound effects", soundChoices().effectsOn, (on) => {
+    store.setItem(EFFECTS_ON, on ? "1" : "0");
+    onEffectsChange?.(on);
+  });
+  effects.querySelector("input")!.disabled = forcedMute;
+  panel.append(effects, holdToFlapToggle());
+  return panel;
 }
 
 /**
@@ -410,9 +358,7 @@ function guideNodes(): HTMLElement[] {
     el("h4", HOLD_TO_FLAP.label.toUpperCase()),
     el("p", HOLD_TO_FLAP.how, "kf-how-goal"),
   ];
-}
-
-/**
+} /**
  * How to play: a button for the lobby that opens the whole guide in a dialog (Escape or Back shuts it).
  * `#how-to-play` in the address opens it on load.
  */
@@ -446,7 +392,7 @@ function howToPlay(): HTMLElement {
     open.focus();
   });
   const wrap = el("div", "", "kf-how-entry");
-  wrap.append(open, holdToFlapToggle(), dialog);
+  wrap.append(open, dialog);
   if (location.hash === "#how-to-play") queueMicrotask(show);
   return wrap;
 }
@@ -507,7 +453,6 @@ function landing(): void {
   });
   // Join by code, PLAY SOLO WITH BOTS and the tutorial stay together behind the menu's secondary action.
   card.create.parentElement!.after(tutorialList());
-  card.menu.addSettings(...preferences());
   const back = el("a", "← FUSE RIDERS", "kf-back");
   back.href = import.meta.env.BASE_URL;
   // The shared menu is the page: it fills the window so the demo behind it does too.
@@ -623,7 +568,7 @@ function room(solo: boolean): void {
   tipBox.append(tipTitle, tipHints, tipText);
   let lobbySince = performance.now(),
     tipShown = "";
-  let { muted, musicOn, effectsOn } = soundChoices();
+  let { muted, effectsOn } = soundChoices();
   const music = new Music(browserMusicDeps(MUSIC_URL), {
     muted: true,
     on: false,
@@ -650,16 +595,18 @@ function room(solo: boolean): void {
   const top = header([live.element, menu.element]);
   createTopBar({
     element: top,
+    playerOptions: () =>
+      preferences((on) => {
+        effectsOn = on;
+        applySound();
+      }),
     sound: {
       forcedMute,
-      enabled: () => !muted && (musicOn || effectsOn),
+      enabled: () => !muted,
       setEnabled: (on) => {
         if (forcedMute) return;
         muted = !on;
-        if (on) musicOn = effectsOn = true;
         store.setItem(MUTED, muted ? "1" : "0");
-        store.setItem(MUSIC_ON, musicOn ? "1" : "0");
-        store.setItem(EFFECTS_ON, effectsOn ? "1" : "0");
         applySound();
       },
     },

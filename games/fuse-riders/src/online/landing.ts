@@ -3,7 +3,7 @@
  * PLAY SOLO, SETTINGS, the app portal and the account panel all live here. The room itself is `ui.ts`'s: the landing
  * page talks to it through `LandingHost`, and leaving for a room keeps the document (and so the music) alive.
  */
-import { createTopBar } from "fuse-ui";
+import { createTopBar, openTopBarRadio } from "fuse-ui";
 import {
   button,
   createAppPortal,
@@ -24,7 +24,7 @@ import {
   SETTINGS_KEY,
 } from "../engine/room-settings.js";
 import { GAME_ID } from "../shared/game-id.js";
-import { createAnalyticsSetting } from "./analytics-setting.js";
+import { createRiderOptions } from "./player-options.js";
 import { startAnalytics, track } from "./analytics.js";
 import { FUSE_DIALOG_CLASSES } from "./dialogs/shell.js";
 import { node } from "./dom.js";
@@ -252,8 +252,8 @@ export function showLanding(host: LandingHost): void {
   });
   // The landing page has no room and no snapshots, so its music is background music the toggle owns outright.
   const landingAudio = host.audio;
-  topEnd.prepend(landingAudio.controls);
-  host.setRadioToggle(() => landingAudio.controls.toggleAttribute("open"));
+  const preferences = createRiderOptions(landingAudio.mixer);
+  host.setRadioToggle(() => openTopBarRadio(top));
   // PLAY SOLO is a real link for a new tab or a bookmark; a plain click takes the in-place route with the music.
   soloLink.addEventListener("click", (event) => {
     if (!plainClick(event)) return;
@@ -267,20 +267,14 @@ export function showLanding(host: LandingHost): void {
   });
   // Settings before a game exists (#168): the same room settings CREATE ROOM and PLAY SOLO read from storage. The screen layout
   // stays disabled here because the radio buttons below choose it for the room being created.
-  const landingSettings = node("button", "SETTINGS", "landing-settings");
-  landingSettings.type = "button";
   const { dialog: landingDialog, body: landingBody } = createDialog({
     title: "Room settings",
     label: "Room settings",
     classes: FUSE_DIALOG_CLASSES,
   });
-  // This device's privacy choice sits under the room settings draft rather than in it: it is not the room's.
-  const landingPrivacy = createAnalyticsSetting({ collapsed: true });
-  landingDialog.append(landingPrivacy.element);
   // `solo:true` disables the screen-layout fieldset, which is what keeps CREATE ROOM's own `settings.mode=selectedMode` from fighting
   // this dialog over the same stored key: the page's radios remain the only writer of `mode`.
-  landingSettings.onclick = () => {
-    landingPrivacy.render();
+  const openRoomSettings = () => {
     showRoomSettings(
       landingBody,
       loadRoomSettings(storage),
@@ -306,7 +300,6 @@ export function showLanding(host: LandingHost): void {
     );
     landingDialog.showModal();
   };
-  topEnd.append(landingSettings);
   card.append(landingDialog);
   // Optional sign-in and match history. A guest who never opens it never downloads the sign-in SDK.
   const friendsPanel = host.friendsPanel((code) => enter(roomQuery(code)));
@@ -324,6 +317,8 @@ export function showLanding(host: LandingHost): void {
     account: accountPanel.button,
     gameId: GAME_ID,
     sound: landingAudio.master,
+    radioControls: landingAudio.controls,
+    playerOptions: preferences.refresh,
   });
   friendsPanel.banner.classList.add("friends-invite-banner");
   card.append(accountPanel.dialog, friendsPanel.dialog);
@@ -347,7 +342,7 @@ export function showLanding(host: LandingHost): void {
       if (error.textContent) throw new Error(error.textContent);
     },
     howToPlay: [hint, guide],
-    onSettings: () => landingSettings.click(),
+    onSettings: openRoomSettings,
   });
   content.replaceWith(mainMenu.element);
   live.remove();

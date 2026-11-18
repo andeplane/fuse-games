@@ -29,7 +29,12 @@ try {
   await page.getByText("GET READY · 2", { exact: true }).waitFor();
   assert.equal(await page.locator(".scorecard").count(), 5);
   await gameMenu.click();
-  await page.getByRole("button", { name: "RADIO OFF", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Radio", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Radio", exact: true })
+    .getByRole("button", { name: "RADIO OFF", exact: true })
+    .waitFor();
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await page.screenshot({
     path: "artifacts/ball-bros-portrait-fallback.png",

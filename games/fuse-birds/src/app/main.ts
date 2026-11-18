@@ -303,11 +303,9 @@ function room(
     };
     return [toggle, content];
   };
-  const audioSettings = el("section");
   const helpContent = el("section");
   helpContent.append(el("p", BIRDS_HELP));
   const helpGroup = group("How to play", helpContent);
-  const audioGroup = group("Audio", audioSettings);
   const socialGroup = group("Community", social.element());
   page.addEventListener("pointerdown", () => audio.unlock());
   // The room's code is on its invitation: the bar holds the brand, the battle's line and the menu.
@@ -317,7 +315,6 @@ function room(
     message,
     resume,
     ...helpGroup,
-    ...audioGroup,
     retry,
     leave,
     ...socialGroup,
@@ -326,7 +323,6 @@ function room(
     element: header,
     gameId: GAME,
     sound: masterSound,
-    radioHost: audioSettings,
     onOpenChange: (open) => {
       if (open) abandonInput();
       else if (

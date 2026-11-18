@@ -1,7 +1,7 @@
 import { createOptionsMenu, type OptionsMenu } from "./options.js";
 
 export interface LobbyBar {
-  /** Player options, with personal speed and device preferences. */
+  /** Contextual shortcut to this player's scroll speed. */
   menu: OptionsMenu;
   /** For the room's header, before Settings and START. */
   headerActions: readonly Node[];
@@ -10,8 +10,8 @@ export interface LobbyBar {
 }
 
 /**
- * What a Fusemania room hands the shared room layout. A room's top is Back, Player options, Room settings
- * and START, and a player's speed lives behind Player options. The speeds are
+ * What a Fusemania room hands the shared room layout. A room's top is Back, Scroll speed, Room settings
+ * and START. The speeds are
  * never a row in the lobby, and START is never under the song select.
  */
 export function createLobbyBar(parts: {

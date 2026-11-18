@@ -21,11 +21,10 @@ the Fuse Riders landing page.
 
 Phones get touch pads over the cave (◀ ▶, FIRE, LIFT); in a shared-screen room a phone is a full controller.
 
-**♫ RADIO** in the header (or the compact button in landscape) opens the shared Fuse music library.
-Use PLAY/PAUSE, PREVIOUS/NEXT, the track picker, repeat-song toggle and music volume. Ctrl+A toggles
-the panel; Escape or BACK TO GAME closes it. Desktop music starts after the first interaction;
-touch devices and TV displays start with music off until PLAY is pressed. Track, playback choice,
-repeat and volume are remembered for Choppers across page loads. `?mute` silences both music and
+Open the top-right **Game menu → Radio**, or press Ctrl+A, for PLAY/PAUSE, PREVIOUS/NEXT,
+the track picker and repeat. Music starts when you press PLAY. **Player options** contains
+music volume and the Sound switch. Choppers remembers track, repeat, volume and sound
+across page loads. `?mute` silences both music and
 effects for that visit without changing those preferences. Opening the radio releases held flight
 controls; the match keeps running.
 

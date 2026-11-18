@@ -169,7 +169,7 @@ test("OPTIONS opens the speeds under the bar and closes on a second press, an ou
   const outside = document.createElement("p");
   document.body.append(menu.element, outside);
   const open = () => menu.button.getAttribute("aria-expanded");
-  assert.equal(menu.button.textContent, "Player options");
+  assert.equal(menu.button.textContent, "Scroll speed");
   assert.equal(menu.panel.hidden, true);
   assert.equal(open(), "false");
   assert.equal(menu.panel.querySelectorAll(".fm-option-speed").length, 8);
