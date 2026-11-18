@@ -40,6 +40,7 @@ export interface MainMenuOptions {
   onJoinRoom?: () => void;
   joinContent?: readonly Node[];
   /** Existing shared-screen or local hosting preferences, without another default action. */
+  extraPlayActions?: readonly HTMLButtonElement[];
   hostingOptions?: HTMLElement;
   onHowToPlay?: () => void;
   onSettings?: () => void;
@@ -74,7 +75,8 @@ export function createMainMenu(options: MainMenuOptions) {
   const singlePlayer = button("Single player", "", doc);
   const hostRoom = button("Host room", "", doc);
   const joinRoom = button("Join room", "", doc);
-  choices.append(singlePlayer, hostRoom, joinRoom);
+  const extra = options.extraPlayActions ?? [];
+  choices.append(singlePlayer, hostRoom, joinRoom, ...extra);
   // Back is the page's top-left control, as in every dialog; its bar keeps its place on the front door, where
   // there is nowhere to go back to, so the menu under it does not move between the two.
   const back = createBackButton({
@@ -202,7 +204,7 @@ export function createMainMenu(options: MainMenuOptions) {
   ) => {
     if (trigger.disabled) return;
     pending = true;
-    for (const choice of [singlePlayer, hostRoom, joinRoom, back])
+    for (const choice of [singlePlayer, hostRoom, joinRoom, back, ...extra])
       choice.disabled = true;
     trigger.textContent = pendingLabel;
     error.textContent = "";
@@ -213,7 +215,7 @@ export function createMainMenu(options: MainMenuOptions) {
         failure instanceof Error ? failure.message : String(failure);
     } finally {
       pending = false;
-      for (const choice of [singlePlayer, hostRoom, joinRoom, back])
+      for (const choice of [singlePlayer, hostRoom, joinRoom, back, ...extra])
         choice.disabled = false;
       singlePlayer.disabled =
         !options.onSinglePlayer && !singlePlayerContent().length;

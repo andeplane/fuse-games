@@ -5,6 +5,7 @@ export interface MetricsContext {
   memberId: string;
   displayOnly: boolean;
   practice: boolean;
+  solo?: boolean;
   /** Internal deduplication scope only; never an analytics property. */
   roomScope: string;
 }
@@ -34,8 +35,10 @@ export function birdsPlayFrame(
       players.some((seat) => seat.id === context.memberId),
     mode: context.practice
       ? "practice"
-      : settings.display
-        ? "shared"
-        : "online",
+      : context.solo
+        ? "solo"
+        : settings.display
+          ? "shared"
+          : "online",
   };
 }

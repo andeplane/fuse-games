@@ -173,8 +173,8 @@ test("a draw has no accent, and nothing earned means no cards", () => {
 test("the bar: the host plays again or returns to the lobby, everybody else waits", () => {
   assert.deepEqual(resultBar(result()), {
     actions: [
-      { id: "lobby", label: "Back to lobby" },
-      { id: "rematch", label: "PLAY AGAIN", primary: true },
+      { id: "lobby", label: "Back to room" },
+      { id: "rematch", label: "Rematch", primary: true },
     ],
   });
   assert.deepEqual(

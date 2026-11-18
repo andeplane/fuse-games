@@ -55,7 +55,7 @@ try {
   await page.keyboard.press("Escape");
   await openPlayOptions(page);
   await page
-    .getByRole("button", { name: "Single player", exact: true })
+    .getByRole("button", { name: "Target Practice", exact: true })
     .click();
   await page.locator('canvas[data-ready="true"]').waitFor({ timeout: 60_000 });
   assert.ok(page.url().includes("practice=1"));
@@ -68,7 +68,7 @@ try {
   assert.equal(await page.locator(".birds-player").count(), 1);
   assert.equal(await page.locator(".birds-lobby").isHidden(), true);
   assert.match(await page.locator(".birds-turn").innerText(), /SOLO PRACTICE/);
-  const canvas = page.locator("canvas");
+  const canvas = page.locator(".birds-board canvas");
   // An ordinary modal must own keyboard input even when the battlefield has an aim queued.
   for (const name of ["FRIENDS", "SIGN IN"]) {
     await canvas.focus();
@@ -78,11 +78,7 @@ try {
       await page.locator(".fui-top-bar-account").click();
     } else {
       await openGameMenu();
-      const birdsMenu = gameMenu.locator(".birds-menu");
-      if (
-        !(await birdsMenu.evaluate((menu) => (menu as HTMLDetailsElement).open))
-      )
-        await birdsMenu.locator("summary").click();
+      await gameMenu.getByRole("button", { name: "Community" }).click();
       await gameMenu.getByRole("button", { name, exact: true }).click();
     }
     const modal = page.locator("dialog[open]:not(.fui-top-bar-menu)");
@@ -173,6 +169,59 @@ try {
   console.log(
     `Solo practice: one bird, Pebble and Scatter shots, next shot, new map/refill and direct-link reload pass. ${output}`,
   );
+  await page.goto(`${base}/fusebirds/?mute`);
+  await openPlayOptions(page);
+  await page
+    .getByRole("button", { name: "Single player", exact: true })
+    .click();
+  const remove = page.getByRole("button", { name: "Remove bot" });
+  await remove.click();
+  const start = page.getByRole("button", { name: "Start battle" });
+  assert.ok(await start.isDisabled());
+  await page.getByRole("button", { name: "Add AI" }).first().click();
+  await start.click();
+  await page.locator('canvas[data-ready="true"]').waitFor();
+  assert.equal(await page.locator(".birds-player").count(), 2);
+  await page.getByRole("button", { name: "My bird" }).click();
+  await canvas.focus();
+  await page.keyboard.press("i");
+  await openGameMenu();
+  assert.ok(
+    await gameMenu.getByRole("combobox", { name: "Radio song" }).isHidden(),
+  );
+  await gameMenu.getByRole("button", { name: "Radio", exact: true }).click();
+  assert.ok(
+    await gameMenu.getByRole("combobox", { name: "Radio song" }).isVisible(),
+  );
+  await page.keyboard.press("Escape");
+  await gameMenu.getByRole("button", { name: "Resume" }).click();
+  await page.waitForFunction(
+    () => document.activeElement?.tagName === "CANVAS",
+  );
+  await page.keyboard.press("Enter");
+  assert.equal(await canvas.getAttribute("data-gesture"), "idle");
+  await page.keyboard.press("i");
+  await page.keyboard.press("Enter");
+  await page
+    .locator('.birds-room[data-turn="2"][data-phase="flight"]')
+    .waitFor();
+  const bounds = (await canvas.boundingBox())!;
+  const x = bounds.x + bounds.width / 2,
+    y = bounds.y + bounds.height / 3;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 30, y);
+  await page
+    .locator('.birds-room[data-turn="3"], .birds-room[data-phase="over"]')
+    .waitFor();
+  if (await page.locator('.birds-room[data-phase="aiming"]').count()) {
+    await page.mouse.move(x + 60, y);
+    assert.equal(await canvas.getAttribute("data-gesture"), "pan");
+  }
+  await page.mouse.up();
+  assert.deepEqual(roomRequests, [], "solo battle runs locally");
+  assert.deepEqual(errors, []);
+  console.log("Solo room, AI seats, menu, human shot and AI return shot pass.");
   await finishCoverage();
 } finally {
   await browser.close();

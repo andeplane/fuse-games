@@ -61,7 +61,13 @@ import {
 } from "../online/game.js";
 import { BirdsRuntime, type Play, type Session } from "../online/runtime.js";
 import { createArena } from "../render/arena.js";
-import { constrainCamera, followShot, zoomAt } from "../render/camera.js";
+import {
+  constrainCamera,
+  followShot,
+  turnCamera,
+  zoomAt,
+  type Camera,
+} from "../render/camera.js";
 import {
   cancelGesture,
   resetGesture,
@@ -72,11 +78,14 @@ import {
 } from "./gestures.js";
 import { roomFailure, roomToken, safeStore, storageKeys } from "./session.js";
 import { BirdsAudio } from "./audio.js";
+import { SoloBattle } from "./solo.js";
 import { PracticeRuntime } from "./practice.js";
 import { birdsPlayFrame } from "./play-metrics.js";
 import { canPlayTurn } from "./turn-controls.js";
 import { matchResult, resultBar, resultReport } from "./result-report.js";
 
+const BIRDS_HELP =
+  "Drag your bird backwards to aim, then release to fire. Drag elsewhere to pan. Pinch or scroll to zoom. Keyboard: I/K and J/L aim, Enter fires, Escape cancels. Be the last bird standing.";
 const GAME = "fuse-birds",
   COLORS = ["#6df4ed", "#ff6ec7", "#bded76", "#ffb75e", "#b797ff"];
 const analytics = startGameAnalytics(GAME);
@@ -136,10 +145,10 @@ function landing(): void {
   const title = el("h1", "SMALL BIRDS.\nBIG TROUBLE."),
     intro = el(
       "p",
-      "Practice solo, or battle with 2–5 friends. Carve the cliffs, catch supply crates, and be the last bird standing.",
+      "Battle AI birds or play with 2–5 friends. Carve the cliffs, catch supply crates, and be the last bird standing.",
     );
   const create = button("CREATE ROOM", "fui-button-primary"),
-    practice = button("1 PLAYER PRACTICE"),
+    practice = button("Target Practice"),
     join = button("JOIN ROOM"),
     code = el("input");
   code.placeholder = "ROOM CODE";
@@ -217,27 +226,29 @@ function landing(): void {
     title: "FUSE BIRDS",
     description: intro.textContent ?? "",
     play: card,
-    onSinglePlayer: () => practice.click(),
+    onSinglePlayer: () => {
+      location.href = endpoints.appUrl(`?solo=1${muted ? "&mute" : ""}`);
+    },
+    extraPlayActions: [practice],
     joinContent: [joinForm, message],
     onPlay: async () => {
       await create.onclick?.call(create, new PointerEvent("click"));
       if (message.textContent?.includes("Try again"))
         throw new Error(message.textContent);
     },
-    howToPlay: [
-      el(
-        "p",
-        "Drag your bird backwards to aim, then release to fire. Drag elsewhere to pan. Pinch or scroll to zoom. Keyboard: I/K and J/L aim, Enter fires, Escape cancels. Be the last bird standing.",
-      ),
-    ],
+    howToPlay: [el("p", BIRDS_HELP)],
   });
   page.append(header, mainMenu.element);
   app.replaceChildren(page);
 }
-function room(code: string, display: boolean, practice = false): void {
-  const historyToken = practice
-    ? undefined
-    : roomToken(store, code, display, secret);
+function room(
+  code: string,
+  display: boolean,
+  practice = false,
+  solo = false,
+): void {
+  const historyToken =
+    practice || solo ? undefined : roomToken(store, code, display, secret);
   const resultsHistory = createResultsHistory({
     fetch: social.reportFetch,
     apiUrl: endpoints.apiUrl,
@@ -247,7 +258,7 @@ function room(code: string, display: boolean, practice = false): void {
     playerId: () => me,
     now: () => performance.now(),
   });
-  const metricsScope = practice ? crypto.randomUUID() : code;
+  const metricsScope = practice || solo ? crypto.randomUUID() : code;
   const observePlay = createPlayMetrics(analytics.track, () =>
     performance.now(),
   );
@@ -277,21 +288,51 @@ function room(code: string, display: boolean, practice = false): void {
   };
   const retry = button("RETRY"),
     leave = button("LEAVE");
+  retry.hidden = practice || solo;
   retry.onclick = () => location.reload();
-  const menu = el("details", "", "birds-menu"),
-    menuTitle = el("summary", "MENU"),
-    menuItems = el("div", "", "birds-menu-items");
-  menuItems.append(social.element(), retry, leave);
-  menu.append(menuTitle, menuItems);
-  // The bar's menu holds these choices in the open, not behind a second MENU inside it.
-  menu.open = true;
+  const resume = button("Resume");
+  resume.dataset.fuiMenuDismiss = "";
+  const group = (label: string, content: HTMLElement) => {
+    const toggle = button(label);
+    content.dataset.fuiMenuContent = "";
+    content.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.onclick = () => {
+      content.hidden = !content.hidden;
+      toggle.setAttribute("aria-expanded", String(!content.hidden));
+    };
+    return [toggle, content];
+  };
+  const helpContent = el("section");
+  helpContent.append(el("p", BIRDS_HELP));
+  const helpGroup = group("How to play", helpContent);
+  const socialGroup = group("Community", social.element());
   page.addEventListener("pointerdown", () => audio.unlock());
   // The room's code is on its invitation: the bar holds the brand, the battle's line and the menu.
-  header.append(portal(), brand(), message, menu);
+  header.append(
+    portal(),
+    brand(),
+    message,
+    resume,
+    ...helpGroup,
+    retry,
+    leave,
+    ...socialGroup,
+  );
   createTopBar({
     element: header,
     gameId: GAME,
     sound: masterSound,
+    onOpenChange: (open) => {
+      if (open) abandonInput();
+      else if (
+        !display &&
+        !board.hidden &&
+        !results.open &&
+        !modalInput.blocked()
+      )
+        canvas.focus({ preventScroll: true });
+    },
   });
   const lobby = el("section", "", "birds-lobby"),
     roster = createRoster({ emptyText: "No birds yet" }),
@@ -399,7 +440,13 @@ function room(code: string, display: boolean, practice = false): void {
     "Pull your bird backwards. Release to fire. Pinch to zoom.",
     "birds-hint",
   );
-  footer.append(weapons, turnActions, hint);
+  const outcome = notice("");
+  outcome.hidden = true;
+  const shotFeedback = (text: string) => {
+    outcome.textContent = text;
+    outcome.hidden = !text;
+  };
+  footer.append(weapons, turnActions, hint, outcome);
   board.append(scorebar, turn, sky, overlay, cameraBar, footer);
   board.hidden = true;
   page.append(header, problem, lobby, board, results.element);
@@ -420,13 +467,19 @@ function room(code: string, display: boolean, practice = false): void {
         "noopener",
       ),
   });
-  const howToPlay = el(
-    "p",
-    "Drag your bird backwards to aim, then release to fire. Drag elsewhere to pan. Pinch or scroll to zoom. Keyboard: I/K and J/L aim, Enter fires, Escape cancels. Be the last bird standing.",
-  );
+  const howToPlay = el("p", BIRDS_HELP);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
+  const addAI = button("Add AI");
+  addAI.onclick = () =>
+    runtime.command({
+      type: "bot",
+      action: "add",
+      slot: requestedRoomSlot(addAI),
+    });
   createRoomLayout({
+    compact: solo,
+    addAI: solo ? addAI : undefined,
     // Seated already: any open seat is a move, and the bird's colour follows it.
     ownSlot: () => ownSeat?.slot,
     onMove: (slot) => {
@@ -453,15 +506,18 @@ function room(code: string, display: boolean, practice = false): void {
     actions: [lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation and the birds scroll under them.
     actionsInHeader: true,
-    extras: [sharedTv.element],
+    extras: solo ? [] : [sharedTv.element],
     status,
-    heading: "Room",
+    heading: solo ? "Your room" : "Room",
   });
   page.classList.toggle("birds-tv", display);
   const gestures = createGestures({ x: 768, y: 384, zoom: 1 });
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let following = true,
     previousPaint = 0;
+  let preferredZoom = 1;
+  let handoff: { from: Camera; to: Camera; start: number } | undefined;
+  let lastWheel = -Infinity;
   let me = "",
     host = false,
     view: WorldView | null = null,
@@ -493,6 +549,10 @@ function room(code: string, display: boolean, practice = false): void {
     keyboardAim = undefined;
     cancelGesture(gestures);
   };
+  const cancelAim = () => {
+    keyboardAim = undefined;
+    if (gestures.mode === "aim") cancelGesture(gestures);
+  };
   const canPlay = () =>
     !modalInput.blocked() &&
     canPlayTurn(currentFrame, me, display, battlefieldReady, runtime);
@@ -521,7 +581,7 @@ function room(code: string, display: boolean, practice = false): void {
     if (!runtime.play(action)) say("Wait for your turn before playing.");
   };
   const select = (next: Weapon) => {
-    cancel();
+    cancelAim();
     weapon = next;
     pebble.setAttribute("aria-pressed", String(next === "pebble"));
     scatter.setAttribute("aria-pressed", String(next === "scatter"));
@@ -543,6 +603,7 @@ function room(code: string, display: boolean, practice = false): void {
   };
   const zoom = (factor: number) => {
     if (!view || display) return;
+    handoff = undefined;
     following = false;
     cancel();
     const vp = viewport();
@@ -553,14 +614,19 @@ function room(code: string, display: boolean, practice = false): void {
       view,
       vp,
     );
+    preferredZoom = gestures.camera.zoom;
   };
   zoomIn.onclick = () => zoom(1.4);
   zoomOut.onclick = () => zoom(1 / 1.4);
   recenter.onclick = () => {
+    handoff = undefined;
     following = true;
     centerBird();
+    preferredZoom = gestures.camera.zoom;
   };
   full.onclick = () => {
+    handoff = undefined;
+    preferredZoom = 1;
     following = false;
     cancel();
     gestures.camera = { x: 768, y: 384, zoom: 1 };
@@ -571,6 +637,7 @@ function room(code: string, display: boolean, practice = false): void {
   };
   canvas.onpointerdown = (e) => {
     if (!view || display) return;
+    handoff = undefined;
     if (keyboardAim) cancel();
     audio.unlock();
     e.preventDefault();
@@ -584,6 +651,7 @@ function room(code: string, display: boolean, practice = false): void {
   };
   canvas.onpointermove = (e) => {
     if (view && !display) pointerMove(gestures, point(e), view, viewport());
+    if (gestures.mode === "pinch") preferredZoom = gestures.camera.zoom;
   };
   canvas.onpointerup = (e) => {
     const shot = pointerUp(gestures, e.pointerId);
@@ -606,6 +674,8 @@ function room(code: string, display: boolean, practice = false): void {
     "wheel",
     (e) => {
       if (display || !view) return;
+      handoff = undefined;
+      lastWheel = performance.now();
       following = false;
       e.preventDefault();
       cancel();
@@ -617,6 +687,7 @@ function room(code: string, display: boolean, practice = false): void {
         view,
         viewport(),
       );
+      preferredZoom = gestures.camera.zoom;
     },
     { passive: false },
   );
@@ -639,6 +710,7 @@ function room(code: string, display: boolean, practice = false): void {
     runtime.command({ type: "action", action: "rematch" });
   toLobby.onclick = () => runtime.command({ type: "action", action: "lobby" });
   const cards = new Map<string, HTMLElement>();
+  let shotOutcome: "miss" | "hit" | undefined;
   const callbacks: Callbacks<BirdsView, Fact, BirdsSettings> = {
     ready(id, isHost) {
       me = id;
@@ -668,14 +740,41 @@ function room(code: string, display: boolean, practice = false): void {
       audio.play(fact, performance.now());
       if (fact.type === "rejected" && fact.actor === me)
         say(fact.reason ?? "That action was not accepted.");
+      if (fact.type === "shot") {
+        shotOutcome = "miss";
+        shotFeedback("");
+      }
+      if (fact.type === "damage" || fact.type === "pickup") shotOutcome = "hit";
+      if (fact.type === "turn") {
+        if (shotOutcome === "miss") shotFeedback("Missed.");
+        shotOutcome = undefined;
+      }
+      if (fact.type === "damage")
+        shotFeedback(
+          `${view?.players.find((p) => p.id === fact.actor)?.name ?? "Bird"} lost ${fact.amount} health.`,
+        );
       if (fact.type === "pickup")
-        say(
+        shotFeedback(
           fact.amount
             ? "Supply collected: +1 Scatter Bomb."
             : "Supply collected. Scatter ammunition is already full.",
         );
     },
     state(frame, settings) {
+      const previousWorld = currentFrame?.world;
+      if (
+        currentFrame?.matchId !== frame.matchId ||
+        currentFrame?.world?.round !== frame.world?.round
+      ) {
+        shotFeedback("");
+        shotOutcome = undefined;
+        handoff = undefined;
+        if (solo) {
+          gestures.camera = { x: 768, y: 384, zoom: 1 };
+          preferredZoom = 1;
+          following = true;
+        }
+      }
       currentFrame = frame;
       host = frame.managerId === me;
       view = frame.world;
@@ -689,12 +788,13 @@ function room(code: string, display: boolean, practice = false): void {
       observeConfirmedPlay(
         observePlay,
         frame,
-        () => runtime.confirmedFrame?.(),
+        () => (solo ? frame : runtime.confirmedFrame?.()),
         (frame) =>
           birdsPlayFrame(frame, settings, {
             memberId: me,
             displayOnly: display,
             practice,
+            solo,
             roomScope: metricsScope,
           }),
       );
@@ -702,6 +802,12 @@ function room(code: string, display: boolean, practice = false): void {
       if (!display && !practice && confirmed)
         resultsHistory.observe(confirmed.history, confirmed.logTick);
       ownSeat = frame.seats.find((s) => s.id === me && !s.watcher);
+      resume.textContent = inLobby ? "Back to room" : "Resume";
+      leave.textContent = inLobby
+        ? "Leave room"
+        : practice
+          ? "Leave practice"
+          : "Leave battle";
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
       nameEntry.form.hidden = display || seated || !inLobby;
@@ -712,12 +818,28 @@ function room(code: string, display: boolean, practice = false): void {
           .map((s) => ({
             id: s.id,
             slot: s.slot,
-            name: s.id === me ? `${s.name} (you)` : s.name,
-            status: s.connected ? "READY" : "AWAY",
+            name:
+              s.id === me && s.name.toLowerCase() !== "you"
+                ? `${s.name} (you)`
+                : s.name,
+            status: s.bot ? "AI" : s.connected ? "READY" : "AWAY",
             color: COLORS[s.slot]!,
             host: s.id === frame.managerId,
           })),
       );
+      if (solo && inLobby)
+        for (const [id, row] of roster.entries()) {
+          if (
+            !frame.seats.some((s) => s.id === id && s.bot) ||
+            row.querySelector(".birds-remove")
+          )
+            continue;
+          const remove = button("×", "birds-remove");
+          remove.setAttribute("aria-label", "Remove bot");
+          remove.onclick = () =>
+            runtime.command({ type: "bot", action: "remove", id });
+          row.append(remove);
+        }
       sharedTv.update(
         settings.display,
         host && !display && !practice && inLobby,
@@ -728,7 +850,7 @@ function room(code: string, display: boolean, practice = false): void {
       start.hidden = !host;
       start.disabled = present < 2;
       lobbyNote.textContent = host
-        ? `${present}/5 birds ready. ${present < 2 ? "Invite a friend to start." : "Start when your flock is ready."}`
+        ? `${present}/5 birds ready. ${present < 2 ? (solo ? "Add an AI bird to start." : "Invite a friend to start.") : "Start when your flock is ready."}`
         : "Waiting for the host to start.";
       const result = view
         ? matchResult(view, {
@@ -774,9 +896,30 @@ function room(code: string, display: boolean, practice = false): void {
       const player = view.players[view.active]!,
         key = `${view.id}:${view.round}:${view.turn}`;
       if (turnKey !== key) {
-        cancel();
+        handoff = undefined;
+        cancelAim();
+        if (
+          solo &&
+          player.id === me &&
+          previousWorld?.id === view.id &&
+          previousWorld.round === view.round &&
+          previousWorld.turn !== view.turn &&
+          !gestures.pointers.size &&
+          performance.now() - lastWheel > 180
+        ) {
+          const to = {
+            x: player.x / UNIT,
+            y: player.y / UNIT,
+            zoom: preferredZoom,
+          };
+          if (reducedMotion)
+            gestures.camera = constrainCamera(to, view, viewport());
+          else
+            handoff = { from: gestures.camera, to, start: performance.now() };
+        }
         if (player.ammo === 0) select("pebble");
         if (
+          !solo &&
           !display &&
           viewport().width < 800 &&
           (!turnKey || player.id === me)
@@ -786,7 +929,8 @@ function room(code: string, display: boolean, practice = false): void {
         }
         turnKey = key;
       }
-      if (!canPlay() || (weapon === "scatter" && player.ammo === 0)) cancel();
+      if (!canPlay() || (weapon === "scatter" && player.ammo === 0))
+        cancelAim();
       scorebar.replaceChildren(
         ...view.players.map((p) => {
           let card = cards.get(p.id);
@@ -801,7 +945,10 @@ function room(code: string, display: boolean, practice = false): void {
           card.classList.toggle("current", p.id === player.id);
           card.classList.toggle("eliminated", p.hp === 0);
           card.replaceChildren(
-            el("span", `${p.name}${p.id === me && !practice ? " · YOU" : ""}`),
+            el(
+              "span",
+              `${p.name}${p.id === me && !practice && p.name.toLowerCase() !== "you" ? " · YOU" : ""}`,
+            ),
             el("b", p.hp > 0 ? String(p.hp) : "OUT"),
           );
           return card;
@@ -854,33 +1001,43 @@ function room(code: string, display: boolean, practice = false): void {
         seed: crypto.getRandomValues(new Uint32Array(1))[0]!,
         active: () => !document.hidden,
       })
-    : new BirdsRuntime(
-        code,
-        {
-          ...DEFAULT_SETTINGS,
-          display:
-            !!store.get(storageKeys.host(code)) &&
-            store.get(storageKeys.shared) === "1",
-        },
-        callbacks,
-        {
-          displayOnly: display,
-          transport: (events) => {
-            const token = historyToken!;
-            return social.transport(
-              code,
-              token,
-              events,
-              (events) =>
-                new PeerTransport(code, token, events, {
-                  apiUrl: endpoints.apiUrl,
-                  gameId: GAME,
-                  maxFastBytes: MAX_PACKET_BYTES,
-                }),
-            );
+    : solo
+      ? new SoloBattle(callbacks, {
+          name: playerName() ?? "You",
+          seed: crypto.getRandomValues(new Uint32Array(1))[0]!,
+          active: () => !document.hidden && !modalInput.blocked(),
+          schedule: (tick) => {
+            const timer = setInterval(tick, 50);
+            return () => clearInterval(timer);
           },
-        },
-      );
+        })
+      : new BirdsRuntime(
+          code,
+          {
+            ...DEFAULT_SETTINGS,
+            display:
+              !!store.get(storageKeys.host(code)) &&
+              store.get(storageKeys.shared) === "1",
+          },
+          callbacks,
+          {
+            displayOnly: display,
+            transport: (events) => {
+              const token = historyToken!;
+              return social.transport(
+                code,
+                token,
+                events,
+                (events) =>
+                  new PeerTransport(code, token, events, {
+                    apiUrl: endpoints.apiUrl,
+                    gameId: GAME,
+                    maxFastBytes: MAX_PACKET_BYTES,
+                  }),
+              );
+            },
+          },
+        );
   const stop = () => {
     resultsHistory.dispose();
     stopped = true;
@@ -933,6 +1090,7 @@ function room(code: string, display: boolean, practice = false): void {
       e.preventDefault();
       zoom(key === "-" ? 1 / 1.4 : 1.4);
     } else if (canAim() && ["i", "j", "k", "l"].includes(key)) {
+      handoff = undefined;
       e.preventDefault();
       audio.unlock();
       const bird = view!.players[view!.active]!;
@@ -957,7 +1115,11 @@ function room(code: string, display: boolean, practice = false): void {
   });
   function paint(now: number): void {
     if (stopped) return;
-    if (
+    if (handoff && view?.phase === "aiming") {
+      const next = turnCamera(handoff.from, handoff.to, now - handoff.start);
+      gestures.camera = constrainCamera(next, view, viewport());
+      if (next === handoff.to) handoff = undefined;
+    } else if (
       view &&
       following &&
       !display &&
@@ -997,5 +1159,6 @@ const query = new URLSearchParams(location.search),
   code = query.get("room")?.trim().toUpperCase();
 window.addEventListener("popstate", () => location.reload());
 if (query.get("practice") === "1") room("SOLO PRACTICE", false, true);
+else if (query.get("solo") === "1") room("SOLO", false, false, true);
 else if (code && validRoomCode(code)) room(code, query.get("display") === "1");
 else landing();

@@ -296,7 +296,9 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       }
       if (
         child.nodeType === 1 &&
-        !(child as HTMLElement).matches("button,input,select,a,details") &&
+        !(child as HTMLElement).matches(
+          "button,input,select,a,details,[data-fui-menu-content]",
+        ) &&
         !(child as HTMLElement).querySelector("button,input,select,a,details")
       ) {
         context.append(child);
