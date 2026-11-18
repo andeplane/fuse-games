@@ -189,8 +189,8 @@ export function paintMachine(
     const a = parts.get(link.a),
       b = parts.get(link.b);
     if (!a || !b) continue;
-    const aCenter = bodies.get(a.id) ?? a,
-      bCenter = bodies.get(b.id) ?? b;
+    const aCenter = a.kind === "popper" ? a : (bodies.get(a.id) ?? a),
+      bCenter = b.kind === "popper" ? b : (bodies.get(b.id) ?? b);
     const p = socketPosition(a, link.kind, aCenter, bCenter),
       q = socketPosition(b, link.kind, bCenter, aCenter);
     drawLink(c, p, q, link.kind, machine.tick);
@@ -230,6 +230,49 @@ export function paintMachine(
     const { x, y } = part.kind === "popper" ? part : (body ?? part);
     const { width: w, height: h } = partSize(part);
     const active = machine.active.includes(part.id);
+    const direction = part.flip ? -1 : 1;
+    if ((part.kind === "lamp" || part.kind === "lens") && active) {
+      c.save();
+      c.translate(x, y);
+      c.scale(direction, 1);
+      const light = c.createLinearGradient(w * 0.4, 0, 180, 0);
+      light.addColorStop(0, "#ffdf8770");
+      light.addColorStop(1, "#f0dd6800");
+      c.beginPath();
+      c.moveTo(w * 0.4, -4);
+      c.lineTo(180, -21);
+      c.lineTo(180, 21);
+      c.lineTo(w * 0.4, 4);
+      c.closePath();
+      c.fillStyle = light;
+      c.fill();
+      c.restore();
+    }
+    if (
+      (part.kind === "fan" || (part.kind === "bellows" && active)) &&
+      machine.tick > 0
+    ) {
+      c.save();
+      c.translate(x, y);
+      c.scale(direction, 1);
+      c.lineCap = "round";
+      c.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const phase = (machine.tick * 2 + i * 17) % 58,
+          dy = (i - 1.5) * 4;
+        c.strokeStyle = "rgba(181,232,217," + (58 - phase) / 140 + ")";
+        c.beginPath();
+        c.moveTo(w * 0.5 + phase, dy);
+        c.quadraticCurveTo(
+          w * 0.5 + phase + 5,
+          dy + 2,
+          w * 0.5 + phase + 12,
+          dy,
+        );
+        c.stroke();
+      }
+      c.restore();
+    }
     if (active) {
       const glow = c.createRadialGradient(x, y, 1, x, y, Math.max(w, h) * 0.72);
       glow.addColorStop(0, "#90f4cf42");
@@ -254,7 +297,13 @@ export function paintMachine(
       c.translate(x, y);
       c.rotate(Math.PI / 2);
       drawPart(c, part.kind, 0, 0, h, w, part.flip, motion, active);
-    } else drawPart(c, part.kind, x, y, w, h, part.flip, motion, active);
+    } else {
+      const face =
+        body?.vx && (part.kind === "cat" || part.kind === "mouse")
+          ? body.vx < 0
+          : part.flip;
+      drawPart(c, part.kind, x, y, w, h, face, motion, active);
+    }
     c.restore();
     if (part.kind === "popper" && body) {
       const rubber = PARTS.tennis;

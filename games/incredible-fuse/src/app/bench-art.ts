@@ -395,13 +395,13 @@ export function drawPart(
         for (const x of [-23, 23]) roller(c, x, 0, 15, tick * 0.1);
       } else {
         c.beginPath();
-        c.moveTo(-14, -47);
-        c.bezierCurveTo(-29, -15, 35, 15, 12, 47);
+        c.moveTo(-18, -47);
+        c.bezierCurveTo(-50, -15, 46, 15, 13, 47);
         c.strokeStyle = INK;
-        c.lineWidth = 18;
+        c.lineWidth = 33;
         c.stroke();
-        c.strokeStyle = "#d6ad72";
-        c.lineWidth = 12;
+        c.strokeStyle = "#e6bb77";
+        c.lineWidth = 24;
         c.stroke();
         c.setLineDash([3, 6]);
         c.strokeStyle = "#8f684a";
@@ -434,7 +434,7 @@ export function drawPart(
         kind === "cat" ? "#ebad6c" : kind === "mouse" ? "#a7bab9" : "#a97e65";
       c.beginPath();
       c.moveTo(-20, 25);
-      c.bezierCurveTo(-47, 32, -53, 3, -36, -7);
+      c.bezierCurveTo(-47, 32, -53, 3, -36, -7 + Math.sin(tick * 0.35) * 5);
       c.strokeStyle = INK;
       c.lineWidth = 9;
       c.stroke();
@@ -467,7 +467,35 @@ export function drawPart(
           circle(c, x, -27, kind === "mouse" ? 14 : 9, fur);
       circle(c, 19, -10, 3, INK);
       circle(c, 31, -1, 3, "#ed9b8c", INK, 1);
-      box(c, -17, 32, 24, 9, 4, fur);
+      const stride = Math.sin(tick * 0.55) * 6;
+      box(c, -19 + stride, 32, 24, 9, 4, fur);
+      box(c, 8 - stride, 30, 17, 9, 4, fur);
+      if (kind === "cat") {
+        for (const offset of [0, 6])
+          line(
+            c,
+            [
+              [26, 5 + offset],
+              [42, 3 + offset],
+            ],
+            "#926546",
+            1.5,
+          );
+      }
+      if (kind === "mouse" || kind === "monkey") {
+        line(
+          c,
+          [
+            [-18, 3],
+            [-26, -12],
+          ],
+          GOLD,
+          4,
+        );
+        circle(c, -28, -15, 5, GOLD, INK, 1);
+        circle(c, -22, -19, 4, GOLD, INK, 1);
+      }
+
       break;
     }
     case "jack":
@@ -475,6 +503,15 @@ export function drawPart(
     case "popper": {
       box(c, -39, 7, 78, 37, 4, kind === "glove" ? dark : red);
       box(c, -42, 5, 84, 10, 3, amber);
+      if (kind === "jack" && !active) {
+        c.translate(0, 6);
+        c.scale(1, 0.47);
+      }
+      if (kind === "glove") {
+        c.translate(-7, 8);
+        c.rotate(Math.PI / 2);
+        c.scale(1, active ? 1.05 : 0.68);
+      }
       line(
         c,
         [
@@ -640,8 +677,9 @@ export function drawPart(
     }
     case "plunger": {
       box(c, -38, 7, 76, 38, 4, red);
-      box(c, -7, -32, 14, 41, 3, metal);
-      box(c, -32, -40, 64, 12, 5, amber);
+      const press = active ? 22 : 0;
+      box(c, -7, -32 + press, 14, 41 - press, 3, metal);
+      box(c, -32, -40 + press, 64, 12, 5, amber);
       for (const x of [-27, 27]) bolt(c, x, 30, 3);
       break;
     }
@@ -1275,6 +1313,10 @@ export function drawPart(
     case "switch": {
       box(c, -45, 5, 90, 34, 5, dark);
       box(c, -43, 1, 86, 15, 4, metal);
+      c.save();
+      c.translate(-14, 0);
+      if (active) c.rotate(0.64);
+      c.translate(14, 0);
       line(
         c,
         [
@@ -1294,6 +1336,7 @@ export function drawPart(
         6,
       );
       circle(c, 11, -31, 10, active ? CYAN : "#ee825f");
+      c.restore();
       circle(c, -14, 0, 8, GOLD);
       box(c, 20, 8, 10, 5, 2, active ? CYAN : "#865944", INK, 1);
       break;
