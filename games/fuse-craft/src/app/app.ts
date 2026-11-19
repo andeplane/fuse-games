@@ -1,3 +1,4 @@
+import { selectionDetails, selectionPortrait } from "./selection-details.js";
 import { roomScreenMarkup } from "./room-screen.js";
 import { escapeMarkup as escape } from "./escape-markup.js";
 import {
@@ -40,7 +41,6 @@ import {
 } from "./placement-preview.js";
 import { minimapMarkup, minimapCell } from "../render/minimap.js";
 import { battleFocusCell } from "../render/battle-focus.js";
-import { structureArt, teamArtFilter } from "../render/art.js";
 import {
   spatialize,
   type Locate,
@@ -48,7 +48,7 @@ import {
   type SoundCue,
 } from "./audio.js";
 import { createAttractScene } from "./attract-scene.js";
-import { renderBoard, hexCenter, neuronPortraitUrl } from "../render/board.js";
+import { renderBoard, hexCenter } from "../render/board.js";
 import type { PanDirection } from "../render/camera.js";
 import {
   createBattlefield,
@@ -81,7 +81,6 @@ const MAX_ROOM_SEATS_TEXT =
     MAX_ROOM_SEATS - 2
   ] ?? String(MAX_ROOM_SEATS);
 import { POWERUP_STYLE } from "../render/powerup-art.js";
-import { sporeIconUrl } from "../render/spore-art.js";
 import {
   OPENINGS,
   guideMarkup,
@@ -100,13 +99,9 @@ import { createMatchResults } from "./match-results.js";
 import { POWERUP_PRESENTATION } from "../engine/powerups.js";
 import {
   isBuildKind,
-  canAttack,
-  STRUCTURES,
   isResearchKind,
   constructionAvailability,
   constructionQueueAvailability,
-  constructionDispatchAvailability,
-  planSupport,
   type BuildKind,
 } from "../engine/catalog.js";
 import {
@@ -114,7 +109,6 @@ import {
   commandPageCount,
   RESEARCH_PRESENTATION,
   BUILD_PRESENTATION,
-  waitingText,
   type CommandPanel,
 } from "./command-card.js";
 import type {
@@ -891,60 +885,6 @@ export function mountFuseCraft(
     return `${hudMarkup(resources, true)}<div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
   }
 
-  function connectionDetails(
-    world: Readonly<World>,
-    structure: World["structures"][number],
-  ): string {
-    let count = 0;
-    let incomingCount = 0;
-    let nextArrival = Infinity;
-    for (const particle of world.particles) {
-      if (particle.ownerId !== structure.ownerId) continue;
-      if (particle.mode === "stationed" && particle.cell === structure.cell)
-        count++;
-      if (particle.mode === "transit" && particle.to === structure.cell) {
-        incomingCount++;
-        nextArrival = Math.min(nextArrival, particle.arrivesAt);
-      }
-    }
-    return `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incomingCount ? ` · next arrival in ${Math.ceil((nextArrival - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incomingCount} incoming</span>`;
-  }
-
-  function selectionDetails(
-    world: Readonly<World>,
-    player: Player,
-    structure: World["structures"][number] | undefined,
-  ): string {
-    if (selectedCell === null)
-      return '<div class="selection-summary"><strong>Select a hex</strong><span>Click terrain to build or inspect.</span></div>';
-    const cell = world.map.cells[selectedCell];
-    const owned = structure?.ownerId === player.id;
-    const queued = player.queue.find((item) => item.cell === selectedCell);
-    const priority = player.priorities[String(selectedCell)] ?? 0;
-    const powerup = world.powerups.find((p) => p.cell === selectedCell);
-    return `<div class="selection-summary"><div class="tile-heading"><span>HEX ${selectedCell}</span><strong>${structure ? `${structure.kind.toUpperCase()} · ${structure.hp} HP` : powerup ? `POWERUP · ${POWERUP_PRESENTATION[powerup.kind].label.toUpperCase()}` : cell?.terrain === "deposit" ? `${cell.resourceKind.toUpperCase()} DEPOSIT` : cell?.terrain === "blocked" ? "BLOCKED GROUND" : "OPEN GROUND"}</strong></div>
-        ${powerup ? `<span>${escape(POWERUP_PRESENTATION[powerup.kind].description)} Fades in ${Math.ceil((powerup.expiresAt - world.tick) / RULES.ticksPerSecond)}s. Touch it with your connected network to claim it; two networks touching it keep it contested.</span>` : ""}
-        ${structure ? connectionDetails(world, structure) : ""}
-        ${cell?.terrain === "deposit" ? '<span title="Connected neighboring structures harvest this deposit. Several players may share it.">Expand alongside to mine.</span>' : ""}</div>
-        ${owned && canAttack(structure.kind) ? `${priority === 0 && structure.kind !== "brain" ? '<span class="supply-warning">No supply assigned — use D / Charge to arm this node.</span>' : ""}<div class="priority-control"><label class="field-label" for="priority-slider">Attack priority · ${priority}/3</label><input id="priority-slider" data-field="priority" type="range" min="0" max="3" step="1" value="${priority}"></div>` : ""}
-        ${structure && STRUCTURES[structure.kind].miningBonus ? `<span class="economic-summary" title="One specialist bonus per deposit per player. Requires a connection to the brain. No attack supply needed.">${structure.connected ? "Extracting" : "Extraction paused"} · +${STRUCTURES[structure.kind].miningBonus} shares/deposit · non-stacking</span>` : ""}
-        ${
-          queued
-            ? `<span class="construction-progress" title="Queued construction waits for support, builder and resources.">${
-                queued.paid
-                  ? `${queued.upgradeFrom !== undefined ? "Specializing" : "Growing"} · ${Math.ceil((queued.duration - queued.progress) / RULES.ticksPerSecond)}s remaining`
-                  : waitingText(
-                      constructionDispatchAvailability(world, player, queued)
-                        .missing,
-                      planSupport(world, player).get(queued.cell),
-                    )
-                      .map(escape)
-                      .join(" ") || "Ready for construction"
-              }</span>`
-            : ""
-        }`;
-  }
-
   function panelDetails(
     world: Readonly<World>,
     player: Player,
@@ -956,7 +896,7 @@ export function mountFuseCraft(
     switch (panel) {
       case "inspect":
       case "build":
-        return `${selectionDetails(world, player, structure)}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(player.worker.mode)}</span>`;
+        return `${selectionDetails(world, player, selectedCell, structure)}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(player.worker.mode)}</span>`;
       case "particles":
         return `<div class="command-context"><strong>Particle profile · ${escape(player.particleKind)}</strong><p>Refit at the brain</p><small>Existing particles change on return or departure. Your finite pool stays the same size.</small></div>`;
       case "research":
@@ -986,22 +926,12 @@ export function mountFuseCraft(
     const structure = world.structures.find(
       (item) => item.cell === selectedCell,
     );
-    const cell = selectedCell === null ? null : world.map.cells[selectedCell];
-    const sprite = (name: string) =>
-      dependencies.sprites?.[`${name}-v2`] ?? dependencies.sprites?.[name];
-    const portrait = structure
-      ? structure.kind === "neuron"
-        ? neuronPortraitUrl(world, structure.cell)
-        : structure.kind === "spore"
-          ? sporeIconUrl(
-              world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0,
-            )
-          : sprite(structureArt(structure.kind))
-      : cell?.terrain === "deposit"
-        ? sprite(`deposit-${cell.resourceKind}`)
-        : sprite(
-            cell?.terrain === "blocked" ? "blocker-boulder" : "terrain-slate-a",
-          );
+    const portrait = selectionPortrait(
+      world,
+      selectedCell,
+      structure,
+      dependencies.sprites,
+    );
     const commands = renderCommands(
       world,
       player,
@@ -1014,7 +944,7 @@ export function mountFuseCraft(
     const contextDetail = panelDetails(world, player, structure, preview);
     const resources = `<div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}`;
     return `${hudMarkup(resources, false)}
-      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${INSPECTOR_LABEL[panel]}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${COMMAND_LABEL[panel]}">${commands}</nav></div>`;
+      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${INSPECTOR_LABEL[panel]}">${portrait}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${COMMAND_LABEL[panel]}">${commands}</nav></div>`;
   }
 
   function renderGame() {
