@@ -9,11 +9,17 @@ import {
   type Point,
   type World,
 } from "../game/canal.js";
-export function radarProjection(pilot: Point, expanded: boolean) {
-  const scale = expanded ? 20 : 8;
+export function radarProjection(
+  pilot: Point,
+  expanded: boolean,
+  center?: Point,
+) {
+  const scale = expanded ? (center ? 12 : 20) : 8;
   return {
-    x: (v: number) => 180 + (v - (expanded ? 0 : pilot.x)) / scale,
-    z: (v: number) => 110 + (v - (expanded ? 0 : pilot.z)) / scale,
+    x: (v: number) =>
+      180 + (v - (expanded ? (center?.x ?? 0) : pilot.x)) / scale,
+    z: (v: number) =>
+      110 + (v - (expanded ? (center?.z ?? 0) : pilot.z)) / scale,
     scale,
   };
 }
@@ -29,11 +35,11 @@ export function createRadar(host: HTMLElement, colors: readonly string[]) {
   host.append(canvas);
   const ctx = canvas.getContext("2d");
   return {
-    draw(w: World, me: number, expanded: boolean) {
+    draw(w: World, me: number, expanded: boolean, center?: Point) {
       canvas.hidden = me < 0;
       canvas.classList.toggle("expanded", expanded);
       if (!ctx || me < 0) return;
-      const { x, z, scale } = radarProjection(w.rigs[me]!, expanded);
+      const { x, z, scale } = radarProjection(w.rigs[me]!, expanded, center);
       ctx.fillStyle = "#0e202a";
       ctx.fillRect(0, 0, 360, 220);
       ctx.fillStyle = "#193743";

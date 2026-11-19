@@ -86,7 +86,7 @@ const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
 const GOAL =
-  "Escort a drone through the opposing gate. Touch a turret to earn extra credits. Tap Action on your factory’s north or south pad to spend 6 credits and launch on that lane. Both forms carry three weapons. The walker can jump and cross the catwalk. Travel form moves faster.";
+  "Escort a drone through the opposing gate. Touch a turret to claim it, or tap Action near a neutral turret. Turrets earn extra credits. Tap Action on your factory’s north or south pad to spend 6 credits and launch on that lane. Both forms carry three weapons. The walker can jump and cross the catwalk. Travel form moves faster.";
 function localUrl(query = "") {
   const url = new URL(endpoints.appUrl(query), location.href);
   if (new URLSearchParams(location.search).has("mute"))
@@ -272,16 +272,12 @@ function room(solo: boolean): void {
   hud.append(identity, statusLine, objective);
   hud.setAttribute("aria-label", "Pilot status");
   let playing = false;
-  let farCamera = false,
-    expandedMap = false;
+  let farCamera = false;
   const controls = createControls(
     (bits) => runtime.input(bits),
     () => playing && !menu.isOpen(),
     () => {
       farCamera = !farCamera;
-    },
-    () => {
-      expandedMap = !expandedMap;
     },
   );
   const controllerMap = el("div", "", "dockside-controller-map");
@@ -463,10 +459,12 @@ function room(solo: boolean): void {
         stage.hidden = controller;
         controllerMap.hidden = !controller;
         controls.pad.classList.toggle("controller-only", controller);
-        if (controller) controllerRadar.draw(w, slot, expandedMap);
+        const center = rig ? controls.map.frame(rig, w.tick) : undefined;
+        const expandedMap = playing && controls.map.open;
+        if (controller) controllerRadar.draw(w, slot, expandedMap, center);
         else {
           arena ??= createArena(stage);
-          arena.draw(w, display ? -1 : slot, farCamera, expandedMap);
+          arena.draw(w, display ? -1 : slot, farCamera, expandedMap, center);
         }
         identity.textContent = rig
           ? slot === 0
@@ -483,13 +481,15 @@ function room(solo: boolean): void {
           ? `${rig.credits} ${rig.credits === 1 ? "credit" : "credits"} · ${w.drones.filter((d) => d.team === slot).length}/2 convoys`
           : "First convoy through the enemy gate wins";
         const lane = rig ? laneAtFactory(rig, slot) : -1;
-        hint.textContent = rig
-          ? lane >= 0
-            ? `${lane === 0 ? "North" : "South"} pad · ${rig.credits >= COST ? "Launch ready" : "Drone costs 6 credits"}`
-            : touch
-              ? "Touch a turret to capture it."
-              : "W/S drive · A/D turn · Q/E jink · J/K/L fire · R lock · F action"
-          : "";
+        hint.textContent = expandedMap
+          ? "Directions pan · Action centers on your rig · Map returns to play"
+          : rig
+            ? lane >= 0
+              ? `${lane === 0 ? "North" : "South"} pad · ${rig.credits >= COST ? "Launch ready" : "Drone costs 6 credits"}`
+              : touch
+                ? "Touch a turret to capture it."
+                : "W/S drive · A/D turn · Q/E jink · J/K/L fire · R lock · F action"
+            : "";
         controls.pad.hidden = !playing || !touch;
         runtime.flush();
       }

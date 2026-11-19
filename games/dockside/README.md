@@ -9,3 +9,5 @@ The authoritative simulation advances at 20 Hz in integer centimetres. The eleva
 ## Play
 
 Open `/dockside/?mute`, choose solo practice or create a two-seat room. W/S drives forward or reverses, A/D rotates, Q/E jinks sideways. J/K/L fires the laser, heavy missile or shock pulse in either form. R cycles a target, F dispatches on a factory pad, Shift transforms, and Space jumps or brakes. Hold F with movement for careful walker steps or short jinks, or with Space to crouch. C changes the chase distance and M expands the radar. How to Play lists the corresponding standard gamepad buttons. Touch supports simultaneous movement and actions.
+
+F also claims a neutral turret within reach. Touching any turret still captures it. With the map open, movement controls pan the map, F centers it on your rig, and M returns to driving. The match continues while you read the map.

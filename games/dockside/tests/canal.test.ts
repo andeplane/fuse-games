@@ -79,6 +79,22 @@ describe("Canal Lock", () => {
       [4, 3],
     );
   });
+  it("claims a nearby neutral turret on Action beyond touch distance, preserving contested contact and ownership", () => {
+    const w = world(),
+      post = TURRETS[0];
+    for (const r of w.rigs) Object.assign(r, { x: post.x + 250, z: post.z });
+    stepWorld(w, [0, 0]);
+    assert.equal(w.turrets[0]!.owner, -1);
+    stepWorld(w, [KEY.launch, KEY.launch]);
+    assert.equal(w.turrets[0]!.owner, -1);
+    stepWorld(w, [0, 0]);
+    stepWorld(w, [KEY.launch, 0]);
+    assert.equal(w.turrets[0]!.owner, 0);
+    stepWorld(w, [0, KEY.launch]);
+    assert.equal(w.turrets[0]!.owner, 0);
+    assert.equal(w.rigs[0]!.credits, 2);
+    assert.equal(w.drones.length, 0);
+  });
   it("resolves fire before crossing and allows simultaneous deliveries", () => {
     const w = world();
     w.drones = [{ ...arrived(0), hp: 1 }];

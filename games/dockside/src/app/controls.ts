@@ -1,9 +1,9 @@
 import { INPUT_MASK, KEY } from "../game/canal.js";
 import { playtestInputBlocked } from "fuse-ui/playtest-input";
+import { tacticalMapControls } from "./map-controls.js";
 import {
   bindings,
   CAMERA,
-  MAP,
   standardPadBits,
   shoulderControls,
 } from "./bindings.js";
@@ -12,12 +12,12 @@ export function createControls(
   send: (bits: number) => void,
   active: () => boolean,
   changeCamera: () => void,
-  toggleMap: () => void,
 ) {
   const pad = document.createElement("div");
   pad.className = "dockside-controls";
   const held = new Map<string, number>(),
-    shoulders = shoulderControls();
+    shoulders = shoulderControls(),
+    map = tacticalMapControls();
   const binds = new Map(
     bindings.flatMap((b) => b.codes.map((code) => [code, b.bit] as const)),
   );
@@ -33,16 +33,22 @@ export function createControls(
   }
   function publish(cancelled = 0) {
     const raw = [...held.values()].reduce((a, b) => a | b, controller);
-    if (raw & ~previous & CAMERA) changeCamera();
-    if (raw & ~previous & MAP) toggleMap();
+    const routed = map.read(raw);
+    if (routed & ~previous & CAMERA) changeCamera();
     previous = raw;
-    const bits = shoulders.read(raw & INPUT_MASK, cancelled);
+    if (map.open) {
+      shoulders.clear();
+      emit(0);
+      return;
+    }
+    const bits = shoulders.read(routed & INPUT_MASK, cancelled);
     emit(bits);
     if (bits & (KEY.launch | KEY.lock)) emit(bits & ~(KEY.launch | KEY.lock));
   }
   function release() {
     held.clear();
     shoulders.clear();
+    map.read(0);
     previous = 0;
     controller = 0;
     blockedPad = true;
@@ -140,6 +146,7 @@ export function createControls(
   document.addEventListener("visibilitychange", visibility);
   return {
     pad,
+    map,
     release,
     poll,
     dispose() {

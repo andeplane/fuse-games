@@ -12,6 +12,7 @@ import {
   jumpHeight,
   lockedUnit,
   type World,
+  type Point,
 } from "../game/canal.js";
 export const COLORS = ["#49dae5", "#ff9259"];
 const neutral = "#c9c6b5";
@@ -276,7 +277,7 @@ export function createArena(host: HTMLElement, overview = false) {
     lastTick = -1,
     lastMe = -1;
   return {
-    draw(w: World, me: number, far = false, expanded = false) {
+    draw(w: World, me: number, far = false, expanded = false, center?: Point) {
       const width = host.clientWidth,
         height = host.clientHeight;
       if (!width || !height) return;
@@ -404,7 +405,7 @@ export function createArena(host: HTMLElement, overview = false) {
       const lock = pilot && lockedUnit(w, me);
       self.hidden = !lock;
       if (lock) position(self, lock.x / 100, 2.4, lock.z / 100, width, height);
-      radar?.draw(w, me, expanded);
+      radar?.draw(w, me, expanded, center);
       for (const l of labels) position(l.node, l.x, 0.5, l.z, width, height);
       renderer.render(scene, camera);
     },

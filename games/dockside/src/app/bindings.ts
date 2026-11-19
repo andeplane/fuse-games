@@ -56,7 +56,7 @@ export const bindings = [
     "F",
     "L1",
     "Act",
-    "Tap on a factory pad to launch. Hold with movement for careful steps or short jinks, or with Jump to crouch in walker form",
+    "Tap on a factory pad to launch, near a neutral turret to claim it, or on the map to recenter. Hold with movement for careful steps or short jinks, or with Jump to crouch in walker form",
   ),
   binding(
     KEY.lock,
@@ -82,7 +82,14 @@ export const bindings = [
     "View",
     "Switch chase camera distance",
   ),
-  binding(MAP, ["KeyM"], "M", "Start", "Map", "Expand or reduce tactical map"),
+  binding(
+    MAP,
+    ["KeyM"],
+    "M",
+    "Start",
+    "Map",
+    "Open or close the tactical map. Pan with the movement controls",
+  ),
 ];
 export const CONTROLS = bindings.map((b) => ({
   keys: b.keys + " · " + b.pad,

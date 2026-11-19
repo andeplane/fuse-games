@@ -212,6 +212,7 @@ export function stepWorld(
   const hits = new Map<Rig | Drone, number>();
   const hit = (target: Rig | Drone, damage = 1) =>
     hits.set(target, (hits.get(target) ?? 0) + damage);
+  const actions: boolean[] = [];
   const firing: number[] = [],
     cycles: number[] = [];
   for (const [t, r] of w.rigs.entries()) {
@@ -244,6 +245,7 @@ export function stepWorld(
       r.previous = held;
     }
     firing[t] = bits;
+    actions[t] = launches > 0;
     cycles[t] = locks;
     if (w.tick % 60 === 0)
       r.credits = Math.min(
@@ -309,7 +311,12 @@ export function stepWorld(
   for (const [i, p] of TURRETS.entries()) {
     const turret = w.turrets[i]!;
     const touching = w.rigs
-      .map((r, t) => (r.hp > 0 && near(r, p, 160) ? t : -1))
+      .map((r, t) =>
+        r.hp > 0 &&
+        (near(r, p, 160) || (actions[t] && turret.owner < 0 && near(r, p, 320)))
+          ? t
+          : -1,
+      )
       .filter((t) => t >= 0);
     if (touching.length === 1 && turret.owner !== touching[0]) {
       turret.owner = touching[0]!;

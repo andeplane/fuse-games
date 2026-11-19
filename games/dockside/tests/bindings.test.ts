@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { KEY } from "../src/game/canal.js";
 import { radarProjection } from "../src/app/radar.js";
+import { tacticalMapControls } from "../src/app/map-controls.js";
 import {
   CAMERA,
   MAP,
@@ -70,8 +71,8 @@ test("staggered shoulder chords transform without buying or targeting; plain sho
 test("cancelling either shoulder releases its hold without committing the tap or releasing another input source", () => {
   for (const bit of [KEY.modifier, KEY.lock]) {
     const s = shoulderControls();
-    s.read(bit | KEY.up);
-    assert.equal(s.read(KEY.up, bit), KEY.up);
+    s.read(bit | KEY.fire);
+    assert.equal(s.read(KEY.fire, bit), KEY.fire);
     s.read(bit);
     s.read(bit, bit);
     assert.equal(s.read(0), bit === KEY.modifier ? KEY.launch : KEY.lock);
@@ -93,4 +94,23 @@ test("local radar follows each pilot; expanded map frames the entire unchanged a
       [0, 360, 0, 220],
     );
   }
+});
+test("map navigation, recenter and held inputs crossing both modal boundaries stay local", () => {
+  const map = tacticalMapControls(),
+    pilot = { x: -2700, z: 0 };
+  assert.equal(map.read(KEY.up), KEY.up);
+  assert.equal(map.read(KEY.up | MAP), 0);
+  assert.equal(map.read(KEY.up), 0);
+  assert.equal(map.frame(pilot, 12), undefined);
+  map.read(0);
+  assert.equal(map.read(KEY.right | KEY.fire), 0);
+  assert.deepEqual(map.frame(pilot, 13), { x: 80, z: 0 });
+  map.read(0);
+  assert.equal(map.read(KEY.modifier), 0);
+  assert.deepEqual(map.frame(pilot, 14), pilot);
+  assert.equal(map.read(KEY.modifier | KEY.fire | MAP), 0);
+  assert.equal(map.open, false);
+  assert.equal(map.read(KEY.modifier | KEY.fire), 0);
+  assert.equal(map.read(0), 0);
+  assert.equal(map.read(KEY.fire), KEY.fire);
 });
