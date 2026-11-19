@@ -25,6 +25,8 @@ with a uniform 1 px dark outline added around the art; `tests/fuseos-game-icons.
 
 ## Drawn in code (Canvas 2D paths at each size, 2026-11-15)
 
+The Incredible Fuse uses an original brass gear, a mint axle and a steel marble. Its two transparent icons were drawn from geometric primitives.
+
 | Icon       | Subject                                                                                   |
 | ---------- | ----------------------------------------------------------------------------------------- |
 | fuse-surge | the cyan rider (helmet, dark visor, the fuse on top) hopping a red surge, as the game draws them |
