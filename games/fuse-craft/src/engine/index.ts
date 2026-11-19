@@ -299,15 +299,7 @@ function apply(w: World, c: Command) {
         return;
       }
       const upgrade = constructionUpgradeSource(w, p, a.kind, a.cell);
-      p.queue.push({
-        ...(upgrade && { upgradeFrom: upgrade.id }),
-        cell: a.cell,
-        kind: a.kind,
-        paid: false,
-        progress: 0,
-        duration: 0,
-        hp: hp(a.kind),
-      });
+      p.queue.push(constructionPlan(a.kind, a.cell, upgrade?.id));
       emit(w, p, "queued", { cell: a.cell });
 
       return;
@@ -416,19 +408,39 @@ function economy(w: World, p: Player) {
     amount: p.insight - initialInsight,
   });
 }
-function prepareWorker(w: World, p: Player, index: CellIndex): boolean {
-  const b = brain(w, p);
-  if (!b) return false;
-  const worker = p.worker;
-  const recover = () => {
-    worker.mode = "recovering";
-    worker.recoverAt = w.tick + RULES.recoveryTicks;
+function constructionPlan(
+  kind: Construction["kind"],
+  cell: number,
+  upgradeFrom?: number,
+): Construction {
+  return {
+    ...(upgradeFrom !== undefined && { upgradeFrom }),
+    cell,
+    kind,
+    paid: false,
+    progress: 0,
+    duration: 0,
+    hp: hp(kind),
   };
+}
+
+function recoverWorker(w: World, worker: Player["worker"]) {
+  worker.mode = "recovering";
+  worker.recoverAt = w.tick + RULES.recoveryTicks;
+}
+
+function prepareWorker(
+  w: World,
+  p: Player,
+  home: number,
+  index: CellIndex,
+): boolean {
+  const worker = p.worker;
   if (worker.mode === "recovering") {
     if (w.tick < worker.recoverAt) return false;
-    worker.cell = b.cell;
-    worker.to = b.cell;
-    worker.from = b.cell;
+    worker.cell = home;
+    worker.to = home;
+    worker.from = home;
     worker.arrivesAt = w.tick;
     worker.mode = p.queue.some((j) => j.paid && !isSprout(j))
       ? "outbound"
@@ -445,7 +457,7 @@ function prepareWorker(w: World, p: Player, index: CellIndex): boolean {
       from.ownerId !== p.id ||
       to.ownerId !== p.id
     ) {
-      recover();
+      recoverWorker(w, worker);
       return false;
     }
   }
@@ -454,8 +466,8 @@ function prepareWorker(w: World, p: Player, index: CellIndex): boolean {
     worker.cell = worker.to;
     worker.from = worker.cell;
   }
-  if (!findRoutes(w.map, p, index, worker.cell, [b.cell]).has(b.cell)) {
-    recover();
+  if (!findRoutes(w.map, p, index, worker.cell, [home]).has(home)) {
+    recoverWorker(w, worker);
     return false;
   }
   return true;
@@ -481,30 +493,30 @@ export function claimPrecedence(
  * opponent grew there, or this network built it another way) can never start.
  * Drop it with an outcome rather than leave a numbered ghost in the queue.
  */
-function dropTakenPlans(w: World, p: Player) {
-  const taken = p.queue.filter(
-    (j) =>
-      !j.paid &&
-      w.structures.some((s) => s.cell === j.cell && s.id !== j.upgradeFrom),
-  );
-  if (!taken.length) return;
-  p.queue = p.queue.filter((j) => !taken.includes(j));
-  for (const j of taken)
-    emit(w, p, "dropped", { cell: j.cell, reason: "hex taken" });
+function dropTakenPlans(w: World, p: Player, index: CellIndex) {
+  p.queue = p.queue.filter((job) => {
+    const structure = index.get(job.cell);
+    if (job.paid || !structure || structure.id === job.upgradeFrom) return true;
+    emit(w, p, "dropped", { cell: job.cell, reason: "hex taken" });
+    return false;
+  });
 }
-function dispatchConstruction(w: World, ready: Player[]) {
+function dispatchConstruction(
+  w: World,
+  active: readonly Player[],
+  ready: ReadonlyMap<Player, number>,
+) {
   // Collect claims against one shared pre-dispatch board. Contested claims go
   // by claimPrecedence, a per-tick shuffle of seats, so renaming players
   // cannot buy construction priority.
   const rank = (p: Player) => claimPrecedence(w.matchId, w.tick, p.slot);
   // The builder takes one tower or upgrade at a time; neurons sprout from the
   // network into every free sprout slot.
-  const claims = w.players
-    .filter((p) => p.alive)
+  const claims = active
     .flatMap((p) => {
       const out: { p: Player; job: Construction }[] = [];
       if (
-        ready.includes(p) &&
+        ready.has(p) &&
         p.worker.mode === "idle" &&
         !p.queue.some((j) => j.paid && !isSprout(j))
       ) {
@@ -548,14 +560,12 @@ function dispatchConstruction(w: World, ready: Player[]) {
     });
   }
 }
-function worker(w: World, p: Player) {
-  const b = brain(w, p)!;
+function worker(w: World, p: Player, home: number) {
   const worker = p.worker;
   const job = p.queue.find((j) => j.paid && !isSprout(j));
   const move = (route: Route | undefined) => {
     if (!route) {
-      worker.mode = "recovering";
-      worker.recoverAt = w.tick + RULES.recoveryTicks;
+      recoverWorker(w, worker);
       return;
     }
     if (route.distance > 0) {
@@ -567,13 +577,11 @@ function worker(w: World, p: Player) {
   };
   if (worker.mode === "returning" || !job) {
     worker.mode = "returning";
-    if (worker.cell === b.cell) {
+    if (worker.cell === home) {
       worker.mode = "idle";
-      worker.to = b.cell;
+      worker.to = home;
     } else
-      move(
-        findRoutes(w.map, p, cellIndex(w), worker.cell, [b.cell]).get(b.cell),
-      );
+      move(findRoutes(w.map, p, cellIndex(w), worker.cell, [home]).get(home));
     return;
   }
   const anchors = neighbors(w.map, job.cell);
@@ -589,33 +597,36 @@ function worker(w: World, p: Player) {
     return;
   }
   worker.mode = "building";
-  job.progress += hasBuff(p, "surge", w.tick) ? 2 : 1;
-  if (job.progress >= job.duration) {
-    const source =
-      job.upgradeFrom === undefined
-        ? undefined
-        : w.structures.find((s) => s.id === job.upgradeFrom);
-    if (source) {
-      const fraction = source.hp / hp(source.kind);
-      source.kind = job.kind;
-      source.hp = Math.max(1, Math.floor(hp(job.kind) * fraction));
-      delete source.firingCursor;
-      if (!canAttack(source.kind)) delete p.priorities[String(source.cell)];
-    } else
-      w.structures.push({
-        id: w.nextEntityId++,
-        cell: job.cell,
-        ownerId: p.id,
-        kind: job.kind,
-        hp: job.hp,
-        connected: true,
-      });
-    p.queue.splice(p.queue.indexOf(job), 1);
-    p.statistics.built++;
-    emit(w, p, "constructed", { cell: job.cell });
-    worker.mode = "returning";
-  }
+  if (advanceConstruction(w, p, job)) worker.mode = "returning";
 }
+function advanceConstruction(w: World, p: Player, job: Construction): boolean {
+  job.progress += hasBuff(p, "surge", w.tick) ? 2 : 1;
+  if (job.progress < job.duration) return false;
+  const source =
+    job.upgradeFrom === undefined
+      ? undefined
+      : w.structures.find((s) => s.id === job.upgradeFrom);
+  if (source) {
+    const fraction = source.hp / hp(source.kind);
+    source.kind = job.kind;
+    source.hp = Math.max(1, Math.floor(hp(job.kind) * fraction));
+    delete source.firingCursor;
+    if (!canAttack(source.kind)) delete p.priorities[String(source.cell)];
+  } else
+    w.structures.push({
+      id: w.nextEntityId++,
+      cell: job.cell,
+      ownerId: p.id,
+      kind: job.kind,
+      hp: job.hp,
+      connected: true,
+    });
+  p.queue.splice(p.queue.indexOf(job), 1);
+  p.statistics.built++;
+  emit(w, p, "constructed", { cell: job.cell });
+  return true;
+}
+
 /**
  * Paid neurons grow while they touch this player's connected network. One
  * that loses every connected neighbour goes back to a waiting plan with its
@@ -650,21 +661,37 @@ function sprouts(w: World, p: Player) {
       });
       continue;
     }
-    job.progress += hasBuff(p, "surge", w.tick) ? 2 : 1;
-    if (job.progress < job.duration) continue;
-    w.structures.push({
-      id: w.nextEntityId++,
-      cell: job.cell,
-      ownerId: p.id,
-      kind: job.kind,
-      hp: job.hp,
-      connected: true,
-    });
-    p.queue.splice(p.queue.indexOf(job), 1);
-    p.statistics.built++;
-    emit(w, p, "constructed", { cell: job.cell });
+    advanceConstruction(w, p, job);
   }
 }
+function constructionPhase(w: World) {
+  const active = w.players.filter((p) => p.alive);
+  const workerIndex = cellIndex(w);
+  const brains = brainIndex(w.structures);
+  const ready = new Map<Player, number>();
+  for (const p of active) {
+    const home = brains.get(p.id)?.cell;
+    if (home !== undefined && prepareWorker(w, p, home, workerIndex))
+      ready.set(p, home);
+  }
+  const automatic: { player: Player; cell: number }[] = [];
+  for (const p of active) {
+    const cell = autoExpandCell(w, p);
+    if (cell !== null) {
+      p.queue.push(constructionPlan("neuron", cell));
+      automatic.push({ player: p, cell });
+    }
+  }
+  for (const p of active) dropTakenPlans(w, p, workerIndex);
+  dispatchConstruction(w, active, ready);
+  // Losing automatic claims are retried from the next authoritative board;
+  // they must not become stale ghost jobs that block this player's expansion.
+  for (const { player, cell } of automatic)
+    player.queue = player.queue.filter((job) => job.cell !== cell || job.paid);
+  for (const [p, home] of ready) worker(w, p, home);
+  for (const p of active) sprouts(w, p);
+}
+
 function recoverParticle(w: World, particle: Particle) {
   particle.mode = "recovering";
   particle.recoverAt =
@@ -1085,34 +1112,7 @@ export function step(state: World, commands: readonly Command[] = []): World {
     for (const cell of Object.keys(p.priorities))
       if (structure(w, Number(cell))?.ownerId !== p.id)
         delete p.priorities[cell];
-  const workerIndex = cellIndex(w);
-  const ready = w.players.filter(
-    (p) => p.alive && prepareWorker(w, p, workerIndex),
-  );
-  const automatic: { player: Player; cell: number }[] = [];
-  for (const p of w.players) {
-    if (!p.alive) continue;
-    const cell = autoExpandCell(w, p);
-    if (cell !== null) {
-      p.queue.push({
-        cell,
-        kind: "neuron",
-        paid: false,
-        progress: 0,
-        duration: 0,
-        hp: hp("neuron"),
-      });
-      automatic.push({ player: p, cell });
-    }
-  }
-  for (const p of w.players) if (p.alive) dropTakenPlans(w, p);
-  dispatchConstruction(w, ready);
-  // Losing automatic claims are retried from the next authoritative board;
-  // they must not become stale ghost jobs that block this player's expansion.
-  for (const { player, cell } of automatic)
-    player.queue = player.queue.filter((job) => job.cell !== cell || job.paid);
-  for (const p of ready) worker(w, p);
-  for (const p of w.players) if (p.alive) sprouts(w, p);
+  constructionPhase(w);
   connectivity(w);
   powerupPhase(w);
   if (!w.finished) {
