@@ -35,7 +35,13 @@ try {
     false,
   );
   await start.click();
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  assert.equal(
+    await page.evaluate(
+      () => (window as TimingWindow).fusemania!.timingState().phase,
+    ),
+    "idle",
+  );
   await start.click();
 
   const run = await page.evaluate(() =>
@@ -46,16 +52,20 @@ try {
   // consistently late, allowing a whole frame and keyboard dispatch jitter.
   const beat = 60_000 / run.bpm;
   for (let tick = run.countIn; tick < run.countIn + run.ticks; tick++) {
-    await page.waitForFunction(
+    const sample = await page.waitForFunction(
       (due) => {
-        const heard = (window as TimingWindow).fusemania?.timingState().heardMs;
-        return heard !== undefined && heard >= due;
+        const state = (window as TimingWindow).fusemania?.timingState();
+        if (state?.phase === "result") return "finished";
+        return state?.heardMs !== undefined && state.heardMs >= due && "tick";
       },
       tick * beat + 30,
     );
+    const outcome = await sample.jsonValue();
+    await sample.dispose();
+    if (outcome === "finished") break;
     await page.keyboard.press("ArrowUp");
   }
-  const apply = page.getByRole("button", { name: "Apply", exact: true });
+  const apply = page.getByRole("button", { name: "APPLY", exact: true });
   await apply.waitFor();
   const result = await page.evaluate(() =>
     (window as TimingWindow).fusemania!.timingState(),
