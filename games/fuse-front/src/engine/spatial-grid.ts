@@ -1,5 +1,5 @@
 import type { GameMap } from "./map.js";
-import { ceilDiv, div } from "./math.js";
+import { ceilDiv, clamp, div } from "./math.js";
 import { TILE } from "./tuning.js";
 
 interface Point {
@@ -32,10 +32,11 @@ export function spatialGrid<Entry extends Point, Value>(
     else cells.set(key, [item]);
   }
   return (point, range, visit) => {
-    const left = Math.max(0, div(point.x - range, cellSize));
-    const right = Math.min(columns - 1, div(point.x + range, cellSize));
-    const top = Math.max(0, div(point.y - range, cellSize));
-    const bottom = Math.min(rows - 1, div(point.y + range, cellSize));
+    // A search box wholly outside the grid still visits no cells.
+    const left = clamp(div(point.x - range, cellSize), 0, columns);
+    const right = clamp(div(point.x + range, cellSize), -1, columns - 1);
+    const top = clamp(div(point.y - range, cellSize), 0, rows);
+    const bottom = clamp(div(point.y + range, cellSize), -1, rows - 1);
     for (let y = top; y <= bottom; y++)
       for (let x = left; x <= right; x++)
         for (const item of cells.get(y * columns + x) ?? empty) visit(item);
