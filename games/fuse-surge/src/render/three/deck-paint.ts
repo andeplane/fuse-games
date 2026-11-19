@@ -154,12 +154,12 @@ function paintPitStripe(c: CanvasRenderingContext2D, danger: string): void {
 /** Prepare geometry and colors shared by the color and glow textures of one deck. */
 export function deckPainter(theme: Theme, lanes: number, maxHits: number) {
   const laneH = TEX_H / lanes;
-  const pads = [];
+  const pads: { top: number; y: number; color: string }[] = [];
   for (let lane = 0; lane < lanes; lane++) {
     const top = lane * laneH;
     pads.push({ top, y: top + laneH * 0.2, color: laneColor(lane) });
   }
-  const boundaries = [];
+  const boundaries: { y: number; width: number }[] = [];
   for (let lane = 0; lane <= lanes; lane++) {
     boundaries.push({
       y: Math.min(TEX_H - 5, Math.max(5, lane * laneH)),
