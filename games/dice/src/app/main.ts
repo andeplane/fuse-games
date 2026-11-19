@@ -52,7 +52,8 @@ import {
   type TableModel,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import { resultBar, resultReport } from "./result-report.js";
 import { DiceRuntime, type DiceCallbacks } from "./runtime.js";
 import {
@@ -496,7 +497,19 @@ function room(solo: boolean): void {
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display: role === "display",
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => viewer.me,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
   );
@@ -563,29 +576,7 @@ function room(solo: boolean): void {
       }
       if (model.seated) joinSent = false;
       render(model, frame.managerId);
-      if (
-        role !== "display" &&
-        state &&
-        (session.kind === "room" || social.isSignedIn())
-      )
-        for (const report of dueReports(
-          state,
-          viewer.me,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can change a roll after its event was emitted.

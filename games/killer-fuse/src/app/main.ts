@@ -137,7 +137,8 @@ import {
   TEAM_COLORS,
   type RoomSeatRow,
 } from "./room-model.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import {
   NOT_OPEN,
   keepFlags,
@@ -1112,7 +1113,19 @@ function room(solo: boolean): void {
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display: role === "display",
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => viewer.me,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   let joinSent = false;
   const callbacks: KillerFuseCallbacks = {
     state(frame, roomSettings) {
@@ -1299,29 +1312,7 @@ function room(solo: boolean): void {
       });
       driver.feed(frame, next.layout === "arena");
       const state = runtime.roomState();
-      if (
-        role !== "display" &&
-        state &&
-        (session.kind === "room" || social.isSignedIn())
-      )
-        for (const report of dueReports(
-          state,
-          viewer.me,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event(event, matchId, round, tick) {
       // Every tick's events reach the arena this way, folded-together and rolled-back ticks included; the arena

@@ -10,6 +10,7 @@
   "exports": {
     "./game-path": "./src/game-path.ts",
     "./desktop-bridge": "./src/desktop-bridge.ts",
+    "./receipt-reporting": "./src/receipt-reporting.ts",
     "./results-history": "./src/results-history.ts",
     "./activity": "./src/activity.ts",
     "./activity.css": "./src/activity.css",
