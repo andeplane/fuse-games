@@ -16,7 +16,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chrome
+      - run: google-chrome --version
       - run: pnpm exec vite build
       - name: Reproduce the two lobby cases
         run: |
@@ -28,7 +28,10 @@ jobs:
             if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          SMOKE_GAMES=cyberfuse,incredible-fuse pnpm exec tsx scripts/game-lobbies-smoke.ts
+          result=0
+          SMOKE_GAMES=cyberfuse,incredible-fuse pnpm exec tsx scripts/game-lobbies-smoke.ts || result=$?
+          ONLINE_URL=http://127.0.0.1:8787/ pnpm exec tsx scripts/cyberfuse-smoke.ts || result=$?
+          exit "$result"
       - name: Measure the new workshop coverage
         if: success() || failure()
         run: |
