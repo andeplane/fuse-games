@@ -1,0 +1,93 @@
+.machine-page {
+  margin: 0;
+  padding: 0;
+  background: #101b24;
+}
+.machine-page #app {
+  display: grid;
+  min-height: 100dvh;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+}
+.machine-brand {
+  color: var(--fui-text);
+  text-decoration: none;
+  font: clamp(0.55rem, 1.3vw, 0.85rem)/1.4 var(--fui-font-pixel);
+}
+@media (min-width: 760px) {
+  .machine-header .machine-brand {
+    max-width: none;
+  }
+}
+.machine-room {
+  min-width: 0;
+  padding: var(--fui-space-3)
+    max(var(--fui-space-3), env(safe-area-inset-right))
+    env(safe-area-inset-bottom)
+    max(var(--fui-space-3), env(safe-area-inset-left));
+}
+.machine-room [hidden] {
+  display: none !important;
+}
+.machine-room[data-phase="running"] {
+  padding-top: calc(max(12px, env(safe-area-inset-top)) + 56px);
+}
+.machine-puzzle-choice {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--fui-text);
+  font: 600 1rem/1.4 var(--fui-font-sans);
+}
+.machine-puzzle-choice select {
+  width: 100%;
+  min-height: var(--fui-control-height);
+  padding: 0.4rem 0.6rem;
+  border: var(--fui-border);
+  border-radius: 0.35rem;
+  background: #122530;
+  color: var(--fui-text);
+  font: inherit;
+}
+.machine-puzzle-choice small {
+  font-weight: normal;
+  color: var(--fui-text-dim);
+}
+.machine-import {
+  margin-block-start: 0.75rem;
+  font: 0.95rem/1.45 var(--fui-font-sans);
+}
+.machine-import summary {
+  cursor: pointer;
+}
+.machine-import label {
+  display: grid;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+}
+.machine-import input {
+  max-width: 100%;
+}
+.machine-import p:empty {
+  display: none;
+}
+.machine-page:has(.machine-lobby:not([hidden])) .machine-live,
+.machine-live:empty {
+  display: none;
+}
+.machine-live {
+  max-width: 1120px;
+  margin: 0 auto 4px;
+  font-size: 0.75rem;
+  color: var(--fui-text-dim);
+}
+.machine-stage {
+  min-width: 0;
+}
+.machine-stage .fui-round-controls {
+  margin-inline: auto;
+}
+@media (max-width: 700px) {
+  .machine-room {
+    padding-inline: 0.35rem;
+  }
+}
