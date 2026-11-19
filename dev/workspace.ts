@@ -57,8 +57,15 @@ export interface WorkspaceDependencies {
   now(): Date;
   gamesUrl: string;
 }
-type View =
-  "metrics" | "events" | "players" | "sessions" | "reports" | "actions";
+const sections = [
+  ["metrics", "Overview"],
+  ["events", "Raw Events"],
+  ["players", "Player Sessions"],
+  ["sessions", "Playtest sessions"],
+  ["reports", "Reports"],
+  ["actions", "Action proposals"],
+] as const;
+type View = (typeof sections)[number][0];
 
 const isDefaultColumn = (key: string) =>
   key !== "accountId" && key !== "accountName";
@@ -262,116 +269,141 @@ export function mountWorkspace(
     shell();
     return load();
   }
+  function applyToolFilters(args: Record<string, unknown>) {
+    const { from, to, gameId, filters: next } = args;
+    if (
+      typeof from !== "string" ||
+      typeof to !== "string" ||
+      typeof gameId !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(from) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(to) ||
+      (gameId && !gameIds.includes(gameId)) ||
+      !isEventFilters(next)
+    )
+      throw new Error();
+    remember();
+    Object.assign(filters, { from, to, gameId });
+    Object.assign(filterDraft, filters);
+    eventFilters = next;
+    buildToolbar();
+    return load();
+  }
+
+  function applyToolColumns(keys: unknown) {
+    if (
+      !Array.isArray(keys) ||
+      keys.length > 24 ||
+      !keys.every(
+        (key): key is string =>
+          typeof key === "string" && availableFields.includes(key),
+      )
+    )
+      throw new Error();
+    remember();
+    columns = [...new Set(["kind", ...keys])];
+    customColumns = true;
+    if (current !== "events") {
+      current = "events";
+      shell();
+    }
+    return load();
+  }
+
+  function toolControl(id: unknown) {
+    const control = typeof id === "string" ? screenControls.get(id) : undefined;
+    if (!control || !main.contains(control)) throw new Error();
+    return control;
+  }
+
+  function fillToolControl(id: unknown, value: unknown) {
+    const control = toolControl(id);
+    if (
+      typeof value !== "string" ||
+      value.length > 200 ||
+      (control.tagName !== "INPUT" && control.tagName !== "SELECT")
+    )
+      throw new Error();
+    (control as HTMLInputElement | HTMLSelectElement).value = value;
+    const Event = deps.document.defaultView?.Event;
+    if (!Event) return;
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function prepareToolIssue(args: Record<string, unknown>) {
+    const { actionId, title, body } = args;
+    if (
+      typeof actionId !== "string" ||
+      typeof title !== "string" ||
+      typeof body !== "string" ||
+      title.length > 140 ||
+      body.length > 6000
+    )
+      throw new Error();
+    const item = actionsPage?.actions.find((item) => item.id === actionId);
+    if (!item) throw new Error();
+    openIssue(item, { title, body });
+  }
+
   async function executeTool(
     name: string,
     args: Record<string, unknown>,
   ): Promise<unknown> {
-    if (name === "navigate") {
-      if (
-        ![
-          "metrics",
-          "events",
-          "players",
-          "sessions",
-          "reports",
-          "actions",
-        ].includes(String(args.view))
-      )
-        throw new Error();
-      current = args.view as View;
-      selectedRecording = undefined;
-      cursor = undefined;
-      shell();
-      await load();
-    } else if (name === "set_filters") {
-      if (
-        typeof args.from !== "string" ||
-        typeof args.to !== "string" ||
-        typeof args.gameId !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(args.from) ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(args.to) ||
-        (args.gameId && !gameIds.includes(args.gameId))
-      )
-        throw new Error();
-      const next: unknown = args.filters;
-      if (!isEventFilters(next)) throw new Error();
-      remember();
-      filters.from = args.from;
-      filters.to = args.to;
-      filters.gameId = args.gameId;
-      Object.assign(filterDraft, filters);
-      eventFilters = next;
-      buildToolbar();
-      await load();
-    } else if (name === "set_columns") {
-      if (
-        !Array.isArray(args.columns) ||
-        args.columns.length > 24 ||
-        !args.columns.every(
-          (key) => typeof key === "string" && availableFields.includes(key),
-        )
-      )
-        throw new Error();
-      remember();
-      columns = [...new Set(["kind", ...(args.columns as string[])])];
-      customColumns = true;
-      if (current !== "events") {
-        current = "events";
+    switch (name) {
+      case "navigate": {
+        const section = sections.find(([id]) => id === args.view);
+        if (!section) throw new Error();
+        current = section[0];
+        selectedRecording = undefined;
+        cursor = undefined;
         shell();
+        await load();
+        break;
       }
-      await load();
-    } else if (name === "select_session") {
-      if (typeof args.player !== "string" || typeof args.sessionId !== "string")
-        throw new Error();
-      await selectSession(args.player, args.sessionId);
-    } else if (name === "open_recording") {
-      if (
-        typeof args.recordingId !== "string" ||
-        !/^[A-Za-z0-9_-]{1,160}$/.test(args.recordingId)
-      )
-        throw new Error();
-      current = "sessions";
-      selectedRecording = args.recordingId;
-      shell();
-      await load();
-    } else if (name === "refresh") await load();
-    else if (name === "click_control" || name === "fill_control") {
-      const control =
-        typeof args.id === "string" ? screenControls.get(args.id) : undefined;
-      if (!control || !main.contains(control)) throw new Error();
-      if (name === "fill_control") {
+      case "set_filters":
+        await applyToolFilters(args);
+        break;
+      case "set_columns":
+        await applyToolColumns(args.columns);
+        break;
+      case "select_session":
         if (
-          typeof args.value !== "string" ||
-          args.value.length > 200 ||
-          !(control.tagName === "INPUT" || control.tagName === "SELECT")
+          typeof args.player !== "string" ||
+          typeof args.sessionId !== "string"
         )
           throw new Error();
-        (control as HTMLInputElement | HTMLSelectElement).value = args.value;
-        const Event = deps.document.defaultView?.Event;
-        if (Event) {
-          control.dispatchEvent(new Event("input", { bubbles: true }));
-          control.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      } else {
-        control.click();
-      }
-      // Wait for the same in-flight load used by the human control, when it started one.
-      await activeLoad;
-    } else if (name === "prepare_issue") {
-      if (
-        typeof args.actionId !== "string" ||
-        typeof args.title !== "string" ||
-        typeof args.body !== "string" ||
-        args.title.length > 140 ||
-        args.body.length > 6000
-      )
+        await selectSession(args.player, args.sessionId);
+        break;
+      case "open_recording":
+        if (
+          typeof args.recordingId !== "string" ||
+          !/^[A-Za-z0-9_-]{1,160}$/.test(args.recordingId)
+        )
+          throw new Error();
+        current = "sessions";
+        selectedRecording = args.recordingId;
+        shell();
+        await load();
+        break;
+      case "refresh":
+        await load();
+        break;
+      case "click_control":
+        toolControl(args.id).click();
+        await activeLoad;
+        break;
+      case "fill_control":
+        fillToolControl(args.id, args.value);
+        await activeLoad;
+        break;
+      case "prepare_issue":
+        prepareToolIssue(args);
+        break;
+      case "inspect_screen":
+        break;
+      default:
         throw new Error();
-      const item = actionsPage?.actions.find(
-        (item) => item.id === args.actionId,
-      );
-      if (!item) throw new Error();
-      openIssue(item, { title: args.title, body: args.body });
-    } else if (name !== "inspect_screen") throw new Error();
+    }
     return screen(false);
   }
 
@@ -481,14 +513,7 @@ export function mountWorkspace(
     );
     navigation = node("nav", "workspace-nav");
     navigation.setAttribute("aria-label", "Developer sections");
-    for (const [id, text] of [
-      ["metrics", "Overview"],
-      ["events", "Raw Events"],
-      ["players", "Player Sessions"],
-      ["sessions", "Playtest sessions"],
-      ["reports", "Reports"],
-      ["actions", "Action proposals"],
-    ] as const) {
+    for (const [id, text] of sections) {
       const tab = button(text, () => {
         current = id;
         selectedRecording = undefined;
