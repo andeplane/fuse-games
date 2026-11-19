@@ -20,6 +20,33 @@ const SEAT_KEYS = [
   "away",
 ];
 
+interface SeatPlacement {
+  slot: unknown;
+  avatarId: unknown;
+  generation: unknown;
+  bot: boolean;
+  watcher: boolean;
+}
+
+function validSeatPlacement(
+  { slot, avatarId, generation, bot, watcher }: SeatPlacement,
+  {
+    capacity,
+    validAvatar,
+  }: Pick<SeatDecoderOptions, "capacity" | "validAvatar">,
+): boolean {
+  if (watcher)
+    return !bot && slot === -1 && avatarId === "" && uint32(generation);
+  return (
+    uint32(slot) &&
+    slot < capacity &&
+    validAvatar(avatarId, bot) &&
+    (bot ? generation === undefined : uint32(generation))
+  );
+}
+
+const optionalTrue = (value: unknown) => value === undefined || value === true;
+
 /** Decode one object seat from a checkpoint, leaving game-specific values to the caller. */
 export function createSeatDecoder({
   capacity,
@@ -27,6 +54,7 @@ export function createSeatDecoder({
   validName,
   validAvatar,
 }: SeatDecoderOptions): (raw: unknown) => SeatRecord | undefined {
+  const placement = { capacity, validAvatar };
   return function decodeSeat(raw) {
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return;
     if (Object.keys(raw).some((key) => !SEAT_KEYS.includes(key))) return;
@@ -46,12 +74,13 @@ export function createSeatDecoder({
       !validName(name) ||
       typeof connected !== "boolean" ||
       typeof bot !== "boolean" ||
-      (watcher !== undefined && watcher !== true) ||
-      (away !== undefined && away !== true) ||
+      !optionalTrue(watcher) ||
+      !optionalTrue(away) ||
       (away === true && connected) ||
-      (watcher ? slot !== -1 : !uint32(slot) || slot >= capacity) ||
-      (watcher ? avatarId !== "" : !validAvatar(avatarId, bot)) ||
-      (bot ? generation !== undefined || watcher === true : !uint32(generation))
+      !validSeatPlacement(
+        { slot, avatarId, generation, bot, watcher: watcher === true },
+        placement,
+      )
     )
       return;
     return {
