@@ -235,6 +235,62 @@ test("an initially offline developer check recovers online without guest request
   }
 });
 
+test("active recording can collapse, reopen, and stop from the persistent indicator", async () => {
+  const f = fixture();
+  const control = (label: string) =>
+    [...f.doc.querySelectorAll("button")].find(
+      (button) => button.textContent === label,
+    )!;
+  try {
+    f.user(true);
+    await f.flush();
+    f.toggle.click();
+    await f.flush();
+    const panel = f.doc.querySelector<HTMLElement>(
+      ".fui-playtest-recording-panel",
+    )!;
+    const compact = f.doc.querySelector<HTMLElement>(
+      ".fui-playtest-recording-compact",
+    )!;
+    const collapse = control("Collapse"),
+      expand = control("Recording 0:00"),
+      stop = control("Stop");
+    assert.equal(panel.hidden, false);
+    assert.equal(compact.hidden, true);
+    assert.equal(control("Dismiss").hidden, true);
+
+    collapse.focus();
+    collapse.click();
+    assert.equal(panel.hidden, true);
+    assert.equal(compact.hidden, false);
+    assert.equal(f.doc.activeElement, expand);
+    assert.equal(expand.getAttribute("aria-controls"), panel.id);
+    assert.equal(f.stops(), 0);
+    assert.equal(f.toggle.textContent, "Stop recording");
+
+    expand.click();
+    assert.equal(panel.hidden, false);
+    assert.equal(compact.hidden, true);
+    assert.equal(f.doc.activeElement, collapse);
+    collapse.click();
+    stop.focus();
+    stop.click();
+    await f.flush();
+    assert.equal(f.starts(), 1);
+    assert.equal(f.stops(), 1);
+    assert.equal(compact.hidden, true);
+    assert.equal(panel.hidden, false);
+    assert.equal(collapse.hidden, true);
+    assert.equal(f.doc.activeElement, control("Start recording"));
+    assert.ok(
+      f.items.size === 0,
+      "the compact stop finishes the upload lifecycle",
+    );
+  } finally {
+    await f.close();
+  }
+});
+
 test("resource denials recheck account access before stopping approved capture", async () => {
   const f = fixture();
   try {

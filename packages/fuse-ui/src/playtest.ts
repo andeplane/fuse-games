@@ -152,7 +152,7 @@ export function installBrowserPlaytest(
     result.textContent = text;
     return result;
   };
-  const button = (text: string, action: () => void) => {
+  const button = (text: string, action: (event: MouseEvent) => void) => {
     const result = node("button", text);
     result.type = "button";
     result.className = "fui-button";
@@ -782,6 +782,23 @@ export function installBrowserPlaytest(
     bar.className = "fui-playtest-recording";
     bar.dataset.fuiPlaytest = "recording";
     bar.setAttribute("aria-label", "Developer microphone recording");
+    const panel = node("div");
+    panel.id = "fui-playtest-recording-controls";
+    panel.className = "fui-playtest-recording-panel";
+    const compact = node("div");
+    compact.className = "fui-playtest-recording-compact";
+    compact.hidden = true;
+    let collapsed = false;
+    let gameFrame: HTMLIFrameElement | undefined;
+    bar.addEventListener("pointerdown", () => {
+      const focused = doc.activeElement;
+      if (focused?.tagName === "IFRAME")
+        gameFrame = focused as HTMLIFrameElement;
+    });
+    // Let focused recording controls receive native activation during play.
+    bar.addEventListener("keydown", (event) => {
+      if (event.key === " " || event.key === "Enter") event.stopPropagation();
+    });
     const title = node("strong", "Microphone recording"),
       status = node(
         "p",
@@ -829,8 +846,30 @@ export function installBrowserPlaytest(
       }
       bar.remove();
     });
-    controls.append(signIn, start, stop, retry, dismiss);
-    bar.append(title, status, detail, controls);
+    const collapse = button("Collapse", (event) => {
+      collapsed = true;
+      render();
+      if (event.detail === 0) expand.focus();
+      else if (gameFrame?.isConnected) gameFrame.focus();
+      else collapse.blur();
+    });
+    collapse.hidden = true;
+    const expand = button("Recording", (event) => {
+      collapsed = false;
+      render();
+      if (event.detail === 0) collapse.focus();
+    });
+    expand.setAttribute("aria-controls", panel.id);
+    expand.setAttribute("aria-expanded", "false");
+    const compactStop = button("Stop", (event) => {
+      if (event.detail === 0) expand.focus();
+      void stopRecording();
+    });
+    compactStop.setAttribute("aria-label", "Stop microphone recording");
+    compact.append(expand, compactStop);
+    controls.append(signIn, start, stop, retry, dismiss, collapse);
+    panel.append(title, status, detail, controls);
+    bar.append(panel, compact);
     overlays.append(bar);
     void identity
       .accountReady()
@@ -865,12 +904,24 @@ export function installBrowserPlaytest(
       error: undefined as string | undefined,
     };
     const render = () => {
-      bar.dataset.recording = String(Boolean(microphone));
+      const active = Boolean(microphone);
+      const showCompact = collapsed && (active || Boolean(stopping));
+      bar.dataset.recording = String(active);
+      bar.dataset.collapsed = String(showCompact);
+      panel.hidden = showCompact;
+      compact.hidden = !showCompact;
+      collapse.hidden = !active;
+      collapse.disabled = Boolean(stopping);
+      compactStop.disabled = Boolean(stopping);
+      dismiss.hidden = active || Boolean(stopping);
       const elapsed =
         microphone?.offsetMs() ?? recording?.savedMs ?? uploadStatus.savedMs;
       title.textContent = microphone
         ? `Recording microphone · ${recordingTime(elapsed)}`
         : "Microphone recording";
+      expand.textContent = active
+        ? `Recording ${recordingTime(elapsed)}`
+        : "Stopping…";
       status.textContent = [
         stoppedReason || (microphone ? "Recording" : "Ready when you are."),
         `Saved through ${recordingTime(recording?.savedMs ?? uploadStatus.savedMs)}.`,
@@ -1105,20 +1156,24 @@ export function installBrowserPlaytest(
           );
         }
         void uploader.kick();
-        stop.hidden = true;
-        start.hidden = false;
-        dismiss.disabled = false;
         if (!stoppedReason) stoppedReason = "Recording stopped.";
       })()
         .catch((error: unknown) => {
           stoppedReason = failure(error);
         })
         .finally(() => {
+          const returnFocus = compact.contains(doc.activeElement);
           stopping = undefined;
+          collapsed = false;
           stop.disabled = false;
+          stop.hidden = true;
+          start.hidden = false;
+          dismiss.disabled = false;
           publishRecording({ active: Boolean(microphone), busy: false });
           render();
+          if (returnFocus) start.focus();
         });
+      render();
       return stopping;
     }
     beginRecording = begin;

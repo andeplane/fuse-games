@@ -60,6 +60,59 @@
 .fui-playtest-recording[data-recording="true"] {
   border-color: var(--fui-pink, #ff65bc);
 }
+.fui-playtest-recording-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+.fui-playtest-recording[data-collapsed="true"] {
+  inset: max(0.5rem, env(safe-area-inset-top))
+    max(0.5rem, env(safe-area-inset-right)) auto auto;
+  width: max-content;
+  padding: 0;
+  border-radius: 0.5rem;
+}
+body:has(.fui-top-bar) .fui-playtest-recording[data-collapsed="true"] {
+  top: calc(max(12px, env(safe-area-inset-top)) + 48px + 0.25rem);
+}
+.fui-playtest-recording-compact {
+  display: flex;
+}
+.fui-playtest-recording .fui-playtest-recording-compact > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.4375rem;
+  background: transparent;
+  color: inherit;
+  font: 600 0.75rem / 1 var(--fui-font-body, sans-serif);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+.fui-playtest-recording .fui-playtest-recording-compact > button:enabled:hover {
+  background: var(--fui-control-fill, #18314c);
+}
+.fui-playtest-recording .fui-playtest-recording-compact > button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.fui-playtest-recording-compact > button:first-child::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--fui-pink, #ff65bc);
+}
+.fui-playtest-recording .fui-playtest-recording-compact > button + button {
+  border-inline-start: 1px solid var(--fui-line, #8192aa);
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
 .fui-playtest-recording strong {
   font-size: 14px;
   line-height: 1.6;
