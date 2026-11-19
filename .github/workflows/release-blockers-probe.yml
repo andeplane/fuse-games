@@ -19,7 +19,16 @@ jobs:
       - run: pnpm exec playwright install --with-deps chrome
       - run: pnpm exec vite build
       - name: Reproduce the two lobby cases
-        run: SMOKE_GAMES=cyberfuse,incredible-fuse pnpm exec tsx scripts/ci-smoke.ts game-lobbies
+        run: |
+          mkdir -p artifacts
+          pnpm exec tsx service/dev.ts --port 8787 > artifacts/room-service.log 2>&1 &
+          room=$!
+          trap 'kill "$room" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          SMOKE_GAMES=cyberfuse,incredible-fuse pnpm exec tsx scripts/game-lobbies-smoke.ts
       - name: Measure the new workshop coverage
         if: success() || failure()
         run: |
