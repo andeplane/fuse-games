@@ -258,10 +258,9 @@ function reachable(map: MapDef): boolean {
     if (map.wrapY) y = (y + rows) % rows;
     if (x < 0 || y < 0 || x >= cols || y >= rows) return;
     const key = y * cols + x;
-    if (seen.has(key) || !levelFree(map, x * size + 4, y * size + 4, BALL))
-      return;
+    if (seen.has(key)) return;
     seen.add(key);
-    queue.push(key);
+    if (levelFree(map, x * size + 4, y * size + 4, BALL)) queue.push(key);
   };
   const ax = Math.floor(map.ballAnchor.x / size),
     ay = Math.floor(map.ballAnchor.y / size);
@@ -349,6 +348,11 @@ const overlap = (a: Rect, b: Rect, margin = 0): boolean =>
   b.x < a.x + a.w + margin &&
   a.y < b.y + b.h + margin &&
   b.y < a.y + a.h + margin;
+const overlapsAny = (
+  box: Rect,
+  obstacles: readonly Rect[],
+  margin = 0,
+): boolean => obstacles.some((obstacle) => overlap(box, obstacle, margin));
 const around = (x: number, y: number, r: number): Rect =>
   rect(x - r, y - r, 2 * r, 2 * r);
 const even = (r: Rect): boolean =>
@@ -374,10 +378,33 @@ const CRUSH = 2 * RIDER + 4;
  */
 export function gadgetFaults(map: MapDef): string[] {
   const faults: string[] = [];
+  const { barriers, bumpers, ledges, movers, portals, solids } = map;
+  if (!(
+    barriers.length ||
+    bumpers.length ||
+    ledges.length ||
+    movers.length ||
+    portals.length
+  ))
+    return faults;
+  // Prepare once per check. The generator can add or remove pairs before checking the same map again.
+  const goals = map.goals.map((goal) =>
+    isCircle(goal) ? around(goal.x, goal.y, goal.r) : goal,
+  );
+  const swept = movers.map((mover) => ({ mover, box: sweepOf(mover) }));
+  const sweeps = swept.map(({ box }) => box);
+  const ledgeSolids = [...solids, ...barriers];
+  const moverSolids = [...solids, ...ledges, ...barriers];
+  const bumperSolids = [...solids, ...ledges, ...sweeps];
+  const portalSolids = [...moverSolids, ...sweeps];
   const mirrored = (
     rects: readonly Rect[],
     same: (a: Rect, b: Rect) => boolean,
-  ) => rects.every((r) => rects.some((other) => same(flip(r), other)));
+  ) =>
+    rects.every((r) => {
+      const reflected = flip(r);
+      return rects.some((other) => same(reflected, other));
+    });
   const sameRect = (a: Rect, b: Rect) =>
     a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
@@ -389,8 +416,7 @@ export function gadgetFaults(map: MapDef): string[] {
     if (!even(barrier) || !inField(barrier)) faults.push("barrier");
     if (barrier.kind === "field" && !(barrier.hits >= 2 && barrier.hits <= 9))
       faults.push("field hits");
-    if (map.solids.some((solid) => overlap(barrier, solid)))
-      faults.push("barrier in a solid");
+    if (overlapsAny(barrier, solids)) faults.push("barrier in a solid");
   }
 
   for (const bumper of map.bumpers) {
@@ -408,18 +434,9 @@ export function gadgetFaults(map: MapDef): string[] {
     )
       faults.push("bumper symmetry");
     // Clear of every solid by more than the ball, so the ball is never wedged between the two.
-    if (
-      [...map.solids, ...map.ledges, ...map.movers.map(sweepOf)].some((solid) =>
-        overlap(box, solid, 2 * BALL + 2),
-      )
-    )
+    if (overlapsAny(box, bumperSolids, 2 * BALL + 2))
       faults.push("bumper near a solid");
-    if (
-      map.goals.some((goal) =>
-        overlap(box, isCircle(goal) ? around(goal.x, goal.y, goal.r) : goal),
-      )
-    )
-      faults.push("bumper in a goal");
+    if (overlapsAny(box, goals)) faults.push("bumper in a goal");
     if (
       map.bumpers.some(
         (o) =>
@@ -462,31 +479,16 @@ export function gadgetFaults(map: MapDef): string[] {
   }
   for (const end of ends) {
     const box = around(end.x, end.y, BALL);
+    const opening = around(end.x, end.y, end.r);
     if (
       ![end.x, end.y, end.r].every(Number.isInteger) ||
       end.r < BALL + 4 ||
-      !inField(around(end.x, end.y, end.r))
+      !inField(opening)
     )
       faults.push("portal");
     // A ball arriving at an end's centre is not inside a solid, a goal, a gadget or another portal.
-    if (
-      [
-        ...map.solids,
-        ...map.ledges,
-        ...map.barriers,
-        ...map.movers.map(sweepOf),
-      ].some((solid) => overlap(box, solid))
-    )
-      faults.push("portal in a solid");
-    if (
-      map.goals.some((goal) =>
-        overlap(
-          around(end.x, end.y, end.r),
-          isCircle(goal) ? around(goal.x, goal.y, goal.r) : goal,
-        ),
-      )
-    )
-      faults.push("portal in a goal");
+    if (overlapsAny(box, portalSolids)) faults.push("portal in a solid");
+    if (overlapsAny(opening, goals)) faults.push("portal in a goal");
     if (
       ends.some(
         (o) =>
@@ -507,22 +509,17 @@ export function gadgetFaults(map: MapDef): string[] {
     if (!even(ledge) || !inField(ledge) || ledge.w < 2 * RIDER + 6)
       faults.push("ledge");
     if (
-      [...map.solids, ...map.barriers].some((solid) => overlap(ledge, solid)) ||
+      overlapsAny(ledge, ledgeSolids) ||
       map.ledges.some((o) => o !== ledge && overlap(ledge, o, 2 * BALL))
     )
       faults.push("ledge in a solid");
-    if (
-      map.goals.some((goal) =>
-        overlap(ledge, isCircle(goal) ? around(goal.x, goal.y, goal.r) : goal),
-      )
-    )
-      faults.push("ledge in a goal");
+    if (overlapsAny(ledge, goals)) faults.push("ledge in a goal");
   }
 
-  for (const mover of map.movers) {
+  for (const { mover, box: sweep } of swept) {
     const { travel, period, dwell } = mover,
-      sweep = sweepOf(mover),
       far = Math.abs(travel.x) + Math.abs(travel.y);
+    const reflected = flip(mover);
     if (
       !even(mover) ||
       ![travel.x, travel.y, period, dwell].every(
@@ -540,7 +537,7 @@ export function gadgetFaults(map: MapDef): string[] {
     if (
       !map.movers.some(
         (o) =>
-          sameRect(o, flip(mover)) &&
+          sameRect(o, reflected) &&
           o.travel.x === -travel.x &&
           o.travel.y === travel.y &&
           o.period === period &&
@@ -556,18 +553,11 @@ export function gadgetFaults(map: MapDef): string[] {
       sweep.h + (travel.y ? 2 * CRUSH : 0),
     );
     if (
-      [...map.solids, ...map.ledges, ...map.barriers].some((solid) =>
-        overlap(reach, solid),
-      ) ||
-      map.movers.some((o) => o !== mover && overlap(reach, sweepOf(o)))
+      overlapsAny(reach, moverSolids) ||
+      swept.some((other) => other.mover !== mover && overlap(reach, other.box))
     )
       faults.push("mover in a solid");
-    if (
-      map.goals.some((goal) =>
-        overlap(sweep, isCircle(goal) ? around(goal.x, goal.y, goal.r) : goal),
-      )
-    )
-      faults.push("mover in a goal");
+    if (overlapsAny(sweep, goals)) faults.push("mover in a goal");
     if (
       overlap(sweep, around(map.ballAnchor.x, map.ballAnchor.y, BALL)) ||
       map.spawns.some((spawn) =>
