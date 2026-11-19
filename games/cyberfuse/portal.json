@@ -1,0 +1,12 @@
+{
+  "name": "Cyberfuse",
+  "tagline": "C-Dogs squad missions and arcade dogfights",
+  "mark": "CF",
+  "accent": "#65ddbf",
+  "screenshot": "gallery/cyberfuse.jpg",
+  "screenshots": [
+    "gallery/cyberfuse.jpg",
+    "gallery/cyberfuse-menu.jpg",
+    "gallery/cyberfuse-controls.jpg"
+  ]
+}
