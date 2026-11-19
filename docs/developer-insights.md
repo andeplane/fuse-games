@@ -20,6 +20,9 @@ a URL flag. Starting explicitly requests microphone permission; signing out
 stops capture. FuseOS owns a single microphone recording across embedded games,
 including when their menus control it. `?record` and its `?report` alias remain
 optional shortcuts to the opt-in recording UI; neither grants authorization.
+While recording, **Collapse** clears the full panel from the play area. The
+recording indicator stays in the upper-right corner with the elapsed time and
+a **Stop** button. Select the indicator to reopen the recording and upload controls.
 Ctrl+X reporting remains available without audio or admin sign-in. Reports
 associated with a recording require its authenticated owner. Screenshots,
 reports, audio, transcripts and extracted actions are private. Keep them out
