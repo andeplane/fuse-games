@@ -20,6 +20,7 @@
     "./friends-notify": "./src/friends-notify.ts",
     "./social-friends": "./src/social-friends.ts",
     "./social": "./src/social.ts",
+    "./gamepad": "./src/gamepad.ts",
     "./modal-input": "./src/modal-input.ts",
     "./social.css": "./src/social.css",
     "./analytics": "./src/analytics.ts",

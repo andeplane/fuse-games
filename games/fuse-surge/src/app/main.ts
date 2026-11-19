@@ -1,3 +1,4 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import {
   createHowToPlay,
   createLiveResults,
@@ -92,7 +93,7 @@ import {
   forwardInputs,
   stepsAhead,
 } from "./forward.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import {
   BOT_CHOICES,
   HIT_CHOICES,
@@ -729,8 +730,10 @@ function room(solo: boolean): void {
   };
   lookWatchers.add(followLook);
   const smoother = createSmoother();
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
-    controls.hold("gamepad", bits),
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => controls.hold("gamepad", bits),
   );
   let model: Model | undefined;
   const leadClock = createLeadClock();
