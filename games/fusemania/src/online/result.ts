@@ -14,6 +14,7 @@ import {
   ranking,
   rating,
   type Library,
+  type World,
 } from "../engine/index.js";
 import {
   parseFusemaniaStats,
@@ -33,6 +34,20 @@ export type FusemaniaReceipt = HistoryReceipt<FusemaniaPlayerResult>;
 export const RESULT_PARENTS = 8;
 const RECEIPTS_PER_PARENT = 11;
 
+export function songStats({ best, counts }: World["players"][number]) {
+  const marvelous = counts[MARVELOUS]!;
+  const perfect = counts[PERFECT]!;
+  const great = counts[GREAT]!;
+  return {
+    combo: best,
+    marvelous,
+    perfect,
+    great,
+    steps: marvelous + perfect + great + counts[GOOD]! + counts[BOO]!,
+    misses: counts[MISS]!,
+  };
+}
+
 function players(
   library: Library,
   room: Room,
@@ -42,8 +57,7 @@ function players(
   const places = ranking(library, world);
   return roster.map((entrant) => {
     const player = world.players[entrant.slot]!,
-      placement = places.indexOf(entrant.slot) + 1,
-      counts = player.counts;
+      placement = places.indexOf(entrant.slot) + 1;
     const score = Math.min(
       MOST_RATING,
       rating(library.steps(world.song, player.chart)!, player.score),
@@ -62,17 +76,7 @@ function players(
       matchPlacement: placement,
       earlyExits: entrant.bot || decided.finishers.includes(entrant.id) ? 0 : 1,
       rating: score,
-      combo: player.best,
-      marvelous: counts[MARVELOUS]!,
-      perfect: counts[PERFECT]!,
-      great: counts[GREAT]!,
-      steps:
-        counts[MARVELOUS]! +
-        counts[PERFECT]! +
-        counts[GREAT]! +
-        counts[GOOD]! +
-        counts[BOO]!,
-      misses: counts[MISS]!,
+      ...songStats(player),
     };
   });
 }
@@ -84,29 +88,36 @@ export function matchResult(
 ): MatchResult<FusemaniaPlayerResult> | undefined {
   const list = players(library, room);
   if (!list || !room.decided) return;
+  return finishedMatch(room, room.decided, list);
+}
+
+function finishedMatch(
+  room: Room,
+  decided: NonNullable<Room["decided"]>,
+  list: FusemaniaPlayerResult[],
+): MatchResult<FusemaniaPlayerResult> | undefined {
   const session = room.session;
   if (session) {
     if (session.done !== session.length) return;
-    const places = standings(session.scores);
-    const aggregate = session.scores.map(
-      (score, slot): FusemaniaPlayerResult => {
-        const record = session.records[slot]!;
+    const places = standings(session.totals);
+    const aggregate = session.totals.map(
+      (total, slot): FusemaniaPlayerResult => {
         return {
-          playerId: score.id,
-          name: score.name,
+          playerId: total.id,
+          name: total.name,
           slot,
-          roundsPlayed: record.roundsPlayed,
-          roundWins: score.wins,
-          matchScoreUnits: score.points,
-          matchPlacement: places.findIndex((each) => each.id === score.id) + 1,
-          earlyExits: record.earlyExits,
-          rating: Math.floor(score.points / session.length),
-          combo: record.combo,
-          marvelous: record.marvelous,
-          perfect: record.perfect,
-          great: record.great,
-          steps: record.steps,
-          misses: record.misses,
+          roundsPlayed: total.roundsPlayed,
+          roundWins: total.wins,
+          matchScoreUnits: total.points,
+          matchPlacement: places.findIndex((each) => each.id === total.id) + 1,
+          earlyExits: total.earlyExits,
+          rating: Math.floor(total.points / session.length),
+          combo: total.combo,
+          marvelous: total.marvelous,
+          perfect: total.perfect,
+          great: total.great,
+          steps: total.steps,
+          misses: total.misses,
           sessionLength: session.length,
         };
       },
@@ -115,15 +126,15 @@ export function matchResult(
       matchId: session.id,
       length: session.length,
       winnerId: places[0]!.id,
-      finishers: [...room.decided.finishers],
+      finishers: [...decided.finishers],
       players: aggregate,
     };
   }
   return {
     matchId: room.matchId,
     length: 1,
-    winnerId: room.decided.winner,
-    finishers: [...room.decided.finishers],
+    winnerId: decided.winner,
+    finishers: [...decided.finishers],
     players: list,
   };
 }
@@ -135,16 +146,24 @@ export function roundResult(
 ): MatchResult<FusemaniaPlayerResult> | undefined {
   const list = players(library, room);
   if (!list || !room.decided) return;
+  return finishedRound(room, room.decided, list);
+}
+
+function finishedRound(
+  room: Room,
+  decided: NonNullable<Room["decided"]>,
+  list: FusemaniaPlayerResult[],
+): MatchResult<FusemaniaPlayerResult> {
   return {
     matchId: room.session?.id ?? room.matchId,
     length: 1,
     round: room.session?.done ?? 1,
     roundDuration: {
       version: 1,
-      ticks: room.decided.clock - room.matchStartTick,
+      ticks: decided.clock - room.matchStartTick,
     },
-    winnerId: room.decided.winner,
-    finishers: [...room.decided.finishers],
+    winnerId: decided.winner,
+    finishers: [...decided.finishers],
     players: list,
   };
 }
@@ -154,12 +173,23 @@ export function currentHistoryReceipts(
   library: Library,
   room: Room,
 ): FusemaniaReceipt[] {
-  if (!room.decided) return [];
-  const round = roundResult(library, room),
-    match = matchResult(library, room);
-  return [round, match].flatMap((result) =>
-    result ? [{ tick: room.decided!.clock, result }] : [],
+  const decided = room.decided;
+  if (!decided) return [];
+  const list = players(library, room);
+  if (!list) return [];
+  const tick = decided.clock;
+  const round = finishedRound(room, decided, list);
+  const match = finishedMatch(
+    room,
+    decided,
+    room.session ? list : list.map((row) => ({ ...row })),
   );
+  return match
+    ? [
+        { tick, result: round },
+        { tick, result: match },
+      ]
+    : [{ tick, result: round }];
 }
 
 export function captureHistoryReceipts(library: Library, room: Room): void {

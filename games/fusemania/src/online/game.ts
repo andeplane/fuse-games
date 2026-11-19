@@ -17,12 +17,6 @@ import {
 import {
   CAPACITY,
   FULL_RATING,
-  BOO,
-  GOOD,
-  GREAT,
-  MARVELOUS,
-  MISS,
-  PERFECT,
   LEAD_IN_MS,
   MAX_SONG_MS,
   MIN_SONG_MS,
@@ -58,6 +52,7 @@ import {
   captureHistoryReceipts,
   currentHistoryReceipts,
   parseRecentResults,
+  songStats,
   type FusemaniaReceipt,
 } from "./result.js";
 
@@ -185,9 +180,8 @@ export interface SessionScore {
   /** The songs it won. */
   wins: number;
 }
-/** Frozen counters from each completed song, retained beside the session's scoreboard. */
-export interface SessionRecord {
-  id: string;
+/** One rider's standings and frozen counters over the songs they completed. */
+export interface SessionTotal extends SessionScore {
   bot: boolean;
   roundsPlayed: number;
   earlyExits: number;
@@ -209,9 +203,7 @@ export interface Session {
   /** The songs started, in order: the finished ones, then the one being played. A song given up is not kept. */
   songs: string[];
   /** A total per rider, in the order they first finished a song. */
-  scores: SessionScore[];
-  /** Same ids and order as scores; both lists evict the same historical rider. */
-  records: SessionRecord[];
+  totals: SessionTotal[];
 }
 /** A session as the screen shows it. */
 export interface SessionView {
@@ -388,7 +380,12 @@ export const standings = (scores: readonly SessionScore[]): SessionScore[] =>
         b.score.wins - a.score.wins ||
         a.index - b.index,
     )
-    .map(({ score }) => ({ ...score }));
+    .map(({ score: { id, name, points, wins } }) => ({
+      id,
+      name,
+      points,
+      wins,
+    }));
 
 function decodeSession(
   raw: unknown,
@@ -415,31 +412,21 @@ function decodeSession(
     records.length !== scores.length
   )
     return;
-  const list: SessionScore[] = [];
+  const totals: SessionTotal[] = [];
+  const ids = new Set<string>();
   let won = 0;
-  for (const item of scores as unknown[]) {
-    if (!Array.isArray(item) || item.length !== 4) return;
-    const [id, name, points, wins] = item as unknown[];
+  for (const [index, score] of (scores as unknown[]).entries()) {
+    const record: unknown = records[index];
     if (
-      !playerKey(id) ||
-      !validName(name) ||
-      !uint32(points) ||
-      // A doubled stretch can take one song's rating past the full one, never past twice it.
-      points > done * 2 * FULL_RATING ||
-      !uint32(wins) ||
-      list.some((score) => score.id === id)
+      !Array.isArray(score) ||
+      score.length !== 4 ||
+      !Array.isArray(record) ||
+      record.length !== 10
     )
       return;
-    won += wins;
-    list.push({ id, name, points, wins });
-  }
-  // Every finished song had one winner; a rider dropped from the list took its wins along.
-  if (won > done) return;
-  const results: SessionRecord[] = [];
-  for (const [index, item] of (records as unknown[]).entries()) {
-    if (!Array.isArray(item) || item.length !== 10) return;
+    const [id, name, points, wins] = score as unknown[];
     const [
-      id,
+      recordId,
       bot,
       roundsPlayed,
       earlyExits,
@@ -449,9 +436,14 @@ function decodeSession(
       great,
       steps,
       misses,
-    ] = item as unknown[];
+    ] = record as unknown[];
     if (
-      id !== list[index]!.id ||
+      !playerKey(id) ||
+      ids.has(id) ||
+      !validName(name) ||
+      !uint32(points) ||
+      !uint32(wins) ||
+      recordId !== id ||
       typeof bot !== "boolean" ||
       !uint32(roundsPlayed) ||
       roundsPlayed < 1 ||
@@ -468,12 +460,18 @@ function decodeSession(
       marvelous + perfect + great > steps ||
       combo > steps ||
       steps + misses > roundsPlayed * MOST_NOTES ||
-      list[index]!.points > roundsPlayed * 2 * FULL_RATING ||
-      list[index]!.wins > roundsPlayed
+      // A doubled stretch can take one song's rating past the full one, never past twice it.
+      points > roundsPlayed * 2 * FULL_RATING ||
+      wins > roundsPlayed
     )
       return;
-    results.push({
-      id: id as string,
+    ids.add(id);
+    won += wins;
+    totals.push({
+      id,
+      name,
+      points,
+      wins,
       bot,
       roundsPlayed,
       earlyExits,
@@ -485,13 +483,14 @@ function decodeSession(
       misses,
     });
   }
+  // Every finished song had one winner; a rider dropped from the list took its wins along.
+  if (won > done) return;
   return {
     id: sessionId,
     length: length as number,
     done,
     songs: [...(songs as string[])],
-    scores: list,
-    records: results,
+    totals,
   };
 }
 
@@ -685,8 +684,7 @@ export function createFusemaniaGame(
         length: room.play.songs,
         done: 0,
         songs: [],
-        scores: [],
-        records: [],
+        totals: [],
       };
     if (session) {
       // A song that was given up is not one of the session's.
@@ -709,24 +707,24 @@ export function createFusemaniaGame(
     session.done++;
     for (const entrant of room.roster) {
       const player = world.players[entrant.slot]!;
-      let score = session.scores.find((each) => each.id === entrant.id);
-      if (!score) {
-        if (session.scores.length >= SESSION_SCORES) {
+      let total = session.totals.find((each) => each.id === entrant.id);
+      if (!total) {
+        if (session.totals.length >= SESSION_SCORES) {
           // Full: the rider who is gone and has the least makes room.
           let out = -1;
-          session.scores.forEach((each, index) => {
+          session.totals.forEach((each, index) => {
             if (room.roster.some((other) => other.id === each.id)) return;
-            if (out < 0 || each.points < session.scores[out]!.points)
+            if (out < 0 || each.points < session.totals[out]!.points)
               out = index;
           });
           if (out < 0) continue;
-          session.scores.splice(out, 1);
-          session.records.splice(out, 1);
+          session.totals.splice(out, 1);
         }
-        score = { id: entrant.id, name: entrant.name, points: 0, wins: 0 };
-        session.scores.push(score);
-        session.records.push({
+        total = {
           id: entrant.id,
+          name: entrant.name,
+          points: 0,
+          wins: 0,
           bot: entrant.bot,
           roundsPlayed: 0,
           earlyExits: 0,
@@ -736,29 +734,25 @@ export function createFusemaniaGame(
           great: 0,
           steps: 0,
           misses: 0,
-        });
+        };
+        session.totals.push(total);
       }
-      score.name = entrant.name;
-      score.points += rating(
+      total.name = entrant.name;
+      total.points += rating(
         library.steps(world.song, player.chart)!,
         player.score,
       );
-      if (entrant.id === winner) score.wins++;
-      const record = session.records.find((each) => each.id === entrant.id)!;
-      record.roundsPlayed++;
-      record.earlyExits +=
+      if (entrant.id === winner) total.wins++;
+      total.roundsPlayed++;
+      total.earlyExits +=
         entrant.bot || room.decided!.finishers.includes(entrant.id) ? 0 : 1;
-      record.combo = Math.max(record.combo, player.best);
-      record.marvelous += player.counts[MARVELOUS]!;
-      record.perfect += player.counts[PERFECT]!;
-      record.great += player.counts[GREAT]!;
-      record.steps +=
-        player.counts[MARVELOUS]! +
-        player.counts[PERFECT]! +
-        player.counts[GREAT]! +
-        player.counts[GOOD]! +
-        player.counts[BOO]!;
-      record.misses += player.counts[MISS]!;
+      const stats = songStats(player);
+      total.combo = Math.max(total.combo, stats.combo);
+      total.marvelous += stats.marvelous;
+      total.perfect += stats.perfect;
+      total.great += stats.great;
+      total.steps += stats.steps;
+      total.misses += stats.misses;
     }
   }
 
@@ -988,14 +982,14 @@ export function createFusemaniaGame(
             room.session.length,
             room.session.done,
             [...room.session.songs],
-            room.session.scores.map((score) => [
+            room.session.totals.map((score) => [
               score.id,
               score.name,
               score.points,
               score.wins,
             ]),
             room.session.id,
-            room.session.records.map((record) => [
+            room.session.totals.map((record) => [
               record.id,
               record.bot,
               record.roundsPlayed,
@@ -1118,32 +1112,24 @@ export function createFusemaniaGame(
           (decided !== null &&
             // The song just decided is in the totals: every rider has one, no less than this song gave it.
             world.players.some((player, slot) => {
-              const score = session.scores.find(
+              const total = session.totals.find(
                 (each) => each.id === roster[slot]!.id,
               );
-              const record = session.records.find(
-                (each) => each.id === roster[slot]!.id,
-              );
+              const stats = songStats(player);
               return (
-                !score ||
-                !record ||
-                record.bot !== player.bot ||
-                record.combo < player.best ||
-                record.marvelous < player.counts[MARVELOUS]! ||
-                record.perfect < player.counts[PERFECT]! ||
-                record.great < player.counts[GREAT]! ||
-                record.steps <
-                  player.counts[MARVELOUS]! +
-                    player.counts[PERFECT]! +
-                    player.counts[GREAT]! +
-                    player.counts[GOOD]! +
-                    player.counts[BOO]! ||
-                record.misses < player.counts[MISS]! ||
-                record.earlyExits <
+                !total ||
+                total.bot !== player.bot ||
+                total.combo < stats.combo ||
+                total.marvelous < stats.marvelous ||
+                total.perfect < stats.perfect ||
+                total.great < stats.great ||
+                total.steps < stats.steps ||
+                total.misses < stats.misses ||
+                total.earlyExits <
                   (player.bot || decided.finishers.includes(player.id)
                     ? 0
                     : 1) ||
-                score.points <
+                total.points <
                   rating(library.steps(world.song, player.chart)!, player.score)
               );
             }))
@@ -1282,7 +1268,7 @@ export function createFusemaniaGame(
             length: room.session.length,
             done: room.session.done,
             songs: [...room.session.songs],
-            standings: standings(room.session.scores),
+            standings: standings(room.session.totals),
           }
         : null,
       waiting:
@@ -1330,7 +1316,7 @@ export function createFusemaniaGame(
           room.seats.has(id) ||
           pending.has(id) ||
           room.roster.some((entrant) => entrant.id === id) ||
-          room.session?.scores.some((score) => score.id === id) === true;
+          room.session?.totals.some((total) => total.id === id) === true;
         while (taken(`${BOT_PREFIX}${number}`)) number++;
         return `${BOT_PREFIX}${number}`;
       },
