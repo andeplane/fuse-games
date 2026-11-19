@@ -4,25 +4,15 @@ import {
   type HistoryReceipt,
 } from "fuse-platform/history-api";
 import { MOST_RATING, isBotId } from "../basics.js";
-import {
-  BOO,
-  GOOD,
-  GREAT,
-  MARVELOUS,
-  MISS,
-  PERFECT,
-  ranking,
-  rating,
-  type Library,
-  type World,
-} from "../engine/index.js";
+import { ranking, rating, type Library } from "../engine/index.js";
 import {
   parseFusemaniaStats,
   validFusemaniaField,
   type FusemaniaStats,
 } from "../platform.js";
-import { standings, type Room } from "./game.js";
+import type { Room } from "./game.js";
 import { playerKey, validMatchId } from "./names.js";
+import { songStats, standings } from "./session.js";
 
 /**
  * A finished match as every replica computes it, for the room service (`parseFusemaniaStats` in `../platform.ts` is
@@ -33,20 +23,6 @@ export type FusemaniaPlayerResult = FusemaniaStats;
 export type FusemaniaReceipt = HistoryReceipt<FusemaniaPlayerResult>;
 export const RESULT_PARENTS = 8;
 const RECEIPTS_PER_PARENT = 11;
-
-export function songStats({ best, counts }: World["players"][number]) {
-  const marvelous = counts[MARVELOUS]!;
-  const perfect = counts[PERFECT]!;
-  const great = counts[GREAT]!;
-  return {
-    combo: best,
-    marvelous,
-    perfect,
-    great,
-    steps: marvelous + perfect + great + counts[GOOD]! + counts[BOO]!,
-    misses: counts[MISS]!,
-  };
-}
 
 function players(
   library: Library,
