@@ -1,5 +1,12 @@
 import { advanceBall } from "./ball-flight.js";
-import { apart, carried, resolveSolids, settle, type Body } from "./collide.js";
+import {
+  apart,
+  carried,
+  resolveSolids,
+  settle,
+  type Body,
+  type Touch,
+} from "./collide.js";
 import { SUB, abs, clamp, div, isqrt, toward } from "./math.js";
 import {
   barrierBoxesOf,
