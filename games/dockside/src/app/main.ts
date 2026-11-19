@@ -368,8 +368,7 @@ function room(solo: boolean): void {
           mode: solo ? "solo" : settings.display ? "shared" : "online",
         }),
       );
-      viewer.host =
-        !display && viewer.me !== "" && frame.managerId === viewer.me;
+      viewer.host = !display && runtime.managing;
       const confirmed = runtime.confirmedFrame();
       reportReceipts(confirmed);
       const pendingResult =
