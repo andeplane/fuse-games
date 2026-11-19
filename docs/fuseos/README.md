@@ -27,8 +27,10 @@ Startup opens Winamp, Fusteam and MSN Messenger. First-run Dial-Up Networking
 remembers a completed connection across reloads; Cancel skips it for this page only.
 Messenger signs in to the shared Fuse account, adds friends, chats and invites
 them into an embedded game's room. See [desktop communication](desktop-bridge.md)
-and [Messenger](friends-design.md). Fusteam shows three captures per game and
-opens each game's Hall of Fame from its Leaderboard action.
+and [Messenger](friends-design.md). Fusteam's My Games list puts the AAA group
+first and lists the rest of the catalog under B. Each group defaults to sorting
+by last played, newest first, with unplayed games at the end. Fusteam shows three
+captures per game and opens each game's Hall of Fame from its Leaderboard action.
 
 ## What is where
 

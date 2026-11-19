@@ -302,27 +302,43 @@ describe("LauncherWindow", () => {
     ).toBeInTheDocument();
   });
 
-  it("sorts My Games by most recent launch and lets the player switch to name order", async () => {
+  it("sorts by last played inside each tier and keeps the tiers in order when sorting changes", async () => {
     const user = userEvent.setup();
     let now = Date.UTC(1998, 5, 25, 12, 34);
     const { inside } = renderLauncher({
+      games: [
+        ...FIXTURE_GAMES,
+        {
+          id: "fuse-axe",
+          name: "Fuse Axe",
+          tagline: "Throw axes",
+          mark: "FA",
+          accent: "#ffcc00",
+          order: 4,
+          path: "fuseaxe/",
+        },
+      ],
       desktopDeps: { now: () => now },
       launcherDeps: {
         lastPlayed: new MemoryLastPlayedStore({
           fuseball: Date.UTC(1998, 5, 24, 8, 0),
           "fuse-riders": Date.UTC(1998, 5, 25, 8, 0),
+          "fuse-axe": Date.UTC(1998, 5, 25, 10, 0),
         }),
       },
     });
     const list = inside.getByRole("listbox", { name: "My Games" });
-    const birds = within(list).getByRole("option", { name: "Fuse Birds" });
-    const riders = within(list).getByRole("option", { name: "Fuse Riders" });
-    const ball = within(list).getByRole("option", { name: "Fuseball" });
+    const aaa = within(within(list).getByRole("group", { name: "AAA" }));
+    const b = within(within(list).getByRole("group", { name: "B" }));
+    const birds = b.getByRole("option", { name: "Fuse Birds" });
+    const axe = b.getByRole("option", { name: "Fuse Axe" });
+    const riders = aaa.getByRole("option", { name: "Fuse Riders" });
+    const ball = aaa.getByRole("option", { name: "Fuseball" });
     const rows = () => within(list).getAllByRole("option");
     const byDate = inside.getByRole("button", { name: "Sort by last played" });
     const byName = inside.getByRole("button", { name: "Sort by game name" });
 
-    expect(rows()).toEqual([riders, ball, birds]);
+    expect(rows()).toEqual([riders, ball, axe, birds]);
     expect(byDate).toHaveAttribute("aria-pressed", "true");
     expect(riders).toHaveAttribute("aria-selected", "true");
     expect(riders).toHaveAccessibleDescription("Today, 08:00");
@@ -331,26 +347,28 @@ describe("LauncherWindow", () => {
 
     expect(byDate).toHaveAccessibleDescription("Newest first");
     await user.click(byDate);
-    expect(rows()).toEqual([ball, riders, birds]);
+    expect(rows()).toEqual([ball, riders, axe, birds]);
     expect(byDate).toHaveAccessibleDescription("Oldest first");
     expect(riders).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{Enter}");
-    expect(rows()).toEqual([riders, ball, birds]);
+    expect(rows()).toEqual([riders, ball, axe, birds]);
     expect(byDate).toHaveAccessibleDescription("Newest first");
 
     byName.focus();
     await user.keyboard("{Enter}");
-    expect(rows()).toEqual([birds, riders, ball]);
+    expect(rows()).toEqual([riders, ball, axe, birds]);
     expect(byName).toHaveAttribute("aria-pressed", "true");
     expect(riders).toHaveAttribute("aria-selected", "true");
     expect(byName).toHaveFocus();
 
     await user.click(byDate);
-    expect(rows()).toEqual([riders, ball, birds]);
+    expect(rows()).toEqual([riders, ball, axe, birds]);
     list.focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Shift>}{Enter}{/Shift}");
-    expect(rows()).toEqual([birds, riders, ball]);
+    await user.keyboard(
+      "{ArrowDown}{ArrowDown}{ArrowDown}{Shift>}{Enter}{/Shift}",
+    );
+    expect(rows()).toEqual([riders, ball, birds, axe]);
     expect(birds).toHaveAttribute("aria-selected", "true");
     expect(birds).toHaveAccessibleDescription("Today, 12:34");
 
