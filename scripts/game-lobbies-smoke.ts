@@ -12,6 +12,19 @@ async function openCraftMotionPreference(page: Page) {
   return page.getByRole("checkbox", { name: /reduced motion/i });
 }
 
+async function openVolleyHelp(page: Page) {
+  const guide = page.getByRole("dialog", { name: "How to play" });
+  await page
+    .locator(".fui-room-head")
+    .getByRole("button", { name: "How to play", exact: true })
+    .click();
+  await guide.getByText("A D / ← →", { exact: true }).waitFor();
+  await guide.getByText("W / ↑ / SPACE", { exact: true }).waitFor();
+  await guide.getByText("JUMP", { exact: true }).waitFor();
+  await guide.getByText(/A fourth touch is a fault/).waitFor();
+  return guide;
+}
+
 /** Real menu → room → admission paths. No injected game state or browser API replacements. */
 const base = process.env.ONLINE_URL ?? "http://127.0.0.1:8787/";
 const evidence = process.env.SMOKE_SHOTS ?? "artifacts/game-lobbies";
@@ -264,6 +277,29 @@ try {
       await room
         .locator('.fui-room-open-slot[data-slot="1"].fui-slot-occupied')
         .waitFor();
+      if (game === "fuse-volley") {
+        step = "volley lobby help";
+        const guide = await openVolleyHelp(page);
+        await guide.getByRole("button", { name: "Back" }).click();
+        await guide.waitFor({ state: "hidden" });
+        const guestContext = await browser.newContext({
+          viewport: { width: 360, height: 800 },
+        });
+        try {
+          const guest = await guestContext.newPage();
+          const invite = new URL("fusevolley/?mute", base);
+          invite.searchParams.set(
+            "room",
+            (await room.locator(".fui-room-code").innerText()).trim(),
+          );
+          await guest.goto(invite.href);
+          const guestGuide = await openVolleyHelp(guest);
+          await guest.keyboard.press("Escape");
+          await guestGuide.waitFor({ state: "hidden" });
+        } finally {
+          await guestContext.close();
+        }
+      }
       if (game === "fuse-craft") {
         step = "guest device preferences";
         const guestContext = await browser.newContext({
