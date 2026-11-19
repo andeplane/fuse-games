@@ -1,6 +1,6 @@
 import {
   applyManagementTick,
-  createSeatDecoder,
+  createSeatListDecoder,
   defaultText,
   hashPlain,
   hasLogPosition,
@@ -532,8 +532,9 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey: names.playerKey,
   validName: names.validName,
   validAvatar: names.isAvatar,
@@ -563,7 +564,6 @@ export function decode(
     !play ||
     round > maxRounds(play) ||
     !uint32(startAt) ||
-    !list(rawSeats, CAPACITY + MAX_WATCHERS) ||
     !list(rawResults, round) ||
     !list(ships, CAPACITY) ||
     !ships.every(names.playerKey) ||
@@ -571,16 +571,8 @@ export function decode(
     !list(rawHeld, ships.length)
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw),
-      taken = (s: SeatRecord) => !s.watcher && s.slot === seat?.slot;
-    if (!seat || seats.has(seat.id)) return;
-    if (!seat.watcher && [...seats.values()].some(taken)) return;
-    seats.set(seat.id, seat);
-  }
-  const watchers = [...seats.values()].filter((seat) => seat.watcher);
-  if (watchers.length > MAX_WATCHERS) return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   // Round by round from the first; the crowns are counted from them. A decided match plays no further round, so only
   // the latest result of a match that is over or between rounds may decide it (the checks below say which).
   const results: RoundRecord[] = [],

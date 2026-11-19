@@ -12,6 +12,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  createSeatListDecoder,
 } from "fuse-netcode";
 import {
   COMMANDS_PER_SEAT,
@@ -462,6 +463,11 @@ function decodeSeat(raw: unknown): SeatRecord | undefined {
     ...(away ? { away: true } : {}) };
 }
 
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  decodeSeat,
+});
 /** `[matchId, stage, settings, play]` before the netcode's streams and hash, then `[seats, startAt, world]`. */
 export function encode(room: Room): unknown[] {
   return [
@@ -502,21 +508,8 @@ export function decode(
     play = parseSettings(rawPlay);
   if (!validMatchId(matchId) || !STAGES.includes(stage as Stage)) return;
   if (!settings || !play || !uint32(startAt)) return;
-  if (!Array.isArray(rawSeats) || rawSeats.length > CAPACITY + MAX_WATCHERS)
-    return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (!seat || seats.has(seat.id)) return;
-    if (
-      !seat.watcher &&
-      [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot)
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   const history = parseHistoryReceipts(
     rawHistory,
     tick,
