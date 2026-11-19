@@ -65,8 +65,9 @@ export function createBattlefield(
     const animate: FrameRequestCallback = (now) => {
       if (activeLoop !== animate) return;
       animation?.animate(now);
+      if (activeLoop !== animate) return;
       updateMinimap();
-      if (activeLoop === animate) frame = deps.requestFrame(animate);
+      frame = deps.requestFrame(animate);
     };
     activeLoop = animate;
     frame = deps.requestFrame(animate);
