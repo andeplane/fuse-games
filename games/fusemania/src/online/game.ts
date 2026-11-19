@@ -1,5 +1,6 @@
 import {
   applyManagementTick,
+  decodeSingleWinner as decodeDecided,
   createSeatDecoder,
   defaultText,
   hasLogPosition,
@@ -355,32 +356,6 @@ function decodeRoster(raw: unknown): Entrant[] | undefined {
     roster.push({ id, name, slot: roster.length, bot, chart });
   }
   return roster;
-}
-
-function decodeDecided(
-  raw: unknown,
-  roster: readonly Entrant[],
-): Decided | null | undefined {
-  if (raw === null) return null;
-  if (!Array.isArray(raw) || raw.length !== 3) return;
-  const [clock, winner, finishers] = raw as unknown[];
-  if (
-    !uint32(clock) ||
-    clock === 0 ||
-    !roster.some((entrant) => entrant.id === winner) ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
-  )
-    return;
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winner: winner as string, finishers: list };
 }
 
 /** The standings of a session's totals: by points, then by songs won, then in the order riders joined it. */

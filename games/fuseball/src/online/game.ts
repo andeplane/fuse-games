@@ -1,6 +1,8 @@
 import {
   applyManagementTick,
   foldHeldInput,
+  createRosterDecoder,
+  decodeHumanFinishers,
   createSeatDecoder,
   defaultText,
   hasLogPosition,
@@ -551,24 +553,12 @@ function decodeHeld(raw: unknown): Record<string, number> | undefined {
   return held;
 }
 
-function decodeRoster(raw: unknown): Entrant[] | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY || raw.length % 2 !== 0)
-    return;
-  const roster: Entrant[] = [];
-  for (const item of raw) {
-    if (!Array.isArray(item) || item.length !== 3) return;
-    const [id, name, bot] = item as unknown[];
-    if (
-      !playerKey(id) ||
-      !validName(name) ||
-      typeof bot !== "boolean" ||
-      roster.some((entrant) => entrant.id === id)
-    )
-      return;
-    roster.push({ id, name, slot: sideOf(roster.length), bot });
-  }
-  return roster;
-}
+const decodeRoster = createRosterDecoder({
+  validLength: (length) => length <= CAPACITY && length % 2 === 0,
+  playerKey,
+  validName,
+  slotAt: sideOf,
+});
 
 function decodeDecided(
   raw: unknown,
@@ -576,26 +566,18 @@ function decodeDecided(
 ): Decided | null | undefined {
   if (raw === null) return null;
   if (!Array.isArray(raw) || raw.length !== DECIDED_FIELDS) return;
-  const [clock, winner, finishers, side] = raw as unknown[];
+  const [clock, winner, rawFinishers, side] = raw as unknown[];
   if (
     !uint32(clock) ||
     clock === 0 ||
     (side !== 0 && side !== 1) ||
     // The side's first rider stands for it.
-    roster[side]?.id !== winner ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
+    roster[side]?.id !== winner
   )
     return;
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winner: winner as string, side, finishers: list };
+  const finishers = decodeHumanFinishers(rawFinishers, roster);
+  if (!finishers) return;
+  return { clock, winner: winner as string, side, finishers };
 }
 
 /**

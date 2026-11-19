@@ -1,6 +1,8 @@
 import {
   applyManagementTick,
   foldHeldInput,
+  createRosterDecoder,
+  decodeHumanFinishers,
   createSeatDecoder,
   defaultText,
   hasLogPosition,
@@ -454,27 +456,13 @@ function decodeHeld(raw: unknown): Record<string, number> | undefined {
   return held;
 }
 
-function decodeRoster(raw: unknown): Entrant[] | undefined {
-  if (
-    !Array.isArray(raw) ||
-    (raw.length !== 0 && (raw.length < MIN_RIDERS || raw.length > CAPACITY))
-  )
-    return;
-  const roster: Entrant[] = [];
-  for (const item of raw) {
-    if (!Array.isArray(item) || item.length !== 3) return;
-    const [id, name, bot] = item as unknown[];
-    if (
-      !playerKey(id) ||
-      !validName(name) ||
-      typeof bot !== "boolean" ||
-      roster.some((entrant) => entrant.id === id)
-    )
-      return;
-    roster.push({ id, name, slot: roster.length, bot });
-  }
-  return roster;
-}
+const decodeRoster = createRosterDecoder({
+  validLength: (length) =>
+    length === 0 || (length >= MIN_RIDERS && length <= CAPACITY),
+  playerKey,
+  validName,
+  slotAt: (index) => index,
+});
 
 function decodeDecided(
   raw: unknown,
@@ -482,15 +470,13 @@ function decodeDecided(
 ): Decided | null | undefined {
   if (raw === null) return null;
   if (!Array.isArray(raw) || raw.length !== 3) return;
-  const [clock, winners, finishers] = raw as unknown[];
+  const [clock, winners, rawFinishers] = raw as unknown[];
   if (
     !uint32(clock) ||
     clock === 0 ||
     !Array.isArray(winners) ||
     winners.length < 1 ||
-    winners.length > roster.length ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
+    winners.length > roster.length
   )
     return;
   // In lane order and without repeats, as the fold writes them.
@@ -502,15 +488,9 @@ function decodeDecided(
     lane = entrant.slot;
     won.push(entrant.id);
   }
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winners: won, finishers: list };
+  const finishers = decodeHumanFinishers(rawFinishers, roster);
+  if (!finishers) return;
+  return { clock, winners: won, finishers };
 }
 
 const sameRules = (a: Rules, b: Rules): boolean =>

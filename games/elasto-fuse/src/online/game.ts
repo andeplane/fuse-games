@@ -1,5 +1,7 @@
 import {
   applyManagementTick,
+  createRosterDecoder,
+  decodeSingleWinner as decodeDecided,
   createSeatDecoder,
   defaultText,
   hasLogPosition,
@@ -548,23 +550,12 @@ function decodeHeld(raw: unknown): Record<string, number> | undefined {
   return held;
 }
 
-function decodeRoster(raw: unknown): Entrant[] | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY) return;
-  const roster: Entrant[] = [];
-  for (const item of raw) {
-    if (!Array.isArray(item) || item.length !== 3) return;
-    const [id, name, bot] = item as unknown[];
-    if (
-      !playerKey(id) ||
-      !validName(name) ||
-      typeof bot !== "boolean" ||
-      roster.some((entrant) => entrant.id === id)
-    )
-      return;
-    roster.push({ id, name, slot: roster.length, bot });
-  }
-  return roster;
-}
+const decodeRoster = createRosterDecoder({
+  validLength: (length) => length <= CAPACITY,
+  playerKey,
+  validName,
+  slotAt: (index) => index,
+});
 
 const MOST_CLOCK = 0xffff_ffff;
 function decodeStandings(
@@ -594,32 +585,6 @@ function decodeStandings(
     });
   }
   return standings;
-}
-
-function decodeDecided(
-  raw: unknown,
-  roster: readonly Entrant[],
-): Decided | null | undefined {
-  if (raw === null) return null;
-  if (!Array.isArray(raw) || raw.length !== 3) return;
-  const [clock, winner, finishers] = raw as unknown[];
-  if (
-    !uint32(clock) ||
-    clock === 0 ||
-    !roster.some((entrant) => entrant.id === winner) ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
-  )
-    return;
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winner: winner as string, finishers: list };
 }
 
 /**
