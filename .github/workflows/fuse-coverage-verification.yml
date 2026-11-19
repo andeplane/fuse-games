@@ -1,0 +1,47 @@
+name: Fuse timing coverage verification
+on:
+  push:
+    branches: [codex/playtest-coverage-verification]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Check that previously tested production sources are identical
+        run: git diff --exit-code HEAD^ HEAD -- packages service 'games/*/src/**' .c8rc.json
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*-raw-*
+          path: coverage/tmp/
+          merge-multiple: true
+          run-id: 44524707605
+          github-token: ${{ github.token }}
+      - name: Exercise the muted timing screen and merge coverage
+        run: |
+          set -euo pipefail
+          cat > invoke-timing.mts <<'JS'
+          import { createServer } from "vite";
+          const vite = await createServer({ server: { host: "127.0.0.1", port: 0 } });
+          try {
+            await vite.listen();
+            process.env.ONLINE_URL = vite.resolvedUrls!.local[0];
+            process.env.FUSE_GAME_COVERAGE_DIR = new URL("./coverage/tmp", import.meta.url).pathname;
+            await import("./games/fusemania/timing-lab-smoke.js");
+          } finally {
+            await vite.close();
+          }
+          JS
+          pnpm exec tsx invoke-timing.mts
+          COVERAGE_PHASE=report pnpm test:coverage
