@@ -190,15 +190,48 @@ const CATH_X = 228;
 function cathedral(x: number, y: number) {
   const u = x + 0.5 - CATH_X;
   const a = Math.abs(u);
-  const ruin = Math.floor(hash(x >> 1, 7) * 7);
-  const lancet = (u - 44) % 12 > 4 && (u - 44) % 12 < 8 && y > 57 && y < 70;
   if (a < 24) return y > 32 + a * 0.6;
-  if (u < 0 && a < 40) return y > 28 || y > 6 + Math.abs(u + 32) * 2.4;
-  if (u > 0 && u < 40)
-    return y > 30 + ruin && !(a > 30 && a < 34 && y > 38 && y < 50);
-  if (u > 0 && u < 104) return y > (u > 70 ? 54 + ruin : 48) && !lancet;
-  if (u > 0 && u < 126) return y > 58 + ruin;
-  return u > -86 && y > 64 + ruin;
+  const ruin = Math.floor(hash(x >> 1, 7) * 7);
+  if (u < 0) {
+    if (a < 40) return y > 28 || y > 6 + Math.abs(u + 32) * 2.4;
+    return u > -86 && y > 64 + ruin;
+  }
+  return cathedralEast(u, y, ruin);
+}
+
+function cathedralEast(u: number, y: number, ruin: number) {
+  if (u < 40) return y > 30 + ruin && !(u > 30 && u < 34 && y > 38 && y < 50);
+  if (u < 104) {
+    const opening = (u - 44) % 12;
+    const lancet = opening > 4 && opening < 8 && y > 57 && y < 70;
+    return y > (u > 70 ? 54 + ruin : 48) && !lancet;
+  }
+  return y > (u < 126 ? 58 : 64) + ruin;
+}
+
+/** Tracery surrounds the bright heart; missing panes reveal the sky. */
+function roseWindow(r: Raster) {
+  for (let y = 40; y < 62; y++)
+    for (let x = CATH_X - 11; x < CATH_X + 11; x++) paintRosePane(r, x, y);
+}
+
+function paintRosePane(r: Raster, x: number, y: number) {
+  const u = x + 0.5 - CATH_X;
+  const v = y + 0.5 - 51;
+  const distance = Math.hypot(u, v);
+  if (distance >= 9.5) return;
+  const angle = Math.atan2(v, u);
+  const spoke = Math.abs(Math.sin(angle * 6)) * distance < 0.7;
+  if (distance > 8.5 || Math.abs(distance - 4.7) < 0.5 || spoke)
+    r.px(x, y, 0x1a1f33);
+  else if (distance < 2.5) r.px(x, y, 0x6aa08a);
+  else {
+    const pane = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 12);
+    const ring = Number(distance < 4.7);
+    if (hash(pane, 40 + ring) < 0.35)
+      r.rgba[((y - r.top) * r.width + x) * 4 + 3] = 0;
+    else r.px(x, y, (pane + ring) % 2 ? 0x2e5a50 : 0x48386a);
+  }
 }
 
 /** The far layer: the cathedral on a fog-bound rise of dead woods, its rose window glowing through the gaps. */
@@ -207,27 +240,16 @@ function far(r: Raster) {
     const rise = 76 + Math.round(3 * Math.sin(x * 0.045) + 2 * Math.sin(x / 9));
     const spike = hash(x >> 1, 5) > 0.86 ? 2 + Math.floor(hash(x, 6) * 6) : 0;
     for (let y = r.top; y < FLOOR; y++) {
-      const lit = !cathedral(x + 1, y) || !cathedral(x, y - 1);
-      if (y >= rise || (y >= rise - spike && x % 2 === 0))
+      const wooded = y >= rise || (y >= rise - spike && x % 2 === 0);
+      if (wooded) {
         r.px(x, y, y > 80 && bayer(x, y) < (y - 80) / 16 ? 0x172230 : 0x0d1220);
-      else if (cathedral(x, y)) r.px(x, y, lit ? 0x1a1f33 : 0x0b0d1a);
+      } else if (cathedral(x, y)) {
+        const lit = !cathedral(x + 1, y) || !cathedral(x, y - 1);
+        r.px(x, y, lit ? 0x1a1f33 : 0x0b0d1a);
+      }
     }
   }
-  // The rose window: tracery round a bright heart, a third of its panes knocked out to the sky.
-  for (let y = 40; y < 62; y++)
-    for (let x = CATH_X - 11; x < CATH_X + 11; x++) {
-      const [u, v] = [x + 0.5 - CATH_X, y + 0.5 - 51];
-      const [d, angle] = [Math.hypot(u, v), Math.atan2(v, u)];
-      const pane = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 12);
-      const ring = d < 4.7 ? 1 : 0;
-      const spoke = Math.abs(Math.sin(angle * 6)) * d < 0.7;
-      if (d >= 9.5) continue;
-      if (d > 8.5 || Math.abs(d - 4.7) < 0.5 || spoke) r.px(x, y, 0x1a1f33);
-      else if (d < 2.5) r.px(x, y, 0x6aa08a);
-      else if (hash(pane, 40 + ring) < 0.35)
-        r.rgba[((y - r.top) * r.width + x) * 4 + 3] = 0;
-      else r.px(x, y, (pane + ring) % 2 ? 0x2e5a50 : 0x48386a);
-    }
+  roseWindow(r);
 }
 
 /** A run of ruined cloister arches on the mid layer's ground, some bays fallen to their column stumps. */
@@ -264,9 +286,16 @@ function mausoleum(r: Raster, cx: number, w: number, ground: number) {
 /** The mid layer: a low graveyard ground in the fog, with cloisters, mausoleums, dead trees and leaning stones. */
 function mid(r: Raster) {
   const ground = (x: number) => 86 + Math.round(1.5 * Math.sin(x * 0.031));
-  for (let x = 0; x < r.width; x++)
-    for (let y = ground(x); y < FLOOR; y++)
-      r.px(x, y, y === ground(x) ? 0x1a2a26 : 0x0d111b);
+  for (let x = 0; x < r.width; x++) {
+    const top = ground(x);
+    for (let y = top; y < FLOOR; y++)
+      r.px(x, y, y === top ? 0x1a2a26 : 0x0d111b);
+  }
+  midBuildings(r, ground);
+  midFog(r);
+}
+
+function midBuildings(r: Raster, ground: (x: number) => number) {
   for (let x = 16, n = 0; x < r.width; n++) {
     const [kind, g] = [(n * 3 + (hash(n, 20) > 0.7 ? 1 : 0)) % 4, ground(x)];
     if (kind === 0) arcade(r, x, 3 + Math.floor(hash(n, 21) * 3), n * 7);
@@ -276,10 +305,14 @@ function mid(r: Raster) {
       headstone(r, [x + 34 + i * 9, g, 4 + i, 5 + 2 * i, i % 2, i - 1], MID);
     x += kind === 0 ? 90 : 56 + Math.floor(hash(n, 24) * 40);
   }
-  for (let y = 64; y < BANK; y++)
+}
+
+function midFog(r: Raster) {
+  for (let y = 64; y < BANK; y++) {
+    const density = 0.4 - Math.abs(y - 79) / 30;
     for (let x = 0; x < r.width; x++)
-      if (rgbAt(r, x, y) >= 0 && bayer(x, y) < 0.4 - Math.abs(y - 79) / 30)
-        r.px(x, y, 0x182430);
+      if (rgbAt(r, x, y) >= 0 && bayer(x, y) < density) r.px(x, y, 0x182430);
+  }
 }
 
 /** The bank's dead trees: where each stands, its height and lean. */
@@ -338,75 +371,116 @@ const WALL = [STONE[1], STONE[2], STONE[3]];
 /** The keystone's skull, a row of 7 bits each: brow, eyes, nose, teeth. */
 const SKULL = [0x3e, 0x7f, 0x49, 0x77, 0x3e, 0x2a];
 
-/** The cathedral's ruined west wall at the stage end: blocks and ivy, a gable, buttresses and the doors, ajar. */
-function gate(r: Raster) {
+function gateWallPixel(
+  r: Raster,
+  x: number,
+  y: number,
+  distanceFromTop: number,
+  ivyDepth: number,
+) {
+  if (distanceFromTop === 0 || x === WALL_X || rgbAt(r, x - 1, y) < 0)
+    return INK;
+  if (distanceFromTop === 1) return STONE[3];
+  if (distanceFromTop < ivyDepth) return (x ^ y) & 1 ? 0x24382c : 0x16241e;
+  const row = BANK - 1 - y;
+  const course = Math.floor(row / 6);
+  const brickX = x + course * 7;
+  if (brickX % 15 === 0 || row % 6 === 5) return IRON;
+  return dither(
+    WALL,
+    0.2 + hash(Math.floor(brickX / 15), course + 62) * 0.5,
+    x,
+    y,
+  );
+}
+
+function gateMasonry(r: Raster) {
   for (let x = WALL_X; x < CRYPT_LENGTH; x++) {
     const ragged = 28 + 6 * Math.sin(x * 0.08) + hash(x >> 2, 60) * 9;
     const crumble = BANK - (x - WALL_X) * 1.4;
     const gable = 4 + Math.abs(x + 0.5 - GATE_X) * 0.55 + hash(x >> 2, 61) * 5;
     const top = Math.round(Math.min(Math.max(ragged, crumble), gable));
     const ivy = hash(x >> 4, 65) > 0.5 && hash(x >> 1, 63) > 0.4;
-    for (let y = top; y < BANK; y++) {
-      const course = Math.floor((BANK - 1 - y) / 6);
-      const joint = (x + course * 7) % 15 === 0 || (BANK - 1 - y) % 6 === 5;
-      const block = hash(Math.floor((x + course * 7) / 15), course + 62);
-      let c = joint ? IRON : dither(WALL, 0.2 + block * 0.5, x, y);
-      if (ivy && y - top < 3 + hash(x >> 1, 64) * 26)
-        c = (x ^ y) & 1 ? 0x24382c : 0x16241e;
-      if (y - top === 1) c = STONE[3];
-      if (y === top || x === WALL_X || rgbAt(r, x - 1, y) < 0) c = INK;
-      r.px(x, y, c);
-    }
+    const ivyDepth = ivy ? 3 + hash(x >> 1, 64) * 26 : 0;
+    for (let y = top; y < BANK; y++)
+      r.px(x, y, gateWallPixel(r, x, y, y - top, ivyDepth));
   }
-  // Lancet windows, dark to a green glow at their sills.
+}
+
+/** Lancet windows, dark to a green glow at their sills. */
+function gateWindows(r: Raster) {
+  const ramp = [VOID, ...GLOW];
   for (const wx of [GATE_X - 86, GATE_X + 74, GATE_X + 116])
     for (let y = 40; y < 68; y++)
       for (let x = wx - 3; x < wx + 3; x++)
         if (Math.hypot(x + 0.5 - wx, Math.max(0, 47 - y)) < 3)
-          r.px(x, y, dither([VOID, ...GLOW], (y - 40) / 40, x, y));
-  const pier = (x: number, y: number) => {
-    const a = Math.abs(Math.abs(x + 0.5 - GATE_X) - 40);
-    return a < (y < 50 ? 4 : 5.5) && y >= 18 + a * 1.5 && y < BANK;
-  };
-  shape(r, [GATE_X - 48, 10, GATE_X + 48, BANK], pier, STONE);
-  // The doorway's mouldings, and the doors: dark planks banded with iron, and a glow from the crypt between them.
-  for (let v = 0; v < 70; v++)
+          r.px(x, y, dither(ramp, (y - 40) / 40, x, y));
+}
+
+function gatePier(x: number, y: number) {
+  const a = Math.abs(Math.abs(x + 0.5 - GATE_X) - 40);
+  return a < (y < 50 ? 4 : 5.5) && y >= 18 + a * 1.5 && y < BANK;
+}
+
+const DOOR_BANDS = [7, 23, 41];
+
+function doorPixel(x: number, v: number, a: number, band: number | undefined) {
+  let trim = 0;
+  while (trim < 7 && !(v < arch(a, trim))) trim++;
+  if (trim === 7) return;
+  if (trim) return MOULDING[trim - 1];
+  if (a < 1.5) return dither(GLOW, 1 - v / 60, x, BANK - 1 - v);
+  if (band !== undefined) return v === band && a % 6 > 4 ? IRON_LIT : IRON;
+  if (a % 4 < 1) return 0x120c12;
+  return (a >> 2) & 1 ? 0x2a1c22 : 0x23171d;
+}
+
+/** Dark planks banded with iron, a glow between them, and the skull above. */
+function gateDoors(r: Raster) {
+  for (let v = 0; v < 70; v++) {
+    const band = DOOR_BANDS.find((height) => v === height || v === height - 1);
     for (let u = -30; u < 30; u++) {
-      const [x, y, a] = [GATE_X + u, BANK - 1 - v, Math.abs(u + 0.5)];
-      let k = 0;
-      while (k < 7 && !(v < arch(a, k))) k++;
-      const band = [7, 23, 41].find((b) => v === b || v === b - 1);
-      let c = a % 4 < 1 ? 0x120c12 : (a >> 2) & 1 ? 0x2a1c22 : 0x23171d;
-      if (band !== undefined) c = v === band && a % 6 > 4 ? IRON_LIT : IRON;
-      if (a < 1.5) c = dither(GLOW, 1 - v / 60, x, y);
-      if (k < 7) r.px(x, y, k ? MOULDING[k - 1]! : c);
+      const x = GATE_X + u;
+      const color = doorPixel(x, v, Math.abs(u + 0.5), band);
+      if (color !== undefined) r.px(x, BANK - 1 - v, color);
     }
+  }
   for (let i = 0; i < 42; i++) {
     const bit = (SKULL[Math.floor(i / 7)]! >> (6 - (i % 7))) & 1;
     r.px(GATE_X - 3 + (i % 7), BANK - 67 + i / 7, bit ? BONE : 0x2a2030);
   }
 }
 
-/** Still black water from row `y0` to `y1`: the horizon's glow mirrored at its far edge, darkening, in streaks. */
-function water(r: Raster, y0: number, y1: number) {
-  for (let y = y0; y < y1; y++)
-    for (let x = 0; x < r.width; x++) {
-      const t = ((y - y0) / (y1 - y0)) * 1.3;
-      let c = dither([0x16262c, 0x0e1a20, 0x0a1218, WATER], t, x, y);
-      if (hash(x >> 3, y * 7 + 400) > 0.86 && hash(x, y) > 0.3) c = 0x24393e;
-      r.px(x, y, c);
-    }
+/** The cathedral's ruined west wall at the stage end. */
+function gate(r: Raster) {
+  gateMasonry(r);
+  gateWindows(r);
+  shape(r, [GATE_X - 48, 10, GATE_X + 48, BANK], gatePier, STONE);
+  gateDoors(r);
 }
 
-/** The far bank above the water, everything standing on it, the water and its reflection. */
-function bank(r: Raster) {
+const WATER_RAMP = [0x16262c, 0x0e1a20, 0x0a1218, WATER];
+
+/** Still black water with the horizon reflected at its far edge. */
+function water(r: Raster, y0: number, y1: number) {
+  for (let y = y0; y < y1; y++) {
+    const t = ((y - y0) / (y1 - y0)) * 1.3;
+    for (let x = 0; x < r.width; x++) {
+      const streak = hash(x >> 3, y * 7 + 400) > 0.86 && hash(x, y) > 0.3;
+      r.px(x, y, streak ? 0x24393e : dither(WATER_RAMP, t, x, y));
+    }
+  }
+}
+
+function bankEdge(r: Raster) {
   for (let x = 0; x < WALL_X + 8; x++) {
     r.px(x, BANK - 2, x % 5 ? 0x1c1a1e : 0x24221e);
     r.px(x, BANK - 1, hash(x >> 2, 33) > 0.4 ? 0x2c3a3a : 0x1c1a1e);
     if (hash(x, 34) > 0.7) r.px(x, BANK - 3, 0x1a2620);
   }
-  gate(r);
-  for (const tree of TREES) stroke(r, tree, BARK);
+}
+
+function bankGraves(r: Raster) {
   const taken = [...BRAZIERS, ...TREES.map((tree) => tree[0]![0])];
   for (let x = 20, n = 0; x < WALL_X - 24; n++) {
     const kind = Math.floor(hash(n, 35) * 5);
@@ -419,14 +493,26 @@ function bank(r: Raster) {
       headstone(r, [x, BANK - 1, w, h, kind % 3, lean], GRAVE);
     x += kind === 4 ? len + 6 : 14 + Math.floor(hash(n, 39) * 24);
   }
-  for (const x of BRAZIERS) brazier(r, x);
-  water(r, BANK, FLOOR);
-  mirror(r, 0, r.width, BANK, (_, y) => y < BANK - 2);
+}
+
+function brazierReflections(r: Raster) {
   for (const x of BRAZIERS)
     for (let y = BANK; y < FLOOR - 2; y++)
       for (let i = -2; i <= 2; i++)
         if (bayer(x + i, y) < 0.5 - Math.abs(i) * 0.15 - (y - BANK) * 0.03)
           r.px(x + i, y, GLOW[1]!);
+}
+
+/** The far bank, its still water, and the reflection of the objects above it. */
+function bank(r: Raster) {
+  bankEdge(r);
+  gate(r);
+  for (const tree of TREES) stroke(r, tree, BARK);
+  bankGraves(r);
+  for (const x of BRAZIERS) brazier(r, x);
+  water(r, BANK, FLOOR);
+  mirror(r, 0, r.width, BANK, (_, y) => y < BANK - 2);
+  brazierReflections(r);
 }
 
 /** Crosses and stones sunk to their shoulders in the water, each with its waterline and reflection. */
