@@ -309,83 +309,100 @@ function apply(w: World, c: Command) {
     return;
   }
   const a = c.action;
-  if (a.type === "setAutoExpand") {
-    p.autoExpand = a.enabled;
-  } else if (a.type === "queueConstruction") {
-    if (!constructionQueueAvailability(w, p, a.kind, a.cell).allowed) {
-      reject("invalid construction cell or full queue");
+  switch (a.type) {
+    case "setAutoExpand":
+      p.autoExpand = a.enabled;
+
+      return;
+    case "queueConstruction": {
+      if (!constructionQueueAvailability(w, p, a.kind, a.cell).allowed) {
+        reject("invalid construction cell or full queue");
+        return;
+      }
+      const upgrade = constructionUpgradeSource(w, p, a.kind, a.cell);
+      p.queue.push({
+        ...(upgrade && { upgradeFrom: upgrade.id }),
+        cell: a.cell,
+        kind: a.kind,
+        paid: false,
+        progress: 0,
+        duration: 0,
+        hp: hp(a.kind),
+      });
+      emit(w, p, "queued", { cell: a.cell });
+
       return;
     }
-    p.queue.push({
-      ...(constructionUpgradeSource(w, p, a.kind, a.cell)
-        ? { upgradeFrom: constructionUpgradeSource(w, p, a.kind, a.cell)!.id }
-        : {}),
-      cell: a.cell,
-      kind: a.kind,
-      paid: false,
-      progress: 0,
-      duration: 0,
-      hp: hp(a.kind),
-    });
-    emit(w, p, "queued", { cell: a.cell });
-  } else if (a.type === "cancelConstruction") {
-    const i = p.queue.findIndex((j) => j.cell === a.cell);
-    if (i < 0) {
-      reject("no owned construction");
+    case "cancelConstruction": {
+      const i = p.queue.findIndex((j) => j.cell === a.cell);
+      if (i < 0) {
+        reject("no owned construction");
+        return;
+      }
+      const j = p.queue[i]!;
+      p.queue.splice(i, 1);
+      // Delivered work is spent; queued ghosts cost nothing. Only the builder's
+      // own job sends it home: sprouts never use it, and a recovering builder
+      // keeps its penalty.
+      if (j.paid && !isSprout(j) && p.worker.mode !== "recovering")
+        p.worker.mode = "returning";
+
       return;
     }
-    const j = p.queue[i]!;
-    p.queue.splice(i, 1);
-    // Delivered work is spent; queued ghosts cost nothing. Only the builder's
-    // own job sends it home: sprouts never use it, and a recovering builder
-    // keeps its penalty.
-    if (j.paid && !isSprout(j) && p.worker.mode !== "recovering")
-      p.worker.mode = "returning";
-  } else if (a.type === "setPriority") {
-    // Clearing an old destination must remain possible after its destruction.
-    if (a.weight === 0) {
-      delete p.priorities[String(a.cell)];
+    case "setPriority": {
+      // Clearing an old destination must remain possible after its destruction.
+      if (a.weight === 0) {
+        delete p.priorities[String(a.cell)];
+        return;
+      }
+      const s = structure(w, a.cell);
+      if (
+        !s ||
+        s.ownerId !== p.id ||
+        !canAttack(s.kind) ||
+        (!Object.hasOwn(p.priorities, String(a.cell)) &&
+          Object.keys(p.priorities).length >= 8)
+      ) {
+        reject("invalid priority destination");
+        return;
+      }
+      p.priorities[String(a.cell)] = a.weight;
+
       return;
     }
-    const s = structure(w, a.cell);
-    if (
-      !s ||
-      s.ownerId !== p.id ||
-      !canAttack(s.kind) ||
-      (!Object.hasOwn(p.priorities, String(a.cell)) &&
-        Object.keys(p.priorities).length >= 8 &&
-        a.weight > 0)
-    ) {
-      reject("invalid priority destination");
+    case "setParticleKind":
+      if (researchPrerequisites(p, PARTICLES[a.kind].requires).length) {
+        reject("particle profile unavailable");
+        return;
+      }
+      p.particleKind = a.kind;
+
+      return;
+    case "startResearch": {
+      if (!researchAvailability(p, a.research).allowed) {
+        reject("research unavailable");
+        return;
+      }
+      const definition = RESEARCH[a.research];
+      p.insight -= definition.cost;
+      p.researchJob = {
+        kind: a.research,
+        completesAt:
+          w.tick + (w.settings.instantResearch ? 0 : definition.duration),
+      };
+      emit(w, p, "researchStarted", {
+        amount: definition.cost,
+        resource: "insight",
+      });
+
       return;
     }
-    p.priorities[String(a.cell)] = a.weight;
-  } else if (a.type === "setParticleKind") {
-    if (researchPrerequisites(p, PARTICLES[a.kind].requires).length) {
-      reject("particle profile unavailable");
+    case "cancelResearch":
+      p.researchJob = null;
       return;
-    }
-    p.particleKind = a.kind;
-  } else if (a.type === "startResearch") {
-    if (!researchAvailability(p, a.research).allowed) {
-      reject("research unavailable");
-      return;
-    }
-    const definition = RESEARCH[a.research];
-    p.insight -= definition.cost;
-    p.researchJob = {
-      kind: a.research,
-      completesAt:
-        w.tick + (w.settings.instantResearch ? 0 : definition.duration),
-    };
-    emit(w, p, "researchStarted", {
-      amount: definition.cost,
-      resource: "insight",
-    });
-  } else if (a.type === "cancelResearch") {
-    p.researchJob = null;
   }
 }
+
 function economy(w: World, p: Player) {
   const initialBiomass = p.biomass,
     initialInsight = p.insight;
