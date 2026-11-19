@@ -68,8 +68,6 @@ import {
   MAX_SIMFILE_BYTES,
   RULES,
   SCORE_MODE,
-  LEAD_IN_MS,
-  SOLO_LEAD_IN_MS,
   createLibrary,
   type Library,
   type Steps,
@@ -116,7 +114,6 @@ import { historyReceipts } from "../online/result.js";
 import {
   NOT_OPEN,
   bestRating,
-  createBests,
   keys,
   roomFailure,
   safeStore,
@@ -165,6 +162,7 @@ import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
 import { createSongLeaderboards } from "./song-leaderboards.js";
 import { RankedRun } from "./ranked-run.js";
+import { createRoomScores } from "./room-scores.js";
 import { fusemaniaPlayFrame } from "./play-metrics.js";
 import {
   scoreSource,
@@ -1177,6 +1175,10 @@ function enterRoom(
     rankedRetry = button("RETRY SAVING SCORE");
   rankedStatus.setAttribute("role", "status");
   rankedRetry.hidden = true;
+  const refreshRankedStatus = () => {
+    setText(rankedStatus, rankedRun.status);
+    rankedRetry.hidden = !rankedRun.canRetry;
+  };
   const rankedRun = new RankedRun({
     token: identityToken,
     version: async (song) => {
@@ -1192,10 +1194,7 @@ function enterRoom(
     },
     post: scoreRequest,
     inputs: () => runtime.scoreInputs(),
-    changed: () => {
-      rankedStatus.textContent = rankedRun.status;
-      rankedRetry.hidden = !rankedRun.canRetry;
-    },
+    changed: refreshRankedStatus,
   });
   rankedRetry.onclick = () => rankedRun.retry();
   // The menu over a song: a pause alone, a player's own menu in a room (`play-menu.ts`).
@@ -1856,10 +1855,11 @@ function enterRoom(
   });
 
   const renderLobby = (next: Model, view: View) => {
+    const room = next.lobby;
     roster.update(
-      next.lobby.members.map((member) => ({
+      room.members.map((member) => ({
         id: member.id,
-        removableBot: next.lobby.removable.includes(member.id),
+        removableBot: room.removable.includes(member.id),
         slot: member.slot,
         // Alone there is nobody to tell apart from.
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -1871,14 +1871,14 @@ function enterRoom(
             : member.chart,
       })),
     );
-    addBot.hidden = !next.lobby.canAddBot;
-    start.hidden = !next.lobby.showStart;
-    start.disabled = !next.lobby.canStart;
-    setText(start, next.lobby.startText);
-    lobbySession.update(next.lobby.session);
+    addBot.hidden = !room.canAddBot;
+    start.hidden = !room.showStart;
+    start.disabled = !room.canStart;
+    setText(start, room.startText);
+    lobbySession.update(room.session);
     showOptions();
-    setText(lobbyNote, next.lobby.note);
-    lobbyNote.hidden = !next.lobby.note;
+    setText(lobbyNote, room.note);
+    lobbyNote.hidden = !room.note;
     tvOption.hidden = !(viewer.host && !display && !solo);
     if (tvToggle.checked !== view.settings.display)
       tvToggle.checked = view.settings.display;
@@ -1888,9 +1888,9 @@ function enterRoom(
       song: view.settings.song,
       chart: next.chart,
       mode: view.settings.mode,
-      host: next.lobby.editable,
+      host: room.editable,
     });
-    roomLayout.update(next.lobby.members.length, CAPACITY);
+    roomLayout.update(room.members.length, CAPACITY);
   };
 
   /** What the results screen last showed: it is rebuilt only when the result itself changed. */
@@ -1899,7 +1899,7 @@ function enterRoom(
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
-    ownSeat = next.lobby.members.find((member) => member.you);
+    ownSeat = view.seats.find((seat) => seat.id === viewer.me && !seat.watcher);
     connecting.hidden = true;
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
@@ -2065,8 +2065,26 @@ function enterRoom(
       confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
     };
   };
-  const bests = createBests(store);
-  let finished = "";
+  const observeScores = createRoomScores({
+    store,
+    viewer,
+    bundledLibrary: library === LIBRARY,
+    bestKey: (song, chart) => bestKey(library, song, chart),
+    progress: () => {
+      const state = runtime.roomState();
+      const decided = state?.decided?.clock;
+      return {
+        epoch: state?.epoch,
+        confirmed:
+          solo || (decided !== undefined && decided <= runtime.confirmedTick()),
+      };
+    },
+    observeRanked(observation) {
+      rankedRun.observe(observation);
+      refreshRankedStatus();
+    },
+    songFinished: (properties) => analytics.track("Song Finished", properties),
+  });
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
   );
@@ -2095,49 +2113,7 @@ function enterRoom(
         }),
       );
       settings = roomSettings;
-      // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
-      let bestBefore: number | undefined;
-      const world = frame.world;
-      const mine = world?.players.find((each) => each.id === viewer.me);
-      if (world && mine && !mine.bot && !viewer.display) {
-        rankedRun.observe({
-          key: `${frame.matchId}:${runtime.roomState()?.epoch}`,
-          song: world.song,
-          chart: mine.chart,
-          leadIn: world.players.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS,
-          eligible: world.mode === SCORE_MODE && library === LIBRARY,
-          beforeSong: world.ms < 0,
-          finished: frame.stage === "over",
-          confirmed:
-            solo ||
-            (runtime.roomState()?.decided?.clock ?? Infinity) <=
-              runtime.confirmedTick(),
-          rating: mine.rating,
-        });
-        rankedStatus.textContent = rankedRun.status;
-        rankedRetry.hidden = !rankedRun.canRetry;
-      }
-      if (frame.stage === "over" && world && mine && !mine.bot) {
-        const key = bestKey(library, world.song, mine.chart);
-        const decided = runtime.roomState()?.decided?.clock;
-        const confirmed =
-          solo || (decided !== undefined && decided <= runtime.confirmedTick());
-        if (key)
-          bestBefore = confirmed
-            ? bests.settle(frame.matchId, key, mine.rating)
-            : bestRating(store, key);
-        if (finished !== frame.matchId) {
-          finished = frame.matchId;
-          analytics.track("Song Finished", {
-            song: world.song === CUSTOM ? "custom" : world.song,
-            chart: mine.chart,
-            rating: mine.rating,
-            battle: world.mode === BATTLE_MODE,
-            mode,
-          });
-        }
-      }
-      const next = present(library, frame, viewer, bestBefore);
+      const next = present(library, frame, viewer, observeScores(frame, mode));
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
         joinSent = true;
