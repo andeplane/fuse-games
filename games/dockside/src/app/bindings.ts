@@ -134,7 +134,8 @@ export function shoulderControls() {
       chord = false;
       modified = false;
     },
-    read(raw: number) {
+    read(raw: number, cancelled = 0) {
+      previous &= ~(cancelled & ~raw);
       const shoulders = KEY.modifier | KEY.lock,
         held = raw & shoulders;
       let bits = raw & ~shoulders;

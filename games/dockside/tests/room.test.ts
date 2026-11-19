@@ -138,6 +138,27 @@ test("the confirmed finish remains reportable as the predicted room enters its r
     2,
   );
 });
+test("walker crouch requires overlapping Action and Jump samples even when the inputs share a log tick", () => {
+  for (const [samples, jump] of [
+    [[KEY.modifier, 0, KEY.jump], true],
+    [[KEY.modifier, KEY.modifier | KEY.jump], false],
+    [[KEY.jump, 0, KEY.modifier | KEY.jump], true],
+  ] as const) {
+    const replica = room();
+    const entries: Entry[] = samples.map((bits, i) => [
+      i + 1,
+      3,
+      PLAY,
+      "canal",
+      bits,
+    ]);
+    replica.receive(pilot, entries, entries.length, 3, 3);
+    replica.advance(3);
+    const rig = replica.state.world!.rigs[0]!;
+    assert.equal(rig.jump > 0, jump);
+    assert.equal(rig.crouched, !jump);
+  }
+});
 
 test("platform validates the actual dispatches that could produce a delivery or interception", () => {
   const win = {

@@ -218,6 +218,7 @@ export function stepWorld(
     const input = inputs[t] ?? 0,
       samples = typeof input === "number" ? [input] : input;
     let bits = 0,
+      motion = 0,
       switches = 0,
       launches = 0,
       locks = 0,
@@ -227,7 +228,18 @@ export function stepWorld(
       if (pressed & KEY.shift) switches++;
       if (pressed & KEY.launch) launches++;
       if (pressed & KEY.lock) locks++;
-      if (pressed & KEY.jump) jumping = true;
+      if (pressed & KEY.jump && !(held & KEY.modifier)) jumping = true;
+      if (
+        held &
+        (KEY.up |
+          KEY.down |
+          KEY.left |
+          KEY.right |
+          KEY.jinkLeft |
+          KEY.jinkRight |
+          KEY.jump)
+      )
+        motion = held;
       bits |= held;
       r.previous = held;
     }
@@ -253,10 +265,13 @@ export function stepWorld(
     }
     if (!r.jump && switches % 2 === 1 && walkable(r.x, r.z, !r.travel))
       r.travel = !r.travel;
+    if (jumping && !r.travel && !r.jump) r.jump = JUMP_TICKS;
     r.crouched =
-      !r.travel && !r.jump && !!(bits & KEY.modifier) && !!(bits & KEY.jump);
-    if (jumping && !r.travel && !r.jump && !r.crouched) r.jump = JUMP_TICKS;
-    moveRig(r, bits);
+      !r.travel &&
+      !r.jump &&
+      !!(motion & KEY.modifier) &&
+      !!(motion & KEY.jump);
+    moveRig(r, motion);
     const lane = laneAtFactory(r, t);
     while (
       launches-- > 0 &&

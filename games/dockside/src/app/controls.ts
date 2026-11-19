@@ -31,12 +31,12 @@ export function createControls(
       send(bits);
     }
   }
-  function publish() {
+  function publish(cancelled = 0) {
     const raw = [...held.values()].reduce((a, b) => a | b, controller);
     if (raw & ~previous & CAMERA) changeCamera();
     if (raw & ~previous & MAP) toggleMap();
     previous = raw;
-    const bits = shoulders.read(raw & INPUT_MASK);
+    const bits = shoulders.read(raw & INPUT_MASK, cancelled);
     emit(bits);
     if (bits & (KEY.launch | KEY.lock)) emit(bits & ~(KEY.launch | KEY.lock));
   }
@@ -115,8 +115,11 @@ export function createControls(
         held.set("p" + e.pointerId, bit);
         publish();
       };
-      b.onlostpointercapture = (e) => {
+      b.onpointerup = (e) => {
         if (held.delete("p" + e.pointerId)) publish();
+      };
+      b.onpointercancel = b.onlostpointercapture = (e) => {
+        if (held.delete("p" + e.pointerId)) publish(bit);
       };
       b.onclick = (e) => {
         if (!e.detail && available()) {

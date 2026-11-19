@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { KEY } from "../src/game/canal.js";
+import { radarProjection } from "../src/app/radar.js";
 import {
   CAMERA,
   MAP,
@@ -64,5 +65,32 @@ test("staggered shoulder chords transform without buying or targeting; plain sho
     s.read(KEY.modifier);
     s.clear();
     assert.equal(s.read(0), 0);
+  }
+});
+test("cancelling either shoulder releases its hold without committing the tap or releasing another input source", () => {
+  for (const bit of [KEY.modifier, KEY.lock]) {
+    const s = shoulderControls();
+    s.read(bit | KEY.up);
+    assert.equal(s.read(KEY.up, bit), KEY.up);
+    s.read(bit);
+    s.read(bit, bit);
+    assert.equal(s.read(0), bit === KEY.modifier ? KEY.launch : KEY.lock);
+  }
+});
+test("local radar follows each pilot; expanded map frames the entire unchanged arena", () => {
+  for (const pilot of [
+    { x: -2700, z: 600 },
+    { x: 2700, z: -900 },
+  ]) {
+    const radar = radarProjection(pilot, false),
+      map = radarProjection(pilot, true);
+    assert.deepEqual([radar.x(pilot.x), radar.z(pilot.z)], [180, 110]);
+    assert.ok(
+      radar.x(pilot.x + 1000) - radar.x(pilot.x) > map.x(1000) - map.x(0),
+    );
+    assert.deepEqual(
+      [map.x(-3600), map.x(3600), map.z(-2200), map.z(2200)],
+      [0, 360, 0, 220],
+    );
   }
 });

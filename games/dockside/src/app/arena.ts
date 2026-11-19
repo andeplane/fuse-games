@@ -227,8 +227,8 @@ export function createArena(host: HTMLElement, overview = false) {
   const beams = TURRETS.map(() =>
     part(scene, "#fff09f", 0, 1, 0, 1, 0.12, 0.12),
   );
-  const effects = COLORS.map(() =>
-    ["#56ffff", "#ffad56", "#e8a7ff"].map((c, i) => {
+  const effects = COLORS.map((teamColor) =>
+    [teamColor, "#ffad56", "#e8a7ff"].map((c, i) => {
       const glow = new THREE.MeshBasicMaterial({
         color: c,
         transparent: true,
