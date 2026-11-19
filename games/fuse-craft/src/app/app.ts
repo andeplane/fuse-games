@@ -1,3 +1,10 @@
+import { roomScreenMarkup } from "./room-screen.js";
+import { escapeMarkup as escape } from "./escape-markup.js";
+import {
+  openingOptions,
+  setupScreenMarkup,
+  type LoadState,
+} from "./setup-screen.js";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -22,7 +29,6 @@ import { updateContent } from "./dom-update.js";
 import {
   createMainMenu,
   escapeIsTaken,
-  roomLayoutMarkup,
   mountAttract,
   createTopBar,
 } from "fuse-ui";
@@ -164,31 +170,6 @@ const CRAFT_GOAL =
   "Grow a connected network beside resources. Destroy rival brains or hold dominant territory.";
 
 type Screen = "menu" | "setup" | "game" | "multiplayer" | "room" | "guide";
-type LoadState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; value: T };
-
-/** The opening picker: Random first, then every opening by name. */
-function openingOptions(selected: OpeningChoice): string {
-  return (["random", ...AI_STRATEGIES] as const)
-    .map(
-      (kind) =>
-        `<option value="${kind}" ${kind === selected ? "selected" : ""}>${kind[0]!.toUpperCase()}${kind.slice(1)}</option>`,
-    )
-    .join("");
-}
-
-function escape(value: unknown): string {
-  return String(value).replace(
-    /[&<>"']/g,
-    (char) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        char
-      ] ?? char,
-  );
-}
-
 function units(value: number): string {
   return (value / 1000).toFixed(1);
 }
@@ -747,61 +728,25 @@ export function mountFuseCraft(
   }
 
   function setupMarkup(): string {
-    const mapOptions =
-      catalog?.status === "ready"
-        ? catalog.value
-            .map(
-              (map) =>
-                `<option value="${escape(map.id)}" ${selectedId === map.id ? "selected" : ""}>${escape(map.title)}</option>`,
-            )
-            .join("")
-        : "";
-    const catalogBlock = tutorialError
-      ? `<div class="error-card" role="alert"><strong>Tutorial map unavailable</strong><p>${escape(tutorialError)}</p><button data-action="tutorial">Retry tutorial</button></div>`
-      : !catalog || catalog.status === "loading"
-        ? '<p role="status">Loading maps…</p>'
-        : catalog.status === "error"
-          ? `<div class="error-card" role="alert"><strong>Map catalog unavailable</strong><p>${escape(catalog.message)}</p><button data-action="retry-catalog">Retry</button></div>`
-          : catalog.value.length === 0
-            ? '<div class="empty-card">No maps are available yet. <button data-action="retry-catalog">Retry</button></div>'
-            : `<label class="field-label" for="map-picker">Map</label><select id="map-picker" data-field="map">${mapOptions}</select>`;
-    const loaded = mapState?.status === "ready" ? mapState.value : null;
-    const details =
-      !selectedId || catalog?.status !== "ready"
-        ? ""
-        : !mapState || mapState.status === "loading"
-          ? '<p role="status">Validating selected map…</p>'
-          : mapState.status === "error"
-            ? `<div class="error-card" role="alert"><strong>Map unavailable or invalid</strong><p>${escape(mapState.message)}</p><button data-action="retry-map">Retry map</button></div>`
-            : `<div class="map-meta"><strong>${loaded?.width} × ${loaded?.height} hexes</strong><span>◈ Biomass deposits</span><span>◇ Insight deposits</span><span>▰ Blocked ground</span></div><label class="field-label" for="spawn-picker">Spawn</label><select id="spawn-picker" data-field="spawn">${loaded?.spawns.map((spawn) => `<option value="${spawn.slot}" ${selectedSlot === spawn.slot ? "selected" : ""}>Spawn ${spawn.slot + 1} · tile ${spawn.cellIndex}</option>`).join("")}</select>`;
-    // Start is at the top, beside Back, never under the page.
-    return `${header("New game", { actions: `<button data-action="start" class="primary" ${loaded && !launching ? "" : "disabled"}>${launching ? "Starting…" : mode === "watch" ? "Watch match →" : "Start →"}</button>` })}
-      <main class="setup-layout"><section class="nd-panel">
-        <p class="section-index">01 / SCENARIO</p><div class="choice-grid">
-        <button data-action="mode-skirmish" class="choice ${mode === "skirmish" ? "active" : ""}" aria-pressed="${mode === "skirmish"}"><strong>Player vs AI</strong><span>Grow, research and destroy the rival brain.</span></button>
-        <button data-action="mode-watch" class="choice ${mode === "watch" ? "active" : ""}" aria-pressed="${mode === "watch"}"><strong>Watch AI vs AI</strong><span>Choose two openings and follow their battle.</span></button>
-        <button data-action="mode-sandbox" class="choice ${mode === "sandbox" ? "active" : ""}" aria-pressed="${mode === "sandbox"}"><strong>Open sandbox</strong><span>One player, no AI. Grow at your pace.</span></button>
-        <button data-action="mode-combat-lab" class="choice ${mode === "combat-lab" ? "active" : ""}" aria-pressed="${mode === "combat-lab"}"><strong>Combat lab</strong><span>Scripted opposition to test routing and cuts.</span></button>
-        </div><p class="section-index">02 / FIELD</p>${catalogBlock}${details}</section>
-        <aside class="nd-panel setup-summary"><p class="section-index">SESSION BRIEF</p>
-        <h2>${mode === "watch" ? "Follow the battle" : mode === "skirmish" ? "Take the field" : mode === "sandbox" ? "An open beginning" : "A controlled confrontation"}</h2>
-        <p>${mode === "watch" ? "Two AI players · Equal resources · Watch, pan and inspect either network" : mode === "skirmish" ? "You versus one AI · Equal resources · Destroy the enemy brain" : `One local player · No AI controller${mode === "combat-lab" ? " · Scripted opposing network" : ""}`}</p>
-        ${mode === "watch" ? `<label class="field-label" for="first-strategy-picker">First AI opening</label><select id="first-strategy-picker" data-field="first-strategy">${openingOptions(firstAiStrategy)}</select>` : ""}
-        ${mode === "skirmish" || mode === "watch" ? `<label class="field-label" for="strategy-picker">${mode === "watch" ? "Second AI opening" : "Opponent opening"}</label><select id="strategy-picker" data-field="strategy">${openingOptions(aiStrategy)}</select><p class="muted">Different openings, equal resources. Random keeps you guessing: scout what the AI builds and counter it. Its opening is revealed when the match ends.</p>` : ""}
-        ${mode === "skirmish" || mode === "watch" ? `<label class="toggle-field"><input type="checkbox" data-field="powerups" ${powerups ? "checked" : ""}> Random powerups <small>Contested pickups spawn between the brains; the first network to touch one claims it.</small></label>` : ""}
-        ${
-          dependencies.debug
-            ? `<fieldset class="debug-options"><legend>Debug options</legend>
-          <p>Clear tile boundaries are on. Particle travel always takes normal time.</p>
-          <label><input type="checkbox" data-debug="construction" ${instantConstruction ? "checked" : ""}> Instant construction after delivery</label>
-          <label><input type="checkbox" data-debug="research" ${instantResearch ? "checked" : ""}> Instant research</label>
-          <small>Resource costs and prerequisites still apply.</small></fieldset>`
-            : mode === "watch"
-              ? "<p>Select a structure to inspect it. Use the minimap or either player's card to move around the field.</p>"
-              : "<p>Build beside resources. Connect your network. Select frontline nodes and use <strong>Charge</strong> to supply their weapons.</p>"
-        }
-        ${launchError ? `<div class="error-card" role="alert">${escape(launchError)}<button data-action="start">Retry launch</button></div>` : ""}
-        </aside></main>`;
+    return setupScreenMarkup(
+      {
+        mode,
+        catalog,
+        mapState,
+        selectedId,
+        selectedSlot,
+        aiStrategy,
+        firstAiStrategy,
+        tutorialError,
+        launchError,
+        launching,
+        powerups,
+        debug: dependencies.debug,
+        instantConstruction,
+        instantResearch,
+      },
+      (actions) => header("New game", { actions }),
+    );
   }
 
   function gameMarkup(): string {
@@ -1152,53 +1097,16 @@ export function mountFuseCraft(
   function roomMarkup(): string {
     const room = online?.room();
     if (!online || !room) return multiplayerMarkup();
-    if (room.closed)
-      return `${header("Versus room", { back: "leave-room" })}<main class="setup-layout"><section class="nd-panel"><h2>${room.closed === "kicked" ? "The host removed you from the room" : "The room has ended"}</h2><div class="button-row"><button data-action="leave-room" class="primary">Back to menu</button></div></section></main>`;
-    const players = room.seats.filter((seat) => !seat.watcher);
-    const seated = players.some((seat) => seat.id === room.self);
-    const capacity = ROOM_MAPS.find((map) => map.id === room.mapId)?.seats ?? 2;
-    const ready = players.filter((seat) => seat.connected).length;
-    const canStart = room.manager && ready >= 2 && ready <= capacity;
-    // The shared roster's row: the name, HOST on whoever holds Start, what the seat is, then ADD FRIEND (`decorate`
-    // fills its place once the seat is matched to an account) and the host's REMOVE on an AI.
-    const seatRows = players.map(
-      (seat) =>
-        `<li class="fui-roster-row room-seat${seat.connected ? "" : " away"}" style="--rider-color:${TEAM_COLORS[seat.slot] ?? "#63cfff"}"><div class="fui-roster-info"><strong class="fui-roster-name">${escape(seat.name)}${seat.id === room.self ? " (you)" : ""}</strong>${seat.id === room.managerId ? '<span class="fui-roster-host">HOST</span>' : ""}<small class="fui-roster-status">${seat.bot ? "AI" : seat.connected ? "" : "Away"}</small></div>${seat.bot ? "" : `<span id="seat-friend-${escape(seat.id)}" class="seat-friend" data-member="${escape(seat.id)}" data-fui-preserve></span>`}${room.manager && seat.bot && room.stage === "lobby" ? `<button data-action="remove-bot" data-bot-id="${escape(seat.id)}" class="secondary small" aria-label="Remove ${escape(seat.name)}">REMOVE</button>` : ""}</li>`,
-    );
-    const disabled = room.manager && room.stage === "lobby" ? "" : "disabled";
-    return (
-      header() +
-      roomLayoutMarkup({
-        actionsInHeader: true,
-        heading: "Room",
-        occupied: players.length,
-        occupiedSlots: players.map((seat) => seat.slot),
-        slotPlayers: players.map((seat, index) => ({
-          slot: seat.slot,
-          html: seatRows[index]!,
-        })),
-        canJoin: !seated,
-        // Seated already: any open seat is a move, and the team colour is the seat's.
-        canMove: seated && room.stage === "lobby",
-        canAddAI:
-          room.manager && room.stage === "lobby" && players.length < capacity,
-        slotColors: TEAM_COLORS,
-        capacity,
-        // The code once, by the QR code, as in every game's room.
-        invite: `<div class="fui-invite">${roomQr?.code === room.code ? `<img class="fui-invite-qr" src="${escape(roomQr.url)}" alt="Scan to join this room"><p class="fui-invite-caption">SCAN TO JOIN</p>` : ""}<strong class="fui-room-code">${escape(room.code)}</strong><button data-action="copy-room-link">COPY LINK</button>${dependencies.friends?.open ? '<button class="fui-room-invite-friends" data-action="invite-friends">INVITE FRIENDS</button>' : ""}</div>`,
-        players: `<ul class="room-seats fui-roster"></ul>`,
-        join: `${seated ? "" : `<div class="join-row"><label for="player-name">Your name</label><input id="player-name" data-field="player-name" maxlength="32" autocomplete="nickname" value="${escape(playerName)}" placeholder="Name"><button data-action="join-seat" class="primary">Join</button></div>`}`,
-        settings: `<label for="room-map">Map</label><select id="room-map" data-field="room-map" ${disabled}>${ROOM_MAPS.map((map) => `<option value="${map.id}" ${map.id === room.mapId ? "selected" : ""}>${escape(map.title)} · ${map.seats} players</option>`).join("")}</select><label for="room-strategy">Bot opening</label><select id="room-strategy" data-field="room-strategy" ${disabled}>${openingOptions(room.aiStrategy)}</select><label class="toggle-field"><input type="checkbox" data-field="room-powerups" ${room.powerups ? "checked" : ""} ${disabled}> Random powerups</label>`,
-        primaryAction: room.manager
-          ? `<button data-action="start-room" class="primary" ${canStart ? "" : "disabled"}>START MATCH</button>`
-          : undefined,
-        mainMenu:
-          '<button class="fui-back" data-action="leave-room" aria-label="Back">Back</button>',
-        actions: !room.manager
-          ? '<p class="room-note">Waiting for the host to start…</p>'
-          : "",
-        status: `<p class="room-status" role="status">${escape(room.stage === "connecting" ? "Connecting to the room…" : players.length > capacity ? `Too many players for this map: it seats ${capacity}. Pick a larger map or ask someone to leave.` : room.status)}</p>`,
-      })
+    return roomScreenMarkup(
+      {
+        room,
+        roomQr,
+        playerName,
+        friendsAvailable: Boolean(dependencies.friends?.open),
+        colors: TEAM_COLORS,
+      },
+      () => header(),
+      () => header("Versus room", { back: "leave-room" }),
     );
   }
 
