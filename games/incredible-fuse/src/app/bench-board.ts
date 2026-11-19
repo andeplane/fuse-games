@@ -12,7 +12,7 @@ import {
   type PartKind,
 } from "../game/machine.js";
 import { socketPosition, type LinkKind } from "../game/machine-links.js";
-import { drawPart } from "./bench-art.js";
+import { drawPart, type PartDrawing } from "./bench-art.js";
 
 export { WIDTH, HEIGHT };
 export interface BoardPoint {
@@ -26,6 +26,27 @@ export interface BoardOverlay {
   ghost?: { kind: PartKind; flip: boolean };
 }
 type Context = CanvasRenderingContext2D;
+
+/** Caller owns the saved board context around the mounted sprite. */
+function paintMountedPart(
+  c: Context,
+  drawing: PartDrawing,
+  rotation?: Part["rotation"],
+) {
+  if (rotation === 1) {
+    c.translate(drawing.x, drawing.y);
+    c.rotate(Math.PI / 2);
+    drawPart(c, {
+      ...drawing,
+      x: 0,
+      y: 0,
+      width: drawing.height,
+      height: drawing.width,
+    });
+    return;
+  }
+  drawPart(c, drawing);
+}
 
 function background(c: Context) {
   const g = c.createLinearGradient(0, 0, WIDTH, HEIGHT);
@@ -309,25 +330,33 @@ export function paintMachine(
       c.rotate((part.flip ? -1 : 1) * 1.19);
       c.translate(-x, -y - h / 2);
     }
-    if (part.rotation === 1) {
-      c.translate(x, y);
-      c.rotate(Math.PI / 2);
-      drawPart(c, part.kind, 0, 0, h, w, face, motion, active);
-    } else drawPart(c, part.kind, x, y, w, h, face, motion, active);
+    paintMountedPart(
+      c,
+      {
+        kind: part.kind,
+        x,
+        y,
+        width: w,
+        height: h,
+        flip: face,
+        tick: motion,
+        active,
+      },
+      part.rotation,
+    );
     c.restore();
     if (part.kind === "popper" && body) {
       const rubber = PARTS.tennis;
-      drawPart(
-        c,
-        "tennis",
-        body.x,
-        body.y,
-        rubber.width,
-        rubber.height,
-        false,
-        0,
-        false,
-      );
+      drawPart(c, {
+        kind: "tennis",
+        x: body.x,
+        y: body.y,
+        width: rubber.width,
+        height: rubber.height,
+        flip: false,
+        tick: 0,
+        active: false,
+      });
     }
     if (machine.mode === "build" && targets.includes(part.id)) {
       corners(c, x, y, w + 8, h + 8, "#79d5c58c");
@@ -373,11 +402,20 @@ export function paintMachine(
         : PARTS[ghost.kind];
       c.save();
       c.globalAlpha = 0.53;
-      if (piece?.rotation === 1) {
-        c.translate(x, y);
-        c.rotate(Math.PI / 2);
-        drawPart(c, ghost.kind, 0, 0, h, w, ghost.flip, 0, false);
-      } else drawPart(c, ghost.kind, x, y, w, h, ghost.flip, 0, false);
+      paintMountedPart(
+        c,
+        {
+          kind: ghost.kind,
+          x,
+          y,
+          width: w,
+          height: h,
+          flip: ghost.flip,
+          tick: 0,
+          active: false,
+        },
+        piece?.rotation,
+      );
       c.restore();
       corners(c, x, y, w + 8, h + 8, "#85eee5");
     } else {
