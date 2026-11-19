@@ -1,18 +1,10 @@
-import {
-  apart,
-  carried,
-  landLedges,
-  resolveSolids,
-  settle,
-  type Body,
-  type Touch,
-} from "./collide.js";
+import { advanceBall } from "./ball-flight.js";
+import { apart, carried, resolveSolids, settle, type Body } from "./collide.js";
 import { SUB, abs, clamp, div, isqrt, toward } from "./math.js";
 import {
   barrierBoxesOf,
   boxesAt,
   gooZonesOf,
-  ledgeBoxesOf,
   streamZonesOf,
   type Box,
   type MapDef,
@@ -203,38 +195,7 @@ export function drift(
   snapAtRest = true,
 ): { x: number; y: number } {
   const by = carried(ball, T.BALL_R, map, step, T.CARRY_SLOP);
-  ball.vy += T.BALL_GRAVITY;
-  ball.vx = clamp(ball.vx, -T.BALL_MAX, T.BALL_MAX);
-  ball.vy = clamp(ball.vy, -T.BALL_MAX, T.BALL_MAX);
-  ball.x += ball.vx;
-  ball.y += ball.vy;
-  const landed: Touch = { hit: false, ground: false, impact: 0 };
-  landLedges(
-    ball,
-    T.BALL_R,
-    ledgeBoxesOf(map),
-    map,
-    T.BALL_BOUNCE_NUM,
-    T.BALL_BOUNCE_DEN,
-    T.LEDGE_SLOP,
-    landed,
-  );
-  const touch = resolveSolids(
-    ball,
-    T.BALL_R,
-    boxesAt(map, step),
-    map,
-    T.BALL_BOUNCE_NUM,
-    T.BALL_BOUNCE_DEN,
-  );
-  if (touch.hit || landed.hit) {
-    ball.vx -= div(ball.vx, T.BALL_SCRUB);
-    ball.vy -= div(ball.vy, T.BALL_SCRUB);
-    if (snapAtRest) {
-      if (abs(ball.vx) < T.BALL_SCRUB) ball.vx = 0;
-      if (abs(ball.vy) < T.BALL_SCRUB) ball.vy = 0;
-    }
-  }
+  advanceBall(ball, map, boxesAt(map, step), snapAtRest);
   meetGadgets(map, barriers, ball);
   settle(ball, T.BALL_R, map);
   return by;

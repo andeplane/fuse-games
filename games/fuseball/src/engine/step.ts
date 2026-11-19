@@ -1,3 +1,4 @@
+import { advanceBall } from "./ball-flight.js";
 import {
   apart,
   carried,
@@ -227,34 +228,6 @@ function bumpRiders(a: Rider, b: Rider, space: Space): void {
   b.vy += iy;
 }
 
-/** The ball after its own move: the ledges it lands on, then the solids. `drift` in `gadgets.ts` does the same. */
-function fall(ball: Body, boxes: readonly Box[], space: MapDef): Touch {
-  const landed: Touch = { hit: false, ground: false, impact: 0 };
-  landLedges(
-    ball,
-    T.BALL_R,
-    ledgeBoxesOf(space),
-    space,
-    T.BALL_BOUNCE_NUM,
-    T.BALL_BOUNCE_DEN,
-    T.LEDGE_SLOP,
-    landed,
-  );
-  const touch = resolveSolids(
-    ball,
-    T.BALL_R,
-    boxes,
-    space,
-    T.BALL_BOUNCE_NUM,
-    T.BALL_BOUNCE_DEN,
-  );
-  return {
-    hit: touch.hit || landed.hit,
-    ground: touch.ground || landed.ground,
-    impact: Math.max(touch.impact, landed.impact),
-  };
-}
-
 /**
  * The ball: gravity, the solids, then every rider touching it, all measured from where the solids left it, then the
  * bubbles, and the solids again so that nothing can push the ball into one.
@@ -262,19 +235,8 @@ function fall(ball: Body, boxes: readonly Box[], space: MapDef): Touch {
 function moveBall(world: World, boxes: readonly Box[], space: MapDef): void {
   const ball = world.ball;
   carried(ball, T.BALL_R, space, world.clock, T.CARRY_SLOP);
-  ball.vy += T.BALL_GRAVITY;
-  ball.vx = clamp(ball.vx, -T.BALL_MAX, T.BALL_MAX);
-  ball.vy = clamp(ball.vy, -T.BALL_MAX, T.BALL_MAX);
-  ball.x += ball.vx;
-  ball.y += ball.vy;
-  const touch = fall(ball, boxes, space);
-  if (touch.hit) {
-    ball.vx -= div(ball.vx, T.BALL_SCRUB);
-    ball.vy -= div(ball.vy, T.BALL_SCRUB);
-    if (abs(ball.vx) < T.BALL_SCRUB) ball.vx = 0;
-    if (abs(ball.vy) < T.BALL_SCRUB) ball.vy = 0;
-    if (touch.impact >= T.BOUNCE_FX) ball.bounces = count(ball.bounces);
-  }
+  if (advanceBall(ball, space, boxes) >= T.BOUNCE_FX)
+    ball.bounces = count(ball.bounces);
   // The gadgets next: a field or a bumper throws it, a portal carries it, and the riders meet it where that left it.
   if (meetGadgets(arenaOf(world), world.barriers, ball) > 0)
     ball.bounces = count(ball.bounces);
