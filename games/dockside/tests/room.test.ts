@@ -11,6 +11,7 @@ import {
   decode,
   hash,
   KEY,
+  INPUT_MASK,
   stepWorld,
   botInput,
   view,
@@ -39,7 +40,7 @@ test("late held movement, its release and a stale match command converge through
   const whole = room(),
     delayed = room();
   const entries: Entry[] = [
-    [1, 5, PLAY, "canal", KEY.right],
+    [1, 5, PLAY, "canal", KEY.up | KEY.fire | KEY.missile | KEY.special],
     [2, 17, PLAY, "canal", 0],
     [3, 23, PLAY, "previous", KEY.left],
   ];
@@ -52,13 +53,20 @@ test("late held movement, its release and a stale match command converge through
   delayed.advance(80);
   assert.equal(hash(whole.state), hash(delayed.state));
   assert.equal(whole.state.world!.rigs[0]!.x, -2400);
+  assert.deepEqual(
+    whole.state.world!.rigs[0]!.shots.map((s) => s.tick > 0),
+    [true, true, true],
+  );
   const cp = encode(whole.state);
   assert.equal(hash(decode(cp, 80)!), hash(whole.state));
   assert.equal(decode(cp, 79), undefined);
   const corrupt = structuredClone(cp);
   corrupt[8] = {};
   assert.equal(decode(corrupt, 80), undefined);
-  assert.equal(docksideGame.isEntry([1, 5, PLAY, "canal", 128]), false);
+  assert.equal(
+    docksideGame.isEntry([1, 5, PLAY, "canal", INPUT_MASK + 1]),
+    false,
+  );
 });
 test("confirmed delivery produces a match and one round receipt only for a participating pilot", () => {
   const r = room();
@@ -100,7 +108,7 @@ test("releases and presses in one tick preserve distinct transform and factory e
   r.advance(5);
   assert.equal(r.state.world!.rigs[0]!.travel, true);
   const factoryEntries: Entry[] = [
-    [6, 6, PLAY, "canal", KEY.up],
+    [6, 6, PLAY, "canal", KEY.jinkLeft],
     [7, 14, PLAY, "canal", 0],
     [8, 604, PLAY, "canal", KEY.launch],
     [9, 604, PLAY, "canal", 0],

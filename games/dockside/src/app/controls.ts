@@ -1,50 +1,79 @@
-import { KEY } from "../game/canal.js";
+import { INPUT_MASK, KEY } from "../game/canal.js";
 import { playtestInputBlocked } from "fuse-ui/playtest-input";
-export const CONTROLS = [
-  { keys: "WASD / Arrows", action: "Move your rig" },
-  { keys: "Shift", action: "Switch between walker and faster travel form" },
-  { keys: "Space", action: "Fire at the nearest enemy in walker range" },
-  { keys: "E", action: "Launch a drone on the marked factory pad" },
-];
-export const TOUCH_CONTROLS = [
-  { keys: "Arrows", action: "Move your rig" },
-  {
-    keys: "FORM / FIRE / LAUNCH",
-    action: "Transform, fire or buy a convoy on your pad",
-  },
-];
-const binds: Record<string, number> = {
-  KeyW: KEY.up,
-  ArrowUp: KEY.up,
-  KeyS: KEY.down,
-  ArrowDown: KEY.down,
-  KeyA: KEY.left,
-  ArrowLeft: KEY.left,
-  KeyD: KEY.right,
-  ArrowRight: KEY.right,
-  ShiftLeft: KEY.shift,
-  ShiftRight: KEY.shift,
-  Space: KEY.fire,
-  KeyE: KEY.launch,
-};
+import {
+  bindings,
+  CAMERA,
+  MAP,
+  standardPadBits,
+  shoulderControls,
+} from "./bindings.js";
+export { CONTROLS, TOUCH_CONTROLS } from "./bindings.js";
 export function createControls(
   send: (bits: number) => void,
   active: () => boolean,
+  changeCamera: () => void,
+  toggleMap: () => void,
 ) {
   const pad = document.createElement("div");
   pad.className = "dockside-controls";
-  const held = new Map<string, number>();
-  const publish = () => send([...held.values()].reduce((a, b) => a | b, 0));
+  const held = new Map<string, number>(),
+    shoulders = shoulderControls();
+  const binds = new Map(
+    bindings.flatMap((b) => b.codes.map((code) => [code, b.bit] as const)),
+  );
+  let previous = 0,
+    sent = 0,
+    controller = 0,
+    blockedPad = false;
+  function emit(bits: number) {
+    if (bits !== sent) {
+      sent = bits;
+      send(bits);
+    }
+  }
+  function publish() {
+    const raw = [...held.values()].reduce((a, b) => a | b, controller);
+    if (raw & ~previous & CAMERA) changeCamera();
+    if (raw & ~previous & MAP) toggleMap();
+    previous = raw;
+    const bits = shoulders.read(raw & INPUT_MASK);
+    emit(bits);
+    if (bits & (KEY.launch | KEY.lock)) emit(bits & ~(KEY.launch | KEY.lock));
+  }
   function release() {
     held.clear();
-    publish();
+    shoulders.clear();
+    previous = 0;
+    controller = 0;
+    blockedPad = true;
+    emit(0);
   }
   const available = () =>
     active() &&
+    !document.hidden &&
     !document.querySelector("dialog[open]") &&
     !playtestInputBlocked(document);
+  function poll() {
+    if (!available() || !document.hasFocus()) {
+      if (previous || controller) release();
+      return;
+    }
+    const gamepad = Array.from(navigator.getGamepads?.() ?? []).find(
+      (p) => p?.connected && p.mapping === "standard",
+    );
+    const bits = gamepad ? standardPadBits(gamepad) : 0;
+    if (!gamepad && controller) {
+      shoulders.clear();
+    }
+    if (blockedPad && bits) return;
+    blockedPad = false;
+    if (bits !== controller) {
+      controller = bits;
+      publish();
+    }
+  }
   function keydown(e: KeyboardEvent) {
-    const bit = binds[e.code];
+    const bit = binds.get(e.code);
     if (
       !bit ||
       !available() ||
@@ -54,7 +83,7 @@ export function createControls(
     )
       return;
     e.preventDefault();
-    if (!held.has(e.code)) {
+    if (!held.has(e.code) && !e.repeat) {
       held.set(e.code, bit);
       publish();
     }
@@ -65,27 +94,19 @@ export function createControls(
       publish();
     }
   }
-  const groups = [
-    [
-      [KEY.up, "↑", "North"],
-      [KEY.left, "←", "West"],
-      [KEY.down, "↓", "South"],
-      [KEY.right, "→", "East"],
-    ],
-    [
-      [KEY.shift, "Form", "Transform"],
-      [KEY.fire, "Fire", "Fire"],
-      [KEY.launch, "Launch", "Launch drone"],
-    ],
-  ] as const;
-  for (const group of groups) {
+  for (const indexes of [
+    [2, 0, 3, 4, 1, 5],
+    [6, 7, 8, 9, 10, 11, 12, 13, 14],
+  ]) {
     const box = document.createElement("div");
     pad.append(box);
-    for (const [bit, text, label] of group) {
+    for (const i of indexes) {
+      const { bit, touch, action } = bindings[i]!;
       const b = document.createElement("button");
       b.className = "fui-button";
-      b.textContent = text;
-      b.setAttribute("aria-label", label);
+      b.textContent = touch;
+      if (bit === CAMERA) b.classList.add("dockside-camera-control");
+      b.setAttribute("aria-label", action);
       box.append(b);
       b.onpointerdown = (e) => {
         if (!available()) return;
@@ -117,6 +138,7 @@ export function createControls(
   return {
     pad,
     release,
+    poll,
     dispose() {
       release();
       document.removeEventListener("keydown", keydown);

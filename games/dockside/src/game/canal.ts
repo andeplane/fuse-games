@@ -34,24 +34,49 @@ export const KEY = {
   fire: 16,
   shift: 32,
   launch: 64,
+  jinkLeft: 128,
+  jinkRight: 256,
+  lock: 512,
+  jump: 1024,
+  missile: 2048,
+  special: 4096,
+  modifier: 8192,
 } as const;
-export const INPUT_MASK = 127;
+export const INPUT_MASK = 16383;
+export const HEADINGS = 64;
+export const headingAngle = (heading: number) =>
+  (heading * 2 * Math.PI) / HEADINGS;
+export const JUMP_TICKS = 12;
+export const jumpHeight = (remaining: number) =>
+  (2.4 * 4 * remaining * (JUMP_TICKS - remaining)) / JUMP_TICKS ** 2;
+export const WEAPONS = [
+  { bit: KEY.fire, range: 1150, cooldown: 7, damage: 1 },
+  { bit: KEY.missile, range: 1500, cooldown: 23, damage: 2 },
+  { bit: KEY.special, range: 650, cooldown: 35, damage: 3 },
+] as const;
+export interface Shot extends Point {
+  tick: number;
+  fromX: number;
+  fromZ: number;
+  cooldown: number;
+}
 export type Team = 0 | 1;
 export interface Rig extends Point {
   id: string;
   travel: boolean;
   hp: number;
   respawn: number;
-  cooldown: number;
+  heading: number;
+  jump: number;
+  crouched: boolean;
+  /** -1 for no target, 0 for the opposing pilot, positive for a convoy id. */
+  lock: number;
+  shots: Shot[];
   previous: number;
   credits: number;
   launched: number;
   intercepted: number;
   captures: number;
-  /** Last beam endpoints and tick. This is also checkpointed so rollback corrects the effect. */
-  beamX: number;
-  beamZ: number;
-  shotTick: number;
 }
 export interface Drone extends Point {
   id: number;
@@ -87,15 +112,23 @@ export function createWorld(ids: readonly string[], seed: number): World {
       travel: false,
       hp: 5,
       respawn: 0,
-      cooldown: 0,
+      heading: (t * HEADINGS) / 2,
+      jump: 0,
+      crouched: false,
+      lock: -1,
+      shots: WEAPONS.map(() => ({
+        x: 0,
+        z: 0,
+        fromX: 0,
+        fromZ: 0,
+        tick: 0,
+        cooldown: 0,
+      })),
       previous: 0,
       credits: 2,
       launched: 0,
       intercepted: 0,
       captures: 0,
-      beamX: 0,
-      beamZ: 0,
-      shotTick: 0,
     })),
     turrets: TURRETS.map(() => ({
       owner: -1,
@@ -115,13 +148,36 @@ export function laneAtFactory(rig: Point, team: number): number {
   );
 }
 function moveRig(rig: Rig, bits: number) {
-  const dx = Number(!!(bits & KEY.right)) - Number(!!(bits & KEY.left));
-  const dz = Number(!!(bits & KEY.down)) - Number(!!(bits & KEY.up));
-  const step = Math.round(
-    (rig.travel ? 40 : 25) * (dx && dz ? Math.SQRT1_2 : 1),
+  const turn = Number(!!(bits & KEY.right)) - Number(!!(bits & KEY.left));
+  rig.heading = (rig.heading + turn + HEADINGS) % HEADINGS;
+  if (rig.travel && bits & KEY.jump) return;
+  const drive = Number(!!(bits & KEY.up)) - Number(!!(bits & KEY.down));
+  const side =
+    Number(!!(bits & KEY.jinkRight)) - Number(!!(bits & KEY.jinkLeft));
+  const angle = headingAngle(rig.heading);
+  const speed =
+    (rig.travel ? 40 : bits & KEY.modifier ? 12 : 25) *
+    (drive && side ? Math.SQRT1_2 : 1);
+  const dx = Math.round(
+    (drive * Math.cos(angle) - side * Math.sin(angle)) * speed,
   );
-  if (walkable(rig.x + dx * step, rig.z, rig.travel)) rig.x += dx * step;
-  if (walkable(rig.x, rig.z + dz * step, rig.travel)) rig.z += dz * step;
+  const dz = Math.round(
+    (drive * Math.sin(angle) + side * Math.cos(angle)) * speed,
+  );
+  if (walkable(rig.x + dx, rig.z, rig.travel)) rig.x += dx;
+  if (walkable(rig.x, rig.z + dz, rig.travel)) rig.z += dz;
+}
+function enemies(w: World, team: number) {
+  const rival = w.rigs[1 - team]!;
+  return [
+    ...(rival.hp ? [{ id: 0, unit: rival as Rig | Drone }] : []),
+    ...w.drones
+      .filter((d) => d.team !== team)
+      .map((unit) => ({ id: unit.id, unit })),
+  ];
+}
+export function lockedUnit(w: World, team: number) {
+  return enemies(w, team).find((e) => e.id === w.rigs[team]!.lock)?.unit;
 }
 export function route(team: Team, lane: number): Point[] {
   const s = teamSign(team),
@@ -154,40 +210,52 @@ export function stepWorld(
   if (w.winners.length) return;
   w.tick++;
   const hits = new Map<Rig | Drone, number>();
-  const hit = (target: Rig | Drone) =>
-    hits.set(target, (hits.get(target) ?? 0) + 1);
-  const firing: boolean[] = [];
+  const hit = (target: Rig | Drone, damage = 1) =>
+    hits.set(target, (hits.get(target) ?? 0) + damage);
+  const firing: number[] = [],
+    cycles: number[] = [];
   for (const [t, r] of w.rigs.entries()) {
     const input = inputs[t] ?? 0,
       samples = typeof input === "number" ? [input] : input;
     let bits = 0,
       switches = 0,
-      launches = 0;
+      launches = 0,
+      locks = 0,
+      jumping = false;
     for (const held of samples) {
       const pressed = held & ~r.previous;
       if (pressed & KEY.shift) switches++;
       if (pressed & KEY.launch) launches++;
+      if (pressed & KEY.lock) locks++;
+      if (pressed & KEY.jump) jumping = true;
       bits |= held;
       r.previous = held;
     }
-    firing[t] = !!(bits & KEY.fire);
+    firing[t] = bits;
+    cycles[t] = locks;
     if (w.tick % 60 === 0)
       r.credits = Math.min(
         99,
         r.credits + 1 + w.turrets.filter((v) => v.owner === t).length,
       );
-    if (r.cooldown > 0) r.cooldown--;
+    for (const shot of r.shots) if (shot.cooldown) shot.cooldown--;
+    if (r.jump) r.jump--;
     if (r.respawn > 0) {
       if (--r.respawn === 0) {
         r.x = factoryX(t);
         r.z = 0;
         r.hp = 5;
         r.travel = false;
+        r.heading = (t * HEADINGS) / 2;
+        r.lock = -1;
       }
       continue;
     }
-    if (switches % 2 === 1 && walkable(r.x, r.z, !r.travel))
+    if (!r.jump && switches % 2 === 1 && walkable(r.x, r.z, !r.travel))
       r.travel = !r.travel;
+    r.crouched =
+      !r.travel && !r.jump && !!(bits & KEY.modifier) && !!(bits & KEY.jump);
+    if (jumping && !r.travel && !r.jump && !r.crouched) r.jump = JUMP_TICKS;
     moveRig(r, bits);
     const lane = laneAtFactory(r, t);
     while (
@@ -245,14 +313,54 @@ export function stepWorld(
     }
   }
   for (const [t, r] of w.rigs.entries()) {
-    if (r.hp === 0 || r.travel || r.cooldown || !firing[t]) continue;
-    const e = target(r, t, 800);
-    if (e) {
-      hit(e);
-      r.cooldown = 7;
-      r.beamX = e.x;
-      r.beamZ = e.z;
-      r.shotTick = w.tick;
+    if (r.hp === 0) continue;
+    const contacts = enemies(w, t).filter((e) => near(r, e.unit, 1650));
+    let index = contacts.findIndex((e) => e.id === r.lock);
+    if (contacts.length && cycles[t])
+      index = (index + cycles[t]!) % contacts.length;
+    const locked = contacts[index];
+    r.lock = locked?.id ?? -1;
+    const angle = headingAngle(r.heading),
+      fx = Math.cos(angle),
+      fz = Math.sin(angle);
+    for (const [i, weapon] of WEAPONS.entries()) {
+      const shot = r.shots[i]!;
+      if (shot.cooldown || !(firing[t]! & weapon.bit)) continue;
+      const ahead = contacts
+        .filter(({ unit }) => {
+          const dx = unit.x - r.x,
+            dz = unit.z - r.z;
+          return (
+            near(r, unit, weapon.range) &&
+            dx * fx + dz * fz >= 0 &&
+            Math.abs(dx * fz - dz * fx) <= 85
+          );
+        })
+        .sort(
+          (a, b) =>
+            Math.hypot(a.unit.x - r.x, a.unit.z - r.z) -
+            Math.hypot(b.unit.x - r.x, b.unit.z - r.z),
+        );
+      const unit =
+        locked && near(r, locked.unit, weapon.range)
+          ? locked.unit
+          : ahead[0]?.unit;
+      shot.fromX = r.x;
+      shot.fromZ = r.z;
+      shot.x = unit?.x ?? Math.round(r.x + fx * weapon.range);
+      shot.z = unit?.z ?? Math.round(r.z + fz * weapon.range);
+      shot.cooldown = weapon.cooldown;
+      shot.tick = w.tick;
+      if (
+        unit &&
+        !(
+          "jump" in unit &&
+          unit.jump > 2 &&
+          unit.jump < JUMP_TICKS - 2 &&
+          i === 2
+        )
+      )
+        hit(unit, weapon.damage);
     }
   }
   for (const [target, count] of hits)
@@ -287,9 +395,12 @@ export function botInput(w: World, t: number): number {
   else if (r.credits < COST) goal = { x: -1300 * s, z: LANES[lane]! };
   const dx = goal.x - r.x,
     dz = goal.z - r.z;
+  const desired = Math.round((Math.atan2(dz, dx) * HEADINGS) / (2 * Math.PI));
+  const delta =
+    ((desired - r.heading + HEADINGS * 2.5) % HEADINGS) - HEADINGS / 2;
   const move =
-    (Math.abs(dx) > 28 ? (dx > 0 ? KEY.right : KEY.left) : 0) |
-    (Math.abs(dz) > 28 ? (dz > 0 ? KEY.down : KEY.up) : 0);
+    (delta > 0 ? KEY.right : delta < 0 ? KEY.left : 0) |
+    (Math.hypot(dx, dz) > 30 && Math.abs(delta) < 9 ? KEY.up : 0);
   const launch =
     r.credits >= COST &&
     laneAtFactory(r, t) === lane &&

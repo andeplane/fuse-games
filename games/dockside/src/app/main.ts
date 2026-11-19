@@ -1,6 +1,7 @@
 import { createTopBar } from "fuse-ui";
 import { createControls, CONTROLS, TOUCH_CONTROLS } from "./controls.js";
 import { createArena, COLORS } from "./arena.js";
+import { createRadar } from "./radar.js";
 import { COST, laneAtFactory } from "../game/canal.js";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
@@ -85,7 +86,7 @@ const names = keys(GAME);
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const app = document.querySelector<HTMLElement>("#app")!;
 const GOAL =
-  "Escort a drone through the opposing gate. Touch a turret to claim it and earn extra credits. Return to your factory’s north or south pad and spend 6 credits to launch on that lane. Walkers can fire and cross the central catwalk; travel form moves faster.";
+  "Escort a drone through the opposing gate. Touch a turret to earn extra credits. Tap Action on your factory’s north or south pad to spend 6 credits and launch on that lane. Both forms carry three weapons. The walker can jump and cross the catwalk. Travel form moves faster.";
 function localUrl(query = "") {
   const url = new URL(endpoints.appUrl(query), location.href);
   if (new URLSearchParams(location.search).has("mute"))
@@ -271,11 +272,29 @@ function room(solo: boolean): void {
   hud.append(identity, statusLine, objective);
   hud.setAttribute("aria-label", "Pilot status");
   let playing = false;
+  let farCamera = false,
+    expandedMap = false;
   const controls = createControls(
     (bits) => runtime.input(bits),
     () => playing && !menu.isOpen(),
+    () => {
+      farCamera = !farCamera;
+    },
+    () => {
+      expandedMap = !expandedMap;
+    },
   );
-  table.append(hud, stage, roundControls.element, hint, controls.pad);
+  const controllerMap = el("div", "", "dockside-controller-map");
+  const controllerRadar = createRadar(controllerMap, COLORS);
+  controllerMap.hidden = true;
+  table.append(
+    hud,
+    stage,
+    controllerMap,
+    roundControls.element,
+    hint,
+    controls.pad,
+  );
   let arena: ReturnType<typeof createArena> | undefined;
   // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({
@@ -386,6 +405,7 @@ function room(solo: boolean): void {
           ? -1
           : frame.roster.findIndex((p) => p.id === viewer.me),
         w = frame.world;
+      if (playing && !(liveMatch && slot >= 0)) controls.release();
       playing = liveMatch && slot >= 0;
       menu.update({
         canLobby: viewer.host && !display && !inLobby && !pendingResult,
@@ -437,12 +457,16 @@ function room(solo: boolean): void {
         viewer.host && !display && !solo && inLobby,
       );
       if (w && liveMatch) {
+        controls.poll();
         const rig = w.rigs[slot],
           controller = viewer.shared && playing;
         stage.hidden = controller;
-        if (!controller) {
+        controllerMap.hidden = !controller;
+        controls.pad.classList.toggle("controller-only", controller);
+        if (controller) controllerRadar.draw(w, slot, expandedMap);
+        else {
           arena ??= createArena(stage);
-          arena.draw(w, slot);
+          arena.draw(w, display ? -1 : slot, farCamera, expandedMap);
         }
         identity.textContent = rig
           ? slot === 0
@@ -464,7 +488,7 @@ function room(solo: boolean): void {
             ? `${lane === 0 ? "North" : "South"} pad · ${rig.credits >= COST ? "Launch ready" : "Drone costs 6 credits"}`
             : touch
               ? "Touch a turret to capture it."
-              : "WASD move · Shift form · Space fire · E launch"
+              : "W/S drive · A/D turn · Q/E jink · J/K/L fire · R lock · F action"
           : "";
         controls.pad.hidden = !playing || !touch;
         runtime.flush();

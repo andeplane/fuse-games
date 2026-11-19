@@ -39,7 +39,7 @@ describe("Canal Lock", () => {
     assert.equal(r.travel, false);
     r.x = -FIELD.water - 100;
     stepWorld(w, [0, 0]);
-    stepWorld(w, [KEY.shift | KEY.right, 0]);
+    stepWorld(w, [KEY.shift | KEY.up, 0]);
     assert.equal(r.travel, true);
     assert.equal(r.x, -FIELD.water - 60);
   });
@@ -79,7 +79,7 @@ describe("Canal Lock", () => {
       [4, 3],
     );
   });
-  it("resolves fire before crossing, respects travel fire lock and allows simultaneous deliveries", () => {
+  it("resolves fire before crossing and allows simultaneous deliveries", () => {
     const w = world();
     w.drones = [{ ...arrived(0), hp: 1 }];
     w.rigs[1]!.x = GATE;
@@ -87,10 +87,70 @@ describe("Canal Lock", () => {
     assert.deepEqual(w.winners, []);
     assert.equal(w.rigs[1]!.intercepted, 1);
     w.rigs[1]!.travel = true;
-    w.rigs[1]!.cooldown = 0;
     w.drones = [arrived(0), arrived(1)];
     stepWorld(w, [0, KEY.fire]);
     assert.deepEqual(w.winners, [0, 1]);
+  });
+  it("rotates without translating, reverses and jinks relative to the hull, and brakes in travel form", () => {
+    const w = world(),
+      r = w.rigs[0]!,
+      x = r.x;
+    for (let i = 0; i < 16; i++) stepWorld(w, [KEY.right, 0]);
+    assert.deepEqual([r.x, r.z, r.heading], [x, 0, 16]);
+    stepWorld(w, [KEY.up, 0]);
+    assert.equal(r.z, 25);
+    stepWorld(w, [KEY.down, 0]);
+    assert.equal(r.z, 0);
+    stepWorld(w, [KEY.jinkLeft, 0]);
+    assert.deepEqual([r.x, r.z, r.heading], [x + 25, 0, 16]);
+    stepWorld(w, [KEY.jinkRight | KEY.modifier, 0]);
+    assert.equal(r.x, x + 13);
+    stepWorld(w, [KEY.jump | KEY.modifier, 0]);
+    assert.equal(r.crouched, true);
+    assert.equal(r.jump, 0);
+    stepWorld(w, [0, 0]);
+    stepWorld(w, [KEY.jump, 0]);
+    assert.ok(r.jump);
+    for (let i = 0; i < 12; i++) stepWorld(w, [0, 0]);
+    stepWorld(w, [KEY.shift | KEY.up | KEY.jump, 0]);
+    assert.equal(r.travel, true);
+    assert.equal(r.z, 0);
+    stepWorld(w, [KEY.up, 0]);
+    assert.equal(r.z, 40);
+  });
+  it("fires all three weapons in either form, cycles off-axis contacts and preserves checked shot state", () => {
+    for (const travel of [true, false]) {
+      const w = world(),
+        r = w.rigs[0]!,
+        other = w.rigs[1]!;
+      r.travel = travel;
+      stepWorld(w, [KEY.fire | KEY.missile | KEY.special, 0]);
+      assert.deepEqual(
+        r.shots.map((s) => s.x - r.x),
+        [1150, 1500, 650],
+      );
+      other.x = r.x;
+      other.z = 490;
+      w.drones.push({
+        id: w.nextDrone++,
+        team: 1,
+        lane: 0,
+        hp: 5,
+        x: r.x,
+        z: 500,
+        waypoint: 0,
+      });
+      stepWorld(w, [KEY.lock, 0]);
+      assert.equal(r.lock, 0);
+      stepWorld(w, [[0, KEY.lock], 0]);
+      assert.equal(r.lock, 1);
+      for (let i = 0; i < 6; i++) stepWorld(w, [0, 0]);
+      stepWorld(w, [KEY.fire, 0]);
+      assert.equal(w.drones[0]!.hp, 4);
+      assert.deepEqual(decodeWorld(w), w);
+      r.heading = 64;
+      assert.equal(decodeWorld(w), undefined);
+    }
   });
   it("routes real paid drones through each bridge and only delivery wins", () => {
     for (const lane of [0, 1]) {

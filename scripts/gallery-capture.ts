@@ -249,13 +249,15 @@ const RECIPES: Record<string, Recipe> = {
   dockside: async (page) => {
     await openPlayOptions(page, "single");
     await page
-      .locator('.dockside-room[data-phase="running"] .dockside-stage canvas')
+      .locator(
+        '.dockside-room[data-phase="running"] canvas[aria-label="Canal Lock arena"]',
+      )
       .waitFor();
-    await hold(page, ["KeyW"], 580);
+    await hold(page, ["KeyQ"], 580);
     await page.getByText("North pad · Launch ready").waitFor();
-    await page.keyboard.press("KeyE", { delay: 80 });
-    await hold(page, ["KeyW"], 1640);
-    await hold(page, ["KeyD"], 3000);
+    await page.keyboard.press("KeyF", { delay: 80 });
+    await hold(page, ["KeyQ"], 1640);
+    await hold(page, ["KeyW"], 3000);
   },
   "fuse-surge": async (page) => {
     await openPlayOptions(page, "single");

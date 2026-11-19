@@ -475,7 +475,7 @@ export function createDocksideGame(
 ): DocksideGame {
   return {
     id: "dockside",
-    rules: "dockside-1",
+    rules: "dockside-2",
     isEntry,
     createRoom,
     createTicker: () => (room, creatorId, streams) =>

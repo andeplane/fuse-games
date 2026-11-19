@@ -4,8 +4,8 @@ Canal Lock is a two-pilot convoy race. Walk or switch to a faster travel chassis
 
 ## Architecture
 
-The authoritative simulation advances at 20 Hz in integer centimetres. The same map definitions supply collision, drone routes and the orthographic Three.js view. Each match uses the shared Fuse rollback runtime for solo practice, peer rooms and shared TV. A practice pilot submits the same controls as a human. A delivery decides one analytics round and one match.
+The authoritative simulation advances at 20 Hz in integer centimetres. The elevated perspective camera follows the pilot’s heading. The TV uses an orthographic overview, and both the chase view and radar use the simulation’s map definitions. Each match uses the shared Fuse rollback runtime for solo practice, peer rooms and shared TV. A practice pilot submits the same controls as a human. A delivery decides one analytics round and one match.
 
 ## Play
 
-Open `/dockside/?mute`, choose solo practice or create a two-seat room. Use WASD or arrows to move, Shift to change form, Space to fire and E on a marked factory pad to dispatch. Touch controls support simultaneous movement and actions.
+Open `/dockside/?mute`, choose solo practice or create a two-seat room. W/S drives forward or reverses, A/D rotates, Q/E jinks sideways. J/K/L fires the laser, heavy missile or shock pulse in either form. R cycles a target, F dispatches on a factory pad, Shift transforms, and Space jumps or brakes. Hold F with movement for careful walker steps or short jinks, or with Space to crouch. C changes the chase distance and M expands the radar. How to Play lists the corresponding standard gamepad buttons. Touch supports simultaneous movement and actions.

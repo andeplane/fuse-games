@@ -1,5 +1,15 @@
 import { uint32 } from "fuse-netcode";
-import { FIELD, MAX_DRONES, TURRETS, walkable, type World } from "./canal.js";
+import {
+  FIELD,
+  HEADINGS,
+  INPUT_MASK,
+  JUMP_TICKS,
+  MAX_DRONES,
+  TURRETS,
+  WEAPONS,
+  walkable,
+  type World,
+} from "./canal.js";
 import { playerKey } from "./names.js";
 const rec = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -39,7 +49,7 @@ export function decodeWorld(v: unknown): World | undefined {
         rec(r) &&
         keys(
           r,
-          "id x z travel hp respawn cooldown previous credits launched intercepted captures beamX beamZ shotTick",
+          "id x z travel hp respawn heading jump crouched lock shots previous credits launched intercepted captures",
         ) &&
         playerKey(r.id) &&
         int(r.x, -FIELD.x, FIELD.x) &&
@@ -49,13 +59,31 @@ export function decodeWorld(v: unknown): World | undefined {
         int(r.hp, 0, 5) &&
         int(r.respawn, 0, 60) &&
         (r.hp === 0) === r.respawn > 0 &&
-        int(r.cooldown, 0, 7) &&
-        int(r.previous, 0, 127) &&
+        int(r.heading, 0, HEADINGS - 1) &&
+        int(r.jump, 0, JUMP_TICKS) &&
+        typeof r.crouched === "boolean" &&
+        (!r.travel || (!r.jump && !r.crouched)) &&
+        int(r.lock, -1, Number(v.nextDrone) - 1) &&
+        Array.isArray(r.shots) &&
+        r.shots.length === WEAPONS.length &&
+        r.shots.every((s: unknown, i: number) => {
+          const weapon = WEAPONS[i]!;
+          return (
+            rec(s) &&
+            keys(s, "x z fromX fromZ cooldown tick") &&
+            int(s.fromX, -FIELD.x, FIELD.x) &&
+            int(s.fromZ, -FIELD.z, FIELD.z) &&
+            int(s.x, -FIELD.x - weapon.range, FIELD.x + weapon.range) &&
+            int(s.z, -FIELD.z - weapon.range, FIELD.z + weapon.range) &&
+            int(s.cooldown, 0, weapon.cooldown) &&
+            int(s.tick, 0, tick)
+          );
+        }) &&
+        int(r.previous, 0, INPUT_MASK) &&
         int(r.credits, 0, 99) &&
         int(r.launched, 0, tick) &&
         int(r.intercepted, 0, tick * 2) &&
-        int(r.captures, 0, tick * 2) &&
-        beam(r, tick),
+        int(r.captures, 0, tick * 2),
     )
   )
     return;
