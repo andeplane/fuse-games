@@ -90,6 +90,9 @@ const PER_PAIR = 3,
 /** A walking bot stops within this of where it is going. */
 const STAND_SLACK = 3 * S;
 const DIRS = [-1, 0, 1] as const;
+const LAUNCH_INPUTS = [JUMP_NONE, JUMP_SHORT, JUMP_FULL].flatMap((jump) =>
+  DIRS.flatMap((first) => DIRS.map((second) => ({ jump, first, second }))),
+);
 
 /** The controls that fly `edge`, `k` steps after its launch. The trials and the pilot share this function. */
 export function edgeInput(edge: Edge, unit: Unit, k: number): Input {
@@ -175,6 +178,19 @@ function fly(
   return undefined;
 }
 
+/** Latest first contact across the centre and both slack launches, or -1 if any misses. */
+function touchCost(
+  box: number,
+  centre: Flight,
+  left: Flight,
+  right: Flight,
+): number {
+  const a = centre.touched[box]!;
+  const b = left.touched[box]!;
+  const c = right.touched[box]!;
+  return Math.min(a, b, c) < 0 ? -1 : Math.max(a, b, c);
+}
+
 const flip = (dir: -1 | 0 | 1): -1 | 0 | 1 =>
   dir === 0 ? 0 : dir < 0 ? 1 : -1;
 const sameMove = (a: Edge, b: Edge): boolean =>
@@ -185,35 +201,52 @@ const sameMove = (a: Edge, b: Edge): boolean =>
   a.first === b.first &&
   a.second === b.second;
 
-function buildWorkerNav(arena: Arena, speed: boolean): WorkerNav {
-  const count = arena.solids.length;
-  const boxes = [
-    ...arena.holes[0].map(holeBox),
-    ...arena.holes[1].map(holeBox),
-    ...arena.piles.map(pileBox),
-  ];
-  const launches = (edge: Edge): number[] => [
-    edge.x,
-    edge.x - LAUNCH_SLACK,
-    edge.x + LAUNCH_SLACK,
-  ];
-  /** Whether `edge` reaches platform `to` from its launch point and from the slack either side of it. */
-  const lands = (edge: Edge, to: number): boolean =>
-    launches(edge).every((at) => fly(arena, edge, at, speed, [])?.to === to);
-  /** Whether `edge` touches `box` on the way, from all three launch points; the latest first touch, or -1. */
-  const touches = (edge: Edge, box: Box): number => {
-    let latest = 0;
-    for (const at of launches(edge)) {
-      const step = fly(arena, edge, at, speed, [box])?.touched[0] ?? -1;
-      if (step < 0) return -1;
-      latest = Math.max(latest, step);
+/** Keep the first separated launches in each contiguous group of sorted candidates. */
+function separatedLaunches<T>(
+  candidates: readonly T[],
+  limit: number,
+  group: (candidate: T) => string,
+  launch: (candidate: T) => number,
+): T[] {
+  const selected: T[] = [];
+  let currentGroup = "";
+  let launches: number[] = [];
+  for (const candidate of candidates) {
+    const key = group(candidate);
+    if (key !== currentGroup) {
+      currentGroup = key;
+      launches = [];
     }
-    return latest;
-  };
-  const found: Edge[] = [];
-  /** Moves that brush a box in flight: the box, the move and the step of the touch. */
-  const brushes: { box: number; edge: Edge; cost: number }[] = [];
-  for (let from = 0; from < count; from += 1) {
+    const x = launch(candidate);
+    if (
+      launches.length < limit &&
+      launches.every((at) => Math.abs(at - x) >= 3 * SAMPLE)
+    ) {
+      launches.push(x);
+      selected.push(candidate);
+    }
+  }
+  return selected;
+}
+
+/** Moves that brush a box in flight, with the step of the touch. */
+interface Brush {
+  box: number;
+  edge: Edge;
+  cost: number;
+}
+
+function trialMoves(
+  arena: Arena,
+  speed: boolean,
+  boxes: readonly Box[],
+): {
+  routes: Edge[];
+  brushes: Brush[];
+} {
+  const routes: Edge[] = [];
+  const brushes: Brush[] = [];
+  for (let from = 0; from < arena.solids.length; from += 1) {
     const solid = arena.solids[from]!;
     const lo = solid.x + 2 * S,
       hi = solid.x + solid.w - 2 * S;
@@ -221,51 +254,69 @@ function buildWorkerNav(arena: Arena, speed: boolean): WorkerNav {
     if (solid.y < WORKER_HEIGHT || hi < lo) continue;
     for (let x = lo; x <= hi; x += SAMPLE) {
       if (!standable(arena, x, solid.y)) continue;
-      for (const jump of [JUMP_NONE, JUMP_SHORT, JUMP_FULL])
-        for (const first of DIRS)
-          for (const second of DIRS) {
-            // A walk-off needs a direction, and only makes sense from near the end it walks toward.
-            if (jump === JUMP_NONE) {
-              if (first === 0) continue;
-              if (first < 0 ? x > lo + SAMPLE : x < hi - SAMPLE) continue;
-            }
-            const edge: Edge = {
-              from,
-              to: -1,
-              x,
-              jump,
-              first,
-              second,
-              cost: 0,
-              lx: x,
-            };
-            const flight = fly(arena, edge, x, speed, boxes);
-            if (!flight) continue;
-            edge.to = flight.to;
-            edge.cost = flight.cost;
-            edge.lx = flight.x;
-            flight.touched.forEach((step, box) => {
-              if (step < 0) return;
-              const cost = touches(edge, boxes[box]!);
-              if (cost >= 0) brushes.push({ box, edge, cost });
-            });
-            if (flight.to !== from && lands(edge, flight.to)) found.push(edge);
-          }
+      for (const input of LAUNCH_INPUTS) {
+        // A walk-off needs a direction, and only makes sense from near the end it walks toward.
+        if (input.jump === JUMP_NONE && !walksOff(input.first, x, lo, hi))
+          continue;
+        const edge: Edge = { from, to: -1, x, ...input, cost: 0, lx: x };
+        const centre = fly(arena, edge, x, speed, boxes);
+        if (!centre) continue;
+        edge.to = centre.to;
+        edge.cost = centre.cost;
+        edge.lx = centre.x;
+        const crossesPlatforms = centre.to !== from;
+        const targets = centre.touched.some((step) => step >= 0) ? boxes : [];
+        if (!crossesPlatforms && targets.length === 0) continue;
+        // Contacts only observe the flight, so the same slack trials also check landings.
+        const left = fly(arena, edge, x - LAUNCH_SLACK, speed, targets);
+        if (!left) continue;
+        const right = fly(arena, edge, x + LAUNCH_SLACK, speed, targets);
+        if (!right) continue;
+        targets.forEach((_, box) => {
+          const cost = touchCost(box, centre, left, right);
+          if (cost >= 0) brushes.push({ box, edge, cost });
+        });
+        if (crossesPlatforms && left.to === centre.to && right.to === centre.to)
+          routes.push(edge);
+      }
     }
   }
+  return { routes, brushes };
+}
+
+function walksOff(
+  direction: Edge["first"],
+  x: number,
+  lo: number,
+  hi: number,
+): boolean {
+  return (
+    (direction < 0 && x <= lo + SAMPLE) || (direction > 0 && x >= hi - SAMPLE)
+  );
+}
+
+function buildWorkerNav(arena: Arena, speed: boolean): WorkerNav {
+  const count = arena.solids.length;
+  const boxes = [
+    ...arena.holes[0].map(holeBox),
+    ...arena.holes[1].map(holeBox),
+    ...arena.piles.map(pileBox),
+  ];
+  const lands = (edge: Edge): boolean =>
+    [edge.x, edge.x - LAUNCH_SLACK, edge.x + LAUNCH_SLACK].every(
+      (at) => fly(arena, edge, at, speed, [])?.to === edge.to,
+    );
+  const { routes: candidates, brushes } = trialMoves(arena, speed, boxes);
   // The cheapest few per pair of platforms, from launch points well apart.
-  found.sort(
+  candidates.sort(
     (a, b) => a.from - b.from || a.to - b.to || a.cost - b.cost || a.x - b.x,
   );
-  const chosen: Edge[] = [];
-  for (const edge of found) {
-    const pair = chosen.filter((e) => e.from === edge.from && e.to === edge.to);
-    if (
-      pair.length < PER_PAIR &&
-      pair.every((e) => Math.abs(e.x - edge.x) >= 3 * SAMPLE)
-    )
-      chosen.push(edge);
-  }
+  const chosen = separatedLaunches(
+    candidates,
+    PER_PAIR,
+    (edge) => `${edge.from}:${edge.to}`,
+    (edge) => edge.x,
+  );
   // The search runs left to right, so on its own it would give the two teams different routes. Every map is its own
   // mirror image and so is the motion, so the graph is made one too: a move is kept only if its mirror image also
   // lands (where two ledges meet, a landing on the very seam can count for either), and then both are in the graph.
@@ -297,7 +348,7 @@ function buildWorkerNav(arena: Arena, speed: boolean): WorkerNav {
   };
   for (const edge of chosen) {
     const mirror = mirrorOf(edge);
-    if (!lands(mirror, mirror.to)) continue;
+    if (!lands(mirror)) continue;
     add(edge);
     add(mirror);
   }
@@ -391,17 +442,12 @@ function buildWorkerNav(arena: Arena, speed: boolean): WorkerNav {
       a.cost - b.cost ||
       a.edge.x - b.edge.x,
   );
-  const kept: typeof brushes = [];
-  for (const brush of brushes) {
-    const same = kept.filter(
-      (other) => other.box === brush.box && other.edge.from === brush.edge.from,
-    );
-    if (
-      same.length < PER_SPOT &&
-      same.every((other) => Math.abs(other.edge.x - brush.edge.x) >= 3 * SAMPLE)
-    )
-      kept.push(brush);
-  }
+  const kept = separatedLaunches(
+    brushes,
+    PER_SPOT,
+    (brush) => `${brush.box}:${brush.edge.from}`,
+    (brush) => brush.edge.x,
+  );
   const addSpot = (box: number, edge: Edge, cost: number): void => {
     const list = spots[box]!;
     // Standing there already touches it: no need to jump.
@@ -413,9 +459,14 @@ function buildWorkerNav(arena: Arena, speed: boolean): WorkerNav {
   for (const brush of kept) {
     const mirror = mirrorOf(brush.edge),
       other = twinBox(brush.box);
-    const landing = fly(arena, mirror, mirror.x, speed, []);
-    if (!landing || landing.to !== mirror.to) continue;
-    const cost = touches(mirror, boxes[other]!);
+    const target = [boxes[other]!];
+    const centre = fly(arena, mirror, mirror.x, speed, target);
+    if (!centre || centre.to !== mirror.to || centre.touched[0]! < 0) continue;
+    const left = fly(arena, mirror, mirror.x - LAUNCH_SLACK, speed, target);
+    if (!left || left.touched[0]! < 0) continue;
+    const right = fly(arena, mirror, mirror.x + LAUNCH_SLACK, speed, target);
+    if (!right) continue;
+    const cost = touchCost(0, centre, left, right);
     if (cost < 0) continue;
     addSpot(brush.box, brush.edge, brush.cost);
     addSpot(other, mirror, cost);
