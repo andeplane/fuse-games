@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { smokeTimeout } from "./smoke-timeout.js";
 import { openTopMenu } from "./lib/top-menu.js";
 const base = process.env.HOME_URL ?? "http://127.0.0.1:4188/";
 interface Snapshot {

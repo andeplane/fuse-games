@@ -1,7 +1,6 @@
 import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { smokeTimeout } from "./smoke-timeout.js";
 import { returnToSoloLobby } from "./lib/solo-lobby.js";
 // #13: a joined phone shows one controller presentation (invisible arcade regions, hint labels, ☰ MENU pill) in countdown, playing and matchOver.
 // #134: the lobby is a phone screen instead — riders, START RACE and one menu on screen in both orientations, no controls, no rotate gate.
