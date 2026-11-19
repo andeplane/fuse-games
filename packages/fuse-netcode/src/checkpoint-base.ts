@@ -2,16 +2,8 @@ import type { Stage } from "./game.js";
 import type { SeatRecord } from "./management.js";
 import { uint32 } from "./wire.js";
 
-interface CheckpointBaseFields {
-  matchId: unknown;
-  stage: unknown;
-  settings: unknown;
-  seats: unknown;
-  play: unknown;
-  held: unknown;
-  roster: unknown;
-  simulationTick: unknown;
-}
+/** Fields through the roster in the shared checkpoint header. Each game owns the rest. */
+export const CHECKPOINT_HEADER_FIELDS = 7;
 
 interface CheckpointBaseOptions<RoomStage extends Stage, Settings, Entrant> {
   stages: readonly RoomStage[];
@@ -24,7 +16,7 @@ interface CheckpointBaseOptions<RoomStage extends Stage, Settings, Entrant> {
   decodeRoster(raw: unknown): Entrant[] | undefined;
 }
 
-/** Decode the common fields of a checkpoint. Wire order and cross-field rules belong to each game. */
+/** Decode the common checkpoint header and clock. Each game owns the payload after the header. */
 export function createCheckpointBaseDecoder<
   RoomStage extends Stage,
   Settings,
@@ -39,8 +31,20 @@ export function createCheckpointBaseDecoder<
   decodeHeld,
   decodeRoster,
 }: CheckpointBaseOptions<RoomStage, Settings, Entrant>) {
-  return (raw: CheckpointBaseFields, tick: number) => {
-    const { matchId, simulationTick } = raw;
+  return (
+    fields: readonly unknown[],
+    simulationTick: unknown,
+    tick: number,
+  ) => {
+    const [
+      matchId,
+      rawStage,
+      rawSettings,
+      rawSeats,
+      rawPlay,
+      rawHeld,
+      rawRoster,
+    ] = fields;
     if (
       !validMatchId(matchId) ||
       !uint32(simulationTick) ||
@@ -48,12 +52,12 @@ export function createCheckpointBaseDecoder<
       simulationTick > tick * maxStepsPerTick
     )
       return;
-    const stage = stages.find((known) => known === raw.stage);
-    const settings = parseSettings(raw.settings);
-    const seats = decodeSeats(raw.seats);
-    const play = parseSettings(raw.play);
-    const held = decodeHeld(raw.held);
-    const roster = decodeRoster(raw.roster);
+    const stage = stages.find((known) => known === rawStage);
+    const settings = parseSettings(rawSettings);
+    const seats = decodeSeats(rawSeats);
+    const play = parseSettings(rawPlay);
+    const held = decodeHeld(rawHeld);
+    const roster = decodeRoster(rawRoster);
     if (!stage || !settings || !seats || !play || !held || !roster) return;
     return {
       simulationTick,

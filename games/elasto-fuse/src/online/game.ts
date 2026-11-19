@@ -6,6 +6,7 @@ import {
   createSeatListDecoder,
   createHeldInputDecoder,
   createCheckpointBaseDecoder,
+  CHECKPOINT_HEADER_FIELDS,
   validCheckpointLifecycle,
   defaultText,
   hasLogPosition,
@@ -581,13 +582,6 @@ export function decode(
 ): Room | undefined {
   if (fields.length !== FIELDS || !uint32(tick)) return;
   const [
-    matchId,
-    rawStage,
-    rawSettings,
-    rawSeats,
-    rawPlay,
-    rawHeld,
-    rawRoster,
     round,
     rawStandings,
     pause,
@@ -595,20 +589,8 @@ export function decode(
     rawWorld,
     rawSimulationTick,
     matchStartTick,
-  ] = fields;
-  const base = decodeBase(
-    {
-      matchId,
-      stage: rawStage,
-      settings: rawSettings,
-      seats: rawSeats,
-      play: rawPlay,
-      held: rawHeld,
-      roster: rawRoster,
-      simulationTick: rawSimulationTick,
-    },
-    tick,
-  );
+  ] = fields.slice(CHECKPOINT_HEADER_FIELDS);
+  const base = decodeBase(fields, rawSimulationTick, tick);
   if (
     !base ||
     !uint32(matchStartTick) ||
