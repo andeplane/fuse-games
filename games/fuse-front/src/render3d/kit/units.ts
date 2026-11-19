@@ -34,20 +34,39 @@ const SCALE: Record<UnitKind, number> = {
 };
 
 /** Each walker's legs in tiles: hip half-width, hip height (leg length) and boot width. */
+export interface LegPlacement {
+  hip: number;
+  len: number;
+  w: number;
+}
+
+const LEG_HEIGHT = 0.4;
+const BOOT_WIDTH = 0.2;
+
 // prettier-ignore
-export const ROBOT_LEGS: Partial<Record<UnitKind, { hip: number; len: number; w: number }>> = {
-  grunt: { hip: 0.13 * 0.4, len: 0.4 * 0.4, w: 0.2 * 0.4 },
-  torch: { hip: 0.21 * 0.45, len: 0.4 * 0.45, w: 0.27 * 0.45 },
+export const ROBOT_LEGS: Partial<Record<UnitKind, LegPlacement>> = {
+  grunt: { hip: 0.13 * SCALE.grunt, len: LEG_HEIGHT * SCALE.grunt, w: BOOT_WIDTH * SCALE.grunt },
+  torch: { hip: 0.21 * SCALE.torch, len: LEG_HEIGHT * SCALE.torch, w: 0.27 * SCALE.torch },
 };
 
-/** A leg in a frame where the hip is at y = 0.4 and the boot 0.2 wide: thigh, knee, team shin plate, boot, toe cap. */
+/** A leg in concept metres: thigh, knee, team shin plate, boot and toe cap. */
 // prettier-ignore
-export function leg(r: Rig): void {
+function leg(r: Rig): void {
   r.add("dark", r.box(0.13, 0.18, 0.14, 0.03), [0, 0.3, 0])
     .add("team", r.box(0.16, 0.15, 0.18, 0.04), [0, 0.13, 0.02])
-    .add("dark", r.box(0.2, 0.08, 0.3, 0.03), [0, 0.04, 0.05]);
+    .add("dark", r.box(BOOT_WIDTH, 0.08, 0.3, 0.03), [0, 0.04, 0.05]);
   // The shared leg is built at unit size, so `FAR_MIN` cannot tell its knee and toe cap are small: leave them out far.
   if (!r.far) r.add("steel", r.cylinder(0.065, 0.16, 10), [0, 0.21, 0.01], Z).add("steel", r.box(0.21, 0.025, 0.12, 0.008), [0, 0.02, 0.15]);
+}
+
+/** Position two copies of the same leg under a hero or a robot's static model. */
+export function addStandingLegs(
+  root: Rig,
+  { hip, len, w }: LegPlacement,
+): void {
+  const widthScale = w / BOOT_WIDTH;
+  const scale: V3 = [widthScale, len / LEG_HEIGHT, widthScale];
+  root.pair((side) => leg(root.sub([side * hip, 0, 0], undefined, scale)));
 }
 
 /** A small rifle along +z, its grip at the origin. */
@@ -157,6 +176,11 @@ function track(r: Rig, x: number): void {
   r.add("tread", r.hull(loop, 0.28, 0.02), [x, 0, 0]);
 }
 
+function addTankTracks(root: Rig): void {
+  const frame = root.scaled(SCALE.lightTank);
+  frame.pair((side) => track(frame, side * 0.62));
+}
+
 const BUILDERS: Record<RobotKind, (r: Rig) => void> = {
   grunt,
   torch,
@@ -170,8 +194,8 @@ const BUILDERS: Record<RobotKind, (r: Rig) => void> = {
 export function robotModel(kind: RobotKind, detail: Detail = "near", moving = true): Model {
   const root = new Rig(detail), unit = kind === "tankTurret" ? "lightTank" : kind, spec = ROBOT_LEGS[unit];
   BUILDERS[kind](root.scaled(SCALE[unit]));
-  if (moving && spec) root.pair((s) => leg(root.sub([s * spec.hip, 0, 0], [0, 0, 0], [spec.w / 0.2, spec.len / 0.4, spec.w / 0.2])));
-  if (moving && kind === "lightTank") root.pair((s) => track(root.scaled(SCALE.lightTank), s * 0.62));
+  if (moving && spec) addStandingLegs(root, spec);
+  if (moving && kind === "lightTank") addTankTracks(root);
   return root.bake();
 }
 
@@ -182,7 +206,9 @@ export function robotModel(kind: RobotKind, detail: Detail = "near", moving = tr
 // prettier-ignore
 export function robotPart(kind: RobotPart, detail: Detail = "near"): Model {
   const root = new Rig(detail);
-  if (kind === "robotLeg") leg(root.sub([0, -1, 0], [0, 0, 0], [5, 2.5, 5]));
-  else root.pair((s) => track(root.scaled(SCALE.lightTank), s * 0.62));
+  if (kind === "robotLeg") {
+    const bootScale = 1 / BOOT_WIDTH;
+    leg(root.sub([0, -1, 0], undefined, [bootScale, 1 / LEG_HEIGHT, bootScale]));
+  } else addTankTracks(root);
   return root.bake(kind === "robotLeg" ? -1 : 0, kind === "robotLeg" ? 1 : 0.35);
 }

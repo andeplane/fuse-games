@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import type { HeroKind, Model } from "../models.js";
 import { Rig, type Detail, type V3 } from "./rig.js";
-import { leg } from "./units.js";
+import { addStandingLegs, type LegPlacement } from "./units.js";
 
 const PI = Math.PI,
   H = PI / 2,
@@ -18,7 +18,7 @@ const SCALE = 0.42;
 
 /** Each hero's legs in tiles: hip half-width, hip height (leg length) and boot width, from the concept's legs. */
 // prettier-ignore
-export const HERO_LEGS: Record<HeroKind, { hip: number; len: number; w: number }> = {
+export const HERO_LEGS: Record<HeroKind, LegPlacement> = {
   brick: { hip: 0.3 * SCALE, len: 0.84 * SCALE, w: 0.4 * SCALE },
   vix: { hip: 0.14 * SCALE, len: 1.0 * SCALE, w: 0.15 * SCALE },
   rivet: { hip: 0.19 * SCALE, len: 0.62 * SCALE, w: 0.26 * SCALE },
@@ -174,6 +174,6 @@ const BUILDERS: Record<HeroKind, (r: Rig) => void> = {
 export function heroModel(kind: HeroKind, detail: Detail = "near", moving = true): Model {
   const root = new Rig(detail), spec = HERO_LEGS[kind];
   BUILDERS[kind](root.scaled(SCALE));
-  if (moving) root.pair((s) => leg(root.sub([s * spec.hip, 0, 0], [0, 0, 0], [spec.w / 0.2, spec.len / 0.4, spec.w / 0.2])));
+  if (moving) addStandingLegs(root, spec);
   return root.bake();
 }

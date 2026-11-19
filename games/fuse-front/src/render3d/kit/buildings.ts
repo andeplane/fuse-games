@@ -103,11 +103,24 @@ function chimney(r: Rig, x: number, y0: number, z: number): void {
     .add("eye", r.sphere(0.1), [x + 0.45, y0 + 4.55, z]);
 }
 
+interface FactorySize {
+  w: number;
+  d: number;
+  h: number;
+}
+
+/** A factory's concrete foundation and the walls underneath its own roof. */
+// prettier-ignore
+function factoryWalls(r: Rig, { w, d, h }: FactorySize): Rig {
+  return r.add("concrete", r.box(w + 0.6, 0.3, d + 0.6, 0.05), [0, 0.15, 0])
+    .add("concrete", r.box(w, h, d, 0.08), [0, h / 2 + 0.3, 0]);
+}
+
 const RF = { w: 7, d: 5.4, h: 3 };
 // prettier-ignore
 function robotFactory(r: Rig): void {
   const { w, d, h } = RF;
-  r.add("concrete", r.box(w + 0.6, 0.3, d + 0.6, 0.05), [0, 0.15, 0]).add("concrete", r.box(w, h, d, 0.08), [0, h / 2 + 0.3, 0])
+  factoryWalls(r, RF)
     .add("team", r.box(w + 0.06, 0.4, d + 0.06, 0.03), [0, h - 0.2, 0]).add("dark", r.box(w + 0.1, 0.12, d + 0.1, 0.02), [0, h + 0.3, 0]);
   sawtooth(r, w - 0.2, d - 0.2, h + 0.36, 4);
   door(r, 3, 2.1, d / 2 + 0.05);
@@ -129,7 +142,7 @@ const VF = { w: 8, d: 6.4, h: 2.4, arc: PI * 0.36 };
 // prettier-ignore
 function vehicleFactory(r: Rig): void {
   const { w, d, h, arc } = VF, base = h + 0.3 - (w / 2) * Math.cos(arc), top = base + w / 2;
-  r.add("concrete", r.box(w + 0.6, 0.3, d + 0.6, 0.05), [0, 0.15, 0]).add("concrete", r.box(w, h, d, 0.08), [0, h / 2 + 0.3, 0])
+  factoryWalls(r, VF)
     .add("team", r.box(w + 0.06, 0.35, d + 0.06, 0.03), [0, h + 0.05, 0])
     .add("steel", new THREE.CylinderGeometry(w / 2, w / 2, d, r.far ? 10 : 28, 1, true, -arc, arc * 2), [0, base, 0], X);
   for (let i = -6; i <= 6; i += r.far ? 3 : 1) {
@@ -154,10 +167,21 @@ function vehicleFactory(r: Rig): void {
     .pair((s) => r.add("amber", r.sphere(0.12), [s * 2.7, 2.6, d / 2 + 0.2]));
 }
 
+/** The bottom of the octagonal plinth that survives when a turret is destroyed. */
+function turretFoundation(r: Rig): Rig {
+  return r.add("concrete", frustum(1.7, 1.9, 0.3, 8), [0, 0.15, 0]);
+}
+
+/** The turret's upper plinth and head, shared by the active turret and its ruin. */
+const turretPlinth = () => frustum(1.3, 1.6, 0.9, 8);
+const turretArmor = (r: Rig) =>
+  // prettier-ignore
+  r.plan([[-0.8, -0.8], [0.8, -0.8], [0.95, 0.1], [0.55, 0.85], [-0.55, 0.85], [-0.95, 0.1]], 0.75, 0.08);
+
 /** The turret's pad: an octagonal plinth banded in hazard stripes inside a ring of sandbags. */
 // prettier-ignore
 function turret(r: Rig): void {
-  r.add("concrete", frustum(1.7, 1.9, 0.3, 8), [0, 0.15, 0]).add("concrete", frustum(1.3, 1.6, 0.9, 8), [0, 0.75, 0])
+  turretFoundation(r).add("concrete", turretPlinth(), [0, 0.75, 0])
     .add("hazard", frustum(1.32, 1.32, 0.2, 8), [0, 1.1, 0]).add("dark", r.taperedCylinder(0.9, 0.95, 0.3, 16), [0, 1.35, 0]);
   sandbags(r, 0, 0, 2.15, -PI * 0.8, PI * 0.8);
 }
@@ -165,7 +189,7 @@ function turret(r: Rig): void {
 /** The turret's head on its ring: team armour, a mantlet with a red sensor, an ammo box and twin barrels on +z. */
 // prettier-ignore
 function turretHead(r: Rig): void {
-  r.add("team", r.plan([[-0.8, -0.8], [0.8, -0.8], [0.95, 0.1], [0.55, 0.85], [-0.55, 0.85], [-0.95, 0.1]], 0.75, 0.08))
+  r.add("team", turretArmor(r))
     .add("team", r.plan([[-0.5, -0.6], [0.5, -0.6], [0.6, 0.1], [0.3, 0.5], [-0.3, 0.5], [-0.6, 0.1]], 0.2, 0.05), [0, 0.75, -0.1])
     .add("dark", r.box(0.9, 0.5, 0.3, 0.06), [0, 0.38, 0.9]).add("eye", r.sphere(0.09), [0.45, 0.62, 0.9])
     .add("orange", r.box(0.4, 0.4, 0.6, 0.05), [-0.9, 0.35, -0.3]).add("dark", r.box(0.6, 0.3, 0.3, 0.05), [0, 0.6, -0.9])
@@ -225,8 +249,8 @@ function fortRuin(r: Rig): void {
 /** The turret's ruin: its pad in its sandbags, the head knocked off beside it with a barrel bent down. */
 // prettier-ignore
 function turretRuin(r: Rig): void {
-  r.add("concrete", frustum(1.7, 1.9, 0.3, 8), [0, 0.15, 0]).add("char", frustum(1.3, 1.6, 0.9, 8), [0, 0.75, 0], [0.08, 0, 0.05])
-    .add("char", r.plan([[-0.8, -0.8], [0.8, -0.8], [0.95, 0.1], [0.55, 0.85], [-0.55, 0.85], [-0.95, 0.1]], 0.75, 0.08), [1.1, 0.2, -1.4], [0.5, 0.6, 0.3])
+  turretFoundation(r).add("char", turretPlinth(), [0, 0.75, 0], [0.08, 0, 0.05])
+    .add("char", turretArmor(r), [1.1, 0.2, -1.4], [0.5, 0.6, 0.3])
     .add("steel", r.taperedCylinder(0.075, 0.085, 2, 8), [0.2, 0.5, 0.6], [1.2, 0.4, 0]).add("dark", r.taperedCylinder(0.9, 0.95, 0.3, 12), [-0.2, 1.25, 0.1], [0.2, 0, -0.15]);
   sandbags(r, 0, 0, 2.15, -PI * 0.8, PI * 0.2);
 }
