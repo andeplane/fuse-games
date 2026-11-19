@@ -83,6 +83,11 @@ const structure = (w: World, cell: number) =>
   w.structures.find((s) => s.cell === cell);
 const brain = (w: World, p: Player) =>
   w.structures.find((s) => s.ownerId === p.id && s.kind === "brain");
+function connectedAt(index: CellIndex, cell: number, ownerId: string): boolean {
+  const structure = index.get(cell);
+  return structure?.connected === true && structure.ownerId === ownerId;
+}
+
 function emit(
   w: World,
   p: Player,
@@ -91,6 +96,17 @@ function emit(
 ) {
   w.outcomes.push({ tick: w.tick, playerId: p.id, type, ...extra });
 }
+const booleanSettings = [
+  "powerups",
+  "instantConstruction",
+  "instantResearch",
+] as const;
+const allowedSettings: readonly string[] = [
+  ...booleanSettings,
+  "matchId",
+  "aiStrategy",
+];
+
 function validateSetup(
   raw: MapDefinition,
   settings: MatchSettings,
@@ -111,23 +127,12 @@ function validateSetup(
     throw new Error("roster: invalid players or spawn assignments");
   if (
     !record(settings) ||
-    Object.keys(settings).some(
-      (k) =>
-        ![
-          "instantConstruction",
-          "instantResearch",
-          "matchId",
-          "aiStrategy",
-          "powerups",
-        ].includes(k),
-    ) ||
-    (settings.powerups !== undefined &&
-      typeof settings.powerups !== "boolean") ||
+    Object.keys(settings).some((key) => !allowedSettings.includes(key)) ||
+    booleanSettings.some((key) => {
+      const flag = settings[key];
+      return flag !== undefined && typeof flag !== "boolean";
+    }) ||
     (settings.aiStrategy !== undefined && !isAiStrategy(settings.aiStrategy)) ||
-    (settings.instantConstruction !== undefined &&
-      typeof settings.instantConstruction !== "boolean") ||
-    (settings.instantResearch !== undefined &&
-      typeof settings.instantResearch !== "boolean") ||
     (settings.matchId !== undefined &&
       (typeof settings.matchId !== "string" || settings.matchId.length > 128))
   )
@@ -449,13 +454,9 @@ function prepareWorker(
   // Check both endpoints before waiting or arriving: an alternate route to the
   // destination does not repair the edge on which this builder was travelling.
   if (worker.to !== worker.cell) {
-    const from = index.get(worker.from),
-      to = index.get(worker.to);
     if (
-      !from?.connected ||
-      !to?.connected ||
-      from.ownerId !== p.id ||
-      to.ownerId !== p.id
+      !connectedAt(index, worker.from, p.id) ||
+      !connectedAt(index, worker.to, p.id)
     ) {
       recoverWorker(w, worker);
       return false;
@@ -712,11 +713,10 @@ function advanceParticle(
     Object.assign(particle, particleProfile(player));
   }
   if (particle.mode === "transit") {
-    const hasConduit = (cell: number) => {
-      const node = index.get(cell);
-      return node?.connected && node.ownerId === player.id;
-    };
-    if (!hasConduit(particle.from) || !hasConduit(particle.to))
+    if (
+      !connectedAt(index, particle.from, player.id) ||
+      !connectedAt(index, particle.to, player.id)
+    )
       return recoverParticle(w, particle);
     if (particle.arrivesAt > w.tick) return;
     particle.cell = particle.to;
@@ -1161,6 +1161,29 @@ export function hashState(world: World): string {
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
+function validConstructionDuration(job: Construction, instant: boolean) {
+  // Zero-time paid work exists only with debug instant construction.
+  if (job.paid && instant) return job.duration === 0;
+  if (job.duration === 0) return !job.paid;
+  return constructionDurations(job.kind).includes(job.duration);
+}
+
+function validParticleProfile(q: Particle, owner: Player): boolean {
+  const stats = PARTICLES[q.kind];
+  // Re-equipping applies stat upgrades, so a researched profile may carry either value.
+  const validAttack =
+    q.attack === stats.attack ||
+    (q.attack === stats.attack + 1 && owner.research.includes("excitation"));
+  const validSpeed =
+    q.speed === stats.speed ||
+    (q.speed === stats.speed - 1 && owner.research.includes("conduction"));
+  return (
+    validAttack &&
+    validSpeed &&
+    !researchPrerequisites(owner, stats.requires).length
+  );
+}
+
 export function decodeState(raw: unknown): World {
   if (typeof raw !== "string" || raw.length > 4_000_000)
     throw new Error("checkpoint: invalid size");
@@ -1195,7 +1218,7 @@ export function decodeState(raw: unknown): World {
     throw new Error("checkpoint: invalid world");
   if (w.players.some((p, i) => i > 0 && w.players[i - 1]!.id >= p.id))
     throw new Error("checkpoint: players out of order");
-  const owners = new Set(w.players.map((p) => p.id)),
+  const owners = new Map(w.players.map((p) => [p.id, p])),
     ids = new Set<number>(),
     structures = new Map<number, Structure>();
   for (const o of w.outcomes)
@@ -1360,13 +1383,10 @@ export function decodeState(raw: unknown): World {
         typeof j.paid !== "boolean" ||
         !integer(j.progress) ||
         !integer(j.duration) ||
-        // Zero-time work exists only with debug instant construction.
-        (j.paid
-          ? w.settings.instantConstruction
-            ? j.duration !== 0
-            : j.duration === 0 ||
-              !constructionDurations(j.kind).includes(j.duration)
-          : !constructionDurations(j.kind).includes(j.duration)) ||
+        !validConstructionDuration(
+          j,
+          w.settings.instantConstruction === true,
+        ) ||
         !integer(j.hp, 1, hp(j.kind)) ||
         (!j.paid &&
           (j.progress !== 0 || j.duration !== 0 || j.hp !== hp(j.kind))) ||
@@ -1402,13 +1422,9 @@ export function decodeState(raw: unknown): World {
     )
       throw new Error("checkpoint: inconsistent worker");
     if (p.alive && worker.mode !== "recovering") {
-      const from = structures.get(worker.cell),
-        to = structures.get(worker.to);
       if (
-        !from?.connected ||
-        from.ownerId !== p.id ||
-        !to?.connected ||
-        to.ownerId !== p.id ||
+        !connectedAt(structures, worker.cell, p.id) ||
+        !connectedAt(structures, worker.to, p.id) ||
         worker.from !== worker.cell ||
         (worker.to !== worker.cell &&
           (!neighbors(w.map, worker.from).includes(worker.to) ||
@@ -1436,7 +1452,7 @@ export function decodeState(raw: unknown): World {
       throw new Error("checkpoint: particle conservation or brain mismatch");
   }
   for (const s of w.structures) {
-    const owner = w.players.find((p) => p.id === s.ownerId)!;
+    const owner = owners.get(s.ownerId)!;
     if (
       s.kind !== "brain" &&
       (researchPrerequisites(owner, CONSTRUCTIONS[s.kind].requires).length ||
@@ -1445,35 +1461,14 @@ export function decodeState(raw: unknown): World {
       throw new Error("checkpoint: structure requires research");
   }
   for (const q of w.particles) {
+    const owner = record(q) ? owners.get(q.ownerId) : undefined;
     if (
-      !record(q) ||
-      !owners.has(q.ownerId) ||
+      !owner ||
       !integer(q.id, 1) ||
       ids.has(q.id) ||
       !["stationed", "transit", "recovering"].includes(q.mode) ||
       !isParticleKind(q.kind) ||
-      researchPrerequisites(
-        w.players.find((p) => p.id === q.ownerId)!,
-        PARTICLES[q.kind].requires,
-      ).length > 0 ||
-      // Upgrades apply only once researched, and only when a particle is
-      // re-equipped, so either value is possible after research, not before.
-      ![
-        PARTICLES[q.kind].attack,
-        ...(w.players
-          .find((p) => p.id === q.ownerId)!
-          .research.includes("excitation")
-          ? [PARTICLES[q.kind].attack + 1]
-          : []),
-      ].includes(q.attack) ||
-      ![
-        PARTICLES[q.kind].speed,
-        ...(w.players
-          .find((p) => p.id === q.ownerId)!
-          .research.includes("conduction")
-          ? [PARTICLES[q.kind].speed - 1]
-          : []),
-      ].includes(q.speed)
+      !validParticleProfile(q, owner)
     )
       throw new Error("checkpoint: invalid particle");
     ids.add(q.id);
@@ -1489,10 +1484,8 @@ export function decodeState(raw: unknown): World {
         q.arrivesAt - q.departedAt !== q.speed ||
         q.departedAt > w.tick ||
         q.cell !== q.from ||
-        ![q.from, q.to].every((cell) => {
-          const s = structures.get(cell);
-          return s?.connected && s.ownerId === q.ownerId;
-        }))
+        !connectedAt(structures, q.from, q.ownerId) ||
+        !connectedAt(structures, q.to, q.ownerId))
     )
       throw new Error("checkpoint: invalid transit");
     if (
@@ -1536,11 +1529,7 @@ export function decodeState(raw: unknown): World {
   )
     throw new Error("checkpoint: invalid connectivity");
   for (const q of w.particles) {
-    const site = structures.get(q.cell);
-    if (
-      q.mode === "stationed" &&
-      (!site?.connected || site.ownerId !== q.ownerId)
-    )
+    if (q.mode === "stationed" && !connectedAt(structures, q.cell, q.ownerId))
       throw new Error("checkpoint: invalid stationary particle");
     if (q.mode === "transit" && q.arrivesAt <= w.tick)
       throw new Error("checkpoint: overdue transit");
