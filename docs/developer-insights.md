@@ -20,6 +20,9 @@ a URL flag. Starting explicitly requests microphone permission; signing out
 stops capture. FuseOS owns a single microphone recording across embedded games,
 including when their menus control it. `?record` and its `?report` alias remain
 optional shortcuts to the opt-in recording UI; neither grants authorization.
+While recording, **Collapse** clears the full panel from the play area. The
+recording indicator stays in the upper-right corner with the elapsed time and
+a **Stop** button. Select the indicator to reopen the recording and upload controls.
 Ctrl+X reporting remains available without audio or admin sign-in. Reports
 associated with a recording require its authenticated owner. Screenshots,
 reports, audio, transcripts and extracted actions are private. Keep them out
@@ -36,9 +39,11 @@ no policy has no capabilities, even when its email is allowlisted. This prevents
 a recreated Firebase account from silently inheriting a revoked person's access.
 An explicit empty policy also denies all developer access. A valid Google ID token
 must have an `auth_time` within 15 minutes to start a recording or mint a token.
-The workspace and recording panel offer Google reauthentication; refreshing an
-ID token alone does not change `auth_time`. Ongoing uploads and finishing do not
-require a fresh sign-in, but still require the record capability and ownership.
+The workspace and recording panel offer Google reauthentication when required.
+When the service challenges a recording start, confirming as the same account
+retries that start. Refreshing an ID token alone does not change `auth_time`.
+Ongoing uploads and finishing require the record capability and ownership
+without another freshness check.
 
 Every developer private-route attempt is appended before a response or mutation
 to `${prefix}-developer-audit`, with verified UID, verified email, server time,

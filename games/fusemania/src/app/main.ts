@@ -101,7 +101,7 @@ import {
   type Prefs,
 } from "./prefs.js";
 import { createOptionsMenu, createPlayOptions, speedLabel } from "./options.js";
-import { createLobbyBar } from "./lobby-bar.js";
+import { createLobbyAction, createLobbyBar } from "./lobby-bar.js";
 import {
   bestText,
   present,
@@ -991,7 +991,6 @@ function enterRoom(
       },
     }),
     addBot = button("+ ADD AI RIVAL", "fm-add-bot"),
-    start = button("START", "fui-button-primary fm-start"),
     lobbyNote = el("p", "", "fui-lobby-note"),
     tvLink = button("OPEN TV SCREEN", "fui-button fm-tv"),
     tvOption = el("div", "", "fui-room-extra fm-tv-option"),
@@ -1046,7 +1045,12 @@ function enterRoom(
       action: "add",
       slot: requestedRoomSlot(addBot),
     });
-  start.onclick = () => runtime.command({ type: "action", action: "start" });
+  const lobbyAction = createLobbyAction(
+    document,
+    () => runtime.command({ type: "action", action: "start" }),
+    (ready) => runtime.setLobbyReady(ready),
+  );
+  lobbyNote.setAttribute("role", "status");
   tvLink.onclick = () =>
     window.open(
       withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
@@ -1101,7 +1105,9 @@ function enterRoom(
     onMode: (mode) =>
       runtime.command({ type: "settings", settings: { ...settings, mode } }),
     tools: [options.random, share.element],
-    onPlay: () => start.click(),
+    onPlay: () => {
+      if (viewer.host) lobbyAction.element.click();
+    },
   });
   const showOptions = () =>
     options.update({
@@ -1391,7 +1397,7 @@ function enterRoom(
   let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
     layout: "configuration",
-    primaryAction: start,
+    primaryAction: lobbyAction.element,
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor,
     background: async (host) =>
@@ -1868,13 +1874,13 @@ function enterRoom(
           ? "OFFLINE"
           : member.bot
             ? `AI · ${member.chart}`
-            : member.chart,
+            : member.ready
+              ? `READY · ${member.chart}`
+              : member.chart,
       })),
     );
     addBot.hidden = !room.canAddBot;
-    start.hidden = !room.showStart;
-    start.disabled = !room.canStart;
-    setText(start, room.startText);
+    lobbyAction.update(room.action);
     lobbySession.update(room.session);
     showOptions();
     setText(lobbyNote, room.note);

@@ -43,6 +43,7 @@ import {
 import {
   button,
   createAppPortal,
+  createDialog,
   createGameMenu,
   createInviteCard,
   createLandingCard,
@@ -110,6 +111,7 @@ import {
   MODE_CHOICES,
   SCORING_CHOICES,
   createPointWatch,
+  matchOutcome,
   present,
   teamLabel,
   type Model,
@@ -234,7 +236,7 @@ const GUIDE = {
     { keys: "LEFT PAD", action: "Slide your thumb left or right to run" },
     { keys: "JUMP", action: "Jump: hold it to jump the highest" },
   ],
-  goal: "Bounce the ball over the net with your blob. It must not touch the sand on your side, and three touches in a row is a fault.",
+  goal: "Bounce the ball over the net and keep it off your sand. Your team can touch the ball three times per return. A fourth touch is a fault.",
 } as const;
 
 const QUICK_GUIDE = {
@@ -284,10 +286,6 @@ function header(
     onOpenChange,
     sound: audioControl.sound,
   });
-}
-
-function keyHelp(): HTMLElement {
-  return createHowToPlay(GUIDE);
 }
 
 /** The two scoring rules as cards; `onPick` hears a choice, `update` shows the room's. */
@@ -619,9 +617,16 @@ function room(solo: boolean): void {
     botPicker.element,
     lobbyNote,
     lobbyActions,
-    keyHelp(),
   );
   lobby.append(lobbyMain, lobbySide);
+  const howToPlay = button("How to play", "fv-room-help");
+  const guide = createDialog({
+    title: "How to play",
+    classes: { root: "fui-menu-dialog" },
+  });
+  howToPlay.setAttribute("aria-haspopup", "dialog");
+  howToPlay.onclick = () => guide.dialog.showModal();
+  guide.body.append(createHowToPlay(GUIDE));
 
   // The court: who is playing, the canvas and the result card.
   const stage = el("section", "", "fv-stage"),
@@ -736,6 +741,7 @@ function room(solo: boolean): void {
     stage,
     controller,
     results.element,
+    guide.dialog,
   );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
@@ -768,6 +774,7 @@ function room(solo: boolean): void {
     actions: [lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation, players and rules scroll under them.
     actionsInHeader: true,
+    headerActions: [howToPlay],
     extras: [tvOption],
     status: status.element,
     ...(solo
@@ -792,6 +799,7 @@ function room(solo: boolean): void {
     (bits) => controls.hold("gamepad", bits),
   );
   let model: Model | undefined;
+  let outcome: View | null = null;
   /** What to draw now: the forward run when the newest frame is the room's newest world, otherwise the two frames blended. */
   let traced = { ahead: 0, tick: 0, forward: false };
   const leadClock = createLeadClock(),
@@ -887,7 +895,14 @@ function room(solo: boolean): void {
       }
       const cues = stage.hidden
         ? feel(view)
-        : scene.draw(view, now, local, model?.names, model?.tags);
+        : scene.draw(
+            view,
+            now,
+            local,
+            model?.names,
+            model?.tags,
+            outcome?.world ?? null,
+          );
       const localSide = model?.localSide ?? -1;
       for (const cue of cues) {
         if (!stage.hidden) sfx.play(cue);
@@ -907,11 +922,18 @@ function room(solo: boolean): void {
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
     main.dataset.phase = view.world?.phase ?? "";
-    main.dataset.score = view.world ? view.world.score.join("-") : "";
+    const closed = outcome?.world;
+    main.dataset.score =
+      !closed || !view.world
+        ? ""
+        : closed.format === "2v2v2"
+          ? view.world.onCourt.map((team) => closed.points[team]).join("-")
+          : closed.score.join("-");
     main.dataset.riding = String(next.riding);
     main.dataset.team = String(view.world?.court.team ?? 1);
     main.dataset.format = view.world?.format ?? view.settings.format;
     lobby.hidden = next.screen !== "lobby";
+    if (lobby.hidden && guide.dialog.open) guide.dialog.close();
     stage.hidden = next.screen !== "play";
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
@@ -1041,10 +1063,12 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: FuseVolleyCallbacks = {
     state(frame, roomSettings) {
+      const confirmed = runtime.confirmedFrame();
+      outcome = matchOutcome(frame, confirmed, solo);
       observeConfirmedPlay(
         reportPlay,
         frame,
-        () => runtime.confirmedFrame(),
+        () => confirmed,
         (frame) => {
           const players =
             frame.stage === "lobby"
@@ -1063,10 +1087,11 @@ function room(solo: boolean): void {
           };
         },
       );
-      for (const point of points(frame, viewer.me))
-        analytics.track("Point Scored", { ...point });
+      if (outcome)
+        for (const point of points(outcome, viewer.me))
+          analytics.track("Point Scored", { ...point });
       settings = roomSettings;
-      const next = present(frame, viewer);
+      const next = present(frame, viewer, outcome);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
         joinSent = true;
@@ -1099,6 +1124,7 @@ function room(solo: boolean): void {
       say("The host removed you from the room", "error");
     },
     ended() {
+      if (guide.dialog.open) guide.dialog.close();
       say("Room ended", "error");
       over = true;
       controls.clear();

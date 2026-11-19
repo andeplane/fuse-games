@@ -5,6 +5,7 @@ import {
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
+import { signedInToken } from "fuse-ui/browser-account";
 import "fuse-ui/social.css";
 import {
   observeConfirmedPlay,
@@ -36,6 +37,7 @@ import {
 } from "fuse-network-fe";
 import { MAX_PACKET_BYTES, uuid } from "fuse-netcode";
 import {
+  backOnEscape,
   button,
   createAppPortal,
   createGameMenu,
@@ -50,6 +52,7 @@ import {
   createRoster,
   createRoundControls,
   createSharedTvOption,
+  createSubPage,
   el,
 } from "fuse-ui";
 import { GAS, RESTART } from "../engine/input.js";
@@ -100,6 +103,11 @@ import {
   sessionFor,
 } from "./session.js";
 import { clockText } from "../render/hud.js";
+import {
+  createLevelLeaderboards,
+  parseLevelTimes,
+} from "./level-leaderboards.js";
+import type { LevelRun } from "../level-times.js";
 
 /**
  * The Elasto Fuse page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -149,6 +157,8 @@ const withFlags = (path: string) =>
       (link, flag) => `${link}${link.includes("?") ? "&" : "?"}${flag}`,
       path,
     );
+const levelTimesUrl = (level: number) =>
+  endpoints.apiUrl(`/api/games/${GAME}/level-times?level=${level}`);
 const setText = (node: HTMLElement, value: string) => {
   if (node.textContent !== value) node.textContent = value;
 };
@@ -291,6 +301,9 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
+  card.menu.addEntry("Leaderboards", () => {
+    location.href = withFlags(endpoints.appUrl("?leaderboards"));
+  });
   const picker = createLevelPicker(false, (picked) => {
     level = picked;
     store.setItem(names.level, String(picked));
@@ -305,6 +318,29 @@ function landing(): void {
   const menu = createGameMenu(GUIDE);
   menu.update({ canLobby: false, canLeave: false, touch: coarse() });
   app.replaceChildren(header([back, menu.element]), card.element);
+}
+
+function leaderboards(): void {
+  const board = createLevelLeaderboards({
+    initial: soloLevel(),
+    levels: LEVEL_CHOICES,
+    playHref: (level) => withFlags(endpoints.appUrl(`?solo=1&level=${level}`)),
+    async load(level, signal) {
+      const response = await fetch(levelTimesUrl(level), { signal });
+      if (!response.ok) throw new Error("Leaderboard unavailable");
+      return parseLevelTimes(await response.json());
+    },
+  });
+  const page = createSubPage({
+    title: "Leaderboards",
+    backHref: withFlags(endpoints.appUrl()),
+    content: [board.element],
+  });
+  const menu = createGameMenu(GUIDE);
+  menu.update({ canLobby: false, canLeave: false, touch: coarse() });
+  app.replaceChildren(header([menu.element]), page.element);
+  backOnEscape(page.back);
+  window.addEventListener("pagehide", board.dispose, { once: true });
 }
 
 /** A real element as a touch button. */
@@ -527,16 +563,46 @@ function room(solo: boolean): void {
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
     onBack: leave,
     backText: "Leave",
-    onAction: (id) =>
-      id === "menu"
-        ? leave()
-        : id === "next"
-          ? nextMap()
-          : id === "lobby"
-            ? toLobby()
-            : rematch(),
+    onAction(id) {
+      if (id === "retry-time") {
+        if (rankedRun?.failed) void publishTime(rankedRun);
+      } else if (id === "menu") leave();
+      else if (id === "next") nextMap();
+      else if (id === "lobby") toLobby();
+      else rematch();
+    },
   });
   const liveResults = createLiveResults(results);
+  let rankedRun:
+    | { match: string; run: LevelRun; status: string; failed: boolean }
+    | undefined;
+  const publishTime = async (attempt: NonNullable<typeof rankedRun>) => {
+    attempt.status = "Verifying time…";
+    attempt.failed = false;
+    try {
+      const token = await signedInToken();
+      if (!token) throw new Error("Sign in to submit time");
+      const response = await fetch(levelTimesUrl(attempt.run.level), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(attempt.run),
+      });
+      if (!response.ok) throw new Error("Could not save time");
+      const result: unknown = await response.json();
+      if (!result || typeof result !== "object" || !("ranked" in result))
+        throw new Error("Missing leaderboard result");
+      attempt.status =
+        result.ranked === true
+          ? "Leaderboard time saved"
+          : "Verified outside the top 100";
+    } catch {
+      attempt.status = "Could not save leaderboard time";
+      attempt.failed = true;
+    }
+  };
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -909,7 +975,17 @@ function room(solo: boolean): void {
       friends: social.friends,
       report: (result, friend) =>
         resultReport(result, { color: slotColor, friend }),
-      bar: resultBar,
+      bar: (result) => {
+        const bar = resultBar(result);
+        if (!result.solo || !rankedRun) return bar;
+        return {
+          ...bar,
+          status: rankedRun.status,
+          actions: rankedRun.failed
+            ? [{ id: "retry-time", label: "Retry saving time" }, ...bar.actions]
+            : bar.actions,
+        };
+      },
     });
   };
 
@@ -973,6 +1049,14 @@ function room(solo: boolean): void {
           names.best(LEVELS[world.level]?.id ?? ""),
           rider?.status === "finished" ? centiseconds(rider.run) : undefined,
         );
+      }
+      if (rankedRun?.match !== frame.matchId) rankedRun = undefined;
+      if (!rankedRun && solo && social.isSignedIn()) {
+        const run = runtime.soloRun();
+        if (run) {
+          rankedRun = { match: frame.matchId, run, status: "", failed: false };
+          void publishTime(rankedRun);
+        }
       }
       const next = present(frame, viewer, bestBefore);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
@@ -1138,6 +1222,7 @@ function room(solo: boolean): void {
   runtime.start();
 }
 
-if (query.get("solo") === "1") room(true);
+if (query.has("leaderboards")) leaderboards();
+else if (query.get("solo") === "1") room(true);
 else if (query.has("room")) room(false);
 else landing();

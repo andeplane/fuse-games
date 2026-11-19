@@ -322,7 +322,7 @@ test("presence starts at admission, follows replacement membership and clears on
   const transport: RoomTransport = {
     id: "member",
     hostId: "host",
-    sentBytes: 0,
+    sentBytes: 42,
     connect() {},
     close() {
       closed = true;
@@ -353,6 +353,9 @@ test("presence starts at admission, follows replacement membership and clears on
       return transport;
     },
   );
+  assert.equal(bound.id, "member");
+  assert.equal(bound.hostId, "host");
+  assert.equal(bound.sentBytes, 42);
   assert.equal(f.social.friends.client.room(), undefined);
   callbacks!.welcome("member1", "host");
   assert.deepEqual(f.social.friends.client.room(), {
@@ -369,6 +372,9 @@ test("presence starts at admission, follows replacement membership and clears on
   callbacks!.revoked();
   assert.equal(f.social.friends.client.room(), undefined);
   callbacks!.welcome("member4", "host");
+  callbacks!.ended();
+  assert.equal(f.social.friends.client.room(), undefined);
+  callbacks!.welcome("member5", "host");
   bound.close();
   assert.equal(f.social.friends.client.room(), undefined);
   assert.equal(closed, true);

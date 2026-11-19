@@ -128,6 +128,8 @@ function match(): { mesh: Mesh; host: TestRuntime; guest: TestRuntime } {
   guest.command({ type: "join", name: "Guest" });
   mesh.run(3_000);
   assert.equal(host.roomState()!.seats.size, 2);
+  guest.setLobbyReady(true);
+  mesh.run(300);
   assert.ok(host.command({ type: "action", action: "start" }));
   // Both devices have the song: they say so, and the room lets it go.
   mesh.run(600, () => {
@@ -374,6 +376,8 @@ test("a song waits for a device that is still getting it, and starts for both wh
   host.command({ type: "join", name: "Host" });
   guest.command({ type: "join", name: "Guest" });
   mesh.run(3_000);
+  guest.setLobbyReady(true);
+  mesh.run(300);
   assert.ok(host.command({ type: "action", action: "start" }));
   // The host has the song and says so again and again; the guest's is still on its way.
   mesh.run(4_000, () => host.ready());
@@ -426,6 +430,8 @@ test("a lobby seat is a choice: a guest joins the seat it asks for, host and gue
   mesh.run(3_000);
   assert.deepEqual(slots(host), { host: 4, guest: 1 });
   // The moved seats still start a match, in seat order.
+  guest.setLobbyReady(true);
+  mesh.run(300);
   assert.ok(host.command({ type: "action", action: "start" }));
   mesh.run(600, () => {
     host.ready();

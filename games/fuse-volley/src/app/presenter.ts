@@ -151,11 +151,26 @@ export const teamLabel = (names: readonly string[]): string =>
 const plural = (count: number, one: string, many: string) =>
   `${count} ${count === 1 ? one : many}`;
 
-export function present(view: View, viewer: Viewer): Model {
+/** The closed snapshot may still show the previous match after the host starts a rematch. */
+export function matchOutcome(
+  current: View,
+  closed: View | undefined,
+  solo: boolean,
+): View | null {
+  if (solo) return current;
+  return closed?.matchId === current.matchId ? closed : null;
+}
+
+export function present(
+  view: View,
+  viewer: Viewer,
+  outcome: View | null = view,
+): Model {
   const seats = view.seats.filter((seat) => !seat.watcher);
   const mine = view.seats.find((seat) => seat.id === viewer.me);
   const seated = !!mine && !mine.watcher;
   const world = view.world;
+  const scoreWorld = outcome?.world;
   const inMatch = view.stage !== "lobby" && !!world;
   const mySlot = world
     ? world.blobs.findIndex((each) => each.id === viewer.me)
@@ -187,8 +202,8 @@ export function present(view: View, viewer: Viewer): Model {
             bot: entrant.bot,
             away: !entrant.bot && (!seat || seat.away || !seat.connected),
             score: kings
-              ? (world.points[team] ?? 0)
-              : world.score[team === 1 ? 1 : 0],
+              ? (scoreWorld?.points[team] ?? 0)
+              : (scoreWorld?.score[team === 1 ? 1 : 0] ?? 0),
           };
         })
       : [];
@@ -217,18 +232,22 @@ export function present(view: View, viewer: Viewer): Model {
 
   let status = "";
   if (world && inMatch) {
-    const score = kings
-      ? [0, 1, 2]
-          .map((team) => `${TEAM_NAMES[team]} ${world.points[team] ?? 0}`)
-          .join(" · ")
-      : `${world.score[0]} – ${world.score[1]}`;
+    const score = !scoreWorld
+      ? "Confirming score…"
+      : kings
+        ? [0, 1, 2]
+            .map(
+              (team) => `${TEAM_NAMES[team]} ${scoreWorld.points[team] ?? 0}`,
+            )
+            .join(" · ")
+        : `${scoreWorld.score[0]} – ${scoreWorld.score[1]}`;
     const winningTeam =
-      world.winner === -1
+      !scoreWorld || scoreWorld.winner === -1
         ? -1
         : kings
-          ? world.onCourt[world.winner]
-          : world.winner;
-    if (view.stage === "over" || world.phase === "over")
+          ? scoreWorld.onCourt[scoreWorld.winner]
+          : scoreWorld.winner;
+    if (outcome?.stage === "over")
       status =
         localTeam === -1
           ? score
@@ -242,11 +261,16 @@ export function present(view: View, viewer: Viewer): Model {
         localSide !== -1 && world.server === localSide
           ? `${score} · YOUR SERVE`
           : `${score} · SERVE`;
-    else if (world.phase === "dead" && world.lastFault !== -1)
+    else if (
+      world.phase === "dead" &&
+      scoreWorld &&
+      scoreWorld.pointCounter === world.pointCounter &&
+      scoreWorld.lastFault !== -1
+    )
       status =
         localSide === -1
           ? score
-          : world.lastFault === localSide
+          : scoreWorld.lastFault === localSide
             ? kings
               ? `${score} · OFF YOU GO`
               : `${score} · MISSED`
@@ -263,8 +287,13 @@ export function present(view: View, viewer: Viewer): Model {
         : "Pick a name to play in the next match";
 
   let result: Model["result"] = null;
-  if (view.stage === "over" && world && names) {
-    const winner = sides.find((side) => side.id === view.winner);
+  if (
+    view.stage === "over" &&
+    outcome?.stage === "over" &&
+    scoreWorld &&
+    names
+  ) {
+    const winner = sides.find((side) => side.id === outcome.winner);
     const team = winner && sides.filter((side) => side.team === winner.team);
     const order = [...Array(teamsIn(format)).keys()].sort(
       (a, b) =>
@@ -273,9 +302,9 @@ export function present(view: View, viewer: Viewer): Model {
     );
     const scoreLine = kings
       ? order
-          .map((each) => `${teamName(each)} ${world.points[each] ?? 0}`)
+          .map((each) => `${teamName(each)} ${scoreWorld.points[each] ?? 0}`)
           .join(" · ")
-      : `${teamName(0)} ${world.score[0]} – ${world.score[1]} ${teamName(1)}`;
+      : `${teamName(0)} ${scoreWorld.score[0]} – ${scoreWorld.score[1]} ${teamName(1)}`;
     const pointsOf = (team: number) =>
       sides.find((side) => side.team === team)?.score ?? 0;
     const rows: ResultRow[] = order.flatMap((each) =>
@@ -294,7 +323,7 @@ export function present(view: View, viewer: Viewer): Model {
             1 +
             order.filter((other) => pointsOf(other) > pointsOf(each)).length,
           points: side.score,
-          touches: world.blobs[side.slot]?.hits ?? 0,
+          touches: scoreWorld.blobs[side.slot]?.hits ?? 0,
         })),
     );
     result = {
@@ -309,7 +338,7 @@ export function present(view: View, viewer: Viewer): Model {
         scoreLine,
         ...sides.map(
           (side) =>
-            `${side.name}: ${plural(world.blobs[side.slot]?.hits ?? 0, "touch", "touches")}`,
+            `${side.name}: ${plural(scoreWorld.blobs[side.slot]?.hits ?? 0, "touch", "touches")}`,
         ),
       ],
       host: viewer.host,
