@@ -41,7 +41,7 @@ type Circle = readonly [x: number, y: number, radius: number];
 interface Moon {
   disc: Circle;
   /** Sample the disc at a pixel corner (0) or center (0.5). Surface marks use corners. */
-  sampleOffset: number;
+  sampleOffset: 0 | 0.5;
   lightCenter: readonly [x: number, y: number];
   marks: readonly Circle[];
   colors: { light: number; shadow: number; marks: number };
