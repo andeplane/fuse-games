@@ -5,6 +5,10 @@
  */
 import * as THREE from "three";
 import {
+  appendTargetMarkers,
+  createStrategicMarkerCache,
+} from "./field-markers.js";
+import {
   SUB,
   TILE_PX,
   type BuildingKind,
@@ -14,7 +18,7 @@ import {
   type WorldView,
 } from "../engine/view.js";
 import { EventDedupe, type StampedEvent } from "../render/cues.js";
-import { ROUTE_HEX, routeMarks } from "../render/route.js";
+import { ROUTE_HEX } from "../render/route.js";
 import {
   NO_OVERLAY,
   TARGET_HEX,
@@ -134,8 +138,8 @@ const SPOT_RGB = [4, 0.7, 0.4] as const,
   FLARE_RGB = [6, 1.2, 0.6] as const,
   BLITZ_RGB = [1.4, 3.6, 5.5] as const,
   SHIELD_RGB = rgb(0x60d0ff);
-/** Strategic marks of the lanes' paths (a dot every `LANE_DOT` tiles) and the jungle camps, guarded or waiting. */
-const LANE_RGB = rgb(0xd6c496), CAMP_RGB = rgb(0xf0c83c), CAMP_DOWN_RGB = rgb(0x786846), LANE_DOT = 4; // prettier-ignore
+/** Strategic marks of the lanes' paths and the jungle camps, guarded or waiting. */
+const LANE_RGB = rgb(0xd6c496), CAMP_RGB = rgb(0xf0c83c), CAMP_DOWN_RGB = rgb(0x786846); // prettier-ignore
 
 /** One mesh of a slot: a part of its model; only team-painted parts take the per-instance colour. */
 interface SlotPart {
@@ -213,6 +217,7 @@ export class Field3D implements Renderer {
   private readonly matchGroup = new THREE.Group();
   private matchId = "";
   private field: HeightField | undefined;
+  private readonly strategicMarkers = createStrategicMarkerCache();
   /** The ground's chunks (`terrainChunks`), culled one by one. */
   private ground: THREE.Mesh[] = [];
   private buildings: BuildingNode[] = [];
@@ -672,7 +677,11 @@ export class Field3D implements Renderer {
       }
       this.bar(x, y + 1.75, z, hero.hp / hero.maxHp, 1);
     }
-    this.targeting(world, field, t, self, now);
+    appendTargetMarkers(
+      { world, field, t, self, now, overlay: this.overlay, targetPulse: this.pulse, unitsBefore: this.before, heroesBefore: this.heroBefore },
+      { ring: this.slot("ring").batch, aimRing: this.slot("aimRing").batch, aimLine: this.slot("aimLine").batch },
+      { target: TARGET_RGB, route: ROUTE_RGB },
+    );
     rig.clampRig(this.rig, world.width, world.height, this.camera.aspect);
     for (let i = 0; i < world.buildings.length; i++) {
       const b = world.buildings[i]!, node = this.buildings[i];
@@ -729,17 +738,13 @@ export class Field3D implements Renderer {
       if (fade > 0) this.slot("flagMark").batch.push(cloth.position.x, cloth.position.y, cloth.position.z, 0, mark * MARK.flag, 1, mark * MARK.flag, teamRgb(f.team));
     }
     if (fade > 0) {
-      for (const lane of world.lanes)
-        for (let i = 1; i < lane.path.length; i++) {
-          const a = lane.path[i - 1]!, b = lane.path[i]!, n = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / LANE_DOT));
-          for (let k = 0; k < n; k++) {
-            const x = a.x + 0.5 + ((b.x - a.x) * k) / n, z = a.y + 0.5 + ((b.y - a.y) * k) / n, s = mark * MARK.unit * 0.8;
-            this.slot("unitMark").batch.push(x, standY(world, field, x, z), z, 0, s, 1, s, LANE_RGB);
-          }
-        }
-      for (let i = 0; i < world.camps.length; i++) {
-        const c = world.camps[i]!, x = c.x + 0.5, z = c.y + 0.5, s = mark * MARK.flag, down = (world.campRespawn[i] ?? 0) > 0;
-        this.slot("flagMark").batch.push(x, standY(world, field, x, z), z, Math.PI / 4, s, 1, s, down ? CAMP_DOWN_RGB : CAMP_RGB);
+      const { lanes, camps } = this.strategicMarkers(world, field);
+      const laneBatch = this.slot("unitMark").batch, laneSize = mark * MARK.unit * 0.8;
+      for (const { x, y, z } of lanes) laneBatch.push(x, y, z, 0, laneSize, 1, laneSize, LANE_RGB);
+      const campBatch = this.slot("flagMark").batch, campSize = mark * MARK.flag;
+      for (let i = 0; i < camps.length; i++) {
+        const { x, y, z } = camps[i]!, down = (world.campRespawn[i] ?? 0) > 0;
+        campBatch.push(x, y, z, Math.PI / 4, campSize, 1, campSize, down ? CAMP_DOWN_RGB : CAMP_RGB);
       }
     }
     for (const slot of this.slotList) this.sync(slot);
@@ -784,46 +789,6 @@ export class Field3D implements Renderer {
   private glow(rgb: readonly number[], k: number): number[] {
     for (let i = 0; i < 3; i++) this.lamp[i] = rgb[i]! * k;
     return this.lamp;
-  }
-
-  /** The aiming rings and marks (`overlay`), and a marker and line from this device's hero to its target. */
-  // prettier-ignore
-  private targeting(world: WorldView, field: HeightField, t: number, self: number, now: number): void {
-    const hero = world.heroes.find((h) => h.seat === self && h.hp > 0);
-    const target = hero?.target;
-    const pulse = this.pulse.of(target, now);
-    if (!hero) return;
-    const at = (x: number, z: number) => [x / TILE, standY(world, field, x / TILE, z / TILE), z / TILE] as const;
-    const ring = (x: number, z: number, r: number) => {
-      const [px, py, pz] = at(x, z);
-      this.slot("aimRing").batch.push(px, py, pz, 0, r / TILE, 1, r / TILE, TARGET_RGB);
-    };
-    const p = this.heroBefore.get(hero.seat) ?? hero;
-    const hx = p.x + (hero.x - p.x) * t, hz = p.y + (hero.y - p.y) * t;
-    // The queued route: a leg to each waypoint and its rings, in its kind's colour, dimming along the way.
-    for (const m of routeMarks(hero.route, hx, hz)) {
-      const colour = ROUTE_RGB[m.kind].map((c) => c * m.fade);
-      // The marker is a solid band (the bodies' ring), its second ring a thin one; the leg is a doubled aim line.
-      const [px, py, pz] = at(m.x, m.y), [outer, inner] = m.rings;
-      this.slot("ring").batch.push(px, py, pz, 0, outer / TILE, 1, outer / TILE, colour);
-      if (inner > 0) this.slot("aimRing").batch.push(px, py, pz, 0, inner / TILE, 1, inner / TILE, colour);
-      const [ax, ay, az] = at(m.fromX, m.fromY), length = Math.hypot(px - ax, pz - az);
-      if (length > 0.01) this.slot("aimLine").batch.push((ax + px) / 2, (ay + py) / 2, (az + pz) / 2, Math.atan2(px - ax, pz - az), 2, 1, length, colour);
-    }
-    const o = this.overlay;
-    if (o.range > 0) ring(hx, hz, o.range);
-    if (o.area > 0 && o.cursor) ring(o.cursor.x, o.cursor.y, o.area);
-    for (const m of o.marks) ring(m.x, m.y, TILE * 0.55);
-    if (!target) return;
-    // A moving target is drawn where its body is drawn, between frames.
-    const was = target.of === "unit" ? this.before.get(target.id) : target.of === "hero" ? this.heroBefore.get(target.id) : undefined;
-    const tx = was ? was.x + (target.x - was.x) * t : target.x, tz = was ? was.y + (target.y - was.y) * t : target.y;
-    ring(tx, tz, TILE * (target.chosen ? 0.7 : 0.55) * (1 + pulse * 0.8));
-    if (target.chosen) ring(tx, tz, TILE * 0.85 * (1 + pulse * 0.8));
-    const [ax, ay, az] = at(hx, hz), [bx, by, bz] = at(tx, tz);
-    const length = Math.hypot(bx - ax, bz - az);
-    if (length > 0.01)
-      this.slot("aimLine").batch.push((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, Math.atan2(bx - ax, bz - az), 1, 1, length, TARGET_RGB);
   }
 
   private aimAt(key: number, yaw: number, step: number): void {
