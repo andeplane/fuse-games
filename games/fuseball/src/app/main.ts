@@ -717,7 +717,14 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "fb-lobby"),
     lobbyMain = el("div", "", "fb-panel"),
     lobbySide = el("aside", "", "fb-panel fb-lobby-side"),
-    roster = createRoster({ emptyText: "No riders yet" }),
+    roster = createRoster({
+      emptyText: "No riders yet",
+      removeBot: {
+        className: "fb-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "fb-add-bot"),
     switchSide = button("SWITCH SIDE", "fb-switch-side"),
     start = button("START MATCH", "fui-button-primary fb-start"),
@@ -1061,6 +1068,7 @@ function room(solo: boolean): void {
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
+        removableBot: next.lobby.removable.includes(member.id),
         slot: member.slot,
         // Alone with the bots there is nobody to tell apart from: the seat reads "You", not "You (you)".
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -1077,18 +1085,6 @@ function room(solo: boolean): void {
       })),
     );
     roomLayout.update(next.lobby.members.length, 2 * view.settings.size);
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fb-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fb-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !next.lobby.canAddBot;
     switchSide.hidden = !next.lobby.canSwitch;
     modes.update(next.lobby.size, next.lobby.editable);

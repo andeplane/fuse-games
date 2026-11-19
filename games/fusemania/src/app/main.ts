@@ -974,7 +974,15 @@ function enterRoom(
   let settings: Settings = { display: false, ...sessionChoice, ...choice };
   const lobby = el("section", "", "fm-lobby"),
     lobbyMain = el("div", "", "fm-panel"),
-    roster = createRoster({ emptyText: "No players yet" }),
+    roster = createRoster({
+      emptyText: "No players yet",
+      removeBot: {
+        className: "fm-remove",
+        label: "Remove AI rival",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD AI RIVAL", "fm-add-bot"),
     start = button("START", "fui-button-primary fm-start"),
     lobbyNote = el("p", "", "fui-lobby-note"),
@@ -1893,6 +1901,7 @@ function enterRoom(
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
+        removableBot: next.lobby.removable.includes(member.id),
         slot: member.slot,
         // Alone there is nobody to tell apart from.
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -1904,18 +1913,6 @@ function enterRoom(
             : member.chart,
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fm-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fm-remove");
-        remove.setAttribute("aria-label", "Remove AI rival");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !next.lobby.canAddBot;
     start.hidden = !next.lobby.showStart;
     start.disabled = !next.lobby.canStart;

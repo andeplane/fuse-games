@@ -506,7 +506,14 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "ff-lobby"),
     lobbyMain = el("div", "", "ff-lobby-main"),
     lobbySide = el("aside", "", "ff-lobby-side"),
-    roster = createRoster({ emptyText: "No drivers yet" }),
+    roster = createRoster({
+      emptyText: "No drivers yet",
+      removeBot: {
+        className: "ff-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "ff-add-bot"),
     start = button("START THE TRAINS ▶", "fui-button-primary ff-start"),
     lobbyNote = el("p", "", "fui-lobby-note");
@@ -951,6 +958,7 @@ function room(solo: boolean): void {
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
+        removableBot: next.lobby.removable.includes(member.id),
         slot: member.slot,
         // Alone with the bots there is nobody to tell apart from: the seat reads "You", not "You (you)".
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -962,18 +970,6 @@ function room(solo: boolean): void {
             : "OFFLINE",
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".ff-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "ff-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     bayState = [0, 1, 2, 3, 4].map((slot) => {
       const member = next.lobby.members.find((m) => m.slot === slot);
       return { slot, taken: !!member, you: member?.you ?? false };

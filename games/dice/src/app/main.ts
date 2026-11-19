@@ -244,7 +244,14 @@ function room(solo: boolean): void {
 
   // Lobby: invitation, roster with bot controls, name entry, start.
   const lobby = el("section", "", "dice-lobby"),
-    roster = createRoster({ emptyText: "Nobody has joined yet" }),
+    roster = createRoster({
+      emptyText: "Nobody has joined yet",
+      removeBot: {
+        className: "dice-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "dice-add-bot"),
     start = button("START MATCH", "fui-button-primary dice-start"),
     lobbyNote = el("p", "", "fui-lobby-note");
@@ -409,22 +416,11 @@ function room(solo: boolean): void {
     roster.update(
       model.lobby.members.map((member) => ({
         ...member,
+        removableBot: model.lobby.removable.includes(member.id),
         host: member.id === managerId,
         color: COLORS[(member.slot ?? 0) % COLORS.length]!,
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".dice-remove");
-      const removable = model.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "dice-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !model.lobby.canAddBot;
     start.hidden = !model.lobby.showStart;
     start.disabled = !model.lobby.canStart;
