@@ -1,21 +1,20 @@
+import { backdropMarkup, terrainMarkup } from "./board-terrain.js";
+import { image, type Sprites } from "./svg-sprite.js";
 import type { World, StructureKind } from "../engine/types.js";
 import {
   refreshSpriteImages,
   teamSpritePaint,
   type BuildingSprites,
-  type SpritePaint,
 } from "./sprite-raster.js";
 import { STRUCTURES, attackCells, planSupport } from "../engine/catalog.js";
 import { neighbors } from "../engine/map.js";
 import { structureArt, teamSvgFilter, svgArtFilters } from "./art.js";
-import { terrainArt, WALKABLE_GROUND } from "./terrain-art.js";
 import {
   addTickEffects,
   weaponKey,
   type TickEffectState,
 } from "./tick-effects.js";
 import { damagePlume, damageAnimation } from "./damage-plume.js";
-import { rockRelief, rockReliefMarkup } from "./terrain-relief.js";
 import {
   networkPath,
   networkPathMarkup,
@@ -51,7 +50,6 @@ import { POWERUP_STYLE, powerupDefs, powerupMarkup } from "./powerup-art.js";
 import {
   bloodTravel,
   heartbeat,
-  vesselMarkup,
   vesselNetwork,
   vesselPoint,
   type Vessel,
@@ -66,7 +64,6 @@ import {
 export { hexCenter, hexPoints } from "./projection.js";
 const ns = "http://www.w3.org/2000/svg";
 const colors = TEAM_PALETTES.map((p) => p.glow);
-type Sprites = Readonly<Record<string, string>>;
 type Moving = {
   kind?: "pulse" | "heavy" | "swift";
   key: string;
@@ -141,68 +138,6 @@ const LINK_GROW_MS = 900;
 const decorKey = (kind: number, index: number) =>
   kind * 0x1000000 + (index & 0xffffff);
 const caches = new WeakMap<SVGSVGElement, BoardCache>();
-const escaped = (text: string) =>
-  text.replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ]!,
-  );
-function image(
-  sprites: Sprites,
-  name: string,
-  x: number,
-  y: number,
-  size: number,
-  paint?: { key: SpritePaint; filter: string },
-): string {
-  const url = sprites[`${name}-v2`] ?? sprites[name];
-  return url
-    ? `<image href="${escaped(url)}" data-sprite="${escaped(name)}"${paint ? ` data-sprite-paint="${paint.key}" data-sprite-filter="${paint.filter}"` : ""} x="${x - size / 2}" y="${y - size / 2}" width="${size}" height="${size}" pointer-events="none"/>`
-    : "";
-}
-function terrainMarkup(world: Readonly<World>, sprites: Sprites): string {
-  const relief = new Map(
-    rockRelief(world.map).map((rock) => [rock.cell, rock]),
-  );
-  return world.map.cells
-    .map((cell, index) => {
-      const { x, y } = hexCenter(world.map.width, index);
-      const art = terrainArt(cell, index);
-      const ground = cell.terrain === "open" ? art : null;
-      let object = "";
-      if (cell.terrain === "deposit")
-        object =
-          image(sprites, art!, x, y, 58) ||
-          `<text x="${x}" y="${y + 6}" text-anchor="middle">${cell.resourceKind === "biomass" ? "◈" : "◇"}</text>`;
-      if (cell.terrain === "blocked") {
-        const rock = relief.get(index);
-        object =
-          image(sprites, art!, x, y - (rock?.height ?? 0), rock ? 48 : 60) ||
-          image(sprites, "blocker-boulder", x, y, 60) ||
-          `<path class="terrain-fallback" d="M${x - 23} ${y + 13}l5 -29 22 -10 22 23 -4 24Z" fill="#68757a" stroke="#29383d" stroke-width="3"/>`;
-        if (rock) object = rockReliefMarkup(rock) + object;
-      }
-      if (cell.terrain === "open" && cell.towerSite)
-        object = `<circle class="tower-site" cx="${x}" cy="${y}" r="19"/><text x="${x}" y="${y + 5}" text-anchor="middle">+</text>`;
-      if (object && cell.terrain !== "open")
-        object += `<ellipse class="terrain-hit" data-cell="${index}" cx="${x}" cy="${y - 3 - (relief.get(index)?.height ?? 0)}" rx="${relief.has(index) ? 24 : 20}" ry="${relief.has(index) ? 32 : 25}"/>`;
-      return `<g class="hex terrain-${cell.terrain}" data-cell="${index}"><polygon points="${hexPoints(world.map.width, index)}"/><clipPath id="tile-${index}"><polygon points="${hexPoints(world.map.width, index)}"/></clipPath><g class="ground-patch" clip-path="url(#tile-${index})">${ground ? image(sprites, ground, x, y, 82) : ""}</g>${object ? `<g class="terrain-object" data-terrain="${cell.terrain}"${cell.terrain === "deposit" ? ` data-resource="${cell.resourceKind}" style="--delay:${(-((index * 0.618) % 1) * 3.6).toFixed(2)}s"` : ""} data-depth="${index}" pointer-events="none"><ellipse cx="${x + 9}" cy="${y + 14}" rx="30" ry="10" fill="url(#contact-shadow)"/>${object}</g>` : ""}<polygon class="hex-hover-outline" points="${hexPoints(world.map.width, index, 1.5)}"/></g>`;
-    })
-    .join("");
-}
-
-/** Decorative ground continues beyond the selectable cells; it has no game state. */
-function backdropMarkup(
-  sprites: Sprites,
-  size: { width: number; height: number },
-  vessels: readonly Vessel[],
-): string {
-  const ground = sprites[WALKABLE_GROUND];
-  const cliff = sprites["terrain-cliff-material-v1"];
-  return `<defs><pattern id="cliff-material" patternUnits="userSpaceOnUse" width="180" height="180"><rect width="180" height="180" fill="#657078"/>${cliff ? `<image data-sprite="terrain-cliff-material-v1" href="${escaped(cliff)}" width="180" height="180"/>` : ""}</pattern><radialGradient id="contact-shadow"><stop offset="0" stop-color="#000" stop-opacity="0.7"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient><pattern id="ground-continuation" patternUnits="userSpaceOnUse" width="${size.width * 2}" height="${size.height * 2}"><rect width="${size.width * 2}" height="${size.height * 2}" fill="#172723"/>${ground ? ["", `translate(${size.width * 2} 0) scale(-1 1)`, `translate(0 ${size.height * 2}) scale(1 -1)`, `translate(${size.width * 2} ${size.height * 2}) scale(-1 -1)`].map((transform) => `<image data-sprite="${WALKABLE_GROUND}" href="${escaped(ground)}" width="${size.width}" height="${size.height}" preserveAspectRatio="none" transform="${transform}" opacity="0.5"/>`).join("") : ""}</pattern></defs><rect class="terrain-backdrop" width="100%" height="100%" fill="url(#ground-continuation)"/>${vesselMarkup(vessels)}`;
-}
 /** Same-owner structures around a cell, as projected offsets for dendrites to reach toward. */
 function neuronNeighbours(
   world: Readonly<World>,
