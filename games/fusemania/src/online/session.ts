@@ -1,16 +1,10 @@
 import { uint32 } from "fuse-netcode";
 import { MOST_NOTES, validName } from "../basics.js";
 import {
-  BOO,
   FULL_RATING,
-  GOOD,
-  GREAT,
-  MARVELOUS,
-  MISS,
-  PERFECT,
   rating,
+  songStats,
   type Library,
-  type World,
 } from "../engine/index.js";
 import type { Room } from "./game.js";
 import { playerKey, validMatchId } from "./names.js";
@@ -64,36 +58,11 @@ export interface SessionView {
   standings: SessionScore[];
 }
 
-export function songStats({ best, counts }: World["players"][number]) {
-  const marvelous = counts[MARVELOUS]!;
-  const perfect = counts[PERFECT]!;
-  const great = counts[GREAT]!;
-  return {
-    combo: best,
-    marvelous,
-    perfect,
-    great,
-    steps: marvelous + perfect + great + counts[GOOD]! + counts[BOO]!,
-    misses: counts[MISS]!,
-  };
-}
-
 /** The standings of a session's totals: by points, then by songs won, then in the order riders joined it. */
 export const standings = (scores: readonly SessionScore[]): SessionScore[] =>
-  scores
-    .map((score, index) => ({ score, index }))
-    .sort(
-      (a, b) =>
-        b.score.points - a.score.points ||
-        b.score.wins - a.score.wins ||
-        a.index - b.index,
-    )
-    .map(({ score: { id, name, points, wins } }) => ({
-      id,
-      name,
-      points,
-      wins,
-    }));
+  [...scores]
+    .sort((a, b) => b.points - a.points || b.wins - a.wins)
+    .map(({ id, name, points, wins }) => ({ id, name, points, wins }));
 
 export function decodeSession(
   raw: unknown,
@@ -236,20 +205,21 @@ export function settleSession(room: Room, library: Library): void {
   const { session, world, decided } = room;
   if (!session || !world || !decided) return;
   session.done++;
+  const active = new Set(room.roster.map((entrant) => entrant.id));
   for (const entrant of room.roster) {
     const player = world.players[entrant.slot]!;
     let total = session.totals.find((each) => each.id === entrant.id);
-    if (!total) {
-      if (session.totals.length >= SESSION_SCORES) {
-        // Full: the rider who is gone and has the least makes room.
-        let out = -1;
-        session.totals.forEach((each, index) => {
-          if (room.roster.some((other) => other.id === each.id)) return;
-          if (out < 0 || each.points < session.totals[out]!.points) out = index;
-        });
-        if (out < 0) continue;
-        session.totals.splice(out, 1);
+    if (!total && session.totals.length >= SESSION_SCORES) {
+      // Full: the rider who is gone and has the least makes room.
+      let out = -1;
+      for (const [index, each] of session.totals.entries()) {
+        if (active.has(each.id)) continue;
+        if (out < 0 || each.points < session.totals[out]!.points) out = index;
       }
+      if (out < 0) continue;
+      session.totals.splice(out, 1);
+    }
+    if (!total) {
       total = {
         id: entrant.id,
         name: entrant.name,

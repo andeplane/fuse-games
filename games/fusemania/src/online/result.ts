@@ -4,7 +4,7 @@ import {
   type HistoryReceipt,
 } from "fuse-platform/history-api";
 import { MOST_RATING, isBotId } from "../basics.js";
-import { ranking, rating, type Library } from "../engine/index.js";
+import { ranking, rating, songStats, type Library } from "../engine/index.js";
 import {
   parseFusemaniaStats,
   validFusemaniaField,
@@ -12,7 +12,7 @@ import {
 } from "../platform.js";
 import type { Room } from "./game.js";
 import { playerKey, validMatchId } from "./names.js";
-import { songStats, standings } from "./session.js";
+import { standings } from "./session.js";
 
 /**
  * A finished match as every replica computes it, for the room service (`parseFusemaniaStats` in `../platform.ts` is
