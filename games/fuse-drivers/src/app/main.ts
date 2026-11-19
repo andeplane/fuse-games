@@ -48,6 +48,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createLiveResults,
   createResultsScreen,
   createRoundControls,
   createRoster,
@@ -396,8 +397,7 @@ function room(solo: boolean): void {
         runtime.command({ type: "action", action: id });
     },
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results, { focusPrimary: false });
   const race = el("section", "", "fd-race");
   race.classList.toggle("fd-display", display);
   const arenaBox = el("div", "", "fd-arena-box");
@@ -594,34 +594,18 @@ function room(solo: boolean): void {
     if (lobbyShopButton.hidden && lobbyShop.dialog.open)
       lobbyShop.dialog.close();
     if (wallet) shop.update(wallet);
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the race gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        !!wallet,
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: truckColor,
-            shop: wallet ? shop.element : undefined,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result, !!wallet));
-      // No focus on show: Space is a play key here, and a held one would press the primary button.
-    }
+    // Keep focus on the arena: a held Space is driving input.
+    liveResults.render(result, {
+      friends: social.friends,
+      revision: !!wallet,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: truckColor,
+          shop: wallet ? shop.element : undefined,
+          friend,
+        }),
+      bar: (result) => resultBar(result, !!wallet),
+    });
     // A phone that is only a controller has no room for the arena.
     const driving = model.screen === "race" && !!model.lobby.own && !display;
     pad.element.hidden = !driving || !touchDevice.matches;

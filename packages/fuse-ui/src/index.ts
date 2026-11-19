@@ -184,6 +184,7 @@ export {
   type RoomLayoutOptions,
 } from "./room-layout.js";
 export {
+  createLiveResults,
   createResultsScreen,
   renderResults,
   type ResultsAction,

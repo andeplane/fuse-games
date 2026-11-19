@@ -44,6 +44,7 @@ import {
   createNameEntry,
   createNotice,
   createPageMessage,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -543,8 +544,7 @@ function room(solo: boolean): void {
             ? toLobby()
             : rematch(),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -909,36 +909,12 @@ function room(solo: boolean): void {
     }
     // The result.
     const result = next.screen === "controller" ? null : next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: slotColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: slotColor, friend }),
+      bar: resultBar,
+    });
   };
 
   // ---- the runtime ----

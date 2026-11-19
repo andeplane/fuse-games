@@ -48,6 +48,7 @@ import {
   createPicker,
   createRoomLayout,
   createRoster,
+  createLiveResults,
   createResultsScreen,
   createSharedTvOption,
   createRoundControls,
@@ -677,8 +678,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   screen.append(canvas, hud);
 
   // Touch pads over the screen, and the phone controller for a shared screen.
@@ -1062,36 +1062,12 @@ function room(solo: boolean): void {
     }
     // Result.
     const result = next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: seatColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: seatColor, friend }),
+      bar: resultBar,
+    });
   };
 
   // ---- sounds ----
