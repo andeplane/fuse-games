@@ -185,17 +185,12 @@ export function createMatchShell(actions: {
   });
   document.querySelector("main")!.append(results.element);
   const liveResults = createLiveResults(results);
-  // Only the primary on a first show: a held Space must not press View arena.
-  const focusResults = (any = false) =>
-    results.actions
-      .querySelector<HTMLButtonElement>(
-        any ? "button.is-primary, button" : "button.is-primary",
-      )
-      ?.focus();
   get("show-results").onclick = () => {
     dismissed = false;
     results.element.hidden = false;
-    focusResults(true);
+    results.actions
+      .querySelector<HTMLButtonElement>("button.is-primary, button")
+      ?.focus();
   };
   let previous = "",
     lastRound = -1;

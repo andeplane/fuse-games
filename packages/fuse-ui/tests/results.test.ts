@@ -5,6 +5,7 @@ import {
   createResultsScreen,
   renderResults,
   type ResultsReport,
+  type ResultsScreen,
 } from "fuse-ui";
 import { HOSTILE, page } from "./dom-fixture.js";
 
@@ -66,6 +67,40 @@ test("live results rebuild for report changes and update the action bar every fr
   render(result, "rematch");
   assert.equal(screen.open, true);
   assert.equal(redraws, 4);
+});
+
+test("only a first show with focus enabled focuses the primary action", () => {
+  for (const focusPrimary of [true, false]) {
+    const { document } = page();
+    const calls: string[] = [];
+    const actions = document.createElement("div");
+    const primary = Object.assign(document.createElement("button"), {
+      className: "is-primary",
+      focus: () => void calls.push("focus"),
+    });
+    actions.append(primary);
+    const screen: ResultsScreen = {
+      actions,
+      element: document.createElement("section"),
+      body: document.createElement("div"),
+      open: false,
+      show: () => void calls.push("show"),
+      update: () => void calls.push("bar"),
+      hide() {},
+    };
+    const live = createLiveResults(screen, { focusPrimary });
+    const result = { host: true, waiting: "", rows: [] };
+    const frame = {
+      report: () => ({ game: "Demo", headline: "Complete" }),
+      bar: () => ({ actions: [] }),
+    };
+    live.render(result, frame);
+    live.render(result, frame);
+    assert.deepEqual(
+      calls,
+      focusPrimary ? ["show", "bar", "focus", "bar"] : ["show", "bar", "bar"],
+    );
+  }
 });
 
 const report = (document: Document): ResultsReport => {
