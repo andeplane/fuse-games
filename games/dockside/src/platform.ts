@@ -94,6 +94,7 @@ export function parseDocksideStats(
   if (
     won !== (number("matchPlacement") === 1) ||
     number("matchPlacement") < 1 ||
+    (won && number("launched") === 0) ||
     number("points") !== number("roundWins") ||
     number("points") !== number("matchScoreUnits")
   )
@@ -122,11 +123,14 @@ export function validDocksideField(players: readonly DocksideStats[]): boolean {
     [...slots].some((slot) => slot >= players.length)
   )
     return false;
-  return players.every(
-    (player) =>
+  return players.every((player) => {
+    const opponent = players.find((other) => other.slot !== player.slot)!;
+    return (
+      player.intercepted + opponent.points <= opponent.launched &&
       player.matchPlacement ===
-      1 + players.filter((other) => other.points > player.points).length,
-  );
+        1 + players.filter((other) => other.points > player.points).length
+    );
+  });
 }
 
 export const emptyDocksideTotals = (): DocksideTotalsRecord => ({

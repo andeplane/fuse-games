@@ -10,8 +10,12 @@ import type { Room } from "./game.js";
  * A delivery decides one match and one rated round. Simultaneous deliveries share first place.
  */
 export type DocksidePlayerResult = DocksideStats;
+export type ResultState = Pick<
+  Room,
+  "stage" | "roster" | "world" | "matchId" | "decided"
+>;
 
-function players(room: Room): DocksidePlayerResult[] | undefined {
+function players(room: ResultState): DocksidePlayerResult[] | undefined {
   const { world, decided, roster } = room;
   if (room.stage !== "over" || !world || !decided) return;
   return roster.map((entrant) => {
@@ -35,7 +39,7 @@ function players(room: Room): DocksidePlayerResult[] | undefined {
 
 /** The whole match, which credits account totals; undefined until the match is over. */
 export function matchResult(
-  room: Room,
+  room: ResultState,
 ): MatchResult<DocksidePlayerResult> | undefined {
   const list = players(room);
   if (!list || !room.decided) return;
@@ -53,7 +57,7 @@ export function matchResult(
 
 /** The same match as a rating receipt: a match is one round to the platform, which rates rounds. */
 export function roundResult(
-  room: Room,
+  room: ResultState,
 ): MatchResult<DocksidePlayerResult> | undefined {
   const result = matchResult(room);
   return result && room.world

@@ -147,16 +147,30 @@ function advance(drone: Drone): boolean {
   drone.z += Math.round((12 * dz) / length);
   return false;
 }
-export function stepWorld(w: World, inputs: readonly number[]) {
+export function stepWorld(
+  w: World,
+  inputs: readonly (number | readonly number[])[],
+) {
   if (w.winners.length) return;
   w.tick++;
   const hits = new Map<Rig | Drone, number>();
   const hit = (target: Rig | Drone) =>
     hits.set(target, (hits.get(target) ?? 0) + 1);
+  const firing: boolean[] = [];
   for (const [t, r] of w.rigs.entries()) {
-    const bits = inputs[t] ?? 0,
-      pressed = bits & ~r.previous;
-    r.previous = bits;
+    const input = inputs[t] ?? 0,
+      samples = typeof input === "number" ? [input] : input;
+    let bits = 0,
+      switches = 0,
+      launches = 0;
+    for (const held of samples) {
+      const pressed = held & ~r.previous;
+      if (pressed & KEY.shift) switches++;
+      if (pressed & KEY.launch) launches++;
+      bits |= held;
+      r.previous = held;
+    }
+    firing[t] = !!(bits & KEY.fire);
     if (w.tick % 60 === 0)
       r.credits = Math.min(
         99,
@@ -172,12 +186,12 @@ export function stepWorld(w: World, inputs: readonly number[]) {
       }
       continue;
     }
-    if (pressed & KEY.shift && walkable(r.x, r.z, !r.travel))
+    if (switches % 2 === 1 && walkable(r.x, r.z, !r.travel))
       r.travel = !r.travel;
     moveRig(r, bits);
     const lane = laneAtFactory(r, t);
-    if (
-      pressed & KEY.launch &&
+    while (
+      launches-- > 0 &&
       lane >= 0 &&
       r.credits >= COST &&
       w.drones.filter((d) => d.team === t).length < MAX_DRONES / 2
@@ -231,8 +245,7 @@ export function stepWorld(w: World, inputs: readonly number[]) {
     }
   }
   for (const [t, r] of w.rigs.entries()) {
-    if (r.hp === 0 || r.travel || r.cooldown || !((inputs[t] ?? 0) & KEY.fire))
-      continue;
+    if (r.hp === 0 || r.travel || r.cooldown || !firing[t]) continue;
     const e = target(r, t, 800);
     if (e) {
       hit(e);

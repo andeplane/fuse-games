@@ -1,7 +1,6 @@
 import {
   hashCheckpointJson,
   applyManagementTick,
-  foldHeldInput,
   createRosterDecoder,
   decodeHumanFinishers,
   createSeatListDecoder,
@@ -136,6 +135,7 @@ export interface View {
   roster: Entrant[];
   /** The winners' ids once `stage` is "over" (several when it is drawn), otherwise none. */
   winners: string[];
+  decided: Decided | null;
   world: World | null;
 }
 
@@ -262,14 +262,30 @@ export function foldTick(
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
   const world = room.world;
   if (room.stage === "running" && world) {
-    const input = foldHeldInput(room, streams, tick, (entry) =>
-      entry[2] === PLAY && entry[3] === room.matchId
-        ? entry[4] & INPUT_MASK
-        : undefined,
-    );
     const controls = world.rigs.map((pilot, slot) => {
-      const [held, tapped] = input(pilot.id, () => bot(world, slot));
-      return held | tapped;
+      const seat = room.seats.get(pilot.id);
+      if (seat?.bot) return bot(world, slot);
+      if (!seat?.connected || seat.watcher) {
+        delete room.held[pilot.id];
+        return 0;
+      }
+      const stream = streams.get(pilot.id);
+      const source =
+        stream?.generation === seat.generation
+          ? stream
+          : stream?.retired?.find((s) => s.generation === seat.generation);
+      const samples = (source?.entries ?? [])
+        .filter(
+          (e): e is PlayEntry =>
+            e[1] === tick && e[2] === PLAY && e[3] === room.matchId,
+        )
+        .sort((a, b) => a[0] - b[0])
+        .map((e) => e[4]);
+      if (!samples.length) return room.held[pilot.id] ?? 0;
+      const held = samples[samples.length - 1]!;
+      if (held) room.held[pilot.id] = held;
+      else delete room.held[pilot.id];
+      return samples;
     });
     stepWorld(world, controls);
     if (world.winners.length) decide(room, world, tick);
@@ -441,6 +457,7 @@ export function view(room: Room): View {
     })),
     roster: room.roster.map((entrant) => ({ ...entrant })),
     winners: room.decided ? [...room.decided.winners] : [],
+    decided: room.decided ? structuredClone(room.decided) : null,
     world: room.world ? structuredClone(room.world) : null,
   };
 }

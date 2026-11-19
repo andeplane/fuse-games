@@ -172,7 +172,7 @@ export function createArena(host: HTMLElement, overview = false) {
     );
     return { group, body, legs, tread };
   });
-  const drones = new Map<number, THREE.Group>();
+  const drones = new Map<string, THREE.Group>();
   const beams = [0, 1, 2, 3].map(() =>
     part(scene, "#fff09f", 0, 1, 0, 1, 0.12, 0.12),
   );
@@ -237,11 +237,12 @@ export function createArena(host: HTMLElement, overview = false) {
       for (const [i, t] of w.turrets.entries())
         turrets[i]!.material = material(COLORS[t.owner] ?? neutral);
       for (const d of w.drones) {
-        let g = drones.get(d.id);
+        const key = `${d.team}:${d.id}`;
+        let g = drones.get(key);
         if (!g) {
           g = new THREE.Group();
           scene.add(g);
-          drones.set(d.id, g);
+          drones.set(key, g);
           part(g, "#22383f", 0, 0.28, 0, 1.8, 0.5, 1.2);
           part(g, COLORS[d.team]!, 0, 0.66, 0, 1.5, 0.48, 1);
           part(
@@ -258,7 +259,7 @@ export function createArena(host: HTMLElement, overview = false) {
         g.position.set(d.x / 100, 0, d.z / 100);
       }
       for (const [id, g] of drones)
-        if (!w.drones.some((d) => d.id === id)) {
+        if (!w.drones.some((d) => `${d.team}:${d.id}` === id)) {
           scene.remove(g);
           drones.delete(id);
         }

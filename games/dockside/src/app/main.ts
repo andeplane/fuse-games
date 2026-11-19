@@ -51,7 +51,7 @@ import {
 } from "../game/index.js";
 
 import { createReceiptReporter } from "fuse-ui/receipt-reporting";
-import { dueReports } from "./reports.js";
+import { dueReports, decisionConfirmed } from "./reports.js";
 import { DocksideRuntime, type DocksideCallbacks } from "./runtime.js";
 import {
   NOT_OPEN,
@@ -368,6 +368,12 @@ function room(solo: boolean): void {
           mode: solo ? "solo" : settings.display ? "shared" : "online",
         }),
       );
+      viewer.host =
+        !display && viewer.me !== "" && frame.managerId === viewer.me;
+      const confirmed = runtime.confirmedFrame();
+      reportReceipts(confirmed);
+      const pendingResult =
+        frame.stage === "over" && !decisionConfirmed(frame, confirmed);
       viewer.shared = settings.display;
       roomSettings = settings;
       const seats = frame.seats.filter((s) => !s.watcher),
@@ -383,7 +389,7 @@ function room(solo: boolean): void {
         w = frame.world;
       playing = liveMatch && slot >= 0;
       menu.update({
-        canLobby: viewer.host && !display && !inLobby,
+        canLobby: viewer.host && !display && !inLobby && !pendingResult,
         display,
         touch,
         spectator: slot < 0,
@@ -510,25 +516,27 @@ function room(solo: boolean): void {
         }),
         bar: (): ResultsBar => ({
           actions:
-            viewer.host && !display
+            viewer.host && !display && !pendingResult
               ? [
                   { id: "lobby", label: "Back to lobby" },
                   { id: "rematch", label: "REMATCH", primary: true },
                 ]
               : [],
-          status: viewer.host ? "" : "Waiting for the host",
+          status: pendingResult
+            ? "Confirming delivery…"
+            : viewer.host
+              ? ""
+              : "Waiting for the host",
         }),
       });
-      reportReceipts(runtime.roomState());
     },
     event() {},
     status(text) {
       const shown = roomFailure(text);
       say(shown, shown === text ? "info" : "error");
     },
-    ready(id, host) {
+    ready(id) {
       viewer.me = id;
-      viewer.host = host;
     },
     ended() {
       say("Room ended", "error", true);
