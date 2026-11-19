@@ -13,7 +13,18 @@ export { hashCheckpointJson } from "./hash-checkpoint-json.js";
 export { hashPlain } from "./hash-plain.js";
 export * from "./stream.js";
 export * from "./rollback.js";
-export * from "./snapshot.js";
+export {
+  SNAPSHOT_CHUNK_BYTES,
+  MAX_SNAPSHOT_BYTES,
+  MAX_SNAPSHOT_ENTRIES,
+  SnapshotAssembler,
+  decodeSnapshot,
+  encodeSnapshot,
+  restoreSnapshotStream,
+  type DecodedSnapshot,
+  type SnapshotChunk,
+  type SnapshotStream,
+} from "./snapshot.js";
 export { createSeatDecoder, createSeatListDecoder } from "./seat-snapshot.js";
 export { createHeldInputDecoder } from "./held-input-snapshot.js";
 export { validCheckpointLifecycle } from "./checkpoint-lifecycle.js";
