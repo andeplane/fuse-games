@@ -11,6 +11,7 @@ import {
   serve,
   setTouches,
   touchesOf,
+  type Ball,
   type Blob,
   type Side,
   type World,
@@ -53,29 +54,35 @@ export function stepBlob(
     blob.on = -1;
     if (blob.frame !== T.SQUASH_FRAMES) blob.dir = 1;
   }
-  if (blob.air) {
-    blob.y += blob.vy;
-    // Holding jump halves gravity: the longer the hold, the higher the jump.
-    blob.vy -= jump ? T.BLOB_GRAVITY : 2 * T.BLOB_GRAVITY;
-    if (blob.y > T.BLOB_CEILING) blob.y = T.BLOB_CEILING;
-    if (blob.y <= T.BLOB_FLOOR) {
-      blob.y = T.BLOB_FLOOR;
-      blob.vy = 0;
-      blob.air = false;
-      blob.frame = 0;
-      blob.dir = 1;
-    }
+  if (blob.air) advanceAirborneBlob(blob, jump);
+  if (step % T.FRAME_STEPS === 0) advanceSquash(blob);
+}
+
+function advanceAirborneBlob(blob: Blob, jumpHeld: boolean): void {
+  blob.y += blob.vy;
+  // Holding jump halves gravity: the longer the hold, the higher the jump.
+  blob.vy -= jumpHeld ? T.BLOB_GRAVITY : 2 * T.BLOB_GRAVITY;
+  if (blob.y > T.BLOB_CEILING) blob.y = T.BLOB_CEILING;
+  if (blob.y <= T.BLOB_FLOOR) {
+    blob.y = T.BLOB_FLOOR;
+    blob.vy = 0;
+    blob.air = false;
+    blob.frame = 0;
+    blob.dir = 1;
   }
-  if (step % T.FRAME_STEPS === 0) {
-    if (blob.frame !== 0 || blob.dir !== -1) {
-      blob.frame += blob.dir;
-      if (blob.frame >= T.SQUASH_FRAMES) {
-        blob.frame = T.SQUASH_FRAMES;
-        blob.dir = -1;
-      }
-      if (blob.frame <= 0) blob.frame = 0;
-    } else blob.dir = 0;
+}
+
+function advanceSquash(blob: Blob): void {
+  if (blob.frame === 0 && blob.dir === -1) {
+    blob.dir = 0;
+    return;
   }
+  blob.frame += blob.dir;
+  if (blob.frame >= T.SQUASH_FRAMES) {
+    blob.frame = T.SQUASH_FRAMES;
+    blob.dir = -1;
+  }
+  if (blob.frame <= 0) blob.frame = 0;
 }
 
 /** The head's or body's centre in ball units. */
@@ -206,56 +213,52 @@ function pushOut(world: World, cx: number, cy: number, out: number): void {
   }
 }
 
+const BLOB_CONTACTS = [
+  { centreOf: headCentre, hit: T.HEAD_HIT, out: T.HEAD_OUT },
+  { centreOf: bodyCentre, hit: T.BODY_HIT, out: T.BODY_OUT },
+] as const;
+
 /** The ball against every blob's head, then every body, and the net's top (0x443bf0). */
 export function collide(world: World): void {
-  const ball = world.ball,
-    court = courtOf(world);
+  const ball = world.ball;
   const speed = isqrt(ball.vx * ball.vx + ball.vy * ball.vy);
   const blobs = playing(world);
-  const circles: [Blob, { x: number; y: number }, number, number][] = [
-    ...blobs.map(
-      (blob) =>
-        [blob, headCentre(blob), T.HEAD_HIT, T.HEAD_OUT] as [
-          Blob,
-          { x: number; y: number },
-          number,
-          number,
-        ],
-    ),
-    ...blobs.map(
-      (blob) =>
-        [blob, bodyCentre(blob), T.BODY_HIT, T.BODY_OUT] as [
-          Blob,
-          { x: number; y: number },
-          number,
-          number,
-        ],
-    ),
-  ];
-  for (const [blob, centre, hit, out] of circles) {
-    let dx = ball.x - centre.x,
-      dy = ball.y - centre.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 >= hit * hit) continue;
-    let d = isqrt(d2);
-    if (d === 0) {
-      dx = 0;
-      dy = 1;
-      d = 1;
-    }
-    ball.live = true;
-    // A contact where the ball is already leaving along the normal is a graze: it bounces but is not a touch.
-    if (
-      T.GRAZE_DEN * (ball.vx * dx + ball.vy * dy) <=
-      T.GRAZE_NUM * d * speed
-    ) {
-      blob.contact = true;
-      setTouches(world, otherSide(blob.side), 0);
-    }
-    ball.vx = round(dx * T.HIT_SPEED, d);
-    ball.vy = round(dy * T.HIT_SPEED, d);
-    pushOut(world, centre.x, centre.y, out);
+  for (const contact of BLOB_CONTACTS)
+    for (const blob of blobs) collideBlob(world, blob, contact, speed);
+  collideNetTop(world, courtOf(world));
+}
+
+function collideBlob(
+  world: World,
+  blob: Blob,
+  { centreOf, hit, out }: (typeof BLOB_CONTACTS)[number],
+  speed: number,
+): void {
+  const ball = world.ball;
+  const centre = centreOf(blob);
+  let dx = ball.x - centre.x,
+    dy = ball.y - centre.y;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= hit * hit) return;
+  let d = isqrt(d2);
+  if (d === 0) {
+    dx = 0;
+    dy = 1;
+    d = 1;
   }
+  ball.live = true;
+  // A contact where the ball is already leaving along the normal is a graze: it bounces but is not a touch.
+  if (T.GRAZE_DEN * (ball.vx * dx + ball.vy * dy) <= T.GRAZE_NUM * d * speed) {
+    blob.contact = true;
+    setTouches(world, otherSide(blob.side), 0);
+  }
+  ball.vx = round(dx * T.HIT_SPEED, d);
+  ball.vy = round(dy * T.HIT_SPEED, d);
+  pushOut(world, centre.x, centre.y, out);
+}
+
+function collideNetTop(world: World, court: Court): void {
+  const ball = world.ball;
   let dx = ball.x - court.netTopX,
     dy = ball.y - T.NET_TOP_Y;
   if (dy > 0 && dx * dx + dy * dy < T.NET_HIT * T.NET_HIT) {
@@ -284,15 +287,29 @@ export function stepBall(world: World): void {
   let gravity = T.BALL_GRAVITY + (world.step & 1);
   if (ball.vy < 0) gravity -= div(div(-ball.vy, T.DRAG_DIV), T.DRAG_SHIFT_DIV);
   if (ball.live) ball.vy -= gravity;
+  bounceOffSand(world, court);
+  bounceOffWalls(ball, court);
+  bounceOffPole(world, court);
+  guardNetPole(ball, court);
+  ball.prevX = ball.x;
+  ball.prevY = ball.y;
+  ball.spin = (((ball.spin + ball.vx) % T.COUNTER) + T.COUNTER) % T.COUNTER;
+}
+
+function bounceOffSand(world: World, court: Court): void {
+  const ball = world.ball;
   if (ball.y < T.BALL_FLOOR) {
     const impact = -ball.vy;
     ball.vy = div(-ball.vy * T.FLOOR_KEEP_NUM, T.FLOOR_KEEP_DEN);
     ball.vx = div(ball.vx * T.FLOOR_KEEP_NUM, T.FLOOR_KEEP_DEN);
     ball.y = T.BALL_FLOOR;
     if (impact > T.BU) world.floorCounter = count(world.floorCounter);
-    if (world.phase === "rally" || world.phase === "serve")
+    if (rallyActive(world))
       pointAgainst(world, ball.x >= court.netTopX ? 1 : 0, false);
   }
+}
+
+function bounceOffWalls(ball: Ball, court: Court): void {
   if (ball.x < court.ballLeft) {
     ball.vx = -ball.vx;
     ball.x = court.ballLeft;
@@ -301,26 +318,26 @@ export function stepBall(world: World): void {
     ball.vx = -ball.vx;
     ball.x = court.ballRight;
   }
+}
+
+function bounceOffPole(world: World, court: Court): void {
+  const ball = world.ball;
   // The pole, read the same way from either side: a ball's back edge (from the right) or its front edge seen in a
   // mirror (from the left) inside the band turns it back. The exe floors both edges in screen space, which makes the
   // left side's band a pixel narrower; mirroring keeps the court fair.
-  if (div(ball.y, T.BU) - T.BALL_RADIUS <= T.POLE_TOP) {
-    const back = div(ball.x, T.BU) - T.BALL_RADIUS,
-      front = div(2 * court.netTopX - ball.x, T.BU) - T.BALL_RADIUS;
-    if (ball.vx < 0 && court.poleLow <= back && back < court.poleHigh) {
-      ball.x = court.polePutRight;
-      ball.vx = -ball.vx;
-      world.netCounter = count(world.netCounter);
-    } else if (
-      ball.vx > 0 &&
-      court.poleLow <= front &&
-      front < court.poleHigh
-    ) {
-      ball.x = court.polePutLeft;
-      ball.vx = -ball.vx;
-      world.netCounter = count(world.netCounter);
-    }
+  if (!(div(ball.y, T.BU) - T.BALL_RADIUS <= T.POLE_TOP)) return;
+  const towardLeft = ball.vx < 0;
+  if (!towardLeft && !(ball.vx > 0)) return;
+  const edge =
+    div(towardLeft ? ball.x : 2 * court.netTopX - ball.x, T.BU) - T.BALL_RADIUS;
+  if (court.poleLow <= edge && edge < court.poleHigh) {
+    ball.x = towardLeft ? court.polePutRight : court.polePutLeft;
+    ball.vx = -ball.vx;
+    world.netCounter = count(world.netCounter);
   }
+}
+
+function guardNetPole(ball: Ball, court: Court): void {
   // The tunnelling guard, on the last step's position: a low ball never ends up inside or across the pole. The exe
   // watches one line left of the net; its mirror on the right is watched too.
   const across = (line: number) => ball.prevX >= line !== ball.x >= line;
@@ -340,9 +357,6 @@ export function stepBall(world: World): void {
     ball.y = ball.prevY;
     ball.vx = -ball.vx;
   }
-  ball.prevX = ball.x;
-  ball.prevY = ball.y;
-  ball.spin = (((ball.spin + ball.vx) % T.COUNTER) + T.COUNTER) % T.COUNTER;
 }
 
 /**
@@ -405,7 +419,7 @@ export function countTouches(world: World): void {
   if (ball.x >= court.clearRight) setTouches(world, 0, 0);
   else if (ball.x <= court.clearLeft) setTouches(world, 1, 0);
   for (const blob of playing(world)) {
-    const live = world.phase === "serve" || world.phase === "rally";
+    const live = rallyActive(world);
     if (blob.contact && !blob.prevContact) {
       // Teammates share the count: three touches a side, however they split them.
       setTouches(world, blob.side, touchesOf(world, blob.side) + 1);
@@ -439,22 +453,8 @@ const TRIPLE_PAIRS = [
   [1, 5],
 ] as const;
 
-/** One step with `inputs[slot]` held by each blob; a missing or malformed input holds nothing. */
-export function stepWorld(world: World, inputs: readonly number[]): void {
-  if (world.phase === "over" || world.step >= T.MAX_STEP) return;
-  // During the settle after a point nobody starts a jump, so both blobs come down and the next serve can start
-  // even while two players hold jump.
-  const settling = world.phase === "dead";
-  const bits = (slot: number) => {
-    const held = inputs[slot];
-    return isInput(held) ? (settling ? held & ~JUMP : held) : 0;
-  };
-  const court = courtOf(world),
-    blobs = world.blobs;
-  const before = blobs.map((blob) => blob.x),
-    rode = blobs.map((blob) => blob.on);
-  for (const [slot, blob] of blobs.entries())
-    if (!benched(world, slot)) stepBlob(blob, bits(slot), world.step, court);
+function separateTeammates(world: World, court: Court): void {
+  const blobs = world.blobs;
   // Teammates after both have moved: two a side, slots two apart; three a side, every pair of a side, nearest first;
   // three teams of two, the two on each side.
   if (world.format === "2v2")
@@ -471,18 +471,37 @@ export function stepWorld(world: World, inputs: readonly number[]): void {
       );
       if (a !== undefined && b !== undefined) separate(blobs, a, b, court);
     }
+}
+
+const rallyActive = (world: World): boolean =>
+  world.phase === "serve" || world.phase === "rally";
+
+/** One step with `inputs[slot]` held by each blob; a missing or malformed input holds nothing. */
+export function stepWorld(world: World, inputs: readonly number[]): void {
+  if (world.phase === "over" || world.step >= T.MAX_STEP) return;
+  // During the settle after a point nobody starts a jump, so both blobs come down and the next serve can start
+  // even while two players hold jump.
+  const settling = world.phase === "dead";
+  const bits = (slot: number) => {
+    const held = inputs[slot];
+    return isInput(held) ? (settling ? held & ~JUMP : held) : 0;
+  };
+  const court = courtOf(world),
+    blobs = world.blobs;
+  const before = blobs.map((blob) => blob.x),
+    rode = blobs.map((blob) => blob.on);
+  for (const [slot, blob] of blobs.entries())
+    if (!benched(world, slot)) stepBlob(blob, bits(slot), world.step, court);
+  separateTeammates(world, court);
   carry(blobs, before, rode, court);
-  const live = world.phase === "serve" || world.phase === "rally";
+  const live = rallyActive(world);
   if (live && world.step % 2 === 0) collide(world);
   if (world.phase === "serve" && world.ball.live) {
     world.phase = "rally";
     world.phaseSteps = 0;
   }
   stepBall(world);
-  if (
-    world.step % T.FRAME_STEPS === T.FRAME_STEPS - 1 &&
-    (world.phase === "serve" || world.phase === "rally")
-  )
+  if (world.step % T.FRAME_STEPS === T.FRAME_STEPS - 1 && rallyActive(world))
     countTouches(world);
   if (world.phase === "serve") {
     // A server who never touches the ball loses it to gravity.
