@@ -1,3 +1,4 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import { createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
@@ -78,7 +79,7 @@ import {
   showAxeRoundControls,
 } from "./control-guide.js";
 import { PendingPick, SoloOpening } from "./flow.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import { drawn } from "./interpolate.js";
 import {
   createSmoother,
@@ -603,8 +604,10 @@ function room(solo: boolean): void {
   ])
     part.hidden = true;
   // A gamepad has no events: the frame loop polls it, and the pad in use holds its bits like a key.
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
-    controls.hold("gamepad", bits),
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => controls.hold("gamepad", bits),
   );
   const letGo = () => {
     controls.clear();

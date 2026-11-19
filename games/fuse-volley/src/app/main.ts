@@ -1,3 +1,4 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import { createHowToPlay, createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
@@ -105,7 +106,7 @@ import {
   forwardInputs,
   memoBot,
 } from "./forward.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import {
   BOT_CHOICES,
   MODE_CHOICES,
@@ -787,8 +788,10 @@ function room(solo: boolean): void {
     art: loadArt(import.meta.env.BASE_URL, browserImages),
   });
   const smoother = createSmoother();
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
-    controls.hold("gamepad", bits),
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => controls.hold("gamepad", bits),
   );
   let model: Model | undefined;
   /** What to draw now: the forward run when the newest frame is the room's newest world, otherwise the two frames blended. */

@@ -1,3 +1,4 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
 import {
   playtestInputBlocked,
@@ -78,7 +79,7 @@ import {
   type PadSurface,
 } from "./controls.js";
 import { createGhosts, project } from "./forward.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import {
   LEVEL_CHOICES,
   createFinishWatch,
@@ -675,15 +676,19 @@ function room(solo: boolean): void {
   });
   const smoother = createSmoother();
   let padBits = 0;
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) => {
-    // On a result, a pad's gas pressed afresh is the main button, as Enter is on the keys, and its restart a retry.
-    const fresh = bits & ~padBits & (GAS | RESTART);
-    padBits = bits;
-    if (fresh && !model?.riding && model?.result?.host)
-      if (fresh & RESTART) rematch();
-      else mainAction();
-    controls.hold("gamepad", bits);
-  });
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => {
+      // On a result, a pad's gas pressed afresh is the main button, as Enter is on the keys, and its restart a retry.
+      const fresh = bits & ~padBits & (GAS | RESTART);
+      padBits = bits;
+      if (fresh && !model?.riding && model?.result?.host)
+        if (fresh & RESTART) rematch();
+        else mainAction();
+      controls.hold("gamepad", bits);
+    },
+  );
   let model: Model | undefined;
   const ghosts = createGhosts();
   /** `?probe`: the last frames drawn, for a smoke test to read how evenly each bike moved. Off otherwise. */

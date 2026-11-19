@@ -3,12 +3,11 @@ import assert from "node:assert/strict";
 import { HeldControls } from "../src/app/controls.js";
 import {
   GamepadInput,
-  STICK_DEAD_ZONE,
   browserGamepads,
-  gamepadBits,
   type GamepadLike,
   type GamepadSource,
-} from "../src/app/gamepad.js";
+} from "fuse-ui/gamepad";
+import { STICK_DEAD_ZONE, gamepadBits } from "../src/app/gamepad.js";
 import {
   ATTACK,
   DOWN,
@@ -105,7 +104,7 @@ function wired() {
   const source = new FakeGamepads(),
     sent: number[] = [];
   const controls = new HeldControls((bits) => sent.push(bits));
-  const input = new GamepadInput(source, (bits) =>
+  const input = new GamepadInput(source, gamepadBits, (bits) =>
     controls.hold("gamepad", bits),
   );
   return { source, sent, controls, input };
@@ -225,7 +224,7 @@ test("a gamepad's fresh Attack is a press like a key's, and it holds alongside t
   const source = new FakeGamepads(),
     sent: number[] = [];
   const controls = new HeldControls((bits) => sent.push(bits));
-  const input = new GamepadInput(source, (bits) =>
+  const input = new GamepadInput(source, gamepadBits, (bits) =>
     controls.hold("gamepad", bits),
   );
   controls.press("KeyW");
