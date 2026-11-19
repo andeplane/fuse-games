@@ -1,4 +1,6 @@
-import type { MatchResult, PlayerResult } from "fuse-platform";
+import type { MatchResult } from "fuse-platform/history-api";
+
+type PlayerResult = MatchResult["players"][number];
 
 export interface MatchReceipt<
   Player extends PlayerResult = PlayerResult,
