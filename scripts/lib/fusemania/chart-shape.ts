@@ -183,8 +183,6 @@ const TUNING: Record<Difficulty, Tuning> = {
   },
 };
 
-/** A 32-bit hash of a string (FNV-1a), the seed of everything random here. */
-
 export function chartProfile(difficulty: Difficulty) {
   const reference = referenceFor(difficulty);
   return {
@@ -200,6 +198,7 @@ export type ChartProfile = ReturnType<typeof chartProfile>;
 export const clamp = (value: number, low: number, high: number): number =>
   Math.max(low, Math.min(high, value));
 
+/** A 32-bit hash of a string (FNV-1a), the seed of everything random here. */
 export function hash(text: string): number {
   let value = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {

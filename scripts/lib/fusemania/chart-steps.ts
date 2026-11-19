@@ -200,7 +200,7 @@ function addSteps(
 }
 
 function expandBeamState(next: State[], state: State, context: BeamRow) {
-  const { row, stepScoring } = context;
+  const { row } = context;
   const holding = state.holding >= 0 && row.slot <= state.holdEnd;
   const usageDenominator =
     state.uses[0] + state.uses[1] + state.uses[2] + state.uses[3] + 6;
