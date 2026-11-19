@@ -1029,56 +1029,83 @@ function room(code: string, token: string | undefined, display: boolean): void {
     refresh();
   });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
-  const keys123 = (event: KeyboardEvent) => {
-    // The results screen keeps the keyboard: Space and Enter press its focused button.
+  const hideScore = () => hud.showScore(false);
+  const keyDown = (event: KeyboardEvent) => {
+    // Results, dialogs and the playtest reporter keep the keyboard.
     if (
+      !shown ||
+      event.repeat ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
       playtestInputBlocked(document) ||
       document.querySelector("dialog[open]") ||
       results.open
     )
       return;
     const action = keyAction(event.key);
-    const held = event.ctrlKey || event.metaKey || event.altKey;
-    if (!action || !shown || event.repeat || held) return;
-    const typing =
-      event.target instanceof Element &&
-      event.target.closest("input, textarea, select, [contenteditable]");
-    if (typing) return;
-    // Tab jumps to the fight only from the board: on a focused control, or with Shift, it moves focus as usual.
-    const control =
-      event.target instanceof Element && event.target.closest("button, a");
-    if (action.kind === "fight" && (event.shiftKey || control)) return;
+    if (!action) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable]")) return;
+    // Shift+Tab and Tab on a focused control keep their focus navigation.
+    if (
+      action.kind === "fight" &&
+      (event.shiftKey || target?.closest("button, a"))
+    )
+      return;
     // Also keeps Space from re-pressing a focused HUD button.
     event.preventDefault();
-    if (action.kind === "recentre") field.follow = true;
-    else if (action.kind === "zoom") field.zoom(action.factor);
-    else if (action.kind === "home") jump(homeOf(shown, runtime.slot()));
-    else if (action.kind === "fight") jump(radar.fight(shown, runtime.slot()));
-    else if (action.kind === "close")
-      (hud.shop.close(), hud.showScore(false), arm(IDLE));
-    else if (action.kind === "score") hud.showScore(true);
-    else if (action.kind === "attackMove") hud.actions.attackMove();
-    else if (action.kind === "shop") hud.toggleShop();
-    else if (action.kind === "item") hud.actions.useItem(action.slot);
-    else hud.actions.cast(action.slot, event.shiftKey);
+    switch (action.kind) {
+      case "recentre":
+        field.follow = true;
+        break;
+      case "zoom":
+        field.zoom(action.factor);
+        break;
+      case "home":
+        jump(homeOf(shown, runtime.slot()));
+        break;
+      case "fight":
+        jump(radar.fight(shown, runtime.slot()));
+        break;
+      case "close":
+        hud.shop.close();
+        hideScore();
+        arm(IDLE);
+        break;
+      case "score":
+        hud.showScore(true);
+        break;
+      case "attackMove":
+        hud.actions.attackMove();
+        break;
+      case "shop":
+        hud.toggleShop();
+        break;
+      case "item":
+        hud.actions.useItem(action.slot);
+        break;
+      case "cast":
+        hud.actions.cast(action.slot, event.shiftKey);
+        break;
+    }
   };
-  // The scoreboard shows only while ` is held.
-  const keyUp = (event: KeyboardEvent) =>
-    keyAction(event.key)?.kind === "score" && hud.showScore(false);
-  window.addEventListener("keydown", keys123);
+  // The scoreboard shows only while ` is held. A window may lose focus before keyup.
+  const keyUp = (event: KeyboardEvent) => {
+    if (keyAction(event.key)?.kind === "score") hideScore();
+  };
+  window.addEventListener("keydown", keyDown);
   window.addEventListener("keyup", keyUp);
-  // A window left with ` still held never sees its keyup.
-  const blurred = () => hud.showScore(false);
   const stopPlaytestInput = registerPlaytestInput(document, {
     cancel: () => {
-      hud.showScore(false);
+      hideScore();
       drag = undefined;
       touches.clear();
       hover = cursor = undefined;
       arm(IDLE);
     },
   });
-  window.addEventListener("blur", blurred);
+  window.addEventListener("blur", hideScore);
   runtime.start();
   teardown = () => {
     detached = true;
@@ -1086,9 +1113,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
     stopPlaytestInput();
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", resized);
-    window.removeEventListener("keydown", keys123);
+    window.removeEventListener("keydown", keyDown);
     window.removeEventListener("keyup", keyUp);
-    window.removeEventListener("blur", blurred);
+    window.removeEventListener("blur", hideScore);
     resultsHistory.close(
       () => ({
         receipts: runtime.roomState()?.history ?? [],
