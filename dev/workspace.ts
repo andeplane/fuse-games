@@ -57,8 +57,18 @@ export interface WorkspaceDependencies {
   now(): Date;
   gamesUrl: string;
 }
-type View =
-  "metrics" | "events" | "players" | "sessions" | "reports" | "actions";
+const sections = [
+  ["metrics", "Overview"],
+  ["events", "Raw Events"],
+  ["players", "Player Sessions"],
+  ["sessions", "Playtest sessions"],
+  ["reports", "Reports"],
+  ["actions", "Action proposals"],
+] as const;
+type View = (typeof sections)[number][0];
+
+const isDefaultColumn = (key: string) =>
+  key !== "accountId" && key !== "accountName";
 
 export function mountWorkspace(
   root: HTMLElement,
@@ -102,9 +112,7 @@ export function mountWorkspace(
   let toolbar: HTMLElement;
   let gameIds: string[] = [];
   let eventFilters: EventFilters = { groups: [] };
-  let columns: string[] = baseEventFields.filter(
-    (key) => key !== "accountId" && key !== "accountName",
-  );
+  let columns: string[] = baseEventFields.filter(isDefaultColumn);
   let customColumns = false;
   let availableFields: string[] = [...baseEventFields];
   const filterHistory: {
@@ -261,116 +269,141 @@ export function mountWorkspace(
     shell();
     return load();
   }
+  function applyToolFilters(args: Record<string, unknown>) {
+    const { from, to, gameId, filters: next } = args;
+    if (
+      typeof from !== "string" ||
+      typeof to !== "string" ||
+      typeof gameId !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(from) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(to) ||
+      (gameId && !gameIds.includes(gameId)) ||
+      !isEventFilters(next)
+    )
+      throw new Error();
+    remember();
+    Object.assign(filters, { from, to, gameId });
+    Object.assign(filterDraft, filters);
+    eventFilters = next;
+    buildToolbar();
+    return load();
+  }
+
+  function applyToolColumns(keys: unknown) {
+    if (
+      !Array.isArray(keys) ||
+      keys.length > 24 ||
+      !keys.every(
+        (key): key is string =>
+          typeof key === "string" && availableFields.includes(key),
+      )
+    )
+      throw new Error();
+    remember();
+    columns = [...new Set(["kind", ...keys])];
+    customColumns = true;
+    if (current !== "events") {
+      current = "events";
+      shell();
+    }
+    return load();
+  }
+
+  function toolControl(id: unknown) {
+    const control = typeof id === "string" ? screenControls.get(id) : undefined;
+    if (!control || !main.contains(control)) throw new Error();
+    return control;
+  }
+
+  function fillToolControl(id: unknown, value: unknown) {
+    const control = toolControl(id);
+    if (
+      typeof value !== "string" ||
+      value.length > 200 ||
+      (control.tagName !== "INPUT" && control.tagName !== "SELECT")
+    )
+      throw new Error();
+    (control as HTMLInputElement | HTMLSelectElement).value = value;
+    const Event = deps.document.defaultView?.Event;
+    if (!Event) return;
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function prepareToolIssue(args: Record<string, unknown>) {
+    const { actionId, title, body } = args;
+    if (
+      typeof actionId !== "string" ||
+      typeof title !== "string" ||
+      typeof body !== "string" ||
+      title.length > 140 ||
+      body.length > 6000
+    )
+      throw new Error();
+    const item = actionsPage?.actions.find((item) => item.id === actionId);
+    if (!item) throw new Error();
+    openIssue(item, { title, body });
+  }
+
   async function executeTool(
     name: string,
     args: Record<string, unknown>,
   ): Promise<unknown> {
-    if (name === "navigate") {
-      if (
-        ![
-          "metrics",
-          "events",
-          "players",
-          "sessions",
-          "reports",
-          "actions",
-        ].includes(String(args.view))
-      )
-        throw new Error();
-      current = args.view as View;
-      selectedRecording = undefined;
-      cursor = undefined;
-      shell();
-      await load();
-    } else if (name === "set_filters") {
-      if (
-        typeof args.from !== "string" ||
-        typeof args.to !== "string" ||
-        typeof args.gameId !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(args.from) ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(args.to) ||
-        (args.gameId && !gameIds.includes(args.gameId))
-      )
-        throw new Error();
-      const next: unknown = args.filters;
-      if (!isEventFilters(next)) throw new Error();
-      remember();
-      filters.from = args.from;
-      filters.to = args.to;
-      filters.gameId = args.gameId;
-      Object.assign(filterDraft, filters);
-      eventFilters = next;
-      buildToolbar();
-      await load();
-    } else if (name === "set_columns") {
-      if (
-        !Array.isArray(args.columns) ||
-        args.columns.length > 24 ||
-        !args.columns.every(
-          (key) => typeof key === "string" && availableFields.includes(key),
-        )
-      )
-        throw new Error();
-      remember();
-      columns = [...new Set(["kind", ...(args.columns as string[])])];
-      customColumns = true;
-      if (current !== "events") {
-        current = "events";
+    switch (name) {
+      case "navigate": {
+        const section = sections.find(([id]) => id === args.view);
+        if (!section) throw new Error();
+        current = section[0];
+        selectedRecording = undefined;
+        cursor = undefined;
         shell();
+        await load();
+        break;
       }
-      await load();
-    } else if (name === "select_session") {
-      if (typeof args.player !== "string" || typeof args.sessionId !== "string")
-        throw new Error();
-      await selectSession(args.player, args.sessionId);
-    } else if (name === "open_recording") {
-      if (
-        typeof args.recordingId !== "string" ||
-        !/^[A-Za-z0-9_-]{1,160}$/.test(args.recordingId)
-      )
-        throw new Error();
-      current = "sessions";
-      selectedRecording = args.recordingId;
-      shell();
-      await load();
-    } else if (name === "refresh") await load();
-    else if (name === "click_control" || name === "fill_control") {
-      const control =
-        typeof args.id === "string" ? screenControls.get(args.id) : undefined;
-      if (!control || !main.contains(control)) throw new Error();
-      if (name === "fill_control") {
+      case "set_filters":
+        await applyToolFilters(args);
+        break;
+      case "set_columns":
+        await applyToolColumns(args.columns);
+        break;
+      case "select_session":
         if (
-          typeof args.value !== "string" ||
-          args.value.length > 200 ||
-          !(control.tagName === "INPUT" || control.tagName === "SELECT")
+          typeof args.player !== "string" ||
+          typeof args.sessionId !== "string"
         )
           throw new Error();
-        (control as HTMLInputElement | HTMLSelectElement).value = args.value;
-        const Event = deps.document.defaultView?.Event;
-        if (Event) {
-          control.dispatchEvent(new Event("input", { bubbles: true }));
-          control.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      } else {
-        control.click();
-      }
-      // Wait for the same in-flight load used by the human control, when it started one.
-      await activeLoad;
-    } else if (name === "prepare_issue") {
-      if (
-        typeof args.actionId !== "string" ||
-        typeof args.title !== "string" ||
-        typeof args.body !== "string" ||
-        args.title.length > 140 ||
-        args.body.length > 6000
-      )
+        await selectSession(args.player, args.sessionId);
+        break;
+      case "open_recording":
+        if (
+          typeof args.recordingId !== "string" ||
+          !/^[A-Za-z0-9_-]{1,160}$/.test(args.recordingId)
+        )
+          throw new Error();
+        current = "sessions";
+        selectedRecording = args.recordingId;
+        shell();
+        await load();
+        break;
+      case "refresh":
+        await load();
+        break;
+      case "click_control":
+        toolControl(args.id).click();
+        await activeLoad;
+        break;
+      case "fill_control":
+        fillToolControl(args.id, args.value);
+        await activeLoad;
+        break;
+      case "prepare_issue":
+        prepareToolIssue(args);
+        break;
+      case "inspect_screen":
+        break;
+      default:
         throw new Error();
-      const item = actionsPage?.actions.find(
-        (item) => item.id === args.actionId,
-      );
-      if (!item) throw new Error();
-      openIssue(item, { title: args.title, body: args.body });
-    } else if (name !== "inspect_screen") throw new Error();
+    }
     return screen(false);
   }
 
@@ -480,14 +513,7 @@ export function mountWorkspace(
     );
     navigation = node("nav", "workspace-nav");
     navigation.setAttribute("aria-label", "Developer sections");
-    for (const [id, text] of [
-      ["metrics", "Overview"],
-      ["events", "Raw Events"],
-      ["players", "Player Sessions"],
-      ["sessions", "Playtest sessions"],
-      ["reports", "Reports"],
-      ["actions", "Action proposals"],
-    ] as const) {
+    for (const [id, text] of sections) {
       const tab = button(text, () => {
         current = id;
         selectedRecording = undefined;
@@ -761,6 +787,275 @@ export function mountWorkspace(
     activeLoad = loadView();
     return activeLoad;
   }
+  function queryEvents(
+    signal: AbortSignal,
+    from = filters.from,
+    after?: string,
+  ): Promise<ExplorerResult> {
+    return api.json<ExplorerResult>("/api/dev/events", signal, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: filters.to,
+        gameId: filters.gameId,
+        filters: eventFilters,
+        ...(after ? { cursor: after } : {}),
+      }),
+    });
+  }
+
+  function showExplorerResult(result: ExplorerResult, signal: AbortSignal) {
+    if (!isCurrent(signal)) return;
+    if (current === "players") {
+      content.replaceChildren(
+        renderPlayerSessions(
+          dom,
+          result,
+          addFilter,
+          (player, session, accountId) => {
+            void selectSession(player, session, accountId);
+          },
+        ),
+      );
+    } else {
+      const updateColumns = (next: string[]) => {
+        remember();
+        columns = next;
+        customColumns = true;
+        showExplorerResult(result, signal);
+        refreshToolbar();
+      };
+      const selectedSession = eventFilters.groups
+        .flat()
+        .find(
+          (rule) => rule.field === "sessionId" && rule.operator === "eq",
+        )?.value;
+      content.replaceChildren(
+        renderEvents(
+          dom,
+          result,
+          columns,
+          updateColumns,
+          addFilter,
+          typeof selectedSession === "string" ? selectedSession : undefined,
+        ),
+      );
+    }
+    const nextCursor = result.nextCursor;
+    if (!nextCursor) return;
+    const older = button("Load older events", () => {
+      older.disabled = true;
+      void loadOlderEvents(nextCursor, signal);
+    });
+    content.append(older);
+  }
+
+  async function loadOlderEvents(after: string, signal: AbortSignal) {
+    try {
+      const next = await queryEvents(signal, filters.from, after);
+      if (!isCurrent(signal)) return;
+      availableFields = [...new Set([...availableFields, ...next.fields])];
+      showExplorerResult(next, signal);
+    } catch (error) {
+      if (isCurrent(signal)) failure(error, content, retryLoad);
+    }
+  }
+
+  function retryLoad() {
+    void load();
+  }
+
+  function drillIntoEvents(rule?: EventConstraint) {
+    remember();
+    current = "events";
+    if (rule) eventFilters = constrain(eventFilters, rule);
+    shell();
+    void load();
+  }
+
+  async function loadOverview(data: ExplorerResult, signal: AbortSignal) {
+    let activeCounts: { daily: number; monthly: number } | undefined;
+    // Monthly summaries cover the whole aligned month. A historical mid-month
+    // end date needs raw events so later days cannot leak into its MAU.
+    const completeMonth =
+      new Date(
+        Date.parse(`${filters.to}T00:00:00Z`) + 86400_000,
+      ).getUTCDate() === 1;
+    if (
+      !eventFilters.groups.length &&
+      (filters.to === deps.now().toISOString().slice(0, 10) || completeMonth)
+    ) {
+      const readActivity = (period: "day" | "month") =>
+        api.json<MetricsResponse>(
+          metricsQuery({
+            ...filters,
+            period,
+            from: filters.to,
+            to: filters.to,
+          }),
+          signal,
+        );
+      const [byDay, byMonth] = await Promise.allSettled([
+        readActivity("day"),
+        readActivity("month"),
+      ]);
+      const daily =
+        byDay.status === "fulfilled"
+          ? byDay.value.series?.at(-1)?.users
+          : undefined;
+      const monthly =
+        byMonth.status === "fulfilled"
+          ? byMonth.value.series?.at(-1)?.users
+          : undefined;
+      if (Number.isSafeInteger(daily) && Number.isSafeInteger(monthly))
+        activeCounts = { daily: daily!, monthly: monthly! };
+    }
+
+    let month = data;
+    if (!activeCounts) {
+      const monthFrom = `${filters.to.slice(0, 7)}-01`;
+      if (filters.from <= monthFrom) {
+        const monthStart = Date.parse(`${monthFrom}T00:00:00Z`);
+        month = {
+          ...data,
+          events: data.events.filter((event) => event.occurredAt >= monthStart),
+        };
+      } else {
+        try {
+          month = await queryEvents(signal, monthFrom);
+        } catch (error) {
+          if (!(error instanceof WorkspaceError && error.status === 422))
+            throw error;
+          month = { ...data, truncated: true };
+        }
+      }
+    }
+    if (!isCurrent(signal)) return;
+    content.replaceChildren(
+      renderOverview(
+        dom,
+        data,
+        month,
+        filters.from,
+        filters.to,
+        drillIntoEvents,
+        activeCounts,
+      ),
+    );
+  }
+
+  async function loadExplorer(signal: AbortSignal) {
+    const data = await queryEvents(signal);
+    if (!isCurrent(signal)) return;
+    availableFields = [...new Set([...baseEventFields, ...data.fields])];
+    if (!customColumns)
+      columns = [
+        ...new Set(
+          [...baseEventFields, ...data.commonFields].filter(isDefaultColumn),
+        ),
+      ].slice(0, 24);
+    if (current === "metrics") {
+      await loadOverview(data, signal);
+      if (!isCurrent(signal)) return;
+    } else {
+      showExplorerResult(data, signal);
+    }
+    refreshToolbar();
+  }
+
+  async function loadRecording(
+    id: string,
+    signal: AbortSignal,
+    media: PrivateMedia,
+  ) {
+    const data = await api.json<RecordingDetail>(
+      `/api/dev/recordings/${encodeURIComponent(id)}`,
+      signal,
+    );
+    if (
+      selectedReport &&
+      !data.reports.some((report) => report.id === selectedReport)
+    ) {
+      try {
+        const { report } = await api.json<{ report: ReportView }>(
+          `/api/dev/reports/${encodeURIComponent(selectedReport)}`,
+          signal,
+        );
+        if (report.recordingId === data.recording.id) data.reports.push(report);
+      } catch (error) {
+        if (!(error instanceof WorkspaceError && error.status === 404))
+          throw error;
+      }
+    }
+    if (isCurrent(signal)) showRecording(data, signal, media);
+  }
+
+  function pageQuery() {
+    const query = new URLSearchParams({ limit: "25" });
+    if (cursor) query.set("cursor", cursor);
+    return query;
+  }
+
+  async function loadSessions(signal: AbortSignal) {
+    const data = await api.json<RecordingsPage>(
+      `/api/dev/recordings?${pageQuery()}`,
+      signal,
+    );
+    if (!isCurrent(signal)) return;
+    content.replaceChildren(recordingList(dom, data.recordings, openRecording));
+    pagination(data.nextCursor);
+  }
+
+  async function loadReports(signal: AbortSignal, media: PrivateMedia) {
+    const data = await api.json<ReportsPage>(
+      `/api/dev/reports?${pageQuery()}`,
+      signal,
+    );
+    if (!isCurrent(signal)) return;
+    content.replaceChildren(
+      node(
+        "p",
+        "muted",
+        "All reports, including reports sent without a recording. Screenshots load privately when opened.",
+      ),
+    );
+    if (!data.reports.length)
+      content.append(
+        node(
+          "p",
+          "empty-state",
+          "No reports yet. Reports sent from any game will appear here.",
+        ),
+      );
+    for (const report of data.reports)
+      content.append(reportArticle(dom, report, media, openRecording));
+    pagination(data.nextCursor);
+  }
+
+  async function loadActions(signal: AbortSignal) {
+    const query = pageQuery();
+    if (actionStatus) query.set("status", actionStatus);
+    if (actionGame) query.set("gameId", actionGame);
+    const data = await api.json<ActionsPage>(
+      `/api/dev/actions?${query}`,
+      signal,
+    );
+    if (!isCurrent(signal)) return;
+    content.replaceChildren(
+      node(
+        "p",
+        "muted",
+        "Explicit spoken development directives become proposals. Proposals do not start work automatically. Evidence links open the original session and related reports.",
+      ),
+      tokenTools(dom, api, signal, tokens, failure),
+      githubConnection(dom, api, signal, deps.account.connectGithub),
+      renderActions(dom, data, openRecording, openIssue),
+    );
+    actionsPage = data;
+    pagination(data.nextCursor);
+  }
+
   async function loadView() {
     const signal = cancel();
     content.replaceChildren(
@@ -769,258 +1064,19 @@ export function mountWorkspace(
     content.setAttribute("aria-busy", "true");
     const media = createPrivateMedia(api, signal, failure);
     try {
-      if (["metrics", "events", "players"].includes(current)) {
-        const query = async (
-          from = filters.from,
-          after?: string,
-        ): Promise<ExplorerResult> =>
-          api.json<ExplorerResult>("/api/dev/events", signal, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              from,
-              to: filters.to,
-              gameId: filters.gameId,
-              filters: eventFilters,
-              ...(after ? { cursor: after } : {}),
-            }),
-          });
-        const data = await query();
-        if (!isCurrent(signal)) return;
-        availableFields = [...new Set([...baseEventFields, ...data.fields])];
-        if (!customColumns)
-          columns = [
-            ...new Set([
-              ...baseEventFields.filter(
-                (key) => key !== "accountId" && key !== "accountName",
-              ),
-              ...data.commonFields.filter(
-                (key) => key !== "accountId" && key !== "accountName",
-              ),
-            ]),
-          ].slice(0, 24);
-        const show = (result: ExplorerResult) => {
-          if (!isCurrent(signal)) return;
-          if (current === "players")
-            content.replaceChildren(
-              renderPlayerSessions(
-                dom,
-                result,
-                addFilter,
-                (player, session, accountId) => {
-                  void selectSession(player, session, accountId);
-                },
-              ),
-            );
-          else {
-            const updateColumns = (next: string[]) => {
-              remember();
-              columns = next;
-              customColumns = true;
-              show(result);
-              refreshToolbar();
-            };
-            const selectedSession = eventFilters.groups
-              .flat()
-              .find(
-                (rule) => rule.field === "sessionId" && rule.operator === "eq",
-              )?.value;
-            content.replaceChildren(
-              renderEvents(
-                dom,
-                result,
-                columns,
-                updateColumns,
-                addFilter,
-                typeof selectedSession === "string"
-                  ? selectedSession
-                  : undefined,
-              ),
-            );
-          }
-          if (result.nextCursor) {
-            const older = button("Load older events", () => {
-              older.disabled = true;
-              void query(filters.from, result.nextCursor)
-                .then((next) => {
-                  if (!isCurrent(signal)) return;
-                  availableFields = [
-                    ...new Set([...availableFields, ...next.fields]),
-                  ];
-                  show(next);
-                })
-                .catch((error) => {
-                  if (isCurrent(signal))
-                    failure(error, content, () => {
-                      void load();
-                    });
-                });
-            });
-            content.append(older);
-          }
-        };
-        if (current === "metrics") {
-          let activeCounts: { daily: number; monthly: number } | undefined;
-          // Monthly summaries cover the whole aligned month. A historical mid-month
-          // end date needs raw events so later days cannot leak into its MAU.
-          const completeMonth =
-            new Date(
-              Date.parse(`${filters.to}T00:00:00Z`) + 86400_000,
-            ).getUTCDate() === 1;
-          if (
-            !eventFilters.groups.length &&
-            (filters.to === deps.now().toISOString().slice(0, 10) ||
-              completeMonth)
-          ) {
-            const activity = await Promise.allSettled(
-              (["day", "month"] as const).map((period) =>
-                api.json<MetricsResponse>(
-                  metricsQuery({
-                    ...filters,
-                    period,
-                    from: filters.to,
-                    to: filters.to,
-                  }),
-                  signal,
-                ),
-              ),
-            );
-            const daily =
-              activity[0]?.status === "fulfilled"
-                ? activity[0].value.series?.at(-1)?.users
-                : undefined;
-            const monthly =
-              activity[1]?.status === "fulfilled"
-                ? activity[1].value.series?.at(-1)?.users
-                : undefined;
-            if (Number.isSafeInteger(daily) && Number.isSafeInteger(monthly))
-              activeCounts = { daily: daily!, monthly: monthly! };
-          }
-          const monthFrom = `${filters.to.slice(0, 7)}-01`;
-          const month = activeCounts
-            ? data
-            : filters.from <= monthFrom
-              ? {
-                  ...data,
-                  events: data.events.filter(
-                    (event) =>
-                      event.occurredAt >= Date.parse(`${monthFrom}T00:00:00Z`),
-                  ),
-                }
-              : await query(monthFrom).catch((error) => {
-                  if (error instanceof WorkspaceError && error.status === 422)
-                    return { ...data, truncated: true };
-                  throw error;
-                });
-          if (!isCurrent(signal)) return;
-          content.replaceChildren(
-            renderOverview(
-              dom,
-              data,
-              month,
-              filters.from,
-              filters.to,
-              (rule) => {
-                remember();
-                current = "events";
-                if (rule) eventFilters = constrain(eventFilters, rule);
-                shell();
-                void load();
-              },
-              activeCounts,
-            ),
-          );
-        } else show(data);
-        refreshToolbar();
-      } else if (selectedRecording) {
-        const data = await api.json<RecordingDetail>(
-          `/api/dev/recordings/${encodeURIComponent(selectedRecording)}`,
-          signal,
-        );
-        if (
-          selectedReport &&
-          !data.reports.some((report) => report.id === selectedReport)
-        ) {
-          try {
-            const result = await api.json<{ report: ReportView }>(
-              `/api/dev/reports/${encodeURIComponent(selectedReport)}`,
-              signal,
-            );
-            if (result.report.recordingId === data.recording.id)
-              data.reports.push(result.report);
-          } catch (error) {
-            if (!(error instanceof WorkspaceError && error.status === 404))
-              throw error;
-          }
-        }
-        if (!isCurrent(signal)) return;
-        showRecording(data, signal, media);
-      } else if (current === "sessions") {
-        const query = new URLSearchParams({ limit: "25" });
-        if (cursor) query.set("cursor", cursor);
-        const data = await api.json<RecordingsPage>(
-          `/api/dev/recordings?${query}`,
-          signal,
-        );
-        if (!isCurrent(signal)) return;
-        content.replaceChildren(
-          recordingList(dom, data.recordings, openRecording),
-        );
-        pagination(data.nextCursor);
-      } else if (current === "reports") {
-        const query = new URLSearchParams({ limit: "25" });
-        if (cursor) query.set("cursor", cursor);
-        const data = await api.json<ReportsPage>(
-          `/api/dev/reports?${query}`,
-          signal,
-        );
-        if (!isCurrent(signal)) return;
-        content.replaceChildren(
-          node(
-            "p",
-            "muted",
-            "All reports, including reports sent without a recording. Screenshots load privately when opened.",
-          ),
-        );
-        if (!data.reports.length)
-          content.append(
-            node(
-              "p",
-              "empty-state",
-              "No reports yet. Reports sent from any game will appear here.",
-            ),
-          );
-        for (const report of data.reports)
-          content.append(reportArticle(dom, report, media, openRecording));
-        pagination(data.nextCursor);
-      } else {
-        const query = new URLSearchParams({ limit: "25" });
-        if (cursor) query.set("cursor", cursor);
-        if (actionStatus) query.set("status", actionStatus);
-        if (actionGame) query.set("gameId", actionGame);
-        const data = await api.json<ActionsPage>(
-          `/api/dev/actions?${query}`,
-          signal,
-        );
-        if (!isCurrent(signal)) return;
-        content.replaceChildren(
-          node(
-            "p",
-            "muted",
-            "Explicit spoken development directives become proposals. Proposals do not start work automatically. Evidence links open the original session and related reports.",
-          ),
-          tokenTools(dom, api, signal, tokens, failure),
-          githubConnection(dom, api, signal, deps.account.connectGithub),
-          renderActions(dom, data, openRecording, openIssue),
-        );
-        actionsPage = data;
-        pagination(data.nextCursor);
-      }
+      if (
+        current === "metrics" ||
+        current === "events" ||
+        current === "players"
+      )
+        await loadExplorer(signal);
+      else if (selectedRecording)
+        await loadRecording(selectedRecording, signal, media);
+      else if (current === "sessions") await loadSessions(signal);
+      else if (current === "reports") await loadReports(signal, media);
+      else await loadActions(signal);
     } catch (error) {
-      if (isCurrent(signal))
-        failure(error, content, () => {
-          void load();
-        });
+      if (isCurrent(signal)) failure(error, content, retryLoad);
     } finally {
       if (isCurrent(signal)) content.setAttribute("aria-busy", "false");
     }
