@@ -2,7 +2,7 @@
 export * from "./game.js";
 export * from "./runtime.js";
 export * from "./result.js";
-export { hashPlain } from "./hash.js";
+export { hashPlain } from "fuse-netcode";
 export { BOT_NAMES, botName, seatName } from "./names.js";
 export { MAX_GAMES, MAX_NAME, MAX_WINS, teamOfSlot } from "./basics.js";
 export type {

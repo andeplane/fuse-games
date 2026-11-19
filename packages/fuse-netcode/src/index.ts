@@ -9,6 +9,7 @@ export * from "./present.js";
 export * from "./status-notices.js";
 export * from "./uuid.js";
 export * from "./packet.js";
+export { hashPlain } from "./hash-plain.js";
 export * from "./stream.js";
 export * from "./rollback.js";
 export * from "./snapshot.js";

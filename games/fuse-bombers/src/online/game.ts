@@ -5,6 +5,7 @@ import {
   SPECTATOR,
   applyManagementTick,
   defaultText,
+  hashPlain,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -37,7 +38,6 @@ import {
   type RoundView,
   type TickEvent,
 } from "../engine/index.js";
-import { hashPlain } from "./hash.js";
 import type { PlayerResult } from "fuse-platform";
 import { parseHistoryPlayer } from "fuse-platform/history-api";
 import {
