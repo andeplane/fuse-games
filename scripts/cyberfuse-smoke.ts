@@ -514,7 +514,21 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   const before = await current(peer);
   await peer.setViewportSize({ width: 780, height: 360 });
   await frameFits(peer);
-  await peer.getByRole("button", { name: "Map", exact: true }).tap();
+  const map = peer.getByRole("button", { name: "Map", exact: true });
+  const [mapBounds, topBarBounds] = await Promise.all([
+    map.boundingBox(),
+    peer.locator(".fui-top-bar").boundingBox(),
+  ]);
+  assert.ok(
+    mapBounds &&
+      topBarBounds &&
+      mapBounds.y >= topBarBounds.y + topBarBounds.height,
+    "the whole landscape Map button sits below the top bar",
+  );
+  await peer.screenshot({ path: "artifacts/cyberfuse-landscape-map-button.png" });
+  await map.tap();
+  await peer.getByRole("button", { name: "Close map", exact: true }).waitFor();
+  await peer.screenshot({ path: "artifacts/cyberfuse-landscape-map-open.png" });
   await peer.getByRole("button", { name: "Close map", exact: true }).tap();
   await peer.setViewportSize({ width: 360, height: 780 });
   await hashAgreement(peer);

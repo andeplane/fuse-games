@@ -145,6 +145,7 @@ try {
             width,
             height: width === 844 ? 390 : 1000,
           });
+          await page.screenshot({ path: `${evidence}/${game}-${width}.png` });
           assert.ok(
             await room.evaluate((root, viewportWidth) => {
               const seats = root
@@ -172,7 +173,23 @@ try {
                       rect.right > bounds.right + 1 ||
                       rect.top < bounds.top - 1 ||
                       rect.bottom > bounds.bottom + 1)
-                    ? [control.textContent?.trim()]
+                    ? [
+                        {
+                          control: control.textContent?.trim(),
+                          header: [
+                            bounds.left,
+                            bounds.top,
+                            bounds.right,
+                            bounds.bottom,
+                          ],
+                          button: [
+                            rect.left,
+                            rect.top,
+                            rect.right,
+                            rect.bottom,
+                          ],
+                        },
+                      ]
                     : [];
                 },
               );

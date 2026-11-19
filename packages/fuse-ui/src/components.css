@@ -1609,6 +1609,8 @@
   }
   .fui-room-actions-top > .fui-room-head > .fui-page-actions {
     flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
   }
   .fui-room-actions-top > .fui-room-head > .fui-page-actions > * {
     flex: 1 1 0;
@@ -1648,6 +1650,7 @@
     .fui-room-head
     .fui-room-primary-action
     button {
+    display: block;
     width: 100%;
     min-width: 0;
   }
