@@ -51,6 +51,22 @@ import {
 import { DEFAULT_MAP, ROOM_MAPS, bundledMap } from "../online/maps.js";
 import { TEAM_PALETTES } from "../render/creep.js";
 
+const INSPECTOR_LABEL: Record<CommandPanel, string> = {
+  inspect: "Selected hex",
+  build: "Selected hex",
+  particles: "Recent activity",
+  research: "Research",
+  activity: "Recent activity",
+};
+
+const COMMAND_LABEL: Record<CommandPanel, string> = {
+  inspect: "Commands",
+  build: "Build commands",
+  particles: "Commands",
+  research: "Research commands",
+  activity: "Activity commands",
+};
+
 const TEAM_COLORS = TEAM_PALETTES.map((p) => p.glow);
 /** The most networks any Versus map seats, in words for the lobby copy. */
 const MAX_ROOM_SEATS = Math.max(2, ...ROOM_MAPS.map((map) => map.seats));
@@ -885,6 +901,14 @@ export function mountFuseCraft(
     );
   }
 
+  function hudMarkup(resources: string, watching: boolean): string {
+    const layout = watching ? "battle-topbar watch-topbar" : "battle-topbar";
+    const debug =
+      !watching && dependencies.debug ? '<div class="debug-note"></div>' : "";
+    const restart = watching ? "Restart" : "Reset";
+    return `<div class="${layout}"><div class="resource-row">${resources}</div><div class="hud-mini"></div>${debug}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : `<button data-action="reset" class="secondary">${restart}</button>`}</div></div>`;
+  }
+
   function watchMarkup(world: Readonly<World>): string {
     const players = [...world.players].sort(
       (a, b) =>
@@ -919,13 +943,26 @@ export function mountFuseCraft(
         return `<button class="watch-player" data-watch-player="${escape(p.id)}" style="--team:${TEAM_COLORS[p.slot]}"><strong>${sideName(world, p.id)}${label ? ` · ${label}` : ""}</strong><span>Brain ${brain?.hp ?? 0} HP</span><small>${p.statistics.built} built · ${p.statistics.lost} lost</small></button>`;
       })
       .join("");
-    // Only a room's host can send it back to the lobby.
-    const restart = online
-      ? online.room().manager
-        ? '<button data-action="reset" class="secondary">Lobby</button>'
-        : ""
-      : '<button data-action="reset" class="secondary">Restart</button>';
-    return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
+    return `${hudMarkup(resources, true)}<div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
+  }
+
+  function connectionDetails(
+    world: Readonly<World>,
+    structure: World["structures"][number],
+  ): string {
+    let count = 0;
+    let incomingCount = 0;
+    let nextArrival = Infinity;
+    for (const particle of world.particles) {
+      if (particle.ownerId !== structure.ownerId) continue;
+      if (particle.mode === "stationed" && particle.cell === structure.cell)
+        count++;
+      if (particle.mode === "transit" && particle.to === structure.cell) {
+        incomingCount++;
+        nextArrival = Math.min(nextArrival, particle.arrivesAt);
+      }
+    }
+    return `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incomingCount ? ` · next arrival in ${Math.ceil((nextArrival - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incomingCount} incoming</span>`;
   }
 
   function selectionDetails(
@@ -939,24 +976,10 @@ export function mountFuseCraft(
     const owned = structure?.ownerId === player.id;
     const queued = player.queue.find((item) => item.cell === selectedCell);
     const priority = player.priorities[String(selectedCell)] ?? 0;
-    let count = 0;
-    let incomingCount = 0;
-    let nextArrival = Infinity;
-    if (structure) {
-      for (const particle of world.particles) {
-        if (particle.ownerId !== structure.ownerId) continue;
-        if (particle.mode === "stationed" && particle.cell === selectedCell)
-          count++;
-        if (particle.mode === "transit" && particle.to === selectedCell) {
-          incomingCount++;
-          nextArrival = Math.min(nextArrival, particle.arrivesAt);
-        }
-      }
-    }
     const powerup = world.powerups.find((p) => p.cell === selectedCell);
     return `<div class="selection-summary"><div class="tile-heading"><span>HEX ${selectedCell}</span><strong>${structure ? `${structure.kind.toUpperCase()} · ${structure.hp} HP` : powerup ? `POWERUP · ${POWERUP_PRESENTATION[powerup.kind].label.toUpperCase()}` : cell?.terrain === "deposit" ? `${cell.resourceKind.toUpperCase()} DEPOSIT` : cell?.terrain === "blocked" ? "BLOCKED GROUND" : "OPEN GROUND"}</strong></div>
         ${powerup ? `<span>${escape(POWERUP_PRESENTATION[powerup.kind].description)} Fades in ${Math.ceil((powerup.expiresAt - world.tick) / RULES.ticksPerSecond)}s. Touch it with your connected network to claim it; two networks touching it keep it contested.</span>` : ""}
-        ${structure ? `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incomingCount ? ` · next arrival in ${Math.ceil((nextArrival - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incomingCount} incoming</span>` : ""}
+        ${structure ? connectionDetails(world, structure) : ""}
         ${cell?.terrain === "deposit" ? '<span title="Connected neighboring structures harvest this deposit. Several players may share it.">Expand alongside to mine.</span>' : ""}</div>
         ${owned && canAttack(structure.kind) ? `${priority === 0 && structure.kind !== "brain" ? '<span class="supply-warning">No supply assigned — use D / Charge to arm this node.</span>' : ""}<div class="priority-control"><label class="field-label" for="priority-slider">Attack priority · ${priority}/3</label><input id="priority-slider" data-field="priority" type="range" min="0" max="3" step="1" value="${priority}"></div>` : ""}
         ${structure && STRUCTURES[structure.kind].miningBonus ? `<span class="economic-summary" title="One specialist bonus per deposit per player. Requires a connection to the brain. No attack supply needed.">${structure.connected ? "Extracting" : "Extraction paused"} · +${STRUCTURES[structure.kind].miningBonus} shares/deposit · non-stacking</span>` : ""}
@@ -1044,8 +1067,9 @@ export function mountFuseCraft(
       placement,
     );
     const contextDetail = panelDetails(world, player, structure, preview);
-    return `<div class="battle-topbar"><div class="resource-row"><div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}</div><div class="hud-mini"></div>${dependencies.debug ? '<div class="debug-note"></div>' : ""}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : '<button data-action="reset" class="secondary">Reset</button>'}</div></div>
-      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${panel === "inspect" || panel === "build" ? "Selected hex" : panel === "research" ? "Research" : "Recent activity"}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${panel === "research" ? "Research commands" : panel === "build" ? "Build commands" : panel === "activity" ? "Activity commands" : "Commands"}">${commands}</nav></div>`;
+    const resources = `<div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}`;
+    return `${hudMarkup(resources, false)}
+      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${INSPECTOR_LABEL[panel]}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${COMMAND_LABEL[panel]}">${commands}</nav></div>`;
   }
 
   function renderGame() {
