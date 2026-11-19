@@ -24,7 +24,7 @@ export function forwardWorld<World, Held, Inputs>(
   inputs: Inputs,
   options: ForwardWorldOptions<World, Held, Inputs>,
 ): ForwardSample<World> {
-  const ticks = Math.max(0, ahead);
+  const ticks = Number.isFinite(ahead) ? Math.max(0, ahead) : 0;
   const first = run(world, ticks, inputs, options, Infinity);
   return first.crossed
     ? run(world, ticks, inputs, options, first.taken - 1)
