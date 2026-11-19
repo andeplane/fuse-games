@@ -213,6 +213,12 @@ export function installBrowserPlaytest(
       if (!response.ok) {
         if (
           authorized &&
+          response.status === 401 &&
+          requestGeneration === accessGeneration
+        )
+          requireSignInConfirmation(true);
+        if (
+          authorized &&
           requestGeneration === accessGeneration &&
           (response.status === 401 || response.status === 403)
         ) {
@@ -272,6 +278,12 @@ export function installBrowserPlaytest(
   let accessGeneration = 0;
   let signedIn = false;
   let approvedUid: string | undefined;
+  let signInConfirmationRequired = false;
+  let renderRecordingSignIn: (() => void) | undefined;
+  function requireSignInConfirmation(required: boolean) {
+    signInConfirmationRequired = required;
+    renderRecordingSignIn?.();
+  }
   let accessCheck: { generation: number; promise: Promise<void> } | undefined;
   let retryUploads: (() => void) | undefined;
   let recordingState: PlaytestRecordingState = {
@@ -693,6 +705,7 @@ export function installBrowserPlaytest(
     identity.watchAccount((user) => {
       const generation = ++accessGeneration;
       signedIn = Boolean(user);
+      requireSignInConfirmation(false);
       approvedUid = undefined;
       publishRecording({ available: false });
       if (microphone || recordingState.busy) {
@@ -793,23 +806,46 @@ export function installBrowserPlaytest(
       "Saved uploads survive closing this page. Queued audio retries when you return unless recording access changed; an unfinished chunk may be lost.";
     const controls = node("div");
     controls.className = "fui-playtest-actions";
+    let accountReady = false;
+    let confirmingSignIn = false;
+    let pendingStartGeneration: number | undefined;
     const signIn = button("Sign in", () => {
+      if (signIn.disabled) return;
+      const generation = accessGeneration;
+      confirmingSignIn = true;
+      updateSignIn();
       void (
         signedIn && identity.reauthenticate
           ? identity.reauthenticate()
           : identity.signIn()
       )
-        .then(() => {
-          stoppedReason =
-            "Sign-in confirmed. Try starting the recording again.";
-          render();
+        .then(async () => {
+          if (generation === accessGeneration) {
+            requireSignInConfirmation(false);
+            if (!approvedUid) await checkAccess(generation);
+          }
+          if (
+            pendingStartGeneration === generation &&
+            generation === accessGeneration &&
+            approvedUid &&
+            bar.isConnected
+          ) {
+            confirmingSignIn = false;
+            await begin();
+          } else if (generation === accessGeneration && approvedUid) {
+            stoppedReason = "";
+            render();
+          }
         })
         .catch((error: unknown) => {
-          status.textContent =
-            identity.signInFailure(error) || "Sign-in cancelled.";
+          stoppedReason = identity.signInFailure(error) || "Sign-in cancelled.";
+          render();
+        })
+        .finally(() => {
+          confirmingSignIn = false;
+          updateSignIn();
         });
     });
-    signIn.disabled = true;
     const start = button("Start recording", () => {
       void begin();
     });
@@ -822,6 +858,7 @@ export function installBrowserPlaytest(
     });
     const dismiss = button("Dismiss", () => {
       if (microphone) return;
+      pendingStartGeneration = undefined;
       try {
         win.sessionStorage.removeItem(INTENT);
       } catch {
@@ -832,17 +869,25 @@ export function installBrowserPlaytest(
     controls.append(signIn, start, stop, retry, dismiss);
     bar.append(title, status, detail, controls);
     overlays.append(bar);
+    function updateSignIn() {
+      signIn.textContent = signedIn ? "Confirm Google sign-in" : "Sign in";
+      signIn.hidden = signedIn && !signInConfirmationRequired;
+      signIn.disabled = !accountReady || confirmingSignIn || start.disabled;
+    }
+    renderRecordingSignIn = updateSignIn;
+    updateSignIn();
     void identity
       .accountReady()
       .then(() => {
-        signIn.disabled = false;
+        accountReady = true;
+        updateSignIn();
       })
       .catch(() => {
         status.textContent =
           "Sign-in could not load. Reload the page to retry.";
       });
     identity.watchAccount((user) => {
-      signIn.textContent = user ? "Confirm Google sign-in" : "Sign in";
+      pendingStartGeneration = undefined;
       if (!user && microphone) {
         stoppedReason =
           "Signed out. Recording stopped; sign in to retry pending audio.";
@@ -857,6 +902,7 @@ export function installBrowserPlaytest(
         "Durable browser storage is unavailable. Recording is disabled.";
       start.disabled = true;
       retry.disabled = true;
+      updateSignIn();
       return;
     }
     let uploadStatus = {
@@ -986,12 +1032,13 @@ export function installBrowserPlaytest(
         });
     }
     async function begin() {
-      if (microphone || start.disabled || stopping) return;
+      if (microphone || start.disabled || stopping || confirmingSignIn) return;
       const generation = accessGeneration;
+      pendingStartGeneration = undefined;
       publishRecording({ busy: true });
       captureStorageFailed = false;
       start.disabled = true;
-      signIn.disabled = true;
+      updateSignIn();
       dismiss.disabled = true;
       stoppedReason = "Checking developer access…";
       render();
@@ -1027,6 +1074,7 @@ export function installBrowserPlaytest(
           throw new Error(
             "Account changed. Start recording again after sign-in.",
           );
+        requireSignInConfirmation(false);
         await store!.put(session);
         recording = session;
         if (disposed || generation !== accessGeneration)
@@ -1066,8 +1114,14 @@ export function installBrowserPlaytest(
         stop.hidden = false;
         start.hidden = true;
       } catch (error) {
-        stoppedReason =
-          error instanceof DOMException && error.name === "NotAllowedError"
+        const needsConfirmation =
+          error instanceof PlaytestRequestError &&
+          error.status === 401 &&
+          generation === accessGeneration;
+        if (needsConfirmation) pendingStartGeneration = generation;
+        stoppedReason = needsConfirmation
+          ? "Confirm your Google sign-in to start recording."
+          : error instanceof DOMException && error.name === "NotAllowedError"
             ? "Microphone permission was denied. Allow it in browser settings and try again."
             : failure(error);
         if (recording?.id === session.id) {
@@ -1077,7 +1131,7 @@ export function installBrowserPlaytest(
         }
       } finally {
         start.disabled = false;
-        signIn.disabled = false;
+        updateSignIn();
         dismiss.disabled = Boolean(microphone);
         publishRecording({ active: Boolean(microphone), busy: false });
         render();
