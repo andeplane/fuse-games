@@ -19,10 +19,10 @@ import {
   step,
   hashState,
   encodeState,
-  decodeState,
   type Command,
   type MapDefinition,
 } from "../games/fuse-craft/src/engine/index.js";
+import { verifyCraftReplay } from "./lib/fuse-craft-replay.js";
 
 // Every match uses production rules and ordinary commands. No instant build,
 // injected resources or artificial "winner" when the time budget expires.
@@ -322,23 +322,14 @@ for (const { map, pair, slot, key, sampleReplay } of plan) {
   const hash = hashState(world);
   // Replay logged public commands from a validated checkpoint, independent of AI.
   if (recordAll || sampleReplay) {
-    let replay = decodeState(initial),
-      cursor = 0;
-    while (replay.tick < world.tick) {
-      const row = commands[cursor];
-      const inputs = row?.tick === replay.tick ? (cursor++, row.commands) : [];
-      replay = step(replay, inputs);
-    }
-    if (hashState(replay) !== hash) throw new Error(`Replay diverged: ${key}`);
-    writeFileSync(
-      `${output}/${key}.replay.json`,
-      JSON.stringify({
-        initial: JSON.parse(initial),
-        commands,
-        ticks: world.tick,
-        hash,
-      }),
-    );
+    const recording = {
+      initial: JSON.parse(initial),
+      commands,
+      ticks: world.tick,
+      hash,
+    };
+    verifyCraftReplay(recording, undefined, `Replay diverged: ${key}`);
+    writeFileSync(`${output}/${key}.replay.json`, JSON.stringify(recording));
   }
   const row = {
     key,

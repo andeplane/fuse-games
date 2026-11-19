@@ -1,37 +1,21 @@
-import { readFileSync, mkdirSync } from "node:fs";
-import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
-import {
-  decodeState,
-  step,
-  hashState,
-  type Command,
-  type World,
-} from "../games/fuse-craft/src/engine/index.js";
+import type { World } from "../games/fuse-craft/src/engine/index.js";
+import { loadCraftReplay, verifyCraftReplay } from "./lib/fuse-craft-replay.js";
 
 // Diagnostic replay rendering, not a substitute for ordinary UI playtesting.
 const file = process.argv[2];
 if (!file) throw new Error("Pass a tournament .replay.json file");
-const recording = JSON.parse(readFileSync(file, "utf8")) as {
-  initial: unknown;
-  commands: { tick: number; commands: Command[] }[];
-  ticks: number;
-  hash: string;
-};
-let world = decodeState(JSON.stringify(recording.initial));
+const recording = loadCraftReplay(file);
 const frames: World[] = [];
-let cursor = 0;
 const samples = new Set([
   Math.floor(recording.ticks / 3),
   Math.floor((recording.ticks * 2) / 3),
   recording.ticks,
 ]);
-while (world.tick < recording.ticks) {
-  const row = recording.commands[cursor];
-  world = step(world, row?.tick === world.tick ? (cursor++, row.commands) : []);
+verifyCraftReplay(recording, (world) => {
   if (samples.has(world.tick)) frames.push(world);
-}
-assert.equal(hashState(world), recording.hash);
+});
 const out = process.argv[3] ?? "/tmp/fuse-craft-replay";
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
