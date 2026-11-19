@@ -4,6 +4,7 @@ import {
   PRESENCE,
   SPECTATOR,
   applyManagementTick,
+  createSeatDecoder,
   defaultText,
   hashPlain,
   isManagementEntry,
@@ -511,8 +512,6 @@ const list = (raw: unknown, max: number): raw is unknown[] =>
   Array.isArray(raw) &&
   raw.length <= max &&
   Object.keys(raw).length === raw.length;
-// prettier-ignore
-const SEAT_KEYS = new Set(["id", "name", "slot", "avatarId", "connected", "bot", "watcher", "generation", "away"]);
 
 /**
  * The room as checkpoint fields: `[matchId, round, stage, settings, play]` before the netcode's streams and hash, then
@@ -544,36 +543,12 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return;
-  if (Object.keys(raw).some((key) => !SEAT_KEYS.has(key))) return;
-  // prettier-ignore
-  const { id, name, slot, avatarId, connected, bot, watcher, generation, away } = raw as Record<string, unknown>;
-  if (
-    !names.playerKey(id) ||
-    !names.validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !names.isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
+const decodeSeat = createSeatDecoder({
+  capacity: CAPACITY,
+  playerKey: names.playerKey,
+  validName: names.validName,
+  validAvatar: names.isAvatar,
+});
 
 /**
  * The room `encode` wrote at log tick `tick`, or undefined: every field checked, and the parts against each other —
