@@ -89,6 +89,14 @@ try {
   await host.getByRole("button", { name: "Run machine", exact: true }).click();
   for (const page of [host, guest, tv])
     await page.locator('main[data-phase="over"]').waitFor();
+  for (const page of [host, guest, tv]) {
+    await page.locator('.if-bench[data-mode="solved"]:visible').waitFor();
+    await page.getByRole("dialog", { name: "Puzzle complete" }).waitFor();
+  }
+  await host.keyboard.press("Escape");
+  await guest.getByRole("button", { name: /View machine/ }).tap();
+  await guest.getByRole("button", { name: /View result/ }).tap();
+  await host.getByRole("button", { name: /View result/ }).click();
   await host.locator('.fui-results button[data-action="replay"]').click();
   for (const page of [host, guest, tv])
     await page.locator('main[data-phase="running"]').waitFor();

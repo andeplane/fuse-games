@@ -106,7 +106,9 @@ export function createBench(options: {
   foot.append(status, tools);
   const connections = element("div", "if-bench-links");
   connections.hidden = true;
-  surface.append(canvas, foot, connections);
+  const boardFrame = element("div", "if-board-frame");
+  boardFrame.append(canvas);
+  surface.append(boardFrame, foot, connections);
   const tray = element("aside", "if-bench-tray");
   tray.setAttribute("aria-label", "Parts tray");
   const trayTitle = element("h3", "if-bench-tray-title", "Parts tray");
@@ -290,6 +292,22 @@ export function createBench(options: {
     const part = activePart(),
       isBuild = building(),
       mode = machine.mode;
+    if (mode === "solved" && root.dataset.mode !== mode) {
+      const targets = getPuzzle(machine.puzzle).targets;
+      const target =
+        targets.length === 1
+          ? machine.parts.find((part) => part.id === targets[0])
+          : undefined;
+      boardFrame.classList.toggle("if-single-target", Boolean(target));
+      boardFrame.style.setProperty(
+        "--catch-x",
+        ((target?.x ?? WIDTH / 2) / WIDTH) * 100 + "%",
+      );
+      boardFrame.style.setProperty(
+        "--catch-y",
+        ((target?.y ?? HEIGHT / 2) / HEIGHT) * 100 + "%",
+      );
+    }
     root.dataset.mode = mode;
     const nextStatus =
       announcement ||

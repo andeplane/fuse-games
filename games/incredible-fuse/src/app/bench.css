@@ -8,7 +8,7 @@
   border: 1px solid var(--if-line);
   border-radius: 12px;
   overflow: hidden;
-  width: min(100%, 1120px);
+  width: 100%;
   margin-inline: auto;
   text-align: left;
   box-shadow: 0 12px 32px #060e1838;
@@ -116,6 +116,63 @@
   touch-action: none;
   cursor: crosshair;
   outline-offset: -3px;
+}
+.if-board-frame {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.if-bench[data-mode="solved"] .if-board-frame::after {
+  content: "";
+  position: absolute;
+  left: var(--catch-x);
+  top: var(--catch-y);
+  width: clamp(48px, 9%, 150px);
+  aspect-ratio: 1;
+  border: 3px solid #aaffdb;
+  outline: 2px dashed #ffcf6b;
+  outline-offset: 9px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: if-catch-ring 1.4s ease-out both;
+}
+@keyframes if-catch-ring {
+  from {
+    transform: translate(-50%, -50%) scale(0.35);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 0;
+  }
+}
+.if-bench[data-mode="solved"] .if-board-frame:not(.if-single-target)::after {
+  inset: 0;
+  width: auto;
+  aspect-ratio: auto;
+  border-radius: 0;
+  outline: none;
+  animation-name: if-board-glow;
+}
+@keyframes if-board-glow {
+  from {
+    box-shadow: inset 0 0 2rem #9dfad1;
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (min-height: 551px) and (min-width: 760px) {
+  .if-bench {
+    width: min(100%, calc(160dvh - 164px));
+  }
+}
+@media (min-height: 551px) {
+  .if-board-frame {
+    width: 100%;
+  }
 }
 .if-bench-board:focus-visible {
   outline: var(--fui-focus-ring, 2px solid #7befdf);
@@ -337,7 +394,7 @@
   .if-bench-board {
     width: auto;
     max-width: 100%;
-    max-height: max(175px, calc(100dvh - 179px));
+    max-height: max(140px, calc(100dvh - 205px));
     margin: auto;
   }
   .if-bench-surface {

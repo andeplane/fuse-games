@@ -308,15 +308,34 @@ function workshop() {
     if (solo && machine?.puzzle === FREE_WORKSHOP) downloadWorkshop(machine);
   };
   if (solo) stage.append(save);
+  const completion = el("dialog", "", "machine-completion");
+  completion.setAttribute("aria-label", "Puzzle complete");
+  const inspectResult = button("Puzzle complete · View result", "fui-button");
+  inspectResult.hidden = true;
+  inspectResult.onclick = () => completion.showModal();
+  stage.append(inspectResult);
   const results = createResultsScreen({
     document,
-    onBack: leave,
-    backText: "Leave",
-    onAction: (id) =>
+    onBack: () => completion.close(),
+    backText: "View machine",
+    onAction: (id) => {
+      if (id === "next") {
+        location.href = pageUrl({
+          solo: "1",
+          puzzle: String(settings.puzzleIndex + 1),
+        });
+        return;
+      }
       runtime.command({
         type: "action",
         action: id === "replay" ? "rematch" : "lobby",
-      }),
+      });
+    },
+  });
+  results.element.removeAttribute("role");
+  completion.append(results.element);
+  completion.addEventListener("close", () => {
+    if (!inspectResult.hidden) inspectResult.focus();
   });
   const controlled = () => !display && runtime.managing;
   const roster = createRoster({ emptyText: "Waiting for builders" });
@@ -366,7 +385,7 @@ function workshop() {
         qr: (text) => QRCode.toDataURL(text, { width: 360, margin: 1 }),
       });
   if (!solo) stage.prepend(live.element);
-  main.append(name.form, lobby, stage, results.element);
+  main.append(name.form, lobby, stage, completion);
   app.replaceChildren(header([menu.element]), main);
   const layout = createRoomLayout({
     element: lobby,
@@ -393,6 +412,7 @@ function workshop() {
   });
   const sent = new Set<string>();
   let resultKey = "";
+  let celebrationTimer: number | undefined;
   const callbacks: IncredibleFuseCallbacks = {
     ready(id) {
       me = id;
@@ -427,7 +447,7 @@ function workshop() {
       );
       main.dataset.phase = frame.phase;
       if (lobby.hidden === waiting) lobby.hidden = !waiting;
-      stage.hidden = !playing;
+      stage.hidden = waiting;
       save.hidden = !playing || frame.machine.puzzle !== FREE_WORKSHOP;
       const needsSeat =
         Boolean(me) &&
@@ -468,13 +488,20 @@ function workshop() {
             color: roleColor(p.slot),
           })),
         );
-      if (playing)
+      if (!waiting)
         bench.update(frame.machine, !display && Boolean(mine?.connected));
+      bench.element.inert = frame.phase === "over";
       if (frame.phase === "over") {
         const state = runtime.roomState();
         const result = state && matchResult(state);
         const key = JSON.stringify([frame.matchId, result?.players]);
         if (key !== resultKey) {
+          if (!resultKey) {
+            celebrationTimer = window.setTimeout(() => {
+              inspectResult.hidden = false;
+              completion.showModal();
+            }, 1400);
+          }
           resultKey = key;
           const puzzle = getPuzzle(frame.machine.puzzle);
           results.show({
@@ -484,31 +511,43 @@ function workshop() {
             summary: puzzle.goal,
             accent: "#70ddd3",
             emblem: "✓",
-            standings: {
-              title: "Workshop crew",
-              nameLabel: "Builder",
-              columns: [],
-              rows: (result?.players ?? []).map((p) => ({
-                id: p.playerId,
-                placement: p.matchPlacement,
-                name: p.name,
-                color: roleColor(p.slot),
-                you: p.playerId === me,
-                values: [],
-              })),
-            },
+            standings: solo
+              ? undefined
+              : {
+                  title: "Workshop crew",
+                  nameLabel: "Builder",
+                  columns: [],
+                  rows: (result?.players ?? []).map((p) => ({
+                    id: p.playerId,
+                    placement: p.matchPlacement,
+                    name: p.name,
+                    color: roleColor(p.slot),
+                    you: p.playerId === me,
+                    values: [],
+                  })),
+                },
           });
         }
         results.update({
           actions: canManage
             ? [
                 { id: "lobby", label: "Choose puzzle" },
-                { id: "replay", label: "Replay", primary: true },
+                {
+                  id: "replay",
+                  label: "Replay",
+                  primary: !solo || settings.puzzleIndex + 1 >= PUZZLES.length,
+                },
+                ...(solo && settings.puzzleIndex + 1 < PUZZLES.length
+                  ? [{ id: "next", label: "Next puzzle", primary: true }]
+                  : []),
               ]
             : [],
           status: canManage ? "" : "Waiting for the host",
         });
       } else if (results.open) {
+        window.clearTimeout(celebrationTimer);
+        inspectResult.hidden = true;
+        completion.close();
         results.hide();
         resultKey = "";
       }
@@ -579,6 +618,7 @@ function workshop() {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      window.clearTimeout(celebrationTimer);
       menu.dispose();
       bench.dispose();
       layout.dispose();
