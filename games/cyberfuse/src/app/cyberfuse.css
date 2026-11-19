@@ -187,7 +187,8 @@ body.cyberfuse-page {
 }
 .cf-map-button {
   pointer-events: auto;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
+  touch-action: manipulation;
   color: #dbf7ec;
 }
 .cf-map-panel {
@@ -316,8 +317,11 @@ body.cyberfuse-page {
   }
 }
 @media (max-height: 460px) and (orientation: landscape) {
+  .cf-arena {
+    --cf-landscape-hud-top: max(4rem, calc(env(safe-area-inset-top) + 3.75rem));
+  }
   .cf-hud {
-    top: 3rem;
+    top: var(--cf-landscape-hud-top);
   }
   .cf-stick {
     width: 4.8rem;
@@ -328,7 +332,7 @@ body.cyberfuse-page {
     height: 3.8rem;
   }
   .cf-map-panel {
-    inset: 3rem 10% 0.5rem;
+    inset: var(--cf-landscape-hud-top) 10% 0.5rem;
   }
   .cf-pad {
     bottom: 0.35rem;

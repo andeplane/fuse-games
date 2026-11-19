@@ -132,6 +132,7 @@ try {
         "fuseball",
         "fuse-volley",
         "fusero",
+        "incredible-fuse",
       ].includes(game);
       assert.equal(
         (await room.getAttribute("class"))
@@ -172,25 +173,53 @@ try {
             }, width),
             "round choices and seats occupy their intended columns/phone order",
           );
-          assert.ok(
+          assert.deepEqual(
             await room.evaluate((root) => {
               const head = root.querySelector(".fui-room-head")!;
               const bounds = head.getBoundingClientRect();
-              return [...head.querySelectorAll("button, a")].every(
+              return [...head.querySelectorAll("button, a")].flatMap(
                 (control) => {
                   const rect = control.getBoundingClientRect();
-                  return (
-                    rect.width === 0 ||
-                    (rect.left >= bounds.left - 1 &&
-                      rect.right <= bounds.right + 1 &&
-                      rect.top >= bounds.top - 1 &&
-                      rect.bottom <= bounds.bottom + 1)
-                  );
+                  return rect.width > 0 &&
+                    (rect.left < bounds.left - 1 ||
+                      rect.right > bounds.right + 1 ||
+                      rect.top < bounds.top - 1 ||
+                      rect.bottom > bounds.bottom + 1)
+                    ? [
+                        {
+                          control: control.textContent?.trim(),
+                          header: [
+                            bounds.left,
+                            bounds.top,
+                            bounds.right,
+                            bounds.bottom,
+                          ],
+                          button: [
+                            rect.left,
+                            rect.top,
+                            rect.right,
+                            rect.bottom,
+                          ],
+                        },
+                      ]
+                    : [];
                 },
               );
             }),
-            "room header keeps every action inside its visible bounds",
+            [],
+            `room header keeps every action inside its visible bounds at ${width}px`,
           );
+          if (game === "cyberfuse" || game === "incredible-fuse")
+            assert.ok(
+              await room
+                .locator(".fui-room-head .fui-room-primary-action > button")
+                .evaluate(
+                  (button) =>
+                    button.scrollWidth <= button.clientWidth + 1 &&
+                    button.scrollHeight <= button.clientHeight + 1,
+                ),
+              `the full Start label fits at ${width}px`,
+            );
           if (game === "fusemania") {
             assert.equal(
               await room.locator(".fm-picker-play").count(),
