@@ -264,7 +264,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick, match and round, from the stream generation its controls follow. */
 function leader(room: Room): string {
   const last = (id: string) => {
     for (let i = room.results.length - 1; i >= 0; i--) {

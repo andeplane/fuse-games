@@ -284,7 +284,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick, match and round, from the stream generation its controls follow. */
 /** Wagons each member delivered over the match's finished rounds. */
 export function totals(
   results: readonly RoundResult[],

@@ -400,7 +400,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick and match, from the stream generation its controls follow. */
 /**
  * What the tick's first step sees: everything held at its end plus everything pressed and let go inside it, so a tap
  * shorter than a tick is still a press. Where the two disagree along the stick, what is held at the end wins.

@@ -293,7 +293,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick and match, from the stream generation its controls follow. */
 /**
  * What the tick's first step sees: everything held at its end plus everything pressed and let go inside it, so a jump
  * tapped shorter than a tick is still a jump. Where the two disagree on direction, what is held at the end wins.

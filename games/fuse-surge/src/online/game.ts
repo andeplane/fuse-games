@@ -334,7 +334,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick and match, from the stream generation its controls follow. */
 /** Steps every log tick runs: six, always. */
 export const MAX_STEPS_PER_TICK = STEPS_PER_TICK;
 export const steps = (_room: Room): number => STEPS_PER_TICK;
