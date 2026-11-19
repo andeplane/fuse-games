@@ -16,7 +16,7 @@ import {
   STEPS_PER_SECOND,
   serveSeconds,
 } from "../engine/view-kit.js";
-import { advanced, cuesBetween, type Cue } from "./cues.js";
+import { advanced, cuesBetween, outcomeCuesBetween, type Cue } from "./cues.js";
 import { createJelly, type JellyPose } from "./jelly.js";
 import {
   BALL,
@@ -78,6 +78,7 @@ export interface Scene {
    * Draws `view` at wall time `nowMs`. `local` is this device's blob slot, or −1 for a watcher or a shared screen;
    * `names` label the two sides (and, three teams of two, the waiting team third) and `tags`, when given, each blob by
    * slot (teams show them under the blobs).
+   * `outcome` supplies closed scores and point effects; null while an online match has no closed snapshot yet.
    * Returns what happened since the last frame, for the app's sounds and haptics.
    */
   draw(
@@ -86,27 +87,35 @@ export interface Scene {
     local: number,
     names?: readonly string[],
     tags?: readonly string[],
+    outcome?: WorldView | null,
   ): readonly Cue[];
   destroy(): void;
 }
 
-type CounterKey = "hitCounter" | "netCounter" | "floorCounter" | "pointCounter";
+type CounterKey = "hitCounter" | "netCounter" | "floorCounter";
 type Counters = Record<CounterKey, number>;
 const COUNTED: Partial<Record<Cue["kind"], CounterKey>> = {
   hit: "hitCounter",
   net: "netCounter",
   floor: "floorCounter",
-  point: "pointCounter",
 };
 const counters = (view: WorldView): Counters => ({
   hitCounter: view.hitCounter,
   netCounter: view.netCounter,
   floorCounter: view.floorCounter,
-  pointCounter: view.pointCounter,
 });
 
 /** A team colour: cyan, pink or lime. */
 type Hue = 0 | 1 | 2;
+
+const huesOf = (view: WorldView): readonly [Hue, Hue] =>
+  view.format === "2v2v2"
+    ? [view.onCourt[0] as Hue, view.onCourt[1] as Hue]
+    : [0, 1];
+const courtTeams = (view: WorldView): readonly number[] => [
+  ...view.onCourt,
+  3 - view.onCourt[0] - view.onCourt[1],
+];
 
 const MAX_RATIO = 3,
   TAU = Math.PI * 2;
@@ -287,6 +296,7 @@ export function createScene(
     labels: readonly string[],
   ) => {
     const kings = view.format === "2v2v2";
+    const hues = huesOf(view);
     for (const cue of cues) {
       switch (cue.kind) {
         case "hit": {
@@ -724,6 +734,7 @@ export function createScene(
     view: WorldView,
     poses: readonly JellyPose[],
     label: string,
+    outcome: WorldView | null,
   ) => {
     if (view.format !== "2v2v2") return;
     const team = (3 - view.onCourt[0] - view.onCourt[1]) as Hue,
@@ -745,7 +756,7 @@ export function createScene(
     c.shadowColor = color;
     c.shadowBlur = 12;
     c.fillStyle = WHITE;
-    c.fillText(String(view.points[team] ?? 0), W / 2, 66);
+    c.fillText(String(outcome?.points[team] ?? "–"), W / 2, 66);
     c.shadowBlur = 0;
     c.font = `8px ${PIXEL_FONT}`;
     c.fillStyle = SIDE_LIGHT[team];
@@ -858,6 +869,7 @@ export function createScene(
     view: WorldView,
     labels: readonly string[],
     now: number,
+    outcome: WorldView | null,
   ) => {
     c.textAlign = "center";
     c.textBaseline = "alphabetic";
@@ -868,7 +880,9 @@ export function createScene(
       c.shadowColor = SIDE[hue];
       c.shadowBlur = 16;
       c.fillStyle = WHITE;
-      c.fillText(String(view.score[side]), x, 78);
+      const score =
+        view.format === "2v2v2" ? outcome?.points[hue] : outcome?.score[side];
+      c.fillText(String(score ?? "–"), x, 78);
       c.shadowBlur = 0;
       c.font = `10px ${PIXEL_FONT}`;
       c.fillStyle = SIDE_LIGHT[hue];
@@ -918,7 +932,11 @@ export function createScene(
     c.fillStyle = hexA(WHITE, 0.7);
     c.fillText(rule, W / 2, COURT_H - 14);
     if (view.phase === "serve") {
-      if (view.matchPoint !== -1) {
+      if (
+        outcome &&
+        outcome.pointCounter === view.pointCounter &&
+        view.matchPoint !== -1
+      ) {
         const pulse = 0.6 + 0.4 * Math.sin(now / 160);
         c.font = `14px ${PIXEL_FONT}`;
         c.fillStyle = hexA(SIDE[hues[view.matchPoint]], pulse);
@@ -999,9 +1017,10 @@ export function createScene(
     c.globalCompositeOperation = "source-over";
   };
 
+  let previousOutcome: WorldView | undefined;
   return {
     resize,
-    draw(view, nowMs, local, given, tags) {
+    draw(view, nowMs, local, given, tags, outcome = view) {
       if (destroyed || !g) return [];
       if (
         box.w !== canvas.clientWidth ||
@@ -1015,13 +1034,11 @@ export function createScene(
       const labels = names(view, given);
       W = view.court.width;
       netX = view.court.net;
-      hues =
-        view.format === "2v2v2"
-          ? [view.onCourt[0] as Hue, view.onCourt[1] as Hue]
-          : [0, 1];
+      hues = [...huesOf(view)];
       // A new match, or a view from before the last one: start the presentation over.
       if (previous && view.step < previous.step - STEPS_PER_SECOND) {
         previous = undefined;
+        previousOutcome = undefined;
         banner = undefined;
         jelly.reset();
         trail = [];
@@ -1029,7 +1046,7 @@ export function createScene(
       // A predicted hit that a rollback took back and then happened for real sounds once: each counter fires only
       // past the furthest it has been shown this match.
       if (!previous || !high) high = counters(view);
-      const cues = cuesBetween(previous, view).filter((cue) => {
+      const cues = cuesBetween(previous, view, false).filter((cue) => {
         const key = COUNTED[cue.kind];
         if (!key) return true;
         if (!advanced(high![key], view[key])) return false;
@@ -1038,6 +1055,18 @@ export function createScene(
       });
       previous = view;
       react(cues, view, nowMs, labels);
+      if (outcome && outcome !== previousOutcome) {
+        const outcomeCues = outcomeCuesBetween(previousOutcome, outcome);
+        const outcomeLabels =
+          outcome.format === "2v2v2"
+            ? courtTeams(outcome).map(
+                (team) => labels[courtTeams(view).indexOf(team)]!,
+              )
+            : labels;
+        react(outcomeCues, outcome, nowMs, outcomeLabels);
+        cues.push(...outcomeCues);
+      }
+      previousOutcome = outcome ?? undefined;
       advanceEffects(dt);
       if (view.ball.live || view.phase === "serve") {
         const lastPoint = trail.at(-1);
@@ -1100,14 +1129,17 @@ export function createScene(
             poses[slot]!,
             view.ball,
             slot === local,
-            moodOf(view, blob.side),
+            outcome?.pointCounter === view.pointCounter &&
+              (view.phase === "dead" || view.phase === "over")
+              ? moodOf(outcome, blob.side)
+              : "calm",
             nowMs,
           );
-      drawBench(g, view, poses, labels[2] ?? "");
+      drawBench(g, view, poses, labels[2] ?? "", outcome);
       drawBall(g, view.ball, nowMs);
       drawEffects(g);
       drawBallMarker(g, view.ball);
-      drawHud(g, view, labels, nowMs);
+      drawHud(g, view, labels, nowMs, outcome);
       g.restore();
       return cues;
     },

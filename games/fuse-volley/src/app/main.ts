@@ -111,6 +111,7 @@ import {
   MODE_CHOICES,
   SCORING_CHOICES,
   createPointWatch,
+  matchOutcome,
   present,
   teamLabel,
   type Model,
@@ -798,6 +799,7 @@ function room(solo: boolean): void {
     (bits) => controls.hold("gamepad", bits),
   );
   let model: Model | undefined;
+  let outcome: View | null = null;
   /** What to draw now: the forward run when the newest frame is the room's newest world, otherwise the two frames blended. */
   let traced = { ahead: 0, tick: 0, forward: false };
   const leadClock = createLeadClock(),
@@ -893,7 +895,14 @@ function room(solo: boolean): void {
       }
       const cues = stage.hidden
         ? feel(view)
-        : scene.draw(view, now, local, model?.names, model?.tags);
+        : scene.draw(
+            view,
+            now,
+            local,
+            model?.names,
+            model?.tags,
+            outcome?.world ?? null,
+          );
       const localSide = model?.localSide ?? -1;
       for (const cue of cues) {
         if (!stage.hidden) sfx.play(cue);
@@ -913,7 +922,13 @@ function room(solo: boolean): void {
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
     main.dataset.phase = view.world?.phase ?? "";
-    main.dataset.score = view.world ? view.world.score.join("-") : "";
+    const closed = outcome?.world;
+    main.dataset.score =
+      !closed || !view.world
+        ? ""
+        : closed.format === "2v2v2"
+          ? view.world.onCourt.map((team) => closed.points[team]).join("-")
+          : closed.score.join("-");
     main.dataset.riding = String(next.riding);
     main.dataset.team = String(view.world?.court.team ?? 1);
     main.dataset.format = view.world?.format ?? view.settings.format;
@@ -1048,10 +1063,12 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: FuseVolleyCallbacks = {
     state(frame, roomSettings) {
+      const confirmed = runtime.confirmedFrame();
+      outcome = matchOutcome(frame, confirmed, solo);
       observeConfirmedPlay(
         reportPlay,
         frame,
-        () => runtime.confirmedFrame(),
+        () => confirmed,
         (frame) => {
           const players =
             frame.stage === "lobby"
@@ -1070,10 +1087,11 @@ function room(solo: boolean): void {
           };
         },
       );
-      for (const point of points(frame, viewer.me))
-        analytics.track("Point Scored", { ...point });
+      if (outcome)
+        for (const point of points(outcome, viewer.me))
+          analytics.track("Point Scored", { ...point });
       settings = roomSettings;
-      const next = present(frame, viewer);
+      const next = present(frame, viewer, outcome);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
         joinSent = true;
