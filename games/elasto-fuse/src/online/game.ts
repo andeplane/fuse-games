@@ -5,6 +5,8 @@ import {
   decodeSingleWinner as decodeDecided,
   createSeatListDecoder,
   createHeldInputDecoder,
+  createCheckpointBaseDecoder,
+  validCheckpointLifecycle,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -559,6 +561,16 @@ function decodeStandings(
   return standings;
 }
 
+const decodeBase = createCheckpointBaseDecoder({
+  stages: STAGES,
+  minStepsPerTick: STEPS_PER_TICK,
+  validMatchId,
+  parseSettings,
+  decodeSeats,
+  decodeHeld,
+  decodeRoster,
+});
+
 /**
  * The room a checkpoint describes, or nothing: every field is checked on its own and against the others, and the
  * room is built only once all of them hold, so a refused checkpoint leaves no half-read state behind.
@@ -570,7 +582,7 @@ export function decode(
   if (fields.length !== FIELDS || !uint32(tick)) return;
   const [
     matchId,
-    stage,
+    rawStage,
     rawSettings,
     rawSeats,
     rawPlay,
@@ -581,84 +593,63 @@ export function decode(
     pause,
     rawDecided,
     rawWorld,
-    simulationTick,
+    rawSimulationTick,
     matchStartTick,
   ] = fields;
-  const settings = parseSettings(rawSettings),
-    play = parseSettings(rawPlay),
-    seats = decodeSeats(rawSeats),
-    held = decodeHeld(rawHeld),
-    roster = decodeRoster(rawRoster);
+  const base = decodeBase(
+    {
+      matchId,
+      stage: rawStage,
+      settings: rawSettings,
+      seats: rawSeats,
+      play: rawPlay,
+      held: rawHeld,
+      roster: rawRoster,
+      simulationTick: rawSimulationTick,
+    },
+    tick,
+  );
   if (
-    !validMatchId(matchId) ||
-    !uint32(simulationTick) ||
+    !base ||
     !uint32(matchStartTick) ||
-    matchStartTick > simulationTick ||
-    // The clock moves the same steps every log tick, whatever the room is doing.
-    simulationTick !== tick * STEPS_PER_TICK ||
-    !STAGES.some((known) => known === stage) ||
-    !settings ||
-    !play ||
-    !seats ||
-    !held ||
-    !roster ||
+    matchStartTick > base.simulationTick ||
     !uint32(round) ||
     !uint32(pause)
   )
     return;
-  const levels = levelsOf(play, matchId);
+  const { roster, held, stage, play, simulationTick } = base;
+  const levels = levelsOf(play, base.matchId);
   const standings = decodeStandings(rawStandings, roster.length, levels.length);
   const decided = decodeDecided(rawDecided, roster);
   const world = rawWorld === null ? null : decodeWorld(rawWorld);
   if (!standings || decided === undefined || world === undefined) return;
+  if (
+    !validCheckpointLifecycle(
+      { stage, roster, held, hasDecision: decided !== null },
+      world && { players: world.riders, over: world.phase === "over" },
+    )
+  )
+    return;
   if (world === null) {
-    // The lobby has no match: no world, no riders, nothing held and nothing decided.
-    if (
-      stage !== "lobby" ||
-      roster.length ||
-      decided ||
-      round !== 0 ||
-      pause !== 0 ||
-      Object.keys(held).length
-    )
-      return;
-  } else {
-    const raceOver = world.phase === "over";
-    if (
-      stage === "lobby" ||
-      roster.length === 0 ||
-      round >= levels.length ||
-      world.level !== levels[round] ||
-      (stage === "running") === raceOver ||
-      (stage === "over") !== (decided !== null) ||
-      (stage === "over" && round !== levels.length - 1) ||
-      (stage === "between"
-        ? pause === 0 || pause > INTERMISSION || round === levels.length - 1
-        : pause !== 0) ||
-      world.riders.length !== roster.length ||
-      world.riders.some((rider, slot) => rider.id !== roster[slot]!.id) ||
-      Object.keys(held).some(
-        (id) => !roster.some((entrant) => entrant.id === id && !entrant.bot),
-      ) ||
-      (stage === "over" && Object.keys(held).length > 0) ||
-      (decided !== null &&
-        (decided.clock < matchStartTick ||
-          decided.clock > simulationTick ||
-          decided.winner !== roster[order(standings)[0]!]!.id))
-    )
-      return;
-  }
+    if (round !== 0 || pause !== 0) return;
+  } else if (
+    roster.length === 0 ||
+    round >= levels.length ||
+    world.level !== levels[round] ||
+    (stage === "over" && round !== levels.length - 1) ||
+    (stage === "between"
+      ? pause === 0 || pause > INTERMISSION || round === levels.length - 1
+      : pause !== 0) ||
+    (decided &&
+      (decided.clock < matchStartTick ||
+        decided.clock > simulationTick ||
+        decided.winner !== roster[order(standings)[0]!]!.id))
+  )
+    return;
   return {
     tick,
-    simulationTick,
+    ...base,
     matchStartTick,
-    matchId,
-    stage: stage as RoomStage,
-    seats,
-    settings,
-    play,
-    held,
-    roster,
     round,
     standings,
     pause,

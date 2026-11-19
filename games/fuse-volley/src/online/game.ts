@@ -6,6 +6,8 @@ import {
   decodeSingleWinner as decodeDecided,
   createSeatListDecoder,
   createHeldInputDecoder,
+  createCheckpointBaseDecoder,
+  validCheckpointLifecycle,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -401,6 +403,16 @@ const decodeRoster = createRosterDecoder({
   slotAt: (index) => index,
 });
 
+const decodeBase = createCheckpointBaseDecoder({
+  stages: STAGES,
+  minStepsPerTick: STEPS_PER_TICK,
+  validMatchId,
+  parseSettings,
+  decodeSeats,
+  decodeHeld,
+  decodeRoster,
+});
+
 /**
  * The room a checkpoint describes, or nothing: every field is checked on its own and against the others, and the
  * room is built only once all of them hold, so a refused checkpoint leaves no half-read state behind.
@@ -412,7 +424,7 @@ export function decode(
   if (fields.length !== FIELDS || !uint32(tick)) return;
   const [
     matchId,
-    stage,
+    rawStage,
     rawSettings,
     rawSeats,
     rawPlay,
@@ -420,69 +432,46 @@ export function decode(
     rawRoster,
     rawDecided,
     rawWorld,
-    simulationTick,
+    rawSimulationTick,
   ] = fields;
-  const settings = parseSettings(rawSettings),
-    play = parseSettings(rawPlay),
-    seats = decodeSeats(rawSeats),
-    held = decodeHeld(rawHeld),
-    roster = decodeRoster(rawRoster);
-  if (
-    !validMatchId(matchId) ||
-    !uint32(simulationTick) ||
-    // The clock moves six steps every log tick, whatever the room is doing.
-    simulationTick !== tick * STEPS_PER_TICK ||
-    !STAGES.some((known) => known === stage) ||
-    !settings ||
-    !play ||
-    !seats ||
-    !held ||
-    !roster
-  )
-    return;
+  const base = decodeBase(
+    {
+      matchId,
+      stage: rawStage,
+      settings: rawSettings,
+      seats: rawSeats,
+      play: rawPlay,
+      held: rawHeld,
+      roster: rawRoster,
+      simulationTick: rawSimulationTick,
+    },
+    tick,
+  );
+  if (!base) return;
+  const { roster, held, stage, play, simulationTick } = base;
   const decided = decodeDecided(rawDecided, roster);
   const world = rawWorld === null ? null : decodeWorld(rawWorld);
   if (decided === undefined || world === undefined) return;
-  if (world === null) {
-    // The lobby has no match: no world, no riders, nothing held and nothing decided.
-    if (
-      stage !== "lobby" ||
-      roster.length ||
-      decided ||
-      Object.keys(held).length
+  if (
+    !validCheckpointLifecycle(
+      { stage, roster, held, hasDecision: decided !== null },
+      world && { players: world.blobs, over: world.phase === "over" },
     )
-      return;
-  } else {
-    const over = world.phase === "over";
-    if (
-      stage === "lobby" ||
-      (stage === "over") !== over ||
-      (decided !== null) !== over ||
-      roster.length !== seatsFor(play) ||
-      world.blobs.length !== roster.length ||
+  )
+    return;
+  if (
+    world &&
+    (roster.length !== seatsFor(play) ||
       world.scoring !== play.scoring ||
       world.format !== play.format ||
-      world.blobs.some((blob, slot) => blob.id !== roster[slot]!.id) ||
-      Object.keys(held).some(
-        (id) => !roster.some((entrant) => entrant.id === id && !entrant.bot),
-      ) ||
-      (over && Object.keys(held).length > 0) ||
-      (decided !== null &&
+      (decided &&
         (decided.clock > simulationTick ||
-          decided.winner !== roster[Math.max(winnerOf(world), 0)]!.id))
-    )
-      return;
-  }
+          decided.winner !== roster[Math.max(winnerOf(world), 0)]!.id)))
+  )
+    return;
   return {
     tick,
-    simulationTick,
-    matchId,
-    stage: stage as RoomStage,
-    seats,
-    settings,
-    play,
-    held,
-    roster,
+    ...base,
     decided,
     world,
   };

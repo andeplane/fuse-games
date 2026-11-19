@@ -16,6 +16,8 @@ export * from "./rollback.js";
 export * from "./snapshot.js";
 export { createSeatDecoder, createSeatListDecoder } from "./seat-snapshot.js";
 export { createHeldInputDecoder } from "./held-input-snapshot.js";
+export { validCheckpointLifecycle } from "./checkpoint-lifecycle.js";
+export { createCheckpointBaseDecoder } from "./checkpoint-base.js";
 export {
   createRosterDecoder,
   decodeHumanFinishers,
