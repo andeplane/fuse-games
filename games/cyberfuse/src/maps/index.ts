@@ -18,6 +18,11 @@ import {
 } from "./layout.js";
 import { placeObjects, rows, terrain } from "./placement.js";
 import { enemyCount } from "../options/index.js";
+import {
+  ACTOR_HALF_HEIGHT,
+  ACTOR_HALF_WIDTH,
+  overlapsExact,
+} from "../sim/geometry.js";
 
 export { DosRandom, geometry } from "./layout.js";
 export type { Bounds, Color, Point } from "./layout.js";
@@ -62,8 +67,8 @@ function placeActors(
       const x = Math.floor(px / 16),
         y = Math.floor(py / 12);
       if (!check(x, y)) return;
-      for (const dx of [-7, 0, 7])
-        for (const dy of [-5, 0, 5]) {
+      for (const dx of [-ACTOR_HALF_WIDTH, 0, ACTOR_HALF_WIDTH])
+        for (const dy of [-ACTOR_HALF_HEIGHT, 0, ACTOR_HALF_HEIGHT]) {
           const tx = Math.floor((px + dx) / 16),
             ty = Math.floor((py + dy) / 12);
           if (
@@ -75,13 +80,19 @@ function placeActors(
           )
             return;
         }
+      const point = { x: px, y: py };
       if (
-        taken.some(
-          (p) => Math.abs(p.x - px) < p.w + 7 && Math.abs(p.y - py) < p.h + 5,
+        taken.some((p) =>
+          overlapsExact(
+            point,
+            p,
+            p.w + ACTOR_HALF_WIDTH,
+            p.h + ACTOR_HALF_HEIGHT,
+          ),
         )
       )
         return;
-      taken.push({ x: px, y: py, w: 7, h: 5 });
+      taken.push({ ...point, w: ACTOR_HALF_WIDTH, h: ACTOR_HALF_HEIGHT });
       return { x, y, pixelX: px, pixelY: py };
     }
     for (let n = 0; n < 4096; n++) {

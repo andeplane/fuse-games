@@ -5,6 +5,13 @@ import {
   type MissionState,
   type Point,
 } from "./types.js";
+import {
+  ACTOR_HALF_HEIGHT,
+  ACTOR_HALF_WIDTH,
+  ITEM_REACH_X,
+  ITEM_REACH_Y,
+  overlaps,
+} from "./geometry.js";
 
 export const tileX = (p: number) => Math.floor(p / W);
 export const tileY = (p: number) => Math.floor(p / H);
@@ -20,21 +27,15 @@ export const wall = (s: MissionState, x: number, y: number) =>
 
 /** Floor anchors use the DOS pixel footprint: seven pixels either side, five above and below. */
 export function wallContact(s: MissionState, x: number, y: number): boolean {
-  const left = Math.floor(x) - 7,
-    right = left + 14,
-    top = Math.floor(y) - 5,
-    bottom = top + 10;
+  const left = Math.floor(x) - ACTOR_HALF_WIDTH,
+    right = left + 2 * ACTOR_HALF_WIDTH,
+    top = Math.floor(y) - ACTOR_HALF_HEIGHT,
+    bottom = top + 2 * ACTOR_HALF_HEIGHT;
   return (
     wall(s, left, top) ||
     wall(s, right, top) ||
     wall(s, left, bottom) ||
     wall(s, right, bottom)
-  );
-}
-export function overlaps(a: Point, b: Point, w: number, h: number): boolean {
-  return (
-    Math.abs(Math.floor(a.x) - Math.floor(b.x)) < w &&
-    Math.abs(Math.floor(a.y) - Math.floor(b.y)) < h
   );
 }
 export function obstacle(s: MissionState, actor: Actor, x: number, y: number) {
@@ -43,11 +44,18 @@ export function obstacle(s: MissionState, actor: Actor, x: number, y: number) {
     approaches(actor, p, target) && overlaps(p, target, w, h);
   return (
     s.actors.find(
-      (other) => other !== actor && other.hp > 0 && collides(other, 14, 10),
+      (other) =>
+        other !== actor &&
+        other.hp > 0 &&
+        collides(other, 2 * ACTOR_HALF_WIDTH, 2 * ACTOR_HALF_HEIGHT),
     ) ??
-    s.items.find((item) => item.solid && collides(item, 12, 9)) ??
+    s.items.find(
+      (item) => item.solid && collides(item, ITEM_REACH_X, ITEM_REACH_Y),
+    ) ??
     s.props.find(
-      (prop) => prop.impassable && collides(prop, 7 + prop.w, 5 + prop.h),
+      (prop) =>
+        prop.impassable &&
+        collides(prop, ACTOR_HALF_WIDTH + prop.w, ACTOR_HALF_HEIGHT + prop.h),
     )
   );
 }

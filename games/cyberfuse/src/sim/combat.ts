@@ -11,12 +11,18 @@ import {
 import {
   approaches,
   obstacle,
-  overlaps,
   tileX,
   tileY,
   wall,
   wallContact,
 } from "./space.js";
+import {
+  ACTOR_HALF_HEIGHT,
+  ACTOR_HALF_WIDTH,
+  ITEM_REACH_X,
+  ITEM_REACH_Y,
+  overlaps,
+} from "./geometry.js";
 import type {
   Actor,
   Control,
@@ -168,7 +174,12 @@ export function tickShots(s: MissionState) {
         if (
           a.hp > 0 &&
           approaches(shot, point, a) &&
-          overlaps(point, a, shot.radiusX + 7, shot.radiusY + 5) &&
+          overlaps(
+            point,
+            a,
+            shot.radiusX + ACTOR_HALF_WIDTH,
+            shot.radiusY + ACTOR_HALF_HEIGHT,
+          ) &&
           hitActor(s, a, owner, shot)
         )
           return true;
@@ -194,51 +205,77 @@ export function tickShots(s: MissionState) {
   });
   if (generated.length) s.shots = generated.concat(s.shots).slice(0, MAX_SHOTS);
 }
+/** When a diagonal is blocked, keep the motions that work along either axis.
+ * If both axes work separately there is no unique slide to choose. */
+function slideAlongAxis(
+  from: Point,
+  to: Point,
+  blocked: (x: number, y: number) => boolean,
+) {
+  const y = blocked(from.x, to.y) ? from.y : to.y;
+  const x = blocked(to.x, from.y) ? from.x : to.x;
+  return x === from.x || y === from.y ? { x, y } : undefined;
+}
+
+function recruitHostage(
+  s: MissionState,
+  actor: Actor,
+  target: Actor | Item | Prop,
+) {
+  if (
+    !actor.seat ||
+    !("role" in target) ||
+    target.role !== "hostage" ||
+    target.escort !== null
+  )
+    return;
+  target.escort = actor.id;
+  target.skill = { ...target.skill, flags: target.skill.flags & ~(1 << 18) };
+  target.brain = { ...target.brain, sleeping: false };
+  progress(s, target.objectiveIndex);
+}
+
+function knifeContact(
+  s: MissionState,
+  actor: Actor,
+  target: Actor | Item | Prop,
+) {
+  if ("seat" in target)
+    hitActor(s, target, actor, {
+      always: false,
+      special: "none",
+      power: 2,
+      dx: 0,
+      dy: 0,
+    });
+  else if (target.hp > 0 && !(target.objectFlags & (1 | (1 << 12) | (1 << 13))))
+    hitObject(s, target, actor, 2, []);
+}
+
 function motion(s: MissionState, actor: Actor, proposed: Point) {
-  let { x, y } = proposed;
-  if (wallContact(s, x, y)) {
-    if (wallContact(s, actor.x, y)) y = actor.y;
-    if (wallContact(s, x, actor.y)) x = actor.x;
-    if (x !== actor.x && y !== actor.y) return;
+  let next = proposed;
+  if (wallContact(s, next.x, next.y)) {
+    const slide = slideAlongAxis(actor, next, (x, y) => wallContact(s, x, y));
+    if (!slide) return;
+    next = slide;
   }
-  const target = obstacle(s, actor, x, y);
+  const target = obstacle(s, actor, next.x, next.y);
   if (target) {
-    if (
-      actor.seat &&
-      "role" in target &&
-      target.role === "hostage" &&
-      target.escort === null
-    ) {
-      target.escort = actor.id;
-      target.skill = {
-        ...target.skill,
-        flags: target.skill.flags & ~(1 << 18),
-      };
-      target.brain = { ...target.brain, sleeping: false };
-      progress(s, target.objectiveIndex);
-    }
+    recruitHostage(s, actor, target);
     if (actor.weapon === 0) {
-      if ("seat" in target)
-        hitActor(s, target, actor, {
-          always: false,
-          special: "none",
-          power: 2,
-          dx: 0,
-          dy: 0,
-        });
-      else if (
-        target.hp > 0 &&
-        !(target.objectFlags & (1 | (1 << 12) | (1 << 13)))
-      )
-        hitObject(s, target, actor, 2, []);
+      knifeContact(s, actor, target);
       return;
     }
-    if (obstacle(s, actor, actor.x, y)) y = actor.y;
-    if (obstacle(s, actor, x, actor.y)) x = actor.x;
-    if ((x !== actor.x && y !== actor.y) || wallContact(s, x, y)) return;
+    const slide = slideAlongAxis(
+      actor,
+      next,
+      (x, y) => obstacle(s, actor, x, y) !== undefined,
+    );
+    if (!slide || wallContact(s, slide.x, slide.y)) return;
+    next = slide;
   }
-  actor.x = x;
-  actor.y = y;
+  actor.x = next.x;
+  actor.y = next.y;
 }
 const decay = (v: number) =>
   Math.abs(v) < 0.25 ? 0 : v - Math.sign(v) * 0.125;
@@ -309,7 +346,7 @@ export function collect(s: MissionState, a: Actor) {
       s.keys = s.keys.filter((k) => k !== key);
     }
   for (const item of s.items)
-    if (overlaps(a, item, 12, 9)) {
+    if (overlaps(a, item, ITEM_REACH_X, ITEM_REACH_Y)) {
       if (item.kind === "core" || item.kind === "medkit") {
         if (item.kind === "medkit" && a.hp === a.maxHp) continue;
         if (item.kind === "core") a.score += 10;

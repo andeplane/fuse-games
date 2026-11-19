@@ -18,6 +18,13 @@ import {
 } from "../options/index.js";
 import { collect, command, random, tickShots, updateActor } from "./combat.js";
 import {
+  ACTOR_HALF_HEIGHT,
+  ACTOR_HALF_WIDTH,
+  ITEM_REACH_X,
+  ITEM_REACH_Y,
+  overlapsExact,
+} from "./geometry.js";
+import {
   canStand,
   reveal,
   tileAt,
@@ -319,16 +326,17 @@ function replenish(s: MissionState, players: Actor[]) {
       ) ||
       wallContact(s, p.x, p.y) ||
       s.actors.some(
-        (a) => a.hp > 0 && Math.abs(a.x - p.x) < 14 && Math.abs(a.y - p.y) < 10,
+        (a) =>
+          a.hp > 0 &&
+          overlapsExact(a, p, 2 * ACTOR_HALF_WIDTH, 2 * ACTOR_HALF_HEIGHT),
       ) ||
       s.props.some(
         (o) =>
           o.impassable &&
-          Math.abs(o.x - p.x) < o.w + 7 &&
-          Math.abs(o.y - p.y) < o.h + 5,
+          overlapsExact(o, p, o.w + ACTOR_HALF_WIDTH, o.h + ACTOR_HALF_HEIGHT),
       ) ||
       s.items.some(
-        (o) => o.solid && Math.abs(o.x - p.x) < 12 && Math.abs(o.y - p.y) < 9,
+        (o) => o.solid && overlapsExact(o, p, ITEM_REACH_X, ITEM_REACH_Y),
       )
     )
       continue;
