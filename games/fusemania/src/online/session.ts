@@ -60,7 +60,8 @@ export interface SessionView {
 
 /** The standings of a session's totals: by points, then by songs won, then in the order riders joined it. */
 export const standings = (scores: readonly SessionScore[]): SessionScore[] =>
-  [...scores]
+  scores
+    .slice()
     .sort((a, b) => b.points - a.points || b.wins - a.wins)
     .map(({ id, name, points, wins }) => ({ id, name, points, wins }));
 

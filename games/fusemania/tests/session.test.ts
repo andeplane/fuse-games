@@ -255,20 +255,22 @@ test("a rider who joins in the middle gets a total, one who left keeps theirs, a
   assert.ok(ids.includes("gone2"));
 });
 
-test("standings go by points, then by songs won, then by who joined first", () => {
+test("standings go by points, then wins, then join order even with sparse input", () => {
   const score = (id: string, total: number, wins: number) => ({
     id,
     name: id,
     points: total,
     wins,
   });
+  const scores = [
+    score("a", 10, 0),
+    score("b", 30, 1),
+    score("c", 30, 2),
+    score("d", 10, 0),
+  ];
+  scores.length++;
   assert.deepEqual(
-    standings([
-      score("a", 10, 0),
-      score("b", 30, 1),
-      score("c", 30, 2),
-      score("d", 10, 0),
-    ]).map((each) => each.id),
+    standings(scores).flatMap((each) => each.id),
     ["c", "b", "a", "d"],
   );
 });
