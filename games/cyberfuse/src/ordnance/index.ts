@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Adapted in 2026 from Ronny Wester's C-Dogs. See REFERENCE.md and COPYING.
-export const WEAPON_COUNT = 16;
+import { profiles, WEAPON_COUNT, type MuzzleShot } from "./profiles.js";
+export { WEAPON_COUNT } from "./profiles.js";
+
 export const MAX_SHOTS = 2048;
 
 const kinds = [
@@ -21,9 +23,9 @@ const kinds = [
   "fireball",
   "spark",
 ] as const;
-type ShotKind = (typeof kinds)[number];
+export type ShotKind = (typeof kinds)[number];
 const effects = ["none", "flame", "poison", "petrify", "confuse"] as const;
-type Effect = (typeof effects)[number];
+export type Effect = (typeof effects)[number];
 
 export interface Shot {
   weapon: number;
@@ -86,10 +88,6 @@ const muzzle = [
   [-15, -1],
   [-9, -7],
 ] as const;
-const locks = [
-  0, 6, 30, 6, 50, 20, 30, 30, 100, 100, 100, 30, 100, 30, 30, 6,
-] as const;
-const costs = [0, 1, 20, 1, 5, 2, 20, 20, 5, 10, 5, 10, 7, 7, 10, 1] as const;
 function make(
   weapon: number,
   owner: string,
@@ -159,6 +157,36 @@ function gas(
   return shift(s, 6, 6);
 }
 
+function muzzleShots(
+  launch: MuzzleShot,
+  base: Shot,
+  angle: number,
+  dir: number,
+  random: Random,
+): Shot[] {
+  const spread =
+    launch.spread === "random" ? [(random() & 7) - 4] : (launch.spread ?? [0]);
+  return spread.map((offset) => {
+    const s = propel(
+      { ...base },
+      angle + offset,
+      launch.speed,
+      launch.range,
+      launch.power,
+      launch.radius,
+    );
+    s.z = 10;
+    if (launch.frameFacing) s.frame = dir;
+    if (launch.advance === "flame") {
+      const [vx, vy] = vector(angle, 256);
+      s.x += 4 * vx;
+      s.y += 7 * vy;
+    } else if (launch.advance === "petrifier") shift(s, 4, 7);
+    if (launch.special) s.special = launch.special;
+    return s;
+  });
+}
+
 /** Fires from the actor's ground pivot. Results are newest first, as in the DOS mobile list. */
 export function fireWeapon(
   weapon: number,
@@ -179,39 +207,14 @@ export function fireWeapon(
     throw new RangeError("Invalid C-Dogs weapon or facing");
   const angle = (dir * 32 + 192) & 255;
   const [mx, my] = muzzle[dir]!;
-  const shot = (
-    kind: ShotKind,
-    speed: number,
-    range: number,
-    power: number,
-    radius = 0,
-    offset = 0,
-  ) => {
-    const s = propel(
-      make(weapon, owner, x + mx, y + my, kind),
-      angle + offset,
-      speed,
-      range,
-      power,
-      radius,
-    );
-    s.z = 10;
-    return s;
-  };
+  const { launch, lock, cost } = profiles[weapon]!;
   const shots: Shot[] = [];
-  switch (weapon) {
-    case 0:
-      break; // Knife damage is applied by actor contact.
-    case 1:
-      shots.push(shot("bullet", 768, 60, 10, 0, (random() & 7) - 4));
+  switch (launch.type) {
+    case "contact":
       break;
-    case 2:
-    case 6:
-    case 7:
-    case 11:
-    case 14: {
+    case "lob": {
       const s = propel(
-        make(weapon, owner, x, y, weapon === 7 ? "molotov" : "grenade"),
+        make(weapon, owner, x, y, launch.kind),
         angle,
         384,
         100,
@@ -221,50 +224,30 @@ export function fireWeapon(
       shots.push(s);
       break;
     }
-    case 3: {
-      const s = shot("flame", 384, 30, 12, 5);
-      const [vx, vy] = vector(angle, 256);
-      s.x += 4 * vx;
-      s.y += 7 * vy;
-      s.special = "flame";
+    case "placed": {
+      const s = make(weapon, owner, x, y, launch.kind);
+      s.range = launch.range;
       shots.push(s);
       break;
     }
-    case 4:
-      for (const offset of [16, 8, 0, -8, -16])
-        shots.push(shot("bullet", 640, 50, 15, 0, offset));
-      break;
-    case 5:
-    case 8: {
-      const s =
-        weapon === 5
-          ? shot("bolt", 1024, 90, 20, 2)
-          : shot("sniper", 1024, 90, 50);
-      s.frame = dir;
-      shots.push(s);
-      break;
-    }
-    case 9:
-    case 10: {
-      const s = make(weapon, owner, x, y, weapon === 9 ? "mine" : "dynamite");
-      s.range = weapon === 9 ? 140 : 210;
-      shots.push(s);
-      break;
-    }
-    case 12: {
-      const s = shot("petrifier", 768, 45, 0, 5);
-      s.special = "petrify";
-      shots.push(shift(s, 4, 7));
-      break;
-    }
-    case 13:
-      shots.push(shot("brown", 768, 45, 15));
-      break;
-    case 15:
+    case "gas":
       shots.push(gas(weapon, owner, x + mx, y + my, angle, 384, 35, "poison"));
       break;
+    case "muzzle":
+      return {
+        lock,
+        cost,
+        shots: muzzleShots(
+          launch,
+          make(weapon, owner, x + mx, y + my, launch.kind),
+          angle,
+          dir,
+          random,
+        ),
+      };
   }
-  return { lock: locks[weapon]!, cost: costs[weapon]!, shots };
+
+  return { lock, cost, shots };
 }
 
 /** Objects spawned by a broken barrel or a detonating projectile, in next-update order. */
@@ -322,21 +305,11 @@ export function burst(
   return result.reverse();
 }
 function detonate(s: Shot, random: Random): Shot[] {
-  if (s.weapon !== 6)
-    return burst(
-      s.weapon === 7
-        ? "fire"
-        : s.weapon === 11
-          ? "poison"
-          : s.weapon === 14
-            ? "confuse"
-            : "explosion",
-      s.owner,
-      s.x,
-      s.y,
-      random,
-      s.weapon,
-    );
+  const rule = Number.isInteger(s.weapon)
+    ? profiles[s.weapon]?.burst
+    : undefined;
+  if (rule !== "shrapnel")
+    return burst(rule ?? "explosion", s.owner, s.x, s.y, random, s.weapon);
   return Array.from({ length: 16 }, (_, i) => {
     const p = propel(
       make(6, s.owner, s.x, s.y, "bullet"),
@@ -351,6 +324,76 @@ function detonate(s: Shot, random: Random): Shot[] {
   });
 }
 
+const fuses = new Map<ShotKind, "atRange" | "pastRange">([
+  ["dynamite", "atRange"],
+  ["triggeredMine", "atRange"],
+  ["grenade", "pastRange"],
+  ["molotov", "pastRange"],
+]);
+
+function advancePosition(s: Shot, x: number, y: number): true {
+  s.x = x;
+  s.y = y;
+  return true;
+}
+
+type WallProbe = (x: number, y: number) => boolean;
+
+function moveLob(s: Shot, x: number, y: number, wall: WallProbe): boolean {
+  s.z += s.dz;
+  if (s.kind === "molotov") {
+    if (s.z <= 0 || wall(x, y)) return false;
+    s.dz--;
+    return advancePosition(s, x, y);
+  }
+  if (s.z <= 0) {
+    s.z = 0;
+    s.dz = Math.trunc(-s.dz / 2);
+  } else s.dz--;
+  if (!wall(x, y)) {
+    s.x = x;
+    s.y = y;
+  } else if (!wall(s.x, y)) {
+    s.y = y;
+    s.dx = -s.dx;
+  } else if (!wall(x, s.y)) {
+    s.x = x;
+    s.dy = -s.dy;
+  } else {
+    s.dx = -s.dx;
+    s.dy = -s.dy;
+  }
+  return true;
+}
+
+function moveCloud(
+  s: Shot,
+  { x, y }: { x: number; y: number },
+  env: ShotEnvironment,
+  wall: WallProbe,
+  hit: () => boolean,
+): boolean {
+  if ((s.age & 3) === 0) s.frame = env.random() & 3;
+  if (s.kind === "flame") {
+    if (hit()) {
+      s.age = s.range;
+      return advancePosition(s, x, y);
+    }
+    if (wall(x, y)) return false;
+  } else {
+    if (s.kind === "firePatch") {
+      s.z += Math.trunc(s.dz / 2);
+      if (s.z <= 0) s.z = 0;
+      else s.dz--;
+    }
+    s.dx -= (Math.sign(s.dx) * 4) / 256;
+    s.dy -= (Math.sign(s.dy) * 3) / 256;
+    hit();
+    if (wall(x, y)) return true;
+  }
+  return advancePosition(s, x, y);
+}
+
 function update(
   s: Shot,
   env: ShotEnvironment,
@@ -363,6 +406,17 @@ function update(
   const wall = (px: number, py: number) =>
     env.wall(Math.floor(px), Math.floor(py));
   const hit = () => env.hit(s, Math.floor(x), Math.floor(y));
+  const fuse = fuses.get(s.kind);
+  if (fuse) {
+    const expired = fuse === "atRange" ? !(s.age < s.range) : s.age > s.range;
+    if (expired) {
+      spawn(detonate(s, env.random));
+      return false;
+    }
+    if (fuse === "atRange") return true;
+  } else if (s.kind !== "mine" && s.kind !== "armedMine" && s.age > s.range) {
+    return false;
+  }
   switch (s.kind) {
     case "mine":
       if (s.age >= s.range) s.kind = "armedMine";
@@ -375,85 +429,22 @@ function update(
       }
       return true;
     }
-    case "dynamite":
-    case "triggeredMine":
-      if (s.age < s.range) return true;
+    case "grenade":
+    case "molotov":
+      if (moveLob(s, x, y, wall)) return true;
       spawn(detonate(s, env.random));
       return false;
-    case "grenade":
-    case "molotov": {
-      if (s.age > s.range) {
-        spawn(detonate(s, env.random));
-        return false;
-      }
-      s.z += s.dz;
-      if (s.kind === "molotov") {
-        if (s.z <= 0 || wall(x, y)) {
-          spawn(detonate(s, env.random));
-          return false;
-        }
-        s.dz--;
-        s.x = x;
-        s.y = y;
-        return true;
-      }
-      if (s.z <= 0) {
-        s.z = 0;
-        s.dz = Math.trunc(-s.dz / 2);
-      } else s.dz--;
-      if (!wall(x, y)) {
-        s.x = x;
-        s.y = y;
-      } else if (!wall(s.x, y)) {
-        s.y = y;
-        s.dx = -s.dx;
-      } else if (!wall(x, s.y)) {
-        s.x = x;
-        s.dy = -s.dy;
-      } else {
-        s.dx = -s.dx;
-        s.dy = -s.dy;
-      }
-      return true;
-    }
-  }
-  if (s.age > s.range) return false;
-  switch (s.kind) {
     case "gas":
     case "firePatch":
     case "flame":
-      if ((s.age & 3) === 0) s.frame = env.random() & 3;
-      if (s.kind === "flame") {
-        if (hit()) {
-          s.age = s.range;
-          s.x = x;
-          s.y = y;
-          return true;
-        }
-        if (wall(x, y)) return false;
-      } else {
-        if (s.kind === "firePatch") {
-          s.z += Math.trunc(s.dz / 2);
-          if (s.z <= 0) s.z = 0;
-          else s.dz--;
-        }
-        s.dx -= (Math.sign(s.dx) * 4) / 256;
-        s.dy -= (Math.sign(s.dy) * 3) / 256;
-        hit();
-        if (wall(x, y)) return true;
-      }
-      s.x = x;
-      s.y = y;
-      return true;
+      return moveCloud(s, { x, y }, env, wall, hit);
     case "fireball":
       if (s.age < 0) return true;
       s.z += s.dz;
       s.dz--;
       hit();
       if (wall(x, y)) return false;
-      s.x = x;
-      s.y = y;
-      return true;
+      return advancePosition(s, x, y);
     case "spark":
       return false;
     default: {
@@ -462,10 +453,7 @@ function update(
         s.kind = "spark";
         s.age = 0;
         s.range = 0;
-      } else {
-        s.x = x;
-        s.y = y;
-      }
+      } else advancePosition(s, x, y);
       if (brown) {
         s.dx += ((env.random() % 3) - 1) / 2;
         s.dy += ((env.random() % 3) - 1) / 2;
