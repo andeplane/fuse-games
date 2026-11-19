@@ -52,7 +52,7 @@ import {
   createNameEntry,
   createNotice,
   createPageHeader,
-  createPageMessage,
+  showInvalidRoomPage,
   createRoster,
   createResultsScreen,
   createRoundControls,
@@ -898,15 +898,7 @@ function enterRoom(
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",

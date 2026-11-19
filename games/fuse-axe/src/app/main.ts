@@ -33,7 +33,6 @@ import {
   uuid,
 } from "fuse-netcode";
 import {
-  backOnEscape,
   button,
   createAppPortal,
   createControllerRow,
@@ -43,7 +42,7 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
-  createPageMessage,
+  showInvalidRoomPage,
   createPhoneLayout,
   createPicker,
   createLiveResults,
@@ -52,7 +51,6 @@ import {
   createRoster,
   createRoundControls,
   createSharedTvOption,
-  createSubPage,
   el,
 } from "fuse-ui";
 import {
@@ -259,15 +257,7 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
