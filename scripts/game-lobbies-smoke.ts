@@ -197,6 +197,17 @@ try {
             [],
             `room header keeps every action inside its visible bounds at ${width}px`,
           );
+          if (game === "cyberfuse" || game === "incredible-fuse")
+            assert.ok(
+              await room
+                .locator(".fui-room-head .fui-room-primary-action > button")
+                .evaluate(
+                  (button) =>
+                    button.scrollWidth <= button.clientWidth + 1 &&
+                    button.scrollHeight <= button.clientHeight + 1,
+                ),
+              `the full Start label fits at ${width}px`,
+            );
           if (game === "fusemania") {
             assert.equal(
               await room.locator(".fm-picker-play").count(),
