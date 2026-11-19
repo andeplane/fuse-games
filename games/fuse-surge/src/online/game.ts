@@ -4,6 +4,7 @@ import {
   PRESENCE,
   SPECTATOR,
   applyManagementTick,
+  foldHeldInput,
   createSeatDecoder,
   defaultText,
   isManagementEntry,
@@ -334,25 +335,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
 };
 
 /** The seat's play entries for this tick and match, from the stream generation its controls follow. */
-function playEntries(
-  room: Room,
-  seat: SeatRecord,
-  streams: ReadonlyMap<string, StreamEntries<Entry>>,
-  tick: number,
-): PlayEntry[] {
-  const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
-    .filter(
-      (entry): entry is PlayEntry =>
-        entry[1] === tick && entry[2] === PLAY && entry[3] === room.matchId,
-    )
-    .sort((a, b) => a[0] - b[0]);
-}
-
 /** Steps every log tick runs: six, always. */
 export const MAX_STEPS_PER_TICK = STEPS_PER_TICK;
 export const steps = (_room: Room): number => STEPS_PER_TICK;
@@ -387,25 +369,18 @@ export function foldTick(
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
   const world = room.world;
   if (room.stage === "running" && world) {
+    const input = foldHeldInput(room, streams, tick, (entry) =>
+      entry[2] === PLAY && entry[3] === room.matchId
+        ? entry[4] & INPUT_MASK
+        : undefined,
+    );
     const held = world.riders.map(() => 0),
       first = world.riders.map(() => 0);
     for (const [slot, rider] of world.riders.entries()) {
-      const seat = room.seats.get(rider.id);
-      let bits = 0,
-        tapped = 0;
-      if (seat?.bot) {
+      const [bits, tapped] = input(rider.id, () => {
         const answer = bot(world, slot, room.play.bot);
-        bits = isInput(answer) ? answer : 0;
-      } else if (seat?.connected) {
-        bits = room.held[rider.id] ?? 0;
-        for (const entry of playEntries(room, seat, streams, tick)) {
-          tapped |= entry[4] & INPUT_MASK;
-          bits = entry[4] & INPUT_MASK;
-        }
-      }
-      // Only what a seat logged is held: a bot answers afresh every tick, and a seat that is away holds nothing.
-      if (bits && !seat?.bot) room.held[rider.id] = bits;
-      else delete room.held[rider.id];
+        return isInput(answer) ? answer : 0;
+      });
       held[slot] = bits;
       // The tick's first step also sees what was pressed and let go inside it, so a tap shorter than a tick counts.
       first[slot] = bits | tapped;
