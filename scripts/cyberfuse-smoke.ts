@@ -530,16 +530,15 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
     if (message.text().startsWith("MAP-PROBE")) console.log(message.text());
   });
   await map.evaluate(node => {
-    const trace = (value: unknown) => console.log("MAP-PROBE", JSON.stringify(value));
     const r = node.getBoundingClientRect();
-    trace({ map: r.toJSON(), viewport: { width: visualViewport?.width, height: visualViewport?.height, scale: visualViewport?.scale }, hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.outerHTML.slice(0, 180) });
+    console.log("MAP-PROBE", JSON.stringify({ map: r.toJSON(), viewport: { width: visualViewport?.width, height: visualViewport?.height, scale: visualViewport?.scale }, hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.outerHTML.slice(0, 180) }));
     for (const name of ["pointerdown", "pointerup", "pointercancel", "touchstart", "touchend", "touchcancel", "click"]) {
       document.addEventListener(name, event => {
         const target = event.target instanceof Element ? event.target : null;
-        trace({name, target:target?.outerHTML.slice(0, 100), x: event instanceof MouseEvent ? event.clientX : null, y: event instanceof MouseEvent ? event.clientY : null, expanded:node.getAttribute("aria-expanded")});
+        console.log("MAP-PROBE", JSON.stringify({name, target:target?.outerHTML.slice(0, 100), x: event instanceof MouseEvent ? event.clientX : null, y: event instanceof MouseEvent ? event.clientY : null, expanded:node.getAttribute("aria-expanded")}));
       }, true);
     }
-    new MutationObserver(() => trace({changed:node.getAttribute("aria-expanded")})).observe(node,{attributes:true,attributeFilter:["aria-expanded"]});
+    new MutationObserver(() => console.log("MAP-PROBE", JSON.stringify({changed:node.getAttribute("aria-expanded")}))).observe(node,{attributes:true,attributeFilter:["aria-expanded"]});
   });
   await map.tap();
   await peer.getByRole("button", { name: "Close map", exact: true }).waitFor();

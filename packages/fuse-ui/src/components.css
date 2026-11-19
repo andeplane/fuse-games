@@ -1644,14 +1644,20 @@
     white-space: nowrap;
   }
   .fui-room-layout.fui-room-actions-top
+    > .fui-room-head
+    > .fui-page-actions
+    > .fui-room-primary-action
+    > button {
+    white-space: normal;
+    line-height: 1.15;
+  }
+  .fui-room-layout.fui-room-actions-top
     .fui-room-head
     .fui-room-primary-action
     button {
     display: block;
     width: 100%;
     min-width: 0;
-    white-space: normal;
-    line-height: 1.15;
   }
 }
 .fui-room-compact .fui-room-players > h2 {
