@@ -32,6 +32,10 @@ export function verifyCraftReplay(
     const inputs = row?.tick === world.tick ? (cursor++, row.commands) : [];
     const previous = world;
     world = step(world, inputs);
+    if (world.tick <= previous.tick)
+      throw new Error(
+        `Replay stopped at tick ${world.tick} before declared end ${recording.ticks}`,
+      );
     observe?.(world, previous);
   }
   assert.equal(hashState(world), recording.hash, mismatch);

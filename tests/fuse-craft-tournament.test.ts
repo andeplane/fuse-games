@@ -4,6 +4,12 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  createMatch,
+  encodeState,
+  hashState,
+  loadMap,
+} from "../games/fuse-craft/src/engine/index.js";
 
 function tournament(output: string, maps: string, extra: string[]): string {
   const args = [
@@ -95,6 +101,42 @@ test("resume accepts only the matches selected by a legacy all-prefixed map list
     writeFileSync(results, original);
     assert.match(run(["--resume"]), /Resuming 2 completed matches/);
     assert.equal(readFileSync(results, "utf8"), original);
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
+});
+
+test("replay capture rejects an end tick beyond a finished match", () => {
+  const output = mkdtempSync(join(tmpdir(), "fuse-tournament-replay-end-"));
+  try {
+    const map = loadMap(
+      JSON.parse(
+        readFileSync("games/fuse-craft/maps/close-quarters.json", "utf8"),
+      ),
+    );
+    const world = createMatch(map);
+    world.finished = true;
+    world.winnerId = world.players[0]!.id;
+    world.victory = "dominance";
+    const replay = join(output, "stalled.replay.json");
+    writeFileSync(
+      replay,
+      JSON.stringify({
+        initial: JSON.parse(encodeState(world)),
+        commands: [],
+        ticks: world.tick + 1,
+        hash: hashState(world),
+      }),
+    );
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          ["--import", "tsx", "scripts/fuse-craft-replay-capture.ts", replay],
+          { stdio: "pipe", timeout: 5000 },
+        ),
+      /Replay stopped at tick 0 before declared end 1/,
+    );
   } finally {
     rmSync(output, { recursive: true, force: true });
   }
