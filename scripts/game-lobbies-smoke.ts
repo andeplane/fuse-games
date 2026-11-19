@@ -111,6 +111,7 @@ try {
       await room.waitFor();
       await checkGameMenu(page, game);
       const configurationRoom = [
+        "cyberfuse",
         "fuse-drivers",
         "fusemania",
         "elasto-fuse",
@@ -310,6 +311,8 @@ try {
         await settings.click();
         const dialog = page.locator("dialog[open]");
         await dialog.waitFor();
+        if (game === "cyberfuse")
+          await dialog.getByText("Difficulty", { exact: true }).click();
         const select = dialog.locator("select:enabled").first();
         if (await select.count()) {
           const next = await select

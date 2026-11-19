@@ -6,8 +6,25 @@ import {
   gravesPx,
   stageLengthPx,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster, rgbAt } from "./kit.js";
+import {
+  firstTile,
+  worldRow,
+  bayer,
+  dither,
+  hash,
+  Raster,
+  rgbAt,
+} from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, type Fire } from "./fire.js";
+import { moonlitRelief as shape, type Inside } from "./relief.js";
+import { moonGlow, paintSky, paintStars, paintMoon } from "./sky.js";
+import {
+  paintStone,
+  stoneCourses,
+  type StoneCourse,
+  type StoneSpan,
+} from "./stone-courses.js";
 
 /**
  * Stage 3, Drowned Crypt: a cold night in a flooded graveyard under a broken cathedral. Far to near: the sky and a pale
@@ -52,34 +69,11 @@ const IRON = 0x22263a;
 const IRON_LIT = 0x3e4458;
 const BONE = 0xb8b0a8;
 const GLOW = [0x0c2a22, 0x1e5a44, 0x48b080];
-const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"];
+const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"] as const;
 /** The fog's, the ripples' and the drips' colours, which nothing else draws. */
 const FOG = "#2e4448";
 const RIPPLE = ["#6a8e92", "#41606a", "#273c44"];
 const DROP = "#9cc4c4";
-
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
-type Inside = (x: number, y: number) => boolean;
-
-/**
- * Paints the pixels in `box` that `inside` holds, lit by the moon at the upper right: inked where they meet the
- * outside, a top colour (moss) along the top, light along the right, shadow along the bottom and left, base between.
- */
-function shape(r: Raster, box: Box, inside: Inside, ramp: Ramp) {
-  const [[x0, y0, x1, y1], [ink, dark, base, lit, top = lit]] = [box, ramp];
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!inside(x, y)) continue;
-      let c = base;
-      if (!inside(x, y - 1) || !inside(x, y + 1)) c = ink;
-      else if (!inside(x - 1, y) || !inside(x + 1, y)) c = ink;
-      else if (!inside(x, y - 2)) c = top;
-      else if (!inside(x + 1, y - 1) || !inside(x + 2, y)) c = lit;
-      else if (!inside(x, y + 2) || !inside(x - 2, y)) c = dark;
-      else if (hash(x, y) > 0.93) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 /** Mirrors what `keep` holds above row `line` into the water below it, at half its light, broken up with depth. */
 function mirror(r: Raster, x0: number, x1: number, line: number, keep: Inside) {
@@ -147,34 +141,43 @@ function stroke(r: Raster, tree: readonly Limb[], [ink, dark, , lit]: Ramp) {
 }
 
 /** Thin clouds: each one's centre, row and half its length. */
-const CLOUDS = [244, 33, 35, 120, 22, 45, 40, 48, 30];
+const CLOUDS = [
+  [244, 33, 35],
+  [120, 22, 45],
+  [40, 48, 30],
+] as const;
+const MOON = [252, 30, 11] as const;
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++) {
-      const glow = Math.max(0, 1 - Math.hypot(x - 252, y - 30) / 70) * 0.25;
-      r.px(x, y, dither(SKY, y / 92 + glow, x, y));
-    }
-  for (let i = 0; i < 70; i++) {
-    const [x, y] = [hash(i, 1) * r.width, hash(i, 2) * 64];
-    if (Math.hypot(x - 252, y - 30) > 24)
-      r.px(x, y, i % 5 ? 0x343c5c : 0xb8c8dc);
-  }
+  const [mx, my] = MOON;
+  paintSky(
+    r,
+    SKY,
+    (x, y) => y / 92 + moonGlow(Math.hypot(x - mx, y - my), 0.25),
+  );
+  paintStars(r, {
+    count: 70,
+    top: 0,
+    height: 64,
+    subpixel: true,
+    color: (index, x, y) => {
+      if (Math.hypot(x - mx, y - my) <= 24) return undefined;
+      return index % 5 ? 0x343c5c : 0xb8c8dc;
+    },
+  });
   // A pale moon, its left limb in shadow, a haze about it and thin clouds across the sky.
-  for (let y = 6; y < 56; y++)
-    for (let x = 228; x < 278; x++) {
-      const d = Math.hypot(x + 0.5 - 252, y + 0.5 - 30);
-      if (d >= 11) {
-        if (d < 22 && bayer(x, y) < (22 - d) / 20) r.px(x, y, 0x24304a);
-        continue;
-      }
-      const shade = Math.hypot(x + 0.5 - 255, y + 0.5 - 29) > 11;
-      const sea =
-        Math.hypot(x - 249, y - 27) < 3 || Math.hypot(x - 255, y - 34) < 2;
-      r.px(x, y, shade ? 0x7e968e : sea ? 0xaec4b4 : 0xd8ead2);
-    }
-  for (let i = 0; i < 9; i += 3) {
-    const [cx, cy, half] = [CLOUDS[i]!, CLOUDS[i + 1]!, CLOUDS[i + 2]!];
+  paintMoon(r, {
+    disc: MOON,
+    sampleOffset: 0.5,
+    lightCenter: [255, 29],
+    marks: [
+      [249, 27, 3],
+      [255, 34, 2],
+    ],
+    colors: { light: 0xd8ead2, shadow: 0x7e968e, marks: 0xaec4b4 },
+    halo: { radius: 22, fade: 20, color: 0x24304a },
+  });
+  for (const [cx, cy, half] of CLOUDS) {
     for (let j = 0; j < 3; j++)
       for (let x = cx - half + j * 4; x < cx + half - j * 3; x++)
         r.px(x, cy + j, j === 2 ? 0x2c3a50 : 0x12162a);
@@ -475,6 +478,35 @@ function openGrave(r: Raster, x: number, y: number) {
   r.px(x - 2, y + 5, BONE);
 }
 
+/** Paint one flagstone's seams, standing water, wet edge or plain stone. */
+function wetFlagstone(
+  r: Raster,
+  course: StoneCourse,
+  stone: StoneSpan & { column: number },
+) {
+  const { index, top, bottom } = course;
+  const { column, left, width } = stone;
+  const tone =
+    0.15 + (index / 8) * 0.5 + (hash(column, 230 + index) - 0.5) * 0.2;
+  const puddle = hash(column, 240 + index) > 0.75;
+  const wet = hash(column, 260 + index) > 0.6;
+  const mossy = hash(column, 270 + index) > 0.6;
+  const glint = left + Math.floor(hash(column, 250 + index) * width);
+  paintStone(r, course, stone, (x, y) => {
+    const joint = y === top ? hash(x >> 3, index + 280) > 0.25 : x === left;
+    if (joint) return mossy && hash(x >> 1, y) > 0.5 ? 0x1e3226 : ROAD[0]!;
+    if (puddle) {
+      const u = (x + 0.5 - left - width / 2) / (width * 0.32);
+      const v = (y + 0.5 - (top + bottom) / 2) / 1.7;
+      if (u * u + v * v < 1)
+        return Math.abs(x - glint) < 2 && v < 0 ? 0x4a6a70 : 0x0e1820;
+    }
+    if (wet && y === top + 1 && hash(x >> 2, y + index) > 0.5) return ROAD[5]!;
+    const grain = (hash(x >> 2, y >> 1) - 0.5) * 0.15;
+    return dither(ROAD, tone + grain, x, y);
+  });
+}
+
 /** The causeway: a kerb along the water, rows of wet flagstones deepening towards the viewer, puddles and moss. */
 function causeway(r: Raster) {
   for (let x = 0; x < r.width; x++) {
@@ -483,30 +515,21 @@ function causeway(r: Raster) {
     r.px(x, FLOOR + 1, joint ? INK : 0x2e3442);
     r.px(x, FLOOR + 2, ROAD[1]!);
   }
-  for (let y0 = FLOOR + 3, k = 0; y0 < SHORE - 2; k++) {
-    const y1 = Math.min(y0 + 5 + k, SHORE - 2);
-    for (let xs = -Math.floor(hash(k, 200) * 20), n = 0; xs < r.width; n++) {
-      const w = 14 + k * 4 + Math.floor(hash(n, 210 + k) * 24);
-      const tone = 0.15 + (k / 8) * 0.5 + (hash(n, 230 + k) - 0.5) * 0.2;
-      const puddle = hash(n, 240 + k) > 0.75;
-      const [wet, mossy] = [hash(n, 260 + k) > 0.6, hash(n, 270 + k) > 0.6];
-      const glint = xs + Math.floor(hash(n, 250 + k) * w);
-      for (let y = y0; y < y1; y++)
-        for (let x = xs; x < xs + w; x++) {
-          const grain = (hash(x >> 2, y >> 1) - 0.5) * 0.15;
-          let c = dither(ROAD, tone + grain, x, y);
-          if (y === y0 + 1 && wet && hash(x >> 2, y + k) > 0.5) c = ROAD[5]!;
-          const u = (x + 0.5 - xs - w / 2) / (w * 0.32);
-          const v = (y + 0.5 - (y0 + y1) / 2) / 1.7;
-          if (puddle && u * u + v * v < 1)
-            c = Math.abs(x - glint) < 2 && v < 0 ? 0x4a6a70 : 0x0e1820;
-          const seam = y === y0 ? hash(x >> 3, k + 280) > 0.25 : x === xs;
-          if (seam) c = mossy && hash(x >> 1, y) > 0.5 ? 0x1e3226 : ROAD[0]!;
-          r.px(x, y, c);
-        }
-      xs += w;
+  for (const course of stoneCourses({
+    top: FLOOR + 3,
+    bottom: SHORE - 2,
+    firstHeight: 5,
+  })) {
+    const { index } = course;
+    for (
+      let left = -Math.floor(hash(index, 200) * 20), column = 0;
+      left < r.width;
+      column++
+    ) {
+      const width = 14 + index * 4 + Math.floor(hash(column, 210 + index) * 24);
+      wetFlagstone(r, course, { column, left, width });
+      left += width;
     }
-    y0 = y1;
   }
   for (let i = 0; i < GRAVES.length; i += 2)
     openGrave(r, GRAVES[i]!, GRAVES[i + 1]!);
@@ -516,6 +539,11 @@ function causeway(r: Raster) {
     r.px(x, SHORE - 1, ROAD[0]!);
   }
   water(r, SHORE, VIEW_H);
+  lilyPads(r);
+}
+
+/** Floating pads below the front kerb, some with pale flowers. */
+function lilyPads(r: Raster) {
   for (let i = 0; i < r.width / 36; i++) {
     const cx = Math.floor(hash(i, 250) * r.width);
     const cy = SHORE + 2 + Math.floor(hash(i, 251) * 5);
@@ -569,56 +597,8 @@ function reeds(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [number, number, number, number, number];
-
 /** The green fires in the braziers, the last two flanking the great doors. */
 export const FIRES = BRAZIERS.map((x, i): Fire => [x - 4, 9, BANK - 17, 13, i]);
-
-const tone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-function burn(brush: Brush, fire: Fire, cam: number, t: number) {
-  const [x0, w, base, height, seed] = fire;
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const x = x0 + i - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.3 * Math.sin((x0 + i) * 0.9 + seed + t * 11);
-    const sway = 0.2 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 7);
-    const h = Math.max(1, Math.round(height * env * (0.55 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = tone(j, h, env);
-      let k = j + 1;
-      while (k < h && tone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 3; i++) {
-    const life = (t * (0.3 + hash(i, seed) * 0.3) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 7 + i) * 3;
-    const x = Math.round(x0 + w / 2 + drift) - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    brush.fillRect(x, Math.round(base - height * 0.6 - life * 30), 1, 1);
-  }
-}
-
-/** One row of world pixels from `x0` to `x1`, clipped to the screen at camera `cam`. */
-function run(brush: Brush, x0: number, x1: number, y: number, cam: number) {
-  const [from, to] = [Math.max(x0 - cam, 0), Math.min(x1 - cam, VIEW_W)];
-  if (to > from) brush.fillRect(from, y, to - from, 1);
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 /** Banks of fog drifting over the graves and the black water, thin as a dither, each swelling and fading. */
 function fog(brush: Brush, cam: number, t: number) {
@@ -634,7 +614,7 @@ function fog(brush: Brush, cam: number, t: number) {
       for (let row = -2; row <= 2; row++) {
         const a = Math.abs(row);
         for (let s = a * 12 + (row & 1); s < len - a * 12; s += a > 1 ? 4 : 2)
-          run(brush, left + s, left + s + 1, y + row, cam);
+          worldRow(brush, left + s, left + s + 1, y + row, cam);
       }
     }
 }
@@ -643,8 +623,8 @@ function fog(brush: Brush, cam: number, t: number) {
 function ring(brush: Brush, x: number, y: number, life: number, cam: number) {
   const w = 1 + Math.floor(life * 6);
   brush.fillStyle = RIPPLE[Math.min(2, Math.floor(life * 3))]!;
-  run(brush, x - w - 1, x - w + 1, y, cam);
-  run(brush, x + w, x + w + 2, y, cam);
+  worldRow(brush, x - w - 1, x - w + 1, y, cam);
+  worldRow(brush, x + w, x + w + 2, y, cam);
 }
 
 /** Rings spreading on the black water behind the causeway and in front of it. */
@@ -666,10 +646,10 @@ function drips(brush: Brush, cam: number, t: number) {
     const f = (life - 0.6) / 0.12;
     const y = top + Math.round((bottom - top) * f * f);
     brush.fillStyle = DROP;
-    if (life > 0.3 && life < 0.6) run(brush, x, x + 1, top, cam);
+    if (life > 0.3 && life < 0.6) worldRow(brush, x, x + 1, top, cam);
     else if (life >= 0.6 && life < 0.72) {
-      run(brush, x, x + 1, y - 1, cam);
-      run(brush, x, x + 1, y, cam);
+      worldRow(brush, x, x + 1, y - 1, cam);
+      worldRow(brush, x, x + 1, y, cam);
     } else if (life >= 0.72) ring(brush, x, bottom, (life - 0.72) / 0.28, cam);
   }
 }
@@ -686,7 +666,7 @@ export const DROWNED_CRYPT: StageArt = {
     const t = frame / 60;
     ripples(brush, camX, t);
     fog(brush, camX, t);
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME });
     drips(brush, camX, t);
   },
 };

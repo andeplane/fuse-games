@@ -1,9 +1,9 @@
 import type { TickContext } from "../context.js";
 import {
   INITIAL_BOUNDARY_INSET,
-  OVERTIME_INSET_PER_TICK,
   OVERTIME_START_TICK,
   RIDER_RADIUS,
+  overtimeInsetPerTick,
 } from "../../tuning.js";
 import { type PortalPair, fitPortalPair } from "../../portal.js";
 import { clipTrailSegment } from "../../trail-clipping.js";
@@ -26,7 +26,7 @@ export function fitField(ctx: TickContext): void {
   const elapsed = state.tick - (state.roundStartedTick ?? state.tick);
   state.boundaryInset =
     initialBoundaryInset(state.map, INITIAL_BOUNDARY_INSET) +
-    Math.max(0, elapsed - OVERTIME_START_TICK) * OVERTIME_INSET_PER_TICK;
+    Math.max(0, elapsed - OVERTIME_START_TICK) * overtimeInsetPerTick(state);
   // Decided once per tick: open edges carry riders, shells, bullets, bombs and blasts through to the far side.
   const open = edgesOpen(state);
   const trailBounds = portalBounds(state);

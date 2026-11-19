@@ -191,6 +191,15 @@ export function createDemoPresenceService(
       store.set({ ...signedOutSnapshot(), suspended: store.get().suspended });
     },
     refresh: () => undefined,
+    searchFriends: async (query) =>
+      [
+        ...DEMO_BUDDIES,
+        { publicId: "abcdefabcdefabcdef12", name: "Player abcdef" },
+      ]
+        .filter((card) =>
+          card.name.toLowerCase().startsWith(query.trim().toLowerCase()),
+        )
+        .map(({ publicId, name }) => ({ publicId, name })),
     async addFriend(publicId) {
       const snapshot = store.get();
       if (snapshot.account.kind !== "signed-in")

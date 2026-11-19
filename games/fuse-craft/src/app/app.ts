@@ -27,6 +27,11 @@ import {
   createTopBar,
 } from "fuse-ui";
 import { planNeuronPlacement } from "./neuron-placement.js";
+import {
+  placementPreview,
+  placementPrompt,
+  type PlacementPreview,
+} from "./placement-preview.js";
 import { minimapMarkup, minimapCell } from "../render/minimap.js";
 import { battleFocusCell } from "../render/battle-focus.js";
 import { structureArt, teamArtFilter } from "../render/art.js";
@@ -37,22 +42,30 @@ import {
   type SoundCue,
 } from "./audio.js";
 import { createAttractScene } from "./attract-scene.js";
+import { renderBoard, hexCenter, neuronPortraitUrl } from "../render/board.js";
+import type { PanDirection } from "../render/camera.js";
 import {
-  renderBoard,
-  hexCenter,
-  hexPoints,
-  structureArtwork,
-  neuronPortraitUrl,
-  type BoardAnimation,
-} from "../render/board.js";
-import type {
-  BoardCamera,
-  CameraFactory,
-  PanDirection,
-} from "../render/camera.js";
-import type { LightRenderer } from "../render/light-field.js";
+  createBattlefield,
+  type BattlefieldDependencies,
+} from "./battlefield.js";
 import { DEFAULT_MAP, ROOM_MAPS, bundledMap } from "../online/maps.js";
 import { TEAM_PALETTES } from "../render/creep.js";
+
+const INSPECTOR_LABEL: Record<CommandPanel, string> = {
+  inspect: "Selected hex",
+  build: "Selected hex",
+  particles: "Recent activity",
+  research: "Research",
+  activity: "Recent activity",
+};
+
+const COMMAND_LABEL: Record<CommandPanel, string> = {
+  inspect: "Commands",
+  build: "Build commands",
+  particles: "Commands",
+  research: "Research commands",
+  activity: "Activity commands",
+};
 
 const TEAM_COLORS = TEAM_PALETTES.map((p) => p.glow);
 /** The most networks any Versus map seats, in words for the lobby copy. */
@@ -76,18 +89,8 @@ import {
   nextStep,
   type TutorialContext,
 } from "./tutorial.js";
-import {
-  REPORT_METRICS,
-  TEAM_NAMES,
-  clock,
-  breakdownMarkup,
-  chartPanelMarkup,
-  findingsMarkup,
-  reportPlayers,
-  type ReportMetric,
-  type ReportPlayer,
-} from "./match-report.js";
-import { matchResult, resultBar, resultReport } from "./result-report.js";
+import { TEAM_NAMES, clock } from "./match-report.js";
+import { createMatchResults } from "./match-results.js";
 import { POWERUP_PRESENTATION } from "../engine/powerups.js";
 import {
   isBuildKind,
@@ -96,10 +99,7 @@ import {
   isResearchKind,
   constructionAvailability,
   constructionQueueAvailability,
-  constructionUpgradeSource,
-  CONSTRUCTIONS,
   constructionDispatchAvailability,
-  connectedFrontier,
   planSupport,
   type BuildKind,
 } from "../engine/catalog.js";
@@ -108,7 +108,6 @@ import {
   commandPageCount,
   RESEARCH_PRESENTATION,
   BUILD_PRESENTATION,
-  requirementText,
   waitingText,
   type CommandPanel,
 } from "./command-card.js";
@@ -130,6 +129,19 @@ import {
   createResultsScreen,
   createRoundControls,
 } from "fuse-ui";
+
+interface BoardArrow {
+  pan: PanDirection;
+  column: number;
+  row: number;
+}
+
+const BOARD_ARROWS = new Map<string, BoardArrow>([
+  ["ArrowLeft", { pan: "left", column: -1, row: 0 }],
+  ["ArrowRight", { pan: "right", column: 1, row: 0 }],
+  ["ArrowUp", { pan: "up", column: 0, row: -1 }],
+  ["ArrowDown", { pan: "down", column: 0, row: 1 }],
+]);
 
 const CRAFT_CONTROLS = [
   {
@@ -181,6 +193,21 @@ function units(value: number): string {
   return (value / 1000).toFixed(1);
 }
 
+function incomeText(world: Readonly<World>, playerId: string): string {
+  const income = { biomass: 0, insight: 0 };
+  for (const event of world.outcomes) {
+    if (
+      event.type === "income" &&
+      event.playerId === playerId &&
+      event.resource
+    )
+      income[event.resource] += event.amount ?? 0;
+  }
+  const perSecond = (milliunits: number) =>
+    ((milliunits * RULES.ticksPerSecond) / 1000).toFixed(1);
+  return ` · +${perSecond(income.biomass)} ◈ / s · +${perSecond(income.insight)} ◇ / s`;
+}
+
 /** Territory against the dominance bar, and the network's sprout slots. */
 function territoryChips(world: Readonly<World>, player: Player): string {
   const needed = dominanceCells(world);
@@ -200,11 +227,10 @@ function buffChips(world: Readonly<World>, player: Player): string {
     .join("");
 }
 
-export interface AppDependencies {
+export interface AppDependencies extends BattlefieldDependencies {
   maps: MapRepository;
   preferences: PreferencesStore;
   createSession: SessionFactory;
-  debug: boolean;
   /** Full-screen play, where the browser supports it. */
   fullscreen?: {
     active(): boolean;
@@ -224,63 +250,48 @@ export interface AppDependencies {
   };
   /** Draws random openings; Math.random unless a test injects one. */
   random?: () => number;
-  animationClock: () => number;
-  requestFrame: (callback: FrameRequestCallback) => number;
-  cancelFrame: (handle: number) => void;
-  sprites?: Readonly<Record<string, string>>;
-  buildingSprites?: import("../render/sprite-raster.js").BuildingSprites;
-  createCamera?: CameraFactory;
   /** Online Versus rooms; omitted where the page cannot reach the room service. */
   online?: OnlineDependencies;
   /** A room code from the page address, opened on load. */
   initialRoom?: string;
-  /** Additive GPU light over the battlefield; omitted or null renders without it. */
-  createLightRenderer?: (canvas: HTMLCanvasElement) => LightRenderer | null;
   audio?: PresentationAudio;
   forcedMute?: boolean;
   /** Input surface used for control guidance; supplied by the browser adapter. */
   touch?: boolean;
 }
 
+const actionCues = new Map<string, SoundCue | null>([
+  ["toggle-mute", null],
+  ["close-panel", "back"],
+  ["back-menu", "back"],
+  ["close-help", "back"],
+  ["cancel-placement", "back"],
+  ["cancel-confirm", "back"],
+  ["tutorial-close", "back"],
+  ["leave-room", "back"],
+  ["cancel-build", "cancel"],
+  ["cancel-research", "cancel"],
+  ["auto-expand", "toggle"],
+  ["charge", "toggle"],
+  ["fullscreen", "toggle"],
+  ["help", "panel"],
+  ["guide", "panel"],
+  ["guide-section", "panel"],
+  ["next-command-page", "panel"],
+  ["report-metric", "panel"],
+]);
+
 /**
- * The interface sound for a clicked action. A command's result (a placed
- * plan, research begun) sounds again from its match event, and `null` leaves
- * the cue to the action's own handler.
+ * The interface sound for a clicked action. A command's result can also sound
+ * from its match event. A null cue leaves sound to the handler.
  */
 export function actionCue(action: string | undefined): SoundCue | null {
   if (!action) return "select";
-  if (action.startsWith("build-") || action === "toggle-mute") return null;
-  if (
-    [
-      "close-panel",
-      "back-menu",
-      "close-help",
-      "cancel-placement",
-      "cancel-confirm",
-      "tutorial-close",
-      "leave-room",
-    ].includes(action)
-  )
-    return "back";
-  if (action === "cancel-build" || action === "cancel-research")
-    return "cancel";
-  if (
-    action === "auto-expand" ||
-    action === "charge" ||
-    action === "fullscreen" ||
-    action.startsWith("particle-")
-  )
-    return "toggle";
-  if (
-    action === "help" ||
-    action === "guide" ||
-    action === "guide-section" ||
-    action === "next-command-page" ||
-    action === "report-metric" ||
-    action.startsWith("mode-")
-  )
-    return "panel";
-  return "select";
+  if (action.startsWith("build-")) return null;
+  if (action.startsWith("particle-")) return "toggle";
+  if (action.startsWith("mode-")) return "panel";
+  const cue = actionCues.get(action);
+  return cue === undefined ? "select" : cue;
 }
 
 export function mountFuseCraft(
@@ -298,7 +309,6 @@ export function mountFuseCraft(
   let placementCell: number | null = null;
   let placementMessage = "";
   let pending: "reset" | "leave" | null = null;
-  let lightTarget: HTMLCanvasElement | null = null;
   let online: OnlineSession | null = null;
   let roomCode = "";
   let roomError: string | null = null;
@@ -309,16 +319,12 @@ export function mountFuseCraft(
   let roomJoinSlot: number | undefined;
   let roomBackground: { root: HTMLElement; stop(): void } | undefined;
   let roomQr: { code: string; url: string } | null = null;
-  let lightRenderer: LightRenderer | undefined;
   let launchError: string | null = null;
   let launching = false;
   let session: NeuralSession | null = null;
   let unsubscribe: (() => void) | null = null;
   let aborter: AbortController | null = null;
   let generation = 0;
-  let animation: BoardAnimation | null = null;
-  let camera: BoardCamera | null = null;
-  let frame: number | null = null;
   let disposed = false;
   let preferences: PresentationPreferences = dependencies.preferences.read();
   dependencies.audio?.configure(preferences);
@@ -341,19 +347,11 @@ export function mountFuseCraft(
   let tutorialError: string | null = null;
   // The control focused before How to play opened over a match.
   let helpReturn: HTMLElement | null = null;
-  // The end-of-match report: which chart it shows.
-  let reportMetric: ReportMetric = "territory";
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
-  /** The world and players the chart was drawn from, for its metric tabs. */
-  let shownReport: {
-    world: Readonly<World>;
-    players: readonly ReportPlayer[];
-  } | null = null;
   let noticeTick = -1;
   let noticeMatch = "";
   let panel: CommandPanel = "inspect";
   let commandPage = 0;
+  const battlefield = createBattlefield(root, dependencies);
   const attractScene = createAttractScene();
   const controlsOptions = {
     document: root.ownerDocument,
@@ -374,10 +372,9 @@ export function mountFuseCraft(
     goal: CRAFT_GOAL,
   };
   function menuInputChanged(open: boolean) {
-    for (const direction of Object.values(ARROWS))
-      camera?.hold(direction, false);
+    releaseCameraKeys();
     const blocked = open || !!root.ownerDocument.querySelector("dialog[open]");
-    camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
+    battlefield.camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
     if (
       !blocked &&
       screen === "game" &&
@@ -416,41 +413,7 @@ export function mountFuseCraft(
       else restart();
     },
   });
-  // Smokes and tests find the result by the old card's id.
-  results.element.id = "match-result";
-  const reportPart = (className: string) => {
-    const part = root.ownerDocument.createElement("div");
-    part.className = className;
-    return part;
-  };
-  const reportFindings = reportPart("report-part"),
-    reportChart = reportPart("report-part"),
-    reportBreakdown = reportPart("match-report");
-
-  function stopAnimation() {
-    if (frame !== null) dependencies.cancelFrame(frame);
-    frame = null;
-    animation = null;
-  }
-
-  function animate(now: number) {
-    if (disposed || screen !== "game") return;
-    animation?.animate(now);
-    updateMinimapView();
-    frame = dependencies.requestFrame(animate);
-  }
-
-  function updateMinimapView() {
-    const view = root
-      .querySelector("#nd-board")
-      ?.getAttribute("viewBox")
-      ?.split(" ");
-    const outline = root.querySelector(".minimap-view");
-    if (view && outline)
-      ["x", "y", "width", "height"].forEach((key, i) =>
-        outline.setAttribute(key, view[i]!),
-      );
-  }
+  const matchResults = createMatchResults(results, dependencies.friends);
 
   function restart() {
     if (online) {
@@ -468,8 +431,7 @@ export function mountFuseCraft(
       launch();
       return;
     }
-    camera?.dispose();
-    camera = null;
+    battlefield.resetCamera();
     placement = null;
     placementCell = null;
     panel = "inspect";
@@ -495,9 +457,7 @@ export function mountFuseCraft(
   }
 
   function disposeSession() {
-    camera?.dispose();
-    camera = null;
-    stopAnimation();
+    battlefield.stopSession();
     unsubscribe?.();
     unsubscribe = null;
     session?.dispose();
@@ -894,7 +854,7 @@ export function mountFuseCraft(
     const world = gameWorld();
     const box = minimap.getBoundingClientRect();
     if (!world || !box.width || !box.height) return;
-    camera?.focusCell(
+    battlefield.camera?.focusCell(
       world.map.width,
       minimapCell(
         world,
@@ -902,7 +862,7 @@ export function mountFuseCraft(
         (y - box.top) / box.height,
       ),
     );
-    updateMinimapView();
+    battlefield.updateMinimap();
   }
   // A press on the minimap keeps the camera on the pointer until release.
   let minimapDrag: number | null = null;
@@ -919,27 +879,34 @@ export function mountFuseCraft(
   function onPointerUp(event: PointerEvent) {
     if (event.pointerId === minimapDrag) minimapDrag = null;
   }
-  const ARROWS: Record<string, PanDirection> = {
-    ArrowLeft: "left",
-    ArrowRight: "right",
-    ArrowUp: "up",
-    ArrowDown: "down",
-  };
   function onKeyUp(event: KeyboardEvent) {
-    const direction = ARROWS[event.key];
-    if (direction) camera?.hold(direction, false);
+    const arrow = BOARD_ARROWS.get(event.key);
+    if (arrow) battlefield.camera?.hold(arrow.pan, false);
   }
+
   // Keys released while the window is in the background never arrive.
   function onFocusOut(event: FocusEvent) {
     if (event.relatedTarget) return;
-    for (const direction of Object.values(ARROWS))
-      camera?.hold(direction, false);
+    releaseCameraKeys();
+  }
+
+  function releaseCameraKeys() {
+    for (const { pan } of BOARD_ARROWS.values())
+      battlefield.camera?.hold(pan, false);
   }
 
   function sideName(world: Readonly<World>, id: string): string {
     return (
       TEAM_NAMES[world.players.find((p) => p.id === id)?.slot ?? 0] ?? "Player"
     );
+  }
+
+  function hudMarkup(resources: string, watching: boolean): string {
+    const layout = watching ? "battle-topbar watch-topbar" : "battle-topbar";
+    const debug =
+      !watching && dependencies.debug ? '<div class="debug-note"></div>' : "";
+    const restart = watching ? "Restart" : "Reset";
+    return `<div class="${layout}"><div class="resource-row">${resources}</div><div class="hud-mini"></div>${debug}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : `<button data-action="reset" class="secondary">${restart}</button>`}</div></div>`;
   }
 
   function watchMarkup(world: Readonly<World>): string {
@@ -976,72 +943,43 @@ export function mountFuseCraft(
         return `<button class="watch-player" data-watch-player="${escape(p.id)}" style="--team:${TEAM_COLORS[p.slot]}"><strong>${sideName(world, p.id)}${label ? ` · ${label}` : ""}</strong><span>Brain ${brain?.hp ?? 0} HP</span><small>${p.statistics.built} built · ${p.statistics.lost} lost</small></button>`;
       })
       .join("");
-    // Only a room's host can send it back to the lobby.
-    const restart = online
-      ? online.room().manager
-        ? '<button data-action="reset" class="secondary">Lobby</button>'
-        : ""
-      : '<button data-action="reset" class="secondary">Restart</button>';
-    return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
+    return `${hudMarkup(resources, true)}<div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
   }
 
-  function sidebarMarkup(world: Readonly<World>): string {
-    if (session && !participant(world)) return watchMarkup(world);
-    const player = world.players.find(
-      (item) => item.id === session?.localPlayerId,
-    );
-    if (!player) return '<div class="nd-panel">No local player exists.</div>';
-    const structure = world.structures.find(
-      (item) => item.cell === selectedCell,
-    );
-    const cell = selectedCell === null ? null : world.map.cells[selectedCell];
+  function connectionDetails(
+    world: Readonly<World>,
+    structure: World["structures"][number],
+  ): string {
+    let count = 0;
+    let incomingCount = 0;
+    let nextArrival = Infinity;
+    for (const particle of world.particles) {
+      if (particle.ownerId !== structure.ownerId) continue;
+      if (particle.mode === "stationed" && particle.cell === structure.cell)
+        count++;
+      if (particle.mode === "transit" && particle.to === structure.cell) {
+        incomingCount++;
+        nextArrival = Math.min(nextArrival, particle.arrivesAt);
+      }
+    }
+    return `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incomingCount ? ` · next arrival in ${Math.ceil((nextArrival - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incomingCount} incoming</span>`;
+  }
+
+  function selectionDetails(
+    world: Readonly<World>,
+    player: Player,
+    structure: World["structures"][number] | undefined,
+  ): string {
+    if (selectedCell === null)
+      return '<div class="selection-summary"><strong>Select a hex</strong><span>Click terrain to build or inspect.</span></div>';
+    const cell = world.map.cells[selectedCell];
     const owned = structure?.ownerId === player.id;
     const queued = player.queue.find((item) => item.cell === selectedCell);
-    const priority =
-      selectedCell === null
-        ? 0
-        : (player.priorities[String(selectedCell)] ?? 0);
-    const count =
-      selectedCell === null
-        ? 0
-        : world.particles.filter(
-            (p) =>
-              p.ownerId === (structure?.ownerId ?? player.id) &&
-              p.cell === selectedCell &&
-              p.mode === "stationed",
-          ).length;
-    const incoming =
-      selectedCell === null
-        ? []
-        : world.particles.filter(
-            (p) =>
-              p.ownerId === (structure?.ownerId ?? player.id) &&
-              p.to === selectedCell &&
-              p.mode === "transit",
-          );
-    const worker = player.worker;
-    const sprite = (name: string) =>
-      dependencies.sprites?.[`${name}-v2`] ?? dependencies.sprites?.[name];
-    const portrait = structure
-      ? structure.kind === "neuron"
-        ? neuronPortraitUrl(world, structure.cell)
-        : structure.kind === "spore"
-          ? sporeIconUrl(
-              world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0,
-            )
-          : sprite(structureArt(structure.kind))
-      : cell?.terrain === "deposit"
-        ? sprite(`deposit-${cell.resourceKind}`)
-        : sprite(
-            cell?.terrain === "blocked" ? "blocker-boulder" : "terrain-slate-a",
-          );
+    const priority = player.priorities[String(selectedCell)] ?? 0;
     const powerup = world.powerups.find((p) => p.cell === selectedCell);
-    const detail =
-      selectedCell === null
-        ? '<div class="selection-summary"><strong>Select a hex</strong><span>Click terrain to build or inspect.</span></div>'
-        : `<div class="selection-summary"><div class="tile-heading"><span>HEX ${selectedCell}</span><strong>${structure ? `${structure.kind.toUpperCase()} · ${structure.hp} HP` : powerup ? `POWERUP · ${POWERUP_PRESENTATION[powerup.kind].label.toUpperCase()}` : cell?.terrain === "deposit" ? `${cell.resourceKind.toUpperCase()} DEPOSIT` : cell?.terrain === "blocked" ? "BLOCKED GROUND" : "OPEN GROUND"}</strong></div>
+    return `<div class="selection-summary"><div class="tile-heading"><span>HEX ${selectedCell}</span><strong>${structure ? `${structure.kind.toUpperCase()} · ${structure.hp} HP` : powerup ? `POWERUP · ${POWERUP_PRESENTATION[powerup.kind].label.toUpperCase()}` : cell?.terrain === "deposit" ? `${cell.resourceKind.toUpperCase()} DEPOSIT` : cell?.terrain === "blocked" ? "BLOCKED GROUND" : "OPEN GROUND"}</strong></div>
         ${powerup ? `<span>${escape(POWERUP_PRESENTATION[powerup.kind].description)} Fades in ${Math.ceil((powerup.expiresAt - world.tick) / RULES.ticksPerSecond)}s. Touch it with your connected network to claim it; two networks touching it keep it contested.</span>` : ""}
-        ${structure ? `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incoming.length ? ` · next arrival in ${Math.ceil((Math.min(...incoming.map((p) => p.arrivesAt)) - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incoming.length} incoming</span>` : ""}
+        ${structure ? connectionDetails(world, structure) : ""}
         ${cell?.terrain === "deposit" ? '<span title="Connected neighboring structures harvest this deposit. Several players may share it.">Expand alongside to mine.</span>' : ""}</div>
         ${owned && canAttack(structure.kind) ? `${priority === 0 && structure.kind !== "brain" ? '<span class="supply-warning">No supply assigned — use D / Charge to arm this node.</span>' : ""}<div class="priority-control"><label class="field-label" for="priority-slider">Attack priority · ${priority}/3</label><input id="priority-slider" data-field="priority" type="range" min="0" max="3" step="1" value="${priority}"></div>` : ""}
         ${structure && STRUCTURES[structure.kind].miningBonus ? `<span class="economic-summary" title="One specialist bonus per deposit per player. Requires a connection to the brain. No attack supply needed.">${structure.connected ? "Extracting" : "Extraction paused"} · +${STRUCTURES[structure.kind].miningBonus} shares/deposit · non-stacking</span>` : ""}
@@ -1060,12 +998,65 @@ export function mountFuseCraft(
               }</span>`
             : ""
         }`;
-    const researchNames = Object.fromEntries(
-      Object.entries(RESEARCH_PRESENTATION).map(([id, item]) => [
-        id,
-        item.label,
-      ]),
+  }
+
+  function panelDetails(
+    world: Readonly<World>,
+    player: Player,
+    structure: World["structures"][number] | undefined,
+    preview: PlacementPreview | null,
+  ): string {
+    if (placement)
+      return `<div class="placement-instructions" role="status"><strong>${preview?.upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage || preview?.hint || placementPrompt(placement, preview))}</small></div>`;
+    switch (panel) {
+      case "inspect":
+      case "build":
+        return `${selectionDetails(world, player, structure)}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(player.worker.mode)}</span>`;
+      case "particles":
+        return `<div class="command-context"><strong>Particle profile · ${escape(player.particleKind)}</strong><p>Refit at the brain</p><small>Existing particles change on return or departure. Your finite pool stays the same size.</small></div>`;
+      case "research":
+        return `<div class="command-context"><strong>Research</strong><p>${player.researchJob ? `${RESEARCH_PRESENTATION[player.researchJob.kind].label} · researching` : "Choose an upgrade"}</p><small>${player.research.length ? `Complete: ${player.research.map((r) => RESEARCH_PRESENTATION[r].label).join(", ")}` : "Hover or focus a command for its requirements."}</small></div>`;
+      case "activity": {
+        const outcomes = notices
+          .filter((item) => item.playerId === player.id)
+          .slice(-3)
+          .map(
+            (item) =>
+              `<li>${escape(item.type)}${item.reason ? ` · ${escape(item.reason)}` : ""}${item.cell !== undefined ? ` at hex ${item.cell}` : ""}</li>`,
+          )
+          .join("");
+        return `<div class="command-context"><strong>Recent activity</strong><ul class="event-list" aria-live="polite">${outcomes || "<li>No recent activity.</li>"}</ul></div>`;
+      }
+    }
+  }
+
+  function sidebarMarkup(
+    world: Readonly<World>,
+    player: Player | undefined,
+    watching: boolean,
+    preview: PlacementPreview | null,
+  ): string {
+    if (watching) return watchMarkup(world);
+    if (!player) return '<div class="nd-panel">No local player exists.</div>';
+    const structure = world.structures.find(
+      (item) => item.cell === selectedCell,
     );
+    const cell = selectedCell === null ? null : world.map.cells[selectedCell];
+    const sprite = (name: string) =>
+      dependencies.sprites?.[`${name}-v2`] ?? dependencies.sprites?.[name];
+    const portrait = structure
+      ? structure.kind === "neuron"
+        ? neuronPortraitUrl(world, structure.cell)
+        : structure.kind === "spore"
+          ? sporeIconUrl(
+              world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0,
+            )
+          : sprite(structureArt(structure.kind))
+      : cell?.terrain === "deposit"
+        ? sprite(`deposit-${cell.resourceKind}`)
+        : sprite(
+            cell?.terrain === "blocked" ? "blocker-boulder" : "terrain-slate-a",
+          );
     const commands = renderCommands(
       world,
       player,
@@ -1075,50 +1066,10 @@ export function mountFuseCraft(
       dependencies.sprites,
       placement,
     );
-    const outcomes = notices
-      .filter((item) => item.playerId === player.id)
-      .slice(-3)
-      .map(
-        (item) =>
-          `<li>${escape(item.type)}${item.reason ? ` · ${escape(item.reason)}` : ""}${item.cell !== undefined ? ` at hex ${item.cell}` : ""}</li>`,
-      )
-      .join("");
-    const placementRequirements =
-      placement && placementCell !== null
-        ? constructionQueueAvailability(world, player, placement, placementCell)
-        : null;
-    const placementHints =
-      placementRequirements?.allowed && placement && placementCell !== null
-        ? constructionDispatchAvailability(world, player, {
-            kind: placement,
-            cell: placementCell,
-            upgradeFrom: constructionUpgradeSource(
-              world,
-              player,
-              placement,
-              placementCell,
-            )?.id,
-          }).missing
-        : (placementRequirements?.missing ?? []);
-    const upgrading =
-      placement &&
-      placementCell !== null &&
-      constructionUpgradeSource(world, player, placement, placementCell);
-    const neuronPlan =
-      placement === "neuron" && placementCell !== null
-        ? planNeuronPlacement(world, player, placementCell)
-        : null;
-    const contextDetail = placement
-      ? `<div class="placement-instructions" role="status"><strong>${upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage) || escape(neuronPlan?.hint ?? "") || (placementRequirements?.allowed && placement && placementCell !== null ? waitingText(placementHints, planSupport(world, player, { cell: placementCell, kind: placement }).get(placementCell)) : placementHints.map(requirementText)).map(escape).join(" ") || (upgrading ? "Neuron stays connected during work. Damage carries over." : CONSTRUCTIONS[placement].upgradesFrom?.length ? "Choose open ground or upgrade your neuron." : "Click or tap open ground.")}</small></div>`
-      : panel === "inspect" || panel === "build"
-        ? `${detail}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(worker.mode)}</span>`
-        : panel === "particles"
-          ? `<div class="command-context"><strong>Particle profile · ${escape(player.particleKind)}</strong><p>Refit at the brain</p><small>Existing particles change on return or departure. Your finite pool stays the same size.</small></div>`
-          : panel === "research"
-            ? `<div class="command-context"><strong>Research</strong><p>${player.researchJob ? `${researchNames[player.researchJob.kind]} · researching` : "Choose an upgrade"}</p><small>${player.research.length ? `Complete: ${player.research.map((r) => researchNames[r]).join(", ")}` : "Hover or focus a command for its requirements."}</small></div>`
-            : `<div class="command-context"><strong>Recent activity</strong><ul class="event-list" aria-live="polite">${outcomes || "<li>No recent activity.</li>"}</ul></div>`;
-    return `<div class="battle-topbar"><div class="resource-row"><div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}</div><div class="hud-mini"></div>${dependencies.debug ? '<div class="debug-note"></div>' : ""}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : '<button data-action="reset" class="secondary">Reset</button>'}</div></div>
-      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${panel === "inspect" || panel === "build" ? "Selected hex" : panel === "research" ? "Research" : "Recent activity"}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${panel === "research" ? "Research commands" : panel === "build" ? "Build commands" : panel === "activity" ? "Activity commands" : "Commands"}">${commands}</nav></div>`;
+    const contextDetail = panelDetails(world, player, structure, preview);
+    const resources = `<div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}`;
+    return `${hudMarkup(resources, false)}
+      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${INSPECTOR_LABEL[panel]}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${COMMAND_LABEL[panel]}">${commands}</nav></div>`;
   }
 
   function renderGame() {
@@ -1144,68 +1095,24 @@ export function mountFuseCraft(
     const svg = root.querySelector<SVGSVGElement>("#nd-board");
     const sidebar = root.querySelector<HTMLElement>("#game-sidebar");
     if (!svg || !sidebar) return;
-    if (!world.finished) {
-      if (results.open) results.hide();
-      shownResult = "";
-      shownReport = null;
-    } else {
-      const layout = root.querySelector(".game-layout");
-      if (layout && results.element.parentElement !== layout)
-        layout.append(results.element);
-      const room = online?.room();
-      const players = reportPlayers(
-        world,
+    if (world.finished) {
+      matchResults.show(root.querySelector(".game-layout"), world, {
         self,
-        (id) => room?.seats.find((seat) => seat.id === id)?.name,
-      );
-      const result = matchResult(world, players, {
-        self,
-        bot: (id) =>
-          room ? !!room.seats.find((seat) => seat.id === id)?.bot : id !== self,
+        room: online?.room(),
         openings: new Map(
           [...aiOpenings(world)].map(([id, kind]) => [id, OPENINGS[kind].name]),
         ),
-        room: room ? { host: room.manager } : null,
       });
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        world.matchId,
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) =>
-          dependencies.friends?.publicIdOfMember(row.id),
-        ),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        shownReport = { world, players };
-        updateContent(reportFindings, findingsMarkup(world, players, self));
-        updateContent(
-          reportChart,
-          chartPanelMarkup(world, players, reportMetric),
-        );
-        updateContent(reportBreakdown, breakdownMarkup(world, players));
-        results.show(
-          resultReport(result, {
-            friend: (id) => {
-              const publicId = dependencies.friends?.publicIdOfMember(id);
-              return publicId
-                ? dependencies.friends?.friendButton(publicId)
-                : undefined;
-            },
-            findings: [reportFindings],
-            chart: [reportChart],
-            breakdown: [reportBreakdown],
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus?.();
-    }
-    updateContent(sidebar, sidebarMarkup(world));
+    } else matchResults.clear();
+    const owner = world.players.find((p) => p.id === session?.localPlayerId);
+    const preview =
+      owner && placement && placementCell !== null
+        ? placementPreview(world, owner, placement, placementCell)
+        : null;
+    updateContent(
+      sidebar,
+      sidebarMarkup(world, owner, !!session && !playing, preview),
+    );
     gameMenu.update({
       canLobby: !!online?.room().manager,
       spectator: !playing,
@@ -1223,123 +1130,19 @@ export function mountFuseCraft(
     renderCoach(world);
     renderDominance(world);
     const rate = sidebar.querySelector<HTMLElement>(".hud-mini");
-    const income = (resource: "biomass" | "insight") =>
-      (world.outcomes
-        .filter(
-          (e) =>
-            e.type === "income" &&
-            e.playerId === session?.localPlayerId &&
-            e.resource === resource,
-        )
-        .reduce((sum, e) => sum + (e.amount ?? 0), 0) *
-        20) /
-      1000;
     if (rate)
-      rate.textContent = `${Math.floor(world.tick / RULES.ticksPerSecond / 60)}:${String(Math.floor(world.tick / RULES.ticksPerSecond) % 60).padStart(2, "0")}${playing ? ` · +${income("biomass").toFixed(1)} ◈ / s · +${income("insight").toFixed(1)} ◇ / s` : online ? " · Spectating" : " · AI vs AI"}`;
+      rate.textContent = `${clock(world.tick)}${self !== null ? incomeText(world, self) : online ? " · Spectating" : " · AI vs AI"}`;
     const debugNote = sidebar.querySelector<HTMLElement>(".debug-note");
     if (debugNote)
       debugNote.textContent = `DEBUG · grid${world.settings.instantConstruction ? " · instant build" : ""}${world.settings.instantResearch ? " · instant research" : ""} · normal travel`;
-    const lightCanvas = root.querySelector<HTMLCanvasElement>("#nd-light");
-    if (lightCanvas !== lightTarget) {
-      lightTarget = lightCanvas;
-      lightRenderer?.destroy?.();
-      lightRenderer =
-        (lightCanvas && dependencies.createLightRenderer?.(lightCanvas)) ??
-        undefined;
-    }
-    animation = renderBoard(
-      svg,
-      world,
+    battlefield.update(svg, world, {
+      owner,
       selectedCell,
-      dependencies.debug,
-      preferences.reducedMotion,
-      dependencies.animationClock(),
-      dependencies.sprites,
-      dependencies.buildingSprites,
-      lightRenderer,
-    );
-    let preview = svg.querySelector<SVGGElement>(".placement-preview");
-    if (!preview) {
-      preview = svg.ownerDocument.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "g",
-      );
-      preview.setAttribute("class", "placement-preview");
-      preview.setAttribute("pointer-events", "none");
-      svg.append(preview);
-    }
-    const owner = world.players.find((p) => p.id === session?.localPlayerId);
-    root.classList.toggle("is-placing", placement !== null);
-    // The brain's artwork covers the hexes around it, so the hex that looks
-    // beside the core can be two steps away. Outline the hexes that touch the
-    // connected network: a plan there starts at once.
-    const frontier =
-      placement && owner
-        ? `<g class="placement-frontier">${connectedFrontier(
-            world,
-            owner,
-            placement,
-          )
-            .map(
-              (cell) =>
-                `<polygon data-cell="${cell}" points="${hexPoints(world.map.width, cell, 4)}"/>`,
-            )
-            .join("")}</g>`
-        : "";
-    if (placement && placementCell !== null && owner) {
-      const plan =
-        placement === "neuron"
-          ? planNeuronPlacement(world, owner, placementCell)
-          : null;
-      const valid =
-        constructionQueueAvailability(world, owner, placement, placementCell)
-          .allowed &&
-        (!plan || plan.cells.length > 0);
-      preview.setAttribute("data-valid", String(valid));
-      preview.setAttribute(
-        "data-support",
-        plan?.hint && plan.cells.length > 0
-          ? "chained"
-          : (planSupport(world, owner, {
-              cell: placementCell,
-              kind: placement,
-            }).get(placementCell) ?? "connected"),
-      );
-      preview.setAttribute(
-        "data-upgrade",
-        String(
-          !!constructionUpgradeSource(world, owner, placement, placementCell),
-        ),
-      );
-      const artwork = `<g opacity="0.55">${structureArtwork(world.map.width, placementCell, placement, owner.slot, dependencies.sprites)}</g>`;
-      const bridge =
-        plan?.cells
-          .slice(0, -1)
-          .map(
-            (cell) =>
-              `<polygon class="placement-bridge" data-cell="${cell}" points="${hexPoints(world.map.width, cell, 1.5)}"/>`,
-          )
-          .join("") ?? "";
-      preview.innerHTML = `${frontier}${bridge}<polygon points="${hexPoints(world.map.width, placementCell, 1.5)}"/>${artwork}`;
-    } else {
-      if (frontier) preview.innerHTML = frontier;
-      else preview.replaceChildren();
-      preview.removeAttribute("data-valid");
-      preview.removeAttribute("data-support");
-      preview.removeAttribute("data-upgrade");
-    }
-    const viewport = root.querySelector<HTMLElement>("#nd-viewport");
-    if (!camera && viewport && dependencies.createCamera) {
-      camera = dependencies.createCamera(svg, viewport);
-      camera.setEdgeScroll(preferences.edgeScroll);
-      const player = world.players.find((p) => p.id === session?.localPlayerId);
-      const brain = world.structures.find(
-        (s) => s.ownerId === player?.id && s.kind === "brain",
-      );
-      if (brain) camera.focusCell(world.map.width, brain.cell);
-      svg.focus?.({ preventScroll: true });
-    }
-    camera?.refresh();
+      placement,
+      preview,
+      reducedMotion: preferences.reducedMotion,
+      edgeScroll: preferences.edgeScroll,
+    });
   }
 
   function multiplayerMarkup(): string {
@@ -1449,8 +1252,6 @@ export function mountFuseCraft(
     }
     if (screen === "game" && (!playing || room.closed)) {
       gameMenu.close();
-      camera?.dispose();
-      camera = null;
       pending = null;
       helpOpen = false;
       screen = "room";
@@ -1518,36 +1319,41 @@ export function mountFuseCraft(
     openRoom(code);
   }
 
+  const screenMarkup: Record<Screen, () => string> = {
+    menu: menuMarkup,
+    setup: setupMarkup,
+    multiplayer: multiplayerMarkup,
+    guide: guideScreenMarkup,
+    room: roomMarkup,
+    game: gameMarkup,
+  };
+
+  function renderBattlefield(modalHost: ParentNode) {
+    renderGame();
+    battlefield.start();
+    focusModal(modalHost);
+  }
+
+  function unmountBattlefield() {
+    battlefield.unmount();
+    matchResults.clear();
+  }
+
   function render() {
     if (disposed) return;
-    const battlefield = root.querySelector<HTMLElement>(".game-layout");
+    const layout = root.querySelector<HTMLElement>(".game-layout");
     const modalHost = root.querySelector<HTMLElement>("#game-modal");
-    if (screen === "game" && battlefield && modalHost) {
-      battlefield.toggleAttribute("inert", pending !== null || helpOpen);
+    if (screen === "game" && layout && modalHost) {
+      layout.toggleAttribute("inert", pending !== null || helpOpen);
       modalHost.innerHTML = modal();
-      renderGame();
-      // A relaunch from the battlefield disposed the old session's loop.
-      frame ??= dependencies.requestFrame(animate);
-      focusModal(modalHost);
+      renderBattlefield(modalHost);
       return;
     }
-    camera?.dispose();
-    camera = null;
+    unmountBattlefield();
     root.className = `fui-app nd-app screen-${screen}`;
     roomBackground?.stop();
     roomBackground = undefined;
-    root.innerHTML =
-      screen === "menu"
-        ? menuMarkup()
-        : screen === "setup"
-          ? setupMarkup()
-          : screen === "multiplayer"
-            ? multiplayerMarkup()
-            : screen === "guide"
-              ? guideScreenMarkup()
-              : screen === "room"
-                ? roomMarkup()
-                : gameMarkup();
+    root.innerHTML = screenMarkup[screen]();
     decorate();
     if (screen === "menu") {
       const play = root.querySelector<HTMLElement>(".menu-layout")!;
@@ -1603,12 +1409,7 @@ export function mountFuseCraft(
           dependencies.buildingSprites,
         );
     }
-    if (screen === "game") {
-      stopAnimation();
-      renderGame();
-      frame = dependencies.requestFrame(animate);
-      focusModal(root);
-    }
+    if (screen === "game") renderBattlefield(root);
   }
 
   /** Fuse styling and the app portal, after the page markup is replaced or reconciled. */
@@ -1734,6 +1535,336 @@ export function mountFuseCraft(
       ?.focus?.();
   }
 
+  function switchPanel(next: string) {
+    placement = null;
+    placementCell = null;
+    switch (next) {
+      case "inspect":
+      case "build":
+      case "research":
+      case "activity":
+      case "particles":
+        panel = panel === next ? "inspect" : next;
+    }
+    dependencies.audio?.play(panel === "inspect" ? "back" : "panel");
+    commandPage = 0;
+    renderGame();
+    if (panel !== "inspect")
+      root
+        .querySelector<HTMLButtonElement>(
+          '.command-card [data-action="close-panel"]',
+        )
+        ?.focus?.();
+  }
+
+  function setupFromMenu() {
+    screen = "setup";
+    mode = "skirmish";
+    selectedId = DEFAULT_MAP;
+    void loadCatalog();
+  }
+
+  function chooseMode(next: GameMode, mapId: string) {
+    mode = next;
+    void loadSelectedMap(mapId);
+  }
+
+  const slotAt = (target: Element): number =>
+    Number(target.closest<HTMLElement>("[data-slot]")?.dataset.slot);
+
+  function takeSlot(target: Element) {
+    if (!online) return;
+    playerName = dependencies.online?.savedName() || playerName;
+    roomJoinSlot = slotAt(target);
+    const name = playerName.trim();
+    if (name) online.join(name, roomJoinSlot);
+    else {
+      root.querySelector<HTMLDialogElement>("[data-room-name]")?.showModal();
+      root.querySelector<HTMLInputElement>("#player-name")?.focus();
+    }
+  }
+
+  function moveSlot(target: Element) {
+    if (!online) return;
+    const room = online.room();
+    const own = room.seats.find(
+      (seat) => seat.id === room.self && !seat.watcher,
+    );
+    const slot = slotAt(target);
+    if (own && Number.isInteger(slot)) online.join(own.name, slot);
+  }
+
+  function closeRoomName() {
+    root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
+  }
+
+  function confirmSeat() {
+    if (!online) return;
+    const name = playerName.trim();
+    if (!name) return;
+    dependencies.online?.saveName(name);
+    online.join(name, roomJoinSlot);
+    closeRoomName();
+  }
+
+  function changeReportMetric(target: Element) {
+    matchResults.selectMetric(
+      target.closest<HTMLElement>("[data-metric]")?.dataset.metric,
+    );
+  }
+
+  function renderAndFocusBoard() {
+    renderGame();
+    root
+      .querySelector<SVGSVGElement>("#nd-board")
+      ?.focus?.({ preventScroll: true });
+  }
+
+  function beginPlacement(kind: string) {
+    const owner = session
+      ?.view()
+      .players.find((p) => p.id === session?.localPlayerId);
+    if (
+      !isBuildKind(kind) ||
+      !owner ||
+      !constructionAvailability(owner, kind).allowed
+    ) {
+      dependencies.audio?.play("invalid");
+      return;
+    }
+    dependencies.audio?.play("panel");
+    placement = kind;
+    placementCell = null;
+    renderAndFocusBoard();
+  }
+
+  function selectedOwnStructure() {
+    if (!session || selectedCell === null) return;
+    const world = session.view();
+    const owner = world.players.find((p) => p.id === session?.localPlayerId);
+    if (!owner) return;
+    const structure = world.structures.find(
+      (s) => s.cell === selectedCell && s.ownerId === owner.id,
+    );
+    if (structure) return { owner, structure };
+  }
+
+  function askToExit(next: "reset" | "leave") {
+    if (session?.view().finished) {
+      if (next === "reset") restart();
+      else showMenu();
+      return;
+    }
+    pending = next;
+    render();
+  }
+
+  const clickActions = new Map<string, (target: Element) => void>([
+    // Setup, tutorial, and navigation.
+    [
+      "guide",
+      () => {
+        screen = "guide";
+        render();
+      },
+    ],
+    [
+      "guide-section",
+      (target) => {
+        const section =
+          target.closest<HTMLElement>("[data-section]")?.dataset.section;
+        if (isGuideSection(section)) guideSection = section;
+        render();
+      },
+    ],
+    ["help", openHelp],
+    ["close-help", closeHelp],
+    ["fullscreen", () => dependencies.fullscreen?.toggle()],
+    ["tutorial", () => void startTutorial()],
+    [
+      "tutorial-next",
+      () => {
+        if (!tutorial) return;
+        tutorial = {
+          step: Math.min(tutorial.step + 1, TUTORIAL_STEPS.length - 1),
+        };
+        renderGame();
+      },
+    ],
+    [
+      "tutorial-close",
+      () => {
+        tutorial = null;
+        renderGame();
+      },
+    ],
+    [
+      "tutorial-play",
+      () => {
+        tutorial = null;
+        disposeSession();
+        aiStrategy = "economy";
+        setupFromMenu();
+      },
+    ],
+    ["new-game", setupFromMenu],
+    ["back-menu", showMenu],
+    ["retry-catalog", () => void loadCatalog()],
+    [
+      "retry-map",
+      () => {
+        if (selectedId) void loadSelectedMap(selectedId);
+      },
+    ],
+    ["mode-sandbox", () => chooseMode("sandbox", "sandbox-12")],
+    ["mode-combat-lab", () => chooseMode("combat-lab", "combat-lab-12")],
+    ["mode-skirmish", () => chooseMode("skirmish", DEFAULT_MAP)],
+    ["mode-watch", () => chooseMode("watch", DEFAULT_MAP)],
+    ["start", launch],
+
+    // Room seats and lifecycle.
+    [
+      "multiplayer",
+      () => {
+        roomError = null;
+        screen = "multiplayer";
+        render();
+      },
+    ],
+    ["create-room", () => void createRoom()],
+    ["join-room", joinRoom],
+    ["take-slot", takeSlot],
+    ["move-slot", moveSlot],
+    ["close-room-name", closeRoomName],
+    ["join-seat", confirmSeat],
+    ["add-bot", (target) => online?.addBot(slotAt(target))],
+    [
+      "remove-bot",
+      (target) => {
+        const id = target.closest<HTMLElement>("[data-bot-id]")?.dataset.botId;
+        if (id) online?.removeBot(id);
+      },
+    ],
+    ["start-room", () => online?.start()],
+    ["rematch-room", () => online?.rematch()],
+    ["lobby-room", () => online?.lobby()],
+    ["leave-room", showMenu],
+    ["invite-friends", () => dependencies.friends?.open?.()],
+    [
+      "copy-room-link",
+      () => {
+        if (!online) return;
+        const link = dependencies.online?.roomLink(online.code) ?? "";
+        void navigator.clipboard?.writeText(link).catch(() => {});
+      },
+    ],
+
+    // Board and match controls.
+    ["close-panel", closePanel],
+    [
+      "next-command-page",
+      () => {
+        commandPage = (commandPage + 1) % commandPageCount(panel);
+        renderGame();
+      },
+    ],
+    [
+      "cancel-placement",
+      () => {
+        placement = null;
+        placementCell = null;
+        renderAndFocusBoard();
+      },
+    ],
+    [
+      "auto-expand",
+      () => {
+        const selected = selectedOwnStructure();
+        if (selected?.structure.kind === "brain")
+          dispatch({
+            type: "setAutoExpand",
+            enabled: !selected.owner.autoExpand,
+          });
+      },
+    ],
+    [
+      "charge",
+      () => {
+        const selected = selectedOwnStructure();
+        if (!selected) return;
+        const cell = selected.structure.cell;
+        dispatch({
+          type: "setPriority",
+          cell,
+          weight: selected.owner.priorities[cell] === 3 ? 0 : 3,
+        });
+      },
+    ],
+    [
+      "cancel-build",
+      () => {
+        if (selectedCell !== null)
+          dispatch({ type: "cancelConstruction", cell: selectedCell });
+      },
+    ],
+    ["cancel-research", () => dispatch({ type: "cancelResearch" })],
+    ["reset", () => askToExit("reset")],
+    ["leave", () => askToExit("leave")],
+    [
+      "cancel-confirm",
+      () => {
+        pending = null;
+        render();
+      },
+    ],
+    ["confirm-reset", restart],
+    ["confirm-leave", showMenu],
+    ["report-metric", changeReportMetric],
+  ]);
+
+  function onActionClick(button: HTMLElement, target: Element) {
+    const action = button.dataset.action;
+    if (action === "open-room-settings" || action === "close-room-settings") {
+      const settings = root.querySelector<HTMLDialogElement>(
+        "[data-room-settings]",
+      );
+      if (action === "open-room-settings") settings?.showModal();
+      else settings?.close();
+      return;
+    }
+    if (button.getAttribute("aria-disabled") === "true") {
+      dependencies.audio?.play("invalid");
+      button.focus?.();
+      return;
+    }
+    if (action?.startsWith("panel-")) {
+      switchPanel(action.slice(6));
+      return;
+    }
+    const cue = actionCue(action);
+    if (cue) dependencies.audio?.play(cue);
+    if (action?.startsWith("build-")) beginPlacement(action.slice(6));
+    else if (action?.startsWith("particle-")) {
+      const kind = action.slice(9);
+      if (kind === "pulse" || kind === "heavy" || kind === "swift")
+        dispatch({ type: "setParticleKind", kind });
+    } else if (action?.startsWith("research-")) {
+      const research = action.slice(9);
+      if (isResearchKind(research))
+        dispatch({ type: "startResearch", research });
+    } else if (action) clickActions.get(action)?.(target);
+  }
+
+  function focusWatchedCell(
+    world: Readonly<World>,
+    cell: number | null | undefined,
+  ) {
+    if (cell === null || cell === undefined) return;
+    selectedCell = cell;
+    battlefield.camera?.focusCell(world.map.width, cell);
+    renderGame();
+  }
+
   function onClick(event: MouseEvent) {
     if (playtestInputBlocked(root.ownerDocument)) return;
     dependencies.audio?.unlock();
@@ -1747,12 +1878,7 @@ export function mountFuseCraft(
       !pending
     ) {
       const world = session.view();
-      const cell = battleFocusCell(world);
-      if (cell !== null) {
-        selectedCell = cell;
-        camera?.focusCell(world.map.width, cell);
-        renderGame();
-      }
+      focusWatchedCell(world, battleFocusCell(world));
       return;
     }
     if (watchedId && session && !session.canControl && !pending) {
@@ -1763,11 +1889,7 @@ export function mountFuseCraft(
           (s) => s.ownerId === watchedId && s.kind === "brain",
         )?.cell ??
         world.map.spawns.find((s) => s.slot === player?.slot)?.cellIndex;
-      if (cell !== undefined) {
-        selectedCell = cell;
-        camera?.focusCell(world.map.width, cell);
-        renderGame();
-      }
+      focusWatchedCell(world, cell);
       return;
     }
     const tactical = target.closest<SVGSVGElement>("#nd-minimap");
@@ -1776,275 +1898,17 @@ export function mountFuseCraft(
       return;
     }
     const button = target.closest<HTMLElement>("[data-action]");
-    if (button?.dataset.action === "open-room-settings") {
-      root
-        .querySelector<HTMLDialogElement>("[data-room-settings]")
-        ?.showModal();
+    if (button) return onActionClick(button, target);
+    if (screen !== "game") return;
+    const tile = target.closest<SVGElement>("[data-cell]");
+    if (!tile) return;
+    selectedCell = Number(tile.dataset.cell);
+    if (placement) {
+      placeAt(selectedCell, event.shiftKey);
       return;
     }
-    if (button?.dataset.action === "close-room-settings") {
-      root.querySelector<HTMLDialogElement>("[data-room-settings]")?.close();
-      return;
-    }
-    if (button?.getAttribute("aria-disabled") === "true") {
-      dependencies.audio?.play("invalid");
-      button.focus?.();
-      return;
-    }
-    if (button?.dataset.action?.startsWith("panel-")) {
-      placement = null;
-      placementCell = null;
-      const next = button.dataset.action.slice(6);
-      if (
-        next === "inspect" ||
-        next === "build" ||
-        next === "research" ||
-        next === "activity" ||
-        next === "particles"
-      )
-        panel = panel === next ? "inspect" : next;
-      dependencies.audio?.play(panel === "inspect" ? "back" : "panel");
-      commandPage = 0;
-      renderGame();
-      if (panel !== "inspect") {
-        root
-          .querySelector<HTMLButtonElement>(
-            '.command-card [data-action="close-panel"]',
-          )
-          ?.focus?.();
-      }
-      return;
-    }
-    if (button) {
-      const action = button.dataset.action;
-      const cue = actionCue(action);
-      if (cue) dependencies.audio?.play(cue);
-      if (action === "close-panel") {
-        closePanel();
-      } else if (action === "next-command-page") {
-        commandPage = (commandPage + 1) % commandPageCount(panel);
-        renderGame();
-      } else if (action === "guide") {
-        screen = "guide";
-        render();
-      } else if (action === "guide-section") {
-        const section =
-          target.closest<HTMLElement>("[data-section]")?.dataset.section;
-        if (isGuideSection(section)) guideSection = section;
-        render();
-      } else if (action === "fullscreen") {
-        dependencies.fullscreen?.toggle();
-      } else if (action === "help") openHelp();
-      else if (action === "close-help") closeHelp();
-      else if (action === "tutorial") void startTutorial();
-      else if (action === "tutorial-next" && tutorial) {
-        tutorial = {
-          step: Math.min(tutorial.step + 1, TUTORIAL_STEPS.length - 1),
-        };
-        renderGame();
-      } else if (action === "tutorial-close") {
-        tutorial = null;
-        renderGame();
-      } else if (action === "tutorial-play") {
-        tutorial = null;
-        disposeSession();
-        screen = "setup";
-        mode = "skirmish";
-        aiStrategy = "economy";
-        selectedId = DEFAULT_MAP;
-        void loadCatalog();
-      } else if (action === "new-game") {
-        screen = "setup";
-        mode = "skirmish";
-        selectedId = DEFAULT_MAP;
-        void loadCatalog();
-      } else if (action === "multiplayer") {
-        roomError = null;
-        screen = "multiplayer";
-        render();
-      } else if (action === "create-room") void createRoom();
-      else if (action === "join-room") joinRoom();
-      else if (action === "take-slot" && online) {
-        playerName = dependencies.online?.savedName() || playerName;
-        roomJoinSlot = Number(
-          target.closest<HTMLElement>("[data-slot]")?.dataset.slot,
-        );
-        if (playerName.trim()) online.join(playerName.trim(), roomJoinSlot);
-        else {
-          root
-            .querySelector<HTMLDialogElement>("[data-room-name]")
-            ?.showModal();
-          root.querySelector<HTMLInputElement>("#player-name")?.focus();
-        }
-      } else if (action === "move-slot" && online) {
-        const room = online.room();
-        const own = room.seats.find(
-          (seat) => seat.id === room.self && !seat.watcher,
-        );
-        const slot = Number(
-          target.closest<HTMLElement>("[data-slot]")?.dataset.slot,
-        );
-        if (own && Number.isInteger(slot)) online.join(own.name, slot);
-      } else if (action === "close-room-name")
-        root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
-      else if (action === "join-seat" && online) {
-        const name = playerName.trim();
-        if (name) {
-          dependencies.online?.saveName(name);
-          online.join(name, roomJoinSlot);
-          root.querySelector<HTMLDialogElement>("[data-room-name]")?.close();
-        }
-      } else if (action === "add-bot")
-        online?.addBot(
-          Number(target.closest<HTMLElement>("[data-slot]")?.dataset.slot),
-        );
-      else if (action === "remove-bot") {
-        const id = target.closest<HTMLElement>("[data-bot-id]")?.dataset.botId;
-        if (id) online?.removeBot(id);
-      } else if (action === "start-room") online?.start();
-      else if (action === "rematch-room") online?.rematch();
-      else if (action === "report-metric") {
-        const metric =
-          target.closest<HTMLElement>("[data-metric]")?.dataset.metric;
-        const chosen = REPORT_METRICS.find((m) => m.id === metric);
-        if (chosen) reportMetric = chosen.id;
-        if (shownReport)
-          updateContent(
-            reportChart,
-            chartPanelMarkup(
-              shownReport.world,
-              shownReport.players,
-              reportMetric,
-            ),
-          );
-      } else if (action === "lobby-room") online?.lobby();
-      else if (action === "leave-room") showMenu();
-      else if (action === "invite-friends") dependencies.friends?.open?.();
-      else if (action === "copy-room-link" && online) {
-        const link = dependencies.online?.roomLink(online.code) ?? "";
-        void navigator.clipboard?.writeText(link).catch(() => {});
-      } else if (action === "back-menu") showMenu();
-      else if (action === "retry-catalog") void loadCatalog();
-      else if (action === "retry-map" && selectedId)
-        void loadSelectedMap(selectedId);
-      else if (
-        action === "mode-sandbox" ||
-        action === "mode-combat-lab" ||
-        action === "mode-skirmish" ||
-        action === "mode-watch"
-      ) {
-        mode =
-          action === "mode-watch"
-            ? "watch"
-            : action === "mode-skirmish"
-              ? "skirmish"
-              : action === "mode-sandbox"
-                ? "sandbox"
-                : "combat-lab";
-        const id =
-          mode === "skirmish" || mode === "watch"
-            ? DEFAULT_MAP
-            : mode === "sandbox"
-              ? "sandbox-12"
-              : "combat-lab-12";
-        void loadSelectedMap(id);
-      } else if (action === "start") launch();
-      else if (action?.startsWith("build-")) {
-        const kind = action.slice(6);
-        const owner = session
-          ?.view()
-          .players.find((p) => p.id === session?.localPlayerId);
-        if (
-          isBuildKind(kind) &&
-          owner &&
-          constructionAvailability(owner, kind).allowed
-        ) {
-          dependencies.audio?.play("panel");
-          placement = kind;
-          placementCell = null;
-          renderGame();
-          root
-            .querySelector<SVGSVGElement>("#nd-board")
-            ?.focus?.({ preventScroll: true });
-        } else dependencies.audio?.play("invalid");
-      } else if (action === "cancel-placement") {
-        placement = null;
-        placementCell = null;
-        renderGame();
-        root
-          .querySelector<SVGSVGElement>("#nd-board")
-          ?.focus?.({ preventScroll: true });
-      } else if (action === "auto-expand" && session) {
-        const world = session.view();
-        const player = world.players.find(
-          (p) => p.id === session?.localPlayerId,
-        );
-        if (
-          player &&
-          world.structures.some(
-            (s) =>
-              s.cell === selectedCell &&
-              s.kind === "brain" &&
-              s.ownerId === player.id,
-          )
-        )
-          dispatch({ type: "setAutoExpand", enabled: !player.autoExpand });
-      } else if (action === "charge" && session && selectedCell !== null) {
-        const world = session.view();
-        const owner = world.players.find(
-          (p) => p.id === session?.localPlayerId,
-        );
-        if (
-          owner &&
-          world.structures.some(
-            (s) => s.cell === selectedCell && s.ownerId === owner.id,
-          )
-        )
-          dispatch({
-            type: "setPriority",
-            cell: selectedCell,
-            weight: owner.priorities[selectedCell] === 3 ? 0 : 3,
-          });
-      } else if (action === "cancel-build" && selectedCell !== null)
-        dispatch({ type: "cancelConstruction", cell: selectedCell });
-      else if (action?.startsWith("particle-")) {
-        const kind = action.slice(9);
-        if (kind === "pulse" || kind === "heavy" || kind === "swift")
-          dispatch({ type: "setParticleKind", kind });
-      } else if (action?.startsWith("research-")) {
-        const research = action.slice(9);
-        if (isResearchKind(research))
-          dispatch({ type: "startResearch", research });
-      } else if (action === "cancel-research")
-        dispatch({ type: "cancelResearch" });
-      else if (action === "reset" || action === "leave") {
-        if (session?.view().finished) {
-          if (action === "reset") restart();
-          else showMenu();
-          return;
-        }
-        pending = action;
-        render();
-      } else if (action === "cancel-confirm") {
-        pending = null;
-        render();
-      } else if (action === "confirm-reset") {
-        restart();
-      } else if (action === "confirm-leave") showMenu();
-      return;
-    }
-    if (screen === "game") {
-      const tile = target.closest<SVGElement>("[data-cell]");
-      if (tile) {
-        selectedCell = Number(tile.dataset.cell);
-        if (placement) {
-          placeAt(selectedCell, event.shiftKey);
-          return;
-        }
-        if (panel !== "build") panel = "inspect";
-        renderGame();
-      }
-    }
+    if (panel !== "build") panel = "inspect";
+    renderGame();
   }
 
   function placeAt(cell: number, keepPlacing = false) {
@@ -2109,95 +1973,128 @@ export function mountFuseCraft(
     }
   }
 
-  /** Text fields keep their value as typed, so a re-render never loses it. */
+  type FormField = HTMLInputElement | HTMLSelectElement;
+
+  /** Text fields retain their drafts before a commit, including across renders. */
+  function updateTextField(target: FormField): boolean {
+    switch (target.dataset.field) {
+      case "room-code":
+        roomCode = target.value;
+        return true;
+      case "player-name":
+        playerName = target.value;
+        return true;
+      default:
+        return false;
+    }
+  }
+
   function onInput(event: Event) {
-    const target = event.target as HTMLInputElement;
-    if (target.dataset.field === "room-code") roomCode = target.value;
-    if (target.dataset.field === "player-name") playerName = target.value;
+    updateTextField(event.target as FormField);
+  }
+
+  // A handler returning false lets the same element fall through to preferences.
+  // Matched room fields consume the change while online, even if their value is invalid.
+  const fieldChanges = new Map<string, (target: FormField) => false | void>([
+    [
+      "room-map",
+      (target) => {
+        if (!online) return false;
+        if (bundledMap(target.value)) online.configure({ mapId: target.value });
+      },
+    ],
+    [
+      "room-strategy",
+      (target) => {
+        if (!online) return false;
+        if (isOpeningChoice(target.value))
+          online.configure({ aiStrategy: target.value });
+      },
+    ],
+    [
+      "room-powerups",
+      (target) => {
+        if (!online) return false;
+        online.configure({ powerups: (target as HTMLInputElement).checked });
+      },
+    ],
+    [
+      "powerups",
+      (target) => {
+        powerups = (target as HTMLInputElement).checked;
+      },
+    ],
+    ["map", (target) => void loadSelectedMap(target.value)],
+    [
+      "first-strategy",
+      (target) => {
+        if (!isOpeningChoice(target.value)) return false;
+        firstAiStrategy = target.value;
+      },
+    ],
+    [
+      "strategy",
+      (target) => {
+        if (!isOpeningChoice(target.value)) return false;
+        aiStrategy = target.value;
+      },
+    ],
+    [
+      "spawn",
+      (target) => {
+        selectedSlot = Number(target.value);
+        render();
+      },
+    ],
+    [
+      "priority",
+      (target) => {
+        if (selectedCell === null) return false;
+        dispatch({
+          type: "setPriority",
+          cell: selectedCell,
+          weight: Number(target.value),
+        });
+        // A queued or rejected command can leave the authoritative priority unchanged.
+        target.value = target.getAttribute("value") ?? "0";
+      },
+    ],
+  ]);
+
+  function changePreference(setting: string, target: FormField) {
+    if (setting === "volume") {
+      preferences = { ...preferences, volume: Number(target.value) };
+    } else if (setting === "reducedMotion" || setting === "edgeScroll") {
+      preferences = {
+        ...preferences,
+        [setting]: (target as HTMLInputElement).checked,
+      };
+    }
+    if (setting === "edgeScroll")
+      battlefield.camera?.setEdgeScroll(
+        !root.querySelector(".fui-top-bar-menu[open]") &&
+          preferences.edgeScroll,
+      );
+    dependencies.preferences.write(preferences);
+    dependencies.audio?.configure(preferences);
+    dependencies.audio?.unlock();
+    if (screen === "game") renderGame();
   }
 
   function onChange(event: Event) {
-    const target = event.target as HTMLInputElement | HTMLSelectElement;
-    if (target.dataset.debug && dependencies.debug) {
-      if (target.dataset.debug === "construction")
+    const target = event.target as FormField;
+    const { debug, field, setting } = target.dataset;
+    if (debug && dependencies.debug) {
+      if (debug === "construction")
         instantConstruction = (target as HTMLInputElement).checked;
-      if (target.dataset.debug === "research")
+      if (debug === "research")
         instantResearch = (target as HTMLInputElement).checked;
       return;
     }
-    if (target.dataset.field === "room-code") {
-      roomCode = target.value;
-      return;
-    }
-    if (target.dataset.field === "player-name") {
-      playerName = target.value;
-      return;
-    }
-    if (target.dataset.field === "room-map" && online) {
-      if (bundledMap(target.value)) online.configure({ mapId: target.value });
-      return;
-    }
-    if (target.dataset.field === "room-strategy" && online) {
-      if (isOpeningChoice(target.value))
-        online.configure({ aiStrategy: target.value });
-      return;
-    }
-    if (target.dataset.field === "room-powerups" && online) {
-      online.configure({
-        powerups: (target as HTMLInputElement).checked,
-      });
-      return;
-    }
-    if (target.dataset.field === "powerups") {
-      powerups = (target as HTMLInputElement).checked;
-      return;
-    }
-    if (target.dataset.field === "map") void loadSelectedMap(target.value);
-    else if (
-      target.dataset.field === "first-strategy" &&
-      isOpeningChoice(target.value)
-    )
-      firstAiStrategy = target.value;
-    else if (
-      target.dataset.field === "strategy" &&
-      isOpeningChoice(target.value)
-    ) {
-      aiStrategy = target.value;
-    } else if (target.dataset.field === "spawn") {
-      selectedSlot = Number(target.value);
-      render();
-    } else if (target.dataset.field === "priority" && selectedCell !== null) {
-      dispatch({
-        type: "setPriority",
-        cell: selectedCell,
-        weight: Number(target.value),
-      });
-      // The command may be queued or rejected. Once a drag is committed,
-      // show the current authority until the next applied tick updates it.
-      target.value = target.getAttribute("value") ?? "0";
-    } else if (target.dataset.setting) {
-      const setting = target.dataset.setting;
-      if (setting === "reducedMotion")
-        preferences = {
-          ...preferences,
-          reducedMotion: (target as HTMLInputElement).checked,
-        };
-      else if (setting === "edgeScroll") {
-        preferences = {
-          ...preferences,
-          edgeScroll: (target as HTMLInputElement).checked,
-        };
-        camera?.setEdgeScroll(
-          !root.querySelector(".fui-top-bar-menu[open]") &&
-            preferences.edgeScroll,
-        );
-      } else if (setting === "volume")
-        preferences = { ...preferences, volume: Number(target.value) };
-      dependencies.preferences.write(preferences);
-      dependencies.audio?.configure(preferences);
-      dependencies.audio?.unlock();
-      if (screen === "game") renderGame();
-    }
+    if (updateTextField(target)) return;
+    const change = field ? fieldChanges.get(field) : undefined;
+    if (change && change(target) !== false) return;
+    if (setting) changePreference(setting, target);
   }
 
   /**
@@ -2224,156 +2121,135 @@ export function mountFuseCraft(
     back.click();
   }
 
-  function onKeyDown(event: KeyboardEvent) {
-    if (playtestInputBlocked(root.ownerDocument)) return;
-    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
-      return;
-    // The results screen covers the game: no camera or command key acts behind it.
-    if (results.open) return;
-    // How to play is modal: no game shortcut acts behind it.
-    if (helpOpen && screen === "game") return;
-    if (pending) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        pending = null;
-        render();
-        return;
-      }
-      if (event.key === "Tab") {
-        const controls = Array.from(
-          root.querySelectorAll<HTMLButtonElement>(
-            '[role="alertdialog"] button',
-          ),
-        );
-        const current = controls.indexOf(
-          root.ownerDocument.activeElement as HTMLButtonElement,
-        );
-        event.preventDefault();
-        controls[
-          (current + (event.shiftKey ? -1 : 1) + controls.length) %
-            controls.length
-        ]?.focus();
-      }
+  function confirmationKey(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      pending = null;
+      render();
       return;
     }
-    if (screen === "game" && event.key === "Escape" && placement) {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button'),
+    );
+    const current = controls.findIndex(
+      (control) => control === root.ownerDocument.activeElement,
+    );
+    const next = current + (event.shiftKey ? -1 : 1);
+    event.preventDefault();
+    controls[(next + controls.length) % controls.length]?.focus();
+  }
+
+  function cancelBoardMode(event: KeyboardEvent): boolean {
+    if (event.key !== "Escape") return false;
+    if (placement) {
       event.preventDefault();
       placement = null;
       placementCell = null;
       renderGame();
-      return;
+      return true;
     }
-    if (screen === "game" && event.key === "Escape" && panel !== "inspect") {
+    if (panel === "inspect") return false;
+    event.preventDefault();
+    closePanel();
+    return true;
+  }
+
+  function activateShortcut(event: KeyboardEvent): boolean {
+    if (event.repeat) return false;
+    const key = event.key.toLowerCase();
+    if (key === "f" && dependencies.fullscreen) {
       event.preventDefault();
-      closePanel();
-      return;
+      dependencies.fullscreen.toggle();
+      return true;
     }
-    // Arrow keys scroll the camera while held; Shift+arrows move the
-    // selection, and arrows move the target while placing a building.
-    const direction = ARROWS[event.key];
-    if (
-      direction &&
-      screen === "game" &&
-      !pending &&
-      !helpOpen &&
-      !placement &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !(event.target as HTMLElement).closest?.(
-        'input, select, textarea, [contenteditable="true"]',
-      )
-    ) {
+    if (key === "m" && dependencies.audio && !dependencies.forcedMute) {
       event.preventDefault();
-      camera?.hold(direction, true);
-      return;
+      toggleMute();
+      return true;
     }
-    if (
-      screen === "game" &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.repeat
-    ) {
-      const target = event.target as HTMLElement;
-      if (
-        !target.closest('input, select, textarea, [contenteditable="true"]')
-      ) {
-        if (event.key.toLowerCase() === "f" && dependencies.fullscreen) {
-          event.preventDefault();
-          dependencies.fullscreen.toggle();
-          return;
-        }
-        if (
-          event.key.toLowerCase() === "m" &&
-          dependencies.audio &&
-          !dependencies.forcedMute
-        ) {
-          event.preventDefault();
-          toggleMute();
-          return;
-        }
-        if (
-          "qweasd".includes(event.key.toLowerCase()) &&
-          event.key.length === 1
-        ) {
-          const command = root.querySelector<HTMLButtonElement>(
-            `.command-card [aria-keyshortcuts="${event.key.toUpperCase()}"]`,
-          );
-          if (command) {
-            event.preventDefault();
-            command.click();
-          }
-          return;
-        }
-      }
+    if (key.length !== 1 || !"qweasd".includes(key)) return false;
+    const command = root.querySelector<HTMLButtonElement>(
+      `.command-card [aria-keyshortcuts="${key.toUpperCase()}"]`,
+    );
+    if (command) {
+      event.preventDefault();
+      command.click();
     }
-    if (
-      screen !== "game" ||
-      pending ||
-      (event.target !== root.querySelector("#nd-board") &&
-        event.target !== root.querySelector("#nd-minimap"))
-    )
-      return;
+    return true;
+  }
+
+  function moveSelection(
+    map: MapDefinition,
+    current: number,
+    arrow: BoardArrow,
+  ) {
+    const { width, height } = map;
+    const column = Math.max(
+      0,
+      Math.min(width - 1, (current % width) + arrow.column),
+    );
+    const row = Math.max(
+      0,
+      Math.min(height - 1, Math.floor(current / width) + arrow.row),
+    );
+    selectedCell = row * width + column;
+    if (placement) placementCell = selectedCell;
+    renderGame();
+    battlefield.camera?.ensureCellVisible(width, selectedCell);
+  }
+
+  function moveOrPlace(event: KeyboardEvent, arrow: BoardArrow | undefined) {
+    const onMinimap = event.target === root.querySelector("#nd-minimap");
+    if (!onMinimap && event.target !== root.querySelector("#nd-board")) return;
     const world = gameWorld();
     if (!world) return;
     const current = selectedCell ?? 0;
-    if (
-      event.target === root.querySelector("#nd-minimap") &&
-      (event.key === "Enter" || event.key === " ")
-    ) {
+    if (onMinimap && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
-      camera?.focusCell(world.map.width, current);
-      updateMinimapView();
+      battlefield.camera?.focusCell(world.map.width, current);
+      battlefield.updateMinimap();
       return;
     }
-    const width = world.map.width;
-    const row = Math.floor(current / width),
-      col = current % width;
-    const delta: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    if (event.key in delta) {
+    if (arrow) {
       event.preventDefault();
-      const [dc, dr] = delta[event.key] ?? [0, 0];
-      const c = Math.max(0, Math.min(width - 1, col + dc)),
-        r = Math.max(0, Math.min(world.map.height - 1, row + dr));
-      selectedCell = r * width + c;
-      if (placement) placementCell = selectedCell;
-      renderGame();
-      camera?.ensureCellVisible(width, selectedCell);
-    } else if (
-      event.key === "Enter" &&
-      selectedCell !== null &&
-      world.map.cells[selectedCell]?.terrain === "open"
-    ) {
-      event.preventDefault();
-      if (placement) placeAt(selectedCell, event.shiftKey);
+      moveSelection(world.map, current, arrow);
+      return;
     }
+    if (event.key !== "Enter" || selectedCell === null) return;
+    if (world.map.cells[selectedCell]?.terrain !== "open") return;
+    event.preventDefault();
+    if (placement) placeAt(selectedCell, event.shiftKey);
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
+    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
+      return;
+    if (results.open || (helpOpen && screen === "game")) return;
+    if (pending) {
+      confirmationKey(event);
+      return;
+    }
+    if (screen !== "game" || cancelBoardMode(event)) return;
+
+    const arrow = BOARD_ARROWS.get(event.key);
+    const target = event.target as Element | null;
+    const acceptsShortcut =
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !target?.closest?.('input, select, textarea, [contenteditable="true"]');
+    if (acceptsShortcut) {
+      // Bare arrows pan while held; Shift+arrows and placement move the cursor.
+      if (arrow && !placement && !event.shiftKey) {
+        event.preventDefault();
+        battlefield.camera?.hold(arrow.pan, true);
+        return;
+      }
+      if (activateShortcut(event)) return;
+    }
+    moveOrPlace(event, arrow);
   }
 
   root.addEventListener("click", onClick);
@@ -2393,8 +2269,7 @@ export function mountFuseCraft(
   const stopPlaytestInput = registerPlaytestInput(page, {
     cancel: () => {
       minimapDrag = null;
-      for (const direction of Object.values(ARROWS))
-        camera?.hold(direction, false);
+      releaseCameraKeys();
     },
   });
   page.addEventListener("keydown", onDocumentKeyDown);
@@ -2426,6 +2301,7 @@ export function mountFuseCraft(
       root.removeEventListener("keydown", onKeyDown);
       root.removeEventListener("input", onInput);
       page.removeEventListener("keydown", onDocumentKeyDown);
+      unmountBattlefield();
       root.innerHTML = "";
     },
   };

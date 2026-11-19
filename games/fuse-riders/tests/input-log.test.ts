@@ -123,7 +123,7 @@ test("entry validation accepts every kind and rejects malformed shapes, bounds a
     [1, 1, AVATAR, "nope"],
     [1, 1, JOIN, "", "Name", 0, "fox", 1],
     [1, 1, JOIN, "abc", "   ", 0, "fox", 1],
-    [1, 1, JOIN, "abc", "Name", 6, "fox", 1],
+    [1, 1, JOIN, "abc", "Name", 8, "fox", 1],
     [1, 1, PRESENCE, "abc", "yes", 1],
     [1, 1, SETTINGS, { ...settings, length: 0 }],
     [1, 1, ACTION, "pause", "m"],
@@ -516,7 +516,7 @@ test("bots are simulated on every replica and the same log always folds to the s
   );
   assert.match(hashText("x"), /^[0-9a-f]{16}$/);
   assert.notEqual(hashText("a"), hashText("b"));
-  assert.equal(RULES, "fuse-p2p-59");
+  assert.equal(RULES, "fuse-p2p-60");
   const reordered = createRoomState("room", settings);
   reordered.game.players = new Map([...a.game.players].reverse());
   reordered.game.tick = a.game.tick;

@@ -179,6 +179,55 @@ describe(apiUrlFor.name, () => {
   });
 });
 
+it("searches with authentication, validates public cards and refuses late account responses", async () => {
+  const { service, account, client } = setup();
+  const request = vi.mocked(client.dependencies.fetch);
+  account.signIn("Anders");
+  request.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        players: [
+          { publicId: "abcdefabcdefabcdef12", name: "Richard", uid: "private" },
+        ],
+      }),
+    ),
+  );
+  expect(await service.searchFriends("Ri ch")).toEqual([
+    { publicId: "abcdefabcdefabcdef12", name: "Richard" },
+  ]);
+  expect(request.mock.calls[0]?.[0]).toBe(
+    "https://api.test/api/friends/search?q=Ri%20ch",
+  );
+  expect(request.mock.calls[0]?.[1]?.headers).toHaveProperty("Authorization");
+  for (const body of [
+    {},
+    { players: [{ publicId: "bad", name: "Richard" }] },
+    { players: [{ publicId: "abcdefabcdefabcdef12", name: 7 }] },
+  ]) {
+    request.mockResolvedValue(new Response(JSON.stringify(body)));
+    await expect(service.searchFriends("rich")).rejects.toThrow(
+      "Invalid search results",
+    );
+  }
+  request.mockResolvedValue(new Response("", { status: 503 }));
+  await expect(service.searchFriends("rich")).rejects.toThrow(
+    "Try Search again",
+  );
+  let resolve: (response: Response) => void = () => undefined;
+  request.mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const pending = service.searchFriends("rich");
+  await Promise.resolve();
+  account.signIn("Anders");
+  resolve(new Response(JSON.stringify({ players: [] })));
+  await expect(pending).rejects.toThrow("account changed");
+  service.dispose();
+});
+
 it("clears the old account's private view before a direct account switch, including equal display names", () => {
   const { service, account, client } = setup();
   account.signIn("Same name");

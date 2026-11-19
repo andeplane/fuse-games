@@ -14,6 +14,7 @@ import {
 } from "../src/game/offroad/campaign.js";
 import {
   DEFAULT_SETTINGS,
+  createRoom,
   PURCHASE,
   decodeRoom,
   encodeRoom,
@@ -52,6 +53,75 @@ const roomWithFive = () =>
     addBot("bot:2", 3),
     addBot("bot:3", 4),
   ]);
+
+test("lobby wallets checkpoint and only quoted purchases before START reach the first grid", () => {
+  const room = createRoom("lobby", DEFAULT_SETTINGS);
+  fold(room, {
+    a: [
+      [JOIN, "a", "Ada", 0, "fox", 1],
+      [JOIN, "b", "Bo", 1, "fox", 1],
+      addBot("bot:2", 2),
+      [SPECTATOR, "join", "watch", "Watch", 1],
+    ],
+  });
+  assert.deepEqual(Object.keys(room.garage), ["a", "b"]);
+  const buy = [...quote(room, "a", "tires")];
+  assert.ok(isFuseDriversEntry([1, room.tick + 1, ...buy]));
+  fold(room, { a: [buy, buy], watch: [buy] });
+  assert.deepEqual(room.garage.a, {
+    ...createOffroadDriver(),
+    tires: 1,
+    cash: 16,
+    credits: 1,
+  });
+  const fields = encodeRoom(room);
+  const replica = decodeRoom(fields, room.tick)!;
+  assert.deepEqual(replica, room);
+  const forged = structuredClone(fields);
+  (forged[8] as unknown[][])[0]![1] = 17;
+  assert.equal(decodeRoom(forged, room.tick), undefined);
+  for (const r of [room, replica]) {
+    const shocks = [...quote(r, "a", "shocks")],
+      nitro = [...quote(r, "b", "nitros")];
+    fold(r, {
+      a: [
+        shocks,
+        [ACTION, "start", "heat"],
+        [PURCHASE, "lobby", 1, 0, "topSpeed", 10, 1, 0],
+      ],
+      b: [nitro],
+    });
+    assert.equal(r.race!.trucks[0]!.upgrades?.shocks, 1);
+    assert.equal(r.race!.trucks[0]!.upgrades?.tires, 1);
+    assert.equal(r.race!.trucks[0]!.upgrades?.topSpeed, 0);
+    assert.equal(r.race!.trucks[1]!.motion.nitros, 26);
+  }
+  assert.deepEqual(replica, room);
+});
+
+test("a new lobby discards the previous opening quote, and seat reclamation cannot transfer upgrades", () => {
+  const room = createRoom("first", DEFAULT_SETTINGS);
+  fold(room, {
+    a: [
+      [JOIN, "a", "Ada", 0, "fox", 1],
+      [JOIN, "b", "Bo", 1, "fox", 1],
+    ],
+  });
+  const purchase = [...quote(room, "b", "topSpeed")];
+  fold(room, { b: [purchase] });
+  fold(room, {
+    a: [
+      [LEAVE, "b"],
+      [JOIN, "c", "Cy", 1, "cat", 1],
+    ],
+  });
+  assert.deepEqual(room.garage.c, createOffroadDriver());
+  assert.equal(room.garage.b, undefined);
+  fold(room, { a: [[ACTION, "start", "heat"]] });
+  fold(room, { a: [[ACTION, "lobby", "second"]] });
+  fold(room, { c: [purchase] });
+  assert.deepEqual(room.garage.c, createOffroadDriver());
+});
 
 test("a finite series freezes its chosen length, preserves each receipt and ends shopping at the finish", () => {
   const room = started({ ...DEFAULT_SETTINGS, races: 2 }, [
@@ -272,7 +342,10 @@ test("the selected reverse opener determines the next campaign course and a lobb
   assert.equal(room.campaignIndex, 27);
   assert.equal(room.race?.trackName, "offroad-4");
   fold(room, { a: [[ACTION, "lobby", "l1"]] });
-  assert.deepEqual(room.garage, {});
+  assert.deepEqual(room.garage, {
+    a: createOffroadDriver(),
+    b: createOffroadDriver(),
+  });
   assert.equal(room.campaignIndex, -1);
 });
 
@@ -281,7 +354,7 @@ test("purchase inputs must carry a bounded, scoped quote", () => {
   assert.ok(isFuseDriversEntry(valid));
   for (const [index, value] of [
     [5, 40],
-    [5, 0],
+    [5, -1],
     [6, "__proto__"],
     [7, 10000],
     [8, 10],

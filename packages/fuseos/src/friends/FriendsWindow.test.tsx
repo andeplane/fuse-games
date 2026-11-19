@@ -158,24 +158,31 @@ describe("FriendsWindow", () => {
     ).toBeInTheDocument();
   });
 
-  it("validates a player id before adding, then shows the request waiting", async () => {
+  it("searches by name and sends the selected player a request", async () => {
     const { user } = renderFriends();
     const window = await dialog();
     await user.click(within(window).getByRole("button", { name: "Add" }));
     const form = within(window).getByRole("form", { name: "Add a Contact" });
-    const input = within(form).getByLabelText("Add a Contact by player id:");
+    const input = within(form).getByLabelText("Find a friend by name:");
     expect(input).toHaveFocus();
-    const add = within(form).getByRole("button", { name: "Add" });
+    const add = within(form).getByRole("button", { name: "Search" });
     expect(add).toBeDisabled();
-    await user.type(input, "not-an-id");
+    await user.type(input, "Nobody");
     await user.click(add);
-    expect(within(window).getByRole("alert")).toHaveTextContent(
-      "A player id is 20 letters and digits",
-    );
-    expect(input).toHaveValue("not-an-id");
+    expect(
+      await within(form).findByText(/No players found/),
+    ).toBeInTheDocument();
     await user.clear(input);
-    await user.type(input, " ABCDEFABCDEFABCDEF12 ");
+    await user.type(input, "pLaYeR");
     await user.keyboard("{Enter}");
+    const results = await within(form).findByRole("list", {
+      name: "Player search results",
+    });
+    await user.click(
+      within(results).getByRole("button", {
+        name: "Add Player abcdef (abcdefabcdefabcdef12)",
+      }),
+    );
     expect(
       await within(window).findByText("Player abcdef"),
     ).toBeInTheDocument();
@@ -188,6 +195,93 @@ describe("FriendsWindow", () => {
       }),
     );
     expect(within(window).queryByText("Player abcdef")).not.toBeInTheDocument();
+  });
+
+  it("still accepts a pasted public id", async () => {
+    const { user } = renderFriends();
+    const window = await dialog();
+    await user.click(within(window).getByRole("button", { name: "Add" }));
+    await user.type(
+      within(window).getByLabelText("Find a friend by name:"),
+      " ABCDEFABCDEFABCDEF12 ",
+    );
+    await user.keyboard("{Enter}");
+    expect(
+      await within(window).findByText("Player abcdef"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps duplicate names separate and keeps a failed request retryable", async () => {
+    const presence = createDemoPresenceService({
+      schedule: createManualTimers().schedule,
+    });
+    const first = "11111111111111111111",
+      second = "22222222222222222222";
+    presence.searchFriends = async () => [
+      { publicId: first, name: "Richard" },
+      { publicId: second, name: "Richard" },
+    ];
+    const added: string[] = [];
+    presence.addFriend = async (id) => {
+      added.push(id);
+      throw new Error("Could not send request");
+    };
+    const { user } = renderFriends({ presence });
+    const window = await dialog();
+    await user.click(within(window).getByRole("button", { name: "Add" }));
+    await user.type(
+      within(window).getByLabelText("Find a friend by name:"),
+      "rich",
+    );
+    await user.keyboard("{Enter}");
+    await user.click(
+      await within(window).findByRole("button", {
+        name: `Add Richard (${second})`,
+      }),
+    );
+    expect(added).toEqual([second]);
+    expect(await within(window).findByRole("alert")).toHaveTextContent(
+      "Could not send request",
+    );
+    expect(
+      within(window).getByRole("button", { name: `Add Richard (${first})` }),
+    ).toBeInTheDocument();
+    expect(
+      within(window).getByRole("form", { name: "Add a Contact" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows retryable failures and ignores a search completed after editing", async () => {
+    let complete: (
+      players: { publicId: string; name: string }[],
+    ) => void = () => undefined;
+    const presence = createDemoPresenceService({
+      schedule: createManualTimers().schedule,
+    });
+    let fail = true;
+    presence.searchFriends = () => {
+      if (fail) return Promise.reject(new Error("Search failed. Try again."));
+      return new Promise((resolve) => {
+        complete = resolve;
+      });
+    };
+    const { user } = renderFriends({ presence });
+    const window = await dialog();
+    await user.click(within(window).getByRole("button", { name: "Add" }));
+    const input = within(window).getByLabelText("Find a friend by name:");
+    await user.type(input, "Rich");
+    await user.keyboard("{Enter}");
+    expect(await within(window).findByRole("alert")).toHaveTextContent(
+      "Search failed. Try again.",
+    );
+    fail = false;
+    await user.keyboard("{Enter}");
+    expect(within(window).getByRole("status")).toHaveTextContent(
+      "Searching...",
+    );
+    await user.type(input, "ard");
+    complete([{ publicId: "abcdefabcdefabcdef12", name: "Stale result" }]);
+    expect(within(window).queryByText("Stale result")).not.toBeInTheDocument();
   });
 
   it("accepts or declines a request, and shows and dismisses an invite", async () => {

@@ -55,12 +55,23 @@ export const publicIdOf = (uid: string): string =>
     .digest("hex")
     .slice(0, PUBLIC_ID_LENGTH);
 
+/** The public name used by friend cards and the search index. */
+export function friendDisplayName(
+  fallback: string,
+  account?: Account,
+  presence?: PresenceRecord,
+): string {
+  return account?.username ?? presence?.name ?? account?.name ?? fallback;
+}
+
 export interface PresenceRecord {
   uid: string;
   publicId: string;
   /** When the account last synced. */
   at: number;
   name?: string;
+  /** Normalized public display name for bounded prefix discovery. */
+  searchName?: string;
   avatarId?: string;
   /** Present only while the account says it is away. */
   away?: true;
@@ -89,6 +100,7 @@ export function storedPresence(value: unknown): PresenceRecord | undefined {
     !validPublicId(value.publicId) ||
     !Number.isSafeInteger(value.at) ||
     (value.name !== undefined && typeof value.name !== "string") ||
+    (value.searchName !== undefined && typeof value.searchName !== "string") ||
     (value.avatarId !== undefined && typeof value.avatarId !== "string") ||
     (value.away !== undefined && typeof value.away !== "boolean") ||
     (value.status !== undefined && typeof value.status !== "string") ||
@@ -105,6 +117,9 @@ export function storedPresence(value: unknown): PresenceRecord | undefined {
     publicId: value.publicId,
     at: value.at as number,
     ...(value.name === undefined ? {} : { name: value.name as string }),
+    ...(value.searchName === undefined
+      ? {}
+      : { searchName: value.searchName as string }),
     ...(value.avatarId === undefined
       ? {}
       : { avatarId: value.avatarId as string }),
@@ -181,6 +196,7 @@ export interface FriendsDatabase {
   presence(uid: string): Promise<PresenceRecord | undefined>;
   presences(uids: readonly string[]): Promise<PresenceRecord[]>;
   setPresence(record: PresenceRecord): Promise<void>;
+  searchNames(prefix: string, limit: number): Promise<PresenceRecord[]>;
   /** The account behind a public id, if it has ever synced. */
   resolve(publicId: string): Promise<string | undefined>;
   /** Everyone whose presence names this room, at most `limit`. */
@@ -234,6 +250,25 @@ export class FriendsStore {
       throw new RoomError(429, "Too many requests; try later");
   }
 
+  /** Only public cards leave this boundary; presence, room and account ids stay private. */
+  async search(uid: string, query: unknown): Promise<FriendCard[]> {
+    if (
+      typeof query !== "string" ||
+      query.trim().length < 2 ||
+      query.length > 64
+    )
+      throw new RoomError(400, "Enter 2 to 64 characters of a friend's name");
+    await this.allow(`search:${uid}`, 120);
+    const prefix = query.trim().toLowerCase();
+    const matches = await this.database.searchNames(prefix, 21);
+    const accounts = await this.history.accounts(matches.map((p) => p.uid));
+    return matches
+      .filter((p) => p.uid !== uid)
+      .map((p) => this.card(p.uid, accounts.get(p.uid), p))
+      .filter((card) => card.name.toLowerCase().startsWith(prefix))
+      .slice(0, 20);
+  }
+
   /** The name and head other players see: the chosen username first, then the name the player last showed up with. */
   private card(
     uid: string,
@@ -243,11 +278,11 @@ export class FriendsStore {
     const avatarId = account?.avatarId ?? presence?.avatarId;
     return {
       publicId: publicIdOf(uid),
-      name:
-        account?.username ??
-        presence?.name ??
-        account?.name ??
+      name: friendDisplayName(
         this.platform.account.fallbackName,
+        account,
+        presence,
+      ),
       ...(avatarId ? { avatarId } : {}),
     };
   }
@@ -429,9 +464,16 @@ export class FriendsStore {
     };
     const same = (a: unknown, b: unknown) =>
       JSON.stringify(a) === JSON.stringify(b);
+    const ownAccounts = await this.history.accounts([uid]);
+    next.searchName = this.card(
+      uid,
+      ownAccounts.get(uid),
+      next,
+    ).name.toLowerCase();
     if (
       due ||
       current.name !== next.name ||
+      current.searchName !== next.searchName ||
       current.avatarId !== next.avatarId ||
       current.away !== next.away ||
       current.status !== next.status ||
@@ -473,7 +515,10 @@ export class FriendsStore {
     ].filter((other) => !presences.has(other));
     for (const p of await this.database.presences(wanted))
       presences.set(p.uid, p);
-    const accounts = await this.history.accounts([...presences.keys()]);
+    const accounts = await this.history.accounts(
+      [...presences.keys()].filter((who) => who !== uid),
+    );
+    for (const [who, account] of ownAccounts) accounts.set(who, account);
     const cards = new Map<string, FriendCard>();
     const cardOf = (who: string): FriendCard => {
       let card = cards.get(who);
@@ -823,6 +868,17 @@ export class MemoryFriendsDatabase implements FriendsDatabase {
   }
   async setPresence(record: PresenceRecord): Promise<void> {
     this.presenceByUid.set(record.uid, structuredClone(record));
+  }
+  async searchNames(prefix: string, limit: number): Promise<PresenceRecord[]> {
+    return [...this.presenceByUid.values()]
+      .filter((p) => p.searchName?.startsWith(prefix))
+      .sort(
+        (a, b) =>
+          a.searchName!.localeCompare(b.searchName!) ||
+          a.uid.localeCompare(b.uid),
+      )
+      .slice(0, limit)
+      .map((p) => structuredClone(p));
   }
   async resolve(publicId: string): Promise<string | undefined> {
     for (const record of this.presenceByUid.values())

@@ -19,11 +19,10 @@ import {
 } from "../src/app/controls.js";
 import {
   GamepadInput,
-  TRIGGER_POINT,
   browserGamepads,
-  gamepadBits,
   type GamepadLike,
-} from "../src/app/gamepad.js";
+} from "fuse-ui/gamepad";
+import { TRIGGER_POINT, gamepadBits } from "../src/app/gamepad.js";
 
 function recorder() {
   const seen: number[] = [];
@@ -256,7 +255,7 @@ test("a gamepad: A or RT gas, B or LT brake, bumpers or d-pad volt, X turn, Y re
 test("the last pad to press drives; a pad held through a pause reads as let go until it lets go itself", () => {
   let pads: (GamepadLike | null)[] = [];
   const seen: number[] = [];
-  const input = new GamepadInput({ pads: () => pads }, (bits) =>
+  const input = new GamepadInput({ pads: () => pads }, gamepadBits, (bits) =>
     seen.push(bits),
   );
   pads = [pad(0, [0]), pad(1, [])];

@@ -1,27 +1,21 @@
 /** Reproducible map contact sheets on both Phaser backends and visual styles. */
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createServer } from "vite";
-import { chromium } from "playwright";
+import { launchBrowser } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
+import { startViteServer } from "./lib/server.js";
 
-const server = await createServer({
-  server: { port: 0, host: "127.0.0.1", hmr: false },
-});
-await server.listen();
-const address = server.httpServer!.address();
-if (!address || typeof address === "string") throw Error("No server");
-const browser = await chromium.launch({ channel: "chrome" });
+const server = await startViteServer();
+const browser = await launchBrowser("chrome");
 try {
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript("window.__name = value => value");
-  await page.goto(`http://127.0.0.1:${address.port}/?room=INVALID`);
-  await page.getByText("Invalid room code", { exact: true }).waitFor();
+  await openRidersFixturePage(page, server.url);
   const pictures = await page.evaluate(async () => {
-    const { createPhaserArena } = (await import(
-      String("/games/fuse-riders/src/render/phaser/arena.ts")
-    )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+    const { mountWorldArena } = (await import(
+      String("/scripts/lib/riders-render-fixture.ts")
+    )) as typeof import("./lib/riders-render-fixture.js");
     const { visualFixture } = (await import(
       String("/scripts/lib/benchmark-fixture.ts")
     )) as typeof import("./lib/benchmark-fixture.js");
@@ -41,16 +35,10 @@ try {
     const maps = ["desert", "forest", "city", "drift", "trains"] as const;
     const pictures: { name: string; data: string }[] = [];
     for (const backend of ["auto", "canvas"] as const) {
-      const canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      canvas.style.cssText = "width:1600px;height:900px";
-      document.body.append(canvas);
-      const arena = createPhaserArena(canvas, {
-        renderer: backend,
-        resolution: "world",
+      const { arena, canvas } = await mountWorldArena(backend, {
+        clearPage: false,
+        canvasStyle: "width:1600px;height:900px",
       });
-      await arena.ready;
       const expectedRenderer = backend === "auto" ? "webgl" : "canvas";
       if (arena.metrics().renderer !== expectedRenderer)
         throw Error(
@@ -253,5 +241,5 @@ try {
   );
 } finally {
   await browser.close();
-  await server.close();
+  await server.stop();
 }

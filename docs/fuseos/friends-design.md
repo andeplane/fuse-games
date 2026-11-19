@@ -26,8 +26,31 @@ account, so a pending draft cannot be sent by a replacement account.
 
 The existing platform friend graph supplies public player ids, requests,
 acceptance, removal, online/away/playing states, last seen and incoming game
-invites. Copy your id and give it to a friend, or add theirs. Both sides must
-accept before they can chat.
+invites. Press **Add**, enter at least two characters from the start of a friend's
+name and press **Search**. Results show names and public ids so duplicate names
+remain separate choices; **Add** sends a request and **Accept** answers an incoming
+one. Existing friends and sent requests are labelled. Pasting an exact player id
+still works. Both sides must accept before they can chat.
+
+`GET /api/friends/search?q=…` requires sign-in, returns at most 20 public cards,
+and accepts 2–64 characters. Matching ignores case and uses the canonical displayed
+name (chosen username first). Search is explicit, with loading, empty and retryable
+error states. Editing or closing the form invalidates pending results. The API
+excludes the caller and exposes no private account id, presence or room details.
+Per-account searches are limited to 120/hour with an additional address budget.
+
+Presence sync maintains a `searchName` index, using Firestore's automatic single
+field index rather than scanning accounts. A rename is discoverable under its new
+name after the next presence sync; stale indexed names are filtered from responses.
+For existing offline players, after verifying the backend serves search, run
+`pnpm exec tsx scripts/backfill-friend-search.ts PROJECT_ID DATABASE_ID PREFIX`
+to preview counts, then run the same command with `--apply`. Use the serving
+gateway's exact project, named database and collection prefix from the deployment
+inventory. The migration pages 100 presence records at a time, uses update-time
+preconditions to preserve concurrent heartbeats, and prints counts only. Rerun
+for skipped concurrent records and confirm with a final dry run. Older records
+also become searchable on their next sync. This command has not been run against
+production.
 
 The desktop polls presence every 20 seconds with `passive: true`: it refreshes
 the account without replacing the room claim made by the game. Opening a game

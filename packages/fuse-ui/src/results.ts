@@ -288,6 +288,78 @@ export interface ResultsScreen {
   readonly open: boolean;
 }
 
+interface LiveResult {
+  host: boolean;
+  waiting: string;
+  rows: readonly { id: string }[];
+}
+
+type ResultFriend = (id: string) => HTMLElement | undefined;
+
+interface ResultFrame<T> {
+  friends?:
+    | {
+        publicIdOfMember(id: string): string | undefined;
+        friendButton(id: string): HTMLElement;
+      }
+    | undefined;
+  report(result: T, friend: ResultFriend | undefined): ResultsReport;
+  bar(result: T): ResultsBar;
+  /** Extra report state, such as a match identity or access to a post-race shop. */
+  revision?: string | boolean;
+  /** An arena that temporarily hides the report may keep it hidden after a rebuild. */
+  afterShow?(): void;
+}
+
+/** Keeps a live report stable while waiting text or host controls change. */
+export function createLiveResults(
+  screen: ResultsScreen,
+  { focusPrimary = true } = {},
+) {
+  let previous = "";
+  const clear = () => {
+    previous = "";
+    if (screen.open) screen.hide();
+  };
+  return {
+    clear,
+    render<T extends LiveResult>(
+      result: T | null | undefined,
+      { friends, report, bar, revision, afterShow }: ResultFrame<T>,
+    ): void {
+      if (!result) {
+        clear();
+        return;
+      }
+      const key = JSON.stringify([
+        revision,
+        { ...result, host: false, waiting: "" },
+        result.rows.map(({ id }) => friends?.publicIdOfMember(id)),
+      ]);
+      const first = !previous;
+      if (key !== previous) {
+        previous = key;
+        screen.show(
+          report(
+            result,
+            friends &&
+              ((id) => {
+                const publicId = friends.publicIdOfMember(id);
+                return publicId ? friends.friendButton(publicId) : undefined;
+              }),
+          ),
+        );
+        afterShow?.();
+      }
+      screen.update(bar(result));
+      if (first && focusPrimary)
+        screen.actions
+          .querySelector<HTMLButtonElement>("button.is-primary")
+          ?.focus?.();
+    },
+  };
+}
+
 const STATS_CLOSED = "View full stats ↗",
   STATS_OPEN = "Hide full stats ↗";
 

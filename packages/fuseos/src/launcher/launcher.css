@@ -317,7 +317,7 @@
   border-bottom-color: currentColor;
 }
 
-.fst-list-head .fst-last-played[aria-pressed="true"]::after {
+.fst-list-head .fst-last-played[data-sort-direction="descending"]::after {
   transform: rotate(180deg);
 }
 

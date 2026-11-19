@@ -409,7 +409,7 @@ round, and too few gunships send the room back to its lobby.
   along a stream, so repeats and stale presses never fold) and the step (0–2) of the log tick it came in.
 - **Fold**: a log tick of 50 ms runs three `step`s, each holding the seat's directions plus `FIRE` on exactly the step
   of each press; bot seats play as `RoundConfig.bots`. Six gunships (four bots) take about 0.3 ms a log tick.
-- **Hash**: `hashPlain` (`src/online/hash.ts`) walks the whole room as plain data (numbers by their bits, typed arrays,
+- **Hash**: `hashPlain` from `fuse-netcode` walks the whole room as plain data (numbers by their bits, typed arrays,
   sorted keys), so state added later is covered; only the round's own `events` (the latest step's output) are left
   out, and a field of that name anywhere else is hashed. About 1 ms a call.
 - **Checkpoint** (`encode`/`decode` in `game.ts`; the round by `encodeRound`/`decodeRound`, `src/engine/codec.ts`,

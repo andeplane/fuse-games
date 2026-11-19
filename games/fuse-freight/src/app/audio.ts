@@ -1,5 +1,5 @@
 import type { FxKind } from "../engine/view.js";
-import type { Store } from "./session.js";
+import type { Store } from "fuse-ui/room-session";
 
 /**
  * Fuse Freight's sound: effects and a little chiptune soundtrack, all synthesised here, so there are no audio files

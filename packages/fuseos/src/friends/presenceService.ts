@@ -87,6 +87,7 @@ export interface PresenceService {
   signIn(): Promise<void>;
   signOut(): Promise<void>;
   refresh(): void;
+  searchFriends(query: string): Promise<PlayerCard[]>;
   addFriend(publicId: string): Promise<void>;
   removeFriend(publicId: string): Promise<void>;
   dismissInvite(id: string): Promise<void>;
@@ -177,6 +178,7 @@ export function createNullPresenceService(): PresenceService {
     },
     signOut: async () => undefined,
     refresh: () => undefined,
+    searchFriends: async () => [],
     addFriend: async () => undefined,
     removeFriend: async () => undefined,
     dismissInvite: async () => undefined,

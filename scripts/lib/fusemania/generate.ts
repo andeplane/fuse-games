@@ -346,6 +346,10 @@ function pickRows(
   const tuning = TUNING[difficulty];
   const reference = referenceFor(difficulty);
   const { slotsPerBeat, perBar, analysis } = song;
+  const PHRASE_BARS = 4;
+  const phraseOffset = (bar: number): number =>
+    (((bar - analysis.phrase) % PHRASE_BARS) + PHRASE_BARS) % PHRASE_BARS;
+  const directions = [-1, 1] as const;
   const levelOf = (slot: number): "Q" | "E" | "S" | "X" =>
     analysis.levels[slot % slotsPerBeat] as "Q" | "E" | "S" | "X";
   const jumpShare = reference.scalars.jump_share?.p50 ?? 0.07;
@@ -361,10 +365,14 @@ function pickRows(
     (tuning.nps * clamp(Math.sqrt(bpm / 135), 0.85, 1.15)) / (1 + jumpShare);
   // The bars of a four-bar phrase aim at much the same density, so a rhythm that repeats is stepped the same way.
   const energyOf = (bar: number): number => {
-    const phraseStart = bar - ((((bar - analysis.phrase) % 4) + 4) % 4);
+    const phraseStart = bar - phraseOffset(bar);
     let phraseEnergy = 0,
       phraseBars = 0;
-    for (let other = Math.max(0, phraseStart); other < phraseStart + 4; other++)
+    for (
+      let other = Math.max(0, phraseStart);
+      other < phraseStart + PHRASE_BARS;
+      other++
+    )
       if (other < song.bars) {
         phraseEnergy += song.energy[other]!;
         phraseBars++;
@@ -409,10 +417,10 @@ function pickRows(
   const priority = (slot: number): number => {
     const bar = Math.floor(slot / perBar),
       within = slot % perBar;
-    const start = bar - ((((bar - analysis.phrase) % 4) + 4) % 4);
+    const start = bar - phraseOffset(bar);
     let sum = 0,
       count = 0;
-    for (let other = Math.max(0, start); other < start + 4; other++) {
+    for (let other = Math.max(0, start); other < start + PHRASE_BARS; other++) {
       const at = other * perBar + within;
       if (at < song.slots) {
         sum += salience[at]!;
@@ -435,14 +443,16 @@ function pickRows(
     Math.abs(a - b) / slotsPerBeat;
   /** Whether adding `slot` keeps every four-beat window under the cap and its neighbours far enough away. */
   const fits = (slot: number): boolean => {
-    for (let near = slot - 1; near >= 0; near--) {
-      if (song.seconds[slot]! - song.seconds[near]! >= tuning.gap) break;
-      if (chosen.has(near)) return false;
-    }
-    for (let near = slot + 1; near < song.slots; near++) {
-      if (song.seconds[near]! - song.seconds[slot]! >= tuning.gap) break;
-      if (chosen.has(near)) return false;
-    }
+    for (const direction of directions)
+      for (
+        let near = slot + direction;
+        near >= 0 && near < song.slots;
+        near += direction
+      ) {
+        const gap = direction * (song.seconds[near]! - song.seconds[slot]!);
+        if (gap >= tuning.gap) break;
+        if (chosen.has(near)) return false;
+      }
     for (let start = slot - perBar + 1; start <= slot; start++) {
       let rows = 1;
       for (let at = Math.max(0, start); at < start + perBar; at++)
@@ -457,24 +467,19 @@ function pickRows(
   /** How many rows a sixteenth-speed run through `slot` would have if `slot` were added. */
   const runLength = (slot: number): number => {
     let length = 1;
-    for (
-      let at = slot, next = slot - 1;
-      next >= 0 && beatGap(at, next) < 0.4;
-      next--
-    )
-      if (chosen.has(next)) {
-        length++;
-        at = next;
-      } else if (beatGap(at, next) >= 0.3) break;
-    for (
-      let at = slot, next = slot + 1;
-      next < song.slots && beatGap(at, next) < 0.4;
-      next++
-    )
-      if (chosen.has(next)) {
-        length++;
-        at = next;
-      } else if (beatGap(at, next) >= 0.3) break;
+    for (const direction of directions)
+      for (
+        let at = slot, next = slot + direction;
+        next >= 0 && next < song.slots;
+        next += direction
+      ) {
+        const gap = beatGap(at, next);
+        if (gap >= 0.4) break;
+        if (chosen.has(next)) {
+          length++;
+          at = next;
+        } else if (gap >= 0.3) break;
+      }
     return length;
   };
 
@@ -595,9 +600,7 @@ function pickRows(
     return (
       drums +
       (slot % perBar === 0 ? 0.15 : 0) +
-      (slot % perBar === 0 && (((bar - analysis.phrase) % 4) + 4) % 4 === 0
-        ? 0.25
-        : 0)
+      (slot % perBar === 0 && phraseOffset(bar) === 0 ? 0.25 : 0)
     );
   };
   const jumpable = slots
@@ -795,6 +798,29 @@ interface State {
 const ACROSS = [0, 1, 1, 2] as const;
 const MIRROR = [3, 1, 2, 0] as const;
 
+// Keep this order for stable cost ties. The two middle arrows allow either foot assignment.
+const JUMP_LANDINGS = [
+  [0, 1],
+  [0, 2],
+  [0, 3],
+  [1, 2],
+  [2, 1],
+  [1, 3],
+  [2, 3],
+] as const;
+const isCandle = (from: number, to: number) =>
+  (from === 1 && to === 2) || (from === 2 && to === 1);
+
+interface StepScoring {
+  gapBeats: number;
+  gapSeconds: number;
+  direction: number;
+  prior: Prior;
+  chained: boolean;
+  wanted: readonly number[] | undefined;
+  sample: readonly number[];
+}
+
 /** How likely each arrow is after one arrow (`two`, by `4 * last + next`) and after two (`three`). */
 interface Prior {
   two: Float64Array;
@@ -883,6 +909,17 @@ function placeSteps(
   const reference = referenceFor(difficulty);
   const prior = priors(reference);
   const jumpPairs = reference.tables.jump_pair ?? {};
+  const jumpLandings = JUMP_LANDINGS.map(([left, right]) => {
+    const a = Math.min(left, right);
+    const b = Math.max(left, right);
+    return {
+      left,
+      right,
+      columns: [a, b] as const,
+      key: a * 4 + b,
+      cost: -Math.log(6 * ((jumpPairs[ARROWS[a]! + ARROWS[b]!] ?? 0) + 0.005)),
+    };
+  });
   const afterJumpIn = reference.tables.after_jump?.in ?? 0.42;
   /** Whether the bar's remembered arrows are used: a repeat should repeat. */
   const ECHO = 4;
@@ -892,16 +929,11 @@ function placeSteps(
     state: State,
     foot: number,
     column: number,
-    at: number,
-    gapBeats: number,
-    gapSeconds: number,
+    score: StepScoring,
+    usageDenominator: number,
   ): number | undefined => {
-    const speed = speedOf(gapBeats);
-    // Whether the step before came at this speed too: then the last two arrows say what comes next.
-    const chained =
-      at >= 2 &&
-      speedOf((rows[at - 1]!.slot - rows[at - 2]!.slot) / slotsPerBeat) ===
-        speed;
+    const { gapBeats, gapSeconds, direction, prior, chained, wanted, sample } =
+      score;
     const other = foot === 0 ? state.right : state.left,
       from = foot === 0 ? state.left : state.right;
     if (column === other) return undefined;
@@ -914,8 +946,7 @@ function placeSteps(
         return undefined;
       cost += tuning.crossover + (gapSeconds < 0.15 ? 1 : 0);
     }
-    if ((from === 1 && column === 2) || (from === 2 && column === 1))
-      cost += tuning.candle;
+    if (isCandle(from, column)) cost += tuning.candle;
     const [last, second] = state.recent;
     // The same arrow again: a jack, only at a speed the difficulty allows and only a few running.
     if (column === last && (gapBeats < tuning.jack || state.jacks >= 2))
@@ -927,8 +958,8 @@ function placeSteps(
       // What published charts step after these arrows at this speed.
       const likely =
         chained && second >= 0
-          ? prior[speed].three[second * 16 + last * 4 + column]!
-          : prior[speed].two[last * 4 + column]!;
+          ? prior.three[second * 16 + last * 4 + column]!
+          : prior.two[last * 4 + column]!;
       cost -= Math.log(4 * likely);
       // The feet here alternate more strictly than a player's do, which makes the same arrow twice rarer than it
       // should be: this much puts it back.
@@ -939,18 +970,15 @@ function placeSteps(
       cost -= Math.log((stays ? afterJumpIn : 1 - afterJumpIn) / 0.5);
     }
     // The melody: up moves right, down moves left.
-    const direction = contour(at);
     if (direction !== 0 && last >= 0) {
       const moved = Math.sign(column - last);
       cost += moved === direction ? -0.35 : moved === 0 ? 0 : 0.7;
     }
     // Even use of the four arrows.
-    const total = state.uses[0] + state.uses[1] + state.uses[2] + state.uses[3];
-    cost += 2.2 * (state.uses[column]! / (total + 6) - 0.25);
-    const wanted = remembered.get(at);
+    cost += 2.2 * (state.uses[column]! / usageDenominator - 0.25);
     if (wanted && wanted.length === 1 && wanted[0] === column) cost -= ECHO;
     // The draw that makes the cheapest arrow a sample of the likely ones and not always the likeliest.
-    cost -= gumbel(noise(seed, rows[at]!.slot, column));
+    cost -= sample[column]!;
     return cost;
   };
 
@@ -1022,22 +1050,51 @@ function placeSteps(
     const before = at > 0 ? rows[at - 1]!.slot : row.slot - 4 * slotsPerBeat;
     const gapBeats = (row.slot - before) / slotsPerBeat,
       gapSeconds = song.seconds[row.slot]! - song.seconds[Math.max(0, before)]!;
+    const speed = speedOf(gapBeats);
+    const wanted = remembered.get(at);
+    const stepScoring: StepScoring = {
+      gapBeats,
+      gapSeconds,
+      direction: contour(at),
+      prior: prior[speed],
+      // If the previous step was at this speed too, the last two arrows predict the next.
+      chained:
+        at >= 2 &&
+        speedOf((before - rows[at - 2]!.slot) / slotsPerBeat) === speed,
+      wanted,
+      sample: Array.from(ARROWS, (_, column) =>
+        gumbel(noise(seed, row.slot, column)),
+      ),
+    };
+    const jumps = row.jump
+      ? jumpLandings.map((landing) => ({
+          ...landing,
+          sample: gumbel(noise(seed, row.slot, landing.key, 9)),
+          echo:
+            wanted?.length === 2 &&
+            wanted[0] === landing.columns[0] &&
+            wanted[1] === landing.columns[1],
+        }))
+      : [];
+    const jumpHoldFoot = noise(seed, row.slot, 11) < 0.5 ? 0 : 1;
+    const startsHold = row.holdEnd !== undefined;
     const next: State[] = [];
     for (const state of beam) {
       const holding = state.holding >= 0 && row.slot <= state.holdEnd;
+      const usageDenominator =
+        state.uses[0] + state.uses[1] + state.uses[2] + state.uses[3] + 6;
       const push = (
         cost: number,
         left: number,
         right: number,
         foot: number,
-        columns: number[],
-        single: boolean,
-        holdFoot: number,
+        columns: readonly number[],
       ): void => {
+        const single = columns.length === 1;
+        const holdFoot = single ? foot : jumpHoldFoot;
         const column = single ? columns[0]! : -1;
         const uses: [number, number, number, number] = [...state.uses];
         for (const used of columns) uses[used]!++;
-        const startsHold = row.holdEnd !== undefined;
         next.push({
           left,
           right,
@@ -1059,49 +1116,30 @@ function placeSteps(
         });
       };
       if (row.jump && !holding) {
-        for (let a = 0; a < 4; a++)
-          for (let b = a + 1; b < 4; b++) {
-            // The left foot takes the arrow further left; Down and Up can go either way round.
-            const ways: [number, number][] =
-              a === 1 && b === 2
-                ? [
-                    [1, 2],
-                    [2, 1],
-                  ]
-                : [[a, b]];
-            for (const [left, right] of ways) {
-              // The pairs published charts jump on, as often as they do.
-              let cost = -Math.log(
-                6 * ((jumpPairs[ARROWS[a]! + ARROWS[b]!] ?? 0) + 0.005),
-              );
-              // Not the same jump as the one before, unless the bar is a repeat.
-              if (state.lastJump === a * 4 + b) cost += 0.45;
-              for (const [from, to] of [
-                [state.left, left],
-                [state.right, right],
-              ] as const) {
-                if (from !== to) cost += 0.2;
-                if ((from === 1 && to === 2) || (from === 2 && to === 1))
-                  cost += tuning.candle;
-              }
-              const total =
-                state.uses[0] + state.uses[1] + state.uses[2] + state.uses[3];
-              cost +=
-                2.2 * ((state.uses[a]! + state.uses[b]!) / (total + 6) - 0.5);
-              const wanted = remembered.get(at);
-              if (
-                wanted &&
-                wanted.length === 2 &&
-                wanted[0] === a &&
-                wanted[1] === b
-              )
-                cost -= ECHO;
-              cost -= gumbel(noise(seed, row.slot, a * 4 + b, 9));
-              // A jump counts as the step of the foot whose turn it was, so the feet go on alternating after it.
-              const holdFoot = noise(seed, row.slot, 11) < 0.5 ? 0 : 1;
-              push(cost, left, right, 1 - state.foot, [a, b], false, holdFoot);
-            }
-          }
+        for (const {
+          left,
+          right,
+          columns,
+          key,
+          sample,
+          echo,
+          cost: priorCost,
+        } of jumps) {
+          const [a, b] = columns;
+          // Apply costs in foot order to keep floating-point ties stable.
+          let cost = priorCost;
+          if (state.lastJump === key) cost += 0.45;
+          if (state.left !== left) cost += 0.2;
+          if (isCandle(state.left, left)) cost += tuning.candle;
+          if (state.right !== right) cost += 0.2;
+          if (isCandle(state.right, right)) cost += tuning.candle;
+          cost +=
+            2.2 * ((state.uses[a]! + state.uses[b]!) / usageDenominator - 0.5);
+          if (echo) cost -= ECHO;
+          cost -= sample;
+          // Keep alternating after the jump.
+          push(cost, left, right, 1 - state.foot, columns);
+        }
         continue;
       }
       // A single step. Its foot is the other one; the same one only while the other holds a freeze, for a jack,
@@ -1112,25 +1150,31 @@ function placeSteps(
             [1 - state.foot, 0],
             [state.foot, gapBeats >= 2 ? 0.4 : gapBeats >= 1 ? 1.5 : -1],
           ];
-      for (const [foot, extra] of feet)
+      for (const [foot, extra] of feet) {
+        const sameFoot = !holding && foot === state.foot;
+        const from = foot === 0 ? state.left : state.right;
         for (let column = 0; column < 4; column++) {
-          const sameFoot = !holding && foot === state.foot;
-          const from = foot === 0 ? state.left : state.right;
+          const changedColumn = column !== from;
           // The same foot may repeat its own arrow (a jack) at any allowed speed, or move after a rest.
-          if (sameFoot && column !== from && extra < 0) continue;
-          const cost = stepCost(state, foot, column, at, gapBeats, gapSeconds);
+          if (sameFoot && changedColumn && extra < 0) continue;
+          const cost = stepCost(
+            state,
+            foot,
+            column,
+            stepScoring,
+            usageDenominator,
+          );
           if (cost === undefined) continue;
-          const moved = holding && column !== from ? 0.25 : 0;
+          const moved = holding && changedColumn ? 0.25 : 0;
           push(
-            cost + (sameFoot && column !== from ? extra : 0) + moved,
+            cost + (sameFoot && changedColumn ? extra : 0) + moved,
             foot === 0 ? column : state.left,
             foot === 1 ? column : state.right,
             foot,
             [column],
-            true,
-            foot,
           );
         }
+      }
     }
     if (next.length === 0)
       throw new Error(

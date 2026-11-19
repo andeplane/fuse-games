@@ -46,6 +46,7 @@ import {
   type Spectra,
 } from "./spectrum.js";
 import type { SpectrumReply, SpectrumRequest } from "./spectrum-worker.js";
+import { analyseInWorker } from "./analysis-worker.js";
 import type { RhythmResult } from "./rhythm.js";
 import { scoreRhythm } from "./rhythm-score.js";
 import {
@@ -309,7 +310,7 @@ for (const subdivision of [8, 12, 16, 24, 32, 48])
 rhythmGap.value = String(1 / 8);
 const detectButton = button(
   "Detect rhythm",
-  () => runRhythm(),
+  () => void runRhythm(),
   "Analyse the selected phrase using the chosen musical layer and tempo-relative spacing",
 );
 const listenButton = button(
@@ -525,7 +526,7 @@ const hidden = new Set<string>();
 let duration = 1;
 let spectra: Spectra | undefined;
 let rhythm: RhythmResult | undefined;
-let rhythmWorker: Worker | undefined;
+let rhythmRun: AbortController | undefined;
 let auditionEnd: number | undefined;
 let rawRhythm: RhythmResult | undefined;
 let auditionClicks: { start: number; end: number } | undefined;
@@ -539,7 +540,7 @@ let playhead = 0;
 let selection: Selection | undefined;
 let notes: NotesFile = readStoredNotes();
 let linkedFile: FileSystemFileHandle | undefined;
-let loadToken = 0;
+let songLoad: AbortController | undefined;
 
 let audioContext: AudioContext | undefined;
 let audioOutput: GainNode | undefined;
@@ -620,9 +621,31 @@ const say = (text: string) => {
 // ---------------------------------------------------------------------------------------------------------------------
 // Loading a song
 
+const RHYTHM_READY = "Ready. Select a phrase or detect over the whole song.";
+
+function loadSaved<T>(
+  key: string,
+  parse: (stored: string) => T,
+): T | undefined {
+  const stored = load(key);
+  if (!stored) return;
+  try {
+    return parse(stored);
+  } catch {
+    save(key, null);
+  }
+}
+
+function savedTime(key: string): number | undefined {
+  const seconds = Number(load(key) ?? NaN);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+}
+
 async function loadSong(id: string): Promise<void> {
   const data = SONGS_DATA.find((song) => song.id === id) ?? SONGS_DATA[0]!;
-  const token = ++loadToken;
+  songLoad?.abort();
+  songLoad = new AbortController();
+  const { signal } = songLoad;
   stop();
   songId = data.id;
   songSelect.value = data.id;
@@ -641,32 +664,19 @@ async function loadSong(id: string): Promise<void> {
   tiles = [];
   playhead = 0;
   topTime = -0.5;
-  taps = [];
+  taps = loadSaved(TAPS_KEY(data.id), (stored) => parseTaps(stored).taps) ?? [];
   tapUndo = [];
   tapHistory = [];
   pickedTap = undefined;
-  const tapped = load(TAPS_KEY(data.id));
-  if (tapped) {
-    try {
-      taps = parseTaps(tapped).taps;
-    } catch {
-      save(TAPS_KEY(data.id), null);
-    }
-  }
-  const from = Number(load(RECORD_FROM_KEY(data.id)) ?? NaN);
-  recordFrom = Number.isFinite(from) && from >= 0 ? from : undefined;
-  const marked = Number(load(MARKER_KEY(data.id)) ?? NaN);
-  marker = Number.isFinite(marked) && marked >= 0 ? marked : undefined;
+  recordFrom = savedTime(RECORD_FROM_KEY(data.id));
+  marker = savedTime(MARKER_KEY(data.id));
   playBuffer = undefined;
   sim = parseSimfile(data.ssc);
-  const edited = load(EDITS_KEY(data.id));
-  if (edited) {
-    try {
-      sim = { ...sim, charts: parseSimfile(edited).charts };
-    } catch {
-      save(EDITS_KEY(data.id), null);
-    }
-  }
+  const edited = loadSaved(
+    EDITS_KEY(data.id),
+    (stored) => parseSimfile(stored).charts,
+  );
+  if (edited) sim = { ...sim, charts: edited };
   rebuildCharts();
   // One chart to start with (the ones ticked last time, else Hard); the chips above the charts pick the rest.
   for (const key of hiddenAtStart(charts, parseShown(load(SHOWN_KEY))))
@@ -680,11 +690,11 @@ async function loadSong(id: string): Promise<void> {
     ? data.audio
     : `${BASE}${data.audio}`;
   try {
-    const bytes = await (await fetch(audioUrl)).arrayBuffer();
-    if (token !== loadToken) return;
+    const bytes = await (await fetch(audioUrl, { signal })).arrayBuffer();
+    signal.throwIfAborted();
     const context = ensureContext();
     const decoded = await context.decodeAudioData(bytes.slice(0));
-    if (token !== loadToken) return;
+    signal.throwIfAborted();
     playBuffer = decoded;
     duration = decoded.duration;
     if (resumeAt !== undefined) {
@@ -696,7 +706,7 @@ async function loadSong(id: string): Promise<void> {
     }
     const offline = new OfflineAudioContext(1, 1, LAB_RATE);
     const low = await offline.decodeAudioData(bytes);
-    if (token !== loadToken) return;
+    signal.throwIfAborted();
     const mono = new Float32Array(low.length);
     for (let channel = 0; channel < low.numberOfChannels; channel++) {
       const data = low.getChannelData(channel);
@@ -705,21 +715,30 @@ async function loadSong(id: string): Promise<void> {
     }
     say("analysing audio…");
     draw();
-    const result = await analyse(mono, (share) => {
-      if (token === loadToken)
-        say(`analysing audio… ${Math.round(share * 100)}%`);
+    const result = await analyseInWorker<SpectrumReply, Spectra>({
+      create: () =>
+        new Worker(new URL("./spectrum-worker.ts", import.meta.url), {
+          type: "module",
+        }),
+      signal,
+      request: { samples: mono, rate: LAB_RATE } satisfies SpectrumRequest,
+      transfer: [mono.buffer],
+      read(reply) {
+        if (reply.kind === "done") return reply;
+        say(`analysing audio… ${Math.round(reply.share * 100)}%`);
+      },
+      failure: (event) => event.message || "the analysis worker failed",
     });
-    if (token !== loadToken) return;
+    signal.throwIfAborted();
     spectra = result;
     detectButton.disabled = false;
-    rhythmStatus.textContent =
-      "Ready. Select a phrase or detect over the whole song.";
+    rhythmStatus.textContent = RHYTHM_READY;
     onsetScale = Math.max(1e-6, quantile(result.onset, 0.995));
     buildTiles();
     updateFlux();
     say(`${data.id}: ${duration.toFixed(1)} s, ${result.frames} frames`);
   } catch (error) {
-    if (token !== loadToken) return;
+    if (signal.aborted) return;
     say(
       `could not load the audio: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -727,33 +746,6 @@ async function loadSong(id: string): Promise<void> {
       "Audio analysis unavailable. Select the song again to retry.";
   }
   draw();
-}
-
-function analyse(
-  samples: Float32Array,
-  progress: (share: number) => void,
-): Promise<Spectra> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(
-      new URL("./spectrum-worker.ts", import.meta.url),
-      { type: "module" },
-    );
-    worker.onmessage = (event: MessageEvent<SpectrumReply>) => {
-      const reply = event.data;
-      if (reply.kind === "progress") progress(reply.share);
-      else {
-        worker.terminate();
-        resolve(reply);
-      }
-    };
-    worker.onerror = (event) => {
-      worker.terminate();
-      reject(new Error(event.message || "the analysis worker failed"));
-    };
-    worker.postMessage({ samples, rate: LAB_RATE } satisfies SpectrumRequest, [
-      samples.buffer,
-    ]);
-  });
 }
 
 function rebuildCharts(): void {
@@ -869,7 +861,7 @@ function rhythmComparison() {
 
 function renderComparison(): void {
   const comparison = rhythmComparison();
-  referenceListen.disabled = !comparison?.reference || Boolean(rhythmWorker);
+  referenceListen.disabled = !comparison?.reference || Boolean(rhythmRun);
   comparisonText.textContent = comparison
     ? comparison.reference === 0
       ? `No reference steps in this span. Record taps or choose a chart to compare ${comparison.detected} detected events.`
@@ -920,68 +912,41 @@ function renderChips(): void {
 // ---------------------------------------------------------------------------------------------------------------------
 // Spectrogram pictures
 
+function rhythmBand() {
+  switch (rhythmVoice.value) {
+    case "lead":
+      return { lowHz: 200, highHz: 3000 };
+    case "bass":
+      return { lowHz: 40, highHz: 250 };
+    default:
+      return selection?.lowHz !== undefined && selection.highHz !== undefined
+        ? selection
+        : band;
+  }
+}
+
 /** Run only on request. A later selection does not silently replace the result being auditioned. */
-function runRhythm(): void {
+async function runRhythm(): Promise<void> {
   if (!spectra || !sim) return;
-  rhythmWorker?.terminate();
-  const token = loadToken;
-  const worker = new Worker(new URL("./rhythm-worker.ts", import.meta.url), {
-    type: "module",
-  });
-  rhythmWorker = worker;
+  rhythmRun?.abort();
+  rhythmRun = new AbortController();
+  const { signal } = rhythmRun;
   policySelect.disabled = true;
   detectButton.disabled = true;
   listenButton.disabled = eventsButton.disabled = true;
   referenceListen.disabled = true;
   rhythmStatus.textContent = "Detecting rhythm…";
-  const finish = (): boolean => {
-    worker.terminate();
-    if (rhythmWorker !== worker || token !== loadToken) return false;
-    rhythmWorker = undefined;
+  const finish = () => {
+    rhythmRun = undefined;
     policySelect.disabled = false;
     detectButton.disabled = !spectra;
     listenButton.disabled = !rhythm?.events.length;
     eventsButton.disabled = !rhythm;
     renderComparison();
-    return true;
   };
-  worker.onerror = () => {
-    if (finish())
-      rhythmStatus.textContent =
-        "Detection failed. Press Detect rhythm to retry.";
-  };
-  worker.onmessage = ({ data }: MessageEvent<RhythmReply>) => {
-    if (!finish()) return;
-    if (data.kind === "error") {
-      rhythmStatus.textContent = data.message;
-      return;
-    }
-    const result = data.result;
-    cancelTicks();
-    rawRhythm = result;
-    rhythm = result;
-    applyDifficultyPolicy();
-    const count = rhythm.events.length;
-    listenButton.disabled = !count;
-    eventsButton.disabled = false;
-    const option = tickSelect.querySelector<HTMLOptionElement>(
-      `option[value="${DETECTED}"]`,
-    );
-    if (option) option.disabled = !count;
-    const o = result.options;
-    rhythmStatus.textContent = `${count} events · ${o.start.toFixed(2)}–${o.end.toFixed(2)} s · ${Math.round(o.lowHz)}–${Math.round(o.highHz)} Hz. ${count ? "Listen, or choose Detected in the tick menu." : "Try a wider band or higher sensitivity."}${muted ? " This ?mute preview is silent; remove ?mute to hear it." : ""}`;
-    renderComparison();
-    draw();
-  };
+  let reply: RhythmReply;
   try {
-    const frequencies =
-      rhythmVoice.value === "lead"
-        ? { lowHz: 200, highHz: 3000 }
-        : rhythmVoice.value === "bass"
-          ? { lowHz: 40, highHz: 250 }
-          : selection?.lowHz !== undefined && selection.highHz !== undefined
-            ? selection
-            : band;
+    const frequencies = rhythmBand();
     const options = {
       ...(rhythmVoice.value === "auto" ? { layer: "auto" as const } : {}),
       start: Math.max(0, selection?.start ?? 0),
@@ -997,8 +962,13 @@ function runRhythm(): void {
       timing: sim.timing,
     };
     const detail = spectra.detail.slice();
-    worker.postMessage(
-      {
+    reply = await analyseInWorker<RhythmReply, RhythmReply>({
+      create: () =>
+        new Worker(new URL("./rhythm-worker.ts", import.meta.url), {
+          type: "module",
+        }),
+      signal,
+      request: {
         spectra: {
           frames: spectra.frames,
           detailBins: spectra.detailBins,
@@ -1006,22 +976,48 @@ function runRhythm(): void {
         },
         options,
       } satisfies RhythmRequest,
-      [detail.buffer],
-    );
+      transfer: [detail.buffer],
+      read: (result) => result,
+      failure: () => "Detection failed. Press Detect rhythm to retry.",
+    });
+    signal.throwIfAborted();
   } catch (error) {
-    if (finish())
-      rhythmStatus.textContent =
-        error instanceof Error
-          ? error.message
-          : "Detection failed. Try another span.";
+    if (signal.aborted) return;
+    finish();
+    rhythmStatus.textContent =
+      error instanceof Error
+        ? error.message
+        : "Detection failed. Try another span.";
+    return;
   }
+  finish();
+  if (reply.kind === "error") {
+    rhythmStatus.textContent = reply.message;
+    return;
+  }
+  const result = reply.result;
+  cancelTicks();
+  rawRhythm = result;
+  rhythm = result;
+  applyDifficultyPolicy();
+  const count = rhythm.events.length;
+  listenButton.disabled = !count;
+  eventsButton.disabled = false;
+  const option = tickSelect.querySelector<HTMLOptionElement>(
+    `option[value="${DETECTED}"]`,
+  );
+  if (option) option.disabled = !count;
+  const o = result.options;
+  rhythmStatus.textContent = `${count} events · ${o.start.toFixed(2)}–${o.end.toFixed(2)} s · ${Math.round(o.lowHz)}–${Math.round(o.highHz)} Hz. ${count ? "Listen, or choose Detected in the tick menu." : "Try a wider band or higher sensitivity."}${muted ? " This ?mute preview is silent; remove ?mute to hear it." : ""}`;
+  renderComparison();
+  draw();
 }
 
 function clearRhythm(): void {
   policySelect.disabled = false;
   rawRhythm = undefined;
-  rhythmWorker?.terminate();
-  rhythmWorker = undefined;
+  rhythmRun?.abort();
+  rhythmRun = undefined;
   detectButton.disabled = !spectra;
   cancelTicks();
   rhythm = undefined;
@@ -1031,8 +1027,7 @@ function clearRhythm(): void {
   );
   if (option) option.disabled = true;
   if (tickSelect.value === DETECTED) tickSelect.value = "";
-  rhythmStatus.textContent =
-    "Ready. Select a phrase or detect over the whole song.";
+  rhythmStatus.textContent = RHYTHM_READY;
   renderComparison();
   draw();
 }
@@ -1057,7 +1052,7 @@ function applyDifficultyPolicy(): void {
         : policiesForSong()
           ? "Raw musical events. Choose Easy–Challenge to apply a Decisions policy."
           : "No Decisions policy cached for this song yet. Raw detection is available.";
-  if (!rawRhythm || !timing || rhythmWorker) return;
+  if (!rawRhythm || !timing || rhythmRun) return;
   cancelTicks();
   const { start, end } = rawRhythm.options;
   rhythm = {

@@ -15,6 +15,7 @@ import {
 import { EVENT_TYPES, recordTimeline, TIMELINE } from "./timeline.js";
 import { loadMap, neighbors, homeCellOrder, homeOrder } from "./map.ts";
 import { autoExpandCell } from "./auto-expand.js";
+import { balanceParticleDestinations } from "./particle-destinations.js";
 import {
   CONSTRUCTIONS,
   RESEARCH,
@@ -47,6 +48,7 @@ import {
   type Command,
   type Construction,
   type MatchSettings,
+  type Particle,
   type Player,
   type RosterEntry,
   type Structure,
@@ -667,111 +669,71 @@ function sprouts(w: World, p: Player) {
     emit(w, p, "constructed", { cell: job.cell });
   }
 }
-function recoverParticle(w: World, particle: World["particles"][number]) {
+function recoverParticle(w: World, particle: Particle) {
   particle.mode = "recovering";
   particle.recoverAt =
     w.tick + PARTICLES[particle.kind].recovery + particle.speed;
 }
+function advanceParticle(
+  w: World,
+  player: Player,
+  particle: Particle,
+  brainCell: number,
+  index: CellIndex,
+): void {
+  if (particle.mode === "recovering") {
+    if (particle.recoverAt > w.tick) return;
+    particle.cell = brainCell;
+    particle.mode = "stationed";
+    particle.destination = brainCell;
+    Object.assign(particle, particleProfile(player));
+  }
+  if (particle.mode === "transit") {
+    const hasConduit = (cell: number) => {
+      const node = index.get(cell);
+      return node?.connected && node.ownerId === player.id;
+    };
+    if (!hasConduit(particle.from) || !hasConduit(particle.to))
+      return recoverParticle(w, particle);
+    if (particle.arrivesAt > w.tick) return;
+    particle.cell = particle.to;
+    particle.mode = "stationed";
+  }
+  if (!index.get(particle.cell)?.connected) recoverParticle(w, particle);
+}
+
+const particleEdge = (a: number, b: number) =>
+  a < b ? `${a}:${b}` : `${b}:${a}`;
+
+function particleTraffic(w: World, active: readonly Particle[]) {
+  const transitsOn = new Map<string, number>();
+  for (const particle of w.particles) {
+    if (particle.mode !== "transit") continue;
+    const edge = particleEdge(particle.from, particle.to);
+    transitsOn.set(edge, (transitsOn.get(edge) ?? 0) + 1);
+  }
+  const arriving = new Map<number, number>();
+  for (const particle of active) {
+    const cell = particle.mode === "transit" ? particle.to : particle.cell;
+    arriving.set(cell, (arriving.get(cell) ?? 0) + 1);
+  }
+  return { transitsOn, arriving };
+}
+
 function particles(w: World, p: Player, edgeLaunch: Map<string, number>) {
   const b = brain(w, p);
   if (!b) return;
+  // The structures and routes between their cells hold for the whole pass.
+  const index = cellIndex(w);
   const all = w.particles.filter((q) => q.ownerId === p.id);
-  for (const q of all) {
-    if (q.mode === "recovering") {
-      if (q.recoverAt > w.tick) continue;
-      q.cell = b.cell;
-      q.mode = "stationed";
-      q.destination = b.cell;
-      Object.assign(q, particleProfile(p));
-    }
-    if (q.mode === "transit") {
-      const from = structure(w, q.from),
-        to = structure(w, q.to);
-      if (
-        !from?.connected ||
-        !to?.connected ||
-        from.ownerId !== p.id ||
-        to.ownerId !== p.id
-      ) {
-        recoverParticle(w, q);
-        continue;
-      }
-      if (q.arrivesAt > w.tick) continue;
-      q.cell = q.to;
-      q.mode = "stationed";
-    }
-    if (!structure(w, q.cell)?.connected) {
-      recoverParticle(w, q);
-      continue;
-    }
-  }
-  const destinations = Object.entries(p.priorities)
-    .map(([cell, weight]) => ({ cell: Number(cell), weight, count: 0 }))
-    .filter(
-      (d) =>
-        structure(w, d.cell)?.connected &&
-        structure(w, d.cell)?.ownerId === p.id,
-    )
-    .sort((a, b) => homeCellOrder(w.map, p.slot, a.cell, b.cell));
-  const targets = new Map<number, number>();
-  for (let i = 0; i < all.filter((q) => q.mode !== "recovering").length; i++) {
-    const options = destinations.filter(
-      (d) => d.count < (d.cell === b.cell ? 128 : RULES.nodeCapacity),
-    );
-    options.sort(
-      (a, b) =>
-        (a.count + 1) * b.weight - (b.count + 1) * a.weight ||
-        homeCellOrder(w.map, p.slot, a.cell, b.cell),
-    );
-    const best = options[0];
-    if (!best) break;
-    best.count++;
-    targets.set(best.cell, best.count);
-  }
-  targets.set(
-    b.cell,
-    (targets.get(b.cell) ?? 0) +
-      all.filter((q) => q.mode !== "recovering").length -
-      [...targets.values()].reduce((a, b) => a + b, 0),
-  );
-  const assignments = new Map<number, number>();
-  for (const q of all)
-    if (q.mode !== "recovering")
-      assignments.set(q.destination, (assignments.get(q.destination) ?? 0) + 1);
-  for (const q of all) {
-    if (q.mode === "recovering") continue;
-    if (
-      (assignments.get(q.destination) ?? 0) > (targets.get(q.destination) ?? 0)
-    ) {
-      const destination =
-        [...targets].find(
-          ([cell, count]) => (assignments.get(cell) ?? 0) < count,
-        )?.[0] ?? b.cell;
-      assignments.set(q.destination, (assignments.get(q.destination) ?? 1) - 1);
-      q.destination = destination;
-      assignments.set(destination, (assignments.get(destination) ?? 0) + 1);
-    }
-  }
+  for (const q of all) advanceParticle(w, p, q, b.cell, index);
+  const active = all.filter((q) => q.mode !== "recovering");
+  balanceParticleDestinations(w.map, p, active, b.cell, index);
   // Rotate arbitration to avoid permanently privileging low particle IDs.
   const ordered = [...all.slice(w.tick % 128), ...all.slice(0, w.tick % 128)];
-  // Structures do not change while particles move, so the index and the
-  // routes between cells hold for the whole pass. Edge and arrival counts are
-  // kept as particles launch, matching a fresh count at every decision.
-  const index = cellIndex(w);
+  // Edge and arrival counts are kept as particles launch, matching a fresh count at every decision.
   const routes = new Map<string, number[] | null>();
-  const edgeOf = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
-  const transitsOn = new Map<string, number>();
-  for (const a of w.particles)
-    if (a.mode === "transit") {
-      const edge = edgeOf(a.from, a.to);
-      transitsOn.set(edge, (transitsOn.get(edge) ?? 0) + 1);
-    }
-  const arriving = new Map<number, number>();
-  for (const a of all) {
-    const cell =
-      a.mode === "stationed" ? a.cell : a.mode === "transit" ? a.to : null;
-    if (cell !== null) arriving.set(cell, (arriving.get(cell) ?? 0) + 1);
-  }
+  const { transitsOn, arriving } = particleTraffic(w, active);
   for (const q of ordered) {
     if (
       q.mode !== "stationed" ||
@@ -788,7 +750,7 @@ function particles(w: World, p: Player, edgeLaunch: Map<string, number>) {
     const route = routes.get(key);
     if (!route || route.length < 2) continue;
     const next = route[1]!,
-      edge = edgeOf(q.cell, next);
+      edge = particleEdge(q.cell, next);
     if (
       (edgeLaunch.get(edge) ?? 0) >= RULES.edgeLaunchCapacity ||
       (transitsOn.get(edge) ?? 0) >= RULES.edgeTransitCapacity ||
@@ -806,22 +768,90 @@ function particles(w: World, p: Player, edgeLaunch: Map<string, number>) {
     q.mode = "transit";
   }
 }
+interface CombatShot {
+  player: Player;
+  from: number;
+  cell: number;
+  owner: string;
+  site: boolean;
+  id: number;
+  damage: number;
+}
+
+function unshieldedDamage(
+  w: World,
+  shot: CombatShot,
+  owner: Player,
+  availableAt: (structure: Structure) => Particle[],
+): number {
+  const order = homeOrder(w.map, owner.slot);
+  const protectors = w.structures
+    .filter(
+      (s) =>
+        s.ownerId === owner.id &&
+        s.connected &&
+        protectionCells(w, s.kind, s.cell).has(shot.cell),
+    )
+    .sort((a, b) => order(a.cell, b.cell));
+  // Fields do not stack their percentage. Supplied protectors share the finite cost.
+  const percent = Math.max(
+    0,
+    ...protectors.map((s) => STRUCTURES[s.kind].protection!.absorbPercent),
+  );
+  const limit = Math.floor((shot.damage * percent) / 100);
+  let remaining = limit;
+  for (const protector of protectors) {
+    if (remaining <= 0) break;
+    const definition = STRUCTURES[protector.kind].protection!;
+    const before = remaining;
+    for (const particle of availableAt(protector)) {
+      if (remaining <= 0) break;
+      remaining -= Math.min(
+        remaining,
+        particle.attack * definition.capacityPerAttack,
+      );
+      recoverParticle(w, particle);
+    }
+    const absorbed = before - remaining;
+    if (absorbed)
+      emit(w, owner, "shielded", {
+        cell: shot.cell,
+        fromCell: protector.cell,
+        amount: absorbed,
+      });
+  }
+  return shot.damage - (limit - remaining);
+}
+
 function combat(w: World) {
+  const structures = cellIndex(w);
+  const players = new Map(w.players.map((player) => [player.id, player]));
+  const brainIds = new Set(
+    w.structures.filter((s) => s.kind === "brain").map((s) => s.id),
+  );
+  const adjacentEnemies = (cell: number, owner: string): Structure[] =>
+    neighbors(w.map, cell)
+      .map((adjacent) => structures.get(adjacent))
+      .filter((s): s is Structure => s !== undefined && s.ownerId !== owner);
+  const supplies = new Map<number, Particle[]>();
+  for (const q of w.particles) {
+    if (q.mode !== "stationed" || q.cell !== q.destination) continue;
+    const atCell = supplies.get(q.cell);
+    if (atCell) atCell.push(q);
+    else supplies.set(q.cell, [q]);
+  }
+  // The index keeps particle order. A particle already reserved this tick is recovering.
+  const availableAt = (s: Structure) =>
+    (supplies.get(s.cell) ?? []).filter(
+      (q) => q.ownerId === s.ownerId && q.mode === "stationed",
+    );
   const hits = new Map<number, number>();
   const siteHits = new Map<string, number>();
-  const shots: {
-    player: Player;
-    from: number;
-    cell: number;
-    owner: string;
-    site: boolean;
-    id: number;
-    damage: number;
-  }[] = [];
+  const shots: CombatShot[] = [];
   for (const s of w.structures) {
     const weapon = STRUCTURES[s.kind];
     if (!s.connected || !canAttack(s.kind)) continue;
-    const p = w.players.find((p) => p.id === s.ownerId)!;
+    const p = players.get(s.ownerId)!;
     // Synaptic frenzy halves the time between volleys.
     const cadence = hasBuff(p, "frenzy", w.tick)
       ? Math.max(1, Math.floor(weapon.cadence / 2))
@@ -866,11 +896,7 @@ function combat(w: World) {
     // Splash weapons aim where the burst hits most: the target with the most
     // enemy structures beside it. Others finish the weakest target first.
     const cluster = (cell: number) =>
-      weapon.splashPercent
-        ? neighbors(w.map, cell).filter((n) =>
-            w.structures.some((t) => t.cell === n && t.ownerId !== s.ownerId),
-          ).length
-        : 0;
+      weapon.splashPercent ? adjacentEnemies(cell, s.ownerId).length : 0;
     const density = new Map(targets.map((t) => [t.cell, cluster(t.cell)]));
     targets.sort(
       (a, b) =>
@@ -887,15 +913,7 @@ function combat(w: World) {
     );
     const target = equal[(s.firingCursor ?? 0) % equal.length];
     if (!target) continue;
-    const ammo = w.particles
-      .filter(
-        (q) =>
-          q.ownerId === s.ownerId &&
-          q.mode === "stationed" &&
-          q.cell === s.cell &&
-          q.destination === s.cell,
-      )
-      .slice(0, weapon.volley);
+    const ammo = availableAt(s).slice(0, weapon.volley);
     const damage = ammo.reduce((sum, q) => sum + q.attack, 0);
     if (!damage) continue;
     s.firingCursor = (s.firingCursor ?? 0) + 1;
@@ -904,21 +922,16 @@ function combat(w: World) {
     // Spores burst on impact: every enemy structure beside the target is hit too.
     const splash = Math.floor((damage * (weapon.splashPercent ?? 0)) / 100);
     if (splash > 0)
-      for (const cell of neighbors(w.map, target.cell)) {
-        const t = w.structures.find(
-          (t) => t.cell === cell && t.ownerId !== s.ownerId,
-        );
-        if (t)
-          shots.push({
-            player: p,
-            from: s.cell,
-            cell: t.cell,
-            owner: t.ownerId,
-            site: false,
-            id: t.id,
-            damage: splash,
-          });
-      }
+      for (const t of adjacentEnemies(target.cell, s.ownerId))
+        shots.push({
+          player: p,
+          from: s.cell,
+          cell: t.cell,
+          owner: t.ownerId,
+          site: false,
+          id: t.id,
+          damage: splash,
+        });
   }
   // Resolve protection after every gun reserves its salvo. A particle cannot
   // fire and shield in the same tick. Protectors and victims remain alive until
@@ -928,9 +941,8 @@ function combat(w: World) {
   // independent of structure-array insertion order.
   shots.sort((a, b) => {
     if (a.owner !== b.owner) return a.owner < b.owner ? -1 : 1;
-    const slot = w.players.find((p) => p.id === a.owner)!.slot;
-    const priority = (shot: typeof a) =>
-      w.structures.find((s) => s.id === shot.id)?.kind === "brain" ? 0 : 1;
+    const slot = players.get(a.owner)!.slot;
+    const priority = (shot: typeof a) => (brainIds.has(shot.id) ? 0 : 1);
     return (
       priority(a) - priority(b) ||
       b.damage - a.damage ||
@@ -939,58 +951,12 @@ function combat(w: World) {
     );
   });
   for (const shot of shots) {
-    let damage = shot.damage;
-    const owner = w.players.find((p) => p.id === shot.owner)!;
-    const protectors = w.structures
-      .filter(
-        (s) =>
-          s.ownerId === owner.id &&
-          s.connected &&
-          protectionCells(w, s.kind, s.cell).has(shot.cell),
-      )
-      .sort((a, b) => homeCellOrder(w.map, owner.slot, a.cell, b.cell));
-    // Fields do not stack their percentage. Several supplied protectors may
-    // share the finite cost when one runs dry.
-    const limit = Math.floor(
-      (shot.damage *
-        Math.max(
-          0,
-          ...protectors.map(
-            (s) => STRUCTURES[s.kind].protection!.absorbPercent,
-          ),
-        )) /
-        100,
+    const damage = unshieldedDamage(
+      w,
+      shot,
+      players.get(shot.owner)!,
+      availableAt,
     );
-    let remaining = limit;
-    for (const protector of protectors) {
-      const definition = STRUCTURES[protector.kind].protection!;
-      let absorbed = 0;
-      for (const q of w.particles) {
-        if (remaining <= 0) break;
-        if (
-          q.ownerId !== owner.id ||
-          q.mode !== "stationed" ||
-          q.cell !== protector.cell ||
-          q.destination !== protector.cell
-        )
-          continue;
-        const amount = Math.min(
-          remaining,
-          q.attack * definition.capacityPerAttack,
-        );
-        remaining -= amount;
-        absorbed += amount;
-        recoverParticle(w, q);
-      }
-      if (absorbed) {
-        damage -= absorbed;
-        emit(w, owner, "shielded", {
-          cell: shot.cell,
-          fromCell: protector.cell,
-          amount: absorbed,
-        });
-      }
-    }
     if (shot.site) {
       const key = `${shot.owner}:${shot.cell}`;
       siteHits.set(key, (siteHits.get(key) ?? 0) + damage);

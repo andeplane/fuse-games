@@ -1,4 +1,9 @@
-import { uint32, type SeatRecord, type Stage } from "fuse-netcode";
+import {
+  hashCheckpointJson,
+  uint32,
+  type SeatRecord,
+  type Stage,
+} from "fuse-netcode";
 import {
   BRIEFING_TICKS,
   CAPACITY,
@@ -753,20 +758,5 @@ export function hashRoom(room: FuseLaneRoom): string {
   const seats = [...room.seats.values()].sort(
     (a, b) => a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
-  const text = JSON.stringify({ ...room, seats }, (_key, value: unknown) =>
-    plain(value)
-      ? Object.fromEntries(
-          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : value,
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let index = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index);
-    a = Math.imul(a ^ code, 0x01000193) >>> 0;
-    b = Math.imul(b ^ code, 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson({ ...room, seats });
 }

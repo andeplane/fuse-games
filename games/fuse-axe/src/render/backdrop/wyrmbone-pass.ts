@@ -5,8 +5,11 @@ import {
   VIEW_H,
   VIEW_W,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster } from "./kit.js";
+import { firstTile, bayer, dither, hash, Raster } from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, WINDBLOWN, type Fire } from "./fire.js";
+import { snowyRelief as shape, type Box } from "./relief.js";
+import { paintSky, paintStars, paintMoon } from "./sky.js";
 
 /**
  * Stage 2, Wyrmbone Pass: a cold dawn on a mountain road through the bones of a dead giant wyrm. Far to near: the sky
@@ -51,45 +54,9 @@ const SKY = [
 const ROAD = [0x1c1e36, 0x252842, 0x2f3350, 0x3a3f5e, 0x464c6c, 0x535a7c];
 const PINE = 0x141c2c;
 const WOOD = 0x3a2a3a;
-const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"];
+const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"] as const;
 /** The mist's colour, which no flame or snowflake shares. */
 const MIST = "#56628c";
-
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
-
-/**
- * Paints the pixels in `box` that `inside` holds, lit from the dawn at the upper right: inked where they meet the
- * outside, light along the top and right, shadow along the bottom and left, and between them `tone` (0 dark to 1
- * light) or the base colour; a material with a colour for its tops (snow) has it there.
- */
-function shape(
-  r: Raster,
-  [x0, y0, x1, y1]: Box,
-  inside: (x: number, y: number) => boolean,
-  [ink, dark, base, lit, top = lit]: Ramp,
-  tone?: (x: number, y: number) => number,
-) {
-  const w = x1 - x0 + 4;
-  const mask = new Uint8Array(w * (y1 - y0 + 4));
-  for (let y = y0 - 2; y < y1 + 2; y++)
-    for (let x = x0 - 2; x < x1 + 2; x++)
-      mask[(y - y0 + 2) * w + x - x0 + 2] = inside(x, y) ? 1 : 0;
-  const at = (x: number, y: number) =>
-    mask[(y - y0 + 2) * w + x - x0 + 2] === 1;
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!at(x, y)) continue;
-      let c = base;
-      if (!at(x, y - 1) || !at(x, y + 1) || !at(x - 1, y) || !at(x + 1, y))
-        c = ink;
-      else if (!at(x, y - 2)) c = top;
-      else if (!at(x + 1, y - 1) || !at(x + 2, y)) c = lit;
-      else if (!at(x, y + 2) || !at(x - 2, y) || !at(x - 1, y + 1)) c = dark;
-      else if (tone) c = dither([dark, base, lit], tone(x, y), x, y);
-      else if (hash(x, y) > 0.95) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 type Ellipse = readonly [cx: number, cy: number, rx: number, ry: number];
 type Sweep = readonly [a0: number, a1: number, t0: number, t1: number];
@@ -113,28 +80,29 @@ function arc(
 }
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++)
-      r.px(x, y, dither(SKY, (y - 6) / 94 + (x / VIEW_W) * 0.14, x, y));
+  paintSky(r, SKY, (x, y) => (y - 6) / 94 + (x / VIEW_W) * 0.14);
   // The last stars, fading towards the dawn on the right.
-  for (let i = 0; i < 40; i++) {
-    const x = Math.floor(hash(i, 1) * r.width);
-    if (hash(i, 3) * VIEW_W < x * 0.8) continue;
-    r.px(x, 3 + Math.floor(hash(i, 2) * 40), i % 4 ? 0x4a5288 : 0xd8dcff);
-  }
-  // The moon setting in the west, lit from the dawn side, in a faint halo.
-  for (let y = 34; y < 72; y++)
-    for (let x = 34; x < 76; x++) {
-      const d = Math.hypot(x - 55, y - 53);
-      if (d >= 9.5) {
-        if (d < 16 && bayer(x, y) < (16 - d) / 14) r.px(x, y, 0x4c5486);
-        continue;
-      }
-      const shade = Math.hypot(x - 58.5, y - 52) > 9.5;
-      const crater =
-        Math.hypot(x - 57, y - 50) < 2 || Math.hypot(x - 52, y - 56) < 1.5;
-      r.px(x, y, shade ? 0x8e96b8 : crater ? 0xc0c8dc : 0xeef0f8);
-    }
+  paintStars(r, {
+    count: 40,
+    top: 3,
+    height: 40,
+    color: (index, x) => {
+      if (hash(index, 3) * VIEW_W < x * 0.8) return undefined;
+      return index % 4 ? 0x4a5288 : 0xd8dcff;
+    },
+  });
+  // The setting moon, lit from the dawn side, in a faint halo.
+  paintMoon(r, {
+    disc: [55, 53, 9.5],
+    sampleOffset: 0,
+    lightCenter: [58.5, 52],
+    marks: [
+      [57, 50, 2],
+      [52, 56, 1.5],
+    ],
+    colors: { light: 0xeef0f8, shadow: 0x8e96b8, marks: 0xc0c8dc },
+    halo: { radius: 16, fade: 14, color: 0x4c5486 },
+  });
   // Long thin clouds, their bellies catching the dawn.
   for (const [cx, cy, len] of [
     [168, 26, 76],
@@ -608,15 +576,6 @@ function verge(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [
-  x: number,
-  w: number,
-  base: number,
-  height: number,
-  seed: number,
-];
-
 /** The campfire, the torches either side of the gate, and the fires lit in the skull's eye sockets. */
 export const FIRES: readonly Fire[] = [
   [CAMPFIRE_X - 4, 9, FLOOR - 3, 14, 3],
@@ -625,50 +584,6 @@ export const FIRES: readonly Fire[] = [
     [GATE_X + side * 27 - 4, 9, FLOOR - EYE_V + 3, 7, 40 + i],
   ]),
 ];
-
-const tone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-function burn(
-  brush: Brush,
-  [x0, w, base, height, seed]: Fire,
-  cam: number,
-  t: number,
-) {
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const x = x0 + i - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.25 * Math.sin((x0 + i) * 0.9 + seed + t * 9);
-    const sway = 0.18 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 6);
-    const h = Math.max(1, Math.round(height * env * (0.6 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = tone(j, h, env);
-      let k = j + 1;
-      while (k < h && tone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 4; i++) {
-    const life = (t * (0.4 + hash(i, seed) * 0.4) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 9 + i) * 2;
-    const x = Math.round(x0 + w / 2 + drift + life * 10) - cam;
-    const y = Math.round(base - height * 0.6 - life * 34);
-    if (y < 0 || x < 0 || x >= VIEW_W) continue;
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    brush.fillRect(x, y, 1, 1);
-  }
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 const WISP_ROWS = [-2, -1, 1, 2] as const;
 
@@ -727,7 +642,7 @@ export const WYRMBONE_PASS: StageArt = {
   animate(brush, camX, frame) {
     const t = frame / 60;
     mist(brush, camX, t);
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME, motion: WINDBLOWN });
     snow(brush, camX, t);
   },
 };
