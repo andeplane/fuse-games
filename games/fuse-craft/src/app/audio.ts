@@ -336,286 +336,263 @@ const C4 = 261.63,
   G5 = 783.99,
   C6 = 1046.5;
 
-/** The synthesis recipe for one cue. `random` (0..1) only varies timbre. */
+type Recipe = Layer[] | ((random: () => number) => Layer[]);
+const vary = (random: () => number, spread: number) =>
+  1 + (random() * 2 - 1) * spread;
+
+// Fixed recipes are built once. The few timbre variations keep their original draw order.
+const RECIPES: Record<SoundCue, Recipe> = {
+  select: [
+    tone("sine", 1150, 820, { dur: 0.05, gain: 0.3, attack: 0.002 }),
+    noise({ type: "highpass", from: 3500 }, { dur: 0.015, gain: 0.1 }),
+  ],
+  panel: arpeggio("triangle", [620, 930], 0.05, { dur: 0.08, gain: 0.25 }),
+  back: arpeggio("triangle", [930, 620], 0.045, { dur: 0.08, gain: 0.22 }),
+  toggle: [
+    tone("triangle", 880, undefined, { dur: 0.04, gain: 0.22 }),
+    tone("sine", 1320, undefined, { at: 0.035, dur: 0.07, gain: 0.18 }),
+  ],
+  cancel: [
+    tone("sine", 520, 230, { dur: 0.15, gain: 0.35 }),
+    noise({ type: "lowpass", from: 900 }, { dur: 0.05, gain: 0.12 }),
+  ],
+  invalid: [0, 0.12].map((at) =>
+    tone(
+      "square",
+      150,
+      undefined,
+      { at, dur: 0.1, gain: 0.2 },
+      { type: "lowpass", from: 900 },
+    ),
+  ),
+  matchStart: [
+    tone("sine", 55, 110, { dur: 1.3, gain: 0.45, attack: 0.35 }),
+    // Two heartbeats, then the network wakes.
+    tone("sine", 72, 44, { at: 0.5, dur: 0.14, gain: 0.7 }),
+    tone("sine", 72, 44, { at: 0.72, dur: 0.16, gain: 0.6 }),
+    ...arpeggio("triangle", [G4, D5], 0.12, {
+      at: 0.95,
+      dur: 0.45,
+      gain: 0.14,
+      attack: 0.02,
+    }),
+    noise(
+      { type: "bandpass", from: 300, to: 2400, q: 2 },
+      { dur: 1, gain: 0.08, attack: 0.6 },
+    ),
+  ],
+  place(random) {
+    return [
+      tone("sine", 260 * vary(random, 0.05), 540, { dur: 0.12, gain: 0.45 }),
+      noise({ type: "bandpass", from: 1200, q: 2 }, { dur: 0.06, gain: 0.15 }),
+      tone("sine", 780, undefined, { at: 0.06, dur: 0.12, gain: 0.12 }),
+    ];
+  },
+  dispatch: [
+    noise(
+      { type: "bandpass", from: 450, to: 2400, q: 3 },
+      { dur: 0.3, gain: 0.3, attack: 0.09 },
+    ),
+    tone("sine", 330, 660, { dur: 0.22, gain: 0.08, attack: 0.05 }),
+  ],
+  build(random) {
+    return [
+      ...arpeggio(
+        "sine",
+        [G4, C5, E5].map((f) => f * vary(random, 0.01)),
+        0.04,
+        { dur: 0.6, gain: 0.18, attack: 0.02 },
+      ),
+      tone("triangle", C6, undefined, { at: 0.1, dur: 0.3, gain: 0.06 }),
+      noise({ type: "highpass", from: 6000 }, { dur: 0.22, gain: 0.04 }),
+    ];
+  },
+  stall: [
+    tone("triangle", 440, 330, { dur: 0.15, gain: 0.22 }),
+    tone("triangle", 330, 247, { at: 0.14, dur: 0.22, gain: 0.22 }),
+  ],
+  researchStart: arpeggio("triangle", [440, 554, 659], 0.05, {
+    dur: 0.12,
+    gain: 0.16,
+  }),
+  research: [
+    ...arpeggio("sine", [C5, E5, G5, C6], 0.07, { dur: 0.32, gain: 0.22 }),
+    tone("sine", C6 * 2, undefined, { at: 0.28, dur: 0.55, gain: 0.07 }),
+    noise({ type: "highpass", from: 7000 }, { at: 0.2, dur: 0.4, gain: 0.04 }),
+  ],
+  zap(random) {
+    const pitch = vary(random, 0.12);
+    return [
+      tone(
+        "sawtooth",
+        2200 * pitch,
+        260 * pitch,
+        { dur: 0.08, gain: 0.13 },
+        { type: "lowpass", from: 4500, to: 700 },
+      ),
+      noise({ type: "highpass", from: 2500 }, { dur: 0.03, gain: 0.08 }),
+    ];
+  },
+  artillery(random) {
+    return [
+      tone("sine", 115 * vary(random, 0.08), 36, { dur: 0.38, gain: 0.75 }),
+      noise(
+        { type: "lowpass", from: 1400, to: 140 },
+        { dur: 0.32, gain: 0.45 },
+      ),
+      noise({ type: "bandpass", from: 2600, q: 1 }, { dur: 0.025, gain: 0.2 }),
+    ];
+  },
+  spore(random) {
+    return [
+      ...[0, 0.045, 0.09].map((at) => {
+        const f = 420 + random() * 480;
+        return tone("sine", f, f * 1.6, { at, dur: 0.06, gain: 0.16 });
+      }),
+      noise({ type: "bandpass", from: 900, q: 6 }, { dur: 0.13, gain: 0.12 }),
+    ];
+  },
+  attack(random) {
+    return [
+      tone("triangle", 240 * vary(random, 0.1), 90, { dur: 0.1, gain: 0.25 }),
+    ];
+  },
+  // Two close tones beat against each other: a shimmering membrane.
+  shield: [
+    tone("sine", 1400, 1250, { dur: 0.26, gain: 0.12 }),
+    tone("sine", 1407, 1258, { dur: 0.26, gain: 0.12 }),
+    noise({ type: "bandpass", from: 3000, q: 8 }, { dur: 0.15, gain: 0.07 }),
+  ],
+  alarm: [880, 660, 880, 660].map((f, i) =>
+    tone(
+      "square",
+      f,
+      undefined,
+      { at: i * 0.14, dur: 0.11, gain: 0.14 },
+      { type: "lowpass", from: 2400 },
+    ),
+  ),
+  destroy(random) {
+    return [
+      noise(
+        { type: "lowpass", from: 4000 * vary(random, 0.15), to: 180 },
+        { dur: 0.5, gain: 0.5, attack: 0.003 },
+      ),
+      tone("sine", 90, 32, { dur: 0.45, gain: 0.5 }),
+      noise({ type: "bandpass", from: 1800, q: 1 }, { dur: 0.05, gain: 0.22 }),
+    ];
+  },
+  lost: [
+    noise(
+      { type: "lowpass", from: 3200, to: 160 },
+      { dur: 0.55, gain: 0.5, attack: 0.003 },
+    ),
+    tone("sine", 85, 30, { dur: 0.5, gain: 0.5 }),
+    tone("triangle", 330, 220, { at: 0.1, dur: 0.42, gain: 0.16 }),
+  ],
+  eliminated: [
+    noise(
+      { type: "lowpass", from: 2600, to: 70 },
+      { dur: 1.7, gain: 0.75, attack: 0.01 },
+    ),
+    tone("sine", 70, 22, { dur: 1.5, gain: 0.75 }),
+    tone(
+      "sawtooth",
+      220,
+      40,
+      { dur: 1.3, gain: 0.18 },
+      { type: "lowpass", from: 700 },
+    ),
+    noise(
+      { type: "lowpass", from: 1600, to: 90 },
+      { at: 0.28, dur: 0.9, gain: 0.45 },
+    ),
+  ],
+  powerupSpawn: arpeggio("sine", [1568, 2093, 2637], 0.05, {
+    dur: 0.28,
+    gain: 0.09,
+  }),
+  powerup: [
+    ...arpeggio("triangle", [C5, E5, G5, C6], 0.06, {
+      dur: 0.2,
+      gain: 0.24,
+    }),
+    tone("sine", C6 * 2, undefined, { at: 0.25, dur: 0.45, gain: 0.08 }),
+  ],
+  powerupRival: arpeggio("triangle", [Bb4, G4, Eb4], 0.08, {
+    dur: 0.18,
+    gain: 0.16,
+  }),
+  dominating: [
+    tone(
+      "sawtooth",
+      220,
+      440,
+      { dur: 1, gain: 0.12, attack: 0.45 },
+      { type: "lowpass", from: 400, to: 2200 },
+    ),
+    tone("sine", 440, 880, { dur: 1, gain: 0.12, attack: 0.45 }),
+  ],
+  threat: [
+    ...[0, 0.3, 0.6].map((at) =>
+      tone(
+        "square",
+        220,
+        200,
+        { at, dur: 0.2, gain: 0.18 },
+        { type: "lowpass", from: 700 },
+      ),
+    ),
+    tone("sine", 55, undefined, { dur: 1.1, gain: 0.3, attack: 0.1 }),
+  ],
+  dominanceBroken: [
+    tone("sine", G4, C5, { dur: 0.42, gain: 0.18 }),
+    tone("sine", B4, E5, { dur: 0.42, gain: 0.18 }),
+  ],
+  victory: [
+    ...arpeggio("triangle", [C5, E5, G5, C6], 0.12, {
+      dur: 0.3,
+      gain: 0.26,
+    }),
+    ...[C5, E5, G5, C6].map((f) =>
+      tone("sine", f, undefined, {
+        at: 0.5,
+        dur: 1.5,
+        gain: 0.14,
+        attack: 0.05,
+      }),
+    ),
+    noise({ type: "highpass", from: 6000 }, { at: 0.5, dur: 1, gain: 0.04 }),
+  ],
+  defeat: [
+    ...arpeggio("triangle", [G4, Eb4, C4], 0.25, {
+      dur: 0.42,
+      gain: 0.26,
+    }),
+    tone(
+      "sawtooth",
+      65,
+      55,
+      { at: 0.75, dur: 1.5, gain: 0.22, attack: 0.1 },
+      { type: "lowpass", from: 320 },
+    ),
+  ],
+  draw: [
+    tone("triangle", G4, undefined, { dur: 0.3, gain: 0.22 }),
+    tone("triangle", G4, undefined, { at: 0.35, dur: 0.3, gain: 0.22 }),
+    tone("sine", G4, undefined, { at: 0.7, dur: 0.9, gain: 0.14 }),
+    tone("sine", D5, undefined, { at: 0.7, dur: 0.9, gain: 0.12 }),
+  ],
+};
+
+function layersFor(cue: SoundCue, random: () => number): Layer[] {
+  const recipe = RECIPES[cue];
+  return typeof recipe === "function" ? recipe(random) : recipe;
+}
+
+/** The synthesis recipe for one cue. A caller may modify its private copy. */
 export function cueRecipe(cue: SoundCue, random: () => number): Layer[] {
-  const vary = (spread: number) => 1 + (random() * 2 - 1) * spread;
-  switch (cue) {
-    case "select":
-      return [
-        tone("sine", 1150, 820, { dur: 0.05, gain: 0.3, attack: 0.002 }),
-        noise({ type: "highpass", from: 3500 }, { dur: 0.015, gain: 0.1 }),
-      ];
-    case "panel":
-      return arpeggio("triangle", [620, 930], 0.05, { dur: 0.08, gain: 0.25 });
-    case "back":
-      return arpeggio("triangle", [930, 620], 0.045, { dur: 0.08, gain: 0.22 });
-    case "toggle":
-      return [
-        tone("triangle", 880, undefined, { dur: 0.04, gain: 0.22 }),
-        tone("sine", 1320, undefined, { at: 0.035, dur: 0.07, gain: 0.18 }),
-      ];
-    case "cancel":
-      return [
-        tone("sine", 520, 230, { dur: 0.15, gain: 0.35 }),
-        noise({ type: "lowpass", from: 900 }, { dur: 0.05, gain: 0.12 }),
-      ];
-    case "invalid":
-      return [0, 0.12].map((at) =>
-        tone(
-          "square",
-          150,
-          undefined,
-          { at, dur: 0.1, gain: 0.2 },
-          { type: "lowpass", from: 900 },
-        ),
-      );
-    case "matchStart":
-      return [
-        tone("sine", 55, 110, { dur: 1.3, gain: 0.45, attack: 0.35 }),
-        // Two heartbeats, then the network wakes.
-        tone("sine", 72, 44, { at: 0.5, dur: 0.14, gain: 0.7 }),
-        tone("sine", 72, 44, { at: 0.72, dur: 0.16, gain: 0.6 }),
-        ...arpeggio("triangle", [G4, D5], 0.12, {
-          at: 0.95,
-          dur: 0.45,
-          gain: 0.14,
-          attack: 0.02,
-        }),
-        noise(
-          { type: "bandpass", from: 300, to: 2400, q: 2 },
-          { dur: 1, gain: 0.08, attack: 0.6 },
-        ),
-      ];
-    case "place":
-      return [
-        tone("sine", 260 * vary(0.05), 540, { dur: 0.12, gain: 0.45 }),
-        noise(
-          { type: "bandpass", from: 1200, q: 2 },
-          { dur: 0.06, gain: 0.15 },
-        ),
-        tone("sine", 780, undefined, { at: 0.06, dur: 0.12, gain: 0.12 }),
-      ];
-    case "dispatch":
-      return [
-        noise(
-          { type: "bandpass", from: 450, to: 2400, q: 3 },
-          { dur: 0.3, gain: 0.3, attack: 0.09 },
-        ),
-        tone("sine", 330, 660, { dur: 0.22, gain: 0.08, attack: 0.05 }),
-      ];
-    case "build":
-      return [
-        ...arpeggio(
-          "sine",
-          [G4, C5, E5].map((f) => f * vary(0.01)),
-          0.04,
-          { dur: 0.6, gain: 0.18, attack: 0.02 },
-        ),
-        tone("triangle", C6, undefined, { at: 0.1, dur: 0.3, gain: 0.06 }),
-        noise({ type: "highpass", from: 6000 }, { dur: 0.22, gain: 0.04 }),
-      ];
-    case "stall":
-      return [
-        tone("triangle", 440, 330, { dur: 0.15, gain: 0.22 }),
-        tone("triangle", 330, 247, { at: 0.14, dur: 0.22, gain: 0.22 }),
-      ];
-    case "researchStart":
-      return arpeggio("triangle", [440, 554, 659], 0.05, {
-        dur: 0.12,
-        gain: 0.16,
-      });
-    case "research":
-      return [
-        ...arpeggio("sine", [C5, E5, G5, C6], 0.07, { dur: 0.32, gain: 0.22 }),
-        tone("sine", C6 * 2, undefined, { at: 0.28, dur: 0.55, gain: 0.07 }),
-        noise(
-          { type: "highpass", from: 7000 },
-          { at: 0.2, dur: 0.4, gain: 0.04 },
-        ),
-      ];
-    case "zap": {
-      const pitch = vary(0.12);
-      return [
-        tone(
-          "sawtooth",
-          2200 * pitch,
-          260 * pitch,
-          { dur: 0.08, gain: 0.13 },
-          { type: "lowpass", from: 4500, to: 700 },
-        ),
-        noise({ type: "highpass", from: 2500 }, { dur: 0.03, gain: 0.08 }),
-      ];
-    }
-    case "artillery":
-      return [
-        tone("sine", 115 * vary(0.08), 36, { dur: 0.38, gain: 0.75 }),
-        noise(
-          { type: "lowpass", from: 1400, to: 140 },
-          { dur: 0.32, gain: 0.45 },
-        ),
-        noise(
-          { type: "bandpass", from: 2600, q: 1 },
-          { dur: 0.025, gain: 0.2 },
-        ),
-      ];
-    case "spore":
-      return [
-        ...[0, 0.045, 0.09].map((at) => {
-          const f = 420 + random() * 480;
-          return tone("sine", f, f * 1.6, { at, dur: 0.06, gain: 0.16 });
-        }),
-        noise({ type: "bandpass", from: 900, q: 6 }, { dur: 0.13, gain: 0.12 }),
-      ];
-    case "attack":
-      return [tone("triangle", 240 * vary(0.1), 90, { dur: 0.1, gain: 0.25 })];
-    case "shield":
-      // Two close tones beat against each other: a shimmering membrane.
-      return [
-        tone("sine", 1400, 1250, { dur: 0.26, gain: 0.12 }),
-        tone("sine", 1407, 1258, { dur: 0.26, gain: 0.12 }),
-        noise(
-          { type: "bandpass", from: 3000, q: 8 },
-          { dur: 0.15, gain: 0.07 },
-        ),
-      ];
-    case "alarm":
-      return [880, 660, 880, 660].map((f, i) =>
-        tone(
-          "square",
-          f,
-          undefined,
-          { at: i * 0.14, dur: 0.11, gain: 0.14 },
-          { type: "lowpass", from: 2400 },
-        ),
-      );
-    case "destroy":
-      return [
-        noise(
-          { type: "lowpass", from: 4000 * vary(0.15), to: 180 },
-          { dur: 0.5, gain: 0.5, attack: 0.003 },
-        ),
-        tone("sine", 90, 32, { dur: 0.45, gain: 0.5 }),
-        noise(
-          { type: "bandpass", from: 1800, q: 1 },
-          { dur: 0.05, gain: 0.22 },
-        ),
-      ];
-    case "lost":
-      return [
-        noise(
-          { type: "lowpass", from: 3200, to: 160 },
-          { dur: 0.55, gain: 0.5, attack: 0.003 },
-        ),
-        tone("sine", 85, 30, { dur: 0.5, gain: 0.5 }),
-        tone("triangle", 330, 220, { at: 0.1, dur: 0.42, gain: 0.16 }),
-      ];
-    case "eliminated":
-      return [
-        noise(
-          { type: "lowpass", from: 2600, to: 70 },
-          { dur: 1.7, gain: 0.75, attack: 0.01 },
-        ),
-        tone("sine", 70, 22, { dur: 1.5, gain: 0.75 }),
-        tone(
-          "sawtooth",
-          220,
-          40,
-          { dur: 1.3, gain: 0.18 },
-          { type: "lowpass", from: 700 },
-        ),
-        noise(
-          { type: "lowpass", from: 1600, to: 90 },
-          { at: 0.28, dur: 0.9, gain: 0.45 },
-        ),
-      ];
-    case "powerupSpawn":
-      return arpeggio("sine", [1568, 2093, 2637], 0.05, {
-        dur: 0.28,
-        gain: 0.09,
-      });
-    case "powerup":
-      return [
-        ...arpeggio("triangle", [C5, E5, G5, C6], 0.06, {
-          dur: 0.2,
-          gain: 0.24,
-        }),
-        tone("sine", C6 * 2, undefined, { at: 0.25, dur: 0.45, gain: 0.08 }),
-      ];
-    case "powerupRival":
-      return arpeggio("triangle", [Bb4, G4, Eb4], 0.08, {
-        dur: 0.18,
-        gain: 0.16,
-      });
-    case "dominating":
-      return [
-        tone(
-          "sawtooth",
-          220,
-          440,
-          { dur: 1, gain: 0.12, attack: 0.45 },
-          { type: "lowpass", from: 400, to: 2200 },
-        ),
-        tone("sine", 440, 880, { dur: 1, gain: 0.12, attack: 0.45 }),
-      ];
-    case "threat":
-      return [
-        ...[0, 0.3, 0.6].map((at) =>
-          tone(
-            "square",
-            220,
-            200,
-            { at, dur: 0.2, gain: 0.18 },
-            { type: "lowpass", from: 700 },
-          ),
-        ),
-        tone("sine", 55, undefined, { dur: 1.1, gain: 0.3, attack: 0.1 }),
-      ];
-    case "dominanceBroken":
-      return [
-        tone("sine", G4, C5, { dur: 0.42, gain: 0.18 }),
-        tone("sine", B4, E5, { dur: 0.42, gain: 0.18 }),
-      ];
-    case "victory":
-      return [
-        ...arpeggio("triangle", [C5, E5, G5, C6], 0.12, {
-          dur: 0.3,
-          gain: 0.26,
-        }),
-        ...[C5, E5, G5, C6].map((f) =>
-          tone("sine", f, undefined, {
-            at: 0.5,
-            dur: 1.5,
-            gain: 0.14,
-            attack: 0.05,
-          }),
-        ),
-        noise(
-          { type: "highpass", from: 6000 },
-          { at: 0.5, dur: 1, gain: 0.04 },
-        ),
-      ];
-    case "defeat":
-      return [
-        ...arpeggio("triangle", [G4, Eb4, C4], 0.25, {
-          dur: 0.42,
-          gain: 0.26,
-        }),
-        tone(
-          "sawtooth",
-          65,
-          55,
-          { at: 0.75, dur: 1.5, gain: 0.22, attack: 0.1 },
-          { type: "lowpass", from: 320 },
-        ),
-      ];
-    case "draw":
-      return [
-        tone("triangle", G4, undefined, { dur: 0.3, gain: 0.22 }),
-        tone("triangle", G4, undefined, { at: 0.35, dur: 0.3, gain: 0.22 }),
-        tone("sine", G4, undefined, { at: 0.7, dur: 0.9, gain: 0.14 }),
-        tone("sine", D5, undefined, { at: 0.7, dur: 0.9, gain: 0.12 }),
-      ];
-  }
+  return structuredClone(layersFor(cue, random));
 }
 
 /** Seconds a cue must rest before it plays again; rapid fire thins out. */
@@ -726,7 +703,7 @@ export function createBrowserAudio(
       bus.disconnect();
       panner?.disconnect();
     };
-    for (const layer of cueRecipe(cue, random)) {
+    for (const layer of layersFor(cue, random)) {
       if (voices.size >= limit) break;
       const start = now + (layer.at ?? 0);
       const end = start + layer.dur;
