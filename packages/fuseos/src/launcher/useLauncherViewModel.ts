@@ -17,7 +17,7 @@ import { LauncherDepsContext } from "./launcherDepsContext";
 import { fakeDiskUsage, LAUNCHER_TITLE } from "./launcherFacts";
 
 export type LauncherTab = "games" | "friends" | "servers" | "news";
-export type LauncherSort = "lastPlayed" | "name";
+type LauncherSort = "name" | "newest" | "oldest";
 
 export const LAUNCHER_TABS: readonly { id: LauncherTab; label: string }[] = [
   { id: "games", label: "My Games" },
@@ -71,7 +71,8 @@ export type LauncherViewModel = {
   games: LauncherGame[];
   now: number;
   sort: LauncherSort;
-  setSort: (sort: LauncherSort) => void;
+  sortByName: () => void;
+  toggleLastPlayedSort: () => void;
   selected: LauncherGame | undefined;
   details: LauncherDetails | undefined;
   select: (gameId: string) => void;
@@ -102,7 +103,7 @@ export function useLauncherViewModel(): LauncherViewModel {
   const { viewport } = useContext(WindowManagerContext);
   const { launch } = useFuseGameLauncher();
 
-  const [sort, setSort] = useState<LauncherSort>("lastPlayed");
+  const [sort, setSort] = useState<LauncherSort>("newest");
   const [lastPlayed, setLastPlayed] = useState(() =>
     launcherDeps.lastPlayed.get(),
   );
@@ -110,9 +111,12 @@ export function useLauncherViewModel(): LauncherViewModel {
     return [...registry.games]
       .sort((a, b) => {
         if (sort === "name") return a.name.localeCompare(b.name);
-        const first = lastPlayed[a.id] ?? -Infinity;
-        const second = lastPlayed[b.id] ?? -Infinity;
-        return first === second ? 0 : second - first;
+        const first = lastPlayed[a.id];
+        const second = lastPlayed[b.id];
+        if (first === second) return 0;
+        if (first === undefined) return 1;
+        if (second === undefined) return -1;
+        return sort === "oldest" ? first - second : second - first;
       })
       .map((game) => ({
         id: game.id,
@@ -231,7 +235,9 @@ export function useLauncherViewModel(): LauncherViewModel {
     games,
     now: desktopDeps.now(),
     sort,
-    setSort,
+    sortByName: () => setSort("name"),
+    toggleLastPlayedSort: () =>
+      setSort((current) => (current === "newest" ? "oldest" : "newest")),
     selected,
     details,
     select,

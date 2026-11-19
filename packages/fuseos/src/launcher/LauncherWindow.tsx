@@ -164,7 +164,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
             type="button"
             aria-label="Sort by game name"
             aria-pressed={vm.sort === "name"}
-            onClick={() => vm.setSort("name")}
+            onClick={vm.sortByName}
           >
             Game
           </button>
@@ -172,8 +172,18 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
             type="button"
             className="fst-last-played"
             aria-label="Sort by last played"
-            aria-pressed={vm.sort === "lastPlayed"}
-            onClick={() => vm.setSort("lastPlayed")}
+            aria-pressed={vm.sort !== "name"}
+            aria-description={
+              vm.sort === "name"
+                ? undefined
+                : vm.sort === "oldest"
+                  ? "Oldest first"
+                  : "Newest first"
+            }
+            data-sort-direction={
+              vm.sort === "newest" ? "descending" : undefined
+            }
+            onClick={vm.toggleLastPlayedSort}
           >
             Last played
           </button>

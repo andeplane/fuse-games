@@ -329,6 +329,16 @@ describe("LauncherWindow", () => {
     expect(ball).toHaveAccessibleDescription("Yesterday");
     expect(birds).toHaveAccessibleDescription("Never");
 
+    expect(byDate).toHaveAccessibleDescription("Newest first");
+    await user.click(byDate);
+    expect(rows()).toEqual([ball, riders, birds]);
+    expect(byDate).toHaveAccessibleDescription("Oldest first");
+    expect(riders).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+    expect(rows()).toEqual([riders, ball, birds]);
+    expect(byDate).toHaveAccessibleDescription("Newest first");
+
     byName.focus();
     await user.keyboard("{Enter}");
     expect(rows()).toEqual([birds, riders, ball]);
