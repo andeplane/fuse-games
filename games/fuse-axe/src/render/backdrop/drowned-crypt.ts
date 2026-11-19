@@ -17,6 +17,7 @@ import {
 } from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
+import { moonlitRelief as shape, type Inside } from "./relief.js";
 
 /**
  * Stage 3, Drowned Crypt: a cold night in a flooded graveyard under a broken cathedral. Far to near: the sky and a pale
@@ -66,29 +67,6 @@ const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"] as const;
 const FOG = "#2e4448";
 const RIPPLE = ["#6a8e92", "#41606a", "#273c44"];
 const DROP = "#9cc4c4";
-
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
-type Inside = (x: number, y: number) => boolean;
-
-/**
- * Paints the pixels in `box` that `inside` holds, lit by the moon at the upper right: inked where they meet the
- * outside, a top colour (moss) along the top, light along the right, shadow along the bottom and left, base between.
- */
-function shape(r: Raster, box: Box, inside: Inside, ramp: Ramp) {
-  const [[x0, y0, x1, y1], [ink, dark, base, lit, top = lit]] = [box, ramp];
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!inside(x, y)) continue;
-      let c = base;
-      if (!inside(x, y - 1) || !inside(x, y + 1)) c = ink;
-      else if (!inside(x - 1, y) || !inside(x + 1, y)) c = ink;
-      else if (!inside(x, y - 2)) c = top;
-      else if (!inside(x + 1, y - 1) || !inside(x + 2, y)) c = lit;
-      else if (!inside(x, y + 2) || !inside(x - 2, y)) c = dark;
-      else if (hash(x, y) > 0.93) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 /** Mirrors what `keep` holds above row `line` into the water below it, at half its light, broken up with depth. */
 function mirror(r: Raster, x0: number, x1: number, line: number, keep: Inside) {

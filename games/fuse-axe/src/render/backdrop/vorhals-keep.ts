@@ -17,6 +17,7 @@ import {
 } from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
+import { torchlitRelief as solid, type Inside } from "./relief.js";
 
 /**
  * Stage 4, Vorhal's Keep: torch-lit halls inside the warlord's fortress, cold blue-black stone under warm firelight.
@@ -80,8 +81,6 @@ const EMBER = ["#ffb04c", "#f06c22", "#a8341a"];
 /** The broken axe's glow at its dimmest to its brightest. */
 export const SHARD_GLOW = ["#4e1a10", "#7e2c14", "#b8481c", "#f07c2c"];
 
-type Inside = (x: number, y: number) => boolean;
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
 /** A material: its outline, shadow, base, light, and an edge turned to the fire. */
 type Ramp = readonly [number, number, number, number, number];
 const MID: Ramp = [0x05060b, 0x0c0e17, 0x131622, 0x1d2130, 0x2c1a20];
@@ -91,23 +90,6 @@ const SLAB: Ramp = [INK, 0x171b28, 0x232838, 0x343c50, 0x4a3a36];
 /** The near pillars' bases, almost black, and the firelight on their edge. */
 const FRONT = [0x040408, 0x09090f, 0x0f1018, 0x181a24, 0x262836];
 const FRONT_WARM = 0x4a2c20;
-
-/** Paints the pixels in `box` that `inside` holds: inked at its edge, light along the top, warm on the left. */
-function solid(r: Raster, box: Box, inside: Inside, ramp: Ramp) {
-  const [[x0, y0, x1, y1], [ink, dark, base, lit, warm]] = [box, ramp];
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!inside(x, y)) continue;
-      let c = base;
-      if (!inside(x, y - 1) || !inside(x, y + 1)) c = ink;
-      else if (!inside(x - 1, y) || !inside(x + 1, y)) c = ink;
-      else if (!inside(x, y - 2)) c = lit;
-      else if (!inside(x - 2, y)) c = warm;
-      else if (!inside(x + 2, y) || !inside(x, y + 2)) c = dark;
-      else if (hash(x, y) > 0.94) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 /** Masonry at a pixel: −1 on a joint, else its block's tone in [0, 1), in courses `h` rows high of blocks `w` wide. */
 function masonry(x: number, y: number, w: number, h: number, seed: number) {
