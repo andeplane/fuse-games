@@ -1,4 +1,5 @@
 import { FLOOR_TOP_PX, VIEW_H, VIEW_W } from "../../engine/view-kit.js";
+import { drawFlameColumn, emberLife } from "./fire.js";
 import { dither, hash, Raster, type Brush, type StageArt } from "./kit.js";
 import { paintSky, paintStars } from "./sky.js";
 
@@ -29,6 +30,7 @@ const ROLL = [0x6a3448, 0x40203a, 0x8a4c5c] as const;
 const INK = 0x150c1f;
 /** The flames from their white-hot base to their red tips; the embers cool through the same. */
 export const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"] as const;
+const FLAME_STYLE = { palette: FLAME, ramp: [3.4, 1] as const };
 
 /** The fire: the middle of its base, on the floor at the back of the clearing, and how far its glow reaches. */
 export const FIRE = { x: 162, y: FLOOR + 16, reach: 80 } as const;
@@ -165,10 +167,6 @@ function light(brush: Brush, frame: number) {
   }
 }
 
-/** A flame's colour `j` rows up a column `h` tall, whose `env` is 1 in the middle of the fire and less to its sides. */
-const flameAt = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.4 + (1 - env)));
-
 /** The flames over the logs, and the embers rising from them, from `frame` alone. */
 function flames(brush: Brush, frame: number) {
   const t = frame / 60;
@@ -178,17 +176,15 @@ function flames(brush: Brush, frame: number) {
       0.3 * Math.sin(i * 1.7 + t * 12) + 0.2 * Math.sin(i * 0.6 - t * 7);
     const h = Math.max(1, Math.round(17 * env * (0.7 + lick)));
     // Up the column from row FIRE.y − 3, one rectangle per colour.
-    for (let j = 0; j < h;) {
-      const colour = flameAt(j, h, env);
-      let end = j + 1;
-      while (end < h && flameAt(end, h, env) === colour) end++;
-      brush.fillStyle = FLAME[colour]!;
-      brush.fillRect(FIRE.x + i, FIRE.y - 2 - end, 1, end - j);
-      j = end;
-    }
+    drawFlameColumn(
+      brush,
+      { x: FIRE.x + i, base: FIRE.y - 3, height: h, envelope: env },
+      FLAME_STYLE,
+    );
   }
+  const clock = { time: t, rate: 0.4, variance: 0.3 };
   for (let i = 0; i < 6; i++) {
-    const life = (t * (0.4 + hash(i, 11) * 0.3) + hash(i, 12)) % 1;
+    const life = emberLife(clock, i, 11);
     const x = Math.round(
       FIRE.x + (hash(i, 13) - 0.5) * 10 + Math.sin(life * 8 + i) * 3,
     );
