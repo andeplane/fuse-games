@@ -187,20 +187,29 @@ try {
         const restored = paint([dead], 100);
         if (at(restored).some((channel, i) => channel !== at(crashed)[i]))
           throw Error("Rollback did not restore trail color");
+        // The detached trail holds its shape until the decay clock begins.
+        const decayStart = dead.trail[0]!.detached!.decayStartTick;
+        const erosionTick = decayStart + 40;
         const shrinking = {
           ...dead,
-          trail: advanceTrail(dead.trail, 160, 120),
+          trail: advanceTrail(dead.trail, erosionTick, decayStart),
         };
-        const eroded = paint([shrinking], 160);
+        const eroded = paint([shrinking], erosionTick);
         if (regionDifference(eroded, empty, [210, 190, 50, 20]) !== 0)
           throw Error("Old endpoint did not shrink");
         if (regionDifference(eroded, empty, [540, 190, 50, 20]) !== 0)
           throw Error("New endpoint did not shrink");
         if (regionDifference(eroded, empty, [300, 198, 200, 4]) <= 0)
           throw Error("Surviving middle vanished");
+        const expiryTick = erosionTick + 80;
         const removed = paint(
-          [{ ...dead, trail: advanceTrail(shrinking.trail, 240, 160) }],
-          240,
+          [
+            {
+              ...dead,
+              trail: advanceTrail(shrinking.trail, expiryTick, erosionTick),
+            },
+          ],
+          expiryTick,
         );
         if (regionDifference(removed, empty, [200, 190, 400, 20]) !== 0)
           throw Error("Eroded trail remains visible");
