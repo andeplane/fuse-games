@@ -256,45 +256,38 @@ export interface AppDependencies {
   touch?: boolean;
 }
 
+const actionCues = new Map<string, SoundCue | null>([
+  ["toggle-mute", null],
+  ["close-panel", "back"],
+  ["back-menu", "back"],
+  ["close-help", "back"],
+  ["cancel-placement", "back"],
+  ["cancel-confirm", "back"],
+  ["tutorial-close", "back"],
+  ["leave-room", "back"],
+  ["cancel-build", "cancel"],
+  ["cancel-research", "cancel"],
+  ["auto-expand", "toggle"],
+  ["charge", "toggle"],
+  ["fullscreen", "toggle"],
+  ["help", "panel"],
+  ["guide", "panel"],
+  ["guide-section", "panel"],
+  ["next-command-page", "panel"],
+  ["report-metric", "panel"],
+]);
+
 /**
- * The interface sound for a clicked action. A command's result (a placed
- * plan, research begun) sounds again from its match event, and `null` leaves
- * the cue to the action's own handler.
+ * The interface sound for a clicked action. A command's result can also sound
+ * from its match event. A null cue leaves sound to the handler.
  */
 export function actionCue(action: string | undefined): SoundCue | null {
   if (!action) return "select";
-  if (action.startsWith("build-") || action === "toggle-mute") return null;
-  if (
-    [
-      "close-panel",
-      "back-menu",
-      "close-help",
-      "cancel-placement",
-      "cancel-confirm",
-      "tutorial-close",
-      "leave-room",
-    ].includes(action)
-  )
-    return "back";
-  if (action === "cancel-build" || action === "cancel-research")
-    return "cancel";
-  if (
-    action === "auto-expand" ||
-    action === "charge" ||
-    action === "fullscreen" ||
-    action.startsWith("particle-")
-  )
-    return "toggle";
-  if (
-    action === "help" ||
-    action === "guide" ||
-    action === "guide-section" ||
-    action === "next-command-page" ||
-    action === "report-metric" ||
-    action.startsWith("mode-")
-  )
-    return "panel";
-  return "select";
+  if (action.startsWith("build-")) return null;
+  if (action.startsWith("particle-")) return "toggle";
+  if (action.startsWith("mode-")) return "panel";
+  const cue = actionCues.get(action);
+  return cue === undefined ? "select" : cue;
 }
 
 export function mountFuseCraft(
@@ -2092,95 +2085,128 @@ export function mountFuseCraft(
     }
   }
 
-  /** Text fields keep their value as typed, so a re-render never loses it. */
+  type FormField = HTMLInputElement | HTMLSelectElement;
+
+  /** Text fields retain their drafts before a commit, including across renders. */
+  function updateTextField(target: FormField): boolean {
+    switch (target.dataset.field) {
+      case "room-code":
+        roomCode = target.value;
+        return true;
+      case "player-name":
+        playerName = target.value;
+        return true;
+      default:
+        return false;
+    }
+  }
+
   function onInput(event: Event) {
-    const target = event.target as HTMLInputElement;
-    if (target.dataset.field === "room-code") roomCode = target.value;
-    if (target.dataset.field === "player-name") playerName = target.value;
+    updateTextField(event.target as FormField);
+  }
+
+  // A handler returning false lets the same element fall through to preferences.
+  // Matched room fields consume the change while online, even if their value is invalid.
+  const fieldChanges = new Map<string, (target: FormField) => false | void>([
+    [
+      "room-map",
+      (target) => {
+        if (!online) return false;
+        if (bundledMap(target.value)) online.configure({ mapId: target.value });
+      },
+    ],
+    [
+      "room-strategy",
+      (target) => {
+        if (!online) return false;
+        if (isOpeningChoice(target.value))
+          online.configure({ aiStrategy: target.value });
+      },
+    ],
+    [
+      "room-powerups",
+      (target) => {
+        if (!online) return false;
+        online.configure({ powerups: (target as HTMLInputElement).checked });
+      },
+    ],
+    [
+      "powerups",
+      (target) => {
+        powerups = (target as HTMLInputElement).checked;
+      },
+    ],
+    ["map", (target) => void loadSelectedMap(target.value)],
+    [
+      "first-strategy",
+      (target) => {
+        if (!isOpeningChoice(target.value)) return false;
+        firstAiStrategy = target.value;
+      },
+    ],
+    [
+      "strategy",
+      (target) => {
+        if (!isOpeningChoice(target.value)) return false;
+        aiStrategy = target.value;
+      },
+    ],
+    [
+      "spawn",
+      (target) => {
+        selectedSlot = Number(target.value);
+        render();
+      },
+    ],
+    [
+      "priority",
+      (target) => {
+        if (selectedCell === null) return false;
+        dispatch({
+          type: "setPriority",
+          cell: selectedCell,
+          weight: Number(target.value),
+        });
+        // A queued or rejected command can leave the authoritative priority unchanged.
+        target.value = target.getAttribute("value") ?? "0";
+      },
+    ],
+  ]);
+
+  function changePreference(setting: string, target: FormField) {
+    if (setting === "volume") {
+      preferences = { ...preferences, volume: Number(target.value) };
+    } else if (setting === "reducedMotion" || setting === "edgeScroll") {
+      preferences = {
+        ...preferences,
+        [setting]: (target as HTMLInputElement).checked,
+      };
+    }
+    if (setting === "edgeScroll")
+      camera?.setEdgeScroll(
+        !root.querySelector(".fui-top-bar-menu[open]") &&
+          preferences.edgeScroll,
+      );
+    dependencies.preferences.write(preferences);
+    dependencies.audio?.configure(preferences);
+    dependencies.audio?.unlock();
+    if (screen === "game") renderGame();
   }
 
   function onChange(event: Event) {
-    const target = event.target as HTMLInputElement | HTMLSelectElement;
-    if (target.dataset.debug && dependencies.debug) {
-      if (target.dataset.debug === "construction")
+    const target = event.target as FormField;
+    const { debug, field, setting } = target.dataset;
+    if (debug && dependencies.debug) {
+      if (debug === "construction")
         instantConstruction = (target as HTMLInputElement).checked;
-      if (target.dataset.debug === "research")
+      if (debug === "research")
         instantResearch = (target as HTMLInputElement).checked;
       return;
     }
-    if (target.dataset.field === "room-code") {
-      roomCode = target.value;
-      return;
-    }
-    if (target.dataset.field === "player-name") {
-      playerName = target.value;
-      return;
-    }
-    if (target.dataset.field === "room-map" && online) {
-      if (bundledMap(target.value)) online.configure({ mapId: target.value });
-      return;
-    }
-    if (target.dataset.field === "room-strategy" && online) {
-      if (isOpeningChoice(target.value))
-        online.configure({ aiStrategy: target.value });
-      return;
-    }
-    if (target.dataset.field === "room-powerups" && online) {
-      online.configure({
-        powerups: (target as HTMLInputElement).checked,
-      });
-      return;
-    }
-    if (target.dataset.field === "powerups") {
-      powerups = (target as HTMLInputElement).checked;
-      return;
-    }
-    if (target.dataset.field === "map") void loadSelectedMap(target.value);
-    else if (
-      target.dataset.field === "first-strategy" &&
-      isOpeningChoice(target.value)
-    )
-      firstAiStrategy = target.value;
-    else if (
-      target.dataset.field === "strategy" &&
-      isOpeningChoice(target.value)
-    ) {
-      aiStrategy = target.value;
-    } else if (target.dataset.field === "spawn") {
-      selectedSlot = Number(target.value);
-      render();
-    } else if (target.dataset.field === "priority" && selectedCell !== null) {
-      dispatch({
-        type: "setPriority",
-        cell: selectedCell,
-        weight: Number(target.value),
-      });
-      // The command may be queued or rejected. Once a drag is committed,
-      // show the current authority until the next applied tick updates it.
-      target.value = target.getAttribute("value") ?? "0";
-    } else if (target.dataset.setting) {
-      const setting = target.dataset.setting;
-      if (setting === "reducedMotion")
-        preferences = {
-          ...preferences,
-          reducedMotion: (target as HTMLInputElement).checked,
-        };
-      else if (setting === "edgeScroll") {
-        preferences = {
-          ...preferences,
-          edgeScroll: (target as HTMLInputElement).checked,
-        };
-        camera?.setEdgeScroll(
-          !root.querySelector(".fui-top-bar-menu[open]") &&
-            preferences.edgeScroll,
-        );
-      } else if (setting === "volume")
-        preferences = { ...preferences, volume: Number(target.value) };
-      dependencies.preferences.write(preferences);
-      dependencies.audio?.configure(preferences);
-      dependencies.audio?.unlock();
-      if (screen === "game") renderGame();
-    }
+    if (updateTextField(target)) return;
+    const change = field ? fieldChanges.get(field) : undefined;
+    if (change && change(target) !== false) return;
+    if (setting) changePreference(setting, target);
   }
 
   /**
