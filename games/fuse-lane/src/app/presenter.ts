@@ -360,6 +360,22 @@ function card(fields: Partial<Card> & Pick<Card, "key" | "title">): Card {
   };
 }
 
+const cashRequired = "Not enough cash";
+
+function pricedOffer(
+  { cash }: Pick<PlayerState, "cash">,
+  price: number,
+  blocked = "",
+) {
+  return {
+    enabled: !blocked && cash >= price,
+    note: blocked || (cash < price ? cashRequired : ""),
+  };
+}
+
+const amountOffers = (balance: number, steps: readonly number[]): number[] =>
+  balance > 0 ? [...steps.filter((amount) => amount < balance), balance] : [];
+
 // ---- place panels --------------------------------------------------------------------------------------------
 
 function shopCards(view: FuseLaneView, me: PlayerState, place: number): Card[] {
@@ -391,16 +407,14 @@ function shopCards(view: FuseLaneView, me: PlayerState, place: number): Card[] {
         hours: item.hours ? hours(item.hours) : "",
         icon: `icon-${item.icon}`,
         entry: actEntry(view, place, BUY, index),
-        enabled: !owned && !wentOut && !needsFridge && me.cash >= price,
-        note: owned
-          ? "Owned"
-          : wentOut
-            ? "Done this week"
-            : needsFridge
-              ? "Needs a fridge"
-              : me.cash < price
-                ? "Not enough cash"
-                : "",
+        ...pricedOffer(
+          me,
+          price,
+          (owned && "Owned") ||
+            (wentOut && "Done this week") ||
+            (needsFridge && "Needs a fridge") ||
+            "",
+        ),
       }),
     ];
   });
@@ -623,8 +637,7 @@ function college(
       price: money(fee),
       icon: "ui-education",
       entry: actEntry(view, place, ENROLL, index),
-      enabled: !locked && me.cash >= fee,
-      note: locked ? "Locked" : me.cash < fee ? "Not enough cash" : "",
+      ...pricedOffer(me, fee, locked ? "Locked" : ""),
     });
   });
   cards.sort(
@@ -657,13 +670,11 @@ function keyNest(
       price: money(me.rent),
       icon: "ui-rent",
       entry: actEntry(view, place, PAY_RENT),
-      enabled: me.cash >= me.rent && me.rentWeeks < 9,
-      note:
-        me.rentWeeks >= 9
-          ? "Paid far enough ahead"
-          : me.cash < me.rent
-            ? "Not enough cash"
-            : "",
+      ...pricedOffer(
+        me,
+        me.rent,
+        me.rentWeeks >= 9 ? "Paid far enough ahead" : "",
+      ),
     }),
   );
   if (me.rentWeeks === 0)
@@ -694,8 +705,7 @@ function keyNest(
         price: money(me.rentOwed),
         icon: "ui-rent",
         entry: actEntry(view, place, PAY_ARREARS),
-        enabled: me.cash >= me.rentOwed,
-        note: me.cash < me.rentOwed ? "Not enough cash" : "",
+        ...pricedOffer(me, me.rentOwed),
       }),
     );
   for (const home of [0, 1]) {
@@ -710,8 +720,7 @@ function keyNest(
         price: money(price + penalty),
         icon: "ui-rent",
         entry: actEntry(view, place, MOVE, home),
-        enabled: me.cash >= price + penalty,
-        note: me.cash < price + penalty ? "Not enough cash" : "",
+        ...pricedOffer(me, price + penalty),
       }),
     );
   }
@@ -724,54 +733,65 @@ function keyNest(
   ];
 }
 
-function neobank(
+function bankAccounts(
   view: FuseLaneView,
   me: PlayerState,
   place: number,
-): Section[] {
-  const economy = view.economy;
-  const amounts = (have: number) =>
-    [100, 500].filter((amount) => amount < have).concat(have > 0 ? [have] : []);
-  const cash: Card[] = [
-    ...amounts(me.cash).map((amount) =>
-      card({
-        key: `deposit-${amount === me.cash ? "all" : amount}`,
-        title: amount === me.cash ? "Deposit all" : `Deposit ${money(amount)}`,
-        detail: "Safe from pickpockets, earns interest",
-        price: money(amount),
-        icon: "ui-bank",
-        entry: actEntry(view, place, DEPOSIT, amount),
-      }),
-    ),
-    ...amounts(me.bank).map((amount) =>
-      card({
-        key: `withdraw-${amount === me.bank ? "all" : amount}`,
-        title:
-          amount === me.bank ? "Withdraw all" : `Withdraw ${money(amount)}`,
-        detail: "",
-        price: `+${money(amount)}`,
-        icon: "ui-cash",
-        entry: actEntry(view, place, WITHDRAW, amount),
-      }),
-    ),
-  ];
+): Section {
+  const cash = [
+    {
+      balance: me.cash,
+      action: DEPOSIT,
+      verb: "Deposit",
+      icon: "ui-bank",
+      detail: "Safe from pickpockets, earns interest",
+    },
+    {
+      balance: me.bank,
+      action: WITHDRAW,
+      verb: "Withdraw",
+      icon: "ui-cash",
+      detail: "",
+    },
+  ].flatMap(({ balance, action, verb, icon, detail }) =>
+    amountOffers(balance, [100, 500]).map((amount) => {
+      const all = amount === balance;
+      return card({
+        key: `${verb.toLowerCase()}-${all ? "all" : amount}`,
+        title: `${verb} ${all ? "all" : money(amount)}`,
+        detail,
+        price: action === DEPOSIT ? money(amount) : `+${money(amount)}`,
+        icon,
+        entry: actEntry(view, place, action, amount),
+      });
+    }),
+  );
+  return {
+    title: "Accounts",
+    info: `Cash ${money(me.cash)} · Savings ${money(me.bank)} · Savings rate ${Math.max(0, view.economy.policyRate - 1).toFixed(2)}%`,
+    cards: cash,
+  };
+}
+
+function bankLoans(
+  view: FuseLaneView,
+  me: PlayerState,
+  place: number,
+): Section {
   const left = creditLeft(me),
-    rate = loanRate(economy).toFixed(1);
+    rate = loanRate(view.economy).toFixed(1);
   const loans: Card[] = [
-    ...[200, 500]
-      .filter((amount) => amount < left)
-      .concat(left > 0 ? [left] : [])
-      .map((amount) =>
-        card({
-          key: `borrow-${amount === left ? "max" : amount}`,
-          title: `Borrow ${money(amount)}`,
-          detail: `${rate}% a year · counts against Wealth until repaid`,
-          price: `+${money(amount)}`,
-          hours: hours(HOURS.trade),
-          icon: "ui-cash",
-          entry: actEntry(view, place, BORROW, amount),
-        }),
-      ),
+    ...amountOffers(left, [200, 500]).map((amount) =>
+      card({
+        key: `borrow-${amount === left ? "max" : amount}`,
+        title: `Borrow ${money(amount)}`,
+        detail: `${rate}% a year · counts against Wealth until repaid`,
+        price: `+${money(amount)}`,
+        hours: hours(HOURS.trade),
+        icon: "ui-cash",
+        entry: actEntry(view, place, BORROW, amount),
+      }),
+    ),
     ...(left <= 0 && me.loan === 0
       ? [
           card({
@@ -784,24 +804,36 @@ function neobank(
           }),
         ]
       : []),
-    ...[100]
-      .filter((amount) => amount < me.loan)
-      .concat(me.loan > 0 ? [me.loan] : [])
-      .map((amount) =>
-        card({
-          key: `repay-${amount === me.loan ? "all" : amount}`,
-          title:
-            amount === me.loan ? "Pay off the loan" : `Repay ${money(amount)}`,
-          detail: amount === me.loan ? "Debt free, and Wealth goes up" : "",
-          price: money(amount),
-          icon: "ui-bank",
-          entry: actEntry(view, place, REPAY, amount),
-          enabled: me.cash >= amount,
-          note: me.cash < amount ? "Not enough cash" : "",
-        }),
-      ),
+    ...amountOffers(me.loan, [100]).map((amount) =>
+      card({
+        key: `repay-${amount === me.loan ? "all" : amount}`,
+        title:
+          amount === me.loan ? "Pay off the loan" : `Repay ${money(amount)}`,
+        detail: amount === me.loan ? "Debt free, and Wealth goes up" : "",
+        price: money(amount),
+        icon: "ui-bank",
+        entry: actEntry(view, place, REPAY, amount),
+        ...pricedOffer(me, amount),
+      }),
+    ),
   ];
-  const assets = ASSET_NAMES.map((name, asset) => {
+  return {
+    title: "Loans",
+    info:
+      me.loan > 0
+        ? `You owe ${money(me.loan)}${me.loanLate > 0 ? " · payments missed: half of each shift goes to Neobank" : ` · Monday payment ${money(loanPayment(me.loan))}`} · credit line ${money(creditLine(me))}`
+        : `Credit line ${money(creditLine(me))} (${me.job >= 0 ? "about four weeks' pay" : "more with a job"}) · paid back a tenth each Monday`,
+    cards: loans,
+  };
+}
+
+function bankMarkets(
+  view: FuseLaneView,
+  me: PlayerState,
+  place: number,
+): Section {
+  const economy = view.economy;
+  const assets = ASSET_NAMES.flatMap((name, asset) => {
     const price = quote(economy, asset),
       held = me.holdings[asset]!,
       // One tap buys as many units as up to $1000 of cash pays for, along the order's own price impact; the card
@@ -819,6 +851,7 @@ function neobank(
         : name === "CITY500"
           ? "Index fund"
           : name[0] + name.slice(1).toLowerCase();
+    const canBuy = me.cash >= cost;
     return [
       card({
         key: `buy-${asset}`,
@@ -827,8 +860,8 @@ function neobank(
         price: money(cost),
         icon: "ui-stocks",
         entry: actEntry(view, place, TRADE_BUY, asset, units),
-        enabled: me.cash >= cost,
-        note: me.cash >= cost ? unitsOf(units) : "Not enough cash",
+        enabled: canBuy,
+        note: canBuy ? unitsOf(units) : cashRequired,
       }),
       ...(held
         ? [
@@ -843,27 +876,12 @@ function neobank(
           ]
         : []),
     ];
-  }).flat();
-  return [
-    {
-      title: "Accounts",
-      info: `Cash ${money(me.cash)} · Savings ${money(me.bank)} · Savings rate ${Math.max(0, economy.policyRate - 1).toFixed(2)}%`,
-      cards: cash,
-    },
-    {
-      title: "Loans",
-      info:
-        me.loan > 0
-          ? `You owe ${money(me.loan)}${me.loanLate > 0 ? " · payments missed: half of each shift goes to Neobank" : ` · Monday payment ${money(loanPayment(me.loan))}`} · credit line ${money(creditLine(me))}`
-          : `Credit line ${money(creditLine(me))} (${me.job >= 0 ? "about four weeks' pay" : "more with a job"}) · paid back a tenth each Monday`,
-      cards: loans,
-    },
-    {
-      title: "Markets",
-      info: "Spreads apply; big orders move the price.",
-      cards: assets,
-    },
-  ];
+  });
+  return {
+    title: "Markets",
+    info: "Spreads apply; big orders move the price.",
+    cards: assets,
+  };
 }
 
 /** An item's picture: its full-price shop card's icon. */
@@ -885,12 +903,7 @@ function secondLife(
       price: money(offer.price),
       icon: durableIcon(offer.item),
       entry: actEntry(view, place, BUY_USED, slot, offer.item),
-      enabled: !owned && me.cash >= offer.price,
-      note: owned
-        ? "You have one"
-        : me.cash < offer.price
-          ? "Not enough cash"
-          : "",
+      ...pricedOffer(me, offer.price, owned ? "You have one" : ""),
     });
   });
   const pawnable = DURABLES.flatMap((id, item) =>
@@ -920,8 +933,7 @@ function secondLife(
       price: money(price),
       icon: durableIcon(ticket.item),
       entry: actEntry(view, place, REDEEM, index),
-      enabled: !home && me.cash >= price,
-      note: home ? "You have one" : me.cash < price ? "Not enough cash" : "",
+      ...pricedOffer(me, price, home ? "You have one" : ""),
     });
   });
   return [
@@ -988,10 +1000,16 @@ export function panelFor(
     case "food":
     case "clothes":
     case "gadgets":
-    case "discount":
-      sections = [{ title: "For sale", cards: shopCards(view, me, place) }];
-      if (data.kind === "grocery")
-        sections[0]!.cards.push(
+    case "discount": {
+      const cards = shopCards(view, me, place);
+      if (data.kind === "grocery") {
+        const weeklyLimit = me.scratched >= SCRATCH_PER_WEEK;
+        const offer = pricedOffer(
+          me,
+          SCRATCH_PRICE,
+          weeklyLimit ? `${SCRATCH_PER_WEEK} a week` : "",
+        );
+        cards.push(
           card({
             key: "lottery",
             title: "Scratch card",
@@ -999,19 +1017,21 @@ export function panelFor(
             price: money(SCRATCH_PRICE),
             icon: "ui-happiness",
             entry: actEntry(view, place, SCRATCH),
-            enabled:
-              me.scratched < SCRATCH_PER_WEEK && me.cash >= SCRATCH_PRICE,
+            ...offer,
             note:
-              me.scratched >= SCRATCH_PER_WEEK
-                ? `${SCRATCH_PER_WEEK} a week`
-                : me.cash < SCRATCH_PRICE
-                  ? "Not enough cash"
-                  : `${me.scratched} of ${SCRATCH_PER_WEEK} this week`,
+              offer.note || `${me.scratched} of ${SCRATCH_PER_WEEK} this week`,
           }),
         );
+      }
+      sections = [{ title: "For sale", cards }];
       break;
+    }
     case "bank":
-      sections = neobank(view, me, place);
+      sections = [
+        bankAccounts(view, me, place),
+        bankLoans(view, me, place),
+        bankMarkets(view, me, place),
+      ];
       break;
     case "jobs":
       sections = jobHub(view, me, players, place);
