@@ -144,97 +144,7 @@ export function dodge(k: Keeper, ctx: SafetyContext, input: Input): Input {
     first = threats.reduce((a, b) => (b.fuse < a.fuse ? b : a)),
     blast = first.path[first.fuse - 1]!,
     away = (Math.sign(w.x - blast.x) || w.facing) as -1 | 1;
-  const held = { ...input };
-  // A jump that rises, lets go at the top and uses an air jump (a power's too).
-  const jumping = (beat: number, g: World) =>
-    beat === 0
-      ? !w.input.jump
-      : g.vy < 0
-        ? g.input.jump
-        : (g.airJump || g.bonusJumps > 0) && !g.input.jump;
-  // Holding Dash bump, a jumping escape's air jump dashes up and away from
-  // where the body is then. This tick keeps the planned aim unless it can
-  // dash now and releases no bomb, so a throw still goes where it was aimed.
-  const dashing = k.power.kind === "dash",
-    planned = { aimX: input.aimX, aimY: input.aimY },
-    dashAim = (move: -1 | 0 | 1, body: World) => ({
-      aimX: Math.round(body.x / S) + (move || away) * 120,
-      aimY: Math.round(chestOf(body) / S) - 200,
-    }),
-    firstAim = (move: -1 | 0 | 1) =>
-      dashing && !w.grounded && !(w.charge && !input.bomb)
-        ? dashAim(move, w)
-        : planned;
-  const make =
-    (move: -1 | 0 | 1, jump: boolean, drop = false): Script =>
-    (beat, g) => ({
-      ...NEUTRAL,
-      ...(!jump
-        ? planned
-        : beat === 0
-          ? firstAim(move)
-          : dashing
-            ? dashAim(move, g)
-            : planned),
-      bomb: input.bomb,
-      move,
-      jump: jump && jumping(beat, g),
-      drop: drop && beat === 0 && !w.input.drop,
-    });
-  const options: { script: Script; first: Partial<Input> }[] = [
-    { script: () => held, first: {} },
-    {
-      script: make(away, false),
-      first: { move: away, jump: false, drop: false, fire: false },
-    },
-    {
-      script: make(away, true),
-      first: {
-        ...firstAim(away),
-        move: away,
-        jump: !w.input.jump,
-        drop: false,
-        fire: false,
-      },
-    },
-    {
-      script: make(-away as -1 | 1, true),
-      first: {
-        ...firstAim(-away as -1 | 1),
-        move: -away as -1 | 1,
-        jump: !w.input.jump,
-        drop: false,
-        fire: false,
-      },
-    },
-    {
-      script: make(0, true),
-      first: {
-        ...firstAim(0),
-        move: 0,
-        jump: !w.input.jump,
-        drop: false,
-        fire: false,
-      },
-    },
-    ...(w.grounded
-      ? [
-          {
-            script: make(away, false, true),
-            first: {
-              move: away,
-              jump: false,
-              drop: !w.input.drop,
-              fire: false,
-            },
-          },
-        ]
-      : []),
-    {
-      script: make(-away as -1 | 1, false),
-      first: { move: -away as -1 | 1, jump: false, drop: false, fire: false },
-    },
-  ];
+  const options = escapeOptions(k, input, away);
   let best = options[0]!,
     score = -Infinity;
   for (const option of options) {
@@ -248,4 +158,68 @@ export function dodge(k: Keeper, ctx: SafetyContext, input: Input): Input {
     }
   }
   return { ...input, ...best.first };
+}
+
+interface EscapeOption {
+  script: Script;
+  first: Partial<Input>;
+}
+
+function escapeOptions(k: Keeper, input: Input, away: -1 | 1): EscapeOption[] {
+  const w = k.world;
+  const held = { ...input };
+  const planned = { aimX: input.aimX, aimY: input.aimY };
+  const dashing = k.power.kind === "dash";
+  const dashAim = (move: Input["move"], body: World) => ({
+    aimX: Math.round(body.x / S) + (move || away) * 120,
+    aimY: Math.round(chestOf(body) / S) - 200,
+  });
+  // Preserve the planned aim on the tick it releases a charged throw.
+  const firstAim = (move: Input["move"]) =>
+    dashing && !w.grounded && !(w.charge && !input.bomb)
+      ? dashAim(move, w)
+      : planned;
+  const jumpPressed = (beat: number, body: World) => {
+    if (beat === 0) return !w.input.jump;
+    if (body.vy < 0) return body.input.jump;
+    return (body.airJump || body.bonusJumps > 0) && !body.input.jump;
+  };
+  const aimForJump = (move: Input["move"], beat: number, body: World) => {
+    if (beat === 0) return firstAim(move);
+    return dashing ? dashAim(move, body) : planned;
+  };
+  const escape = (
+    move: Input["move"],
+    jump: boolean,
+    drop = false,
+  ): EscapeOption => {
+    const script: Script = (beat, body) => ({
+      ...NEUTRAL,
+      ...(jump ? aimForJump(move, beat, body) : planned),
+      bomb: input.bomb,
+      move,
+      jump: jump && jumpPressed(beat, body),
+      drop: drop && beat === 0 && !w.input.drop,
+    });
+    return {
+      script,
+      first: {
+        ...(jump ? firstAim(move) : {}),
+        move,
+        jump: jump && !w.input.jump,
+        drop: drop && !w.input.drop,
+        fire: false,
+      },
+    };
+  };
+  const towards = -away as -1 | 1;
+  return [
+    { script: () => held, first: {} },
+    escape(away, false),
+    escape(away, true),
+    escape(towards, true),
+    escape(0, true),
+    ...(w.grounded ? [escape(away, false, true)] : []),
+    escape(towards, false),
+  ];
 }

@@ -195,6 +195,18 @@ function wander(k: Keeper, ctx: NavigationContext): void {
   });
 }
 
+function updateRoute(k: Keeper, ctx: NavigationContext, here: number): void {
+  const m = k.mind!;
+  const { graph, ph } = ctx;
+  if (here >= 0 && m.goal >= 0) {
+    if (here === m.goal) m.edge = -1;
+    else if (graph.edges[m.edge]?.from !== here) {
+      m.edge = nextEdge(graph, here, k.world.x, m.goal, ph);
+      if (m.edge < 0) m.goal = -1;
+    }
+  }
+}
+
 export function navigate(k: Keeper, ctx: NavigationContext): Input {
   const w = k.world,
     m = k.mind!,
@@ -209,13 +221,7 @@ export function navigate(k: Keeper, ctx: NavigationContext): Input {
     chooseGoal(k, ctx);
     m.replan = ctx.level.replan;
   }
-  if (here >= 0 && m.goal >= 0) {
-    if (here === m.goal) m.edge = -1;
-    else if (graph.edges[m.edge]?.from !== here) {
-      m.edge = nextEdge(graph, here, w.x, m.goal, ph);
-      if (m.edge < 0) m.goal = -1;
-    }
-  }
+  updateRoute(k, ctx, here);
   const input = drive(
     w,
     m,
