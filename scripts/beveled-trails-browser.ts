@@ -1,20 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createServer } from "vite";
-import { chromium, webkit } from "playwright";
+import { launchSelected } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
+import { startViteServer } from "./lib/server.js";
 
 // Isolated renderer fixtures; never joins or interrupts a real match.
-const server = await createServer({
-  server: { port: 0, host: "127.0.0.1", hmr: false },
-});
-await server.listen();
-const address = server.httpServer!.address();
-if (!address || typeof address === "string") throw Error("No server");
+const server = await startViteServer();
 const browserName = process.env.BROWSER ?? "chrome";
-const browser =
-  browserName === "webkit"
-    ? await webkit.launch()
-    : await chromium.launch({ channel: "chrome" });
+const browser = await launchSelected("chrome");
 const page = await browser.newPage({
   viewport: { width: 1600, height: 900 },
   deviceScaleFactor: 2,
@@ -30,9 +23,7 @@ page.on("console", (message) => {
 });
 try {
   await mkdir("artifacts", { recursive: true });
-  await page.addInitScript("window.__name = value => value");
-  await page.goto(`http://127.0.0.1:${address.port}/?mute&room=INVALID`);
-  await page.getByText("Invalid room code", { exact: true }).waitFor();
+  await openRidersFixturePage(page, server.url);
   const result = await page.evaluate(async () => {
     const { createPhaserArena } = (await import(
       String("/games/fuse-riders/src/render/phaser/arena.ts")
@@ -180,5 +171,5 @@ try {
   console.log(JSON.stringify({ browser: browserName, ...result }));
 } finally {
   await browser.close();
-  await server.close();
+  await server.stop();
 }

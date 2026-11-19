@@ -1,28 +1,20 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createServer } from "vite";
-import { chromium, webkit } from "playwright";
+import { launchSelected } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
+import { ridersPageUrl } from "./lib/riders-url.js";
+import { startViteServer } from "./lib/server.js";
 
 // Isolated renderer fixtures plus ordinary offline solo play; never touches an occupied room.
-const server = await createServer({
-  server: { port: 0, host: "127.0.0.1", hmr: false },
-});
-await server.listen();
-const address = server.httpServer!.address();
-if (!address || typeof address === "string") throw Error("No server");
+const server = await startViteServer();
 const browserName = process.env.BROWSER ?? "chrome";
-const browser =
-  browserName === "webkit"
-    ? await webkit.launch()
-    : await chromium.launch({ channel: "chrome" });
+const browser = await launchSelected("chrome");
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const errors: string[] = [];
 page.on("pageerror", (error) => errors.push(error.message));
 try {
   await mkdir("artifacts", { recursive: true });
-  await page.addInitScript("window.__name = value => value");
-  await page.goto(`http://127.0.0.1:${address.port}/?room=INVALID`);
-  await page.getByText("Invalid room code", { exact: true }).waitFor();
+  await openRidersFixturePage(page, server.url);
   const reports = [];
   for (const mode of ["webgl", "phaser-canvas"] as const) {
     const report = await page.evaluate(async (mode) => {
@@ -171,7 +163,7 @@ try {
       (Reflect.get(window, "disposeBlastCheck") as () => void)();
     });
   }
-  await page.goto(`http://127.0.0.1:${address.port}/?solo=1&benchmark=1`);
+  await page.goto(`${ridersPageUrl(server.url)}?solo=1&benchmark=1&mute`);
   await page.evaluate(() =>
     window.addEventListener("fuse-benchmark", (event) => {
       const sample = (
@@ -194,5 +186,5 @@ try {
   );
 } finally {
   await browser.close();
-  await server.close();
+  await server.stop();
 }

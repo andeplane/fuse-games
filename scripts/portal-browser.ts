@@ -1,27 +1,18 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createServer } from "vite";
-import { chromium, webkit } from "playwright";
+import { launchSelected } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
+import { startViteServer } from "./lib/server.js";
 
 // Isolated render contract checks; the real solo flow is captured separately.
-const server = await createServer({
-  server: { port: 0, host: "127.0.0.1", hmr: false },
-});
-await server.listen();
-const address = server.httpServer!.address();
-if (!address || typeof address === "string") throw Error("No preview server");
-const browser =
-  process.env.BROWSER === "webkit"
-    ? await webkit.launch()
-    : await chromium.launch({ channel: "chrome" });
+const server = await startViteServer();
+const browser = await launchSelected("chrome");
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const errors: string[] = [];
 page.on("pageerror", (error) => errors.push(error.message));
 try {
   await mkdir("artifacts", { recursive: true });
-  await page.addInitScript("window.__name = value => value");
-  await page.goto(`http://127.0.0.1:${address.port}/?room=INVALID&mute`);
-  await page.getByText("Invalid room code", { exact: true }).waitFor();
+  await openRidersFixturePage(page, server.url);
   for (const backend of ["auto", "canvas"] as const) {
     console.log(
       await page.evaluate(async (backend) => {
@@ -137,5 +128,5 @@ try {
   assert.deepEqual(errors, []);
 } finally {
   await browser.close();
-  await server.close();
+  await server.stop();
 }

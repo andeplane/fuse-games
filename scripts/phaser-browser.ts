@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { launchSelected } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
 import { startViteServer } from "./lib/server.js";
 import { smokeTimeout } from "./smoke-timeout.js";
 const server = await startViteServer();
@@ -11,9 +12,7 @@ const page = await browser.newPage({
 const errors: string[] = [];
 page.on("pageerror", (e) => errors.push(e.stack ?? e.message));
 try {
-  await page.addInitScript("window.__name = value => value");
-  await page.goto(`${server.url}?mute&room=INVALID`);
-  await page.getByText("Invalid room code", { exact: true }).waitFor();
+  await openRidersFixturePage(page, server.url);
   const result = await page.evaluate(async (recoveryBudgetMs) => {
     const { createPhaserArena } = (await import(
       String("/games/fuse-riders/src/render/phaser/arena.ts")
