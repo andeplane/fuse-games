@@ -27,6 +27,12 @@ import {
   createTopBar,
 } from "fuse-ui";
 import { planNeuronPlacement } from "./neuron-placement.js";
+import {
+  placementPreview,
+  placementPrompt,
+  renderPlacementPreview,
+  type PlacementPreview,
+} from "./placement-preview.js";
 import { minimapMarkup, minimapCell } from "../render/minimap.js";
 import { battleFocusCell } from "../render/battle-focus.js";
 import { structureArt, teamArtFilter } from "../render/art.js";
@@ -40,8 +46,6 @@ import { createAttractScene } from "./attract-scene.js";
 import {
   renderBoard,
   hexCenter,
-  hexPoints,
-  structureArtwork,
   neuronPortraitUrl,
   type BoardAnimation,
 } from "../render/board.js";
@@ -96,10 +100,7 @@ import {
   isResearchKind,
   constructionAvailability,
   constructionQueueAvailability,
-  constructionUpgradeSource,
-  CONSTRUCTIONS,
   constructionDispatchAvailability,
-  connectedFrontier,
   planSupport,
   type BuildKind,
 } from "../engine/catalog.js";
@@ -108,7 +109,6 @@ import {
   commandPageCount,
   RESEARCH_PRESENTATION,
   BUILD_PRESENTATION,
-  requirementText,
   waitingText,
   type CommandPanel,
 } from "./command-card.js";
@@ -131,6 +131,19 @@ import {
   createResultsScreen,
   createRoundControls,
 } from "fuse-ui";
+
+interface BoardArrow {
+  pan: PanDirection;
+  column: number;
+  row: number;
+}
+
+const BOARD_ARROWS = new Map<string, BoardArrow>([
+  ["ArrowLeft", { pan: "left", column: -1, row: 0 }],
+  ["ArrowRight", { pan: "right", column: 1, row: 0 }],
+  ["ArrowUp", { pan: "up", column: 0, row: -1 }],
+  ["ArrowDown", { pan: "down", column: 0, row: 1 }],
+]);
 
 const CRAFT_CONTROLS = [
   {
@@ -373,8 +386,7 @@ export function mountFuseCraft(
     goal: CRAFT_GOAL,
   };
   function menuInputChanged(open: boolean) {
-    for (const direction of Object.values(ARROWS))
-      camera?.hold(direction, false);
+    releaseCameraKeys();
     const blocked = open || !!root.ownerDocument.querySelector("dialog[open]");
     camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
     if (
@@ -919,21 +931,19 @@ export function mountFuseCraft(
   function onPointerUp(event: PointerEvent) {
     if (event.pointerId === minimapDrag) minimapDrag = null;
   }
-  const ARROWS: Record<string, PanDirection> = {
-    ArrowLeft: "left",
-    ArrowRight: "right",
-    ArrowUp: "up",
-    ArrowDown: "down",
-  };
   function onKeyUp(event: KeyboardEvent) {
-    const direction = ARROWS[event.key];
-    if (direction) camera?.hold(direction, false);
+    const arrow = BOARD_ARROWS.get(event.key);
+    if (arrow) camera?.hold(arrow.pan, false);
   }
+
   // Keys released while the window is in the background never arrive.
   function onFocusOut(event: FocusEvent) {
     if (event.relatedTarget) return;
-    for (const direction of Object.values(ARROWS))
-      camera?.hold(direction, false);
+    releaseCameraKeys();
+  }
+
+  function releaseCameraKeys() {
+    for (const { pan } of BOARD_ARROWS.values()) camera?.hold(pan, false);
   }
 
   function sideName(world: Readonly<World>, id: string): string {
@@ -985,11 +995,13 @@ export function mountFuseCraft(
     return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
   }
 
-  function sidebarMarkup(world: Readonly<World>): string {
-    if (session && !participant(world)) return watchMarkup(world);
-    const player = world.players.find(
-      (item) => item.id === session?.localPlayerId,
-    );
+  function sidebarMarkup(
+    world: Readonly<World>,
+    player: Player | undefined,
+    watching: boolean,
+    preview: PlacementPreview | null,
+  ): string {
+    if (watching) return watchMarkup(world);
     if (!player) return '<div class="nd-panel">No local player exists.</div>';
     const structure = world.structures.find(
       (item) => item.cell === selectedCell,
@@ -1083,33 +1095,8 @@ export function mountFuseCraft(
           `<li>${escape(item.type)}${item.reason ? ` · ${escape(item.reason)}` : ""}${item.cell !== undefined ? ` at hex ${item.cell}` : ""}</li>`,
       )
       .join("");
-    const placementRequirements =
-      placement && placementCell !== null
-        ? constructionQueueAvailability(world, player, placement, placementCell)
-        : null;
-    const placementHints =
-      placementRequirements?.allowed && placement && placementCell !== null
-        ? constructionDispatchAvailability(world, player, {
-            kind: placement,
-            cell: placementCell,
-            upgradeFrom: constructionUpgradeSource(
-              world,
-              player,
-              placement,
-              placementCell,
-            )?.id,
-          }).missing
-        : (placementRequirements?.missing ?? []);
-    const upgrading =
-      placement &&
-      placementCell !== null &&
-      constructionUpgradeSource(world, player, placement, placementCell);
-    const neuronPlan =
-      placement === "neuron" && placementCell !== null
-        ? planNeuronPlacement(world, player, placementCell)
-        : null;
     const contextDetail = placement
-      ? `<div class="placement-instructions" role="status"><strong>${upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage) || escape(neuronPlan?.hint ?? "") || (placementRequirements?.allowed && placement && placementCell !== null ? waitingText(placementHints, planSupport(world, player, { cell: placementCell, kind: placement }).get(placementCell)) : placementHints.map(requirementText)).map(escape).join(" ") || (upgrading ? "Neuron stays connected during work. Damage carries over." : CONSTRUCTIONS[placement].upgradesFrom?.length ? "Choose open ground or upgrade your neuron." : "Click or tap open ground.")}</small></div>`
+      ? `<div class="placement-instructions" role="status"><strong>${preview?.upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage || preview?.hint || placementPrompt(placement, preview))}</small></div>`
       : panel === "inspect" || panel === "build"
         ? `${detail}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(worker.mode)}</span>`
         : panel === "particles"
@@ -1187,7 +1174,15 @@ export function mountFuseCraft(
         bar: resultBar,
       });
     }
-    updateContent(sidebar, sidebarMarkup(world));
+    const owner = world.players.find((p) => p.id === session?.localPlayerId);
+    const preview =
+      owner && placement && placementCell !== null
+        ? placementPreview(world, owner, placement, placementCell)
+        : null;
+    updateContent(
+      sidebar,
+      sidebarMarkup(world, owner, !!session && !playing, preview),
+    );
     gameMenu.update({
       canLobby: !!online?.room().manager,
       spectator: !playing,
@@ -1240,83 +1235,21 @@ export function mountFuseCraft(
       dependencies.buildingSprites,
       lightRenderer,
     );
-    let preview = svg.querySelector<SVGGElement>(".placement-preview");
-    if (!preview) {
-      preview = svg.ownerDocument.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "g",
-      );
-      preview.setAttribute("class", "placement-preview");
-      preview.setAttribute("pointer-events", "none");
-      svg.append(preview);
-    }
-    const owner = world.players.find((p) => p.id === session?.localPlayerId);
     root.classList.toggle("is-placing", placement !== null);
-    // The brain's artwork covers the hexes around it, so the hex that looks
-    // beside the core can be two steps away. Outline the hexes that touch the
-    // connected network: a plan there starts at once.
-    const frontier =
-      placement && owner
-        ? `<g class="placement-frontier">${connectedFrontier(
-            world,
-            owner,
-            placement,
-          )
-            .map(
-              (cell) =>
-                `<polygon data-cell="${cell}" points="${hexPoints(world.map.width, cell, 4)}"/>`,
-            )
-            .join("")}</g>`
-        : "";
-    if (placement && placementCell !== null && owner) {
-      const plan =
-        placement === "neuron"
-          ? planNeuronPlacement(world, owner, placementCell)
-          : null;
-      const valid =
-        constructionQueueAvailability(world, owner, placement, placementCell)
-          .allowed &&
-        (!plan || plan.cells.length > 0);
-      preview.setAttribute("data-valid", String(valid));
-      preview.setAttribute(
-        "data-support",
-        plan?.hint && plan.cells.length > 0
-          ? "chained"
-          : (planSupport(world, owner, {
-              cell: placementCell,
-              kind: placement,
-            }).get(placementCell) ?? "connected"),
-      );
-      preview.setAttribute(
-        "data-upgrade",
-        String(
-          !!constructionUpgradeSource(world, owner, placement, placementCell),
-        ),
-      );
-      const artwork = `<g opacity="0.55">${structureArtwork(world.map.width, placementCell, placement, owner.slot, dependencies.sprites)}</g>`;
-      const bridge =
-        plan?.cells
-          .slice(0, -1)
-          .map(
-            (cell) =>
-              `<polygon class="placement-bridge" data-cell="${cell}" points="${hexPoints(world.map.width, cell, 1.5)}"/>`,
-          )
-          .join("") ?? "";
-      preview.innerHTML = `${frontier}${bridge}<polygon points="${hexPoints(world.map.width, placementCell, 1.5)}"/>${artwork}`;
-    } else {
-      if (frontier) preview.innerHTML = frontier;
-      else preview.replaceChildren();
-      preview.removeAttribute("data-valid");
-      preview.removeAttribute("data-support");
-      preview.removeAttribute("data-upgrade");
-    }
+    renderPlacementPreview(
+      svg,
+      world,
+      owner,
+      placement,
+      preview,
+      dependencies.sprites,
+    );
     const viewport = root.querySelector<HTMLElement>("#nd-viewport");
     if (!camera && viewport && dependencies.createCamera) {
       camera = dependencies.createCamera(svg, viewport);
       camera.setEdgeScroll(preferences.edgeScroll);
-      const player = world.players.find((p) => p.id === session?.localPlayerId);
       const brain = world.structures.find(
-        (s) => s.ownerId === player?.id && s.kind === "brain",
+        (s) => s.ownerId === owner?.id && s.kind === "brain",
       );
       if (brain) camera.focusCell(world.map.width, brain.cell);
       svg.focus?.({ preventScroll: true });
@@ -2274,156 +2207,135 @@ export function mountFuseCraft(
     back.click();
   }
 
-  function onKeyDown(event: KeyboardEvent) {
-    if (playtestInputBlocked(root.ownerDocument)) return;
-    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
-      return;
-    // The results screen covers the game: no camera or command key acts behind it.
-    if (results.open) return;
-    // How to play is modal: no game shortcut acts behind it.
-    if (helpOpen && screen === "game") return;
-    if (pending) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        pending = null;
-        render();
-        return;
-      }
-      if (event.key === "Tab") {
-        const controls = Array.from(
-          root.querySelectorAll<HTMLButtonElement>(
-            '[role="alertdialog"] button',
-          ),
-        );
-        const current = controls.indexOf(
-          root.ownerDocument.activeElement as HTMLButtonElement,
-        );
-        event.preventDefault();
-        controls[
-          (current + (event.shiftKey ? -1 : 1) + controls.length) %
-            controls.length
-        ]?.focus();
-      }
+  function confirmationKey(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      pending = null;
+      render();
       return;
     }
-    if (screen === "game" && event.key === "Escape" && placement) {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button'),
+    );
+    const current = controls.findIndex(
+      (control) => control === root.ownerDocument.activeElement,
+    );
+    const next = current + (event.shiftKey ? -1 : 1);
+    event.preventDefault();
+    controls[(next + controls.length) % controls.length]?.focus();
+  }
+
+  function cancelBoardMode(event: KeyboardEvent): boolean {
+    if (event.key !== "Escape") return false;
+    if (placement) {
       event.preventDefault();
       placement = null;
       placementCell = null;
       renderGame();
-      return;
+      return true;
     }
-    if (screen === "game" && event.key === "Escape" && panel !== "inspect") {
+    if (panel === "inspect") return false;
+    event.preventDefault();
+    closePanel();
+    return true;
+  }
+
+  function activateShortcut(event: KeyboardEvent): boolean {
+    if (event.repeat) return false;
+    const key = event.key.toLowerCase();
+    if (key === "f" && dependencies.fullscreen) {
       event.preventDefault();
-      closePanel();
-      return;
+      dependencies.fullscreen.toggle();
+      return true;
     }
-    // Arrow keys scroll the camera while held; Shift+arrows move the
-    // selection, and arrows move the target while placing a building.
-    const direction = ARROWS[event.key];
-    if (
-      direction &&
-      screen === "game" &&
-      !pending &&
-      !helpOpen &&
-      !placement &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !(event.target as HTMLElement).closest?.(
-        'input, select, textarea, [contenteditable="true"]',
-      )
-    ) {
+    if (key === "m" && dependencies.audio && !dependencies.forcedMute) {
       event.preventDefault();
-      camera?.hold(direction, true);
-      return;
+      toggleMute();
+      return true;
     }
-    if (
-      screen === "game" &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.repeat
-    ) {
-      const target = event.target as HTMLElement;
-      if (
-        !target.closest('input, select, textarea, [contenteditable="true"]')
-      ) {
-        if (event.key.toLowerCase() === "f" && dependencies.fullscreen) {
-          event.preventDefault();
-          dependencies.fullscreen.toggle();
-          return;
-        }
-        if (
-          event.key.toLowerCase() === "m" &&
-          dependencies.audio &&
-          !dependencies.forcedMute
-        ) {
-          event.preventDefault();
-          toggleMute();
-          return;
-        }
-        if (
-          "qweasd".includes(event.key.toLowerCase()) &&
-          event.key.length === 1
-        ) {
-          const command = root.querySelector<HTMLButtonElement>(
-            `.command-card [aria-keyshortcuts="${event.key.toUpperCase()}"]`,
-          );
-          if (command) {
-            event.preventDefault();
-            command.click();
-          }
-          return;
-        }
-      }
+    if (key.length !== 1 || !"qweasd".includes(key)) return false;
+    const command = root.querySelector<HTMLButtonElement>(
+      `.command-card [aria-keyshortcuts="${key.toUpperCase()}"]`,
+    );
+    if (command) {
+      event.preventDefault();
+      command.click();
     }
-    if (
-      screen !== "game" ||
-      pending ||
-      (event.target !== root.querySelector("#nd-board") &&
-        event.target !== root.querySelector("#nd-minimap"))
-    )
-      return;
+    return true;
+  }
+
+  function moveSelection(
+    map: MapDefinition,
+    current: number,
+    arrow: BoardArrow,
+  ) {
+    const { width, height } = map;
+    const column = Math.max(
+      0,
+      Math.min(width - 1, (current % width) + arrow.column),
+    );
+    const row = Math.max(
+      0,
+      Math.min(height - 1, Math.floor(current / width) + arrow.row),
+    );
+    selectedCell = row * width + column;
+    if (placement) placementCell = selectedCell;
+    renderGame();
+    camera?.ensureCellVisible(width, selectedCell);
+  }
+
+  function moveOrPlace(event: KeyboardEvent, arrow: BoardArrow | undefined) {
+    const onMinimap = event.target === root.querySelector("#nd-minimap");
+    if (!onMinimap && event.target !== root.querySelector("#nd-board")) return;
     const world = gameWorld();
     if (!world) return;
     const current = selectedCell ?? 0;
-    if (
-      event.target === root.querySelector("#nd-minimap") &&
-      (event.key === "Enter" || event.key === " ")
-    ) {
+    if (onMinimap && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       camera?.focusCell(world.map.width, current);
       updateMinimapView();
       return;
     }
-    const width = world.map.width;
-    const row = Math.floor(current / width),
-      col = current % width;
-    const delta: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    if (event.key in delta) {
+    if (arrow) {
       event.preventDefault();
-      const [dc, dr] = delta[event.key] ?? [0, 0];
-      const c = Math.max(0, Math.min(width - 1, col + dc)),
-        r = Math.max(0, Math.min(world.map.height - 1, row + dr));
-      selectedCell = r * width + c;
-      if (placement) placementCell = selectedCell;
-      renderGame();
-      camera?.ensureCellVisible(width, selectedCell);
-    } else if (
-      event.key === "Enter" &&
-      selectedCell !== null &&
-      world.map.cells[selectedCell]?.terrain === "open"
-    ) {
-      event.preventDefault();
-      if (placement) placeAt(selectedCell, event.shiftKey);
+      moveSelection(world.map, current, arrow);
+      return;
     }
+    if (event.key !== "Enter" || selectedCell === null) return;
+    if (world.map.cells[selectedCell]?.terrain !== "open") return;
+    event.preventDefault();
+    if (placement) placeAt(selectedCell, event.shiftKey);
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
+    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
+      return;
+    if (results.open || (helpOpen && screen === "game")) return;
+    if (pending) {
+      confirmationKey(event);
+      return;
+    }
+    if (screen !== "game" || cancelBoardMode(event)) return;
+
+    const arrow = BOARD_ARROWS.get(event.key);
+    const target = event.target as Element | null;
+    const acceptsShortcut =
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !target?.closest?.('input, select, textarea, [contenteditable="true"]');
+    if (acceptsShortcut) {
+      // Bare arrows pan while held; Shift+arrows and placement move the cursor.
+      if (arrow && !placement && !event.shiftKey) {
+        event.preventDefault();
+        camera?.hold(arrow.pan, true);
+        return;
+      }
+      if (activateShortcut(event)) return;
+    }
+    moveOrPlace(event, arrow);
   }
 
   root.addEventListener("click", onClick);
@@ -2443,8 +2355,7 @@ export function mountFuseCraft(
   const stopPlaytestInput = registerPlaytestInput(page, {
     cancel: () => {
       minimapDrag = null;
-      for (const direction of Object.values(ARROWS))
-        camera?.hold(direction, false);
+      releaseCameraKeys();
     },
   });
   page.addEventListener("keydown", onDocumentKeyDown);
