@@ -40,8 +40,8 @@ function sandbags(r: Rig, cx: number, cz: number, rad: number, from: number, to:
 /** A round tower `h` high at (x, z) with a team band and a crenellated crown, a light on top. */
 // prettier-ignore
 function tower(r: Rig, x: number, z: number, h: number): void {
-  r.add("concrete", r.taperedCylinder(1, 1.15, h, 16), [x, h / 2, z]).add("team", r.cylinder(1.03, 0.4, 16), [x, h * 0.72, z])
-    .add("concrete", r.taperedCylinder(1.25, 1.1, 0.5, 16), [x, h + 0.25, z]).add("dark", r.cylinder(1, 0.08, 16), [x, h + 0.5, z])
+  r.add("concrete", r.cylinder({ topRadius: 1, bottomRadius: 1.15, height: h, segments: 16 }), [x, h / 2, z]).add("team", r.cylinder({ radius: 1.03, height: 0.4, segments: 16 }), [x, h * 0.72, z])
+    .add("concrete", r.cylinder({ topRadius: 1.25, bottomRadius: 1.1, height: 0.5, segments: 16 }), [x, h + 0.25, z]).add("dark", r.cylinder({ radius: 1, height: 0.08, segments: 16 }), [x, h + 0.5, z])
     .add("amber", r.sphere(0.14), [x, h + 0.65, z]);
   for (let k = 0; k < 8; k++) r.add("concrete", r.box(0.45, 0.4, 0.3, 0.05), [x + Math.sin((k * PI) / 4) * 1.1, h + 0.7, z + Math.cos((k * PI) / 4) * 1.1], [0, (k * PI) / 4, 0]);
 }
@@ -68,8 +68,8 @@ function fort(r: Rig): void {
     for (let i = 0; i < n; i++)
       r.add("dark", r.box(0.6, 0.22, 0.2, 0.04), [(i - (n - 1) / 2) * 1.2, y, z]).add("amber", r.box(0.46, 0.08, 0.05, 0.01), [(i - (n - 1) / 2) * 1.2, y, z + 0.1]);
   for (const x of [-1, 1]) for (const z of [-1, 1]) tower(r, x * 3.9, z * 3.9, 4.6);
-  r.add("steel", r.taperedCylinder(0.12, 0.18, 1.6, 8), [1.2, 6.2, -3]).add("dark", r.box(0.8, 0.4, 0.8, 0.06), [1.2, 5.7, -3])
-    .add("steel", r.cylinder(0.04, 2.4, 6), [-1.4, 6.6, -3.4]).add("eye", r.sphere(0.12), [-1.4, 7.85, -3.4])
+  r.add("steel", r.cylinder({ topRadius: 0.12, bottomRadius: 0.18, height: 1.6, segments: 8 }), [1.2, 6.2, -3]).add("dark", r.box(0.8, 0.4, 0.8, 0.06), [1.2, 5.7, -3])
+    .add("steel", r.cylinder({ radius: 0.04, height: 2.4, segments: 6 }), [-1.4, 6.6, -3.4]).add("eye", r.sphere(0.12), [-1.4, 7.85, -3.4])
     .add("orange", r.box(0.8, 0.6, 0.6, 0.05), [-2.6, 0.6, 2]).add("dark", r.box(0.6, 0.5, 0.6, 0.05), [-2.5, 0.55, 2.8]);
 }
 
@@ -79,8 +79,8 @@ function dish(r: Rig): void {
   const d = r.sub([0, 0, 0], [-0.5, 0, 0]);
   const n = d.far ? 5 : 10, bowl = Array.from({ length: n }, (_, i) => new THREE.Vector2(0.05 + (i / (n - 1)) * 1.5, ((i / (n - 1)) * 1.5) ** 2 * 0.25));
   d.add("dish", new THREE.LatheGeometry(bowl, d.far ? 10 : 28), [0, 0, 0], X)
-    .add("steel", d.cylinder(0.03, 0.9, 6), [0, 0, 0.45], X).add("eye", d.sphere(0.09), [0, 0, 0.92])
-    .add("dark", d.cylinder(0.22, 0.25, 12), [0, 0, -0.1], X);
+    .add("steel", d.cylinder({ radius: 0.03, height: 0.9, segments: 6 }), [0, 0, 0.45], X).add("eye", d.sphere(0.09), [0, 0, 0.92])
+    .add("dark", d.cylinder({ radius: 0.22, height: 0.25 }), [0, 0, -0.1], X);
 }
 
 /** Saw-tooth roof teeth over a `w` × `d` roof at `y`: a steel slope each, glazed on its steep face. */
@@ -98,8 +98,8 @@ function sawtooth(r: Rig, w: number, d: number, y: number, teeth: number): void 
 /** The chimney at (x, z) rising from `y0`: banded in hazard stripes with a red warning light at its lip. */
 // prettier-ignore
 function chimney(r: Rig, x: number, y0: number, z: number): void {
-  r.add("dark", r.taperedCylinder(0.4, 0.5, 4.5, 14), [x, y0 + 2.25, z]).add("hazard", r.cylinder(0.43, 0.4, 14), [x, y0 + 3.6, z])
-    .add("hazard", r.cylinder(0.46, 0.4, 14), [x, y0 + 1.4, z]).add("gun", r.taperedCylinder(0.48, 0.42, 0.25, 14), [x, y0 + 4.55, z])
+  r.add("dark", r.cylinder({ topRadius: 0.4, bottomRadius: 0.5, height: 4.5, segments: 14 }), [x, y0 + 2.25, z]).add("hazard", r.cylinder({ radius: 0.43, height: 0.4, segments: 14 }), [x, y0 + 3.6, z])
+    .add("hazard", r.cylinder({ radius: 0.46, height: 0.4, segments: 14 }), [x, y0 + 1.4, z]).add("gun", r.cylinder({ topRadius: 0.48, bottomRadius: 0.42, height: 0.25, segments: 14 }), [x, y0 + 4.55, z])
     .add("eye", r.sphere(0.1), [x + 0.45, y0 + 4.55, z]);
 }
 
@@ -126,7 +126,7 @@ function robotFactory(r: Rig): void {
   door(r, 3, 2.1, d / 2 + 0.05);
   // The ramp: rollers in a dark frame out of the door.
   r.add("dark", r.box(2.6, 0.12, 1.9, 0.02), [0, 0.3, d / 2 + 1.1]);
-  for (let i = 0; i < 6; i++) r.add("steel", r.cylinder(0.07, 2.4, 8), [0, 0.38, d / 2 + 0.35 + i * 0.3], Z);
+  for (let i = 0; i < 6; i++) r.add("steel", r.cylinder({ radius: 0.07, height: 2.4, segments: 8 }), [0, 0.38, d / 2 + 0.35 + i * 0.3], Z);
   r.add("dark", r.box(2.8, 0.6, 0.08, 0.02), [0, h - 0.6, d / 2 + 0.05]).decal("ROBOTS", 2.4, [0, h - 0.6, d / 2 + 0.1])
     .add("team", r.extrude(BOLT(1.3), 0.05, 0.01), [w / 2 + 0.02, 1.8, 0.8], [0, H, 0]);
   chimney(r, w / 2 - 1, h + 0.3, -d / 2 + 0.9);
@@ -160,9 +160,9 @@ function vehicleFactory(r: Rig): void {
   // The gantry crane straddling the door.
   r.pair((s) => r.add("gold", r.box(0.3, top + 0.6, 0.3, 0.04), [s * (w / 2 + 0.4), (top + 0.6) / 2, d / 2 + 1.2]).add("hazard", r.box(0.32, 0.6, 0.32, 0.03), [s * (w / 2 + 0.4), 0.6, d / 2 + 1.2]))
     .add("team", r.box(w + 1.2, 0.4, 0.4, 0.05), [0, top + 0.6, d / 2 + 1.2]).add("dark", r.box(0.6, 0.4, 0.6, 0.05), [1.4, top + 0.3, d / 2 + 1.2])
-    .add("steel", r.cylinder(0.03, 1.4, 4), [1.4, top - 0.6, d / 2 + 1.2])
+    .add("steel", r.cylinder({ radius: 0.03, height: 1.4, segments: 4 }), [1.4, top - 0.6, d / 2 + 1.2])
     .add("steel", new THREE.TorusGeometry(0.15, 0.05, 6, 12, PI * 1.5), [1.4, top - 1.35, d / 2 + 1.2], [0, 0, PI * 0.75]);
-  for (const z of [-1.6, 0, 1.6]) r.add("dark", r.cylinder(0.55, 0.2, 14), [w / 2 + 0.08, 1.6, z], Z).add("gun", r.cylinder(0.14, 0.1, 8), [w / 2 + 0.22, 1.6, z], Z);
+  for (const z of [-1.6, 0, 1.6]) r.add("dark", r.cylinder({ radius: 0.55, height: 0.2, segments: 14 }), [w / 2 + 0.08, 1.6, z], Z).add("gun", r.cylinder({ radius: 0.14, height: 0.1, segments: 8 }), [w / 2 + 0.22, 1.6, z], Z);
   r.pair((s) => r.add("orange", r.capsule(0.6, 2.2), [-w / 2 - 1, 0.9, 0.2 + s * 0.8], X))
     .pair((s) => r.add("amber", r.sphere(0.12), [s * 2.7, 2.6, d / 2 + 0.2]));
 }
@@ -182,7 +182,7 @@ const turretArmor = (r: Rig) =>
 // prettier-ignore
 function turret(r: Rig): void {
   turretFoundation(r).add("concrete", turretPlinth(), [0, 0.75, 0])
-    .add("hazard", frustum(1.32, 1.32, 0.2, 8), [0, 1.1, 0]).add("dark", r.taperedCylinder(0.9, 0.95, 0.3, 16), [0, 1.35, 0]);
+    .add("hazard", frustum(1.32, 1.32, 0.2, 8), [0, 1.1, 0]).add("dark", r.cylinder({ topRadius: 0.9, bottomRadius: 0.95, height: 0.3, segments: 16 }), [0, 1.35, 0]);
   sandbags(r, 0, 0, 2.15, -PI * 0.8, PI * 0.8);
 }
 
@@ -193,9 +193,9 @@ function turretHead(r: Rig): void {
     .add("team", r.plan([[-0.5, -0.6], [0.5, -0.6], [0.6, 0.1], [0.3, 0.5], [-0.3, 0.5], [-0.6, 0.1]], 0.2, 0.05), [0, 0.75, -0.1])
     .add("dark", r.box(0.9, 0.5, 0.3, 0.06), [0, 0.38, 0.9]).add("eye", r.sphere(0.09), [0.45, 0.62, 0.9])
     .add("orange", r.box(0.4, 0.4, 0.6, 0.05), [-0.9, 0.35, -0.3]).add("dark", r.box(0.6, 0.3, 0.3, 0.05), [0, 0.6, -0.9])
-    .add("steel", r.cylinder(0.02, 1.4, 4), [0.6, 1.3, -0.6]);
+    .add("steel", r.cylinder({ radius: 0.02, height: 1.4, segments: 4 }), [0.6, 1.3, -0.6]);
   for (const x of [-0.2, 0.2])
-    r.add("steel", r.taperedCylinder(0.075, 0.085, 2, 10), [x, 0.38, 1.9], X).add("gun", r.cylinder(0.12, 0.35, 10), [x, 0.38, 1.15], X)
+    r.add("steel", r.cylinder({ topRadius: 0.075, bottomRadius: 0.085, height: 2, segments: 10 }), [x, 0.38, 1.9], X).add("gun", r.cylinder({ radius: 0.12, height: 0.35, segments: 10 }), [x, 0.38, 1.15], X)
       .add("gun", r.box(0.2, 0.18, 0.3, 0.03), [x, 0.38, 2.9]);
 }
 
@@ -203,7 +203,7 @@ function turretHead(r: Rig): void {
 // prettier-ignore
 function flag(r: Rig): void {
   r.add("concrete", frustum(0.6, 0.75, 0.4, 6), [0, 0.2, 0]).add("hazard", frustum(0.62, 0.62, 0.1, 6), [0, 0.42, 0])
-    .add("steel", r.taperedCylinder(0.06, 0.08, 5, 8), [0, 2.9, 0]).add("gold", r.sphere(0.12), [0, 5.45, 0]);
+    .add("steel", r.cylinder({ topRadius: 0.06, bottomRadius: 0.08, height: 5, segments: 8 }), [0, 2.9, 0]).add("gold", r.sphere(0.12), [0, 5.45, 0]);
   sandbags(r, 0, 0, 0.95, 0, PI * 2 - 0.3);
 }
 
@@ -238,12 +238,12 @@ function fortRuin(r: Rig): void {
   r.add("char", r.box(9.6, 0.3, 9.6, 0.05), [0, 0.15, 0]);
   [1.4, 2.6, 0.9, 1.9].forEach((h, i) => {
     const x = (i % 2 ? 1 : -1) * 3.9, z = (i < 2 ? -1 : 1) * 3.9;
-    r.add(i % 2 ? "concrete" : "char", r.taperedCylinder(1, 1.15, h, 12), [x, h / 2 + 0.3, z]).add("concrete", r.box(0.6, 0.4, 0.5, 0.05), [x + 0.9, 0.5, z + 1], [0.3, i, 0.2]);
+    r.add(i % 2 ? "concrete" : "char", r.cylinder({ topRadius: 1, bottomRadius: 1.15, height: h }), [x, h / 2 + 0.3, z]).add("concrete", r.box(0.6, 0.4, 0.5, 0.05), [x + 0.9, 0.5, z + 1], [0.3, i, 0.2]);
   });
   r.add("concrete", r.box(6, 0.5, 2.6, 0.05), [0, 1, -2.3], [0.25, 0, 0.12]).add("char", r.box(4, 0.4, 2, 0.05), [-0.5, 1.7, -2.5], [-0.2, 0.3, -0.15])
     .add("concrete", r.box(0.5, 1, 5, 0.05), [-3.7, 0.8, 0.8], [0, 0, 0.2]).add("char", r.box(0.5, 0.7, 4, 0.05), [3.7, 0.6, 0.4], [0, 0.1, -0.3])
-    .add("dish", r.taperedCylinder(1.3, 0.2, 0.3, 12), [2.2, 0.5, 2], [0.9, 0, 0.4]);
-  for (let i = 0; i < 5; i++) r.add("steel", r.cylinder(0.05, 1.6, 4), [-2 + i, 1.4, -1.6 + (i % 2)], [(i - 2) * 0.3, 0, (i % 3) * 0.3 - 0.3]);
+    .add("dish", r.cylinder({ topRadius: 1.3, bottomRadius: 0.2, height: 0.3 }), [2.2, 0.5, 2], [0.9, 0, 0.4]);
+  for (let i = 0; i < 5; i++) r.add("steel", r.cylinder({ radius: 0.05, height: 1.6, segments: 4 }), [-2 + i, 1.4, -1.6 + (i % 2)], [(i - 2) * 0.3, 0, (i % 3) * 0.3 - 0.3]);
 }
 
 /** The turret's ruin: its pad in its sandbags, the head knocked off beside it with a barrel bent down. */
@@ -251,7 +251,7 @@ function fortRuin(r: Rig): void {
 function turretRuin(r: Rig): void {
   turretFoundation(r).add("char", turretPlinth(), [0, 0.75, 0], [0.08, 0, 0.05])
     .add("char", turretArmor(r), [1.1, 0.2, -1.4], [0.5, 0.6, 0.3])
-    .add("steel", r.taperedCylinder(0.075, 0.085, 2, 8), [0.2, 0.5, 0.6], [1.2, 0.4, 0]).add("dark", r.taperedCylinder(0.9, 0.95, 0.3, 12), [-0.2, 1.25, 0.1], [0.2, 0, -0.15]);
+    .add("steel", r.cylinder({ topRadius: 0.075, bottomRadius: 0.085, height: 2, segments: 8 }), [0.2, 0.5, 0.6], [1.2, 0.4, 0]).add("dark", r.cylinder({ topRadius: 0.9, bottomRadius: 0.95, height: 0.3 }), [-0.2, 1.25, 0.1], [0.2, 0, -0.15]);
   sandbags(r, 0, 0, 2.15, -PI * 0.8, PI * 0.2);
 }
 

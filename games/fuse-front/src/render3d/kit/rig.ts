@@ -13,6 +13,9 @@ import { labelAspect, labelUv, type Label } from "./decals.js";
 export type Detail = "near" | "far";
 export type V3 = readonly [number, number, number];
 const O: V3 = [0, 0, 0];
+type CylinderSpec = { height: number; segments?: number } & (
+  { radius: number } | { topRadius: number; bottomRadius: number }
+);
 /** A part whose bounding radius (tiles, as drawn) is under this is left out of the far model. */
 export const FAR_MIN = 0.022;
 
@@ -75,25 +78,16 @@ export class Rig {
     return this.far || round < 0.012 ? new THREE.BoxGeometry(w, h, d) : new RoundedBoxGeometry(w, h, d, seg, round);
   } // prettier-ignore
 
-  /** A straight-sided cylinder along y, coarser far away. */
-  cylinder(
-    radius: number,
-    height: number,
-    segments = 12,
-  ): THREE.BufferGeometry {
-    return this.taperedCylinder(radius, radius, height, segments);
-  }
-
-  /** A tapered cylinder along y, coarser far away. */
-  taperedCylinder(
-    topRadius: number,
-    bottomRadius: number,
-    height: number,
-    segments: number,
-  ): THREE.BufferGeometry {
+  /** A straight or tapered cylinder along y, coarser far away. */
+  cylinder(spec: CylinderSpec): THREE.BufferGeometry {
+    const { height, segments = 12 } = spec;
+    const [top, bottom] =
+      "radius" in spec
+        ? [spec.radius, spec.radius]
+        : [spec.topRadius, spec.bottomRadius];
     return new THREE.CylinderGeometry(
-      topRadius,
-      bottomRadius,
+      top,
+      bottom,
       height,
       this.far ? 6 : segments,
     );
@@ -129,7 +123,7 @@ export class Rig {
   /** A strut from `a` to `b`, `w` thick: a box, or a rod when `round`. */
   beam(a: V3, b: V3, w: number, round = false): THREE.BufferGeometry {
     const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), len = A.distanceTo(B);
-    const g = round ? this.cylinder(w / 2, len, 8) : this.box(w, len, w, 0.015);
+    const g = round ? this.cylinder({ radius: w / 2, height: len, segments: 8 }) : this.box(w, len, w, 0.015);
     g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()));
     return g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
   } // prettier-ignore
