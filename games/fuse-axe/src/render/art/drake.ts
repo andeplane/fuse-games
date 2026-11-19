@@ -467,7 +467,6 @@ export function paintDrake(pose: DrakePose): Sprite {
   throat.forEach((p, i) => i && rig.capsule(throat[i - 1]!, p, 2.1, 1.7, plates, body)); // prettier-ignore
   wing(rig, roots, pose.wing, {});
   // The saddle: a black blanket trimmed in gold, the leather seat with its cantle behind and brass pommel in front.
-  const trim = { edge: "none" } as const;
   drawSaddle(rig, torso, {
     blanket: BLANKET,
     cloth: "i",
@@ -481,8 +480,9 @@ export function paintDrake(pose: DrakePose): Sprite {
   // The head: the lower jaw dropping on its hinge as it gapes, the mouth dark (or blazing) behind it, the skull, brow
   // and snout over it, the near horn and a spike at the cheek.
   const jaw = turned(head(-1, 2), pose.nod + 36 * pose.gape);
+  const mouthEdge = { edge: "none" } as const;
   if (pose.gape > 0.1)
-    rig.poly([head(0, 1.4), head(10, 1.6), jaw(9, -0.4), jaw(0.5, -0.6)], pose.fire > 1 ? "f" : "=", trim); // prettier-ignore
+    rig.poly([head(0, 1.4), head(10, 1.6), jaw(9, -0.4), jaw(0.5, -0.6)], pose.fire > 1 ? "f" : "=", mouthEdge); // prettier-ignore
   rig.capsule(jaw(0, 0), jaw(9, 0.3), 2.2, 1.3, "x", { bias: -0.1 });
   const skull = { group: "head" };
   rig.ellipse(pose.head, 5, 4.2, "x", skull);
