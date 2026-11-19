@@ -7,7 +7,7 @@ import {
   stageLengthPx,
 } from "../../engine/view-kit.js";
 import {
-  firstTile,
+  forWorldParticles,
   worldRow,
   bayer,
   dither,
@@ -869,16 +869,14 @@ export const FIRES: readonly Fire[] = [
 
 /** Embers drifting up through the halls, swaying, cooling from gold to dark red as they rise. */
 function embers(brush: Brush, cam: number, t: number) {
-  for (let k = firstTile(cam, 18); k * VIEW_W < cam + VIEW_W; k++)
-    for (let i = 0; i < 7; i++) {
-      const seed = k * 7 + i;
-      const life = (t / (5 + hash(seed, 140) * 4) + hash(seed, 141)) % 1;
-      const sway = Math.round((Math.sin(life * 9 + seed) + 1) * 3 + life * 10);
-      const x = k * VIEW_W + Math.floor(hash(seed, 142) * VIEW_W) + sway;
-      const y = Math.round(KERB - 4 - life * 66 - hash(seed, 143) * 10);
-      brush.fillStyle = EMBER[Math.min(2, Math.floor(life * 3))]!;
-      worldRow(brush, x, x + 1, y, cam);
-    }
+  forWorldParticles(cam, 18, 7, (seed, tileX) => {
+    const life = (t / (5 + hash(seed, 140) * 4) + hash(seed, 141)) % 1;
+    const sway = Math.round((Math.sin(life * 9 + seed) + 1) * 3 + life * 10);
+    const x = tileX + Math.floor(hash(seed, 142) * VIEW_W) + sway;
+    const y = Math.round(KERB - 4 - life * 66 - hash(seed, 143) * 10);
+    brush.fillStyle = EMBER[Math.min(2, Math.floor(life * 3))]!;
+    worldRow(brush, x, x + 1, y, cam);
+  });
 }
 
 /** The broken axe's fractures glowing and dimming slowly, the glow running out from the haft to the edges. */
