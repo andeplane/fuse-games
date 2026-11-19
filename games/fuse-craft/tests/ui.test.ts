@@ -939,6 +939,27 @@ test("dispose unsubscribes and cancels the active frame without scheduling anoth
   assert.equal(f.lifecycle().unsubscribed, 1);
 });
 
+test("a late frame cannot attach a second loop to a relaunched battlefield", async () => {
+  const f = fixture();
+  await f.start();
+  const first = f.counts().requestedFrames;
+  const late = f.frameCallback(first);
+  assert.ok(late);
+  f.click("reset");
+  f.click("confirm-reset");
+  const next = f.counts().requestedFrames;
+  assert.equal(next, first + 1);
+  assert.equal(f.lifecycle().cancelledFrames.at(-1), first);
+  late(16);
+  assert.equal(f.counts().requestedFrames, next);
+  const current = f.frameCallback(next);
+  assert.ok(current);
+  current(32);
+  assert.equal(f.counts().requestedFrames, next + 1);
+  f.app.dispose();
+  assert.equal(f.lifecycle().cancelledFrames.at(-1), next + 1);
+});
+
 test("How to play explains the rules and strategies from the menu and during a match", async () => {
   const f = fixture();
   await f.start();

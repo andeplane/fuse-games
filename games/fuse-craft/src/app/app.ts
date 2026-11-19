@@ -30,7 +30,6 @@ import { planNeuronPlacement } from "./neuron-placement.js";
 import {
   placementPreview,
   placementPrompt,
-  renderPlacementPreview,
   type PlacementPreview,
 } from "./placement-preview.js";
 import { minimapMarkup, minimapCell } from "../render/minimap.js";
@@ -43,20 +42,30 @@ import {
   type SoundCue,
 } from "./audio.js";
 import { createAttractScene } from "./attract-scene.js";
+import { renderBoard, hexCenter, neuronPortraitUrl } from "../render/board.js";
+import type { PanDirection } from "../render/camera.js";
 import {
-  renderBoard,
-  hexCenter,
-  neuronPortraitUrl,
-  type BoardAnimation,
-} from "../render/board.js";
-import type {
-  BoardCamera,
-  CameraFactory,
-  PanDirection,
-} from "../render/camera.js";
-import type { LightRenderer } from "../render/light-field.js";
+  createBattlefield,
+  type BattlefieldDependencies,
+} from "./battlefield.js";
 import { DEFAULT_MAP, ROOM_MAPS, bundledMap } from "../online/maps.js";
 import { TEAM_PALETTES } from "../render/creep.js";
+
+const INSPECTOR_LABEL: Record<CommandPanel, string> = {
+  inspect: "Selected hex",
+  build: "Selected hex",
+  particles: "Recent activity",
+  research: "Research",
+  activity: "Recent activity",
+};
+
+const COMMAND_LABEL: Record<CommandPanel, string> = {
+  inspect: "Commands",
+  build: "Build commands",
+  particles: "Commands",
+  research: "Research commands",
+  activity: "Activity commands",
+};
 
 const TEAM_COLORS = TEAM_PALETTES.map((p) => p.glow);
 /** The most networks any Versus map seats, in words for the lobby copy. */
@@ -80,18 +89,8 @@ import {
   nextStep,
   type TutorialContext,
 } from "./tutorial.js";
-import {
-  REPORT_METRICS,
-  TEAM_NAMES,
-  clock,
-  breakdownMarkup,
-  chartPanelMarkup,
-  findingsMarkup,
-  reportPlayers,
-  type ReportMetric,
-  type ReportPlayer,
-} from "./match-report.js";
-import { matchResult, resultBar, resultReport } from "./result-report.js";
+import { TEAM_NAMES, clock } from "./match-report.js";
+import { createMatchResults } from "./match-results.js";
 import { POWERUP_PRESENTATION } from "../engine/powerups.js";
 import {
   isBuildKind,
@@ -127,7 +126,6 @@ import type {
 import { isOpeningChoice } from "./contracts.js";
 import {
   createGameMenu,
-  createLiveResults,
   createResultsScreen,
   createRoundControls,
 } from "fuse-ui";
@@ -195,6 +193,21 @@ function units(value: number): string {
   return (value / 1000).toFixed(1);
 }
 
+function incomeText(world: Readonly<World>, playerId: string): string {
+  const income = { biomass: 0, insight: 0 };
+  for (const event of world.outcomes) {
+    if (
+      event.type === "income" &&
+      event.playerId === playerId &&
+      event.resource
+    )
+      income[event.resource] += event.amount ?? 0;
+  }
+  const perSecond = (milliunits: number) =>
+    ((milliunits * RULES.ticksPerSecond) / 1000).toFixed(1);
+  return ` · +${perSecond(income.biomass)} ◈ / s · +${perSecond(income.insight)} ◇ / s`;
+}
+
 /** Territory against the dominance bar, and the network's sprout slots. */
 function territoryChips(world: Readonly<World>, player: Player): string {
   const needed = dominanceCells(world);
@@ -214,11 +227,10 @@ function buffChips(world: Readonly<World>, player: Player): string {
     .join("");
 }
 
-export interface AppDependencies {
+export interface AppDependencies extends BattlefieldDependencies {
   maps: MapRepository;
   preferences: PreferencesStore;
   createSession: SessionFactory;
-  debug: boolean;
   /** Full-screen play, where the browser supports it. */
   fullscreen?: {
     active(): boolean;
@@ -238,18 +250,10 @@ export interface AppDependencies {
   };
   /** Draws random openings; Math.random unless a test injects one. */
   random?: () => number;
-  animationClock: () => number;
-  requestFrame: (callback: FrameRequestCallback) => number;
-  cancelFrame: (handle: number) => void;
-  sprites?: Readonly<Record<string, string>>;
-  buildingSprites?: import("../render/sprite-raster.js").BuildingSprites;
-  createCamera?: CameraFactory;
   /** Online Versus rooms; omitted where the page cannot reach the room service. */
   online?: OnlineDependencies;
   /** A room code from the page address, opened on load. */
   initialRoom?: string;
-  /** Additive GPU light over the battlefield; omitted or null renders without it. */
-  createLightRenderer?: (canvas: HTMLCanvasElement) => LightRenderer | null;
   audio?: PresentationAudio;
   forcedMute?: boolean;
   /** Input surface used for control guidance; supplied by the browser adapter. */
@@ -305,7 +309,6 @@ export function mountFuseCraft(
   let placementCell: number | null = null;
   let placementMessage = "";
   let pending: "reset" | "leave" | null = null;
-  let lightTarget: HTMLCanvasElement | null = null;
   let online: OnlineSession | null = null;
   let roomCode = "";
   let roomError: string | null = null;
@@ -316,16 +319,12 @@ export function mountFuseCraft(
   let roomJoinSlot: number | undefined;
   let roomBackground: { root: HTMLElement; stop(): void } | undefined;
   let roomQr: { code: string; url: string } | null = null;
-  let lightRenderer: LightRenderer | undefined;
   let launchError: string | null = null;
   let launching = false;
   let session: NeuralSession | null = null;
   let unsubscribe: (() => void) | null = null;
   let aborter: AbortController | null = null;
   let generation = 0;
-  let animation: BoardAnimation | null = null;
-  let camera: BoardCamera | null = null;
-  let frame: number | null = null;
   let disposed = false;
   let preferences: PresentationPreferences = dependencies.preferences.read();
   dependencies.audio?.configure(preferences);
@@ -348,17 +347,11 @@ export function mountFuseCraft(
   let tutorialError: string | null = null;
   // The control focused before How to play opened over a match.
   let helpReturn: HTMLElement | null = null;
-  // The end-of-match report: which chart it shows.
-  let reportMetric: ReportMetric = "territory";
-  /** The world and players the chart was drawn from, for its metric tabs. */
-  let shownReport: {
-    world: Readonly<World>;
-    players: readonly ReportPlayer[];
-  } | null = null;
   let noticeTick = -1;
   let noticeMatch = "";
   let panel: CommandPanel = "inspect";
   let commandPage = 0;
+  const battlefield = createBattlefield(root, dependencies);
   const attractScene = createAttractScene();
   const controlsOptions = {
     document: root.ownerDocument,
@@ -381,7 +374,7 @@ export function mountFuseCraft(
   function menuInputChanged(open: boolean) {
     releaseCameraKeys();
     const blocked = open || !!root.ownerDocument.querySelector("dialog[open]");
-    camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
+    battlefield.camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
     if (
       !blocked &&
       screen === "game" &&
@@ -420,42 +413,7 @@ export function mountFuseCraft(
       else restart();
     },
   });
-  const liveResults = createLiveResults(results);
-  // Smokes and tests find the result by the old card's id.
-  results.element.id = "match-result";
-  const reportPart = (className: string) => {
-    const part = root.ownerDocument.createElement("div");
-    part.className = className;
-    return part;
-  };
-  const reportFindings = reportPart("report-part"),
-    reportChart = reportPart("report-part"),
-    reportBreakdown = reportPart("match-report");
-
-  function stopAnimation() {
-    if (frame !== null) dependencies.cancelFrame(frame);
-    frame = null;
-    animation = null;
-  }
-
-  function animate(now: number) {
-    if (disposed || screen !== "game") return;
-    animation?.animate(now);
-    updateMinimapView();
-    frame = dependencies.requestFrame(animate);
-  }
-
-  function updateMinimapView() {
-    const view = root
-      .querySelector("#nd-board")
-      ?.getAttribute("viewBox")
-      ?.split(" ");
-    const outline = root.querySelector(".minimap-view");
-    if (view && outline)
-      ["x", "y", "width", "height"].forEach((key, i) =>
-        outline.setAttribute(key, view[i]!),
-      );
-  }
+  const matchResults = createMatchResults(results, dependencies.friends);
 
   function restart() {
     if (online) {
@@ -473,8 +431,7 @@ export function mountFuseCraft(
       launch();
       return;
     }
-    camera?.dispose();
-    camera = null;
+    battlefield.resetCamera();
     placement = null;
     placementCell = null;
     panel = "inspect";
@@ -500,9 +457,7 @@ export function mountFuseCraft(
   }
 
   function disposeSession() {
-    camera?.dispose();
-    camera = null;
-    stopAnimation();
+    battlefield.stopSession();
     unsubscribe?.();
     unsubscribe = null;
     session?.dispose();
@@ -899,7 +854,7 @@ export function mountFuseCraft(
     const world = gameWorld();
     const box = minimap.getBoundingClientRect();
     if (!world || !box.width || !box.height) return;
-    camera?.focusCell(
+    battlefield.camera?.focusCell(
       world.map.width,
       minimapCell(
         world,
@@ -907,7 +862,7 @@ export function mountFuseCraft(
         (y - box.top) / box.height,
       ),
     );
-    updateMinimapView();
+    battlefield.updateMinimap();
   }
   // A press on the minimap keeps the camera on the pointer until release.
   let minimapDrag: number | null = null;
@@ -926,7 +881,7 @@ export function mountFuseCraft(
   }
   function onKeyUp(event: KeyboardEvent) {
     const arrow = BOARD_ARROWS.get(event.key);
-    if (arrow) camera?.hold(arrow.pan, false);
+    if (arrow) battlefield.camera?.hold(arrow.pan, false);
   }
 
   // Keys released while the window is in the background never arrive.
@@ -936,13 +891,22 @@ export function mountFuseCraft(
   }
 
   function releaseCameraKeys() {
-    for (const { pan } of BOARD_ARROWS.values()) camera?.hold(pan, false);
+    for (const { pan } of BOARD_ARROWS.values())
+      battlefield.camera?.hold(pan, false);
   }
 
   function sideName(world: Readonly<World>, id: string): string {
     return (
       TEAM_NAMES[world.players.find((p) => p.id === id)?.slot ?? 0] ?? "Player"
     );
+  }
+
+  function hudMarkup(resources: string, watching: boolean): string {
+    const layout = watching ? "battle-topbar watch-topbar" : "battle-topbar";
+    const debug =
+      !watching && dependencies.debug ? '<div class="debug-note"></div>' : "";
+    const restart = watching ? "Restart" : "Reset";
+    return `<div class="${layout}"><div class="resource-row">${resources}</div><div class="hud-mini"></div>${debug}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : `<button data-action="reset" class="secondary">${restart}</button>`}</div></div>`;
   }
 
   function watchMarkup(world: Readonly<World>): string {
@@ -979,74 +943,43 @@ export function mountFuseCraft(
         return `<button class="watch-player" data-watch-player="${escape(p.id)}" style="--team:${TEAM_COLORS[p.slot]}"><strong>${sideName(world, p.id)}${label ? ` · ${label}` : ""}</strong><span>Brain ${brain?.hp ?? 0} HP</span><small>${p.statistics.built} built · ${p.statistics.lost} lost</small></button>`;
       })
       .join("");
-    // Only a room's host can send it back to the lobby.
-    const restart = online
-      ? online.room().manager
-        ? '<button data-action="reset" class="secondary">Lobby</button>'
-        : ""
-      : '<button data-action="reset" class="secondary">Restart</button>';
-    return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
+    return `${hudMarkup(resources, true)}<div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
   }
 
-  function sidebarMarkup(
+  function connectionDetails(
     world: Readonly<World>,
-    player: Player | undefined,
-    watching: boolean,
-    preview: PlacementPreview | null,
+    structure: World["structures"][number],
   ): string {
-    if (watching) return watchMarkup(world);
-    if (!player) return '<div class="nd-panel">No local player exists.</div>';
-    const structure = world.structures.find(
-      (item) => item.cell === selectedCell,
-    );
-    const cell = selectedCell === null ? null : world.map.cells[selectedCell];
+    let count = 0;
+    let incomingCount = 0;
+    let nextArrival = Infinity;
+    for (const particle of world.particles) {
+      if (particle.ownerId !== structure.ownerId) continue;
+      if (particle.mode === "stationed" && particle.cell === structure.cell)
+        count++;
+      if (particle.mode === "transit" && particle.to === structure.cell) {
+        incomingCount++;
+        nextArrival = Math.min(nextArrival, particle.arrivesAt);
+      }
+    }
+    return `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incomingCount ? ` · next arrival in ${Math.ceil((nextArrival - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incomingCount} incoming</span>`;
+  }
+
+  function selectionDetails(
+    world: Readonly<World>,
+    player: Player,
+    structure: World["structures"][number] | undefined,
+  ): string {
+    if (selectedCell === null)
+      return '<div class="selection-summary"><strong>Select a hex</strong><span>Click terrain to build or inspect.</span></div>';
+    const cell = world.map.cells[selectedCell];
     const owned = structure?.ownerId === player.id;
     const queued = player.queue.find((item) => item.cell === selectedCell);
-    const priority =
-      selectedCell === null
-        ? 0
-        : (player.priorities[String(selectedCell)] ?? 0);
-    const count =
-      selectedCell === null
-        ? 0
-        : world.particles.filter(
-            (p) =>
-              p.ownerId === (structure?.ownerId ?? player.id) &&
-              p.cell === selectedCell &&
-              p.mode === "stationed",
-          ).length;
-    const incoming =
-      selectedCell === null
-        ? []
-        : world.particles.filter(
-            (p) =>
-              p.ownerId === (structure?.ownerId ?? player.id) &&
-              p.to === selectedCell &&
-              p.mode === "transit",
-          );
-    const worker = player.worker;
-    const sprite = (name: string) =>
-      dependencies.sprites?.[`${name}-v2`] ?? dependencies.sprites?.[name];
-    const portrait = structure
-      ? structure.kind === "neuron"
-        ? neuronPortraitUrl(world, structure.cell)
-        : structure.kind === "spore"
-          ? sporeIconUrl(
-              world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0,
-            )
-          : sprite(structureArt(structure.kind))
-      : cell?.terrain === "deposit"
-        ? sprite(`deposit-${cell.resourceKind}`)
-        : sprite(
-            cell?.terrain === "blocked" ? "blocker-boulder" : "terrain-slate-a",
-          );
+    const priority = player.priorities[String(selectedCell)] ?? 0;
     const powerup = world.powerups.find((p) => p.cell === selectedCell);
-    const detail =
-      selectedCell === null
-        ? '<div class="selection-summary"><strong>Select a hex</strong><span>Click terrain to build or inspect.</span></div>'
-        : `<div class="selection-summary"><div class="tile-heading"><span>HEX ${selectedCell}</span><strong>${structure ? `${structure.kind.toUpperCase()} · ${structure.hp} HP` : powerup ? `POWERUP · ${POWERUP_PRESENTATION[powerup.kind].label.toUpperCase()}` : cell?.terrain === "deposit" ? `${cell.resourceKind.toUpperCase()} DEPOSIT` : cell?.terrain === "blocked" ? "BLOCKED GROUND" : "OPEN GROUND"}</strong></div>
+    return `<div class="selection-summary"><div class="tile-heading"><span>HEX ${selectedCell}</span><strong>${structure ? `${structure.kind.toUpperCase()} · ${structure.hp} HP` : powerup ? `POWERUP · ${POWERUP_PRESENTATION[powerup.kind].label.toUpperCase()}` : cell?.terrain === "deposit" ? `${cell.resourceKind.toUpperCase()} DEPOSIT` : cell?.terrain === "blocked" ? "BLOCKED GROUND" : "OPEN GROUND"}</strong></div>
         ${powerup ? `<span>${escape(POWERUP_PRESENTATION[powerup.kind].description)} Fades in ${Math.ceil((powerup.expiresAt - world.tick) / RULES.ticksPerSecond)}s. Touch it with your connected network to claim it; two networks touching it keep it contested.</span>` : ""}
-        ${structure ? `<span title="${structure.connected ? "Connected to brain" : "Disconnected from brain"}${incoming.length ? ` · next arrival in ${Math.ceil((Math.min(...incoming.map((p) => p.arrivesAt)) - world.tick) / RULES.ticksPerSecond)}s` : ""}">${structure.connected ? "Connected" : "Disconnected"} · ${count} particles · ${incoming.length} incoming</span>` : ""}
+        ${structure ? connectionDetails(world, structure) : ""}
         ${cell?.terrain === "deposit" ? '<span title="Connected neighboring structures harvest this deposit. Several players may share it.">Expand alongside to mine.</span>' : ""}</div>
         ${owned && canAttack(structure.kind) ? `${priority === 0 && structure.kind !== "brain" ? '<span class="supply-warning">No supply assigned — use D / Charge to arm this node.</span>' : ""}<div class="priority-control"><label class="field-label" for="priority-slider">Attack priority · ${priority}/3</label><input id="priority-slider" data-field="priority" type="range" min="0" max="3" step="1" value="${priority}"></div>` : ""}
         ${structure && STRUCTURES[structure.kind].miningBonus ? `<span class="economic-summary" title="One specialist bonus per deposit per player. Requires a connection to the brain. No attack supply needed.">${structure.connected ? "Extracting" : "Extraction paused"} · +${STRUCTURES[structure.kind].miningBonus} shares/deposit · non-stacking</span>` : ""}
@@ -1065,12 +998,65 @@ export function mountFuseCraft(
               }</span>`
             : ""
         }`;
-    const researchNames = Object.fromEntries(
-      Object.entries(RESEARCH_PRESENTATION).map(([id, item]) => [
-        id,
-        item.label,
-      ]),
+  }
+
+  function panelDetails(
+    world: Readonly<World>,
+    player: Player,
+    structure: World["structures"][number] | undefined,
+    preview: PlacementPreview | null,
+  ): string {
+    if (placement)
+      return `<div class="placement-instructions" role="status"><strong>${preview?.upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage || preview?.hint || placementPrompt(placement, preview))}</small></div>`;
+    switch (panel) {
+      case "inspect":
+      case "build":
+        return `${selectionDetails(world, player, structure)}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(player.worker.mode)}</span>`;
+      case "particles":
+        return `<div class="command-context"><strong>Particle profile · ${escape(player.particleKind)}</strong><p>Refit at the brain</p><small>Existing particles change on return or departure. Your finite pool stays the same size.</small></div>`;
+      case "research":
+        return `<div class="command-context"><strong>Research</strong><p>${player.researchJob ? `${RESEARCH_PRESENTATION[player.researchJob.kind].label} · researching` : "Choose an upgrade"}</p><small>${player.research.length ? `Complete: ${player.research.map((r) => RESEARCH_PRESENTATION[r].label).join(", ")}` : "Hover or focus a command for its requirements."}</small></div>`;
+      case "activity": {
+        const outcomes = notices
+          .filter((item) => item.playerId === player.id)
+          .slice(-3)
+          .map(
+            (item) =>
+              `<li>${escape(item.type)}${item.reason ? ` · ${escape(item.reason)}` : ""}${item.cell !== undefined ? ` at hex ${item.cell}` : ""}</li>`,
+          )
+          .join("");
+        return `<div class="command-context"><strong>Recent activity</strong><ul class="event-list" aria-live="polite">${outcomes || "<li>No recent activity.</li>"}</ul></div>`;
+      }
+    }
+  }
+
+  function sidebarMarkup(
+    world: Readonly<World>,
+    player: Player | undefined,
+    watching: boolean,
+    preview: PlacementPreview | null,
+  ): string {
+    if (watching) return watchMarkup(world);
+    if (!player) return '<div class="nd-panel">No local player exists.</div>';
+    const structure = world.structures.find(
+      (item) => item.cell === selectedCell,
     );
+    const cell = selectedCell === null ? null : world.map.cells[selectedCell];
+    const sprite = (name: string) =>
+      dependencies.sprites?.[`${name}-v2`] ?? dependencies.sprites?.[name];
+    const portrait = structure
+      ? structure.kind === "neuron"
+        ? neuronPortraitUrl(world, structure.cell)
+        : structure.kind === "spore"
+          ? sporeIconUrl(
+              world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0,
+            )
+          : sprite(structureArt(structure.kind))
+      : cell?.terrain === "deposit"
+        ? sprite(`deposit-${cell.resourceKind}`)
+        : sprite(
+            cell?.terrain === "blocked" ? "blocker-boulder" : "terrain-slate-a",
+          );
     const commands = renderCommands(
       world,
       player,
@@ -1080,25 +1066,10 @@ export function mountFuseCraft(
       dependencies.sprites,
       placement,
     );
-    const outcomes = notices
-      .filter((item) => item.playerId === player.id)
-      .slice(-3)
-      .map(
-        (item) =>
-          `<li>${escape(item.type)}${item.reason ? ` · ${escape(item.reason)}` : ""}${item.cell !== undefined ? ` at hex ${item.cell}` : ""}</li>`,
-      )
-      .join("");
-    const contextDetail = placement
-      ? `<div class="placement-instructions" role="status"><strong>${preview?.upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage || preview?.hint || placementPrompt(placement, preview))}</small></div>`
-      : panel === "inspect" || panel === "build"
-        ? `${detail}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(worker.mode)}</span>`
-        : panel === "particles"
-          ? `<div class="command-context"><strong>Particle profile · ${escape(player.particleKind)}</strong><p>Refit at the brain</p><small>Existing particles change on return or departure. Your finite pool stays the same size.</small></div>`
-          : panel === "research"
-            ? `<div class="command-context"><strong>Research</strong><p>${player.researchJob ? `${researchNames[player.researchJob.kind]} · researching` : "Choose an upgrade"}</p><small>${player.research.length ? `Complete: ${player.research.map((r) => researchNames[r]).join(", ")}` : "Hover or focus a command for its requirements."}</small></div>`
-            : `<div class="command-context"><strong>Recent activity</strong><ul class="event-list" aria-live="polite">${outcomes || "<li>No recent activity.</li>"}</ul></div>`;
-    return `<div class="battle-topbar"><div class="resource-row"><div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}</div><div class="hud-mini"></div>${dependencies.debug ? '<div class="debug-note"></div>' : ""}<div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : '<button data-action="reset" class="secondary">Reset</button>'}</div></div>
-      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${panel === "inspect" || panel === "build" ? "Selected hex" : panel === "research" ? "Research" : "Recent activity"}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${panel === "research" ? "Research commands" : panel === "build" ? "Build commands" : panel === "activity" ? "Activity commands" : "Commands"}">${commands}</nav></div>`;
+    const contextDetail = panelDetails(world, player, structure, preview);
+    const resources = `<div><small>BIOMASS</small><strong>◈ ${units(player.biomass)}</strong></div><div><small>INSIGHT</small><strong>◇ ${units(player.insight)}</strong></div>${territoryChips(world, player)}${buffChips(world, player)}`;
+    return `${hudMarkup(resources, false)}
+      <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${INSPECTOR_LABEL[panel]}">${portrait ? `<div class="selection-portrait"><img style="filter:${structure && structure.kind !== "neuron" && structure.kind !== "spore" ? teamArtFilter(world.players.find((p) => p.id === structure.ownerId)?.slot ?? 0) : "none"}" src="${escape(portrait)}" alt="" draggable="false"></div>` : ""}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${COMMAND_LABEL[panel]}">${commands}</nav></div>`;
   }
 
   function renderGame() {
@@ -1124,49 +1095,15 @@ export function mountFuseCraft(
     const svg = root.querySelector<SVGSVGElement>("#nd-board");
     const sidebar = root.querySelector<HTMLElement>("#game-sidebar");
     if (!svg || !sidebar) return;
-    if (!world.finished) {
-      liveResults.clear();
-      shownReport = null;
-    } else {
-      const layout = root.querySelector(".game-layout");
-      if (layout && results.element.parentElement !== layout)
-        layout.append(results.element);
-      const room = online?.room();
-      const players = reportPlayers(
-        world,
+    if (world.finished) {
+      matchResults.show(root.querySelector(".game-layout"), world, {
         self,
-        (id) => room?.seats.find((seat) => seat.id === id)?.name,
-      );
-      const result = matchResult(world, players, {
-        self,
-        bot: (id) =>
-          room ? !!room.seats.find((seat) => seat.id === id)?.bot : id !== self,
+        room: online?.room(),
         openings: new Map(
           [...aiOpenings(world)].map(([id, kind]) => [id, OPENINGS[kind].name]),
         ),
-        room: room ? { host: room.manager } : null,
       });
-      liveResults.render(result, {
-        friends: dependencies.friends,
-        revision: world.matchId,
-        report(result, friend) {
-          shownReport = { world, players };
-          updateContent(reportFindings, findingsMarkup(world, players, self));
-          updateContent(
-            reportChart,
-            chartPanelMarkup(world, players, reportMetric),
-          );
-          updateContent(reportBreakdown, breakdownMarkup(world, players));
-          return resultReport(result, {
-            friend,
-            findings: [reportFindings],
-            chart: [reportChart],
-            breakdown: [reportBreakdown],
-          });
-        },
-        bar: resultBar,
-      });
-    }
+    } else matchResults.clear();
     const owner = world.players.find((p) => p.id === session?.localPlayerId);
     const preview =
       owner && placement && placementCell !== null
@@ -1193,61 +1130,19 @@ export function mountFuseCraft(
     renderCoach(world);
     renderDominance(world);
     const rate = sidebar.querySelector<HTMLElement>(".hud-mini");
-    const income = (resource: "biomass" | "insight") =>
-      (world.outcomes
-        .filter(
-          (e) =>
-            e.type === "income" &&
-            e.playerId === session?.localPlayerId &&
-            e.resource === resource,
-        )
-        .reduce((sum, e) => sum + (e.amount ?? 0), 0) *
-        20) /
-      1000;
     if (rate)
-      rate.textContent = `${Math.floor(world.tick / RULES.ticksPerSecond / 60)}:${String(Math.floor(world.tick / RULES.ticksPerSecond) % 60).padStart(2, "0")}${playing ? ` · +${income("biomass").toFixed(1)} ◈ / s · +${income("insight").toFixed(1)} ◇ / s` : online ? " · Spectating" : " · AI vs AI"}`;
+      rate.textContent = `${clock(world.tick)}${self !== null ? incomeText(world, self) : online ? " · Spectating" : " · AI vs AI"}`;
     const debugNote = sidebar.querySelector<HTMLElement>(".debug-note");
     if (debugNote)
       debugNote.textContent = `DEBUG · grid${world.settings.instantConstruction ? " · instant build" : ""}${world.settings.instantResearch ? " · instant research" : ""} · normal travel`;
-    const lightCanvas = root.querySelector<HTMLCanvasElement>("#nd-light");
-    if (lightCanvas !== lightTarget) {
-      lightTarget = lightCanvas;
-      lightRenderer?.destroy?.();
-      lightRenderer =
-        (lightCanvas && dependencies.createLightRenderer?.(lightCanvas)) ??
-        undefined;
-    }
-    animation = renderBoard(
-      svg,
-      world,
-      selectedCell,
-      dependencies.debug,
-      preferences.reducedMotion,
-      dependencies.animationClock(),
-      dependencies.sprites,
-      dependencies.buildingSprites,
-      lightRenderer,
-    );
-    root.classList.toggle("is-placing", placement !== null);
-    renderPlacementPreview(
-      svg,
-      world,
+    battlefield.update(svg, world, {
       owner,
+      selectedCell,
       placement,
       preview,
-      dependencies.sprites,
-    );
-    const viewport = root.querySelector<HTMLElement>("#nd-viewport");
-    if (!camera && viewport && dependencies.createCamera) {
-      camera = dependencies.createCamera(svg, viewport);
-      camera.setEdgeScroll(preferences.edgeScroll);
-      const brain = world.structures.find(
-        (s) => s.ownerId === owner?.id && s.kind === "brain",
-      );
-      if (brain) camera.focusCell(world.map.width, brain.cell);
-      svg.focus?.({ preventScroll: true });
-    }
-    camera?.refresh();
+      reducedMotion: preferences.reducedMotion,
+      edgeScroll: preferences.edgeScroll,
+    });
   }
 
   function multiplayerMarkup(): string {
@@ -1357,8 +1252,6 @@ export function mountFuseCraft(
     }
     if (screen === "game" && (!playing || room.closed)) {
       gameMenu.close();
-      camera?.dispose();
-      camera = null;
       pending = null;
       helpOpen = false;
       screen = "room";
@@ -1426,36 +1319,41 @@ export function mountFuseCraft(
     openRoom(code);
   }
 
+  const screenMarkup: Record<Screen, () => string> = {
+    menu: menuMarkup,
+    setup: setupMarkup,
+    multiplayer: multiplayerMarkup,
+    guide: guideScreenMarkup,
+    room: roomMarkup,
+    game: gameMarkup,
+  };
+
+  function renderBattlefield(modalHost: ParentNode) {
+    renderGame();
+    battlefield.start();
+    focusModal(modalHost);
+  }
+
+  function unmountBattlefield() {
+    battlefield.unmount();
+    matchResults.clear();
+  }
+
   function render() {
     if (disposed) return;
-    const battlefield = root.querySelector<HTMLElement>(".game-layout");
+    const layout = root.querySelector<HTMLElement>(".game-layout");
     const modalHost = root.querySelector<HTMLElement>("#game-modal");
-    if (screen === "game" && battlefield && modalHost) {
-      battlefield.toggleAttribute("inert", pending !== null || helpOpen);
+    if (screen === "game" && layout && modalHost) {
+      layout.toggleAttribute("inert", pending !== null || helpOpen);
       modalHost.innerHTML = modal();
-      renderGame();
-      // A relaunch from the battlefield disposed the old session's loop.
-      frame ??= dependencies.requestFrame(animate);
-      focusModal(modalHost);
+      renderBattlefield(modalHost);
       return;
     }
-    camera?.dispose();
-    camera = null;
+    unmountBattlefield();
     root.className = `fui-app nd-app screen-${screen}`;
     roomBackground?.stop();
     roomBackground = undefined;
-    root.innerHTML =
-      screen === "menu"
-        ? menuMarkup()
-        : screen === "setup"
-          ? setupMarkup()
-          : screen === "multiplayer"
-            ? multiplayerMarkup()
-            : screen === "guide"
-              ? guideScreenMarkup()
-              : screen === "room"
-                ? roomMarkup()
-                : gameMarkup();
+    root.innerHTML = screenMarkup[screen]();
     decorate();
     if (screen === "menu") {
       const play = root.querySelector<HTMLElement>(".menu-layout")!;
@@ -1511,12 +1409,7 @@ export function mountFuseCraft(
           dependencies.buildingSprites,
         );
     }
-    if (screen === "game") {
-      stopAnimation();
-      renderGame();
-      frame = dependencies.requestFrame(animate);
-      focusModal(root);
-    }
+    if (screen === "game") renderBattlefield(root);
   }
 
   /** Fuse styling and the app portal, after the page markup is replaced or reconciled. */
@@ -1715,14 +1608,9 @@ export function mountFuseCraft(
   }
 
   function changeReportMetric(target: Element) {
-    const metric = target.closest<HTMLElement>("[data-metric]")?.dataset.metric;
-    const chosen = REPORT_METRICS.find((m) => m.id === metric);
-    if (chosen) reportMetric = chosen.id;
-    if (shownReport)
-      updateContent(
-        reportChart,
-        chartPanelMarkup(shownReport.world, shownReport.players, reportMetric),
-      );
+    matchResults.selectMetric(
+      target.closest<HTMLElement>("[data-metric]")?.dataset.metric,
+    );
   }
 
   function renderAndFocusBoard() {
@@ -1973,7 +1861,7 @@ export function mountFuseCraft(
   ) {
     if (cell === null || cell === undefined) return;
     selectedCell = cell;
-    camera?.focusCell(world.map.width, cell);
+    battlefield.camera?.focusCell(world.map.width, cell);
     renderGame();
   }
 
@@ -2183,7 +2071,7 @@ export function mountFuseCraft(
       };
     }
     if (setting === "edgeScroll")
-      camera?.setEdgeScroll(
+      battlefield.camera?.setEdgeScroll(
         !root.querySelector(".fui-top-bar-menu[open]") &&
           preferences.edgeScroll,
       );
@@ -2308,7 +2196,7 @@ export function mountFuseCraft(
     selectedCell = row * width + column;
     if (placement) placementCell = selectedCell;
     renderGame();
-    camera?.ensureCellVisible(width, selectedCell);
+    battlefield.camera?.ensureCellVisible(width, selectedCell);
   }
 
   function moveOrPlace(event: KeyboardEvent, arrow: BoardArrow | undefined) {
@@ -2319,8 +2207,8 @@ export function mountFuseCraft(
     const current = selectedCell ?? 0;
     if (onMinimap && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
-      camera?.focusCell(world.map.width, current);
-      updateMinimapView();
+      battlefield.camera?.focusCell(world.map.width, current);
+      battlefield.updateMinimap();
       return;
     }
     if (arrow) {
@@ -2356,7 +2244,7 @@ export function mountFuseCraft(
       // Bare arrows pan while held; Shift+arrows and placement move the cursor.
       if (arrow && !placement && !event.shiftKey) {
         event.preventDefault();
-        camera?.hold(arrow.pan, true);
+        battlefield.camera?.hold(arrow.pan, true);
         return;
       }
       if (activateShortcut(event)) return;
@@ -2413,6 +2301,7 @@ export function mountFuseCraft(
       root.removeEventListener("keydown", onKeyDown);
       root.removeEventListener("input", onInput);
       page.removeEventListener("keydown", onDocumentKeyDown);
+      unmountBattlefield();
       root.innerHTML = "";
     },
   };
