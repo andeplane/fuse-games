@@ -293,11 +293,12 @@ export function paintMachine(
       c.restore();
     }
     if (active) {
-      const glow = c.createRadialGradient(x, y, 1, x, y, Math.max(w, h) * 0.72);
+      const radius = Math.max(w, h) * 0.72;
+      const glow = c.createRadialGradient(x, y, 1, x, y, radius);
       glow.addColorStop(0, "#90f4cf42");
       glow.addColorStop(1, "#90f4cf00");
       c.fillStyle = glow;
-      c.fillRect(x - w, y - h, w * 2, h * 2);
+      c.fillRect(x - radius, y - radius, radius * 2, radius * 2);
     }
     c.save();
     c.shadowColor = "#061019bb";

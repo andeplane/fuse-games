@@ -86,6 +86,24 @@ try {
     .locator(".if-bench-tools button:enabled")
     .filter({ hasText: "Undo" })
     .waitFor();
+  // The basket is centered at (306, 288), with a 49-unit halo. A sprite-sized
+  // fill used to cut it off at 38 units above and below the center.
+  const basketHalo = () =>
+    host
+      .locator("canvas.if-bench-board")
+      .evaluate((canvas: HTMLCanvasElement) => {
+        const ctx = canvas.getContext("2d")!;
+        return [-42, 42].map(
+          (offset) =>
+            ctx.getImageData(
+              Math.floor((306 * canvas.width) / 640),
+              Math.floor(((288 + offset) * canvas.height) / 400),
+              1,
+              1,
+            ).data[1]!,
+        );
+      });
+  const unlit = await basketHalo();
   await host.getByRole("button", { name: "Run machine", exact: true }).click();
   for (const page of [host, guest, tv])
     await page.locator('main[data-phase="over"]').waitFor();
@@ -94,6 +112,11 @@ try {
     await page.getByRole("dialog", { name: "Puzzle complete" }).waitFor();
   }
   await host.keyboard.press("Escape");
+  const lit = await basketHalo();
+  assert.ok(
+    lit.every((green, i) => green > unlit[i]! + 2),
+    "the solved basket glows beyond both former clipping edges",
+  );
   await guest.getByRole("button", { name: /View machine/ }).tap();
   await guest.getByRole("button", { name: /View result/ }).tap();
   await host.getByRole("button", { name: /View result/ }).click();
