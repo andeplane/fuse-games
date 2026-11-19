@@ -68,7 +68,8 @@ import {
 } from "../progression/index.js";
 import { createHud } from "./hud.js";
 import { CyberfuseRuntime, type CyberfuseCallbacks } from "./runtime.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import { safeStore, keys, sessionFor, roomFailure } from "./session.js";
 
 const GAME = cyberfuseGame.id;
@@ -441,7 +442,19 @@ function room() {
     compact: solo,
     heading: solo ? "Solo mission" : "Room",
   });
-  const reports = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display,
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => !couch && social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => me,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   let joining = false,
     lastResult = "",
     lastLobby = "",
@@ -694,34 +707,7 @@ function room() {
         next.hidden = !manager || display;
       } else if (phase === "over") renderResult(frame);
       const state = runtime.roomState();
-      if (
-        !display &&
-        state &&
-        (session.kind === "room" || (!couch && social.isSignedIn()))
-      )
-        for (const report of dueReports(
-          state,
-          me,
-          runtime.confirmedTick(),
-          reports,
-        )) {
-          reports.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              "/api/games/" +
-                GAME +
-                "/" +
-                (session.kind === "room" ? "rooms/" + code : "me") +
-                "/" +
-                report.path,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {},
     status(message) {

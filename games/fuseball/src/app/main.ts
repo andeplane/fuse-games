@@ -115,7 +115,8 @@ import {
   type Model,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import {
   NOT_OPEN,
   keys,
@@ -1178,7 +1179,19 @@ function room(solo: boolean): void {
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display,
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => runtime.self,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   const goals = createGoalWatch();
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
@@ -1233,25 +1246,7 @@ function room(solo: boolean): void {
         controls.hold("autopilot", autopilotBits(state, viewer.me));
       // Keys still down when a match starts or the log is reset are logged again.
       runtime.flush();
-      if (!display && state && (session.kind === "room" || social.isSignedIn()))
-        for (const report of dueReports(
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.
