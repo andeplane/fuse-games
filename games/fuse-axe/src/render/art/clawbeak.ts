@@ -8,10 +8,19 @@ import {
   figure,
   offset as at,
   turned,
-  type Local,
 } from "../pixel/kit.js";
 import { Rig, type Point, type ShapeOptions } from "../pixel/rig.js";
 import type { Sprite } from "../pixel/sprite.js";
+import {
+  MOUNT_SOLE as SOLE,
+  MOUNT_WALK_STEPS,
+  drawSaddle,
+  drawStirrup,
+  outline,
+  sampleMountFoot,
+  taperedChain,
+  walkTail,
+} from "./mount-rig.js";
 
 /**
  * The clawbeak, the beast a ravager rides: a teal two-legged runner with a long tail held level behind, a big hooked
@@ -61,7 +70,6 @@ const F = (dx: number, up: number): Point => [ANCHOR[0] + dx, ANCHOR[1] - up];
 /** The thigh's and the shin's lengths, and the foot's height over the floor row so its sole lies on it. */
 const THIGH = 8;
 const SHIN = 8.5;
-const SOLE = 0.5;
 /** The tail's girth along its spine, root to tip. */
 const TAIL = [6, 4.5, 3.2, 1.9, 0.7] as const;
 /** The ring's height over the floor, and the tail's girth at its tip, which the ring's outer edge runs through. */
@@ -121,8 +129,7 @@ const breathe: ClawbeakPose = {
 };
 
 /** Steps each walk frame holds: a planted foot sweeps back `BEAST_WALK.x` (1.25 px) a step, `STRIDE` px a frame. */
-export const CLAWBEAK_WALK_STEPS = 5;
-const STRIDE = 1.25 * CLAWBEAK_WALK_STEPS;
+export const CLAWBEAK_WALK_STEPS = MOUNT_WALK_STEPS;
 
 /**
  * Frame `i` of the four-frame strut: each foot planted `STRIDE` ahead and swept back under the body to `STRIDE` behind
@@ -131,10 +138,8 @@ const STRIDE = 1.25 * CLAWBEAK_WALK_STEPS;
  */
 function strut(i: number): ClawbeakPose {
   const foot = (phase: number, hip: Point, centre: number): ClawbeakLeg => {
-    const q = (i / 4 + phase) % 1;
-    if (q < 0.5) return legTo(hip, planted(centre + STRIDE * (1 - 4 * q)));
-    const lift = 4 * Math.sin((q - 0.5) * 2 * Math.PI);
-    return legTo(hip, F(centre + STRIDE * (4 * q - 3), SOLE + lift), lift > 0);
+    const [point, lifted] = sampleMountFoot(F, { frame: i, phase, centre });
+    return legTo(hip, point, lifted);
   };
   const passing = i % 2 === 1;
   const sway = passing ? -1 : 1;
@@ -142,7 +147,7 @@ function strut(i: number): ClawbeakPose {
     ...idle,
     neck: at(idle.neck, passing ? 1.5 : 0, 0),
     head: at(idle.head, passing ? 2.5 : 0, 0),
-    tail: idle.tail.map((p, j) => at(p, 0, (sway * j) / 3)),
+    tail: walkTail(idle.tail, sway),
     far: foot(0.5, HIPS.far, -3),
     near: foot(0, HIPS.near, 3),
   };
@@ -422,10 +427,6 @@ const BEAK = [
   1.8,
 ];
 const JAW = [0, 0, 6.5, 0.2, 7.2, 1.3, 0.8, 2.4];
-const outline = (local: Local, pairs: readonly number[]): Point[] =>
-  Array.from({ length: pairs.length / 2 }, (_, i) =>
-    local(pairs[2 * i]!, pairs[2 * i + 1]!),
-  );
 
 export function paintClawbeak(pose: ClawbeakPose): Sprite {
   const rig = new Rig(...pose.size);
@@ -436,27 +437,17 @@ export function paintClawbeak(pose: ClawbeakPose): Sprite {
   arm(rig, torso(7, 3), pose.claws[0], BACK);
   // The tail, body and neck are one part, tapering smoothly into one another.
   const body = { group: "body" };
-  pose.tail.forEach((p, i) => {
-    const next = pose.tail[i + 1];
-    if (next) rig.capsule(p, next, TAIL[i]!, TAIL[i + 1]!, "y", body);
-  });
+  taperedChain(rig, pose.tail, TAIL, "y", body);
   rig.capsule(torso(-7, 0.3), torso(6.5, 0), 6.6, 7.2, "y", body);
   const throat = torso(7.5, -3);
   const bend1 = at(between(throat, pose.neck), -1.5, 0);
   rig.capsule(throat, bend1, 4.6, 3.6, "y", body);
   rig.capsule(bend1, pose.neck, 3.6, 3, "y", body);
   // The saddle: a red blanket, the leather seat with its cantle behind and brass pommel in front, a girth strap.
-  rig.poly(outline(torso, BLANKET), "c", { bevel: 1.2 });
-  const strap = { edge: "none" } as const;
-  rig.capsule(torso(4.2, -4.5), torso(4.5, 6.2), 1.1, 1.1, "l", strap);
-  rig.capsule(torso(-5, -7.4), torso(4, -7.4), 1.9, 1.9, "l");
-  rig.capsule(torso(-5.6, -7.6), torso(-6.8, -10), 1.6, 1.3, "l");
-  rig.capsule(torso(4.6, -8), torso(5.6, -10.2), 1.2, 1.1, "n");
+  drawSaddle(rig, torso, { blanket: BLANKET, cloth: "c", girth: 6.2 });
   leg(rig, pose.near, {});
   // The stirrup on its leather, hanging where the rider's boot goes.
-  const stirrup = at(pose.saddle, 4, -0.5);
-  rig.capsule(torso(1.5, -6), at(stirrup, 0, -1.5), 0.6, 0.6, "l", strap);
-  rig.capsule(at(stirrup, -1.3, 0), at(stirrup, 1.3, 0), 0.8, 0.8, "n");
+  drawStirrup(rig, torso, pose.saddle);
   // The head, its crest of red plumes swept back behind it and the big hooked beak, its lower half dropping as it
   // gapes.
   rig.poly(outline(head, CREST), "c", { bevel: 1.6 });
