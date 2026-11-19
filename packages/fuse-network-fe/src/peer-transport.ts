@@ -149,6 +149,26 @@ export interface PeerTransportOptions {
   /** The browser surfaces the transport uses. Defaults to the real globals; tests pass typed fakes. */
   dependencies?: TransportDependencies;
 }
+
+interface RoomWelcome {
+  id: string;
+  protocol: unknown;
+  connectionId: string;
+  hostId: string;
+  peers: { id: string; connectionId: string }[];
+  grant?: unknown;
+}
+interface RoomTime {
+  id: number;
+  sentAt: number;
+  serviceTime: number;
+  grant?: unknown;
+}
+interface RoomPeerUpdate {
+  id: string;
+  connectionId: string;
+  online: boolean;
+}
 interface Link {
   pc: RTCPeerConnection;
   game?: RTCDataChannel;
@@ -299,103 +319,25 @@ export class PeerTransport implements RoomTransport {
       if (ws !== this.socket) return;
       try {
         const message = JSON.parse(event.data);
-        if (message.type === "welcome") {
-          if (
-            message.protocol !== ROOM_PROTOCOL_VERSION ||
-            typeof message.connectionId !== "string"
-          ) {
-            this.terminate(this.copy.protocolChanged);
-            this.close();
-            return;
-          }
-          this.backoff.reset();
-          this.reportAt = -Infinity;
-          if (
-            this.connectionId !== "" &&
-            message.connectionId === this.connectionId &&
-            message.id === this.id
-          ) {
-            await this.resume(ws, message);
-            return;
-          }
-          this.received.clear();
-          // Peers that left while our socket was down never produce a peer-offline message; reconcile against the roster first.
-          const roster = new Set<string>(
-            message.peers.map((peer: { id: string }) => peer.id),
-          );
-          for (const id of this.connections.keys())
-            if (!roster.has(id)) this.callbacks.peer(id, false);
-          this.extension?.reset();
-          for (const link of this.links.values()) link.pc.close();
-          this.links.clear();
-          this.connections.clear();
-          this.id = message.id;
-          this.hostId = message.hostId;
-          this.connectionId = message.connectionId;
-          for (const peer of message.peers)
-            this.connections.set(peer.id, peer.connectionId);
-          this.acceptGrant(message.grant);
-          this.sampleTime();
-          // Offers and signals can arrive during this fetch; link() awaits the ICE config so no peer connection is built without STUN (#27).
-          await this.ice.load(
-            (signal) =>
-              fetchIceServers(
-                this.apiUrl,
-                this.code,
-                this.token,
-                signal,
-                this.deps.fetcher,
-              ),
-            AbortSignal.timeout(ICE_FETCH_TIMEOUT_MS),
-          );
-          if (ws !== this.socket) return;
-          this.callbacks.status(this.copy.linking);
-          this.callbacks.welcome(this.id, this.hostId);
-          for (const id of this.connections.keys()) {
-            this.callbacks.peer(id, true);
-            if (this.initiator(id)) await this.offer(id);
-          }
-        } else if (message.type === "time") {
-          const sent = this.probes.get(message.id);
-          if (sent === undefined || sent !== message.sentAt) return;
-          this.probes.delete(message.id);
-          this.acceptGrant(message.grant);
-          this.authorityClock.synchronize(sent, message.serviceTime);
-          if (
-            this.id === this.hostId &&
-            this.grant &&
-            this.grant.holder !== this.connectionId &&
-            this.authorityClock.permits(this.grant)
-          ) {
-            ws.close(CLOSE_AUTHORITY_REPLACED, "Authority held elsewhere");
-            return;
-          }
-        } else if (message.type === "authority") {
-          this.acceptGrant(message.grant);
-          this.sampleTime(false);
-        } else if (message.type === "peer") {
-          if (typeof message.connectionId !== "string") return;
-          if (message.online) {
-            const previous = this.connections.get(message.id);
-            this.connections.set(message.id, message.connectionId);
-            if (previous !== message.connectionId) {
-              this.drop(message.id);
-            }
-            this.callbacks.peer(message.id, true);
-            if (this.initiator(message.id)) await this.offer(message.id);
-          } else if (
-            this.connections.get(message.id) === message.connectionId
-          ) {
-            // The service is the membership authority: the connection is retired even if the RTC channel still reads "open".
-            this.drop(message.id);
-            this.connections.delete(message.id);
-            this.callbacks.peer(message.id, false);
-          }
-        } else if (
-          message.type === "signal" &&
-          this.connections.get(message.from) === message.connectionId
-        )
-          await this.signal(message.from, message.data);
+        switch (message.type) {
+          case "welcome":
+            await this.onRoomWelcome(ws, message);
+            break;
+          case "time":
+            this.onRoomTime(ws, message);
+            break;
+          case "authority":
+            this.acceptGrant(message.grant);
+            this.sampleTime(false);
+            break;
+          case "peer":
+            await this.onRoomPeer(message);
+            break;
+          case "signal":
+            if (this.connections.get(message.from) === message.connectionId)
+              await this.signal(message.from, message.data);
+            break;
+        }
       } catch (error) {
         this.callbacks.status(
           `Connection recovery: ${error instanceof Error ? error.message : "invalid frame"}`,
@@ -427,6 +369,97 @@ export class PeerTransport implements RoomTransport {
     };
     ws.onerror = () => ws.close();
   }
+  private async onRoomWelcome(
+    ws: RoomServiceSocket,
+    message: RoomWelcome,
+  ): Promise<void> {
+    if (
+      message.protocol !== ROOM_PROTOCOL_VERSION ||
+      typeof message.connectionId !== "string"
+    ) {
+      this.terminate(this.copy.protocolChanged);
+      this.close();
+      return;
+    }
+    this.backoff.reset();
+    this.reportAt = -Infinity;
+    if (
+      this.connectionId !== "" &&
+      message.connectionId === this.connectionId &&
+      message.id === this.id
+    ) {
+      await this.resume(ws, message);
+      return;
+    }
+    this.received.clear();
+    // Peers that left while our socket was down never produce a peer-offline message; reconcile against the roster first.
+    const roster = new Set<string>(message.peers.map((peer) => peer.id));
+    for (const id of this.connections.keys())
+      if (!roster.has(id)) this.callbacks.peer(id, false);
+    this.extension?.reset();
+    for (const link of this.links.values()) link.pc.close();
+    this.links.clear();
+    this.connections.clear();
+    this.id = message.id;
+    this.hostId = message.hostId;
+    this.connectionId = message.connectionId;
+    for (const peer of message.peers)
+      this.connections.set(peer.id, peer.connectionId);
+    this.acceptGrant(message.grant);
+    this.sampleTime();
+    // Offers and signals can arrive during this fetch; link() awaits the ICE config so no peer connection is built without STUN (#27).
+    await this.ice.load(
+      (signal) =>
+        fetchIceServers(
+          this.apiUrl,
+          this.code,
+          this.token,
+          signal,
+          this.deps.fetcher,
+        ),
+      AbortSignal.timeout(ICE_FETCH_TIMEOUT_MS),
+    );
+    if (ws !== this.socket) return;
+    this.callbacks.status(this.copy.linking);
+    this.callbacks.welcome(this.id, this.hostId);
+    for (const id of this.connections.keys()) {
+      this.callbacks.peer(id, true);
+      if (this.initiator(id)) await this.offer(id);
+    }
+  }
+  private onRoomTime(ws: RoomServiceSocket, message: RoomTime): void {
+    const sent = this.probes.get(message.id);
+    if (sent === undefined || sent !== message.sentAt) return;
+    this.probes.delete(message.id);
+    this.acceptGrant(message.grant);
+    this.authorityClock.synchronize(sent, message.serviceTime);
+    if (
+      this.id === this.hostId &&
+      this.grant &&
+      this.grant.holder !== this.connectionId &&
+      this.authorityClock.permits(this.grant)
+    ) {
+      ws.close(CLOSE_AUTHORITY_REPLACED, "Authority held elsewhere");
+      return;
+    }
+  }
+  private async onRoomPeer(message: RoomPeerUpdate): Promise<void> {
+    if (typeof message.connectionId !== "string") return;
+    if (message.online) {
+      const previous = this.connections.get(message.id);
+      this.connections.set(message.id, message.connectionId);
+      if (previous !== message.connectionId) {
+        this.drop(message.id);
+      }
+      this.callbacks.peer(message.id, true);
+      if (this.initiator(message.id)) await this.offer(message.id);
+    } else if (this.connections.get(message.id) === message.connectionId) {
+      // The service is the membership authority: the connection is retired even if the RTC channel still reads "open".
+      this.drop(message.id);
+      this.connections.delete(message.id);
+      this.callbacks.peer(message.id, false);
+    }
+  }
   /**
    * The service welcomed this page back as the connection it already was: its socket dropped (the platform cuts
    * every socket after an hour, and whenever an instance stops) and the seat was still held. No member was told
@@ -451,11 +484,7 @@ export class PeerTransport implements RoomTransport {
   }
   private async resume(
     ws: RoomServiceSocket,
-    message: {
-      hostId: string;
-      peers: { id: string; connectionId: string }[];
-      grant?: unknown;
-    },
+    message: RoomWelcome,
   ): Promise<void> {
     const roster = new Map<string, string>();
     for (const peer of message.peers) roster.set(peer.id, peer.connectionId);
