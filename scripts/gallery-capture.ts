@@ -246,6 +246,17 @@ const RECIPES: Record<string, Recipe> = {
     await page.keyboard.press("ArrowUp", { delay: 200 });
     await page.waitForTimeout(700);
   },
+  dockside: async (page) => {
+    await openPlayOptions(page, "single");
+    await page
+      .locator('.dockside-room[data-phase="running"] .dockside-stage canvas')
+      .waitFor();
+    await hold(page, ["KeyW"], 580);
+    await page.getByText("North pad · Launch ready").waitFor();
+    await page.keyboard.press("KeyE", { delay: 80 });
+    await hold(page, ["KeyW"], 1640);
+    await hold(page, ["KeyD"], 3000);
+  },
   "fuse-surge": async (page) => {
     await openPlayOptions(page, "single");
     await page

@@ -1,0 +1,141 @@
+.dockside-page {
+  margin: 0;
+  background: #12242e;
+  color: #e1eceb;
+}
+.dockside-top {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  background: #13242c;
+}
+.dockside-brand {
+  display: flex;
+  flex-direction: column;
+  color: #88e2dd;
+  text-decoration: none;
+  font-family: var(--fui-font-title, monospace);
+  font-weight: bold;
+}
+.dockside-brand small {
+  font: 9px monospace;
+  letter-spacing: 0.12em;
+}
+.dockside-back {
+  margin-left: auto;
+  color: inherit;
+}
+.dockside-room:focus {
+  outline: 0;
+}
+.dockside-table {
+  height: calc(100dvh - 66px);
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.dockside-table[hidden],
+.dockside-stage[hidden],
+.dockside-controls[hidden] {
+  display: none;
+}
+.dockside-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  font: 600 clamp(11px, 1.5vw, 18px) system-ui;
+  background: #1a3039;
+}
+.dockside-hud strong {
+  letter-spacing: 0.08em;
+}
+.dockside-stage {
+  flex: 1;
+  min-height: 100px;
+  position: relative;
+  overflow: hidden;
+}
+.dockside-stage canvas,
+canvas[aria-label="Canal Lock arena"] {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.dockside-map-label {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  color: #eee3bf;
+  text-shadow: 0 1px 3px black;
+  font: 700 10px monospace;
+  letter-spacing: 0.14em;
+}
+.dockside-you {
+  font-size: 11px;
+  background: #162e37;
+  color: #fff;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+.dockside-you::after {
+  content: "▾";
+  position: absolute;
+  top: 80%;
+  left: 40%;
+}
+.dockside-hint {
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  text-align: center;
+  font: 13px system-ui;
+  color: #e1e7d6;
+  background: #182d36;
+}
+.dockside-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  touch-action: none;
+}
+.dockside-controls div {
+  display: flex;
+  gap: 0.2rem;
+}
+.dockside-controls button {
+  min-height: 42px;
+  min-width: 36px;
+  padding: 0 0.6rem;
+  touch-action: none;
+}
+.dockside-table .fui-round-controls {
+  position: absolute;
+  bottom: 3rem;
+  right: 0.5rem;
+  pointer-events: none;
+}
+@media (max-width: 450px) {
+  .dockside-controls button {
+    padding: 0 0.35rem;
+  }
+  .dockside-hud {
+    padding: 0.55rem 0.35rem;
+  }
+}
+
+.dockside-room[data-phase="running"] {
+  padding-top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+}
+.dockside-room[data-phase="running"] .dockside-table {
+  height: calc(100dvh - max(12px, env(safe-area-inset-top)) - 80px);
+}
+.dockside-top .dockside-status {
+  display: none;
+}
+.dockside-top .dockside-status[data-tone="error"] {
+  display: block;
+}

@@ -1,3 +1,4 @@
+import { docksideRegistration } from "dockside/platform";
 import { cyberfuseRegistration } from "cyberfuse/platform";
 import { diceRegistration } from "dice/platform";
 import { lieroRegistration } from "fusero/platform";
@@ -41,6 +42,7 @@ export const GAMES = [
   fuseRiders,
   cyberfuseRegistration,
   diceRegistration,
+  docksideRegistration,
   lieroRegistration,
   hookRegistration,
   choppersRegistration,
