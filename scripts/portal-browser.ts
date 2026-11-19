@@ -16,7 +16,7 @@ try {
   for (const backend of ["auto", "canvas"] as const) {
     console.log(
       await page.evaluate(async (backend) => {
-        const { mountWorldArena, readArenaPixels, regionRgbDifference } =
+        const { mountWorldArena, readArenaPixels, arenaRegionDifference } =
           (await import(
             String("/scripts/lib/riders-render-fixture.ts")
           )) as typeof import("./lib/riders-render-fixture.js");
