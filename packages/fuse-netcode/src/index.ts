@@ -14,6 +14,11 @@ export * from "./stream.js";
 export * from "./rollback.js";
 export * from "./snapshot.js";
 export { createSeatDecoder } from "./seat-snapshot.js";
+export {
+  createRosterDecoder,
+  decodeHumanFinishers,
+  decodeSingleWinner,
+} from "./result-snapshot.js";
 export { foldHeldInput } from "./held-input.js";
 // `RoomRuntime`'s collaborators — `Membership`, `WorldSync`, `InputRecorder`, `RoomManager` — are the runtime's own
 // decomposition, not this package's surface: a consumer drives the room through `RoomRuntime`. Only three things from
