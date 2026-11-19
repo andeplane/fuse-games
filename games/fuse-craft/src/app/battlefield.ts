@@ -38,6 +38,7 @@ export function createBattlefield(
   let camera: BoardCamera | null = null;
   let animation: BoardAnimation | null = null;
   let frame: number | null = null;
+  let activeLoop: FrameRequestCallback | null = null;
 
   function setLightCanvas(next: HTMLCanvasElement | null): void {
     if (next === lightCanvas) return;
@@ -52,15 +53,22 @@ export function createBattlefield(
   }
 
   function stopSession(): void {
+    activeLoop = null;
     if (frame !== null) deps.cancelFrame(frame);
     frame = null;
     animation = null;
     resetCamera();
   }
 
-  function animate(now: number): void {
-    animation?.animate(now);
-    updateMinimap();
+  function start(): void {
+    if (activeLoop) return;
+    const animate: FrameRequestCallback = (now) => {
+      if (activeLoop !== animate) return;
+      animation?.animate(now);
+      updateMinimap();
+      if (activeLoop === animate) frame = deps.requestFrame(animate);
+    };
+    activeLoop = animate;
     frame = deps.requestFrame(animate);
   }
 
@@ -88,9 +96,7 @@ export function createBattlefield(
       stopSession();
       setLightCanvas(null);
     },
-    start(): void {
-      frame ??= deps.requestFrame(animate);
-    },
+    start,
     update(
       svg: SVGSVGElement,
       world: Readonly<World>,
