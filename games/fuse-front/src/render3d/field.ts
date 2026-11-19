@@ -443,21 +443,18 @@ export class Field3D implements Renderer {
   }
 
   /** Where the four screen corners meet the ground, as a box in fractions of the map. */
-  // prettier-ignore
   box(world: WorldView) {
     this.place();
-    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
-    for (let corner = 0; corner < 4; corner++) {
-      this.ndc.set(corner & 1 ? 1 : -1, corner & 2 ? 1 : -1);
-      this.raycaster.setFromCamera(this.ndc, this.camera);
-      if (!this.raycaster.ray.intersectPlane(this.plane, this.hit)) continue;
-      x0 = Math.min(x0, this.hit.x); x1 = Math.max(x1, this.hit.x);
-      z0 = Math.min(z0, this.hit.z); z1 = Math.max(z1, this.hit.z);
-    }
+    const rect = rig.groundBounds(this.rig, this.camera.aspect);
+    if (!rect) return this.lastBox;
     const f = (v: number, size: number) => Math.min(1, Math.max(0, v / size));
-    const x = f(x0, world.width), y = f(z0, world.height), w = f(x1, world.width) - x, h = f(z1, world.height) - y;
+    const x = f(rect.left, world.width);
+    const y = f(rect.top, world.height);
+    const w = f(rect.right, world.width) - x;
+    const h = f(rect.bottom, world.height) - y;
     const last = this.lastBox;
-    if (last.x !== x || last.y !== y || last.w !== w || last.h !== h) this.lastBox = { x, y, w, h };
+    if (last.x !== x || last.y !== y || last.w !== w || last.h !== h)
+      this.lastBox = { x, y, w, h };
     return this.lastBox;
   }
 
