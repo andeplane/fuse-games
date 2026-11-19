@@ -123,8 +123,9 @@ function activeProjectileSlots(
   world: CombatWorld,
 ): Map<number, ClassicProjectileState> {
   const slots = new Map<number, ClassicProjectileState>();
-  for (const projectile of world.projectiles)
+  world.projectiles.forEach((projectile) => {
     if (projectile.used) slots.set(projectile.slot, projectile);
+  });
   return slots;
 }
 
