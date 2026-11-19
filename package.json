@@ -38,6 +38,7 @@
     "cyberfuse": "workspace:*",
     "dice": "workspace:*",
     "dockside": "workspace:*",
+    "incredible-fuse": "workspace:*",
     "fuse-drivers": "workspace:*",
     "fuse-birds-game": "workspace:*",
     "hook-havok": "workspace:*",
