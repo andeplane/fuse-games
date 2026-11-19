@@ -26,7 +26,10 @@ function fixture() {
   const listeners = new Set<Parameters<PlaytestAccount["watchAccount"]>[0]>();
   const requests: string[] = [];
   let approval: Promise<Response> | undefined;
+  let recordingAuthorization: Response | undefined;
+  let confirm: (() => Promise<void>) | undefined;
   let allowed = true;
+  let signedIn = false;
   let ownerUid = "admin";
   let segmentResponse: Promise<Response> | undefined;
   let receive: ((chunk: WavSegment) => void) | undefined;
@@ -56,10 +59,13 @@ function fixture() {
     signedInToken: async () => "test-token",
     accountReady: async () => {},
     signIn: async () => {},
+    async reauthenticate() {
+      await confirm?.();
+    },
     signInFailure: () => "",
     watchAccount(listener) {
       listeners.add(listener);
-      listener(undefined);
+      listener(signedIn ? { name: "Player" } : undefined);
       return () => {
         listeners.delete(listener);
       };
@@ -82,6 +88,8 @@ function fixture() {
             { status: allowed ? 200 : 403 },
           )
         );
+      if (path === "/api/telemetry/recordings" && recordingAuthorization)
+        return recordingAuthorization;
       if (path.includes("/segments/"))
         return segmentResponse ?? Response.json({}, { status: 403 });
       if (path.endsWith("/finish"))
@@ -127,6 +135,12 @@ function fixture() {
     deferApproval(value: Promise<Response> | undefined) {
       approval = value;
     },
+    authorizeRecording(response: Response | undefined) {
+      recordingAuthorization = response;
+    },
+    confirmWith(action: () => Promise<void>) {
+      confirm = action;
+    },
     deferStart(value: Promise<void>) {
       nextStart = value;
     },
@@ -144,7 +158,8 @@ function fixture() {
         blob: new Blob(["audio"]),
       });
     },
-    user(signedIn: boolean) {
+    user(value: boolean) {
+      signedIn = value;
       for (const listener of listeners)
         listener(signedIn ? { name: "Player" } : undefined);
     },
@@ -188,6 +203,11 @@ test("the game menu offers recording only after server-approved sign-in, without
     assert.equal(f.starts(), 1);
     assert.equal(f.toggle.textContent, "Stop recording");
     assert.equal(f.toggle.getAttribute("aria-pressed"), "true");
+    const confirmation = Array.from(f.doc.querySelectorAll("button")).find(
+      (button) => button.textContent === "Confirm Google sign-in",
+    );
+    assert.ok(confirmation);
+    assert.equal(confirmation.hidden, true);
     f.toggle.click();
     await f.flush();
     assert.equal(f.stops(), 1);
@@ -199,6 +219,87 @@ test("the game menu offers recording only after server-approved sign-in, without
     assert.equal(f.toggle.hidden, true);
     assert.equal(f.stops(), 2, "sign-out stops active audio capture");
     assert.equal(f.requests.filter((path) => path === "/api/dev/me").length, 2);
+  } finally {
+    await f.close();
+  }
+});
+
+test("a recording challenged by the service resumes after one successful confirmation", async () => {
+  const f = fixture();
+  try {
+    f.user(true);
+    await f.flush();
+    f.authorizeRecording(Response.json({}, { status: 401 }));
+    f.toggle.click();
+    await f.flush();
+    assert.equal(f.starts(), 0, "the microphone waits for server approval");
+    const confirmation = Array.from(f.doc.querySelectorAll("button")).find(
+      (button) => button.textContent === "Confirm Google sign-in",
+    );
+    assert.ok(confirmation);
+    assert.equal(confirmation.hidden, false);
+
+    f.confirmWith(async () => {
+      throw new Error("cancelled");
+    });
+    confirmation.click();
+    await f.flush();
+    assert.equal(f.starts(), 0);
+    assert.equal(
+      confirmation.hidden,
+      false,
+      "cancelling leaves recovery available",
+    );
+
+    f.confirmWith(async () => f.authorizeRecording(undefined));
+    confirmation.click();
+    await f.flush();
+    assert.equal(f.starts(), 1, "confirmation retries the original start");
+    assert.equal(confirmation.hidden, true);
+    assert.equal(f.toggle.textContent, "Stop recording");
+    assert.equal(
+      f.requests.filter((path) => path === "/api/telemetry/recordings").length,
+      2,
+    );
+    f.toggle.click();
+    await f.flush();
+    f.toggle.click();
+    await f.flush();
+    assert.equal(
+      f.starts(),
+      2,
+      "the same recent sign-in can start another session",
+    );
+    assert.equal(confirmation.hidden, true);
+  } finally {
+    await f.close();
+  }
+});
+
+test("changing accounts while confirming sign-in cancels the previous start", async () => {
+  const f = fixture();
+  try {
+    f.user(true);
+    await f.flush();
+    f.authorizeRecording(Response.json({}, { status: 401 }));
+    f.toggle.click();
+    await f.flush();
+    const confirmation = Array.from(f.doc.querySelectorAll("button")).find(
+      (button) => button.textContent === "Confirm Google sign-in",
+    );
+    assert.ok(confirmation);
+    const popup = deferred<void>();
+    f.confirmWith(() => popup.promise);
+    confirmation.click();
+    f.user(false);
+    f.owner("another-admin");
+    f.user(true);
+    f.authorizeRecording(undefined);
+    popup.resolve();
+    await f.flush();
+    assert.equal(f.starts(), 0);
+    assert.equal(confirmation.hidden, true);
+    assert.equal(f.toggle.textContent, "Start recording");
   } finally {
     await f.close();
   }

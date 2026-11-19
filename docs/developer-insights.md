@@ -39,9 +39,11 @@ no policy has no capabilities, even when its email is allowlisted. This prevents
 a recreated Firebase account from silently inheriting a revoked person's access.
 An explicit empty policy also denies all developer access. A valid Google ID token
 must have an `auth_time` within 15 minutes to start a recording or mint a token.
-The workspace and recording panel offer Google reauthentication; refreshing an
-ID token alone does not change `auth_time`. Ongoing uploads and finishing do not
-require a fresh sign-in, but still require the record capability and ownership.
+The workspace and recording panel offer Google reauthentication when required.
+When the service challenges a recording start, confirming as the same account
+retries that start. Refreshing an ID token alone does not change `auth_time`.
+Ongoing uploads and finishing require the record capability and ownership
+without another freshness check.
 
 Every developer private-route attempt is appended before a response or mutation
 to `${prefix}-developer-audit`, with verified UID, verified email, server time,
