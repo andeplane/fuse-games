@@ -309,83 +309,100 @@ function apply(w: World, c: Command) {
     return;
   }
   const a = c.action;
-  if (a.type === "setAutoExpand") {
-    p.autoExpand = a.enabled;
-  } else if (a.type === "queueConstruction") {
-    if (!constructionQueueAvailability(w, p, a.kind, a.cell).allowed) {
-      reject("invalid construction cell or full queue");
+  switch (a.type) {
+    case "setAutoExpand":
+      p.autoExpand = a.enabled;
+
+      return;
+    case "queueConstruction": {
+      if (!constructionQueueAvailability(w, p, a.kind, a.cell).allowed) {
+        reject("invalid construction cell or full queue");
+        return;
+      }
+      const upgrade = constructionUpgradeSource(w, p, a.kind, a.cell);
+      p.queue.push({
+        ...(upgrade && { upgradeFrom: upgrade.id }),
+        cell: a.cell,
+        kind: a.kind,
+        paid: false,
+        progress: 0,
+        duration: 0,
+        hp: hp(a.kind),
+      });
+      emit(w, p, "queued", { cell: a.cell });
+
       return;
     }
-    p.queue.push({
-      ...(constructionUpgradeSource(w, p, a.kind, a.cell)
-        ? { upgradeFrom: constructionUpgradeSource(w, p, a.kind, a.cell)!.id }
-        : {}),
-      cell: a.cell,
-      kind: a.kind,
-      paid: false,
-      progress: 0,
-      duration: 0,
-      hp: hp(a.kind),
-    });
-    emit(w, p, "queued", { cell: a.cell });
-  } else if (a.type === "cancelConstruction") {
-    const i = p.queue.findIndex((j) => j.cell === a.cell);
-    if (i < 0) {
-      reject("no owned construction");
+    case "cancelConstruction": {
+      const i = p.queue.findIndex((j) => j.cell === a.cell);
+      if (i < 0) {
+        reject("no owned construction");
+        return;
+      }
+      const j = p.queue[i]!;
+      p.queue.splice(i, 1);
+      // Delivered work is spent; queued ghosts cost nothing. Only the builder's
+      // own job sends it home: sprouts never use it, and a recovering builder
+      // keeps its penalty.
+      if (j.paid && !isSprout(j) && p.worker.mode !== "recovering")
+        p.worker.mode = "returning";
+
       return;
     }
-    const j = p.queue[i]!;
-    p.queue.splice(i, 1);
-    // Delivered work is spent; queued ghosts cost nothing. Only the builder's
-    // own job sends it home: sprouts never use it, and a recovering builder
-    // keeps its penalty.
-    if (j.paid && !isSprout(j) && p.worker.mode !== "recovering")
-      p.worker.mode = "returning";
-  } else if (a.type === "setPriority") {
-    // Clearing an old destination must remain possible after its destruction.
-    if (a.weight === 0) {
-      delete p.priorities[String(a.cell)];
+    case "setPriority": {
+      // Clearing an old destination must remain possible after its destruction.
+      if (a.weight === 0) {
+        delete p.priorities[String(a.cell)];
+        return;
+      }
+      const s = structure(w, a.cell);
+      if (
+        !s ||
+        s.ownerId !== p.id ||
+        !canAttack(s.kind) ||
+        (!Object.hasOwn(p.priorities, String(a.cell)) &&
+          Object.keys(p.priorities).length >= 8)
+      ) {
+        reject("invalid priority destination");
+        return;
+      }
+      p.priorities[String(a.cell)] = a.weight;
+
       return;
     }
-    const s = structure(w, a.cell);
-    if (
-      !s ||
-      s.ownerId !== p.id ||
-      !canAttack(s.kind) ||
-      (!Object.hasOwn(p.priorities, String(a.cell)) &&
-        Object.keys(p.priorities).length >= 8 &&
-        a.weight > 0)
-    ) {
-      reject("invalid priority destination");
+    case "setParticleKind":
+      if (researchPrerequisites(p, PARTICLES[a.kind].requires).length) {
+        reject("particle profile unavailable");
+        return;
+      }
+      p.particleKind = a.kind;
+
+      return;
+    case "startResearch": {
+      if (!researchAvailability(p, a.research).allowed) {
+        reject("research unavailable");
+        return;
+      }
+      const definition = RESEARCH[a.research];
+      p.insight -= definition.cost;
+      p.researchJob = {
+        kind: a.research,
+        completesAt:
+          w.tick + (w.settings.instantResearch ? 0 : definition.duration),
+      };
+      emit(w, p, "researchStarted", {
+        amount: definition.cost,
+        resource: "insight",
+      });
+
       return;
     }
-    p.priorities[String(a.cell)] = a.weight;
-  } else if (a.type === "setParticleKind") {
-    if (researchPrerequisites(p, PARTICLES[a.kind].requires).length) {
-      reject("particle profile unavailable");
+    case "cancelResearch":
+      p.researchJob = null;
       return;
-    }
-    p.particleKind = a.kind;
-  } else if (a.type === "startResearch") {
-    if (!researchAvailability(p, a.research).allowed) {
-      reject("research unavailable");
-      return;
-    }
-    const definition = RESEARCH[a.research];
-    p.insight -= definition.cost;
-    p.researchJob = {
-      kind: a.research,
-      completesAt:
-        w.tick + (w.settings.instantResearch ? 0 : definition.duration),
-    };
-    emit(w, p, "researchStarted", {
-      amount: definition.cost,
-      resource: "insight",
-    });
-  } else if (a.type === "cancelResearch") {
-    p.researchJob = null;
   }
 }
+
 function economy(w: World, p: Player) {
   const initialBiomass = p.biomass,
     initialInsight = p.insight;
@@ -823,12 +840,124 @@ function unshieldedDamage(
   return shot.damage - (limit - remaining);
 }
 
-function combat(w: World) {
-  const structures = cellIndex(w);
-  const players = new Map(w.players.map((player) => [player.id, player]));
+function chooseTarget(
+  w: World,
+  s: Structure,
+  p: Player,
+  adjacentEnemies: (cell: number, owner: string) => Structure[],
+) {
+  const weapon = STRUCTURES[s.kind];
+  const cells = attackCells(w.map, s.cell, s.kind);
+  const targets = [
+    ...w.structures
+      .filter((t) => t.ownerId !== s.ownerId && cells.has(t.cell))
+      .map((t) => ({
+        cell: t.cell,
+        hp: t.hp,
+        id: t.id,
+        owner: t.ownerId,
+        site: false,
+        priority:
+          t.kind === "brain"
+            ? 0
+            : t.connected &&
+                canAttack(t.kind) &&
+                attackCells(w.map, t.cell, t.kind).has(s.cell)
+              ? 1
+              : 2,
+      })),
+    ...w.players
+      .filter((o) => o.id !== p.id)
+      .flatMap((o) =>
+        o.queue
+          .filter(
+            (j) => j.paid && j.upgradeFrom === undefined && cells.has(j.cell),
+          )
+          .map((j) => ({
+            cell: j.cell,
+            hp: j.hp,
+            id: -1,
+            owner: o.id,
+            site: true,
+            priority: 3,
+          })),
+      ),
+  ];
+  // Splash weapons aim where the burst hits most: the target with the most
+  // enemy structures beside it. Others finish the weakest target first.
+  const cluster = (cell: number) =>
+    weapon.splashPercent ? adjacentEnemies(cell, s.ownerId).length : 0;
+  const density = new Map(targets.map((t) => [t.cell, cluster(t.cell)]));
+  targets.sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      density.get(b.cell)! - density.get(a.cell)! ||
+      a.hp - b.hp ||
+      homeCellOrder(w.map, p.slot, a.cell, b.cell),
+  );
+  const first = targets[0];
+  if (!first) return undefined;
+  const equal = targets.filter(
+    (t) =>
+      t.priority === first.priority &&
+      density.get(t.cell) === density.get(first.cell) &&
+      t.hp === first.hp,
+  );
+  return equal[(s.firingCursor ?? 0) % equal.length];
+}
+
+function resolveSalvos(
+  w: World,
+  shots: CombatShot[],
+  players: Map<string, Player>,
+  availableAt: (s: Structure) => Particle[],
+) {
   const brainIds = new Set(
     w.structures.filter((s) => s.kind === "brain").map((s) => s.id),
   );
+  // Resolve protection after every gun reserves its salvo. A particle cannot
+  // fire and shield in the same tick. Protectors and victims remain alive until
+  // simultaneous damage is applied, as with offensive fire.
+  // Spend shared protection on brain attacks first, then strongest salvos.
+  // Home-relative cell ties preserve swapped-seat symmetry and make allocation
+  // independent of structure-array insertion order.
+  shots.sort((a, b) => {
+    if (a.owner !== b.owner) return a.owner < b.owner ? -1 : 1;
+    const slot = players.get(a.owner)!.slot;
+    const priority = (shot: typeof a) => (brainIds.has(shot.id) ? 0 : 1);
+    return (
+      priority(a) - priority(b) ||
+      b.damage - a.damage ||
+      homeCellOrder(w.map, slot, a.cell, b.cell) ||
+      homeCellOrder(w.map, slot, a.from, b.from)
+    );
+  });
+  const hits = new Map<number, number>();
+  const siteHits = new Map<string, number>();
+  for (const shot of shots) {
+    const damage = unshieldedDamage(
+      w,
+      shot,
+      players.get(shot.owner)!,
+      availableAt,
+    );
+    if (shot.site) {
+      const key = `${shot.owner}:${shot.cell}`;
+      siteHits.set(key, (siteHits.get(key) ?? 0) + damage);
+    } else hits.set(shot.id, (hits.get(shot.id) ?? 0) + damage);
+    shot.player.statistics.damage += damage;
+    emit(w, shot.player, "damage", {
+      cell: shot.cell,
+      fromCell: shot.from,
+      amount: damage,
+    });
+  }
+  return { hits, siteHits };
+}
+
+function combat(w: World) {
+  const structures = cellIndex(w);
+  const players = new Map(w.players.map((player) => [player.id, player]));
   const adjacentEnemies = (cell: number, owner: string): Structure[] =>
     neighbors(w.map, cell)
       .map((adjacent) => structures.get(adjacent))
@@ -845,8 +974,6 @@ function combat(w: World) {
     (supplies.get(s.cell) ?? []).filter(
       (q) => q.ownerId === s.ownerId && q.mode === "stationed",
     );
-  const hits = new Map<number, number>();
-  const siteHits = new Map<string, number>();
   const shots: CombatShot[] = [];
   for (const s of w.structures) {
     const weapon = STRUCTURES[s.kind];
@@ -857,61 +984,7 @@ function combat(w: World) {
       ? Math.max(1, Math.floor(weapon.cadence / 2))
       : weapon.cadence;
     if (w.tick % cadence !== 0) continue;
-    const cells = attackCells(w.map, s.cell, s.kind);
-    const targets = [
-      ...w.structures
-        .filter((t) => t.ownerId !== s.ownerId && cells.has(t.cell))
-        .map((t) => ({
-          cell: t.cell,
-          hp: t.hp,
-          id: t.id,
-          owner: t.ownerId,
-          site: false,
-          priority:
-            t.kind === "brain"
-              ? 0
-              : t.connected &&
-                  canAttack(t.kind) &&
-                  attackCells(w.map, t.cell, t.kind).has(s.cell)
-                ? 1
-                : 2,
-        })),
-      ...w.players
-        .filter((o) => o.id !== p.id)
-        .flatMap((o) =>
-          o.queue
-            .filter(
-              (j) => j.paid && j.upgradeFrom === undefined && cells.has(j.cell),
-            )
-            .map((j) => ({
-              cell: j.cell,
-              hp: j.hp,
-              id: -1,
-              owner: o.id,
-              site: true,
-              priority: 3,
-            })),
-        ),
-    ];
-    // Splash weapons aim where the burst hits most: the target with the most
-    // enemy structures beside it. Others finish the weakest target first.
-    const cluster = (cell: number) =>
-      weapon.splashPercent ? adjacentEnemies(cell, s.ownerId).length : 0;
-    const density = new Map(targets.map((t) => [t.cell, cluster(t.cell)]));
-    targets.sort(
-      (a, b) =>
-        a.priority - b.priority ||
-        density.get(b.cell)! - density.get(a.cell)! ||
-        a.hp - b.hp ||
-        homeCellOrder(w.map, p.slot, a.cell, b.cell),
-    );
-    const equal = targets.filter(
-      (t) =>
-        t.priority === targets[0]?.priority &&
-        density.get(t.cell) === density.get(targets[0]!.cell) &&
-        t.hp === targets[0]?.hp,
-    );
-    const target = equal[(s.firingCursor ?? 0) % equal.length];
+    const target = chooseTarget(w, s, p, adjacentEnemies);
     if (!target) continue;
     const ammo = availableAt(s).slice(0, weapon.volley);
     const damage = ammo.reduce((sum, q) => sum + q.attack, 0);
@@ -933,76 +1006,52 @@ function combat(w: World) {
           damage: splash,
         });
   }
-  // Resolve protection after every gun reserves its salvo. A particle cannot
-  // fire and shield in the same tick. Protectors and victims remain alive until
-  // simultaneous damage is applied, as with offensive fire.
-  // Spend shared protection on brain attacks first, then strongest salvos.
-  // Home-relative cell ties preserve swapped-seat symmetry and make allocation
-  // independent of structure-array insertion order.
-  shots.sort((a, b) => {
-    if (a.owner !== b.owner) return a.owner < b.owner ? -1 : 1;
-    const slot = players.get(a.owner)!.slot;
-    const priority = (shot: typeof a) => (brainIds.has(shot.id) ? 0 : 1);
-    return (
-      priority(a) - priority(b) ||
-      b.damage - a.damage ||
-      homeCellOrder(w.map, slot, a.cell, b.cell) ||
-      homeCellOrder(w.map, slot, a.from, b.from)
-    );
-  });
-  for (const shot of shots) {
-    const damage = unshieldedDamage(
-      w,
-      shot,
-      players.get(shot.owner)!,
-      availableAt,
-    );
-    if (shot.site) {
-      const key = `${shot.owner}:${shot.cell}`;
-      siteHits.set(key, (siteHits.get(key) ?? 0) + damage);
-    } else hits.set(shot.id, (hits.get(shot.id) ?? 0) + damage);
-    shot.player.statistics.damage += damage;
-    emit(w, shot.player, "damage", {
-      cell: shot.cell,
-      fromCell: shot.from,
-      amount: damage,
-    });
-  }
+  const { hits, siteHits } = resolveSalvos(w, shots, players, availableAt);
+  applyCombatLosses(w, hits, siteHits);
+}
+function applyCombatLosses(
+  w: World,
+  hits: Map<number, number>,
+  siteHits: Map<string, number>,
+) {
   for (const s of w.structures) s.hp -= hits.get(s.id) ?? 0;
   for (const p of w.players) {
-    for (const j of p.queue) j.hp -= siteHits.get(`${p.id}:${j.cell}`) ?? 0;
-    const destroyed = p.queue.some((j) => j.paid && !isSprout(j) && j.hp <= 0);
-    for (const j of p.queue) {
-      if (j.paid && j.upgradeFrom === undefined && j.hp <= 0) {
+    let builderLostSite = false;
+    p.queue = p.queue.filter((job) => {
+      job.hp -= siteHits.get(`${p.id}:${job.cell}`) ?? 0;
+      if (job.hp > 0) return true;
+      if (!job.paid) return false;
+      builderLostSite ||= !isSprout(job);
+      if (job.upgradeFrom === undefined) {
         p.statistics.sitesLost++;
-        emit(w, p, "destroyed", { cell: j.cell });
+        emit(w, p, "destroyed", { cell: job.cell });
       }
-    }
-    p.queue = p.queue.filter((j) => j.hp > 0);
-    if (destroyed && p.worker.mode !== "recovering")
+      return false;
+    });
+    if (builderLostSite && p.worker.mode !== "recovering")
       p.worker.mode = "returning";
   }
-  for (const s of w.structures.filter((s) => s.hp <= 0)) {
+  const destroyed = w.structures.filter((s) => s.hp <= 0);
+  for (const s of destroyed) {
     const p = w.players.find((p) => p.id === s.ownerId)!;
     p.statistics.lost++;
     delete p.priorities[String(s.cell)];
     emit(w, p, "destroyed", { cell: s.cell });
   }
   w.structures = w.structures.filter((s) => s.hp > 0);
+  const survivors = new Set(w.structures.map((s) => s.id));
   for (const p of w.players) {
-    const lostSource = p.queue.some(
-      (j) =>
-        j.upgradeFrom !== undefined &&
-        !w.structures.some((s) => s.id === j.upgradeFrom) &&
-        j.paid,
-    );
-    p.queue = p.queue.filter(
-      (j) =>
-        j.upgradeFrom === undefined ||
-        w.structures.some((s) => s.id === j.upgradeFrom),
-    );
-    if (lostSource) p.worker.mode = "returning";
+    p.queue = p.queue.filter((job) => {
+      if (job.upgradeFrom === undefined || survivors.has(job.upgradeFrom))
+        return true;
+      if (job.paid) p.worker.mode = "returning";
+      return false;
+    });
   }
+  eliminateDefeatedPlayers(w);
+}
+
+function eliminateDefeatedPlayers(w: World) {
   for (const p of w.players)
     if (p.alive && !brain(w, p)) {
       p.alive = false;
