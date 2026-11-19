@@ -49,7 +49,8 @@ import type { OffroadSuspension } from "./offroad/suspension.js";
  * The race is the bulk of it, and every peer hashes it: a number that is not finite, or is `-0`, would fold on to a
  * different race elsewhere, so it is refused here rather than carried into the simulation.
  */
-const STAGES: readonly Stage[] = ["lobby", "running", "over"];
+const isStage = (value: unknown): value is Stage =>
+  value === "lobby" || value === "running" || value === "over";
 const PHASES: readonly Phase[] = ["countdown", "racing", "finished"];
 const MAX_COORD = 100_000;
 const MAX_SPEED = 100_000;
@@ -625,63 +626,37 @@ function decodeRace(
   };
 }
 
-export function decodeRoom(
-  fields: readonly unknown[],
-  tick: number,
-): FuseDriversRoom | undefined {
-  if (fields.length !== 10 || !uint32(tick)) return;
-  const [
-    header,
-    rawSeats,
-    rawSettings,
-    rawGrid,
-    rawControls,
-    rawRace,
-    rawFinishSeats,
-    campaignIndex,
-    rawGarage,
-    rawRecentFinishes,
-  ] = fields;
-  if (
-    !Array.isArray(header) ||
-    header.length !== 6 ||
-    !Array.isArray(rawSeats) ||
-    rawSeats.length > CAPACITY + MAX_WATCHERS ||
-    !Array.isArray(rawGrid) ||
-    rawGrid.length > CAPACITY ||
-    !Array.isArray(rawGarage) ||
-    rawGarage.length > CAPACITY ||
-    !Array.isArray(rawControls) ||
-    rawControls.length > CAPACITY ||
-    !Array.isArray(rawFinishSeats) ||
-    rawFinishSeats.length > CAPACITY
-  )
-    return;
-  const [matchId, round, stage, finishTick, seriesRace, seriesLength] = header;
-  const settings = parseSettings(rawSettings);
-  const recentFinishes = decodeRecentFinishes(rawRecentFinishes, tick);
+function decodeHeader(raw: unknown, tick: number) {
+  if (!Array.isArray(raw) || raw.length !== 6) return;
+  const [matchId, round, stage, finishTick, seriesRace, seriesLength] = raw;
   if (
     !validMatchId(matchId) ||
-    !uint32(seriesRace) ||
-    seriesRace > tick ||
-    !isSeriesLength(seriesLength) ||
-    (stage === "lobby"
-      ? seriesRace !== 0 || seriesLength !== 0
-      : seriesRace === 0 ||
-        (seriesLength !== 0 && seriesRace > seriesLength)) ||
     !uint32(round) ||
     round < 1 ||
     round > MAX_ROUNDS ||
-    !STAGES.includes(stage as Stage) ||
+    !isStage(stage) ||
     !uint32(finishTick) ||
-    (stage === "over"
-      ? finishTick < 1 || finishTick > tick
-      : finishTick !== 0) ||
-    !settings ||
-    !recentFinishes
+    !uint32(seriesRace) ||
+    seriesRace > tick ||
+    !isSeriesLength(seriesLength)
   )
     return;
+  if (stage === "lobby") {
+    if (seriesRace !== 0 || seriesLength !== 0) return;
+  } else if (
+    seriesRace === 0 ||
+    (seriesLength !== 0 && seriesRace > seriesLength)
+  ) {
+    return;
+  }
+  if (stage === "over" ? finishTick < 1 || finishTick > tick : finishTick !== 0)
+    return;
+  return { matchId, round, stage, finishTick, seriesRace, seriesLength };
+}
 
+function decodeSeats(rawSeats: unknown) {
+  if (!Array.isArray(rawSeats) || rawSeats.length > CAPACITY + MAX_WATCHERS)
+    return;
   const seats = new Map<string, SeatRecord>(),
     slots = new Set<number>();
   let watchers = 0;
@@ -694,7 +669,15 @@ export function decodeRoom(
     seats.set(seat.id, seat);
   }
   if (watchers > MAX_WATCHERS) return;
+  return seats;
+}
 
+function decodeGrid(
+  rawGrid: unknown,
+  stage: Stage,
+  seats: ReadonlyMap<string, SeatRecord>,
+) {
+  if (!Array.isArray(rawGrid) || rawGrid.length > CAPACITY) return;
   // The grid is formed when the race starts and never reordered. While it runs no seat can be reclaimed, so every
   // driver is still seated; once it is over a driver may have left the room with its truck still on the grid.
   const grid: string[] = [];
@@ -704,6 +687,16 @@ export function decodeRoom(
       return;
     grid.push(id);
   }
+  return grid;
+}
+
+function decodeFinishSeats(
+  rawFinishSeats: unknown,
+  grid: readonly string[],
+  stage: Stage,
+) {
+  if (!Array.isArray(rawFinishSeats) || rawFinishSeats.length > CAPACITY)
+    return;
   const finishSeats: FuseDriversRoom["finishSeats"] = [];
   const finishSlots = new Set<number>();
   for (const [index, raw] of rawFinishSeats.entries()) {
@@ -728,7 +721,15 @@ export function decodeRoom(
       : finishSeats.length > 0
   )
     return;
+  return finishSeats;
+}
 
+function decodeControls(rawControls: unknown, stage: Stage) {
+  if (
+    !Array.isArray(rawControls) ||
+    rawControls.length > (stage === "lobby" ? 0 : CAPACITY)
+  )
+    return;
   const controls: Record<string, number> = {};
   for (const raw of rawControls) {
     if (!Array.isArray(raw) || raw.length !== 2) return;
@@ -737,15 +738,16 @@ export function decodeRoom(
       return;
     controls[id] = bits;
   }
+  return controls;
+}
+
+function decodeGarage(
+  rawGarage: unknown,
+  owners: readonly string[],
+  opening: boolean,
+) {
+  if (!Array.isArray(rawGarage) || rawGarage.length !== owners.length) return;
   const garage: FuseDriversRoom["garage"] = {};
-  const garageOwners =
-    stage === "lobby"
-      ? [...seats.values()]
-          .filter((seat) => !seat.bot && !seat.watcher)
-          .map((seat) => seat.id)
-          .sort()
-      : grid;
-  if (rawGarage.length !== garageOwners.length) return;
   for (const [index, raw] of rawGarage.entries()) {
     if (!Array.isArray(raw) || raw.length !== 9) return;
     const [
@@ -770,102 +772,120 @@ export function decodeRoom(
       topSpeed,
     };
     if (
-      id !== garageOwners[index] ||
+      id !== owners[index] ||
       !isOffroadDriver(driver) ||
-      (stage === "lobby" && !validOpeningWallet(driver))
+      (opening && !validOpeningWallet(driver))
     )
       return;
     garage[id] = driver;
   }
+  return garage;
+}
 
-  // A race exists exactly while one is being driven or has just been decided; the lobby holds none, and drops the
-  // grid and controls with it. Its opening garage belongs to the current human seats.
-  const racing = stage === "running" || stage === "over";
-  if (rawRace === null) {
-    if (racing || grid.length || rawControls.length || campaignIndex !== -1)
-      return;
-    return {
-      tick,
-      matchId,
-      round,
-      stage: stage as Stage,
-      seats,
-      settings,
-      grid,
-      controls,
-      garage,
-      campaignIndex,
-      seriesRace,
-      seriesLength,
-      finishSeats,
-      finishTick,
-      recentFinishes,
-    };
-  }
-  if (!racing || !isCampaignIndex(campaignIndex)) return;
-  const race = decodeRace(rawRace, grid, seats, tick);
-  // The room calls the match over exactly when the race is: the fold sets one from the other.
+function validatesRaceSetup(room: FuseDriversRoom, race: RaceState): boolean {
+  const { campaignIndex, stage, settings, garage, grid } = room;
+  // The room calls the match over exactly when the race ends.
   if (
-    !race ||
     Boolean(race.battle) !== (settings.mode === "battle") ||
     race.trackName !== trackNames()[campaignVariant(campaignIndex)] ||
     (race.phase === "finished") !== (stage === "over")
   )
-    return;
-  const botSlots = race.trucks.map((t) => t.cpu !== undefined);
-  for (const truck of race.trucks) {
-    if (truck.cpu) {
-      if (
-        truck.cpuBase !==
+    return false;
+  const botSlots = race.trucks.map((truck) => truck.cpu !== undefined);
+  return race.trucks.every((truck) => {
+    if (truck.cpu)
+      return (
+        truck.cpuBase ===
         offroadStartingLevel(
           race.trackName,
           truck.slot,
           botSlots,
           campaignIndex,
         )
-      )
-        return;
-    } else if (stage === "running") {
-      // A finished truck keeps the setup it raced with while its driver shops.
-      const driver = garage[grid[truck.slot]!]!;
-      if (
-        driver.topSpeed !== truck.upgrades!.topSpeed ||
-        driver.tires !== truck.upgrades!.tires ||
-        driver.shocks !== truck.upgrades!.shocks
-      )
-        return;
-    }
-  }
+      );
+    // A finished truck keeps the setup it raced with while its driver shops.
+    if (stage !== "running") return true;
+    const driver = garage[grid[truck.slot]!]!;
+    return (
+      driver.topSpeed === truck.upgrades!.topSpeed &&
+      driver.tires === truck.upgrades!.tires &&
+      driver.shocks === truck.upgrades!.shocks
+    );
+  });
+}
+
+function validatesFinishReceipt(room: FuseDriversRoom): boolean {
+  const latest = room.recentFinishes.at(-1);
+  const current = freezeFinishedRace(room);
+  return Boolean(
+    latest &&
+    current &&
+    JSON.stringify(encodeRecentFinishes([latest])) ===
+      JSON.stringify(encodeRecentFinishes([current])),
+  );
+}
+
+export function decodeRoom(
+  fields: readonly unknown[],
+  tick: number,
+): FuseDriversRoom | undefined {
+  if (fields.length !== 10 || !uint32(tick)) return;
+  const [
+    rawHeader,
+    rawSeats,
+    rawSettings,
+    rawGrid,
+    rawControls,
+    rawRace,
+    rawFinishSeats,
+    campaignIndex,
+    rawGarage,
+    rawRecentFinishes,
+  ] = fields;
+  const header = decodeHeader(rawHeader, tick);
+  const settings = parseSettings(rawSettings);
+  const recentFinishes = decodeRecentFinishes(rawRecentFinishes, tick);
+  const seats = decodeSeats(rawSeats);
+  if (!header || !settings || !recentFinishes || !seats) return;
+
+  const { stage } = header;
+  const grid = decodeGrid(rawGrid, stage, seats);
+  const controls = decodeControls(rawControls, stage);
+  if (!grid || !controls) return;
+  const finishSeats = decodeFinishSeats(rawFinishSeats, grid, stage);
+  const garageOwners =
+    stage === "lobby"
+      ? [...seats.values()]
+          .filter((seat) => !seat.bot && !seat.watcher)
+          .map((seat) => seat.id)
+          .sort()
+      : grid;
+  const garage = decodeGarage(rawGarage, garageOwners, stage === "lobby");
+  if (!finishSeats || !garage || typeof campaignIndex !== "number") return;
+
   const room: FuseDriversRoom = {
+    ...header,
     tick,
-    matchId,
-    round,
-    stage: stage as Stage,
     seats,
     settings,
-    race,
     grid,
     controls,
     garage,
     campaignIndex,
     finishSeats,
-    seriesRace,
-    seriesLength,
-    finishTick,
     recentFinishes,
   };
-  if (stage === "over") {
-    const latest = recentFinishes.at(-1);
-    const current = freezeFinishedRace(room);
-    if (
-      !latest ||
-      !current ||
-      JSON.stringify(encodeRecentFinishes([latest])) !==
-        JSON.stringify(encodeRecentFinishes([current]))
-    )
-      return;
-  }
-  return room;
+  // A lobby has no race, grid, or controls. A running or completed room must carry its race.
+  if (stage === "lobby")
+    return rawRace === null && !grid.length && campaignIndex === -1
+      ? room
+      : undefined;
+  if (!isCampaignIndex(campaignIndex)) return;
+  const race = decodeRace(rawRace, grid, seats, tick);
+  if (!race || !validatesRaceSetup(room, race)) return;
+
+  room.race = race;
+  return stage !== "over" || validatesFinishReceipt(room) ? room : undefined;
 }
 
 /** Canonical JSON (sorted keys, seats in slot then id order), then FNV-1a in two lanes: 16 hex characters. */
