@@ -193,7 +193,6 @@ function units(value: number): string {
   return (value / 1000).toFixed(1);
 }
 
-/** Territory against the dominance bar, and the network's sprout slots. */
 function incomeText(world: Readonly<World>, playerId: string): string {
   const income = { biomass: 0, insight: 0 };
   for (const event of world.outcomes) {
@@ -209,6 +208,7 @@ function incomeText(world: Readonly<World>, playerId: string): string {
   return ` · +${perSecond(income.biomass)} ◈ / s · +${perSecond(income.insight)} ◇ / s`;
 }
 
+/** Territory against the dominance bar, and the network's sprout slots. */
 function territoryChips(world: Readonly<World>, player: Player): string {
   const needed = dominanceCells(world);
   const growing = player.queue.filter((j) => j.paid && isSprout(j)).length;
