@@ -22,6 +22,7 @@ import { f, add, sub, mul } from "./physics-types.js";
 import { atan2, cos, sin } from "./math.js";
 import { randomInt, randomSigned } from "./random.js";
 import {
+  aiAreaFree,
   len,
   len2,
   minus,
@@ -364,10 +365,14 @@ function trajectoryCollision(
     py + width >= terrain.height
   )
     return true;
-  for (let y = py - width; y <= py + width; y++)
-    for (let x = px - width; x <= px + width; x++)
-      if (terrain.flag(x, y) & (PX_DIRT | PX_ROCK)) return true;
-  return false;
+  return !aiAreaFree(
+    terrain,
+    px - width,
+    py - width,
+    px + width + 1,
+    py + width + 1,
+    PX_DIRT | PX_ROCK,
+  );
 }
 
 /** Native gravity/speed noise consumes shared RNG although those two perturbed values are unused afterwards. */
@@ -575,16 +580,12 @@ export function shootAi(frame: NativeAiFrame): boolean {
   if (attempt !== "shoot") {
     ai.badAimMs += frame.deltaMs;
     if (ai.badAimMs > 4000) {
-      let empty = true;
       const x = Math.trunc(worm.x),
         y = Math.trunc(sub(worm.y, 5));
-      for (let dy = y - 3; empty && dy < y + 3; dy++)
-        for (let dx = x - 3; dx < x + 3; dx++)
-          if (frame.terrain.flag(dx, dy) & (PX_DIRT | PX_ROCK)) {
-            empty = false;
-            break;
-          }
-      if (empty) controls.jump = true;
+      if (
+        aiAreaFree(frame.terrain, x - 3, y - 3, x + 3, y + 3, PX_DIRT | PX_ROCK)
+      )
+        controls.jump = true;
       ai.badAimMs = 0;
     }
     return attempt === "aiming";
