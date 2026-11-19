@@ -159,17 +159,19 @@ const midRidge = (x: number) =>
       1.5 * Math.sin(x * 0.17),
   );
 
-/** The near mountains, a path winding up them to a watch post, and a fringe of pines along their foot. */
-function mountains(r: Raster) {
+/** Snow caps the slopes where the ridge rises high enough. */
+function mountainSlopes(r: Raster) {
   for (let x = 0; x < r.width; x++) {
     const top = midRidge(x);
     const lit = midRidge(x + 2) > top;
-    for (let y = top; y < FLOOR; y++) {
-      const rock = lit ? 0x2e3458 : 0x23284a;
-      const snow = lit ? 0x6e7ca6 : 0x4e5a86;
-      r.px(x, y, y - top < 2 && top < 76 ? snow : rock);
-    }
+    const rock = lit ? 0x2e3458 : 0x23284a;
+    const snow = lit ? 0x6e7ca6 : 0x4e5a86;
+    const snowEnd = top < 76 ? top + 2 : top;
+    for (let y = top; y < FLOOR; y++) r.px(x, y, y < snowEnd ? snow : rock);
   }
+}
+
+function watchPosts(r: Raster) {
   for (let p = 70; p < r.width; p += 300) {
     let [x, y, dir] = [p, FLOOR - 9, 1];
     while (y > midRidge(x) + 4) {
@@ -181,6 +183,9 @@ function mountains(r: Raster) {
     r.rect(x - 2, y - 7, 5, 6, 0x161a30);
     r.px(x, y - 5, 0xffc22e);
   }
+}
+
+function ridgePines(r: Raster) {
   for (let x = 2, n = 0; x < r.width; n++) {
     const th = 8 + Math.floor(hash(n, 37) * 9);
     for (let j = 0; j < th; j++) {
@@ -190,6 +195,12 @@ function mountains(r: Raster) {
     }
     x += hash(n, 38) > 0.65 ? 18 + Math.floor(hash(n, 39) * 40) : 5;
   }
+}
+
+function mountains(r: Raster) {
+  mountainSlopes(r);
+  watchPosts(r);
+  ridgePines(r);
 }
 
 /** A rib's base, the half-axes of the ellipse it follows, how far round it goes, and whether it is planted in front. */
@@ -289,35 +300,25 @@ function lesserSkull(r: Raster) {
 
 const BANNER_SKULL = ["x..x", "xxxx", ".xx.", "x..x"];
 
-/** The raiders' camp under the wyrm's neck: two hide tents, a campfire, spears and Vorhal's banner. */
-function camp(r: Raster) {
-  for (const [cx, half, h] of [
-    [CAMP_X + 26, 22, 28],
-    [CAMP_X + 116, 17, 22],
-  ] as const) {
-    shape(
-      r,
-      [cx - half - 1, FLOOR - h - 1, cx + half + 2, FLOOR],
-      (x, y) => FLOOR - y - 0.5 < h - (Math.abs(x + 0.5 - cx) * h) / half,
-      HIDE,
-      (x) => (x < cx ? 0.3 : 0.6) + ((x - cx) % 6 === 0 ? -0.3 : 0),
-    );
-    for (let j = 0; j < 4; j++) {
-      r.px(cx - 2 - j, FLOOR - h - 4 + j, WOOD);
-      r.px(cx + 2 + j, FLOOR - h - 4 + j, WOOD);
-    }
-    for (let y = FLOOR - Math.round(h * 0.5); y < FLOOR; y++) {
-      const w = Math.round((y - FLOOR + h * 0.5) * 0.35);
-      r.rect(cx - w, y, 2 * w + 1, 1, y > FLOOR - 4 ? 0xa84a30 : VOID);
-    }
+function campTent(r: Raster, cx: number, half: number, h: number) {
+  shape(
+    r,
+    [cx - half - 1, FLOOR - h - 1, cx + half + 2, FLOOR],
+    (x, y) => FLOOR - y - 0.5 < h - (Math.abs(x + 0.5 - cx) * h) / half,
+    HIDE,
+    (x) => (x < cx ? 0.3 : 0.6) + ((x - cx) % 6 === 0 ? -0.3 : 0),
+  );
+  for (let j = 0; j < 4; j++) {
+    r.px(cx - 2 - j, FLOOR - h - 4 + j, WOOD);
+    r.px(cx + 2 + j, FLOOR - h - 4 + j, WOOD);
   }
-  for (const x of [CAMP_X - 8, CAMP_X - 4, CAMP_X + 1]) {
-    r.rect(x, FLOOR - 30, 1, 30, WOOD);
-    r.rect(x, FLOOR - 33, 1, 3, 0xa8b4cc);
+  for (let y = FLOOR - Math.round(h * 0.5); y < FLOOR; y++) {
+    const w = Math.round((y - FLOOR + h * 0.5) * 0.35);
+    r.rect(cx - w, y, 2 * w + 1, 1, y > FLOOR - 4 ? 0xa84a30 : VOID);
   }
-  for (let i = -6; i <= 6; i += 3)
-    r.rect(CAMPFIRE_X + i - 1, FLOOR - 2, 3, 2, i % 2 ? STONE[2] : STONE[3]);
-  r.rect(CAMPFIRE_X - 4, FLOOR - 3, 9, 1, WOOD);
+}
+
+function campBanner(r: Raster) {
   // Vorhal's banner on a pole before the skull.
   const pole = CAMP_X + 150;
   r.rect(pole, FLOOR - 46, 2, 46, WOOD);
@@ -331,22 +332,64 @@ function camp(r: Raster) {
     }
 }
 
+/** The raiders' camp under the wyrm's neck. */
+function camp(r: Raster) {
+  campTent(r, CAMP_X + 26, 22, 28);
+  campTent(r, CAMP_X + 116, 17, 22);
+  for (const x of [CAMP_X - 8, CAMP_X - 4, CAMP_X + 1]) {
+    r.rect(x, FLOOR - 30, 1, 30, WOOD);
+    r.rect(x, FLOOR - 33, 1, 3, 0xa8b4cc);
+  }
+  for (let i = -6; i <= 6; i += 3)
+    r.rect(CAMPFIRE_X + i - 1, FLOOR - 2, 3, 2, i % 2 ? STONE[2] : STONE[3]);
+  r.rect(CAMPFIRE_X - 4, FLOOR - 3, 9, 1, WOOD);
+  campBanner(r);
+}
+
 /** The mouth's arch above the floor, by distance from the gate's centre line. */
 const mouthTop = (a: number) => 36 - 7 * (a / 27) ** 3;
 const EYE_V = 60;
 const TORCH_V = 28;
-/** The fangs: distance from the centre line and length; a negative distance rises from the jaw. */
-const FANGS = [6, 6, 13, 10, 21, 16, -10, 8, -19, 11];
+/** Upper fangs hang from the mouth; lower fangs rise from the jaw. */
+const FANGS = [
+  { at: 6, length: 6, fromJaw: false },
+  { at: 13, length: 10, fromJaw: false },
+  { at: 21, length: 16, fromJaw: false },
+  { at: 10, length: 8, fromJaw: true },
+  { at: 19, length: 11, fromJaw: true },
+].map(({ at, length, fromJaw }) => ({
+  at,
+  length,
+  fromJaw,
+  root: fromJaw ? 0 : Math.round(mouthTop(at)) + 1,
+}));
 
-/** Whether a pixel `a` from the centre line and `v` above the floor is on a fang. */
 function fang(a: number, v: number) {
-  for (let i = 0; i < FANGS.length; i += 2) {
-    const [k, len] = [Math.abs(FANGS[i]!), FANGS[i + 1]!];
-    const root = FANGS[i]! < 0 ? 0 : Math.round(mouthTop(k)) + 1;
-    const f = FANGS[i]! < 0 ? (len - v) / len : (v - root + len) / len;
-    if (f >= 0 && f <= 1 && Math.abs(a - k) < 0.7 + (len / 5) * f) return true;
-  }
-  return false;
+  return FANGS.some(({ at, length, fromJaw, root }) => {
+    const taper = fromJaw
+      ? (length - v) / length
+      : (v - root + length) / length;
+    return (
+      taper >= 0 && taper <= 1 && Math.abs(a - at) < 0.7 + (length / 5) * taper
+    );
+  });
+}
+
+function skullBone(a: number, v: number) {
+  if (v < 40 && a < 39 - v * 0.15) return true;
+  if (v >= 30 && v < 64 && a < 52 - Math.abs(v - 48) * 0.45) return true;
+  if (v >= 56 && (a / 48) ** 2 + ((v - 60) / 30) ** 2 < 1) return true;
+  return [8, 20].some((k) => {
+    const tip = 68 + 30 * Math.sqrt(1 - (k / 48) ** 2) - v;
+    return tip > 0 && tip < 12 && Math.abs(a - k) < tip * 0.35;
+  });
+}
+
+function skullOpening(a: number, v: number) {
+  const eye = a - 27;
+  if (a < 27 && v < mouthTop(a) && !fang(a, v)) return true;
+  if ((eye / 10) ** 2 + ((v - EYE_V - eye * 0.35) / 6.5) ** 2 < 1) return true;
+  return ((a - 8) / 2.2) ** 2 + ((v - 46) / 3) ** 2 < 1;
 }
 
 /** The great skull, face on in the cliff at the stage end: horned, eyes burning, jaws open on a dark throat. */
@@ -354,23 +397,12 @@ function greatSkull(x: number, y: number) {
   const u = x + 0.5 - GATE_X;
   const a = Math.abs(u);
   const v = FLOOR - y - 0.5;
-  const ea = a - 27;
-  const bone =
-    (v < 40 && a < 39 - v * 0.15) ||
-    (v >= 30 && v < 64 && a < 52 - Math.abs(v - 48) * 0.45) ||
-    (v >= 56 && (a / 48) ** 2 + ((v - 60) / 30) ** 2 < 1) ||
-    [8, 20].some((k) => {
-      const tip = 68 + 30 * Math.sqrt(1 - (k / 48) ** 2) - v;
-      return tip > 0 && tip < 12 && Math.abs(a - k) < tip * 0.35;
-    });
-  const holes =
-    (a < 27 && v < mouthTop(a) && !fang(a, v)) ||
-    (ea / 10) ** 2 + ((v - EYE_V - ea * 0.35) / 6.5) ** 2 < 1 ||
-    ((a - 8) / 2.2) ** 2 + ((v - 46) / 3) ** 2 < 1;
+  const intact = skullBone(a, v) && !skullOpening(a, v);
+  if (v >= 0 && intact) return true;
   const horn: Ellipse = [GATE_X + Math.sign(u) * 84, FLOOR - 76, 46, 26];
   const sweep: Sweep =
     u < 0 ? [0, Math.PI * 0.58, 6.5, 1.2] : [Math.PI, Math.PI * 0.42, 6.5, 1.2];
-  return (v >= 0 && bone && !holes) || !isNaN(arc(x, y, horn, sweep));
+  return !isNaN(arc(x, y, horn, sweep));
 }
 
 /** The cliff the great skull is set in, from its crag to the stage end, the skull, its fangs and torches. */
@@ -497,7 +529,7 @@ function seams(width: number) {
   return seam;
 }
 
-function road(r: Raster) {
+function flagstones(r: Raster) {
   const seam = seams(r.width);
   for (let x = 0; x < r.width; x++) {
     for (let y = FLOOR; y < VIEW_H; y++) {
@@ -517,13 +549,26 @@ function road(r: Raster) {
       r.px(x, FLOOR + j, c);
     }
   }
+}
+
+function roadNicks(r: Raster) {
   for (let i = 0; i < Math.floor((60 * r.width) / VIEW_W); i++) {
     const x = Math.floor(hash(i, 72) * r.width);
     const y = FLOOR + 8 + Math.floor(hash(i, 73) * 66);
     r.rect(x, y, 2, 1, ROAD[5]!);
     r.rect(x, y + 1, 2, 1, ROAD[0]!);
   }
-  // Frost in the hollows, and frozen puddles mirroring the dawn.
+}
+
+function frostColor(ice: boolean, x: number, y: number) {
+  if (!ice) return 0x6a76a0;
+  if (y < 0) return 0x2a3062;
+  if (y > 0) return 0x4a4e7e;
+  return x & 1 ? 0xc29ca6 : 0x92809e;
+}
+
+/** Frost in the hollows, and frozen puddles mirroring the dawn. */
+function frostHollows(r: Raster) {
   for (let k = 0; k * 160 < r.width; k++) {
     const cx = k * 160 + Math.floor(hash(k, 74) * 120);
     const cy = 118 + Math.floor(hash(k, 75) * 50);
@@ -533,11 +578,15 @@ function road(r: Raster) {
       for (let x = -rx; x <= rx; x++) {
         if ((x / rx) ** 2 + (y / ry) ** 2 > 1) continue;
         if (!ice && bayer(cx + x, cy + y) > 0.5) continue;
-        const shine = x & 1 ? 0xc29ca6 : 0x92809e;
-        const c = !ice ? 0x6a76a0 : y ? (y < 0 ? 0x2a3062 : 0x4a4e7e) : shine;
-        r.px(cx + x, cy + y, c);
+        r.px(cx + x, cy + y, frostColor(ice, x, y));
       }
   }
+}
+
+function road(r: Raster) {
+  flagstones(r);
+  roadNicks(r);
+  frostHollows(r);
 }
 
 /** The road and everything at its speed: the carcass, the camp and the cliff, then what stands in front of the edge. */
