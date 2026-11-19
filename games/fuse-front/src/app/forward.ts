@@ -1,4 +1,5 @@
 import {
+  createCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
   createLeadChain,
@@ -153,22 +154,17 @@ export function createSmoother(
     teleport,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    scope = "",
-    foldedStep = -1,
-    told: ReadonlyMap<number, string> = new Map();
+  const begin = createCorrectionFrames(smoother);
+  let told: ReadonlyMap<number, string> = new Map();
   return {
     apply(lead, key, nextRevision, nowMs, self, folded, orders) {
-      if (key !== scope) {
-        scope = key;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = folded !== foldedStep,
-        toldBefore = told;
-      revision = nextRevision;
-      foldedStep = folded;
+      const { rolled, stepped } = begin({
+        scope: key,
+        revision: nextRevision,
+        tick: folded,
+        nowMs,
+      });
+      const toldBefore = told;
       told = orders;
       const { world, before, t } = lead,
         was = new Map(before?.heroes.map((hero) => [hero.seat, hero]));

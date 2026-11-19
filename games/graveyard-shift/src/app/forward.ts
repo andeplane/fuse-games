@@ -1,4 +1,5 @@
 import {
+  createHeldInputCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
 } from "fuse-netcode";
@@ -151,23 +152,17 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    folded = -1,
-    logged: Readonly<Record<string, number>> = {},
-    night = "";
+  const begin = createHeldInputCorrectionFrames<string>(
+    smoother,
+    {},
+    (held) => ({ ...held }),
+  );
   return {
     apply(view, key, nextRevision, nextFolded, held, nowMs, me) {
-      if (key !== night) {
-        night = key;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = nextFolded !== folded,
-        before = logged;
-      revision = nextRevision;
-      folded = nextFolded;
-      logged = { ...held };
+      const { rolled, changed } = begin(
+        { scope: key, revision: nextRevision, tick: nextFolded, nowMs },
+        held,
+      );
       const at = <T extends { x: number; y: number }>(
         name: string,
         body: T,
@@ -176,14 +171,7 @@ export function createSmoother(
       return {
         ...view,
         hunters: view.hunters.map((h) =>
-          h.id === me
-            ? h
-            : at(
-                `hunter:${h.id}`,
-                h,
-                rolled ||
-                  (stepped && (before[h.id] ?? 0) !== (held[h.id] ?? 0)),
-              ),
+          h.id === me ? h : at(`hunter:${h.id}`, h, rolled || changed(h.id)),
         ),
         ghosts: view.ghosts.map((g) =>
           g.carrier ? g : at(`ghost:${g.id}`, g, rolled),

@@ -1,4 +1,5 @@
 import {
+  createCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
 } from "fuse-netcode";
@@ -132,24 +133,19 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    tick = -1,
-    logged = new Map<string, string>(),
-    key = "";
+  const begin = createCorrectionFrames(smoother);
+  let logged = new Map<string, string>();
   return {
     apply(arena, nextRevision, folded, matchId, nowMs, me) {
       const match = `${matchId}:${folded.phase}`;
       // A new round or a countdown places everything afresh: start again.
-      if (match !== key) {
-        key = match;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = folded.tick !== tick,
-        before = logged;
-      revision = nextRevision;
-      tick = folded.tick;
+      const { rolled, stepped } = begin({
+        scope: match,
+        revision: nextRevision,
+        tick: folded.tick,
+        nowMs,
+      });
+      const before = logged;
       // A bot is played forward exactly as the fold plays it: only a person's controls can surprise the forward run.
       logged = new Map(
         folded.bases

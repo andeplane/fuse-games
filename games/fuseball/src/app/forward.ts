@@ -1,4 +1,5 @@
 import {
+  createHeldInputCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
   forwardWorld,
@@ -172,28 +173,15 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    folded = -1,
-    logged: readonly number[] = [],
-    key = "";
+  const begin = createHeldInputCorrectionFrames<number>(smoother, []);
   return {
     apply(view, nextRevision, nextFolded, held, nowMs, local) {
       const match = `${view.mapId}:${view.seed}:${view.phase}:${view.score.join("-")}`;
       // A point reset, a new arena or a countdown is a teleport by design: start again.
-      if (match !== key) {
-        key = match;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = nextFolded !== folded;
-      // A rider the forward run got wrong is one whose logged controls changed with this tick: the others moved as drawn.
-      const before = logged,
-        changed = (index: number) =>
-          stepped && (before[index] ?? 0) !== (held[index] ?? 0);
-      revision = nextRevision;
-      folded = nextFolded;
-      logged = held;
+      const { rolled, changed } = begin(
+        { scope: match, revision: nextRevision, tick: nextFolded, nowMs },
+        held,
+      );
       if (view.phase !== "play") return view;
       const map = mapOf(view.mapId, view.seed);
       const wrap = (value: number, size: number, wraps: boolean) =>

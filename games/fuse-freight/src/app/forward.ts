@@ -1,4 +1,5 @@
 import {
+  createHeldInputCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
   forwardWorld,
@@ -202,28 +203,15 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    folded = -1,
-    logged: Readonly<Record<string, number>> = {},
-    key = "";
+  const begin = createHeldInputCorrectionFrames<string>(smoother, {});
   return {
     apply(view, nextRevision, nextFolded, held, nowMs, me) {
       const round = `${view.seed}:${view.phase}`;
       // A new round or a new phase starts again: nothing carries over.
-      if (round !== key) {
-        key = round;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = nextFolded !== folded;
-      // A train the forward run got wrong is one whose logged controls changed with this tick: the others moved as drawn.
-      const before = logged,
-        changed = (id: string) =>
-          stepped && (before[id] ?? 0) !== (held[id] ?? 0);
-      revision = nextRevision;
-      folded = nextFolded;
-      logged = held;
+      const { rolled, changed } = begin(
+        { scope: round, revision: nextRevision, tick: nextFolded, nowMs },
+        held,
+      );
       if (view.phase !== "play") return view;
       return {
         ...view,
