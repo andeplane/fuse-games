@@ -1,0 +1,52 @@
+name: Release blockers probe
+on:
+  push:
+    branches: [codex/playtest-release-probe]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chrome
+      - run: pnpm exec vite build
+      - name: Reproduce the two lobby cases
+        run: SMOKE_GAMES=cyberfuse,incredible-fuse pnpm exec tsx scripts/ci-smoke.ts game-lobbies
+      - name: Measure the new workshop coverage
+        if: success() || failure()
+        run: |
+          set -o pipefail
+          cat > invoke-workshop.mts <<'JS'
+          import { createServer } from "vite";
+          import { createDevRoomService } from "./service/dev.js";
+          const room = createDevRoomService();
+          await new Promise<void>(done => room.server.listen(0, "127.0.0.1", done));
+          const address = room.server.address();
+          if (!address || typeof address === "string") throw Error("no room address");
+          const vite = await createServer({server:{host:"127.0.0.1",port:0,proxy:{"/api":{target:`http://127.0.0.1:${address.port}`,ws:true}}}});
+          try {
+            await vite.listen();
+            process.env.ONLINE_URL = vite.resolvedUrls!.local[0];
+            process.env.FUSE_GAME_COVERAGE_DIR = new URL("./coverage/workshop-raw", import.meta.url).pathname;
+            await import("./scripts/incredible-fuse-smoke.js");
+          } finally {
+            await vite.close();
+            await room.close();
+          }
+          JS
+          pnpm exec tsx invoke-workshop.mts
+          pnpm exec c8 report --temp-directory coverage/workshop-raw --exclude-after-remap --check-coverage=false --include 'games/incredible-fuse/src/**' --reporter json-summary
+          node -e 'const o=require("./coverage/coverage-summary.json");let a=Object.entries(o).filter(([k])=>k.includes("/src/app/")&&!k.includes("/src/app/bench-art.ts")).map(([k,v])=>[k.split("/app/")[1],v.lines.covered]);console.log(o.total.lines,a)'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blocker-browser-evidence
+          path: artifacts
