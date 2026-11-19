@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSeatDecoder, memberId } from "../src/index.js";
+import {
+  createSeatDecoder,
+  createSeatListDecoder,
+  memberId,
+} from "../src/index.js";
 
 const decode = createSeatDecoder({
   capacity: 2,
@@ -76,4 +80,24 @@ test("checkpoint seat decoding rejects invalid fields and relationships", () => 
   };
   for (const [caseName, seat] of Object.entries(rejected))
     assert.equal(decode(seat), undefined, caseName);
+});
+
+test("checkpoint seat lists preserve order and reject duplicate ids, slots and excess watchers", () => {
+  const decodeList = createSeatListDecoder({
+    capacity: 2,
+    maxWatchers: 1,
+    playerKey: memberId,
+    validName: (value): value is string => typeof value === "string",
+    validAvatar: (value, bot): value is string =>
+      value === (bot ? "bot" : "rider"),
+  });
+  const spectator = { ...watcher, id: "watcher" };
+  assert.deepEqual(
+    [...decodeList([spectator, bot, human])!.keys()],
+    ["watcher", "bot:1", "local"],
+  );
+  assert.equal(decodeList([watcher, human]), undefined);
+  assert.equal(decodeList([human, { ...bot, slot: 0 }]), undefined);
+  assert.equal(decodeList([watcher, spectator]), undefined);
+  assert.equal(decodeList([human, { ...bot, slot: 2 }]), undefined);
 });

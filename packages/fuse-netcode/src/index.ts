@@ -14,7 +14,8 @@ export { hashPlain } from "./hash-plain.js";
 export * from "./stream.js";
 export * from "./rollback.js";
 export * from "./snapshot.js";
-export { createSeatDecoder } from "./seat-snapshot.js";
+export { createSeatDecoder, createSeatListDecoder } from "./seat-snapshot.js";
+export { createHeldInputDecoder } from "./held-input-snapshot.js";
 export {
   createRosterDecoder,
   decodeHumanFinishers,

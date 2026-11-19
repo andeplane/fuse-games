@@ -67,3 +67,29 @@ export function createSeatDecoder({
     };
   };
 }
+
+/** Decode the full seat list, keeping checkpoint order and enforcing unique players and occupied slots. */
+export function createSeatListDecoder(
+  options: SeatDecoderOptions & { maxWatchers: number },
+): (raw: unknown) => Map<string, SeatRecord> | undefined {
+  const { capacity, maxWatchers } = options;
+  const decodeSeat = createSeatDecoder(options);
+  return function decodeSeats(raw) {
+    if (!Array.isArray(raw) || raw.length > capacity + maxWatchers) return;
+    const seats = new Map<string, SeatRecord>();
+    const occupied = new Set<number>();
+    let watchers = 0;
+    for (const item of raw) {
+      const seat = decodeSeat(item);
+      if (!seat || seats.has(seat.id)) return;
+      if (seat.watcher) {
+        if (++watchers > maxWatchers) return;
+      } else {
+        if (occupied.has(seat.slot)) return;
+        occupied.add(seat.slot);
+      }
+      seats.set(seat.id, seat);
+    }
+    return seats;
+  };
+}
