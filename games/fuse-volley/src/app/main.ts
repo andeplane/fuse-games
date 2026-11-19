@@ -43,6 +43,7 @@ import {
 import {
   button,
   createAppPortal,
+  createDialog,
   createGameMenu,
   createInviteCard,
   createLandingCard,
@@ -234,7 +235,7 @@ const GUIDE = {
     { keys: "LEFT PAD", action: "Slide your thumb left or right to run" },
     { keys: "JUMP", action: "Jump: hold it to jump the highest" },
   ],
-  goal: "Bounce the ball over the net with your blob. It must not touch the sand on your side, and three touches in a row is a fault.",
+  goal: "Bounce the ball over the net and keep it off your sand. Your team can touch the ball three times per return. A fourth touch is a fault.",
 } as const;
 
 const QUICK_GUIDE = {
@@ -284,10 +285,6 @@ function header(
     onOpenChange,
     sound: audioControl.sound,
   });
-}
-
-function keyHelp(): HTMLElement {
-  return createHowToPlay(GUIDE);
 }
 
 /** The two scoring rules as cards; `onPick` hears a choice, `update` shows the room's. */
@@ -619,9 +616,16 @@ function room(solo: boolean): void {
     botPicker.element,
     lobbyNote,
     lobbyActions,
-    keyHelp(),
   );
   lobby.append(lobbyMain, lobbySide);
+  const howToPlay = button("How to play", "fv-room-help");
+  const guide = createDialog({
+    title: "How to play",
+    classes: { root: "fui-menu-dialog" },
+  });
+  howToPlay.setAttribute("aria-haspopup", "dialog");
+  howToPlay.onclick = () => guide.dialog.showModal();
+  guide.body.append(createHowToPlay(GUIDE));
 
   // The court: who is playing, the canvas and the result card.
   const stage = el("section", "", "fv-stage"),
@@ -736,6 +740,7 @@ function room(solo: boolean): void {
     stage,
     controller,
     results.element,
+    guide.dialog,
   );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
@@ -768,6 +773,7 @@ function room(solo: boolean): void {
     actions: [lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation, players and rules scroll under them.
     actionsInHeader: true,
+    headerActions: [howToPlay],
     extras: [tvOption],
     status: status.element,
     ...(solo
@@ -912,6 +918,7 @@ function room(solo: boolean): void {
     main.dataset.team = String(view.world?.court.team ?? 1);
     main.dataset.format = view.world?.format ?? view.settings.format;
     lobby.hidden = next.screen !== "lobby";
+    if (lobby.hidden && guide.dialog.open) guide.dialog.close();
     stage.hidden = next.screen !== "play";
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
@@ -1099,6 +1106,7 @@ function room(solo: boolean): void {
       say("The host removed you from the room", "error");
     },
     ended() {
+      if (guide.dialog.open) guide.dialog.close();
       say("Room ended", "error");
       over = true;
       controls.clear();
