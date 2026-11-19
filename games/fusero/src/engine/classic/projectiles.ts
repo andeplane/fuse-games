@@ -443,48 +443,54 @@ function moveAgainstTerrain(
   if (p.lastSimulationMs <= p.spawnTimeMs + p.wallShootTime * 1000)
     return noCollision();
   const c = terrainCollision(p, ports);
-  if (c.collided) {
-    let ignore = false;
-    if (d.hit.name === "explode" && c.onlyDirt) {
-      // LX56 explodes inside dirt instead of resetting to the previous safe position.
-    } else if (d.hit.name === "bounce" || d.hit.name === "nothing") {
-      const bounce = d.hit.name === "bounce";
-      if (!bounce) {
-        p.x = add(origin.x, mul(mul(p.vx, dt), 0.5));
-        p.y = add(origin.y, mul(mul(p.vy, dt), 0.5));
-        p.oldX = p.x;
-        p.oldY = p.y;
-      }
-      const vx = Math.trunc(p.vx),
-        vy = Math.trunc(p.vy);
-      const horizontal = horizontalContactSides(c, vx);
-      const vertical = verticalContactSides(c, vy);
-      // A velocity truncated to zero still rewinds a bounce, but adds no side bit.
-      if (bounce && horizontal) p.x = origin.x;
-      if (bounce && vertical) p.y = origin.y;
-      if (vx) p.collisionSide |= horizontal;
-      if (vy) p.collisionSide |= vertical;
-      if (Math.abs(vx) < 2) p.vx = 0;
-      if (Math.abs(vy) < 2) p.vy = 0;
-    } else if (d.hit.name === "gothrough") {
+  if (!c.collided || d.hit.name === "gothrough") {
+    if (c.collided) {
       p.x = add(origin.x, mul(p.vx, dt));
       p.y = add(origin.y, mul(p.vy, dt));
-      ignore = true;
-    } else {
-      rewindToSafePosition(p, origin);
     }
-    if (!ignore)
-      return {
-        worm: null,
-        terrain: true,
-        border: false,
-        onlyDirt: c.onlyDirt,
-      };
+    p.oldX = p.x;
+    p.oldY = p.y;
+    return noCollision();
   }
-  p.oldX = p.x;
-  p.oldY = p.y;
-  return noCollision();
+  switch (d.hit.name) {
+    case "bounce":
+    case "nothing":
+      resolveSolidContact(p, origin, dt, c, d.hit.name === "bounce");
+      break;
+    default:
+      // LX56 explodes inside dirt.
+      if (d.hit.name !== "explode" || !c.onlyDirt)
+        rewindToSafePosition(p, origin);
+  }
+  return { worm: null, terrain: true, border: false, onlyDirt: c.onlyDirt };
 }
+
+function resolveSolidContact(
+  p: ClassicProjectileState,
+  origin: ProjectileOrigin,
+  dt: number,
+  contact: TerrainCollision,
+  bounce: boolean,
+): void {
+  if (!bounce) {
+    p.x = add(origin.x, mul(mul(p.vx, dt), 0.5));
+    p.y = add(origin.y, mul(mul(p.vy, dt), 0.5));
+    p.oldX = p.x;
+    p.oldY = p.y;
+  }
+  const vx = Math.trunc(p.vx);
+  const vy = Math.trunc(p.vy);
+  const horizontal = horizontalContactSides(contact, vx);
+  const vertical = verticalContactSides(contact, vy);
+  // A velocity truncated to zero still rewinds a bounce, but adds no side bit.
+  if (bounce && horizontal) p.x = origin.x;
+  if (bounce && vertical) p.y = origin.y;
+  if (vx) p.collisionSide |= horizontal;
+  if (vy) p.collisionSide |= vertical;
+  if (Math.abs(vx) < 2) p.vx = 0;
+  if (Math.abs(vy) < 2) p.vy = 0;
+}
+
 function moveProjectile(
   p: ClassicProjectileState,
   dt: number,
@@ -594,38 +600,35 @@ function explosionAt(
   return visual;
 }
 function bounce(p: ClassicProjectileState, coefficient: number): void {
-  let x = 1,
-    y = 1;
-  if (p.collisionSide & TOP) {
-    x = coefficient;
-    y = -coefficient;
+  // Native horizontal reflection takes priority at corners.
+  if (p.collisionSide & (LEFT | RIGHT)) {
+    p.vx = mul(p.vx, -coefficient);
+    p.vy = mul(p.vy, coefficient);
+  } else if (p.collisionSide & (TOP | BOTTOM)) {
+    p.vx = mul(p.vx, coefficient);
+    p.vy = mul(p.vy, -coefficient);
+  } else {
+    p.vx = mul(p.vx, 1);
+    p.vy = mul(p.vy, 1);
   }
-  if (p.collisionSide & BOTTOM) {
-    x = coefficient;
-    y = -coefficient;
-  }
-  if (p.collisionSide & LEFT) {
-    x = -coefficient;
-    y = coefficient;
-  }
-  if (p.collisionSide & RIGHT) {
-    x = -coefficient;
-    y = coefficient;
-  }
-  p.vx = mul(p.vx, x);
-  p.vy = mul(p.vy, y);
 }
+
+interface ProjectileStep {
+  world: CombatWorld;
+  worms: readonly CombatWorm[];
+  ports: CombatPorts;
+  dt: number;
+}
+
 function applyAction(
-  action: ClassicAction,
+  step: ProjectileStep,
   p: ClassicProjectileState,
+  action: ClassicAction,
   collision: Collision | null,
   timer: boolean,
   info: Actions,
-  world: CombatWorld,
-  worms: readonly CombatWorm[],
-  ports: CombatPorts,
-  dt: number,
 ): void {
+  const { world, worms, ports, dt } = step;
   let push = true,
     spawn = action.projectiles === 1;
   switch (action.name) {
@@ -778,15 +781,13 @@ function advanceProjectileImage(
 }
 
 function doFrame(
-  world: CombatWorld,
+  step: ProjectileStep,
   p: ClassicProjectileState,
-  worms: readonly CombatWorm[],
-  ports: CombatPorts,
   dtMs: number,
   pool: Map<number, ClassicProjectileState>,
 ): void {
+  const { world, worms, ports, dt } = step;
   const d = description(p),
-    dt = seconds(dtMs),
     info: Actions = {
       explode: false,
       damage: 0,
@@ -802,50 +803,62 @@ function doFrame(
     add(d.timerTime, mul(d.timerVar, p.timeVarRandom)) < p.life &&
     d.timer
   )
-    applyAction(d.timer, p, null, true, info, world, worms, ports, dt);
+    applyAction(step, p, d.timer, null, true, info);
   const collision = moveProjectile(p, dt, worms, ports, world.elapsedMs, dtMs);
   p.life = add(p.life, dt);
   p.extra = add(p.extra, dt);
   if (d.type === "image" && advanceProjectileImage(p, d, dt))
     info.remove = true;
-  if (d.trailType === 5 && d.trail && p.lastSimulationMs > p.lastTrailMs) {
-    p.lastTrailMs = p.lastSimulationMs + d.trail.delayMs;
-    info.trail = true;
-  } else if (
-    d.trailType > 0 &&
-    d.trailType < 5 &&
-    p.extra >= (d.trailType <= 2 ? f(0.075) : f(0.05))
-  ) {
-    p.extra = 0;
-    effect(
-      world,
-      d.trailType === 1
-        ? "smoke"
-        : d.trailType === 2
-          ? "chemical-smoke"
-          : d.trailType === 3
-            ? "doomsday"
-            : "explosion",
-      p.x,
-      p.y,
-      d.trailType === 4 ? 10 : 3,
-      75,
-    );
-  }
-  if (collision.terrain)
-    applyAction(d.hit, p, collision, false, info, world, worms, ports, dt);
+  info.trail = advanceProjectileTrail(world, p, d);
+  if (collision.terrain) applyAction(step, p, d.hit, collision, false, info);
   if (collision.worm && !info.explode)
-    applyAction(
-      d.playerHit,
-      p,
-      collision,
-      false,
-      info,
-      world,
-      worms,
-      ports,
-      dt,
-    );
+    applyAction(step, p, d.playerHit, collision, false, info);
+  finishProjectileActions(step, p, d, info, pool);
+  if (
+    info.remove ||
+    (!nativeActionExists(d.hit) &&
+      !nativeActionExists(d.playerHit) &&
+      !nativeActionExists(d.timer) &&
+      (d.type !== "image" || !d.animating || d.animType !== 0))
+  )
+    p.used = false;
+}
+
+const visualTrails = {
+  1: { kind: "smoke", interval: f(0.075), radius: 3 },
+  2: { kind: "chemical-smoke", interval: f(0.075), radius: 3 },
+  3: { kind: "doomsday", interval: f(0.05), radius: 3 },
+  4: { kind: "explosion", interval: f(0.05), radius: 10 },
+} as const;
+
+/** Emit a visual trail now, or schedule a projectile trail after impact actions. */
+function advanceProjectileTrail(
+  world: CombatWorld,
+  p: ClassicProjectileState,
+  d: ClassicProjectile,
+): boolean {
+  if (d.trailType === 5) {
+    if (!d.trail || !(p.lastSimulationMs > p.lastTrailMs)) return false;
+    p.lastTrailMs = p.lastSimulationMs + d.trail.delayMs;
+    return true;
+  }
+  if (d.trailType === 0) return false;
+  const trail = visualTrails[d.trailType];
+  if (trail && p.extra >= trail.interval) {
+    p.extra = 0;
+    effect(world, trail.kind, p.x, p.y, trail.radius, 75);
+  }
+  return false;
+}
+
+function finishProjectileActions(
+  step: ProjectileStep,
+  p: ClassicProjectileState,
+  d: ClassicProjectile,
+  info: Actions,
+  pool: Map<number, ClassicProjectileState>,
+): void {
+  const { world, worms, ports } = step;
   let explosionVisual: CombatEffect | undefined;
   if (info.explode) {
     let damage = info.damage;
@@ -880,15 +893,6 @@ function doFrame(
   // Native Proj_DoActionInfo plays the selected sample after the physical action and child spawns.
   // Every sound-bearing Classic action is a nonnegative explosion, so reuse its existing stable visual id.
   if (info.sound && explosionVisual) explosionVisual.sound = info.sound;
-  if (
-    !nativeActionExists(d.hit) &&
-    !nativeActionExists(d.playerHit) &&
-    !nativeActionExists(d.timer)
-  ) {
-    if (d.type !== "image" || !d.animating || d.animType !== 0)
-      info.remove = true;
-  }
-  if (info.remove) p.used = false;
 }
 
 /** Physics catches up each pool slot in native allocation order, including child spawns into later free slots. */
@@ -899,12 +903,13 @@ export function stepProjectiles(
   dtMs = 11,
 ): void {
   const pool = activeProjectileSlots(world);
+  const step: ProjectileStep = { world, worms, ports, dt: seconds(dtMs) };
   for (let slot = 0; slot < MAX_CLASSIC_PROJECTILES; slot++) {
     const p = pool.get(slot);
     if (!p?.used) continue;
     while (p.used && p.lastSimulationMs + dtMs <= world.elapsedMs) {
       p.lastSimulationMs += dtMs;
-      doFrame(world, p, worms, ports, dtMs, pool);
+      doFrame(step, p, dtMs, pool);
     }
   }
   world.projectiles = world.projectiles.filter((p) => p.used);
