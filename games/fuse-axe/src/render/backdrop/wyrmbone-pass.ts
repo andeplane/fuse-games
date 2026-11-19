@@ -9,6 +9,7 @@ import { firstTile, bayer, dither, hash, Raster } from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, WINDBLOWN, type Fire } from "./fire.js";
 import { snowyRelief as shape, type Box } from "./relief.js";
+import { paintSky, paintStars, paintMoon } from "./sky.js";
 
 /**
  * Stage 2, Wyrmbone Pass: a cold dawn on a mountain road through the bones of a dead giant wyrm. Far to near: the sky
@@ -79,28 +80,29 @@ function arc(
 }
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++)
-      r.px(x, y, dither(SKY, (y - 6) / 94 + (x / VIEW_W) * 0.14, x, y));
+  paintSky(r, SKY, (x, y) => (y - 6) / 94 + (x / VIEW_W) * 0.14);
   // The last stars, fading towards the dawn on the right.
-  for (let i = 0; i < 40; i++) {
-    const x = Math.floor(hash(i, 1) * r.width);
-    if (hash(i, 3) * VIEW_W < x * 0.8) continue;
-    r.px(x, 3 + Math.floor(hash(i, 2) * 40), i % 4 ? 0x4a5288 : 0xd8dcff);
-  }
-  // The moon setting in the west, lit from the dawn side, in a faint halo.
-  for (let y = 34; y < 72; y++)
-    for (let x = 34; x < 76; x++) {
-      const d = Math.hypot(x - 55, y - 53);
-      if (d >= 9.5) {
-        if (d < 16 && bayer(x, y) < (16 - d) / 14) r.px(x, y, 0x4c5486);
-        continue;
-      }
-      const shade = Math.hypot(x - 58.5, y - 52) > 9.5;
-      const crater =
-        Math.hypot(x - 57, y - 50) < 2 || Math.hypot(x - 52, y - 56) < 1.5;
-      r.px(x, y, shade ? 0x8e96b8 : crater ? 0xc0c8dc : 0xeef0f8);
-    }
+  paintStars(r, {
+    count: 40,
+    top: 3,
+    height: 40,
+    color: (index, x) => {
+      if (hash(index, 3) * VIEW_W < x * 0.8) return undefined;
+      return index % 4 ? 0x4a5288 : 0xd8dcff;
+    },
+  });
+  // The setting moon, lit from the dawn side, in a faint halo.
+  paintMoon(r, {
+    disc: [55, 53, 9.5],
+    sampleOffset: 0,
+    lightCenter: [58.5, 52],
+    marks: [
+      [57, 50, 2],
+      [52, 56, 1.5],
+    ],
+    colors: { light: 0xeef0f8, shadow: 0x8e96b8, marks: 0xc0c8dc },
+    halo: { radius: 16, fade: 14, color: 0x4c5486 },
+  });
   // Long thin clouds, their bellies catching the dawn.
   for (const [cx, cy, len] of [
     [168, 26, 76],
