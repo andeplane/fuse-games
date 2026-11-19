@@ -1,6 +1,13 @@
 import { inShape, apart } from "./collide.js";
 import { drift, freshBarriers } from "./gadgets.js";
-import { isCircle, isSeed, type MapDef, type Rect, type Goal } from "./maps.js";
+import {
+  isCircle,
+  isSeed,
+  type MapDef,
+  type Rect,
+  type Goal,
+  type Circle,
+} from "./maps.js";
 import { SUB } from "./math.js";
 
 const W = 640,
@@ -298,49 +305,54 @@ function deadRest(map: MapDef): string | undefined {
       )
         continue;
       for (const vx of [0, 2, -2]) {
-        const ball = { x: x * SUB, y: y * SUB, vx: vx * SUB, vy: 0 },
-          barriers = freshBarriers(map);
-        let still = 0,
-          scored = false,
-          lastX = -1,
-          lastY = -1;
-        for (let step = 0; step < 4920; step++) {
-          const beforeX = ball.x,
-            beforeY = ball.y;
-          const by = drift(ball, map, barriers, step + 1);
-          if (step === 4799) {
-            lastX = ball.x;
-            lastY = ball.y;
-          }
-          if (map.goals.some((g) => inShape(ball.x, ball.y, g, map))) {
-            scored = true;
-            break;
-          }
-          // Lying on a mover is at rest too: it has gone only as far as the mover took it.
-          still =
-            ball.x === beforeX + by.x && ball.y === beforeY + by.y
-              ? still + 1
-              : 0;
-          if (still >= 120) break;
-        }
-        if (scored) continue;
-        if (still < 120 && (ball.x !== lastX || ball.y !== lastY)) {
-          if (!map.wrapY)
-            return `moving from ${x},${y} at ${ball.x / SUB},${ball.y / SUB}`;
-          continue;
-        }
-        const bx = ball.x,
-          by = ball.y,
-          reach = (RIDER + BALL) * SUB;
-        if (
-          !freeAt(map, bx, by - reach, RIDER * SUB) &&
-          !freeAt(map, bx - reach, by - SUB, RIDER * SUB) &&
-          !freeAt(map, bx + reach, by - SUB, RIDER * SUB)
-        )
-          return `rest from ${x},${y} at ${bx},${by} sub-units`;
+        const fault = dropFault(map, x, y, vx);
+        if (fault) return fault;
       }
     }
   return;
+}
+
+const REST_STEPS = 120;
+const DROP_SAMPLE = 4800;
+const DROP_LIMIT = DROP_SAMPLE + REST_STEPS;
+
+function dropFault(
+  map: MapDef,
+  x: number,
+  y: number,
+  vx: number,
+): string | undefined {
+  const ball = { x: x * SUB, y: y * SUB, vx: vx * SUB, vy: 0 };
+  const barriers = freshBarriers(map);
+  let still = 0,
+    lastX = -1,
+    lastY = -1;
+  for (let step = 1; step <= DROP_LIMIT; step++) {
+    const beforeX = ball.x,
+      beforeY = ball.y;
+    const by = drift(ball, map, barriers, step);
+    if (step === DROP_SAMPLE) {
+      lastX = ball.x;
+      lastY = ball.y;
+    }
+    if (map.goals.some((g) => inShape(ball.x, ball.y, g, map))) return;
+    // A ball carried by a mover rests relative to the mover.
+    still =
+      ball.x === beforeX + by.x && ball.y === beforeY + by.y ? still + 1 : 0;
+    if (still >= REST_STEPS) break;
+  }
+  if (still < REST_STEPS && (ball.x !== lastX || ball.y !== lastY))
+    return map.wrapY
+      ? undefined
+      : `moving from ${x},${y} at ${ball.x / SUB},${ball.y / SUB}`;
+  const { x: bx, y: by } = ball;
+  const reach = (RIDER + BALL) * SUB;
+  if (
+    !freeAt(map, bx, by - reach, RIDER * SUB) &&
+    !freeAt(map, bx - reach, by - SUB, RIDER * SUB) &&
+    !freeAt(map, bx + reach, by - SUB, RIDER * SUB)
+  )
+    return `rest from ${x},${y} at ${bx},${by} sub-units`;
 }
 
 const overlap = (a: Rect, b: Rect, margin = 0): boolean =>
@@ -355,6 +367,9 @@ const overlapsAny = (
 ): boolean => obstacles.some((obstacle) => overlap(box, obstacle, margin));
 const around = (x: number, y: number, r: number): Rect =>
   rect(x - r, y - r, 2 * r, 2 * r);
+type Point = Pick<Circle, "x" | "y">;
+const distanceSquared = (a: Point, b: Point): number =>
+  squared(a.x - b.x) + squared(a.y - b.y);
 const even = (r: Rect): boolean =>
   [r.x, r.y, r.w, r.h].every((n) => Number.isInteger(n) && n % 2 === 0) &&
   r.w > 0 &&
@@ -441,18 +456,15 @@ export function gadgetFaults(map: MapDef): string[] {
       map.bumpers.some(
         (o) =>
           o !== bumper &&
-          squared(o.x - bumper.x) + squared(o.y - bumper.y) <=
-            squared(o.r + bumper.r + 2 * BALL),
+          distanceSquared(o, bumper) <= squared(o.r + bumper.r + 2 * BALL),
       )
     )
       faults.push("bumpers too close");
     if (
-      squared(bumper.x - map.ballAnchor.x) +
-        squared(bumper.y - map.ballAnchor.y) <=
-        squared(bumper.r + BALL) ||
+      distanceSquared(bumper, map.ballAnchor) <= squared(bumper.r + BALL) ||
       map.spawns.some(
         (spawn) =>
-          squared(bumper.x - spawn.x) + squared(bumper.y - spawn.y) <=
+          distanceSquared(bumper, spawn) <=
           squared(bumper.r + 2 * BALL + RIDER),
       )
     )
@@ -491,14 +503,10 @@ export function gadgetFaults(map: MapDef): string[] {
     if (overlapsAny(opening, goals)) faults.push("portal in a goal");
     if (
       ends.some(
-        (o) =>
-          o !== end &&
-          squared(o.x - end.x) + squared(o.y - end.y) <= squared(o.r + end.r),
+        (o) => o !== end && distanceSquared(o, end) <= squared(o.r + end.r),
       ) ||
       map.bumpers.some(
-        (o) =>
-          squared(o.x - end.x) + squared(o.y - end.y) <=
-          squared(o.r + end.r + BALL),
+        (o) => distanceSquared(o, end) <= squared(o.r + end.r + BALL),
       )
     )
       faults.push("portal too close");
