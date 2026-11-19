@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import type { Page } from "playwright";
 import type { BombersRuntime } from "../games/fuse-bombers/src/online/runtime.js";
 import type { Flow } from "../games/fuse-bombers/src/app/flow.js";
-import { launchSelected } from "./lib/browser.js";
+import { launchSelected, newSmokePage } from "./lib/browser.js";
 import { smokeTimeout } from "./smoke-timeout.js";
 
 /** Real, isolated play paths. Run against the built local room service with ONLINE_URL.
@@ -315,77 +315,73 @@ async function checkKeyboardResume(page: Page, game: string): Promise<void> {
 }
 
 async function checkBombersLocalResume(): Promise<void> {
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(smokeTimeout(20_000));
-  try {
-    await page.goto(
-      new URL("fuse-bombers/?local&mute&debug&seed=42", base).href,
+  await using page = await newSmokePage(
+    browser,
+    {
+      viewport: { width: 1440, height: 900 },
+    },
+    20_000,
+  );
+  await page.goto(new URL("fuse-bombers/?local&mute&debug&seed=42", base).href);
+  await page.locator("#screen[data-screen='lobby']").waitFor();
+  for (const close of ["resume", "escape"] as const) {
+    await openGameMenu(page);
+    if (close === "escape") await page.keyboard.press("Escape");
+    else
+      await page
+        .getByRole("button", { name: "BACK TO GAME", exact: true })
+        .click();
+    // The menu is the bar's dialog: play resumes, at the arena, once the dialog has closed.
+    await page.waitForFunction(
+      () => document.activeElement?.tagName === "CANVAS",
     );
-    await page.locator("#screen[data-screen='lobby']").waitFor();
-    for (const close of ["resume", "escape"] as const) {
-      await openGameMenu(page);
-      if (close === "escape") await page.keyboard.press("Escape");
-      else
-        await page
-          .getByRole("button", { name: "BACK TO GAME", exact: true })
-          .click();
-      // The menu is the bar's dialog: play resumes, at the arena, once the dialog has closed.
-      await page.waitForFunction(
-        () => document.activeElement?.tagName === "CANVAS",
-      );
-      await page.keyboard.press("Space");
-      await page.waitForFunction((joined) => {
-        const flow = (window as Window & { fuseBombers?: { flow: Flow } })
-          .fuseBombers!.flow;
-        return flow.lobby.devices.includes("key:WASD") === joined;
-      }, close === "resume");
-      await collapsed(page);
-    }
     await page.keyboard.press("Space");
-    await page.keyboard.press("Enter");
-    await page.locator("#screen[data-screen='playing']").waitFor();
-    for (const close of ["resume", "escape"] as const) {
-      await page.waitForFunction(() => {
-        const flow = (window as Window & { fuseBombers?: { flow: Flow } })
-          .fuseBombers!.flow;
-        return (
-          flow.view.castles[0]?.alive && flow.view.castles[0].reloadTicks === 0
-        );
-      });
-      const before = await page.evaluate(
-        () =>
-          (window as Window & { fuseBombers?: { flow: Flow } }).fuseBombers!
-            .flow.view.castles[0]!.stats.rocketsFired,
-      );
-      await openGameMenu(page);
-      if (close === "escape") await page.keyboard.press("Escape");
-      else
-        await page
-          .getByRole("button", { name: "BACK TO GAME", exact: true })
-          .click();
-      // The menu is the bar's dialog: play resumes, at the arena, once the dialog has closed.
-      await page.waitForFunction(
-        () => document.activeElement?.tagName === "CANVAS",
-      );
-      await page.keyboard.press("Space");
-      await page.waitForFunction(
-        (shots) =>
-          (window as Window & { fuseBombers?: { flow: Flow } }).fuseBombers!
-            .flow.view.castles[0]!.stats.rocketsFired > shots,
-        before,
-      );
-      await collapsed(page);
-    }
-    results.push({
-      game: "fuse-bombers",
-      localKeyboardAfterResumeAndEscape: true,
-    });
-  } finally {
-    await context.close();
+    await page.waitForFunction((joined) => {
+      const flow = (window as Window & { fuseBombers?: { flow: Flow } })
+        .fuseBombers!.flow;
+      return flow.lobby.devices.includes("key:WASD") === joined;
+    }, close === "resume");
+    await collapsed(page);
   }
+  await page.keyboard.press("Space");
+  await page.keyboard.press("Enter");
+  await page.locator("#screen[data-screen='playing']").waitFor();
+  for (const close of ["resume", "escape"] as const) {
+    await page.waitForFunction(() => {
+      const flow = (window as Window & { fuseBombers?: { flow: Flow } })
+        .fuseBombers!.flow;
+      return (
+        flow.view.castles[0]?.alive && flow.view.castles[0].reloadTicks === 0
+      );
+    });
+    const before = await page.evaluate(
+      () =>
+        (window as Window & { fuseBombers?: { flow: Flow } }).fuseBombers!.flow
+          .view.castles[0]!.stats.rocketsFired,
+    );
+    await openGameMenu(page);
+    if (close === "escape") await page.keyboard.press("Escape");
+    else
+      await page
+        .getByRole("button", { name: "BACK TO GAME", exact: true })
+        .click();
+    // The menu is the bar's dialog: play resumes, at the arena, once the dialog has closed.
+    await page.waitForFunction(
+      () => document.activeElement?.tagName === "CANVAS",
+    );
+    await page.keyboard.press("Space");
+    await page.waitForFunction(
+      (shots) =>
+        (window as Window & { fuseBombers?: { flow: Flow } }).fuseBombers!.flow
+          .view.castles[0]!.stats.rocketsFired > shots,
+      before,
+    );
+    await collapsed(page);
+  }
+  results.push({
+    game: "fuse-bombers",
+    localKeyboardAfterResumeAndEscape: true,
+  });
 }
 
 async function checkBombersArrows(page: Page): Promise<void> {
@@ -447,108 +443,101 @@ async function checkBombersArrows(page: Page): Promise<void> {
 }
 
 async function checkBombersDisplay(): Promise<void> {
-  const context = await browser.newContext({
+  await using context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  context.setDefaultTimeout(smokeTimeout(20_000));
   const host = await context.newPage();
-  host.setDefaultTimeout(smokeTimeout(20_000));
-  try {
-    await host.goto(new URL("fuse-bombers/?mute", base).href);
-    await openPlayOptions(host);
-    await host.getByRole("button", { name: "Host room", exact: true }).click();
-    await takeHostSeat(host, "Menu smoke");
-    // Shared TV is the host's choice in the room.
-    await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
-    await host
-      .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
-      .waitFor();
-    await host
-      .getByRole("button", { name: /^Add AI$/i, exact: true })
-      .first()
-      .click();
-    const display = await context.newPage();
-    display.setDefaultTimeout(smokeTimeout(20_000));
-    const url = new URL(host.url());
-    url.searchParams.set("display", "1");
-    url.searchParams.set("mute", "");
-    await display.goto(url.href);
-    await display.locator(".fb-online[data-screen='lobby']").waitFor();
-    await host.getByRole("button", { name: "START", exact: true }).click();
-    const guide = display.locator(".fui-round-controls:visible");
-    await guide.waitFor();
-    assert.match(await guide.innerText(), /PHONE CONTROLS/);
-    assert.match(await guide.innerText(), /FIRE/);
-    assert.doesNotMatch(await guide.innerText(), /Join a seat|Space|WASD/);
-    await display.screenshot({ path: `${shots}/bombers-tv-startup.png` });
-    results.push({ game: "fuse-bombers", sharedTvPhoneInstructions: true });
-  } finally {
-    await context.close();
-  }
+  await host.goto(new URL("fuse-bombers/?mute", base).href);
+  await openPlayOptions(host);
+  await host.getByRole("button", { name: "Host room", exact: true }).click();
+  await takeHostSeat(host, "Menu smoke");
+  // Shared TV is the host's choice in the room.
+  await host.getByRole("checkbox", { name: /^Shared TV/ }).check();
+  await host
+    .getByRole("button", { name: "OPEN TV SCREEN", exact: true })
+    .waitFor();
+  await host
+    .getByRole("button", { name: /^Add AI$/i, exact: true })
+    .first()
+    .click();
+  const display = await context.newPage();
+  const url = new URL(host.url());
+  url.searchParams.set("display", "1");
+  url.searchParams.set("mute", "");
+  await display.goto(url.href);
+  await display.locator(".fb-online[data-screen='lobby']").waitFor();
+  await host.getByRole("button", { name: "START", exact: true }).click();
+  const guide = display.locator(".fui-round-controls:visible");
+  await guide.waitFor();
+  assert.match(await guide.innerText(), /PHONE CONTROLS/);
+  assert.match(await guide.innerText(), /FIRE/);
+  assert.doesNotMatch(await guide.innerText(), /Join a seat|Space|WASD/);
+  await display.screenshot({ path: `${shots}/bombers-tv-startup.png` });
+  results.push({ game: "fuse-bombers", sharedTvPhoneInstructions: true });
 }
 
 async function checkTownOnlineResume(): Promise<void> {
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(smokeTimeout(20_000));
-  try {
-    // Fusetown exposes its online room by link only. Create a real room through the production API,
-    // store only the host capability, then join/start through the actual lobby; no world is injected.
-    const response = await context.request.post(
-      new URL("api/rooms?gameId=fuse-lane", base).href,
+  await using page = await newSmokePage(
+    browser,
+    {
+      viewport: { width: 1440, height: 900 },
+    },
+    20_000,
+  );
+  // Fusetown exposes its online room by link only. Create a real room through the production API,
+  // store only the host capability, then join/start through the actual lobby; no world is injected.
+  const response = await page.request.post(
+    new URL("api/rooms?gameId=fuse-lane", base).href,
+  );
+  assert.ok(response.ok(), "Fusetown room is created by the service");
+  const room = (await response.json()) as { code: string; token: string };
+  await page.addInitScript(({ code, token }) => {
+    localStorage.setItem(`fuse-lane-room-${code}`, token);
+  }, room);
+  await page.goto(new URL(`fuse-lane/?room=${room.code}&mute`, base).href);
+  await takeHostSeat(page, "Menu smoke");
+  await page
+    .getByRole("button", { name: /^Add AI$/i, exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "START MATCH", exact: true }).click();
+  await page.locator(".fl-room[data-phase='running']").waitFor();
+  for (const close of ["resume", "escape"] as const) {
+    await openGameMenu(page);
+    if (close === "escape") await page.keyboard.press("Escape");
+    else
+      await page
+        .getByRole("button", { name: "BACK TO GAME", exact: true })
+        .click();
+    assert.equal(
+      await page
+        .locator(".fl-game")
+        .evaluate((game) => document.activeElement === game),
+      true,
+      `Fusetown online: ${close} focuses play`,
     );
-    assert.ok(response.ok(), "Fusetown room is created by the service");
-    const room = (await response.json()) as { code: string; token: string };
-    await page.addInitScript(({ code, token }) => {
-      localStorage.setItem(`fuse-lane-room-${code}`, token);
-    }, room);
-    await page.goto(new URL(`fuse-lane/?room=${room.code}&mute`, base).href);
-    await takeHostSeat(page, "Menu smoke");
-    await page
-      .getByRole("button", { name: /^Add AI$/i, exact: true })
-      .first()
-      .click();
-    await page
-      .getByRole("button", { name: "START MATCH", exact: true })
-      .click();
-    await page.locator(".fl-room[data-phase='running']").waitFor();
-    for (const close of ["resume", "escape"] as const) {
-      await openGameMenu(page);
-      if (close === "escape") await page.keyboard.press("Escape");
-      else
-        await page
-          .getByRole("button", { name: "BACK TO GAME", exact: true })
-          .click();
-      assert.equal(
-        await page
-          .locator(".fl-game")
-          .evaluate((game) => document.activeElement === game),
-        true,
-        `Fusetown online: ${close} focuses play`,
-      );
-    }
-    await page.keyboard.press("Enter");
-    await page.locator(".fl-briefing").waitFor({ state: "hidden" });
-    await collapsed(page);
-    results.push({
-      game: "fuse-lane",
-      onlineKeyboardAfterResumeAndEscape: true,
-    });
-  } finally {
-    await context.close();
   }
+  await page.keyboard.press("Enter");
+  await page.locator(".fl-briefing").waitFor({ state: "hidden" });
+  await collapsed(page);
+  results.push({
+    game: "fuse-lane",
+    onlineKeyboardAfterResumeAndEscape: true,
+  });
 }
 
 try {
   for (const game of games.filter(
     (game) => !selected || selected.includes(game.id),
   )) {
-    const context = await browser.newContext({
-      viewport: { width: 1440, height: 900 },
-    });
-    const page = await context.newPage();
-    page.setDefaultTimeout(smokeTimeout(20_000));
+    await using page = await newSmokePage(
+      browser,
+      {
+        viewport: { width: 1440, height: 900 },
+      },
+      20_000,
+    );
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     try {
@@ -590,60 +579,62 @@ try {
       await page
         .screenshot({ path: `${shots}/${game.id}-failure.png` })
         .catch(() => {});
-    } finally {
-      await context.close();
     }
   }
 
   // A narrow, touch-enabled browser exercises the actual phone control wording and menu geometry.
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-  const phone = await context.newPage();
-  phone.setDefaultTimeout(smokeTimeout(20_000));
-  try {
-    await start(
-      phone,
-      games.find((game) => game.id === "fuse-bombers")!,
+  {
+    await using phone = await newSmokePage(
+      browser,
+      {
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+      },
+      20_000,
     );
-    await phone.locator(".fui-round-controls").waitFor({ state: "visible" });
-    assert.match(
-      await phone.locator(".fui-round-controls").innerText(),
-      /FIRE/,
-    );
-    await phone.locator(".fui-game-menu-trigger").click();
-    const panel = phone.locator(".fui-game-menu-panel");
-    const box = await panel.boundingBox();
-    assert.ok(
-      box &&
-        box.x >= 0 &&
-        box.y >= 0 &&
-        box.x + box.width <= 391 &&
-        box.y + box.height <= 845,
-      "phone menu fits the viewport",
-    );
-    await phone.screenshot({ path: `${evidence}/bombers-phone-menu.png` });
-    await panel.getByRole("button", { name: "CONTROLS", exact: true }).click();
-    assert.match(
-      await panel.locator(".fui-game-menu-controls").innerText(),
-      /FIRE/,
-    );
-    results.push({
-      game: "fuse-bombers",
-      phoneMenu: true,
-      phoneTouchHelp: true,
-    });
-  } catch (error) {
-    failures.push(
-      `phone: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    await phone
-      .screenshot({ path: `${shots}/phone-failure.png` })
-      .catch(() => {});
-  } finally {
-    await context.close();
+    try {
+      await start(
+        phone,
+        games.find((game) => game.id === "fuse-bombers")!,
+      );
+      await phone.locator(".fui-round-controls").waitFor({ state: "visible" });
+      assert.match(
+        await phone.locator(".fui-round-controls").innerText(),
+        /FIRE/,
+      );
+      await phone.locator(".fui-game-menu-trigger").click();
+      const panel = phone.locator(".fui-game-menu-panel");
+      const box = await panel.boundingBox();
+      assert.ok(
+        box &&
+          box.x >= 0 &&
+          box.y >= 0 &&
+          box.x + box.width <= 391 &&
+          box.y + box.height <= 845,
+        "phone menu fits the viewport",
+      );
+      await phone.screenshot({ path: `${evidence}/bombers-phone-menu.png` });
+      await panel
+        .getByRole("button", { name: "CONTROLS", exact: true })
+        .click();
+      assert.match(
+        await panel.locator(".fui-game-menu-controls").innerText(),
+        /FIRE/,
+      );
+      results.push({
+        game: "fuse-bombers",
+        phoneMenu: true,
+        phoneTouchHelp: true,
+      });
+    } catch (error) {
+      failures.push(
+        `phone: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await phone
+        .screenshot({ path: `${shots}/phone-failure.png` })
+        .catch(() => {});
+    }
   }
   try {
     await checkBombersDisplay();

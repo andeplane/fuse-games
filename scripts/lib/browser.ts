@@ -3,8 +3,11 @@ import {
   firefox,
   webkit,
   type Browser,
+  type BrowserContextOptions,
   type LaunchOptions,
+  type Page,
 } from "playwright";
+import { smokeTimeout } from "../smoke-timeout.js";
 
 /**
  * The one place a browser script chooses its engine.
@@ -50,3 +53,14 @@ export const BOTH_ENGINES = [
   { name: "chrome", kind: "chromium" },
   { name: "webkit", kind: "webkit" },
 ] as const satisfies ReadonlyArray<{ name: string; kind: BrowserKind }>;
+
+/** Create a page that owns its isolated context and uses the smoke timeout scale. */
+export async function newSmokePage(
+  browser: Browser,
+  options: BrowserContextOptions,
+  timeout: number,
+): Promise<Page> {
+  const page = await browser.newPage(options);
+  page.setDefaultTimeout(smokeTimeout(timeout));
+  return page;
+}
