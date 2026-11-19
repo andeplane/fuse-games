@@ -1,6 +1,10 @@
 import {
   createCorrectionSmoother,
   type CorrectionSmoother,
+  forwardWorld,
+  gainedCueCount,
+  memoizeLeadInput,
+  type ForwardWorldOptions,
 } from "fuse-netcode";
 import {
   copyWorld,
@@ -31,53 +35,25 @@ export interface ForwardInputs {
   held(world: World, rider: Rider): number;
 }
 
-interface Run {
-  /** The copy after the whole steps taken. */
-  copy: World;
-  taken: number;
-  /** The copy one step further, when the clock is `part` of the way into that step. */
-  next?: World;
-  part: number;
-  /** The last step taken scored or changed the phase. */
-  crossed: boolean;
-}
-
-/** Runs `ahead` log ticks (fractional) of `world` on a copy, at most `limit` whole steps. */
-function run(
-  world: World,
-  ahead: number,
-  inputs: ForwardInputs,
-  limit: number,
-): Run {
-  const copy = copyWorld(world);
-  const moved = (now: World) =>
-    now.phase !== world.phase ||
-    now.score[0] !== world.score[0] ||
-    now.score[1] !== world.score[1];
-  let taken = 0;
-  for (let left = ahead; left > 0; left -= 1) {
-    // As the fold does: set the tick's pace, then ask everyone what they hold for it.
-    const count = paceTick(copy),
-      held = new Map(
-        copy.riders.map((rider) => [rider.id, inputs.held(copy, rider)]),
-      ),
-      steps = Math.min(1, left) * count,
-      whole = Math.floor(steps);
-    for (let i = 0; i < whole; i++) {
-      if (taken >= limit) return { copy, taken, part: 0, crossed: false };
-      stepWorld(copy, held);
-      taken++;
-      if (moved(copy)) return { copy, taken, part: 0, crossed: true };
-    }
-    const part = steps - whole;
-    if (left <= 1 && part > 0.001 && taken < limit) {
-      const next = copyWorld(copy);
-      stepWorld(next, held);
-      if (!moved(next)) return { copy, taken, next, part, crossed: false };
-    }
-  }
-  return { copy, taken, part: 0, crossed: false };
-}
+const forwardSteps: ForwardWorldOptions<
+  World,
+  ReadonlyMap<string, number>,
+  ForwardInputs
+> = {
+  copy: copyWorld,
+  step: stepWorld,
+  decided: (from, now) =>
+    now.phase !== from.phase ||
+    now.score[0] !== from.score[0] ||
+    now.score[1] !== from.score[1],
+  beginTick(copy, inputs) {
+    const steps = paceTick(copy);
+    const held = new Map(
+      copy.riders.map((rider) => [rider.id, inputs.held(copy, rider)]),
+    );
+    return { steps, heldAt: () => held };
+  },
+};
 
 /** The newest world played forward `ahead` log ticks (0–2, fractional), as a view to draw. */
 export function forward(
@@ -85,10 +61,7 @@ export function forward(
   ahead: number,
   inputs: ForwardInputs,
 ): WorldView {
-  let result = run(world, Math.max(0, ahead), inputs, Infinity);
-  // A step that scored or changed the phase is not shown: play again up to the step before it.
-  if (result.crossed)
-    result = run(world, Math.max(0, ahead), inputs, result.taken - 1);
+  const result = forwardWorld(world, ahead, inputs, forwardSteps);
   const view = toView(result.copy);
   return result.next ? blend(view, toView(result.next), result.part) : view;
 }
@@ -119,26 +92,12 @@ export function forwardInputs(
  * planning it is the most expensive thing the forward run does: ask it once per rider, step and frame revision.
  */
 export function memoBot(bot: BotInput): (revision: number) => BotInput {
-  const cache = new Map<string, number>();
-  return (revision) => (world, rider) => {
-    const key = `${revision}:${world.step}:${rider.id}`;
-    let bits = cache.get(key);
-    if (bits === undefined) {
-      // Old steps are never asked for again: a handful of entries is all a frame needs.
-      if (cache.size >= 64) cache.clear();
-      bits = bot(world, rider);
-      cache.set(key, bits);
-    }
-    return bits;
-  };
+  return memoizeLeadInput(
+    bot,
+    (revision, world, rider) => `${revision}:${world.step}:${rider.id}`,
+    64,
+  );
 }
-
-/** How far a wrapping 16-bit counter moved forwards; 0 when it stood still or went back. */
-const COUNTER = 0x10000;
-const gained = (was: number, now: number): number => {
-  const moved = (now - was + COUNTER) % COUNTER;
-  return moved < COUNTER / 2 ? moved : 0;
-};
 
 /**
  * Keeps an effect from firing twice. The scene fires a jump or a bounce when its counter goes up between two drawn
@@ -161,7 +120,7 @@ export function createCueLatch(): (
       bounces = undefined;
     }
     const hold = (was: number | undefined, now: number): number =>
-      was === undefined || gained(was, now) > 0 ? now : was;
+      was === undefined || gainedCueCount(was, now) > 0 ? now : was;
     let same = true;
     const riders = view.riders.map((rider) => {
       const count = (jumps[rider.index] = hold(

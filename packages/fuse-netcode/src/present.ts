@@ -160,3 +160,30 @@ export function createCorrectionSmoother(
     },
   };
 }
+
+/** Reuse deterministic bot inputs across presentation frames, bounded by each game's working set. */
+export function memoizeLeadInput<Args extends unknown[]>(
+  bot: (...args: Args) => number,
+  keyFor: (revision: number, ...args: Args) => string,
+  capacity: number,
+): (revision: number) => (...args: Args) => number {
+  const cache = new Map<string, number>();
+  return (revision) =>
+    (...args) => {
+      const key = keyFor(revision, ...args);
+      const known = cache.get(key);
+      if (known !== undefined) return known;
+      if (cache.size >= capacity) cache.clear();
+      const bits = bot(...args);
+      cache.set(key, bits);
+      return bits;
+    };
+}
+
+const CUE_COUNTER_RANGE = 0x10000;
+
+/** A 16-bit effect counter's forward movement, with rollback and an unchanged count both yielding zero. */
+export function gainedCueCount(was: number, now: number): number {
+  const moved = (now - was + CUE_COUNTER_RANGE) % CUE_COUNTER_RANGE;
+  return moved < CUE_COUNTER_RANGE / 2 ? moved : 0;
+}
