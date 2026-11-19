@@ -2,6 +2,11 @@
 
 Fuserod uses its own orange hot rod from `games/fuserod/src/art/front.ts`, rendered on a transparent canvas at both desktop icon sizes.
 
+Cyberfuse uses the three-quarter helmet and shoulders of its cyan operative,
+painted for the game's sprite sheet in `games/cyberfuse/src/art/`. The taskbar icon
+crops to the helmet so its luminous visor and crest survive at 16 px. Both
+sizes have a transparent background and a one-pixel dark outline.
+
 Fusero (2026-11-15): original code-drawn neon worm and rope from
 `games/fusero/art/icon.svg`, rasterized to 64×64 and 32×32 transparent RGBA PNGs.
 

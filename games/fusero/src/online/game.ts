@@ -1,10 +1,9 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
+  hashCheckpointJson,
   applyManagementTick,
+  createSeatDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -120,6 +119,8 @@ const payloads = {
   name: validName,
   avatar: isAvatar,
   settings: (raw: unknown) => parseSettings(raw) !== undefined,
+  memberKey: playerKey,
+  matchKey: validMatchId,
   capacity: CAPACITY,
 };
 const shapeLoadout = (raw: unknown): raw is Loadout =>
@@ -127,19 +128,10 @@ const shapeLoadout = (raw: unknown): raw is Loadout =>
   raw.length === 5 &&
   raw.every((id) => uint32(id) && id < 38);
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return validMatchId(raw[4]);
-    const index =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return index < 0 || playerKey((raw as unknown[])[index]);
-  }
+  if (isManagementEntry(raw, payloads)) return true;
   return (
-    Array.isArray(raw) &&
+    hasLogPosition(raw) &&
     (raw.length === 5 || raw.length === 6) &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
     validMatchId(raw[3]) &&
     (raw[2] === PLAY
       ? raw.length === 6 && uint32(raw[4]) && isInput(raw[5])
@@ -374,17 +366,6 @@ const plain = (raw: unknown): raw is Record<string, unknown> =>
   !!raw && typeof raw === "object" && !Array.isArray(raw);
 const sortedEntries = <T>(record: Record<string, T>): [string, T][] =>
   Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 export function encode(room: Room): unknown[] {
   return [
     room.matchId,
@@ -402,45 +383,12 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.pendingPressed),
   ];
 }
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
+const decodeSeat = createSeatDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  validName,
+  validAvatar: isAvatar,
+});
 export function decode(
   fields: readonly unknown[],
   tick: number,
@@ -582,25 +530,7 @@ export function decode(
   };
 }
 export function hash(room: Room): string {
-  const text = JSON.stringify(
-    [room.tick, ...encode(room)],
-    (_key, value: unknown) =>
-      plain(value)
-        ? Object.fromEntries(
-            Object.entries(value).sort(([a], [b]) =>
-              a < b ? -1 : a > b ? 1 : 0,
-            ),
-          )
-        : value,
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson([room.tick, ...encode(room)]);
 }
 export function view(room: Room): View {
   return {

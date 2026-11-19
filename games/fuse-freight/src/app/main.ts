@@ -34,7 +34,6 @@ import {
   uuid,
 } from "fuse-netcode";
 import {
-  backOnEscape,
   button,
   createAppPortal,
   createGameMenu,
@@ -42,13 +41,13 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
-  createPageMessage,
+  showInvalidRoomPage,
   createRoomLayout,
   createRoster,
+  createLiveResults,
   createResultsScreen,
   createSharedTvOption,
   createRoundControls,
-  createSubPage,
   el,
 } from "fuse-ui";
 import {
@@ -100,7 +99,7 @@ import {
   roomFailure,
   safeStore,
   sessionFor,
-} from "./session.js";
+} from "fuse-ui/room-session";
 
 const controllerGuide = {
   controls: [
@@ -401,15 +400,7 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -515,7 +506,14 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "ff-lobby"),
     lobbyMain = el("div", "", "ff-lobby-main"),
     lobbySide = el("aside", "", "ff-lobby-side"),
-    roster = createRoster({ emptyText: "No drivers yet" }),
+    roster = createRoster({
+      emptyText: "No drivers yet",
+      removeBot: {
+        className: "ff-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "ff-add-bot"),
     start = button("START THE TRAINS ▶", "fui-button-primary ff-start"),
     lobbyNote = el("p", "", "fui-lobby-note");
@@ -693,8 +691,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   screen.append(canvas, hud);
 
   // Touch buttons under or over the depot, and the phone controller for a shared screen.
@@ -961,6 +958,7 @@ function room(solo: boolean): void {
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
+        removableBot: next.lobby.removable.includes(member.id),
         slot: member.slot,
         // Alone with the bots there is nobody to tell apart from: the seat reads "You", not "You (you)".
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -972,18 +970,6 @@ function room(solo: boolean): void {
             : "OFFLINE",
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".ff-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "ff-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     bayState = [0, 1, 2, 3, 4].map((slot) => {
       const member = next.lobby.members.find((m) => m.slot === slot);
       return { slot, taken: !!member, you: member?.you ?? false };
@@ -1090,36 +1076,12 @@ function room(solo: boolean): void {
     }
     // Result.
     const result = next.result;
-    if (!result || next.screen === "controller") {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: seatColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(next.screen === "controller" ? undefined : result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: seatColor, friend }),
+      bar: resultBar,
+    });
   };
 
   // ---- sounds ----

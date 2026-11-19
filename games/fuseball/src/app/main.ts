@@ -41,7 +41,6 @@ import {
 } from "fuse-netcode";
 import { resultBar, resultReport } from "./result-report.js";
 import {
-  backOnEscape,
   button,
   createAppPortal,
   createGameMenu,
@@ -49,12 +48,12 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
-  createPageMessage,
+  showInvalidRoomPage,
   createRoomLayout,
   createRoster,
+  createLiveResults,
   createResultsScreen,
   createRoundControls,
-  createSubPage,
   el,
 } from "fuse-ui";
 import {
@@ -114,7 +113,8 @@ import {
   type Model,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import {
   NOT_OPEN,
   keys,
@@ -659,15 +659,7 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -725,7 +717,14 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "fb-lobby"),
     lobbyMain = el("div", "", "fb-panel"),
     lobbySide = el("aside", "", "fb-panel fb-lobby-side"),
-    roster = createRoster({ emptyText: "No riders yet" }),
+    roster = createRoster({
+      emptyText: "No riders yet",
+      removeBot: {
+        className: "fb-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "fb-add-bot"),
     switchSide = button("SWITCH SIDE", "fb-switch-side"),
     start = button("START MATCH", "fui-button-primary fb-start"),
@@ -853,8 +852,7 @@ function room(solo: boolean): void {
     backText: "Leave",
     onAction: (id) => (id === "rematch" ? rematch() : toLobby()),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   screen.append(canvas, roundControls.element);
 
   // One stick and one button, twice: small over a phone's own arena, and filling the phone for a shared screen.
@@ -1070,6 +1068,7 @@ function room(solo: boolean): void {
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
+        removableBot: next.lobby.removable.includes(member.id),
         slot: member.slot,
         // Alone with the bots there is nobody to tell apart from: the seat reads "You", not "You (you)".
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -1086,18 +1085,6 @@ function room(solo: boolean): void {
       })),
     );
     roomLayout.update(next.lobby.members.length, 2 * view.settings.size);
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fb-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fb-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !next.lobby.canAddBot;
     switchSide.hidden = !next.lobby.canSwitch;
     modes.update(next.lobby.size, next.lobby.editable);
@@ -1169,40 +1156,28 @@ function room(solo: boolean): void {
     controllerWaiting.hidden = !next.result?.waiting;
     // Result.
     const result = next.result;
-    if (!result || next.screen === "controller") {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: teamColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(next.screen === "controller" ? undefined : result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: teamColor, friend }),
+      bar: resultBar,
+    });
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display,
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => runtime.self,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   const goals = createGoalWatch();
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
@@ -1257,25 +1232,7 @@ function room(solo: boolean): void {
         controls.hold("autopilot", autopilotBits(state, viewer.me));
       // Keys still down when a match starts or the log is reset are logged again.
       runtime.flush();
-      if (!display && state && (session.kind === "room" || social.isSignedIn()))
-        for (const report of dueReports(
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.

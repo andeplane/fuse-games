@@ -6,6 +6,7 @@ import {
   VIEW_W,
 } from "../../engine/view-kit.js";
 import { dither, hash, Raster, type Brush, type StageArt } from "./kit.js";
+import { paintSky, paintStars } from "./sky.js";
 
 /**
  * Stage 1, Ashen Village: a dusk road through burning thatched huts, after the key scene in `docs/concept-art.html`.
@@ -146,17 +147,13 @@ const LIGHTS = [
 ];
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++)
-      r.px(x, y, dither(SKY, (y - 18) / 84, x, y));
-  for (let i = 0; i < 40; i++) {
-    const x = Math.floor(hash(i, 1) * r.width);
-    r.px(
-      x,
-      21 + Math.floor(hash(i, 2) * 30),
-      i % 5 === 0 ? 0xc9b8ff : 0x5a3a7a,
-    );
-  }
+  paintSky(r, SKY, (_x, y) => (y - 18) / 84);
+  paintStars(r, {
+    count: 40,
+    top: 21,
+    height: 30,
+    color: (index) => (index % 5 === 0 ? 0xc9b8ff : 0x5a3a7a),
+  });
   // A low sun cut by the bands of a synthwave dusk.
   for (let y = 66; y < FLOOR; y++)
     for (let x = 40; x < 110; x++) {

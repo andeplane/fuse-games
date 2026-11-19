@@ -14,6 +14,7 @@ import type { Truck } from "./truck.js";
 import type { Point, Track } from "./track.js";
 import { cos, hypot, sin } from "./deterministic-math.js";
 import { driveTruck, placeTruck, startTruck } from "./drive.js";
+import { createBattle, stepBattle, type BattleState } from "./battle.js";
 import {
   getOffroadCourse,
   nativeRegionProgress,
@@ -38,6 +39,7 @@ export interface RaceState {
   phase: Phase;
   rngState: number;
   pickups: OffroadPickups;
+  battle?: BattleState;
   trackName: string;
   trucks: Truck[];
   countdownEndTick: number;
@@ -70,6 +72,7 @@ export function createRace(
   campaignIndex = 0,
   drivers: readonly (OffroadDriver | undefined)[] = [],
   gridOrder?: readonly number[],
+  mode: "classic" | "battle" = "classic",
 ): RaceState {
   let rng = seed & 0xffff;
   const trucks = stats.map((s, i) => {
@@ -116,6 +119,9 @@ export function createRace(
     phase: "countdown",
     rngState: rng,
     pickups: initialOffroadPickups(),
+    ...(mode === "battle"
+      ? { battle: createBattle(track.name, trucks.length) }
+      : {}),
     trackName: track.name,
     trucks,
     countdownEndTick: config.countdownTicks,
@@ -245,6 +251,7 @@ export function step(
   inputs: readonly TruckInput[],
   track: Track,
   botSlots: readonly boolean[] = [],
+  itemPresses?: readonly boolean[],
 ): StepResult {
   const tick = state.tick + 1;
   const events: RaceEvent[] = [];
@@ -258,6 +265,9 @@ export function step(
   const prev = state.trucks;
   let paceOrder = state.paceOrder;
   const starting = prev.slice();
+  const battle =
+    state.battle &&
+    stepBattle(state.battle, starting, inputs, tick, itemPresses);
   const pickup = stepOffroadPickups(
     state.pickups,
     OFFROAD_COURSE_NAMES.indexOf(track.name) % 8,
@@ -409,6 +419,7 @@ export function step(
       tick,
       rngState: rng,
       pickups: pickup.state,
+      ...(battle ? { battle } : {}),
       trucks,
       placements,
       paceOrder,

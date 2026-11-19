@@ -8,6 +8,7 @@ import {
   createRoomLayout,
   createRoster,
   button,
+  createLiveResults,
   createResultsScreen,
   requestedRoomSlot,
   type RoomFriends,
@@ -183,19 +184,13 @@ export function createMatchShell(actions: {
     },
   });
   document.querySelector("main")!.append(results.element);
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
-  // Only the primary on a first show: a held Space must not press View arena.
-  const focusResults = (any = false) =>
-    results.actions
-      .querySelector<HTMLButtonElement>(
-        any ? "button.is-primary, button" : "button.is-primary",
-      )
-      ?.focus();
+  const liveResults = createLiveResults(results);
   get("show-results").onclick = () => {
     dismissed = false;
     results.element.hidden = false;
-    focusResults(true);
+    results.actions
+      .querySelector<HTMLButtonElement>("button.is-primary, button")
+      ?.focus();
   };
   let previous = "",
     lastRound = -1;
@@ -214,8 +209,7 @@ export function createMatchShell(actions: {
       entered = false;
       back.hidden = true;
       overlay.hidden = true;
-      results.hide();
-      shownResult = "";
+      liveResults.clear();
       get("show-results").hidden = true;
       previous = "";
       lastRound = -1;
@@ -234,35 +228,16 @@ export function createMatchShell(actions: {
       if (round !== lastRound || c.phase !== "over") dismissed = false;
       lastRound = round;
       const result = matchResult(view, selfId, manager && !display);
-      if (!result) {
-        if (results.open) results.hide();
-        shownResult = "";
-      } else {
-        // The bar's own fields do not rebuild the report; an account that turns up after the round gets its button.
-        const shown = JSON.stringify([
-          { ...result, host: false, waiting: "" },
-          result.rows.map((row) => actions.friends.publicIdOfMember(row.id)),
-        ]);
-        const first = !shownResult;
-        if (shown !== shownResult) {
-          shownResult = shown;
-          results.show(
-            resultReport(result, {
-              color: keeperColor,
-              friend: (id) => {
-                const publicId = actions.friends.publicIdOfMember(id);
-                return publicId
-                  ? actions.friends.friendButton(publicId)
-                  : undefined;
-              },
-            }),
-          );
+      liveResults.render(result, {
+        friends: actions.friends,
+        report: (result, friend) =>
+          resultReport(result, { color: keeperColor, friend }),
+        bar: resultBar,
+        afterShow() {
           // A keeper looking at the arena keeps looking at it.
           if (dismissed) results.hide();
-        }
-        results.update(resultBar(result));
-        if (first) focusResults();
-      }
+        },
+      });
       const facts = JSON.stringify([
         c.phase,
         c.rules,

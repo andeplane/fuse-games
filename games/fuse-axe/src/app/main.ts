@@ -1,3 +1,4 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import { createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
@@ -32,7 +33,6 @@ import {
   uuid,
 } from "fuse-netcode";
 import {
-  backOnEscape,
   button,
   createAppPortal,
   createControllerRow,
@@ -42,15 +42,15 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
-  createPageMessage,
+  showInvalidRoomPage,
   createPhoneLayout,
   createPicker,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
   createRoundControls,
   createSharedTvOption,
-  createSubPage,
   el,
 } from "fuse-ui";
 import {
@@ -77,7 +77,7 @@ import {
   showAxeRoundControls,
 } from "./control-guide.js";
 import { PendingPick, SoloOpening } from "./flow.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import { drawn } from "./interpolate.js";
 import {
   createSmoother,
@@ -257,15 +257,7 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -375,7 +367,15 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "fa-lobby"),
     lobbyMain = el("div", "", "fa-panel"),
     lobbySide = el("aside", "", "fa-panel fa-side"),
-    roster = createRoster({ emptyText: "No heroes yet", avatar: badge }),
+    roster = createRoster({
+      emptyText: "No heroes yet",
+      avatar: badge,
+      removeBot: {
+        className: "fa-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     blurb = el("p", "", "fa-blurb"),
     lobbyNote = el("p", "", "fui-lobby-note"),
     addBot = button("+ BOT", "fa-add-bot"),
@@ -466,8 +466,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   // The HUD draws the party in pixels; the canvas says it in words.
   canvas.setAttribute("role", "img");
   // The pads: an 8-way d-pad a thumb slides on, and ATTACK, JUMP and MAGIC. One set, over the game's corners on a
@@ -603,8 +602,10 @@ function room(solo: boolean): void {
   ])
     part.hidden = true;
   // A gamepad has no events: the frame loop polls it, and the pad in use holds its bits like a key.
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
-    controls.hold("gamepad", bits),
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => controls.hold("gamepad", bits),
   );
   const letGo = () => {
     controls.clear();
@@ -795,6 +796,7 @@ function room(solo: boolean): void {
     roster.update(
       next.members.map((member) => ({
         id: member.id,
+        removableBot: next.removable.includes(member.id),
         slot: member.slot,
         name: member.name,
         color: member.color,
@@ -802,18 +804,6 @@ function room(solo: boolean): void {
         avatar: member.hero ?? undefined,
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fa-remove");
-      const removable = next.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fa-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !next.canAddBot;
     // A seat shows the hero the room gave it (this device's own pick until the room answers); before a seat, the one
     // this browser will join with.
@@ -853,36 +843,15 @@ function room(solo: boolean): void {
     // What holds the game: the stage flow's card, or the run's end.
     main.dataset.card = next.card?.kind ?? next.result?.kind ?? "";
     const result = next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the run gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: (slot) => SEAT_COLORS[slot % SEAT_COLORS.length]!,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: (slot) => SEAT_COLORS[slot % SEAT_COLORS.length]!,
+          friend,
+        }),
+      bar: resultBar,
+    });
     phase = {
       // Camp is played as a stage is, so its pads and their hints come up as it begins.
       phase: `${view.stage}:${view.round}:${!!view.world?.camp}`,

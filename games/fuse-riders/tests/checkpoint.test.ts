@@ -11,6 +11,7 @@ import {
   GRAVITY_FIELD_TICKS,
   GRAVITY_MAX_RADIUS,
   MAX_GRAVITY_FIELDS,
+  MAX_PLAYERS,
   RIDER_COLORS,
   addPlayer,
   createGame,
@@ -790,13 +791,13 @@ test("the round shot log names issued pulls and seated riders, and kills each ri
     },
     "a rider killed twice in a round",
   );
-  // Distinct victims, so it is the four-kill cap that refuses this and not the killed-twice rule.
+  // Distinct victims exercise the per-shot cap independently of the killed-twice rule.
   rejected(
     game,
     (data) => {
       list(data.shots).push(
         shot({
-          kills: ["a", "b", "c", "d", "e"].map((victimId) => ({
+          kills: ["a", "b", "c", "d", "e", "f", "g", "h"].map((victimId) => ({
             victimId,
             elapsed: 12,
           })),
@@ -1062,9 +1063,9 @@ test("detached trail identity, schedule and ownership are validated before repla
   );
 });
 
-test("six riders at the total segment cap remain within checkpoint byte and parser budgets", () => {
+test("eight riders at the total segment cap remain within checkpoint byte and parser budgets", () => {
   const game = createGame("max-trail-checkpoint", classicSettings());
-  for (let slot = 0; slot < 6; slot++)
+  for (let slot = 0; slot < MAX_PLAYERS; slot++)
     addPlayer(game, {
       id: `p${slot}`,
       name: `P${slot}`,
@@ -1073,7 +1074,7 @@ test("six riders at the total segment cap remain within checkpoint byte and pars
     });
   startMatch(game);
   game.tick = 2200;
-  game.nextTrailPieceId = 7;
+  game.nextTrailPieceId = MAX_PLAYERS + 1;
   for (const player of game.players.values())
     player.trail = Array.from({ length: MAX_CHECKPOINT_TRAILS }, (_, i) => ({
       x1: 100.12345678901234 + (i % 2),

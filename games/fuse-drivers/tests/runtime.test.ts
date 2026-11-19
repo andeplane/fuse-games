@@ -8,7 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LEFT, NITRO } from "../src/game/index.js";
+import { LEFT, NITRO, fuseDriversView } from "../src/game/index.js";
 import { NEUTRAL_INPUT } from "../src/game/sim/input.js";
 import { SETTINGS } from "./fixtures/fuseDrivers.js";
 import {
@@ -162,6 +162,11 @@ test("a lobby seat is a choice: a seated driver moves to any free seat, and a ta
   b.command({ type: "join", name: "Bo", slot: 3 });
   mesh.run(3000);
   assert.deepEqual(slots(a), { a: 0, b: 3 });
+  const quote = fuseDriversView(b.roomState()!);
+  assert.ok(b.buyUpgrade("acceleration", quote));
+  mesh.run(400);
+  assert.equal(b.buyUpgrade("acceleration", quote), false);
+  assert.equal(a.roomState()!.garage.b?.acceleration, 1);
   assert.ok(b.command({ type: "join", name: "Bo", slot: 1 }));
   mesh.run(3000);
   assert.ok(a.command({ type: "join", name: "Ada", slot: 4 }));
@@ -174,4 +179,6 @@ test("a lobby seat is a choice: a seated driver moves to any free seat, and a ta
   assert.ok(a.command({ type: "action", action: "start" }));
   mesh.run(COUNTDOWN_MS);
   assert.equal(b.roomState()?.stage, "running", "the moved seats race");
+  assert.equal(b.roomState()!.garage.b!.acceleration, 1);
+  assert.equal(b.buyUpgrade("tires"), false);
 });

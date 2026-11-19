@@ -1,10 +1,10 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
+  hashCheckpointJson,
   applyManagementTick,
+  decodeSingleWinner as decodeDecided,
+  createSeatListDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -286,80 +286,18 @@ export function seedOf(matchId: string): number {
   return seed;
 }
 
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 const STAGES: readonly RoomStage[] = ["lobby", "running", "over"];
 const FIELDS = 14;
 const seatOrder = (a: SeatRecord, b: SeatRecord) =>
   a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
-
-function decodeSeats(raw: unknown): Map<string, SeatRecord> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY + MAX_WATCHERS) return;
-  const seats = new Map<string, SeatRecord>();
-  for (const item of raw) {
-    const seat = decodeSeat(item);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  return seats;
-}
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  playerKey,
+  validName,
+  validAvatar: isAvatar,
+});
 
 function decodePicks(
   raw: unknown,
@@ -401,32 +339,6 @@ function decodeRoster(raw: unknown): Entrant[] | undefined {
     roster.push({ id, name, slot: roster.length, bot, chart });
   }
   return roster;
-}
-
-function decodeDecided(
-  raw: unknown,
-  roster: readonly Entrant[],
-): Decided | null | undefined {
-  if (raw === null) return null;
-  if (!Array.isArray(raw) || raw.length !== 3) return;
-  const [clock, winner, finishers] = raw as unknown[];
-  if (
-    !uint32(clock) ||
-    clock === 0 ||
-    !roster.some((entrant) => entrant.id === winner) ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
-  )
-    return;
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winner: winner as string, finishers: list };
 }
 
 /** The standings of a session's totals: by points, then by songs won, then in the order riders joined it. */
@@ -595,33 +507,19 @@ export function createFusemaniaGame(
     name: validName,
     avatar: isAvatar,
     settings: (value: unknown) => parseSettings(value) !== undefined,
+    memberKey: playerKey,
+    matchKey: validMatchId,
     capacity: CAPACITY,
   };
   function isEntry(raw: unknown): raw is Entry {
-    if (isManagementEntry(raw, payloads)) {
-      if (raw[2] === ACTION) return validMatchId(raw[4]);
-      // Member ids become record keys: one of Object.prototype's names never does.
-      const at =
-        raw[2] === BOT || raw[2] === SPECTATOR
-          ? 4
-          : raw[2] <= PRESENCE
-            ? 3
-            : -1;
-      return at < 0 || playerKey((raw as unknown[])[at]);
-    }
-    if (
-      !Array.isArray(raw) ||
-      !uint32(raw[0]) ||
-      raw[0] === 0 ||
-      !uint32(raw[1]) ||
-      raw[1] === 0
-    )
-      return false;
+    if (isManagementEntry(raw, payloads)) return true;
+    if (!hasLogPosition(raw)) return false;
     if (raw[2] === PLAY)
       return (
         raw.length === 6 &&
         uint32(raw[3]) &&
         isCode(raw[4]) &&
+        typeof raw[5] === "number" &&
         Number.isInteger(raw[5]) &&
         raw[5] >= MIN_SONG_MS &&
         raw[5] <= MAX_SONG_MS
@@ -1211,21 +1109,7 @@ export function createFusemaniaGame(
   }
 
   function hash(room: Room): string {
-    const text = JSON.stringify([room.tick, ...encode(room)], (_key, value) =>
-      plain(value)
-        ? Object.fromEntries(
-            Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-          )
-        : (value as unknown),
-    );
-    let a = 0x811c9dc5,
-      b = 0x9747b28c;
-    for (let i = 0; i < text.length; i++) {
-      a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-      b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-      b = (b ^ (b >>> 13)) >>> 0;
-    }
-    return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+    return hashCheckpointJson([room.tick, ...encode(room)]);
   }
 
   function view(room: Room): View {

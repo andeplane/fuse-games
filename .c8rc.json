@@ -53,6 +53,7 @@
     "games/fuse-surge/src/app/main.ts",
     "games/fuse-surge/src/render/scene.ts",
     "games/fuse-surge/src/render/hud.ts",
+    "games/fuse-surge/src/render/scoreboard.ts",
     "games/fuse-surge/src/render/three/actors.ts",
     "games/fuse-surge/src/render/three/surges.ts",
     "games/fuse-surge/src/render/three/kit.ts",

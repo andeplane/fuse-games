@@ -6,7 +6,7 @@ import { INITIAL_ELO } from "./elo.js";
 /** The seat a signed-in player's solo round reports as: solo play has no room, so no room token to derive one from. */
 export const SOLO_RATING_PLAYER_ID = "0".repeat(24);
 /** A rated round seats at most this many humans; a round result with more players is refused. */
-export const MAX_RATED_PLAYERS = 6;
+export const MAX_RATED_PLAYERS = 8;
 export interface RatingPoint {
   match: string;
   at: number;

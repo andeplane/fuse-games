@@ -1,33 +1,16 @@
-import { readFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import assert from "node:assert/strict";
 import { chromium, webkit } from "playwright";
-import {
-  decodeState,
-  step,
-  hashState,
-  type Command,
-  type World,
-} from "../games/fuse-craft/src/engine/index.js";
+import type { World } from "../games/fuse-craft/src/engine/index.js";
+import { loadCraftReplay, verifyCraftReplay } from "./lib/fuse-craft-replay.js";
 
-const recording = JSON.parse(
-  readFileSync(
-    process.argv[2] ??
-      "docs/fuse-craft/verification/rules13-replays-2026-10-01/combat.replay.json",
-    "utf8",
-  ),
-) as {
-  initial: unknown;
-  ticks: number;
-  hash: string;
-  commands: { tick: number; commands: Command[] }[];
-};
-let world = decodeState(JSON.stringify(recording.initial)),
-  cursor = 0;
+const recording = loadCraftReplay(
+  process.argv[2] ??
+    "docs/fuse-craft/verification/rules13-replays-2026-10-01/combat.replay.json",
+);
 const stages: { world: World; cell: number; progress: number }[] = [];
 let target: { owner: string; cell: number } | undefined;
-for (; world.tick < recording.ticks;) {
-  const row = recording.commands[cursor];
-  world = step(world, row?.tick === world.tick ? (cursor++, row.commands) : []);
+verifyCraftReplay(recording, (world) => {
   if (target && stages.length < 3)
     assert.ok(
       world.players
@@ -45,8 +28,7 @@ for (; world.tick < recording.ticks;) {
       if (stages.length < 3 && progress >= [0.15, 0.5, 0.85][stages.length]!)
         stages.push({ world, cell: q.cell, progress });
     }
-}
-assert.equal(hashState(world), recording.hash);
+});
 assert.equal(
   stages.length,
   3,

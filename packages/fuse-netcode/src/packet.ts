@@ -7,7 +7,7 @@ export const PACKET_VERSION = 1,
 /** One datagram under the 1,280-byte IPv6 minimum MTU with DTLS/SCTP headers to spare; a SETTINGS entry is ~230 bytes. */
 export const MAX_PACKET_BYTES = 1100,
   MAX_PACKET_ENTRIES = 6,
-  MAX_MESSAGE_BYTES = 2_600_000;
+  MAX_MESSAGE_BYTES = 3_400_000;
 /** The per-tick packet from one member to another; echo fields make every packet a clock and RTT sample. */
 export interface Packet<Entry extends LogEntry = LogEntry> {
   room: number;

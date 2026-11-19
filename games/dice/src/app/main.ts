@@ -33,6 +33,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createLiveResults,
   createResultsScreen,
   createRoster,
   createSharedTvOption,
@@ -51,7 +52,8 @@ import {
   type TableModel,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import { resultBar, resultReport } from "./result-report.js";
 import { DiceRuntime, type DiceCallbacks } from "./runtime.js";
 import {
@@ -60,7 +62,7 @@ import {
   roomFailure,
   safeStore,
   sessionFor,
-} from "./session.js";
+} from "fuse-ui/room-session";
 
 /**
  * The dice page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to the
@@ -242,7 +244,14 @@ function room(solo: boolean): void {
 
   // Lobby: invitation, roster with bot controls, name entry, start.
   const lobby = el("section", "", "dice-lobby"),
-    roster = createRoster({ emptyText: "Nobody has joined yet" }),
+    roster = createRoster({
+      emptyText: "Nobody has joined yet",
+      removeBot: {
+        className: "dice-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "dice-add-bot"),
     start = button("START MATCH", "fui-button-primary dice-start"),
     lobbyNote = el("p", "", "fui-lobby-note");
@@ -362,8 +371,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
 
   const main = el("main", "", "dice-room");
   main.tabIndex = -1;
@@ -408,22 +416,11 @@ function room(solo: boolean): void {
     roster.update(
       model.lobby.members.map((member) => ({
         ...member,
+        removableBot: model.lobby.removable.includes(member.id),
         host: member.id === managerId,
         color: COLORS[(member.slot ?? 0) % COLORS.length]!,
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".dice-remove");
-      const removable = model.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "dice-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !model.lobby.canAddBot;
     start.hidden = !model.lobby.showStart;
     start.disabled = !model.lobby.canStart;
@@ -484,40 +481,31 @@ function room(solo: boolean): void {
     holdButton.disabled = !model.controls.hold;
     // Result.
     const result = model.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: (slot) => COLORS[slot % COLORS.length]!,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: (slot) => COLORS[slot % COLORS.length]!,
+          friend,
+        }),
+      bar: resultBar,
+    });
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display: role === "display",
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => viewer.me,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
   );
@@ -584,29 +572,7 @@ function room(solo: boolean): void {
       }
       if (model.seated) joinSent = false;
       render(model, frame.managerId);
-      if (
-        role !== "display" &&
-        state &&
-        (session.kind === "room" || social.isSignedIn())
-      )
-        for (const report of dueReports(
-          state,
-          viewer.me,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can change a roll after its event was emitted.

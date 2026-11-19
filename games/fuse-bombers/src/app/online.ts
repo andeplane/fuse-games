@@ -371,8 +371,7 @@ export function showRoom(
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = ui.createLiveResults(results, { focusPrimary: false });
   root.append(results.element);
   // The round's overlay (badges, countdown, results) over the canvas, laid out by screens.css as the local game's.
   const overlay = el("div");
@@ -523,32 +522,16 @@ export function showRoom(
       next.host && !display && !solo && next.screen === "lobby",
     );
     const result = controller ? null : next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const key = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      if (key !== shownResult) {
-        shownResult = key;
-        results.show(
-          resultReport(result, {
-            color: (slot) => css(playerColor(slot)),
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      // No focus on show: Space is a play key here, and a held one would press the primary button.
-    }
+    // Keep a held Space on play input when the results open.
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: (slot) => css(playerColor(slot)),
+          friend,
+        }),
+      bar: resultBar,
+    });
     if (overlay.dataset.html !== next.overlay)
       overlay.innerHTML = overlay.dataset.html = next.overlay;
     roster.update(

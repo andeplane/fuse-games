@@ -15,6 +15,7 @@ export {
   createPageMessage,
   createSubPage,
   escapeIsTaken,
+  showInvalidRoomPage,
   type BackButtonOptions,
   type BackOnEscapeOptions,
   type PageHeader,
@@ -184,6 +185,7 @@ export {
   type RoomLayoutOptions,
 } from "./room-layout.js";
 export {
+  createLiveResults,
   createResultsScreen,
   renderResults,
   type ResultsAction,

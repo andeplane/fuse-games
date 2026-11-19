@@ -9,6 +9,8 @@ import {
   SETTINGS,
   SPECTATOR,
   actingCreator,
+  hasLogPosition,
+  UINT32_MAX,
   applyManagementTick,
   disconnects,
   isManagementEntry,
@@ -82,6 +84,52 @@ test("management entries have one shape for every game; payloads are the game's"
   assert.equal(disconnects([1, 1, PRESENCE, "a", true, 1]), undefined);
   assert.equal(disconnects([1, 1, LEAVE, "b"]), "b");
   assert.equal(disconnects([1, 1, JOIN, "a", "A", 0, "fox", 1]), undefined);
+});
+
+test("sequences and ticks are positive uint32 values with an independent payload", () => {
+  assert.equal(hasLogPosition([1, UINT32_MAX]), true);
+  assert.equal(hasLogPosition([UINT32_MAX, 1, "game command"]), true);
+  assert.equal(hasLogPosition({ 0: 1, 1: 1 }), false);
+  assert.equal(hasLogPosition([1]), false);
+  for (const bad of [0, -0, -1, 1.5, NaN, Infinity, UINT32_MAX + 1, "1"]) {
+    assert.equal(hasLogPosition([bad, 1]), false);
+    assert.equal(hasLogPosition([1, bad]), false);
+  }
+});
+
+test("games can narrow member and match IDs without changing the management grammar", () => {
+  const restricted = {
+    ...payloads,
+    memberKey: (value: string) => value !== "other",
+    matchKey: (value: string) => value === "match",
+  };
+  const unrestricted: readonly unknown[][] = [
+    [1, 1, JOIN, "other", "Other", 0, "fox", 1],
+    [1, 1, LEAVE, "other"],
+    [1, 1, PRESENCE, "other", false, 1],
+    [1, 1, BOT, "add", "other", "Other", 1],
+    [1, 1, BOT, "remove", "other"],
+    [1, 1, SPECTATOR, "join", "other", "Other", 1],
+    [1, 1, SPECTATOR, "leave", "other"],
+    [1, 1, ACTION, "start", "other"],
+  ];
+  for (const entry of unrestricted) {
+    assert.equal(isManagementEntry(entry, payloads), true);
+    assert.equal(isManagementEntry(entry, restricted), false);
+  }
+  assert.equal(
+    isManagementEntry([1, 1, SETTINGS, { target: 5 }], restricted),
+    true,
+  );
+  assert.equal(
+    isManagementEntry([1, 1, ACTION, "start", "match"], restricted),
+    true,
+  );
+  assert.equal(isManagementEntry([1, 1, LEAVE, "player"], restricted), true);
+  assert.equal(
+    isManagementEntry([1, 1, LEAVE, "space here"], restricted),
+    false,
+  );
 });
 
 test("a voluntarily away creator keeps the crown while duties delegate; absence hands both over", () => {

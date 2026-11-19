@@ -57,6 +57,7 @@ import { present, type Viewer } from "./presenter.js";
 import { createOnlineSheet, nextFace, storedFace } from "./online-menu.js";
 import { createRoomLobby } from "./room-lobby.js";
 import { createPendingSettings } from "fuse-ui";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
 import { dueReports, localReports, sendReport } from "./reports.js";
 import { FuseLaneRuntime, type FuseLaneCallbacks } from "./runtime.js";
 import { markToured, owesTour, tourSteps } from "./tour.js";
@@ -665,7 +666,16 @@ function room(): void {
   lobby.attachJoin(nameEntry.form);
   app.replaceChildren(top, main);
 
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display: role === "display",
+    scope: { kind: "room", code, token: session.token },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => viewer.me,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   // Prefer the shared account name; otherwise reuse this device's previous room name and face.
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
@@ -723,23 +733,7 @@ function room(): void {
       if (model.seated) joinSent = false;
       screen.render(model);
       const state = runtime.roomState();
-      if (role !== "display" && state)
-        for (const report of dueReports(
-          state,
-          viewer.me,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(`/api/games/${GAME}/rooms/${code}/${report.path}`),
-            report,
-            {
-              fetch: social.reportFetch,
-              roomToken: session.token,
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can undo a hire after its event was emitted.

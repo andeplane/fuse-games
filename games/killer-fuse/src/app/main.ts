@@ -41,6 +41,7 @@ import {
   createNameEntry,
   createNotice,
   createRadioGroup,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -136,7 +137,8 @@ import {
   TEAM_COLORS,
   type RoomSeatRow,
 } from "./room-model.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import {
   NOT_OPEN,
   keepFlags,
@@ -812,8 +814,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   // The lesson's step goes under the arena, out of the play field.
   arena.append(scoreLine, stage, lessonBar, seatLine, touchRow);
 
@@ -1094,36 +1095,15 @@ function room(solo: boolean): void {
     // Result.
     // A lesson ends on its own bar under the arena (the time, the next lesson): the screen would cover it.
     const result = lesson ? undefined : next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the set gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: (team) => TEAM_COLORS[team === 1 ? 1 : 0],
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: (team) => TEAM_COLORS[team === 1 ? 1 : 0],
+          friend,
+        }),
+      bar: resultBar,
+    });
     // START keeps the focus when the game begins; Space must flap, not press it again.
     if (first && next.screen === "arena") {
       if (document.activeElement instanceof HTMLElement)
@@ -1133,7 +1113,19 @@ function room(solo: boolean): void {
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display: role === "display",
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => viewer.me,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   let joinSent = false;
   const callbacks: KillerFuseCallbacks = {
     state(frame, roomSettings) {
@@ -1320,29 +1312,7 @@ function room(solo: boolean): void {
       });
       driver.feed(frame, next.layout === "arena");
       const state = runtime.roomState();
-      if (
-        role !== "display" &&
-        state &&
-        (session.kind === "room" || social.isSignedIn())
-      )
-        for (const report of dueReports(
-          state,
-          viewer.me,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event(event, matchId, round, tick) {
       // Every tick's events reach the arena this way, folded-together and rolled-back ticks included; the arena

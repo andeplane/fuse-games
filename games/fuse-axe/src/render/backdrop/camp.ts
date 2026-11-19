@@ -1,5 +1,6 @@
 import { FLOOR_TOP_PX, VIEW_H, VIEW_W } from "../../engine/view-kit.js";
 import { dither, hash, Raster, type Brush, type StageArt } from "./kit.js";
+import { paintSky, paintStars } from "./sky.js";
 
 /**
  * Camp between stages: a night clearing, one screen that never scrolls. A starry sky with a low moon, a dark tree line,
@@ -33,14 +34,13 @@ export const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"] as const;
 export const FIRE = { x: 162, y: FLOOR + 16, reach: 80 } as const;
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < VIEW_W; x++)
-      r.px(x, y, dither(SKY, y / (FLOOR - 1), x, y));
-  for (let i = 0; i < 70; i++) {
-    const x = Math.floor(hash(i, 1) * VIEW_W),
-      y = 22 + Math.floor(hash(i, 2) * 50);
-    r.px(x, y, hash(i, 3) > 0.8 ? 0xfff6dc : 0x8c84b0);
-  }
+  paintSky(r, SKY, (_x, y) => y / (FLOOR - 1));
+  paintStars(r, {
+    count: 70,
+    top: 22,
+    height: 50,
+    color: (index) => (hash(index, 3) > 0.8 ? 0xfff6dc : 0x8c84b0),
+  });
   // The moon, low over the trees on the right (below the HUD), lit from the left.
   for (let y = -6; y <= 6; y++)
     for (let x = -6; x <= 6; x++)

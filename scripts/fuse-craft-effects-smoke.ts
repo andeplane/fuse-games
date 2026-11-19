@@ -1,13 +1,8 @@
-import { readFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import assert from "node:assert/strict";
 import { chromium, webkit } from "playwright";
-import {
-  decodeState,
-  step,
-  hashState,
-  type Command,
-  type World,
-} from "../games/fuse-craft/src/engine/index.js";
+import type { World } from "../games/fuse-craft/src/engine/index.js";
+import { loadCraftReplay, verifyCraftReplay } from "./lib/fuse-craft-replay.js";
 
 // Verified real-command combat snapshots, rendered diagnostically at multiple
 // effect ages. Ordinary UI flows are covered by the separate expansion smoke.
@@ -20,25 +15,12 @@ const eventType = weapon
   : process.argv[4] === "shielded"
     ? "shielded"
     : "destroyed";
-const recording = JSON.parse(
-  readFileSync(
-    process.argv[2] ??
-      "docs/fuse-craft/verification/rules13-replays-2026-10-01/combat.replay.json",
-    "utf8",
-  ),
-) as {
-  initial: unknown;
-  commands: { tick: number; commands: Command[] }[];
-  ticks: number;
-  hash: string;
-};
-let world = decodeState(JSON.stringify(recording.initial));
-let cursor = 0;
+const recording = loadCraftReplay(
+  process.argv[2] ??
+    "docs/fuse-craft/verification/rules13-replays-2026-10-01/combat.replay.json",
+);
 let battle: { before: World; after: World } | undefined;
-while (world.tick < recording.ticks) {
-  const before = world;
-  const row = recording.commands[cursor];
-  world = step(world, row?.tick === world.tick ? (cursor++, row.commands) : []);
+verifyCraftReplay(recording, (world, before) => {
   if (
     !battle &&
     world.outcomes.some(
@@ -68,8 +50,7 @@ while (world.tick < recording.ticks) {
     world.outcomes.some((o) => o.type === "damage")
   )
     battle = { before, after: world };
-}
-assert.equal(hashState(world), recording.hash);
+});
 assert.ok(battle, `recording includes real ${eventType} and damage`);
 const out = process.argv[3] ?? "/tmp/fuse-depth-effects";
 mkdirSync(out, { recursive: true });

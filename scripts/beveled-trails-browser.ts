@@ -1,20 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createServer } from "vite";
-import { chromium, webkit } from "playwright";
+import { launchSelected } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
+import { startViteServer } from "./lib/server.js";
 
 // Isolated renderer fixtures; never joins or interrupts a real match.
-const server = await createServer({
-  server: { port: 0, host: "127.0.0.1", hmr: false },
-});
-await server.listen();
-const address = server.httpServer!.address();
-if (!address || typeof address === "string") throw Error("No server");
+const server = await startViteServer();
 const browserName = process.env.BROWSER ?? "chrome";
-const browser =
-  browserName === "webkit"
-    ? await webkit.launch()
-    : await chromium.launch({ channel: "chrome" });
+const browser = await launchSelected("chrome");
 const page = await browser.newPage({
   viewport: { width: 1600, height: 900 },
   deviceScaleFactor: 2,
@@ -30,27 +23,19 @@ page.on("console", (message) => {
 });
 try {
   await mkdir("artifacts", { recursive: true });
-  await page.addInitScript("window.__name = value => value");
-  await page.goto(`http://127.0.0.1:${address.port}/?mute&room=INVALID`);
-  await page.getByText("Invalid room code", { exact: true }).waitFor();
+  await openRidersFixturePage(page, server.url);
   const result = await page.evaluate(async () => {
-    const { createPhaserArena } = (await import(
-      String("/games/fuse-riders/src/render/phaser/arena.ts")
-    )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+    const { mountWorldArena, readArenaPixels, pixelOffset } = (await import(
+      String("/scripts/lib/riders-render-fixture.ts")
+    )) as typeof import("./lib/riders-render-fixture.js");
     const { visualFixture } = (await import(
       String("/scripts/lib/benchmark-fixture.ts")
     )) as typeof import("./lib/benchmark-fixture.js");
     const { themes } = (await import(
       String("/games/fuse-riders/src/render/themes.ts")
     )) as typeof import("../games/fuse-riders/src/render/themes.js");
-    document.body.replaceChildren();
-    document.body.style.cssText = "margin:0;background:#020715";
-    const canvas = document.createElement("canvas");
-    canvas.width = 1600;
-    canvas.height = 900;
-    document.body.append(canvas);
-    const arena = createPhaserArena(canvas, { resolution: "world" });
-    await arena.ready;
+    const { arena, canvas } = await mountWorldArena();
+    const renderer = arena.metrics().renderer;
     if (arena.metrics().renderer !== "webgl") throw Error("WebGL missing");
     const fixture = visualFixture(200);
     const base = {
@@ -84,23 +69,17 @@ try {
         segment(500, 200, 800, 200, 199),
       ],
     };
-    const gl = canvas.getContext("webgl")!;
     const paint = (
       players: (typeof testRider)[],
       theme: keyof typeof themes = "neon-pixel",
     ) => {
       arena.render({ ...base, players }, 1000, themes[theme], "bevel-fixture");
-      const pixels = new Uint8Array(1600 * 900 * 4);
-      gl.readPixels(0, 0, 1600, 900, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-      return pixels;
+      return readArenaPixels(canvas, renderer);
     };
-    const at = (pixels: Uint8Array, x: number, y: number) =>
-      Array.from(
-        pixels.slice(
-          ((899 - y) * 1600 + x) * 4,
-          ((899 - y) * 1600 + x) * 4 + 3,
-        ),
-      );
+    const at = (pixels: Uint8Array, x: number, y: number) => {
+      const offset = pixelOffset(canvas, renderer, x, y);
+      return Array.from(pixels.slice(offset, offset + 3));
+    };
     const distance = (a: number[], b: number[]) =>
       a.reduce((sum, value, i) => sum + Math.abs(value - b[i]!), 0);
     const empty = paint([]);
@@ -180,5 +159,5 @@ try {
   console.log(JSON.stringify({ browser: browserName, ...result }));
 } finally {
   await browser.close();
-  await server.close();
+  await server.stop();
 }

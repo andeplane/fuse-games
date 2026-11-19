@@ -13,6 +13,9 @@ import {
 import type { ArenaFrame } from "./frame.js";
 import { createReferenceArt, type ReferenceArt } from "./reference-art.js";
 import { createTrackArt } from "./track-art.js";
+import type { StadiumTheme } from "./theme.js";
+import { fuseTruckTexture, truckFrame } from "./fuse-truck.js";
+import { paintBattleArt, paintTrackPickups } from "./battle-art.js";
 
 const TRUCK_SCALE = 44 / (TRUCK_CELL * 0.92);
 export const TILT = 0.72;
@@ -22,7 +25,11 @@ export const STANDS = { top: 100, side: 16 } as const;
 const localReference =
   import.meta.env.DEV && import.meta.env.VITE_OFFROAD_REFERENCE === "1";
 
-export function raceViewport(track: Track): {
+export function raceViewport(
+  track: Track,
+  reference = false,
+  spectatorSeats = false,
+): {
   x: number;
   y: number;
   width: number;
@@ -32,10 +39,11 @@ export function raceViewport(track: Track): {
 } {
   const worldW = track.cols * config.tile,
     worldH = track.rows * config.tile;
-  const aspect = localReference ? worldW / 320 / (worldH / 200) : 1;
+  const aspect = reference ? worldW / 320 / (worldH / 200) : 1;
   const zoom = Math.min(
-    (config.screen.width - 2 * STANDS.side) / worldW,
-    (config.screen.height - STANDS.top) / (worldH * aspect),
+    (config.screen.width - 2 * (spectatorSeats ? 39 : STANDS.side)) / worldW,
+    (config.screen.height - (spectatorSeats ? 153 : STANDS.top)) /
+      (worldH * aspect),
   );
   return {
     x: (config.screen.width - worldW * zoom) / 2,
@@ -62,10 +70,16 @@ export class RaceScene extends Phaser.Scene {
   private trucks: TruckSprite[] = [];
   private dust?: Phaser.GameObjects.Particles.ParticleEmitter;
   private reference?: ReferenceArt;
+  private referenceRequested = false;
+  private theme?: StadiumTheme;
+  private battleArt?: Phaser.GameObjects.Graphics;
+  private props?: Phaser.GameObjects.Graphics;
+  private identity?: Phaser.GameObjects.Text;
   private pickup?: Phaser.GameObjects.Image;
 
   constructor(
     private readonly assetBase: string,
+    private readonly readTheme: () => StadiumTheme,
     private readonly onReady: () => void,
   ) {
     super(RaceScene.KEY);
@@ -73,17 +87,31 @@ export class RaceScene extends Phaser.Scene {
 
   preload(): void {
     queueArenaAssets(this.load, this.assetBase);
-    if (localReference)
+    if (localReference && this.readTheme() === "classic") {
+      this.referenceRequested = true;
       this.load.json("fd-local-reference-pack", "/__offroad-reference.json");
+    }
   }
 
   create(): void {
-    if (localReference)
-      this.reference = createReferenceArt(
-        this,
-        this.cache.json.get("fd-local-reference-pack"),
-      );
+    if (this.referenceRequested) this.prepareReference();
+    this.battleArt = this.add.graphics().setDepth(12);
+    this.props = this.add.graphics().setDepth(7);
+    this.identity = this.add
+      .text(0, 0, "YOU", {
+        fontFamily: "monospace",
+        fontStyle: "bold",
+        fontSize: "22px",
+        color: "#ffffff",
+        backgroundColor: "#102032",
+        padding: { x: 5, y: 1 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(18)
+      .setVisible(false);
     const money = this.make.graphics({}, false);
+    money.fillStyle(0x101321).fillEllipse(32, 20, 60, 31);
+    money.generateTexture("fd-truck-shadow", 64, 40).clear();
     money.fillStyle(0x221b13).fillRect(0, 2, 13, 8);
     money.fillStyle(0x356139).fillRect(1, 2, 11, 6);
     money.fillStyle(0x9df082).fillRect(1, 1, 11, 5);
@@ -107,49 +135,89 @@ export class RaceScene extends Phaser.Scene {
     this.onReady();
   }
 
-  private buildTrack(track: Track): void {
+  private prepareReference(): void {
+    const pack = this.cache.json.get("fd-local-reference-pack");
+    if (!pack) return;
+    this.reference = createReferenceArt(this, pack);
+    this.reference.setVisible(false);
+    this.artTrack = undefined;
+  }
+
+  private buildTrack(track: Track, theme: StadiumTheme): void {
     this.art?.destroy();
-    if (!this.reference) this.art = createTrackArt(this, track);
+    this.art = undefined;
+    if (localReference && theme === "classic" && !this.referenceRequested) {
+      this.referenceRequested = true;
+      this.load.once(Phaser.Loader.Events.COMPLETE, () =>
+        this.prepareReference(),
+      );
+      this.load.json("fd-local-reference-pack", "/__offroad-reference.json");
+      this.load.start();
+    }
+    const reference = !!this.reference && theme === "classic";
+    this.reference?.setVisible(reference);
+    this.game.canvas.style.imageRendering = reference ? "pixelated" : "";
+    if (!reference) this.art = createTrackArt(this, track, theme);
     this.artTrack = track.name;
-    const view = raceViewport(track);
+    const view = raceViewport(track, reference, theme === "fuse");
     this.cameras.main
       .setViewport(view.x, view.y, view.width, view.height)
       .setZoom(view.zoom, view.zoomY)
       .centerOn((track.cols * track.tile) / 2, (track.rows * track.tile) / 2);
   }
 
-  private buildTrucks(count: number): void {
+  private buildTrucks(count: number, theme: StadiumTheme): void {
     for (const sprite of this.trucks) {
       sprite.truck.destroy();
       sprite.shadow.destroy();
     }
     this.trucks = Array.from({ length: count }, (_, slot) => {
-      const key = `truck-${TRUCK_COLORS[slot % TRUCK_COLORS.length]!}`;
-      const copy = () => this.add.image(0, 0, key).setScale(TRUCK_SCALE);
-      const shadowBody = copy().setTint(0x201008).setAlpha(0.42);
+      const fuse = theme === "fuse";
+      const key = fuse
+        ? fuseTruckTexture(this, slot)
+        : `truck-${TRUCK_COLORS[slot % TRUCK_COLORS.length]!}`;
+      const copy = () =>
+        this.add
+          .image(0, 0, key, fuse ? 0 : undefined)
+          .setScale(fuse ? 0.84 : TRUCK_SCALE);
+      const shadowBody = fuse
+        ? this.add.image(0, 0, "fd-truck-shadow").setScale(0.8).setAlpha(0.42)
+        : copy().setTint(0x201008).setAlpha(0.42);
       const shadow = this.add
         .container(0, 0, [shadowBody])
         .setScale(1, TILT)
         .setDepth(9);
-      const layers = Array.from({ length: SIDE_LAYERS }, (_, i) =>
-        copy()
-          .setTint(
-            i === SIDE_LAYERS - 1 ? 0xffffff : i === 0 ? 0x282128 : 0x5d5654,
-          )
-          .setY(-i),
-      );
-      const truck = this.add.container(0, 0, layers).setScale(1, TILT);
+      const layers = fuse
+        ? [copy()]
+        : Array.from({ length: SIDE_LAYERS }, (_, i) =>
+            copy()
+              .setTint(
+                i === SIDE_LAYERS - 1
+                  ? 0xffffff
+                  : i === 0
+                    ? 0x282128
+                    : 0x5d5654,
+              )
+              .setY(-i),
+          );
+      const truck = this.add
+        .container(0, 0, layers)
+        .setScale(1, fuse ? 1 : TILT);
       return { truck, shadow, shadowBody, layers };
     });
   }
 
-  paint(frame: ArenaFrame): void {
+  paint(frame: ArenaFrame, theme: StadiumTheme): void {
     const { race, track, poses, newTick } = frame;
-    if (this.artTrack !== track.name) this.buildTrack(track);
-    if (!this.reference && this.trucks.length !== race.trucks.length)
-      this.buildTrucks(race.trucks.length);
+    if (this.artTrack !== track.name || this.theme !== theme)
+      this.buildTrack(track, theme);
+    const privateClassic = theme === "classic" && !!this.reference;
+    const count = privateClassic ? 0 : race.trucks.length;
+    if (this.trucks.length !== count || this.theme !== theme)
+      this.buildTrucks(count, theme);
+    this.theme = theme;
     const active = race.pickups.active;
-    this.pickup?.setVisible(!!active);
+    this.pickup?.setVisible(theme !== "fuse" && !!active);
     if (active && this.pickup) {
       const terrain = getOffroadTerrain(track.name)!;
       const p = projectOffroad(
@@ -166,10 +234,25 @@ export class RaceScene extends Phaser.Scene {
         .setDisplaySize(active.kind === "cash" ? 27 : 21, 21)
         .setPosition(p.x, p.y);
     }
-    if (this.reference) {
-      this.reference.paint(frame);
-      return;
+    if (privateClassic) this.reference?.paint(frame);
+    if (this.props) paintTrackPickups(this.props, frame, theme === "fuse");
+    if (this.battleArt) paintBattleArt(this.battleArt, frame);
+    const self =
+      frame.startingTruck === undefined
+        ? undefined
+        : poses[frame.startingTruck];
+    this.identity?.setVisible(!!self);
+    if (self && this.identity && this.battleArt) {
+      const below = self.y < 65;
+      const sign = below ? -1 : 1;
+      const tip = self.y - sign * (below ? 14 : 25);
+      const base = tip - sign * 10;
+      this.battleArt
+        .fillStyle(0xffffff)
+        .fillTriangle(self.x, tip, self.x - 7, base, self.x + 7, base);
+      this.identity.setOrigin(0.5, below ? 0 : 1).setPosition(self.x, base);
     }
+    if (privateClassic) return;
     race.trucks.forEach((truck, slot) => {
       const p = poses[slot];
       const sprite = this.trucks[slot];
@@ -187,8 +270,14 @@ export class RaceScene extends Phaser.Scene {
       );
       sprite.truck.setPosition(p.x, p.y).setDepth(10 + truck.motion.y / 16384);
       const rotation = p.heading + Math.PI / 2;
-      sprite.shadowBody.setRotation(rotation);
-      for (const layer of sprite.layers) layer.setRotation(rotation);
+      sprite.shadowBody.setRotation(theme === "fuse" ? p.heading : rotation);
+      if (theme === "fuse")
+        sprite.layers[0]!.setFrame(
+          truckFrame(
+            Math.atan2(Math.sin(p.heading) / 0.54, Math.cos(p.heading)),
+          ),
+        );
+      else for (const layer of sprite.layers) layer.setRotation(rotation);
       if (
         newTick &&
         Math.abs(truck.suspension.bodyHeight - truck.suspension.groundHeight) <

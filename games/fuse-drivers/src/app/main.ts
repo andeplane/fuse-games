@@ -42,11 +42,13 @@ import {
 import {
   button,
   createControllerRow,
+  createDialog,
   createInviteCard,
   createLandingCard,
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createLiveResults,
   createResultsScreen,
   createRoundControls,
   createRoster,
@@ -60,6 +62,7 @@ import {
   isBotId,
 } from "../game/index.js";
 import { createRaceOptions } from "./race-options.js";
+import { readStadiumTheme, storeStadiumTheme } from "./arena/theme.js";
 import { createPitShop } from "./pit-shop.js";
 import { NEUTRAL_INPUT, type TruckInput } from "../game/sim/input.js";
 import type { RaceState } from "../game/sim/race.js";
@@ -73,7 +76,7 @@ import { presentTable, type TableModel, type Viewer } from "./presenter.js";
 import { resultBar, resultReport } from "./result-report.js";
 import { createReportDispatcher, dueReports, sendReport } from "./reports.js";
 import { FuseDriversRuntime, type FuseDriversCallbacks } from "./runtime.js";
-import { keys, roomFailure, safeStore, sessionFor } from "./session.js";
+import { keys, roomFailure, safeStore, sessionFor } from "fuse-ui/room-session";
 import { playFrame, confirmedPlayFrame } from "./play-metrics.js";
 
 /**
@@ -163,9 +166,26 @@ const drivingGuide = {
   ],
 };
 
+const battleGuide = {
+  ...drivingGuide,
+  controls: [
+    ...drivingGuide.controls,
+    { keys: "E", action: "Use your Battle item" },
+  ],
+  touchControls: [
+    ...drivingGuide.touchControls,
+    { keys: "ITEM", action: "Use your Battle item" },
+  ],
+};
+
 function landing(): void {
   const card = createLandingCard({
-    howToPlay: drivingGuide,
+    howToPlay: {
+      ...battleGuide,
+      goal:
+        drivingGuide.goal +
+        " In Battle, drop a timed firebomb or activate a shield. Drive through an item crate to refill.",
+    },
     background: async (host, signal) =>
       (await import("./attract.js")).createAttract(host, signal),
     title: "FUSE DRIVERS",
@@ -195,7 +215,10 @@ function landing(): void {
 }
 
 /** The keys a driver holds, read every frame rather than on each event, so a held turn keeps turning. */
-function keyboardControls(blocked: () => boolean): {
+function keyboardControls(
+  blocked: () => boolean,
+  itemChanged: () => void,
+): {
   read: () => TruckInput;
   clear: () => void;
   stop: () => void;
@@ -210,10 +233,13 @@ function keyboardControls(blocked: () => boolean): {
     )
       return;
     down.add(key(event));
+    if (key(event) === "e" && !event.repeat) itemChanged();
     if ([" ", "arrowleft", "arrowright", "arrowup"].includes(key(event)))
       event.preventDefault();
   };
-  const onUp = (event: KeyboardEvent) => down.delete(key(event));
+  const onUp = (event: KeyboardEvent) => {
+    if (down.delete(key(event)) && key(event) === "e") itemChanged();
+  };
   const clear = () => down.clear();
   addEventListener("keydown", onDown);
   addEventListener("keyup", onUp);
@@ -226,7 +252,7 @@ function keyboardControls(blocked: () => boolean): {
       gas: down.has("arrowup") || down.has("w"),
       nitro: down.has("shift") || down.has(" "),
       brake: false,
-      item: false,
+      item: down.has("e"),
       itemAlt: false,
     }),
     stop: () => {
@@ -291,8 +317,18 @@ function room(solo: boolean): void {
     raceOptions.update(next, true);
     return true;
   }
-  const raceOptions = createRaceOptions((track, races) =>
-    changeSettings({ track, races }),
+  const previewTheme = query.get("theme");
+  let stadiumTheme =
+    previewTheme === "classic" || previewTheme === "fuse"
+      ? previewTheme
+      : readStadiumTheme(store);
+  const raceOptions = createRaceOptions(
+    changeSettings,
+    stadiumTheme,
+    (theme) => {
+      stadiumTheme = theme;
+      storeStadiumTheme(store, theme);
+    },
   );
   const lobby = el("section", "", "fd-lobby");
   if (!solo)
@@ -341,6 +377,12 @@ function room(solo: boolean): void {
     document,
     (kind) => !!shopView && runtime.buyUpgrade(kind, shopView),
   );
+  const lobbyShopButton = button("Speed shop", "fui-button");
+  const lobbyShop = createDialog({ title: "Speed shop", document });
+  lobbyShopButton.onclick = () => {
+    if (shopView?.phase === "lobby")
+      lobbyShop.show({ title: "Speed shop", content: [shop.element] });
+  };
   const results = createResultsScreen({
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
@@ -355,8 +397,7 @@ function room(solo: boolean): void {
         runtime.command({ type: "action", action: id });
     },
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results, { focusPrimary: false });
   const race = el("section", "", "fd-race");
   race.classList.toggle("fd-display", display);
   const arenaBox = el("div", "", "fd-arena-box");
@@ -404,6 +445,21 @@ function room(solo: boolean): void {
         },
         onRelease: () => (touch.right = false),
       },
+      {
+        label: "ITEM",
+        keys: "E",
+        title: "Use your Battle item",
+        onPress: () => {
+          if (!modalInput.blocked()) {
+            touch.item = true;
+            drive();
+          }
+        },
+        onRelease: () => {
+          touch.item = false;
+          drive();
+        },
+      },
     ] as const,
   });
   const roundControls = createRoundControls(drivingGuide);
@@ -415,7 +471,14 @@ function room(solo: boolean): void {
   // otherwise show an empty arena and an empty results table at the same time.
   race.hidden = true;
   start.hidden = true;
-  main.append(problem.element, nameEntry.form, lobby, race, results.element);
+  main.append(
+    problem.element,
+    nameEntry.form,
+    lobby,
+    race,
+    results.element,
+    lobbyShop.dialog,
+  );
   // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
   // state only while a race is on.
   app.replaceChildren(header([live.element]), main);
@@ -430,10 +493,15 @@ function room(solo: boolean): void {
     primaryAction: start,
     playerName: () => social.playerName(undefined) ?? undefined,
     background: async (host) =>
-      (await import("./attract.js")).createAttract(host),
+      (await import("./attract.js")).createAttract(
+        host,
+        undefined,
+        () => stadiumTheme,
+      ),
     element: lobby,
     roster,
     capacity: 5,
+    slotColor: truckColor,
     join: nameEntry.form,
     // ADD FRIEND on a driver's row and INVITE FRIENDS under Copy link: the shared room's, in every game.
     friends: social.friends,
@@ -441,7 +509,7 @@ function room(solo: boolean): void {
     layout: "configuration",
     configuration: [raceOptions.element],
     settings: [raceOptions.settingsField],
-    actions: [lobbyNote],
+    actions: [lobbyShopButton, lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation and the drivers scroll under them.
     actionsInHeader: true,
     extras: [sharedTv.element],
@@ -492,19 +560,29 @@ function room(solo: boolean): void {
     if (model.race) {
       const mine = model.race.drivers.find((driver) => driver.you);
       const lap = `LAP ${model.race.lap}/${model.race.laps}`;
+      const identity =
+        mine && canvas.hidden && model.race.countdown > 0
+          ? `YOU · TRUCK ${mine.truck + 1}   `
+          : "";
       hud.textContent = mine
-        ? `${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
+        ? `${identity}${lap}   POS ${mine.place}/${model.race.drivers.length}   NITRO ${mine.nitros}`
         : lap;
+      const battle = latest?.race?.battle;
+      const held = mine && battle?.slots[mine.truck]?.held;
+      pad.buttons[4].hidden = !battle;
+      pad.buttons[4].disabled = !held;
+      if (mine && battle)
+        hud.textContent += "   ITEM " + (held?.toUpperCase() ?? "EMPTY");
     }
     const result = model.results;
     const seat =
-      result && !display
+      (result || model.screen === "lobby") && !display
         ? latest?.drivers.find(
             (driver) =>
               driver.id === viewer.me &&
               driver.connected &&
               !driver.bot &&
-              driver.truck >= 0,
+              (model.screen === "lobby" || driver.truck >= 0),
           )
         : undefined;
     shopView =
@@ -512,35 +590,22 @@ function room(solo: boolean): void {
         ? latest
         : undefined;
     const wallet = shopView?.garage[viewer.me];
+    lobbyShopButton.hidden = model.screen !== "lobby" || !wallet;
+    if (lobbyShopButton.hidden && lobbyShop.dialog.open)
+      lobbyShop.dialog.close();
     if (wallet) shop.update(wallet);
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the race gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        !!wallet,
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: truckColor,
-            shop: wallet ? shop.element : undefined,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result, !!wallet));
-      // No focus on show: Space is a play key here, and a held one would press the primary button.
-    }
+    // Keep focus on the arena: a held Space is driving input.
+    liveResults.render(result, {
+      friends: social.friends,
+      revision: !!wallet,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: truckColor,
+          shop: wallet ? shop.element : undefined,
+          friend,
+        }),
+      bar: (result) => resultBar(result, !!wallet),
+    });
     // A phone that is only a controller has no room for the arena.
     const driving = model.screen === "race" && !!model.lobby.own && !display;
     pad.element.hidden = !driving || !touchDevice.matches;
@@ -551,6 +616,12 @@ function room(solo: boolean): void {
     roundControls.update({
       round: latest?.matchId ?? "",
       visible: model.screen === "race" && latest?.race?.phase === "countdown",
+      controls: latest?.race?.battle
+        ? battleGuide.controls
+        : drivingGuide.controls,
+      touchControls: latest?.race?.battle
+        ? battleGuide.touchControls
+        : drivingGuide.touchControls,
       touch: touchDevice.matches,
       spectator: !model.lobby.own,
       display,
@@ -576,6 +647,7 @@ function room(solo: boolean): void {
         (requestedSettings &&
           requestedSettings.track === settings.track &&
           requestedSettings.races === settings.races &&
+          requestedSettings.mode === settings.mode &&
           requestedSettings.display === settings.display)
       )
         requestedSettings = undefined;
@@ -639,7 +711,25 @@ function room(solo: boolean): void {
 
   const board = keyboardControls(
     () => latest?.phase !== "running" || modalInput.blocked(),
+    drive,
   );
+  function drive() {
+    if (display || !latest) return;
+    const keys = board.read();
+    runtime.drive(
+      modalInput.blocked()
+        ? NEUTRAL_INPUT
+        : {
+            left: keys.left || touch.left,
+            right: keys.right || touch.right,
+            gas: !!(keys.gas || touch.gas),
+            brake: false,
+            nitro: keys.nitro || touch.nitro,
+            item: !!(latest.race?.battle && (keys.item || touch.item)),
+            itemAlt: false,
+          },
+    );
+  }
   if (probe) {
     Reflect.set(window, "__driversRaceProbe", () => {
       const state = runtime.roomState();
@@ -647,6 +737,10 @@ function room(solo: boolean): void {
       return {
         phase: state?.race?.phase,
         track: state?.race?.trackName,
+        mode: state?.settings.mode,
+        theme: stadiumTheme,
+        held: state?.race?.battle?.slots.map((slot) => slot.held),
+        bombs: state?.race?.battle?.bombs.length,
         tick: state?.tick,
         hashChecks: metrics.hashChecks,
         mismatches: metrics.mismatches,
@@ -715,6 +809,7 @@ function room(solo: boolean): void {
     const drawArena = !viewer.shared || display || solo;
     if (!arena && drawArena)
       arena = mountArena(canvas, {
+        theme: () => stadiumTheme,
         onReady: () => {
           canvas.dataset.ready = "true";
         },
@@ -725,20 +820,7 @@ function room(solo: boolean): void {
           say("The arena could not start", "error");
         },
       });
-    if (!display)
-      runtime.drive(
-        modalInput.blocked()
-          ? NEUTRAL_INPUT
-          : {
-              left: board.read().left || touch.left,
-              right: board.read().right || touch.right,
-              gas: !!(board.read().gas || touch.gas),
-              brake: false,
-              nitro: board.read().nitro || touch.nitro,
-              item: false,
-              itemAlt: false,
-            },
-      );
+    drive();
     const room = runtime.roomState();
     const timing = runtime.frameTiming();
     if (room && drawArena && !document.hidden) {
@@ -786,16 +868,12 @@ function room(solo: boolean): void {
             y: 0,
           });
         }
-        arena?.render(
-          { ...latest, race: lead.race },
-          lead.alpha,
-          runtime.self,
-          {
-            previous: lead.previous,
-            place: (slot, pose) =>
-              slot === own ? pose : smoother.place(slot, pose),
-          },
-        );
+        arena?.render(latest, lead.alpha, display ? undefined : runtime.self, {
+          previous: lead.previous,
+          current: lead.race,
+          place: (slot, pose) =>
+            slot === own ? pose : smoother.place(slot, pose),
+        });
       } else {
         // Views arrive one log tick apart; alpha is how far into that gap this frame falls.
         const alpha = Math.min(1, Math.max(0, (now - viewAt) / TICK_MS));
@@ -808,7 +886,7 @@ function room(solo: boolean): void {
             y: 0,
           });
         }
-        arena?.render(latest, alpha, runtime.self);
+        arena?.render(latest, alpha, display ? undefined : runtime.self);
       }
     }
     if (room) {

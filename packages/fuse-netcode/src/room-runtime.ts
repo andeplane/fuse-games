@@ -156,7 +156,8 @@ export const LAG_INDICATOR_MS = 250,
   SNAPSHOT_RETRY_MS = 2000,
   SNAPSHOT_FAILURES = 3,
   JOIN_RETRY_MS = 1000;
-export const SNAPSHOT_BUFFER_LIMIT = 4_000_000,
+/** Above a full snapshot's base64 text: 4/3 of `MAX_SNAPSHOT_BYTES`, about 4.5 MB. */
+export const SNAPSHOT_BUFFER_LIMIT = 4_800_000,
   STALLED_GAP_MS = 1500,
   /** How long a member whose packets all fall outside this replica's window still counts as heard, and is resynced for: several snapshot attempts. */
   WINDOW_GRACE_MS = 10_000,

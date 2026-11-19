@@ -59,6 +59,17 @@ export function forward(
     const result = step(race, held.map(unpackControls), track, botSlots);
     if (
       result.state.phase !== race.phase ||
+      (result.state.battle &&
+        race.battle &&
+        (result.state.battle.bombs.length !== race.battle.bombs.length ||
+          result.state.battle.slots.some((slot, i) => {
+            const old = race.battle!.slots[i]!;
+            return (
+              slot.held !== old.held ||
+              slot.shieldUntil !== old.shieldUntil ||
+              slot.hitUntil !== old.hitUntil
+            );
+          }))) ||
       result.events.some((event) => DECIDES.has(event.type))
     )
       return undefined;

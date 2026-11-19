@@ -1,10 +1,7 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
   applyManagementTick,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   memberId,
   uint32,
@@ -223,21 +220,16 @@ const payloads = {
   name: validName,
   avatar: isAvatar,
   settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: playerKey,
+  matchKey: validMatchId,
   capacity: CAPACITY,
 };
 /** The wire boundary: management entries by the shared rules, controls by shape and integer range. */
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return validMatchId(raw[4]);
-    const at =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return at < 0 || playerKey((raw as unknown[])[at]);
-  }
-  if (!Array.isArray(raw)) return false;
-  const [seq, tick, kind, matchId, ...args] = raw as unknown[];
+  if (isManagementEntry(raw, payloads)) return true;
+  if (!hasLogPosition(raw)) return false;
+  const [, , kind, matchId, ...args] = raw;
   return (
-    int(seq, 1, 0xffff_ffff) &&
-    int(tick, 1, 0xffff_ffff) &&
     int(kind, MOVE, LAST) &&
     validMatchId(matchId) &&
     ARITY[kind]!.includes(args.length) &&

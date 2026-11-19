@@ -1,8 +1,27 @@
+import { VIEW_W } from "../../engine/view-kit.js";
+
 /** The two calls a stage's animated effects make: enough of a 2D context to paint flat pixels. */
 export interface Brush {
   fillStyle: string | CanvasGradient | CanvasPattern;
   fillRect(x: number, y: number, width: number, height: number): void;
 }
+
+/** Paint a row of world pixels, clipped to the screen at the current camera. */
+export function worldRow(
+  brush: Brush,
+  x0: number,
+  x1: number,
+  y: number,
+  camera: number,
+): void {
+  const from = Math.max(x0 - camera, 0);
+  const to = Math.min(x1 - camera, VIEW_W);
+  if (to > from) brush.fillRect(from, y, to - from, 1);
+}
+
+/** First screen-wide repeat of a world-space pattern that can reach the screen. */
+export const firstTile = (camera: number, margin: number) =>
+  Math.floor((camera - margin) / VIEW_W);
 
 /**
  * A pixel buffer a static layer is painted into once. Painters work in screen rows, so `y` is the row on the

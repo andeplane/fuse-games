@@ -1,4 +1,10 @@
-import { button, createResultsScreen, createRoundControls, el } from "fuse-ui";
+import {
+  button,
+  createLiveResults,
+  createResultsScreen,
+  createRoundControls,
+  el,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -486,8 +492,7 @@ export function createGameScreen(
     ...(hooks.leave ? { onBack: hooks.leave, backText: "Leave" } : {}),
     onAction: (id) => (id === "rematch" ? hooks.again() : hooks.back()),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
 
   centre.append(panel, you, briefing, handoff);
   const toast = el("div", "", "fl-toast");
@@ -1065,41 +1070,12 @@ export function createGameScreen(
     }
     // Result. A newcomer who still owes the room a name keeps the page's name card in reach.
     const result = next.askName ? undefined : next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => hooks.friends?.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        const friends = hooks.friends;
-        results.show(
-          resultReport(result, {
-            color: colorOf,
-            ...(friends
-              ? {
-                  friend: (id: string) => {
-                    const publicId = friends.publicIdOfMember(id);
-                    return publicId
-                      ? friends.friendButton(publicId)
-                      : undefined;
-                  },
-                }
-              : {}),
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: hooks.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: colorOf, friend }),
+      bar: resultBar,
+    });
   }
 
   // ---- the board, drawn every animation frame from the two newest frames ----

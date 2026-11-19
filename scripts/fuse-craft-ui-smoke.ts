@@ -13,6 +13,10 @@ await mkdir(output, { recursive: true });
 
 async function start(page: Page, mode: "sandbox" | "skirmish" = "sandbox") {
   await page.goto(url);
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Single player", exact: true })
+    .click();
   await page.locator('[data-action="new-game"]').click();
   if (mode === "skirmish")
     await page.locator('[data-action="mode-skirmish"]').click();
@@ -230,12 +234,22 @@ for (const [name, engine] of [
       "drag must not select",
     );
     const panned = await view(desktop);
-    await desktop.locator('[data-action="leave"]').click();
-    await desktop.locator('[data-action="cancel-confirm"]').click();
+    await desktop.getByRole("button", { name: "Reset", exact: true }).click();
+    const confirmation = desktop.getByRole("alertdialog");
+    await confirmation.waitFor();
+    await confirmation.getByRole("button", { name: "Keep playing" }).focus();
+    await desktop.keyboard.press("Shift+Tab");
+    assert.equal(
+      await desktop.locator(":focus").getAttribute("data-action"),
+      "confirm-reset",
+      "Confirmation wraps keyboard focus",
+    );
+    await desktop.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "hidden" });
     assert.deepEqual(
       await view(desktop),
       panned,
-      "cancel menu must preserve camera",
+      "canceling reset must preserve camera",
     );
     await desktop.locator("#nd-board").focus();
     await desktop.keyboard.press("e");

@@ -20,6 +20,10 @@ for (const [name, engine] of [
       viewport: { width: 1840, height: 1000 },
     });
     await page.goto(url);
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Single player", exact: true })
+      .click();
     await page.locator('[data-action="new-game"]').click();
     await page.locator('[data-action="mode-sandbox"]').click();
     await page.locator('[data-action="start"]').click();
@@ -113,8 +117,44 @@ for (const [name, engine] of [
     assert.equal(await page.locator(".queue-mark").count(), queued);
     await page.keyboard.press("Escape");
     assert.equal(await page.locator(".tile-heading").innerText(), selected);
+    const board = page.locator("#nd-board");
+    await board.focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    const moved = await page.locator(".tile-heading").innerText();
+    assert.notEqual(moved, selected, "Shift+Arrow moves the board selection");
+    const minimap = page.locator("#nd-minimap");
+    await minimap.focus();
+    await page.keyboard.press("Enter");
+    const centered = await view(page);
+    await board.focus();
+    const arrow = centered[0]! > 0 ? "ArrowLeft" : "ArrowRight";
+    await page.keyboard.down(arrow);
+    try {
+      await page.waitForFunction((x) => {
+        const origin = document
+          .querySelector("#nd-board")
+          ?.getAttribute("viewBox")
+          ?.split(" ")[0];
+        return Math.abs(Number(origin) - x) > 1;
+      }, centered[0]!);
+    } finally {
+      await page.keyboard.up(arrow);
+    }
+    assert.equal(
+      await page.locator(".tile-heading").innerText(),
+      moved,
+      "Bare arrows pan without moving the selection",
+    );
+    await minimap.focus();
+    await page.keyboard.press("Enter");
+    assert.deepEqual(
+      await view(page),
+      centered,
+      "Minimap Enter recenters the camera",
+    );
+    assert.equal(await page.locator(".tile-heading").innerText(), moved);
     console.log(
-      `${name}: bounded readable zoom at desktop/phone sizes; secondary and Control drag pan without placement; context menu suppressed`,
+      `${name}: bounded readable zoom at desktop/phone sizes; secondary and Control drag pan without placement; context menu suppressed; keyboard panning, selection and minimap recentering`,
     );
   } finally {
     await browser.close();

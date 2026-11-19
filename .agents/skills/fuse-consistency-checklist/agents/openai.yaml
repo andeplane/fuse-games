@@ -1,0 +1,3 @@
+interface:
+  display_name: "Fuse Consistency Checklist"
+  short_description: "Check shared game interactions across screens and player roles"
