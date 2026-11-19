@@ -73,33 +73,25 @@ import {
   winnerOf,
 } from "./world.js";
 
-const UINT32 = 0xffff_ffff;
-/** Steps, ids and counters stay well inside exact integers. */
-const COUNT = 0xff_ffff_ffff;
-/** The largest id a command may name (a unit id, a seat or a site id). */
-export const MAX_ID = COUNT;
+import { MAX_ID, insideMap, isInt, readTarget } from "./input-values.js";
 
-export const isInt = (
-  value: unknown,
-  low: number,
-  high: number,
-): value is number =>
-  typeof value === "number" &&
-  Number.isInteger(value) &&
-  value >= low &&
-  value <= high;
+export { MAX_ID, isInt } from "./input-values.js";
+const UINT32 = 0xffff_ffff;
+const COUNT = MAX_ID;
 
 const tuple = (raw: unknown, length: number): unknown[] | undefined =>
   Array.isArray(raw) && raw.length === length ? raw : undefined;
 
 /** An order as `[kind, ...args]` (`ORDER_KINDS`): a move's or attack-move's `x, y`, an attack's `of, id`, a cast's
  * `slot, x, y, of, id`. */
-const encodeOrder = (order: Order): number[] =>
-  order.type === "attack"
-    ? [2, order.of, order.id]
+const encodeOrder = (order: Order): number[] => {
+  const kind = ORDER_KINDS.indexOf(order.type);
+  return order.type === "attack"
+    ? [kind, order.of, order.id]
     : order.type === "cast"
-      ? [3, order.slot, order.x, order.y, order.of, order.id]
-      : [ORDER_KINDS.indexOf(order.type), order.x, order.y];
+      ? [kind, order.slot, order.x, order.y, order.of, order.id]
+      : [kind, order.x, order.y];
+};
 
 export function encodeWorld(world: World): unknown {
   return [
@@ -299,36 +291,34 @@ function unit(
   return { id, kind: unitKind, owner, x, y, hp, cooldown, goal, stun, rally, lane, wave };
 }
 
-/** A queued order on `map`: a move to an open tile, an attack on a `MARKS` target, or a cast of a slot at a tile. */
+const ORDER_ARGS = {
+  move: 2,
+  attackMove: 2,
+  attack: 2,
+  cast: 5,
+} satisfies Record<Order["type"], number>;
+
+/** A queued order on `map`: a move to an open tile, an attack on a target, or a cast of a slot at a tile. */
 function order(raw: unknown, map: GameMap): Order | undefined {
   if (!Array.isArray(raw)) return;
   const [kind, ...args] = raw as unknown[];
-  const onMap = (x: unknown, y: unknown): x is number =>
-    isInt(x, 0, map.width - 1) && isInt(y, 0, map.height - 1);
-  if (kind === 0 || kind === 1) {
-    const [x, y] = args;
-    if (args.length !== 2 || !onMap(x, y) || !openTile(map, x, y as number))
-      return;
-    return { type: ORDER_KINDS[kind], x, y: y as number };
+  if (!isInt(kind, 0, ORDER_KINDS.length - 1)) return;
+  const type = ORDER_KINDS[kind]!;
+  if (args.length !== ORDER_ARGS[type]) return;
+  if (type === "attack") {
+    const target = readTarget(args[0], args[1]);
+    return target && { type, ...target };
   }
-  if (kind === 2) {
-    const [of, id] = args;
-    if (args.length !== 2 || !isInt(of, 0, MARKS.length - 1)) return;
-    return isInt(id, 0, COUNT) ? { type: "attack", of, id } : undefined;
+  if (type === "cast") {
+    const [slot, x, y, of, id] = args;
+    if (!isInt(slot, 0, 3) || !insideMap(map, x, y)) return;
+    const target = of === -1 && id === -1 ? { of, id } : readTarget(of, id);
+    if (target) return { type, slot, x, y: y as number, ...target };
+    return;
   }
-  if (kind !== 3 || args.length !== 5) return;
-  const [slot, x, y, of, id] = args;
-  if (!isInt(slot, 0, 3) || !onMap(x, y)) return;
-  const none = of === -1 && id === -1;
-  if (!none && !(isInt(of, 0, MARKS.length - 1) && isInt(id, 0, COUNT))) return;
-  return {
-    type: "cast",
-    slot,
-    x,
-    y: y as number,
-    of: of as number,
-    id: id as number,
-  };
+  const [x, y] = args;
+  if (!insideMap(map, x, y) || !openTile(map, x, y as number)) return;
+  return { type, x, y: y as number };
 }
 
 function hero(raw: unknown, map: GameMap): Hero | undefined {
