@@ -1,4 +1,4 @@
-import type { StructureKind, World } from "../engine/types.js";
+import type { Outcome, StructureKind, World } from "../engine/types.js";
 import type { PresentationPreferences } from "./contracts.js";
 
 /** Interface feedback, played directly by the app as the player acts. */
@@ -72,6 +72,31 @@ const WEAPON_CUES: Partial<Record<StructureKind, SoundCue>> = {
   spore: "spore",
 };
 
+interface CueRule {
+  cue: SoundCue;
+  audience?: "player" | "player-or-spectator";
+  cell?: true;
+}
+
+const OUTCOME_CUES: ReadonlyMap<Outcome["type"], CueRule> = new Map<
+  Outcome["type"],
+  CueRule
+>([
+  ["shielded", { cue: "shield", cell: true }],
+  ["eliminated", { cue: "eliminated", cell: true }],
+  ["dominanceBroken", { cue: "dominanceBroken" }],
+  ["researched", { cue: "research", audience: "player-or-spectator" }],
+  ["researchStarted", { cue: "researchStart", audience: "player" }],
+  ["constructed", { cue: "build", cell: true }],
+  ["queued", { cue: "place", audience: "player", cell: true }],
+  ["dispatched", { cue: "dispatch", audience: "player", cell: true }],
+  ["rejected", { cue: "invalid", audience: "player" }],
+  ["stalled", { cue: "stall", audience: "player", cell: true }],
+  ["dropped", { cue: "stall", audience: "player", cell: true }],
+]);
+
+const CUE_ORDER = [...EVENT_CUES, ...UI_CUES];
+
 /**
  * Bounded event cues: one entry per cue and tick, in a fixed order. Identical
  * ticks and checkpoint rewinds never replay a burst, and a match joined part
@@ -88,24 +113,39 @@ export function createCueTracker() {
   // cell can still say whose it was and what fired from it.
   let previous = new Map<number, { ownerId: string; kind: StructureKind }>();
   let alive = new Set<string>();
-  const remember = (world: Readonly<World>) => {
-    previous = new Map(
+  const remember = (world: Readonly<World>, standing: typeof previous) => {
+    previous = standing;
+    alive = new Set(world.players.filter((p) => p.alive).map((p) => p.id));
+    powerupSerial = world.powerupSerial;
+  };
+  const finish = (
+    world: Readonly<World>,
+    local: string,
+  ): SoundCue | undefined => {
+    if (!world.finished || ended) return;
+    ended = true;
+    // A draw is nobody's defeat. Spectators hear the last blows.
+    if (!local) return;
+    return world.winnerId === null
+      ? "draw"
+      : world.winnerId === local
+        ? "victory"
+        : "defeat";
+  };
+  return (world: Readonly<World>, local: string): CueEvent[] => {
+    const standing = new Map(
       world.structures.map((s) => [
         s.cell,
         { ownerId: s.ownerId, kind: s.kind },
       ]),
     );
-    alive = new Set(world.players.filter((p) => p.alive).map((p) => p.id));
-    powerupSerial = world.powerupSerial;
-  };
-  return (world: Readonly<World>, local: string): CueEvent[] => {
     if (world.matchId !== match) {
       match = world.matchId;
       tick = world.tick;
       heardThrough = world.tick;
       ended = world.finished;
       alarmAt = -Infinity;
-      remember(world);
+      remember(world, standing);
       // Only a match seen from its first seconds gets an opening sting.
       return !world.finished && world.tick < 40
         ? [{ cue: "matchStart", cells: [] }]
@@ -115,25 +155,11 @@ export function createCueTracker() {
       // Keep attribution current while replay catches up, without replaying
       // heard cues or resetting alarm/result suppression.
       tick = world.tick;
-      remember(world);
+      remember(world, standing);
       // A corrected replay may finish before its previous high-water tick.
       // Finished worlds stop advancing, so publish its first result now.
-      if (world.finished && !ended) {
-        ended = true;
-        if (local)
-          return [
-            {
-              cue:
-                world.winnerId === null
-                  ? "draw"
-                  : world.winnerId === local
-                    ? "victory"
-                    : "defeat",
-              cells: [],
-            },
-          ];
-      }
-      return [];
+      const result = finish(world, local);
+      return result ? [{ cue: result, cells: [] }] : [];
     }
     // A frame can skip ticks (a background tab catching up, an online
     // resync); only the newest tick's outcomes are visible then.
@@ -152,17 +178,26 @@ export function createCueTracker() {
     const ownerAt = (cell: number | undefined) =>
       cell === undefined
         ? undefined
-        : (world.structures.find((s) => s.cell === cell)?.ownerId ??
+        : (standing.get(cell)?.ownerId ??
           previous.get(cell)?.ownerId ??
           world.players.find((p) => p.queue.some((j) => j.cell === cell))?.id);
 
     for (const e of world.outcomes) {
+      const rule = OUTCOME_CUES.get(e.type);
+      if (rule) {
+        const heard =
+          rule.audience === "player"
+            ? own(e.playerId)
+            : rule.audience !== "player-or-spectator" || mine(e.playerId);
+        if (heard) add(rule.cue, rule.cell ? e.cell : undefined);
+        continue;
+      }
       switch (e.type) {
         case "damage": {
           const shooter =
             e.fromCell === undefined
               ? undefined
-              : (world.structures.find((s) => s.cell === e.fromCell)?.kind ??
+              : (standing.get(e.fromCell)?.kind ??
                 previous.get(e.fromCell)?.kind);
           add(
             (shooter && WEAPON_CUES[shooter]) || "attack",
@@ -179,14 +214,8 @@ export function createCueTracker() {
           }
           break;
         }
-        case "shielded":
-          add("shield", e.cell);
-          break;
         case "destroyed":
           add(own(e.playerId) ? "lost" : "destroy", e.cell);
-          break;
-        case "eliminated":
-          add("eliminated", e.cell);
           break;
         case "claimed":
           add(mine(e.playerId) ? "powerup" : "powerupRival", e.cell);
@@ -194,38 +223,10 @@ export function createCueTracker() {
         case "dominating":
           add(mine(e.playerId) ? "dominating" : "threat");
           break;
-        case "dominanceBroken":
-          add("dominanceBroken");
-          break;
-        case "researched":
-          if (mine(e.playerId)) add("research");
-          break;
-        case "researchStarted":
-          if (own(e.playerId)) add("researchStart");
-          break;
-        case "constructed":
-          add("build", e.cell);
-          break;
-        case "queued":
-          if (own(e.playerId)) add("place", e.cell);
-          break;
-        case "dispatched":
-          if (own(e.playerId)) add("dispatch", e.cell);
-          break;
-        case "rejected":
-          if (own(e.playerId)) add("invalid");
-          break;
-        case "stalled":
-        case "dropped":
-          if (own(e.playerId)) add("stall", e.cell);
-          break;
-        case "income":
-          break;
       }
     }
     if (skipped) {
       // Recover the losses that matter from the board itself.
-      const standing = new Set(world.structures.map((s) => s.cell));
       for (const [cell, { ownerId }] of previous)
         if (
           !standing.has(cell) &&
@@ -243,28 +244,15 @@ export function createCueTracker() {
     if (spawned > 0)
       for (const p of world.powerups.slice(-spawned))
         add("powerupSpawn", p.cell);
-    remember(world);
+    remember(world, standing);
 
-    if (world.finished && !ended) {
-      ended = true;
-      // A draw is nobody's defeat: it gets its own neutral cue. Spectators
-      // hear the last blows but no personal result.
-      if (local)
-        add(
-          world.winnerId === null
-            ? "draw"
-            : world.winnerId === local
-              ? "victory"
-              : "defeat",
-        );
-    }
+    const result = finish(world, local);
+    if (result) add(result);
     // A rejected command reuses the interface's "invalid" cue.
-    return [...EVENT_CUES, ...UI_CUES]
-      .filter((cue) => cues.has(cue))
-      .map((cue) => ({
-        cue,
-        cells: cues.get(cue)!,
-      }));
+    return CUE_ORDER.filter((cue) => cues.has(cue)).map((cue) => ({
+      cue,
+      cells: cues.get(cue)!,
+    }));
   };
 }
 
