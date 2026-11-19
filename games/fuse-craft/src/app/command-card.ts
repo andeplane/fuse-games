@@ -1,3 +1,4 @@
+import { escapeMarkup as escape } from "./escape-markup.js";
 import {
   CONSTRUCTIONS,
   RESEARCH,
@@ -176,16 +177,6 @@ export function waitingText(
         : "Not connected: nothing built or queued touches this hex, so it waits until your network reaches a neighbouring hex. Highlighted hexes start at once.",
   );
 }
-function escape(value: unknown): string {
-  return String(value).replace(
-    /[&<>"']/g,
-    (char) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        char
-      ] ?? char,
-  );
-}
-
 const commandSymbols: Record<string, string> = {
   next: '<path d="m19 7 9 9-9 9M28 16H4"/>',
   back: '<path d="m13 7-9 9 9 9M4 16h24"/>',
