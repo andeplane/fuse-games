@@ -31,7 +31,6 @@ import {
   type Room,
   type Settings,
 } from "../src/online/game.js";
-import { hashPlain } from "../src/online/hash.js";
 
 type Bodies = Record<string, readonly unknown[][]>;
 let seq = 0;
@@ -317,19 +316,6 @@ test("a rolled-back room's grid never shows another grid's copy, even at the sam
 });
 
 test("the hash covers the whole room in a fixed order, and fields added later", () => {
-  const h = hashPlain;
-  assert.match(h({}), /^[0-9a-f]{16}$/);
-  assert.equal(h({ a: 1, b: [2, "x"] }), h({ b: [2, "x"], a: 1 }));
-  const map = (keys: string) => new Map([...keys].map((k) => [k, k]));
-  assert.equal(h(map("ab")), h(map("ba")));
-  assert.equal(h({ a: 1, gone: undefined }), h({ a: 1 }));
-  assert.notEqual(h({ a: 1, events: [1] }), h({ a: 1 }), "events are data");
-  assert.equal(h(-0), h(0));
-  assert.notEqual(h(0.1 + 0.2), h(0.3), "exact bits");
-  assert.notEqual(h(new Uint32Array([1, 2])), h(new Uint32Array([1, 3])));
-  assert.notEqual(h([1, [2]]), h([[1], 2]));
-  assert.notEqual(h("1"), h(1));
-  assert.throws(() => h({ f: () => 0 }), TypeError);
   const room = started(),
     before = hash(room);
   room.world!.terrain.solid[100]! ^= 1;

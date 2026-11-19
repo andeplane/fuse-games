@@ -5,6 +5,7 @@ import {
   SPECTATOR,
   applyManagementTick,
   defaultText,
+  hashPlain,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -42,7 +43,6 @@ import {
   type VictoryKind,
 } from "../engine/index.js";
 import { MAX_COUNT, MAX_GAMES, MAX_WINS } from "./basics.js";
-import { hashPlain } from "./hash.js";
 import * as names from "./names.js";
 import { VICTORIES, decodeWorld, encodeWorld } from "./world.js";
 

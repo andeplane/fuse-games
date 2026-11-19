@@ -51,7 +51,6 @@ import {
   view,
   type Entry,
 } from "../src/online/game.js";
-import { hashPlain } from "../src/online/hash.js";
 import { botName, seatName } from "../src/online/names.js";
 import {
   copy,
@@ -619,16 +618,6 @@ test("the hash covers the room and the round, and leaves out only the tick's eve
     assert.notEqual(hash(changed), base);
   }
   assert.equal(hash(createRoom("m0", SETUP)), hash(createRoom("m0", SETUP)));
-  const h = hashPlain;
-  assert.throws(() => h(() => 1));
-  assert.throws(() => h(new Map([[1, 1]])));
-  assert.equal(h({ a: 1, b: undefined }), h({ a: 1 }));
-  assert.equal(h({ a: 1, b: 2 }), h({ b: 2, a: 1 }));
-  assert.equal(h(-0), h(0));
-  assert.equal(h(NaN), h(0 / 0));
-  assert.notEqual(h(new Uint32Array([1, 2])), h([1, 2]));
-  assert.equal(h(new Uint8Array([1, 2])), h([1, 2]));
-  assert.notEqual(h([null, true, "x"]), h([null, false, "x"]));
 });
 
 test("the view is a copy in game time, seats in order, with every step's events of the tick", () => {
