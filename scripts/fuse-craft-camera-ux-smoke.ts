@@ -20,6 +20,7 @@ for (const [name, engine] of [
       viewport: { width: 1840, height: 1000 },
     });
     await page.goto(url);
+    await page.getByRole("button", { name: "Play", exact: true }).click();
     await page
       .getByRole("button", { name: "Single player", exact: true })
       .click();
