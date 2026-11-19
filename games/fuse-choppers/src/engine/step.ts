@@ -21,6 +21,8 @@ import {
   CAUSES,
   FX,
   rightEdge,
+  type Bolt,
+  type Bullet,
   type Cause,
   type Chopper,
   type World,
@@ -432,31 +434,51 @@ function solid(world: World, x: number, y: number, r = 0): boolean {
 const onScreen = (world: World, x: number, margin: number) =>
   x > world.camX - margin && x < rightEdge(world) + margin;
 
+const SHOT_MARGIN = px(40);
+
+/** Advance a gunshot and report whether it can still hit a target this step. */
+function advanceShot(
+  world: World,
+  shot: Bolt | Bullet,
+  owner?: number,
+): boolean {
+  shot.x += shot.vx;
+  shot.y += shot.vy;
+  if (--shot.life <= 0 || !onScreen(world, shot.x, SHOT_MARGIN)) return false;
+  if (!solid(world, shot.x, shot.y)) return true;
+  effect(world, FX.spark, shot.x, shot.y, owner);
+  return false;
+}
+
+/** The first eligible pilot in simulation order gets the impact. */
+function hitPilot(
+  world: World,
+  shot: { x: number; y: number },
+  radius: number,
+  owner?: number,
+): Chopper | undefined {
+  return world.choppers.find(
+    (pilot) =>
+      pilot.slot !== owner &&
+      flying(pilot) &&
+      circleBox(
+        shot.x,
+        shot.y,
+        radius,
+        pilot.x,
+        pilot.y,
+        T.CHOPPER_HW,
+        T.CHOPPER_HH,
+      ),
+  );
+}
+
 function moveBullets(world: World): void {
   world.bullets = world.bullets.filter((bullet) => {
-    bullet.x += bullet.vx;
-    bullet.y += bullet.vy;
-    if (--bullet.life <= 0 || !onScreen(world, bullet.x, px(40))) return false;
-    if (solid(world, bullet.x, bullet.y)) {
-      effect(world, FX.spark, bullet.x, bullet.y, bullet.owner);
-      return false;
-    }
+    if (!advanceShot(world, bullet, bullet.owner)) return false;
     const owner = world.choppers.find((c) => c.slot === bullet.owner);
-    for (const target of world.choppers) {
-      if (
-        target.slot === bullet.owner ||
-        !flying(target) ||
-        !circleBox(
-          bullet.x,
-          bullet.y,
-          T.BULLET_R,
-          target.x,
-          target.y,
-          T.CHOPPER_HW,
-          T.CHOPPER_HH,
-        )
-      )
-        continue;
+    const target = hitPilot(world, bullet, T.BULLET_R, bullet.owner);
+    if (target) {
       // A nudge, never a kill: the push and the wobble do the damage.
       target.vx += (bullet.vx - world.scroll >= 0 ? 1 : -1) * T.BULLET_PUSH;
       target.vy += (bullet.id % 2 ? -1 : 1) * T.BULLET_LIFT_PUSH;
@@ -560,36 +582,16 @@ function shootBolt(world: World, x: number, y: number): void {
 
 function moveBolts(world: World): void {
   world.bolts = world.bolts.filter((bolt) => {
-    bolt.x += bolt.vx;
-    bolt.y += bolt.vy;
-    if (--bolt.life <= 0 || !onScreen(world, bolt.x, px(40))) return false;
-    if (solid(world, bolt.x, bolt.y)) {
-      effect(world, FX.spark, bolt.x, bolt.y);
-      return false;
-    }
-    for (const chopper of world.choppers) {
-      if (
-        !flying(chopper) ||
-        !circleBox(
-          bolt.x,
-          bolt.y,
-          T.BOLT_R,
-          chopper.x,
-          chopper.y,
-          T.CHOPPER_HW,
-          T.CHOPPER_HH,
-        )
-      )
-        continue;
-      const push = toward(bolt.vx - world.scroll, bolt.vy, T.BOLT_PUSH);
-      chopper.vx += push.x;
-      chopper.vy += push.y;
-      chopper.stun = Math.max(chopper.stun, T.BOLT_STUN);
-      chopper.landed = false;
-      effect(world, FX.hit, bolt.x, bolt.y, chopper.slot);
-      return false;
-    }
-    return true;
+    if (!advanceShot(world, bolt)) return false;
+    const chopper = hitPilot(world, bolt, T.BOLT_R);
+    if (!chopper) return true;
+    const push = toward(bolt.vx - world.scroll, bolt.vy, T.BOLT_PUSH);
+    chopper.vx += push.x;
+    chopper.vy += push.y;
+    chopper.stun = Math.max(chopper.stun, T.BOLT_STUN);
+    chopper.landed = false;
+    effect(world, FX.hit, bolt.x, bolt.y, chopper.slot);
+    return false;
   });
 }
 
@@ -603,29 +605,15 @@ function moveRocks(world: World): void {
       effect(world, FX.shatter, rock.x, rock.y);
       return false;
     }
-    for (const chopper of world.choppers) {
-      if (
-        !flying(chopper) ||
-        !circleBox(
-          rock.x,
-          rock.y,
-          rock.r,
-          chopper.x,
-          chopper.y,
-          T.CHOPPER_HW,
-          T.CHOPPER_HH,
-        )
-      )
-        continue;
-      if (!hurt(world, chopper, "rock")) {
-        const away = toward(chopper.x - rock.x, chopper.y - rock.y, px(4));
-        chopper.vx += away.x;
-        chopper.vy += away.y;
-      }
-      effect(world, FX.shatter, rock.x, rock.y);
-      return false;
+    const chopper = hitPilot(world, rock, rock.r);
+    if (!chopper) return true;
+    if (!hurt(world, chopper, "rock")) {
+      const away = toward(chopper.x - rock.x, chopper.y - rock.y, px(4));
+      chopper.vx += away.x;
+      chopper.vy += away.y;
     }
-    return true;
+    effect(world, FX.shatter, rock.x, rock.y);
+    return false;
   });
 }
 
