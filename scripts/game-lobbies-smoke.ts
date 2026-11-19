@@ -264,60 +264,6 @@ try {
       await room
         .locator('.fui-room-open-slot[data-slot="1"].fui-slot-occupied')
         .waitFor();
-      if (game === "fusemania") {
-        step = "Fusemania guest readiness";
-        const guestContext = await browser.newContext({
-          viewport: { width: 360, height: 800 },
-        });
-        try {
-          const guest = await guestContext.newPage();
-          const invite = new URL("fusemania/", base);
-          invite.searchParams.set(
-            "room",
-            (await room.locator(".fui-room-code").innerText()).trim(),
-          );
-          invite.searchParams.set("mute", "");
-          await guest.goto(invite.href);
-          const guestRoom = guest.locator(".fui-room-layout");
-          await guestRoom
-            .locator('.fui-room-open-slot[data-slot="0"]')
-            .getByRole("button", { name: "Join", exact: true })
-            .click();
-          const form = guestRoom.locator("dialog[open]");
-          await form
-            .locator('input:not([type="checkbox"]):not([type="radio"])')
-            .first()
-            .fill("Ready Tester");
-          await form
-            .getByRole("button", { name: /^Join(?: as player)?$/i })
-            .click();
-          const ready = guestRoom
-            .locator(".fui-room-head")
-            .getByRole("button", {
-              name: "Ready",
-              exact: true,
-            });
-          await ready.waitFor();
-          const hostStart = room.locator(".fui-room-head .fm-start");
-          await room.locator(".fm-start:disabled").waitFor();
-          assert.equal(await ready.getAttribute("aria-pressed"), "false");
-          await ready.click();
-          const pressed = guestRoom.getByRole("button", {
-            name: "Ready ✓",
-            exact: true,
-          });
-          await pressed.waitFor();
-          assert.equal(await pressed.getAttribute("aria-pressed"), "true");
-          await room.locator(".fm-start:enabled").waitFor();
-          assert.ok(await hostStart.isEnabled());
-          await pressed.click();
-          await ready.waitFor();
-          await room.locator(".fm-start:disabled").waitFor();
-        } finally {
-          await guestContext.close();
-        }
-        await room.locator(".fm-start:enabled").waitFor();
-      }
       if (game === "fuse-craft") {
         step = "guest device preferences";
         const guestContext = await browser.newContext({
@@ -355,6 +301,60 @@ try {
         } finally {
           await guestContext.close();
         }
+      }
+      if (game === "fusemania") {
+        step = "Fusemania guest readiness";
+        const guestContext = await browser.newContext({
+          viewport: { width: 360, height: 800 },
+        });
+        try {
+          const guest = await guestContext.newPage();
+          const invite = new URL("fusemania/", base);
+          invite.searchParams.set(
+            "room",
+            (await room.locator(".fui-room-code").innerText()).trim(),
+          );
+          invite.searchParams.set("mute", "");
+          await guest.goto(invite.href);
+          const guestRoom = guest.locator(".fui-room-layout");
+          await guestRoom
+            .locator('.fui-room-open-slot[data-slot="0"]')
+            .getByRole("button", { name: "Join", exact: true })
+            .click();
+          const form = guestRoom.locator("dialog[open]");
+          await form
+            .locator('input:not([type="checkbox"]):not([type="radio"])')
+            .first()
+            .fill("Ready Tester");
+          await form
+            .getByRole("button", { name: /^Join(?: as player)?$/i })
+            .click();
+          const ready = guestRoom
+            .locator(".fui-room-head")
+            .getByRole("button", {
+              name: "READY",
+              exact: true,
+            });
+          await ready.waitFor();
+          const hostStart = room.locator(".fui-room-head .fm-start");
+          await room.locator(".fm-start:disabled").waitFor();
+          assert.equal(await ready.getAttribute("aria-pressed"), "false");
+          await ready.click();
+          const pressed = guestRoom.getByRole("button", {
+            name: "READY ✓",
+            exact: true,
+          });
+          await pressed.waitFor();
+          assert.equal(await pressed.getAttribute("aria-pressed"), "true");
+          await room.locator(".fm-start:enabled").waitFor();
+          assert.ok(await hostStart.isEnabled());
+          await pressed.click();
+          await ready.waitFor();
+          await room.locator(".fm-start:disabled").waitFor();
+        } finally {
+          await guestContext.close();
+        }
+        await room.locator(".fm-start:enabled").waitFor();
       }
       const settings = room.getByRole("button", {
         name: "Room settings",
