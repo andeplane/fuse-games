@@ -1,9 +1,10 @@
-import type { ChopperView, WorldView } from "../engine/view.js";
-import { AVATAR_ATLAS } from "fuse-ui/assets";
-import { pilotFrame } from "./pilots.js";
+import { createChopperVisuals } from "./chopper-visuals.js";
+import { createSceneEffects } from "./scene-effects.js";
+export { effectKey } from "./scene-effects.js";
+export { hexA } from "./palette.js";
+import type { WorldView } from "../engine/view.js";
 import {
   EXIT_X,
-  PICKUP_KINDS,
   ROCK_WARNING_STEPS,
   VIEW_H,
   VIEW_W,
@@ -15,14 +16,8 @@ import {
   type PickupKind,
 } from "../engine/view-kit.js";
 import { createBackdrop, drawCave, noise } from "./backdrop.js";
+import { PICKUP_COLORS, hexA, seatColor } from "./palette.js";
 import {
-  PICKUP_COLORS,
-  PICKUP_LABELS,
-  seatColor,
-  seatShade,
-} from "./palette.js";
-import {
-  chopperSprite,
   droneSprite,
   pickupSprite,
   roundRect,
@@ -49,74 +44,15 @@ export interface SceneInput {
   reducedMotion?: boolean;
 }
 
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  gravity: number;
-  life: number;
-  max: number;
-  size: number;
-  grow: number;
-  color: string;
-  kind: "dot" | "ring" | "smoke" | "shard" | "text";
-  text?: string;
-  spin?: number;
-}
-
-const MAX_PARTICLES = 700;
-const STEP_S = 1 / 60;
-
-/**
- * What an effect is, for drawing it once: its kind, seat, moment and place, not its id. A rollback that changes an
- * earlier outcome renumbers every later effect, and the same explosion must not go off twice for it.
- */
-export const effectKey = (fx: {
-  kind: string;
-  slot: number;
-  at: number;
-  x: number;
-  y: number;
-}): string =>
-  `${fx.kind}:${fx.slot}:${Math.floor(fx.at / 6)}:${Math.round(fx.x / 16)}:${Math.round(fx.y / 16)}`;
-
-export function createScene(g: Paint, make: MakeSurface) {
+export function createScene(
+  g: Paint,
+  make: MakeSurface,
+  random: () => number = () => Math.random(),
+) {
   const backdrop = createBackdrop(make);
-  const choppers = new Map<string, Sprite>(),
-    saws = new Map<number, Sprite>(),
+  const saws = new Map<number, Sprite>(),
     pickups = new Map<PickupKind, Sprite>();
   let drone: Sprite | undefined;
-  let atlas:
-    { image: CanvasImageSource; width: number; height: number } | undefined;
-  const chopperFor = (slot: number, avatar: string) => {
-    const frame = pilotFrame(avatar, slot);
-    const key = `${slot}:${frame}`;
-    let s = choppers.get(key);
-    if (!s)
-      choppers.set(
-        key,
-        (s = chopperSprite(
-          make,
-          seatColor(slot),
-          seatShade(slot),
-          atlas
-            ? {
-                image: atlas.image,
-                x:
-                  ((frame % AVATAR_ATLAS.columns) * atlas.width) /
-                  AVATAR_ATLAS.columns,
-                y:
-                  (Math.floor(frame / AVATAR_ATLAS.columns) * atlas.height) /
-                  AVATAR_ATLAS.rows,
-                width: atlas.width / AVATAR_ATLAS.columns,
-                height: atlas.height / AVATAR_ATLAS.rows,
-              }
-            : undefined,
-        )),
-      );
-    return s;
-  };
   const sawFor = (r: number) => {
     let s = saws.get(r);
     if (!s) saws.set(r, (s = sawSprite(make, r)));
@@ -128,172 +64,12 @@ export function createScene(g: Paint, make: MakeSurface) {
     return s;
   };
 
-  let particles: Particle[] = [];
-  let seen = new Set<string>();
-  let trails = new Map<string, { x: number; y: number }[]>();
+  const effects = createSceneEffects(random);
+  const choppers = createChopperVisuals(g, make, random, effects.add);
   let seed = -1,
     last = 0,
-    shake = 0,
     trailClock = 0,
     emberClock = 0;
-
-  const add = (p: Partial<Particle> & Pick<Particle, "x" | "y">) => {
-    if (particles.length >= MAX_PARTICLES) particles.shift();
-    particles.push({
-      vx: 0,
-      vy: 0,
-      gravity: 0,
-      life: 0.6,
-      size: 3,
-      grow: 0,
-      color: "#fff",
-      kind: "dot",
-      ...p,
-      max: p.max ?? p.life ?? 0.6,
-    });
-  };
-  const burst = (
-    x: number,
-    y: number,
-    count: number,
-    colors: readonly string[],
-    speed: number,
-    options: Partial<Particle> = {},
-  ) => {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2,
-        v = speed * (0.35 + Math.random() * 0.65);
-      add({
-        x,
-        y,
-        vx: Math.cos(angle) * v,
-        vy: Math.sin(angle) * v,
-        color: colors[i % colors.length]!,
-        size: 1.5 + Math.random() * 2.5,
-        life: 0.35 + Math.random() * 0.45,
-        ...options,
-      });
-    }
-  };
-  const ring = (
-    x: number,
-    y: number,
-    color: string,
-    radius: number,
-    life = 0.45,
-    size = 3,
-  ) => add({ x, y, kind: "ring", color, size, grow: radius / life, life });
-  const text = (x: number, y: number, label: string, color: string) =>
-    add({ x, y, vy: -38, kind: "text", text: label, color, life: 1.1 });
-
-  function spawn(world: WorldView, me: string): void {
-    for (const fx of world.fx) {
-      const key = effectKey(fx);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      // An effect far older than this frame was already on screen before a reload or rejoin: skip it.
-      if (world.step - fx.at > 20) continue;
-      const color = fx.slot >= 0 ? seatColor(fx.slot) : "#ffffff",
-        mine = world.choppers.find((c) => c.slot === fx.slot)?.id === me;
-      switch (fx.kind) {
-        case "explode":
-          burst(fx.x, fx.y, 40, ["#fff3b0", "#ffb13b", "#ff5a2a", color], 280, {
-            gravity: 320,
-          });
-          burst(fx.x, fx.y, 10, ["#39405e", "#24283d"], 60, {
-            kind: "smoke",
-            grow: 26,
-            life: 1.2,
-            vy: -30,
-          });
-          ring(fx.x, fx.y, "#fff1c8", 70, 0.4, 4);
-          ring(fx.x, fx.y, color, 110, 0.6, 2);
-          text(fx.x, fx.y - 30, "CRASH!", color);
-          shake = Math.max(shake, mine ? 14 : 8);
-          break;
-        case "hit":
-          burst(fx.x, fx.y, 12, [color, "#ffffff"], 170);
-          ring(fx.x, fx.y, color, 28, 0.25, 2);
-          if (mine) shake = Math.max(shake, 4);
-          break;
-        case "shieldPop":
-          ring(fx.x, fx.y, "#6cc4ff", 60, 0.45, 4);
-          burst(fx.x, fx.y, 16, ["#6cc4ff", "#d6f0ff"], 200, { kind: "shard" });
-          text(fx.x, fx.y - 30, "SHIELD SAVED YOU", "#8fd4ff");
-          break;
-        case "pickup": {
-          const kind = PICKUP_KINDS[fx.data] ?? "shield",
-            tint = PICKUP_COLORS[kind];
-          ring(fx.x, fx.y, tint, 46, 0.4, 3);
-          burst(fx.x, fx.y, 14, [tint, "#ffffff"], 120);
-          text(fx.x, fx.y - 24, `+${PICKUP_LABELS[kind]}`, tint);
-          break;
-        }
-        case "shock":
-          ring(fx.x, fx.y, "#c06bff", 300, 0.55, 6);
-          ring(fx.x, fx.y, "#f0d0ff", 200, 0.4, 3);
-          burst(fx.x, fx.y, 24, ["#c06bff", "#ffffff"], 340);
-          shake = Math.max(shake, 7);
-          break;
-        case "scramble":
-          text(fx.x, fx.y - 30, "SCRAMBLED!", "#ff7ad2");
-          ring(fx.x, fx.y, "#ff5fc8", 36, 0.4, 2);
-          break;
-        case "shatter":
-          burst(fx.x, fx.y, 12, ["#3a1a14", "#6a2a18"], 180, {
-            kind: "shard",
-            gravity: 380,
-          });
-          burst(fx.x, fx.y, 8, ["#ff8a3a", "#ffd07a"], 140);
-          break;
-        case "droneDown":
-          burst(fx.x, fx.y, 30, ["#fff0b0", "#ff7a3a", "#ff2a3c"], 240, {
-            gravity: 260,
-          });
-          ring(fx.x, fx.y, "#ff5a4a", 70, 0.45, 3);
-          if (fx.slot >= 0) text(fx.x, fx.y - 28, "DRONE DOWN", color);
-          shake = Math.max(shake, 5);
-          break;
-        case "exit":
-          ring(fx.x, fx.y, color, 90, 0.6, 4);
-          burst(fx.x, fx.y, 30, [color, "#ffffff", "#7fe0ff"], 220);
-          text(fx.x, fx.y - 34, "ESCAPED!", color);
-          break;
-        case "bolt":
-          burst(fx.x, fx.y, 6, ["#ff4a5a", "#ffd0d0"], 90);
-          break;
-        case "droneHit":
-          burst(fx.x, fx.y, 8, ["#ffffff", "#ff6a6a"], 140);
-          break;
-        case "bump":
-          burst(fx.x, fx.y, 10, ["#ffffff", "#fff4a0"], 160);
-          text(fx.x, fx.y - 22, "BUMP!", "#fff4a0");
-          break;
-        case "spark":
-          burst(fx.x, fx.y, 5, [color, "#ffffff"], 90);
-          break;
-      }
-    }
-    if (seen.size > 600) seen = new Set([...seen].slice(-300));
-  }
-
-  function tick(dt: number): void {
-    particles = particles.filter((p) => {
-      p.life -= dt;
-      if (p.life <= 0) return false;
-      p.vy += p.gravity * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.size += p.grow * dt;
-      if (p.kind !== "ring") {
-        p.vx *= 0.985;
-        p.vy *= p.gravity ? 1 : 0.985;
-      }
-      return true;
-    });
-    shake *= Math.pow(0.02, dt);
-    if (shake < 0.2) shake = 0;
-  }
 
   function draw(input: SceneInput): void {
     const { world, now } = input,
@@ -302,16 +78,14 @@ export function createScene(g: Paint, make: MakeSurface) {
     last = now;
     if (world.seed !== seed) {
       seed = world.seed;
-      particles = [];
-      trails = new Map();
-      seen = new Set(world.fx.map(effectKey));
+      choppers.resetTrails();
+      effects.reset(world);
     }
-    spawn(world, input.me);
-    tick(dt);
+    effects.spawn(world, input.me);
+    effects.tick(dt);
     const camX = world.camX;
     g.save();
-    if (shake && !input.reducedMotion)
-      g.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    effects.applyShake(g, input.reducedMotion);
     backdrop.draw(g, camX, time);
     drawCave(g, world.seed, camX);
     drawExit(g, camX, time);
@@ -322,11 +96,11 @@ export function createScene(g: Paint, make: MakeSurface) {
     const sample = trailClock >= 1 / 24;
     if (sample) trailClock = 0;
     for (const chopper of world.choppers)
-      drawChopper(g, world, chopper, input, time, sample);
+      choppers.draw(world, chopper, input, time, sample);
     drawDrones(g, world, time);
     drawShots(g, world);
     drawRocks(g, world, time);
-    drawParticles(g, camX);
+    effects.draw(g, camX);
     emberClock += dt;
     drawCrush(g, world, time, emberClock > 0.03);
     if (emberClock > 0.03) emberClock = 0;
@@ -448,212 +222,6 @@ export function createScene(g: Paint, make: MakeSurface) {
       g.fillRect(x - 30, p.y + bob - 30, 60, 60);
       g.drawImage(s.surface, x - s.ox, p.y + bob - s.oy, s.width, s.height);
     }
-  }
-
-  function drawChopper(
-    g: Paint,
-    world: WorldView,
-    c: ChopperView,
-    input: SceneInput,
-    time: number,
-    sample: boolean,
-  ): void {
-    const color = seatColor(c.slot),
-      x = c.x - world.camX;
-    let trail = trails.get(c.id);
-    if (!trail) trails.set(c.id, (trail = []));
-    if (c.state === "flying" && sample) {
-      trail.push({ x: c.x - 22 * c.face, y: c.y + 2 });
-      if (trail.length > 24) trail.shift();
-    } else if (c.state !== "flying" && sample && trail.length) trail.shift();
-    // The dotted neon trail streaming behind.
-    g.save();
-    g.globalCompositeOperation = "lighter";
-    trail.forEach((point, i) => {
-      const k = (i + 1) / trail!.length;
-      g.fillStyle = hexA(color, 0.08 + k * 0.55);
-      g.beginPath();
-      g.arc(point.x - world.camX, point.y, 1 + k * 2.2, 0, Math.PI * 2);
-      g.fill();
-    });
-    g.restore();
-
-    if (c.state === "escaped") return;
-    const sprite = chopperFor(c.slot, input.avatars?.get(c.id) ?? "");
-    if (c.state === "crashed") {
-      const since = Math.max(0, world.step - c.endedAt) * STEP_S;
-      if (since > 4) return;
-      const { bottom } = terrain(world.seed),
-        column = Math.max(0, Math.min(COLUMNS - 1, Math.round(c.x / COL))),
-        floor = bottom[column]! - 8,
-        y = Math.min(floor, c.y + 0.5 * 700 * since * since),
-        landed = y >= floor;
-      if (Math.random() < 0.5)
-        add({
-          x: c.x + (Math.random() - 0.5) * 16,
-          y,
-          vy: -40,
-          kind: "smoke",
-          color: "#2c3048",
-          size: 4,
-          grow: 20,
-          life: 0.9,
-        });
-      if (!landed && Math.random() < 0.6)
-        add({
-          x: c.x,
-          y,
-          vx: (Math.random() - 0.5) * 60,
-          vy: -20,
-          color: "#ff8a3a",
-          size: 2.5,
-          life: 0.4,
-        });
-      g.save();
-      g.translate(x, y);
-      g.rotate(landed ? 0.5 * c.face : since * 7 * c.face);
-      g.scale(c.face, 1);
-      g.globalAlpha = Math.max(0, 1 - Math.max(0, since - 2.5) / 1.5);
-      g.drawImage(
-        sprite.surface,
-        -sprite.ox,
-        -sprite.oy,
-        sprite.width,
-        sprite.height,
-      );
-      g.restore();
-      return;
-    }
-
-    const wobble =
-        c.stun > 0 ? Math.sin(time * 28) * 0.22 * Math.min(1, c.stun / 20) : 0,
-      tilt =
-        Math.max(-0.35, Math.min(0.35, c.vx * c.face * 0.09 + c.vy * 0.025)) +
-        wobble;
-    const flicker = c.grace > 0 && Math.floor(time * 20) % 2 === 0;
-    g.save();
-    g.translate(x, c.y);
-    // Turbo flames from the tail.
-    if (c.turbo > 0) {
-      g.save();
-      g.scale(c.face, 1);
-      g.globalCompositeOperation = "lighter";
-      const length = 16 + Math.random() * 10;
-      const flame = g.createLinearGradient(-34, 0, -34 - length, 0);
-      flame.addColorStop(0, "rgba(140,255,170,0.9)");
-      flame.addColorStop(1, "rgba(60,255,120,0)");
-      g.fillStyle = flame;
-      g.beginPath();
-      g.moveTo(-32, -4);
-      g.lineTo(-34 - length, 0);
-      g.lineTo(-32, 3);
-      g.fill();
-      g.restore();
-    }
-    if (c.shield) {
-      const pulse = 0.55 + 0.25 * Math.sin(time * 5);
-      const bubble = g.createRadialGradient(0, 0, 18, 0, 0, 34);
-      bubble.addColorStop(0, "rgba(80,170,255,0)");
-      bubble.addColorStop(0.8, `rgba(80,170,255,${pulse * 0.35})`);
-      bubble.addColorStop(1, `rgba(160,220,255,${pulse})`);
-      g.fillStyle = bubble;
-      g.beginPath();
-      g.arc(0, 0, 34, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.save();
-    g.scale(c.face, 1);
-    g.rotate(tilt);
-    if (flicker) g.globalAlpha = 0.35;
-    g.drawImage(
-      sprite.surface,
-      -sprite.ox,
-      -sprite.oy,
-      sprite.width,
-      sprite.height,
-    );
-    // Main rotor: a blur disc and two blade pairs, spinning harder under lift.
-    const spin = time * (c.lifting ? 46 : 32) + c.slot;
-    g.fillStyle = "rgba(220,235,255,0.2)";
-    g.beginPath();
-    g.ellipse(1, -16, 32, 2.6, 0, 0, Math.PI * 2);
-    g.fill();
-    g.strokeStyle = "rgba(232,240,255,0.9)";
-    g.lineWidth = 2;
-    g.lineCap = "round";
-    for (const phase of [0, Math.PI / 2]) {
-      const reach = 32 * Math.cos(spin + phase);
-      g.beginPath();
-      g.moveTo(1 - reach, -16);
-      g.lineTo(1 + reach, -16);
-      g.stroke();
-    }
-    // Tail rotor.
-    g.fillStyle = "rgba(220,235,255,0.25)";
-    g.beginPath();
-    g.arc(-33, -4, 5.5, 0, Math.PI * 2);
-    g.fill();
-    g.strokeStyle = "rgba(232,240,255,0.85)";
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(-33 + Math.cos(spin * 1.4) * 5.5, -4 + Math.sin(spin * 1.4) * 5.5);
-    g.lineTo(-33 - Math.cos(spin * 1.4) * 5.5, -4 - Math.sin(spin * 1.4) * 5.5);
-    g.stroke();
-    // Triple shot: the gun crackles.
-    if (c.triple > 0) {
-      g.fillStyle = Math.random() < 0.5 ? "#ffe56b" : "#ffffff";
-      g.beginPath();
-      g.arc(22 + Math.random() * 3, 5, 1.5 + Math.random() * 2, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.restore();
-    // Stunned: stars circling the rotor mast.
-    if (c.stun > 0)
-      for (let i = 0; i < 3; i++) {
-        const angle = time * 7 + (i * Math.PI * 2) / 3;
-        star(g, Math.cos(angle) * 16, -22 + Math.sin(angle) * 5, 3, "#fff27a");
-      }
-    if (c.scramble > 0) {
-      g.fillStyle = "#ff6fcf";
-      g.font = "bold 14px 'Press Start 2P', monospace";
-      g.textAlign = "center";
-      g.fillText("?", Math.sin(time * 6) * 6, -30);
-    }
-    // The label, like the concept's "P1 ▼".
-    const label = input.labels.get(c.id) ?? `P${c.slot + 1}`,
-      mine = c.id === input.me;
-    g.font = "10px 'Press Start 2P', monospace";
-    g.textAlign = "center";
-    g.textBaseline = "alphabetic";
-    g.lineWidth = 3;
-    g.strokeStyle = "#05060f";
-    g.strokeText(label, 0, -34);
-    g.fillStyle = mine ? "#ffffff" : color;
-    g.fillText(label, 0, -34);
-    // At GO: a chopper whose pilot has not touched lift yet hovers, and says what to do.
-    if (c.hovering && mine) {
-      g.globalAlpha = 0.6 + 0.4 * Math.sin(time * 9);
-      g.fillStyle = "#ffe34a";
-      g.strokeText(
-        world.lift === "classic" ? "HOLD TO FLY!" : "W TO FLY UP",
-        0,
-        -48,
-      );
-      g.fillText(
-        world.lift === "classic" ? "HOLD TO FLY!" : "W TO FLY UP",
-        0,
-        -48,
-      );
-      g.globalAlpha = 1;
-    }
-    g.fillStyle = color;
-    g.beginPath();
-    g.moveTo(-4, -30);
-    g.lineTo(4, -30);
-    g.lineTo(0, -25);
-    g.closePath();
-    g.fill();
-    g.restore();
   }
 
   function drawDrones(g: Paint, world: WorldView, time: number): void {
@@ -834,56 +402,6 @@ export function createScene(g: Paint, make: MakeSurface) {
     }
   }
 
-  function drawParticles(g: Paint, camX: number): void {
-    g.save();
-    for (const p of particles) {
-      const x = p.x - camX,
-        k = Math.max(0, p.life / p.max);
-      if (x < -120 || x > VIEW_W + 120) continue;
-      switch (p.kind) {
-        case "ring":
-          g.globalCompositeOperation = "lighter";
-          g.strokeStyle = hexA(p.color, k);
-          g.lineWidth = 3 * k + 0.5;
-          g.beginPath();
-          g.arc(x, p.y, p.size, 0, Math.PI * 2);
-          g.stroke();
-          break;
-        case "smoke":
-          g.globalCompositeOperation = "source-over";
-          g.fillStyle = hexA(p.color, 0.5 * k);
-          g.beginPath();
-          g.arc(x, p.y, p.size, 0, Math.PI * 2);
-          g.fill();
-          break;
-        case "text":
-          g.globalCompositeOperation = "source-over";
-          g.globalAlpha = Math.min(1, k * 2);
-          g.font = "11px 'Press Start 2P', monospace";
-          g.textAlign = "center";
-          g.lineWidth = 3;
-          g.strokeStyle = "#05060f";
-          g.strokeText(p.text ?? "", x, p.y);
-          g.fillStyle = p.color;
-          g.fillText(p.text ?? "", x, p.y);
-          g.globalAlpha = 1;
-          break;
-        case "shard":
-          g.globalCompositeOperation = "source-over";
-          g.fillStyle = hexA(p.color, k);
-          g.fillRect(x - p.size, p.y - p.size / 2, p.size * 2, p.size);
-          break;
-        default:
-          g.globalCompositeOperation = "lighter";
-          g.fillStyle = hexA(p.color, k);
-          g.beginPath();
-          g.arc(x, p.y, p.size * (0.5 + k * 0.5), 0, Math.PI * 2);
-          g.fill();
-      }
-    }
-    g.restore();
-  }
-
   function drawCrush(
     g: Paint,
     world: WorldView,
@@ -1007,14 +525,14 @@ export function createScene(g: Paint, make: MakeSurface) {
     g.stroke();
     g.restore();
     if (emit)
-      add({
-        x: world.crushX + jag(0) + Math.random() * 6,
-        y: Math.random() * VIEW_H,
-        vx: 40 + Math.random() * 80 + world.scroll * 60,
-        vy: -20 - Math.random() * 40,
-        color: Math.random() < 0.5 ? "#ff7a3a" : "#ff3b8a",
-        size: 1.2 + Math.random() * 1.8,
-        life: 0.5 + Math.random() * 0.6,
+      effects.add({
+        x: world.crushX + jag(0) + random() * 6,
+        y: random() * VIEW_H,
+        vx: 40 + random() * 80 + world.scroll * 60,
+        vy: -20 - random() * 40,
+        color: random() < 0.5 ? "#ff7a3a" : "#ff3b8a",
+        size: 1.2 + random() * 1.8,
+        life: 0.5 + random() * 0.6,
       });
   }
 
@@ -1036,10 +554,7 @@ export function createScene(g: Paint, make: MakeSurface) {
 
   return {
     draw,
-    setPilotAtlas(image: CanvasImageSource, width: number, height: number) {
-      atlas = { image, width, height };
-      choppers.clear();
-    },
+    setPilotAtlas: choppers.setPilotAtlas,
   };
 }
 
@@ -1104,24 +619,6 @@ function drawExit(g: Paint, camX: number, time: number): void {
     g.lineTo(sx + 92 + k * 11, sy + 48);
     g.stroke();
   }
-}
-
-function star(g: Paint, x: number, y: number, r: number, color: string): void {
-  g.fillStyle = color;
-  g.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2,
-      reach = i % 2 === 0 ? r : r * 0.4;
-    g.lineTo(x + Math.cos(angle) * reach, y + Math.sin(angle) * reach);
-  }
-  g.closePath();
-  g.fill();
-}
-
-/** `#rrggbb` with an alpha, as an rgba() string. */
-export function hexA(hex: string, alpha: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
 }
 
 export { VIEW_W, VIEW_H };
