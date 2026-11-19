@@ -8,7 +8,6 @@ import { RoomError } from "fuse-network-be";
 import {
   ACTION_LIMITS,
   type ActionClaimResponse,
-  type ActionEvidence,
   type ActionItem,
   type ActionsPage,
   type ActionsQuery,
@@ -28,6 +27,7 @@ import {
   type ActionDatabase,
   type ActionState,
 } from "./action-store.js";
+import { reconcileCandidates } from "./action-reconciliation.js";
 
 export interface ActionPrincipal {
   uid: string;
@@ -57,11 +57,6 @@ export interface ActionServiceOptions {
 const SKIPPED = "0".repeat(64);
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
-const textKey = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
 const integer = (value: unknown, max: number) =>
   Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= max;
 const ownerId = (principal: ActionPrincipal) =>
@@ -104,27 +99,11 @@ function validateSegment(segment: TranscriptActionSegment) {
   )
     throw new Error("Invalid action transcript segment");
 }
-function evidence(
-  candidate: { evidence: { sequence: number; quote: string }[] },
-  segments: TranscriptActionSegment[],
-): ActionEvidence[] {
-  return candidate.evidence.map((proof) => {
-    const segment = segments.find(
-      (segment) => segment.sequence === proof.sequence,
-    )!;
-    return {
-      ...proof,
-      startMs: segment.startMs,
-      endMs: segment.endMs,
-      reportIds: [...(segment.reportIds ?? [])],
-    };
-  });
-}
-
 interface ActionCursor {
   recording: string;
   action: string;
 }
+
 const RECORDINGS_PER_ACTION_PAGE = 20;
 
 function decodeActionCursor(
@@ -209,10 +188,10 @@ export function createActionService(options: ActionServiceOptions) {
               ?.reportIds ?? input.reportIds,
         }),
       ].sort((a, b) => a.sequence - b.sequence);
-      if (
-        new Set(segments.map((segment) => segment.sequence)).size !==
-        segments.length
-      )
+      const bySequence = new Map(
+        segments.map((segment) => [segment.sequence, segment]),
+      );
+      if (bySequence.size !== segments.length)
         throw new Error("Duplicate action context");
       // A late predecessor also processes its immediate successor, repairing chunk-crossing directives.
       for (const current of segments.filter(
@@ -224,10 +203,8 @@ export function createActionService(options: ActionServiceOptions) {
         // Segments just before this one that failed transcription for good.
         // They carry no directives, so they must not hold up every later one.
         const skipped: number[] = [];
-        if (
-          current.sequence > 0 &&
-          !segments.some((segment) => segment.sequence === current.sequence - 1)
-        ) {
+        const preceding = bySequence.get(current.sequence - 1);
+        if (current.sequence > 0 && !preceding) {
           for (
             let earlier = current.sequence - 1;
             earlier >= 0 &&
@@ -240,12 +217,11 @@ export function createActionService(options: ActionServiceOptions) {
               "Previous transcript is not ready; retry action extraction",
             );
         }
-        const previous = segments.find(
-          (segment) =>
-            segment.sequence === current.sequence - 1 &&
-            segment.endMs === current.startMs &&
-            (segment.gameId ?? input.gameId) === gameId,
-        );
+        const previous =
+          preceding?.endMs === current.startMs &&
+          (preceding.gameId ?? input.gameId) === gameId
+            ? preceding
+            : undefined;
         const prior = previous
           ? [
               {
@@ -305,6 +281,14 @@ export function createActionService(options: ActionServiceOptions) {
         const { state, fingerprint } = acquired;
         try {
           const candidates: ActionCandidate[] = [];
+          const existing = state.items
+            .filter((item) => item.gameId === gameId)
+            .map(({ id, title, status }) => ({
+              id,
+              title,
+              status,
+              detail: "",
+            }));
           for (
             let offset = 0;
             offset < current.text.length;
@@ -317,14 +301,7 @@ export function createActionService(options: ActionServiceOptions) {
             const extraction: ActionExtractionInput = {
               currentSequence: current.sequence,
               segments: [...prior, { ...current, text }],
-              existing: state.items
-                .filter((item) => item.gameId === gameId)
-                .map(({ id, title, status }) => ({
-                  id,
-                  title,
-                  status,
-                  detail: "",
-                })),
+              existing: existing.map((item) => ({ ...item })),
             };
             candidates.push(
               ...validateActionCandidates(
@@ -340,113 +317,12 @@ export function createActionService(options: ActionServiceOptions) {
             if (!stored || stored.extractionLease?.token !== lease)
               throw new Error("Stale action extraction lease");
             const updatedAt = now();
-            for (const candidate of candidates) {
-              const proofs = evidence(candidate, segments);
-              const quoted = textKey(
-                proofs.map((proof) => proof.quote).join(" "),
-              );
-              const actionId = `${input.recordingId}_${hash(`${gameId}:${quoted}`).slice(0, 16)}`;
-              let item = candidate.targetId
-                ? stored.items.find(
-                    (item) =>
-                      item.id === candidate.targetId && item.gameId === gameId,
-                  )
-                : stored.items.find(
-                    (item) =>
-                      item.gameId === gameId &&
-                      (textKey(item.title) === textKey(candidate.title) ||
-                        item.evidence.some(
-                          (proof) => textKey(proof.quote) === quoted,
-                        )),
-                  );
-              // A directive quoted in two pieces never equals one stored
-              // quote, so the id it would be given is the last word on
-              // whether it already exists: ids must stay unique.
-              if (!candidate.targetId)
-                item ??= stored.items.find((item) => item.id === actionId);
-              if (!item && candidate.kind === "propose") {
-                // A full queue drops further proposals rather than failing the
-                // segment, which would stall every later segment behind it.
-                if (stored.items.length >= ACTION_LIMITS.perRecording) continue;
-                item = {
-                  id: actionId,
-                  recordingId: input.recordingId,
-                  gameId,
-                  title: candidate.title,
-                  detail: candidate.detail,
-                  evidence: [],
-                  status: "proposed",
-                  createdAt: updatedAt,
-                  updatedAt,
-                  revision: 0,
-                  lease: null,
-                  resolution: null,
-                  retraction: null,
-                  correction: null,
-                };
-                stored.items.push(item);
-              }
-              if (!item) continue;
-              const latestSequence = Math.max(
-                -1,
-                ...item.evidence.map((proof) => proof.sequence),
-                item.retraction?.sequence ?? -1,
-                ...(item.correction?.evidence.map((proof) => proof.sequence) ??
-                  []),
-              );
-              if (
-                candidate.kind !== "propose" &&
-                current.sequence < latestSequence
-              )
-                continue;
-              if (
-                candidate.kind === "propose" &&
-                item.status === "retracted" &&
-                item.retraction &&
-                current.sequence >= item.retraction.sequence &&
-                proofs.some(
-                  (proof) =>
-                    !item.evidence.some(
-                      (existing) =>
-                        existing.sequence === proof.sequence &&
-                        existing.quote === proof.quote,
-                    ),
-                )
-              ) {
-                // Asked for again after being called off: it is wanted.
-                item.retraction = null;
-                item.status = "proposed";
-              }
-              if (candidate.kind === "retract") {
-                item.retraction = proofs.at(-1)!;
-                if (item.status === "proposed" || item.status === "dismissed")
-                  item.status = "retracted";
-                // Existing claimed/done execution remains explicit; renew/complete require manual reconciliation.
-              } else if (candidate.kind === "correct") {
-                item.correction = {
-                  title: candidate.title,
-                  detail: candidate.detail,
-                  evidence: proofs,
-                  revision: item.revision + 1,
-                };
-                if (item.status === "proposed") {
-                  item.title = candidate.title;
-                  item.detail = candidate.detail;
-                }
-              }
-              for (const proof of proofs)
-                if (
-                  !item.evidence.some(
-                    (existing) =>
-                      existing.sequence === proof.sequence &&
-                      existing.quote === proof.quote,
-                  )
-                )
-                  item.evidence.push(proof);
-              item.evidence = item.evidence.slice(-ACTION_LIMITS.evidence);
-              item.updatedAt = updatedAt;
-              item.revision++;
-            }
+            reconcileCandidates(stored.items, candidates, bySequence, {
+              recordingId: input.recordingId,
+              gameId,
+              sequence: current.sequence,
+              updatedAt,
+            });
             stored.processed[String(current.sequence)] = fingerprint;
             stored.extractionLease = null;
             return { state: stored, result: undefined };
@@ -556,7 +432,9 @@ export function createActionService(options: ActionServiceOptions) {
       const at = now(),
         secret = id();
       return db.transact(match[1]!, (state) => {
-        const original = state?.items.find((item) => item.id === actionId);
+        const index =
+          state?.items.findIndex((item) => item.id === actionId) ?? -1;
+        const original = state?.items[index];
         if (!state || state.expiresAt <= at || !original)
           throw new RoomError(404, "Action not found");
         checkScope(principal, original);
@@ -611,28 +489,20 @@ export function createActionService(options: ActionServiceOptions) {
             state.leaseSecrets[actionId] !== body.token
           )
             throw new RoomError(409, "Claim expired or owned by another agent");
-          if (operation === "renew") {
-            if (
-              item.retraction ||
+          if (
+            (operation === "renew" || operation === "complete") &&
+            (item.retraction ||
               (item.correction &&
-                item.correction.revision > item.lease.revision)
-            )
-              throw new RoomError(
-                409,
-                "Spoken change requires review; release this action",
-              );
+                item.correction.revision > item.lease.revision))
+          )
+            throw new RoomError(
+              409,
+              "Spoken change requires review; release this action",
+            );
+          if (operation === "renew") {
             item.lease.expiresAt = at + Number(leaseMs);
           } else {
             if (operation === "complete") {
-              if (
-                item.retraction ||
-                (item.correction &&
-                  item.correction.revision > item.lease.revision)
-              )
-                throw new RoomError(
-                  409,
-                  "Spoken change requires review; release this action",
-                );
               if (
                 typeof body.note !== "string" ||
                 !body.note.trim() ||
@@ -648,9 +518,7 @@ export function createActionService(options: ActionServiceOptions) {
         }
         item.updatedAt = at;
         item.revision++;
-        state.items[
-          state.items.findIndex((existing) => existing.id === actionId)
-        ] = item;
+        state.items[index] = item;
         return {
           state,
           result:
