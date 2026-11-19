@@ -5,7 +5,14 @@ import {
   VIEW_H,
   VIEW_W,
 } from "../../engine/view-kit.js";
-import { firstTile, bayer, dither, hash, Raster } from "./kit.js";
+import {
+  drawWisps,
+  forWorldParticles,
+  bayer,
+  dither,
+  hash,
+  Raster,
+} from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, WINDBLOWN, type Fire } from "./fire.js";
 import { snowyRelief as shape, type Box } from "./relief.js";
@@ -634,50 +641,31 @@ export const FIRES: readonly Fire[] = [
   ]),
 ];
 
-const WISP_ROWS = [-2, -1, 1, 2] as const;
-
 /** Wisps of mist drifting along the back of the road, thin as a dither, each swelling and fading so none pops. */
-function mist(brush: Brush, cam: number, t: number) {
-  for (let k = firstTile(cam, 160); k * VIEW_W < cam + VIEW_W; k++)
-    for (let i = 0; i < 3; i++) {
-      const seed = k * 3 + i;
-      const phase = (t / 26 + hash(seed, 90)) % 1;
-      const len = Math.round(80 * Math.sin(Math.PI * phase));
-      const left =
-        k * VIEW_W +
-        Math.floor(hash(seed, 91) * VIEW_W) +
-        Math.round(phase * 70);
-      // Its dither runs two rows below its line, so the line stops three short of the road, whose snow it would speckle.
-      const y = FLOOR - 14 + Math.floor(hash(seed, 92) * 12);
-      brush.fillStyle = MIST;
-      const from = Math.max(left - cam, 0);
-      const to = Math.min(left + len - cam, VIEW_W);
-      if (to > from) brush.fillRect(from, y, to - from, 1);
-      for (const row of WISP_ROWS)
-        for (
-          let s = Math.abs(row) * 8 + (row & 1);
-          s < len - Math.abs(row) * 8;
-          s += 2
-        ) {
-          const x = left + s - cam;
-          if (x >= 0 && x < VIEW_W) brush.fillRect(x, y + row, 1, 1);
-        }
-    }
-}
+const ROAD_MIST = {
+  color: MIST,
+  margin: 160,
+  period: 26,
+  width: 80,
+  drift: 70,
+  // Its lowest dither row stops above the snow on the road.
+  top: FLOOR - 14,
+  height: 12,
+  inset: 8,
+  center: "solid",
+} as const;
 
 /** A light flurry of snow on the wind, falling through the whole picture. */
 function snow(brush: Brush, cam: number, t: number) {
-  for (let k = firstTile(cam, 40); k * VIEW_W < cam + VIEW_W; k++)
-    for (let i = 0; i < 26; i++) {
-      const seed = k * 26 + i;
-      const life = (t * (0.1 + hash(seed, 93) * 0.08) + hash(seed, 94)) % 1;
-      const y = Math.round(-4 + life * (VIEW_H + 8));
-      const sway = Math.round(life * 36 + Math.sin(life * 14 + i) * 2);
-      const x = k * VIEW_W + Math.floor(hash(seed, 95) * VIEW_W) + sway - cam;
-      if (y < 0 || y >= VIEW_H || x < 0 || x >= VIEW_W) continue;
-      brush.fillStyle = i % 3 ? "#a8b6d8" : "#eef4ff";
-      brush.fillRect(x, y, 1, 1);
-    }
+  forWorldParticles(cam, 40, 26, (seed, tileX, i) => {
+    const life = (t * (0.1 + hash(seed, 93) * 0.08) + hash(seed, 94)) % 1;
+    const y = Math.round(-4 + life * (VIEW_H + 8));
+    const sway = Math.round(life * 36 + Math.sin(life * 14 + i) * 2);
+    const x = tileX + Math.floor(hash(seed, 95) * VIEW_W) + sway - cam;
+    if (y < 0 || y >= VIEW_H || x < 0 || x >= VIEW_W) return;
+    brush.fillStyle = i % 3 ? "#a8b6d8" : "#eef4ff";
+    brush.fillRect(x, y, 1, 1);
+  });
 }
 
 export const WYRMBONE_PASS: StageArt = {
@@ -690,7 +678,7 @@ export const WYRMBONE_PASS: StageArt = {
   front: { rate: [5, 4], top: VIEW_H - 12, height: 12, paint: verge },
   animate(brush, camX, frame) {
     const t = frame / 60;
-    mist(brush, camX, t);
+    drawWisps(brush, camX, t, ROAD_MIST);
     drawFires(brush, FIRES, camX, t, { palette: FLAME, motion: WINDBLOWN });
     snow(brush, camX, t);
   },

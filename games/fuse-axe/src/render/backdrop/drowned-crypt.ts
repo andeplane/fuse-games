@@ -7,7 +7,8 @@ import {
   stageLengthPx,
 } from "../../engine/view-kit.js";
 import {
-  firstTile,
+  drawWisps,
+  forWorldParticles,
   worldRow,
   bayer,
   dither,
@@ -15,7 +16,7 @@ import {
   Raster,
   rgbAt,
 } from "./kit.js";
-import type { Brush, StageArt } from "./kit.js";
+import type { Brush, StageArt, WispArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
 import { moonlitRelief as shape, type Inside } from "./relief.js";
 import { moonGlow, paintSky, paintStars, paintMoon } from "./sky.js";
@@ -687,23 +688,17 @@ function reeds(r: Raster) {
 export const FIRES = BRAZIERS.map((x, i): Fire => [x - 4, 9, BANK - 17, 13, i]);
 
 /** Banks of fog drifting over the graves and the black water, thin as a dither, each swelling and fading. */
-function fog(brush: Brush, cam: number, t: number) {
-  brush.fillStyle = FOG;
-  for (let k = firstTile(cam, 210); k * VIEW_W < cam + VIEW_W; k++)
-    for (let i = 0; i < 3; i++) {
-      const seed = k * 3 + i;
-      const phase = (t / 34 + hash(seed, 90)) % 1;
-      const len = Math.round(110 * Math.sin(Math.PI * phase));
-      const tile = k * VIEW_W + Math.round(phase * 90);
-      const left = tile + Math.floor(hash(seed, 91) * VIEW_W);
-      const y = 64 + Math.floor(hash(seed, 92) * 34);
-      for (let row = -2; row <= 2; row++) {
-        const a = Math.abs(row);
-        for (let s = a * 12 + (row & 1); s < len - a * 12; s += a > 1 ? 4 : 2)
-          worldRow(brush, left + s, left + s + 1, y + row, cam);
-      }
-    }
-}
+const FOG_BANKS: WispArt = {
+  color: FOG,
+  margin: 210,
+  period: 34,
+  width: 110,
+  drift: 90,
+  top: 64,
+  height: 34,
+  inset: 12,
+  center: "dithered",
+};
 
 /** A ring on the water at `life` (0 to 1): a pair of dashes spreading from `x` and fading. */
 function ring(brush: Brush, x: number, y: number, life: number, cam: number) {
@@ -715,14 +710,12 @@ function ring(brush: Brush, x: number, y: number, life: number, cam: number) {
 
 /** Rings spreading on the black water behind the causeway and in front of it. */
 function ripples(brush: Brush, cam: number, t: number) {
-  for (let k = firstTile(cam, 20); k * VIEW_W < cam + VIEW_W; k++)
-    for (let i = 0; i < 10; i++) {
-      const seed = k * 10 + i;
-      const life = (t / (2.2 + hash(seed, 110) * 2) + hash(seed, 111)) % 1;
-      const x = k * VIEW_W + 8 + Math.floor(hash(seed, 112) * (VIEW_W - 8));
-      const depth = Math.floor(hash(seed, 113) * (i < 6 ? 10 : 5));
-      ring(brush, x, (i < 6 ? BANK + 2 : SHORE + 2) + depth, life, cam);
-    }
+  forWorldParticles(cam, 20, 10, (seed, tileX, i) => {
+    const life = (t / (2.2 + hash(seed, 110) * 2) + hash(seed, 111)) % 1;
+    const x = tileX + 8 + Math.floor(hash(seed, 112) * (VIEW_W - 8));
+    const depth = Math.floor(hash(seed, 113) * (i < 6 ? 10 : 5));
+    ring(brush, x, (i < 6 ? BANK + 2 : SHORE + 2) + depth, life, cam);
+  });
 }
 
 /** Now and then a drop swells on a dead tree's twig, falls and rings the water. */
@@ -751,7 +744,7 @@ export const DROWNED_CRYPT: StageArt = {
   animate(brush, camX, frame) {
     const t = frame / 60;
     ripples(brush, camX, t);
-    fog(brush, camX, t);
+    drawWisps(brush, camX, t, FOG_BANKS);
     drawFires(brush, FIRES, camX, t, { palette: FLAME });
     drips(brush, camX, t);
   },

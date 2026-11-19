@@ -23,6 +23,71 @@ export function worldRow(
 export const firstTile = (camera: number, margin: number) =>
   Math.floor((camera - margin) / VIEW_W);
 
+/** Visit the particles in each screen-wide tile, in drawing order. */
+export function forWorldParticles(
+  camera: number,
+  margin: number,
+  count: number,
+  paint: (seed: number, tileX: number, index: number) => void,
+): void {
+  for (
+    let tile = firstTile(camera, margin);
+    tile * VIEW_W < camera + VIEW_W;
+    tile++
+  )
+    for (let i = 0; i < count; i++) paint(tile * count + i, tile * VIEW_W, i);
+}
+
+export interface WispArt {
+  color: string;
+  margin: number;
+  period: number;
+  width: number;
+  drift: number;
+  top: number;
+  height: number;
+  inset: number;
+  center: "dithered" | "solid";
+}
+
+/** A bank of drifting wisps with a sine envelope and dithered edges. */
+export function drawWisps(
+  brush: Brush,
+  camera: number,
+  time: number,
+  art: WispArt,
+): void {
+  const solid = art.center === "solid";
+  if (!solid) brush.fillStyle = art.color;
+  const dot = solid
+    ? (x: number, y: number) => {
+        const screenX = x - camera;
+        if (screenX >= 0 && screenX < VIEW_W) brush.fillRect(screenX, y, 1, 1);
+      }
+    : (x: number, y: number) => worldRow(brush, x, x + 1, y, camera);
+  forWorldParticles(camera, art.margin, 3, (seed, tileX) => {
+    const phase = (time / art.period + hash(seed, 90)) % 1;
+    const width = Math.round(art.width * Math.sin(Math.PI * phase));
+    const left =
+      tileX +
+      Math.floor(hash(seed, 91) * VIEW_W) +
+      Math.round(phase * art.drift);
+    const y = art.top + Math.floor(hash(seed, 92) * art.height);
+    if (solid) {
+      brush.fillStyle = art.color;
+      worldRow(brush, left, left + width, y, camera);
+    }
+    for (let row = -2; row <= 2; row++) {
+      if (solid && row === 0) continue;
+      const edge = Math.abs(row);
+      const inset = edge * art.inset;
+      const step = !solid && edge > 1 ? 4 : 2;
+      for (let x = inset + (row & 1); x < width - inset; x += step)
+        dot(left + x, y + row);
+    }
+  });
+}
+
 /**
  * A pixel buffer a static layer is painted into once. Painters work in screen rows, so `y` is the row on the
  * 320 × 180 screen and the buffer holds rows `top` to `top + height − 1`; anything outside it is dropped.
