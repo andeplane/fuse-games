@@ -65,6 +65,76 @@ export const standings = (scores: readonly SessionScore[]): SessionScore[] =>
     .sort((a, b) => b.points - a.points || b.wins - a.wins)
     .map(({ id, name, points, wins }) => ({ id, name, points, wins }));
 
+/** The score and counter tuples are two wire views of the same entrant. */
+function decodeTotal(
+  score: unknown,
+  record: unknown,
+  done: number,
+): SessionTotal | undefined {
+  if (
+    !Array.isArray(score) ||
+    score.length !== 4 ||
+    !Array.isArray(record) ||
+    record.length !== 10
+  )
+    return;
+  const [id, name, points, wins] = score as unknown[];
+  const [
+    recordId,
+    bot,
+    roundsPlayed,
+    earlyExits,
+    combo,
+    marvelous,
+    perfect,
+    great,
+    steps,
+    misses,
+  ] = record as unknown[];
+  if (
+    !playerKey(id) ||
+    !validName(name) ||
+    !uint32(points) ||
+    !uint32(wins) ||
+    recordId !== id ||
+    typeof bot !== "boolean" ||
+    !uint32(roundsPlayed) ||
+    roundsPlayed < 1 ||
+    roundsPlayed > done ||
+    !uint32(earlyExits) ||
+    earlyExits > roundsPlayed ||
+    !uint32(combo) ||
+    combo > MOST_NOTES ||
+    !uint32(marvelous) ||
+    !uint32(perfect) ||
+    !uint32(great) ||
+    !uint32(steps) ||
+    !uint32(misses) ||
+    marvelous + perfect + great > steps ||
+    combo > steps ||
+    steps + misses > roundsPlayed * MOST_NOTES ||
+    // A doubled stretch can take one song's rating past the full one, never past twice it.
+    points > roundsPlayed * 2 * FULL_RATING ||
+    wins > roundsPlayed
+  )
+    return;
+  return {
+    id,
+    name,
+    points,
+    wins,
+    bot,
+    roundsPlayed,
+    earlyExits,
+    combo,
+    marvelous,
+    perfect,
+    great,
+    steps,
+    misses,
+  };
+}
+
 export function decodeSession(
   raw: unknown,
   known: (song: string) => boolean,
@@ -94,72 +164,11 @@ export function decodeSession(
   const ids = new Set<string>();
   let won = 0;
   for (const [index, score] of (scores as unknown[]).entries()) {
-    const record: unknown = records[index];
-    if (
-      !Array.isArray(score) ||
-      score.length !== 4 ||
-      !Array.isArray(record) ||
-      record.length !== 10
-    )
-      return;
-    const [id, name, points, wins] = score as unknown[];
-    const [
-      recordId,
-      bot,
-      roundsPlayed,
-      earlyExits,
-      combo,
-      marvelous,
-      perfect,
-      great,
-      steps,
-      misses,
-    ] = record as unknown[];
-    if (
-      !playerKey(id) ||
-      ids.has(id) ||
-      !validName(name) ||
-      !uint32(points) ||
-      !uint32(wins) ||
-      recordId !== id ||
-      typeof bot !== "boolean" ||
-      !uint32(roundsPlayed) ||
-      roundsPlayed < 1 ||
-      roundsPlayed > done ||
-      !uint32(earlyExits) ||
-      earlyExits > roundsPlayed ||
-      !uint32(combo) ||
-      combo > MOST_NOTES ||
-      !uint32(marvelous) ||
-      !uint32(perfect) ||
-      !uint32(great) ||
-      !uint32(steps) ||
-      !uint32(misses) ||
-      marvelous + perfect + great > steps ||
-      combo > steps ||
-      steps + misses > roundsPlayed * MOST_NOTES ||
-      // A doubled stretch can take one song's rating past the full one, never past twice it.
-      points > roundsPlayed * 2 * FULL_RATING ||
-      wins > roundsPlayed
-    )
-      return;
-    ids.add(id);
-    won += wins;
-    totals.push({
-      id,
-      name,
-      points,
-      wins,
-      bot,
-      roundsPlayed,
-      earlyExits,
-      combo,
-      marvelous,
-      perfect,
-      great,
-      steps,
-      misses,
-    });
+    const total = decodeTotal(score, records[index], done);
+    if (!total || ids.has(total.id)) return;
+    ids.add(total.id);
+    won += total.wins;
+    totals.push(total);
   }
   // Every finished song had one winner; a rider dropped from the list took its wins along.
   if (won > done) return;
@@ -201,6 +210,19 @@ export function encodeSession(session: Session | null): unknown {
   ];
 }
 
+/** A departing rider with the least points makes room, with ties in join order. */
+function evictionIndex(
+  totals: readonly SessionTotal[],
+  active: ReadonlySet<string>,
+): number {
+  let out = -1;
+  for (const [index, each] of totals.entries()) {
+    if (active.has(each.id)) continue;
+    if (out < 0 || each.points < totals[out]!.points) out = index;
+  }
+  return out;
+}
+
 /** Adds a finished song to the session's totals. */
 export function settleSession(room: Room, library: Library): void {
   const { session, world, decided } = room;
@@ -211,12 +233,7 @@ export function settleSession(room: Room, library: Library): void {
     const player = world.players[entrant.slot]!;
     let total = session.totals.find((each) => each.id === entrant.id);
     if (!total && session.totals.length >= SESSION_SCORES) {
-      // Full: the rider who is gone and has the least makes room.
-      let out = -1;
-      for (const [index, each] of session.totals.entries()) {
-        if (active.has(each.id)) continue;
-        if (out < 0 || each.points < session.totals[out]!.points) out = index;
-      }
+      const out = evictionIndex(session.totals, active);
       if (out < 0) continue;
       session.totals.splice(out, 1);
     }
