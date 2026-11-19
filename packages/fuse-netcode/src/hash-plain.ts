@@ -26,41 +26,50 @@ export function hashPlain(value: unknown): string {
     }
   };
   function feed(v: unknown): void {
-    if (v !== v)
-      word(10); // NaN: one value, whatever bits the engine keeps
-    else if (typeof v === "number") {
-      view.setFloat64(0, v === 0 ? 0 : v, true);
-      word(1);
-      word(view.getUint32(0, true));
-      word(view.getUint32(4, true));
-    } else if (typeof v === "boolean") word(v ? 2 : 3);
-    else if (typeof v === "string") {
-      word(4);
-      text(v);
-    } else if (v === null) word(5);
-    else if (v instanceof Uint32Array) {
+    switch (typeof v) {
+      case "number":
+        if (Number.isNaN(v)) return word(10);
+        view.setFloat64(0, v === 0 ? 0 : v, true);
+        word(1);
+        word(view.getUint32(0, true));
+        word(view.getUint32(4, true));
+        return;
+      case "boolean":
+        return word(v ? 2 : 3);
+      case "string":
+        word(4);
+        return text(v);
+    }
+    if (v === null) return word(5);
+    if (v instanceof Uint32Array) {
       word(6);
       word(v.length);
       for (let i = 0; i < v.length; i++) word(v[i]!);
-    } else if (Array.isArray(v) || ArrayBuffer.isView(v)) {
+      return;
+    }
+    if (Array.isArray(v) || ArrayBuffer.isView(v)) {
       const items = v as ArrayLike<unknown>;
       word(7);
       word(items.length);
       for (let i = 0; i < items.length; i++) feed(items[i]);
-    } else if (v instanceof Map) {
+      return;
+    }
+    if (v instanceof Map) {
       word(8);
       const keys = [...v.keys()];
       if (!keys.every((k) => typeof k === "string"))
         throw new TypeError("not plain data: a map key");
-      fields(keys as string[], (k) => v.get(k));
-    } else if (
+      return fields(keys as string[], (k) => v.get(k));
+    }
+    if (
       typeof v === "object" &&
       Object.getPrototypeOf(v) === Object.prototype
     ) {
       const record = v as Record<string, unknown>;
       word(9);
-      fields(Object.keys(record), (k) => record[k]);
-    } else throw new TypeError(`not plain data: ${typeof v}`);
+      return fields(Object.keys(record), (k) => record[k]);
+    }
+    throw new TypeError(`not plain data: ${typeof v}`);
   }
   feed(value);
   const hex = (h: number) => (h >>> 0).toString(16).padStart(8, "0");
