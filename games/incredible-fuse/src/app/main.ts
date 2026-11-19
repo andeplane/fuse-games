@@ -298,6 +298,8 @@ function workshop() {
   const stage = el("section", "", "machine-stage");
   stage.hidden = true;
   const bench = createBench({
+    frames: window,
+    now: () => performance.now(),
     onCommand: (command) => runtime.play(command),
   });
   stage.append(bench.element);

@@ -793,6 +793,10 @@ export function stepPhysics(m: Machine): void {
     m.mode = "failed";
 }
 const CLOCK_DENOMINATOR = 5041 * 8 * 20;
+/** Physics time including the unspent part of the current room step. */
+export function machineTimeMs(tick: number, phase = 0): number {
+  return ((tick + phase / CLOCK_DENOMINATOR) * (5041 * 8 * 1000)) / 1193182;
+}
 const lattice = (value: unknown, min: number, max: number): value is number =>
   typeof value === "number" &&
   Number.isSafeInteger(value * UNIT) &&

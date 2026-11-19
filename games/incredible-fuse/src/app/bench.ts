@@ -1,3 +1,4 @@
+import { BodyPlayback } from "./body-playback.js";
 import {
   PARTS,
   PART_KINDS,
@@ -55,6 +56,8 @@ const linkNames: Record<LinkKind, string> = {
 };
 
 export function createBench(options: {
+  frames: Pick<Window, "requestAnimationFrame" | "cancelAnimationFrame">;
+  now: () => number;
   onCommand: (command: MachineCommand) => boolean | void;
 }) {
   const root = element("section", "if-bench");
@@ -174,6 +177,15 @@ export function createBench(options: {
   function focusBoard() {
     canvas.focus({ preventScroll: true });
   }
+  const playback = new BodyPlayback();
+  let frame: number | undefined;
+  function animate() {
+    frame = undefined;
+    if (!machine || !root.getClientRects().length) return;
+    redraw();
+    if (playback.pending(options.now()))
+      frame = options.frames.requestAnimationFrame(animate);
+  }
   function redraw() {
     if (!machine) return;
     let ghost: { kind: PartKind; flip: boolean } | undefined;
@@ -183,7 +195,7 @@ export function createBench(options: {
       else if (part && !part.fixed && !link && (!drag || drag.moved))
         ghost = { kind: part.kind, flip: part.flip };
     }
-    paintMachine(canvas, machine, {
+    paintMachine(canvas, playback.sample(machine, options.now()), {
       selected: building() ? selected : undefined,
       cursor: building() && cursorVisible ? cursor : undefined,
       ghost,
@@ -356,7 +368,7 @@ export function createBench(options: {
       if (item.count.textContent !== value) item.count.textContent = value;
     }
     renderLinks(machine);
-    redraw();
+    if (mode !== "running") redraw();
   }
   function hit(p: BoardPoint) {
     if (!machine) return;
@@ -567,6 +579,13 @@ export function createBench(options: {
   return {
     element: root,
     update(next: Machine, canEdit: boolean) {
+      playback.update(next, options.now());
+      if (playback.pending(options.now()) && frame === undefined)
+        frame = options.frames.requestAnimationFrame(animate);
+      if (next.mode === "build" && frame !== undefined) {
+        options.frames.cancelAnimationFrame(frame);
+        frame = undefined;
+      }
       // Room frames also arrive while everyone is studying the same motionless bench.
       // Capture values so this also detects in-place edits and rollback to the same tick.
       const stamp =
@@ -613,6 +632,7 @@ export function createBench(options: {
       refresh();
     },
     dispose() {
+      if (frame !== undefined) options.frames.cancelAnimationFrame(frame);
       resize?.disconnect();
     },
   };
