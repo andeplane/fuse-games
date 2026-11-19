@@ -18,6 +18,7 @@ import {
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
 import { moonlitRelief as shape, type Inside } from "./relief.js";
+import { moonGlow, paintSky, paintStars, paintMoon } from "./sky.js";
 
 /**
  * Stage 3, Drowned Crypt: a cold night in a flooded graveyard under a broken cathedral. Far to near: the sky and a pale
@@ -134,34 +135,43 @@ function stroke(r: Raster, tree: readonly Limb[], [ink, dark, , lit]: Ramp) {
 }
 
 /** Thin clouds: each one's centre, row and half its length. */
-const CLOUDS = [244, 33, 35, 120, 22, 45, 40, 48, 30];
+const CLOUDS = [
+  [244, 33, 35],
+  [120, 22, 45],
+  [40, 48, 30],
+] as const;
+const MOON = [252, 30, 11] as const;
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++) {
-      const glow = Math.max(0, 1 - Math.hypot(x - 252, y - 30) / 70) * 0.25;
-      r.px(x, y, dither(SKY, y / 92 + glow, x, y));
-    }
-  for (let i = 0; i < 70; i++) {
-    const [x, y] = [hash(i, 1) * r.width, hash(i, 2) * 64];
-    if (Math.hypot(x - 252, y - 30) > 24)
-      r.px(x, y, i % 5 ? 0x343c5c : 0xb8c8dc);
-  }
+  const [mx, my] = MOON;
+  paintSky(
+    r,
+    SKY,
+    (x, y) => y / 92 + moonGlow(Math.hypot(x - mx, y - my), 0.25),
+  );
+  paintStars(r, {
+    count: 70,
+    top: 0,
+    height: 64,
+    subpixel: true,
+    color: (index, x, y) => {
+      if (Math.hypot(x - mx, y - my) <= 24) return undefined;
+      return index % 5 ? 0x343c5c : 0xb8c8dc;
+    },
+  });
   // A pale moon, its left limb in shadow, a haze about it and thin clouds across the sky.
-  for (let y = 6; y < 56; y++)
-    for (let x = 228; x < 278; x++) {
-      const d = Math.hypot(x + 0.5 - 252, y + 0.5 - 30);
-      if (d >= 11) {
-        if (d < 22 && bayer(x, y) < (22 - d) / 20) r.px(x, y, 0x24304a);
-        continue;
-      }
-      const shade = Math.hypot(x + 0.5 - 255, y + 0.5 - 29) > 11;
-      const sea =
-        Math.hypot(x - 249, y - 27) < 3 || Math.hypot(x - 255, y - 34) < 2;
-      r.px(x, y, shade ? 0x7e968e : sea ? 0xaec4b4 : 0xd8ead2);
-    }
-  for (let i = 0; i < 9; i += 3) {
-    const [cx, cy, half] = [CLOUDS[i]!, CLOUDS[i + 1]!, CLOUDS[i + 2]!];
+  paintMoon(r, {
+    disc: MOON,
+    sampleOffset: 0.5,
+    lightCenter: [255, 29],
+    marks: [
+      [249, 27, 3],
+      [255, 34, 2],
+    ],
+    colors: { light: 0xd8ead2, shadow: 0x7e968e, marks: 0xaec4b4 },
+    halo: { radius: 22, fade: 20, color: 0x24304a },
+  });
+  for (const [cx, cy, half] of CLOUDS) {
     for (let j = 0; j < 3; j++)
       for (let x = cx - half + j * 4; x < cx + half - j * 3; x++)
         r.px(x, cy + j, j === 2 ? 0x2c3a50 : 0x12162a);

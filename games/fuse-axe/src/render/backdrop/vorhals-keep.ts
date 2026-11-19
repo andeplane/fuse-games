@@ -18,6 +18,7 @@ import {
 import type { Brush, StageArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
 import { torchlitRelief as solid, type Inside } from "./relief.js";
+import { moonGlow, paintSky } from "./sky.js";
 
 /**
  * Stage 4, Vorhal's Keep: torch-lit halls inside the warlord's fortress, cold blue-black stone under warm firelight.
@@ -172,17 +173,24 @@ const MOON = [180, 54, 7.5] as const;
 /** A blood-red sky and moon, seen only through the far wall's windows. */
 function sky(r: Raster) {
   const [mx, my, mr] = MOON;
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++) {
+  paintSky(
+    r,
+    SKY,
+    (x, y) =>
+      (y - 30) / 90 + moonGlow(Math.hypot(x + 0.5 - mx, y + 0.5 - my), 0.4),
+  );
+  for (let y = Math.floor(my - mr); y < Math.ceil(my + mr); y++)
+    for (let x = Math.floor(mx - mr); x < Math.ceil(mx + mr); x++) {
       const d = Math.hypot(x + 0.5 - mx, y + 0.5 - my);
-      let c = dither(SKY, (y - 30) / 90 + Math.max(0, 1 - d / 70) * 0.4, x, y);
-      if (d < mr) {
-        const shade = Math.hypot(x + 0.5 - mx - 2, y + 0.5 - my + 2) > mr;
-        const mare = hash(x >> 2, y >> 2) > 0.72;
-        c = shade ? 0x8a2a1e : mare ? 0xc8482c : 0xe8683a;
-        if (d > mr - 1.5 && x > mx && y < my) c = 0xffa070;
-      }
-      r.px(x, y, c);
+      if (d >= mr) continue;
+      const shade = Math.hypot(x + 0.5 - mx - 2, y + 0.5 - my + 2) > mr;
+      const mare = hash(x >> 2, y >> 2) > 0.72;
+      const rim = d > mr - 1.5 && x > mx && y < my;
+      r.px(
+        x,
+        y,
+        rim ? 0xffa070 : shade ? 0x8a2a1e : mare ? 0xc8482c : 0xe8683a,
+      );
     }
 }
 
