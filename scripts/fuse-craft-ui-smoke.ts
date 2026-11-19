@@ -234,12 +234,22 @@ for (const [name, engine] of [
       "drag must not select",
     );
     const panned = await view(desktop);
-    await desktop.locator('[data-action="leave"]').click();
-    await desktop.locator('[data-action="cancel-confirm"]').click();
+    await desktop.getByRole("button", { name: "Reset", exact: true }).click();
+    const confirmation = desktop.getByRole("alertdialog");
+    await confirmation.waitFor();
+    await confirmation.getByRole("button", { name: "Keep playing" }).focus();
+    await desktop.keyboard.press("Shift+Tab");
+    assert.equal(
+      await desktop.locator(":focus").getAttribute("data-action"),
+      "confirm-reset",
+      "Confirmation wraps keyboard focus",
+    );
+    await desktop.keyboard.press("Escape");
+    await confirmation.waitFor({ state: "hidden" });
     assert.deepEqual(
       await view(desktop),
       panned,
-      "cancel menu must preserve camera",
+      "canceling reset must preserve camera",
     );
     await desktop.locator("#nd-board").focus();
     await desktop.keyboard.press("e");

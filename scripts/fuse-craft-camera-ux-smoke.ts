@@ -122,18 +122,39 @@ for (const [name, engine] of [
     await page.keyboard.press("Shift+ArrowRight");
     const moved = await page.locator(".tile-heading").innerText();
     assert.notEqual(moved, selected, "Shift+Arrow moves the board selection");
-    await page.keyboard.press("ArrowLeft");
+    const minimap = page.locator("#nd-minimap");
+    await minimap.focus();
+    await page.keyboard.press("Enter");
+    const centered = await view(page);
+    await board.focus();
+    const arrow = centered[0]! > 0 ? "ArrowLeft" : "ArrowRight";
+    await page.keyboard.down(arrow);
+    try {
+      await page.waitForFunction((x) => {
+        const origin = document
+          .querySelector("#nd-board")
+          ?.getAttribute("viewBox")
+          ?.split(" ")[0];
+        return Math.abs(Number(origin) - x) > 1;
+      }, centered[0]!);
+    } finally {
+      await page.keyboard.up(arrow);
+    }
     assert.equal(
       await page.locator(".tile-heading").innerText(),
       moved,
       "Bare arrows pan without moving the selection",
     );
-    const minimap = page.locator("#nd-minimap");
     await minimap.focus();
     await page.keyboard.press("Enter");
+    assert.deepEqual(
+      await view(page),
+      centered,
+      "Minimap Enter recenters the camera",
+    );
     assert.equal(await page.locator(".tile-heading").innerText(), moved);
     console.log(
-      `${name}: bounded readable zoom at desktop/phone sizes; secondary and Control drag pan without placement; context menu suppressed`,
+      `${name}: bounded readable zoom at desktop/phone sizes; secondary and Control drag pan without placement; context menu suppressed; keyboard panning, selection and minimap recentering`,
     );
   } finally {
     await browser.close();
