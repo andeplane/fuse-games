@@ -7,6 +7,7 @@
 import type { UnitKind } from "../../engine/view.js";
 import type { Quality } from "../fx.js";
 import type { Model } from "../models.js";
+import { mountCannon } from "./cannon.js";
 import { Rig, type Detail, type V3 } from "./rig.js";
 
 export type RobotKind = UnitKind | "tankTurret";
@@ -140,9 +141,13 @@ function tankTurret(r: Rig): void {
     .add("steel", t.box(0.06, 0.08, 0.06, 0.01), [-0.18, 0.39, -0.06]).add("steel", t.cylinder({ radius: 0.01, height: 1, segments: 4 }), [0.3, 0.8, -0.35])
     .add("eye", t.sphere(0.025), [0.3, 1.3, -0.35]).add("dark", t.box(0.6, 0.16, 0.18, 0.03), [0, 0.15, -0.52])
     .add("visor", t.box(0.1, 0.04, 0.02, 0), [0.22, 0.24, 0.44])
-    .pair((s) => t.decal("21", 0.26, [s * 0.456, 0.15, 0.05], [0, s * (H - 0.1), 0]))
-    .add("steel", t.cylinder({ topRadius: 0.05, bottomRadius: 0.055, height: 1.2, segments: 10 }), [0, 0.15, 1.1], X).add("gun", t.cylinder({ radius: 0.075, height: 0.22, segments: 10 }), [0, 0.15, 0.9], X)
-    .add("gun", t.box(0.16, 0.1, 0.2, 0.02), [0, 0.15, 1.72]);
+    .pair((s) => t.decal("21", 0.26, [s * 0.456, 0.15, 0.05], [0, s * (H - 0.1), 0]));
+  mountCannon(t, [0, 0.15], {
+    segments: 10,
+    barrel: { topRadius: 0.05, bottomRadius: 0.055, height: 1.2, z: 1.1 },
+    sleeve: { radius: 0.075, height: 0.22, z: 0.9 },
+    muzzle: { size: [0.16, 0.1, 0.2], bevel: 0.02, z: 1.72 },
+  });
 }
 
 /** A splayed tripod under a boxy head with twin barrels, an ammo drum and a red sensor. */
