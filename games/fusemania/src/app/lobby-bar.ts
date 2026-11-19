@@ -1,4 +1,42 @@
+import { button } from "fuse-ui";
 import { createOptionsMenu, type OptionsMenu } from "./options.js";
+
+export type LobbyAction =
+  | { kind: "start"; label: string; enabled: boolean }
+  | { kind: "ready"; pressed: boolean }
+  | { kind: "none" };
+
+/** The shared room's primary slot follows this device's current role. */
+export function createLobbyAction(
+  document: Document,
+  onStart: () => void,
+  onReady: (ready: boolean) => void,
+) {
+  const element = button("START", "fui-button-primary fm-start", document);
+  element.hidden = true;
+  let current: LobbyAction = { kind: "none" };
+  element.onclick = () => {
+    if (current.kind === "start" && current.enabled) onStart();
+    if (current.kind === "ready") onReady(!current.pressed);
+  };
+  return {
+    element,
+    update(action: LobbyAction) {
+      current = action;
+      element.hidden = action.kind === "none";
+      element.disabled = action.kind === "start" && !action.enabled;
+      if (action.kind === "ready") {
+        const label = action.pressed ? "READY ✓" : "READY";
+        if (element.textContent !== label) element.textContent = label;
+        element.setAttribute("aria-pressed", String(action.pressed));
+      } else {
+        element.removeAttribute("aria-pressed");
+        if (action.kind === "start" && element.textContent !== action.label)
+          element.textContent = action.label;
+      }
+    },
+  };
+}
 
 export interface LobbyBar {
   /** Contextual shortcut to this player's scroll speed. */

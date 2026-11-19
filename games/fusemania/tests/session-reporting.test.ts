@@ -38,6 +38,7 @@ import {
   fold,
   game,
   library,
+  readyGuests,
   run,
   runTo,
   seated,
@@ -183,6 +184,7 @@ test("playlist aggregate retains departed and later entrants with their actual c
       [JOIN, "c", "Cy", 1, "robot", 1],
     ],
   });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "song-2"]] });
   finish(room);
   fold(room, {
@@ -192,6 +194,7 @@ test("playlist aggregate retains departed and later entrants with their actual c
       [SETTINGS_ENTRY, { ...SETTINGS, songs: 3, song: "other" }],
     ],
   });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "song-3"]] });
   finish(room);
   const result = matchResult(library, room)!;
@@ -254,6 +257,7 @@ test("playlist history accepts a larger retained field than one song's five seat
       ]),
     ],
   });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "song-2"]] });
   finish(room);
   fold(room, {
@@ -270,6 +274,7 @@ test("playlist history accepts a larger retained field than one song's five seat
       ]),
     ],
   });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "song-3"]] });
   finish(room);
   const result = matchResult(library, room)!;
@@ -326,6 +331,7 @@ test("song and aggregate receipts survive rematch before a non-checkpoint comple
   if (room.tick % 4 === 0) {
     room = seated({ ...SETTINGS, songs: 3 });
     fold(room);
+    readyGuests(room);
     fold(room, {
       a: [
         [ACTION, "start", "m1"],

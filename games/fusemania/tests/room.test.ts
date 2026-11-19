@@ -6,6 +6,7 @@ import {
   JOIN,
   PRESENCE,
   SETTINGS as SETTINGS_ENTRY,
+  rulesAge,
   type StreamEntries,
 } from "fuse-netcode";
 import {
@@ -16,9 +17,11 @@ import {
   MARVELOUS,
   MISS,
   PERFECT,
+  RULES,
 } from "../src/engine/index.js";
 import {
   HOLD_TICKS,
+  LOBBY_READY,
   PICK,
   PLAY,
   READY,
@@ -31,6 +34,7 @@ import {
   fold,
   game,
   library,
+  readyGuests,
   run,
   runTo,
   seated,
@@ -41,9 +45,89 @@ import { beatMs } from "./fixtures/songs.js";
 const counts = (room: ReturnType<typeof started>, slot: number) =>
   room.world!.players[slot]!.counts;
 
+test("older clients are refused as stale while ranked replay keeps its rules version", () => {
+  const olderRoomRules = "fusemania-11-activity-duration-1";
+  assert.equal(rulesAge(game.rules, olderRoomRules), "older");
+  assert.equal(rulesAge(olderRoomRules, game.rules), "newer");
+  assert.equal(RULES, olderRoomRules);
+  const room = seated();
+  assert.equal(
+    game.checkpoint.decode(
+      game.checkpoint.encode(room).slice(0, -1),
+      room.tick,
+    ),
+    undefined,
+  );
+});
+
+test("only explicit readiness enables START and a same-tick withdrawal blocks it", () => {
+  const room = seated();
+  fold(room, { a: [[ACTION, "start", "m1"]], b: [[READY, 1]] });
+  assert.equal(room.stage, "lobby");
+  assert.deepEqual(game.view(room).lobbyReady, []);
+
+  readyGuests(room);
+  assert.deepEqual(game.view(room).lobbyReady, ["b"]);
+  const restored = game.checkpoint.decode(
+    game.checkpoint.encode(room),
+    room.tick,
+  )!;
+  assert.deepEqual(game.view(restored).lobbyReady, ["b"]);
+  fold(room, {
+    a: [[ACTION, "start", "m1"]],
+    b: [[LOBBY_READY, room.lobbyReady.revision, 1, false]],
+  });
+  assert.equal(room.stage, "lobby");
+  assert.deepEqual(game.view(room).lobbyReady, []);
+
+  readyGuests(room);
+  fold(room, { a: [[ACTION, "start", "m1"]] });
+  assert.equal(room.stage, "running");
+  assert.deepEqual(game.view(room).lobbyReady, []);
+  assert.deepEqual(game.view(room).waiting?.ids, ["a", "b"]);
+});
+
+test("changing the song or a guest chart clears readiness and stale votes do not replay", () => {
+  const room = seated();
+  readyGuests(room);
+  const beforeChange = room.lobbyReady.revision;
+  fold(room, {
+    a: [
+      [SETTINGS_ENTRY, { ...SETTINGS, song: "other" }],
+      [ACTION, "start", "m1"],
+    ],
+    b: [[LOBBY_READY, beforeChange, 1, true]],
+  });
+  assert.equal(room.stage, "lobby");
+  assert.deepEqual(game.view(room).lobbyReady, []);
+
+  readyGuests(room);
+  fold(room, { a: [[ACTION, "start", "m1"]], b: [[PICK, 1]] });
+  assert.equal(room.stage, "lobby");
+  assert.deepEqual(game.view(room).lobbyReady, []);
+});
+
+test("an away player does not block START and must ready again on return", () => {
+  const room = seated();
+  readyGuests(room);
+  fold(room, { b: [[PRESENCE, "b", false, 1]] });
+  assert.deepEqual(game.view(room).lobbyReady, []);
+  const away = game.checkpoint.decode(game.checkpoint.encode(room), room.tick)!;
+
+  fold(room, { a: [[PRESENCE, "b", true, 2]] });
+  fold(room, { a: [[ACTION, "start", "m1"]] });
+  assert.equal(room.stage, "lobby");
+  assert.deepEqual(game.view(room).lobbyReady, []);
+
+  fold(away, { a: [[ACTION, "start", "m1"]] });
+  assert.equal(away.stage, "running");
+  assert.deepEqual(game.view(away).waiting?.ids, ["a"]);
+});
+
 test("a match starts after a lead-in, on each seat's own chart", () => {
   const room = seated();
   fold(room, { b: [[PICK, 1]] });
+  readyGuests(room);
   fold(room, {
     a: [
       [ACTION, "start", "m1"],
@@ -198,6 +282,7 @@ test("the host's settings are checked: a song the library has, a known mode, a c
   fold(room, {
     a: [[SETTINGS_ENTRY, { ...SETTINGS, song: "other" }]],
   });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   assert.equal(room.world!.song, "other");
   assert.deepEqual(
@@ -278,6 +363,7 @@ test("a checkpoint restores the same room mid-song, and a doctored one is refuse
 test("AI rivals fill seats, play on the host's chart and finish the song", () => {
   const room = seated({ ...SETTINGS, mode: BATTLE_MODE });
   fold(room, { a: [[BOT, "add", "bot:1", 2]] });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   assert.equal(room.roster.length, 3);
   assert.equal(room.roster[2]!.bot, true);
@@ -290,6 +376,7 @@ test("AI rivals fill seats, play on the host's chart and finish the song", () =>
 
 test("a started song stands still until every device has its audio", () => {
   const room = seated();
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   assert.equal(room.stage, "running");
   assert.deepEqual(game.view(room).waiting, { ids: ["a", "b"], screen: false });
@@ -318,6 +405,7 @@ test("a held song waits for nobody who is not there, and never longer than its l
   // An AI rival has no device, and a rider who left is not waited for.
   const room = seated();
   fold(room, { a: [[BOT, "add", "bot:1", "Robo", 2]] });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   assert.equal(room.roster.length, 3);
   assert.deepEqual(game.view(room).waiting?.ids, ["a", "b"]);
@@ -329,6 +417,7 @@ test("a held song waits for nobody who is not there, and never longer than its l
 
   // A device that never answers holds the room for `HOLD_TICKS` and no more.
   const stuck = seated();
+  readyGuests(stuck);
   fold(stuck, { a: [[ACTION, "start", "m1"]] });
   run(stuck, HOLD_TICKS - 1);
   assert.ok(stuck.hold);
@@ -340,6 +429,7 @@ test("a held song waits for nobody who is not there, and never longer than its l
   // Back in the song select nothing is held, and the next song waits anew.
   fold(stuck, { a: [[ACTION, "lobby", "m2"]] });
   assert.equal(stuck.hold, null);
+  readyGuests(stuck);
   fold(stuck, { a: [[ACTION, "start", "m3"]] });
   assert.deepEqual(game.view(stuck).waiting?.ids, ["a", "b"]);
 });
@@ -363,6 +453,7 @@ test("a shared screen room waits for its TV, which holds no seat", () => {
       [JOIN, "b", "Bo", 1, "cat", 1],
     ],
   });
+  step({ a: [[LOBBY_READY, 0, 0, true]], b: [[LOBBY_READY, 0, 1, true]] });
   step({ tv: [[ACTION, "start", "m1"]] });
   assert.deepEqual(game.view(room).waiting, { ids: ["a", "b"], screen: true });
   // The phones are pads and done at once: the song still waits for the screen that plays it.
@@ -381,6 +472,7 @@ test("a shared screen room waits for its TV, which holds no seat", () => {
 
 test("a held room restores from its checkpoint, and a doctored hold is refused", () => {
   const room = seated();
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   fold(room, { b: [[READY, 1]] });
   run(room, 5);
@@ -396,6 +488,7 @@ test("a held room restores from its checkpoint, and a doctored hold is refused",
 
   const held = seated();
   fold(held, { a: [[BOT, "add", "bot:1", "Robo", 2]] });
+  readyGuests(held);
   fold(held, { a: [[ACTION, "start", "m1"]] });
   fold(held, { b: [[READY, 1]] });
   const bot = [...held.seats.values()].find((seat) => seat.bot)!.id;
