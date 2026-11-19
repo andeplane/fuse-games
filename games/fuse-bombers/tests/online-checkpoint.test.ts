@@ -485,6 +485,7 @@ test("a value the engine cannot reach is refused, and each range is taken up to 
     }));
   assert.ok(accepts([[5], watching(5)]), "five watchers");
   assert.ok(!accepts([[5], watching(6)]), "six watchers");
+  assert.ok(!accepts([[5], Object.assign(watching(1), { extra: true })]));
   // Parts that each fit but do not fit together.
   assert.ok(!accepts([[WORLD, 12], []]), "a fallen castle without its ghost");
   assert.ok(

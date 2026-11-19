@@ -15,6 +15,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  createSeatListDecoder,
 } from "fuse-netcode";
 import {
   BOT_LEVEL_ORDER,
@@ -730,6 +731,11 @@ function decodeSeat(raw: unknown): SeatRecord | undefined {
   };
 }
 
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  decodeSeat,
+});
 function decodeRecord(raw: unknown, round: number): GameRecord | undefined {
   if (!list(raw, 8) || raw.length !== 8) return;
   const [number, mapId, team, kind, steps, tick, crew, present] = raw;
@@ -785,16 +791,8 @@ export function decode(
     !statPairs
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw),
-      taken = (s: SeatRecord) => !s.watcher && s.slot === seat?.slot;
-    if (!seat || seats.has(seat.id)) return;
-    if (!seat.watcher && [...seats.values()].some(taken)) return;
-    seats.set(seat.id, seat);
-  }
-  const watchers = [...seats.values()].filter((seat) => seat.watcher);
-  if (watchers.length > MAX_WATCHERS) return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   // Game by game from the first; the score is counted from them. A decided set plays no further game, so only the
   // latest result may reach the games a set takes.
   const results: GameRecord[] = [],

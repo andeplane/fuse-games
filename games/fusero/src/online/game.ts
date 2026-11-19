@@ -1,7 +1,8 @@
 import {
   hashCheckpointJson,
   applyManagementTick,
-  createSeatDecoder,
+  createSeatListDecoder,
+  createHeldInputDecoder,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -383,8 +384,15 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.pendingPressed),
   ];
 }
-const decodeSeat = createSeatDecoder({
+const decodeHeld = createHeldInputDecoder({
   capacity: CAPACITY,
+  playerKey,
+  isInput,
+});
+
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
@@ -415,61 +423,18 @@ export function decode(
     (stage !== "lobby" && stage !== "running" && stage !== "over") ||
     !settings ||
     !play ||
-    !Array.isArray(rawSeats) ||
-    rawSeats.length > CAPACITY + MAX_WATCHERS ||
     !uint32(simulationTick) ||
     simulationTick !== (tick * LOG_TICK_MS) / OUTER_MS ||
-    !Array.isArray(rawHeld) ||
-    rawHeld.length > CAPACITY ||
-    !Array.isArray(rawPendingPressed) ||
-    rawPendingPressed.length > CAPACITY ||
     !Array.isArray(rawLoadouts) ||
     rawLoadouts.length > CAPACITY
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some(
-          (other) => !other.watcher && other.slot === seat.slot,
-        ))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((seat) => seat.watcher).length > MAX_WATCHERS)
-    return;
-  const held: Record<string, number> = {},
-    pendingPressed: Record<string, number> = {},
-    loadouts: Record<string, Loadout> = {};
-  for (const pair of rawHeld) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(held, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    held[pair[0]] = pair[1];
-  }
-  for (const pair of rawPendingPressed) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(pendingPressed, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    pendingPressed[pair[0]] = pair[1];
-  }
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
+  const held = decodeHeld(rawHeld),
+    pendingPressed = decodeHeld(rawPendingPressed);
+  if (!held || !pendingPressed) return;
+  const loadouts: Record<string, Loadout> = {};
   for (const pair of rawLoadouts) {
     if (
       !Array.isArray(pair) ||

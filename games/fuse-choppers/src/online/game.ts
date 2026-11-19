@@ -2,7 +2,7 @@ import {
   hashCheckpointJson,
   applyManagementTick,
   foldHeldInput,
-  createSeatDecoder,
+  createSeatListDecoder,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -425,8 +425,9 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
@@ -503,28 +504,14 @@ export function decode(
     !STAGES.includes(stage as Stage) ||
     !settings ||
     !play ||
-    !Array.isArray(rawSeats) ||
-    rawSeats.length > CAPACITY + MAX_WATCHERS ||
     typeof winner !== "string" ||
     !uint32(resumeAt) ||
     !Array.isArray(rawResults) ||
     rawResults.length > maxRounds(play)
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   const wins = counts(rawWins, maxRounds(play)),
     held = counts(rawHeld, CAPACITY);
   if (!wins || !held || Object.values(held).some((bits) => !isInput(bits)))
