@@ -18,6 +18,9 @@ try {
   await page.addInitScript("window.__name = value => value");
   await page.goto(`${ridersPageUrl(server.url)}?mute`);
   const results = await page.evaluate(async () => {
+    const { readArenaPixels } = (await import(
+      String("/scripts/lib/riders-render-fixture.ts")
+    )) as typeof import("./lib/riders-render-fixture.js");
     const { createPhaserArena } = (await import(
       String("/games/fuse-riders/src/render/phaser/arena.ts")
     )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
@@ -80,23 +83,12 @@ try {
           const y = 298,
             width = 80,
             height = 4;
-          const pixels = new Uint8Array(width * height * 4);
-          if (backend === "auto") {
-            const gl = canvas.getContext("webgl")!;
-            gl.readPixels(
-              left,
-              canvas.height - y - height,
-              width,
-              height,
-              gl.RGBA,
-              gl.UNSIGNED_BYTE,
-              pixels,
-            );
-          } else
-            pixels.set(
-              canvas.getContext("2d")!.getImageData(left, y, width, height)
-                .data,
-            );
+          const pixels = readArenaPixels(canvas, expectedRenderer, [
+            left,
+            y,
+            width,
+            height,
+          ]);
           let minimum = Infinity,
             maximum = -Infinity;
           for (let i = 0; i < pixels.length; i += 4) {
