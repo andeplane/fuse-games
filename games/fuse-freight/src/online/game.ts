@@ -1,12 +1,9 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
   applyManagementTick,
   foldHeldInput,
   createSeatDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -177,22 +174,15 @@ const payloads = {
   name: validName,
   avatar: isAvatar,
   settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: playerKey,
+  matchKey: validMatchId,
   capacity: CAPACITY,
 };
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return validMatchId(raw[4]);
-    const at =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return at < 0 || playerKey((raw as unknown[])[at]);
-  }
+  if (isManagementEntry(raw, payloads)) return true;
   return (
-    Array.isArray(raw) &&
+    hasLogPosition(raw) &&
     raw.length === 6 &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
     raw[2] === PLAY &&
     validMatchId(raw[3]) &&
     uint32(raw[4]) &&
