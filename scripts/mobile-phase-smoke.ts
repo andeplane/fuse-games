@@ -1,4 +1,4 @@
-import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
+import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
@@ -10,14 +10,16 @@ const results: object[] = [];
 await mkdir("artifacts", { recursive: true });
 const PHASES = ["countdown", "playing", "matchOver"] as const;
 for (const { name, kind } of BOTH_ENGINES) {
-  const browser = await launchBrowser(kind, { headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 844, height: 390 },
-    isMobile: true,
-    hasTouch: true,
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(smokeTimeout(20000));
+  await using browser = await launchBrowser(kind, { headless: true });
+  const page = await newSmokePage(
+    browser,
+    {
+      viewport: { width: 844, height: 390 },
+      isMobile: true,
+      hasTouch: true,
+    },
+    20000,
+  );
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.stack ?? e.message));
   // One round ends the match, so matchOver is reachable without a long solo run.
@@ -237,7 +239,6 @@ for (const { name, kind } of BOTH_ENGINES) {
     });
     throw error;
   } finally {
-    await browser.close();
     await writeFile(
       "artifacts/mobile-phase-smoke.json",
       JSON.stringify(results, null, 2),

@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
+import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
@@ -33,14 +33,16 @@ const press = async (page: Page, x: number, y: number) => {
   assert.fail("the left pad never registered a press");
 };
 for (const { name, kind } of BOTH_ENGINES) {
-  const browser = await launchBrowser(kind, { headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(smokeTimeout(15000));
+  await using browser = await launchBrowser(kind, { headless: true });
+  const page = await newSmokePage(
+    browser,
+    {
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+    },
+    15000,
+  );
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.stack ?? e.message));
   try {
@@ -196,7 +198,7 @@ for (const { name, kind } of BOTH_ENGINES) {
 
     const zones = page.locator(".online-controls>button");
     const cdp =
-      name === "chrome" ? await context.newCDPSession(page) : undefined;
+      name === "chrome" ? await page.context().newCDPSession(page) : undefined;
     let transitionForced = false;
     for (const third of [0, 1, 2]) {
       const box = bounds[third]!;
@@ -479,7 +481,6 @@ for (const { name, kind } of BOTH_ENGINES) {
     });
     throw error;
   } finally {
-    await browser.close();
     await writeFile(
       "artifacts/mobile-landscape-smoke.json",
       JSON.stringify(results, null, 2),
