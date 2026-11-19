@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createGameMenu, createTopBar } from "fuse-ui";
+import { createGameMenu, createTopBar, openTopBarRadio } from "fuse-ui";
 import { page } from "./dom-fixture.js";
 import { ALL_SONGS } from "fuse-music";
 import type { MusicPlayer } from "../src/radio.js";
@@ -46,6 +46,41 @@ test("Radio and Player options are sibling views and Back returns to the game me
   menu.querySelector<HTMLButtonElement>(".fui-dialog-back")!.click();
   assert.equal(menu.getAttribute("aria-label"), "Game menu");
   assert.equal(closed, 1);
+});
+
+test("the Radio shortcut opens the shared header and choosing Report dismisses its menu", () => {
+  const { document, window } = page();
+  const root = document.createElement("header");
+  document.body.append(root);
+  const changes: boolean[] = [];
+  const radioControls = document.createElement("button");
+  createTopBar({
+    element: root,
+    music: false,
+    gameId: "test-game",
+    radioControls,
+    onOpenChange: (open) => changes.push(open),
+  });
+  const dialog = root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  Object.defineProperty(dialog, "open", {
+    get: () => dialog.hasAttribute("open"),
+  });
+  dialog.showModal = () => {
+    dialog.setAttribute("open", "");
+  };
+  dialog.close = () => {
+    dialog.removeAttribute("open");
+    dialog.dispatchEvent(new window.Event("close"));
+  };
+  openTopBarRadio(root);
+  assert.equal(dialog.open, true);
+  assert.equal(dialog.getAttribute("aria-label"), "Radio");
+  assert.equal(radioControls.closest("dialog"), dialog);
+  dialog.querySelector<HTMLButtonElement>(".fui-dialog-back")!.click();
+  assert.equal(dialog.getAttribute("aria-label"), "Game menu");
+  dialog.querySelector<HTMLButtonElement>(".fui-playtest-trigger")!.click();
+  assert.equal(dialog.open, false);
+  assert.deepEqual(changes, [true, false]);
 });
 
 test("the default radio survives header replacement without constructing a second player", () => {

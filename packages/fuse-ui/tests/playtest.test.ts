@@ -382,6 +382,14 @@ test("committed audio survives a new browser-storage client and is removed only 
   );
   await restored.remove(chunk.key);
   assert.equal((await original.list()).length, 1);
+  await assert.rejects(() =>
+    restored.updateRecording(chunk.key, (value) => value),
+  );
+  assert.equal(
+    (await original.list()).length,
+    1,
+    "updating a missing recording preserves the outbox",
+  );
 });
 
 test("browser storage enforces the byte cap atomically under concurrent writes", async () => {
