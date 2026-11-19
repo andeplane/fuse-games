@@ -5,7 +5,11 @@ import { uint32 } from "./wire.js";
 /** Fields through the roster in the shared checkpoint header. Each game owns the rest. */
 export const CHECKPOINT_HEADER_FIELDS = 7;
 
-interface CheckpointBaseOptions<RoomStage extends Stage, Settings, Entrant> {
+interface CheckpointBaseOptions<
+  RoomStage extends Stage,
+  Settings extends object,
+  Entrant,
+> {
   stages: readonly RoomStage[];
   minStepsPerTick: number;
   maxStepsPerTick?: number;
@@ -16,10 +20,13 @@ interface CheckpointBaseOptions<RoomStage extends Stage, Settings, Entrant> {
   decodeRoster(raw: unknown): Entrant[] | undefined;
 }
 
-/** Decode the common checkpoint header and clock. Each game owns the payload after the header. */
+/**
+ * Decode the common checkpoint header and clock after the caller checks its field count and log tick.
+ * Each game owns the payload after the header.
+ */
 export function createCheckpointBaseDecoder<
   RoomStage extends Stage,
-  Settings,
+  Settings extends object,
   Entrant,
 >({
   stages,

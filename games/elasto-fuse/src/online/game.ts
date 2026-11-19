@@ -599,7 +599,8 @@ export function decode(
     !uint32(pause)
   )
     return;
-  const { roster, held, stage, play, simulationTick } = base;
+  const { simulationTick, ...match } = base;
+  const { roster, held, stage, play } = match;
   const levels = levelsOf(play, base.matchId);
   const standings = decodeStandings(rawStandings, roster.length, levels.length);
   const decided = decodeDecided(rawDecided, roster);
@@ -630,8 +631,9 @@ export function decode(
     return;
   return {
     tick,
-    ...base,
+    simulationTick,
     matchStartTick,
+    ...match,
     round,
     standings,
     pause,
