@@ -564,6 +564,7 @@ export function decode(
     !play ||
     round > maxRounds(play) ||
     !uint32(startAt) ||
+    !list(rawSeats, CAPACITY + MAX_WATCHERS) ||
     !list(rawResults, round) ||
     !list(ships, CAPACITY) ||
     !ships.every(names.playerKey) ||

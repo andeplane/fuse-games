@@ -783,6 +783,7 @@ export function decode(
     !play ||
     round > 2 * play.wins - 1 ||
     !uint32(startAt) ||
+    !list(rawSeats, CAPACITY + MAX_WATCHERS) ||
     !list(rawResults, round) ||
     !heldPairs ||
     !askPairs ||
