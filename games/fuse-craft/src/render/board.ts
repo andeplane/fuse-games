@@ -1,4 +1,10 @@
 import {
+  animateBrains,
+  animateLinks,
+  animatePulses,
+  animateRecoil,
+} from "./board-animation.js";
+import {
   buildingFoot,
   buildingSize,
   neuronNeighbours,
@@ -142,7 +148,6 @@ function sporesFor(size: { width: number; height: number }, seed: string) {
     }),
   );
 }
-const LINK_GROW_MS = 900;
 /** A stable identity for a decorative light, so thinning keeps the same ones. */
 const decorKey = (kind: number, index: number) =>
   kind * 0x1000000 + (index & 0xffffff);
@@ -865,59 +870,14 @@ export function renderBoard(
       animateDamage(frameNow, reducedMotion);
     for (const animateSite of constructionAnimations)
       animateSite(frameNow, reducedMotion);
-    for (const [cell, kick] of cache.recoil) {
-      const age = (frameNow - kick.born) / 240;
-      const art = cache.structures.querySelector<SVGGElement>(
-        `.structure[data-cell="${cell}"] .building-art`,
-      );
-      if (age >= 1 || reducedMotion) {
-        art?.removeAttribute("transform");
-        cache.recoil.delete(cell);
-      } else {
-        const amount =
-          Math.sin(Math.min(1, Math.max(0, age)) * Math.PI) * (1 - age);
-        art?.setAttribute(
-          "transform",
-          `translate(${kick.dx * amount} ${kick.dy * amount})`,
-        );
-      }
-    }
+    animateRecoil(cache.structures, cache.recoil, frameNow, reducedMotion);
     // Absolute presentation time preserves phase when authoritative stock/HP
     // changes rebuild the structure markup. No simulation state is advanced.
     for (const orbit of orbits)
       orbit.style.transform = `rotate(${reducedMotion ? 0 : ((frameNow % 5000) * 360) / 5000}deg)`;
     for (const animateNeuron of neurons) animateNeuron(frameNow, reducedMotion);
-    // Brains breathe: a slow swell anchored at the base of the sprite.
-    for (const brain of brains)
-      if (!cache.recoil.has(brain.cell)) {
-        if (reducedMotion) brain.art.removeAttribute("transform");
-        else {
-          const breath = Math.sin(frameNow / 900 + brain.cell) * 0.018;
-          brain.art.setAttribute(
-            "transform",
-            `translate(${brain.x} ${brain.foot}) scale(${(1 - breath * 0.6).toFixed(4)} ${(1 + breath).toFixed(4)}) translate(${-brain.x} ${-brain.foot})`,
-          );
-        }
-      }
-    for (const link of growingLinks) {
-      const g = reducedMotion
-        ? 1
-        : Math.max(0, Math.min(1, (frameNow - link.born) / LINK_GROW_MS));
-      for (const path of link.paths)
-        if (g >= 1) {
-          path.removeAttribute("pathLength");
-          path.style.removeProperty("stroke-dasharray");
-          path.style.removeProperty("stroke-dashoffset");
-        } else {
-          const eased = 1 - Math.pow(1 - g, 2);
-          path.setAttribute("pathLength", "1");
-          path.style.setProperty("stroke-dasharray", `${eased} 2`);
-          path.style.setProperty(
-            "stroke-dashoffset",
-            link.forward ? "0" : String(-(1 - eased)),
-          );
-        }
-    }
+    animateBrains(brains, cache.recoil, frameNow, reducedMotion);
+    animateLinks(growingLinks, frameNow, reducedMotion);
     cache.creep.animate(frameNow, reducedMotion);
     const visualTick =
       world.tick +
@@ -947,25 +907,7 @@ export function renderBoard(
         reducedMotion ? "" : networkPathMarkup(path, tail, fraction),
       );
     }
-    cache.pulses = cache.pulses.filter((p) => {
-      const t = (frameNow - p.born) / (p.duration ?? 320);
-      if (t >= 1 || reducedMotion) {
-        p.element.remove();
-        p.ground?.remove();
-        p.body?.remove();
-        return false;
-      }
-      if (p.animate) {
-        p.animate(t);
-        return true;
-      }
-      p.element.setAttribute("r", String(p.arrival ? 8 + t * 13 : 10 + t * 21));
-      p.element.setAttribute(
-        "opacity",
-        String((p.arrival ? 0.35 : 1) * (1 - t)),
-      );
-      return true;
-    });
+    cache.pulses = animatePulses(cache.pulses, frameNow, reducedMotion);
     if (light && lightView) drawLight(frameNow, lightView);
     else if (light) cache.light.step(frameNow, reducedMotion);
   };
