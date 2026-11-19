@@ -15,6 +15,7 @@ export {
   createPageMessage,
   createSubPage,
   escapeIsTaken,
+  showInvalidRoomPage,
   type BackButtonOptions,
   type BackOnEscapeOptions,
   type PageHeader,
