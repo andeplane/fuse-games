@@ -367,7 +367,15 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "fa-lobby"),
     lobbyMain = el("div", "", "fa-panel"),
     lobbySide = el("aside", "", "fa-panel fa-side"),
-    roster = createRoster({ emptyText: "No heroes yet", avatar: badge }),
+    roster = createRoster({
+      emptyText: "No heroes yet",
+      avatar: badge,
+      removeBot: {
+        className: "fa-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     blurb = el("p", "", "fa-blurb"),
     lobbyNote = el("p", "", "fui-lobby-note"),
     addBot = button("+ BOT", "fa-add-bot"),
@@ -788,6 +796,7 @@ function room(solo: boolean): void {
     roster.update(
       next.members.map((member) => ({
         id: member.id,
+        removableBot: next.removable.includes(member.id),
         slot: member.slot,
         name: member.name,
         color: member.color,
@@ -795,18 +804,6 @@ function room(solo: boolean): void {
         avatar: member.hero ?? undefined,
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fa-remove");
-      const removable = next.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fa-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !next.canAddBot;
     // A seat shows the hero the room gave it (this device's own pick until the room answers); before a seat, the one
     // this browser will join with.
