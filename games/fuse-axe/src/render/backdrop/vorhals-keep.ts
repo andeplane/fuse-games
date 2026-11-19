@@ -19,6 +19,7 @@ import type { Brush, StageArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
 import { torchlitRelief as solid, type Inside } from "./relief.js";
 import { moonGlow, paintSky } from "./sky.js";
+import { paintStone, stoneCourses, type StoneCourse } from "./stone-courses.js";
 
 /**
  * Stage 4, Vorhal's Keep: torch-lit halls inside the warlord's fortress, cold blue-black stone under warm firelight.
@@ -62,7 +63,7 @@ const RED_LIT = [
 const FLAGS = [
   0x06070c, 0x0a0c13, 0x0f121b, 0x151925, 0x1c2130, 0x282634, 0x3c2c2a,
   0x5a3a2a,
-];
+] as const;
 const SKY = [
   0x0e0208, 0x18040b, 0x26060e, 0x380a12, 0x4e0e16, 0x6a1619, 0x86221c,
   0xa0321f,
@@ -597,9 +598,27 @@ function room(r: Raster) {
   axe(r);
 }
 
-/** The fires' light on the floor: a pool spreading from the kerb under each. */
-const POOLS = LIGHTS.map(([x, , reach]): Light => [x, FLOOR, reach]);
-const pool = (x: number, y: number) => warmth(POOLS, x, y, 2.2);
+type FloorGlow = (x: number, y: number) => number;
+
+/** Project firelight onto the floor. Each column only sees lights within their horizontal reach. */
+function floorGlow(width: number): FloorGlow {
+  const columns: [distance: number, reach: number][][] = Array.from(
+    { length: width },
+    () => [],
+  );
+  for (const [center, , reach] of LIGHTS) {
+    const left = Math.max(0, Math.floor(center - reach) + 1);
+    const right = Math.min(width, Math.ceil(center + reach));
+    for (let x = left; x < right; x++) columns[x]!.push([x - center, reach]);
+  }
+  return (x, y) => {
+    const depth = (y - FLOOR) * 2.2;
+    let glow = 0;
+    for (const [distance, reach] of columns[x]!)
+      glow = Math.max(glow, 1 - Math.hypot(distance, depth) / reach);
+    return glow;
+  };
+}
 
 /** A colour `t` of the way from `a` to `b`. */
 function mix(a: number, b: number, t: number) {
@@ -615,22 +634,43 @@ function mix(a: number, b: number, t: number) {
 const FLAG_W = 32;
 
 /** Polished flagstones in a chequer, a sheen along each one's far edge, warmed under the fires, red before the throne. */
-function flags(r: Raster) {
-  for (let y0 = FLOOR, k = 0; y0 < VIEW_H; k++) {
-    const y1 = Math.min(y0 + 6 + k, VIEW_H);
-    for (let y = y0; y < y1; y++)
-      for (let x = 0; x < r.width; x++) {
-        const n = Math.floor(x / FLAG_W);
-        const tone = ((n + k) % 2 ? 0.33 : 0.12) + hash(n, k) * 0.06;
-        let c = dither(FLAGS, tone + pool(x, y) * 0.7, x, y);
-        if (y === y0 + 1 && (n + k) % 2) c = FLAGS[4]!;
-        if (y === y0 || x % FLAG_W === 0) c = y === y0 ? FLAGS[0]! : FLAGS[1]!;
-        const red = 1 - Math.hypot((x - THRONE_X) / 150, (y - FLOOR) / 46);
-        if (red > 0) c = mix(c, 0x5a0e16, red * 0.5);
-        r.px(x, y, c);
-      }
-    y0 = y1;
-  }
+function flags(r: Raster, pool: FloorGlow) {
+  for (const course of stoneCourses({
+    top: FLOOR,
+    bottom: VIEW_H,
+    firstHeight: 6,
+  }))
+    for (let left = 0, column = 0; left < r.width; left += FLAG_W, column++)
+      polishedFlagstone(r, course, { left, column }, pool);
+}
+
+function polishedFlagstone(
+  r: Raster,
+  course: StoneCourse,
+  { left, column }: { left: number; column: number },
+  pool: FloorGlow,
+) {
+  const { index, top } = course;
+  const polished = (column + index) % 2 !== 0;
+  const tone = (polished ? 0.33 : 0.12) + hash(column, index) * 0.06;
+  paintStone(r, course, { left, width: FLAG_W }, (x, y) => {
+    const color =
+      y === top
+        ? FLAGS[0]
+        : x === left
+          ? FLAGS[1]
+          : polished && y === top + 1
+            ? FLAGS[4]
+            : dither(FLAGS, tone + pool(x, y) * 0.7, x, y);
+    return throneTint(color, x, y);
+  });
+}
+
+function throneTint(color: number, x: number, y: number): number {
+  const across = (x - THRONE_X) / 150;
+  if (Math.abs(across) >= 1) return color;
+  const red = 1 - Math.hypot(across, (y - FLOOR) / 46);
+  return red > 0 ? mix(color, 0x5a0e16, red * 0.5) : color;
 }
 
 /** The polish: what stands above the floor mirrored in it, half bright and fading with depth, and each fire's streak. */
@@ -654,7 +694,7 @@ function polish(r: Raster) {
 }
 
 /** The red carpet along the hall, gold-edged and figured with lozenges, and the runner from it up to the dais. */
-function carpet(r: Raster) {
+function carpet(r: Raster, pool: FloorGlow) {
   const [top, bottom] = CARPET;
   for (let y = FLOOR; y < top; y++)
     for (let x = THRONE_X - 10; x < THRONE_X + 10; x++) {
@@ -713,9 +753,10 @@ function hall(r: Raster) {
   kerb(r);
   dais(r);
   for (const x of BRAZIERS) brazier(r, x);
-  flags(r);
+  const pool = floorGlow(r.width);
+  flags(r, pool);
   polish(r);
-  carpet(r);
+  carpet(r, pool);
   for (let i = 0; i < SLABS.length; i += 2) slab(r, SLABS[i]!, SLABS[i + 1]!);
 }
 

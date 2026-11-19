@@ -19,6 +19,12 @@ import type { Brush, StageArt } from "./kit.js";
 import { drawFires, type Fire } from "./fire.js";
 import { moonlitRelief as shape, type Inside } from "./relief.js";
 import { moonGlow, paintSky, paintStars, paintMoon } from "./sky.js";
+import {
+  paintStone,
+  stoneCourses,
+  type StoneCourse,
+  type StoneSpan,
+} from "./stone-courses.js";
 
 /**
  * Stage 3, Drowned Crypt: a cold night in a flooded graveyard under a broken cathedral. Far to near: the sky and a pale
@@ -472,6 +478,35 @@ function openGrave(r: Raster, x: number, y: number) {
   r.px(x - 2, y + 5, BONE);
 }
 
+/** Paint one flagstone's seams, standing water, wet edge or plain stone. */
+function wetFlagstone(
+  r: Raster,
+  course: StoneCourse,
+  stone: StoneSpan & { column: number },
+) {
+  const { index, top, bottom } = course;
+  const { column, left, width } = stone;
+  const tone =
+    0.15 + (index / 8) * 0.5 + (hash(column, 230 + index) - 0.5) * 0.2;
+  const puddle = hash(column, 240 + index) > 0.75;
+  const wet = hash(column, 260 + index) > 0.6;
+  const mossy = hash(column, 270 + index) > 0.6;
+  const glint = left + Math.floor(hash(column, 250 + index) * width);
+  paintStone(r, course, stone, (x, y) => {
+    const joint = y === top ? hash(x >> 3, index + 280) > 0.25 : x === left;
+    if (joint) return mossy && hash(x >> 1, y) > 0.5 ? 0x1e3226 : ROAD[0]!;
+    if (puddle) {
+      const u = (x + 0.5 - left - width / 2) / (width * 0.32);
+      const v = (y + 0.5 - (top + bottom) / 2) / 1.7;
+      if (u * u + v * v < 1)
+        return Math.abs(x - glint) < 2 && v < 0 ? 0x4a6a70 : 0x0e1820;
+    }
+    if (wet && y === top + 1 && hash(x >> 2, y + index) > 0.5) return ROAD[5]!;
+    const grain = (hash(x >> 2, y >> 1) - 0.5) * 0.15;
+    return dither(ROAD, tone + grain, x, y);
+  });
+}
+
 /** The causeway: a kerb along the water, rows of wet flagstones deepening towards the viewer, puddles and moss. */
 function causeway(r: Raster) {
   for (let x = 0; x < r.width; x++) {
@@ -480,30 +515,21 @@ function causeway(r: Raster) {
     r.px(x, FLOOR + 1, joint ? INK : 0x2e3442);
     r.px(x, FLOOR + 2, ROAD[1]!);
   }
-  for (let y0 = FLOOR + 3, k = 0; y0 < SHORE - 2; k++) {
-    const y1 = Math.min(y0 + 5 + k, SHORE - 2);
-    for (let xs = -Math.floor(hash(k, 200) * 20), n = 0; xs < r.width; n++) {
-      const w = 14 + k * 4 + Math.floor(hash(n, 210 + k) * 24);
-      const tone = 0.15 + (k / 8) * 0.5 + (hash(n, 230 + k) - 0.5) * 0.2;
-      const puddle = hash(n, 240 + k) > 0.75;
-      const [wet, mossy] = [hash(n, 260 + k) > 0.6, hash(n, 270 + k) > 0.6];
-      const glint = xs + Math.floor(hash(n, 250 + k) * w);
-      for (let y = y0; y < y1; y++)
-        for (let x = xs; x < xs + w; x++) {
-          const grain = (hash(x >> 2, y >> 1) - 0.5) * 0.15;
-          let c = dither(ROAD, tone + grain, x, y);
-          if (y === y0 + 1 && wet && hash(x >> 2, y + k) > 0.5) c = ROAD[5]!;
-          const u = (x + 0.5 - xs - w / 2) / (w * 0.32);
-          const v = (y + 0.5 - (y0 + y1) / 2) / 1.7;
-          if (puddle && u * u + v * v < 1)
-            c = Math.abs(x - glint) < 2 && v < 0 ? 0x4a6a70 : 0x0e1820;
-          const seam = y === y0 ? hash(x >> 3, k + 280) > 0.25 : x === xs;
-          if (seam) c = mossy && hash(x >> 1, y) > 0.5 ? 0x1e3226 : ROAD[0]!;
-          r.px(x, y, c);
-        }
-      xs += w;
+  for (const course of stoneCourses({
+    top: FLOOR + 3,
+    bottom: SHORE - 2,
+    firstHeight: 5,
+  })) {
+    const { index } = course;
+    for (
+      let left = -Math.floor(hash(index, 200) * 20), column = 0;
+      left < r.width;
+      column++
+    ) {
+      const width = 14 + index * 4 + Math.floor(hash(column, 210 + index) * 24);
+      wetFlagstone(r, course, { column, left, width });
+      left += width;
     }
-    y0 = y1;
   }
   for (let i = 0; i < GRAVES.length; i += 2)
     openGrave(r, GRAVES[i]!, GRAVES[i + 1]!);
@@ -513,6 +539,11 @@ function causeway(r: Raster) {
     r.px(x, SHORE - 1, ROAD[0]!);
   }
   water(r, SHORE, VIEW_H);
+  lilyPads(r);
+}
+
+/** Floating pads below the front kerb, some with pale flowers. */
+function lilyPads(r: Raster) {
   for (let i = 0; i < r.width / 36; i++) {
     const cx = Math.floor(hash(i, 250) * r.width);
     const cy = SHORE + 2 + Math.floor(hash(i, 251) * 5);
