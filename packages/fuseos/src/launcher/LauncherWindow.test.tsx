@@ -309,13 +309,13 @@ describe("LauncherWindow", () => {
       games: [
         ...FIXTURE_GAMES,
         {
-          id: "fuse-axe",
-          name: "Fuse Axe",
-          tagline: "Throw axes",
-          mark: "FA",
+          id: "fuse-choppers",
+          name: "Fuse Choppers",
+          tagline: "Fly helicopters",
+          mark: "FC",
           accent: "#ffcc00",
           order: 4,
-          path: "fuseaxe/",
+          path: "fusechoppers/",
         },
       ],
       desktopDeps: { now: () => now },
@@ -323,7 +323,7 @@ describe("LauncherWindow", () => {
         lastPlayed: new MemoryLastPlayedStore({
           fuseball: Date.UTC(1998, 5, 24, 8, 0),
           "fuse-riders": Date.UTC(1998, 5, 25, 8, 0),
-          "fuse-axe": Date.UTC(1998, 5, 25, 10, 0),
+          "fuse-choppers": Date.UTC(1998, 5, 25, 10, 0),
         }),
       },
     });
@@ -331,14 +331,14 @@ describe("LauncherWindow", () => {
     const aaa = within(within(list).getByRole("group", { name: "AAA" }));
     const b = within(within(list).getByRole("group", { name: "B" }));
     const birds = b.getByRole("option", { name: "Fuse Birds" });
-    const axe = b.getByRole("option", { name: "Fuse Axe" });
+    const choppers = b.getByRole("option", { name: "Fuse Choppers" });
     const riders = aaa.getByRole("option", { name: "Fuse Riders" });
     const ball = aaa.getByRole("option", { name: "Fuseball" });
     const rows = () => within(list).getAllByRole("option");
     const byDate = inside.getByRole("button", { name: "Sort by last played" });
     const byName = inside.getByRole("button", { name: "Sort by game name" });
 
-    expect(rows()).toEqual([riders, ball, axe, birds]);
+    expect(rows()).toEqual([riders, ball, choppers, birds]);
     expect(byDate).toHaveAttribute("aria-pressed", "true");
     expect(riders).toHaveAttribute("aria-selected", "true");
     expect(riders).toHaveAccessibleDescription("Today, 08:00");
@@ -347,28 +347,28 @@ describe("LauncherWindow", () => {
 
     expect(byDate).toHaveAccessibleDescription("Newest first");
     await user.click(byDate);
-    expect(rows()).toEqual([ball, riders, axe, birds]);
+    expect(rows()).toEqual([ball, riders, choppers, birds]);
     expect(byDate).toHaveAccessibleDescription("Oldest first");
     expect(riders).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{Enter}");
-    expect(rows()).toEqual([riders, ball, axe, birds]);
+    expect(rows()).toEqual([riders, ball, choppers, birds]);
     expect(byDate).toHaveAccessibleDescription("Newest first");
 
     byName.focus();
     await user.keyboard("{Enter}");
-    expect(rows()).toEqual([riders, ball, axe, birds]);
+    expect(rows()).toEqual([riders, ball, birds, choppers]);
     expect(byName).toHaveAttribute("aria-pressed", "true");
     expect(riders).toHaveAttribute("aria-selected", "true");
     expect(byName).toHaveFocus();
 
     await user.click(byDate);
-    expect(rows()).toEqual([riders, ball, axe, birds]);
+    expect(rows()).toEqual([riders, ball, choppers, birds]);
     list.focus();
     await user.keyboard(
       "{ArrowDown}{ArrowDown}{ArrowDown}{Shift>}{Enter}{/Shift}",
     );
-    expect(rows()).toEqual([riders, ball, birds, axe]);
+    expect(rows()).toEqual([riders, ball, birds, choppers]);
     expect(birds).toHaveAttribute("aria-selected", "true");
     expect(birds).toHaveAccessibleDescription("Today, 12:34");
 
