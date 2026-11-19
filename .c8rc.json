@@ -58,6 +58,8 @@
     "games/fuse-surge/src/render/three/surges.ts",
     "games/fuse-surge/src/render/three/kit.ts",
     "games/fuse-surge/src/render/three/set.ts",
+    "games/fuse-surge/src/render/three/deck-paint.ts",
+    "games/fuse-surge/src/render/three/scenery.ts",
     "games/fuse-surge/src/render/three/stage.ts",
     "games/fuse-surge/src/app/picture.ts",
     "games/fusemania/src/app/main.ts",
