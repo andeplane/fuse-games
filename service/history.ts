@@ -1,6 +1,7 @@
 import { cyberfuseRegistration } from "cyberfuse/platform";
 import { fuseheadsRegistration } from "fuseheads/platform";
 import { diceRegistration } from "dice/platform";
+import { incredibleFuseRegistration } from "incredible-fuse/platform";
 import { lieroRegistration } from "fusero/platform";
 import { fuseDriversRegistration } from "fuse-drivers/platform";
 import { birdsRegistration } from "fuse-birds-game/platform";
@@ -43,6 +44,7 @@ export const GAMES = [
   cyberfuseRegistration,
   diceRegistration,
   fuseheadsRegistration,
+  incredibleFuseRegistration,
   lieroRegistration,
   hookRegistration,
   choppersRegistration,
