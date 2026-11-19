@@ -158,6 +158,18 @@ def _stream_share(beats: list[float], gap: float) -> float:
     return sum(b - a <= gap + BEAT_EPSILON for a, b in zip(beats, beats[1:])) / max(len(beats) - 1, 1)
 
 
+def _peak_nps(times: list[float]) -> float:
+    window = 2.0
+    clock = np.asarray(times)
+    if np.all(clock[:-1] <= clock[1:]):
+        ends = np.searchsorted(clock, clock + window)
+    else:
+        # Negative stops can move time backwards. Retain the scalar comparison
+        # for these charts: NumPy's batched search assumes ordered timestamps.
+        ends = [np.searchsorted(clock, time + window) for time in clock]
+    return round(int(max(ends - np.arange(len(clock)))) / window, 2)
+
+
 def stats2(rows) -> dict:
     steps = active_rows(rows)
     if not steps:
@@ -172,6 +184,5 @@ def stats2(rows) -> dict:
     out["stream16_share"] = round(_stream_share(beats, 0.25), 3)
     out["stream24_share"] = round(_stream_share(beats, 1 / 6), 4)
     out["variety_w64"] = round(window_variety(patterns), 3)
-    ends = np.searchsorted(times, np.array(times) + 2.0)
-    out["peak_nps_2s"] = round(int(max(ends - np.arange(len(times)))) / 2, 2)
+    out["peak_nps_2s"] = _peak_nps(times)
     return out
