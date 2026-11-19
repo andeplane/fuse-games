@@ -2,6 +2,10 @@ import {
   MAX_TICKS_AHEAD,
   createCorrectionSmoother,
   type CorrectionSmoother,
+  forwardWorld,
+  gainedCueCount,
+  memoizeLeadInput,
+  type ForwardWorldOptions,
 } from "fuse-netcode";
 import {
   STEPS_PER_TICK,
@@ -76,48 +80,20 @@ function crossed(from: World, now: World): boolean {
   );
 }
 
-interface Run {
-  /** The copy after the whole steps taken. */
-  copy: World;
-  taken: number;
-  /** The copy one step further, when the clock is `part` of the way into that step. */
-  next?: World;
-  part: number;
-  /** The last step taken crossed the end of a rally. */
-  crossed: boolean;
-}
-
-/** Runs `ahead` log ticks (fractional) of `world` on a copy, at most `limit` whole steps. */
-function run(
-  world: World,
-  ahead: number,
-  inputs: ForwardInputs,
-  limit: number,
-): Run {
-  const copy = copyWorld(world);
-  let taken = 0;
-  for (let left = ahead; left > 0; left -= 1) {
-    // As the fold does: ask everyone what they hold for the tick, then step it.
-    const held = copy.blobs.map((_, slot) => inputs.held(copy, slot)),
-      steps = Math.min(1, left) * STEPS_PER_TICK,
-      whole = Math.floor(steps);
-    for (let i = 0; i < whole; i++) {
-      if (taken >= limit || copy.phase === "over")
-        return { copy, taken, part: 0, crossed: false };
-      stepWorld(copy, held);
-      taken++;
-      if (crossed(world, copy)) return { copy, taken, part: 0, crossed: true };
-    }
-    const part = steps - whole;
-    if (left <= 1 && part > 0.001 && taken < limit && copy.phase !== "over") {
-      const next = copyWorld(copy);
-      stepWorld(next, held);
-      if (!crossed(world, next))
-        return { copy, taken, next, part, crossed: false };
-    }
-  }
-  return { copy, taken, part: 0, crossed: false };
-}
+const forwardSteps: ForwardWorldOptions<
+  World,
+  readonly number[],
+  ForwardInputs
+> = {
+  copy: copyWorld,
+  step: stepWorld,
+  decided: crossed,
+  canStep: (copy) => copy.phase !== "over",
+  beginTick(copy, inputs) {
+    const held = copy.blobs.map((_, slot) => inputs.held(copy, slot));
+    return { steps: STEPS_PER_TICK, heldAt: () => held };
+  },
+};
 
 /** The newest world played forward `ahead` log ticks (0–`MAX_TICKS_AHEAD`, fractional), as a view to draw. */
 export function forward(
@@ -125,10 +101,12 @@ export function forward(
   ahead: number,
   inputs: ForwardInputs,
 ): WorldView {
-  const ticks = Math.max(0, Math.min(MAX_TICKS_AHEAD, ahead));
-  let result = run(world, ticks, inputs, Infinity);
-  // A step that ended the rally is not shown: play again up to the step before it.
-  if (result.crossed) result = run(world, ticks, inputs, result.taken - 1);
+  const result = forwardWorld(
+    world,
+    Math.min(MAX_TICKS_AHEAD, ahead),
+    inputs,
+    forwardSteps,
+  );
   const view = toView(result.copy);
   return result.next
     ? blendViews(view, toView(result.next), result.part)
@@ -162,26 +140,13 @@ export function forwardInputs(
  * planning it steps many ghost worlds: ask it once per frame revision, step and blob.
  */
 export function memoBot(bot: BotInput): (revision: number) => BotInput {
-  const cache = new Map<string, number>();
-  return (revision) => (world, slot, level) => {
-    const key = `${revision}:${world.step}:${world.seed}:${slot}:${level}`;
-    let bits = cache.get(key);
-    if (bits === undefined) {
-      // Old steps are never asked for again: a handful of entries is all a frame needs.
-      if (cache.size >= 64) cache.clear();
-      bits = bot(world, slot, level);
-      cache.set(key, bits);
-    }
-    return bits;
-  };
+  return memoizeLeadInput(
+    bot,
+    (revision, world, slot, level) =>
+      `${revision}:${world.step}:${world.seed}:${slot}:${level}`,
+    64,
+  );
 }
-
-/** How far a wrapping 16-bit counter moved forwards; 0 when it stood still or went back. */
-const COUNTER = 0x10000;
-const gained = (was: number, now: number): number => {
-  const moved = (now - was + COUNTER) % COUNTER;
-  return moved < COUNTER / 2 ? moved : 0;
-};
 const COUNTERS = [
   "hitCounter",
   "netCounter",
@@ -211,7 +176,8 @@ export function createCueLatch(): (
     for (const name of COUNTERS) {
       const was = shown[name],
         now = view[name];
-      const count = was === undefined || gained(was, now) > 0 ? now : was;
+      const count =
+        was === undefined || gainedCueCount(was, now) > 0 ? now : was;
       shown[name] = count;
       if (count !== now) (changed ??= {})[name] = count;
     }

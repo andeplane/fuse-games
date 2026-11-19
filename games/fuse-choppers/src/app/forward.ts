@@ -1,6 +1,9 @@
 import {
   createCorrectionSmoother,
   type CorrectionSmoother,
+  forwardWorld,
+  memoizeLeadInput,
+  type ForwardWorldOptions,
 } from "fuse-netcode";
 import {
   INPUT_MASK,
@@ -35,17 +38,6 @@ export interface ForwardInputs {
   steps(world: World): number;
 }
 
-interface Run {
-  /** The copy after the whole steps taken. */
-  copy: World;
-  taken: number;
-  /** The copy one step further, when the clock is `part` of the way into that step. */
-  next?: World;
-  part: number;
-  /** The last step taken decided something: a crash, an escape, a new phase. */
-  crossed: boolean;
-}
-
 /** Whether `now` shows an outcome `world` does not: a phase, a winner, a chopper down or out, the round's end. */
 const decided = (world: World, now: World): boolean =>
   now.phase !== world.phase ||
@@ -56,46 +48,34 @@ const decided = (world: World, now: World): boolean =>
     return !was || was.alive !== chopper.alive || was.exited !== chopper.exited;
   });
 
-/** Runs `ahead` log ticks (fractional) of `world` on a copy, at most `limit` whole steps. */
-function run(
-  world: World,
-  ahead: number,
-  inputs: ForwardInputs,
-  limit: number,
-): Run {
-  const copy = copyWorld(world);
-  let taken = 0;
-  for (let left = ahead; left > 0; left -= 1) {
-    const steps = Math.min(1, left) * inputs.steps(copy),
-      whole = Math.floor(steps);
+const forwardSteps: ForwardWorldOptions<
+  World,
+  ReadonlyMap<string, number>,
+  ForwardInputs
+> = {
+  copy: copyWorld,
+  step: stepWorld,
+  decided,
+  beginTick(copy, inputs) {
+    const steps = inputs.steps(copy);
     let held = new Map<string, number>();
-    // As the fold does: everyone is asked at the tick's start, and again every three steps of a fast tick.
-    const ask = () => {
-      held = new Map(
-        copy.choppers.map((chopper) => [
-          chopper.id,
-          inputs.held(copy, chopper) & INPUT_MASK,
-        ]),
-      );
+    return {
+      steps,
+      heldAt(step) {
+        // The fold takes another input sample every three steps of an accelerated tick.
+        if (step % STEPS_PER_TICK === 0) {
+          held = new Map(
+            copy.choppers.map((chopper) => [
+              chopper.id,
+              inputs.held(copy, chopper) & INPUT_MASK,
+            ]),
+          );
+        }
+        return held;
+      },
     };
-    for (let i = 0; i < whole; i++) {
-      if (taken >= limit) return { copy, taken, part: 0, crossed: false };
-      if (i % STEPS_PER_TICK === 0) ask();
-      stepWorld(copy, held);
-      taken++;
-      if (decided(world, copy)) return { copy, taken, part: 0, crossed: true };
-    }
-    const part = steps - whole;
-    if (left <= 1 && part > 0.001 && taken < limit) {
-      if (whole % STEPS_PER_TICK === 0) ask();
-      const next = copyWorld(copy);
-      stepWorld(next, held);
-      if (!decided(world, next))
-        return { copy, taken, next, part, crossed: false };
-    }
-  }
-  return { copy, taken, part: 0, crossed: false };
-}
+  },
+};
 
 /** The newest world played forward `ahead` log ticks (0–2, fractional), as a view to draw. */
 export function forward(
@@ -103,10 +83,7 @@ export function forward(
   ahead: number,
   inputs: ForwardInputs,
 ): WorldView {
-  let result = run(world, Math.max(0, ahead), inputs, Infinity);
-  // A step that decided something is not shown: play again up to the step before it.
-  if (result.crossed)
-    result = run(world, Math.max(0, ahead), inputs, result.taken - 1);
+  const result = forwardWorld(world, ahead, inputs, forwardSteps);
   const view = toView(result.copy);
   return result.next ? blend(view, toView(result.next), result.part) : view;
 }
@@ -140,20 +117,13 @@ export function forwardInputs(
  * planning it is the most expensive thing the forward run does: ask it once per chopper, step and frame revision.
  */
 export function memoBot(bot: BotInput): (revision: number) => BotInput {
-  const cache = new Map<string, number>();
-  return (revision) => (world, chopper) => {
-    const key = `${revision}:${world.seed}:${world.step}:${chopper.id}`;
-    let bits = cache.get(key);
-    if (bits === undefined) {
-      // Old steps are never asked for again: a handful of entries is all a frame needs.
-      if (cache.size >= 256) cache.clear();
-      bits = bot(world, chopper);
-      cache.set(key, bits);
-    }
-    return bits;
-  };
+  return memoizeLeadInput(
+    bot,
+    (revision, world, chopper) =>
+      `${revision}:${world.seed}:${world.step}:${chopper.id}`,
+    256,
+  );
 }
-
 /** An effect within this many steps and pixels of one already shown, of the same kind and seat, is the same effect. */
 export const TWIN_STEPS = 6,
   TWIN_PX = 20;

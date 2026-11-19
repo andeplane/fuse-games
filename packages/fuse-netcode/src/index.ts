@@ -6,6 +6,7 @@ export * from "./text.js";
 export * from "./clock.js";
 export * from "./timing.js";
 export * from "./present.js";
+export { forwardWorld, type ForwardWorldOptions } from "./forward-world.js";
 export * from "./status-notices.js";
 export * from "./uuid.js";
 export * from "./packet.js";
