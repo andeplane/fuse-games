@@ -13,6 +13,7 @@ import {
   type WorldView,
 } from "../engine/index.js";
 import {
+  LOBBY_READY,
   PICK,
   PLAY,
   READY,
@@ -153,6 +154,14 @@ export class FusemaniaRuntime extends RoomRuntime<
   pick(chart: number): void {
     if (!this.world?.state || !this.player()) return;
     this.append(PICK, chart);
+    this.sendPackets(this.deps.now());
+  }
+  /** Publish this seat's current choice for the lobby configuration it can see. */
+  setLobbyReady(ready: boolean): void {
+    const room = this.world?.state;
+    const seat = this.player();
+    if (this.hiddenState || room?.stage !== "lobby" || !seat?.connected) return;
+    this.append(LOBBY_READY, room.lobbyReady.revision, seat.slot, ready);
     this.sendPackets(this.deps.now());
   }
   /** Whether the started song is waiting for its devices to have the audio. */

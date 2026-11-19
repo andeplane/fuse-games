@@ -152,7 +152,7 @@ export function installBrowserPlaytest(
     result.textContent = text;
     return result;
   };
-  const button = (text: string, action: () => void) => {
+  const button = (text: string, action: (event: MouseEvent) => void) => {
     const result = node("button", text);
     result.type = "button";
     result.className = "fui-button";
@@ -211,6 +211,12 @@ export function installBrowserPlaytest(
         },
       );
       if (!response.ok) {
+        if (
+          authorized &&
+          response.status === 401 &&
+          requestGeneration === accessGeneration
+        )
+          requireSignInConfirmation(true);
         if (
           authorized &&
           requestGeneration === accessGeneration &&
@@ -272,6 +278,12 @@ export function installBrowserPlaytest(
   let accessGeneration = 0;
   let signedIn = false;
   let approvedUid: string | undefined;
+  let signInConfirmationRequired = false;
+  let renderRecordingSignIn: (() => void) | undefined;
+  function requireSignInConfirmation(required: boolean) {
+    signInConfirmationRequired = required;
+    renderRecordingSignIn?.();
+  }
   let accessCheck: { generation: number; promise: Promise<void> } | undefined;
   let retryUploads: (() => void) | undefined;
   let recordingState: PlaytestRecordingState = {
@@ -693,6 +705,7 @@ export function installBrowserPlaytest(
     identity.watchAccount((user) => {
       const generation = ++accessGeneration;
       signedIn = Boolean(user);
+      requireSignInConfirmation(false);
       approvedUid = undefined;
       publishRecording({ available: false });
       if (microphone || recordingState.busy) {
@@ -782,6 +795,23 @@ export function installBrowserPlaytest(
     bar.className = "fui-playtest-recording";
     bar.dataset.fuiPlaytest = "recording";
     bar.setAttribute("aria-label", "Developer microphone recording");
+    const panel = node("div");
+    panel.id = "fui-playtest-recording-controls";
+    panel.className = "fui-playtest-recording-panel";
+    const compact = node("div");
+    compact.className = "fui-playtest-recording-compact";
+    compact.hidden = true;
+    let collapsed = false;
+    let gameFrame: HTMLIFrameElement | undefined;
+    bar.addEventListener("pointerdown", () => {
+      const focused = doc.activeElement;
+      if (focused?.tagName === "IFRAME")
+        gameFrame = focused as HTMLIFrameElement;
+    });
+    // Let focused recording controls receive native activation during play.
+    bar.addEventListener("keydown", (event) => {
+      if (event.key === " " || event.key === "Enter") event.stopPropagation();
+    });
     const title = node("strong", "Microphone recording"),
       status = node(
         "p",
@@ -793,23 +823,46 @@ export function installBrowserPlaytest(
       "Saved uploads survive closing this page. Queued audio retries when you return unless recording access changed; an unfinished chunk may be lost.";
     const controls = node("div");
     controls.className = "fui-playtest-actions";
+    let accountReady = false;
+    let confirmingSignIn = false;
+    let pendingStartGeneration: number | undefined;
     const signIn = button("Sign in", () => {
+      if (signIn.disabled) return;
+      const generation = accessGeneration;
+      confirmingSignIn = true;
+      updateSignIn();
       void (
         signedIn && identity.reauthenticate
           ? identity.reauthenticate()
           : identity.signIn()
       )
-        .then(() => {
-          stoppedReason =
-            "Sign-in confirmed. Try starting the recording again.";
-          render();
+        .then(async () => {
+          if (generation === accessGeneration) {
+            requireSignInConfirmation(false);
+            if (!approvedUid) await checkAccess(generation);
+          }
+          if (
+            pendingStartGeneration === generation &&
+            generation === accessGeneration &&
+            approvedUid &&
+            bar.isConnected
+          ) {
+            confirmingSignIn = false;
+            await begin();
+          } else if (generation === accessGeneration && approvedUid) {
+            stoppedReason = "";
+            render();
+          }
         })
         .catch((error: unknown) => {
-          status.textContent =
-            identity.signInFailure(error) || "Sign-in cancelled.";
+          stoppedReason = identity.signInFailure(error) || "Sign-in cancelled.";
+          render();
+        })
+        .finally(() => {
+          confirmingSignIn = false;
+          updateSignIn();
         });
     });
-    signIn.disabled = true;
     const start = button("Start recording", () => {
       void begin();
     });
@@ -822,6 +875,7 @@ export function installBrowserPlaytest(
     });
     const dismiss = button("Dismiss", () => {
       if (microphone) return;
+      pendingStartGeneration = undefined;
       try {
         win.sessionStorage.removeItem(INTENT);
       } catch {
@@ -829,20 +883,50 @@ export function installBrowserPlaytest(
       }
       bar.remove();
     });
-    controls.append(signIn, start, stop, retry, dismiss);
-    bar.append(title, status, detail, controls);
+    const collapse = button("Collapse", (event) => {
+      collapsed = true;
+      render();
+      if (event.detail === 0) expand.focus();
+      else if (gameFrame?.isConnected) gameFrame.focus();
+      else collapse.blur();
+    });
+    collapse.hidden = true;
+    const expand = button("Recording", (event) => {
+      collapsed = false;
+      render();
+      if (event.detail === 0) collapse.focus();
+    });
+    expand.setAttribute("aria-controls", panel.id);
+    expand.setAttribute("aria-expanded", "false");
+    const compactStop = button("Stop", (event) => {
+      if (event.detail === 0) expand.focus();
+      void stopRecording();
+    });
+    compactStop.setAttribute("aria-label", "Stop microphone recording");
+    compact.append(expand, compactStop);
+    controls.append(signIn, start, stop, retry, dismiss, collapse);
+    panel.append(title, status, detail, controls);
+    bar.append(panel, compact);
     overlays.append(bar);
+    function updateSignIn() {
+      signIn.textContent = signedIn ? "Confirm Google sign-in" : "Sign in";
+      signIn.hidden = signedIn && !signInConfirmationRequired;
+      signIn.disabled = !accountReady || confirmingSignIn || start.disabled;
+    }
+    renderRecordingSignIn = updateSignIn;
+    updateSignIn();
     void identity
       .accountReady()
       .then(() => {
-        signIn.disabled = false;
+        accountReady = true;
+        updateSignIn();
       })
       .catch(() => {
         status.textContent =
           "Sign-in could not load. Reload the page to retry.";
       });
     identity.watchAccount((user) => {
-      signIn.textContent = user ? "Confirm Google sign-in" : "Sign in";
+      pendingStartGeneration = undefined;
       if (!user && microphone) {
         stoppedReason =
           "Signed out. Recording stopped; sign in to retry pending audio.";
@@ -857,6 +941,7 @@ export function installBrowserPlaytest(
         "Durable browser storage is unavailable. Recording is disabled.";
       start.disabled = true;
       retry.disabled = true;
+      updateSignIn();
       return;
     }
     let uploadStatus = {
@@ -865,12 +950,24 @@ export function installBrowserPlaytest(
       error: undefined as string | undefined,
     };
     const render = () => {
-      bar.dataset.recording = String(Boolean(microphone));
+      const active = Boolean(microphone);
+      const showCompact = collapsed && (active || Boolean(stopping));
+      bar.dataset.recording = String(active);
+      bar.dataset.collapsed = String(showCompact);
+      panel.hidden = showCompact;
+      compact.hidden = !showCompact;
+      collapse.hidden = !active;
+      collapse.disabled = Boolean(stopping);
+      compactStop.disabled = Boolean(stopping);
+      dismiss.hidden = active || Boolean(stopping);
       const elapsed =
         microphone?.offsetMs() ?? recording?.savedMs ?? uploadStatus.savedMs;
       title.textContent = microphone
         ? `Recording microphone · ${recordingTime(elapsed)}`
         : "Microphone recording";
+      expand.textContent = active
+        ? `Recording ${recordingTime(elapsed)}`
+        : "Stopping…";
       status.textContent = [
         stoppedReason || (microphone ? "Recording" : "Ready when you are."),
         `Saved through ${recordingTime(recording?.savedMs ?? uploadStatus.savedMs)}.`,
@@ -986,12 +1083,13 @@ export function installBrowserPlaytest(
         });
     }
     async function begin() {
-      if (microphone || start.disabled || stopping) return;
+      if (microphone || start.disabled || stopping || confirmingSignIn) return;
       const generation = accessGeneration;
+      pendingStartGeneration = undefined;
       publishRecording({ busy: true });
       captureStorageFailed = false;
       start.disabled = true;
-      signIn.disabled = true;
+      updateSignIn();
       dismiss.disabled = true;
       stoppedReason = "Checking developer access…";
       render();
@@ -1027,6 +1125,7 @@ export function installBrowserPlaytest(
           throw new Error(
             "Account changed. Start recording again after sign-in.",
           );
+        requireSignInConfirmation(false);
         await store!.put(session);
         recording = session;
         if (disposed || generation !== accessGeneration)
@@ -1066,8 +1165,14 @@ export function installBrowserPlaytest(
         stop.hidden = false;
         start.hidden = true;
       } catch (error) {
-        stoppedReason =
-          error instanceof DOMException && error.name === "NotAllowedError"
+        const needsConfirmation =
+          error instanceof PlaytestRequestError &&
+          error.status === 401 &&
+          generation === accessGeneration;
+        if (needsConfirmation) pendingStartGeneration = generation;
+        stoppedReason = needsConfirmation
+          ? "Confirm your Google sign-in to start recording."
+          : error instanceof DOMException && error.name === "NotAllowedError"
             ? "Microphone permission was denied. Allow it in browser settings and try again."
             : failure(error);
         if (recording?.id === session.id) {
@@ -1077,7 +1182,7 @@ export function installBrowserPlaytest(
         }
       } finally {
         start.disabled = false;
-        signIn.disabled = false;
+        updateSignIn();
         dismiss.disabled = Boolean(microphone);
         publishRecording({ active: Boolean(microphone), busy: false });
         render();
@@ -1105,20 +1210,24 @@ export function installBrowserPlaytest(
           );
         }
         void uploader.kick();
-        stop.hidden = true;
-        start.hidden = false;
-        dismiss.disabled = false;
         if (!stoppedReason) stoppedReason = "Recording stopped.";
       })()
         .catch((error: unknown) => {
           stoppedReason = failure(error);
         })
         .finally(() => {
+          const returnFocus = compact.contains(doc.activeElement);
           stopping = undefined;
+          collapsed = false;
           stop.disabled = false;
+          stop.hidden = true;
+          start.hidden = false;
+          dismiss.disabled = false;
           publishRecording({ active: Boolean(microphone), busy: false });
           render();
+          if (returnFocus) start.focus();
         });
+      render();
       return stopping;
     }
     beginRecording = begin;

@@ -22,6 +22,7 @@ import { platform } from "./history.js";
 import { randomBytes } from "node:crypto";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { songScoresHttp } from "./song-scores.js";
+import { elastoLevelTimesHttp } from "./elasto-level-times.js";
 import { createTimingLogHttp } from "./timing-log.js";
 import { FIREBASE_PROJECT_ID } from "../games/fuse-riders/src/shared/firebase-config.js";
 import {
@@ -80,6 +81,13 @@ export function createDevRoomService(
           now,
         }).http;
       return composeHttp(
+        elastoLevelTimesHttp(
+          new MemoryTelemetryDatabase(),
+          history,
+          identity,
+          randomBytes(32).toString("hex"),
+          now,
+        ),
         songScoresHttp(
           new MemoryTelemetryDatabase(),
           history,
