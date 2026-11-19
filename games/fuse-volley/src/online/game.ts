@@ -4,7 +4,11 @@ import {
   foldHeldInput,
   createRosterDecoder,
   decodeSingleWinner as decodeDecided,
-  createSeatDecoder,
+  createSeatListDecoder,
+  createHeldInputDecoder,
+  createCheckpointBaseDecoder,
+  CHECKPOINT_HEADER_FIELDS,
+  validCheckpointLifecycle,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -378,49 +382,19 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
 });
 
-function decodeSeats(raw: unknown): Map<string, SeatRecord> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY + MAX_WATCHERS) return;
-  const seats = new Map<string, SeatRecord>();
-  for (const item of raw) {
-    const seat = decodeSeat(item);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  return seats;
-}
-
-function decodeHeld(raw: unknown): Record<string, number> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY) return;
-  const held: Record<string, number> = {};
-  for (const pair of raw) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(held, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    held[pair[0]] = pair[1];
-  }
-  return held;
-}
+const decodeHeld = createHeldInputDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  isInput,
+});
 
 const decodeRoster = createRosterDecoder({
   validLength: (length) =>
@@ -428,6 +402,16 @@ const decodeRoster = createRosterDecoder({
   playerKey,
   validName,
   slotAt: (index) => index,
+});
+
+const decodeBase = createCheckpointBaseDecoder({
+  stages: STAGES,
+  minStepsPerTick: STEPS_PER_TICK,
+  validMatchId,
+  parseSettings,
+  decodeSeats,
+  decodeHeld,
+  decodeRoster,
 });
 
 /**
@@ -439,79 +423,35 @@ export function decode(
   tick: number,
 ): Room | undefined {
   if (fields.length !== FIELDS || !uint32(tick)) return;
-  const [
-    matchId,
-    stage,
-    rawSettings,
-    rawSeats,
-    rawPlay,
-    rawHeld,
-    rawRoster,
-    rawDecided,
-    rawWorld,
-    simulationTick,
-  ] = fields;
-  const settings = parseSettings(rawSettings),
-    play = parseSettings(rawPlay),
-    seats = decodeSeats(rawSeats),
-    held = decodeHeld(rawHeld),
-    roster = decodeRoster(rawRoster);
-  if (
-    !validMatchId(matchId) ||
-    !uint32(simulationTick) ||
-    // The clock moves six steps every log tick, whatever the room is doing.
-    simulationTick !== tick * STEPS_PER_TICK ||
-    !STAGES.some((known) => known === stage) ||
-    !settings ||
-    !play ||
-    !seats ||
-    !held ||
-    !roster
-  )
-    return;
+  const [rawDecided, rawWorld, rawSimulationTick] = fields.slice(
+    CHECKPOINT_HEADER_FIELDS,
+  );
+  const base = decodeBase(fields, rawSimulationTick, tick);
+  if (!base) return;
+  const { roster, held, stage, play, simulationTick } = base;
   const decided = decodeDecided(rawDecided, roster);
   const world = rawWorld === null ? null : decodeWorld(rawWorld);
   if (decided === undefined || world === undefined) return;
-  if (world === null) {
-    // The lobby has no match: no world, no riders, nothing held and nothing decided.
-    if (
-      stage !== "lobby" ||
-      roster.length ||
-      decided ||
-      Object.keys(held).length
+  if (
+    !validCheckpointLifecycle(
+      { stage, roster, held, hasDecision: decided !== null },
+      world && { players: world.blobs, over: world.phase === "over" },
     )
-      return;
-  } else {
-    const over = world.phase === "over";
-    if (
-      stage === "lobby" ||
-      (stage === "over") !== over ||
-      (decided !== null) !== over ||
-      roster.length !== seatsFor(play) ||
-      world.blobs.length !== roster.length ||
+  )
+    return;
+  if (
+    world &&
+    (roster.length !== seatsFor(play) ||
       world.scoring !== play.scoring ||
       world.format !== play.format ||
-      world.blobs.some((blob, slot) => blob.id !== roster[slot]!.id) ||
-      Object.keys(held).some(
-        (id) => !roster.some((entrant) => entrant.id === id && !entrant.bot),
-      ) ||
-      (over && Object.keys(held).length > 0) ||
-      (decided !== null &&
+      (decided &&
         (decided.clock > simulationTick ||
-          decided.winner !== roster[Math.max(winnerOf(world), 0)]!.id))
-    )
-      return;
-  }
+          decided.winner !== roster[Math.max(winnerOf(world), 0)]!.id)))
+  )
+    return;
   return {
     tick,
-    simulationTick,
-    matchId,
-    stage: stage as RoomStage,
-    seats,
-    settings,
-    play,
-    held,
-    roster,
+    ...base,
     decided,
     world,
   };

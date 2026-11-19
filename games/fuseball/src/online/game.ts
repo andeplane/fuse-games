@@ -4,7 +4,11 @@ import {
   foldHeldInput,
   createRosterDecoder,
   decodeHumanFinishers,
-  createSeatDecoder,
+  createSeatListDecoder,
+  createHeldInputDecoder,
+  createCheckpointBaseDecoder,
+  CHECKPOINT_HEADER_FIELDS,
+  validCheckpointLifecycle,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -510,49 +514,19 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
 });
 
-function decodeSeats(raw: unknown): Map<string, SeatRecord> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY + MAX_WATCHERS) return;
-  const seats = new Map<string, SeatRecord>();
-  for (const item of raw) {
-    const seat = decodeSeat(item);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  return seats;
-}
-
-function decodeHeld(raw: unknown): Record<string, number> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY) return;
-  const held: Record<string, number> = {};
-  for (const pair of raw) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(held, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    held[pair[0]] = pair[1];
-  }
-  return held;
-}
+const decodeHeld = createHeldInputDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  isInput,
+});
 
 const decodeRoster = createRosterDecoder({
   validLength: (length) => length <= CAPACITY && length % 2 === 0,
@@ -581,6 +555,17 @@ function decodeDecided(
   return { clock, winner: winner as string, side, finishers };
 }
 
+const decodeBase = createCheckpointBaseDecoder({
+  stages: STAGES,
+  minStepsPerTick: MIN_STEPS_PER_TICK,
+  maxStepsPerTick: MAX_STEPS_PER_TICK,
+  validMatchId,
+  parseSettings,
+  decodeSeats,
+  decodeHeld,
+  decodeRoster,
+});
+
 /**
  * The room a checkpoint describes, or nothing: every field is checked on its own and against the others, and the
  * room is built only once all of them hold, so a refused checkpoint leaves no half-read state behind.
@@ -590,80 +575,34 @@ export function decode(
   tick: number,
 ): Room | undefined {
   if (fields.length !== FIELDS || !uint32(tick)) return;
-  const [
-    matchId,
-    stage,
-    rawSettings,
-    rawSeats,
-    rawPlay,
-    rawHeld,
-    rawRoster,
-    rawDecided,
-    rawWorld,
-    simulationTick,
-  ] = fields;
-  const settings = parseSettings(rawSettings),
-    play = parseSettings(rawPlay),
-    seats = decodeSeats(rawSeats),
-    held = decodeHeld(rawHeld),
-    roster = decodeRoster(rawRoster);
-  if (
-    !validMatchId(matchId) ||
-    !uint32(simulationTick) ||
-    // The clock moves one to six steps every log tick, whatever the room is doing.
-    simulationTick < tick * MIN_STEPS_PER_TICK ||
-    simulationTick > tick * MAX_STEPS_PER_TICK ||
-    !STAGES.some((known) => known === stage) ||
-    !settings ||
-    !play ||
-    !seats ||
-    !held ||
-    !roster
-  )
-    return;
+  const [rawDecided, rawWorld, rawSimulationTick] = fields.slice(
+    CHECKPOINT_HEADER_FIELDS,
+  );
+  const base = decodeBase(fields, rawSimulationTick, tick);
+  if (!base) return;
+  const { roster, held, stage, play, simulationTick } = base;
   const decided = decodeDecided(rawDecided, roster);
   const world = rawWorld === null ? null : decodeWorld(rawWorld);
   if (decided === undefined || world === undefined) return;
-  if (world === null) {
-    // The lobby has no match: no world, no riders, nothing held and nothing decided.
-    if (
-      stage !== "lobby" ||
-      roster.length ||
-      decided ||
-      Object.keys(held).length
+  if (
+    !validCheckpointLifecycle(
+      { stage, roster, held, hasDecision: decided !== null },
+      world && { players: world.riders, over: world.phase === "over" },
     )
-      return;
-  } else {
-    const over = world.phase === "over";
-    if (
-      stage === "lobby" ||
-      (stage === "over") !== over ||
-      (decided !== null) !== over ||
-      roster.length !== world.riders.length ||
-      // A duel arena plays a duel, and a team arena the size the match settled on.
-      world.riders.length !== 2 * play.size ||
+  )
+    return;
+  if (
+    world &&
+    (world.riders.length !== 2 * play.size ||
       world.mapId !== play.mapId ||
       world.seed !== play.seed ||
-      world.riders.some((rider, slot) => rider.id !== roster[slot]!.id) ||
-      Object.keys(held).some(
-        (id) => !roster.some((entrant) => entrant.id === id && !entrant.bot),
-      ) ||
-      (over && Object.keys(held).length > 0) ||
-      (decided !== null &&
-        (decided.clock > simulationTick || decided.side !== winnerOf(world)))
-    )
-      return;
-  }
+      (decided &&
+        (decided.clock > simulationTick || decided.side !== winnerOf(world))))
+  )
+    return;
   return {
     tick,
-    simulationTick,
-    matchId,
-    stage: stage as RoomStage,
-    seats,
-    settings,
-    play,
-    held,
-    roster,
+    ...base,
     decided,
     world,
   };

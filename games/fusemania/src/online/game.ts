@@ -2,7 +2,7 @@ import {
   hashCheckpointJson,
   applyManagementTick,
   decodeSingleWinner as decodeDecided,
-  createSeatDecoder,
+  createSeatListDecoder,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -291,31 +291,13 @@ const FIELDS = 14;
 const seatOrder = (a: SeatRecord, b: SeatRecord) =>
   a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
 });
-
-function decodeSeats(raw: unknown): Map<string, SeatRecord> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY + MAX_WATCHERS) return;
-  const seats = new Map<string, SeatRecord>();
-  for (const item of raw) {
-    const seat = decodeSeat(item);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  return seats;
-}
 
 function decodePicks(
   raw: unknown,
