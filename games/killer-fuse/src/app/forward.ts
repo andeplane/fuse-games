@@ -1,6 +1,8 @@
 import {
   createCorrectionSmoother,
   type CorrectionSmoother,
+  createLeadChain,
+  leadStepsAhead,
 } from "fuse-netcode";
 import {
   cloneRound,
@@ -83,12 +85,7 @@ function stage(base: RoundView, before: Stage, world: Round): Stage {
 }
 
 /** How many engine steps `ahead` log ticks (fractional) come to, over ticks that run `counts` steps each. */
-export const stepsAhead = (ahead: number, counts: readonly number[]): number =>
-  counts.reduce(
-    (sum, count, index) =>
-      sum + Math.max(0, Math.min(1, ahead - index)) * count,
-    0,
-  );
+export const stepsAhead = leadStepsAhead;
 
 /**
  * The forward run, remembered between frames: a step is run once per folded round, revision and set of inputs,
@@ -100,52 +97,39 @@ export function createForward(): (
   key: string,
   ahead: number,
 ) => Picture {
-  let known = "",
-    stages: Stage[] = [],
-    over = false;
+  const sample = createLeadChain<Stage>();
   return (source, key, ahead) => {
     const plan = source.ticks.flat();
     const signature = `${key}|${plan
       .map((step) => step.map(packInput).join("."))
       .join("|")}`;
-    if (signature !== known) {
-      known = signature;
-      over = false;
-      const view = viewOf(source.world);
-      stages = [
-        { world: source.world, view, held: view.units.map(() => false) },
-      ];
-    }
-    const base = stages[0]!.view;
-    /** The stage `count` steps on, or undefined past the plan or past a step that would decide the game. */
-    const reach = (count: number): Stage | undefined => {
-      while (stages.length <= count && !over && stages.length <= plan.length) {
-        const before = stages[stages.length - 1]!,
-          world = stepRound(cloneRound(before.world), plan[stages.length - 1]!);
-        // A victory is the room's to show: the run stops on the step before it.
-        if (world.winner) over = true;
-        else stages.push(stage(base, before, world));
-      }
-      return stages[count];
-    };
-    const steps = stepsAhead(
-        Math.max(0, ahead),
-        source.ticks.map((tick) => tick.length),
-      ),
-      whole = Math.floor(steps + 1e-9),
-      part = steps - whole,
-      from = reach(whole);
-    if (!from) {
-      const last = stages[stages.length - 1]!.view;
-      return { previous: last, current: last, alpha: 1 };
-    }
-    const to = part > 0.001 ? reach(whole + 1) : undefined;
-    return to
-      ? { previous: from.view, current: to.view, alpha: part }
-      : { previous: from.view, current: from.view, alpha: 1 };
+    const lead = sample({
+      key: signature,
+      limit: plan.length,
+      start() {
+        const view = viewOf(source.world);
+        return { world: source.world, view, held: view.units.map(() => false) };
+      },
+      steps: () =>
+        stepsAhead(
+          Math.max(0, ahead),
+          source.ticks.map((tick) => tick.length),
+        ),
+      advance(previous, initial, index) {
+        const world = stepRound(cloneRound(previous.world), plan[index]!);
+        if (world.winner) return;
+        return stage(initial.view, previous, world);
+      },
+    });
+    return lead.next
+      ? {
+          previous: lead.current.view,
+          current: lead.next.view,
+          alpha: lead.part,
+        }
+      : { previous: lead.current.view, current: lead.current.view, alpha: 1 };
   };
 }
-
 /** Corrections decay with this time constant; a jump larger than `TELEPORT` pixels (a respawn, the wrap) is shown as it is. */
 export const DECAY_MS = 45,
   TELEPORT = 48;
