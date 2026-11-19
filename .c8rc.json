@@ -67,6 +67,7 @@
     "games/fuse-volley/src/app/main.ts",
     "games/fuse-volley/src/render/scene.ts",
     "games/fuseball/src/app/main.ts",
+    "games/fuseball/src/render/gadgets.ts",
     "games/fuseball/src/render/scene.ts",
     "games/hook-havok/src/app/entrance.ts",
     "games/hook-havok/src/app/main.ts",
