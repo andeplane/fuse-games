@@ -422,6 +422,40 @@ test("text survives media retention; expired private content is unavailable", as
   advance(365 * 86400_000);
   await assert.rejects(() => service.detail(id), /not found/);
 });
+test("recordings paginate and report screenshots expire independently of signed-in report text", async () => {
+  const { service, advance } = setup();
+  const second = "33333333-3333-4333-8333-333333333333";
+  await service.createRecording("owner", recording);
+  await service.createRecording("owner", { ...recording, id: second });
+  const firstPage = await service.listRecordings(1);
+  assert.ok(firstPage.nextCursor);
+  const nextPage = await service.listRecordings(1, firstPage.nextCursor);
+  assert.deepEqual(
+    new Set(
+      [...firstPage.recordings, ...nextPage.recordings].map((item) => item.id),
+    ),
+    new Set([id, second]),
+  );
+  assert.equal(nextPage.nextCursor, undefined);
+
+  const bytes = Buffer.from([255, 216, 0, 0, 0, 0, 0, 255, 217]);
+  await service.submitReport("opaque-ip", "owner", {
+    ...report,
+    screenshot: { mime: "image/jpeg", base64: bytes.toString("base64") },
+  });
+  assert.equal(
+    (await service.report(reportId)).screenshotUrl,
+    `/api/dev/reports/${reportId}/screenshot`,
+  );
+  const screenshot = await service.screenshot(reportId);
+  assert.ok(screenshot);
+  assert.deepEqual(Buffer.from(screenshot.bytes), bytes);
+  advance(31 * 86400_000);
+  await assert.rejects(() => service.screenshot(reportId), /expired/);
+  assert.equal((await service.report(reportId)).text, report.text);
+  assert.equal((await service.report(reportId)).screenshotUrl, undefined);
+});
+
 test("filesystem adapters survive reopen with independently playable WAV", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fuse-debug-test-"));
   try {

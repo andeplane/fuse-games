@@ -1,15 +1,88 @@
 /** Run against the local Fuse service. Host, guest and TV use separate browser profiles. */
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import type { Page } from "playwright";
+import {
+  FREE_WORKSHOP,
+  PART_KINDS,
+} from "../games/incredible-fuse/src/game/machine-parts.js";
 import { launchSelected } from "./lib/browser.js";
-import { takeHostSeat } from "./lib/main-menu.js";
+import { startGameCoverage } from "./lib/game-browser-coverage.js";
+import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { startRoomService } from "./lib/server.js";
+import { smokeTimeout } from "./smoke-timeout.js";
+
+async function savedWorkshop(page: Page, url: URL) {
+  await page.goto(url.href);
+  await openPlayOptions(page, "single");
+  await page
+    .getByLabel("Puzzle", { exact: true })
+    .selectOption(String(FREE_WORKSHOP));
+  await page
+    .getByRole("button", { name: "Open workshop", exact: true })
+    .click();
+  const board = page.getByRole("group", { name: "Machine workbench" });
+  await board.waitFor();
+  const icons = page.locator(".if-bench-part canvas");
+  assert.equal(await icons.count(), PART_KINDS.length);
+  const missing = await icons.evaluateAll((canvases) =>
+    canvases.flatMap((element) => {
+      if (!(element instanceof HTMLCanvasElement)) return ["Missing canvas"];
+      const image = element
+        .getContext("2d")
+        ?.getImageData(0, 0, element.width, element.height);
+      return image?.data.some((alpha, i) => i % 4 === 3 && alpha > 0)
+        ? []
+        : [element.parentElement?.getAttribute("aria-label")];
+    }),
+  );
+  assert.deepEqual(missing, [], "all stocked parts have a visible tray icon");
+  await page.getByRole("button", { name: "Incline", exact: true }).click();
+  await board.press("Enter");
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await undo.and(page.locator(":enabled")).waitFor();
+  await board.press("ArrowRight");
+  await board.press("Enter");
+  await board.press("f");
+  await board.press("Delete");
+  await undo.click();
+  const run = page.getByRole("button", { name: "Run machine", exact: true });
+  await run.click();
+  await page.getByRole("button", { name: "Rewind", exact: true }).click();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save machine", exact: true }).click();
+  const download = await downloaded;
+  const file = await download.path();
+  assert.ok(file, "the saved machine is downloadable");
+  const buffer = await readFile(file);
+
+  await page.goto(url.href);
+  await openPlayOptions(page, "single");
+  await page.getByText("Open a saved machine", { exact: true }).click();
+  await page.locator('.machine-import input[type="file"]').setInputFiles({
+    name: download.suggestedFilename(),
+    mimeType: "application/json",
+    buffer,
+  });
+  await page.getByText("1 parts loaded.", { exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Open workbench", exact: true })
+    .click();
+  await board.waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Save machine", exact: true })
+      .isVisible(),
+    true,
+  );
+}
 
 const service = process.env.ONLINE_URL ? undefined : await startRoomService();
 const url = new URL(
   "incrediblefuse/?mute",
   process.env.ONLINE_URL ?? service!.url,
 );
-const browser = await launchSelected("chromium", {
+const browser = await launchSelected("chrome", {
   headless: true,
   args: ["--mute-audio"],
 });
@@ -20,9 +93,14 @@ try {
     hasTouch: true,
   });
   const tv = await browser.newPage();
+  const coverage = await Promise.all(
+    [host, guest, tv].map((page) =>
+      startGameCoverage(page, { gameId: "incredible-fuse" }),
+    ),
+  );
   const errors: string[] = [];
   for (const page of [host, guest, tv]) {
-    page.setDefaultTimeout(12_000);
+    page.setDefaultTimeout(smokeTimeout(12_000));
     page.on("pageerror", (error) => {
       errors.push(error.message);
       console.error(error.message);
@@ -123,9 +201,11 @@ try {
   await host.locator('.fui-results button[data-action="replay"]').click();
   for (const page of [host, guest, tv])
     await page.locator('main[data-phase="running"]').waitFor();
+  await savedWorkshop(host, url);
   assert.deepEqual(errors, []);
+  await Promise.all(coverage.map((finish) => finish()));
   console.log(
-    "Host, touch guest and TV shared a solve, recovered the edit after reload and replayed.",
+    "Host, touch guest and TV shared a solve, recovered the edit after reload and replayed. The solo workshop rendered its parts, edited a machine and reopened its saved blueprint.",
   );
 } finally {
   await browser.close();
