@@ -1,3 +1,3 @@
 {
-  "scripts": ["chart-lab-smoke.ts", "timing-lab-smoke.ts"]
+  "scripts": ["chart-lab-smoke.ts"]
 }

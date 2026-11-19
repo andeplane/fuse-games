@@ -1,4 +1,4 @@
-name: Fuse timing coverage verification
+name: Fuse behavior coverage verification
 on:
   push:
     branches: [codex/playtest-coverage-verification]
@@ -12,9 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 5
       - name: Check that previously tested production sources are identical
-        run: git diff --exit-code HEAD^ HEAD -- packages service 'games/*/src/**' .c8rc.json
+        run: git diff --exit-code c3dc169b20bbe3467fde04d7c2a4b0c77093919a HEAD -- packages/*/src service 'games/*/src/**' .c8rc.json
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -28,20 +28,12 @@ jobs:
           merge-multiple: true
           run-id: 44524707605
           github-token: ${{ github.token }}
-      - name: Exercise the muted timing screen and merge coverage
+      - name: Run the new behavior tests with V8 collection
         run: |
-          set -euo pipefail
-          cat > invoke-timing.mts <<'JS'
-          import { createServer } from "vite";
-          const vite = await createServer({ server: { host: "127.0.0.1", port: 0 } });
-          try {
-            await vite.listen();
-            process.env.ONLINE_URL = vite.resolvedUrls!.local[0];
-            process.env.FUSE_GAME_COVERAGE_DIR = new URL("./coverage/tmp", import.meta.url).pathname;
-            await import("./games/fusemania/timing-lab-smoke.js");
-          } finally {
-            await vite.close();
-          }
-          JS
-          pnpm exec tsx invoke-timing.mts
-          COVERAGE_PHASE=report pnpm test:coverage
+          NODE_V8_COVERAGE="$PWD/coverage/tmp" pnpm exec tsx --test --test-concurrency=2 \
+            games/fuse-craft/tests/camera.test.ts games/fuse-front/tests/app.test.ts \
+            packages/fuse-telemetry/tests/debug.test.ts \
+            packages/fuse-ui/tests/game-audio.test.ts packages/fuse-ui/tests/playtest.test.ts \
+            packages/fuse-ui/tests/social.test.ts packages/fuse-ui/tests/top-bar.test.ts
+      - name: Recalculate unchanged repository coverage thresholds
+        run: COVERAGE_PHASE=report pnpm test:coverage
