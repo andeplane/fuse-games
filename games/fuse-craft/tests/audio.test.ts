@@ -198,6 +198,17 @@ test("board sounds pan with the camera and fade off screen", () => {
   });
 });
 
+test("fixed recipes give each caller independent layers and filters", () => {
+  const random = () => assert.fail("a fixed recipe does not draw randomness");
+  const reference = cueRecipe("cancel", random);
+  const edited = cueRecipe("cancel", random);
+  const filter = edited.find((layer) => layer.kind === "noise")?.filter;
+  assert.ok(filter);
+  edited[0]!.dur = 2;
+  filter.from = 1;
+  assert.deepEqual(cueRecipe("cancel", random), reference);
+});
+
 test("every cue has a short, well-formed synthesis recipe", () => {
   for (const cue of [...UI_CUES, ...EVENT_CUES])
     for (const random of [() => 0, () => 0.5, () => 0.999]) {
