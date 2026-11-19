@@ -7,7 +7,7 @@ import {
   type WindowTime,
   type WorldEvent,
 } from "./rollback.js";
-import { PACKET_ENTRIES, StreamLog } from "./stream.js";
+import { StreamLog } from "./stream.js";
 import {
   decodePacket,
   encodeNack,
@@ -22,6 +22,8 @@ import {
   SnapshotAssembler,
   decodeSnapshot,
   encodeSnapshot,
+  replaySnapshotTail,
+  type SnapshotStream,
 } from "./snapshot.js";
 import {
   ACTION,
@@ -943,35 +945,9 @@ export class RoomRuntime<
     // Build the complete candidate, including replay tails and own continuity, before replacing healthy state.
     const world = new World(this.game, decoded.state, this.hostId, this.id);
     world.refill(CATCHUP_STEPS, this.windowTime);
-    for (const stream of decoded.streams) {
-      // My own current stream is rebuilt below with its continuity; my retired generations (the previous page's entries before
-      // its presence switched) install like anyone else's, and the own-stream creation then retires them in order.
-      if (stream.id === this.id && stream.generation >= this.generation)
-        continue;
-      const log = world.stream(stream.id, stream.generation, {
-        seq: stream.seq,
-        tick,
-        ordinal: stream.ordinal,
-      });
-      for (
-        let offset = 0;
-        offset < stream.entries.length;
-        offset += PACKET_ENTRIES
-      ) {
-        const part = stream.entries.slice(offset, offset + PACKET_ENTRIES);
-        if (
-          log.receive(
-            part,
-            part.at(-1)![0],
-            tick,
-            tick + this.timing.replayLeadTicks,
-            tick,
-          ).status !== "accepted"
-        ) {
-          reject();
-          return;
-        }
-      }
+    if (!this.replayPeerTails(world, decoded.streams, tick)) {
+      reject();
+      return;
     }
     // The own stream keeps its seq numbering: peers already hold everything up to lastSeq, and entries after the
     // snapshot tick are re-applied here so this replica and its peers keep folding the same log.
@@ -988,20 +964,14 @@ export class RoomRuntime<
       previous?.generation === this.generation
         ? previous.entriesAfter(base.seq, tick)
         : [];
-    for (let offset = 0; offset < carried.length; offset += PACKET_ENTRIES) {
-      const part = carried.slice(offset, offset + PACKET_ENTRIES);
-      if (
-        own.receive(
-          part,
-          previous!.lastSeq,
-          tick,
-          Math.max(tick, Math.floor(this.clock.tick())),
-          tick,
-        ).status !== "accepted"
-      ) {
-        reject();
-        return;
-      }
+    if (
+      !replaySnapshotTail(own, carried, tick, {
+        localTick: () => Math.max(tick, Math.floor(this.clock.tick())),
+        lastSeq: previous?.lastSeq,
+      })
+    ) {
+      reject();
+      return;
     }
     own.lastSeq = Math.max(own.lastSeq, previous?.lastSeq ?? 0);
     // A peer may be only marginally ahead while the room is behind the clock. Preserve bounded local catch-up.
@@ -1028,6 +998,37 @@ export class RoomRuntime<
     this.recorder.resumeAfter(tick);
     if (!carried.length) this.resetControls();
     this.lastFrame = undefined;
+    this.startClockFromSnapshot(tick, request.at);
+    this.sync.clearNoWorld();
+    this.status.recurring(this.text.connected);
+    if (this.pendingJoin) this.sendJoin();
+    this.publish();
+  }
+  private replayPeerTails(
+    world: World<Room, Entry, View, Event, Settings>,
+    streams: readonly SnapshotStream<Entry>[],
+    tick: number,
+  ): boolean {
+    for (const stream of streams) {
+      // My own current stream is rebuilt below with its continuity; my retired generations (the previous page's entries before
+      // its presence switched) install like anyone else's, and the own-stream creation then retires them in order.
+      if (stream.id === this.id && stream.generation >= this.generation)
+        continue;
+      const log = world.stream(stream.id, stream.generation, {
+        seq: stream.seq,
+        tick,
+        ordinal: stream.ordinal,
+      });
+      if (
+        !replaySnapshotTail(log, stream.entries, tick, {
+          localTick: () => tick + this.timing.replayLeadTicks,
+        })
+      )
+        return false;
+    }
+    return true;
+  }
+  private startClockFromSnapshot(tick: number, requestedAt: number): void {
     // A clock with no samples yet (the returning creator, whose clock nobody else corrects) joins the room's running
     // clock: the freshest peer clock reading, projected to now, else the snapshot tick plus half the request round trip.
     if (!this.clock.started) {
@@ -1046,13 +1047,9 @@ export class RoomRuntime<
       this.clock.start(
         readings.length
           ? Math.max(...readings)
-          : tick + (now - request.at) / 2 / this.timing.tickMs,
+          : tick + (now - requestedAt) / 2 / this.timing.tickMs,
       );
     }
-    this.sync.clearNoWorld();
-    this.status.recurring(this.text.connected);
-    if (this.pendingJoin) this.sendJoin();
-    this.publish();
   }
   /** What the authority's hash for `tick` said about this replica's own fold, and the status and resync that follow. */
   private compareHash(tick: number, hash: string, now: number): void {
