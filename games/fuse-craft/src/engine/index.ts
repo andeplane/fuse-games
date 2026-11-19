@@ -1539,7 +1539,7 @@ export function decodeState(raw: unknown): World {
     const site = structures.get(q.cell);
     if (
       q.mode === "stationed" &&
-      (site?.ownerId !== q.ownerId || !site.connected)
+      (!site?.connected || site.ownerId !== q.ownerId)
     )
       throw new Error("checkpoint: invalid stationary particle");
     if (q.mode === "transit" && q.arrivesAt <= w.tick)

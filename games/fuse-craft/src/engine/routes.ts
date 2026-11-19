@@ -32,7 +32,7 @@ export function connectedStructures(
     for (const structure of queue)
       for (const neighbor of neighbors(world.map, structure.cell)) {
         const next = index.get(neighbor);
-        if (next?.ownerId !== id || connected.has(next)) continue;
+        if (!next || next.ownerId !== id || connected.has(next)) continue;
         connected.add(next);
         queue.push(next);
       }
