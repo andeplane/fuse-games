@@ -618,7 +618,7 @@ function room(solo: boolean): void {
     lobbyActions,
   );
   lobby.append(lobbyMain, lobbySide);
-  const howToPlay = button("How to play");
+  const howToPlay = button("How to play", "fv-room-help");
   const guide = createDialog({
     title: "How to play",
     classes: { root: "fui-menu-dialog" },
