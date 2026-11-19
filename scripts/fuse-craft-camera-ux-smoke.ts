@@ -20,6 +20,9 @@ for (const [name, engine] of [
       viewport: { width: 1840, height: 1000 },
     });
     await page.goto(url);
+    await page
+      .getByRole("button", { name: "Single player", exact: true })
+      .click();
     await page.locator('[data-action="new-game"]').click();
     await page.locator('[data-action="mode-sandbox"]').click();
     await page.locator('[data-action="start"]').click();
@@ -113,6 +116,21 @@ for (const [name, engine] of [
     assert.equal(await page.locator(".queue-mark").count(), queued);
     await page.keyboard.press("Escape");
     assert.equal(await page.locator(".tile-heading").innerText(), selected);
+    const board = page.locator("#nd-board");
+    await board.focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    const moved = await page.locator(".tile-heading").innerText();
+    assert.notEqual(moved, selected, "Shift+Arrow moves the board selection");
+    await page.keyboard.press("ArrowLeft");
+    assert.equal(
+      await page.locator(".tile-heading").innerText(),
+      moved,
+      "Bare arrows pan without moving the selection",
+    );
+    const minimap = page.locator("#nd-minimap");
+    await minimap.focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator(".tile-heading").innerText(), moved);
     console.log(
       `${name}: bounded readable zoom at desktop/phone sizes; secondary and Control drag pan without placement; context menu suppressed`,
     );

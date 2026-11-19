@@ -13,6 +13,9 @@ await mkdir(output, { recursive: true });
 
 async function start(page: Page, mode: "sandbox" | "skirmish" = "sandbox") {
   await page.goto(url);
+  await page
+    .getByRole("button", { name: "Single player", exact: true })
+    .click();
   await page.locator('[data-action="new-game"]').click();
   if (mode === "skirmish")
     await page.locator('[data-action="mode-skirmish"]').click();

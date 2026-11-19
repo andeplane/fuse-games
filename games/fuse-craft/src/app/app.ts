@@ -132,6 +132,19 @@ import {
   createRoundControls,
 } from "fuse-ui";
 
+interface BoardArrow {
+  pan: PanDirection;
+  column: number;
+  row: number;
+}
+
+const BOARD_ARROWS = new Map<string, BoardArrow>([
+  ["ArrowLeft", { pan: "left", column: -1, row: 0 }],
+  ["ArrowRight", { pan: "right", column: 1, row: 0 }],
+  ["ArrowUp", { pan: "up", column: 0, row: -1 }],
+  ["ArrowDown", { pan: "down", column: 0, row: 1 }],
+]);
+
 const CRAFT_CONTROLS = [
   {
     keys: "Click / tap",
@@ -373,8 +386,7 @@ export function mountFuseCraft(
     goal: CRAFT_GOAL,
   };
   function menuInputChanged(open: boolean) {
-    for (const direction of Object.values(ARROWS))
-      camera?.hold(direction, false);
+    releaseCameraKeys();
     const blocked = open || !!root.ownerDocument.querySelector("dialog[open]");
     camera?.setEdgeScroll(!blocked && preferences.edgeScroll);
     if (
@@ -919,21 +931,19 @@ export function mountFuseCraft(
   function onPointerUp(event: PointerEvent) {
     if (event.pointerId === minimapDrag) minimapDrag = null;
   }
-  const ARROWS: Record<string, PanDirection> = {
-    ArrowLeft: "left",
-    ArrowRight: "right",
-    ArrowUp: "up",
-    ArrowDown: "down",
-  };
   function onKeyUp(event: KeyboardEvent) {
-    const direction = ARROWS[event.key];
-    if (direction) camera?.hold(direction, false);
+    const arrow = BOARD_ARROWS.get(event.key);
+    if (arrow) camera?.hold(arrow.pan, false);
   }
+
   // Keys released while the window is in the background never arrive.
   function onFocusOut(event: FocusEvent) {
     if (event.relatedTarget) return;
-    for (const direction of Object.values(ARROWS))
-      camera?.hold(direction, false);
+    releaseCameraKeys();
+  }
+
+  function releaseCameraKeys() {
+    for (const { pan } of BOARD_ARROWS.values()) camera?.hold(pan, false);
   }
 
   function sideName(world: Readonly<World>, id: string): string {
@@ -2274,156 +2284,135 @@ export function mountFuseCraft(
     back.click();
   }
 
-  function onKeyDown(event: KeyboardEvent) {
-    if (playtestInputBlocked(root.ownerDocument)) return;
-    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
-      return;
-    // The results screen covers the game: no camera or command key acts behind it.
-    if (results.open) return;
-    // How to play is modal: no game shortcut acts behind it.
-    if (helpOpen && screen === "game") return;
-    if (pending) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        pending = null;
-        render();
-        return;
-      }
-      if (event.key === "Tab") {
-        const controls = Array.from(
-          root.querySelectorAll<HTMLButtonElement>(
-            '[role="alertdialog"] button',
-          ),
-        );
-        const current = controls.indexOf(
-          root.ownerDocument.activeElement as HTMLButtonElement,
-        );
-        event.preventDefault();
-        controls[
-          (current + (event.shiftKey ? -1 : 1) + controls.length) %
-            controls.length
-        ]?.focus();
-      }
+  function confirmationKey(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      pending = null;
+      render();
       return;
     }
-    if (screen === "game" && event.key === "Escape" && placement) {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button'),
+    );
+    const current = controls.findIndex(
+      (control) => control === root.ownerDocument.activeElement,
+    );
+    const next = current + (event.shiftKey ? -1 : 1);
+    event.preventDefault();
+    controls[(next + controls.length) % controls.length]?.focus();
+  }
+
+  function cancelBoardMode(event: KeyboardEvent): boolean {
+    if (event.key !== "Escape") return false;
+    if (placement) {
       event.preventDefault();
       placement = null;
       placementCell = null;
       renderGame();
-      return;
+      return true;
     }
-    if (screen === "game" && event.key === "Escape" && panel !== "inspect") {
+    if (panel === "inspect") return false;
+    event.preventDefault();
+    closePanel();
+    return true;
+  }
+
+  function activateShortcut(event: KeyboardEvent): boolean {
+    if (event.repeat) return false;
+    const key = event.key.toLowerCase();
+    if (key === "f" && dependencies.fullscreen) {
       event.preventDefault();
-      closePanel();
-      return;
+      dependencies.fullscreen.toggle();
+      return true;
     }
-    // Arrow keys scroll the camera while held; Shift+arrows move the
-    // selection, and arrows move the target while placing a building.
-    const direction = ARROWS[event.key];
-    if (
-      direction &&
-      screen === "game" &&
-      !pending &&
-      !helpOpen &&
-      !placement &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !(event.target as HTMLElement).closest?.(
-        'input, select, textarea, [contenteditable="true"]',
-      )
-    ) {
+    if (key === "m" && dependencies.audio && !dependencies.forcedMute) {
       event.preventDefault();
-      camera?.hold(direction, true);
-      return;
+      toggleMute();
+      return true;
     }
-    if (
-      screen === "game" &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.repeat
-    ) {
-      const target = event.target as HTMLElement;
-      if (
-        !target.closest('input, select, textarea, [contenteditable="true"]')
-      ) {
-        if (event.key.toLowerCase() === "f" && dependencies.fullscreen) {
-          event.preventDefault();
-          dependencies.fullscreen.toggle();
-          return;
-        }
-        if (
-          event.key.toLowerCase() === "m" &&
-          dependencies.audio &&
-          !dependencies.forcedMute
-        ) {
-          event.preventDefault();
-          toggleMute();
-          return;
-        }
-        if (
-          "qweasd".includes(event.key.toLowerCase()) &&
-          event.key.length === 1
-        ) {
-          const command = root.querySelector<HTMLButtonElement>(
-            `.command-card [aria-keyshortcuts="${event.key.toUpperCase()}"]`,
-          );
-          if (command) {
-            event.preventDefault();
-            command.click();
-          }
-          return;
-        }
-      }
+    if (key.length !== 1 || !"qweasd".includes(key)) return false;
+    const command = root.querySelector<HTMLButtonElement>(
+      `.command-card [aria-keyshortcuts="${key.toUpperCase()}"]`,
+    );
+    if (command) {
+      event.preventDefault();
+      command.click();
     }
-    if (
-      screen !== "game" ||
-      pending ||
-      (event.target !== root.querySelector("#nd-board") &&
-        event.target !== root.querySelector("#nd-minimap"))
-    )
-      return;
+    return true;
+  }
+
+  function moveSelection(
+    map: MapDefinition,
+    current: number,
+    arrow: BoardArrow,
+  ) {
+    const { width, height } = map;
+    const column = Math.max(
+      0,
+      Math.min(width - 1, (current % width) + arrow.column),
+    );
+    const row = Math.max(
+      0,
+      Math.min(height - 1, Math.floor(current / width) + arrow.row),
+    );
+    selectedCell = row * width + column;
+    if (placement) placementCell = selectedCell;
+    renderGame();
+    camera?.ensureCellVisible(width, selectedCell);
+  }
+
+  function moveOrPlace(event: KeyboardEvent, arrow: BoardArrow | undefined) {
+    const onMinimap = event.target === root.querySelector("#nd-minimap");
+    if (!onMinimap && event.target !== root.querySelector("#nd-board")) return;
     const world = gameWorld();
     if (!world) return;
     const current = selectedCell ?? 0;
-    if (
-      event.target === root.querySelector("#nd-minimap") &&
-      (event.key === "Enter" || event.key === " ")
-    ) {
+    if (onMinimap && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       camera?.focusCell(world.map.width, current);
       updateMinimapView();
       return;
     }
-    const width = world.map.width;
-    const row = Math.floor(current / width),
-      col = current % width;
-    const delta: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    if (event.key in delta) {
+    if (arrow) {
       event.preventDefault();
-      const [dc, dr] = delta[event.key] ?? [0, 0];
-      const c = Math.max(0, Math.min(width - 1, col + dc)),
-        r = Math.max(0, Math.min(world.map.height - 1, row + dr));
-      selectedCell = r * width + c;
-      if (placement) placementCell = selectedCell;
-      renderGame();
-      camera?.ensureCellVisible(width, selectedCell);
-    } else if (
-      event.key === "Enter" &&
-      selectedCell !== null &&
-      world.map.cells[selectedCell]?.terrain === "open"
-    ) {
-      event.preventDefault();
-      if (placement) placeAt(selectedCell, event.shiftKey);
+      moveSelection(world.map, current, arrow);
+      return;
     }
+    if (event.key !== "Enter" || selectedCell === null) return;
+    if (world.map.cells[selectedCell]?.terrain !== "open") return;
+    event.preventDefault();
+    if (placement) placeAt(selectedCell, event.shiftKey);
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (playtestInputBlocked(root.ownerDocument)) return;
+    if (gameMenu.isOpen() || root.querySelector(".fui-top-bar-menu[open]"))
+      return;
+    if (results.open || (helpOpen && screen === "game")) return;
+    if (pending) {
+      confirmationKey(event);
+      return;
+    }
+    if (screen !== "game" || cancelBoardMode(event)) return;
+
+    const arrow = BOARD_ARROWS.get(event.key);
+    const target = event.target as Element | null;
+    const acceptsShortcut =
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !target?.closest?.('input, select, textarea, [contenteditable="true"]');
+    if (acceptsShortcut) {
+      // Bare arrows pan while held; Shift+arrows and placement move the cursor.
+      if (arrow && !placement && !event.shiftKey) {
+        event.preventDefault();
+        camera?.hold(arrow.pan, true);
+        return;
+      }
+      if (activateShortcut(event)) return;
+    }
+    moveOrPlace(event, arrow);
   }
 
   root.addEventListener("click", onClick);
@@ -2443,8 +2432,7 @@ export function mountFuseCraft(
   const stopPlaytestInput = registerPlaytestInput(page, {
     cancel: () => {
       minimapDrag = null;
-      for (const direction of Object.values(ARROWS))
-        camera?.hold(direction, false);
+      releaseCameraKeys();
     },
   });
   page.addEventListener("keydown", onDocumentKeyDown);
