@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import type { HeroKind, Model } from "../models.js";
 import { Rig, type Detail, type V3 } from "./rig.js";
-import { leg } from "./units.js";
+import { addStandingLegs, type LegPlacement } from "./units.js";
 
 const PI = Math.PI,
   H = PI / 2,
@@ -18,7 +18,7 @@ const SCALE = 0.42;
 
 /** Each hero's legs in tiles: hip half-width, hip height (leg length) and boot width, from the concept's legs. */
 // prettier-ignore
-export const HERO_LEGS: Record<HeroKind, { hip: number; len: number; w: number }> = {
+export const HERO_LEGS: Record<HeroKind, LegPlacement> = {
   brick: { hip: 0.3 * SCALE, len: 0.84 * SCALE, w: 0.4 * SCALE },
   vix: { hip: 0.14 * SCALE, len: 1.0 * SCALE, w: 0.15 * SCALE },
   rivet: { hip: 0.19 * SCALE, len: 0.62 * SCALE, w: 0.26 * SCALE },
@@ -60,10 +60,10 @@ function brick(r: Rig): void {
   });
   const c = r.sub([0.72, 1.88, -0.05]);
   c.add("dark", c.box(0.32, 0.18, 0.4, 0.05)).add("team", c.box(0.3, 0.22, 0.5, 0.06), [0, 0.22, 0.05])
-    .add("steel", c.cyl(0.075, 0.085, 0.95, 14), [0, 0.22, 0.65], X).add("gun", c.cyl(0.11, 0.11, 0.16, 14), [0, 0.22, 0.36], X)
+    .add("steel", c.cylinder({ topRadius: 0.075, bottomRadius: 0.085, height: 0.95, segments: 14 }), [0, 0.22, 0.65], X).add("gun", c.cylinder({ radius: 0.11, height: 0.16, segments: 14 }), [0, 0.22, 0.36], X)
     .add("gun", c.box(0.2, 0.14, 0.22, 0.03), [0, 0.22, 1.12]).add("amber", c.sphere(0.03), [0.1, 0.35, 0.25]);
   r.add("dark", r.box(0.78, 0.6, 0.34, 0.08), [0, 1.3, -0.42])
-    .pair((s) => r.add("steel", r.cyl(0.07, 0.08, 0.56, 12), [s * 0.24, 1.78, -0.5]).add("gun", r.cyl(0.085, 0.085, 0.06, 12), [s * 0.24, 2.07, -0.5]));
+    .pair((s) => r.add("steel", r.cylinder({ topRadius: 0.07, bottomRadius: 0.08, height: 0.56 }), [s * 0.24, 1.78, -0.5]).add("gun", r.cylinder({ radius: 0.085, height: 0.06 }), [s * 0.24, 2.07, -0.5]));
 }
 
 /** The sniper: thin under a peaked hood and an open cloak with a team lining, one red eye, and a very long rifle. */
@@ -86,10 +86,10 @@ function vix(r: Rig): void {
   arm(r, [0.2, 1.42, 0], [0.1, 1.06, 0.16], 0.07, [0.16, 0.1, 0.2], 0.08);
   arm(r, [-0.2, 1.42, 0], [-0.08, 0.95, 0.56], 0.07, [0.16, 0.1, 0.2], 0.08);
   const g = r.sub([0.1, 1.08, 0.2], [0.35, -0.45, 0]);
-  g.add("gun", g.box(0.06, 0.1, 0.6, 0.015), [0, 0, 0.1]).add("steel", g.cyl(0.018, 0.018, 1.1, 8), [0, 0.02, 0.95], X)
-    .add("gun", g.cyl(0.032, 0.032, 0.3, 8), [0, 0.02, 1.4], X)
+  g.add("gun", g.box(0.06, 0.1, 0.6, 0.015), [0, 0, 0.1]).add("steel", g.cylinder({ radius: 0.018, height: 1.1, segments: 8 }), [0, 0.02, 0.95], X)
+    .add("gun", g.cylinder({ radius: 0.032, height: 0.3, segments: 8 }), [0, 0.02, 1.4], X)
     .add("gun", g.extrude([[0, 0], [0.32, 0.02], [0.34, -0.13], [0.22, -0.1], [0.06, -0.04]], 0.05, 0.01), [0, 0, -0.2], [0, H, 0])
-    .add("dark", g.cyl(0.03, 0.03, 0.3, 10), [0, 0.1, 0.12], X).add("eye", g.cyl(0.026, 0.026, 0.01, 10), [0, 0.1, 0.275], X)
+    .add("dark", g.cylinder({ radius: 0.03, height: 0.3, segments: 10 }), [0, 0.1, 0.12], X).add("eye", g.cylinder({ radius: 0.026, height: 0.01, segments: 10 }), [0, 0.1, 0.275], X)
     .add("team", g.box(0.065, 0.035, 0.3, 0.01), [0, 0.06, 0.45]);
 }
 
@@ -100,18 +100,18 @@ function rivet(r: Rig): void {
     .pair((s) => r.add("orange", r.box(0.1, 0.12, 0.08, 0.02), [s * 0.18, 0.68, 0.2]))
     .add("team", r.box(0.62, 0.46, 0.46, 0.13, 2), [0, 0.96, 0]).add("orange", r.box(0.63, 0.06, 0.47, 0.02), [0, 0.8, 0])
     .add("team", r.extrude([[-0.24, -0.14], [0.24, -0.14], [0.26, 0.1], [-0.26, 0.1]], 0.05, 0.015), [0, 0.98, 0.235])
-    .add("dark", r.cyl(0.06, 0.06, 0.08, 10), [0, 1.2, 0]);
+    .add("dark", r.cylinder({ radius: 0.06, height: 0.08, segments: 10 }), [0, 1.2, 0]);
   const h = r.sub([0, 1.36, 0.03]);
   h.add("team", h.box(0.4, 0.3, 0.36, 0.1)).add("steel", h.box(0.3, 0.12, 0.06, 0.03), [0, -0.08, 0.17])
     .add("dark", h.box(0.42, 0.06, 0.38, 0.02), [0, 0.05, 0])
-    .pair((s) => h.add("dark", h.cyl(0.075, 0.08, 0.08, 16), [s * 0.085, 0.05, 0.2], X).add("steel", torus(h, 0.075, 0.014), [s * 0.085, 0.05, 0.24])
-      .add("visor", h.cyl(0.06, 0.06, 0.01, 16), [s * 0.085, 0.05, 0.245], X));
+    .pair((s) => h.add("dark", h.cylinder({ topRadius: 0.075, bottomRadius: 0.08, height: 0.08, segments: 16 }), [s * 0.085, 0.05, 0.2], X).add("steel", torus(h, 0.075, 0.014), [s * 0.085, 0.05, 0.24])
+      .add("visor", h.cylinder({ radius: 0.06, height: 0.01, segments: 16 }), [s * 0.085, 0.05, 0.245], X));
   const hat = h.sub([0, 0.14, 0], [0, 0, 0], [1, 1, 1.06]);
   hat.add("gold", lathe(hat, [[0.001, 0.2], [0.1, 0.19], [0.18, 0.13], [0.22, 0.04], [0.23, 0], [0.001, 0]]))
-    .add("gold", hat.cyl(0.3, 0.3, 0.025, 20), [0, 0, 0.03]).add("gold", hat.box(0.05, 0.05, 0.42, 0.02), [0, 0.18, 0])
-    .add("dark", hat.box(0.1, 0.08, 0.05, 0.01), [0, 0.1, 0.22]).add("amber", hat.cyl(0.035, 0.035, 0.02, 12), [0, 0.1, 0.25], X);
+    .add("gold", hat.cylinder({ radius: 0.3, height: 0.025, segments: 20 }), [0, 0, 0.03]).add("gold", hat.box(0.05, 0.05, 0.42, 0.02), [0, 0.18, 0])
+    .add("dark", hat.box(0.1, 0.08, 0.05, 0.01), [0, 0.1, 0.22]).add("amber", hat.cylinder({ radius: 0.035, height: 0.02 }), [0, 0.1, 0.25], X);
   r.add("dark", r.box(0.5, 0.5, 0.3, 0.06), [0, 1, -0.36]).add("orange", r.capsule(0.08, 0.3), [-0.17, 0.98, -0.55])
-    .add("steel", r.cyl(0.1, 0.12, 0.12, 14), [0.12, 1.3, -0.38]);
+    .add("steel", r.cylinder({ topRadius: 0.1, bottomRadius: 0.12, height: 0.12, segments: 14 }), [0.12, 1.3, -0.38]);
   // The crane: two rails up and over the head with rungs between, a cable and a hook at the tip.
   const c = r.sub([0.12, 1.38, -0.38], [0, -0.35, 0]), B: V3 = [0, 0.75, 0.25], C: V3 = [0, 0.95, 0.85];
   for (const x of [-0.05, 0.05]) c.add("gold", c.beam([x, 0, 0], [x, B[1], B[2]], 0.04)).add("gold", c.beam([x, B[1], B[2]], [x, C[1], C[2]], 0.035));
@@ -120,15 +120,15 @@ function rivet(r: Rig): void {
       const y = a[1] + (b[1] - a[1]) * (i / 6), z = a[2] + (b[2] - a[2]) * (i / 6);
       c.add("dark", c.beam([-0.05, y, z], [0.05, y, z], 0.02, true));
     }
-  c.add("steel", c.cyl(0.05, 0.05, 0.14, 12), B, Z).add("dark", c.cyl(0.04, 0.04, 0.14, 12), C, Z)
-    .add("steel", c.cyl(0.006, 0.006, 0.4, 4), [0, C[1] - 0.22, C[2]]).add("orange", c.box(0.08, 0.1, 0.06, 0.01), [0, C[1] - 0.45, C[2]])
+  c.add("steel", c.cylinder({ radius: 0.05, height: 0.14 }), B, Z).add("dark", c.cylinder({ radius: 0.04, height: 0.14 }), C, Z)
+    .add("steel", c.cylinder({ radius: 0.006, height: 0.4, segments: 4 }), [0, C[1] - 0.22, C[2]]).add("orange", c.box(0.08, 0.1, 0.06, 0.01), [0, C[1] - 0.45, C[2]])
     .add("steel", torus(c, 0.045, 0.012, PI * 1.4), [0, C[1] - 0.54, C[2]], [0, H, PI * 0.8]).add("amber", c.sphere(0.025), [0, C[1] + 0.06, C[2]]);
   r.pair((s) => arm(r, [s * 0.36, 1.12, 0], [s * 0.4, 0.78, 0.1], 0.1, [0.2, 0.16, 0.24], 0.14));
   const w = r.sub([0.42, 0.78, 0.14], [0.5, 0, -0.15], 1.3);
   w.add("steel", w.box(0.06, 0.62, 0.03, 0.012), [0, 0.2, 0]).add("orange", w.box(0.07, 0.22, 0.04, 0.012))
     .add("steel", w.extrude([[-0.11, 0], [0.11, 0], [0.13, 0.12], [0.06, 0.2], [0.04, 0.1], [-0.04, 0.1], [-0.06, 0.2], [-0.13, 0.12]], 0.04, 0.008), [0, 0.5, 0]);
   const gun = r.sub([-0.4, 0.76, 0.22]);
-  gun.add("orange", gun.box(0.1, 0.12, 0.24, 0.025)).add("steel", gun.cyl(0.025, 0.02, 0.14, 8), [0, 0.02, 0.18], X)
+  gun.add("orange", gun.box(0.1, 0.12, 0.24, 0.025)).add("steel", gun.cylinder({ topRadius: 0.025, bottomRadius: 0.02, height: 0.14, segments: 8 }), [0, 0.02, 0.18], X)
     .add("dark", gun.box(0.06, 0.14, 0.06, 0.012), [0, -0.1, -0.04]);
 }
 
@@ -140,25 +140,25 @@ function tally(r: Rig): void {
   const h = r.sub([0, 1.4, 0.02]);
   h.add("team", new THREE.SphereGeometry(0.3, h.far ? 10 : 24, h.far ? 7 : 16))
     .add("dark", new THREE.SphereGeometry(0.27, h.far ? 6 : 16, h.far ? 4 : 10, -PI * 0.3, PI * 0.6, PI * 0.3, PI * 0.38), [0, -0.01, 0.045])
-    .pair((s) => h.add("gun", h.cyl(0.1, 0.1, 0.06, 20), [s * 0.11, 0, 0.25], X).add("steel", torus(h, 0.098, 0.018), [s * 0.11, 0, 0.282])
+    .pair((s) => h.add("gun", h.cylinder({ radius: 0.1, height: 0.06, segments: 20 }), [s * 0.11, 0, 0.25], X).add("steel", torus(h, 0.098, 0.018), [s * 0.11, 0, 0.282])
       .add("visor", h.sphere(0.082, 1).scale(1, 1, 0.5), [s * 0.11, 0, 0.25]).add("team", h.box(0.16, 0.04, 0.08, 0.018), [s * 0.11, 0.12, 0.25], [0.2, 0, -s * 0.12])
-      .add("dark", h.cyl(0.06, 0.06, 0.06, 12), [s * 0.29, 0, 0], Z))
-    .add("steel", h.cyl(0.01, 0.01, 0.42, 4), [0.1, 0.45, -0.06], [0, 0, -0.15]).add("flame", h.sphere(0.04), [0.135, 0.66, -0.06])
-    .add("steel", h.cyl(0.01, 0.01, 0.3, 4), [-0.12, 0.4, -0.08], [0, 0, 0.3]).add("flame", h.sphere(0.03), [-0.165, 0.55, -0.08]);
+      .add("dark", h.cylinder({ radius: 0.06, height: 0.06 }), [s * 0.29, 0, 0], Z))
+    .add("steel", h.cylinder({ radius: 0.01, height: 0.42, segments: 4 }), [0.1, 0.45, -0.06], [0, 0, -0.15]).add("flame", h.sphere(0.04), [0.135, 0.66, -0.06])
+    .add("steel", h.cylinder({ radius: 0.01, height: 0.3, segments: 4 }), [-0.12, 0.4, -0.08], [0, 0, 0.3]).add("flame", h.sphere(0.03), [-0.165, 0.55, -0.08]);
   // The scarf: a collar and two tails blown back.
   r.add("orange", torus(r, 0.17, 0.05), [0, 1.13, 0], X);
   for (const [x, y, z, len, a] of [[0.22, 1.1, -0.38, 0.5, -0.35], [0.12, 0.98, -0.36, 0.42, -0.15]] as const)
     r.add("orange", r.box(0.12, 0.02, len, 0.005), [x, y, z], [0.3 + a, 0.4, 0]);
   r.add("dark", r.box(0.32, 0.36, 0.18, 0.05), [0, 0.98, -0.22])
-    .pair((s) => r.add("steel", r.cyl(0.075, 0.08, 0.36, 14), [s * 0.14, 0.96, -0.32]).add("gun", r.cyl(0.07, 0.11, 0.12, 14), [s * 0.14, 0.74, -0.32])
-      .add("flame", r.cyl(0.07, 0.05, 0.02, 14), [s * 0.14, 0.67, -0.32]).add("gun", r.cyl(0.081, 0.081, 0.04, 14), [s * 0.14, 1.08, -0.32])
+    .pair((s) => r.add("steel", r.cylinder({ topRadius: 0.075, bottomRadius: 0.08, height: 0.36, segments: 14 }), [s * 0.14, 0.96, -0.32]).add("gun", r.cylinder({ topRadius: 0.07, bottomRadius: 0.11, height: 0.12, segments: 14 }), [s * 0.14, 0.74, -0.32])
+      .add("flame", r.cylinder({ topRadius: 0.07, bottomRadius: 0.05, height: 0.02, segments: 14 }), [s * 0.14, 0.67, -0.32]).add("gun", r.cylinder({ radius: 0.081, height: 0.04, segments: 14 }), [s * 0.14, 1.08, -0.32])
       .add("team", r.extrude([[0, 0], [0.22, -0.08], [0.24, -0.16], [0, -0.14]], 0.03, 0.01), [s * 0.2, 1.06, -0.34], [0, s > 0 ? 0 : PI, 0]));
   r.pair((s) => {
     r.add("team", r.sphere(0.08), [s * 0.23, 1.06, 0]).add("dark", r.beam([s * 0.24, 1.04, 0], [s * 0.26, 0.86, 0.1], 0.06, true))
       .add("dark", r.box(0.08, 0.08, 0.08, 0.02), [s * 0.18, 0.84, 0.18]);
   });
   const g = r.sub([0.1, 0.86, 0.25], [-0.05, -0.2, 0]);
-  g.add("gun", g.box(0.06, 0.09, 0.28, 0.015)).add("steel", g.cyl(0.014, 0.014, 0.16, 8), [0, 0.02, 0.2], X)
+  g.add("gun", g.box(0.06, 0.09, 0.28, 0.015)).add("steel", g.cylinder({ radius: 0.014, height: 0.16, segments: 8 }), [0, 0.02, 0.2], X)
     .add("gun", g.box(0.04, 0.12, 0.05, 0.01), [0, -0.09, 0.02]);
 }
 
@@ -173,7 +173,7 @@ const BUILDERS: Record<HeroKind, (r: Rig) => void> = {
 // prettier-ignore
 export function heroModel(kind: HeroKind, detail: Detail = "near", moving = true): Model {
   const root = new Rig(detail), spec = HERO_LEGS[kind];
-  BUILDERS[kind](root.sub([0, 0, 0], [0, 0, 0], SCALE));
-  if (moving) root.pair((s) => leg(root.sub([s * spec.hip, 0, 0], [0, 0, 0], [spec.w / 0.2, spec.len / 0.4, spec.w / 0.2])));
+  BUILDERS[kind](root.scaled(SCALE));
+  if (moving) addStandingLegs(root, spec);
   return root.bake();
 }
