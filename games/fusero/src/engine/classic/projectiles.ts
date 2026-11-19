@@ -119,6 +119,16 @@ function calculateCheckSteps(p: ClassicProjectileState): void {
   }
 }
 
+function activeProjectileSlots(
+  world: CombatWorld,
+): Map<number, ClassicProjectileState> {
+  const slots = new Map<number, ClassicProjectileState>();
+  world.projectiles.forEach((projectile) => {
+    if (projectile.used) slots.set(projectile.slot, projectile);
+  });
+  return slots;
+}
+
 /** Native FastVector has exactly 3000 reusable slots; exhausted shots fail to spawn in the original too. */
 export function spawnClassicProjectile(
   world: CombatWorld,
@@ -137,9 +147,7 @@ export function spawnClassicProjectile(
 ): ClassicProjectileState | undefined {
   const d = CLASSIC_PROJECTILES[descriptorId];
   if (!d) throw new Error("Unknown Classic projectile descriptor");
-  const occupied =
-    pool ??
-    new Map(world.projectiles.filter((p) => p.used).map((p) => [p.slot, p]));
+  const occupied = pool ?? activeProjectileSlots(world);
   let slot = 0;
   while (slot < MAX_CLASSIC_PROJECTILES && occupied.get(slot)?.used) slot++;
   if (slot === MAX_CLASSIC_PROJECTILES) return;
@@ -206,6 +214,7 @@ export function spawnShotProjectiles(
   });
   let random = shot?.randomIndex ?? randomInt(world, 255);
   const d = CLASSIC_PROJECTILES[weapon.projectileId]!;
+  const pool = activeProjectileSlots(world);
   for (let i = 0; i < weapon.amount; i++) {
     const spread = angleVector(
       add(angle, mul(fixedRandom(random), weapon.spread)),
@@ -246,6 +255,7 @@ export function spawnShotProjectiles(
       shot?.spawnTimeMs ?? world.elapsedMs,
       world.elapsedMs + 100,
       rotation,
+      pool,
     );
     random = (random + 1) % 255;
   }
@@ -736,6 +746,37 @@ function spawnChildren(
 function nativeActionExists(action: ClassicAction | undefined): boolean {
   return !!action && action.name !== "nothing";
 }
+
+/** Advances the sprite clock and reports when a one-shot animation has ended. */
+function advanceProjectileImage(
+  projectile: ClassicProjectileState,
+  image: Extract<ClassicProjectile, { type: "image" }>,
+  dt: number,
+): boolean {
+  if (image.rotating)
+    projectile.rotation = f(
+      ((add(projectile.rotation, mul(image.rotSpeed, dt)) % 360) + 360) % 360,
+    );
+  if (!image.animating) return false;
+  projectile.frame = add(
+    projectile.frame,
+    mul(image.animRate ?? 0, projectile.frameDelta ? dt : -dt),
+  );
+  const frames = image.bitmap?.frameCount ?? 1;
+  if (projectile.frame >= frames) {
+    if (image.animType === 0) return true;
+    if (image.animType === 1) projectile.frame = 0;
+    else {
+      projectile.frameDelta = !projectile.frameDelta;
+      projectile.frame = f(frames - 1);
+    }
+  } else if (projectile.frame < 0 && image.animType === 2) {
+    projectile.frameDelta = !projectile.frameDelta;
+    projectile.frame = 0;
+  }
+  return false;
+}
+
 function doFrame(
   world: CombatWorld,
   p: ClassicProjectileState,
@@ -765,27 +806,8 @@ function doFrame(
   const collision = moveProjectile(p, dt, worms, ports, world.elapsedMs, dtMs);
   p.life = add(p.life, dt);
   p.extra = add(p.extra, dt);
-  if (d.type === "image") {
-    if (d.rotating)
-      p.rotation = f(
-        ((add(p.rotation, mul(d.rotSpeed, dt)) % 360) + 360) % 360,
-      );
-    if (d.animating) {
-      p.frame = add(p.frame, mul(d.animRate ?? 0, p.frameDelta ? dt : -dt));
-      const frames = d.bitmap?.frameCount ?? 1;
-      if (p.frame >= frames) {
-        if (d.animType === 0) info.remove = true;
-        else if (d.animType === 1) p.frame = 0;
-        else {
-          p.frameDelta = !p.frameDelta;
-          p.frame = f(frames - 1);
-        }
-      } else if (p.frame < 0 && d.animType === 2) {
-        p.frameDelta = !p.frameDelta;
-        p.frame = 0;
-      }
-    }
-  }
+  if (d.type === "image" && advanceProjectileImage(p, d, dt))
+    info.remove = true;
   if (d.trailType === 5 && d.trail && p.lastSimulationMs > p.lastTrailMs) {
     p.lastTrailMs = p.lastSimulationMs + d.trail.delayMs;
     info.trail = true;
@@ -876,9 +898,7 @@ export function stepProjectiles(
   ports: CombatPorts,
   dtMs = 11,
 ): void {
-  const pool = new Map(
-    world.projectiles.filter((p) => p.used).map((p) => [p.slot, p]),
-  );
+  const pool = activeProjectileSlots(world);
   for (let slot = 0; slot < MAX_CLASSIC_PROJECTILES; slot++) {
     const p = pool.get(slot);
     if (!p?.used) continue;
