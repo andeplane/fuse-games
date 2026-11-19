@@ -1,4 +1,9 @@
-import { uint32, type SeatRecord, type Stage } from "fuse-netcode";
+import {
+  hashCheckpointJson,
+  uint32,
+  type SeatRecord,
+  type Stage,
+} from "fuse-netcode";
 import { parseHistoryReceipts } from "fuse-platform/history-api";
 import {
   DOGFIGHT_WIN_TARGET,
@@ -333,27 +338,5 @@ export function decodeRoom(
   };
 }
 export function hashRoom(room: CyberfuseRoom): string {
-  const text = JSON.stringify(
-    [room.tick, ...encodeRoom(room)],
-    (_key, value: unknown) =>
-      plain(value)
-        ? Object.fromEntries(
-            Object.keys(value)
-              .sort()
-              .map((key) => [key, value[key]]),
-          )
-        : value,
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    a = Math.imul(a ^ c, 0x01000193);
-    b = Math.imul(b ^ c, 0x01000193);
-    b ^= b >>> 13;
-  }
-  return (
-    (a >>> 0).toString(16).padStart(8, "0") +
-    (b >>> 0).toString(16).padStart(8, "0")
-  );
+  return hashCheckpointJson([room.tick, ...encodeRoom(room)]);
 }
