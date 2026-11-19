@@ -27,6 +27,12 @@ import {
   createTopBar,
 } from "fuse-ui";
 import { planNeuronPlacement } from "./neuron-placement.js";
+import {
+  placementPreview,
+  placementPrompt,
+  renderPlacementPreview,
+  type PlacementPreview,
+} from "./placement-preview.js";
 import { minimapMarkup, minimapCell } from "../render/minimap.js";
 import { battleFocusCell } from "../render/battle-focus.js";
 import { structureArt, teamArtFilter } from "../render/art.js";
@@ -40,8 +46,6 @@ import { createAttractScene } from "./attract-scene.js";
 import {
   renderBoard,
   hexCenter,
-  hexPoints,
-  structureArtwork,
   neuronPortraitUrl,
   type BoardAnimation,
 } from "../render/board.js";
@@ -96,10 +100,7 @@ import {
   isResearchKind,
   constructionAvailability,
   constructionQueueAvailability,
-  constructionUpgradeSource,
-  CONSTRUCTIONS,
   constructionDispatchAvailability,
-  connectedFrontier,
   planSupport,
   type BuildKind,
 } from "../engine/catalog.js";
@@ -108,7 +109,6 @@ import {
   commandPageCount,
   RESEARCH_PRESENTATION,
   BUILD_PRESENTATION,
-  requirementText,
   waitingText,
   type CommandPanel,
 } from "./command-card.js";
@@ -995,11 +995,13 @@ export function mountFuseCraft(
     return `<div class="battle-topbar watch-topbar"><div class="resource-row">${resources}</div><div class="hud-mini"></div><div class="session-controls">${fullscreenButton()}<button data-action="help" class="secondary" aria-label="How to play" title="How to play">?</button>${online ? "" : restart}</div></div><div class="command-dock watch-dock">${minimapMarkup(world)}<section class="inspector" aria-label="Selected hex"><div class="selection-details"><strong>${escape(selected)}</strong><span>${structure ? (structure.connected ? "Connected to its brain" : "Disconnected") : "Watch either network grow and adapt."}</span><small>Pan, zoom and inspect · Select a player to follow its brain</small></div><button data-action="find-battle" class="secondary" title="Jump to fighting or the nearest opposing networks">Find battle</button></section><nav class="watch-players" aria-label="${online ? "Players" : "AI players"}">${cards}</nav></div>`;
   }
 
-  function sidebarMarkup(world: Readonly<World>): string {
-    if (session && !participant(world)) return watchMarkup(world);
-    const player = world.players.find(
-      (item) => item.id === session?.localPlayerId,
-    );
+  function sidebarMarkup(
+    world: Readonly<World>,
+    player: Player | undefined,
+    watching: boolean,
+    preview: PlacementPreview | null,
+  ): string {
+    if (watching) return watchMarkup(world);
     if (!player) return '<div class="nd-panel">No local player exists.</div>';
     const structure = world.structures.find(
       (item) => item.cell === selectedCell,
@@ -1093,33 +1095,8 @@ export function mountFuseCraft(
           `<li>${escape(item.type)}${item.reason ? ` · ${escape(item.reason)}` : ""}${item.cell !== undefined ? ` at hex ${item.cell}` : ""}</li>`,
       )
       .join("");
-    const placementRequirements =
-      placement && placementCell !== null
-        ? constructionQueueAvailability(world, player, placement, placementCell)
-        : null;
-    const placementHints =
-      placementRequirements?.allowed && placement && placementCell !== null
-        ? constructionDispatchAvailability(world, player, {
-            kind: placement,
-            cell: placementCell,
-            upgradeFrom: constructionUpgradeSource(
-              world,
-              player,
-              placement,
-              placementCell,
-            )?.id,
-          }).missing
-        : (placementRequirements?.missing ?? []);
-    const upgrading =
-      placement &&
-      placementCell !== null &&
-      constructionUpgradeSource(world, player, placement, placementCell);
-    const neuronPlan =
-      placement === "neuron" && placementCell !== null
-        ? planNeuronPlacement(world, player, placementCell)
-        : null;
     const contextDetail = placement
-      ? `<div class="placement-instructions" role="status"><strong>${upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage) || escape(neuronPlan?.hint ?? "") || (placementRequirements?.allowed && placement && placementCell !== null ? waitingText(placementHints, planSupport(world, player, { cell: placementCell, kind: placement }).get(placementCell)) : placementHints.map(requirementText)).map(escape).join(" ") || (upgrading ? "Neuron stays connected during work. Damage carries over." : CONSTRUCTIONS[placement].upgradesFrom?.length ? "Choose open ground or upgrade your neuron." : "Click or tap open ground.")}</small></div>`
+      ? `<div class="placement-instructions" role="status"><strong>${preview?.upgrading ? "Upgrade neuron to" : "Place"} ${BUILD_PRESENTATION[placement].label}</strong><p>Shift: queue more · Esc / S: cancel</p><small>${escape(placementMessage || preview?.hint || placementPrompt(placement, preview))}</small></div>`
       : panel === "inspect" || panel === "build"
         ? `${detail}<span class="construction-summary">${player.queue.length}/${RULES.queueLimit} queued · builder ${escape(worker.mode)}</span>`
         : panel === "particles"
@@ -1197,7 +1174,15 @@ export function mountFuseCraft(
         bar: resultBar,
       });
     }
-    updateContent(sidebar, sidebarMarkup(world));
+    const owner = world.players.find((p) => p.id === session?.localPlayerId);
+    const preview =
+      owner && placement && placementCell !== null
+        ? placementPreview(world, owner, placement, placementCell)
+        : null;
+    updateContent(
+      sidebar,
+      sidebarMarkup(world, owner, !!session && !playing, preview),
+    );
     gameMenu.update({
       canLobby: !!online?.room().manager,
       spectator: !playing,
@@ -1250,83 +1235,21 @@ export function mountFuseCraft(
       dependencies.buildingSprites,
       lightRenderer,
     );
-    let preview = svg.querySelector<SVGGElement>(".placement-preview");
-    if (!preview) {
-      preview = svg.ownerDocument.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "g",
-      );
-      preview.setAttribute("class", "placement-preview");
-      preview.setAttribute("pointer-events", "none");
-      svg.append(preview);
-    }
-    const owner = world.players.find((p) => p.id === session?.localPlayerId);
     root.classList.toggle("is-placing", placement !== null);
-    // The brain's artwork covers the hexes around it, so the hex that looks
-    // beside the core can be two steps away. Outline the hexes that touch the
-    // connected network: a plan there starts at once.
-    const frontier =
-      placement && owner
-        ? `<g class="placement-frontier">${connectedFrontier(
-            world,
-            owner,
-            placement,
-          )
-            .map(
-              (cell) =>
-                `<polygon data-cell="${cell}" points="${hexPoints(world.map.width, cell, 4)}"/>`,
-            )
-            .join("")}</g>`
-        : "";
-    if (placement && placementCell !== null && owner) {
-      const plan =
-        placement === "neuron"
-          ? planNeuronPlacement(world, owner, placementCell)
-          : null;
-      const valid =
-        constructionQueueAvailability(world, owner, placement, placementCell)
-          .allowed &&
-        (!plan || plan.cells.length > 0);
-      preview.setAttribute("data-valid", String(valid));
-      preview.setAttribute(
-        "data-support",
-        plan?.hint && plan.cells.length > 0
-          ? "chained"
-          : (planSupport(world, owner, {
-              cell: placementCell,
-              kind: placement,
-            }).get(placementCell) ?? "connected"),
-      );
-      preview.setAttribute(
-        "data-upgrade",
-        String(
-          !!constructionUpgradeSource(world, owner, placement, placementCell),
-        ),
-      );
-      const artwork = `<g opacity="0.55">${structureArtwork(world.map.width, placementCell, placement, owner.slot, dependencies.sprites)}</g>`;
-      const bridge =
-        plan?.cells
-          .slice(0, -1)
-          .map(
-            (cell) =>
-              `<polygon class="placement-bridge" data-cell="${cell}" points="${hexPoints(world.map.width, cell, 1.5)}"/>`,
-          )
-          .join("") ?? "";
-      preview.innerHTML = `${frontier}${bridge}<polygon points="${hexPoints(world.map.width, placementCell, 1.5)}"/>${artwork}`;
-    } else {
-      if (frontier) preview.innerHTML = frontier;
-      else preview.replaceChildren();
-      preview.removeAttribute("data-valid");
-      preview.removeAttribute("data-support");
-      preview.removeAttribute("data-upgrade");
-    }
+    renderPlacementPreview(
+      svg,
+      world,
+      owner,
+      placement,
+      preview,
+      dependencies.sprites,
+    );
     const viewport = root.querySelector<HTMLElement>("#nd-viewport");
     if (!camera && viewport && dependencies.createCamera) {
       camera = dependencies.createCamera(svg, viewport);
       camera.setEdgeScroll(preferences.edgeScroll);
-      const player = world.players.find((p) => p.id === session?.localPlayerId);
       const brain = world.structures.find(
-        (s) => s.ownerId === player?.id && s.kind === "brain",
+        (s) => s.ownerId === owner?.id && s.kind === "brain",
       );
       if (brain) camera.focusCell(world.map.width, brain.cell);
       svg.focus?.({ preventScroll: true });
