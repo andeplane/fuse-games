@@ -223,8 +223,11 @@ export function createScene(
       w = canvas.clientWidth,
       h = canvas.clientHeight;
     box = { w, h, r };
-    canvas.width = Math.max(1, Math.round(w * r));
-    canvas.height = Math.max(1, Math.round(h * r));
+    const width = Math.max(1, Math.round(w * r)),
+      height = Math.max(1, Math.round(h * r));
+    // Even assigning the same dimension clears the canvas and resets its drawing state.
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
   };
 
   const burst = (
