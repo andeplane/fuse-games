@@ -1,5 +1,10 @@
 import type { Intent, Position } from "./hostile.js";
 import { GOOD_GUY, PRISONER, STILL, VICTIM, hunt } from "./hostile.js";
+import {
+  ACTOR_HALF_HEIGHT,
+  ACTOR_HALF_WIDTH,
+  overlaps,
+} from "../sim/geometry.js";
 
 /** Only public simulation fields used by a Fuse teammate or dogfight opponent. */
 interface Fighter extends Position {
@@ -127,8 +132,8 @@ function route(
   for (const prop of world.props) {
     if (!prop.impassable) continue;
     blocked.add(cell(width, prop));
-    const rx = prop.w + 7,
-      ry = prop.h + 5;
+    const rx = prop.w + ACTOR_HALF_WIDTH,
+      ry = prop.h + ACTOR_HALF_HEIGHT;
     for (
       let y = Math.max(0, Math.floor((prop.y - ry) / H));
       y <= Math.min(height - 1, Math.floor((prop.y + ry) / H));
@@ -140,12 +145,7 @@ function route(
         x++
       ) {
         const tile = y * width + x;
-        const point = center(width, tile);
-        if (
-          Math.abs(point.x - Math.floor(prop.x)) < rx &&
-          Math.abs(point.y - Math.floor(prop.y)) < ry
-        )
-          blocked.add(tile);
+        if (overlaps(center(width, tile), prop, rx, ry)) blocked.add(tile);
       }
     }
   }
