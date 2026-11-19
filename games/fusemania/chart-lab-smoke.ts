@@ -70,6 +70,14 @@ async function downloadText(download: Download): Promise<string> {
   return readFile(path, "utf8");
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const vite = process.env.ONLINE_URL
   ? undefined
   : await createServer({
@@ -91,14 +99,41 @@ try {
     viewport: { width: 1500, height: 1000 },
   });
   await page.addInitScript("window.__name = value => value");
+  // Observe native worker shutdown without replacing its execution or messaging.
+  await page.addInitScript(() => {
+    const terminate = Worker.prototype.terminate;
+    Worker.prototype.terminate = function () {
+      const node = document.documentElement;
+      node.dataset.labTerminated = String(
+        Number(node.dataset.labTerminated ?? 0) + 1,
+      );
+      terminate.call(this);
+    };
+  });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const wav = syntheticWav();
   const uploads: unknown[] = [];
+  const releaseAudio = deferred<void>();
+  const rhythmScript = deferred<void>();
+  const releaseRhythm = deferred<void>();
+  let holdFirstAudio = true;
+  let holdRhythm = true;
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (/\.(mp3|m4a|ogg|wav)$/i.test(url.pathname)) {
+      if (holdFirstAudio) {
+        holdFirstAudio = false;
+        await releaseAudio.promise;
+        await route.abort().catch(() => {});
+        return;
+      }
       await route.fulfill({ contentType: "audio/wav", body: wav });
+    } else if (holdRhythm && url.pathname.includes("rhythm-worker")) {
+      holdRhythm = false;
+      rhythmScript.resolve();
+      await releaseRhythm.promise;
+      await route.abort().catch(() => {});
     } else if (url.pathname.endsWith("/__chart-lab/notes")) {
       if (route.request().method() === "POST")
         uploads.push(route.request().postDataJSON());
@@ -113,9 +148,68 @@ try {
     } else await route.continue();
   });
   finish = await startGameCoverage(page, { gameId: "fusemania" });
+  const firstAudio = page.waitForRequest((request) =>
+    /\.(mp3|m4a|ogg|wav)$/i.test(new URL(request.url()).pathname),
+  );
   await page.goto(
     new URL("fusemania/chart-lab.html?song=final-chase&mute", base).href,
   );
+  const obsolete = await firstAudio;
+  const canceled = page.waitForEvent(
+    "requestfailed",
+    (request) => request === obsolete,
+  );
+  const songs = page.getByTitle("Song", { exact: true });
+  const alternate = await songs
+    .locator('option:not([value="final-chase"])')
+    .first()
+    .getAttribute("value");
+  assert.ok(alternate);
+  try {
+    await songs.selectOption(alternate);
+    await canceled;
+  } finally {
+    releaseAudio.resolve();
+  }
+  await page.waitForFunction((song) => {
+    const state = (window as unknown as LabWindow).chartLab?.state();
+    return state?.song === song && state.frames > 0;
+  }, alternate);
+  const terminated = Number(
+    await page.locator("html").getAttribute("data-lab-terminated"),
+  );
+  const detect = page.getByRole("button", {
+    name: "Detect rhythm",
+    exact: true,
+  });
+  const waitingForRhythm = page.waitForRequest((request) =>
+    new URL(request.url()).pathname.includes("rhythm-worker"),
+  );
+  try {
+    await detect.click();
+    await Promise.all([waitingForRhythm, rhythmScript.promise]);
+    await page.getByTitle("Rhythm layer / analysis band").selectOption("bass");
+    assert.equal(
+      Number(await page.locator("html").getAttribute("data-lab-terminated")),
+      terminated + 1,
+    );
+    assert.equal(await detect.isEnabled(), true);
+  } finally {
+    releaseRhythm.resolve();
+  }
+  await detect.click();
+  const events = page.getByRole("button", {
+    name: "Download events",
+    exact: true,
+  });
+  await events.waitFor();
+  const eventDownload = page.waitForEvent("download");
+  await events.click();
+  assert.equal(
+    JSON.parse(await downloadText(await eventDownload)).song,
+    alternate,
+  );
+  await songs.selectOption("final-chase");
   await page.waitForFunction(
     () => (window as unknown as LabWindow).chartLab?.state().frames > 0,
     undefined,
@@ -345,7 +439,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS Fusemania chart lab: real audio decode/FFT, canvas edits/undo, playback/record/seek, spectrum selection, notes round-trip, SSC round-trip and persisted reopening; synthetic HTTP audio/notes boundaries, headless and muted.",
+    "PASS Fusemania chart lab: song fetch and rhythm worker cancellation, current-song rhythm export, real audio decode/FFT, editor playback, notes and SSC round-trips, and persisted reopening. Synthetic HTTP audio and notes, headless and muted.",
   );
 } finally {
   try {
