@@ -33,6 +33,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createLiveResults,
   createResultsScreen,
   createRoster,
   createSharedTvOption,
@@ -362,8 +363,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
 
   const main = el("main", "", "dice-room");
   main.tabIndex = -1;
@@ -484,36 +484,15 @@ function room(solo: boolean): void {
     holdButton.disabled = !model.controls.hold;
     // Result.
     const result = model.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: (slot) => COLORS[slot % COLORS.length]!,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: (slot) => COLORS[slot % COLORS.length]!,
+          friend,
+        }),
+      bar: resultBar,
+    });
   };
 
   // ---- the runtime ----

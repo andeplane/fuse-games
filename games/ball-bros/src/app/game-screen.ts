@@ -1,5 +1,6 @@
 import {
   createHowToPlay,
+  createLiveResults,
   createResultsScreen,
   elementsFor,
   type RoomFriends,
@@ -268,42 +269,14 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     },
   });
   root.append(results.element);
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   function showResult(result: Model["result"]): void {
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-      return;
-    }
-    const friends = result.solo ? undefined : options.friends;
-    // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-    const shown = JSON.stringify([
-      { ...result, host: false, waiting: "" },
-      result.rows.map((row) => friends?.publicIdOfMember(row.id)),
-    ]);
-    const first = !shownResult;
-    if (shown !== shownResult) {
-      shownResult = shown;
-      results.show(
-        resultReport(result, {
-          color: colorCss,
-          ...(friends
-            ? {
-                friend: (id: string) => {
-                  const publicId = friends.publicIdOfMember(id);
-                  return publicId ? friends.friendButton(publicId) : undefined;
-                },
-              }
-            : {}),
-        }),
-      );
-    }
-    results.update(resultBar(result));
-    if (first)
-      results.actions
-        .querySelector<HTMLButtonElement>("button.is-primary")
-        ?.focus();
+    liveResults.render(result, {
+      friends: result?.solo ? undefined : options.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: colorCss, friend }),
+      bar: resultBar,
+    });
   }
   const identity = el("p", "", "controller-identity");
   root.insertBefore(identity, controlsRow);

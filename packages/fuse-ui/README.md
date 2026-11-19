@@ -159,6 +159,14 @@ const pad = createControllerRow({
 });
 ```
 
+## Live results
+
+Pair `createResultsScreen` with `createLiveResults` for a report driven by
+match frames. The presenter rebuilds it when report data or friend identities
+change. Host permissions and waiting text update the action bar without
+resetting the report. Pass a revision when extra report data changes, and use
+`focusPrimary: false` when a held gameplay key must stay with the arena.
+
 ## Music
 
 `fuse-music` supplies `ALL_SONGS` and `MusicPlayer` independently of any game's

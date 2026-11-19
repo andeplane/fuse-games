@@ -1,11 +1,72 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createLiveResults,
   createResultsScreen,
   renderResults,
   type ResultsReport,
 } from "fuse-ui";
 import { HOSTILE, page } from "./dom-fixture.js";
+
+test("live results rebuild for report changes and update the action bar every frame", () => {
+  const { document } = page();
+  const screen = createResultsScreen({ document, onAction() {} });
+  const live = createLiveResults(screen);
+  const memberIds = new Map<string, string>();
+  let redraws = 0;
+  const result = { host: false, waiting: "Wait", rows: [{ id: "guest" }] };
+  const render = (next: typeof result, revision = "match", dismissed = false) =>
+    live.render(next, {
+      revision,
+      friends: {
+        publicIdOfMember: (id) => memberIds.get(id),
+        friendButton: (id) => {
+          const button = document.createElement("button");
+          button.textContent = id;
+          return button;
+        },
+      },
+      report(_result, friend) {
+        redraws++;
+        const button = friend?.("guest");
+        return {
+          game: "Demo",
+          headline: "Complete",
+          sections: button ? [{ title: "Players", content: [button] }] : [],
+        };
+      },
+      bar: ({ host, waiting }) => ({
+        status: waiting,
+        actions: host ? [{ id: "again", label: "Again", primary: true }] : [],
+      }),
+      afterShow() {
+        if (dismissed) screen.hide();
+      },
+    });
+
+  render(result);
+  const reportElement = screen.body.firstElementChild;
+  assert.equal(screen.open, true);
+  render({ ...result, host: true, waiting: "Ready" });
+  assert.equal(screen.body.firstElementChild, reportElement);
+  assert.equal(screen.actions.textContent, "ReadyAgain");
+  assert.equal(redraws, 1);
+
+  memberIds.set("guest", "Friend");
+  render(result);
+  assert.match(screen.body.textContent ?? "", /Friend/);
+  assert.equal(redraws, 2);
+
+  render(result, "rematch", true);
+  assert.equal(screen.open, false);
+  assert.equal(redraws, 3);
+  render(result, "rematch");
+  assert.equal(screen.open, false);
+  live.clear();
+  render(result, "rematch");
+  assert.equal(screen.open, true);
+  assert.equal(redraws, 4);
+});
 
 const report = (document: Document): ResultsReport => {
   const friend = document.createElement("button");

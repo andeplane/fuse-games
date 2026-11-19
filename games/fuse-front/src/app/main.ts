@@ -1,4 +1,4 @@
-import { createResultsScreen, createTopBar } from "fuse-ui";
+import { createLiveResults, createResultsScreen, createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestCapture,
@@ -249,8 +249,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   /** The match clock when the match was decided, so a clock that runs on does not rebuild the report. */
   let decided = { matchId: "", time: "" };
   const stage = el("div", "", "ff-stage");
@@ -424,10 +423,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
           ? { kind: "over", won }
           : { kind: "match", step: view.world?.step ?? 0 },
     );
-    if (view.stage !== "over") {
-      if (results.open) results.hide();
-      shownResult = "";
-    }
+    if (view.stage !== "over") liveResults.clear();
     if (inLobby) {
       const slots = slotsOf(view, runtime.self);
       if (!slots.some((s) => s.slot === picking))
@@ -481,29 +477,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
         host: runtime.creator || runtime.solo,
       },
     );
-    // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-    const key = JSON.stringify([
-      { ...result, host: false, waiting: "" },
-      result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-    ]);
-    const first = !shownResult;
-    if (key !== shownResult) {
-      shownResult = key;
-      results.show(
-        resultReport(result, {
-          color: teamColor,
-          friend: (id) => {
-            const publicId = social.friends.publicIdOfMember(id);
-            return publicId ? social.friends.friendButton(publicId) : undefined;
-          },
-        }),
-      );
-    }
-    results.update(resultBar(result));
-    if (first)
-      results.actions
-        .querySelector<HTMLButtonElement>("button.is-primary")
-        ?.focus();
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: teamColor, friend }),
+      bar: resultBar,
+    });
   }
   function renderLobby(view: Frame<View>, openSettings = false): void {
     const settingsWereOpen =

@@ -127,6 +127,7 @@ import type {
 import { isOpeningChoice } from "./contracts.js";
 import {
   createGameMenu,
+  createLiveResults,
   createResultsScreen,
   createRoundControls,
 } from "fuse-ui";
@@ -343,8 +344,6 @@ export function mountFuseCraft(
   let helpReturn: HTMLElement | null = null;
   // The end-of-match report: which chart it shows.
   let reportMetric: ReportMetric = "territory";
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
   /** The world and players the chart was drawn from, for its metric tabs. */
   let shownReport: {
     world: Readonly<World>;
@@ -416,6 +415,7 @@ export function mountFuseCraft(
       else restart();
     },
   });
+  const liveResults = createLiveResults(results);
   // Smokes and tests find the result by the old card's id.
   results.element.id = "match-result";
   const reportPart = (className: string) => {
@@ -1145,8 +1145,7 @@ export function mountFuseCraft(
     const sidebar = root.querySelector<HTMLElement>("#game-sidebar");
     if (!svg || !sidebar) return;
     if (!world.finished) {
-      if (results.open) results.hide();
-      shownResult = "";
+      liveResults.clear();
       shownReport = null;
     } else {
       const layout = root.querySelector(".game-layout");
@@ -1167,43 +1166,26 @@ export function mountFuseCraft(
         ),
         room: room ? { host: room.manager } : null,
       });
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        world.matchId,
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) =>
-          dependencies.friends?.publicIdOfMember(row.id),
-        ),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        shownReport = { world, players };
-        updateContent(reportFindings, findingsMarkup(world, players, self));
-        updateContent(
-          reportChart,
-          chartPanelMarkup(world, players, reportMetric),
-        );
-        updateContent(reportBreakdown, breakdownMarkup(world, players));
-        results.show(
-          resultReport(result, {
-            friend: (id) => {
-              const publicId = dependencies.friends?.publicIdOfMember(id);
-              return publicId
-                ? dependencies.friends?.friendButton(publicId)
-                : undefined;
-            },
+      liveResults.render(result, {
+        friends: dependencies.friends,
+        revision: world.matchId,
+        report(result, friend) {
+          shownReport = { world, players };
+          updateContent(reportFindings, findingsMarkup(world, players, self));
+          updateContent(
+            reportChart,
+            chartPanelMarkup(world, players, reportMetric),
+          );
+          updateContent(reportBreakdown, breakdownMarkup(world, players));
+          return resultReport(result, {
+            friend,
             findings: [reportFindings],
             chart: [reportChart],
             breakdown: [reportBreakdown],
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus?.();
+          });
+        },
+        bar: resultBar,
+      });
     }
     updateContent(sidebar, sidebarMarkup(world));
     gameMenu.update({

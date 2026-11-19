@@ -45,6 +45,7 @@ import {
   createPageMessage,
   createPhoneLayout,
   createPicker,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -466,8 +467,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   // The HUD draws the party in pixels; the canvas says it in words.
   canvas.setAttribute("role", "img");
   // The pads: an 8-way d-pad a thumb slides on, and ATTACK, JUMP and MAGIC. One set, over the game's corners on a
@@ -853,36 +853,15 @@ function room(solo: boolean): void {
     // What holds the game: the stage flow's card, or the run's end.
     main.dataset.card = next.card?.kind ?? next.result?.kind ?? "";
     const result = next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the run gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: (slot) => SEAT_COLORS[slot % SEAT_COLORS.length]!,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, {
+          color: (slot) => SEAT_COLORS[slot % SEAT_COLORS.length]!,
+          friend,
+        }),
+      bar: resultBar,
+    });
     phase = {
       // Camp is played as a stage is, so its pads and their hints come up as it begins.
       phase: `${view.stage}:${view.round}:${!!view.world?.camp}`,

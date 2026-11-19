@@ -1,5 +1,6 @@
 import {
   createHowToPlay,
+  createLiveResults,
   createResultsScreen,
   createTopBar,
   requestedRoomSlot,
@@ -613,8 +614,7 @@ function room(solo: boolean): void {
     backText: "Leave",
     onAction: (id) => (id === "rematch" ? rematch() : toLobby()),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   screen.append(canvas, roundControls.element);
 
   // A duck button and a jump button, twice: under a phone's own deck, and filling the phone for a shared screen.
@@ -878,36 +878,12 @@ function room(solo: boolean): void {
     controllerResult.hidden = !(next.result && next.result.host);
     // Result: the shared screen, on every device but a phone held as a pad.
     const result = next.result;
-    if (!result || next.screen === "controller") {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: laneColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(next.screen === "controller" ? undefined : result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: laneColor, friend }),
+      bar: resultBar,
+    });
   };
 
   // ---- the runtime ----
