@@ -4,6 +4,7 @@ import {
   PRESENCE,
   SPECTATOR,
   applyManagementTick,
+  createSeatDecoder,
   defaultText,
   isManagementEntry,
   uint32,
@@ -374,17 +375,6 @@ const plain = (raw: unknown): raw is Record<string, unknown> =>
   !!raw && typeof raw === "object" && !Array.isArray(raw);
 const sortedEntries = <T>(record: Record<string, T>): [string, T][] =>
   Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 export function encode(room: Room): unknown[] {
   return [
     room.matchId,
@@ -402,45 +392,12 @@ export function encode(room: Room): unknown[] {
     sortedEntries(room.pendingPressed),
   ];
 }
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
+const decodeSeat = createSeatDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  validName,
+  validAvatar: isAvatar,
+});
 export function decode(
   fields: readonly unknown[],
   tick: number,
