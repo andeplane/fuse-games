@@ -15,6 +15,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -475,11 +476,8 @@ function ownEntries(
   tick: number,
 ): Entry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries
     .filter((entry) => entry[1] === tick)
     .sort((a, b) => a[0] - b[0]);
 }

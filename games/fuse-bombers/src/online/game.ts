@@ -13,6 +13,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   BOT_DIFFICULTIES,
@@ -297,18 +298,13 @@ export function tickInputs(
       ordinal = 0;
     if (seat?.connected && !seat.bot) {
       bits = after[id] ?? 0;
-      const source =
-        stream?.generation === seat.generation
-          ? stream
-          : stream?.retired?.find((old) => old.generation === seat.generation);
+      const entries = entriesForGeneration(stream, seat.generation);
       const mine = (e: Entry): e is PlayEntry | PressEntry =>
         e[2] <= PRESS &&
         e[1] === tick &&
         e[3] === room.matchId &&
         e[4] === room.round;
-      for (const entry of (source?.entries ?? [])
-        .filter(mine)
-        .sort((a, b) => a[0] - b[0]))
+      for (const entry of entries.filter(mine).sort((a, b) => a[0] - b[0]))
         if (entry[2] === PLAY) {
           tapped |= entry[5];
           bits = entry[5];

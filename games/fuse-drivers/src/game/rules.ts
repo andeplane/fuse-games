@@ -14,6 +14,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import { CAPACITY, MAX_ROUNDS, MAX_WATCHERS, validName } from "./basics.js";
 import { BASE_STATS } from "./sim/config.js";
@@ -392,11 +393,8 @@ function seatEntries(
   tick: number,
 ): FuseDriversEntry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? []).filter((entry) => entry[1] === tick);
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries.filter((entry) => entry[1] === tick);
 }
 
 function shop(

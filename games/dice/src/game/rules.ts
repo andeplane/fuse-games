@@ -13,6 +13,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -503,11 +504,8 @@ function playEntries(
   tick: number,
 ): PlayEntry[] {
   const stream = streams.get(seat.id),
-    source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? []).filter(
+    entries = entriesForGeneration(stream, seat.generation);
+  return entries.filter(
     (entry): entry is PlayEntry =>
       entry[1] === tick && (entry[2] === ROLL || entry[2] === HOLD),
   );

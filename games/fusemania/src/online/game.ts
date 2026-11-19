@@ -13,6 +13,7 @@ import {
   type RollbackGame,
   type SeatRecord,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -567,11 +568,8 @@ export function createFusemaniaGame(
     tick: number,
   ): OwnEntry[] {
     const stream = streams.get(seat.id);
-    const source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
-    return (source?.entries ?? [])
+    const entries = entriesForGeneration(stream, seat.generation);
+    return entries
       .filter(
         (entry): entry is OwnEntry =>
           entry[1] === tick &&

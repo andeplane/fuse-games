@@ -15,6 +15,7 @@ import {
   type LifecycleHooks,
   type StreamEntries,
   type RollbackGame,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   createWorld,
@@ -268,13 +269,10 @@ export function foldTick(
     }
     const stream = streams.get(keeper.id),
       generation = keeper.generation;
-    const source =
-      stream?.generation === generation
-        ? stream
-        : stream?.retired?.find((s) => s.generation === generation);
+    const entries = entriesForGeneration(stream, generation);
     const inputs =
       keeper.connected && r.stage === "running"
-        ? (source?.entries ?? [])
+        ? entries
             .filter(
               (
                 e,

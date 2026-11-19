@@ -9,6 +9,7 @@ import {
   type ManagementEntry,
   type SeatRecord,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import { CAPACITY, MAX_WATCHERS, validName, isAvatar } from "./basics.js";
 import {
@@ -170,11 +171,8 @@ export function foldTick(
   for (const seat of seats) {
     if (!seat.connected || seat.bot) continue;
     const current = streams.get(seat.id);
-    const source =
-      current?.generation === seat.generation
-        ? current
-        : current?.retired?.find((s) => s.generation === seat.generation);
-    for (const entry of source?.entries ?? []) {
+    const entries = entriesForGeneration(current, seat.generation);
+    for (const entry of entries) {
       if (
         entry[1] === tick &&
         entry[2] === EDIT &&
