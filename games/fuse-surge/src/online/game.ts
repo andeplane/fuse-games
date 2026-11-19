@@ -1,4 +1,5 @@
 import {
+  hashCheckpointJson,
   applyManagementTick,
   foldHeldInput,
   createRosterDecoder,
@@ -592,21 +593,7 @@ export function decode(
 }
 
 export function hash(room: Room): string {
-  const text = JSON.stringify([room.tick, ...encode(room)], (_key, value) =>
-    plain(value)
-      ? Object.fromEntries(
-          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : (value as unknown),
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson([room.tick, ...encode(room)]);
 }
 
 export function view(room: Room): View {
