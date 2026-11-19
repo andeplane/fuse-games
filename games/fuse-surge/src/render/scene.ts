@@ -11,7 +11,6 @@ import {
   TALL,
   TALL_TOP,
   footholds,
-  secondsLeft,
 } from "../engine/view-kit.js";
 import { createCueWatch, type Cue } from "./cues.js";
 import {
@@ -37,6 +36,13 @@ import {
   laneDeep,
   laneLight,
 } from "./palette.js";
+import {
+  BOARD_WIDTH as W,
+  BOARD_HEIGHT as H,
+  clamp01,
+  createRoundBanner,
+  drawBoard,
+} from "./scoreboard.js";
 
 /**
  * Draws one frame of a Fuse Surge match on a 2D canvas: the deck seen from above and to one side, a lane for each
@@ -77,9 +83,7 @@ export interface Scene {
   destroy(): void;
 }
 
-const W = 960,
-  H = 540,
-  MAX_RATIO = 2;
+const MAX_RATIO = 2;
 /** The deck's front edge (nearest the viewer) and how far up the picture its back edge is. */
 const FRONT_Y = 418,
   DEPTH = 196,
@@ -104,13 +108,6 @@ interface Particle {
   size: number;
   color: string;
 }
-interface Banner {
-  text: string;
-  sub: string;
-  color: string;
-  at: number;
-  ms: number;
-}
 /** What the renderer remembers of a rider between frames: all of it cosmetic. */
 interface Puppet {
   squash: number;
@@ -118,8 +115,6 @@ interface Puppet {
   cheer: number;
   spin: number;
 }
-
-const clamp01 = (value: number) => (value < 0 ? 0 : value > 1 ? 1 : value);
 
 export function createScene(
   canvas: SceneCanvas,
@@ -136,7 +131,7 @@ export function createScene(
   let lastNow = -1;
   let destroyed = false;
   let particles: Particle[] = [];
-  let banner: Banner | undefined;
+  const banner = createRoundBanner(calm, "classic");
   let shake = 0;
   /** How far the rails' lights have run, deck px: they move with the surges, so the speed can be seen. */
   let flow = 0;
@@ -191,31 +186,14 @@ export function createScene(
     if (particles.length > 400) particles.splice(0, particles.length - 400);
   };
 
-  const say = (
-    text: string,
-    sub: string,
-    color: string,
-    now: number,
-    ms: number,
-  ) => {
-    banner = { text, sub, color, at: now, ms };
-  };
-
   // ---- cues: what just happened, as effects ----
-  const react = (
-    cues: readonly Cue[],
-    view: WorldView,
-    now: number,
-    names: readonly string[],
-  ) => {
+  const react = (cues: readonly Cue[], view: WorldView) => {
     const lanes = view.riders.length;
     const at = (slot: number) => {
       const rider = view.riders[slot]!,
         y = laneY(slot, lanes);
       return { x: sx(rider.x, y), y: y - Math.max(0, rider.y) * Y_SCALE };
     };
-    const label = (slot: number) =>
-      (names[slot] || `RIDER ${slot + 1}`).toUpperCase();
     for (const cue of cues)
       switch (cue.kind) {
         case "land": {
@@ -243,36 +221,9 @@ export function createScene(
         case "dodge":
           if (cue.streak > 0) puppet(cue.slot).cheer = 0.4;
           break;
-        case "count":
-          if (cue.seconds > 0)
-            say(String(cue.seconds), `ROUND ${view.round}`, TEXT, now, 900);
-          break;
-        case "go":
-          say("GO!", "", GATE, now, 700);
-          break;
-        case "round": {
+        case "round":
           for (const slot of cue.winners) puppet(slot).cheer = 1;
-          const who = cue.winners.map(label);
-          if (cue.reason === "time")
-            say("TIME!", `${who.join(" · ")} DRAW THE ROUND`, TEXT, now, 2600);
-          else if (cue.reason === "wipe")
-            say(
-              "DOUBLE KO",
-              `${who.join(" · ")} DRAW THE ROUND`,
-              DANGER,
-              now,
-              2600,
-            );
-          else if (cue.winners.length === 1)
-            say(
-              who[0]!,
-              "LAST ONE STANDING",
-              laneColor(cue.winners[0]!),
-              now,
-              2600,
-            );
           break;
-        }
         case "over":
           for (const slot of cue.winners) {
             puppet(slot).cheer = 1;
@@ -725,119 +676,14 @@ export function createScene(
     }
   };
 
-  // ---- the board: the clock, the speed, and a card for every rider ----
-  const board = (
-    c: CanvasRenderingContext2D,
-    view: WorldView,
-    now: number,
-    local: number,
-    names: readonly string[],
-  ) => {
-    // An endless round has no clock to run out: it shows how long it has lasted.
-    const seconds = view.endless
-      ? Math.floor(view.elapsed / STEPS_PER_SECOND)
-      : secondsLeft(view.clock);
-    const urgent = view.phase === "play" && !view.endless && seconds <= 10;
-    c.textAlign = "center";
-    c.font = `28px ${PIXEL_FONT}`;
-    c.fillStyle = urgent ? hexA(DANGER, 0.7 + 0.3 * Math.sin(now / 90)) : TEXT;
-    const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-    c.fillText(clock, W / 2, 46);
-    c.font = `9px ${PIXEL_FONT}`;
-    c.fillStyle = TEXT_DIM;
-    c.fillText(
-      view.target > 1
-        ? `ROUND ${view.round} · FIRST TO ${view.target}`
-        : `ROUND ${view.round}`,
-      W / 2,
-      66,
-    );
-    // The surge speed, as a bar that fills and a multiple of where the round began.
-    const times = view.speedStart > 0 ? view.speed / view.speedStart : 1;
-    const fill = clamp01((times - 1) / 2);
-    c.textAlign = "right";
-    c.fillStyle = TEXT_DIM;
-    c.fillText("SURGE SPEED", W - 24, 30);
-    c.fillStyle = hexA(DECK_LINE, 0.7);
-    c.fillRect(W - 164, 38, 140, 10);
-    c.fillStyle = fill > 0.66 ? DANGER : fill > 0.33 ? "#ffb347" : GATE;
-    c.fillRect(W - 164, 38, Math.round(140 * Math.max(0.04, fill)), 10);
-    c.fillStyle = TEXT;
-    c.fillText(`x${times.toFixed(1)}`, W - 24, 64);
-    // A legend, so the two colours never need guessing.
-    c.textAlign = "left";
-    c.fillStyle = SURGE_LOW;
-    c.fillRect(24, 22, 14, 8);
-    c.fillStyle = TEXT_DIM;
-    c.fillText("LOW: JUMP", 46, 30);
-    c.fillStyle = SURGE_HIGH;
-    c.fillRect(24, 40, 14, 8);
-    c.fillStyle = TEXT_DIM;
-    c.fillText("HIGH: DUCK", 46, 48);
-    if (view.tall) {
-      c.fillStyle = SURGE_TALL;
-      c.fillRect(24, 58, 14, 8);
-      c.fillStyle = TEXT_DIM;
-      c.fillText("TALL: DOUBLE JUMP", 46, 66);
-    }
-    if (view.tallSoon && Math.floor(now / 160) % 2 === 0) {
-      c.textAlign = "right";
-      c.fillStyle = SURGE_TALL;
-      c.fillText("TALL NEXT: DOUBLE JUMP", W - 24, 84);
-      c.textAlign = "left";
-    }
-    // The cards.
-    const count = view.riders.length,
-      width = Math.min(176, (W - 48 - (count - 1) * 10) / count),
-      left = (W - (count * width + (count - 1) * 10)) / 2,
-      topY = 470;
-    for (const each of view.riders) {
-      const x = left + each.slot * (width + 10);
-      c.fillStyle = hexA(INK, 0.78);
-      c.fillRect(x, topY, width, 56);
-      c.fillStyle = hexA(laneColor(each.slot), each.out ? 0.35 : 1);
-      c.fillRect(x, topY, 5, 56);
-      if (each.slot === local) {
-        c.strokeStyle = hexA(WHITE, 0.8);
-        c.lineWidth = 2;
-        c.strokeRect(x + 1, topY + 1, width - 2, 54);
-      }
-      c.textAlign = "left";
-      c.font = `9px ${PIXEL_FONT}`;
-      c.fillStyle = each.out ? TEXT_DIM : TEXT;
-      const name = (names[each.slot] || `RIDER ${each.slot + 1}`).toUpperCase();
-      c.fillText(
-        name.length > 12 ? `${name.slice(0, 11)}…` : name,
-        x + 14,
-        topY + 18,
-      );
-      // Round wins, of the target.
-      for (let i = 0; i < view.target; i++) {
-        c.fillStyle = i < each.wins ? "#ffe46b" : hexA(TEXT_DIM, 0.35);
-        c.fillRect(x + 14 + i * 12, topY + 26, 9, 9);
-      }
-      // Hits it can still take.
-      if (each.out) {
-        c.fillStyle = DANGER;
-        c.fillText("OUT", x + 14, topY + 50);
-      } else {
-        const left = view.maxHits - each.hits,
-          size = view.maxHits > 6 ? 7 : 10;
-        for (let i = 0; i < view.maxHits; i++) {
-          c.fillStyle = i < left ? laneColor(each.slot) : hexA(DANGER, 0.3);
-          c.fillRect(x + 14 + i * (size + 3), topY + 41, size, 6);
-        }
-      }
-    }
-  };
-
   const draw: Scene["draw"] = (view, nowMs, local, names = []) => {
     if (destroyed || !g) return [];
     if (box.w !== canvas.clientWidth || box.h !== canvas.clientHeight) resize();
     const dtMs = lastNow < 0 ? 0 : Math.min(100, Math.max(0, nowMs - lastNow));
     lastNow = nowMs;
     const cues = watch(view);
-    react(cues, view, nowMs, names);
+    react(cues, view);
+    banner.react(cues, view.round, nowMs, names, GATE);
     flow += view.speed * (dtMs / 1000) * STEPS_PER_SECOND;
 
     const scale = Math.min(canvas.width / W, canvas.height / H);
@@ -898,26 +744,8 @@ export function createScene(
         : p.color;
       g.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
     }
-    board(g, view, nowMs, local, names);
-    if (banner) {
-      const age = nowMs - banner.at;
-      if (age > banner.ms) banner = undefined;
-      else {
-        const pop = calm ? 1 : 1 + 0.5 * Math.max(0, 1 - age / 160);
-        const alpha = clamp01((banner.ms - age) / 250);
-        g.textAlign = "center";
-        g.font = `${Math.round((banner.text.length > 9 ? 34 : 56) * pop)}px ${PIXEL_FONT}`;
-        g.fillStyle = hexA(INK, 0.7 * alpha);
-        g.fillText(banner.text, W / 2 + 4, 170 + 4);
-        g.fillStyle = hexA(banner.color, alpha);
-        g.fillText(banner.text, W / 2, 170);
-        if (banner.sub) {
-          g.font = `12px ${PIXEL_FONT}`;
-          g.fillStyle = hexA(TEXT, alpha);
-          g.fillText(banner.sub, W / 2, 202);
-        }
-      }
-    }
+    drawBoard(g, view, nowMs, local, names);
+    banner.draw(g, nowMs);
     g.restore();
     return cues;
   };
