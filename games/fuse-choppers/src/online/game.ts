@@ -4,6 +4,7 @@ import {
   PRESENCE,
   SPECTATOR,
   applyManagementTick,
+  foldHeldInput,
   createSeatDecoder,
   defaultText,
   isManagementEntry,
@@ -263,29 +264,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick, match and round, from the stream generation its controls follow. */
-function playEntries(
-  room: Room,
-  seat: SeatRecord,
-  streams: ReadonlyMap<string, StreamEntries<Entry>>,
-  tick: number,
-): PlayEntry[] {
-  const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
-    .filter(
-      (entry): entry is PlayEntry =>
-        entry[1] === tick &&
-        entry[2] === PLAY &&
-        entry[3] === room.matchId &&
-        entry[4] === room.round,
-    )
-    .sort((a, b) => a[0] - b[0]);
-}
-
 function leader(room: Room): string {
   const last = (id: string) => {
     for (let i = room.results.length - 1; i >= 0; i--) {
@@ -394,23 +372,15 @@ export function foldTick(
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
   const world = room.world;
   if (room.stage === "running" && world) {
+    const input = foldHeldInput(room, streams, tick, (entry) =>
+      entry[2] === PLAY && entry[3] === room.matchId && entry[4] === room.round
+        ? entry[5] & INPUT_MASK
+        : undefined,
+    );
     const held = new Map<string, number>(),
       first = new Map<string, number>();
     for (const chopper of world.choppers) {
-      const seat = room.seats.get(chopper.id);
-      let bits = 0,
-        tapped = 0;
-      if (seat?.bot) bits = botInput(world, chopper);
-      else if (seat?.connected) {
-        bits = room.held[chopper.id] ?? 0;
-        for (const entry of playEntries(room, seat, streams, tick)) {
-          tapped |= entry[5] & INPUT_MASK;
-          bits = entry[5] & INPUT_MASK;
-        }
-      }
-      // Only what a seat logged is held: a bot answers afresh every tick.
-      if (bits && !seat?.bot) room.held[chopper.id] = bits;
-      else delete room.held[chopper.id];
+      const [bits, tapped] = input(chopper.id, () => botInput(world, chopper));
       held.set(chopper.id, bits);
       first.set(chopper.id, bits | tapped);
     }
