@@ -1,0 +1,24 @@
+{
+  "name": "cyberfuse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Squad-based C-Dogs campaign missions and dogfights with high-resolution Fuse graphics.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "exports": {
+    ".": "./src/game/index.ts",
+    "./platform": "./src/platform.ts"
+  },
+  "dependencies": {
+    "fuse-netcode": "workspace:*",
+    "fuse-platform": "workspace:*"
+  },
+  "devDependencies": {
+    "@fontsource/press-start-2p": "^5.3.0",
+    "fuse-network-fe": "workspace:*",
+    "fuse-ui": "workspace:*",
+    "qrcode": "^1.5.4"
+  }
+}

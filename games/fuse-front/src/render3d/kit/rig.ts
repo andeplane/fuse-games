@@ -13,6 +13,9 @@ import { labelAspect, labelUv, type Label } from "./decals.js";
 export type Detail = "near" | "far";
 export type V3 = readonly [number, number, number];
 const O: V3 = [0, 0, 0];
+type CylinderSpec = { height: number; segments?: number } & (
+  { radius: number } | { topRadius: number; bottomRadius: number }
+);
 /** A part whose bounding radius (tiles, as drawn) is under this is left out of the far model. */
 export const FAR_MIN = 0.022;
 
@@ -41,8 +44,13 @@ export class Rig {
     // Far away bare metal and gunmetal read as the dark frame: two draw calls fewer.
     const as =
       this.far && (paint === "steel" || paint === "gun") ? "dark" : paint;
-    if (this.far && g.boundingSphere!.radius < FAR_MIN) g.dispose();
-    else this.parts.set(as, [...(this.parts.get(as) ?? []), g]);
+    if (this.far && g.boundingSphere!.radius < FAR_MIN) {
+      g.dispose();
+      return this;
+    }
+    const batch = this.parts.get(as);
+    if (batch) batch.push(g);
+    else this.parts.set(as, [g]);
     return this;
   }
 
@@ -51,6 +59,11 @@ export class Rig {
     const scale: V3 = typeof s === "number" ? [s, s, s] : s;
     return new Rig(this.detail, this.parts, this.frame.clone().multiply(local(p, r, scale)));
   } // prettier-ignore
+
+  /** A child frame scaled about this frame's origin. */
+  scaled(scale: number): Rig {
+    return this.sub(O, O, scale);
+  }
 
   /** Mirrored left (−1) and right (+1). */
   pair(make: (side: number) => void): this {
@@ -65,9 +78,19 @@ export class Rig {
     return this.far || round < 0.012 ? new THREE.BoxGeometry(w, h, d) : new RoundedBoxGeometry(w, h, d, seg, round);
   } // prettier-ignore
 
-  /** A cylinder along y, coarser far away. */
-  cyl(top: number, bottom: number, h: number, seg = 12): THREE.BufferGeometry {
-    return new THREE.CylinderGeometry(top, bottom, h, this.far ? 6 : seg);
+  /** A straight or tapered cylinder along y, coarser far away. */
+  cylinder(spec: CylinderSpec): THREE.BufferGeometry {
+    const { height, segments = 12 } = spec;
+    const [top, bottom] =
+      "radius" in spec
+        ? [spec.radius, spec.radius]
+        : [spec.topRadius, spec.bottomRadius];
+    return new THREE.CylinderGeometry(
+      top,
+      bottom,
+      height,
+      this.far ? 6 : segments,
+    );
   }
 
   sphere(r: number, sy = 1): THREE.BufferGeometry {
@@ -100,7 +123,7 @@ export class Rig {
   /** A strut from `a` to `b`, `w` thick: a box, or a rod when `round`. */
   beam(a: V3, b: V3, w: number, round = false): THREE.BufferGeometry {
     const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), len = A.distanceTo(B);
-    const g = round ? this.cyl(w / 2, w / 2, len, 8) : this.box(w, len, w, 0.015);
+    const g = round ? this.cylinder({ radius: w / 2, height: len, segments: 8 }) : this.box(w, len, w, 0.015);
     g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()));
     return g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
   } // prettier-ignore

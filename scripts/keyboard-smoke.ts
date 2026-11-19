@@ -1,9 +1,8 @@
-import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
+import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { smokeTimeout } from "./smoke-timeout.js";
 import { openTopMenu } from "./lib/top-menu.js";
 const base = process.env.HOME_URL ?? "http://127.0.0.1:4188/";
 interface Snapshot {
@@ -53,12 +52,14 @@ const identity = {
   base,
 };
 for (const { name, kind } of BOTH_ENGINES) {
-  const browser = await launchBrowser(kind, { headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(smokeTimeout(15000));
+  await using browser = await launchBrowser(kind, { headless: true });
+  const page = await newSmokePage(
+    browser,
+    {
+      viewport: { width: 1280, height: 900 },
+    },
+    15000,
+  );
   const errors: string[] = [],
     snapshots: Snapshot[] = [],
     inputs: Array<InputSample & { snapshotTick?: number }> = [];
@@ -211,7 +212,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     }
   };
   try {
-    await page.goto(new URL("?solo=1&benchmark=1", base).href);
+    await page.goto(new URL("?solo=1&benchmark=1&mute", base).href);
     await page.waitForFunction(() =>
       document.querySelector("canvas")?.dataset.renderer?.startsWith("phaser-"),
     );
@@ -312,7 +313,6 @@ for (const { name, kind } of BOTH_ENGINES) {
     });
     throw error;
   } finally {
-    await browser.close();
     await writeFile(
       "artifacts/keyboard-smoke.json",
       JSON.stringify({ identity, results }, null, 2),

@@ -29,6 +29,7 @@ import {
   createInviteCard,
   createNameEntry,
   createMainMenu,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -403,8 +404,7 @@ function room(
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   const cameraBar = el("div", "", "birds-camera"),
     zoomIn = button("+"),
     zoomOut = button("−"),
@@ -859,36 +859,15 @@ function room(
             bots: new Set(frame.seats.filter((s) => s.bot).map((s) => s.id)),
           })
         : null;
-      if (!result) {
-        if (results.open) results.hide();
-        shownResult = "";
-      } else {
-        // The bar's own fields do not rebuild the report; an account that turns up after the battle gets its button.
-        const shown = JSON.stringify([
-          { ...result, host: false, waiting: "" },
-          result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-        ]);
-        const first = !shownResult;
-        if (shown !== shownResult) {
-          shownResult = shown;
-          results.show(
-            resultReport(result, {
-              color: (slot) => COLORS[slot] ?? "#ffffff",
-              friend: (id) => {
-                const publicId = social.friends.publicIdOfMember(id);
-                return publicId
-                  ? social.friends.friendButton(publicId)
-                  : undefined;
-              },
-            }),
-          );
-        }
-        results.update(resultBar(result));
-        if (first)
-          results.actions
-            .querySelector<HTMLButtonElement>("button.is-primary")
-            ?.focus();
-      }
+      liveResults.render(result, {
+        friends: social.friends,
+        report: (result, friend) =>
+          resultReport(result, {
+            color: (slot) => COLORS[slot] ?? "#ffffff",
+            friend,
+          }),
+        bar: resultBar,
+      });
       if (!view) {
         cancel();
         return;

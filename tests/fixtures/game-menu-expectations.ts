@@ -14,6 +14,7 @@ const radioAndEffects: GameMenu = {
 };
 export const gameMenus: Readonly<Record<string, GameMenu>> = {
   "ball-bros": sharedRadio,
+  cyberfuse: radioAndEffects,
   dice: sharedRadio,
   "elasto-fuse": radioAndEffects,
   "fuse-axe": sharedRadio,

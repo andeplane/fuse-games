@@ -13,11 +13,10 @@ import {
 } from "../src/app/controls.js";
 import {
   GamepadInput,
-  STICK_DEAD_ZONE,
   browserGamepads,
-  gamepadBits,
   type GamepadLike,
-} from "../src/app/gamepad.js";
+} from "fuse-ui/gamepad";
+import { STICK_DEAD_ZONE, gamepadBits } from "../src/app/gamepad.js";
 import { fresh } from "./fixtures/world.js";
 
 function recorder() {
@@ -210,7 +209,7 @@ test("a gamepad's stick, d-pad and face buttons map to run and jump", () => {
 test("the last pad pressed drives, and a pad held through a pause reads neutral until released", () => {
   let pads: (GamepadLike | null)[] = [pad(0, [0.2]), pad(1, [0])];
   const held: number[] = [];
-  const input = new GamepadInput({ pads: () => pads }, (bits) =>
+  const input = new GamepadInput({ pads: () => pads }, gamepadBits, (bits) =>
     held.push(bits),
   );
   input.poll();

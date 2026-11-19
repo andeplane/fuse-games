@@ -6,6 +6,7 @@ import {
   STANDARD_PAD,
   type PadSnapshot,
 } from "../src/client/controller-gamepad.js";
+import { MAX_PLAYERS } from "../src/engine/tuning.js";
 import { LOCAL_KEYBOARD_PRESETS } from "../src/client/controller-keyboard.js";
 
 const pad = (
@@ -119,14 +120,14 @@ test("setup detects multiple pads, retains names and returns fixed assignments p
   assert.equal(f.cancelled(), 1);
 });
 test("capacity, blank names and disconnected pads cannot start an invalid roster", () => {
-  const pads = Array.from({ length: 7 }, (_, i) => pad(i));
+  const pads = Array.from({ length: MAX_PLAYERS + 1 }, (_, i) => pad(i));
   const f = setup(pads);
-  assert.equal(f.input("Use controller 7").checked, false);
-  f.input("Use controller 7").checked = true;
+  assert.equal(f.input(`Use controller ${MAX_PLAYERS + 1}`).checked, false);
+  f.input(`Use controller ${MAX_PLAYERS + 1}`).checked = true;
   f.tick();
   assert.equal(f.button("START LOCAL GAME").disabled, true);
-  assert.match(f.app.textContent!, /at most six/);
-  f.input("Use controller 7").checked = false;
+  assert.match(f.app.textContent!, /at most eight/);
+  f.input(`Use controller ${MAX_PLAYERS + 1}`).checked = false;
   f.input("Controller 1 player name").value = " ";
   f.tick();
   assert.equal(f.button("START LOCAL GAME").disabled, true);

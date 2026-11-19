@@ -1,6 +1,6 @@
 import { openPlayOptions } from "./lib/main-menu.js";
 import type { Page, Locator, Browser } from "playwright";
-import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
+import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
 import { POWERUP_GUIDE } from "../games/fuse-riders/src/client/powerup-guide.js"; // count the guide against its source, not a literal that rots with the next pickup
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -50,11 +50,13 @@ async function frames(page: Page) {
   );
 }
 async function rapidNavigation(browser: Browser, browserName: string) {
-  const context = await browser.newContext({
+  await using page = await newSmokePage(
+    browser,
+    {
       viewport: { width: 320, height: 568 },
-    }),
-    page = await context.newPage();
-  page.setDefaultTimeout(smokeTimeout(20000));
+    },
+    20000,
+  );
   const errors: string[] = [];
   let delayed = 0,
     cancelled = 0;
@@ -109,419 +111,394 @@ async function rapidNavigation(browser: Browser, browserName: string) {
     });
     throw error;
   } finally {
-    await context.close();
     await writeFile(
       "artifacts/home-mobile-smoke.json",
       JSON.stringify(results, null, 2),
     );
   }
 }
-for (const { name: browserName, kind } of BOTH_ENGINES) {
-  const browser = await launchBrowser(kind, { headless: true });
+async function checkViewport(
+  browser: Browser,
+  browserName: string,
+  viewport: { width: number; height: number },
+) {
+  await using page = await newSmokePage(
+    browser,
+    {
+      viewport,
+      isMobile: true,
+      hasTouch: true,
+    },
+    20000,
+  );
+  const errors: string[] = [],
+    api: string[] = [];
+  let sockets = 0,
+    rtcTotal = 0;
+  page.on("pageerror", (e) => {
+    if (!/access control checks/.test(e.message))
+      errors.push(e.stack ?? e.message);
+  });
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname.startsWith("/api/"))
+      api.push(new URL(r.url()).pathname);
+  });
+  page.on("websocket", () => sockets++);
+  await page.addInitScript("window.__name = value => value");
+  await page.exposeFunction("recordRtcConstruction", () => {
+    rtcTotal++;
+  });
+  await page.addInitScript(() => {
+    let rtc = 0;
+    const original = window.RTCPeerConnection;
+    window.RTCPeerConnection = new Proxy(original, {
+      construct(target, args) {
+        rtc++;
+        void Reflect.get(window, "recordRtcConstruction")();
+        return Reflect.construct(target, args);
+      },
+    });
+    Object.defineProperty(window, "__rtcCount", { get: () => rtc });
+  });
+  const tag = `${browserName}-${viewport.width}x${viewport.height}`;
   try {
-    for (const viewport of [
-      { width: 320, height: 568 },
-      { width: 390, height: 844 },
-      { width: 844, height: 390 },
-    ]) {
-      const context = await browser.newContext({
-        viewport,
-        isMobile: true,
-        hasTouch: true,
-      });
-      const page = await context.newPage();
-      page.setDefaultTimeout(smokeTimeout(20000));
-      const errors: string[] = [],
-        api: string[] = [];
-      let sockets = 0,
-        rtcTotal = 0;
-      page.on("pageerror", (e) => {
-        if (!/access control checks/.test(e.message))
-          errors.push(e.stack ?? e.message);
-      });
-      page.on("request", (r) => {
-        if (new URL(r.url()).pathname.startsWith("/api/"))
-          api.push(new URL(r.url()).pathname);
-      });
-      page.on("websocket", () => sockets++);
-      await page.addInitScript("window.__name = value => value");
-      await page.exposeFunction("recordRtcConstruction", () => {
-        rtcTotal++;
-      });
-      await page.addInitScript(() => {
-        let rtc = 0;
-        const original = window.RTCPeerConnection;
-        window.RTCPeerConnection = new Proxy(original, {
-          construct(target, args) {
-            rtc++;
-            void Reflect.get(window, "recordRtcConstruction")();
-            return Reflect.construct(target, args);
-          },
-        });
-        Object.defineProperty(window, "__rtcCount", { get: () => rtc });
-      });
-      const tag = `${browserName}-${viewport.width}x${viewport.height}`;
-      try {
-        await page.goto(base);
-        await ready(page);
-        await page.waitForFunction(
-          () =>
-            Number(
-              document
-                .querySelector(".fui-main-menu")
-                ?.getAttribute("data-attract-tick"),
-            ) > 2,
-        );
-        assert.ok(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= innerWidth + 1,
+    await page.goto(base);
+    await ready(page);
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector(".fui-main-menu")
+            ?.getAttribute("data-attract-tick"),
+        ) > 2,
+    );
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      "landing horizontal overflow",
+    );
+    // The landing clips overflow, so a crowded top bar hides controls instead of scrolling: each must be fully on screen.
+    for (const control of [
+      ".landing-brand",
+      ".landing-top .fui-top-bar-sound",
+      ".landing-top .fui-top-bar-account",
+      ".landing-top .fui-top-bar-toggle",
+    ])
+      await inside(page, page.locator(control));
+    await page
+      .getByRole("button", { name: "How to play", exact: true })
+      .click();
+    const guide = page.getByRole("region", { name: "POWER-UPS" });
+    assert.equal(
+      await guide.getByRole("listitem").count(),
+      POWERUP_GUIDE.length,
+      "power-up guide lists every pickup",
+    );
+    await guide.getByText("blocks one crash", { exact: false }).waitFor(); // the landing guide is the only place descriptions render; the TV legend is names alone
+    await guide.getByText("STAR", { exact: true }).scrollIntoViewIfNeeded();
+    await page.waitForFunction(
+      () =>
+        [
+          ...document.querySelectorAll<HTMLImageElement>(
+            ".landing-powerups img",
           ),
-          "landing horizontal overflow",
-        );
-        // The landing clips overflow, so a crowded top bar hides controls instead of scrolling: each must be fully on screen.
-        for (const control of [
-          ".landing-brand",
-          ".landing-top .fui-top-bar-sound",
-          ".landing-top .fui-top-bar-account",
-          ".landing-top .fui-top-bar-toggle",
-        ])
-          await inside(page, page.locator(control));
+        ].every((image) => image.complete && image.naturalWidth > 0),
+      undefined,
+      { timeout: smokeTimeout(10000) },
+    );
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.getByRole("button", { name: /PAUSE BACKGROUND/i }).click();
+    await frames(page);
+    const paused = await page
+      .locator(".fui-main-menu")
+      .getAttribute("data-attract-tick");
+    await frames(page);
+    assert.equal(
+      await page.locator(".fui-main-menu").getAttribute("data-attract-tick"),
+      paused,
+    );
+    await page.getByRole("button", { name: /PLAY BACKGROUND/i }).click();
+    await page.waitForFunction(
+      (t) =>
+        document
+          .querySelector(".fui-main-menu")
+          ?.getAttribute("data-attract-tick") !== t,
+      paused,
+    );
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: /PLAY BACKGROUND/i }).waitFor();
+    await frames(page);
+    const reduced = await page
+      .locator(".fui-main-menu")
+      .getAttribute("data-attract-tick");
+    await frames(page);
+    assert.equal(
+      await page.locator(".fui-main-menu").getAttribute("data-attract-tick"),
+      reduced,
+    );
+    await page.screenshot({ path: `artifacts/home-${tag}.png` });
+    await openPlayOptions(page);
+    await page
+      .getByRole("button", { name: "Single player", exact: true })
+      .click();
+    await page
+      .locator(".online-roster")
+      .getByText("You", { exact: false })
+      .waitFor({ state: "attached" });
+    assert.equal(await page.locator(".online-roster>span").count(), 6);
+    assert.equal(
+      await page
+        .getByRole("button", { name: /Remove AI/, includeHidden: true })
+        .count(),
+      5,
+    );
+    await page.locator(".online-controls").waitFor({ state: "visible" });
+    await ready(page);
+    const powerHud = page.locator(".online-power-status");
+    await powerHud.waitFor({ state: "visible" });
+    assert.match(await powerHud.innerText(), /^◆ \d+$/);
+    await inside(page, powerHud);
+    await page.screenshot({ path: `artifacts/power-${tag}.png` });
+    // Avoid spontaneous end-of-match recaps while reviewing modal layouts.
+    if (await page.locator(".mobile-tools-toggle").isVisible())
+      await page.locator(".mobile-tools-toggle").click();
+    await page
+      .getByRole("button", { name: "BACK TO LOBBY", exact: true })
+      .click();
+    await powerHud.waitFor({ state: "hidden" });
+    for (const name of ["Room settings", "Player options", "AVATAR", "EXIT"]) {
+      // SETTINGS and EXIT are the bar's; on a short viewport the bar is one ☰. ROOM SETTINGS and AVATAR are the
+      // lobby's own, and the sheet would cover them, so it stays shut for those.
+      if (name === "Player options" || name === "EXIT") await openTopMenu(page);
+      await page.getByRole("button", { name, exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.waitFor({ state: "visible" });
+      await inside(page, dialog);
+      assert.ok(
         await page
-          .getByRole("button", { name: "How to play", exact: true })
-          .click();
-        const guide = page.getByRole("region", { name: "POWER-UPS" });
+          .locator("dialog[open] :is(.dialog-body,.fui-dialog-body):visible")
+          .evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
+        "dialog body horizontal overflow",
+      );
+      if (name === "Room settings") {
         assert.equal(
-          await guide.getByRole("listitem").count(),
-          POWERUP_GUIDE.length,
-          "power-up guide lists every pickup",
-        );
-        await guide.getByText("blocks one crash", { exact: false }).waitFor(); // the landing guide is the only place descriptions render; the TV legend is names alone
-        await guide.getByText("STAR", { exact: true }).scrollIntoViewIfNeeded();
-        await page.waitForFunction(
-          () =>
-            [
-              ...document.querySelectorAll<HTMLImageElement>(
-                ".landing-powerups img",
-              ),
-            ].every((image) => image.complete && image.naturalWidth > 0),
-          undefined,
-          { timeout: smokeTimeout(10000) },
-        );
-        await page.keyboard.press("Escape");
-        await page.evaluate(() => scrollTo(0, 0));
-        await page.getByRole("button", { name: /PAUSE BACKGROUND/i }).click();
-        await frames(page);
-        const paused = await page
-          .locator(".fui-main-menu")
-          .getAttribute("data-attract-tick");
-        await frames(page);
-        assert.equal(
-          await page
-            .locator(".fui-main-menu")
-            .getAttribute("data-attract-tick"),
-          paused,
-        );
-        await page.getByRole("button", { name: /PLAY BACKGROUND/i }).click();
-        await page.waitForFunction(
-          (t) =>
-            document
-              .querySelector(".fui-main-menu")
-              ?.getAttribute("data-attract-tick") !== t,
-          paused,
-        );
-        await page.emulateMedia({ reducedMotion: "reduce" });
-        await page.getByRole("button", { name: /PLAY BACKGROUND/i }).waitFor();
-        await frames(page);
-        const reduced = await page
-          .locator(".fui-main-menu")
-          .getAttribute("data-attract-tick");
-        await frames(page);
-        assert.equal(
-          await page
-            .locator(".fui-main-menu")
-            .getAttribute("data-attract-tick"),
-          reduced,
-        );
-        await page.screenshot({ path: `artifacts/home-${tag}.png` });
-        await openPlayOptions(page);
-        await page
-          .getByRole("button", { name: "Single player", exact: true })
-          .click();
-        await page
-          .locator(".online-roster")
-          .getByText("You", { exact: false })
-          .waitFor({ state: "attached" });
-        assert.equal(await page.locator(".online-roster>span").count(), 6);
-        assert.equal(
-          await page
-            .getByRole("button", { name: /Remove AI/, includeHidden: true })
-            .count(),
-          5,
-        );
-        await page.locator(".online-controls").waitFor({ state: "visible" });
-        await ready(page);
-        const powerHud = page.locator(".online-power-status");
-        await powerHud.waitFor({ state: "visible" });
-        assert.match(await powerHud.innerText(), /^◆ \d+$/);
-        await inside(page, powerHud);
-        await page.screenshot({ path: `artifacts/power-${tag}.png` });
-        // Avoid spontaneous end-of-match recaps while reviewing modal layouts.
-        if (await page.locator(".mobile-tools-toggle").isVisible())
-          await page.locator(".mobile-tools-toggle").click();
-        await page
-          .getByRole("button", { name: "BACK TO LOBBY", exact: true })
-          .click();
-        await powerHud.waitFor({ state: "hidden" });
-        for (const name of [
-          "Room settings",
-          "Player options",
-          "AVATAR",
-          "EXIT",
-        ]) {
-          // SETTINGS and EXIT are the bar's; on a short viewport the bar is one ☰. ROOM SETTINGS and AVATAR are the
-          // lobby's own, and the sheet would cover them, so it stays shut for those.
-          if (name === "Player options" || name === "EXIT")
-            await openTopMenu(page);
-          await page.getByRole("button", { name, exact: true }).click();
-          const dialog = page.getByRole("dialog");
-          await dialog.waitFor({ state: "visible" });
-          await inside(page, dialog);
-          assert.ok(
-            await page
-              .locator(
-                "dialog[open] :is(.dialog-body,.fui-dialog-body):visible",
-              )
-              .evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
-            "dialog body horizontal overflow",
-          );
-          if (name === "Room settings") {
-            assert.equal(
-              await dialog.locator("select").count(),
-              0,
-              "room settings use styled choices",
-            );
-            assert.equal(
-              await dialog.getByText("Power", { exact: true }).count(),
-              0,
-              "powerups belong in submenu",
-            );
-            await page.getByLabel("Match length").fill("7");
-            const aim = page.getByLabel("Bomb aim time (seconds)");
-            assert.equal(await aim.inputValue(), "0.4");
-            await inside(page, aim);
-            await aim.fill("1.2");
-            await page
-              .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
-              .click();
-            const power = dialog
-              .locator("label")
-              .filter({ hasText: "Power" })
-              .locator("input");
-            await power.fill("42");
-            const roomSettingsBack = dialog.getByRole("button", {
-              name: "Room settings",
-              exact: true,
-            });
-            await inside(page, roomSettingsBack);
-            await roomSettingsBack.click();
-            assert.equal(
-              await page.getByLabel("Match length").inputValue(),
-              "7",
-              "draft survives submenu navigation",
-            );
-            assert.equal(
-              await aim.inputValue(),
-              "1.2",
-              "aim time survives submenu navigation",
-            );
-            await page
-              .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
-              .click();
-            assert.equal(await power.inputValue(), "42");
-            await dialog
-              .getByRole("button", {
-                name: "Room settings",
-                exact: true,
-              })
-              .click();
-            // Settings save on every change, so an invalid value shows its alert at once and leaves storage alone.
-            const stored = () =>
-              page.evaluate(() =>
-                JSON.parse(
-                  localStorage.getItem("fuse-riders-room-settings-v2")!,
-                ),
-              );
-            await page.getByLabel("Match length").fill("0");
-            await dialog
-              .getByRole("alert")
-              .getByText("Choose a match length from 1 to 20.")
-              .waitFor();
-            assert.equal(
-              (await stored()).length,
-              7,
-              "match length 0 is not saved",
-            );
-            await page.getByLabel("Match length").fill("7");
-            await dialog
-              .getByRole("alert")
-              .getByText("Choose", { exact: false })
-              .waitFor({ state: "hidden" });
-            for (const invalid of ["0", "2.05", "0.125"]) {
-              await aim.fill(invalid);
-              await dialog
-                .getByRole("alert")
-                .getByText(
-                  "Choose a bomb aim time from 0.1 to 2 seconds in steps of 0.05.",
-                )
-                .waitFor();
-            }
-            // Off-grid text must survive the powerups submenu and still be rejected, not silently rounded and saved.
-            await aim.fill("0.37");
-            await page
-              .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
-              .click();
-            await roomSettingsBack.click();
-            assert.equal(
-              await aim.inputValue(),
-              "0.37",
-              "off-grid aim text survives submenu navigation",
-            );
-            // A change on the main page while the aim text is off-grid is rejected too, not rounded and saved.
-            await page.getByLabel("Match length").fill("7");
-            await dialog
-              .getByRole("alert")
-              .getByText(
-                "Choose a bomb aim time from 0.1 to 2 seconds in steps of 0.05.",
-              )
-              .waitFor();
-            assert.equal(
-              (await stored()).bombChargeTicks,
-              24,
-              "off-grid aim time is not saved after submenu navigation",
-            );
-            await aim.fill("1.2");
-            await dialog
-              .getByRole("alert")
-              .getByText("Choose", { exact: false })
-              .waitFor({ state: "hidden" });
-            assert.equal((await stored()).bombChargeTicks, 24);
-            await dialog
-              .getByRole("button", { name: "Back", exact: true })
-              .click();
-            await dialog.waitFor({ state: "hidden" });
-            await page
-              .getByRole("button", { name: "Room settings", exact: true })
-              .click();
-            assert.equal(
-              await page.getByLabel("Match length").inputValue(),
-              "7",
-            );
-            assert.equal(
-              await aim.inputValue(),
-              "1.2",
-              "saved aim time reopens",
-            );
-            await page
-              .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
-              .click();
-            assert.equal(await power.inputValue(), "42");
-            await roomSettingsBack.click();
-          }
-          if (name === "AVATAR") {
-            for (const option of await dialog.locator(".avatar-option").all()) {
-              await inside(page, option);
-              assert.ok(
-                await option.evaluate((e) => {
-                  const text = e.lastElementChild!,
-                    a = e.getBoundingClientRect(),
-                    b = text.getBoundingClientRect();
-                  return (
-                    b.left >= a.left - 1 &&
-                    b.right <= a.right + 1 &&
-                    text.scrollWidth <= text.clientWidth + 1
-                  );
-                }),
-                "avatar name clipped",
-              );
-            }
-          }
-          if (name === "Player options") {
-            await inside(
-              page,
-              dialog.getByRole("button", { name: "Mute effects", exact: true }),
-            );
-            for (const name of [/music volume/i, /effects volume/i]) {
-              const slider = dialog.getByRole("slider", { name });
-              await slider.scrollIntoViewIfNeeded();
-              await inside(page, slider);
-            }
-          }
-          await page
-            .locator("dialog[open] :is(.dialog-body,.fui-dialog-body):visible")
-            .evaluate((e) => {
-              e.scrollTop = e.scrollHeight;
-            });
-          await inside(
-            page,
-            dialog.getByRole("button", { name: "Back", exact: true }),
-          );
-          await page.screenshot({
-            path: `artifacts/menu-${tag}-${name === "Player options" ? "audio" : name.replaceAll(" ", "-")}.png`,
-          });
-          await dialog
-            .getByRole("button", { name: "Back", exact: true })
-            .click();
-          if (name === "Player options") await page.keyboard.press("Escape");
-          await dialog.waitFor({ state: "hidden" });
-        }
-        await page.reload();
-        await page.locator(".online-controls").waitFor({ state: "visible" });
-        await ready(page);
-        assert.equal(await page.locator(".online-roster>span").count(), 6);
-        const solo = new URL(base);
-        solo.searchParams.set("solo", "1");
-        solo.searchParams.set("display", "1");
-        await page.goto(solo.href);
-        await page.locator(".online-controls").waitFor({ state: "visible" });
-        await ready(page);
-        assert.equal(await page.locator(".online-arena").isVisible(), true);
-        assert.equal(
-          await page.evaluate(() => Reflect.get(window, "__rtcCount")),
+          await dialog.locator("select").count(),
           0,
+          "room settings use styled choices",
         );
-        assert.equal(rtcTotal, 0);
-        assert.deepEqual(api, []);
-        assert.equal(sockets, 0);
-        assert.deepEqual(errors, []);
-        results.push({
-          browser: browserName,
-          viewport,
-          passed: true,
-          network: { apiCalls: 0, webSockets: 0, rtcConstructors: 0 },
-        });
-        console.log(`PASS ${tag}`);
-      } catch (error) {
-        await page.screenshot({ path: `artifacts/home-failure-${tag}.png` });
-        results.push({
-          browser: browserName,
-          viewport,
-          passed: false,
-          error: String(error),
-          errors,
-          api,
-          sockets,
-        });
-        throw error;
-      } finally {
-        await context.close();
-        await writeFile(
-          "artifacts/home-mobile-smoke.json",
-          JSON.stringify(results, null, 2),
+        assert.equal(
+          await dialog.getByText("Power", { exact: true }).count(),
+          0,
+          "powerups belong in submenu",
         );
+        await page.getByLabel("Match length").fill("7");
+        const aim = page.getByLabel("Bomb aim time (seconds)");
+        assert.equal(await aim.inputValue(), "0.4");
+        await inside(page, aim);
+        await aim.fill("1.2");
+        await page
+          .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
+          .click();
+        const power = dialog
+          .locator("label")
+          .filter({ hasText: "Power" })
+          .locator("input");
+        await power.fill("42");
+        const roomSettingsBack = dialog.getByRole("button", {
+          name: "Room settings",
+          exact: true,
+        });
+        await inside(page, roomSettingsBack);
+        await roomSettingsBack.click();
+        assert.equal(
+          await page.getByLabel("Match length").inputValue(),
+          "7",
+          "draft survives submenu navigation",
+        );
+        assert.equal(
+          await aim.inputValue(),
+          "1.2",
+          "aim time survives submenu navigation",
+        );
+        await page
+          .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
+          .click();
+        assert.equal(await power.inputValue(), "42");
+        await dialog
+          .getByRole("button", {
+            name: "Room settings",
+            exact: true,
+          })
+          .click();
+        // Settings save on every change, so an invalid value shows its alert at once and leaves storage alone.
+        const stored = () =>
+          page.evaluate(() =>
+            JSON.parse(localStorage.getItem("fuse-riders-room-settings-v2")!),
+          );
+        await page.getByLabel("Match length").fill("0");
+        await dialog
+          .getByRole("alert")
+          .getByText("Choose a match length from 1 to 20.")
+          .waitFor();
+        assert.equal((await stored()).length, 7, "match length 0 is not saved");
+        await page.getByLabel("Match length").fill("7");
+        await dialog
+          .getByRole("alert")
+          .getByText("Choose", { exact: false })
+          .waitFor({ state: "hidden" });
+        for (const invalid of ["0", "2.05", "0.125"]) {
+          await aim.fill(invalid);
+          await dialog
+            .getByRole("alert")
+            .getByText(
+              "Choose a bomb aim time from 0.1 to 2 seconds in steps of 0.05.",
+            )
+            .waitFor();
+        }
+        // Off-grid text must survive the powerups submenu and still be rejected, not silently rounded and saved.
+        await aim.fill("0.37");
+        await page
+          .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
+          .click();
+        await roomSettingsBack.click();
+        assert.equal(
+          await aim.inputValue(),
+          "0.37",
+          "off-grid aim text survives submenu navigation",
+        );
+        // A change on the main page while the aim text is off-grid is rejected too, not rounded and saved.
+        await page.getByLabel("Match length").fill("7");
+        await dialog
+          .getByRole("alert")
+          .getByText(
+            "Choose a bomb aim time from 0.1 to 2 seconds in steps of 0.05.",
+          )
+          .waitFor();
+        assert.equal(
+          (await stored()).bombChargeTicks,
+          24,
+          "off-grid aim time is not saved after submenu navigation",
+        );
+        await aim.fill("1.2");
+        await dialog
+          .getByRole("alert")
+          .getByText("Choose", { exact: false })
+          .waitFor({ state: "hidden" });
+        assert.equal((await stored()).bombChargeTicks, 24);
+        await dialog.getByRole("button", { name: "Back", exact: true }).click();
+        await dialog.waitFor({ state: "hidden" });
+        await page
+          .getByRole("button", { name: "Room settings", exact: true })
+          .click();
+        assert.equal(await page.getByLabel("Match length").inputValue(), "7");
+        assert.equal(await aim.inputValue(), "1.2", "saved aim time reopens");
+        await page
+          .getByRole("button", { name: "CONFIGURE POWERUPS", exact: true })
+          .click();
+        assert.equal(await power.inputValue(), "42");
+        await roomSettingsBack.click();
       }
+      if (name === "AVATAR") {
+        for (const option of await dialog.locator(".avatar-option").all()) {
+          await inside(page, option);
+          assert.ok(
+            await option.evaluate((e) => {
+              const text = e.lastElementChild!,
+                a = e.getBoundingClientRect(),
+                b = text.getBoundingClientRect();
+              return (
+                b.left >= a.left - 1 &&
+                b.right <= a.right + 1 &&
+                text.scrollWidth <= text.clientWidth + 1
+              );
+            }),
+            "avatar name clipped",
+          );
+        }
+      }
+      if (name === "Player options") {
+        await inside(
+          page,
+          dialog.getByRole("button", { name: "Mute effects", exact: true }),
+        );
+        for (const name of [/music volume/i, /effects volume/i]) {
+          const slider = dialog.getByRole("slider", { name });
+          await slider.scrollIntoViewIfNeeded();
+          await inside(page, slider);
+        }
+      }
+      await page
+        .locator("dialog[open] :is(.dialog-body,.fui-dialog-body):visible")
+        .evaluate((e) => {
+          e.scrollTop = e.scrollHeight;
+        });
+      await inside(
+        page,
+        dialog.getByRole("button", { name: "Back", exact: true }),
+      );
+      await page.screenshot({
+        path: `artifacts/menu-${tag}-${name === "Player options" ? "audio" : name.replaceAll(" ", "-")}.png`,
+      });
+      await dialog.getByRole("button", { name: "Back", exact: true }).click();
+      if (name === "Player options") await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
     }
-    await rapidNavigation(browser, browserName);
+    await page.reload();
+    await page.locator(".online-controls").waitFor({ state: "visible" });
+    await ready(page);
+    assert.equal(await page.locator(".online-roster>span").count(), 6);
+    const solo = new URL(base);
+    solo.searchParams.set("solo", "1");
+    solo.searchParams.set("display", "1");
+    await page.goto(solo.href);
+    await page.locator(".online-controls").waitFor({ state: "visible" });
+    await ready(page);
+    assert.equal(await page.locator(".online-arena").isVisible(), true);
+    assert.equal(
+      await page.evaluate(() => Reflect.get(window, "__rtcCount")),
+      0,
+    );
+    assert.equal(rtcTotal, 0);
+    assert.deepEqual(api, []);
+    assert.equal(sockets, 0);
+    assert.deepEqual(errors, []);
+    results.push({
+      browser: browserName,
+      viewport,
+      passed: true,
+      network: { apiCalls: 0, webSockets: 0, rtcConstructors: 0 },
+    });
+    console.log(`PASS ${tag}`);
+  } catch (error) {
+    await page.screenshot({ path: `artifacts/home-failure-${tag}.png` });
+    results.push({
+      browser: browserName,
+      viewport,
+      passed: false,
+      error: String(error),
+      errors,
+      api,
+      sockets,
+    });
+    throw error;
   } finally {
-    await browser.close();
+    await writeFile(
+      "artifacts/home-mobile-smoke.json",
+      JSON.stringify(results, null, 2),
+    );
   }
+}
+
+for (const { name: browserName, kind } of BOTH_ENGINES) {
+  await using browser = await launchBrowser(kind, { headless: true });
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
+    await checkViewport(browser, browserName, viewport);
+  }
+  await rapidNavigation(browser, browserName);
 }

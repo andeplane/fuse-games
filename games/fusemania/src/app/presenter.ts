@@ -1,21 +1,35 @@
 import {
   BATTLE_MODE,
   CAPACITY,
-  BOO,
-  DROPPED,
-  FULL_RATING,
-  GOOD,
-  GREAT,
-  HELD,
-  MARVELOUS,
-  MINED,
-  MISS,
-  PERFECT,
   type Library,
   type PlayerView,
 } from "../engine/index.js";
-import type { SessionView, View } from "../online/game.js";
-import { scorePercent } from "../song-scores.js";
+import type { View } from "../online/game.js";
+import {
+  chartLabel,
+  grade,
+  ordinal,
+  percent,
+  presentResult,
+  scoreText,
+  standingRows,
+  type SessionModel,
+  type SongResult,
+} from "./present-result.js";
+
+export {
+  bestText,
+  comboBadge,
+  grade,
+  ordinal,
+  percent,
+  scoreText,
+  type Own,
+  type ResultAction,
+  type Row,
+  type SessionModel,
+  type Standing,
+} from "./present-result.js";
 
 /**
  * What the page shows, decided from one frame: the screen (the lobby with its song select, the note field, or a
@@ -41,88 +55,6 @@ export function holdText(waiting: readonly string[], settled: boolean): string {
     : "GET READY…";
 }
 
-/** A rating as a letter grade and a percentage. */
-export function grade(rating: number): string {
-  const share = rating / FULL_RATING;
-  return share >= 1
-    ? "AAAA"
-    : share >= 0.97
-      ? "AAA"
-      : share >= 0.93
-        ? "AA"
-        : share >= 0.85
-          ? "A"
-          : share >= 0.75
-            ? "B"
-            : share >= 0.6
-              ? "C"
-              : "D";
-}
-export const percent = scorePercent;
-/** A rating displayed as its percentage of the chart's possible points. */
-export const scoreText = scorePercent;
-/** What a best result reads as on a chart chip. */
-export const bestText = (rating: number): string =>
-  `${grade(rating)} ${percent(rating)}`;
-export const ordinal = (place: number): string =>
-  `${place}${["TH", "ST", "ND", "RD"][place % 100 > 10 && place % 100 < 14 ? 0 : place % 10 < 4 ? place % 10 : 0]}`;
-
-/** One line of the result table. */
-export interface Row {
-  /** The player's id in the room. */
-  id: string;
-  bot: boolean;
-  place: number;
-  slot: number;
-  name: string;
-  you: boolean;
-  /** The chart played: "HARD 9". */
-  chart: string;
-  /** "94.2%". */
-  accuracy: string;
-  /** The longest combo, as a number. */
-  maxCombo: string;
-  /** How many of each judgment, Marvelous first and Miss last. */
-  judgments: string[];
-  grade: string;
-  score: string;
-  /** The chart played and the accuracy: "HARD 9 · 94.2%". */
-  detail: string;
-  /** "MAX COMBO 212". */
-  combo: string;
-}
-/** This device's own run on the result. */
-export interface Own {
-  grade: string;
-  /** The score with thousands separators. */
-  score: string;
-  /** "CHALLENGE 13 · 94.2% · MAX COMBO 212". */
-  detail: string;
-  /** What a run with no broken combo earned ("FULL GREAT COMBO", "FULL PERFECT COMBO", ...), or "". */
-  badge: string;
-}
-/** One line of a session's standings. */
-export interface Standing {
-  place: number;
-  name: string;
-  you: boolean;
-  /** The seat the rider sits in now, for its colour, or −1 for one who left. */
-  slot: number;
-  /** The session total, with thousands separators. */
-  points: string;
-  /** "2 WINS", or "" for none. */
-  wins: string;
-}
-/** A session's standings under a heading: "SESSION · AFTER SONG 2 OF 5", "FINAL STANDINGS". */
-export interface SessionModel {
-  title: string;
-  rows: Standing[];
-}
-/** What a button of the result does: the room action it sends. */
-export interface ResultAction {
-  text: string;
-  action: "rematch" | "lobby";
-}
 export interface Model {
   screen: "lobby" | "play" | "controller";
   askName: boolean;
@@ -173,87 +105,102 @@ export interface Model {
   note: string;
   /** The chart this device will play next, as the song select shows it. */
   chart: number;
-  result: {
-    title: string;
-    /** The song that was played: "NEON KICKOFF". */
-    song: string;
-    rows: Row[];
-    /** This device's own run, large: null for a watcher and for the TV. */
-    own: Own | null;
-    /** This device's own judgments, one line each: ["MARVELOUS", "212"]. */
-    counts: [label: string, value: string][];
-    /** Extra lines: a new best. */
-    lines: string[];
-    host: boolean;
-    waiting: string;
-    solo: boolean;
-    /** The session's standings with this song in them. */
-    session: SessionModel | null;
-    /** The session is over: its standings lead the card. */
-    final: boolean;
-    /** The host's main button, and the other one where there is a second thing to do. */
-    primary: ResultAction;
-    secondary: ResultAction | null;
-  } | null;
+  result: SongResult | null;
 }
 
-const chartLabel = (library: Library, song: string, chart: number): string => {
-  const info = library.song(song)?.charts;
-  const picked = info?.[Math.min(chart, info.length - 1)];
-  return picked ? `${picked.name.toUpperCase()} ${picked.meter}` : "";
-};
+type World = NonNullable<View["world"]>;
 
-const countLines = (player: PlayerView): [string, string][] => [
-  ["MARVELOUS", String(player.counts[MARVELOUS])],
-  ["PERFECT", String(player.counts[PERFECT])],
-  ["GREAT", String(player.counts[GREAT])],
-  ["GOOD", String(player.counts[GOOD])],
-  ["BOO", String(player.counts[BOO])],
-  ["MISS", String(player.counts[MISS])],
-  [
-    "HOLDS",
-    `${player.counts[HELD]} / ${player.counts[HELD]! + player.counts[DROPPED]!}`,
-  ],
-  ...(player.counts[MINED]
-    ? [["MINES HIT", String(player.counts[MINED])] as [string, string]]
-    : []),
-];
+function controllerStatus(
+  view: View,
+  world: World,
+  player: PlayerView | undefined,
+  songTitle: string,
+  viewer: Viewer,
+): string {
+  const alone = world.players.length === 1;
+  if (view.stage === "over") {
+    if (!player) return "SONG OVER";
+    if (alone) return `${grade(player.rating)} · ${percent(player.rating)}`;
+    return view.winner === viewer.me
+      ? "YOU WIN!"
+      : `${ordinal(player.place)} PLACE`;
+  }
+  if (world.ms < 0) return "GET READY";
+  if (!player) return songTitle;
+  const score = scoreText(player.rating);
+  return alone ? score : `${score} · ${ordinal(player.place)}`;
+}
 
-/** A run that never broke its combo, named after the worst judgment in it. */
-export const comboBadge = (counts: readonly number[]): string => {
-  const at = (judgment: number) => counts[judgment] ?? 0;
-  if (
-    at(MISS) ||
-    at(BOO) ||
-    at(GOOD) ||
-    at(DROPPED) ||
-    at(MARVELOUS) + at(PERFECT) + at(GREAT) === 0
-  )
-    return "";
-  return at(GREAT)
-    ? "FULL GREAT COMBO"
-    : at(PERFECT)
-      ? "FULL PERFECT COMBO"
-      : "ALL MARVELOUS";
-};
-
-const standingRows = (
-  session: SessionView,
+function lobbyMessage(
   view: View,
   viewer: Viewer,
-): Standing[] =>
-  session.standings.map((score, index) => ({
-    place: index + 1,
-    name: score.name,
-    you: score.id === viewer.me,
-    slot:
-      view.seats.find((seat) => seat.id === score.id && !seat.watcher)?.slot ??
-      -1,
-    points: scoreText(score.points / session.length),
-    wins: score.wins
-      ? `${score.wins} ${score.wins === 1 ? "WIN" : "WINS"}`
-      : "",
-  }));
+  seats: number,
+  inMatch: boolean,
+): string {
+  if (!seats) return "Pick a name to take a seat";
+  if (!viewer.host) return "Waiting for the host to start";
+  const session = view.session;
+  // Changing the song count ends the current session unless the host changes it back.
+  if (
+    !inMatch &&
+    session &&
+    session.done > 0 &&
+    session.length !== view.settings.songs
+  )
+    return `Another number of songs starts a new session: pick ${session.length} again to go on with this one.`;
+  if (view.settings.display)
+    return "Shared screen: open the TV screen, then every player uses a phone";
+  if (seats !== 1) return "";
+  if (!viewer.solo)
+    return "Start alone, add an AI rival, or invite up to four friends.";
+  return view.settings.mode === BATTLE_MODE
+    ? "A battle needs a rival: add an AI player or invite a friend."
+    : "";
+}
+
+function presentLobby(
+  library: Library,
+  view: View,
+  viewer: Viewer,
+  inMatch: boolean,
+): Model["lobby"] {
+  const seats = view.seats.filter((seat) => !seat.watcher);
+  const session = view.session;
+  // The session waits in Song Select if the host has kept the number of songs.
+  const between =
+    !inMatch && session?.length === view.settings.songs ? session : null;
+  return {
+    members: seats.map((seat) => ({
+      id: seat.id,
+      name: seat.name,
+      slot: seat.slot,
+      connected: seat.connected,
+      you: seat.id === viewer.me,
+      bot: seat.bot,
+      chart: chartLabel(library, view.settings.song, seat.chart),
+    })),
+    canAddBot: viewer.host && seats.length < CAPACITY,
+    removable: viewer.host
+      ? seats.filter((seat) => seat.bot).map((seat) => seat.id)
+      : [],
+    showStart: viewer.host,
+    canStart: seats.length >= 1,
+    editable: viewer.host,
+    note: lobbyMessage(view, viewer, seats.length, inMatch),
+    startText: between
+      ? `START SONG ${between.done + 1} OF ${between.length}`
+      : view.settings.songs > 1
+        ? `START SONG 1 OF ${view.settings.songs}`
+        : "START",
+    session:
+      between && between.done > 0
+        ? {
+            title: `SESSION · ${between.done} OF ${between.length} PLAYED`,
+            rows: standingRows(between, view, viewer),
+          }
+        : null,
+  };
+}
 
 export function present(
   library: Library,
@@ -262,15 +209,12 @@ export function present(
   /** This device's best rating on the chart before this match, if there was one. */
   bestBefore?: number,
 ): Model {
-  const seats = view.seats.filter((seat) => !seat.watcher);
   const mine = view.seats.find((seat) => seat.id === viewer.me);
   const seated = !!mine && !mine.watcher;
-  const world = view.world;
-  const inMatch = view.stage !== "lobby" && !!world;
+  const world = view.stage === "lobby" ? null : view.world;
+  const inMatch = !!world;
   const localSlot =
-    inMatch && world
-      ? world.players.findIndex((each) => each.id === viewer.me)
-      : -1;
+    world?.players.findIndex((each) => each.id === viewer.me) ?? -1;
   const player = world?.players[localSlot];
   const playing = view.stage === "running" && localSlot !== -1;
   const shared = view.settings.display || view.play.display;
@@ -280,34 +224,16 @@ export function present(
       ? "controller"
       : "play";
   const song = library.song(inMatch ? view.play.song : view.settings.song);
-  // A match of several songs a session is one of its session's; in the lobby the session waits for its next song
-  // unless the host has changed how long a session is.
   const session = view.session;
-  const between =
-    !inMatch && session && session.length === view.settings.songs
-      ? session
-      : null;
   const songTitle = (song?.title ?? "").toUpperCase();
   const title =
     inMatch && session
       ? `SONG ${session.songs.length} OF ${session.length} · ${songTitle}`
       : songTitle;
 
-  let status = "";
-  if (inMatch && world) {
-    if (view.stage === "over")
-      status = !player
-        ? "SONG OVER"
-        : world.players.length === 1
-          ? `${grade(player.rating)} · ${percent(player.rating)}`
-          : view.winner === viewer.me
-            ? "YOU WIN!"
-            : `${ordinal(player.place)} PLACE`;
-    else if (world.ms < 0) status = "GET READY";
-    else if (!player) status = songTitle;
-    else
-      status = `${scoreText(player.rating)}${world.players.length > 1 ? ` · ${ordinal(player.place)}` : ""}`;
-  }
+  const status = world
+    ? controllerStatus(view, world, player, songTitle, viewer)
+    : "";
 
   let note = "";
   if (inMatch && !viewer.display && localSlot === -1 && view.stage !== "over")
@@ -317,128 +243,11 @@ export function present(
         ? "Watching"
         : "Pick a name to play in the next song";
 
-  let result: Model["result"] = null;
-  if (view.stage === "over" && world) {
-    const alone = world.players.length === 1;
-    const winner = view.roster.find((entrant) => entrant.id === view.winner);
-    const rows: Row[] = [...world.players]
-      .sort((a, b) => a.place - b.place)
-      .map((each) => ({
-        id: each.id,
-        bot: each.bot,
-        chart: chartLabel(library, world.song, each.chart),
-        accuracy: percent(each.rating),
-        maxCombo: String(each.best),
-        judgments: [MARVELOUS, PERFECT, GREAT, GOOD, BOO, MISS].map((kind) =>
-          String(each.counts[kind]),
-        ),
-        place: each.place,
-        slot: each.slot,
-        name: view.roster[each.slot]?.name ?? "",
-        you: each.id === viewer.me,
-        grade: grade(each.rating),
-        score: scoreText(each.rating),
-        detail: `${chartLabel(library, world.song, each.chart)} · ${percent(each.rating)}`,
-        combo: `MAX COMBO ${each.best}`,
-      }));
-    const lines: string[] = [];
-    if (player && !player.bot) {
-      if (bestBefore === undefined || player.rating > bestBefore)
-        lines.push(
-          bestBefore === undefined
-            ? "FIRST SCORE ON THIS CHART"
-            : `NEW BEST! +${scoreText(player.rating - bestBefore)} (WAS ${percent(bestBefore)})`,
-        );
-      else
-        lines.push(
-          player.rating === bestBefore
-            ? `BEST ${bestText(bestBefore)}`
-            : `BEST ${bestText(bestBefore)} · −${scoreText(bestBefore - player.rating)}`,
-        );
-    }
-    const final = !!session && session.done >= session.length;
-    const leader = session?.standings[0];
-    const random = view.settings.random;
-    const again: ResultAction = { text: "PLAY AGAIN", action: "rematch" };
-    const select: ResultAction = { text: "SONG SELECT", action: "lobby" };
-    // What the host does next: another go at a single song; in a session its next song, drawn by the room or
-    // picked in the song select; and after the last one a new session.
-    const [primary, secondary]: [ResultAction, ResultAction | null] = !session
-      ? [again, select]
-      : final
-        ? random
-          ? [{ text: "NEW SESSION", action: "rematch" }, select]
-          : [{ text: "NEW SESSION", action: "lobby" }, null]
-        : random
-          ? [{ text: "NEXT SONG", action: "rematch" }, select]
-          : [{ text: "PICK NEXT SONG", action: "lobby" }, null];
-    result = {
-      title:
-        final && leader
-          ? leader.id === viewer.me
-            ? "YOU WIN THE SESSION!"
-            : `${leader.name.toUpperCase()} WINS THE SESSION`
-          : alone
-            ? `${songTitle} · ${grade(world.players[0]!.rating)}`
-            : !winner
-              ? "SONG OVER"
-              : winner.id === viewer.me
-                ? "YOU WIN!"
-                : `${winner.name.toUpperCase()} WINS`,
-      song: songTitle,
-      rows,
-      own: player
-        ? {
-            grade: grade(player.rating),
-            score: scoreText(player.rating),
-            detail: `${chartLabel(library, world.song, player.chart)} · ${percent(player.rating)} · MAX COMBO ${player.best}`,
-            badge: comboBadge(player.counts),
-          }
-        : null,
-      counts: player ? countLines(player) : [],
-      lines,
-      host: viewer.host,
-      waiting: viewer.host
-        ? ""
-        : final
-          ? "Waiting for the host to start a new session"
-          : session && random
-            ? "Waiting for the host to start the next song"
-            : "Waiting for the host to pick the next song",
-      solo: viewer.solo,
-      session: session
-        ? {
-            title: final
-              ? "FINAL STANDINGS"
-              : `SESSION · AFTER SONG ${session.done} OF ${session.length}`,
-            rows: standingRows(session, view, viewer),
-          }
-        : null,
-      final,
-      primary,
-      secondary,
-    };
-  }
-
-  // A session in the middle that the next song would not continue: the host changed how many songs one plays.
-  const ending =
-    !inMatch && !!session && session.done > 0 && !between && viewer.host;
-  const lobbyNote = !seats.length
-    ? "Pick a name to take a seat"
-    : ending
-      ? `Another number of songs starts a new session: pick ${session.length} again to go on with this one.`
-      : viewer.host
-        ? view.settings.display
-          ? "Shared screen: open the TV screen, then every player uses a phone"
-          : seats.length === 1 && !viewer.solo
-            ? "Start alone, add an AI rival, or invite up to four friends."
-            : view.settings.mode === BATTLE_MODE && seats.length === 1
-              ? "A battle needs a rival: add an AI player or invite a friend."
-              : ""
-        : "Waiting for the host to start";
+  let lobby: Model["lobby"] | undefined;
+  const lobbyViewer = { ...viewer };
   return {
     screen,
-    askName: !seated && !viewer.display && !viewer.solo && !mine,
+    askName: !mine && !viewer.display && !viewer.solo,
     seated,
     playing,
     localSlot,
@@ -451,46 +260,15 @@ export function present(
           ...(view.waiting.screen && !viewer.display ? ["THE TV"] : []),
         ]
       : [],
-    lobby: {
-      members: seats.map((seat) => ({
-        id: seat.id,
-        name: seat.name,
-        slot: seat.slot,
-        connected: seat.connected,
-        you: seat.id === viewer.me,
-        bot: seat.bot,
-        chart: chartLabel(library, view.settings.song, seat.chart),
-      })),
-      canAddBot: viewer.host && seats.length < CAPACITY,
-      removable: viewer.host
-        ? seats.filter((seat) => seat.bot).map((seat) => seat.id)
-        : [],
-      showStart: viewer.host,
-      canStart: seats.length >= 1,
-      editable: viewer.host,
-      note: lobbyNote,
-      startText: between
-        ? `START SONG ${between.done + 1} OF ${between.length}`
-        : view.settings.songs > 1
-          ? `START SONG 1 OF ${view.settings.songs}`
-          : "START",
-      session:
-        between && between.done > 0
-          ? {
-              title: `SESSION · ${between.done} OF ${between.length} PLAYED`,
-              rows: standingRows(between, view, viewer),
-            }
-          : null,
+    get lobby() {
+      return (lobby ??= presentLobby(library, view, lobbyViewer, inMatch));
     },
     names: inMatch ? view.roster.map((entrant) => entrant.name) : [],
-    chartNames:
-      inMatch && world
-        ? world.players.map((each) =>
-            chartLabel(library, world.song, each.chart),
-          )
-        : [],
+    chartNames: world
+      ? world.players.map((each) => chartLabel(library, world.song, each.chart))
+      : [],
     totals:
-      inMatch && world && session
+      world && session
         ? world.players.map((each) => {
             const points =
               session.standings.find((score) => score.id === each.id)?.points ??
@@ -507,6 +285,6 @@ export function present(
     status,
     note,
     chart: mine?.chart ?? view.settings.chart,
-    result,
+    result: presentResult(library, view, viewer, songTitle, bestBefore),
   };
 }

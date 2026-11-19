@@ -1,38 +1,20 @@
-import { readFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import assert from "node:assert/strict";
 import { chromium, webkit } from "playwright";
-import {
-  decodeState,
-  step,
-  hashState,
-  type Command,
-  type World,
-} from "../games/fuse-craft/src/engine/index.js";
+import type { World } from "../games/fuse-craft/src/engine/index.js";
+import { loadCraftReplay, verifyCraftReplay } from "./lib/fuse-craft-replay.js";
 import { STRUCTURES } from "../games/fuse-craft/src/engine/catalog.js";
 
-const recording = JSON.parse(
-  readFileSync(
-    "docs/fuse-craft/verification/rules13-replays-2026-10-01/combat.replay.json",
-    "utf8",
-  ),
-) as {
-  initial: unknown;
-  ticks: number;
-  hash: string;
-  commands: { tick: number; commands: Command[] }[];
-};
-let world = decodeState(JSON.stringify(recording.initial)),
-  cursor = 0;
+const recording = loadCraftReplay(
+  "docs/fuse-craft/verification/rules13-replays-2026-10-01/combat.replay.json",
+);
 let damaged: { world: World; cell: number } | undefined;
-while (world.tick < recording.ticks) {
-  const row = recording.commands[cursor];
-  world = step(world, row?.tick === world.tick ? (cursor++, row.commands) : []);
+verifyCraftReplay(recording, (world) => {
   const structure = world.structures.find(
     (s) => s.kind !== "neuron" && s.hp < STRUCTURES[s.kind].hp / 3,
   );
   if (!damaged && structure) damaged = { world, cell: structure.cell };
-}
-assert.equal(hashState(world), recording.hash);
+});
 assert.ok(damaged, "ordinary combat recording contains a damaged building");
 const out = process.argv[2] ?? "/tmp/fuse-damage";
 mkdirSync(out, { recursive: true });

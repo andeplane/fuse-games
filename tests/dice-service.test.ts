@@ -44,6 +44,7 @@ function playedMatch(a: string, b: string) {
 test("the service hosts dice rooms beside Fuse Riders, and a room refuses the other game's pages", async () => {
   assert.deepEqual(platform.gameIds, [
     GAME_ID,
+    "cyberfuse",
     diceGame.id,
     "fuse-particles",
     "fusero",

@@ -448,6 +448,26 @@ export function layRailway(
 }
 
 /**
+ * The same railway moved by (`dx`, `dy`). `RAIL_GRID` is laid out on the standard arena; a grown arena lays its railway
+ * there and moves it to the middle of the bigger board, spawn corridors moved the other way first.
+ */
+export function shiftRailway(
+  railway: Railway,
+  dx: number,
+  dy: number,
+): Railway {
+  return {
+    trains: railway.trains,
+    tracks: railway.tracks.map((track) => ({
+      points: track.points.map((point) => ({
+        x: point.x + dx,
+        y: point.y + dy,
+      })),
+    })),
+  };
+}
+
+/**
  * The cars of a railway's trains as obstacles, ids continuing from `firstId`. Cars are laid head first, so within a
  * train the lowest id is the locomotive and the highest the last car.
  */

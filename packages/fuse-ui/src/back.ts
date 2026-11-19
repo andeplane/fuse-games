@@ -118,6 +118,28 @@ export function createPageMessage(
   return message;
 }
 
+/** Show an invalid invite's page with the game's top bar and a keyboard-accessible way back. */
+export function showInvalidRoomPage(
+  app: HTMLElement,
+  topBar: HTMLElement,
+  backHref: string,
+): void {
+  const document = app.ownerDocument;
+  const page = createSubPage({
+    title: "Join room",
+    backHref,
+    document,
+    content: [
+      createPageMessage(
+        "That is not a room code: check it and try again.",
+        document,
+      ),
+    ],
+  });
+  app.replaceChildren(topBar, page.element);
+  backOnEscape(page.back);
+}
+
 export interface BackOnEscapeOptions {
   /** False while Escape means something else (a song is playing, a key is being bound). Default: always. */
   enabled?: () => boolean;

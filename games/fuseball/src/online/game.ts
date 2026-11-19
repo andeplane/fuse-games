@@ -1,10 +1,16 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
+  hashCheckpointJson,
   applyManagementTick,
+  foldHeldInput,
+  createRosterDecoder,
+  decodeHumanFinishers,
+  createSeatListDecoder,
+  createHeldInputDecoder,
+  createCheckpointBaseDecoder,
+  CHECKPOINT_HEADER_FIELDS,
+  validCheckpointLifecycle,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -223,34 +229,16 @@ const payloads = {
   name: validName,
   avatar: isAvatar,
   settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: playerKey,
+  matchKey: validMatchId,
   capacity: CAPACITY,
 };
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return validMatchId(raw[4]);
-    // Member ids become record keys: one of Object.prototype's names never does.
-    const at =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return at < 0 || playerKey((raw as unknown[])[at]);
-  }
-  if (
-    Array.isArray(raw) &&
-    raw.length === 4 &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
-    raw[2] === SIDE &&
-    validMatchId(raw[3])
-  )
-    return true;
+  if (isManagementEntry(raw, payloads)) return true;
+  if (!hasLogPosition(raw)) return false;
+  if (raw.length === 4 && raw[2] === SIDE && validMatchId(raw[3])) return true;
   return (
-    Array.isArray(raw) &&
     raw.length === 5 &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
     raw[2] === PLAY &&
     validMatchId(raw[3]) &&
     isInput(raw[4])
@@ -398,26 +386,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick and match, from the stream generation its controls follow. */
-function playEntries(
-  room: Room,
-  seat: SeatRecord,
-  streams: ReadonlyMap<string, StreamEntries<Entry>>,
-  tick: number,
-): PlayEntry[] {
-  const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
-    .filter(
-      (entry): entry is PlayEntry =>
-        entry[1] === tick && entry[2] === PLAY && entry[3] === room.matchId,
-    )
-    .sort((a, b) => a[0] - b[0]);
-}
-
 /**
  * What the tick's first step sees: everything held at its end plus everything pressed and let go inside it, so a tap
  * shorter than a tick is still a press. Where the two disagree along the stick, what is held at the end wins.
@@ -492,25 +460,18 @@ export function foldTick(
     // The world `steps` read sets its pace for this tick and runs the same count. A match that began on this tick
     // is in its countdown, which runs the plain six that `steps` gave for the room it replaced.
     if (world === paced) paceTick(world);
+    const input = foldHeldInput(room, streams, tick, (entry) =>
+      entry[2] === PLAY && entry[3] === room.matchId
+        ? entry[4] & INPUT_MASK
+        : undefined,
+    );
     const held = new Map<string, number>(),
       first = new Map<string, number>();
     for (const rider of world.riders) {
-      const seat = room.seats.get(rider.id);
-      let bits = 0,
-        tapped = 0;
-      if (seat?.bot) {
+      const [bits, tapped] = input(rider.id, () => {
         const answer = bot(world, rider);
-        bits = isInput(answer) ? answer : 0;
-      } else if (seat?.connected) {
-        bits = room.held[rider.id] ?? 0;
-        for (const entry of playEntries(room, seat, streams, tick)) {
-          tapped |= entry[4] & INPUT_MASK;
-          bits = entry[4] & INPUT_MASK;
-        }
-      }
-      // Only what a seat logged is held: a bot answers afresh every tick, and a seat that is away holds nothing.
-      if (bits && !seat?.bot) room.held[rider.id] = bits;
-      else delete room.held[rider.id];
+        return isInput(answer) ? answer : 0;
+      });
       held.set(rider.id, bits);
       first.set(rider.id, firstStepBits(bits, tapped));
     }
@@ -525,17 +486,6 @@ export function foldTick(
 }
 
 // ---- checkpoint ----
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 const STAGES: readonly RoomStage[] = ["lobby", "running", "over"];
 const FIELDS = 10,
   DECIDED_FIELDS = 4;
@@ -564,101 +514,26 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  playerKey,
+  validName,
+  validAvatar: isAvatar,
+});
 
-function decodeSeats(raw: unknown): Map<string, SeatRecord> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY + MAX_WATCHERS) return;
-  const seats = new Map<string, SeatRecord>();
-  for (const item of raw) {
-    const seat = decodeSeat(item);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  return seats;
-}
+const decodeHeld = createHeldInputDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  isInput,
+});
 
-function decodeHeld(raw: unknown): Record<string, number> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY) return;
-  const held: Record<string, number> = {};
-  for (const pair of raw) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(held, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    held[pair[0]] = pair[1];
-  }
-  return held;
-}
-
-function decodeRoster(raw: unknown): Entrant[] | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY || raw.length % 2 !== 0)
-    return;
-  const roster: Entrant[] = [];
-  for (const item of raw) {
-    if (!Array.isArray(item) || item.length !== 3) return;
-    const [id, name, bot] = item as unknown[];
-    if (
-      !playerKey(id) ||
-      !validName(name) ||
-      typeof bot !== "boolean" ||
-      roster.some((entrant) => entrant.id === id)
-    )
-      return;
-    roster.push({ id, name, slot: sideOf(roster.length), bot });
-  }
-  return roster;
-}
+const decodeRoster = createRosterDecoder({
+  validLength: (length) => length <= CAPACITY && length % 2 === 0,
+  playerKey,
+  validName,
+  slotAt: sideOf,
+});
 
 function decodeDecided(
   raw: unknown,
@@ -666,27 +541,30 @@ function decodeDecided(
 ): Decided | null | undefined {
   if (raw === null) return null;
   if (!Array.isArray(raw) || raw.length !== DECIDED_FIELDS) return;
-  const [clock, winner, finishers, side] = raw as unknown[];
+  const [clock, winner, rawFinishers, side] = raw as unknown[];
   if (
     !uint32(clock) ||
     clock === 0 ||
     (side !== 0 && side !== 1) ||
     // The side's first rider stands for it.
-    roster[side]?.id !== winner ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
+    roster[side]?.id !== winner
   )
     return;
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winner: winner as string, side, finishers: list };
+  const finishers = decodeHumanFinishers(rawFinishers, roster);
+  if (!finishers) return;
+  return { clock, winner: winner as string, side, finishers };
 }
+
+const decodeBase = createCheckpointBaseDecoder({
+  stages: STAGES,
+  minStepsPerTick: MIN_STEPS_PER_TICK,
+  maxStepsPerTick: MAX_STEPS_PER_TICK,
+  validMatchId,
+  parseSettings,
+  decodeSeats,
+  decodeHeld,
+  decodeRoster,
+});
 
 /**
  * The room a checkpoint describes, or nothing: every field is checked on its own and against the others, and the
@@ -697,101 +575,41 @@ export function decode(
   tick: number,
 ): Room | undefined {
   if (fields.length !== FIELDS || !uint32(tick)) return;
-  const [
-    matchId,
-    stage,
-    rawSettings,
-    rawSeats,
-    rawPlay,
-    rawHeld,
-    rawRoster,
-    rawDecided,
-    rawWorld,
-    simulationTick,
-  ] = fields;
-  const settings = parseSettings(rawSettings),
-    play = parseSettings(rawPlay),
-    seats = decodeSeats(rawSeats),
-    held = decodeHeld(rawHeld),
-    roster = decodeRoster(rawRoster);
-  if (
-    !validMatchId(matchId) ||
-    !uint32(simulationTick) ||
-    // The clock moves one to six steps every log tick, whatever the room is doing.
-    simulationTick < tick * MIN_STEPS_PER_TICK ||
-    simulationTick > tick * MAX_STEPS_PER_TICK ||
-    !STAGES.some((known) => known === stage) ||
-    !settings ||
-    !play ||
-    !seats ||
-    !held ||
-    !roster
-  )
-    return;
+  const [rawDecided, rawWorld, rawSimulationTick] = fields.slice(
+    CHECKPOINT_HEADER_FIELDS,
+  );
+  const base = decodeBase(fields, rawSimulationTick, tick);
+  if (!base) return;
+  const { roster, held, stage, play, simulationTick } = base;
   const decided = decodeDecided(rawDecided, roster);
   const world = rawWorld === null ? null : decodeWorld(rawWorld);
   if (decided === undefined || world === undefined) return;
-  if (world === null) {
-    // The lobby has no match: no world, no riders, nothing held and nothing decided.
-    if (
-      stage !== "lobby" ||
-      roster.length ||
-      decided ||
-      Object.keys(held).length
+  if (
+    !validCheckpointLifecycle(
+      { stage, roster, held, hasDecision: decided !== null },
+      world && { players: world.riders, over: world.phase === "over" },
     )
-      return;
-  } else {
-    const over = world.phase === "over";
-    if (
-      stage === "lobby" ||
-      (stage === "over") !== over ||
-      (decided !== null) !== over ||
-      roster.length !== world.riders.length ||
-      // A duel arena plays a duel, and a team arena the size the match settled on.
-      world.riders.length !== 2 * play.size ||
+  )
+    return;
+  if (
+    world &&
+    (world.riders.length !== 2 * play.size ||
       world.mapId !== play.mapId ||
       world.seed !== play.seed ||
-      world.riders.some((rider, slot) => rider.id !== roster[slot]!.id) ||
-      Object.keys(held).some(
-        (id) => !roster.some((entrant) => entrant.id === id && !entrant.bot),
-      ) ||
-      (over && Object.keys(held).length > 0) ||
-      (decided !== null &&
-        (decided.clock > simulationTick || decided.side !== winnerOf(world)))
-    )
-      return;
-  }
+      (decided &&
+        (decided.clock > simulationTick || decided.side !== winnerOf(world))))
+  )
+    return;
   return {
     tick,
-    simulationTick,
-    matchId,
-    stage: stage as RoomStage,
-    seats,
-    settings,
-    play,
-    held,
-    roster,
+    ...base,
     decided,
     world,
   };
 }
 
 export function hash(room: Room): string {
-  const text = JSON.stringify([room.tick, ...encode(room)], (_key, value) =>
-    plain(value)
-      ? Object.fromEntries(
-          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : (value as unknown),
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson([room.tick, ...encode(room)]);
 }
 
 export function view(room: Room): View {

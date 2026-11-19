@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { dirname } from "node:path";
 
@@ -108,11 +108,20 @@ export async function startRoomService(
 }
 
 /** Vite serving the source tree on a free port, for the scripts that import renderer modules in the page. */
-export async function startViteServer(): Promise<LocalServer> {
+export async function startViteServer({
+  allowLinkedDependencies = false,
+}: { allowLinkedDependencies?: boolean } = {}): Promise<LocalServer> {
   // Imported here so the CI runner, which only needs the room service, does not load Vite.
   const { createServer } = await import("vite");
   const server = await createServer({
-    server: { port: 0, host: "127.0.0.1", hmr: false },
+    server: {
+      port: 0,
+      host: "127.0.0.1",
+      hmr: false,
+      ...(allowLinkedDependencies
+        ? { fs: { allow: [process.cwd(), await realpath("node_modules")] } }
+        : {}),
+    },
   });
   await server.listen();
   const address = server.httpServer?.address();

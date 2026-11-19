@@ -1,3 +1,4 @@
+import { cyberfuseRegistration } from "cyberfuse/platform";
 import { diceRegistration } from "dice/platform";
 import { fuseParticlesRegistration } from "fuse-particles/platform";
 import { lieroRegistration } from "fusero/platform";
@@ -39,6 +40,7 @@ import {
 /** Every game this repo serves. tests/registered-games.test.ts fails when a game's `src/platform.ts` is missing here. */
 export const GAMES = [
   fuseRiders,
+  cyberfuseRegistration,
   diceRegistration,
   fuseParticlesRegistration,
   lieroRegistration,

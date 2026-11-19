@@ -9,7 +9,7 @@ import {
   safeStore,
   sessionFor,
   NOT_OPEN,
-} from "../src/app/session.js";
+} from "fuse-ui/room-session";
 import { blend, fraction } from "../src/render/interpolate.js";
 import { seatColor, seatShade } from "../src/render/palette.js";
 import {

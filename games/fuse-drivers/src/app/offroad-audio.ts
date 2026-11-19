@@ -16,6 +16,7 @@ type TruckAudio = Pick<
   | "laps"
 >;
 interface AudioRace {
+  battle?: RaceState["battle"];
   tick: number;
   phase: RaceState["phase"];
   pickups: Pick<RaceState["pickups"], "active">;
@@ -94,6 +95,19 @@ export function createOffroadAudio(bus: RaceSpeaker) {
       return;
     }
     if (last.phase !== "racing" || race.phase !== "racing") return;
+    if (race.battle && last.battle) {
+      if (
+        race.battle.bombs.some(
+          (bomb) => last.tick < bomb.detonateAt && bomb.detonateAt <= race.tick,
+        )
+      )
+        beep(144, 0.19, 0.13, 0.15);
+      else if (
+        (race.battle.slots[focus]?.shieldUntil ?? 0) >
+        (last.battle.slots[focus]?.shieldUntil ?? 0)
+      )
+        notes([262, 392, 524], 32);
+    }
     let impact = false,
       wall = false,
       nitro = false,

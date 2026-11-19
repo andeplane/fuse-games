@@ -6,8 +6,20 @@ import {
   gravesPx,
   stageLengthPx,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster, rgbAt } from "./kit.js";
+import {
+  firstTile,
+  worldRow,
+  bayer,
+  dither,
+  hash,
+  Raster,
+  rgbAt,
+} from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, type Fire } from "./fire.js";
+import { torchlitRelief as solid, type Inside } from "./relief.js";
+import { moonGlow, paintSky } from "./sky.js";
+import { paintStone, stoneCourses, type StoneCourse } from "./stone-courses.js";
 
 /**
  * Stage 4, Vorhal's Keep: torch-lit halls inside the warlord's fortress, cold blue-black stone under warm firelight.
@@ -51,7 +63,7 @@ const RED_LIT = [
 const FLAGS = [
   0x06070c, 0x0a0c13, 0x0f121b, 0x151925, 0x1c2130, 0x282634, 0x3c2c2a,
   0x5a3a2a,
-];
+] as const;
 const SKY = [
   0x0e0208, 0x18040b, 0x26060e, 0x380a12, 0x4e0e16, 0x6a1619, 0x86221c,
   0xa0321f,
@@ -66,13 +78,11 @@ const IRON = 0x181a24;
 const IRON_LIT = 0x3a3e4c;
 const IRON_WARM = 0x8a4a28;
 const WOOD = [0x2a1810, 0x4a2c1a];
-const FLAME = ["#fff2c4", "#ffbc3a", "#ea6020", "#962a1a"];
+const FLAME = ["#fff2c4", "#ffbc3a", "#ea6020", "#962a1a"] as const;
 const EMBER = ["#ffb04c", "#f06c22", "#a8341a"];
 /** The broken axe's glow at its dimmest to its brightest. */
 export const SHARD_GLOW = ["#4e1a10", "#7e2c14", "#b8481c", "#f07c2c"];
 
-type Inside = (x: number, y: number) => boolean;
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
 /** A material: its outline, shadow, base, light, and an edge turned to the fire. */
 type Ramp = readonly [number, number, number, number, number];
 const MID: Ramp = [0x05060b, 0x0c0e17, 0x131622, 0x1d2130, 0x2c1a20];
@@ -82,23 +92,6 @@ const SLAB: Ramp = [INK, 0x171b28, 0x232838, 0x343c50, 0x4a3a36];
 /** The near pillars' bases, almost black, and the firelight on their edge. */
 const FRONT = [0x040408, 0x09090f, 0x0f1018, 0x181a24, 0x262836];
 const FRONT_WARM = 0x4a2c20;
-
-/** Paints the pixels in `box` that `inside` holds: inked at its edge, light along the top, warm on the left. */
-function solid(r: Raster, box: Box, inside: Inside, ramp: Ramp) {
-  const [[x0, y0, x1, y1], [ink, dark, base, lit, warm]] = [box, ramp];
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!inside(x, y)) continue;
-      let c = base;
-      if (!inside(x, y - 1) || !inside(x, y + 1)) c = ink;
-      else if (!inside(x - 1, y) || !inside(x + 1, y)) c = ink;
-      else if (!inside(x, y - 2)) c = lit;
-      else if (!inside(x - 2, y)) c = warm;
-      else if (!inside(x + 2, y) || !inside(x, y + 2)) c = dark;
-      else if (hash(x, y) > 0.94) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 /** Masonry at a pixel: −1 on a joint, else its block's tone in [0, 1), in courses `h` rows high of blocks `w` wide. */
 function masonry(x: number, y: number, w: number, h: number, seed: number) {
@@ -181,17 +174,24 @@ const MOON = [180, 54, 7.5] as const;
 /** A blood-red sky and moon, seen only through the far wall's windows. */
 function sky(r: Raster) {
   const [mx, my, mr] = MOON;
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++) {
+  paintSky(
+    r,
+    SKY,
+    (x, y) =>
+      (y - 30) / 90 + moonGlow(Math.hypot(x + 0.5 - mx, y + 0.5 - my), 0.4),
+  );
+  for (let y = Math.floor(my - mr); y < Math.ceil(my + mr); y++)
+    for (let x = Math.floor(mx - mr); x < Math.ceil(mx + mr); x++) {
       const d = Math.hypot(x + 0.5 - mx, y + 0.5 - my);
-      let c = dither(SKY, (y - 30) / 90 + Math.max(0, 1 - d / 70) * 0.4, x, y);
-      if (d < mr) {
-        const shade = Math.hypot(x + 0.5 - mx - 2, y + 0.5 - my + 2) > mr;
-        const mare = hash(x >> 2, y >> 2) > 0.72;
-        c = shade ? 0x8a2a1e : mare ? 0xc8482c : 0xe8683a;
-        if (d > mr - 1.5 && x > mx && y < my) c = 0xffa070;
-      }
-      r.px(x, y, c);
+      if (d >= mr) continue;
+      const shade = Math.hypot(x + 0.5 - mx - 2, y + 0.5 - my + 2) > mr;
+      const mare = hash(x >> 2, y >> 2) > 0.72;
+      const rim = d > mr - 1.5 && x > mx && y < my;
+      r.px(
+        x,
+        y,
+        rim ? 0xffa070 : shade ? 0x8a2a1e : mare ? 0xc8482c : 0xe8683a,
+      );
     }
 }
 
@@ -598,9 +598,27 @@ function room(r: Raster) {
   axe(r);
 }
 
-/** The fires' light on the floor: a pool spreading from the kerb under each. */
-const POOLS = LIGHTS.map(([x, , reach]): Light => [x, FLOOR, reach]);
-const pool = (x: number, y: number) => warmth(POOLS, x, y, 2.2);
+type FloorGlow = (x: number, y: number) => number;
+
+/** Project firelight onto the floor. Each column only sees lights within their horizontal reach. */
+function floorGlow(width: number): FloorGlow {
+  const columns: [distance: number, reach: number][][] = Array.from(
+    { length: width },
+    () => [],
+  );
+  for (const [center, , reach] of LIGHTS) {
+    const left = Math.max(0, Math.floor(center - reach) + 1);
+    const right = Math.min(width, Math.ceil(center + reach));
+    for (let x = left; x < right; x++) columns[x]!.push([x - center, reach]);
+  }
+  return (x, y) => {
+    const depth = (y - FLOOR) * 2.2;
+    let glow = 0;
+    for (const [distance, reach] of columns[x]!)
+      glow = Math.max(glow, 1 - Math.hypot(distance, depth) / reach);
+    return glow;
+  };
+}
 
 /** A colour `t` of the way from `a` to `b`. */
 function mix(a: number, b: number, t: number) {
@@ -616,22 +634,43 @@ function mix(a: number, b: number, t: number) {
 const FLAG_W = 32;
 
 /** Polished flagstones in a chequer, a sheen along each one's far edge, warmed under the fires, red before the throne. */
-function flags(r: Raster) {
-  for (let y0 = FLOOR, k = 0; y0 < VIEW_H; k++) {
-    const y1 = Math.min(y0 + 6 + k, VIEW_H);
-    for (let y = y0; y < y1; y++)
-      for (let x = 0; x < r.width; x++) {
-        const n = Math.floor(x / FLAG_W);
-        const tone = ((n + k) % 2 ? 0.33 : 0.12) + hash(n, k) * 0.06;
-        let c = dither(FLAGS, tone + pool(x, y) * 0.7, x, y);
-        if (y === y0 + 1 && (n + k) % 2) c = FLAGS[4]!;
-        if (y === y0 || x % FLAG_W === 0) c = y === y0 ? FLAGS[0]! : FLAGS[1]!;
-        const red = 1 - Math.hypot((x - THRONE_X) / 150, (y - FLOOR) / 46);
-        if (red > 0) c = mix(c, 0x5a0e16, red * 0.5);
-        r.px(x, y, c);
-      }
-    y0 = y1;
-  }
+function flags(r: Raster, pool: FloorGlow) {
+  for (const course of stoneCourses({
+    top: FLOOR,
+    bottom: VIEW_H,
+    firstHeight: 6,
+  }))
+    for (let left = 0, column = 0; left < r.width; left += FLAG_W, column++)
+      polishedFlagstone(r, course, { left, column }, pool);
+}
+
+function polishedFlagstone(
+  r: Raster,
+  course: StoneCourse,
+  { left, column }: { left: number; column: number },
+  pool: FloorGlow,
+) {
+  const { index, top } = course;
+  const polished = (column + index) % 2 !== 0;
+  const tone = (polished ? 0.33 : 0.12) + hash(column, index) * 0.06;
+  paintStone(r, course, { left, width: FLAG_W }, (x, y) => {
+    const color =
+      y === top
+        ? FLAGS[0]
+        : x === left
+          ? FLAGS[1]
+          : polished && y === top + 1
+            ? FLAGS[4]
+            : dither(FLAGS, tone + pool(x, y) * 0.7, x, y);
+    return throneTint(color, x, y);
+  });
+}
+
+function throneTint(color: number, x: number, y: number): number {
+  const across = (x - THRONE_X) / 150;
+  if (Math.abs(across) >= 1) return color;
+  const red = 1 - Math.hypot(across, (y - FLOOR) / 46);
+  return red > 0 ? mix(color, 0x5a0e16, red * 0.5) : color;
 }
 
 /** The polish: what stands above the floor mirrored in it, half bright and fading with depth, and each fire's streak. */
@@ -655,7 +694,7 @@ function polish(r: Raster) {
 }
 
 /** The red carpet along the hall, gold-edged and figured with lozenges, and the runner from it up to the dais. */
-function carpet(r: Raster) {
+function carpet(r: Raster, pool: FloorGlow) {
   const [top, bottom] = CARPET;
   for (let y = FLOOR; y < top; y++)
     for (let x = THRONE_X - 10; x < THRONE_X + 10; x++) {
@@ -714,9 +753,10 @@ function hall(r: Raster) {
   kerb(r);
   dais(r);
   for (const x of BRAZIERS) brazier(r, x);
-  flags(r);
+  const pool = floorGlow(r.width);
+  flags(r, pool);
   polish(r);
-  carpet(r);
+  carpet(r, pool);
   for (let i = 0; i < SLABS.length; i += 2) slab(r, SLABS[i]!, SLABS[i + 1]!);
 }
 
@@ -751,58 +791,11 @@ function bases(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [number, number, number, number, number];
-
 /** The torches' flames, then the braziers'. */
 export const FIRES: readonly Fire[] = [
   ...TORCHES.map((x, i): Fire => [x - 2, 5, TORCH_Y - 1, 12, i]),
   ...BRAZIERS.map((x, i): Fire => [x - 5, 11, BOWL_Y - 2, 14, 20 + i]),
 ];
-
-/** The flame's colour in `FLAME` at row `j` of a column `h` tall: bright in the heart, dark at the tips and edges. */
-const flameTone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-/** One row of world pixels from `x0` to `x1`, clipped to the screen at camera `cam`. */
-function run(brush: Brush, x0: number, x1: number, y: number, cam: number) {
-  const [from, to] = [Math.max(x0 - cam, 0), Math.min(x1 - cam, VIEW_W)];
-  if (to > from) brush.fillRect(from, y, to - from, 1);
-}
-
-function burn(brush: Brush, fire: Fire, cam: number, t: number) {
-  const [x0, w, base, height, seed] = fire;
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.3 * Math.sin((x0 + i) * 0.9 + seed + t * 11);
-    const sway = 0.2 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 7);
-    const h = Math.max(1, Math.round(height * env * (0.55 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = flameTone(j, h, env);
-      let k = j + 1;
-      while (k < h && flameTone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      const x = x0 + i - cam;
-      if (x >= 0 && x < VIEW_W) brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 3; i++) {
-    const life = (t * (0.3 + hash(i, seed) * 0.3) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 7 + i) * 3;
-    const x = Math.round(x0 + w / 2 + drift);
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    run(brush, x, x + 1, Math.round(base - height * 0.6 - life * 30), cam);
-  }
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 /** Embers drifting up through the halls, swaying, cooling from gold to dark red as they rise. */
 function embers(brush: Brush, cam: number, t: number) {
@@ -814,7 +807,7 @@ function embers(brush: Brush, cam: number, t: number) {
       const x = k * VIEW_W + Math.floor(hash(seed, 142) * VIEW_W) + sway;
       const y = Math.round(KERB - 4 - life * 66 - hash(seed, 143) * 10);
       brush.fillStyle = EMBER[Math.min(2, Math.floor(life * 3))]!;
-      run(brush, x, x + 1, y, cam);
+      worldRow(brush, x, x + 1, y, cam);
     }
 }
 
@@ -824,7 +817,7 @@ function shards(brush: Brush, cam: number, t: number) {
   for (const [x0, x1, y, s] of GLOW_RUNS) {
     const pulse = Math.sin(t * 1.6 - s * 0.6) * 0.5 + 0.5;
     brush.fillStyle = SHARD_GLOW[Math.min(3, Math.floor(pulse * 4))]!;
-    run(brush, x0, x1, y, cam);
+    worldRow(brush, x0, x1, y, cam);
   }
 }
 
@@ -838,7 +831,7 @@ export const VORHALS_KEEP: StageArt = {
   front: { rate: [5, 4], top: VIEW_H - 16, height: 16, paint: bases },
   animate(brush, camX, frame) {
     const t = frame / 60;
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME });
     shards(brush, camX, t);
     embers(brush, camX, t);
   },
