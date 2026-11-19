@@ -5,7 +5,7 @@ import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
 import { startViteServer } from "./lib/server.js";
 
 // Isolated snapshots exercise actual rendered pixels without joining an occupied match.
-const server = await startViteServer();
+const server = await startViteServer({ allowLinkedDependencies: true });
 const browserName = process.env.BROWSER ?? "chrome";
 const browser = await launchSelected("chrome");
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
