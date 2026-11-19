@@ -161,6 +161,58 @@ export function createCorrectionSmoother(
   };
 }
 
+export interface CorrectionFrame {
+  scope: string;
+  revision: number;
+  tick: number;
+  nowMs: number;
+}
+
+/** Start a correction frame. A new scope clears positions while the log markers still track the last frame. */
+export function createCorrectionFrames(smoother: CorrectionSmoother) {
+  let scope = "";
+  let revision: number | undefined;
+  let tick = -1;
+  return (frame: CorrectionFrame) => {
+    if (frame.scope !== scope) {
+      scope = frame.scope;
+      smoother.reset();
+    }
+    smoother.begin(frame.nowMs);
+    const rolled = revision !== undefined && frame.revision !== revision;
+    const stepped = frame.tick !== tick;
+    revision = frame.revision;
+    tick = frame.tick;
+    return { rolled, stepped };
+  };
+}
+
+type HeldInputs<Key extends string | number> = Readonly<
+  Partial<Record<Key, number>>
+>;
+
+/** A held input can explain a correction only when the folded tick changes. An absent input is neutral. */
+export function createHeldInputCorrectionFrames<
+  Key extends string | number,
+  Inputs extends HeldInputs<Key> = HeldInputs<Key>,
+>(
+  smoother: CorrectionSmoother,
+  empty: Inputs,
+  snapshot: (held: Inputs) => Inputs = (held) => held,
+) {
+  const begin = createCorrectionFrames(smoother);
+  let logged = empty;
+  return (frame: CorrectionFrame, held: Inputs) => {
+    const { rolled, stepped } = begin(frame);
+    const before = logged;
+    logged = snapshot(held);
+    return {
+      rolled,
+      changed: (key: Key) => stepped && (before[key] ?? 0) !== (held[key] ?? 0),
+    };
+  };
+}
+
 /** Reuse deterministic bot inputs across presentation frames, bounded by each game's working set. */
 export function memoizeLeadInput<Args extends unknown[]>(
   bot: (...args: Args) => number,

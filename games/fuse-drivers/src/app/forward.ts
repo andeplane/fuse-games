@@ -1,4 +1,5 @@
 import {
+  createCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
 } from "fuse-netcode";
@@ -127,25 +128,20 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    folded = -1,
-    logged: readonly number[] = [],
+  const begin = createCorrectionFrames(smoother);
+  let logged: readonly number[] = [],
     before: readonly number[] = [],
-    race = "",
     rolled = false,
     stepped = false;
   return {
     begin(key, nextRevision, nextFolded, held, nowMs) {
-      if (key !== race) {
-        race = key;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      rolled = revision !== undefined && nextRevision !== revision;
-      stepped = nextFolded !== folded;
+      ({ rolled, stepped } = begin({
+        scope: key,
+        revision: nextRevision,
+        tick: nextFolded,
+        nowMs,
+      }));
       before = logged;
-      revision = nextRevision;
-      folded = nextFolded;
       logged = [...held];
     },
     place(slot, pose) {

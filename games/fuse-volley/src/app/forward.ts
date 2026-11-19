@@ -1,5 +1,6 @@
 import {
   MAX_TICKS_AHEAD,
+  createHeldInputCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
   forwardWorld,
@@ -216,28 +217,15 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    folded = -1,
-    logged: readonly number[] = [],
-    key = "";
+  const begin = createHeldInputCorrectionFrames<number>(smoother, []);
   return {
     apply(view, nextRevision, nextFolded, held, nowMs, local) {
       // A new serve, a new rally's teams or a new match is a teleport by design: start again.
       const rally = `${view.format}:${view.blobs.length}:${view.pointCounter}:${view.phase === "dead" ? "dead" : "live"}`;
-      if (rally !== key) {
-        key = rally;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = nextFolded !== folded;
-      // A blob the forward run got wrong is one whose logged controls changed with this tick: the others moved as drawn.
-      const before = logged,
-        changed = (slot: number) =>
-          stepped && (before[slot] ?? 0) !== (held[slot] ?? 0);
-      revision = nextRevision;
-      folded = nextFolded;
-      logged = held;
+      const { rolled, changed } = begin(
+        { scope: rally, revision: nextRevision, tick: nextFolded, nowMs },
+        held,
+      );
       return {
         ...view,
         blobs: view.blobs.map((blob, slot) => {
