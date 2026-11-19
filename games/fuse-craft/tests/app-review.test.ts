@@ -341,6 +341,50 @@ test("the animation loop keeps running after a random-opening relaunch", async (
   f.app.dispose();
 });
 
+test("a relaunch retains its light canvas and disposing the app releases it once", async () => {
+  const { created, destroyed, createLightRenderer } = trackLightRenderers();
+  const f = fixture({ createLightRenderer });
+  await f.startSkirmish();
+  f.finish("blue");
+  f.click('[data-action="reset"]');
+  assert.equal(created.length, 1, "the renderer belongs to the mounted canvas");
+  assert.deepEqual(destroyed, []);
+  assert.ok(f.liveFrame());
+
+  f.app.dispose();
+  f.app.dispose();
+  assert.deepEqual(destroyed, created);
+  assert.equal(f.liveFrame(), false);
+});
+
+test("returning to a room unmounts the battlefield before the next match", () => {
+  const { created, destroyed, createLightRenderer } = trackLightRenderers();
+  const f = fixture({ online: { manager: true }, createLightRenderer });
+  f.enterMatch();
+  assert.equal(created.length, 1);
+  assert.ok(f.liveFrame());
+  f.finish("blue");
+  const result = f.root.querySelector<HTMLElement>("#match-result")!;
+  assert.equal(result.hidden, false);
+
+  f.updateRoom((room) => {
+    room.stage = "lobby";
+  });
+  assert.deepEqual(destroyed, created);
+  assert.equal(f.liveFrame(), false);
+  assert.equal(result.hidden, true);
+  assert.equal(result.isConnected, false);
+
+  f.world.finished = false;
+  f.enterMatch();
+  assert.equal(created.length, 2);
+  assert.notEqual(created[0], created[1]);
+  assert.deepEqual(destroyed, [created[0]]);
+  assert.ok(f.liveFrame());
+  f.app.dispose();
+  assert.deepEqual(destroyed, created);
+});
+
 test("the tutorial waits for the player to select the brain, and a reset starts it over", async () => {
   const f = fixture();
   f.click('[data-action="tutorial"]');
@@ -421,6 +465,28 @@ async function settle() {
 interface FixtureOptions {
   online?: { manager: boolean; self?: string; slowCreate?: boolean };
   failTutorialMap?: boolean;
+  createLightRenderer?: AppDependencies["createLightRenderer"];
+}
+
+function trackLightRenderers() {
+  const created: HTMLCanvasElement[] = [];
+  const destroyed: HTMLCanvasElement[] = [];
+  const createLightRenderer: NonNullable<
+    AppDependencies["createLightRenderer"]
+  > = (canvas) => {
+    created.push(canvas);
+    const svg =
+      canvas.parentElement!.querySelector<SVGSVGElement>("#nd-board")!;
+    // Linkedom has no SVG layout. Only this board needs the missing method.
+    svg.getScreenCTM = () => null;
+    return {
+      draw() {},
+      destroy() {
+        destroyed.push(canvas);
+      },
+    };
+  };
+  return { created, destroyed, createLightRenderer };
 }
 
 function fixture(options: FixtureOptions = {}) {
@@ -596,6 +662,7 @@ function fixture(options: FixtureOptions = {}) {
     random: () => 0,
     portal: () => portal,
     audio,
+    createLightRenderer: options.createLightRenderer,
     animationClock: () => 0,
     requestFrame: () => ++requested,
     cancelFrame(handle) {
