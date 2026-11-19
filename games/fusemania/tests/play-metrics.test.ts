@@ -4,7 +4,7 @@ import { ACTION } from "fuse-netcode";
 import { createPlayMetrics, observeConfirmedPlay } from "fuse-ui/play-metrics";
 import { fusemaniaPlayFrame } from "../src/app/play-metrics.js";
 import { READY, type View } from "../src/online/game.js";
-import { SETTINGS, fold, game, seated } from "./fixtures/room.js";
+import { SETTINGS, fold, game, readyGuests, seated } from "./fixtures/room.js";
 
 test("a real three-song playlist emits three rounds and one match across intermissions", () => {
   const room = seated({ ...SETTINGS, songs: 3 });
@@ -35,6 +35,7 @@ test("a real three-song playlist emits three rounds and one match across intermi
   record();
   assert.deepEqual(events, ["Seat Taken"]);
   for (let song = 1; song <= 3; song++) {
+    readyGuests(room);
     fold(room, {
       a: [
         [ACTION, "start", `song-${song}`],
@@ -85,6 +86,7 @@ test("single songs retain a single round; spectator and display views never coun
     },
     () => room.tick,
   );
+  readyGuests(room);
   fold(room, {
     a: [
       [ACTION, "start", "single"],
@@ -125,6 +127,7 @@ test("round completion waits for a confirmed final view and keeps its own song n
   );
   const project = (frame: View) =>
     fusemaniaPlayFrame(frame, { self: "a", mode: "online" });
+  readyGuests(room);
   fold(room, {
     a: [
       [ACTION, "start", "playlist"],
