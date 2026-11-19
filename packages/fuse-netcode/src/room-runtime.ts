@@ -15,6 +15,7 @@ import {
   roomHash,
   wrapDelta,
   wrapMs,
+  type Nack,
   type Packet,
 } from "./packet.js";
 import {
@@ -203,6 +204,20 @@ export const browserDependencies: RuntimeDependencies = {
     return () => document.removeEventListener("visibilitychange", callback);
   },
 };
+
+interface RoomMessageFields {
+  type?: unknown;
+  generation?: unknown;
+  full?: unknown;
+  rules?: unknown;
+  name?: unknown;
+  avatarId?: unknown;
+  error?: unknown;
+  world?: unknown;
+  role?: unknown;
+  slot?: unknown;
+  hidden?: unknown;
+}
 
 /**
  * One runtime for solo and online play: every member simulates the shared log locally, sends one packet per tick to
@@ -517,103 +532,24 @@ export class RoomRuntime<
   }
   private message(id: string, raw: unknown): void {
     if (!raw || typeof raw !== "object") return;
-    const data = raw as {
-      type?: unknown;
-      generation?: unknown;
-      full?: unknown;
-      rules?: unknown;
-      name?: unknown;
-      avatarId?: unknown;
-      error?: unknown;
-      world?: unknown;
-      role?: unknown;
-      slot?: unknown;
-      hidden?: unknown;
-    };
+    const data = raw as RoomMessageFields;
     const member = this.members.get(id);
     if (!member) return;
-    // A peer on different rules folds the same log into a different world: only a matching hello is heard from it.
+    // A mismatched peer can rejoin the protocol only by sending a matching hello.
     if (member.refused && data.type !== "hello") {
-      if (data.type === "join") {
-        const age = rulesAge(this.game.rules, member.rules),
-          mismatch = this.text.mismatch;
-        this.transport!.send(id, {
-          type: "error",
-          error:
-            age === "older"
-              ? mismatch.replyToStale
-              : age === "newer"
-                ? mismatch.replyToNewer
-                : mismatch.replyToUnknown,
-        });
-      }
+      if (data.type === "join") this.replyToMismatchedJoin(id, member);
       return;
     }
     switch (data.type) {
-      case "hello": {
-        if (data.rules !== this.game.rules) {
-          member.refused = true;
-          member.rules =
-            typeof data.rules === "string" ? data.rules : undefined;
-          if (this.sync.request?.to === id) this.sync.abandonRequest();
-          this.status.notice(this.mismatchStatus());
-          return;
-        }
-        member.refused = false;
-        member.rules = undefined;
-        if (
-          typeof data.generation === "number" &&
-          Number.isSafeInteger(data.generation) &&
-          data.generation >= 0
-        )
-          this.bump(id, member, data.generation);
-        member.full = data.full === true;
-        const wasUnavailable = member.hidden || this.saidNoWorld(id);
-        member.hidden = data.hidden === true;
-        // A peer announcing a world is worth asking again, whatever it answered before.
-        if (data.world === true) {
-          this.sync.forgetNoWorld(id);
-          // An unavailable source returning is worth another fetch. Repeated hellos from a holder already serving
-          // lagging snapshots must not interrupt the bounded local catch-up those snapshots granted.
-          if (!member.hidden && wasUnavailable) this.sync.releaseCatchUp();
-        }
+      case "hello":
+        this.receiveHello(id, member, data);
         return;
-      }
       case "join":
-        if (
-          this.manager &&
-          !this.hiddenState &&
-          // A manager whose own seat is away seats nobody: the `JOIN` would be discarded and the joiner left waiting.
-          (this.world === undefined ||
-            this.game.seat(this.world.state, this.id)?.away !== true) &&
-          typeof data.name === "string"
-        ) {
-          const error =
-            data.role === "spectator"
-              ? this.management.spectate(id, data.name)
-              : this.management.join(
-                  id,
-                  data.name,
-                  this.game.seating.isAvatar(data.avatarId)
-                    ? data.avatarId
-                    : undefined,
-                  data.slot,
-                );
-          if (error) this.transport!.send(id, { type: "error", error });
-        }
+        this.receiveJoin(id, data);
         return;
-      case "snapshotRequest": {
-        // One snapshot per peer per half second: a requester retries on its own timer, so a storm of requests cannot make this replica encode and queue megabytes.
-        const now = this.deps.now();
-        if (now - member.snapshotServedAt < SNAPSHOT_SERVE_MS) return;
-        member.snapshotServedAt = now;
-        // A hidden page's world is frozen where it hid: it is no source (and its reliable sends lapse soon after, §12).
-        if (this.world && !this.hiddenState) {
-          for (const chunk of encodeSnapshot(this.world, this.room))
-            if (!this.transport!.send(id, chunk, SNAPSHOT_BUFFER_LIMIT)) break;
-        } else this.transport!.send(id, { type: "noWorld" });
+      case "snapshotRequest":
+        this.serveSnapshot(id, member);
         return;
-      }
       case "noWorld":
         this.sync.noteNoWorld(id, this.deps.now());
         if (this.sync.request?.to === id) this.sync.abandonRequest();
@@ -629,25 +565,105 @@ export class RoomRuntime<
         this.deliver("kicked", () => this.callbacks.kicked?.());
         return;
       case "error":
-        if (typeof data.error === "string")
-          this.status.notice(data.error.slice(0, 120));
-        // An arrival keeps asking: a seat or a place on the list frees and it is in. A side switch is a deliberate tap
-        // by a member that already has a place, so a refusal ends it — left queued, the retry pinned the refusal in the
-        // status line for a whole round and then moved the member at a pause nobody asked for.
-        if (
-          this.pendingJoin &&
-          (id === this.hostId || id === this.managerId()) &&
-          (this.management.switchingSides(
-            this.pendingJoin.spectator,
-            this.pendingJoin.slot,
-          ) ||
-            this.pendingJoin.rename)
-        )
-          this.pendingJoin = undefined;
+        this.receiveJoinError(id, data.error);
         return;
       default:
         return;
     }
+  }
+  private replyToMismatchedJoin(id: string, member: Member): void {
+    const age = rulesAge(this.game.rules, member.rules),
+      mismatch = this.text.mismatch;
+    this.transport!.send(id, {
+      type: "error",
+      error:
+        age === "older"
+          ? mismatch.replyToStale
+          : age === "newer"
+            ? mismatch.replyToNewer
+            : mismatch.replyToUnknown,
+    });
+  }
+  private receiveJoinError(id: string, error: unknown): void {
+    if (typeof error === "string") this.status.notice(error.slice(0, 120));
+    // An arrival keeps asking: a seat or a place on the list frees and it is in. A side switch is a deliberate tap
+    // by a member that already has a place, so a refusal ends it — left queued, the retry pinned the refusal in the
+    // status line for a whole round and then moved the member at a pause nobody asked for.
+    if (
+      this.pendingJoin &&
+      (id === this.hostId || id === this.managerId()) &&
+      (this.management.switchingSides(
+        this.pendingJoin.spectator,
+        this.pendingJoin.slot,
+      ) ||
+        this.pendingJoin.rename)
+    )
+      this.pendingJoin = undefined;
+  }
+  private receiveHello(
+    id: string,
+    member: Member,
+    data: RoomMessageFields,
+  ): void {
+    if (data.rules !== this.game.rules) {
+      member.refused = true;
+      member.rules = typeof data.rules === "string" ? data.rules : undefined;
+      if (this.sync.request?.to === id) this.sync.abandonRequest();
+      this.status.notice(this.mismatchStatus());
+      return;
+    }
+    member.refused = false;
+    member.rules = undefined;
+    if (
+      typeof data.generation === "number" &&
+      Number.isSafeInteger(data.generation) &&
+      data.generation >= 0
+    )
+      this.bump(id, member, data.generation);
+    member.full = data.full === true;
+    const wasUnavailable = member.hidden || this.saidNoWorld(id);
+    member.hidden = data.hidden === true;
+    // A peer announcing a world is worth asking again, whatever it answered before.
+    if (data.world === true) {
+      this.sync.forgetNoWorld(id);
+      // An unavailable source returning is worth another fetch. Repeated hellos from a holder already serving
+      // lagging snapshots must not interrupt the bounded local catch-up those snapshots granted.
+      if (!member.hidden && wasUnavailable) this.sync.releaseCatchUp();
+    }
+  }
+  private receiveJoin(id: string, data: RoomMessageFields): void {
+    if (
+      this.manager &&
+      !this.hiddenState &&
+      // A manager whose own seat is away seats nobody: the `JOIN` would be discarded and the joiner left waiting.
+      (this.world === undefined ||
+        this.game.seat(this.world.state, this.id)?.away !== true) &&
+      typeof data.name === "string"
+    ) {
+      const error =
+        data.role === "spectator"
+          ? this.management.spectate(id, data.name)
+          : this.management.join(
+              id,
+              data.name,
+              this.game.seating.isAvatar(data.avatarId)
+                ? data.avatarId
+                : undefined,
+              data.slot,
+            );
+      if (error) this.transport!.send(id, { type: "error", error });
+    }
+  }
+  private serveSnapshot(id: string, member: Member): void {
+    // One snapshot per peer per half second: a requester retries on its own timer, so a storm of requests cannot make this replica encode and queue megabytes.
+    const now = this.deps.now();
+    if (now - member.snapshotServedAt < SNAPSHOT_SERVE_MS) return;
+    member.snapshotServedAt = now;
+    // A hidden page's world is frozen where it hid: it is no source (and its reliable sends lapse soon after, §12).
+    if (this.world && !this.hiddenState) {
+      for (const chunk of encodeSnapshot(this.world, this.room))
+        if (!this.transport!.send(id, chunk, SNAPSHOT_BUFFER_LIMIT)) break;
+    } else this.transport!.send(id, { type: "noWorld" });
   }
   private fast(id: string, bytes: Uint8Array): void {
     const decoded = decodePacket(this.game, bytes),
@@ -655,49 +671,15 @@ export class RoomRuntime<
     if (!decoded || !member || member.refused) return;
     const now = this.deps.now();
     if ("nack" in decoded) {
-      if (
-        decoded.nack.room !== this.room ||
-        decoded.nack.from !== id ||
-        !this.world
-      )
-        return;
-      const entries = this.own().repairEntries(decoded.nack.firstMissingSeq);
-      // A repair too large for one packet must still carry the entry that was asked for, so it sheds its newest entries.
-      if (entries.length)
-        this.sendPacket(id, member, entries, now, undefined, "oldest");
+      this.receiveNack(id, member, decoded.nack, now);
       return;
     }
     const packet = decoded.packet;
     if (packet.room !== this.room || packet.from !== id) return;
     if (packet.generation < member.generation) return;
-    if (!this.world) {
-      // Bootstrap has no retained prefix yet. Validate the bounded slice it carries before trusting
-      // its generation or time; missing earlier history will arrive in the requested snapshot.
-      const first = Math.min(
-        packet.lastSeq + 1,
-        ...packet.entries.map((entry) => entry[0]),
-      );
-      const bootstrap = new StreamLog(
-        this.game,
-        packet.generation,
-        {
-          seq: first - 1,
-          tick: 0,
-        },
-        this.timing,
-      );
-      if (
-        bootstrap.receive(
-          packet.entries,
-          packet.lastSeq,
-          packet.through,
-          Math.floor(packet.clockTick),
-          0,
-        ).status === "invalid"
-      ) {
-        member.rejected++;
-        return;
-      }
+    if (!this.world && !this.validBootstrap(packet)) {
+      member.rejected++;
+      return;
     }
     const result = this.world?.receive(
       id,
@@ -726,13 +708,7 @@ export class RoomRuntime<
     member.lastSentReceivedAt = now;
     member.clockTick =
       packet.clockTick + (member.rttMs ?? 0) / 2 / this.timing.tickMs;
-    if (packet.echoSentAt !== 0) {
-      const rtt = wrapDelta(wrapMs(now), packet.echoSentAt) - packet.echoHeld;
-      if (rtt >= 0 && rtt < 10_000) {
-        member.rttMs = rtt;
-        if (id === this.authority()) this.clock.sample(packet.clockTick, rtt);
-      }
-    }
+    this.receiveEcho(id, member, packet, now);
     if (!this.world || !result) return;
     member.windowSince = -Infinity;
     if (result.status === "unrepairable") {
@@ -742,19 +718,77 @@ export class RoomRuntime<
     this.deliverEvents(result.events);
     const stream = this.world.streams.get(id);
     if (stream?.gap && now - member.nackAt >= NACK_INTERVAL_MS) {
-      member.nackAt = now;
-      this.transport!.sendFast(
-        id,
-        encodeNack({
-          room: this.room,
-          from: this.id,
-          firstMissingSeq: stream.firstMissing()!,
-        }),
-      );
+      this.sendNack(id, member, stream.firstMissing()!, now);
     }
     if (packet.hash && id === this.authority())
       this.compareHash(packet.hash[0], packet.hash[1], now);
     if (result.rollbackTicks > 0) this.publish();
+  }
+  private receiveNack(
+    id: string,
+    member: Member,
+    nack: Nack,
+    now: number,
+  ): void {
+    if (nack.room !== this.room || nack.from !== id || !this.world) return;
+    const entries = this.own().repairEntries(nack.firstMissingSeq);
+    // Keep the requested entry if the repair tail needs to be trimmed to fit.
+    if (entries.length)
+      this.sendPacket(id, member, entries, now, undefined, "oldest");
+  }
+  private validBootstrap(packet: Packet<Entry>): boolean {
+    // Bootstrap has no retained prefix yet. Validate the bounded slice it carries before trusting
+    // its generation or time; missing earlier history will arrive in the requested snapshot.
+    const first = Math.min(
+      packet.lastSeq + 1,
+      ...packet.entries.map((entry) => entry[0]),
+    );
+    const bootstrap = new StreamLog(
+      this.game,
+      packet.generation,
+      {
+        seq: first - 1,
+        tick: 0,
+      },
+      this.timing,
+    );
+    return (
+      bootstrap.receive(
+        packet.entries,
+        packet.lastSeq,
+        packet.through,
+        Math.floor(packet.clockTick),
+        0,
+      ).status !== "invalid"
+    );
+  }
+  private receiveEcho(
+    id: string,
+    member: Member,
+    packet: Packet<Entry>,
+    now: number,
+  ): void {
+    if (packet.echoSentAt === 0) return;
+    const rtt = wrapDelta(wrapMs(now), packet.echoSentAt) - packet.echoHeld;
+    if (!(rtt >= 0 && rtt < 10_000)) return;
+    member.rttMs = rtt;
+    if (id === this.authority()) this.clock.sample(packet.clockTick, rtt);
+  }
+  private sendNack(
+    id: string,
+    member: Member,
+    firstMissingSeq: number,
+    now: number,
+  ): void {
+    member.nackAt = now;
+    this.transport!.sendFast(
+      id,
+      encodeNack({
+        room: this.room,
+        from: this.id,
+        firstMissingSeq,
+      }),
+    );
   }
   private deliverEvents(events: readonly WorldEvent<Event>[]): void {
     for (const event of events)
@@ -1067,29 +1101,19 @@ export class RoomRuntime<
     command: Extract<RoomCommand<Settings>, { type: "join" | "spectate" }>,
   ): boolean {
     if (this.options.displayOnly) return false;
+    const joining = command.type === "join";
+    const slot = joining ? command.slot : undefined;
     // The first slot request may already be logged by the manager. Keep it stable until admission or refusal.
-    if (
-      command.type === "join" &&
-      command.slot !== undefined &&
-      this.pendingJoin &&
-      !this.pendingJoin.spectator
-    )
-      return this.pendingJoin.slot === command.slot;
+    if (slot !== undefined && this.pendingJoin && !this.pendingJoin.spectator)
+      return this.pendingJoin.slot === slot;
     // A member the room already lists, asking for the other side, is switching rather than arriving. Whether it may
     // is answered here as well as at the writer, because the one refusal no writer can deliver is the one about
     // having nobody to write it: that request would be addressed to this device itself and answered by nobody.
     // Everything else is re-checked where the entries are written, against the fold they are written on.
-    if (
-      this.management.switchingSides(
-        command.type === "spectate",
-        command.type === "join" ? command.slot : undefined,
-      )
-    ) {
+    if (this.management.switchingSides(!joining, slot)) {
       const refusal = this.management.switchable(
         this.id,
-        command.type === "spectate"
-          ? this.text.watchInRound
-          : this.text.takeSeatInRound,
+        joining ? this.text.takeSeatInRound : this.text.watchInRound,
       );
       if (refusal) {
         this.status.notice(refusal);
@@ -1105,11 +1129,11 @@ export class RoomRuntime<
     const wanted = this.game.seating.seatName(command.name);
     this.pendingJoin = {
       name: command.name,
-      slot: command.type === "join" ? command.slot : undefined,
-      avatarId: command.type === "join" ? command.avatarId : undefined,
-      spectator: command.type === "spectate",
+      slot,
+      avatarId: joining ? command.avatarId : undefined,
+      spectator: !joining,
       rename:
-        command.type === "join" &&
+        joining &&
         seated !== undefined &&
         seated.watcher !== true &&
         this.game.seating.renameable !== undefined &&
@@ -1138,73 +1162,91 @@ export class RoomRuntime<
       this.status.notice(this.text.hostOnly);
       return false;
     }
-    const room = this.world.state,
-      seating = this.game.seating;
-    if (command.type === "settings") {
-      const settings = seating.parseSettings(command.settings);
-      if (settings === undefined) {
-        this.status.notice(this.text.invalidSettings);
+    const room = this.world.state;
+    switch (command.type) {
+      case "settings":
+        return this.applySettings(command.settings);
+      case "action":
+        return this.applyRoomAction(room, command);
+      case "bot":
+        return this.applyBotCommand(room, command);
+      case "kick":
+        return this.management.kick(command.id);
+      default:
         return false;
-      }
-      this.append(
-        SETTINGS,
-        this.solo ? seating.soloSettings(settings) : settings,
+    }
+  }
+  private applySettings(raw: Settings): boolean {
+    const seating = this.game.seating;
+    const settings = seating.parseSettings(raw);
+    if (settings === undefined) {
+      this.status.notice(this.text.invalidSettings);
+      return false;
+    }
+    this.append(
+      SETTINGS,
+      this.solo ? seating.soloSettings(settings) : settings,
+    );
+    return true;
+  }
+  private applyRoomAction(
+    room: Room,
+    command: Extract<RoomCommand<Settings>, { type: "action" }>,
+  ): boolean {
+    const stage = this.game.stage(room);
+    const required = this.game.seating.minPlayers ?? 2;
+    const connected =
+      [...this.game.members(room)].filter(
+        (player) => player.connected && !player.watcher,
+      ).length + this.management.pending().seats;
+    if (
+      command.action === "start" &&
+      (stage !== "lobby" || connected < required)
+    ) {
+      this.status.notice(
+        stage !== "lobby" ? this.text.matchRunning : this.text.needTwo,
       );
+      return false;
+    }
+    if (
+      command.action === "rematch" &&
+      (stage !== "over" || connected < required)
+    ) {
+      this.status.notice(this.text.rematchLater);
+      return false;
+    }
+    if (!ROOM_ACTIONS.includes(command.action)) return false;
+    this.append(ACTION, command.action, this.deps.token());
+    return true;
+  }
+  private applyBotCommand(
+    room: Room,
+    command: Extract<RoomCommand<Settings>, { type: "bot" }>,
+  ): boolean {
+    const seating = this.game.seating;
+    if (command.action === "add") {
+      const slot = this.management.claimSlot(command.slot);
+      if (slot < 0) {
+        this.status.notice(this.text.fullWithBots);
+        return false;
+      }
+      const id = seating.botId(room, this.management.pending().ids);
+      this.append(BOT, "add", id, seating.botName(slot), slot);
       return true;
     }
-    if (command.type === "action") {
-      const stage = this.game.stage(room);
-      const connected =
-        [...this.game.members(room)].filter(
-          (player) => player.connected && !player.watcher,
-        ).length + this.management.pending().seats;
-      if (
-        command.action === "start" &&
-        (stage !== "lobby" || connected < (this.game.seating.minPlayers ?? 2))
-      ) {
-        this.status.notice(
-          stage !== "lobby" ? this.text.matchRunning : this.text.needTwo,
-        );
-        return false;
-      }
-      if (
-        command.action === "rematch" &&
-        (stage !== "over" || connected < (this.game.seating.minPlayers ?? 2))
-      ) {
-        this.status.notice(this.text.rematchLater);
-        return false;
-      }
-      if (!ROOM_ACTIONS.includes(command.action)) return false;
-      this.append(ACTION, command.action, this.deps.token());
-      return true;
+    if (
+      typeof command.id !== "string" ||
+      !this.game.seat(room, command.id)?.bot
+    ) {
+      this.status.notice(this.text.botNotFound);
+      return false;
     }
-    if (command.type === "bot") {
-      if (command.action === "add") {
-        const slot = this.management.claimSlot(command.slot);
-        if (slot < 0) {
-          this.status.notice(this.text.fullWithBots);
-          return false;
-        }
-        const id = seating.botId(room, this.management.pending().ids);
-        this.append(BOT, "add", id, seating.botName(slot), slot);
-        return true;
-      }
-      if (
-        typeof command.id !== "string" ||
-        !this.game.seat(room, command.id)?.bot
-      ) {
-        this.status.notice(this.text.botNotFound);
-        return false;
-      }
-      if (this.game.stage(room) === "running") {
-        this.status.notice(this.text.botBetweenRounds);
-        return false;
-      }
-      this.append(BOT, "remove", command.id);
-      return true;
+    if (this.game.stage(room) === "running") {
+      this.status.notice(this.text.botBetweenRounds);
+      return false;
     }
-    if (command.type === "kick") return this.management.kick(command.id);
-    return false;
+    this.append(BOT, "remove", command.id);
+    return true;
   }
   private sendJoin(): boolean {
     const join = this.pendingJoin;
@@ -1397,27 +1439,8 @@ export class RoomRuntime<
       )
     )
       this.requestSnapshot();
-    if (this.creator && this.transport && !this.sync.requesting) {
-      // A fresh world is opened only when nobody can have one: the room is empty, or every linked member answered
-      // that it holds none. A returning creator with peers waits for their snapshot however long the links take;
-      // opening a lobby on a timer would let the authority serve that lobby over the match its peers are playing.
-      // Members refused for their rules count as nobody: whatever world they hold is not this game's.
-      const linked = candidates.filter((id) => this.transport!.linked(id));
-      const nobodyHasIt =
-        linked.length > 0 && linked.every((id) => this.saidNoWorld(id));
-      if (candidates.length === 0 || nobodyHasIt) {
-        this.createWorld(this.settings);
-        this.publish();
-      } else if (now - this.welcomeAt > FRESH_WORLD_WAIT_MS)
-        this.status.recurring(
-          fill(this.text.recovering, {
-            who: linked.length
-              ? this.text.recoverFromOne
-              : this.text.recoverFromAll,
-            peer: this.transport.explain(candidates.sort()[0]!),
-          }),
-        );
-    }
+    if (this.creator && this.transport && !this.sync.requesting)
+      this.openOrAwaitWorld(candidates, this.transport, now);
     if (this.staleRequest(now)) this.retrySnapshot();
     else if (
       !this.sync.requesting &&
@@ -1440,8 +1463,32 @@ export class RoomRuntime<
             }),
       );
     }
-    if (this.pendingJoin && now - this.pendingJoin.sentAt > JOIN_RETRY_MS)
-      this.sendJoin();
+    this.retryJoin(now);
+  }
+  private openOrAwaitWorld(
+    candidates: string[],
+    transport: RoomTransport,
+    now: number,
+  ): void {
+    // A fresh world is opened only when nobody can have one: the room is empty, or every linked member answered
+    // that it holds none. A returning creator with peers waits for their snapshot however long the links take;
+    // opening a lobby on a timer would let the authority serve that lobby over the match its peers are playing.
+    // Members refused for their rules count as nobody: whatever world they hold is not this game's.
+    const linked = candidates.filter((id) => transport.linked(id));
+    const nobodyHasIt =
+      linked.length > 0 && linked.every((id) => this.saidNoWorld(id));
+    if (candidates.length === 0 || nobodyHasIt) {
+      this.createWorld(this.settings);
+      this.publish();
+    } else if (now - this.welcomeAt > FRESH_WORLD_WAIT_MS)
+      this.status.recurring(
+        fill(this.text.recovering, {
+          who: linked.length
+            ? this.text.recoverFromOne
+            : this.text.recoverFromAll,
+          peer: transport.explain(candidates.sort()[0]!),
+        }),
+      );
   }
   private tickPass(): void {
     const now = this.deps.now();
@@ -1465,38 +1512,57 @@ export class RoomRuntime<
       const stream = world.streams.get(id)!;
       stream.through = Math.max(stream.through, tick);
     }
-    if (this.hiddenState && !world.settled)
-      // A hidden world does not advance, but a rollback's re-run is history it already reached: it finishes.
-      this.deliverEvents(world.advance(world.tick).events);
-    else if (!this.hiddenState && (tick > world.tick || !world.settled)) {
-      // Only ticks the stall rule lets us reach count as a backlog: a world waiting on a member is not behind, and a
-      // long stall must end by catching up, never by fetching a snapshot from a peer that waited just as long.
-      const reachable = Math.min(tick, world.stallBound().tick),
-        behind = this.behind(reachable);
-      // A temporary stream stall limits what can be reached, not the actual backlog. Keep the local catch-up grace
-      // while the log clock is still far ahead so repaired packets resume stepping rather than another fetch.
-      if (!this.behind(tick)) this.sync.releaseCatchUp();
-      // Fetched only from someone who can have a newer world: with every source hidden or without one, or after a
-      // resync that brought nothing newer, the backlog is caught up here at the step budget.
-      if (
-        this.transport &&
-        behind &&
-        this.sync.mayFetchBacklog(now) &&
-        this.sources().some((id) => !this.saidNoWorld(id))
-      ) {
-        if (!this.sync.requesting) this.requestSnapshot();
-      } else {
-        // The budget window (`CATCHUP_STEPS`, refilled after every pass) paces how far this pass gets.
-        const result = world.advance(tick);
-        this.deliverEvents(result.events);
-        if (result.waitingFor !== undefined) {
-          this.status.recurring(
-            fill(this.text.waitingFor, { name: result.waitingFor }),
-          );
-        } else if (!this.sync.diverged)
-          this.status.recurring(this.solo ? this.text.solo : this.lagging(now));
-      }
+    this.advanceWorld(world, tick, now);
+    this.settleAdmission(world);
+    if (this.transport) this.serviceLinks(world, tick, now, this.transport);
+    this.publish();
+  }
+  private advanceWorld(
+    world: World<Room, Entry, View, Event, Settings>,
+    tick: number,
+    now: number,
+  ): void {
+    if (this.hiddenState) {
+      // A hidden world completes rollback history it already reached without advancing.
+      if (!world.settled) this.deliverEvents(world.advance(world.tick).events);
+      return;
     }
+    if (!(tick > world.tick || !world.settled)) return;
+    // Only ticks the stall rule lets us reach count as a backlog: a world waiting on a member is not behind, and a
+    // long stall must end by catching up, never by fetching a snapshot from a peer that waited just as long.
+    const reachable = Math.min(tick, world.stallBound().tick),
+      behind = this.behind(reachable);
+    // A temporary stream stall limits what can be reached, not the actual backlog. Keep the local catch-up grace
+    // while the log clock is still far ahead so repaired packets resume stepping rather than another fetch.
+    if (!this.behind(tick)) this.sync.releaseCatchUp();
+    // Fetched only from someone who can have a newer world: with every source hidden or without one, or after a
+    // resync that brought nothing newer, the backlog is caught up here at the step budget.
+    if (
+      this.transport &&
+      behind &&
+      this.sync.mayFetchBacklog(now) &&
+      this.sources().some((id) => !this.saidNoWorld(id))
+    ) {
+      if (!this.sync.requesting) this.requestSnapshot();
+      return;
+    }
+    // The budget window (CATCHUP_STEPS, refilled after each pass) paces how far it gets.
+    const result = world.advance(tick);
+    this.deliverEvents(result.events);
+    if (result.waitingFor !== undefined) {
+      this.status.recurring(
+        fill(this.text.waitingFor, { name: result.waitingFor }),
+      );
+    } else if (!this.sync.diverged)
+      this.status.recurring(this.solo ? this.text.solo : this.lagging(now));
+  }
+  private retryJoin(now: number): void {
+    if (this.pendingJoin && now - this.pendingJoin.sentAt > JOIN_RETRY_MS)
+      this.sendJoin();
+  }
+  private settleAdmission(
+    world: World<Room, Entry, View, Event, Settings>,
+  ): void {
     // Admission is a log outcome in solo rooms too. A completed local move must release
     // the pending request before the next seat choice; only network requests need retries.
     if (this.pendingJoin) {
@@ -1512,85 +1578,93 @@ export class RoomRuntime<
             own.name === this.game.seating.seatName(this.pendingJoin.name));
       if (admitted) this.pendingJoin = undefined;
     }
-    if (this.transport) {
-      const own = this.game.seat(world.state, this.id);
-      if (
-        this.hiddenState &&
-        this.awayTick !== undefined &&
-        now - this.awayAt >= AWAY_REPEAT_MS
-      )
-        this.awayTick = this.awayEntry();
-      else if (
-        !this.hiddenState &&
-        this.awayTick === undefined &&
-        own?.away === true &&
-        world.settled &&
-        now - this.returnAt >= RETURN_REPEAT_MS
-      )
-        this.ownReturn(now);
-      // A hidden page's world is frozen where it hid: it judges nobody and logs nothing for the room (§12).
-      if (this.manager && !this.hiddenState) this.management.creatorDuties(now);
-      if (!this.creator && !this.hiddenState)
-        this.management.actingCreatorDuties(now);
-      this.management.settleKick();
-      this.lastLoopAt = now;
-      const player = this.player();
-      if (player && !player.connected) this.absentControls();
-      if (this.pendingJoin && now - this.pendingJoin.sentAt > JOIN_RETRY_MS)
-        this.sendJoin();
-      const full =
-        this.options.displayOnly === true ||
-        !this.game.seating.sharedScreen(this.game.settings(world.state)) ||
-        !player;
-      if (full !== this.full) {
-        this.full = full;
-        for (const [id, member] of this.members) {
-          member.helloed = false;
-          this.greet(id, member);
-        }
-      }
-      if (this.recorder.owes(tick)) this.sendPackets(now);
+  }
+  private serviceLinks(
+    world: World<Room, Entry, View, Event, Settings>,
+    tick: number,
+    now: number,
+    transport: RoomTransport,
+  ): void {
+    this.repeatPresence(world, now);
+    // A hidden page's world is frozen where it hid: it judges nobody and logs nothing for the room (§12).
+    if (this.manager && !this.hiddenState) this.management.creatorDuties(now);
+    if (!this.creator && !this.hiddenState)
+      this.management.actingCreatorDuties(now);
+    this.management.settleKick();
+    this.lastLoopAt = now;
+    const player = this.player();
+    if (player && !player.connected) this.absentControls();
+    this.retryJoin(now);
+    const full =
+      this.options.displayOnly === true ||
+      !this.game.seating.sharedScreen(this.game.settings(world.state)) ||
+      !player;
+    if (full !== this.full) {
+      this.full = full;
       for (const [id, member] of this.members) {
-        const stream = world.streams.get(id);
-        // A stream whose owner is out of reach (`ahead`) has no gap to nack, but needs the same snapshot: it takes the
-        // same throttled path. Once the member no longer counts as heard the asking backs off, but never stops: a
-        // replica whose links could not carry a request inside the grace would otherwise be wedged for good.
-        const ahead = stream?.ahead === true,
-          pace =
-            !stream?.gap && now - member.windowSince > WINDOW_GRACE_MS
-              ? WINDOW_GRACE_MS
-              : STALLED_GAP_MS;
-        if (!stream?.gap && !ahead) {
-          member.gapSince = -Infinity;
-          continue;
-        }
-        if (member.gapSince === -Infinity) member.gapSince = now;
-        // Nack repairs a gap within a round trip. One that outlives the owner's retained window (an entry logged
-        // before that peer's links could carry packets) can only be closed by a snapshot from a peer that has it.
-        else if (now - member.gapSince > pace && !this.sync.requesting) {
-          this.requestSnapshot();
-          // Only a request that went out uses up the wait: with no link fit to carry one, the next tick tries again.
-          if (this.sync.requesting) member.gapSince = now;
-          continue;
-        }
-        if (
-          stream.gap &&
-          now - member.nackAt >= NACK_INTERVAL_MS &&
-          this.transport.linked(id)
-        ) {
-          member.nackAt = now;
-          this.transport.sendFast(
-            id,
-            encodeNack({
-              room: this.room,
-              from: this.id,
-              firstMissingSeq: stream.firstMissing()!,
-            }),
-          );
-        }
+        member.helloed = false;
+        this.greet(id, member);
       }
     }
-    this.publish();
+    if (this.recorder.owes(tick)) this.sendPackets(now);
+    this.repairStreams(world, now, transport);
+  }
+  private repeatPresence(
+    world: World<Room, Entry, View, Event, Settings>,
+    now: number,
+  ): void {
+    const own = this.game.seat(world.state, this.id);
+    if (
+      this.hiddenState &&
+      this.awayTick !== undefined &&
+      now - this.awayAt >= AWAY_REPEAT_MS
+    )
+      this.awayTick = this.awayEntry();
+    else if (
+      !this.hiddenState &&
+      this.awayTick === undefined &&
+      own?.away === true &&
+      world.settled &&
+      now - this.returnAt >= RETURN_REPEAT_MS
+    )
+      this.ownReturn(now);
+  }
+  private repairStreams(
+    world: World<Room, Entry, View, Event, Settings>,
+    now: number,
+    transport: RoomTransport,
+  ): void {
+    for (const [id, member] of this.members) {
+      const stream = world.streams.get(id);
+      // A stream whose owner is out of reach (`ahead`) has no gap to nack, but needs the same snapshot: it takes the
+      // same throttled path. Once the member no longer counts as heard the asking backs off, but never stops: a
+      // replica whose links could not carry a request inside the grace would otherwise be wedged for good.
+      const ahead = stream?.ahead === true,
+        pace =
+          !stream?.gap && now - member.windowSince > WINDOW_GRACE_MS
+            ? WINDOW_GRACE_MS
+            : STALLED_GAP_MS;
+      if (!stream?.gap && !ahead) {
+        member.gapSince = -Infinity;
+        continue;
+      }
+      if (member.gapSince === -Infinity) member.gapSince = now;
+      // Nack repairs a gap within a round trip. One that outlives the owner's retained window (an entry logged
+      // before that peer's links could carry packets) can only be closed by a snapshot from a peer that has it.
+      else if (now - member.gapSince > pace && !this.sync.requesting) {
+        this.requestSnapshot();
+        // Only a request that went out uses up the wait: with no link fit to carry one, the next tick tries again.
+        if (this.sync.requesting) member.gapSince = now;
+        continue;
+      }
+      if (
+        stream.gap &&
+        now - member.nackAt >= NACK_INTERVAL_MS &&
+        transport.linked(id)
+      ) {
+        this.sendNack(id, member, stream.firstMissing()!, now);
+      }
+    }
   }
   private lagging(now: number): string {
     const room = this.world!.state;
