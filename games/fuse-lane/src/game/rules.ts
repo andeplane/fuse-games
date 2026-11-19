@@ -11,6 +11,7 @@ import {
   type ManagementEntry,
   type SeatRecord,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   BRIEFING_TICKS,
@@ -442,11 +443,8 @@ function playEntries(
   tick: number,
 ): PlayEntry[] {
   const stream = streams.get(seat.id),
-    source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? []).filter(
+    entries = entriesForGeneration(stream, seat.generation);
+  return entries.filter(
     (entry): entry is PlayEntry => entry[1] === tick && entry[2] <= GOALS,
   );
 }

@@ -16,6 +16,7 @@ import {
   type Stage,
   type StreamEntries,
   createSeatListDecoder,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   BOT_LEVEL_ORDER,
@@ -373,11 +374,8 @@ function sourceOf(
   streams: ReadonlyMap<string, StreamEntries<Entry>>,
 ): readonly Entry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return source?.entries ?? [];
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries;
 }
 
 /**

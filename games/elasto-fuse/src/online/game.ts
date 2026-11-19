@@ -18,6 +18,7 @@ import {
   type RollbackGame,
   type SeatRecord,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -350,11 +351,8 @@ function playEntries(
   tick: number,
 ): PlayEntry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries
     .filter(
       (entry): entry is PlayEntry =>
         entry[1] === tick && entry[2] === PLAY && entry[3] === room.matchId,

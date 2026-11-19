@@ -1,4 +1,8 @@
-import type { LogEntry, StreamEntries } from "./game.js";
+import {
+  entriesForGeneration,
+  type LogEntry,
+  type StreamEntries,
+} from "./game.js";
 import type { SeatRecord } from "./management.js";
 
 interface HeldRoom {
@@ -32,15 +36,12 @@ export function foldHeldInput<Entry extends LogEntry>(
     }
 
     const stream = streams.get(seat.id);
-    const source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
+    const entries = entriesForGeneration(stream, seat.generation);
 
     let held = room.held[id] ?? 0;
     let tapped = 0;
     let lastSequence = -Infinity;
-    for (const entry of source?.entries ?? []) {
+    for (const entry of entries) {
       if (entry[1] !== tick) continue;
       const bits = readBits(entry);
       if (bits === undefined) continue;

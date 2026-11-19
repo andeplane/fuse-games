@@ -13,6 +13,7 @@ import {
   type Stage,
   type StreamEntries,
   createSeatListDecoder,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   COMMANDS_PER_SEAT,
@@ -372,11 +373,8 @@ function commands(
     }
     const seat = sitter(room, slot)!,
       stream = streams.get(seat.id);
-    const source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
-    const mine = (source?.entries ?? [])
+    const entries = entriesForGeneration(stream, seat.generation);
+    const mine = entries
       .filter(
         (e): e is ControlEntry =>
           e[2] <= LAST && e[1] === tick && e[3] === room.matchId,
