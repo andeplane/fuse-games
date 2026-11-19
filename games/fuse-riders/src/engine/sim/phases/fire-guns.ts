@@ -12,6 +12,7 @@ import {
   GUN_HOLE_RADIUS,
   GUN_RADIUS,
   cutTrailHole,
+  rayAxisLimit,
 } from "../../gun.js";
 import {
   MAX_PORTAL_PAIRS,
@@ -128,18 +129,8 @@ function resolveGunShots(
       const x = segment.launchX,
         y = segment.launchY;
       const inset = open ? 0 : state.boundaryInset + GUN_RADIUS;
-      const wallX =
-        vx > 0
-          ? (state.width - inset - x) / vx
-          : vx < 0
-            ? (inset - x) / vx
-            : Infinity;
-      const wallY =
-        vy > 0
-          ? (state.height - inset - y) / vy
-          : vy < 0
-            ? (inset - y) / vy
-            : Infinity;
+      const wallX = rayAxisLimit(x, vx, state.width, inset);
+      const wallY = rayAxisLimit(y, vy, state.height, inset);
       const distance = Math.max(0, Math.min(wallX, wallY, range));
       const dx = vx * distance,
         dy = vy * distance;
