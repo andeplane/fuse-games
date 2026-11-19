@@ -40,6 +40,7 @@ import {
 import {
   PICKUP_TYPES,
   isAimingGun,
+  rayAxisLimit,
   trackPose,
   wrapCoordinate,
   wrapImages,
@@ -1780,16 +1781,8 @@ class ArenaScene extends Phaser.Scene {
           0,
           Math.min(
             range,
-            cx > 0
-              ? (w - edge - x) / cx
-              : cx < 0
-                ? (edge - x) / cx
-                : range,
-            cy > 0
-              ? (h - edge - y) / cy
-              : cy < 0
-                ? (edge - y) / cy
-                : range,
+            rayAxisLimit(x, cx, w, edge),
+            rayAxisLimit(y, cy, h, edge),
           ),
         );
         if (!Number.isFinite(t)) break;
