@@ -31,7 +31,6 @@ import {
 } from "./offroad/campaign.js";
 import { offroadStartingLevel } from "./offroad/cpu.js";
 
-/** Decode every field into a fresh room only when the snapshot is internally consistent. */
 const isStage = (value: unknown): value is Stage =>
   value === "lobby" || value === "running" || value === "over";
 
@@ -351,6 +350,7 @@ function validatesFinishReceipt(room: FuseDriversRoom): boolean {
   );
 }
 
+/** Decode every field into a fresh room only when the snapshot is internally consistent. */
 export function decodeRoom(
   fields: readonly unknown[],
   tick: number,
