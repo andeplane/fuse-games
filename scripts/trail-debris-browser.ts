@@ -18,9 +18,9 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await openRidersFixturePage(page, server.url);
     const removed = await page.evaluate(async (mode) => {
-      const { createPhaserArena } = (await import(
-        String("/games/fuse-riders/src/render/phaser/arena.ts")
-      )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+      const { mountWorldArena, readArenaPixels } = (await import(
+        String("/scripts/lib/riders-render-fixture.ts")
+      )) as typeof import("./lib/riders-render-fixture.js");
       const { themes } = (await import(
         String("/games/fuse-riders/src/render/themes.ts")
       )) as typeof import("../games/fuse-riders/src/render/themes.js");
@@ -100,42 +100,16 @@ try {
       const removed =
         before.players.reduce((n, p) => n + p.trail.length, 0) -
         after.players.reduce((n, p) => n + p.trail.length, 0);
-      document.body.replaceChildren();
-      document.body.style.cssText = "margin:0;background:#020715";
-      let canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      document.body.append(canvas);
-      const arena = createPhaserArena(canvas, {
-        renderer: mode === "webgl" ? "auto" : "canvas",
-        resolution: "world",
-      });
-      await arena.ready;
+      const { arena, canvas } = await mountWorldArena(
+        mode === "webgl" ? "auto" : "canvas",
+      );
+      const renderer = arena.metrics().renderer;
       const paint = (snapshot: WorldView, now: number) => {
         arena.render(snapshot, now, themes["neon-pixel"], "debris");
       };
       paint(before, 1000);
       paint(after, 1050);
-      const pixels = () => {
-        const gl = mode === "webgl" ? canvas.getContext("webgl") : null;
-        if (!gl)
-          return new Uint8Array(
-            canvas
-              .getContext("2d")!
-              .getImageData(0, 0, canvas.width, canvas.height).data,
-          );
-        const data = new Uint8Array(canvas.width * canvas.height * 4);
-        gl.readPixels(
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          data,
-        );
-        return data;
-      };
+      const pixels = () => readArenaPixels(canvas, renderer);
       paint({ ...after, tick: 204 }, 1200);
       Reflect.set(window, "debrisTailCheck", () => {
         const tail = { ...after, tick: 210, blasts: [] };

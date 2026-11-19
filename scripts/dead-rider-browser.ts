@@ -16,9 +16,14 @@ try {
   await openRidersFixturePage(page, server.url);
   for (const mode of ["webgl", "phaser-canvas"] as const) {
     const results = await page.evaluate(async (mode) => {
-      const { createPhaserArena } = (await import(
-        String("/games/fuse-riders/src/render/phaser/arena.ts")
-      )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+      const {
+        mountWorldArena,
+        readArenaPixels,
+        pixelOffset,
+        arenaRegionDifference,
+      } = (await import(
+        String("/scripts/lib/riders-render-fixture.ts")
+      )) as typeof import("./lib/riders-render-fixture.js");
       const { visualFixture } = (await import(
         String("/scripts/lib/benchmark-fixture.ts")
       )) as typeof import("./lib/benchmark-fixture.js");
@@ -41,17 +46,10 @@ try {
         map: "classic" as const,
         aimBounce: false,
       };
-      document.body.replaceChildren();
-      document.body.style.cssText = "margin:0;background:#020715";
-      const canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      document.body.append(canvas);
-      const arena = createPhaserArena(canvas, {
-        renderer: mode === "webgl" ? "auto" : "canvas",
-        resolution: "world",
-      });
-      await arena.ready;
+      const { arena, canvas } = await mountWorldArena(
+        mode === "webgl" ? "auto" : "canvas",
+      );
+      const renderer = arena.metrics().renderer;
       if (mode === "webgl" && arena.metrics().renderer !== "webgl")
         throw Error("WebGL did not start");
       const fixture = visualFixture(100);
@@ -84,36 +82,8 @@ try {
           },
         ],
       };
-      const read = (): Uint8Array => {
-        const gl = mode === "webgl" ? canvas.getContext("webgl") : null;
-        if (!gl)
-          return new Uint8Array(
-            canvas.getContext("2d")!.getImageData(0, 0, 1600, 900).data,
-          );
-        const pixels = new Uint8Array(1600 * 900 * 4);
-        gl.readPixels(0, 0, 1600, 900, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        return pixels;
-      };
-      const regionDifference = (
-        a: Uint8Array,
-        b: Uint8Array,
-        x: number,
-        y: number,
-        width: number,
-        height: number,
-      ) => {
-        let difference = 0;
-        for (let row = y; row < y + height; row++)
-          for (let col = x; col < x + width; col++) {
-            const offset =
-              ((mode === "webgl" ? 899 - row : row) * 1600 + col) * 4;
-            for (let channel = 0; channel < 3; channel++)
-              difference += Math.abs(
-                a[offset + channel]! - b[offset + channel]!,
-              );
-          }
-        return difference;
-      };
+      const read = () => readArenaPixels(canvas, renderer);
+      const regionDifference = arenaRegionDifference(canvas, renderer);
       const results = [];
       for (const theme of ["neon-pixel", "clean-neon"] as const) {
         const paint = (players: (typeof player)[], tick = 100) => {
@@ -124,9 +94,9 @@ try {
         arena.reset();
         const empty = paint([]);
         const alive = paint([player]);
-        const livingTrail = regionDifference(alive, empty, 250, 198, 300, 4);
+        const livingTrail = regionDifference(alive, empty, [250, 198, 300, 4]);
         if (livingTrail <= 0) throw Error("Live trail missing");
-        if (regionDifference(alive, empty, 750, 395, 100, 110) === 0)
+        if (regionDifference(alive, empty, [750, 395, 100, 110]) === 0)
           throw Error("Live avatar missing");
         const game = createGame("decaying-trail", classic);
         game.tick = 100;
@@ -155,18 +125,17 @@ try {
         // Remove the transient sparks so we can inspect the pooled avatar and its overlays underneath.
         arena.reset();
         const crashed = paint([dead]);
-        if (regionDifference(crashed, empty, 750, 395, 100, 110) !== 0)
+        if (regionDifference(crashed, empty, [750, 395, 100, 110]) !== 0)
           throw Error("Dead rider obscures crash");
         const deadRatio =
-          regionDifference(crashed, empty, 250, 198, 300, 4) / livingTrail;
+          regionDifference(crashed, empty, [250, 198, 300, 4]) / livingTrail;
         if (Math.abs(deadRatio - 1) > 0.01)
           throw Error(`Fresh dead trail lost opacity: ${deadRatio}`);
         const detached = paint([{ ...player, trail: dead.trail }]);
-        if (regionDifference(detached, crashed, 250, 198, 300, 4) !== 0)
+        if (regionDifference(detached, crashed, [250, 198, 300, 4]) !== 0)
           throw Error("Living detached pieces have different styling");
         const at = (pixels: Uint8Array) => {
-          const offset =
-            ((mode === "webgl" ? 899 - 198 : 198) * 1600 + 350) * 4;
+          const offset = pixelOffset(canvas, renderer, 350, 198);
           return Array.from(pixels.slice(offset, offset + 3));
         };
         const chroma = (pixels: Uint8Array) =>
@@ -223,20 +192,20 @@ try {
           trail: advanceTrail(dead.trail, 160, 120),
         };
         const eroded = paint([shrinking], 160);
-        if (regionDifference(eroded, empty, 210, 190, 50, 20) !== 0)
+        if (regionDifference(eroded, empty, [210, 190, 50, 20]) !== 0)
           throw Error("Old endpoint did not shrink");
-        if (regionDifference(eroded, empty, 540, 190, 50, 20) !== 0)
+        if (regionDifference(eroded, empty, [540, 190, 50, 20]) !== 0)
           throw Error("New endpoint did not shrink");
-        if (regionDifference(eroded, empty, 300, 198, 200, 4) <= 0)
+        if (regionDifference(eroded, empty, [300, 198, 200, 4]) <= 0)
           throw Error("Surviving middle vanished");
         const removed = paint(
           [{ ...dead, trail: advanceTrail(shrinking.trail, 240, 160) }],
           240,
         );
-        if (regionDifference(removed, empty, 200, 190, 400, 20) !== 0)
+        if (regionDifference(removed, empty, [200, 190, 400, 20]) !== 0)
           throw Error("Eroded trail remains visible");
         const revived = paint([player]);
-        if (regionDifference(revived, empty, 750, 395, 100, 110) === 0)
+        if (regionDifference(revived, empty, [750, 395, 100, 110]) === 0)
           throw Error("Live avatar did not return");
         results.push({
           theme,

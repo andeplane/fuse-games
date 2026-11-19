@@ -25,23 +25,17 @@ try {
   await mkdir("artifacts", { recursive: true });
   await openRidersFixturePage(page, server.url);
   const result = await page.evaluate(async () => {
-    const { createPhaserArena } = (await import(
-      String("/games/fuse-riders/src/render/phaser/arena.ts")
-    )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+    const { mountWorldArena, readArenaPixels, pixelOffset } = (await import(
+      String("/scripts/lib/riders-render-fixture.ts")
+    )) as typeof import("./lib/riders-render-fixture.js");
     const { visualFixture } = (await import(
       String("/scripts/lib/benchmark-fixture.ts")
     )) as typeof import("./lib/benchmark-fixture.js");
     const { themes } = (await import(
       String("/games/fuse-riders/src/render/themes.ts")
     )) as typeof import("../games/fuse-riders/src/render/themes.js");
-    document.body.replaceChildren();
-    document.body.style.cssText = "margin:0;background:#020715";
-    const canvas = document.createElement("canvas");
-    canvas.width = 1600;
-    canvas.height = 900;
-    document.body.append(canvas);
-    const arena = createPhaserArena(canvas, { resolution: "world" });
-    await arena.ready;
+    const { arena, canvas } = await mountWorldArena();
+    const renderer = arena.metrics().renderer;
     if (arena.metrics().renderer !== "webgl") throw Error("WebGL missing");
     const fixture = visualFixture(200);
     const base = {
@@ -75,23 +69,17 @@ try {
         segment(500, 200, 800, 200, 199),
       ],
     };
-    const gl = canvas.getContext("webgl")!;
     const paint = (
       players: (typeof testRider)[],
       theme: keyof typeof themes = "neon-pixel",
     ) => {
       arena.render({ ...base, players }, 1000, themes[theme], "bevel-fixture");
-      const pixels = new Uint8Array(1600 * 900 * 4);
-      gl.readPixels(0, 0, 1600, 900, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-      return pixels;
+      return readArenaPixels(canvas, renderer);
     };
-    const at = (pixels: Uint8Array, x: number, y: number) =>
-      Array.from(
-        pixels.slice(
-          ((899 - y) * 1600 + x) * 4,
-          ((899 - y) * 1600 + x) * 4 + 3,
-        ),
-      );
+    const at = (pixels: Uint8Array, x: number, y: number) => {
+      const offset = pixelOffset(canvas, renderer, x, y);
+      return Array.from(pixels.slice(offset, offset + 3));
+    };
     const distance = (a: number[], b: number[]) =>
       a.reduce((sum, value, i) => sum + Math.abs(value - b[i]!), 0);
     const empty = paint([]);

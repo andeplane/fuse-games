@@ -16,26 +16,18 @@ try {
   for (const backend of ["auto", "canvas"] as const) {
     console.log(
       await page.evaluate(async (backend) => {
-        const { createPhaserArena } = (await import(
-          String("/games/fuse-riders/src/render/phaser/arena.ts")
-        )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+        const { mountWorldArena, readArenaPixels, regionRgbDifference } =
+          (await import(
+            String("/scripts/lib/riders-render-fixture.ts")
+          )) as typeof import("./lib/riders-render-fixture.js");
         const { visualFixture } = (await import(
           String("/scripts/lib/benchmark-fixture.ts")
         )) as typeof import("./lib/benchmark-fixture.js");
         const { themes } = (await import(
           String("/games/fuse-riders/src/render/themes.ts")
         )) as typeof import("../games/fuse-riders/src/render/themes.js");
-        document.body.replaceChildren();
-        document.body.style.cssText = "margin:0;background:#020715";
-        const canvas = document.createElement("canvas");
-        canvas.width = 1600;
-        canvas.height = 900;
-        document.body.append(canvas);
-        const arena = createPhaserArena(canvas, {
-          renderer: backend,
-          resolution: "world",
-        });
-        await arena.ready;
+        const { arena, canvas } = await mountWorldArena(backend);
+        const renderer = arena.metrics().renderer;
         const base = {
           ...visualFixture(100),
           players: [],
@@ -53,38 +45,8 @@ try {
             { x: 1200, y: 450, halfLength: 100 },
           ] as const,
         };
-        const read = () => {
-          const gl = backend === "auto" ? canvas.getContext("webgl") : null;
-          if (!gl)
-            return new Uint8Array(
-              canvas.getContext("2d")!.getImageData(0, 0, 1600, 900).data,
-            );
-          const pixels = new Uint8Array(1600 * 900 * 4);
-          gl.readPixels(0, 0, 1600, 900, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-          // Normalize WebGL's bottom-up rows for the region assertions below.
-          const upright = new Uint8Array(pixels.length);
-          for (let y = 0; y < 900; y++)
-            upright.set(
-              pixels.subarray(y * 6400, (y + 1) * 6400),
-              (899 - y) * 6400,
-            );
-          return upright;
-        };
-        const region = (
-          pixels: Uint8Array,
-          x: number,
-          y: number,
-          width: number,
-          height: number,
-        ) => {
-          const values: number[] = [];
-          for (let row = y; row < y + height; row++)
-            for (let col = x; col < x + width; col++) {
-              const at = (row * 1600 + col) * 4;
-              values.push(pixels[at]!, pixels[at + 1]!, pixels[at + 2]!);
-            }
-          return values.join(",");
-        };
+        const read = () => readArenaPixels(canvas, renderer);
+        const regionDifference = arenaRegionDifference(canvas, renderer);
         for (const theme of Object.values(themes)) {
           const paint = (tick: number, portals = [pair]) => {
             arena.render(
@@ -99,20 +61,11 @@ try {
           const active = paint(130);
           const half = paint(230);
           for (const x of [400, 1200]) {
-            if (
-              region(forming, x - 8, 360, 16, 180) ===
-              region(active, x - 8, 360, 16, 180)
-            )
+            if (regionDifference(forming, active, [x - 8, 360, 16, 180]) === 0)
               throw Error("Forming gate looks active");
-            if (
-              region(active, x - 26, 327, 52, 10) ===
-              region(half, x - 26, 327, 52, 10)
-            )
+            if (regionDifference(active, half, [x - 26, 327, 52, 10]) === 0)
               throw Error("Countdown did not shrink at both ends");
-            if (
-              region(active, x - 8, 360, 16, 180) !==
-              region(half, x - 8, 360, 16, 180)
-            )
+            if (regionDifference(active, half, [x - 8, 360, 16, 180]) !== 0)
               throw Error("Active gate faded as its lifetime elapsed");
           }
           const expired = paint(330);

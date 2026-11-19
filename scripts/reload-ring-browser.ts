@@ -16,9 +16,9 @@ try {
   await openRidersFixturePage(page, server.url);
   for (const mode of ["webgl", "phaser-canvas"] as const) {
     const results = await page.evaluate(async (mode) => {
-      const { createPhaserArena } = (await import(
-        String("/games/fuse-riders/src/render/phaser/arena.ts")
-      )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+      const { mountWorldArena, readArenaPixels, pixelOffset } = (await import(
+        String("/scripts/lib/riders-render-fixture.ts")
+      )) as typeof import("./lib/riders-render-fixture.js");
       const { visualFixture } = (await import(
         String("/scripts/lib/benchmark-fixture.ts")
       )) as typeof import("./lib/benchmark-fixture.js");
@@ -33,17 +33,10 @@ try {
       )) as typeof import("../games/fuse-riders/src/render/reload-ring.js");
       type Snapshot =
         import("../games/fuse-riders/src/engine/view.js").WorldView;
-      document.body.replaceChildren();
-      document.body.style.cssText = "margin:0;background:#020715";
-      const canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      document.body.append(canvas);
-      const arena = createPhaserArena(canvas, {
-        renderer: mode === "webgl" ? "auto" : "canvas",
-        resolution: "world",
-      });
-      await arena.ready;
+      const { arena, canvas } = await mountWorldArena(
+        mode === "webgl" ? "auto" : "canvas",
+      );
+      const renderer = arena.metrics().renderer;
       if (mode === "webgl" && arena.metrics().renderer !== "webgl")
         throw Error("WebGL did not start");
       const fixture = visualFixture(100);
@@ -66,16 +59,7 @@ try {
         portalPairs: [],
         gravityFields: [],
       };
-      const read = (): Uint8Array => {
-        const gl = mode === "webgl" ? canvas.getContext("webgl") : null;
-        if (!gl)
-          return new Uint8Array(
-            canvas.getContext("2d")!.getImageData(0, 0, 1600, 900).data,
-          );
-        const pixels = new Uint8Array(1600 * 900 * 4);
-        gl.readPixels(0, 0, 1600, 900, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        return pixels;
-      };
+      const read = () => readArenaPixels(canvas, renderer);
       const results = [];
       for (const theme of ["neon-pixel", "clean-neon"] as const) {
         const paint = (snapshot: Snapshot, now = 1000) => {
@@ -103,7 +87,7 @@ try {
                 radius > RELOAD_RING_RADIUS + 2
               )
                 continue;
-              const offset = ((mode === "webgl" ? 899 - y : y) * 1600 + x) * 4;
+              const offset = pixelOffset(canvas, renderer, x, y);
               if (
                 pixels[offset + 1]! > ready[offset + 1]! + 60 &&
                 pixels[offset + 2]! > ready[offset + 2]! + 60

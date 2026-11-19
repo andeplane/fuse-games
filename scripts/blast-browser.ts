@@ -18,26 +18,19 @@ try {
   const reports = [];
   for (const mode of ["webgl", "phaser-canvas"] as const) {
     const report = await page.evaluate(async (mode) => {
-      const { createPhaserArena } = (await import(
-        String("/games/fuse-riders/src/render/phaser/arena.ts")
-      )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+      const { mountWorldArena, readArenaPixels } = (await import(
+        String("/scripts/lib/riders-render-fixture.ts")
+      )) as typeof import("./lib/riders-render-fixture.js");
       const { visualFixture } = (await import(
         String("/scripts/lib/benchmark-fixture.ts")
       )) as typeof import("./lib/benchmark-fixture.js");
       const { themes } = (await import(
         String("/games/fuse-riders/src/render/themes.ts")
       )) as typeof import("../games/fuse-riders/src/render/themes.js");
-      document.body.replaceChildren();
-      document.body.style.cssText = "margin:0;background:#020715";
-      const canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      document.body.append(canvas);
-      const arena = createPhaserArena(canvas, {
-        renderer: mode === "webgl" ? "auto" : "canvas",
-        resolution: "world",
-      });
-      await arena.ready;
+      const { arena, canvas } = await mountWorldArena(
+        mode === "webgl" ? "auto" : "canvas",
+      );
+      const renderer = arena.metrics().renderer;
       if (mode === "webgl" && arena!.metrics().renderer !== "webgl")
         throw Error("WebGL did not start");
       const base = {
@@ -62,16 +55,7 @@ try {
       ) => {
         arena.render(snapshot, 1000, themes[theme], "blast-browser");
       };
-      const read = (): Uint8Array => {
-        const gl = mode === "webgl" ? canvas.getContext("webgl") : null;
-        if (!gl)
-          return new Uint8Array(
-            canvas.getContext("2d")!.getImageData(0, 0, 1600, 900).data,
-          );
-        const pixels = new Uint8Array(1600 * 900 * 4);
-        gl.readPixels(0, 0, 1600, 900, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        return pixels;
-      };
+      const read = () => readArenaPixels(canvas, renderer);
       const results = [];
       for (const theme of ["neon-pixel", "clean-neon"] as const) {
         paint(base, theme);
