@@ -461,12 +461,6 @@ export class PeerTransport implements RoomTransport {
     }
   }
   /**
-   * The service welcomed this page back as the connection it already was: its socket dropped (the platform cuts
-   * every socket after an hour, and whenever an instance stops) and the seat was still held. No member was told
-   * this page left, so every link that still names a current connection is kept as it is, with whatever it was
-   * carrying, and the room above hears only of the members that came or went meanwhile.
-   */
-  /**
    * The connection to ask the service for again, if any: it keeps the seat for a while after a socket drops. A socket
    * cut on its own (the platform's hourly cut, a stopped instance) leaves the links carrying, and those are what a
    * resume keeps. When this page has links and none is carrying, the network path went with the socket (a phone that
@@ -482,6 +476,7 @@ export class PeerTransport implements RoomTransport {
       return undefined;
     return this.connectionId;
   }
+  /** Preserve links whose members still have the same connection after a socket drop. */
   private async resume(
     ws: RoomServiceSocket,
     message: RoomWelcome,
@@ -591,22 +586,27 @@ export class PeerTransport implements RoomTransport {
     };
     this.links.set(id, link);
     this.extension?.attach(id, pc, this.initiator(id));
+    this.bindPeerEvents(id, link);
+    return link;
+  }
+  private bindPeerEvents(id: string, link: Link): void {
+    const { pc } = link;
+    const current = () => isCurrentLinkCallback(this.links.get(id), link);
     pc.onicecandidate = (event) => {
-      if (!isCurrentLinkCallback(this.links.get(id), link) || !event.candidate)
-        return;
+      if (!current() || !event.candidate) return;
       const type = candidateType(event.candidate.candidate);
       link.local[type] = (link.local[type] ?? 0) + 1;
       link.outbound.candidate(event.candidate.toJSON());
     };
     pc.ondatachannel = (event) => {
-      if (!isCurrentLinkCallback(this.links.get(id), link)) {
+      if (!current()) {
         event.channel.close();
         return;
       }
       this.channel(id, link, event.channel);
     };
     pc.onconnectionstatechange = () => {
-      if (!isCurrentLinkCallback(this.links.get(id), link)) return;
+      if (!current()) return;
       if (pc.connectionState === "connected")
         this.callbacks.status("Direct peer link connected");
       // "disconnected" may recover through fresh probes; only terminal states drain the link.
@@ -623,14 +623,13 @@ export class PeerTransport implements RoomTransport {
       }
     };
     pc.oniceconnectionstatechange = () => {
-      if (!isCurrentLinkCallback(this.links.get(id), link)) return;
+      if (!current()) return;
       if (
         pc.iceConnectionState === "failed" ||
         pc.iceConnectionState === "closed"
       )
         this.fail(id, link);
     };
-    return link;
   }
   private fail(id: string, link: Link): void {
     const was = link.gate.draining;
@@ -641,7 +640,19 @@ export class PeerTransport implements RoomTransport {
     const current = () =>
       isCurrentLinkCallback(this.links.get(id), link) &&
       (link.game === channel || link.input === channel);
-    if (channel.label === "input") {
+    const fast = channel.label === "input";
+    const failCurrent = () => {
+      if (current()) this.fail(id, link);
+    };
+    channel.onclosing = failCurrent;
+    channel.onclose = failCurrent;
+    channel.onerror = (event) => {
+      event.preventDefault();
+      if (!current()) return;
+      this.fail(id, link);
+      if (!fast) this.callbacks.status("Direct connection failed · retrying");
+    };
+    if (fast) {
       link.input = channel;
       channel.binaryType = "arraybuffer";
       channel.onmessage = (event) => {
@@ -654,16 +665,6 @@ export class PeerTransport implements RoomTransport {
         )
           return;
         this.callbacks.fast(id, new Uint8Array(data));
-      };
-      channel.onclosing = () => {
-        if (current()) this.fail(id, link);
-      };
-      channel.onclose = () => {
-        if (current()) this.fail(id, link);
-      };
-      channel.onerror = (event) => {
-        event.preventDefault();
-        if (current()) this.fail(id, link);
       };
       return;
     }
@@ -687,18 +688,6 @@ export class PeerTransport implements RoomTransport {
         this.callbacks.link(id, true);
         this.sendExtensionStatus(id);
       }
-    };
-    channel.onclosing = () => {
-      if (current()) this.fail(id, link);
-    };
-    channel.onclose = () => {
-      if (current()) this.fail(id, link);
-    };
-    channel.onerror = (event) => {
-      event.preventDefault();
-      if (!current()) return;
-      this.fail(id, link);
-      this.callbacks.status("Direct connection failed · retrying");
     };
   }
   /** `force` replaces a drained link with a fresh RTCPeerConnection and gate; the restart budget carries over. */
@@ -794,40 +783,45 @@ export class PeerTransport implements RoomTransport {
     )
       return;
     if (this.extension?.receive(id, envelope.data)) return;
-    if (envelope.data && typeof envelope.data === "object") {
-      const probe = envelope.data as { type?: string; probeId?: number };
-      // #143: the peer is closing its side. Stop sending on this link now, before WebKit's lagging readyState lets a probe hit the dead channel.
-      if (probe.type === "linkBye") {
-        this.links.get(id)?.gate.drain();
-        return;
-      }
-      if (probe.type === "linkProbe" || probe.type === "linkPong") {
-        if (!Number.isSafeInteger(probe.probeId)) return;
-        if (probe.type === "linkPong")
-          this.links
-            .get(id)
-            ?.health.acknowledge(probe.probeId!, this.deps.now());
-        else {
-          // libwebrtc delivers the probe before the closing state change that follows it (WebKit posts OnMessage, then
-          // OnStateChange). Answering inside this onmessage task would hand the pong to an already-dead transport, so
-          // defer one macrotask: the queued state-change task runs first and readyState plus the gate refuse the send.
-          const link = this.links.get(id),
-            probeId = probe.probeId!;
-          if (link)
-            this.defer(() => {
-              if (isCurrentLinkCallback(this.links.get(id), link))
-                this.sendDirectProbe(id, { type: "linkPong", probeId });
-            });
-        }
-        return;
-      }
-    }
+    if (this.receiveLinkControl(id, envelope.data)) return;
     const seen = this.received.get(id) ?? new Set<number>();
     if (seen.has(envelope.id)) return;
     seen.add(envelope.id);
     if (seen.size > 1000) seen.delete(seen.values().next().value!);
     this.received.set(id, seen);
     this.callbacks.message(id, envelope.data);
+  }
+  private receiveLinkControl(id: string, data: unknown): boolean {
+    if (!data || typeof data !== "object") return false;
+    const signal = data as { type?: string; probeId?: number };
+    switch (signal.type) {
+      case "linkBye":
+        // Drain before WebKit's lagging readyState lets another probe hit the dead channel.
+        this.links.get(id)?.gate.drain();
+        return true;
+      case "linkPong":
+        if (Number.isSafeInteger(signal.probeId))
+          this.links
+            .get(id)
+            ?.health.acknowledge(signal.probeId!, this.deps.now());
+        return true;
+      case "linkProbe":
+        if (Number.isSafeInteger(signal.probeId))
+          this.deferLinkPong(id, signal.probeId!);
+        return true;
+      default:
+        return false;
+    }
+  }
+  private deferLinkPong(id: string, probeId: number): void {
+    // WebKit posts the closing state change after onmessage. Defer one
+    // macrotask so readyState and the gate can reject the stale send.
+    const link = this.links.get(id);
+    if (link)
+      this.defer(() => {
+        if (isCurrentLinkCallback(this.links.get(id), link))
+          this.sendDirectProbe(id, { type: "linkPong", probeId });
+      });
   }
   /** Reliable, ordered: room control, snapshots and hellos. A permitted send means queued in the browser, never applied by the peer. */
   send(
@@ -918,9 +912,7 @@ export class PeerTransport implements RoomTransport {
   private sendExtensionStatus(id: string): void {
     if (this.extension) this.sendDirectProbe(id, this.extension.status());
   }
-  private checkLinks(): void {
-    if (this.stopped) return;
-    const now = this.deps.now();
+  private reportLinks(now: number): void {
     // Uses synchronous summaries: a hung getStats must never block operational reports or link recovery.
     if (
       now >= this.reportAt &&
@@ -963,6 +955,11 @@ export class PeerTransport implements RoomTransport {
         /* Best effort, bounded by reportAt. */
       }
     }
+  }
+  private checkLinks(): void {
+    if (this.stopped) return;
+    const now = this.deps.now();
+    this.reportLinks(now);
     if (this.deps.hidden()) return;
     if (now - this.extensionSentAt >= 1000) {
       this.extensionSentAt = now;
