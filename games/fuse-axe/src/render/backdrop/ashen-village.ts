@@ -5,7 +5,8 @@ import {
   VIEW_H,
   VIEW_W,
 } from "../../engine/view-kit.js";
-import { dither, hash, Raster, type Brush, type StageArt } from "./kit.js";
+import { drawFlameColumn, emberLife, type FireFrame } from "./fire.js";
+import { dither, hash, Raster, type StageArt } from "./kit.js";
 import { paintSky, paintStars } from "./sky.js";
 
 /**
@@ -23,7 +24,8 @@ const SKY = [
 ];
 const HILLS = [0x5a2f5e, 0x3b1f4c, 0x271537, 0x1a0e28] as const;
 const ROAD = [0x3a2232, 0x4c2b36, 0x5f363a, 0x74453e, 0x8a5642] as const;
-const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"];
+const FLAME = ["#fff6b8", "#ffc22e", "#f86420", "#a82434"] as const;
+const FLAME_STYLE = { palette: FLAME };
 const INK = 0x150c1f;
 const LOG = 0x4a2a2e;
 const LOG_LIT = 0x6a4034;
@@ -455,20 +457,18 @@ function grass(r: Raster) {
   }
 }
 
-const tone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
 /** How far an ember sways about its path and is blown along it, in pixels. */
 const EMBER_SWAY = 3;
 const EMBER_WIND = 12;
 
 /** One fire's flames and embers, each flame column in a few solid runs. */
-function burn(brush: Brush, fire: Fire, cam: number, t: number) {
+function burn({ brush, camera: cam, time: t }: FireFrame, fire: Fire) {
   const span = fire.rows.length;
   const left = fire.x0 - cam;
   // Embers stray this far from the flame columns, so a fire further off-screen than that draws nothing.
   const reach = fire.spread / 2 + EMBER_SWAY + EMBER_WIND + 1;
   if (left + span + reach < 0 || left - reach >= VIEW_W) return;
+  const sparkOffset = Math.floor(t * 8) * 13;
   for (let i = 0; i < span; i++) {
     const x = left + i;
     if (x < 0 || x >= VIEW_W) continue;
@@ -478,22 +478,15 @@ function burn(brush: Brush, fire: Fire, cam: number, t: number) {
     const sway = 0.2 * Math.sin(wx * 0.31 + fire.seed * 2 - t * 6);
     const h = Math.max(1, Math.round(fire.height * env * (0.55 + lick + sway)));
     const base = fire.rows[i]!;
-    for (let j = 0; j < h;) {
-      const c = tone(j, h, env);
-      let k = j + 1;
-      while (k < h && tone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-    if (hash(wx + Math.floor(t * 8) * 13, fire.seed) > 0.8) {
+    drawFlameColumn(brush, { x, base, height: h, envelope: env }, FLAME_STYLE);
+    if (hash(wx + sparkOffset, fire.seed) > 0.8) {
       brush.fillStyle = FLAME[2 + (wx & 1)]!;
       brush.fillRect(x, base - h - 2, 1, 1);
     }
   }
+  const clock = { time: t, rate: 0.25, variance: 0.3 };
   for (let i = 0; i < fire.embers; i++) {
-    const rate = 0.25 + hash(i, fire.seed) * 0.3;
-    const life = (t * rate + hash(i, fire.seed + 1)) % 1;
+    const life = emberLife(clock, i, fire.seed);
     const drift = (hash(i, fire.seed + 2) - 0.5) * fire.spread;
     const x =
       Math.round(
@@ -518,7 +511,7 @@ export const ASHEN_VILLAGE: StageArt = {
   ],
   front: { rate: [5, 4], top: VIEW_H - 12, height: 12, paint: grass },
   animate(brush, camX, frame) {
-    const t = frame / 60;
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    const view = { brush, camera: camX, time: frame / 60 };
+    for (const fire of FIRES) burn(view, fire);
   },
 };
