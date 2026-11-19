@@ -14,6 +14,15 @@ export function tacticalMapControls() {
     get open() {
       return open;
     },
+    reset() {
+      open = false;
+      blocked = previous;
+      held = 0;
+      tapped = 0;
+      recenter = false;
+      center = undefined;
+      lastTick = -1;
+    },
     read(raw: number) {
       const pressed = raw & ~previous;
       previous = raw;

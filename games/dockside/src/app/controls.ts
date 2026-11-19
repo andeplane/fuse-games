@@ -148,6 +148,10 @@ export function createControls(
     pad,
     map,
     release,
+    resetMatch() {
+      release();
+      map.reset();
+    },
     poll,
     dispose() {
       release();

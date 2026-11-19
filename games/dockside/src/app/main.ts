@@ -272,6 +272,7 @@ function room(solo: boolean): void {
   hud.append(identity, statusLine, objective);
   hud.setAttribute("aria-label", "Pilot status");
   let playing = false;
+  let controlsMatch = "";
   let farCamera = false;
   const controls = createControls(
     (bits) => runtime.input(bits),
@@ -401,8 +402,13 @@ function room(solo: boolean): void {
           ? -1
           : frame.roster.findIndex((p) => p.id === viewer.me),
         w = frame.world;
-      if (playing && !(liveMatch && slot >= 0)) controls.release();
+      if (
+        playing &&
+        (!(liveMatch && slot >= 0) || controlsMatch !== frame.matchId)
+      )
+        controls.resetMatch();
       playing = liveMatch && slot >= 0;
+      controlsMatch = frame.matchId;
       menu.update({
         canLobby: viewer.host && !display && !inLobby && !pendingResult,
         display,

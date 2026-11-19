@@ -114,3 +114,18 @@ test("map navigation, recenter and held inputs crossing both modal boundaries st
   assert.equal(map.read(0), 0);
   assert.equal(map.read(KEY.fire), KEY.fire);
 });
+test("a new match starts with a collapsed radar and held map buttons require a fresh press", () => {
+  const map = tacticalMapControls();
+  map.read(MAP);
+  assert.ok(map.open);
+  map.read(MAP | KEY.right);
+  map.frame({ x: 0, z: 0 }, 10);
+  map.reset();
+  assert.equal(map.open, false);
+  assert.equal(map.read(MAP | KEY.right), 0);
+  assert.equal(map.open, false);
+  map.read(0);
+  map.read(MAP);
+  assert.equal(map.open, true);
+  assert.equal(map.frame({ x: 0, z: 0 }, 1), undefined);
+});
