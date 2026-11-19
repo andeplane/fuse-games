@@ -36,6 +36,7 @@ interface Collision {
   border: boolean;
   onlyDirt: boolean;
 }
+type ProjectileOrigin = Pick<ClassicProjectileState, "x" | "y" | "vx" | "vy">;
 const noCollision = (): Collision => ({
   worm: null,
   terrain: false,
@@ -296,21 +297,18 @@ function wormCollision(
 }
 function finalWormCheck(
   p: ClassicProjectileState,
-  oldX: number,
-  oldY: number,
-  oldVx: number,
-  oldVy: number,
+  origin: ProjectileOrigin,
   worms: readonly CombatWorm[],
   ports: CombatPorts,
   current: Collision,
   currentMs: number,
 ): Collision {
   if (description(p).playerHit.name === "nothing") return current;
-  const direction = norm(sub(p.x, oldX), sub(p.y, oldY));
+  const direction = norm(sub(p.x, origin.x), sub(p.y, origin.y));
   const length = Math.min(direction.length, ports.width + ports.height);
   for (let distance = 0; distance <= length; distance = add(distance, 2)) {
-    const x = add(oldX, mul(direction.x, distance)),
-      y = add(oldY, mul(direction.y, distance));
+    const x = add(origin.x, mul(direction.x, distance)),
+      y = add(origin.y, mul(direction.y, distance));
     const worm = wormCollision(p, x, y, worms, currentMs);
     if (worm) {
       if (description(p).playerHit.name !== "gothrough") {
@@ -318,8 +316,8 @@ function finalWormCheck(
         p.y = y;
         p.oldX = x;
         p.oldY = y;
-        p.vx = oldVx;
-        p.vy = oldVy;
+        p.vx = origin.vx;
+        p.vy = origin.vy;
       }
       return { worm, terrain: false, border: false, onlyDirt: false };
     }
@@ -364,6 +362,22 @@ function terrainCollision(
     }
   return c;
 }
+function horizontalContactSides(c: TerrainCollision, velocity: number): number {
+  let sides = 0;
+  if ((c.left > c.right || c.left > 2) && c.left > 1 && velocity <= 0)
+    sides |= LEFT;
+  if ((c.right > c.left || c.right > 2) && c.right > 1 && velocity >= 0)
+    sides |= RIGHT;
+  return sides;
+}
+
+function verticalContactSides(c: TerrainCollision, velocity: number): number {
+  let sides = 0;
+  if (c.top > 1 && velocity <= 0) sides |= TOP;
+  if (c.bottom > 1 && velocity >= 0) sides |= BOTTOM;
+  return sides;
+}
+
 function frame(
   p: ClassicProjectileState,
   dt: number,
@@ -374,27 +388,35 @@ function frame(
   const d = description(p),
     gravity = d.customGravity ? (d.gravity ?? 0) : 100;
   p.vy = add(p.vy, mul(gravity, dt));
-  const oldVx = p.vx,
-    oldVy = p.vy,
-    oldX = p.x,
-    oldY = p.y;
+  const origin = { x: p.x, y: p.y, vx: p.vx, vy: p.vy };
+  const contact = moveAgainstTerrain(p, origin, dt, d, ports);
+  return finalWormCheck(p, origin, worms, ports, contact, currentMs);
+}
+
+function rewindToSafePosition(
+  p: ClassicProjectileState,
+  origin: ProjectileOrigin,
+): void {
+  p.x = p.oldX;
+  p.y = p.oldY;
+  p.vx = origin.vx;
+  p.vy = origin.vy;
+}
+
+function moveAgainstTerrain(
+  p: ClassicProjectileState,
+  origin: ProjectileOrigin,
+  dt: number,
+  d: ClassicProjectile,
+  ports: CombatPorts,
+): Collision {
   p.x = add(p.x, mul(p.vx, dt));
   p.y = add(p.y, mul(p.vy, dt));
   if (
     Math.trunc(length2(sub(p.oldX, p.x), sub(p.oldY, p.y))) <
     p.minCheck * p.minCheck
   )
-    return finalWormCheck(
-      p,
-      oldX,
-      oldY,
-      oldVx,
-      oldVy,
-      worms,
-      ports,
-      noCollision(),
-      currentMs,
-    );
+    return noCollision();
   const px = Math.trunc(p.x),
     py = Math.trunc(p.y),
     rx = Math.trunc(d.width / 2),
@@ -405,34 +427,11 @@ function frame(
   if (py < 0 || py - ry < 0) p.collisionSide |= TOP;
   if (py >= ports.height || py + ry >= ports.height) p.collisionSide |= BOTTOM;
   if (p.collisionSide) {
-    p.x = p.oldX;
-    p.y = p.oldY;
-    p.vx = oldVx;
-    p.vy = oldVy;
-    return finalWormCheck(
-      p,
-      oldX,
-      oldY,
-      oldVx,
-      oldVy,
-      worms,
-      ports,
-      { worm: null, terrain: true, border: true, onlyDirt: false },
-      currentMs,
-    );
+    rewindToSafePosition(p, origin);
+    return { worm: null, terrain: true, border: true, onlyDirt: false };
   }
   if (p.lastSimulationMs <= p.spawnTimeMs + p.wallShootTime * 1000)
-    return finalWormCheck(
-      p,
-      oldX,
-      oldY,
-      oldVx,
-      oldVy,
-      worms,
-      ports,
-      noCollision(),
-      currentMs,
-    );
+    return noCollision();
   const c = terrainCollision(p, ports);
   if (c.collided) {
     let ignore = false;
@@ -441,67 +440,40 @@ function frame(
     } else if (d.hit.name === "bounce" || d.hit.name === "nothing") {
       const bounce = d.hit.name === "bounce";
       if (!bounce) {
-        p.x = add(oldX, mul(mul(p.vx, dt), 0.5));
-        p.y = add(oldY, mul(mul(p.vy, dt), 0.5));
+        p.x = add(origin.x, mul(mul(p.vx, dt), 0.5));
+        p.y = add(origin.y, mul(mul(p.vy, dt), 0.5));
         p.oldX = p.x;
         p.oldY = p.y;
       }
       const vx = Math.trunc(p.vx),
         vy = Math.trunc(p.vy);
-      if ((c.left > c.right || c.left > 2) && c.left > 1 && vx <= 0) {
-        if (bounce) p.x = oldX;
-        if (vx) p.collisionSide |= LEFT;
-      }
-      if ((c.right > c.left || c.right > 2) && c.right > 1 && vx >= 0) {
-        if (bounce) p.x = oldX;
-        if (vx) p.collisionSide |= RIGHT;
-      }
-      if (c.top > 1 && vy <= 0) {
-        if (bounce) p.y = oldY;
-        if (vy) p.collisionSide |= TOP;
-      }
-      if (c.bottom > 1 && vy >= 0) {
-        if (bounce) p.y = oldY;
-        if (vy) p.collisionSide |= BOTTOM;
-      }
+      const horizontal = horizontalContactSides(c, vx);
+      const vertical = verticalContactSides(c, vy);
+      // A velocity truncated to zero still rewinds a bounce, but adds no side bit.
+      if (bounce && horizontal) p.x = origin.x;
+      if (bounce && vertical) p.y = origin.y;
+      if (vx) p.collisionSide |= horizontal;
+      if (vy) p.collisionSide |= vertical;
       if (Math.abs(vx) < 2) p.vx = 0;
       if (Math.abs(vy) < 2) p.vy = 0;
     } else if (d.hit.name === "gothrough") {
-      p.x = add(oldX, mul(p.vx, dt));
-      p.y = add(oldY, mul(p.vy, dt));
+      p.x = add(origin.x, mul(p.vx, dt));
+      p.y = add(origin.y, mul(p.vy, dt));
       ignore = true;
     } else {
-      p.x = p.oldX;
-      p.y = p.oldY;
-      p.vx = oldVx;
-      p.vy = oldVy;
+      rewindToSafePosition(p, origin);
     }
     if (!ignore)
-      return finalWormCheck(
-        p,
-        oldX,
-        oldY,
-        oldVx,
-        oldVy,
-        worms,
-        ports,
-        { worm: null, terrain: true, border: false, onlyDirt: c.onlyDirt },
-        currentMs,
-      );
+      return {
+        worm: null,
+        terrain: true,
+        border: false,
+        onlyDirt: c.onlyDirt,
+      };
   }
   p.oldX = p.x;
   p.oldY = p.y;
-  return finalWormCheck(
-    p,
-    oldX,
-    oldY,
-    oldVx,
-    oldVy,
-    worms,
-    ports,
-    noCollision(),
-    currentMs,
-  );
+  return noCollision();
 }
 function moveProjectile(
   p: ClassicProjectileState,

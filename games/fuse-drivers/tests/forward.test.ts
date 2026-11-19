@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LEFT, stepsForTick } from "../src/game/index.js";
+import { ITEM, LEFT, stepsForTick } from "../src/game/index.js";
 import { createSmoother, forward } from "../src/app/forward.js";
 import {
   SETTINGS,
@@ -68,6 +68,16 @@ test("the green light is shown when the room folds it, never on a guess", () => 
   }
   assert.ok(checked > 10);
   assert.equal(room.race?.phase, "racing");
+});
+
+test("a Battle item appears on its committed tick and is never spent in a predicted frame", () => {
+  const room = started({ ...SETTINGS, mode: "battle" });
+  runTo(room, room.tick + 110);
+  const predicted = defined(forward(room, 2, "a", ITEM)).race;
+  assert.equal(predicted.battle?.bombs.length, 0);
+  assert.equal(predicted.battle?.slots[0]?.held, "firebomb");
+  fold(room, { a: [drive({ item: true })] });
+  assert.equal(room.race?.battle?.bombs.length, 1);
 });
 
 test("a cash or nitro pickup reaches the screen on its committed room tick", () => {

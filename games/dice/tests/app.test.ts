@@ -25,7 +25,7 @@ import {
   safeStore,
   sessionFor,
   type Store,
-} from "../src/app/session.js";
+} from "fuse-ui/room-session";
 import { FAST, addBot, fold, rig, runTo, started } from "./fixtures/dice.js";
 
 const viewer = (patch: Partial<Viewer> = {}): Viewer => ({

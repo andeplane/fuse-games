@@ -1,5 +1,10 @@
 # FuseOS game icons
 
+Cyberfuse uses the three-quarter helmet and shoulders of its cyan operative,
+painted for the game's sprite sheet in `games/cyberfuse/src/art/`. The taskbar icon
+crops to the helmet so its luminous visor and crest survive at 16 px. Both
+sizes have a transparent background and a one-pixel dark outline.
+
 Fusero (2026-11-15): original code-drawn neon worm and rope from
 `games/fusero/art/icon.svg`, rasterized to 64×64 and 32×32 transparent RGBA PNGs.
 
@@ -19,6 +24,8 @@ with a uniform 1 px dark outline added around the art; `tests/fuseos-game-icons.
 | hook-havok    | `games/hook-havok/art-source/props/brass-hook-source.png` |
 
 ## Drawn in code (Canvas 2D paths at each size, 2026-11-15)
+
+The Incredible Fuse uses an original brass gear, a mint axle and a steel marble. Its two transparent icons were drawn from geometric primitives.
 
 | Icon       | Subject                                                                                   |
 | ---------- | ----------------------------------------------------------------------------------------- |

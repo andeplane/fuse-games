@@ -2,9 +2,14 @@ import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
+import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import type { Page } from "playwright";
 
 interface RaceProbe {
+  mode?: string;
+  theme?: string;
+  held?: (string | null)[];
+  bombs?: number;
   phase?: string;
   track?: string;
   tick: number;
@@ -31,6 +36,7 @@ async function renderedArena(page: Page): Promise<void> {
 const origin = process.env.ONLINE_URL ?? "http://localhost:8797/";
 const browser = await launchSelected("chrome");
 const failures: string[] = [];
+const collectCoverage: (() => Promise<void>)[] = [];
 await mkdir("artifacts/fuse-drivers", { recursive: true });
 const contexts = await Promise.all([
   browser.newContext({ viewport: { width: 1440, height: 900 } }),
@@ -45,19 +51,47 @@ try {
   const host = await contexts[0]!.newPage();
   const peer = await contexts[1]!.newPage();
   const tv = await contexts[2]!.newPage();
-  for (const page of [host, peer, tv])
+  for (const page of [host, peer, tv]) {
     page.on("pageerror", (error) => failures.push(error.message));
+    collectCoverage.push(
+      await startGameCoverage(page, { gameId: "fuse-drivers" }),
+    );
+  }
   await host.goto(new URL("fuse-drivers/?mute", origin).href);
   await host.getByRole("button", { name: "Fuse games", exact: true }).click();
   await host.getByRole("link", { name: /Fuse Drivers/ }).click();
   assert.equal(new URL(host.url()).searchParams.has("mute"), true);
   await host.goto(new URL("fuse-drivers/?solo=1&mute&probe", origin).href);
+  const rules = host.getByLabel("Rules", { exact: true });
+  await host.getByRole("button", { name: "Speed shop", exact: true }).click();
+  const soloShop = host.getByRole("dialog", { name: "Speed shop" });
+  await soloShop.getByRole("button", { name: /^Tires/ }).click();
+  await soloShop.getByRole("button", { name: /^Tires.*Level 1/ }).waitFor();
+  await host.keyboard.press("Escape");
+  assert.equal(await rules.inputValue(), "classic");
+  const graphics = host.getByLabel("Graphics", { exact: true });
+  await graphics.selectOption("classic");
+  const classicPreview = await host
+    .getByRole("button", { name: "Wipeout", exact: true })
+    .locator("img")
+    .getAttribute("src");
+  await graphics.selectOption("fuse");
+  assert.notEqual(
+    await host
+      .getByRole("button", { name: "Wipeout", exact: true })
+      .locator("img")
+      .getAttribute("src"),
+    classicPreview,
+  );
   await host.getByRole("button", { name: "Wipeout", exact: true }).click();
   await host.getByLabel("Direction", { exact: true }).selectOption("-reverse");
   await host.getByLabel("Races", { exact: true }).selectOption("1");
   await host.getByRole("button", { name: "Remove CPU 4" }).click();
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
   await host.locator(".fui-round-controls").waitFor({ state: "visible" });
+  await host.waitForFunction(
+    () => window.__driversRaceProbe?.().trucks?.[0]?.tires === 1,
+  );
   const centered = await host
     .locator(".fd-arena-box > .fui-round-controls")
     .evaluate((guide) => {
@@ -77,6 +111,48 @@ try {
     return race?.track === "offroad-7-reverse" && race.trucks?.length === 3;
   });
   assert.equal(await host.locator(".fd-pad").isVisible(), false);
+  await peer.goto(new URL("fuse-drivers/?solo=1&mute&probe", origin).href);
+  await peer.getByLabel("Rules", { exact: true }).selectOption("battle");
+  await peer.getByRole("button", { name: "START RACE", exact: true }).click();
+  await peer.getByRole("button", { name: "ITEM", exact: true }).waitFor();
+  for (const viewport of [
+    { width: 360, height: 800 },
+    { width: 844, height: 390 },
+    { width: 667, height: 375 },
+  ]) {
+    await peer.setViewportSize(viewport);
+    await peer.waitForFunction(
+      () => {
+        const buttons = [
+          ...document.querySelectorAll<HTMLButtonElement>(".fd-pad button"),
+        ];
+        return (
+          buttons.length === 5 &&
+          buttons.every((b) => {
+            const rect = b.getBoundingClientRect();
+            return (
+              rect.width >= 44 &&
+              rect.height >= 44 &&
+              rect.left >= 0 &&
+              rect.right <= innerWidth &&
+              rect.top >= 0 &&
+              rect.bottom <= innerHeight
+            );
+          })
+        );
+      },
+      undefined,
+      { timeout: 5000 },
+    );
+  }
+  await peer.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await host
+      .locator(".fui-round-controls")
+      .innerText()
+      .then((text) => text.includes("Battle item")),
+    false,
+  );
   await host.locator(".fd-hud").filter({ hasText: "LAP" }).waitFor();
   await host.locator(".fd-arena").waitFor({ state: "visible" });
   await renderedArena(host);
@@ -93,6 +169,20 @@ try {
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
   await takeHostSeat(peer, "Bo");
   await host.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
+  await rules.selectOption("battle");
+  const guestRules = peer.getByLabel("Rules", { exact: true });
+  await peer.waitForFunction(
+    () =>
+      document.querySelector<HTMLSelectElement>('select[aria-label="Rules"]')
+        ?.value === "battle",
+  );
+  assert.equal(await guestRules.isDisabled(), true);
+  await peer.getByLabel("Graphics", { exact: true }).selectOption("classic");
+  await peer.getByRole("button", { name: "Speed shop", exact: true }).click();
+  const guestShop = peer.getByRole("dialog", { name: "Speed shop" });
+  await guestShop.getByRole("button", { name: /^Shocks/ }).click();
+  await guestShop.getByRole("button", { name: /^Shocks.*Level 1/ }).waitFor();
+  assert.equal(await graphics.inputValue(), "fuse");
   if (process.env.OFFROAD_CAMPAIGN_SMOKE === "1") {
     await host
       .getByRole("button", { name: /^add ai$/i })
@@ -110,6 +200,7 @@ try {
   );
   await host.screenshot({ path: "artifacts/fuse-drivers/room-lobby.png" });
   await host.getByRole("button", { name: "START RACE", exact: true }).click();
+  await guestShop.waitFor({ state: "hidden" });
   await Promise.all(
     [host, peer].map((page) =>
       page.locator(".fd-hud").filter({ hasText: "LAP" }).waitFor(),
@@ -122,6 +213,14 @@ try {
   await tv.locator(".fd-pad").waitFor({ state: "hidden" });
   await peer.waitForFunction(
     () => window.__driversRaceProbe?.().phase === "racing",
+  );
+  await peer.getByRole("button", { name: "ITEM", exact: true }).tap();
+  await tv.waitForFunction(
+    () => window.__driversRaceProbe?.().held?.[1] === null,
+  );
+  await host.keyboard.press("e");
+  await tv.waitForFunction(
+    () => window.__driversRaceProbe?.().held?.[0] === null,
   );
   const start = await tv.evaluate(
     () => window.__driversRaceProbe?.().trucks?.[1],
@@ -166,6 +265,10 @@ try {
   await tv.screenshot({ path: "artifacts/fuse-drivers/tv-race.png" });
   await peer.reload();
   await peer.locator(".fd-hud").filter({ hasText: "LAP" }).waitFor();
+  assert.equal(
+    await peer.evaluate(() => window.__driversRaceProbe?.().theme),
+    "classic",
+  );
   assert.equal(
     await peer.getByPlaceholder("Your name").isVisible(),
     false,
@@ -243,6 +346,9 @@ try {
     }
   throw error;
 } finally {
-  await Promise.all(contexts.map((context) => context.close()));
-  await browser.close();
+  try {
+    await Promise.all(collectCoverage.map((collect) => collect()));
+  } finally {
+    await browser.close();
+  }
 }

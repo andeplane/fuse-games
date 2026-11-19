@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { RoomRuntime, type RoomCommand } from "../src/online/room-runtime.js";
 import { defaultRoomSettings } from "../src/engine/room-settings.js";
-import { COUNTDOWN_TICKS } from "../src/engine/tuning.js";
+import { COUNTDOWN_TICKS, MAX_PLAYERS } from "../src/engine/tuning.js";
 import type { Frame } from "../src/online/fuse-game.js";
 import { FakeNetwork } from "./fixtures/fake-room.js";
 
@@ -141,7 +141,11 @@ test("local log replay is repeatable and roster survives lobby and rematch", () 
   );
 });
 test("invalid local rosters fail before startup", () => {
-  for (const names of [[], [""], Array.from({ length: 7 }, () => "Rider")])
+  for (const names of [
+    [],
+    [""],
+    Array.from({ length: MAX_PLAYERS + 1 }, () => "Rider"),
+  ])
     assert.throws(() => local(names), /Local players/);
   assert.throws(
     () =>

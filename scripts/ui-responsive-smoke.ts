@@ -93,6 +93,38 @@ try {
     await page
       .locator('.mobile-control-hints[data-phase="playing"]')
       .waitFor({ state: "attached" });
+    if (!hasTouch) {
+      // The solo boot starts with five AI. Fill the two remaining seats, then
+      // restart from the lobby so all eight riders are in the round itself.
+      await page.setViewportSize(sizes[1]!);
+      const addAI = page.getByRole("button", { name: "Add AI", exact: true });
+      const scoreCards = page.locator(".online-score-card:visible");
+      for (const expected of [7, 8]) {
+        await addAI.click();
+        await scoreCards.nth(expected - 1).waitFor();
+      }
+      await page.getByRole("button", { name: /^back to lobby$/i }).click();
+      await page.getByRole("button", { name: /^start race$/i }).click();
+      await scoreCards.nth(7).waitFor();
+      await page
+        .locator('.mobile-control-hints[data-phase="playing"]')
+        .waitFor({ state: "attached" });
+      assert.equal(await scoreCards.count(), 8);
+      const arena = await page.locator(".online-arena").boundingBox();
+      assert.ok(
+        arena && arena.height >= sizes[1]!.height * 0.75,
+        "Eight mouse-and-keyboard standings leave most of a short landscape window for the arena",
+      );
+      const lastCard = scoreCards.nth(7);
+      await lastCard.scrollIntoViewIfNeeded();
+      assert.ok(
+        await lastCard.evaluate((card) => {
+          const bounds = card.getBoundingClientRect();
+          return bounds.top >= 0 && bounds.bottom <= innerHeight + 1;
+        }),
+        "All eight standings are reachable in the short window",
+      );
+    }
     for (const size of [sizes[1]!, sizes[2]!, sizes[0]!]) {
       await page.setViewportSize(size);
       const portrait = size.height > size.width;

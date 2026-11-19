@@ -12,6 +12,19 @@ async function openCraftMotionPreference(page: Page) {
   return page.getByRole("checkbox", { name: /reduced motion/i });
 }
 
+async function openVolleyHelp(page: Page) {
+  const guide = page.getByRole("dialog", { name: "How to play" });
+  await page
+    .locator(".fui-room-head")
+    .getByRole("button", { name: "How to play", exact: true })
+    .click();
+  await guide.getByText("A D / ← →", { exact: true }).waitFor();
+  await guide.getByText("W / ↑ / SPACE", { exact: true }).waitFor();
+  await guide.getByText("JUMP", { exact: true }).waitFor();
+  await guide.getByText(/A fourth touch is a fault/).waitFor();
+  return guide;
+}
+
 /** Real menu → room → admission paths. No injected game state or browser API replacements. */
 const base = process.env.ONLINE_URL ?? "http://127.0.0.1:8787/";
 const evidence = process.env.SMOKE_SHOTS ?? "artifacts/game-lobbies";
@@ -111,6 +124,7 @@ try {
       await room.waitFor();
       await checkGameMenu(page, game);
       const configurationRoom = [
+        "cyberfuse",
         "fuse-drivers",
         "fusemania",
         "elasto-fuse",
@@ -118,6 +132,7 @@ try {
         "fuseball",
         "fuse-volley",
         "fusero",
+        "incredible-fuse",
       ].includes(game);
       assert.equal(
         (await room.getAttribute("class"))
@@ -158,25 +173,53 @@ try {
             }, width),
             "round choices and seats occupy their intended columns/phone order",
           );
-          assert.ok(
+          assert.deepEqual(
             await room.evaluate((root) => {
               const head = root.querySelector(".fui-room-head")!;
               const bounds = head.getBoundingClientRect();
-              return [...head.querySelectorAll("button, a")].every(
+              return [...head.querySelectorAll("button, a")].flatMap(
                 (control) => {
                   const rect = control.getBoundingClientRect();
-                  return (
-                    rect.width === 0 ||
-                    (rect.left >= bounds.left - 1 &&
-                      rect.right <= bounds.right + 1 &&
-                      rect.top >= bounds.top - 1 &&
-                      rect.bottom <= bounds.bottom + 1)
-                  );
+                  return rect.width > 0 &&
+                    (rect.left < bounds.left - 1 ||
+                      rect.right > bounds.right + 1 ||
+                      rect.top < bounds.top - 1 ||
+                      rect.bottom > bounds.bottom + 1)
+                    ? [
+                        {
+                          control: control.textContent?.trim(),
+                          header: [
+                            bounds.left,
+                            bounds.top,
+                            bounds.right,
+                            bounds.bottom,
+                          ],
+                          button: [
+                            rect.left,
+                            rect.top,
+                            rect.right,
+                            rect.bottom,
+                          ],
+                        },
+                      ]
+                    : [];
                 },
               );
             }),
-            "room header keeps every action inside its visible bounds",
+            [],
+            `room header keeps every action inside its visible bounds at ${width}px`,
           );
+          if (game === "cyberfuse" || game === "incredible-fuse")
+            assert.ok(
+              await room
+                .locator(".fui-room-head .fui-room-primary-action > button")
+                .evaluate(
+                  (button) =>
+                    button.scrollWidth <= button.clientWidth + 1 &&
+                    button.scrollHeight <= button.clientHeight + 1,
+                ),
+              `the full Start label fits at ${width}px`,
+            );
           if (game === "fusemania") {
             assert.equal(
               await room.locator(".fm-picker-play").count(),
@@ -263,6 +306,29 @@ try {
       await room
         .locator('.fui-room-open-slot[data-slot="1"].fui-slot-occupied')
         .waitFor();
+      if (game === "fuse-volley") {
+        step = "volley lobby help";
+        const guide = await openVolleyHelp(page);
+        await guide.getByRole("button", { name: "Back" }).click();
+        await guide.waitFor({ state: "hidden" });
+        const guestContext = await browser.newContext({
+          viewport: { width: 360, height: 800 },
+        });
+        try {
+          const guest = await guestContext.newPage();
+          const invite = new URL("fusevolley/?mute", base);
+          invite.searchParams.set(
+            "room",
+            (await room.locator(".fui-room-code").innerText()).trim(),
+          );
+          await guest.goto(invite.href);
+          const guestGuide = await openVolleyHelp(guest);
+          await guest.keyboard.press("Escape");
+          await guestGuide.waitFor({ state: "hidden" });
+        } finally {
+          await guestContext.close();
+        }
+      }
       if (game === "fuse-craft") {
         step = "guest device preferences";
         const guestContext = await browser.newContext({
@@ -301,6 +367,60 @@ try {
           await guestContext.close();
         }
       }
+      if (game === "fusemania") {
+        step = "Fusemania guest readiness";
+        const guestContext = await browser.newContext({
+          viewport: { width: 360, height: 800 },
+        });
+        try {
+          const guest = await guestContext.newPage();
+          const invite = new URL("fusemania/", base);
+          invite.searchParams.set(
+            "room",
+            (await room.locator(".fui-room-code").innerText()).trim(),
+          );
+          invite.searchParams.set("mute", "");
+          await guest.goto(invite.href);
+          const guestRoom = guest.locator(".fui-room-layout");
+          await guestRoom
+            .locator('.fui-room-open-slot[data-slot="0"]')
+            .getByRole("button", { name: "Join", exact: true })
+            .click();
+          const form = guestRoom.locator("dialog[open]");
+          await form
+            .locator('input:not([type="checkbox"]):not([type="radio"])')
+            .first()
+            .fill("Ready Tester");
+          await form
+            .getByRole("button", { name: /^Join(?: as player)?$/i })
+            .click();
+          const ready = guestRoom
+            .locator(".fui-room-head")
+            .getByRole("button", {
+              name: "READY",
+              exact: true,
+            });
+          await ready.waitFor();
+          const hostStart = room.locator(".fui-room-head .fm-start");
+          await room.locator(".fm-start:disabled").waitFor();
+          assert.equal(await ready.getAttribute("aria-pressed"), "false");
+          await ready.click();
+          const pressed = guestRoom.getByRole("button", {
+            name: "READY ✓",
+            exact: true,
+          });
+          await pressed.waitFor();
+          assert.equal(await pressed.getAttribute("aria-pressed"), "true");
+          await room.locator(".fm-start:enabled").waitFor();
+          assert.ok(await hostStart.isEnabled());
+          await pressed.click();
+          await ready.waitFor();
+          await room.locator(".fm-start:disabled").waitFor();
+        } finally {
+          await guestContext.close();
+        }
+        await room.locator(".fm-start:enabled").waitFor();
+      }
       const settings = room.getByRole("button", {
         name: "Room settings",
         exact: true,
@@ -310,6 +430,8 @@ try {
         await settings.click();
         const dialog = page.locator("dialog[open]");
         await dialog.waitFor();
+        if (game === "cyberfuse")
+          await dialog.getByText("Difficulty", { exact: true }).click();
         const select = dialog.locator("select:enabled").first();
         if (await select.count()) {
           const next = await select

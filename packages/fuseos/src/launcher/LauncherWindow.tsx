@@ -121,7 +121,7 @@ function Screenshot({ game }: { game: LauncherGame }) {
 }
 
 function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
-  const list = useRef<HTMLUListElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   // The window that boots focused answers the arrow keys at once, like the old client's list.
   useEffect(() => {
     if (active) list.current?.focus();
@@ -132,9 +132,9 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
     );
     if (row && typeof row.scrollIntoView === "function")
       row.scrollIntoView({ block: "nearest" });
-  }, [vm.selected?.id, vm.games]);
+  }, [vm.selected?.id, vm.groups]);
 
-  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     switch (event.key) {
       case "ArrowDown":
         vm.selectNext();
@@ -164,7 +164,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
             type="button"
             aria-label="Sort by game name"
             aria-pressed={vm.sort === "name"}
-            onClick={() => vm.setSort("name")}
+            onClick={vm.sortByName}
           >
             Game
           </button>
@@ -172,13 +172,23 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
             type="button"
             className="fst-last-played"
             aria-label="Sort by last played"
-            aria-pressed={vm.sort === "lastPlayed"}
-            onClick={() => vm.setSort("lastPlayed")}
+            aria-pressed={vm.sort !== "name"}
+            aria-description={
+              vm.sort === "name"
+                ? undefined
+                : vm.sort === "oldest"
+                  ? "Oldest first"
+                  : "Newest first"
+            }
+            data-sort-direction={
+              vm.sort === "newest" ? "descending" : undefined
+            }
+            onClick={vm.toggleLastPlayedSort}
           >
             Last played
           </button>
         </div>
-        <ul
+        <div
           ref={list}
           className="fst-list"
           role="listbox"
@@ -189,39 +199,49 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
           }
           onKeyDown={onKeyDown}
         >
-          {vm.games.map((game) => {
-            const isSelected = game.id === selected?.id;
-            return (
-              <li
-                key={game.id}
-                id={`fst-game-${game.id}`}
-                role="option"
-                aria-labelledby={`fst-game-name-${game.id}`}
-                aria-describedby={`fst-game-played-${game.id}`}
-                aria-selected={isSelected}
-                className={`fst-row ${isSelected ? "selected" : ""}`}
-                onClick={() => vm.select(game.id)}
-                onDoubleClick={() => vm.playGame(game.id)}
-              >
-                <GameRowIcon game={game} />
-                <span id={`fst-game-name-${game.id}`} className="fst-row-name">
-                  {game.name}
-                </span>
-                <span
-                  id={`fst-game-played-${game.id}`}
-                  className="fst-row-date fst-last-played"
-                >
-                  {formatLastPlayed(game.lastPlayed, vm.now)}
-                </span>
-              </li>
-            );
-          })}
-          {vm.games.length === 0 ? (
-            <li className="fst-row fst-muted" aria-disabled>
+          {vm.groups.map(({ tier, games }) => (
+            <div key={tier} role="group" aria-label={tier}>
+              <div className="fst-tier" aria-hidden>
+                {tier}
+              </div>
+              {games.map((game) => {
+                const isSelected = game.id === selected?.id;
+                return (
+                  <div
+                    key={game.id}
+                    id={`fst-game-${game.id}`}
+                    role="option"
+                    aria-labelledby={`fst-game-name-${game.id}`}
+                    aria-describedby={`fst-game-played-${game.id}`}
+                    aria-selected={isSelected}
+                    className={`fst-row ${isSelected ? "selected" : ""}`}
+                    onClick={() => vm.select(game.id)}
+                    onDoubleClick={() => vm.playGame(game.id)}
+                  >
+                    <GameRowIcon game={game} />
+                    <span
+                      id={`fst-game-name-${game.id}`}
+                      className="fst-row-name"
+                    >
+                      {game.name}
+                    </span>
+                    <span
+                      id={`fst-game-played-${game.id}`}
+                      className="fst-row-date fst-last-played"
+                    >
+                      {formatLastPlayed(game.lastPlayed, vm.now)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {vm.groups.length === 0 ? (
+            <div className="fst-row fst-muted" role="option" aria-disabled>
               No games installed
-            </li>
+            </div>
           ) : null}
-        </ul>
+        </div>
       </section>
       {selected && details ? (
         <section className="fst-detail" aria-label={`${selected.name} details`}>

@@ -119,6 +119,7 @@ export interface RosterMember {
   avatar?: string;
   host?: boolean;
   ready?: boolean;
+  removableBot?: boolean;
 }
 
 /**
@@ -145,6 +146,12 @@ export interface RosterOptions {
   /** Draws an avatar for a member's `avatar` key. Omit for rows without avatars. */
   avatar?: (key: string) => HTMLElement;
   hostText?: string;
+  /** Remove an AI seat when the game marks it removable. */
+  removeBot?: {
+    className: string;
+    label?: string;
+    onRemove(id: string): void;
+  };
   classes?: PartClasses<RosterPart>;
   document?: Document;
 }
@@ -160,6 +167,7 @@ interface RosterRow {
   status: HTMLElement;
   host: HTMLElement;
   shown: string;
+  removeBot?: HTMLButtonElement;
 }
 
 export interface Roster {
@@ -211,6 +219,21 @@ export function createRoster(options: RosterOptions = {}): Roster {
     // After the name, before whatever a game hangs on the row's end (a remove button stays last).
     row.info.after(button);
     row.friend = { publicId, button };
+  };
+  const removeBot = options.removeBot;
+  const placeBotRemoval = (member: RosterMember, row: RosterRow) => {
+    if (!removeBot) return;
+    const hidden = !member.removableBot;
+    if (!hidden && !row.removeBot) {
+      const remove = button("×", removeBot.className, doc);
+      remove.setAttribute("aria-label", removeBot.label ?? "Remove bot");
+      const { id } = member;
+      remove.onclick = () => removeBot.onRemove(id);
+      row.entry.append(remove);
+      row.removeBot = remove;
+    }
+    if (row.removeBot && row.removeBot.hidden !== hidden)
+      row.removeBot.hidden = hidden;
   };
   return {
     element,
@@ -287,6 +310,7 @@ export function createRoster(options: RosterOptions = {}): Roster {
           else row.entry.dataset.ready = ready;
         }
         if (friends || row.friend) placeFriend(member.id, row);
+        placeBotRemoval(member, row);
       }
       if (empty && empty.hidden !== rows.size > 0) empty.hidden = rows.size > 0;
       for (const listener of listeners) listener(members);

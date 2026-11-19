@@ -1,4 +1,5 @@
 import {
+  hashCheckpointJson,
   applyManagementTick,
   isManagementEntry,
   memberId,
@@ -461,21 +462,7 @@ export function decode(f: readonly unknown[], tick: number): Room | undefined {
   };
 }
 export function hash(r: Room): string {
-  const text = JSON.stringify([r.tick, ...encode(r)], (_k, v: unknown) =>
-    plain(v)
-      ? Object.fromEntries(
-          Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : v,
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson([r.tick, ...encode(r)]);
 }
 export const hookGame: RollbackGame<Room, Entry, View, never, Tuning> = {
   id: "hook-havok",

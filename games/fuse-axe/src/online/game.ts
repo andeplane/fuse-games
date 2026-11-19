@@ -1,10 +1,10 @@
 import {
-  ACTION,
+  hashCheckpointJson,
   BOT,
-  PRESENCE,
-  SPECTATOR,
   applyManagementTick,
+  createSeatDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -228,23 +228,13 @@ const payloads = {
   name: validName,
   avatar: isHero,
   settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: playerKey,
+  matchKey: validMatchId,
   capacity: CAPACITY,
 };
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return validMatchId(raw[4]);
-    const at =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return at < 0 || playerKey((raw as unknown[])[at]);
-  }
-  if (
-    !Array.isArray(raw) ||
-    !uint32(raw[0]) ||
-    raw[0] === 0 ||
-    !uint32(raw[1]) ||
-    raw[1] === 0
-  )
-    return false;
+  if (isManagementEntry(raw, payloads)) return true;
+  if (!hasLogPosition(raw)) return false;
   if (raw[2] === PLAY)
     return (
       raw.length === 6 &&
@@ -641,17 +631,6 @@ export function foldTick(
 
 // ---- checkpoint ----
 const FIELDS = 12;
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 const STAGES: readonly Stage[] = ["lobby", "running", "between", "over"];
 const plain = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -693,49 +672,13 @@ function decodeTally(raw: unknown): Tally | undefined {
   };
 }
 
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher
-      ? avatarId !== ""
-      : bot
-        ? avatarId !== BOT_AVATAR
-        : !isHero(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
+const decodeSeat = createSeatDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  validName,
+  validAvatar: (avatar, bot): avatar is string =>
+    bot ? avatar === BOT_AVATAR : isHero(avatar),
+});
 
 /**
  * Where the stage flow can stand, as the fold leaves it. A run in play has no outcome and an uncleared stage (a
@@ -980,21 +923,7 @@ export function decode(
 
 /** Two FNV-1a lanes over the whole room, keys sorted: 16 hex characters. */
 export function hash(room: Room): string {
-  const text = JSON.stringify([room.tick, ...encode(room)], (_key, value) =>
-    plain(value)
-      ? Object.fromEntries(
-          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : (value as unknown),
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson([room.tick, ...encode(room)]);
 }
 
 export function view(room: Room): View {

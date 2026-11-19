@@ -16,7 +16,7 @@ import {
   safeStore,
   sessionFor,
   type Store,
-} from "../src/app/session.js";
+} from "fuse-ui/room-session";
 import { addBot, fold, runTo, started } from "./fixtures/fuseDrivers.js";
 import { defined } from "./fixtures/defined.js";
 

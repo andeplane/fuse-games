@@ -6,6 +6,7 @@ import type { RaceState } from "../src/game/sim/race.js";
 import { createTruck, type Truck } from "../src/game/sim/truck.js";
 import {
   focusTruck,
+  startingTruck,
   truckNames,
   type ArenaFrame,
 } from "../src/app/arena/frame.js";
@@ -215,6 +216,29 @@ test("names are in truck order, short, upper case, and fall back to the slot", (
     ),
   };
   assert.deepEqual(truckNames(long, 1), ["WILHELMI"]);
+});
+
+test("the starting marker identifies each driver's own truck on every grid and clears after launch", () => {
+  const { view, next } = racing();
+  const grid: RaceState = { ...next, phase: "countdown", tick: 0 };
+  for (const round of [1, 2]) {
+    const current = { ...view, round };
+    for (const id of ["a", "b"])
+      assert.equal(
+        startingTruck(current, grid, id),
+        current.drivers.find((driver) => driver.id === id)?.truck,
+      );
+    assert.equal(startingTruck(current, grid, undefined), undefined);
+    assert.equal(startingTruck(current, grid, "watcher"), undefined);
+    assert.equal(
+      startingTruck(
+        current,
+        { ...grid, phase: "racing", tick: grid.countdownEndTick + 30 },
+        "a",
+      ),
+      undefined,
+    );
+  }
 });
 
 test("one drawn frame carries the race, the poses, the track and the names", () => {

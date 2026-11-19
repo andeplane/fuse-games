@@ -293,6 +293,91 @@ test("workspace authenticates, provides numbered charts and accessible daily val
   unmount();
 });
 
+test("workspace assistant rejects a non-string section before applying a valid navigation", async () => {
+  const f = fixture();
+  const requests: { history: { call_id?: string; output?: string }[] }[] = [];
+  const unmount = mountWorkspace(f.root, {
+    ...f,
+    now: () => new Date("2026-11-14T12:00:00Z"),
+    gamesUrl: "/",
+    transport: {
+      origin: "https://service.example",
+      token: async () => "fixture-token",
+      request: async (input, init) => {
+        switch (new URL(String(input)).pathname) {
+          case "/api/dev/me":
+            return Response.json({ uid: "dev" });
+          case "/api/dev/catalog":
+            return Response.json({ gameIds: ["fuse-riders"] });
+          case "/api/dev/events":
+            return Response.json(explorer);
+          case "/api/dev/metrics":
+            return Response.json({ series: [{ users: 3 }] });
+          case "/api/dev/assistant":
+            requests.push(JSON.parse(String(init?.body)));
+            return requests.length === 1
+              ? Response.json({
+                  text: "",
+                  calls: [
+                    {
+                      id: "invalid",
+                      name: "navigate",
+                      arguments: '{"view":["events"]}',
+                    },
+                    {
+                      id: "valid",
+                      name: "navigate",
+                      arguments: '{"view":"events"}',
+                    },
+                  ],
+                  output: [],
+                })
+              : Response.json({ text: "Finished", calls: [], output: [] });
+          default:
+            return Response.json({}, { status: 404 });
+        }
+      },
+    },
+  });
+  try {
+    f.login();
+    await settled(
+      () =>
+        f.root.querySelector(".view-content")?.getAttribute("aria-busy") ===
+        "false",
+    );
+    f.root.querySelector<HTMLTextAreaElement>(
+      ".assistant-form textarea",
+    )!.value = "Show raw events";
+    f.root
+      .querySelector<HTMLFormElement>("form.assistant-form")!
+      .requestSubmit();
+    await settled(
+      () =>
+        f.root
+          .querySelector(".assistant-output")
+          ?.textContent?.includes("Finished") === true,
+    );
+    const evidence = (id: string) =>
+      JSON.parse(
+        requests[1]?.history.find((entry) => entry.call_id === id)?.output ??
+          "{}",
+      );
+    assert.match(
+      evidence("invalid").error,
+      /workspace action could not be applied/,
+    );
+    const valid = JSON.parse(evidence("valid"));
+    assert.equal(valid.view, "events");
+    assert.equal(
+      f.root.querySelector("nav [aria-current=page]")?.textContent,
+      "Raw Events",
+    );
+  } finally {
+    unmount();
+  }
+});
+
 test("timeline orders chunks and reports while treating private transcript as plain text", () => {
   const f = fixture();
   const media: PrivateMedia = {

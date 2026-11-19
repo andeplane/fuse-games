@@ -1,6 +1,6 @@
 import { ALL_SONGS, MusicPlayer as createMusicPlayer } from "fuse-ui/music";
 import type { MusicPlayer } from "fuse-ui/radio";
-import type { Store } from "./session.js";
+import type { Store } from "fuse-ui/room-session";
 export const RADIO_KEY = "fuse-choppers-radio-v1";
 /** Choppers' dialog and preferences; streaming and track loading belong to fuse-music. */
 export function createChopperRadio(options: {

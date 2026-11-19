@@ -1,10 +1,10 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
+  hashCheckpointJson,
   applyManagementTick,
+  decodeSingleWinner as decodeDecided,
+  createSeatListDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -28,7 +28,6 @@ import {
   MIN_SONG_MS,
   MODES,
   RELEASE,
-  RULES,
   SCORE_MODE,
   SOLO_LEAD_IN_MS,
   TICK_MS,
@@ -91,7 +90,8 @@ const SETTING_KEYS = ["display", "song", "mode", "chart", "songs", "random"];
 
 export const PLAY = 0,
   PICK = 1,
-  READY = 2;
+  READY = 2,
+  LOBBY_READY = 3;
 /**
  * The longest a started song waits for its devices to have the audio, in log ticks (30 s): a device that never
  * answers, a tab left in the background, does not keep the room from its song.
@@ -126,8 +126,17 @@ export type ReadyEntry = [
   kind: typeof READY,
   epoch: number,
 ];
-export type Entry =
-  ManagementEntry<Settings> | PlayEntry | PickEntry | ReadyEntry;
+/** A human seat's readiness for one lobby configuration. Separate from downloading a started song. */
+export type LobbyReadyEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof LOBBY_READY,
+  revision: number,
+  slot: number,
+  ready: boolean,
+];
+type OwnEntry = PlayEntry | PickEntry | ReadyEntry | LobbyReadyEntry;
+export type Entry = ManagementEntry<Settings> | OwnEntry;
 /** A started song that stands at its first moment until every device has its audio. */
 export interface Hold {
   /** Log ticks waited so far: at most `HOLD_TICKS`. */
@@ -146,6 +155,8 @@ export const MAX_WATCHERS = 5;
 export const ROOM = {
   seating: { capacity: CAPACITY, maxWatchers: MAX_WATCHERS },
 } as const;
+/** Bump this peer protocol for incompatible room or gameplay changes. Ranked replay has its own version. */
+const ROOM_RULES = "fusemania-11-activity-duration-2";
 export type RoomStage = "lobby" | "running" | "over";
 
 /** A rider of the current match as it started: the result names them even if the seat is gone by the end. */
@@ -223,6 +234,8 @@ export interface Room extends ManagedRoom<Settings> {
   play: Settings;
   /** The chart each seat picked for itself, by member id. */
   picks: Record<string, number>;
+  /** A revision of the shared lobby settings and the human seats that accepted it. */
+  lobbyReady: { revision: number; ids: string[] };
   /** The match's riders in slot order; empty in the lobby. */
   roster: Entrant[];
   decided: Decided | null;
@@ -259,6 +272,7 @@ export interface View {
   /** The settings of the match being played. */
   play: Settings;
   seats: SeatView[];
+  lobbyReady: string[];
   roster: Entrant[];
   /** The winner's id once `stage` is "over", otherwise "". */
   winner: string;
@@ -286,80 +300,41 @@ export function seedOf(matchId: string): number {
   return seed;
 }
 
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 const STAGES: readonly RoomStage[] = ["lobby", "running", "over"];
-const FIELDS = 14;
+const FIELDS = 15;
+const sameSettings = (a: Settings, b: Settings): boolean =>
+  a.song === b.song &&
+  a.chart === b.chart &&
+  a.mode === b.mode &&
+  a.display === b.display &&
+  a.songs === b.songs &&
+  a.random === b.random;
+
+export function unreadyGuests<
+  T extends {
+    id: string;
+    bot: boolean;
+    connected: boolean;
+    watcher?: boolean;
+  },
+>(seats: readonly T[], ready: readonly string[], host: string): T[] {
+  const humans = seats.filter(
+    (seat) => !seat.bot && seat.connected && !seat.watcher,
+  );
+  return humans.length <= 1
+    ? []
+    : humans.filter((seat) => seat.id !== host && !ready.includes(seat.id));
+}
 const seatOrder = (a: SeatRecord, b: SeatRecord) =>
   a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
-
-function decodeSeats(raw: unknown): Map<string, SeatRecord> | undefined {
-  if (!Array.isArray(raw) || raw.length > CAPACITY + MAX_WATCHERS) return;
-  const seats = new Map<string, SeatRecord>();
-  for (const item of raw) {
-    const seat = decodeSeat(item);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  return seats;
-}
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  playerKey,
+  validName,
+  validAvatar: isAvatar,
+});
 
 function decodePicks(
   raw: unknown,
@@ -401,32 +376,6 @@ function decodeRoster(raw: unknown): Entrant[] | undefined {
     roster.push({ id, name, slot: roster.length, bot, chart });
   }
   return roster;
-}
-
-function decodeDecided(
-  raw: unknown,
-  roster: readonly Entrant[],
-): Decided | null | undefined {
-  if (raw === null) return null;
-  if (!Array.isArray(raw) || raw.length !== 3) return;
-  const [clock, winner, finishers] = raw as unknown[];
-  if (
-    !uint32(clock) ||
-    clock === 0 ||
-    !roster.some((entrant) => entrant.id === winner) ||
-    !Array.isArray(finishers) ||
-    finishers.length > roster.length
-  )
-    return;
-  const humans = roster.filter((e) => !e.bot).map((e) => e.id);
-  const list: string[] = [];
-  for (const id of finishers as unknown[]) {
-    // Sorted and without repeats, as the fold writes it.
-    if (typeof id !== "string" || !humans.includes(id)) return;
-    if (list.length && list[list.length - 1]! >= id) return;
-    list.push(id);
-  }
-  return { clock, winner: winner as string, finishers: list };
 }
 
 /** The standings of a session's totals: by points, then by songs won, then in the order riders joined it. */
@@ -595,38 +544,32 @@ export function createFusemaniaGame(
     name: validName,
     avatar: isAvatar,
     settings: (value: unknown) => parseSettings(value) !== undefined,
+    memberKey: playerKey,
+    matchKey: validMatchId,
     capacity: CAPACITY,
   };
   function isEntry(raw: unknown): raw is Entry {
-    if (isManagementEntry(raw, payloads)) {
-      if (raw[2] === ACTION) return validMatchId(raw[4]);
-      // Member ids become record keys: one of Object.prototype's names never does.
-      const at =
-        raw[2] === BOT || raw[2] === SPECTATOR
-          ? 4
-          : raw[2] <= PRESENCE
-            ? 3
-            : -1;
-      return at < 0 || playerKey((raw as unknown[])[at]);
-    }
-    if (
-      !Array.isArray(raw) ||
-      !uint32(raw[0]) ||
-      raw[0] === 0 ||
-      !uint32(raw[1]) ||
-      raw[1] === 0
-    )
-      return false;
+    if (isManagementEntry(raw, payloads)) return true;
+    if (!hasLogPosition(raw)) return false;
     if (raw[2] === PLAY)
       return (
         raw.length === 6 &&
         uint32(raw[3]) &&
         isCode(raw[4]) &&
+        typeof raw[5] === "number" &&
         Number.isInteger(raw[5]) &&
         raw[5] >= MIN_SONG_MS &&
         raw[5] <= MAX_SONG_MS
       );
     if (raw[2] === READY) return raw.length === 4 && uint32(raw[3]);
+    if (raw[2] === LOBBY_READY)
+      return (
+        raw.length === 6 &&
+        uint32(raw[3]) &&
+        uint32(raw[4]) &&
+        raw[4] < CAPACITY &&
+        typeof raw[5] === "boolean"
+      );
     return raw[2] === PICK && raw.length === 4 && chartIndex(raw[3]);
   }
 
@@ -641,6 +584,7 @@ export function createFusemaniaGame(
       settings: { ...settings },
       play: { ...settings },
       picks: {},
+      lobbyReady: { revision: 0, ids: [] },
       roster: [],
       decided: null,
       world: null,
@@ -664,6 +608,7 @@ export function createFusemaniaGame(
     room.decided = null;
     room.world = null;
     room.hold = null;
+    room.lobbyReady = { revision: room.tick + 1, ids: [] };
   }
   /** Starts a match for the seats, in seat order, or leaves the room in its lobby when nobody is seated. */
   function beginMatch(room: Room): void {
@@ -817,12 +762,11 @@ export function createFusemaniaGame(
     }
   }
 
-  const lifecycle: LifecycleHooks<Room, Settings> = {
+  const lifecycle: Omit<LifecycleHooks<Room, Settings>, "start"> = {
     stage: (room) => room.stage,
     maxWatchers: MAX_WATCHERS,
     parseSettings,
     botAvatar: AVATAR,
-    start: startSong,
     rematch: startSong,
     lobby(room, id) {
       resetMatch(room, id);
@@ -838,7 +782,7 @@ export function createFusemaniaGame(
     seat: Pick<SeatRecord, "id" | "generation">,
     streams: ReadonlyMap<string, StreamEntries<Entry>>,
     tick: number,
-  ): (PlayEntry | PickEntry | ReadyEntry)[] {
+  ): OwnEntry[] {
     const stream = streams.get(seat.id);
     const source =
       stream?.generation === seat.generation
@@ -846,9 +790,12 @@ export function createFusemaniaGame(
         : stream?.retired?.find((old) => old.generation === seat.generation);
     return (source?.entries ?? [])
       .filter(
-        (entry): entry is PlayEntry | PickEntry | ReadyEntry =>
+        (entry): entry is OwnEntry =>
           entry[1] === tick &&
-          (entry[2] === PLAY || entry[2] === PICK || entry[2] === READY),
+          (entry[2] === PLAY ||
+            entry[2] === PICK ||
+            entry[2] === READY ||
+            entry[2] === LOBBY_READY),
       )
       .sort((a, b) => a[0] - b[0]);
   }
@@ -859,7 +806,56 @@ export function createFusemaniaGame(
     streams: ReadonlyMap<string, StreamEntries<Entry>>,
   ): never[] {
     const tick = room.tick + 1;
-    applyManagementTick(room, tick, creatorId, streams, lifecycle);
+    const previousSettings = room.settings;
+    const previousVotes = room.lobbyReady.ids.flatMap((id) => {
+      const seat = room.seats.get(id);
+      return seat ? [{ id, generation: seat.generation, slot: seat.slot }] : [];
+    });
+    const retainedVotes = () =>
+      previousVotes
+        .filter((before) => {
+          const seat = room.seats.get(before.id);
+          return (
+            seat?.connected &&
+            !seat.watcher &&
+            seat.generation === before.generation &&
+            seat.slot === before.slot
+          );
+        })
+        .map((seat) => seat.id);
+    applyManagementTick(room, tick, creatorId, streams, {
+      ...lifecycle,
+      start(room, id, origin) {
+        const ready =
+          room.lobbyReady.revision !== tick &&
+          sameSettings(previousSettings, room.settings)
+            ? retainedVotes().filter((id) => {
+                const seat = room.seats.get(id)!;
+                // A same-tick withdrawal or chart change takes precedence over START.
+                return !ownEntries(seat, streams, tick).some(
+                  (entry) =>
+                    (entry[2] === PICK &&
+                      entry[3] !== (room.picks[id] ?? room.settings.chart)) ||
+                    (entry[2] === LOBBY_READY &&
+                      entry[3] === room.lobbyReady.revision &&
+                      entry[4] === seat.slot &&
+                      !entry[5]),
+                );
+              })
+            : [];
+        if (
+          !unreadyGuests(riders(room), ready, origin?.author ?? creatorId)
+            .length
+        )
+          startSong(room, id);
+      },
+    });
+    if (room.stage === "lobby" && room.lobbyReady.revision !== tick) {
+      if (!sameSettings(previousSettings, room.settings))
+        room.lobbyReady = { revision: tick, ids: [] };
+      else room.lobbyReady.ids = retainedVotes();
+    }
+    const ready = new Set(room.lobbyReady.ids);
     // A pick is a seat's own: it lasts while the seat does.
     for (const id of Object.keys(room.picks))
       if (!room.seats.has(id) || room.seats.get(id)!.watcher)
@@ -879,8 +875,20 @@ export function createFusemaniaGame(
         continue;
       }
       for (const entry of ownEntries(seat, streams, tick)) {
-        if (entry[2] === PICK) room.picks[seat.id] = entry[3];
-        else if (entry[2] === READY) continue;
+        if (entry[2] === PICK) {
+          const before = room.picks[seat.id] ?? room.settings.chart;
+          room.picks[seat.id] = entry[3];
+          if (before !== entry[3]) ready.delete(seat.id);
+        } else if (entry[2] === LOBBY_READY) {
+          if (
+            room.stage !== "lobby" ||
+            entry[3] !== room.lobbyReady.revision ||
+            entry[4] !== seat.slot
+          )
+            continue;
+          if (entry[5]) ready.add(seat.id);
+          else ready.delete(seat.id);
+        } else if (entry[2] === READY) continue;
         else if (
           slot >= 0 &&
           room.stage === "running" &&
@@ -889,6 +897,7 @@ export function createFusemaniaGame(
           inputs.push({ slot, code: entry[4], ms: entry[5] });
       }
     }
+    room.lobbyReady.ids = [...ready].sort();
     const hold = room.stage === "running" ? room.hold : null;
     if (hold) {
       // Anyone in the room says so, a watcher and the shared screen too: they hear the song as the riders do.
@@ -1005,6 +1014,7 @@ export function createFusemaniaGame(
         : null,
       room.matchStartTick,
       structuredClone(room.recentResults),
+      [room.lobbyReady.revision, [...room.lobbyReady.ids]],
     ];
   }
 
@@ -1029,6 +1039,7 @@ export function createFusemaniaGame(
       rawHold,
       matchStartTick,
       rawRecentResults,
+      rawLobbyReady,
     ] = fields;
     const settings = parseSettings(rawSettings),
       play = parseSettings(rawPlay),
@@ -1170,6 +1181,29 @@ export function createFusemaniaGame(
         return;
       hold = { ticks: rawHold[0], ready: [...ready], screen: rawHold[2] };
     }
+    if (
+      !Array.isArray(rawLobbyReady) ||
+      rawLobbyReady.length !== 2 ||
+      !uint32(rawLobbyReady[0]) ||
+      rawLobbyReady[0] > tick ||
+      !Array.isArray(rawLobbyReady[1]) ||
+      rawLobbyReady[1].length > CAPACITY ||
+      (stage !== "lobby" && rawLobbyReady[1].length)
+    )
+      return;
+    const lobbyIds: unknown[] = rawLobbyReady[1];
+    if (
+      !lobbyIds.every((id, index): id is string => {
+        if (
+          !playerKey(id) ||
+          (index > 0 && (lobbyIds[index - 1] as string) >= id)
+        )
+          return false;
+        const seat = seats.get(id);
+        return Boolean(seat?.connected && !seat.bot && !seat.watcher);
+      })
+    )
+      return;
     const room: Room = {
       tick,
       matchStartTick,
@@ -1186,6 +1220,7 @@ export function createFusemaniaGame(
       session,
       hold,
       recentResults,
+      lobbyReady: { revision: rawLobbyReady[0], ids: [...lobbyIds] },
     };
     if (stage === "over") {
       const retained = recentResults.at(-1) ?? [];
@@ -1211,21 +1246,7 @@ export function createFusemaniaGame(
   }
 
   function hash(room: Room): string {
-    const text = JSON.stringify([room.tick, ...encode(room)], (_key, value) =>
-      plain(value)
-        ? Object.fromEntries(
-            Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-          )
-        : (value as unknown),
-    );
-    let a = 0x811c9dc5,
-      b = 0x9747b28c;
-    for (let i = 0; i < text.length; i++) {
-      a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-      b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-      b = (b ^ (b >>> 13)) >>> 0;
-    }
-    return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+    return hashCheckpointJson([room.tick, ...encode(room)]);
   }
 
   function view(room: Room): View {
@@ -1251,6 +1272,7 @@ export function createFusemaniaGame(
           charts - 1,
         ),
       })),
+      lobbyReady: [...room.lobbyReady.ids],
       roster: room.roster.map((entrant) => ({ ...entrant })),
       winner: room.decided?.winner ?? "",
       world: room.world ? toView(library, room.world) : null,
@@ -1273,7 +1295,7 @@ export function createFusemaniaGame(
   return {
     library,
     id: GAME_ID,
-    rules: RULES,
+    rules: ROOM_RULES,
     isEntry,
     createRoom,
     createTicker: () => foldTick,

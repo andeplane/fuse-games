@@ -984,3 +984,42 @@ test("ADD FRIEND follows the room: a player who leaves and comes back, a room on
   assert.equal(friendsOf("phone").length, 1);
   assert.equal(friendsOf("laptop").length, 1);
 });
+
+test("bot removal follows permission without rebuilding the occupied seat", () => {
+  const { document } = page();
+  const root = document.createElement("section");
+  document.body.append(root);
+  const removed: string[] = [];
+  const roster = createRoster({
+    document,
+    removeBot: {
+      className: "game-remove",
+      label: "Remove AI rival",
+      onRemove: (id) => removed.push(id),
+    },
+  });
+  createRoomLayout({ element: root, roster, capacity: 2 });
+  const human = { id: "host", name: "Host", slot: 0 };
+  const bot = { id: "ai", name: "AI", slot: 1 };
+  roster.update([human, bot]);
+  const row = roster.row("ai")!;
+  assert.equal(row.querySelector(".game-remove"), null);
+  roster.update([human, { ...bot, removableBot: true }]);
+  const remove = row.querySelector<HTMLButtonElement>(".game-remove")!;
+  assert.equal(remove.tagName, "BUTTON");
+  assert.equal(remove.type, "button");
+  assert.equal(remove.getAttribute("aria-label"), "Remove AI rival");
+  assert.equal(remove.hidden, false);
+  assert.equal(roster.row("host")!.querySelector(".game-remove"), null);
+  remove.click();
+  assert.deepEqual(removed, ["ai"]);
+
+  roster.update([human, bot]);
+  assert.equal(remove.hidden, true);
+  roster.update([human, { ...bot, removableBot: true }]);
+  assert.equal(row.querySelector(".game-remove"), remove);
+  assert.equal(remove.hidden, false);
+  roster.update([human]);
+  assert.equal(row.isConnected, false);
+  assert.equal(roster.row("ai"), undefined);
+});

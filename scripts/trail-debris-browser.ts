@@ -1,20 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { createServer } from "vite";
-import { chromium, webkit } from "playwright";
+import { launchSelected } from "./lib/browser.js";
+import { openRidersFixturePage } from "./lib/riders-fixture-page.js";
+import { startViteServer } from "./lib/server.js";
 import type { WorldView } from "../games/fuse-riders/src/engine/view.js";
 
-const server = await createServer({
-  server: { port: 0, host: "127.0.0.1", hmr: false },
-});
-await server.listen();
-const address = server.httpServer!.address();
-if (!address || typeof address === "string") throw Error("No server");
+const server = await startViteServer();
 const browserName = process.env.BROWSER ?? "chrome";
-const browser =
-  browserName === "webkit"
-    ? await webkit.launch()
-    : await chromium.launch({ channel: "chrome" });
+const browser = await launchSelected("chrome");
 const errors: string[] = [];
 try {
   await mkdir("artifacts", { recursive: true });
@@ -23,13 +16,11 @@ try {
       viewport: { width: 1600, height: 900 },
     });
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.addInitScript("window.__name = value => value");
-    await page.goto(`http://127.0.0.1:${address.port}/?room=INVALID`);
-    await page.getByText("Invalid room code", { exact: true }).waitFor();
+    await openRidersFixturePage(page, server.url);
     const removed = await page.evaluate(async (mode) => {
-      const { createPhaserArena } = (await import(
-        String("/games/fuse-riders/src/render/phaser/arena.ts")
-      )) as typeof import("../games/fuse-riders/src/render/phaser/arena.js");
+      const { mountWorldArena, readArenaPixels } = (await import(
+        String("/scripts/lib/riders-render-fixture.ts")
+      )) as typeof import("./lib/riders-render-fixture.js");
       const { themes } = (await import(
         String("/games/fuse-riders/src/render/themes.ts")
       )) as typeof import("../games/fuse-riders/src/render/themes.js");
@@ -109,42 +100,16 @@ try {
       const removed =
         before.players.reduce((n, p) => n + p.trail.length, 0) -
         after.players.reduce((n, p) => n + p.trail.length, 0);
-      document.body.replaceChildren();
-      document.body.style.cssText = "margin:0;background:#020715";
-      let canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      document.body.append(canvas);
-      const arena = createPhaserArena(canvas, {
-        renderer: mode === "webgl" ? "auto" : "canvas",
-        resolution: "world",
-      });
-      await arena.ready;
+      const { arena, canvas } = await mountWorldArena(
+        mode === "webgl" ? "auto" : "canvas",
+      );
+      const renderer = arena.metrics().renderer;
       const paint = (snapshot: WorldView, now: number) => {
         arena.render(snapshot, now, themes["neon-pixel"], "debris");
       };
       paint(before, 1000);
       paint(after, 1050);
-      const pixels = () => {
-        const gl = mode === "webgl" ? canvas.getContext("webgl") : null;
-        if (!gl)
-          return new Uint8Array(
-            canvas
-              .getContext("2d")!
-              .getImageData(0, 0, canvas.width, canvas.height).data,
-          );
-        const data = new Uint8Array(canvas.width * canvas.height * 4);
-        gl.readPixels(
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-          gl.RGBA,
-          gl.UNSIGNED_BYTE,
-          data,
-        );
-        return data;
-      };
+      const pixels = () => readArenaPixels(canvas, renderer);
       paint({ ...after, tick: 204 }, 1200);
       Reflect.set(window, "debrisTailCheck", () => {
         const tail = { ...after, tick: 210, blasts: [] };
@@ -187,5 +152,5 @@ try {
   assert.deepEqual(errors, []);
 } finally {
   await browser.close();
-  await server.close();
+  await server.stop();
 }

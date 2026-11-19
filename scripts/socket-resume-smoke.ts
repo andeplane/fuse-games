@@ -121,7 +121,7 @@ try {
   entrance.searchParams.set("renderer", "phaser-canvas");
   await host.goto(entrance.href);
   await openPlayOptions(host);
-  await host.getByRole("button", { name: "CREATE ROOM", exact: true }).click();
+  await host.getByRole("button", { name: "Host room", exact: true }).click();
   await host.waitForURL(/room=/);
   await takeHostSeat(host, "Anchor");
   await host

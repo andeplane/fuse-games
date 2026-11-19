@@ -71,7 +71,7 @@ import {
 import { fuseroGame, type View } from "../online/game.js";
 import { seatName } from "../online/names.js";
 import { FuseroRuntime, type FuseroCallbacks } from "../online/runtime.js";
-import { keys, safeStore, sessionFor, roomFailure } from "./session.js";
+import { keys, safeStore, sessionFor, roomFailure } from "fuse-ui/room-session";
 import {
   createArena,
   interpolateArena,
@@ -386,7 +386,13 @@ function room(solo: boolean) {
   const main = el("main", "", "liero-room"),
     lobby = el("section", "", "liero-lobby");
   main.dataset.display = String(display);
-  const roster = createRoster({ emptyText: "Take a seat or invite friends" });
+  const roster = createRoster({
+    emptyText: "Take a seat or invite friends",
+    removeBot: {
+      className: "liero-remove",
+      onRemove: (id) => runtime.command({ type: "bot", action: "remove", id }),
+    },
+  });
   const start = button("START MATCH", "fui-button-primary"),
     addBot = button("+ ADD BOT"),
     note = el("p", "", "fui-lobby-note");
@@ -788,24 +794,12 @@ function room(solo: boolean) {
       roster.update(
         seats.map((seat) => ({
           ...seat,
+          removableBot: host && seat.bot,
           host: false,
           you: seat.id === me,
           color: COLORS[seat.slot % COLORS.length]!,
         })),
       );
-      for (const [id, row] of roster.entries()) {
-        let remove = row.querySelector<HTMLButtonElement>(".liero-remove");
-        const removable =
-          host && seats.some((seat) => seat.id === id && seat.bot);
-        if (removable && !remove) {
-          remove = button("×", "liero-remove");
-          remove.setAttribute("aria-label", "Remove bot");
-          remove.onclick = () =>
-            runtime.command({ type: "bot", action: "remove", id });
-          row.append(remove);
-        }
-        if (remove) remove.hidden = !removable;
-      }
       start.hidden = !host || display;
       start.disabled = seats.length === 0;
       addBot.hidden = !host || seats.length >= 5 || display;

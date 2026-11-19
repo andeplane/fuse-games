@@ -1,3 +1,4 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import { createHowToPlay, createTopBar } from "fuse-ui";
 import {
   playtestInputBlocked,
@@ -40,20 +41,20 @@ import {
   uuid,
 } from "fuse-netcode";
 import {
-  backOnEscape,
   button,
   createAppPortal,
+  createDialog,
   createGameMenu,
   createInviteCard,
   createLandingCard,
   createNameEntry,
   createNotice,
-  createPageMessage,
+  showInvalidRoomPage,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
   createRoundControls,
-  createSubPage,
   el,
 } from "fuse-ui";
 import {
@@ -104,25 +105,27 @@ import {
   forwardInputs,
   memoBot,
 } from "./forward.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import {
   BOT_CHOICES,
   MODE_CHOICES,
   SCORING_CHOICES,
   createPointWatch,
+  matchOutcome,
   present,
   teamLabel,
   type Model,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import {
   NOT_OPEN,
   keys,
   roomFailure,
   safeStore,
   sessionFor,
-} from "./session.js";
+} from "fuse-ui/room-session";
 
 /**
  * The Fuse Volley page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -233,7 +236,7 @@ const GUIDE = {
     { keys: "LEFT PAD", action: "Slide your thumb left or right to run" },
     { keys: "JUMP", action: "Jump: hold it to jump the highest" },
   ],
-  goal: "Bounce the ball over the net with your blob. It must not touch the sand on your side, and three touches in a row is a fault.",
+  goal: "Bounce the ball over the net and keep it off your sand. Your team can touch the ball three times per return. A fourth touch is a fault.",
 } as const;
 
 const QUICK_GUIDE = {
@@ -283,10 +286,6 @@ function header(
     onOpenChange,
     sound: audioControl.sound,
   });
-}
-
-function keyHelp(): HTMLElement {
-  return createHowToPlay(GUIDE);
 }
 
 /** The two scoring rules as cards; `onPick` hears a choice, `update` shows the room's. */
@@ -460,15 +459,7 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -529,7 +520,14 @@ function room(solo: boolean): void {
   const lobby = el("section", "", "fv-lobby"),
     lobbyMain = el("div", "", "fv-panel"),
     lobbySide = el("aside", "", "fv-panel fv-lobby-side"),
-    roster = createRoster({ emptyText: "No players yet" }),
+    roster = createRoster({
+      emptyText: "No players yet",
+      removeBot: {
+        className: "fv-remove",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD BOT", "fv-add-bot"),
     start = button("START MATCH", "fui-button-primary fv-start"),
     lobbyNote = el("p", "", "fui-lobby-note"),
@@ -619,9 +617,16 @@ function room(solo: boolean): void {
     botPicker.element,
     lobbyNote,
     lobbyActions,
-    keyHelp(),
   );
   lobby.append(lobbyMain, lobbySide);
+  const howToPlay = button("How to play", "fv-room-help");
+  const guide = createDialog({
+    title: "How to play",
+    classes: { root: "fui-menu-dialog" },
+  });
+  howToPlay.setAttribute("aria-haspopup", "dialog");
+  howToPlay.onclick = () => guide.dialog.showModal();
+  guide.body.append(createHowToPlay(GUIDE));
 
   // The court: who is playing, the canvas and the result card.
   const stage = el("section", "", "fv-stage"),
@@ -651,8 +656,7 @@ function room(solo: boolean): void {
         action: id === "rematch" ? "rematch" : "lobby",
       }),
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
   screen.append(canvas, roundControls.element);
 
   // A rocker and a jump button, twice: under a phone's own court, and filling the phone for a shared screen.
@@ -737,6 +741,7 @@ function room(solo: boolean): void {
     stage,
     controller,
     results.element,
+    guide.dialog,
   );
   app.replaceChildren(top, main);
   /** This device's own seat in the lobby, as the last frame had it. */
@@ -769,6 +774,7 @@ function room(solo: boolean): void {
     actions: [lobbyNote],
     // Back, Settings and START lead the room and stay there; the invitation, players and rules scroll under them.
     actionsInHeader: true,
+    headerActions: [howToPlay],
     extras: [tvOption],
     status: status.element,
     ...(solo
@@ -787,10 +793,13 @@ function room(solo: boolean): void {
     art: loadArt(import.meta.env.BASE_URL, browserImages),
   });
   const smoother = createSmoother();
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) =>
-    controls.hold("gamepad", bits),
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => controls.hold("gamepad", bits),
   );
   let model: Model | undefined;
+  let outcome: View | null = null;
   /** What to draw now: the forward run when the newest frame is the room's newest world, otherwise the two frames blended. */
   let traced = { ahead: 0, tick: 0, forward: false };
   const leadClock = createLeadClock(),
@@ -886,7 +895,14 @@ function room(solo: boolean): void {
       }
       const cues = stage.hidden
         ? feel(view)
-        : scene.draw(view, now, local, model?.names, model?.tags);
+        : scene.draw(
+            view,
+            now,
+            local,
+            model?.names,
+            model?.tags,
+            outcome?.world ?? null,
+          );
       const localSide = model?.localSide ?? -1;
       for (const cue of cues) {
         if (!stage.hidden) sfx.play(cue);
@@ -906,11 +922,18 @@ function room(solo: boolean): void {
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
     main.dataset.phase = view.world?.phase ?? "";
-    main.dataset.score = view.world ? view.world.score.join("-") : "";
+    const closed = outcome?.world;
+    main.dataset.score =
+      !closed || !view.world
+        ? ""
+        : closed.format === "2v2v2"
+          ? view.world.onCourt.map((team) => closed.points[team]).join("-")
+          : closed.score.join("-");
     main.dataset.riding = String(next.riding);
     main.dataset.team = String(view.world?.court.team ?? 1);
     main.dataset.format = view.world?.format ?? view.settings.format;
     lobby.hidden = next.screen !== "lobby";
+    if (lobby.hidden && guide.dialog.open) guide.dialog.close();
     stage.hidden = next.screen !== "play";
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
@@ -918,6 +941,7 @@ function room(solo: boolean): void {
     roster.update(
       next.lobby.members.map((member) => ({
         id: member.id,
+        removableBot: next.lobby.removable.includes(member.id),
         slot: member.slot,
         // Alone with the bots there is nobody to tell apart from: the seat reads "You", not "You (you)".
         name: member.you && !solo ? `${member.name} (you)` : member.name,
@@ -931,18 +955,6 @@ function room(solo: boolean): void {
             : "OFFLINE",
       })),
     );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fv-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fv-remove");
-        remove.setAttribute("aria-label", "Remove bot");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
     addBot.hidden = !next.lobby.canAddBot;
     start.hidden = !next.lobby.showStart;
     start.disabled = !next.lobby.canStart;
@@ -1022,40 +1034,28 @@ function room(solo: boolean): void {
     controllerResult.hidden = !(next.result && next.result.host);
     // Result.
     const result = next.result;
-    if (!result || next.screen === "controller") {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: sideColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(next.screen === "controller" ? undefined : result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: sideColor, friend }),
+      bar: resultBar,
+    });
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display,
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => runtime.self,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   const points = createPointWatch();
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
@@ -1063,10 +1063,12 @@ function room(solo: boolean): void {
   let joinSent = false;
   const callbacks: FuseVolleyCallbacks = {
     state(frame, roomSettings) {
+      const confirmed = runtime.confirmedFrame();
+      outcome = matchOutcome(frame, confirmed, solo);
       observeConfirmedPlay(
         reportPlay,
         frame,
-        () => runtime.confirmedFrame(),
+        () => confirmed,
         (frame) => {
           const players =
             frame.stage === "lobby"
@@ -1085,10 +1087,11 @@ function room(solo: boolean): void {
           };
         },
       );
-      for (const point of points(frame, viewer.me))
-        analytics.track("Point Scored", { ...point });
+      if (outcome)
+        for (const point of points(outcome, viewer.me))
+          analytics.track("Point Scored", { ...point });
       settings = roomSettings;
-      const next = present(frame, viewer);
+      const next = present(frame, viewer, outcome);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
         joinSent = true;
@@ -1104,25 +1107,7 @@ function room(solo: boolean): void {
       if (autopilot)
         controls.hold("autopilot", autopilotBits(state, viewer.me));
       runtime.flush();
-      if (!display && state && (session.kind === "room" || social.isSignedIn()))
-        for (const report of dueReports(
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.
@@ -1139,6 +1124,7 @@ function room(solo: boolean): void {
       say("The host removed you from the room", "error");
     },
     ended() {
+      if (guide.dialog.open) guide.dialog.close();
       say("Room ended", "error");
       over = true;
       controls.clear();

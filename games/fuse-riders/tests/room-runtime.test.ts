@@ -1,4 +1,5 @@
 import test from "node:test";
+import { MAX_PLAYERS, SOLO_RIDERS } from "../src/engine/tuning.js";
 import {
   SNAPSHOT_INTERVAL,
   SAMPLE_WINDOW_MS,
@@ -522,7 +523,7 @@ test("solo runs a room with no peers: one human, five AI, a paused clock while h
   runtime.start();
   runtime.start();
   assert.ok(recorded.includes("ready:solo"), recorded.join("|"));
-  assert.equal(frame!.players.length, 6);
+  assert.equal(frame!.players.length, SOLO_RIDERS);
   assert.equal(frame!.players[0]!.name, "Player");
   assert.equal(frame!.phase, "countdown");
   net.step(COUNTDOWN_TICKS * 50 + 100);
@@ -592,11 +593,6 @@ test("solo runs a room with no peers: one human, five AI, a paused clock while h
     runtime.command({ type: "bot", action: "remove", id: "nope" }),
     false,
   );
-  assert.equal(
-    runtime.command({ type: "bot", action: "add" }),
-    false,
-    "six seats are taken",
-  );
   // The command is accepted — the entry is this rider's to write — but the fold refuses the head, because the four AI
   // riders in this solo room wear `robot` and a human that wore it too could not be told from them (rules 48).
   assert.equal(runtime.command({ type: "avatar", avatarId: "robot" }), true);
@@ -614,6 +610,22 @@ test("solo runs a room with no peers: one human, five AI, a paused clock while h
     new Set(frame!.players.map((player) => player.color)).size,
     frame!.players.length,
     "every rider in the room wears a different colour",
+  );
+  // Solo seats six of the eight places, so two more AI fit and then the room is full.
+  const solo = frame!.players.length;
+  for (let added = solo; added < MAX_PLAYERS; added++) {
+    assert.equal(
+      runtime.command({ type: "bot", action: "add" }),
+      true,
+      "a seat is free",
+    );
+    net.step(60);
+  }
+  assert.equal(frame!.players.length, MAX_PLAYERS);
+  assert.equal(
+    runtime.command({ type: "bot", action: "add" }),
+    false,
+    "every seat is taken",
   );
   runtime.stop();
   runtime.stop();

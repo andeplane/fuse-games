@@ -193,14 +193,38 @@ export type KeyAction =
 
 /** One zoom key press: Z or + closer by this factor, X or - out. */
 export const ZOOM_STEP = 1.25;
-const ZOOM_KEYS: Readonly<Record<string, number>> = {
-  z: 1,
-  "+": 1,
-  "=": 1,
-  x: -1,
-  "-": -1,
-  _: -1,
-};
+const zoomIn = { kind: "zoom", factor: ZOOM_STEP } as const;
+const zoomOut = { kind: "zoom", factor: 1 / ZOOM_STEP } as const;
+const recenter = { kind: "recentre" } as const;
+const score = { kind: "score" } as const;
+const KEY_ACTIONS: ReadonlyMap<string, Readonly<KeyAction>> = new Map<
+  string,
+  Readonly<KeyAction>
+>([
+  ...Array.from(SPELL_KEYS.toLowerCase(), (key, slot): [string, KeyAction] => [
+    key,
+    { kind: "cast", slot },
+  ]),
+  ...Array.from(ITEM_KEYS, (key, slot): [string, KeyAction] => [
+    key,
+    { kind: "item", slot },
+  ]),
+  ["a", { kind: "attackMove" }],
+  [" ", recenter],
+  ["f", recenter],
+  ["z", zoomIn],
+  ["+", zoomIn],
+  ["=", zoomIn],
+  ["x", zoomOut],
+  ["-", zoomOut],
+  ["_", zoomOut],
+  ["Home", { kind: "home" }],
+  ["Tab", { kind: "fight" }],
+  ["Escape", { kind: "close" }],
+  ["b", { kind: "shop" }],
+  ["`", score],
+  ["~", score],
+]);
 
 /**
  * What a key press does: Q/W/E/R cast (or aim), A arms an attack-move, Space or F follows the
@@ -208,20 +232,6 @@ const ZOOM_KEYS: Readonly<Record<string, number>> = {
  * cancels aiming and closes a panel, 1–6 use an item slot's active, B opens or closes the shop and ` (held) shows the
  * scoreboard.
  */
-export function keyAction(key: string): KeyAction | undefined {
-  const slot = key.length === 1 ? SPELL_KEYS.indexOf(key.toUpperCase()) : -1;
-  if (slot >= 0) return { kind: "cast", slot };
-  if (key === "a" || key === "A") return { kind: "attackMove" };
-  if (key === " " || key === "f" || key === "F") return { kind: "recentre" };
-  const zoom = ZOOM_KEYS[key.toLowerCase()];
-  if (zoom)
-    return { kind: "zoom", factor: zoom > 0 ? ZOOM_STEP : 1 / ZOOM_STEP };
-  if (key === "Home") return { kind: "home" };
-  if (key === "Tab") return { kind: "fight" };
-  if (key === "Escape") return { kind: "close" };
-  const item = key.length === 1 ? ITEM_KEYS.indexOf(key) : -1;
-  if (item >= 0) return { kind: "item", slot: item };
-  if (key === "b" || key === "B") return { kind: "shop" };
-  if (key === "`" || key === "~") return { kind: "score" };
-  return undefined;
+export function keyAction(key: string): Readonly<KeyAction> | undefined {
+  return KEY_ACTIONS.get(key.length === 1 ? key.toLowerCase() : key);
 }

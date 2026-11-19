@@ -6,8 +6,25 @@ import {
   gravesPx,
   stageLengthPx,
 } from "../../engine/view-kit.js";
-import { bayer, dither, hash, Raster, rgbAt } from "./kit.js";
+import {
+  firstTile,
+  worldRow,
+  bayer,
+  dither,
+  hash,
+  Raster,
+  rgbAt,
+} from "./kit.js";
 import type { Brush, StageArt } from "./kit.js";
+import { drawFires, type Fire } from "./fire.js";
+import { moonlitRelief as shape, type Inside } from "./relief.js";
+import { moonGlow, paintSky, paintStars, paintMoon } from "./sky.js";
+import {
+  paintStone,
+  stoneCourses,
+  type StoneCourse,
+  type StoneSpan,
+} from "./stone-courses.js";
 
 /**
  * Stage 3, Drowned Crypt: a cold night in a flooded graveyard under a broken cathedral. Far to near: the sky and a pale
@@ -52,34 +69,11 @@ const IRON = 0x22263a;
 const IRON_LIT = 0x3e4458;
 const BONE = 0xb8b0a8;
 const GLOW = [0x0c2a22, 0x1e5a44, 0x48b080];
-const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"];
+const FLAME = ["#eaffe0", "#8ef0a8", "#36c27a", "#1a6a58"] as const;
 /** The fog's, the ripples' and the drips' colours, which nothing else draws. */
 const FOG = "#2e4448";
 const RIPPLE = ["#6a8e92", "#41606a", "#273c44"];
 const DROP = "#9cc4c4";
-
-type Box = readonly [x0: number, y0: number, x1: number, y1: number];
-type Inside = (x: number, y: number) => boolean;
-
-/**
- * Paints the pixels in `box` that `inside` holds, lit by the moon at the upper right: inked where they meet the
- * outside, a top colour (moss) along the top, light along the right, shadow along the bottom and left, base between.
- */
-function shape(r: Raster, box: Box, inside: Inside, ramp: Ramp) {
-  const [[x0, y0, x1, y1], [ink, dark, base, lit, top = lit]] = [box, ramp];
-  for (let y = y0; y < y1; y++)
-    for (let x = x0; x < x1; x++) {
-      if (!inside(x, y)) continue;
-      let c = base;
-      if (!inside(x, y - 1) || !inside(x, y + 1)) c = ink;
-      else if (!inside(x - 1, y) || !inside(x + 1, y)) c = ink;
-      else if (!inside(x, y - 2)) c = top;
-      else if (!inside(x + 1, y - 1) || !inside(x + 2, y)) c = lit;
-      else if (!inside(x, y + 2) || !inside(x - 2, y)) c = dark;
-      else if (hash(x, y) > 0.93) c = dark;
-      r.px(x, y, c);
-    }
-}
 
 /** Mirrors what `keep` holds above row `line` into the water below it, at half its light, broken up with depth. */
 function mirror(r: Raster, x0: number, x1: number, line: number, keep: Inside) {
@@ -147,34 +141,43 @@ function stroke(r: Raster, tree: readonly Limb[], [ink, dark, , lit]: Ramp) {
 }
 
 /** Thin clouds: each one's centre, row and half its length. */
-const CLOUDS = [244, 33, 35, 120, 22, 45, 40, 48, 30];
+const CLOUDS = [
+  [244, 33, 35],
+  [120, 22, 45],
+  [40, 48, 30],
+] as const;
+const MOON = [252, 30, 11] as const;
 
 function sky(r: Raster) {
-  for (let y = 0; y < FLOOR; y++)
-    for (let x = 0; x < r.width; x++) {
-      const glow = Math.max(0, 1 - Math.hypot(x - 252, y - 30) / 70) * 0.25;
-      r.px(x, y, dither(SKY, y / 92 + glow, x, y));
-    }
-  for (let i = 0; i < 70; i++) {
-    const [x, y] = [hash(i, 1) * r.width, hash(i, 2) * 64];
-    if (Math.hypot(x - 252, y - 30) > 24)
-      r.px(x, y, i % 5 ? 0x343c5c : 0xb8c8dc);
-  }
+  const [mx, my] = MOON;
+  paintSky(
+    r,
+    SKY,
+    (x, y) => y / 92 + moonGlow(Math.hypot(x - mx, y - my), 0.25),
+  );
+  paintStars(r, {
+    count: 70,
+    top: 0,
+    height: 64,
+    subpixel: true,
+    color: (index, x, y) => {
+      if (Math.hypot(x - mx, y - my) <= 24) return undefined;
+      return index % 5 ? 0x343c5c : 0xb8c8dc;
+    },
+  });
   // A pale moon, its left limb in shadow, a haze about it and thin clouds across the sky.
-  for (let y = 6; y < 56; y++)
-    for (let x = 228; x < 278; x++) {
-      const d = Math.hypot(x + 0.5 - 252, y + 0.5 - 30);
-      if (d >= 11) {
-        if (d < 22 && bayer(x, y) < (22 - d) / 20) r.px(x, y, 0x24304a);
-        continue;
-      }
-      const shade = Math.hypot(x + 0.5 - 255, y + 0.5 - 29) > 11;
-      const sea =
-        Math.hypot(x - 249, y - 27) < 3 || Math.hypot(x - 255, y - 34) < 2;
-      r.px(x, y, shade ? 0x7e968e : sea ? 0xaec4b4 : 0xd8ead2);
-    }
-  for (let i = 0; i < 9; i += 3) {
-    const [cx, cy, half] = [CLOUDS[i]!, CLOUDS[i + 1]!, CLOUDS[i + 2]!];
+  paintMoon(r, {
+    disc: MOON,
+    sampleOffset: 0.5,
+    lightCenter: [255, 29],
+    marks: [
+      [249, 27, 3],
+      [255, 34, 2],
+    ],
+    colors: { light: 0xd8ead2, shadow: 0x7e968e, marks: 0xaec4b4 },
+    halo: { radius: 22, fade: 20, color: 0x24304a },
+  });
+  for (const [cx, cy, half] of CLOUDS) {
     for (let j = 0; j < 3; j++)
       for (let x = cx - half + j * 4; x < cx + half - j * 3; x++)
         r.px(x, cy + j, j === 2 ? 0x2c3a50 : 0x12162a);
@@ -187,15 +190,48 @@ const CATH_X = 228;
 function cathedral(x: number, y: number) {
   const u = x + 0.5 - CATH_X;
   const a = Math.abs(u);
-  const ruin = Math.floor(hash(x >> 1, 7) * 7);
-  const lancet = (u - 44) % 12 > 4 && (u - 44) % 12 < 8 && y > 57 && y < 70;
   if (a < 24) return y > 32 + a * 0.6;
-  if (u < 0 && a < 40) return y > 28 || y > 6 + Math.abs(u + 32) * 2.4;
-  if (u > 0 && u < 40)
-    return y > 30 + ruin && !(a > 30 && a < 34 && y > 38 && y < 50);
-  if (u > 0 && u < 104) return y > (u > 70 ? 54 + ruin : 48) && !lancet;
-  if (u > 0 && u < 126) return y > 58 + ruin;
-  return u > -86 && y > 64 + ruin;
+  const ruin = Math.floor(hash(x >> 1, 7) * 7);
+  if (u < 0) {
+    if (a < 40) return y > 28 || y > 6 + Math.abs(u + 32) * 2.4;
+    return u > -86 && y > 64 + ruin;
+  }
+  return cathedralEast(u, y, ruin);
+}
+
+function cathedralEast(u: number, y: number, ruin: number) {
+  if (u < 40) return y > 30 + ruin && !(u > 30 && u < 34 && y > 38 && y < 50);
+  if (u < 104) {
+    const opening = (u - 44) % 12;
+    const lancet = opening > 4 && opening < 8 && y > 57 && y < 70;
+    return y > (u > 70 ? 54 + ruin : 48) && !lancet;
+  }
+  return y > (u < 126 ? 58 : 64) + ruin;
+}
+
+/** Tracery surrounds the bright heart; missing panes reveal the sky. */
+function roseWindow(r: Raster) {
+  for (let y = 40; y < 62; y++)
+    for (let x = CATH_X - 11; x < CATH_X + 11; x++) paintRosePane(r, x, y);
+}
+
+function paintRosePane(r: Raster, x: number, y: number) {
+  const u = x + 0.5 - CATH_X;
+  const v = y + 0.5 - 51;
+  const distance = Math.hypot(u, v);
+  if (distance >= 9.5) return;
+  const angle = Math.atan2(v, u);
+  const spoke = Math.abs(Math.sin(angle * 6)) * distance < 0.7;
+  if (distance > 8.5 || Math.abs(distance - 4.7) < 0.5 || spoke)
+    r.px(x, y, 0x1a1f33);
+  else if (distance < 2.5) r.px(x, y, 0x6aa08a);
+  else {
+    const pane = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 12);
+    const ring = Number(distance < 4.7);
+    if (hash(pane, 40 + ring) < 0.35)
+      r.rgba[((y - r.top) * r.width + x) * 4 + 3] = 0;
+    else r.px(x, y, (pane + ring) % 2 ? 0x2e5a50 : 0x48386a);
+  }
 }
 
 /** The far layer: the cathedral on a fog-bound rise of dead woods, its rose window glowing through the gaps. */
@@ -204,27 +240,16 @@ function far(r: Raster) {
     const rise = 76 + Math.round(3 * Math.sin(x * 0.045) + 2 * Math.sin(x / 9));
     const spike = hash(x >> 1, 5) > 0.86 ? 2 + Math.floor(hash(x, 6) * 6) : 0;
     for (let y = r.top; y < FLOOR; y++) {
-      const lit = !cathedral(x + 1, y) || !cathedral(x, y - 1);
-      if (y >= rise || (y >= rise - spike && x % 2 === 0))
+      const wooded = y >= rise || (y >= rise - spike && x % 2 === 0);
+      if (wooded) {
         r.px(x, y, y > 80 && bayer(x, y) < (y - 80) / 16 ? 0x172230 : 0x0d1220);
-      else if (cathedral(x, y)) r.px(x, y, lit ? 0x1a1f33 : 0x0b0d1a);
+      } else if (cathedral(x, y)) {
+        const lit = !cathedral(x + 1, y) || !cathedral(x, y - 1);
+        r.px(x, y, lit ? 0x1a1f33 : 0x0b0d1a);
+      }
     }
   }
-  // The rose window: tracery round a bright heart, a third of its panes knocked out to the sky.
-  for (let y = 40; y < 62; y++)
-    for (let x = CATH_X - 11; x < CATH_X + 11; x++) {
-      const [u, v] = [x + 0.5 - CATH_X, y + 0.5 - 51];
-      const [d, angle] = [Math.hypot(u, v), Math.atan2(v, u)];
-      const pane = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 12);
-      const ring = d < 4.7 ? 1 : 0;
-      const spoke = Math.abs(Math.sin(angle * 6)) * d < 0.7;
-      if (d >= 9.5) continue;
-      if (d > 8.5 || Math.abs(d - 4.7) < 0.5 || spoke) r.px(x, y, 0x1a1f33);
-      else if (d < 2.5) r.px(x, y, 0x6aa08a);
-      else if (hash(pane, 40 + ring) < 0.35)
-        r.rgba[((y - r.top) * r.width + x) * 4 + 3] = 0;
-      else r.px(x, y, (pane + ring) % 2 ? 0x2e5a50 : 0x48386a);
-    }
+  roseWindow(r);
 }
 
 /** A run of ruined cloister arches on the mid layer's ground, some bays fallen to their column stumps. */
@@ -261,9 +286,16 @@ function mausoleum(r: Raster, cx: number, w: number, ground: number) {
 /** The mid layer: a low graveyard ground in the fog, with cloisters, mausoleums, dead trees and leaning stones. */
 function mid(r: Raster) {
   const ground = (x: number) => 86 + Math.round(1.5 * Math.sin(x * 0.031));
-  for (let x = 0; x < r.width; x++)
-    for (let y = ground(x); y < FLOOR; y++)
-      r.px(x, y, y === ground(x) ? 0x1a2a26 : 0x0d111b);
+  for (let x = 0; x < r.width; x++) {
+    const top = ground(x);
+    for (let y = top; y < FLOOR; y++)
+      r.px(x, y, y === top ? 0x1a2a26 : 0x0d111b);
+  }
+  midBuildings(r, ground);
+  midFog(r);
+}
+
+function midBuildings(r: Raster, ground: (x: number) => number) {
   for (let x = 16, n = 0; x < r.width; n++) {
     const [kind, g] = [(n * 3 + (hash(n, 20) > 0.7 ? 1 : 0)) % 4, ground(x)];
     if (kind === 0) arcade(r, x, 3 + Math.floor(hash(n, 21) * 3), n * 7);
@@ -273,10 +305,14 @@ function mid(r: Raster) {
       headstone(r, [x + 34 + i * 9, g, 4 + i, 5 + 2 * i, i % 2, i - 1], MID);
     x += kind === 0 ? 90 : 56 + Math.floor(hash(n, 24) * 40);
   }
-  for (let y = 64; y < BANK; y++)
+}
+
+function midFog(r: Raster) {
+  for (let y = 64; y < BANK; y++) {
+    const density = 0.4 - Math.abs(y - 79) / 30;
     for (let x = 0; x < r.width; x++)
-      if (rgbAt(r, x, y) >= 0 && bayer(x, y) < 0.4 - Math.abs(y - 79) / 30)
-        r.px(x, y, 0x182430);
+      if (rgbAt(r, x, y) >= 0 && bayer(x, y) < density) r.px(x, y, 0x182430);
+  }
 }
 
 /** The bank's dead trees: where each stands, its height and lean. */
@@ -335,75 +371,116 @@ const WALL = [STONE[1], STONE[2], STONE[3]];
 /** The keystone's skull, a row of 7 bits each: brow, eyes, nose, teeth. */
 const SKULL = [0x3e, 0x7f, 0x49, 0x77, 0x3e, 0x2a];
 
-/** The cathedral's ruined west wall at the stage end: blocks and ivy, a gable, buttresses and the doors, ajar. */
-function gate(r: Raster) {
+function gateWallPixel(
+  r: Raster,
+  x: number,
+  y: number,
+  distanceFromTop: number,
+  ivyDepth: number,
+) {
+  if (distanceFromTop === 0 || x === WALL_X || rgbAt(r, x - 1, y) < 0)
+    return INK;
+  if (distanceFromTop === 1) return STONE[3];
+  if (distanceFromTop < ivyDepth) return (x ^ y) & 1 ? 0x24382c : 0x16241e;
+  const row = BANK - 1 - y;
+  const course = Math.floor(row / 6);
+  const brickX = x + course * 7;
+  if (brickX % 15 === 0 || row % 6 === 5) return IRON;
+  return dither(
+    WALL,
+    0.2 + hash(Math.floor(brickX / 15), course + 62) * 0.5,
+    x,
+    y,
+  );
+}
+
+function gateMasonry(r: Raster) {
   for (let x = WALL_X; x < CRYPT_LENGTH; x++) {
     const ragged = 28 + 6 * Math.sin(x * 0.08) + hash(x >> 2, 60) * 9;
     const crumble = BANK - (x - WALL_X) * 1.4;
     const gable = 4 + Math.abs(x + 0.5 - GATE_X) * 0.55 + hash(x >> 2, 61) * 5;
     const top = Math.round(Math.min(Math.max(ragged, crumble), gable));
     const ivy = hash(x >> 4, 65) > 0.5 && hash(x >> 1, 63) > 0.4;
-    for (let y = top; y < BANK; y++) {
-      const course = Math.floor((BANK - 1 - y) / 6);
-      const joint = (x + course * 7) % 15 === 0 || (BANK - 1 - y) % 6 === 5;
-      const block = hash(Math.floor((x + course * 7) / 15), course + 62);
-      let c = joint ? IRON : dither(WALL, 0.2 + block * 0.5, x, y);
-      if (ivy && y - top < 3 + hash(x >> 1, 64) * 26)
-        c = (x ^ y) & 1 ? 0x24382c : 0x16241e;
-      if (y - top === 1) c = STONE[3];
-      if (y === top || x === WALL_X || rgbAt(r, x - 1, y) < 0) c = INK;
-      r.px(x, y, c);
-    }
+    const ivyDepth = ivy ? 3 + hash(x >> 1, 64) * 26 : 0;
+    for (let y = top; y < BANK; y++)
+      r.px(x, y, gateWallPixel(r, x, y, y - top, ivyDepth));
   }
-  // Lancet windows, dark to a green glow at their sills.
+}
+
+/** Lancet windows, dark to a green glow at their sills. */
+function gateWindows(r: Raster) {
+  const ramp = [VOID, ...GLOW];
   for (const wx of [GATE_X - 86, GATE_X + 74, GATE_X + 116])
     for (let y = 40; y < 68; y++)
       for (let x = wx - 3; x < wx + 3; x++)
         if (Math.hypot(x + 0.5 - wx, Math.max(0, 47 - y)) < 3)
-          r.px(x, y, dither([VOID, ...GLOW], (y - 40) / 40, x, y));
-  const pier = (x: number, y: number) => {
-    const a = Math.abs(Math.abs(x + 0.5 - GATE_X) - 40);
-    return a < (y < 50 ? 4 : 5.5) && y >= 18 + a * 1.5 && y < BANK;
-  };
-  shape(r, [GATE_X - 48, 10, GATE_X + 48, BANK], pier, STONE);
-  // The doorway's mouldings, and the doors: dark planks banded with iron, and a glow from the crypt between them.
-  for (let v = 0; v < 70; v++)
+          r.px(x, y, dither(ramp, (y - 40) / 40, x, y));
+}
+
+function gatePier(x: number, y: number) {
+  const a = Math.abs(Math.abs(x + 0.5 - GATE_X) - 40);
+  return a < (y < 50 ? 4 : 5.5) && y >= 18 + a * 1.5 && y < BANK;
+}
+
+const DOOR_BANDS = [7, 23, 41];
+
+function doorPixel(x: number, v: number, a: number, band: number | undefined) {
+  let trim = 0;
+  while (trim < 7 && !(v < arch(a, trim))) trim++;
+  if (trim === 7) return;
+  if (trim) return MOULDING[trim - 1];
+  if (a < 1.5) return dither(GLOW, 1 - v / 60, x, BANK - 1 - v);
+  if (band !== undefined) return v === band && a % 6 > 4 ? IRON_LIT : IRON;
+  if (a % 4 < 1) return 0x120c12;
+  return (a >> 2) & 1 ? 0x2a1c22 : 0x23171d;
+}
+
+/** Dark planks banded with iron, a glow between them, and the skull above. */
+function gateDoors(r: Raster) {
+  for (let v = 0; v < 70; v++) {
+    const band = DOOR_BANDS.find((height) => v === height || v === height - 1);
     for (let u = -30; u < 30; u++) {
-      const [x, y, a] = [GATE_X + u, BANK - 1 - v, Math.abs(u + 0.5)];
-      let k = 0;
-      while (k < 7 && !(v < arch(a, k))) k++;
-      const band = [7, 23, 41].find((b) => v === b || v === b - 1);
-      let c = a % 4 < 1 ? 0x120c12 : (a >> 2) & 1 ? 0x2a1c22 : 0x23171d;
-      if (band !== undefined) c = v === band && a % 6 > 4 ? IRON_LIT : IRON;
-      if (a < 1.5) c = dither(GLOW, 1 - v / 60, x, y);
-      if (k < 7) r.px(x, y, k ? MOULDING[k - 1]! : c);
+      const x = GATE_X + u;
+      const color = doorPixel(x, v, Math.abs(u + 0.5), band);
+      if (color !== undefined) r.px(x, BANK - 1 - v, color);
     }
+  }
   for (let i = 0; i < 42; i++) {
     const bit = (SKULL[Math.floor(i / 7)]! >> (6 - (i % 7))) & 1;
     r.px(GATE_X - 3 + (i % 7), BANK - 67 + i / 7, bit ? BONE : 0x2a2030);
   }
 }
 
-/** Still black water from row `y0` to `y1`: the horizon's glow mirrored at its far edge, darkening, in streaks. */
-function water(r: Raster, y0: number, y1: number) {
-  for (let y = y0; y < y1; y++)
-    for (let x = 0; x < r.width; x++) {
-      const t = ((y - y0) / (y1 - y0)) * 1.3;
-      let c = dither([0x16262c, 0x0e1a20, 0x0a1218, WATER], t, x, y);
-      if (hash(x >> 3, y * 7 + 400) > 0.86 && hash(x, y) > 0.3) c = 0x24393e;
-      r.px(x, y, c);
-    }
+/** The cathedral's ruined west wall at the stage end. */
+function gate(r: Raster) {
+  gateMasonry(r);
+  gateWindows(r);
+  shape(r, [GATE_X - 48, 10, GATE_X + 48, BANK], gatePier, STONE);
+  gateDoors(r);
 }
 
-/** The far bank above the water, everything standing on it, the water and its reflection. */
-function bank(r: Raster) {
+const WATER_RAMP = [0x16262c, 0x0e1a20, 0x0a1218, WATER];
+
+/** Still black water with the horizon reflected at its far edge. */
+function water(r: Raster, y0: number, y1: number) {
+  for (let y = y0; y < y1; y++) {
+    const t = ((y - y0) / (y1 - y0)) * 1.3;
+    for (let x = 0; x < r.width; x++) {
+      const streak = hash(x >> 3, y * 7 + 400) > 0.86 && hash(x, y) > 0.3;
+      r.px(x, y, streak ? 0x24393e : dither(WATER_RAMP, t, x, y));
+    }
+  }
+}
+
+function bankEdge(r: Raster) {
   for (let x = 0; x < WALL_X + 8; x++) {
     r.px(x, BANK - 2, x % 5 ? 0x1c1a1e : 0x24221e);
     r.px(x, BANK - 1, hash(x >> 2, 33) > 0.4 ? 0x2c3a3a : 0x1c1a1e);
     if (hash(x, 34) > 0.7) r.px(x, BANK - 3, 0x1a2620);
   }
-  gate(r);
-  for (const tree of TREES) stroke(r, tree, BARK);
+}
+
+function bankGraves(r: Raster) {
   const taken = [...BRAZIERS, ...TREES.map((tree) => tree[0]![0])];
   for (let x = 20, n = 0; x < WALL_X - 24; n++) {
     const kind = Math.floor(hash(n, 35) * 5);
@@ -416,14 +493,26 @@ function bank(r: Raster) {
       headstone(r, [x, BANK - 1, w, h, kind % 3, lean], GRAVE);
     x += kind === 4 ? len + 6 : 14 + Math.floor(hash(n, 39) * 24);
   }
-  for (const x of BRAZIERS) brazier(r, x);
-  water(r, BANK, FLOOR);
-  mirror(r, 0, r.width, BANK, (_, y) => y < BANK - 2);
+}
+
+function brazierReflections(r: Raster) {
   for (const x of BRAZIERS)
     for (let y = BANK; y < FLOOR - 2; y++)
       for (let i = -2; i <= 2; i++)
         if (bayer(x + i, y) < 0.5 - Math.abs(i) * 0.15 - (y - BANK) * 0.03)
           r.px(x + i, y, GLOW[1]!);
+}
+
+/** The far bank, its still water, and the reflection of the objects above it. */
+function bank(r: Raster) {
+  bankEdge(r);
+  gate(r);
+  for (const tree of TREES) stroke(r, tree, BARK);
+  bankGraves(r);
+  for (const x of BRAZIERS) brazier(r, x);
+  water(r, BANK, FLOOR);
+  mirror(r, 0, r.width, BANK, (_, y) => y < BANK - 2);
+  brazierReflections(r);
 }
 
 /** Crosses and stones sunk to their shoulders in the water, each with its waterline and reflection. */
@@ -475,6 +564,35 @@ function openGrave(r: Raster, x: number, y: number) {
   r.px(x - 2, y + 5, BONE);
 }
 
+/** Paint one flagstone's seams, standing water, wet edge or plain stone. */
+function wetFlagstone(
+  r: Raster,
+  course: StoneCourse,
+  stone: StoneSpan & { column: number },
+) {
+  const { index, top, bottom } = course;
+  const { column, left, width } = stone;
+  const tone =
+    0.15 + (index / 8) * 0.5 + (hash(column, 230 + index) - 0.5) * 0.2;
+  const puddle = hash(column, 240 + index) > 0.75;
+  const wet = hash(column, 260 + index) > 0.6;
+  const mossy = hash(column, 270 + index) > 0.6;
+  const glint = left + Math.floor(hash(column, 250 + index) * width);
+  paintStone(r, course, stone, (x, y) => {
+    const joint = y === top ? hash(x >> 3, index + 280) > 0.25 : x === left;
+    if (joint) return mossy && hash(x >> 1, y) > 0.5 ? 0x1e3226 : ROAD[0]!;
+    if (puddle) {
+      const u = (x + 0.5 - left - width / 2) / (width * 0.32);
+      const v = (y + 0.5 - (top + bottom) / 2) / 1.7;
+      if (u * u + v * v < 1)
+        return Math.abs(x - glint) < 2 && v < 0 ? 0x4a6a70 : 0x0e1820;
+    }
+    if (wet && y === top + 1 && hash(x >> 2, y + index) > 0.5) return ROAD[5]!;
+    const grain = (hash(x >> 2, y >> 1) - 0.5) * 0.15;
+    return dither(ROAD, tone + grain, x, y);
+  });
+}
+
 /** The causeway: a kerb along the water, rows of wet flagstones deepening towards the viewer, puddles and moss. */
 function causeway(r: Raster) {
   for (let x = 0; x < r.width; x++) {
@@ -483,30 +601,21 @@ function causeway(r: Raster) {
     r.px(x, FLOOR + 1, joint ? INK : 0x2e3442);
     r.px(x, FLOOR + 2, ROAD[1]!);
   }
-  for (let y0 = FLOOR + 3, k = 0; y0 < SHORE - 2; k++) {
-    const y1 = Math.min(y0 + 5 + k, SHORE - 2);
-    for (let xs = -Math.floor(hash(k, 200) * 20), n = 0; xs < r.width; n++) {
-      const w = 14 + k * 4 + Math.floor(hash(n, 210 + k) * 24);
-      const tone = 0.15 + (k / 8) * 0.5 + (hash(n, 230 + k) - 0.5) * 0.2;
-      const puddle = hash(n, 240 + k) > 0.75;
-      const [wet, mossy] = [hash(n, 260 + k) > 0.6, hash(n, 270 + k) > 0.6];
-      const glint = xs + Math.floor(hash(n, 250 + k) * w);
-      for (let y = y0; y < y1; y++)
-        for (let x = xs; x < xs + w; x++) {
-          const grain = (hash(x >> 2, y >> 1) - 0.5) * 0.15;
-          let c = dither(ROAD, tone + grain, x, y);
-          if (y === y0 + 1 && wet && hash(x >> 2, y + k) > 0.5) c = ROAD[5]!;
-          const u = (x + 0.5 - xs - w / 2) / (w * 0.32);
-          const v = (y + 0.5 - (y0 + y1) / 2) / 1.7;
-          if (puddle && u * u + v * v < 1)
-            c = Math.abs(x - glint) < 2 && v < 0 ? 0x4a6a70 : 0x0e1820;
-          const seam = y === y0 ? hash(x >> 3, k + 280) > 0.25 : x === xs;
-          if (seam) c = mossy && hash(x >> 1, y) > 0.5 ? 0x1e3226 : ROAD[0]!;
-          r.px(x, y, c);
-        }
-      xs += w;
+  for (const course of stoneCourses({
+    top: FLOOR + 3,
+    bottom: SHORE - 2,
+    firstHeight: 5,
+  })) {
+    const { index } = course;
+    for (
+      let left = -Math.floor(hash(index, 200) * 20), column = 0;
+      left < r.width;
+      column++
+    ) {
+      const width = 14 + index * 4 + Math.floor(hash(column, 210 + index) * 24);
+      wetFlagstone(r, course, { column, left, width });
+      left += width;
     }
-    y0 = y1;
   }
   for (let i = 0; i < GRAVES.length; i += 2)
     openGrave(r, GRAVES[i]!, GRAVES[i + 1]!);
@@ -516,6 +625,11 @@ function causeway(r: Raster) {
     r.px(x, SHORE - 1, ROAD[0]!);
   }
   water(r, SHORE, VIEW_H);
+  lilyPads(r);
+}
+
+/** Floating pads below the front kerb, some with pale flowers. */
+function lilyPads(r: Raster) {
   for (let i = 0; i < r.width / 36; i++) {
     const cx = Math.floor(hash(i, 250) * r.width);
     const cy = SHORE + 2 + Math.floor(hash(i, 251) * 5);
@@ -569,56 +683,8 @@ function reeds(r: Raster) {
   }
 }
 
-/** A fire: its left column, width, base row, tallest flame and seed. */
-type Fire = readonly [number, number, number, number, number];
-
 /** The green fires in the braziers, the last two flanking the great doors. */
 export const FIRES = BRAZIERS.map((x, i): Fire => [x - 4, 9, BANK - 17, 13, i]);
-
-const tone = (j: number, h: number, env: number) =>
-  Math.min(3, Math.floor((j / h) * 3.2 + (1 - env) * 1.6));
-
-function burn(brush: Brush, fire: Fire, cam: number, t: number) {
-  const [x0, w, base, height, seed] = fire;
-  if (x0 + w + 16 < cam || x0 - 16 >= cam + VIEW_W) return;
-  for (let i = 0; i < w; i++) {
-    const x = x0 + i - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    const env = Math.sin((Math.PI * (i + 0.5)) / w);
-    const lick = 0.3 * Math.sin((x0 + i) * 0.9 + seed + t * 11);
-    const sway = 0.2 * Math.sin((x0 + i) * 0.37 + seed * 2 - t * 7);
-    const h = Math.max(1, Math.round(height * env * (0.55 + lick + sway)));
-    for (let j = 0; j < h;) {
-      const c = tone(j, h, env);
-      let k = j + 1;
-      while (k < h && tone(k, h, env) === c) k++;
-      brush.fillStyle = FLAME[c]!;
-      brush.fillRect(x, base - k + 1, 1, k - j);
-      j = k;
-    }
-  }
-  for (let i = 0; i < 3; i++) {
-    const life = (t * (0.3 + hash(i, seed) * 0.3) + hash(i, seed + 1)) % 1;
-    const drift = (hash(i, seed + 2) - 0.5) * w + Math.sin(life * 7 + i) * 3;
-    const x = Math.round(x0 + w / 2 + drift) - cam;
-    if (x < 0 || x >= VIEW_W) continue;
-    brush.fillStyle = FLAME[1 + Math.min(2, Math.floor(life * 3))]!;
-    brush.fillRect(x, Math.round(base - height * 0.6 - life * 30), 1, 1);
-  }
-}
-
-/** One row of world pixels from `x0` to `x1`, clipped to the screen at camera `cam`. */
-function run(brush: Brush, x0: number, x1: number, y: number, cam: number) {
-  const [from, to] = [Math.max(x0 - cam, 0), Math.min(x1 - cam, VIEW_W)];
-  if (to > from) brush.fillRect(from, y, to - from, 1);
-}
-
-/**
- * The first of the world-fixed, screen-wide tiles a pattern repeats in that can reach the screen: the one `margin` left
- * of it. The tiles run on from there while they begin before the screen's right edge.
- */
-const firstTile = (cam: number, margin: number) =>
-  Math.floor((cam - margin) / VIEW_W);
 
 /** Banks of fog drifting over the graves and the black water, thin as a dither, each swelling and fading. */
 function fog(brush: Brush, cam: number, t: number) {
@@ -634,7 +700,7 @@ function fog(brush: Brush, cam: number, t: number) {
       for (let row = -2; row <= 2; row++) {
         const a = Math.abs(row);
         for (let s = a * 12 + (row & 1); s < len - a * 12; s += a > 1 ? 4 : 2)
-          run(brush, left + s, left + s + 1, y + row, cam);
+          worldRow(brush, left + s, left + s + 1, y + row, cam);
       }
     }
 }
@@ -643,8 +709,8 @@ function fog(brush: Brush, cam: number, t: number) {
 function ring(brush: Brush, x: number, y: number, life: number, cam: number) {
   const w = 1 + Math.floor(life * 6);
   brush.fillStyle = RIPPLE[Math.min(2, Math.floor(life * 3))]!;
-  run(brush, x - w - 1, x - w + 1, y, cam);
-  run(brush, x + w, x + w + 2, y, cam);
+  worldRow(brush, x - w - 1, x - w + 1, y, cam);
+  worldRow(brush, x + w, x + w + 2, y, cam);
 }
 
 /** Rings spreading on the black water behind the causeway and in front of it. */
@@ -666,10 +732,10 @@ function drips(brush: Brush, cam: number, t: number) {
     const f = (life - 0.6) / 0.12;
     const y = top + Math.round((bottom - top) * f * f);
     brush.fillStyle = DROP;
-    if (life > 0.3 && life < 0.6) run(brush, x, x + 1, top, cam);
+    if (life > 0.3 && life < 0.6) worldRow(brush, x, x + 1, top, cam);
     else if (life >= 0.6 && life < 0.72) {
-      run(brush, x, x + 1, y - 1, cam);
-      run(brush, x, x + 1, y, cam);
+      worldRow(brush, x, x + 1, y - 1, cam);
+      worldRow(brush, x, x + 1, y, cam);
     } else if (life >= 0.72) ring(brush, x, bottom, (life - 0.72) / 0.28, cam);
   }
 }
@@ -686,7 +752,7 @@ export const DROWNED_CRYPT: StageArt = {
     const t = frame / 60;
     ripples(brush, camX, t);
     fog(brush, camX, t);
-    for (const fire of FIRES) burn(brush, fire, camX, t);
+    drawFires(brush, FIRES, camX, t, { palette: FLAME });
     drips(brush, camX, t);
   },
 };

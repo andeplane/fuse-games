@@ -70,6 +70,95 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  cyberfuse: async (page) => {
+    await openPlayOptions(page, "single");
+    const briefing = page.getByRole("dialog");
+    await briefing
+      .getByRole("combobox", { name: "Campaign" })
+      .selectOption({ label: "Bug-Eyed Monsters" });
+    await briefing.getByText("Mission password", { exact: true }).click();
+    // This DOS solo password opens the second mission, a suburb with guards, courtyards and trees.
+    await briefing.getByRole("textbox", { name: "Password" }).fill("hfelya");
+    await briefing.getByRole("button", { name: "Use password" }).click();
+    await briefing
+      .getByRole("heading", { name: "What are they up to now?" })
+      .waitFor();
+    await briefing.getByText("Difficulty", { exact: true }).click();
+    await briefing.locator("select[name=difficulty]").selectOption("easy");
+    await briefing.locator("select[name=density]").selectOption("200");
+    await briefing.locator("select[name=playerHp]").selectOption("200");
+    await briefing
+      .getByRole("checkbox", { name: "Flamer", exact: true })
+      .check();
+    await briefing
+      .getByRole("checkbox", { name: "Machine gun", exact: true })
+      .uncheck();
+    await briefing
+      .getByRole("checkbox", { name: "Shotgun", exact: true })
+      .uncheck();
+    await briefing.getByRole("button", { name: "Deploy", exact: true }).click();
+    const arena = page
+      .locator('.cyberfuse-room[data-phase="running"] canvas')
+      .first();
+    await arena.waitFor();
+    // Rooms vary with the match seed. Play until the HUD records contact and a sizeable
+    // stretch of visible terrain surrounds the player. Fire stays held through the capture.
+    await page.keyboard.down("Space");
+    for (const key of [
+      "ArrowRight",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowDown",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowRight",
+      "ArrowDown",
+    ]) {
+      await hold(page, [key], 1000);
+      const inAction = await arena.evaluate((canvas: HTMLCanvasElement) => {
+        const hp = document.querySelector<HTMLMeterElement>(".cf-hud meter");
+        if (!hp || hp.value >= hp.max || hp.value <= 0) return false;
+        const small = document.createElement("canvas");
+        small.width = 40;
+        small.height = 25;
+        const ctx = small.getContext("2d")!;
+        ctx.drawImage(canvas, 0, 0, 40, 25);
+        const pixels = ctx.getImageData(0, 0, 40, 25).data;
+        let visible = 0;
+        for (let i = 0; i < pixels.length; i += 4)
+          if (pixels[i]! > 23 || pixels[i + 1]! > 34 || pixels[i + 2]! > 42)
+            visible++;
+        return visible >= 730 || hp.value < hp.max * 0.3;
+      });
+      if (inAction) break;
+    }
+  },
+  "incredible-fuse": async (page) => {
+    await openPlayOptions(page, "single");
+    const choice = page.getByRole("combobox", { name: "Puzzle" });
+    const showcase = await choice
+      .getByRole("option", { name: /Clocking out$/ })
+      .getAttribute("value");
+    if (!showcase) throw new Error("Packing-line puzzle is missing");
+    await choice.selectOption(showcase);
+    await page
+      .getByRole("button", { name: "Start puzzle", exact: true })
+      .click();
+    const board = page.getByRole("group", { name: "Machine workbench" });
+    await page.getByRole("button", { name: "Incline", exact: true }).click();
+    const bounds = await board.boundingBox();
+    if (!bounds) throw new Error("Workbench is missing");
+    await board.click({
+      position: {
+        x: (bounds.width * 110) / 640,
+        y: (bounds.height * 130) / 400,
+      },
+    });
+    await page
+      .getByRole("button", { name: "Run machine", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Rewind", exact: true }).waitFor();
+  },
   "fuse-drivers": async (page) => {
     await openPlayOptions(page, "single");
     await page.getByRole("button", { name: "START RACE", exact: true }).click();

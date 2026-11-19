@@ -15,6 +15,7 @@ import {
   fold,
   game,
   library,
+  readyGuests,
   run,
   runTo,
   seated,
@@ -23,8 +24,10 @@ import {
 /** Three songs, the host picking each. */
 const THREE: Settings = { ...SETTINGS, songs: 3 };
 const DRAWN: Settings = { ...THREE, random: true };
-const act = (room: Room, action: string, id: string) =>
+const act = (room: Room, action: string, id: string) => {
+  if (action === "start") readyGuests(room);
   fold(room, { a: [[ACTION, action, id]] });
+};
 /** Runs the song out with nobody playing. */
 const finish = (room: Room) => {
   while (room.stage === "running") fold(room);

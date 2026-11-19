@@ -52,7 +52,7 @@ import {
   createNameEntry,
   createNotice,
   createPageHeader,
-  createPageMessage,
+  showInvalidRoomPage,
   createRoster,
   createResultsScreen,
   createRoundControls,
@@ -68,8 +68,6 @@ import {
   MAX_SIMFILE_BYTES,
   RULES,
   SCORE_MODE,
-  LEAD_IN_MS,
-  SOLO_LEAD_IN_MS,
   createLibrary,
   type Library,
   type Steps,
@@ -103,7 +101,7 @@ import {
   type Prefs,
 } from "./prefs.js";
 import { createOptionsMenu, createPlayOptions, speedLabel } from "./options.js";
-import { createLobbyBar } from "./lobby-bar.js";
+import { createLobbyAction, createLobbyBar } from "./lobby-bar.js";
 import {
   bestText,
   present,
@@ -116,7 +114,6 @@ import { historyReceipts } from "../online/result.js";
 import {
   NOT_OPEN,
   bestRating,
-  createBests,
   keys,
   roomFailure,
   safeStore,
@@ -160,11 +157,12 @@ import {
 import { drawTimingGraph } from "./timing-graph.js";
 import { resultBar, resultReport } from "./result-report.js";
 import { createSongLinkButton, songLink, songQuery } from "./song-link.js";
-import { createSongPicker } from "./song-picker.js";
+import { createSongPicker, type SongPickerOptions } from "./song-picker.js";
 import { coverPath } from "./covers.js";
 import { packsOf } from "./packs.js";
 import { createSongLeaderboards } from "./song-leaderboards.js";
 import { RankedRun } from "./ranked-run.js";
+import { createRoomScores } from "./room-scores.js";
 import { fusemaniaPlayFrame } from "./play-metrics.js";
 import {
   scoreSource,
@@ -275,7 +273,7 @@ const coverUrl = (song: { id: string }): string | undefined => {
 /** The id a loaded simfile's song goes by. */
 const CUSTOM = "custom";
 /** Called when what a song select shows about the songs' audio has changed. */
-const audioWatchers = new Set<() => void>();
+let refreshLandingAudio: (() => void) | undefined;
 /** The library the songs on screen are from: the bundled one, or it with the player's own file. */
 let songLibrary: Library | undefined;
 /** Which songs this device has the audio of, for the page's whole life: the song selects and the room share it. */
@@ -296,9 +294,7 @@ const songs = createSongLoader({
   enabled: () => !audio.forcedMute,
   hasClock: () => audio.clock() !== undefined,
   local: localSong,
-  changed: () => {
-    for (const watcher of audioWatchers) watcher();
-  },
+  changed: () => refreshLandingAudio?.(),
 });
 /** The songs of `library` are the ones on screen: the ones downloaded on an earlier visit are marked so. */
 function useLibrary(library: Library): void {
@@ -522,6 +518,24 @@ function settingsPanel(onChange?: () => void) {
   });
 }
 
+function libraryPicker(
+  library: Library,
+  controls: Pick<
+    SongPickerOptions,
+    "onSong" | "onChart" | "onMode" | "tools" | "onPlay"
+  >,
+) {
+  return createSongPicker({
+    document,
+    songs: library.songs,
+    best: bestLookup(library),
+    audio: songs.status,
+    cover: coverUrl,
+    packs: packsOf(library.songs, CUSTOM),
+    ...controls,
+  });
+}
+
 function landing(): void {
   useLibrary(LIBRARY);
   const library = LIBRARY;
@@ -546,16 +560,10 @@ function landing(): void {
     document,
     link: () => songLink(endpoints.appUrl, choice.song, choice.chart),
   });
-  const picker = createSongPicker({
-    document,
-    songs: library.songs,
+  const picker = libraryPicker(library, {
     onSong: (song) => show({ ...choice, song }),
     onChart: (chart) => show({ ...choice, chart }),
     onMode: (mode) => show({ ...choice, mode }),
-    best: bestLookup(library),
-    audio: songs.status,
-    cover: coverUrl,
-    packs: packsOf(library.songs, CUSTOM),
     tools: [options.random, share.element],
     onPlay: () => {
       leaveLanding();
@@ -598,6 +606,7 @@ function landing(): void {
     });
   /** `keepMusic`: the room that opens next plays the same preview on, without a gap. */
   const leaveLanding = (keepMusic = false) => {
+    refreshLandingAudio = undefined;
     if (!keepMusic) preview.stop();
     share.dispose();
     card.menu.dialog.removeEventListener("close", address);
@@ -769,8 +778,7 @@ function landing(): void {
   picker.update({ ...choice, host: true });
   showOptions();
   preview.show(choice.song);
-  // Until a room takes the page over (`room` clears the watchers and the timer).
-  audioWatchers.add(() => picker.update({ ...choice, host: true }));
+  refreshLandingAudio = () => picker.update({ ...choice, host: true });
   // A link to a song opens the select on it: the friend it was sent to sees the song, with PLAY beside it.
   if (new URLSearchParams(location.search).has("song"))
     card.menu.singlePlayer.click();
@@ -892,21 +900,12 @@ function enterRoom(
   first?: Choice,
   preview = createPreview(library),
 ): void {
-  audioWatchers.clear();
   useLibrary(library);
   const session = solo
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -982,9 +981,16 @@ function enterRoom(
   let settings: Settings = { display: false, ...sessionChoice, ...choice };
   const lobby = el("section", "", "fm-lobby"),
     lobbyMain = el("div", "", "fm-panel"),
-    roster = createRoster({ emptyText: "No players yet" }),
+    roster = createRoster({
+      emptyText: "No players yet",
+      removeBot: {
+        className: "fm-remove",
+        label: "Remove AI rival",
+        onRemove: (id) =>
+          runtime.command({ type: "bot", action: "remove", id }),
+      },
+    }),
     addBot = button("+ ADD AI RIVAL", "fm-add-bot"),
-    start = button("START", "fui-button-primary fm-start"),
     lobbyNote = el("p", "", "fui-lobby-note"),
     tvLink = button("OPEN TV SCREEN", "fui-button fm-tv"),
     tvOption = el("div", "", "fui-room-extra fm-tv-option"),
@@ -1039,7 +1045,12 @@ function enterRoom(
       action: "add",
       slot: requestedRoomSlot(addBot),
     });
-  start.onclick = () => runtime.command({ type: "action", action: "start" });
+  const lobbyAction = createLobbyAction(
+    document,
+    () => runtime.command({ type: "action", action: "start" }),
+    (ready) => runtime.setLobbyReady(ready),
+  );
+  lobbyNote.setAttribute("role", "status");
   tvLink.onclick = () =>
     window.open(
       withFlags(endpoints.appUrl(`?room=${code}&display=1`)),
@@ -1078,9 +1089,7 @@ function enterRoom(
         ? undefined
         : songLink(endpoints.appUrl, settings.song, shownChart),
   });
-  const picker = createSongPicker({
-    document,
-    songs: library.songs,
+  const picker = libraryPicker(library, {
     onSong: (song) => {
       sfx.blip();
       runtime.command({ type: "settings", settings: { ...settings, song } });
@@ -1095,12 +1104,10 @@ function enterRoom(
     },
     onMode: (mode) =>
       runtime.command({ type: "settings", settings: { ...settings, mode } }),
-    best: bestLookup(library),
-    audio: songs.status,
-    cover: coverUrl,
-    packs: packsOf(library.songs, CUSTOM),
     tools: [options.random, share.element],
-    onPlay: () => start.click(),
+    onPlay: () => {
+      if (viewer.host) lobbyAction.element.click();
+    },
   });
   const showOptions = () =>
     options.update({
@@ -1174,6 +1181,10 @@ function enterRoom(
     rankedRetry = button("RETRY SAVING SCORE");
   rankedStatus.setAttribute("role", "status");
   rankedRetry.hidden = true;
+  const refreshRankedStatus = () => {
+    setText(rankedStatus, rankedRun.status);
+    rankedRetry.hidden = !rankedRun.canRetry;
+  };
   const rankedRun = new RankedRun({
     token: identityToken,
     version: async (song) => {
@@ -1189,10 +1200,7 @@ function enterRoom(
     },
     post: scoreRequest,
     inputs: () => runtime.scoreInputs(),
-    changed: () => {
-      rankedStatus.textContent = rankedRun.status;
-      rankedRetry.hidden = !rankedRun.canRetry;
-    },
+    changed: refreshRankedStatus,
   });
   rankedRetry.onclick = () => rankedRun.retry();
   // The menu over a song: a pause alone, a player's own menu in a room (`play-menu.ts`).
@@ -1389,7 +1397,7 @@ function enterRoom(
   let ownSeat: { name: string; slot: number } | undefined;
   const roomLayout = createRoomLayout({
     layout: "configuration",
-    primaryAction: start,
+    primaryAction: lobbyAction.element,
     playerName: () => social.playerName(undefined) ?? undefined,
     slotColor,
     background: async (host) =>
@@ -1852,13 +1860,52 @@ function enterRoom(
     },
   });
 
+  const renderLobby = (next: Model, view: View) => {
+    const room = next.lobby;
+    roster.update(
+      room.members.map((member) => ({
+        id: member.id,
+        removableBot: room.removable.includes(member.id),
+        slot: member.slot,
+        // Alone there is nobody to tell apart from.
+        name: member.you && !solo ? `${member.name} (you)` : member.name,
+        color: slotColor(member.slot),
+        status: !member.connected
+          ? "OFFLINE"
+          : member.bot
+            ? `AI · ${member.chart}`
+            : member.ready
+              ? `READY · ${member.chart}`
+              : member.chart,
+      })),
+    );
+    addBot.hidden = !room.canAddBot;
+    lobbyAction.update(room.action);
+    lobbySession.update(room.session);
+    showOptions();
+    setText(lobbyNote, room.note);
+    lobbyNote.hidden = !room.note;
+    tvOption.hidden = !(viewer.host && !display && !solo);
+    if (tvToggle.checked !== view.settings.display)
+      tvToggle.checked = view.settings.display;
+    tvLink.hidden = !view.settings.display;
+    shownChart = next.chart;
+    picker.update({
+      song: view.settings.song,
+      chart: next.chart,
+      mode: view.settings.mode,
+      host: room.editable,
+    });
+    roomLayout.update(room.members.length, CAPACITY);
+  };
+
   /** What the results screen last showed: it is rebuilt only when the result itself changed. */
   let shownResult = "";
   let lastStage = "";
   const render = (next: Model, view: View) => {
     if (over) return;
     model = next;
-    ownSeat = next.lobby.members.find((member) => member.you);
+    ownSeat = view.seats.find((seat) => seat.id === viewer.me && !seat.watcher);
     connecting.hidden = true;
     main.dataset.screen = next.screen;
     main.dataset.stage = view.stage;
@@ -1897,53 +1944,8 @@ function enterRoom(
     const hostDid = hostWatch(view.stage, performance.now());
     if (hostDid && !solo && !viewer.host && !display)
       flash.show(hostDid, performance.now());
-    // Lobby.
-    roster.update(
-      next.lobby.members.map((member) => ({
-        id: member.id,
-        slot: member.slot,
-        // Alone there is nobody to tell apart from.
-        name: member.you && !solo ? `${member.name} (you)` : member.name,
-        color: slotColor(member.slot),
-        status: !member.connected
-          ? "OFFLINE"
-          : member.bot
-            ? `AI · ${member.chart}`
-            : member.chart,
-      })),
-    );
-    for (const [id, row] of roster.entries()) {
-      let remove = row.querySelector<HTMLButtonElement>(".fm-remove");
-      const removable = next.lobby.removable.includes(id);
-      if (removable && !remove) {
-        remove = button("×", "fm-remove");
-        remove.setAttribute("aria-label", "Remove AI rival");
-        remove.onclick = () =>
-          runtime.command({ type: "bot", action: "remove", id });
-        row.append(remove);
-      }
-      if (remove) remove.hidden = !removable;
-    }
-    addBot.hidden = !next.lobby.canAddBot;
-    start.hidden = !next.lobby.showStart;
-    start.disabled = !next.lobby.canStart;
-    setText(start, next.lobby.startText);
-    lobbySession.update(next.lobby.session);
-    showOptions();
-    setText(lobbyNote, next.lobby.note);
-    lobbyNote.hidden = !next.lobby.note;
-    tvOption.hidden = !(viewer.host && !display && !solo);
-    if (tvToggle.checked !== view.settings.display)
-      tvToggle.checked = view.settings.display;
-    tvLink.hidden = !view.settings.display;
-    shownChart = next.chart;
-    picker.update({
-      song: view.settings.song,
-      chart: next.chart,
-      mode: view.settings.mode,
-      host: next.lobby.editable,
-    });
-    roomLayout.update(next.lobby.members.length, CAPACITY);
+    // A restart still prepares the lobby, in case the next start is refused.
+    if (next.screen === "lobby") renderLobby(next, view);
     const touchGuide = coarse() || next.screen === "controller";
     const watching = display || (view.stage !== "lobby" && !next.playing);
     menu.update({
@@ -2069,8 +2071,26 @@ function enterRoom(
       confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
     };
   };
-  const bests = createBests(store);
-  let finished = "";
+  const observeScores = createRoomScores({
+    store,
+    viewer,
+    bundledLibrary: library === LIBRARY,
+    bestKey: (song, chart) => bestKey(library, song, chart),
+    progress: () => {
+      const state = runtime.roomState();
+      const decided = state?.decided?.clock;
+      return {
+        epoch: state?.epoch,
+        confirmed:
+          solo || (decided !== undefined && decided <= runtime.confirmedTick()),
+      };
+    },
+    observeRanked(observation) {
+      rankedRun.observe(observation);
+      refreshRankedStatus();
+    },
+    songFinished: (properties) => analytics.track("Song Finished", properties),
+  });
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
   );
@@ -2099,49 +2119,7 @@ function enterRoom(
         }),
       );
       settings = roomSettings;
-      // A song that is over settles this device's best on its chart once, and keeps saying what the best was.
-      let bestBefore: number | undefined;
-      const world = frame.world;
-      const mine = world?.players.find((each) => each.id === viewer.me);
-      if (world && mine && !mine.bot && !viewer.display) {
-        rankedRun.observe({
-          key: `${frame.matchId}:${runtime.roomState()?.epoch}`,
-          song: world.song,
-          chart: mine.chart,
-          leadIn: world.players.length === 1 ? SOLO_LEAD_IN_MS : LEAD_IN_MS,
-          eligible: world.mode === SCORE_MODE && library === LIBRARY,
-          beforeSong: world.ms < 0,
-          finished: frame.stage === "over",
-          confirmed:
-            solo ||
-            (runtime.roomState()?.decided?.clock ?? Infinity) <=
-              runtime.confirmedTick(),
-          rating: mine.rating,
-        });
-        rankedStatus.textContent = rankedRun.status;
-        rankedRetry.hidden = !rankedRun.canRetry;
-      }
-      if (frame.stage === "over" && world && mine && !mine.bot) {
-        const key = bestKey(library, world.song, mine.chart);
-        const decided = runtime.roomState()?.decided?.clock;
-        const confirmed =
-          solo || (decided !== undefined && decided <= runtime.confirmedTick());
-        if (key)
-          bestBefore = confirmed
-            ? bests.settle(frame.matchId, key, mine.rating)
-            : bestRating(store, key);
-        if (finished !== frame.matchId) {
-          finished = frame.matchId;
-          analytics.track("Song Finished", {
-            song: world.song === CUSTOM ? "custom" : world.song,
-            chart: mine.chart,
-            rating: mine.rating,
-            battle: world.mode === BATTLE_MODE,
-            mode,
-          });
-        }
-      }
-      const next = present(library, frame, viewer, bestBefore);
+      const next = present(library, frame, viewer, observeScores(frame, mode));
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
         joinSent = true;

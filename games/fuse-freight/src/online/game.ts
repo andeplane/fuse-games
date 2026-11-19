@@ -1,10 +1,10 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
+  hashCheckpointJson,
   applyManagementTick,
+  foldHeldInput,
+  createSeatDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -175,22 +175,15 @@ const payloads = {
   name: validName,
   avatar: isAvatar,
   settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: playerKey,
+  matchKey: validMatchId,
   capacity: CAPACITY,
 };
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return validMatchId(raw[4]);
-    const at =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return at < 0 || playerKey((raw as unknown[])[at]);
-  }
+  if (isManagementEntry(raw, payloads)) return true;
   return (
-    Array.isArray(raw) &&
+    hasLogPosition(raw) &&
     raw.length === 6 &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
     raw[2] === PLAY &&
     validMatchId(raw[3]) &&
     uint32(raw[4]) &&
@@ -282,29 +275,6 @@ export const lifecycle: LifecycleHooks<Room, Settings> = {
   },
 };
 
-/** The seat's play entries for this tick, match and round, from the stream generation its controls follow. */
-function playEntries(
-  room: Room,
-  seat: SeatRecord,
-  streams: ReadonlyMap<string, StreamEntries<Entry>>,
-  tick: number,
-): PlayEntry[] {
-  const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
-    .filter(
-      (entry): entry is PlayEntry =>
-        entry[1] === tick &&
-        entry[2] === PLAY &&
-        entry[3] === room.matchId &&
-        entry[4] === room.round,
-    )
-    .sort((a, b) => a[0] - b[0]);
-}
-
 /** Wagons each member delivered over the match's finished rounds. */
 export function totals(
   results: readonly RoundResult[],
@@ -392,23 +362,15 @@ export function foldTick(
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
   const world = room.world;
   if (room.stage === "running" && world) {
+    const input = foldHeldInput(room, streams, tick, (entry) =>
+      entry[2] === PLAY && entry[3] === room.matchId && entry[4] === room.round
+        ? entry[5] & INPUT_MASK
+        : undefined,
+    );
     const held = new Map<string, number>(),
       first = new Map<string, number>();
     for (const train of world.trains) {
-      const seat = room.seats.get(train.id);
-      let bits = 0,
-        tapped = 0;
-      if (seat?.bot) bits = botInput(world, train);
-      else if (seat?.connected) {
-        bits = room.held[train.id] ?? 0;
-        for (const entry of playEntries(room, seat, streams, tick)) {
-          tapped |= entry[5] & INPUT_MASK;
-          bits = entry[5] & INPUT_MASK;
-        }
-      }
-      // Only what a seat logged is held: a bot answers afresh every tick.
-      if (bits && !seat?.bot) room.held[train.id] = bits;
-      else delete room.held[train.id];
+      const [bits, tapped] = input(train.id, () => botInput(world, train));
       held.set(train.id, bits);
       // A tap that came and went within the tick still steers its first step. What is held at the tick's end wins
       // over anything tapped before it (LEFT then RIGHT in one tick steers right), as a player's last press would.
@@ -424,17 +386,6 @@ export function foldTick(
 }
 
 // ---- checkpoint ----
-const SEAT_KEYS = [
-  "id",
-  "name",
-  "slot",
-  "avatarId",
-  "connected",
-  "bot",
-  "watcher",
-  "generation",
-  "away",
-];
 const STAGES: readonly Stage[] = ["lobby", "running", "between", "over"];
 const plain = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -467,45 +418,12 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-function decodeSeat(raw: unknown): SeatRecord | undefined {
-  if (!plain(raw) || Object.keys(raw).some((key) => !SEAT_KEYS.includes(key)))
-    return;
-  const {
-    id,
-    name,
-    slot,
-    avatarId,
-    connected,
-    bot,
-    watcher,
-    generation,
-    away,
-  } = raw;
-  if (
-    !playerKey(id) ||
-    !validName(name) ||
-    typeof connected !== "boolean" ||
-    typeof bot !== "boolean" ||
-    (watcher !== undefined && watcher !== true) ||
-    (away !== undefined && away !== true) ||
-    (away === true && connected) ||
-    (watcher ? slot !== -1 : !uint32(slot) || slot >= CAPACITY) ||
-    (watcher ? avatarId !== "" : !isAvatar(avatarId)) ||
-    (bot ? generation !== undefined || watcher === true : !uint32(generation))
-  )
-    return;
-  return {
-    id,
-    name,
-    slot: slot as number,
-    avatarId: avatarId as string,
-    connected,
-    bot,
-    ...(watcher ? { watcher: true } : {}),
-    ...(generation !== undefined ? { generation: generation as number } : {}),
-    ...(away ? { away: true } : {}),
-  };
-}
+const decodeSeat = createSeatDecoder({
+  capacity: CAPACITY,
+  playerKey,
+  validName,
+  validAvatar: isAvatar,
+});
 
 const PLACING_KEYS = 8;
 function decodePlacing(raw: unknown): Placing | undefined {
@@ -727,21 +645,7 @@ export function decode(
 }
 
 export function hash(room: Room): string {
-  const text = JSON.stringify([room.tick, ...encode(room)], (_key, value) =>
-    plain(value)
-      ? Object.fromEntries(
-          Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : (value as unknown),
-  );
-  let a = 0x811c9dc5,
-    b = 0x9747b28c;
-  for (let i = 0; i < text.length; i++) {
-    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = Math.imul(b ^ text.charCodeAt(i), 0x01000193) >>> 0;
-    b = (b ^ (b >>> 13)) >>> 0;
-  }
-  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+  return hashCheckpointJson([room.tick, ...encode(room)]);
 }
 
 export function view(room: Room): View {

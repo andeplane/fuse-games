@@ -1,9 +1,11 @@
+import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
 import { createGameSocial } from "fuse-ui/social";
+import { signedInToken } from "fuse-ui/browser-account";
 import "fuse-ui/social.css";
 import {
   observeConfirmedPlay,
@@ -43,7 +45,8 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
-  createPageMessage,
+  showInvalidRoomPage,
+  createLiveResults,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -77,7 +80,7 @@ import {
   type PadSurface,
 } from "./controls.js";
 import { createGhosts, project } from "./forward.js";
-import { GamepadInput, browserGamepads } from "./gamepad.js";
+import { gamepadBits } from "./gamepad.js";
 import {
   LEVEL_CHOICES,
   createFinishWatch,
@@ -87,7 +90,8 @@ import {
   type Row,
   type Viewer,
 } from "./presenter.js";
-import { dueReports, sendReport } from "./reports.js";
+import { createReceiptReporter } from "fuse-ui/receipt-reporting";
+import { dueReports } from "./reports.js";
 import { resultBar, resultReport } from "./result-report.js";
 import {
   NOT_OPEN,
@@ -99,6 +103,11 @@ import {
   sessionFor,
 } from "./session.js";
 import { clockText } from "../render/hud.js";
+import {
+  createLevelLeaderboards,
+  parseLevelTimes,
+} from "./level-leaderboards.js";
+import type { LevelRun } from "../level-times.js";
 
 /**
  * The Elasto Fuse page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -148,6 +157,8 @@ const withFlags = (path: string) =>
       (link, flag) => `${link}${link.includes("?") ? "&" : "?"}${flag}`,
       path,
     );
+const levelTimesUrl = (level: number) =>
+  endpoints.apiUrl(`/api/games/${GAME}/level-times?level=${level}`);
 const setText = (node: HTMLElement, value: string) => {
   if (node.textContent !== value) node.textContent = value;
 };
@@ -290,6 +301,9 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${code}`));
     },
   });
+  card.menu.addEntry("Leaderboards", () => {
+    location.href = withFlags(endpoints.appUrl("?leaderboards"));
+  });
   const picker = createLevelPicker(false, (picked) => {
     level = picked;
     store.setItem(names.level, String(picked));
@@ -304,6 +318,29 @@ function landing(): void {
   const menu = createGameMenu(GUIDE);
   menu.update({ canLobby: false, canLeave: false, touch: coarse() });
   app.replaceChildren(header([back, menu.element]), card.element);
+}
+
+function leaderboards(): void {
+  const board = createLevelLeaderboards({
+    initial: soloLevel(),
+    levels: LEVEL_CHOICES,
+    playHref: (level) => withFlags(endpoints.appUrl(`?solo=1&level=${level}`)),
+    async load(level, signal) {
+      const response = await fetch(levelTimesUrl(level), { signal });
+      if (!response.ok) throw new Error("Leaderboard unavailable");
+      return parseLevelTimes(await response.json());
+    },
+  });
+  const page = createSubPage({
+    title: "Leaderboards",
+    backHref: withFlags(endpoints.appUrl()),
+    content: [board.element],
+  });
+  const menu = createGameMenu(GUIDE);
+  menu.update({ canLobby: false, canLeave: false, touch: coarse() });
+  app.replaceChildren(header([menu.element]), page.element);
+  backOnEscape(page.back);
+  window.addEventListener("pagehide", board.dispose, { once: true });
 }
 
 /** A real element as a touch button. */
@@ -331,15 +368,7 @@ function room(solo: boolean): void {
     ? ({ kind: "solo" } as const)
     : sessionFor(location.search, store, GAME, validRoomCode, secret);
   if (session.kind === "invalid" || session.kind === "landing") {
-    const page = createSubPage({
-      title: "Join room",
-      backHref: withFlags(endpoints.appUrl()),
-      content: [
-        createPageMessage("That is not a room code: check it and try again."),
-      ],
-    });
-    app.replaceChildren(header(), page.element);
-    backOnEscape(page.back);
+    showInvalidRoomPage(app, header(), withFlags(endpoints.appUrl()));
     return;
   }
   const code = session.kind === "room" ? session.code : "SOLO",
@@ -534,17 +563,46 @@ function room(solo: boolean): void {
     // The screen covers the page's own bar: whoever is not the host still has a way out of the room.
     onBack: leave,
     backText: "Leave",
-    onAction: (id) =>
-      id === "menu"
-        ? leave()
-        : id === "next"
-          ? nextMap()
-          : id === "lobby"
-            ? toLobby()
-            : rematch(),
+    onAction(id) {
+      if (id === "retry-time") {
+        if (rankedRun?.failed) void publishTime(rankedRun);
+      } else if (id === "menu") leave();
+      else if (id === "next") nextMap();
+      else if (id === "lobby") toLobby();
+      else rematch();
+    },
   });
-  /** What the results screen last showed: it is rebuilt only when the result itself changed. */
-  let shownResult = "";
+  const liveResults = createLiveResults(results);
+  let rankedRun:
+    | { match: string; run: LevelRun; status: string; failed: boolean }
+    | undefined;
+  const publishTime = async (attempt: NonNullable<typeof rankedRun>) => {
+    attempt.status = "Verifying time…";
+    attempt.failed = false;
+    try {
+      const token = await signedInToken();
+      if (!token) throw new Error("Sign in to submit time");
+      const response = await fetch(levelTimesUrl(attempt.run.level), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(attempt.run),
+      });
+      if (!response.ok) throw new Error("Could not save time");
+      const result: unknown = await response.json();
+      if (!result || typeof result !== "object" || !("ranked" in result))
+        throw new Error("Missing leaderboard result");
+      attempt.status =
+        result.ranked === true
+          ? "Leaderboard time saved"
+          : "Verified outside the top 100";
+    } catch {
+      attempt.status = "Could not save leaderboard time";
+      attempt.failed = true;
+    }
+  };
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -675,15 +733,19 @@ function room(solo: boolean): void {
   });
   const smoother = createSmoother();
   let padBits = 0;
-  const gamepads = new GamepadInput(browserGamepads(navigator), (bits) => {
-    // On a result, a pad's gas pressed afresh is the main button, as Enter is on the keys, and its restart a retry.
-    const fresh = bits & ~padBits & (GAS | RESTART);
-    padBits = bits;
-    if (fresh && !model?.riding && model?.result?.host)
-      if (fresh & RESTART) rematch();
-      else mainAction();
-    controls.hold("gamepad", bits);
-  });
+  const gamepads = new GamepadInput(
+    browserGamepads(navigator),
+    gamepadBits,
+    (bits) => {
+      // On a result, a pad's gas pressed afresh is the main button, as Enter is on the keys, and its restart a retry.
+      const fresh = bits & ~padBits & (GAS | RESTART);
+      padBits = bits;
+      if (fresh && !model?.riding && model?.result?.host)
+        if (fresh & RESTART) rematch();
+        else mainAction();
+      controls.hold("gamepad", bits);
+    },
+  );
   let model: Model | undefined;
   const ghosts = createGhosts();
   /** `?probe`: the last frames drawn, for a smoke test to read how evenly each bike moved. Off otherwise. */
@@ -909,40 +971,38 @@ function room(solo: boolean): void {
     }
     // The result.
     const result = next.screen === "controller" ? null : next.result;
-    if (!result) {
-      if (results.open) results.hide();
-      shownResult = "";
-    } else {
-      // The bar's own fields do not rebuild the report; an account that turns up after the match gets its button.
-      const shown = JSON.stringify([
-        { ...result, host: false, waiting: "" },
-        result.rows.map((row) => social.friends.publicIdOfMember(row.id)),
-      ]);
-      const first = !shownResult;
-      if (shown !== shownResult) {
-        shownResult = shown;
-        results.show(
-          resultReport(result, {
-            color: slotColor,
-            friend: (id) => {
-              const publicId = social.friends.publicIdOfMember(id);
-              return publicId
-                ? social.friends.friendButton(publicId)
-                : undefined;
-            },
-          }),
-        );
-      }
-      results.update(resultBar(result));
-      if (first)
-        results.actions
-          .querySelector<HTMLButtonElement>("button.is-primary")
-          ?.focus();
-    }
+    liveResults.render(result, {
+      friends: social.friends,
+      report: (result, friend) =>
+        resultReport(result, { color: slotColor, friend }),
+      bar: (result) => {
+        const bar = resultBar(result);
+        if (!result.solo || !rankedRun) return bar;
+        return {
+          ...bar,
+          status: rankedRun.status,
+          actions: rankedRun.failed
+            ? [{ id: "retry-time", label: "Retry saving time" }, ...bar.actions]
+            : bar.actions,
+        };
+      },
+    });
   };
 
   // ---- the runtime ----
-  const sent = new Set<string>();
+  const reportReceipts = createReceiptReporter({
+    due: dueReports,
+    gameId: GAME,
+    display,
+    scope:
+      session.kind === "room"
+        ? { kind: "room", code, token: session.token }
+        : { kind: "solo", signedIn: () => social.isSignedIn() },
+    apiUrl: endpoints.apiUrl,
+    fetch: social.reportFetch,
+    playerId: () => runtime.self,
+    confirmedTick: () => runtime.confirmedTick(),
+  });
   const finishes = createFinishWatch();
   const bests = createBestTimes(store);
   const remembered = seatName(
@@ -990,6 +1050,14 @@ function room(solo: boolean): void {
           rider?.status === "finished" ? centiseconds(rider.run) : undefined,
         );
       }
+      if (rankedRun?.match !== frame.matchId) rankedRun = undefined;
+      if (!rankedRun && solo && social.isSignedIn()) {
+        const run = runtime.soloRun();
+        if (run) {
+          rankedRun = { match: frame.matchId, run, status: "", failed: false };
+          void publishTime(rankedRun);
+        }
+      }
       const next = present(frame, viewer, bestBefore);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
@@ -1004,25 +1072,7 @@ function room(solo: boolean): void {
       render(next, frame);
       const state = runtime.roomState();
       runtime.flush();
-      if (!display && state && (session.kind === "room" || social.isSignedIn()))
-        for (const report of dueReports(
-          state,
-          runtime.self,
-          runtime.confirmedTick(),
-          sent,
-        )) {
-          sent.add(report.key);
-          void sendReport(
-            endpoints.apiUrl(
-              `/api/games/${GAME}/${session.kind === "room" ? `rooms/${code}` : "me"}/${report.path}`,
-            ),
-            report,
-            {
-              fetch: social.reportFetch,
-              ...(session.kind === "room" ? { roomToken: session.token } : {}),
-            },
-          );
-        }
+      reportReceipts(state);
     },
     event() {
       // Everything shown comes from the view: a rollback can change an outcome after its event.
@@ -1172,6 +1222,7 @@ function room(solo: boolean): void {
   runtime.start();
 }
 
-if (query.get("solo") === "1") room(true);
+if (query.has("leaderboards")) leaderboards();
+else if (query.get("solo") === "1") room(true);
 else if (query.has("room")) room(false);
 else landing();

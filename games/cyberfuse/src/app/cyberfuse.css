@@ -1,0 +1,382 @@
+body.cyberfuse-page {
+  margin: 0;
+  background: #091216;
+  color: #f2eee4;
+}
+.cyberfuse-page #app {
+  min-height: 100dvh;
+}
+.cyberfuse-top {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.cyberfuse-brand {
+  font: 700 0.92rem/1 var(--fui-font-pixel);
+  color: #f3eade;
+  text-decoration: none;
+  letter-spacing: -0.04em;
+}
+.cyberfuse-status {
+  max-width: 20rem;
+  color: var(--fui-text-dim);
+  font-size: 0.8rem;
+}
+.cyberfuse-room [hidden],
+.cf-briefing [hidden] {
+  display: none !important;
+}
+.cf-briefing {
+  display: grid;
+  gap: 0.8rem;
+  font:
+    0.95rem/1.5 system-ui,
+    sans-serif;
+  color: #dfebe7;
+  text-align: start;
+}
+.cf-briefing h3,
+.cf-briefing p,
+.cf-briefing ul {
+  margin: 0;
+}
+.cf-briefing h3 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: #fff4dd;
+}
+.cf-briefing ul {
+  padding-inline-start: 1.15rem;
+  color: #aad9c9;
+}
+.cf-settings {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.cf-settings label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: #b8cdc4;
+}
+.cf-settings select {
+  border: 1px solid #435a5c;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.3rem;
+  background: #16282b;
+  color: white;
+  max-width: 100%;
+  font: inherit;
+}
+.cf-briefing fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.85rem;
+  margin: 0;
+  padding: 0.55rem 0.8rem 0.75rem;
+  border: 1px solid #3d5154;
+  border-radius: 0.35rem;
+}
+.cf-briefing legend {
+  color: #a6bcaf;
+  font-size: 0.82rem;
+}
+.cf-briefing fieldset label {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  min-height: 2rem;
+}
+.cf-briefing input {
+  accent-color: #6fe6cc;
+}
+.cyberfuse-page .cf-local,
+.cyberfuse-page .cf-settings label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font:
+    1rem/1.35 system-ui,
+    sans-serif;
+  cursor: pointer;
+}
+.cyberfuse-page
+  :is(.cf-local, .cf-settings, .cf-briefing)
+  input[type="checkbox"] {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: #6fe6cc;
+}
+.cf-between {
+  max-width: 46rem;
+  margin: auto;
+  padding: 5.5rem 1rem 2rem;
+}
+.cf-between button {
+  margin-top: 1rem;
+}
+.cf-arena {
+  position: fixed;
+  inset: 0;
+  background: #080e13;
+  isolation: isolate;
+  overflow: hidden;
+}
+.cf-arena > canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+.cf-hud {
+  position: absolute;
+  top: max(4.3rem, calc(env(safe-area-inset-top) + 3.8rem));
+  left: max(1.2rem, env(safe-area-inset-left));
+  right: max(1.2rem, env(safe-area-inset-right));
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  pointer-events: none;
+  font:
+    600 0.85rem/1.3 system-ui,
+    sans-serif;
+  text-shadow: 0 1px 3px #000;
+}
+.cf-objective,
+.cf-vitals,
+.cf-map-button {
+  background: rgb(10 24 29/0.94);
+  border: 1px solid #51666c;
+  border-radius: 0.3rem;
+}
+.cf-objective,
+.cf-vitals {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  padding: 0.5rem 0.7rem;
+}
+.cf-objective {
+  border-left: 3px solid #70dbc3;
+  max-width: min(65vw, 36rem);
+}
+.cf-objective strong {
+  font-size: 1rem;
+  color: #f8eed9;
+}
+.cf-objective span,
+.cf-vitals span {
+  color: #d1e1dc;
+}
+.cf-vitals {
+  margin-left: auto;
+  text-align: right;
+}
+.cf-vitals meter {
+  width: 100%;
+  height: 0.55rem;
+  accent-color: #78e4ae;
+}
+.cf-map-button {
+  pointer-events: auto;
+  min-height: 2.75rem;
+  touch-action: manipulation;
+  color: #dbf7ec;
+}
+.cf-map-panel {
+  position: absolute;
+  inset: 12% max(7%, calc((100% - 54rem) / 2));
+  background: rgb(7 17 22/0.98);
+  color: #c6dbd6;
+  border: 1px solid #5c7978;
+  padding: 0.8rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  z-index: 2;
+}
+.cf-map-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.cf-map-bar h2 {
+  margin: 0;
+  font:
+    600 1.15rem system-ui,
+    sans-serif;
+}
+.cf-map-panel canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.cf-map-panel ul {
+  margin: 0.5rem 0 0;
+  font:
+    0.9rem/1.4 system-ui,
+    sans-serif;
+}
+.cf-pad {
+  position: absolute;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  right: max(1rem, env(safe-area-inset-right));
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-end;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cf-pad > * {
+  pointer-events: auto;
+  touch-action: none !important;
+}
+.cf-stick,
+.cf-pad button {
+  border: 1px solid #91b6b2;
+  color: #fff;
+  background: rgb(11 27 32/0.78);
+  box-shadow:
+    inset 0 0 0 3px #142c35,
+    0 2px 6px #0007;
+  border-radius: 50%;
+  font:
+    650 0.9rem/1.2 system-ui,
+    sans-serif;
+}
+.cf-stick {
+  position: relative;
+  width: 6.8rem;
+  height: 6.8rem;
+  margin-right: auto;
+  display: grid;
+  place-items: center;
+}
+.cf-stick i {
+  width: 72%;
+  height: 72%;
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid #7fa5a366;
+  transform: translate(var(--dx, 0%), var(--dy, 0%));
+}
+.cf-stick span {
+  font-size: 2.25rem;
+  color: #b0d6cf;
+  opacity: 0.8;
+}
+.cf-pad button {
+  width: 4.8rem;
+  height: 4.8rem;
+  padding: 0.3rem;
+}
+.cf-pad .cf-fire {
+  border-color: #e9a270;
+  background: rgb(99 45 32/0.85);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cf-pad {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .cf-hud {
+    left: 0.4rem;
+    right: 0.4rem;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    top: 3.8rem;
+  }
+  .cf-objective,
+  .cf-vitals {
+    padding: 0.35rem;
+  }
+  .cf-objective strong {
+    font-size: 0.8rem;
+  }
+  .cf-map-button {
+    font-size: 0.7rem;
+    padding: 0.3rem;
+  }
+  .cf-map-panel {
+    inset: 4rem 0.4rem 8rem;
+  }
+  .cyberfuse-status {
+    display: none;
+  }
+}
+@media (max-height: 460px) and (orientation: landscape) {
+  .cf-arena {
+    --cf-landscape-hud-top: max(4rem, calc(env(safe-area-inset-top) + 3.75rem));
+  }
+  .cf-hud {
+    top: var(--cf-landscape-hud-top);
+  }
+  .cf-stick {
+    width: 4.8rem;
+    height: 4.8rem;
+  }
+  .cf-pad button {
+    width: 3.8rem;
+    height: 3.8rem;
+  }
+  .cf-map-panel {
+    inset: var(--cf-landscape-hud-top) 10% 0.5rem;
+  }
+  .cf-pad {
+    bottom: 0.35rem;
+  }
+  .cf-objective,
+  .cf-vitals {
+    padding: 0.25rem 0.4rem;
+  }
+}
+
+.cf-credit {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  max-width: calc(100% - 11rem);
+  font:
+    0.73rem/1.4 system-ui,
+    sans-serif;
+  color: #aabbbd;
+  text-align: right;
+}
+.cf-credit a {
+  color: #c8ded9;
+  text-underline-offset: 2px;
+}
+.cyberfuse-status:not([data-tone="error"]) {
+  display: none;
+}
+.cf-resume input {
+  margin: 0 0.5rem;
+  max-width: 10em;
+  font: inherit;
+}
+.cf-resume summary {
+  cursor: pointer;
+}
+.cf-resume [role="status"] {
+  display: block;
+}
+@media (max-width: 600px) {
+  .cf-credit {
+    bottom: 0.35rem;
+    right: 0.6rem;
+    font-size: 0.62rem;
+    max-width: calc(100% - 10rem);
+  }
+}

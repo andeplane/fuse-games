@@ -42,6 +42,7 @@ export function advanced(before: number, after: number): number {
 export function cuesBetween(
   before: WorldView | undefined,
   after: WorldView,
+  includeOutcome = true,
 ): Cue[] {
   if (!before || before.step > after.step) return [];
   const cues: Cue[] = [];
@@ -79,6 +80,24 @@ export function cuesBetween(
     if (was.air && !now.air) cues.push({ kind: "land", side, slot, x: now.x });
     if (!was.air && now.air) cues.push({ kind: "jump", side, slot, x: now.x });
   }
+  if (after.phase === "serve" && before.phase !== "serve")
+    cues.push({ kind: "serve", side: after.server });
+  if (includeOutcome) cues.push(...outcomeCuesBetween(before, after));
+  return cues;
+}
+
+/** Points and winners come from the settled timeline; touches and movement can play immediately. */
+export function outcomeCuesBetween(
+  before: WorldView | undefined,
+  after: WorldView,
+): Cue[] {
+  if (!before || before.step > after.step) return [];
+  const cues: Cue[] = [];
+  const total = (view: WorldView): number =>
+    (view.format === "2v2v2" ? view.points : view.score).reduce(
+      (sum, score) => sum + score,
+      0,
+    );
   if (
     advanced(before.pointCounter, after.pointCounter) &&
     after.lastFault !== -1
@@ -86,12 +105,9 @@ export function cuesBetween(
     cues.push({
       kind: "point",
       loser: after.lastFault,
-      scored:
-        after.score[0] + after.score[1] > before.score[0] + before.score[1],
+      scored: total(after) > total(before),
       matchPoint: after.matchPoint,
     });
-  if (after.phase === "serve" && before.phase !== "serve")
-    cues.push({ kind: "serve", side: after.server });
   if (after.phase === "over" && before.phase !== "over" && after.winner !== -1)
     cues.push({ kind: "over", winner: after.winner });
   return cues;

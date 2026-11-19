@@ -1,6 +1,7 @@
 import { ACTION, JOIN, type StreamEntries } from "fuse-netcode";
 import { TICK_MS } from "../../src/engine/index.js";
 import {
+  LOBBY_READY,
   READY,
   createFusemaniaGame,
   type Entry,
@@ -57,9 +58,20 @@ export function seated(settings: Settings = SETTINGS): Room {
   });
   return room;
 }
+/** Have the guests explicitly accept the lobby's current configuration. */
+export function readyGuests(room: Room): void {
+  const bodies: Bodies = {};
+  for (const seat of game.members(room))
+    if (seat.id !== "a" && seat.connected && !seat.bot && !seat.watcher)
+      bodies[seat.id] = [
+        [LOBBY_READY, room.lobbyReady.revision, seat.slot, true],
+      ];
+  if (Object.keys(bodies).length) fold(room, bodies);
+}
 /** `a` and `b` playing match `m1`. */
 export function started(settings: Settings = SETTINGS): Room {
   const room = seated(settings);
+  readyGuests(room);
   // Both devices have the song already, and say so on the tick the match starts: it is not held.
   fold(room, {
     a: [
