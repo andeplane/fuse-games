@@ -1,11 +1,8 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
   applyManagementTick,
   createSeatDecoder,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -552,33 +549,19 @@ export function createFusemaniaGame(
     name: validName,
     avatar: isAvatar,
     settings: (value: unknown) => parseSettings(value) !== undefined,
+    memberKey: playerKey,
+    matchKey: validMatchId,
     capacity: CAPACITY,
   };
   function isEntry(raw: unknown): raw is Entry {
-    if (isManagementEntry(raw, payloads)) {
-      if (raw[2] === ACTION) return validMatchId(raw[4]);
-      // Member ids become record keys: one of Object.prototype's names never does.
-      const at =
-        raw[2] === BOT || raw[2] === SPECTATOR
-          ? 4
-          : raw[2] <= PRESENCE
-            ? 3
-            : -1;
-      return at < 0 || playerKey((raw as unknown[])[at]);
-    }
-    if (
-      !Array.isArray(raw) ||
-      !uint32(raw[0]) ||
-      raw[0] === 0 ||
-      !uint32(raw[1]) ||
-      raw[1] === 0
-    )
-      return false;
+    if (isManagementEntry(raw, payloads)) return true;
+    if (!hasLogPosition(raw)) return false;
     if (raw[2] === PLAY)
       return (
         raw.length === 6 &&
         uint32(raw[3]) &&
         isCode(raw[4]) &&
+        typeof raw[5] === "number" &&
         Number.isInteger(raw[5]) &&
         raw[5] >= MIN_SONG_MS &&
         raw[5] <= MAX_SONG_MS

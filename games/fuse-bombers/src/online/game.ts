@@ -1,12 +1,9 @@
 import {
-  ACTION,
-  BOT,
-  PRESENCE,
-  SPECTATOR,
   applyManagementTick,
   createSeatDecoder,
   defaultText,
   hashPlain,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -149,24 +146,16 @@ const payloads = {
   name: names.validName,
   avatar: names.isAvatar,
   settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: names.playerKey,
+  matchKey: names.validMatchId,
   capacity: CAPACITY,
 };
 export function isEntry(raw: unknown): raw is Entry {
-  if (isManagementEntry(raw, payloads)) {
-    if (raw[2] === ACTION) return names.validMatchId(raw[4]);
-    const at =
-      raw[2] === BOT || raw[2] === SPECTATOR ? 4 : raw[2] <= PRESENCE ? 3 : -1;
-    return at < 0 || names.playerKey((raw as unknown[])[at]);
-  }
-  if (!Array.isArray(raw)) return false;
-  const [seq, tick, kind, matchId, round, value, offset] = raw as unknown[];
+  if (isManagementEntry(raw, payloads)) return true;
+  if (!hasLogPosition(raw)) return false;
+  const [, , kind, matchId, round, value, offset] = raw;
   const positive = (v: unknown): v is number => uint32(v) && v > 0;
-  const scoped =
-    positive(seq) &&
-    positive(tick) &&
-    names.validMatchId(matchId) &&
-    uint32(round) &&
-    uint32(value);
+  const scoped = names.validMatchId(matchId) && uint32(round) && uint32(value);
   if (kind === PLAY) return scoped && raw.length === 6 && value <= DIRECTIONS;
   return (
     kind === PRESS &&

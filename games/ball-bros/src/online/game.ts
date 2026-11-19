@@ -1,6 +1,7 @@
 import {
   applyManagementTick,
   defaultText,
+  hasLogPosition,
   isManagementEntry,
   uint32,
   type LifecycleHooks,
@@ -84,31 +85,23 @@ export function parseSettings(raw: unknown): Settings | undefined {
     return;
   return { display: raw.display, mapId: raw.mapId };
 }
+const payloads = {
+  name: validName,
+  avatar: isAvatar,
+  settings: (value: unknown) => parseSettings(value) !== undefined,
+  memberKey: validId,
+  matchKey: matchId,
+  capacity: 5,
+};
 export function isEntry(raw: unknown): raw is BallEntry {
-  if (
-    isManagementEntry(raw, {
-      name: validName,
-      avatar: isAvatar,
-      settings: (v) => !!parseSettings(v),
-      capacity: 5,
-    })
-  ) {
-    if (raw[2] === 14) return matchId(raw[4]);
-    const id =
-      raw[2] === 15 || raw[2] === 16 ? raw[4] : raw[2] <= 12 ? raw[3] : null;
-    return id === null || validId(id);
-  }
+  if (isManagementEntry(raw, payloads)) return true;
   return (
-    Array.isArray(raw) &&
+    hasLogPosition(raw) &&
     raw.length === 7 &&
-    uint32(raw[0]) &&
-    raw[0] > 0 &&
-    uint32(raw[1]) &&
-    raw[1] > 0 &&
     raw[2] === 0 &&
     matchId(raw[3]) &&
-    [-1, 0, 1].includes(raw[4]) &&
-    [-1, 0, 1].includes(raw[5]) &&
+    [-1, 0, 1].some((value) => value === raw[4]) &&
+    [-1, 0, 1].some((value) => value === raw[5]) &&
     typeof raw[6] === "boolean"
   );
 }

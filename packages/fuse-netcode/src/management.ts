@@ -1,5 +1,5 @@
 import type { LogEntry, Seat, Stage, StreamEntries } from "./game.js";
-import { memberId, uint32 } from "./wire.js";
+import { hasLogPosition, memberId, uint32 } from "./wire.js";
 
 /**
  * Management entries: the room's seats, presence, settings and match lifecycle, in one wire format every game shares.
@@ -81,6 +81,9 @@ export interface ManagementPayloads {
   name(value: unknown): boolean;
   avatar(value: unknown): boolean;
   settings(value: unknown): boolean;
+  /** Additional restrictions on otherwise valid wire IDs. */
+  memberKey?(value: string): boolean;
+  matchKey?(value: string): boolean;
   /** Seats per room; a slot is below it. */
   capacity: number;
 }
@@ -92,33 +95,26 @@ export function isManagementEntry<Settings>(
   raw: unknown,
   payloads: ManagementPayloads,
 ): raw is ManagementEntry<Settings> {
-  if (
-    !Array.isArray(raw) ||
-    raw.length < 3 ||
-    raw.length > 8 ||
-    !uint32(raw[0]) ||
-    raw[0] === 0 ||
-    !uint32(raw[1]) ||
-    raw[1] === 0
-  )
-    return false;
+  if (!hasLogPosition(raw) || raw.length < 3 || raw.length > 8) return false;
+  const acceptedMember = (value: unknown) =>
+    memberId(value) && (payloads.memberKey?.(value) ?? true);
   const slot = (value: unknown) => uint32(value) && value < payloads.capacity;
   switch (raw[2]) {
     case JOIN:
       return (
         raw.length === 8 &&
-        memberId(raw[3]) &&
+        acceptedMember(raw[3]) &&
         payloads.name(raw[4]) &&
         slot(raw[5]) &&
         payloads.avatar(raw[6]) &&
         uint32(raw[7])
       );
     case LEAVE:
-      return raw.length === 4 && memberId(raw[3]);
+      return raw.length === 4 && acceptedMember(raw[3]);
     case PRESENCE:
       return (
         raw.length === 6 &&
-        memberId(raw[3]) &&
+        acceptedMember(raw[3]) &&
         typeof raw[4] === "boolean" &&
         uint32(raw[5])
       );
@@ -128,22 +124,23 @@ export function isManagementEntry<Settings>(
       return (
         raw.length === 5 &&
         (ROOM_ACTIONS as readonly unknown[]).includes(raw[3]) &&
-        matchId(raw[4])
+        matchId(raw[4]) &&
+        (payloads.matchKey?.(raw[4]) ?? true)
       );
     case BOT:
       return raw[3] === "add"
         ? raw.length === 7 &&
-            memberId(raw[4]) &&
+            acceptedMember(raw[4]) &&
             payloads.name(raw[5]) &&
             slot(raw[6])
-        : raw[3] === "remove" && raw.length === 5 && memberId(raw[4]);
+        : raw[3] === "remove" && raw.length === 5 && acceptedMember(raw[4]);
     case SPECTATOR:
       return raw[3] === "join"
         ? raw.length === 7 &&
-            memberId(raw[4]) &&
+            acceptedMember(raw[4]) &&
             payloads.name(raw[5]) &&
             uint32(raw[6])
-        : raw[3] === "leave" && raw.length === 5 && memberId(raw[4]);
+        : raw[3] === "leave" && raw.length === 5 && acceptedMember(raw[4]);
     default:
       return false;
   }
