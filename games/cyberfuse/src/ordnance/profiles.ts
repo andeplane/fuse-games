@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Adapted in 2026 from Ronny Wester's C-Dogs. See REFERENCE.md and COPYING.
-import type { Burst, Effect, ShotKind } from "./index.js";
+import type { Burst } from "./index.js";
+import type { Effect, ShotKind } from "./shot-checkpoint.js";
 
 export interface MuzzleShot {
   type: "muzzle";

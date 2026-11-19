@@ -1,31 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Adapted in 2026 from Ronny Wester's C-Dogs. See REFERENCE.md and COPYING.
 import { profiles, WEAPON_COUNT, type MuzzleShot } from "./profiles.js";
+import type { Effect, ShotKind } from "./shot-checkpoint.js";
 export { WEAPON_COUNT } from "./profiles.js";
+export { isShot, isCheckpointShot } from "./shot-checkpoint.js";
 
 export const MAX_SHOTS = 2048;
-
-const kinds = [
-  "bullet",
-  "bolt",
-  "sniper",
-  "brown",
-  "petrifier",
-  "flame",
-  "grenade",
-  "molotov",
-  "mine",
-  "armedMine",
-  "triggeredMine",
-  "dynamite",
-  "gas",
-  "firePatch",
-  "fireball",
-  "spark",
-] as const;
-export type ShotKind = (typeof kinds)[number];
-const effects = ["none", "flame", "poison", "petrify", "confuse"] as const;
-export type Effect = (typeof effects)[number];
 
 export interface Shot {
   weapon: number;
@@ -480,34 +460,4 @@ export function advanceShots(
     sweep ? surviving.filter((s) => s.range !== 0) : surviving,
   );
   return result.slice(0, MAX_SHOTS);
-}
-
-export function isShot(raw: unknown): raw is Shot {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const s = raw as Record<string, unknown>;
-  const integer = (v: unknown, min: number, max: number) =>
-    typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
-  const fixed = (v: unknown, min: number, max: number) =>
-    typeof v === "number" && Number.isInteger(v * 256) && v >= min && v <= max;
-  return (
-    typeof s.owner === "string" &&
-    s.owner.length > 0 &&
-    s.owner.length <= 160 &&
-    integer(s.weapon, 0, WEAPON_COUNT - 1) &&
-    kinds.some((k) => s.kind === k) &&
-    effects.some((k) => s.special === k) &&
-    fixed(s.x, -1024, 8192) &&
-    fixed(s.y, -1024, 8192) &&
-    fixed(s.dx, -128, 128) &&
-    fixed(s.dy, -128, 128) &&
-    integer(s.z, -4096, 4096) &&
-    integer(s.dz, -128, 128) &&
-    integer(s.age, -16, 0x7fffffff) &&
-    integer(s.range, 0, 210) &&
-    integer(s.power, 0, 50) &&
-    integer(s.radiusX, 0, 10) &&
-    integer(s.radiusY, 0, 10) &&
-    integer(s.frame, 0, 7) &&
-    typeof s.always === "boolean"
-  );
 }
