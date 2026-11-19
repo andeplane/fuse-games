@@ -1,13 +1,13 @@
-name: Release blockers probe
+name: Release blockers screenshots
 on:
   push:
     branches: [codex/playtest-release-probe]
 permissions:
   contents: read
 jobs:
-  browser:
+  screenshots:
     runs-on: ubuntu-latest
-    timeout-minutes: 13
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -16,49 +16,42 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: google-chrome --version
       - run: pnpm exec vite build
-      - name: Reproduce the two lobby cases
+      - run: npm install --prefix "$RUNNER_TEMP/fuse-browser" agent-browser@0.41.2
+      - name: Capture the real lobby flow before and after
         run: |
-          mkdir -p artifacts
+          set -euo pipefail
+          mkdir -p artifacts/layout
           pnpm exec tsx service/dev.ts --port 8787 > artifacts/room-service.log 2>&1 &
           room=$!
-          trap 'kill "$room" 2>/dev/null || true' EXIT
+          export AGENT_BROWSER_EXECUTABLE_PATH="$(command -v google-chrome)"
+          export AGENT_BROWSER_ARGS="--mute-audio"
+          ab=("$RUNNER_TEMP/fuse-browser/node_modules/.bin/agent-browser" --session release-evidence)
+          trap '"${ab[@]}" close; kill "$room" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          result=0
-          SMOKE_GAMES=cyberfuse,incredible-fuse pnpm exec tsx scripts/game-lobbies-smoke.ts || result=$?
-          ONLINE_URL=http://127.0.0.1:8787/ pnpm exec tsx scripts/cyberfuse-smoke.ts || result=$?
-          exit "$result"
-      - name: Measure the new workshop coverage
-        if: success() || failure()
-        run: |
-          set -o pipefail
-          cat > invoke-workshop.mts <<'JS'
-          import { createServer } from "vite";
-          import { createDevRoomService } from "./service/dev.js";
-          const room = createDevRoomService();
-          await new Promise<void>(done => room.server.listen(0, "127.0.0.1", done));
-          const address = room.server.address();
-          if (!address || typeof address === "string") throw Error("no room address");
-          const vite = await createServer({server:{host:"127.0.0.1",port:0,proxy:{"/api":{target:`http://127.0.0.1:${address.port}`,ws:true}}}});
-          try {
-            await vite.listen();
-            process.env.ONLINE_URL = vite.resolvedUrls!.local[0];
-            process.env.FUSE_GAME_COVERAGE_DIR = new URL("./coverage/workshop-raw", import.meta.url).pathname;
-            await import("./scripts/incredible-fuse-smoke.js");
-          } finally {
-            await vite.close();
-            await room.close();
-          }
-          JS
-          pnpm exec tsx invoke-workshop.mts
-          pnpm exec c8 report --temp-directory coverage/workshop-raw --exclude-after-remap --check-coverage=false --include 'games/incredible-fuse/src/**' --reporter json-summary
-          node -e 'const o=require("./coverage/coverage-summary.json");let a=Object.entries(o).filter(([k])=>k.includes("/src/app/")&&!k.includes("/src/app/bench-art.ts")).map(([k,v])=>[k.split("/app/")[1],v.lines.covered]);console.log(o.total.lines,a)'
+          "${ab[@]}" skills get core >/dev/null
+          for side in before after; do
+            target=https://fusegames.ai
+            if [[ "$side" = after ]]; then target=http://127.0.0.1:8787; fi
+            for game in cyberfuse incrediblefuse; do
+              "${ab[@]}" open "$target/$game/?mute"
+              "${ab[@]}" wait .fui-main-menu
+              "${ab[@]}" find role button click --name PLAY --exact
+              "${ab[@]}" find role button click --name 'HOST ROOM' --exact
+              "${ab[@]}" wait .fui-room-head
+              for pair in 360:800 844:390 1440:900; do
+                width=${pair%:*}
+                height=${pair#*:}
+                "${ab[@]}" set viewport "$width" "$height"
+                "${ab[@]}" screenshot "artifacts/layout/$side-$game-$width.png"
+              done
+            done
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: blocker-browser-evidence
-          path: artifacts
+          name: agent-browser-layout-comparison
+          path: artifacts/layout/*.png
