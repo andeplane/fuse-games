@@ -1,4 +1,5 @@
 import {
+  checkpointEntries,
   hashCheckpointJson,
   BOT,
   applyManagementTick,
@@ -641,7 +642,7 @@ export function encode(room: Room): unknown[] {
     room.stage,
     { ...room.settings },
     [...room.seats.values()].sort(bySlot).map((seat) => ({ ...seat })),
-    Object.entries(room.held).sort(([a], [b]) => (a < b ? -1 : 1)),
+    checkpointEntries(room.held),
     room.world ? encodeWorld(room.world) : null,
     room.until,
     room.continued,

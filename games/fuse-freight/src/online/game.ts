@@ -1,4 +1,5 @@
 import {
+  checkpointEntries,
   hashCheckpointJson,
   applyManagementTick,
   foldHeldInput,
@@ -389,8 +390,6 @@ export function foldTick(
 const STAGES: readonly Stage[] = ["lobby", "running", "between", "over"];
 const plain = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
-const sortedEntries = (record: Record<string, number>) =>
-  Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1));
 
 export function encode(room: Room): unknown[] {
   return [
@@ -402,7 +401,7 @@ export function encode(room: Room): unknown[] {
       .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
       .map((seat) => ({ ...seat })),
     { ...room.play },
-    sortedEntries(room.wins),
+    checkpointEntries(room.wins),
     room.results.map((result) => ({
       round: result.round,
       tick: result.tick,
@@ -412,7 +411,7 @@ export function encode(room: Room): unknown[] {
     })),
     [...room.winners],
     room.resumeAt,
-    sortedEntries(room.held),
+    checkpointEntries(room.held),
     room.world ? encodeWorld(room.world) : null,
     structuredClone(room.pastMatches),
   ];

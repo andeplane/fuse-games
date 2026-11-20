@@ -27,12 +27,22 @@ export {
   type SnapshotChunk,
   type SnapshotStream,
 } from "./snapshot.js";
-export { createSeatDecoder, createSeatListDecoder } from "./seat-snapshot.js";
+export {
+  createSeatDecoder,
+  createSeatListDecoder,
+  orderedSeats,
+  compareSeats,
+} from "./seat-snapshot.js";
 export { createHeldInputDecoder } from "./held-input-snapshot.js";
-export { validCheckpointLifecycle } from "./checkpoint-lifecycle.js";
+export {
+  validCheckpointLifecycle,
+  createCheckpointRoundDecoder,
+} from "./checkpoint-lifecycle.js";
 export {
   CHECKPOINT_HEADER_FIELDS,
   createCheckpointBaseDecoder,
+  checkpointEntries,
+  encodeCheckpointBase,
 } from "./checkpoint-base.js";
 export {
   createRosterDecoder,

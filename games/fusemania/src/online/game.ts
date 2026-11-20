@@ -1,4 +1,7 @@
 import {
+  compareSeats,
+  orderedSeats,
+  checkpointEntries,
   hashCheckpointJson,
   applyManagementTick,
   decodeSingleWinner as decodeDecided,
@@ -286,8 +289,6 @@ export function unreadyGuests<
     ? []
     : humans.filter((seat) => seat.id !== host && !ready.includes(seat.id));
 }
-const seatOrder = (a: SeatRecord, b: SeatRecord) =>
-  a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
@@ -495,7 +496,7 @@ export function createFusemaniaGame(
           seat.away !== true &&
           !hold.ready.includes(seat.id),
       )
-      .sort(seatOrder)
+      .sort(compareSeats)
       .map((seat) => seat.id);
   const matchId = (room: Room) => room.matchId;
 
@@ -750,9 +751,9 @@ export function createFusemaniaGame(
       room.matchId,
       room.stage,
       { ...room.settings },
-      [...room.seats.values()].sort(seatOrder).map((seat) => ({ ...seat })),
+      orderedSeats(room.seats.values()).map((seat) => ({ ...seat })),
       { ...room.play },
-      Object.entries(room.picks).sort(([a], [b]) => (a < b ? -1 : 1)),
+      checkpointEntries(room.picks),
       room.roster.map((entrant) => [
         entrant.id,
         entrant.name,
@@ -1006,7 +1007,7 @@ export function createFusemaniaGame(
       epoch: room.epoch,
       settings: { ...room.settings },
       play: { ...room.play },
-      seats: [...room.seats.values()].sort(seatOrder).map((seat) => ({
+      seats: orderedSeats(room.seats.values()).map((seat) => ({
         id: seat.id,
         name: seat.name,
         avatarId: seat.avatarId,
@@ -1056,7 +1057,7 @@ export function createFusemaniaGame(
     checkpoint: { leading: 6, encode, decode },
     // Slot then id: an order that depends only on the room, so a device that recovered it from a checkpoint names
     // members exactly as the devices that folded it.
-    members: (room) => [...room.seats.values()].sort(seatOrder),
+    members: (room) => orderedSeats(room.seats.values()),
     seat: (room, id) => room.seats.get(id),
     stage: (room) => room.stage,
     settings: (room) => room.settings,
