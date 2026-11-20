@@ -292,8 +292,10 @@ export function createScene(
         gravity,
       });
     }
-    if (particles.length > MAX_PARTICLES) {
-      particles.copyWithin(0, particles.length - MAX_PARTICLES);
+    const excess = particles.length - MAX_PARTICLES;
+    if (excess > 0) {
+      for (let i = 0; i < MAX_PARTICLES; i++)
+        particles[i] = particles[i + excess]!;
       particles.length = MAX_PARTICLES;
     }
   };
