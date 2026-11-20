@@ -1,4 +1,10 @@
-import type { ResultsHighlight, ResultsReport, ResultsRow } from "fuse-ui";
+import {
+  roomResultsBar,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
+  type ResultsRow,
+} from "fuse-ui";
 import type { Model } from "./presenter.js";
 
 type Result = NonNullable<Model["result"]>;
@@ -81,4 +87,6 @@ export function resultReport(
 }
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
-export { roomResultsBar as resultBar } from "fuse-ui";
+export function resultBar(result: Result): ResultsBar {
+  return roomResultsBar(result);
+}

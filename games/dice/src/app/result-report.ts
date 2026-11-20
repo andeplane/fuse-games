@@ -1,5 +1,7 @@
 import {
   createTopResultHighlight,
+  roomResultsBar,
+  type ResultsBar,
   type ResultsHighlight,
   type ResultsReport,
   type ResultsRow,
@@ -86,4 +88,6 @@ export function resultReport(
 }
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
-export { roomResultsBar as resultBar } from "fuse-ui";
+export function resultBar(result: ResultModel): ResultsBar {
+  return roomResultsBar(result);
+}
