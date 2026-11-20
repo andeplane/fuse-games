@@ -31,6 +31,38 @@ export interface ResultsRow {
   values: readonly string[];
 }
 
+interface PlayerStanding {
+  id: string;
+  name: string;
+  place: number;
+  you: boolean;
+  bot: boolean;
+}
+
+/** Map a game's standings to the shared roster, with that game's colours and statistics. */
+export function playerResultRows<Row extends PlayerStanding, ColorKey>(
+  rows: readonly Row[],
+  parts: {
+    color: (key: ColorKey) => string;
+    friend?: (id: string) => HTMLElement | undefined;
+  },
+  presentation: {
+    colorKey: (row: Row) => ColorKey;
+    values: (row: Row) => readonly string[];
+  },
+): ResultsRow[] {
+  return rows.map((row) => ({
+    id: row.id,
+    placement: row.place,
+    name: row.name,
+    color: parts.color(presentation.colorKey(row)),
+    you: row.you,
+    ...(row.bot ? { tag: "AI" } : {}),
+    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
+    values: presentation.values(row),
+  }));
+}
+
 /** A card of the highlights panel: an award and who took it. */
 export interface ResultsHighlight {
   /** One glyph, drawn large in the first winner's colour. */
@@ -38,6 +70,27 @@ export interface ResultsHighlight {
   title: string;
   winners: readonly { name: string; color: string }[];
   detail: string;
+}
+
+/** Append a highlight for all players tied for a positive best score, in standings order. */
+export function createTopResultHighlight<Row extends { name: string }>(
+  rows: readonly Row[],
+  color: (row: Row) => string,
+  cards: ResultsHighlight[],
+) {
+  return (
+    pick: (row: Row) => number,
+    card: (best: number) => Omit<ResultsHighlight, "winners">,
+  ) => {
+    const best = Math.max(0, ...rows.map(pick));
+    if (best > 0)
+      cards.push({
+        ...card(best),
+        winners: rows
+          .filter((row) => pick(row) === best)
+          .map((row) => ({ name: row.name, color: color(row) })),
+      });
+  };
 }
 
 export interface ResultsReport {
@@ -263,6 +316,22 @@ export interface ResultsBar {
   back?: boolean;
 }
 
+/** The standard room actions and waiting message for a finished match. */
+export function roomResultsBar(result: {
+  host: boolean;
+  waiting?: string | null | undefined;
+}): ResultsBar {
+  return {
+    ...(result.waiting ? { status: result.waiting } : {}),
+    actions: result.host
+      ? [
+          { id: "lobby", label: "Back to lobby" },
+          { id: "rematch", label: "REMATCH", primary: true },
+        ]
+      : [],
+  };
+}
+
 export interface ResultsScreenOptions {
   /** A button of the bar was pressed. */
   onAction: (id: string) => void;
@@ -360,6 +429,23 @@ export function createLiveResults(
   };
 }
 
+/** Patch the presentation of a mounted action without replacing its button. */
+function updateResultAction(
+  button: HTMLButtonElement,
+  action: ResultsAction,
+): void {
+  if (button.textContent !== action.label) button.textContent = action.label;
+  const className = action.primary ? "is-primary" : "";
+  if (button.className !== className) button.className = className;
+  const pressed = action.pressed === undefined ? null : `${action.pressed}`;
+  if (button.getAttribute("aria-pressed") !== pressed)
+    if (pressed === null) button.removeAttribute("aria-pressed");
+    else button.setAttribute("aria-pressed", pressed);
+  if (button.disabled !== !!action.disabled)
+    button.disabled = !!action.disabled;
+  if (button.hidden !== !!action.hidden) button.hidden = !!action.hidden;
+}
+
 const STATS_CLOSED = "View full stats ↗",
   STATS_OPEN = "Hide full stats ↗";
 
@@ -427,15 +513,17 @@ export function createResultsScreen(
       const text = next.status ?? "";
       if (status.textContent !== text) status.textContent = text;
       if (status.hidden !== !text) status.hidden = !text;
-      const ids = next.actions.map((action) => action.id).join("\n");
-      if (ids !== order) {
-        order = ids;
+      const ids = next.actions.map((action) => action.id);
+      const nextOrder = ids.join("\n");
+      if (nextOrder !== order) {
+        order = nextOrder;
+        const mounted = new Set(ids);
         // Moving a button drops its focus: whoever had it gets it back.
         const focused = [...buttons.values()].find(
           (button) => button === doc.activeElement,
         );
         for (const [id, button] of buttons)
-          if (!next.actions.some((action) => action.id === id)) {
+          if (!mounted.has(id)) {
             button.remove();
             buttons.delete(id);
           }
@@ -454,18 +542,7 @@ export function createResultsScreen(
       }
       for (const action of next.actions) {
         const button = buttons.get(action.id)!;
-        if (button.textContent !== action.label)
-          button.textContent = action.label;
-        const className = action.primary ? "is-primary" : "";
-        if (button.className !== className) button.className = className;
-        const pressed =
-          action.pressed === undefined ? null : `${action.pressed}`;
-        if (button.getAttribute("aria-pressed") !== pressed)
-          if (pressed === null) button.removeAttribute("aria-pressed");
-          else button.setAttribute("aria-pressed", pressed);
-        if (button.disabled !== !!action.disabled)
-          button.disabled = !!action.disabled;
-        if (button.hidden !== !!action.hidden) button.hidden = !!action.hidden;
+        updateResultAction(button, action);
       }
     },
     hide() {

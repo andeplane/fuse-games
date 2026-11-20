@@ -14,19 +14,20 @@ import type { Chopper, World } from "./world.js";
  */
 export function botInput(world: World, chopper: Chopper): number {
   if (!flying(chopper)) return 0;
-  const speed = Math.max(px(0.8), world.scroll + chopper.vx),
-    look = (dx: number, threats: 0 | 1 | 2) =>
-      openings(
-        world,
-        chopper,
-        chopper.x + px(dx),
-        clamp(div(px(dx), speed), 2, 90),
-        threats,
-      );
-  // Here, every threat; further on, the rock and the rivals (a rock in flight is judged where it will meet it).
-  const near = look(16, 2),
-    middle = look(52, 1),
-    far = look(100, 1);
+  const speed = Math.max(px(0.8), world.scroll + chopper.vx);
+  const look = (distance: number) => {
+    const x = chopper.x + px(distance);
+    const steps = clamp(div(px(distance), speed), 2, 90);
+    const terrain = terrainOpenings(world, x, steps);
+    return { terrain, afterRivals: avoidRivals(terrain, world, chopper, x) };
+  };
+  const close = look(16);
+  const ahead = look(52);
+  const distant = look(100);
+  // Near the chopper, account for thrown rocks as well as the rivals.
+  const near = usable(avoidRocks(close.afterRivals, world, chopper));
+  const middle = usable(ahead.afterRivals);
+  const far = usable(distant.afterRivals);
   const jitter =
     ((hash(world.seed, chopper.slot, div(world.step, 45)) % 41) - 20) * SUB;
   // Each seat keeps its own lane inside a wide corridor, so five bots do not fly one line into each other.
@@ -36,11 +37,10 @@ export function botInput(world: World, chopper: Chopper): number {
   // floating rock passes under it rather than climbing into it.
   const home = around(near, chopper.y);
   // The gap between solid things it is in, rivals and rocks left out: an escape from a rival never goes through rock.
-  const shelter = around(look(16, 0), chopper.y);
+  const shelter = terrainGapAt(close.terrain, chopper.y);
   const next = home ? overlapping(middle, home, chopper.y) : undefined;
   let target = lanes(far, pick(far, chopper.y), lane + jitter);
 
-  let bits = 0;
   // Horizontal: stay clear of the crush zone, chase a pickup ahead, race for the gate at the end.
   let goalX = Math.max(
     world.crushX + px(260) + chopper.slot * px(50),
@@ -66,53 +66,14 @@ export function botInput(world: World, chopper: Chopper): number {
     target = pick(near, chopper.y);
     if (shelter) target = clamp(target, shelter[0], shelter[1]);
   }
-  // In a tight squeeze, or with its height blocked ahead, it holds its airspeed rather than racing into the rock;
-  // blocked close ahead, it backs off while the crush zone leaves room.
-  const tight = !home || home[1] - home[0] < px(56),
-    ahead = look(52, 0),
-    blocked = !inside(ahead, chopper.y) || !inside(look(100, 0), chopper.y);
-  if (goalX - chopper.x > px(24) && !tight && !blocked) bits |= RIGHT;
-  else if (
-    goalX - chopper.x < -px(24) ||
-    (!inside(ahead, chopper.y) && chopper.x - world.crushX > px(180))
-  )
-    bits |= LEFT;
-
-  // Vertical: a climb or sink rate proportional to the error, never faster than it can stop before the rock
-  // (v² = 2ad), and lift whenever it is falling faster than that.
-  // Escaping (a rock's path or a rival covers its height): brake against the cave itself, not the blocked gap.
-  const cave = span(
-      world.seed,
-      chopper.x - T.CHOPPER_HW,
-      chopper.x + T.CHOPPER_HW + px(40),
-    ),
-    error = target - chopper.y,
-    room: Span = home ??
-      shelter ?? [
-        cave.ceiling + T.CHOPPER_HH + px(8),
-        cave.floor - T.CHOPPER_HH - px(8),
-      ],
-    below = Math.max(0, Math.min(room[1], next?.[1] ?? room[1]) - chopper.y),
-    above = Math.max(0, chopper.y - Math.max(room[0], next?.[0] ?? room[0]));
-  if (world.lift === "classic") {
-    const brakeDown = div(isqrt(2 * (T.LIFT - T.GRAVITY) * below) * 4, 5),
-      brakeUp = div(isqrt(2 * T.GRAVITY * above) * 4, 5);
-    const want = clamp(
-      div(error, 14),
-      -Math.min(div(T.MAX_RISE * 4, 5), brakeUp),
-      Math.min(div(T.MAX_FALL * 3, 5), brakeDown),
-    );
-    if (chopper.vy > want) bits |= UP;
-  } else {
-    const brake = (d: number) => div(isqrt(2 * T.THRUST * d) * 4, 5);
-    const want = clamp(
-      div(error, 12),
-      -Math.min(T.THRUST_MAX, brake(above)),
-      Math.min(T.THRUST_MAX, brake(below)),
-    );
-    if (chopper.vy > want + px(0.4)) bits |= UP;
-    else if (chopper.vy < want - px(0.4)) bits |= DOWN;
-  }
+  const openAhead = terrainGapAt(ahead.terrain, chopper.y) !== undefined;
+  const clear =
+    openAhead && terrainGapAt(distant.terrain, chopper.y) !== undefined;
+  let bits = horizontalInput(world, chopper, goalX, home, {
+    ahead: openAhead,
+    clear,
+  });
+  bits |= verticalInput(world, chopper, target, home ?? shelter, next);
 
   // A trigger finger that rests now and then, and none in the first seconds of play.
   if (
@@ -127,31 +88,96 @@ export function botInput(world: World, chopper: Chopper): number {
 
 type Span = [top: number, bottom: number];
 
-/**
- * The open heights at world x, `steps` from now: cave, floating rock and saws subtracted; from `threats` 1 the rivals
- * nearby too, and from 2 the thrown rocks, whose whole sweep from here to the chopper is blocked.
- */
-function openings(
+function horizontalInput(
   world: World,
   chopper: Chopper,
-  x: number,
-  steps: number,
-  threats: 0 | 1 | 2,
-): Span[] {
+  goalX: number,
+  home: Span | undefined,
+  path: { ahead: boolean; clear: boolean },
+): number {
+  // In a tight squeeze, hold airspeed. Back off when blocked close ahead and the crush zone leaves room.
+  const tight = !home || home[1] - home[0] < px(56);
+  if (goalX - chopper.x > px(24) && !tight && path.clear) return RIGHT;
+  if (
+    goalX - chopper.x < -px(24) ||
+    (!path.ahead && chopper.x - world.crushX > px(180))
+  )
+    return LEFT;
+  return 0;
+}
+
+function caveRoom(world: World, chopper: Chopper): Span {
+  const cave = span(
+    world.seed,
+    chopper.x - T.CHOPPER_HW,
+    chopper.x + T.CHOPPER_HW + px(40),
+  );
+  return [
+    cave.ceiling + T.CHOPPER_HH + px(8),
+    cave.floor - T.CHOPPER_HH - px(8),
+  ];
+}
+
+function verticalInput(
+  world: World,
+  chopper: Chopper,
+  target: number,
+  corridor: Span | undefined,
+  next: Span | undefined,
+): number {
+  // Never climb or sink faster than the chopper can brake before the rock (v² = 2ad).
+  const error = target - chopper.y;
+  const room = corridor ?? caveRoom(world, chopper);
+  const below = Math.max(
+      0,
+      Math.min(room[1], next?.[1] ?? room[1]) - chopper.y,
+    ),
+    above = Math.max(0, chopper.y - Math.max(room[0], next?.[0] ?? room[0]));
+  if (world.lift === "classic") {
+    const brakeDown = div(isqrt(2 * (T.LIFT - T.GRAVITY) * below) * 4, 5),
+      brakeUp = div(isqrt(2 * T.GRAVITY * above) * 4, 5);
+    const want = clamp(
+      div(error, 14),
+      -Math.min(div(T.MAX_RISE * 4, 5), brakeUp),
+      Math.min(div(T.MAX_FALL * 3, 5), brakeDown),
+    );
+    return chopper.vy > want ? UP : 0;
+  }
+  const brake = (d: number) => div(isqrt(2 * T.THRUST * d) * 4, 5);
+  const want = clamp(
+    div(error, 12),
+    -Math.min(T.THRUST_MAX, brake(above)),
+    Math.min(T.THRUST_MAX, brake(below)),
+  );
+  if (chopper.vy > want + px(0.4)) return UP;
+  return chopper.vy < want - px(0.4) ? DOWN : 0;
+}
+
+function subtract(open: Span[], top: number, bottom: number): Span[] {
+  const remaining: Span[] = [];
+  for (const gap of open) {
+    const [a, b] = gap;
+    if (bottom <= a || top >= b) remaining.push(gap);
+    else {
+      if (top > a) remaining.push([a, top]);
+      if (bottom < b) remaining.push([bottom, b]);
+    }
+  }
+  return remaining;
+}
+
+const wideEnough = ([a, b]: Span): boolean => b - a > px(4);
+const usable = (open: Span[]): Span[] => open.filter(wideEnough);
+const terrainGapAt = (open: Span[], y: number): Span | undefined =>
+  open.find((gap) => wideEnough(gap) && y >= gap[0] && y <= gap[1]);
+
+/** Cave, platforms and saws from one future column. Keep even the narrow spans until threats are applied. */
+function terrainOpenings(world: World, x: number, steps: number): Span[] {
   const hw = T.CHOPPER_HW,
     hh = T.CHOPPER_HH,
     margin = px(14);
   const cave = span(world.seed, x - hw, x + hw);
   let open: Span[] = [[cave.ceiling + hh + margin, cave.floor - hh - margin]];
-  const block = (top: number, bottom: number) => {
-    open = open.flatMap(([a, b]): Span[] => {
-      if (bottom <= a || top >= b) return [[a, b]];
-      return [
-        ...(top > a ? [[a, top] as Span] : []),
-        ...(bottom < b ? [[bottom, b] as Span] : []),
-      ];
-    });
-  };
   for (const part of segmentsNear(
     world.seed,
     div(x - hw, SUB),
@@ -159,7 +185,8 @@ function openings(
   )) {
     for (const platform of part.platforms)
       if (x + hw > platform.x * SUB && x - hw < (platform.x + platform.w) * SUB)
-        block(
+        open = subtract(
+          open,
           platform.y * SUB - hh - margin,
           (platform.y + platform.h) * SUB + hh + margin,
         );
@@ -167,37 +194,50 @@ function openings(
       if (Math.abs(x - saw.x * SUB) < (saw.r + 30) * SUB) {
         const y = sawY(saw, world.step + steps) * SUB,
           reach = saw.r * SUB + hh + px(18);
-        block(y - reach, y + reach);
+        open = subtract(open, y - reach, y + reach);
       }
   }
-  const result = () => open.filter(([a, b]) => b - a > px(4));
-  if (threats === 0) return result();
+  return open;
+}
+
+function avoidRivals(
+  open: Span[],
+  world: World,
+  chopper: Chopper,
+  x: number,
+): Span[] {
   for (const other of world.choppers)
     if (other !== chopper && flying(other) && Math.abs(other.x - x) < px(56))
-      block(other.y - px(44), other.y + px(44));
-  if (threats === 1) return result();
+      open = subtract(open, other.y - px(44), other.y + px(44));
+  return open;
+}
+
+function avoidRocks(open: Span[], world: World, chopper: Chopper): Span[] {
   // A warned throw, as a player reads the dashed line: keep off its height while it is close to launching.
   for (const warning of world.warnings)
     if (warning.at - world.step < 45 && chopper.x - world.crushX < px(420))
-      block(warning.y - px(52), warning.y + px(52));
+      open = subtract(open, warning.y - px(52), warning.y + px(52));
   // A rock in flight: every height it passes through between now and reaching the chopper, so an escape never
   // climbs into its path.
-  const closingOf = (rock: (typeof world.rocks)[number]) =>
-    Math.max(px(0.5), rock.vx - (world.scroll + chopper.vx));
+  const speed = world.scroll + chopper.vx;
   for (const rock of world.rocks) {
     if (rock.x > chopper.x + T.CHOPPER_HW) continue;
-    const t = div(chopper.x - rock.x, closingOf(rock));
+    const t = div(chopper.x - rock.x, Math.max(px(0.5), rock.vx - speed));
     if (t > 80) continue;
     const later = rock.y + rock.vy * t + div(T.ROCK_GRAVITY * t * t, 2),
-      reach = rock.r + hh + px(16);
-    block(Math.min(rock.y, later) - reach, Math.max(rock.y, later) + reach);
+      reach = rock.r + T.CHOPPER_HH + px(16);
+    open = subtract(
+      open,
+      Math.min(rock.y, later) - reach,
+      Math.max(rock.y, later) + reach,
+    );
   }
-  return result();
+  return open;
 }
 
 /** `aim` moved by `offset`, kept inside the opening that holds `aim`. */
 function lanes(open: Span[], aim: number, offset: number): number {
-  const home = open.find(([a, b]) => aim >= a && aim <= b);
+  const home = around(open, aim);
   if (!home) return aim;
   const [a, b] = home;
   return b - a < px(60) ? aim : clamp(aim + offset, a + px(12), b - px(12));

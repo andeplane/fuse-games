@@ -10,11 +10,12 @@ import {
   packMessage,
   unpackMessage,
 } from "../src/index.js";
+import { PACKET_ENTRIES } from "../src/stream.js";
 import { ADD, MARK, counterGame } from "./fixtures/counter-game.js";
 import { FakeMesh } from "./fixtures/fake-mesh.js";
 
 type StreamWire = [string, number, number, number, number[][]];
-function checkpoint(): unknown[] {
+function checkpoint(futureMarks = 2): unknown[] {
   const world = new World(
     counterGame,
     counterGame.createRoom("m", { target: 1000 }),
@@ -27,8 +28,8 @@ function checkpoint(): unknown[] {
   log.append(3, [MARK, 7]);
   log.through = 12;
   world.advance(12);
-  log.append(14, [MARK, 8]);
-  log.append(15, [MARK, 9]);
+  for (let offset = 0; offset < futureMarks; offset++)
+    log.append(14 + offset, [MARK, 8 + offset]);
   const assembler = new SnapshotAssembler(counterGame, 42);
   const assembled = assembler.accept(encodeSnapshot(world, 42)[0]!)!;
   return unpackMessage(assembled.bytes) as unknown[];
@@ -57,6 +58,23 @@ const invalid: Record<string, (stream: StreamWire) => void> = {
 test("a snapshot retains valid future replay entries", () => {
   const decoded = decodeSnapshot(counterGame, packMessage(checkpoint()), 42)!;
   assert.equal(decoded.streams[0]!.entries.length, 2);
+});
+test("a snapshot restores replay entries across packet boundaries in sequence order", () => {
+  const marks = PACKET_ENTRIES * 2 + 1;
+  const decoded = decodeSnapshot(
+    counterGame,
+    packMessage(checkpoint(marks)),
+    42,
+  )!;
+  assert.deepEqual(
+    decoded.streams[0]!.entries,
+    Array.from({ length: marks }, (_, offset) => [
+      4 + offset,
+      14 + offset,
+      MARK,
+      8 + offset,
+    ]),
+  );
 });
 for (const [name, corrupt] of Object.entries(invalid)) {
   test(`a valid checkpoint hash cannot admit ${name}`, () => {

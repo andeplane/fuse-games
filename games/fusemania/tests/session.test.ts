@@ -15,6 +15,7 @@ import {
   fold,
   game,
   library,
+  readyGuests,
   run,
   runTo,
   seated,
@@ -23,8 +24,10 @@ import {
 /** Three songs, the host picking each. */
 const THREE: Settings = { ...SETTINGS, songs: 3 };
 const DRAWN: Settings = { ...THREE, random: true };
-const act = (room: Room, action: string, id: string) =>
+const act = (room: Room, action: string, id: string) => {
+  if (action === "start") readyGuests(room);
   fold(room, { a: [[ACTION, action, id]] });
+};
 /** Runs the song out with nobody playing. */
 const finish = (room: Room) => {
   while (room.stage === "running") fold(room);
@@ -47,7 +50,7 @@ function ace(room: Room): void {
 const sessionOf = (room: Room) => room.session!;
 const points = (room: Room) =>
   Object.fromEntries(
-    sessionOf(room).scores.map((score) => [score.id, score.points]),
+    sessionOf(room).totals.map((total) => [total.id, total.points]),
   );
 
 test("a session adds its songs up: the host picks each one, and the last ends it", () => {
@@ -59,12 +62,11 @@ test("a session adds its songs up: the host picks each one, and the last ends it
     length: 3,
     done: 0,
     songs: ["grid"],
-    scores: [],
-    records: [],
+    totals: [],
   });
   ace(room);
   assert.equal(room.stage, "over");
-  assert.deepEqual(sessionOf(room).scores, [
+  assert.deepEqual(game.view(room).session!.standings, [
     { id: "a", name: "Ada", points: FULL_RATING, wins: 1 },
     { id: "b", name: "Bo", points: 0, wins: 0 },
   ]);
@@ -80,7 +82,7 @@ test("a session adds its songs up: the host picks each one, and the last ends it
   assert.deepEqual(sessionOf(room).songs, ["grid", "other"]);
   ace(room);
   assert.deepEqual(points(room), { a: 2 * FULL_RATING, b: 0 });
-  assert.equal(sessionOf(room).scores[0]!.wins, 2);
+  assert.equal(sessionOf(room).totals[0]!.wins, 2);
 
   // The third song straight from the result.
   act(room, "rematch", "m4");
@@ -104,8 +106,7 @@ test("a session adds its songs up: the host picks each one, and the last ends it
     length: 3,
     done: 0,
     songs: ["other"],
-    scores: [],
-    records: [],
+    totals: [],
   });
   act(room, "lobby", "m5");
   assert.equal(room.session, null);
@@ -155,8 +156,7 @@ test("a song that is given up is not one of the session's", () => {
     length: 3,
     done: 0,
     songs: [],
-    scores: [],
-    records: [],
+    totals: [],
   });
   act(room, "start", "m3");
   assert.deepEqual(sessionOf(room).songs, ["grid"]);
@@ -180,7 +180,7 @@ test("another length starts a new session, and one song a session plays none", (
   fold(room, { a: [[SETTINGS_ENTRY, { ...THREE, songs: 5 }]] });
   act(room, "start", "m3");
   assert.deepEqual(
-    [sessionOf(room).length, sessionOf(room).done, sessionOf(room).scores],
+    [sessionOf(room).length, sessionOf(room).done, sessionOf(room).totals],
     [5, 0, []],
   );
   finish(room);
@@ -229,49 +229,48 @@ test("a rider who joins in the middle gets a total, one who left keeps theirs, a
   act(full, "start", "m1");
   sessionOf(full).done = 1;
   sessionOf(full).songs = ["grid", "grid"];
-  sessionOf(full).scores = Array.from(
+  sessionOf(full).totals = Array.from(
     { length: SESSION_SCORES },
     (_, index) => ({
       id: `gone${index}`,
       name: `Gone ${index}`,
       points: 1000 + index,
       wins: 0,
+      bot: false,
+      roundsPlayed: 1,
+      earlyExits: 0,
+      combo: 0,
+      marvelous: 0,
+      perfect: 0,
+      great: 0,
+      steps: 0,
+      misses: 0,
     }),
   );
-  sessionOf(full).records = sessionOf(full).scores.map((score) => ({
-    id: score.id,
-    bot: false,
-    roundsPlayed: 1,
-    earlyExits: 0,
-    combo: 0,
-    marvelous: 0,
-    perfect: 0,
-    great: 0,
-    steps: 0,
-    misses: 0,
-  }));
   finish(full);
-  const ids = sessionOf(full).scores.map((score) => score.id);
+  const ids = sessionOf(full).totals.map((total) => total.id);
   assert.equal(ids.length, SESSION_SCORES);
   assert.deepEqual(ids.slice(-2), ["a", "b"]);
   assert.ok(!ids.includes("gone0") && !ids.includes("gone1"));
   assert.ok(ids.includes("gone2"));
 });
 
-test("standings go by points, then by songs won, then by who joined first", () => {
+test("standings go by points, then wins, then join order even with sparse input", () => {
   const score = (id: string, total: number, wins: number) => ({
     id,
     name: id,
     points: total,
     wins,
   });
+  const scores = [
+    score("a", 10, 0),
+    score("b", 30, 1),
+    score("c", 30, 2),
+    score("d", 10, 0),
+  ];
+  scores.length++;
   assert.deepEqual(
-    standings([
-      score("a", 10, 0),
-      score("b", 30, 1),
-      score("c", 30, 2),
-      score("d", 10, 0),
-    ]).map((each) => each.id),
+    standings(scores).flatMap((each) => each.id),
     ["c", "b", "a", "d"],
   );
 });
@@ -387,8 +386,7 @@ test("a start with nobody seated leaves a session that has not begun, and a chec
     length: 3,
     done: 0,
     songs: [],
-    scores: [],
-    records: [],
+    totals: [],
   });
   const restored = game.checkpoint.decode(
     structuredClone(game.checkpoint.encode(room)),
@@ -420,7 +418,7 @@ test("settings changed while a song plays wait for the next one, and a checkpoin
   // The next song is the first of five, drawn by the room.
   act(room, "rematch", "m2");
   assert.deepEqual(
-    [sessionOf(room).length, sessionOf(room).done, sessionOf(room).scores],
+    [sessionOf(room).length, sessionOf(room).done, sessionOf(room).totals],
     [5, 0, []],
   );
 });

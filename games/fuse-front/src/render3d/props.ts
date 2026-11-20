@@ -4,9 +4,8 @@
  * neighbours are all open sand get one, so nothing lands on a building, a flag, a rock or a bank. Presentation only.
  */
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hash } from "./terrain.js";
-import { shade } from "./models.js";
+import { mergeOwnedParts, shade } from "./models.js";
 
 export interface Prop {
   x: number;
@@ -38,16 +37,11 @@ export function propSpots(terrain: readonly string[]): Record<PropKind, Prop[]> 
 function shapes(): Record<PropKind, THREE.BufferGeometry> {
   // `dim` darkens a piece's baked colour: a crater's floor is scorched under its sandy rim.
   const merge = (list: THREE.BufferGeometry[], dim = [1, 1, 1]) => {
-    const flat = list.map((g, i) => {
-      const f = g.index ? g.toNonIndexed() : g;
-      f.deleteAttribute("uv");
-      const c = shade(f, 0, 0.15).getAttribute("color").array as Float32Array;
-      for (let k = 0; k < c.length; k++) c[k]! *= dim[i]!;
-      return f;
+    return mergeOwnedParts(list, (part, index) => {
+      part.deleteAttribute("uv");
+      const colors = shade(part, 0, 0.15).getAttribute("color").array as Float32Array;
+      for (let i = 0; i < colors.length; i++) colors[i]! *= dim[index]!;
     });
-    const out = mergeGeometries(flat)!;
-    for (const g of new Set([...list, ...flat])) g.dispose();
-    return out;
   };
   return {
     crater: merge([new THREE.TorusGeometry(0.42, 0.08, 5, 18).rotateX(Math.PI / 2).scale(1, 0.45, 1),

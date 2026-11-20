@@ -1,59 +1,14 @@
 import type { MatchResult, PlayerResult } from "fuse-platform";
 import type { HistoryReceipt } from "fuse-ui/results-history";
 import type { View } from "./game.js";
-import {
-  parseHistoryReceipts,
-  parseHistoryPlayer,
-} from "fuse-platform/history-api";
-import { playerKey, validName } from "./names.js";
+import { createPastMatchHistory } from "fuse-platform/history-api";
+import { BOT_PREFIX, playerKey, validName } from "./names.js";
 
-/** Checkpoint boundary for bounded previous matches; canonical ordering preserves hashes after restore. */
-export function parsePastMatches(
-  raw: unknown,
-  tick: number,
-): HistoryReceipt[][] | undefined {
-  if (!Array.isArray(raw) || raw.length > 8) return;
-  if (
-    !raw.every(Array.isArray) ||
-    raw.reduce((count, group) => count + group.length, 0) > 128
-  )
-    return;
-  const groups: HistoryReceipt[][] = [];
-  for (const group of raw) {
-    const receipts = parseHistoryReceipts(
-      group,
-      tick,
-      (raw, rounds) => {
-        const p = parseHistoryPlayer(raw, rounds);
-        return p && validName(p.name) ? p : undefined;
-      },
-      playerKey,
-      (id) => id.startsWith("bot:"),
-      100,
-    );
-    if (!receipts?.length) return;
-    if (
-      new Set(receipts.map((r) => r.result.matchId)).size !== 1 ||
-      new Set(receipts.map((r) => r.result.round ?? "match")).size !==
-        receipts.length
-    )
-      return;
-    groups.push(receipts);
-  }
-  return groups;
-}
-
-/** Preserve whole recent matches while bounding checkpoint payloads independently of match length. */
-export function retainPastMatches(
-  previous: readonly HistoryReceipt[][],
-  current: HistoryReceipt[],
-  tick: number,
-): HistoryReceipt[][] | undefined {
-  const groups = [...previous, current].slice(-8);
-  while (groups.reduce((count, group) => count + group.length, 0) > 128)
-    groups.shift();
-  return parsePastMatches(groups, tick);
-}
+export const { parsePastMatches, retainPastMatches } = createPastMatchHistory(
+  validName,
+  playerKey,
+  (id) => id.startsWith(BOT_PREFIX),
+);
 
 /** Every receipt uses the roster frozen by the completed round, never the mutable recap seats. */
 export function currentHistoryReceipts(

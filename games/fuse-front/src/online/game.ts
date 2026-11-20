@@ -1,4 +1,5 @@
 import {
+  orderedSeats,
   applyManagementTick,
   defaultText,
   hasLogPosition,
@@ -12,6 +13,8 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  createSeatListDecoder,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   COMMANDS_PER_SEAT,
@@ -56,6 +59,12 @@ import {
   parseHistoryReceipts,
   type HistoryReceipt,
 } from "fuse-platform/history-api";
+import {
+  seatPlayerName as seatName,
+  validPlayerName as validName,
+} from "fuse-platform/player-name";
+
+export { seatName, validName };
 
 /**
  * Fuse Front behind the netcode's `RollbackGame`. The room keeps the seats, the match and its world. Seats are slots
@@ -151,24 +160,6 @@ export const BOT_PREFIX = "bot:";
 export const BOT_NAMES = "Rivet Sprocket Tread Bolt Gasket Piston".split(" ");
 
 // ---- names and ids ----
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
-/** Trimmed, 1–18 code points, no control characters or lone surrogates (the rule every Fuse game shares). */
-export const validName = (value: unknown): value is string =>
-  typeof value === "string" &&
-  value.length > 0 &&
-  value.length <= 36 &&
-  value === value.trim() &&
-  Array.from(value).length <= 18 &&
-  !CONTROL_CHARS.test(value) &&
-  !/\p{Cs}/u.test(value);
-export function seatName(raw: string): string | undefined {
-  if (CONTROL_CHARS.test(raw)) return;
-  const name = Array.from(raw.replace(/\p{Cs}/gu, "").trim())
-    .slice(0, 18)
-    .join("")
-    .trim();
-  return validName(name) ? name : undefined;
-}
 export const validMatchId = (value: unknown): value is string =>
   typeof value === "string" && /^[\x21-\x7e]{1,64}$/.test(value);
 /** A member id safe as a record key: never one of `Object.prototype`'s names. */
@@ -291,8 +282,6 @@ export function createRoom(matchId: string, settings: Settings): Room {
 }
 
 const byId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-const seatOrder = (seats: Iterable<SeatRecord>) =>
-  [...seats].sort((a, b) => a.slot - b.slot || byId(a.id, b.id));
 /** Who sits in `slot`: a rider's or an added bot's seat record, or nobody. */
 const sitter = (room: Room, slot: number) =>
   [...room.seats.values()].find((s) => !s.watcher && s.slot === slot);
@@ -371,11 +360,8 @@ function commands(
     }
     const seat = sitter(room, slot)!,
       stream = streams.get(seat.id);
-    const source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
-    const mine = (source?.entries ?? [])
+    const entries = entriesForGeneration(stream, seat.generation);
+    const mine = entries
       .filter(
         (e): e is ControlEntry =>
           e[2] <= LAST && e[1] === tick && e[3] === room.matchId,
@@ -462,6 +448,11 @@ function decodeSeat(raw: unknown): SeatRecord | undefined {
     ...(away ? { away: true } : {}) };
 }
 
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  decodeSeat,
+});
 /** `[matchId, stage, settings, play]` before the netcode's streams and hash, then `[seats, startAt, world]`. */
 export function encode(room: Room): unknown[] {
   return [
@@ -469,7 +460,7 @@ export function encode(room: Room): unknown[] {
     room.stage,
     structuredClone(room.settings),
     structuredClone(room.play),
-    seatOrder(room.seats.values()).map(seatTuple),
+    orderedSeats(room.seats.values()).map(seatTuple),
     room.startAt,
     room.world && encodeWorld(room.world),
     room.decided && structuredClone(room.decided),
@@ -502,21 +493,8 @@ export function decode(
     play = parseSettings(rawPlay);
   if (!validMatchId(matchId) || !STAGES.includes(stage as Stage)) return;
   if (!settings || !play || !uint32(startAt)) return;
-  if (!Array.isArray(rawSeats) || rawSeats.length > CAPACITY + MAX_WATCHERS)
-    return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (!seat || seats.has(seat.id)) return;
-    if (
-      !seat.watcher &&
-      [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot)
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   const history = parseHistoryReceipts(
     rawHistory,
     tick,
@@ -605,7 +583,7 @@ export function view(room: Room): View {
     settings: structuredClone(room.settings),
     play: structuredClone(room.play),
     startAt: room.startAt,
-    seats: structuredClone(seatOrder(room.seats.values())),
+    seats: structuredClone(orderedSeats(room.seats.values())),
     bots: (world?.players ?? [])
       .filter((p) => !ridden(room, p.seat))
       .map((p) => ({ slot: p.seat, difficulty: room.play.bots[p.seat]! })),
@@ -633,7 +611,7 @@ export const frontGame: RollbackGame<Room, Entry, View, FrontEvent, Settings> =
     view,
     hash,
     checkpoint: { leading: 4, encode, decode },
-    members: (room) => seatOrder(room.seats.values()),
+    members: (room) => orderedSeats(room.seats.values()),
     seat: (room, id) => room.seats.get(id),
     stage: (room) => room.stage,
     settings: (room) => room.settings,

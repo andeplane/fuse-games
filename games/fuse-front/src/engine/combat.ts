@@ -24,10 +24,10 @@
  * - Units at 0 hit points are removed, in id order; heroes at 0 wait to respawn (`hero.ts`). A turret or fort at 0
  *   stays as a ruin: it neither fires nor is targeted, and a team whose last fort falls loses (`winnerOf`).
  */
-import { better } from "./focus.js";
+import { indexCombatTargets, type Target } from "./combat-targets.js";
 import { alive, award, facingOf, fell, heroGun } from "./hero.js";
 import type { GameMap } from "./map.js";
-import { ceilDiv, div } from "./math.js";
+import { div } from "./math.js";
 import { RALLY_PERCENT, hideOf } from "./spells.js";
 import { centreOf } from "./move.js";
 import { laneMap, unitDamage } from "./waves.js";
@@ -42,14 +42,12 @@ import {
   HERO,
   KILL_XP,
   STRUCTURE_XP,
-  TILE,
   TOWER,
   TURRET,
   UNITS,
   teamOf,
 } from "./tuning.js";
 import {
-  MARKS,
   NEUTRAL,
   NO_WINNER,
   ownerOf,
@@ -58,24 +56,6 @@ import {
   type Unit,
   type World,
 } from "./world.js";
-
-/** The spatial hash's cell: 4 tiles, so the longest range (6 tiles) scans 5 × 5 cells. */
-const CELL = 4 * TILE;
-
-interface Target extends Mark {
-  team: number;
-  /** The seat a shot from it is credited to. */
-  owner: number;
-  /** Index into `world.units`, `world.heroes` or `world.buildings`. */
-  index: number;
-  /** Damage taken this step, and the seat of the first shot that hit it (-1 for none). */
-  taken: number;
-  killer: number;
-  /** The seat of the first hero whose shot hit it this step (-1 for none): a unit's killing blow, for gold. */
-  striker: number;
-  /** A CLOAKed hero (`spells.ts`): no gun picks it as a target. */
-  hidden?: boolean;
-}
 
 const target = (
   of: Mark["of"],
@@ -96,9 +76,6 @@ const target = (
   killer: -1,
   striker: -1,
 });
-
-/** An empty cell, shared so the 5 × 5 scan allocates nothing for cells nobody stands in. */
-const NO_TARGETS: readonly Target[] = [];
 
 const mark = ({ of, id, x, y }: Mark): Mark => ({ of, id, x, y });
 
@@ -134,55 +111,11 @@ export function fight(
       hidden: shielded(map, world, building),
     });
   }
-  const columns = ceilDiv(map.width * TILE, CELL);
-  const cells = new Map<number, Target[]>();
-  for (const target of targets) {
-    const key = div(target.y, CELL) * columns + div(target.x, CELL);
-    const cell = cells.get(key);
-    if (cell === undefined) cells.set(key, [target]);
-    else cell.push(target);
-  }
-  const rows = ceilDiv(map.height * TILE, CELL);
-  const nearest = (
-    from: Target,
-    range: number,
-    accept: (target: Target) => boolean,
-  ): Target | undefined => {
-    const reach = ceilDiv(range, CELL);
-    const cx = div(from.x, CELL),
-      cy = div(from.y, CELL);
-    let best: Target | undefined,
-      bestD = 0;
-    for (let y = cy - reach; y <= cy + reach; y++)
-      for (let x = cx - reach; x <= cx + reach; x++) {
-        if (x < 0 || y < 0 || x >= columns || y >= rows) continue;
-        for (const target of cells.get(y * columns + x) ?? NO_TARGETS) {
-          if (target.team === from.team || target.hidden) continue;
-          if (!accept(target)) continue;
-          const dx = target.x - from.x,
-            dy = target.y - from.y;
-          const d = dx * dx + dy * dy;
-          if (d > range * range) continue;
-          if (best === undefined || better(target, d, best, bestD))
-            [best, bestD] = [target, d];
-        }
-      }
-    return best;
-  };
-  /** The enemy that `of` (a `MARKS` index) and `id` name, while a gun at `from` may pick it within `range`. */
-  const held = (from: Target, of: number, id: number, range: number) =>
-    of < 0
-      ? undefined
-      : targets.find(
-          (each) =>
-            each.of === MARKS[of] &&
-            each.id === id &&
-            each.team !== from.team &&
-            !each.hidden &&
-            (each.x - from.x) * (each.x - from.x) +
-              (each.y - from.y) * (each.y - from.y) <=
-              range * range,
-        );
+  const {
+    nearest,
+    held,
+    splash: splashTargets,
+  } = indexCombatTargets(map, targets);
   /** Hero shots that hit an enemy hero this step: the shooter and the victim, for the towers' aggro. */
   const duels: [Target, Target][] = [];
   const armoured = [0, 1].map(
@@ -242,14 +175,15 @@ export function fight(
         : (each.team >= 0 || (!wave && building === undefined)) &&
           (!fort || each.of !== "building");
     const victim = tower
-      ? (held(from, building!.aimOf, building!.aim, stats.range) ??
+      ? (held(from, { of: building!.aimOf, id: building!.aim }, stats.range) ??
         nearest(
           from,
           stats.range,
-          (each) => each.of === "unit" && fits(each),
-        ) ??
-        nearest(from, stats.range, (each) => each.of === "hero"))
-      : ((hero && held(from, hero.focusOf, hero.focus, stats.range)) ??
+          (each) => each.of === "hero" || (each.of === "unit" && fits(each)),
+          true,
+        ))
+      : ((hero &&
+          held(from, { of: hero.focusOf, id: hero.focus }, stats.range)) ??
         nearest(from, stats.range, fits));
     // A tower with nothing to shoot lets its target go: the next one starts a new ramp.
     if (victim === undefined && tower)
@@ -270,14 +204,7 @@ export function fight(
       hero.quiet = 0;
       // The splash: every other enemy unit near the target, in id order, takes part of the shot.
       const splash = div(damage * HERO.splashPercent, 100);
-      for (const near of targets) {
-        if (near.of !== "unit" || near === victim) continue;
-        if (near.team === from.team) continue;
-        // A camp's guards (`jungle.ts`) take splash only from a shot at their camp.
-        if (near.team < 0 !== victim.team < 0) continue;
-        const dx = near.x - victim.x,
-          dy = near.y - victim.y;
-        if (dx * dx + dy * dy > HERO.splash * HERO.splash) continue;
+      for (const near of splashTargets(victim, from)) {
         const struck = world.units[near.index]!;
         const share = div(splash * hideOf(world, struck, near.team), 100);
         hit(near, from, armour(struck, near.team, share));

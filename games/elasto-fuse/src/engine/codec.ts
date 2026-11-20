@@ -151,7 +151,7 @@ export function decodeWorld(raw: unknown): World | undefined {
     (phase === "racing" && step >= close + T.CLOSE_LAG)
   )
     return;
-  const allApples = (1n << BigInt(compile(LEVELS[level]!).apples.length)) - 1n;
+  const { allApples } = compile(LEVELS[level]!);
   const riders: Rider[] = [];
   for (const item of raw.slice(HEAD_FIELDS)) {
     const rider = decodeRider(item, step, allApples);

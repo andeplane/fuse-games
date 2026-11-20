@@ -17,6 +17,7 @@
 import { DIRS, UNREACHABLE, flowField, openTile } from "./flow.js";
 import type { GameMap } from "./map.js";
 import { clamp, div, isqrt } from "./math.js";
+import { spatialGrid, type VisitNearby } from "./spatial-grid.js";
 import {
   BLITZ_SPEED,
   HOLD_RADIUS,
@@ -215,47 +216,37 @@ function seek(map: GameMap, world: World, unit: Unit): [number, number] {
   return [div(dx * speed, length), div(dy * speed, length)];
 }
 
-/** An empty cell, shared so the 3 × 3 scan allocates nothing for tiles nobody stands on. */
-const NO_UNITS: readonly number[] = [];
-
 /**
  * The push away from units overlapping this one (closer than their radii summed), half the overlap each, capped at
  * the unit's speed. Two units on the very same sub-pixel part along a direction both derive from their ids.
  */
 function separate(
-  map: GameMap,
   units: readonly Unit[],
-  cells: ReadonlyMap<number, readonly number[]>,
+  nearby: VisitNearby<number>,
   index: number,
 ): [number, number] {
   const unit = units[index]!;
-  const tx = tileOf(unit.x),
-    ty = tileOf(unit.y);
   let sx = 0,
     sy = 0;
-  // The largest reach is one tile, so the 3 × 3 tiles around hold every unit that can overlap.
-  for (let y = ty - 1; y <= ty + 1; y++)
-    for (let x = tx - 1; x <= tx + 1; x++) {
-      if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
-      for (const other of cells.get(y * map.width + x) ?? NO_UNITS) {
-        if (other === index) continue;
-        const them = units[other]!;
-        const reach = UNITS[unit.kind].radius + UNITS[them.kind].radius;
-        let dx = unit.x - them.x,
-          dy = unit.y - them.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 >= reach * reach) continue;
-        let length = 1;
-        if (d2 === 0) {
-          const [ex, ey] = DIRS[(unit.id + them.id) % DIRS.length]!;
-          const sign = unit.id < them.id ? -1 : 1;
-          [dx, dy] = [sign * ex, sign * ey];
-        } else length = isqrt(d2);
-        const push = div(reach - length, 2);
-        sx += div(dx * push, length);
-        sy += div(dy * push, length);
-      }
-    }
+  // The largest reach is one tile.
+  nearby(unit, TILE, (other) => {
+    if (other === index) return;
+    const them = units[other]!;
+    const reach = UNITS[unit.kind].radius + UNITS[them.kind].radius;
+    let dx = unit.x - them.x,
+      dy = unit.y - them.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= reach * reach) return;
+    let length = 1;
+    if (d2 === 0) {
+      const [ex, ey] = DIRS[(unit.id + them.id) % DIRS.length]!;
+      const sign = unit.id < them.id ? -1 : 1;
+      [dx, dy] = [sign * ex, sign * ey];
+    } else length = isqrt(d2);
+    const push = div(reach - length, 2);
+    sx += div(dx * push, length);
+    sy += div(dy * push, length);
+  });
   const speed = UNITS[unit.kind].speed;
   return [clamp(sx, -speed, speed), clamp(sy, -speed, speed)];
 }
@@ -293,18 +284,11 @@ export function moveUnits(
   engaged: ReadonlySet<number> = new Set(),
 ): void {
   const units = world.units;
-  // The spatial hash, rebuilt each step: unit indices by tile, in id order.
-  const cells = new Map<number, number[]>();
-  for (const [index, unit] of units.entries()) {
-    const key = tileIndex(map, unit);
-    const cell = cells.get(key);
-    if (cell === undefined) cells.set(key, [index]);
-    else cell.push(index);
-  }
+  const nearby = spatialGrid(map, units, TILE, (_unit, index) => index);
   const moved = units.map((unit, index) => {
     const still = engaged.has(unit.id) || unit.stun > 0;
     const [vx, vy] = still ? [0, 0] : seek(map, world, unit);
-    const [sx, sy] = separate(map, units, cells, index);
+    const [sx, sy] = separate(units, nearby, index);
     return settle(map, unit.x, unit.y, unit.x + vx + sx, unit.y + vy + sy);
   });
   for (const [index, unit] of units.entries()) [unit.x, unit.y] = moved[index]!;

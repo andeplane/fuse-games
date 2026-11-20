@@ -11,6 +11,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -163,11 +164,8 @@ export function foldTick(
     }
     if (!s.connected || s.bot || s.watcher) continue;
     const stream = streams.get(s.id);
-    const source =
-      stream?.generation === s.generation
-        ? stream
-        : stream?.retired?.find((v) => v.generation === s.generation);
-    for (const e of [...(source?.entries ?? [])].sort((a, b) => a[0] - b[0])) {
+    const entries = entriesForGeneration(stream, s.generation);
+    for (const e of [...entries].sort((a, b) => a[0] - b[0])) {
       if (e[1] !== tick || e[3] !== r.matchId) continue;
       if (e[2] === PLAY && e[4] === r.round && r.stage === "running") {
         r.held[s.id] = e[5];

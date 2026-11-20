@@ -2,7 +2,7 @@ import { CAPACITY } from "../capacity.js";
 import { isBrain } from "../ai/index.js";
 import { parseGameplayOptions } from "../options/index.js";
 import { CAMPAIGNS, DOGFIGHTS, MISSION_COUNT } from "../campaign/index.js";
-import { isShot, MAX_SHOTS } from "../ordnance/index.js";
+import { isCheckpointShot, MAX_SHOTS } from "../ordnance/index.js";
 import type { Actor, Item, MissionState, Objective, Prop } from "./types.js";
 
 type RecordValue = Record<string, unknown>;
@@ -22,22 +22,40 @@ const distinct = (values: readonly unknown[]) =>
   new Set(values).size === values.length;
 const color = (v: unknown) => option(v, ["red", "blue", "yellow", "green"]);
 const flag = (x: unknown) => typeof x === "boolean";
-const keys = (v: RecordValue, allowed: string) =>
-  Object.keys(v).every((k) => allowed.split(" ").includes(k));
+const fields = (names: string) => new Set(names.split(" "));
+const shape = {
+  actor: fields(
+    "id seat role escort dir hp maxHp inventory weapon lock slideX slideY specialHeld usedSpecial walking lastShot deathTick score kills friendlies speed skill brain objectiveIndex characterIndex flamed poisoned petrified confused x y",
+  ),
+  skill: fields("move track shoot delay flags"),
+  objective: fields("kind description flags index required count done"),
+  item: fields("x y id kind hp objectiveIndex sprite escort objectFlags solid"),
+  prop: fields("x y kind objectIndex hp impassable w h objectFlags"),
+  mission: fields(
+    "mode campaign mission seed rng tick nextEnemy goodGuysPresent gameplay width height tiles decor props seen seenCount surveyArea actors shots items doors keys keyring objectives objective extraction outcome winners",
+  ),
+  key: fields("x y color"),
+  door: fields("x y key timer horizontal"),
+};
+const keys = (v: RecordValue, allowed: ReadonlySet<string>) =>
+  Object.keys(v).every((key) => allowed.has(key));
 const pos = (v: RecordValue) =>
   fixed(v.x, 0, 1023.99609375) && fixed(v.y, 0, 767.99609375);
 const idx = (v: unknown, n: number) => v === null || integer(v, 0, n - 1);
 const weapon = (v: unknown) => integer(v, 0, 15);
 function actor(a: unknown, tick: number, n: number): a is Actor {
-  if (
-    !record(a) ||
-    !keys(
-      a,
-      "id seat role escort dir hp maxHp inventory weapon lock slideX slideY specialHeld usedSpecial walking lastShot deathTick score kills friendlies speed skill brain objectiveIndex characterIndex flamed poisoned petrified confused x y",
-    )
-  )
-    return false;
+  if (!record(a) || !keys(a, shape.actor)) return false;
   const skill = a.skill;
+  return (
+    actorIdentity(a) &&
+    actorLoadout(a) &&
+    actorMotion(a, tick) &&
+    actorSkill(skill) &&
+    actorState(a, n)
+  );
+}
+
+function actorIdentity(a: RecordValue): boolean {
   return (
     pos(a) &&
     text(a.id, 32) &&
@@ -46,7 +64,12 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
       ? option(a.role, ["guard", "heavy", "scout", "hostage"])
       : text(a.seat, 128) && a.seat.length > 0 && a.role === "player") &&
     integer(a.dir, 0, 7) &&
-    (a.escort === null || (a.role === "hostage" && text(a.escort, 32))) &&
+    (a.escort === null || (a.role === "hostage" && text(a.escort, 32)))
+  );
+}
+
+function actorLoadout(a: RecordValue): boolean {
+  return (
     integer(a.maxHp, 1, 10000) &&
     integer(a.hp, 0, a.maxHp) &&
     array(a.inventory, 3) &&
@@ -55,7 +78,12 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
     distinct(a.inventory) &&
     integer(a.weapon, 0, 15) &&
     a.inventory.includes(a.weapon) &&
-    integer(a.lock, 0, 1000) &&
+    integer(a.lock, 0, 1000)
+  );
+}
+
+function actorMotion(a: RecordValue, tick: number): boolean {
+  return (
     fixed(a.slideX, -4096, 4096) &&
     fixed(a.slideY, -4096, 4096) &&
     flag(a.specialHeld) &&
@@ -67,16 +95,26 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
     integer(a.score, -0x7fffffff, 0x7fffffff) &&
     integer(a.kills, 0, 0x7fffffff) &&
     integer(a.friendlies, 0, 0x7fffffff) &&
-    integer(a.speed, 1, 2048) &&
+    integer(a.speed, 1, 2048)
+  );
+}
+
+function actorSkill(skill: unknown): boolean {
+  return (
     record(skill) &&
-    keys(skill, "move track shoot delay flags") &&
+    keys(skill, shape.skill) &&
     integer(skill.move, 0, 100) &&
     integer(skill.track, 0, 100) &&
     integer(skill.shoot, 0, 100) &&
     integer(skill.delay, 0, 65535) &&
-    integer(skill.flags, 0, 0x7fffffff) &&
+    integer(skill.flags, 0, 0x7fffffff)
+  );
+}
+
+function actorState(a: RecordValue, objectives: number): boolean {
+  return (
     isBrain(a.brain) &&
-    idx(a.objectiveIndex, n) &&
+    idx(a.objectiveIndex, objectives) &&
     integer(a.characterIndex, 0, 255) &&
     integer(a.flamed, 0, 10) &&
     integer(a.poisoned, 0, 147) &&
@@ -84,10 +122,11 @@ function actor(a: unknown, tick: number, n: number): a is Actor {
     integer(a.confused, 0, 700)
   );
 }
+
 function objective(o: unknown): o is Objective {
   return (
     record(o) &&
-    keys(o, "kind description flags index required count done") &&
+    keys(o, shape.objective) &&
     option(o.kind, [
       "kill",
       "collect",
@@ -107,7 +146,7 @@ function objective(o: unknown): o is Objective {
 function item(i: unknown, n: number, actors: readonly Actor[]): i is Item {
   return (
     record(i) &&
-    keys(i, "x y id kind hp objectiveIndex sprite escort objectFlags solid") &&
+    keys(i, shape.item) &&
     pos(i) &&
     text(i.id, 32) &&
     option(i.kind, ["core", "reactor", "medkit", "hostage"]) &&
@@ -124,7 +163,7 @@ function item(i: unknown, n: number, actors: readonly Actor[]): i is Item {
 function prop(p: unknown): p is Prop {
   return (
     record(p) &&
-    keys(p, "x y kind objectIndex hp impassable w h objectFlags") &&
+    keys(p, shape.prop) &&
     pos(p) &&
     text(p.kind, 64) &&
     integer(p.objectIndex, 0, 255) &&
@@ -141,15 +180,11 @@ const rows = (v: unknown, chars: RegExp): v is string[] =>
   v.every(
     (row) => typeof row === "string" && row.length === 64 && chars.test(row),
   );
-export function isMissionState(s: unknown): s is MissionState {
-  if (
-    !record(s) ||
-    !keys(
-      s,
-      "mode campaign mission seed rng tick nextEnemy goodGuysPresent gameplay width height tiles decor props seen seenCount surveyArea actors shots items doors keys keyring objectives objective extraction outcome winners",
-    )
-  )
-    return false;
+/** The header defines the dimensions, tick and mission used when checking links between objects. */
+type MissionHeader = RecordValue &
+  Pick<MissionState, "mode" | "tick" | "nextEnemy" | "tiles">;
+
+function missionHeader(s: RecordValue): s is MissionHeader {
   if (
     !option(s.mode, ["campaign", "dogfight"]) ||
     !parseGameplayOptions(s.gameplay) ||
@@ -177,11 +212,74 @@ export function isMissionState(s: unknown): s is MissionState {
     !integer(s.seenCount, 0, 4096)
   )
     return false;
-  if (
-    s.seen.reduce((sum, row) => sum + row.split("1").length - 1, 0) !==
+  return (
+    s.seen.reduce((sum, row) => sum + row.split("1").length - 1, 0) ===
     s.seenCount
+  );
+}
+
+/** Objects linked to the arena tiles, actor identities or objective slots. */
+function mapObjects(
+  s: MissionHeader,
+  objectives: number,
+  actors: readonly Actor[],
+): boolean {
+  if (
+    !array(s.items, 1024) ||
+    !s.items.every((v): v is Item => item(v, objectives, actors)) ||
+    !distinct(s.items.map((i) => i.id)) ||
+    !array(s.props, 4096) ||
+    !s.props.every(prop) ||
+    !array(s.keys, 4) ||
+    !s.keys.every(
+      (k) => record(k) && keys(k, shape.key) && pos(k) && color(k.color),
+    ) ||
+    !array(s.keyring, 4) ||
+    !s.keyring.every(color) ||
+    !distinct(s.keyring) ||
+    !array(s.doors, 512)
   )
     return false;
+  const terrain = s.tiles;
+  if (
+    !s.doors.every(
+      (d) =>
+        record(d) &&
+        keys(d, shape.door) &&
+        flag(d.horizontal) &&
+        integer(d.x, 0, 63) &&
+        integer(d.y, 0, 63) &&
+        (d.key === null || color(d.key)) &&
+        integer(d.timer, 0, 30) &&
+        terrain[d.y]![d.x] === (d.timer ? "+" : "D"),
+    )
+  )
+    return false;
+  return true;
+}
+
+function actorLinks(
+  actors: readonly Actor[],
+  players: readonly Actor[],
+  os: readonly Objective[],
+  nextEnemy: number,
+): boolean {
+  return !actors.some((a) =>
+    a.role === "hostage"
+      ? a.id !== "prisoner-0" ||
+        a.objectiveIndex === null ||
+        os[a.objectiveIndex]?.kind !== "rescue" ||
+        (a.escort === null) !== !!(a.skill.flags & (1 << 18)) ||
+        (a.escort !== null && !players.some((p) => p.id === a.escort))
+      : a.seat === null
+        ? !a.id.startsWith("enemy-") || Number(a.id.slice(6)) >= nextEnemy
+        : !a.id.startsWith("player-"),
+  );
+}
+
+export function isMissionState(s: unknown): s is MissionState {
+  if (!record(s) || !keys(s, shape.mission)) return false;
+  if (!missionHeader(s)) return false;
   const os = s.objectives;
   if (
     !array(os, 16) ||
@@ -205,21 +303,7 @@ export function isMissionState(s: unknown): s is MissionState {
   )
     return false;
   const players = actors.filter((a) => a.seat !== null);
-  const nextEnemy = s.nextEnemy;
-  if (
-    actors.some((a) =>
-      a.role === "hostage"
-        ? a.id !== "prisoner-0" ||
-          a.objectiveIndex === null ||
-          os[a.objectiveIndex]?.kind !== "rescue" ||
-          (a.escort === null) !== !!(a.skill.flags & (1 << 18)) ||
-          (a.escort !== null && !players.some((p) => p.id === a.escort))
-        : a.seat === null
-          ? !a.id.startsWith("enemy-") || Number(a.id.slice(6)) >= nextEnemy
-          : !a.id.startsWith("player-"),
-    )
-  )
-    return false;
+  if (!actorLinks(actors, players, os, s.nextEnemy)) return false;
   if (
     !players.length ||
     players.length > CAPACITY ||
@@ -229,49 +313,10 @@ export function isMissionState(s: unknown): s is MissionState {
   const ids = new Set(actors.map((a) => a.id));
   if (
     !array(s.shots, MAX_SHOTS) ||
-    !s.shots.every(
-      (v) =>
-        isShot(v) &&
-        record(v) &&
-        keys(
-          v,
-          "weapon owner kind x y dx dy z dz age range power radiusX radiusY frame always special",
-        ) &&
-        ids.has(v.owner),
-    )
+    !s.shots.every((shot) => isCheckpointShot(shot) && ids.has(shot.owner))
   )
     return false;
-  if (
-    !array(s.items, 1024) ||
-    !s.items.every((v): v is Item => item(v, os.length, actors)) ||
-    !distinct(s.items.map((i) => i.id)) ||
-    !array(s.props, 4096) ||
-    !s.props.every(prop) ||
-    !array(s.keys, 4) ||
-    !s.keys.every(
-      (k) => record(k) && keys(k, "x y color") && pos(k) && color(k.color),
-    ) ||
-    !array(s.keyring, 4) ||
-    !s.keyring.every(color) ||
-    !distinct(s.keyring) ||
-    !array(s.doors, 512)
-  )
-    return false;
-  const terrain = s.tiles;
-  if (
-    !s.doors.every(
-      (d) =>
-        record(d) &&
-        keys(d, "x y key timer horizontal") &&
-        flag(d.horizontal) &&
-        integer(d.x, 0, 63) &&
-        integer(d.y, 0, 63) &&
-        (d.key === null || color(d.key)) &&
-        integer(d.timer, 0, 30) &&
-        terrain[d.y]![d.x] === (d.timer ? "+" : "D"),
-    )
-  )
-    return false;
+  if (!mapObjects(s, os.length, actors)) return false;
   if (
     !integer(s.extraction, 0, 350) ||
     !option(s.outcome, ["playing", "victory", "defeat"]) ||

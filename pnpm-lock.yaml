@@ -68,6 +68,9 @@ importers:
       fuse-network-be:
         specifier: workspace:*
         version: link:packages/fuse-network-be
+      fuse-particles:
+        specifier: workspace:*
+        version: link:games/fuse-particles
       fuse-platform:
         specifier: workspace:*
         version: link:packages/fuse-platform
@@ -104,6 +107,9 @@ importers:
       hook-havok:
         specifier: workspace:*
         version: link:games/hook-havok
+      incredible-fuse:
+        specifier: workspace:*
+        version: link:games/incredible-fuse
       jose:
         specifier: ^6.2.12
         version: 6.2.12
@@ -536,6 +542,28 @@ importers:
         specifier: ^1.5.4
         version: 1.5.4
 
+  games/fuse-particles:
+    dependencies:
+      fuse-netcode:
+        specifier: workspace:*
+        version: link:../../packages/fuse-netcode
+      fuse-platform:
+        specifier: workspace:*
+        version: link:../../packages/fuse-platform
+    devDependencies:
+      '@fontsource/press-start-2p':
+        specifier: ^5.3.0
+        version: 5.3.0
+      fuse-network-fe:
+        specifier: workspace:*
+        version: link:../../packages/fuse-network-fe
+      fuse-ui:
+        specifier: workspace:*
+        version: link:../../packages/fuse-ui
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
+
   games/fuse-riders: {}
 
   games/fuse-surge:
@@ -731,6 +759,28 @@ importers:
       phaser:
         specifier: 4.2.1
         version: 4.2.1
+
+  games/incredible-fuse:
+    dependencies:
+      fuse-netcode:
+        specifier: workspace:*
+        version: link:../../packages/fuse-netcode
+      fuse-platform:
+        specifier: workspace:*
+        version: link:../../packages/fuse-platform
+    devDependencies:
+      '@fontsource/press-start-2p':
+        specifier: ^5.3.0
+        version: 5.3.0
+      fuse-network-fe:
+        specifier: workspace:*
+        version: link:../../packages/fuse-network-fe
+      fuse-ui:
+        specifier: workspace:*
+        version: link:../../packages/fuse-ui
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
 
   games/killer-fuse:
     dependencies:

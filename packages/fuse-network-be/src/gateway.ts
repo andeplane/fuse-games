@@ -617,13 +617,7 @@ export class RoomGateway {
         isGrantIdentity(m.renew) ? m.renew : undefined,
         room,
       );
-      if (
-        this.clients.get(client.member.connectionId) !== client ||
-        this.views.get(client.room)?.room.incarnation !== client.incarnation ||
-        current.incarnation !== client.incarnation
-      )
-        return;
-      this.observe(client.room, current);
+      if (!this.observeForClient(client, current)) return;
       this.send(client, {
         type: "time",
         id: m.id,
@@ -661,13 +655,7 @@ export class RoomGateway {
         target.connectionId !== m.targetConnectionId)
     ) {
       current = await this.store.get(client.room);
-      if (
-        this.clients.get(client.member.connectionId) !== client ||
-        this.views.get(client.room)?.room.incarnation !== client.incarnation ||
-        current.incarnation !== client.incarnation
-      )
-        return;
-      this.observe(client.room, current);
+      if (!this.observeForClient(client, current)) return;
       target = member(current);
     }
     // Any two current members may signal: the gameplay mesh links every pair directly.
@@ -709,6 +697,27 @@ export class RoomGateway {
       await this.bus.publish(routed);
     else this.refuse(client, this.deps.now());
   }
+  /** A read may update a view only while the same connection and room incarnation still own it. */
+  private observeForClient(
+    client: Client,
+    room: RoomRecord,
+    routed?: Pick<RoutedMessage, "code" | "incarnation" | "to">,
+  ): boolean {
+    const code = routed ? routed.code : client.room;
+    const incarnation = routed ? routed.incarnation : client.incarnation;
+    const connectionId = routed
+      ? routed.to.connectionId
+      : client.member.connectionId;
+    if (
+      this.clients.get(connectionId) !== client ||
+      this.views.get(code)?.room.incarnation !== incarnation ||
+      room.incarnation !== incarnation
+    )
+      return false;
+    this.observe(code, room);
+    return true;
+  }
+
   private observe(code: string, room: RoomRecord | undefined): void {
     let view = this.views.get(code);
     if (!view) return;
@@ -819,14 +828,7 @@ export class RoomGateway {
       room.members[message.from.id]?.connectionId !== message.from.connectionId
     ) {
       room = await this.store.get(message.code);
-      if (
-        this.clients.get(message.to.connectionId) !== client ||
-        this.views.get(message.code)?.room.incarnation !==
-          message.incarnation ||
-        room.incarnation !== message.incarnation
-      )
-        return;
-      this.observe(message.code, room);
+      if (!this.observeForClient(client, room, message)) return;
     }
     if (
       room.expiresAt <= this.deps.now() ||
@@ -893,42 +895,16 @@ export class RoomGateway {
       );
     const expire = () => {
       if (!same()) return;
-      if (view.room.expiresAt > this.deps.now()) {
-        if (!lapsed(this.deps.now())) {
-          this.scheduleExpiry(code, view);
-          return;
-        }
-        void this.store
-          .prune(code)
-          .then((current) => {
-            if (!same()) return;
-            if (current.incarnation !== incarnation) {
-              close(4004);
-              return;
-            }
-            this.observe(code, current);
-            // Still lapsed here means the stored room did not move (another instance's clock is behind): ask again,
-            // but not in a loop.
-            if (same())
-              this.scheduleExpiry(
-                code,
-                view,
-                lapsed(this.deps.now()) ? PRUNE_RETRY_MS : 0,
-              );
-          })
-          .catch((error) => {
-            if (error instanceof RoomError && error.status === 404) {
-              close(4004);
-              return;
-            }
-            this.deps.error("prune", error);
-            if (same()) this.scheduleExpiry(code, view, PRUNE_RETRY_MS);
-          });
+      const beforeDeadline = view.room.expiresAt > this.deps.now();
+      if (beforeDeadline && !lapsed(this.deps.now())) {
+        this.scheduleExpiry(code, view);
         return;
       }
-      // One metadata recheck at expiry prevents a delayed watch from falsely terminating a renewed room.
-      void this.store
-        .get(code)
+      // At the deadline a metadata read protects a renewed room against a delayed watch.
+      const read = beforeDeadline
+        ? this.store.prune(code)
+        : this.store.get(code);
+      void read
         .then((current) => {
           if (!same()) return;
           if (current.incarnation !== incarnation) {
@@ -936,12 +912,28 @@ export class RoomGateway {
             return;
           }
           this.observe(code, current);
-          if (same()) this.scheduleExpiry(code, view);
+          // A still-lapsed seat after pruning may mean another instance's clock is behind.
+          if (same()) {
+            if (beforeDeadline)
+              this.scheduleExpiry(
+                code,
+                view,
+                lapsed(this.deps.now()) ? PRUNE_RETRY_MS : 0,
+              );
+            else this.scheduleExpiry(code, view);
+          }
         })
         .catch((error) => {
-          close(
-            error instanceof RoomError && error.status === 404 ? 4004 : 1012,
-          );
+          if (error instanceof RoomError && error.status === 404) {
+            close(4004);
+            return;
+          }
+          if (!beforeDeadline) {
+            close(1012);
+            return;
+          }
+          this.deps.error("prune", error);
+          if (same()) this.scheduleExpiry(code, view, PRUNE_RETRY_MS);
         });
     };
     const due = Math.min(

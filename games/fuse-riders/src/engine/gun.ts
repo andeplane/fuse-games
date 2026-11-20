@@ -15,6 +15,18 @@ export const GUN_AIM_MAX = Math.PI;
 export function isAimingGun(player: { gunAim?: number }): boolean {
   return player.gunAim !== undefined;
 }
+/** Distance along the ray to a side of an inset axis. A parallel ray has no limit on this axis. */
+export function rayAxisLimit(
+  origin: number,
+  direction: number,
+  size: number,
+  inset: number,
+): number {
+  if (direction > 0) return (size - inset - origin) / direction;
+  if (direction < 0) return (inset - origin) / direction;
+  return Infinity;
+}
+
 /** One tick (or a rendered fraction of one) of sweeping the held sight; left and right together hold it still. */
 export function sweepGunAim(
   aim: number,

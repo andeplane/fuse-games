@@ -97,12 +97,18 @@ export function createSeatDecoder({
   };
 }
 
+type SeatListDecoderOptions = (
+  | SeatDecoderOptions
+  | { capacity: number; decodeSeat: (raw: unknown) => SeatRecord | undefined }
+) & { maxWatchers: number };
+
 /** Decode the full seat list, keeping checkpoint order and enforcing unique players and occupied slots. */
 export function createSeatListDecoder(
-  options: SeatDecoderOptions & { maxWatchers: number },
+  options: SeatListDecoderOptions,
 ): (raw: unknown) => Map<string, SeatRecord> | undefined {
   const { capacity, maxWatchers } = options;
-  const decodeSeat = createSeatDecoder(options);
+  const decodeSeat =
+    "decodeSeat" in options ? options.decodeSeat : createSeatDecoder(options);
   return function decodeSeats(raw) {
     if (!Array.isArray(raw) || raw.length > capacity + maxWatchers) return;
     const seats = new Map<string, SeatRecord>();
@@ -121,4 +127,12 @@ export function createSeatListDecoder(
     }
     return seats;
   };
+}
+
+/** Canonical seat order for views and checkpoint encoders. Watchers can share a slot. */
+export const compareSeats = (a: SeatRecord, b: SeatRecord): number =>
+  a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+export function orderedSeats(seats: Iterable<SeatRecord>): SeatRecord[] {
+  return [...seats].sort(compareSeats);
 }

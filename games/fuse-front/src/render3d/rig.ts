@@ -141,6 +141,20 @@ export function groundOffset(
   return { x: t * dx, z: distance * cos + t * dz };
 }
 
+/** Ground extents of the four screen corners. The left edge mirrors the right about the rig target. */
+export function groundBounds(rig: Rig, aspect: number) {
+  const top = groundOffset(rig.distance, 1, 1, aspect);
+  const bottom = groundOffset(rig.distance, 1, -1, aspect);
+  if (!top || !bottom) return undefined;
+  const across = Math.max(top.x, bottom.x);
+  return {
+    left: rig.x - across,
+    right: rig.x + across,
+    top: rig.z + top.z,
+    bottom: rig.z + bottom.z,
+  };
+}
+
 /**
  * Zooms by `factor` about the ground under normalised device point `nx`, `ny` (the cursor) at height `h`: the target
  * shifts so that point stays under the cursor although the distance, and with it the tilt, changes. The map clamp

@@ -30,3 +30,53 @@ export function validCheckpointLifecycle(
     )
   );
 }
+
+type RoundCheckpointHeader<Entrant extends { id: string; bot: boolean }> = Pick<
+  CheckpointLifecycle,
+  "stage" | "held"
+> & {
+  roster: readonly Entrant[];
+};
+
+interface RoundCheckpointDecoders<Entrant, Decision, World> {
+  decodeDecided(
+    raw: unknown,
+    roster: readonly Entrant[],
+  ): Decision | null | undefined;
+  decodeWorld(raw: unknown): World | undefined;
+  players(world: World): readonly { id: string }[];
+}
+
+/** Decode the decision and world, then enforce the shared lifecycle before the game's own checks. */
+export function createCheckpointRoundDecoder<
+  Entrant extends { id: string; bot: boolean },
+  Decision,
+  World extends { phase: string },
+>({
+  decodeDecided,
+  decodeWorld,
+  players,
+}: RoundCheckpointDecoders<Entrant, Decision, World>) {
+  return (
+    header: RoundCheckpointHeader<Entrant>,
+    rawDecided: unknown,
+    rawWorld: unknown,
+  ) => {
+    const decided = decodeDecided(rawDecided, header.roster);
+    const world = rawWorld === null ? null : decodeWorld(rawWorld);
+    if (decided === undefined || world === undefined) return;
+    if (
+      !validCheckpointLifecycle(
+        {
+          stage: header.stage,
+          roster: header.roster,
+          held: header.held,
+          hasDecision: decided !== null,
+        },
+        world && { players: players(world), over: world.phase === "over" },
+      )
+    )
+      return;
+    return { decided, world };
+  };
+}

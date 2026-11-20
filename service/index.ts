@@ -17,6 +17,7 @@ import { platform } from "./history.js";
 import { createProductionTelemetry } from "./telemetry.js";
 import { FirestoreTelemetryDatabase } from "fuse-telemetry/metrics-firestore";
 import { songScoresHttp } from "./song-scores.js";
+import { elastoLevelTimesHttp } from "./elasto-level-times.js";
 
 /**
  * The one deployed service: every registered game's rooms and its shared history, accounts and ratings
@@ -47,6 +48,13 @@ export function startService(authClient?: AuthClient): void {
         identity,
       });
       return composeHttp(
+        elastoLevelTimesHttp(
+          new FirestoreTelemetryDatabase(firestore, prefix),
+          history,
+          identity,
+          process.env.TELEMETRY_RATE_LIMIT_KEY,
+          Date.now,
+        ),
         songScoresHttp(
           new FirestoreTelemetryDatabase(firestore, prefix),
           history,

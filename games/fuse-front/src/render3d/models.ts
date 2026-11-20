@@ -16,7 +16,7 @@ import { hash, normalMap, tileNoise } from "./terrain.js";
 import { decalAtlas } from "./kit/decals.js";
 import { conceptBuilding } from "./kit/buildings.js";
 import { heroModel } from "./kit/heroes.js";
-import type { Detail } from "./kit/rig.js";
+import type { Detail, V3 } from "./kit/rig.js";
 
 // prettier-ignore
 export const PAINTS = {
@@ -90,24 +90,59 @@ function hazardTexture(): THREE.DataTexture {
   return tex;
 }
 
-/**
- * One armour panel per face, after the concept kit: a groove round the border, a seam boxing in the upper panel,
- * rivets at the corners and the waist, hammered grain, and faces pillowing up toward their edges.
- */
-// prettier-ignore
+const PANEL = {
+  border: 0.035,
+  borderGroove: 0.022,
+  rim: 0.04,
+  seams: { left: 0.18, right: 0.82, lower: 0.62, upper: 0.94, width: 0.012 },
+  rivets: { inset: 0.09, outer: 0.91, waist: 0.35, radius: 0.03 },
+} as const;
+
+/** One armour panel per face: a rounded rim, a boxed-in seam, rivets and hammered grain. */
 export function panelHeights(n: number): Float32Array {
-  const grain = tileNoise(n, 6, 21), h = new Float32Array(n * n);
-  const bump = (d: number, r: number) => Math.max(0, 1 - (d / r) ** 2);
-  for (let y = 0; y < n; y++)
+  const grain = tileNoise(n, 6, 21);
+  const heights = new Float32Array(n * n);
+  const { seams, rivets } = PANEL;
+  const bump = (distance: number, radius: number) =>
+    Math.max(0, 1 - (distance / radius) ** 2);
+  const columns = Array.from({ length: Math.ceil(n) }, (_, x) => {
+    const u = (x + 0.5) / n;
+    return {
+      edge: Math.min(u, 1 - u),
+      insideSeam: u > seams.left && u < seams.right,
+      seam: bump(
+        Math.min(Math.abs(u - seams.left), Math.abs(u - seams.right)),
+        seams.width,
+      ),
+      rivet: Math.min(Math.abs(u - rivets.inset), Math.abs(u - rivets.outer)),
+    };
+  });
+  for (let y = 0; y < n; y++) {
+    const v = (y + 0.5) / n;
+    const rowEdge = Math.min(v, 1 - v);
+    const inUpperPanel = v > seams.lower && v < seams.upper;
+    const rowSeam = bump(Math.abs(v - seams.lower), seams.width);
+    const rowRivet = Math.min(
+      Math.abs(v - rivets.inset),
+      Math.abs(v - rivets.outer),
+      Math.abs(v - rivets.waist),
+    );
     for (let x = 0; x < n; x++) {
-      const u = (x + 0.5) / n, v = (y + 0.5) / n, edge = Math.min(u, 1 - u, v, 1 - v);
-      const su = Math.min(Math.abs(u - 0.18), Math.abs(u - 0.82)), inner = u > 0.18 && u < 0.82, upper = v > 0.62 && v < 0.94;
-      const seam = (upper ? bump(su, 0.012) : 0) + (inner ? bump(Math.abs(v - 0.62), 0.012) : 0);
-      const ru = Math.min(Math.abs(u - 0.09), Math.abs(u - 0.91)), rv = Math.min(Math.abs(v - 0.09), Math.abs(v - 0.91), Math.abs(v - 0.35));
-      h[y * n + x] = -bump(edge - 0.035, 0.022) - 0.6 * Math.min(1, seam) + 0.8 * Math.sqrt(bump(Math.hypot(ru, rv), 0.03))
-        + (grain[y * n + x]! - 0.3) * 0.12 + Math.min(edge, 0.04) * 3;
+      const column = columns[x]!;
+      const edge = Math.min(column.edge, rowEdge);
+      const seam =
+        (inUpperPanel ? column.seam : 0) + (column.insideSeam ? rowSeam : 0);
+      const rivet = bump(Math.hypot(column.rivet, rowRivet), rivets.radius);
+      const index = y * n + x;
+      heights[index] =
+        -bump(edge - PANEL.border, PANEL.borderGroove) -
+        0.6 * Math.min(1, seam) +
+        0.8 * Math.sqrt(rivet) +
+        (grain[index]! - 0.3) * 0.12 +
+        Math.min(edge, PANEL.rim) * 3;
     }
-  return h;
+  }
+  return heights;
 }
 
 /**
@@ -118,12 +153,17 @@ export function panelHeights(n: number): Float32Array {
 export function detailMaps(n = 64): { normal: THREE.DataTexture; rough: THREE.DataTexture; grime: THREE.DataTexture } {
   const h = panelHeights(n), streaks = tileNoise(n, 12, 23), mottle = tileNoise(n, 4, 25);
   const rough = new Uint8Array(n * n * 4), grime = new Uint8Array(n * n * 4);
+  const pixel = new Uint8Array([0, 0, 0, 255]);
   for (let i = 0; i < n * n; i++) {
     const groove = Math.max(0, -h[i]!), streak = Math.max(0, streaks[i % n]! - 0.45);
     const g = Math.min(255, Math.max(0, Math.round(215 + h[i]! * -90 - (mottle[i]! > 0.62 ? 50 : 0))));
-    rough.set([g, g, g, 255], i * 4);
+    pixel[0] = pixel[1] = pixel[2] = g;
+    rough.set(pixel, i * 4);
     const k = Math.round(255 * Math.min(1, Math.max(0.4, 0.97 + (mottle[i]! - 0.4) * 0.15 - groove * 0.3 - streak * 0.6)));
-    grime.set([k, Math.round(k * 0.985), Math.round(k * 0.96), 255], i * 4);
+    pixel[0] = k;
+    pixel[1] = Math.round(k * 0.985);
+    pixel[2] = Math.round(k * 0.96);
+    grime.set(pixel, i * 4);
   }
   const map = texture(grime, n, true);
   return { normal: texture(normalMap(h, n, 2.2), n), rough: texture(rough, n), grime: map };
@@ -193,10 +233,51 @@ export function shade(g: THREE.BufferGeometry, floor = 0, span = 0.35): THREE.Bu
     const edge = 1 - Math.max(Math.abs(nx), Math.abs(ny), Math.abs(nz));
     const ao = (0.55 + 0.45 * Math.min(1, Math.max(0, (p.getY(i) - floor) / span))) * (0.82 + 0.18 * (ny * 0.5 + 0.5));
     const mottle = 0.9 + 0.1 * hash(Math.round(p.getX(i) * 40), Math.round(p.getY(i) * 40 + p.getZ(i) * 17), 7);
-    c.fill(ao * mottle * (1 + edge * 0.9), i * 3, i * 3 + 3);
+    const color = ao * mottle * (1 + edge * 0.9);
+    const offset = i * 3;
+    c[offset] = c[offset + 1] = c[offset + 2] = color;
   }
   g.setAttribute("color", new THREE.BufferAttribute(c, 3));
   return g;
+}
+
+/** Flatten and merge a builder's owned parts, then release the temporary geometry. */
+export function mergeOwnedParts(
+  geometries: THREE.BufferGeometry[],
+  prepare: (part: THREE.BufferGeometry, index: number) => void,
+): THREE.BufferGeometry {
+  const owned = new Set(geometries);
+  try {
+    if (geometries.length === 0)
+      throw new RangeError("No geometry parts to merge");
+    const parts = geometries.map((geometry, index) => {
+      const part = geometry.index ? geometry.toNonIndexed() : geometry;
+      owned.add(part);
+      prepare(part, index);
+      return part;
+    });
+    const merged = mergeGeometries(parts);
+    if (!merged) throw new Error("Geometry parts have incompatible attributes");
+    return merged;
+  } finally {
+    for (const part of owned) part.dispose();
+  }
+}
+
+/** Bake one shaded, non-indexed mesh per paint. The input parts belong to the builder. */
+export function bakePaintGroups(
+  groups: ReadonlyMap<Paint, THREE.BufferGeometry[]>,
+  floor: number,
+  span: number,
+): Model {
+  return [...groups].map(([paint, geometries]) => {
+    const geometry = mergeOwnedParts(geometries, (part) => {
+      shade(part, floor, span);
+      part.clearGroups();
+    });
+    geometry.computeBoundingBox();
+    return { paint, geometry };
+  });
 }
 
 /** Collects primitives by paint and merges each paint into one shaded geometry. */
@@ -207,62 +288,72 @@ class Kit {
     private readonly span = 0.35,
   ) {}
   add(paint: Paint, ...geometries: THREE.BufferGeometry[]): this {
-    const list = this.groups.get(paint) ?? [];
-    this.groups.set(paint, list.concat(geometries));
+    const list = this.groups.get(paint);
+    if (list) list.push(...geometries);
+    else this.groups.set(paint, geometries);
     return this;
   }
   build(): Model {
-    return [...this.groups].map(([paint, list]) => {
-      const flat = list.map((g) =>
-        shade(g.index ? g.toNonIndexed() : g, this.floor, this.span),
-      );
-      for (const g of flat) g.clearGroups();
-      const geometry = mergeGeometries(flat)!;
-      for (const g of new Set([...list, ...flat])) g.dispose();
-      geometry.computeBoundingBox();
-      return { paint, geometry };
-    });
+    return bakePaintGroups(this.groups, this.floor, this.span);
   }
 }
 
-// prettier-ignore
-const at = (g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, rz = 0) =>
-  g.rotateX(rx).rotateZ(rz).translate(x, y, z);
-/** A box with rounded edges. */
-const block = (
+const ORIGIN: V3 = [0, 0, 0];
+type Tilt = readonly [aroundX: number, aroundZ: number];
+
+function at(
+  geometry: THREE.BufferGeometry,
+  position: V3,
+  [aroundX, aroundZ]: Tilt = [0, 0],
+): THREE.BufferGeometry {
+  return geometry
+    .rotateX(aroundX)
+    .rotateZ(aroundZ)
+    .translate(...position);
+}
+
+/** Rounded floor plate with its bevel limited by the thinnest dimension. */
+function floorPlate(
   w: number,
   h: number,
   d: number,
-  x: number,
-  y: number,
-  z: number,
-  r = 0.025,
-) =>
-  at(
-    new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2.2, h / 2.2, d / 2.2)),
-    x,
-    y,
-    z,
+  bevel: number,
+): THREE.BufferGeometry {
+  return new RoundedBoxGeometry(
+    w,
+    h,
+    d,
+    2,
+    Math.min(bevel, w / 2.2, h / 2.2, d / 2.2),
   );
-const slab = (
-  w: number,
-  h: number,
-  d: number,
-  x: number,
-  y: number,
-  z: number,
-  rx = 0,
-) => at(new THREE.BoxGeometry(w, h, d), x, y, z, rx);
-/** A cylinder along y, or along z (`rx` = π/2) or x (`rz` = π/2). */
-// prettier-ignore
-const rod = (r: number, len: number, x: number, y: number, z: number, rx = 0, rz = 0, r2 = r, seg = 12) =>
-  at(new THREE.CylinderGeometry(r, r2, len, seg), x, y, z, rx, rz);
+}
+
+interface RodShape {
+  topRadius: number;
+  bottomRadius?: number;
+  height: number;
+  segments?: number;
+}
+
+/** A straight or tapered cylinder along +y before placement. */
+function rod(
+  { topRadius, bottomRadius = topRadius, height, segments = 12 }: RodShape,
+  position: V3,
+  tilt?: Tilt,
+): THREE.BufferGeometry {
+  return at(
+    new THREE.CylinderGeometry(topRadius, bottomRadius, height, segments),
+    position,
+    tilt,
+  );
+}
+
 /** Vix's sticky mine: a dark puck with a team band and three prongs; its light blinks on its own. */
 // prettier-ignore
 function mine(): Model {
-  return new Kit().add("dark", rod(0.11, 0.05, 0, 0.025, 0, 0, 0, 0.13, 14))
-    .add("team", rod(0.115, 0.02, 0, 0.045, 0, 0, 0, 0.115, 14))
-    .add("steel", ...[0, 2.1, 4.2].map((a) => rod(0.012, 0.09, Math.sin(a) * 0.1, 0.06, Math.cos(a) * 0.1, 0.5, 0)))
+  return new Kit().add("dark", rod({ topRadius: 0.11, bottomRadius: 0.13, height: 0.05, segments: 14 }, [0, 0.025, 0]))
+    .add("team", rod({ topRadius: 0.115, height: 0.02, segments: 14 }, [0, 0.045, 0]))
+    .add("steel", ...[0, 2.1, 4.2].map((a) => rod({ topRadius: 0.012, height: 0.09 }, [Math.sin(a) * 0.1, 0.06, Math.cos(a) * 0.1], [0.5, 0])))
     .build();
 }
 
@@ -316,14 +407,14 @@ export function buildingModel(
 export function ruinModel(w: number, d: number, seed: number): Model {
   let s = seed * 9301 + 49297;
   const r = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
-  const kit = new Kit().add("char", block(w * 0.95, 0.08, d * 0.95, 0, 0.04, 0, 0.02));
+  const kit = new Kit().add("char", at(floorPlate(w * 0.95, 0.08, d * 0.95, 0.02), [0, 0.04, 0]));
   for (let i = 0; i < 7; i++) {
     const cw = 0.15 + r() * w * 0.3, ch = 0.12 + r() * 0.4, cd = 0.15 + r() * d * 0.25;
-    const chunk = slab(cw, ch, cd, 0, 0, 0, (r() - 0.5) * 0.6).rotateY(r() * 3).translate((r() - 0.5) * w * 0.75, ch / 2, (r() - 0.5) * d * 0.75);
+    const chunk = at(new THREE.BoxGeometry(cw, ch, cd), ORIGIN, [(r() - 0.5) * 0.6, 0]).rotateY(r() * 3).translate((r() - 0.5) * w * 0.75, ch / 2, (r() - 0.5) * d * 0.75);
     kit.add(i % 3 ? "concrete" : "char", chunk);
   }
   for (let i = 0; i < 4; i++)
-    kit.add("steel", rod(0.012, 0.35, (r() - 0.5) * w * 0.7, 0.16, (r() - 0.5) * d * 0.7, (r() - 0.5) * 1.2, (r() - 0.5) * 1.2));
+    kit.add("steel", rod({ topRadius: 0.012, height: 0.35 }, [(r() - 0.5) * w * 0.7, 0.16, (r() - 0.5) * d * 0.7], [(r() - 0.5) * 1.2, (r() - 0.5) * 1.2]));
   return kit.build();
 }
 

@@ -187,7 +187,10 @@ export {
 export {
   createLiveResults,
   createResultsScreen,
+  createTopResultHighlight,
+  playerResultRows,
   renderResults,
+  roomResultsBar,
   type ResultsAction,
   type ResultsBar,
   type ResultsHighlight,

@@ -413,7 +413,12 @@ export function mountWorkspace(
     return controller.signal;
   };
   const isCurrent = (signal: AbortSignal) => !disposed && !signal.aborted;
-  function failure(error: unknown, target: HTMLElement, retry: () => void) {
+  function failure(
+    error: unknown,
+    target: HTMLElement,
+    retry: () => void,
+    current: () => boolean = () => true,
+  ) {
     const message =
       error instanceof WorkspaceError
         ? error.message
@@ -431,9 +436,10 @@ export function mountWorkspace(
           void deps.account.reauthenticate!()
             .then(retry)
             .catch((reason: unknown) => {
+              if (!current()) return;
               const message =
                 deps.account.failure(reason) || "Sign-in cancelled.";
-              failure(new WorkspaceError(401, message), target, retry);
+              failure(new WorkspaceError(401, message), target, retry, current);
             });
         }),
       );

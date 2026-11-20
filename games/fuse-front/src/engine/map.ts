@@ -5,7 +5,7 @@
  * distance (no corner cutting), ties going to the lower flag index. The loaded map is frozen and holds no state, so a
  * peer rebuilds it identically and it stays out of the checkpoint.
  */
-import { buildFlowField, UNREACHABLE } from "./flow.js";
+import { buildFlowField, canEnterTile, DIRS, UNREACHABLE } from "./flow.js";
 import { clamp } from "./math.js";
 import { BUILDING_KINDS, MAX_SEATS, type BuildingKind } from "./tuning.js";
 
@@ -155,20 +155,9 @@ export const terrainAt = (map: GameMap, x: number, y: number): Terrain =>
 export const walkable = (terrain: Terrain): boolean =>
   terrain === "open" || terrain === "bridge";
 
-const STEPS: readonly (readonly [number, number])[] = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-  [1, 1],
-  [1, -1],
-  [-1, 1],
-  [-1, -1],
-];
-
 /**
- * Each tile's nearest flag by walking distance (multi-source BFS, level by level, ties to the lower flag index). A
- * tile first reached on a level takes the lowest flag index among the tiles on the level before that reach it.
+ * Each tile's nearest flag by walking distance. Seed the FIFO in flag order. Each distance layer then visits
+ * owners in that order, so the first visit to a tile takes the lowest flag index among equally near flags.
  */
 function assignSectors(
   width: number,
@@ -178,42 +167,27 @@ function assignSectors(
 ): number[] {
   const tiles = width * height;
   const owner = new Int32Array(tiles).fill(-1);
-  /** The BFS level a tile was reached on, or -1. */
-  const depth = new Int32Array(tiles).fill(-1);
-  let frontier = new Int32Array(tiles),
-    nextLevel = new Int32Array(tiles);
+  const queue = new Int32Array(tiles);
+  const isOpen = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < width && y < height && open[y * width + x] === 1;
   let count = 0;
   for (const [index, flag] of flags.entries()) {
     const at = flag.y * width + flag.x;
     owner[at] = index;
-    depth[at] = 0;
-    frontier[count++] = at;
+    queue[count++] = at;
   }
-  for (let level = 1; count > 0; level++) {
-    let reached = 0;
-    for (let i = 0; i < count; i++) {
-      const at = frontier[i]!;
-      const x = at % width,
-        y = (at - x) / width;
-      for (const [dx, dy] of STEPS) {
-        const nx = x + dx,
-          ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        if (!open[ny * width + nx]) continue;
-        // A diagonal needs both tiles beside it open: no cutting a rock's corner.
-        if (dx !== 0 && dy !== 0)
-          if (!open[y * width + nx] || !open[ny * width + x]) continue;
-        const to = ny * width + nx;
-        if (depth[to]! < 0) {
-          depth[to] = level;
-          owner[to] = owner[at]!;
-          nextLevel[reached++] = to;
-        } else if (depth[to] === level && owner[at]! < owner[to]!)
-          owner[to] = owner[at]!;
-      }
+  for (let i = 0; i < count; i++) {
+    const at = queue[i]!;
+    const x = at % width,
+      y = (at - x) / width;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx,
+        ny = y + dy;
+      const to = ny * width + nx;
+      if (owner[to]! >= 0 || !canEnterTile(isOpen, nx, ny, dx, dy)) continue;
+      owner[to] = owner[at]!;
+      queue[count++] = to;
     }
-    [frontier, nextLevel] = [nextLevel, frontier];
-    count = reached;
   }
   return Array.from(owner);
 }
@@ -442,6 +416,7 @@ function readLanes(
   const { width } = map;
   const index = (spot: Tile) => spot.y * width + spot.x;
   const isOpen = (spot: Tile) => map.terrain[spot.y]![spot.x] === ".";
+  const isWalkable = (x: number, y: number) => open[y * width + x] === 1;
   const fields = [0, 1].map((seat) => {
     const fort = map.sites.find((s) => s.kind === "fort" && s.seat === seat)!;
     return buildFlowField(map, index(fort));
@@ -493,13 +468,7 @@ function readLanes(
       const from = path[i - 1]!;
       const walks = traceLine(from, point, (x, y, dx, dy) => {
         mine[y * width + x] = 1;
-        return (
-          open[y * width + x] === 1 &&
-          (dx === 0 ||
-            dy === 0 ||
-            (open[y * width + x - dx] === 1 &&
-              open[(y - dy) * width + x] === 1))
-        );
+        return canEnterTile(isWalkable, x, y, dx, dy);
       });
       if (!walks)
         fail(`${at}: the straight way from waypoint ${i - 1} is blocked`);

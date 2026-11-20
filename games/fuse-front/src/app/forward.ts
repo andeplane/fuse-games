@@ -1,6 +1,8 @@
 import {
+  createCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
+  createLeadChain,
 } from "fuse-netcode";
 import {
   NO_WINNER,
@@ -43,14 +45,6 @@ const DECIDES: ReadonlySet<CombatEvent["type"]> = new Set([
   "won",
 ]);
 
-interface Chain {
-  key: string;
-  /** `worlds[n]` is the folded world after `n` forward steps. */
-  worlds: World[];
-  /** The step after the last world decides something: the chain ends there. */
-  ended: boolean;
-}
-
 /**
  * A forward run costs a step of the whole battlefield, and a frame needs the same few steps as the frame before it
  * until the room folds another tick, a rollback replaces it or this device logs an order. So the steps are kept:
@@ -63,7 +57,7 @@ export function createForward(): (
   revision: number,
   pending: readonly Command[],
 ) => Lead | undefined {
-  let chain: Chain | undefined;
+  const sample = createLeadChain<World>();
   const views = new WeakMap<World, WorldView>();
   const view = (map: GameMap, world: World): WorldView => {
     let made = views.get(world);
@@ -77,14 +71,13 @@ export function createForward(): (
       return undefined;
     const map = mapOf(room),
       key = `${revision}:${room.matchId}:${folded.step}:${JSON.stringify(pending)}`;
-    if (chain?.key !== key || chain.worlds[0] !== folded)
-      chain = { key, worlds: [folded], ended: false };
-    const { worlds } = chain;
-    /** The world after `count` steps, or the last one before a step that decides something. */
-    const reach = (count: number): number => {
-      while (worlds.length <= count && !chain!.ended) {
-        const index = worlds.length - 1,
-          from = worlds[index]!;
+    const lead = sample({
+      key,
+      identity: folded,
+      start: () => folded,
+      tolerance: 0.001,
+      steps: () => Math.max(0, ahead) * STEPS_PER_TICK,
+      advance(from, _base, index) {
         // As the fold does: a tick's commands go to its first step, a bot's from the world as the tick begins.
         const commands =
           index % STEPS_PER_TICK === 0
@@ -101,29 +94,23 @@ export function createForward(): (
           next.winner !== NO_WINNER ||
           next.events.some((event) => DECIDES.has(event.type))
         )
-          chain!.ended = true;
-        else worlds.push(next);
-      }
-      return Math.min(count, worlds.length - 1);
-    };
-    const steps = Math.max(0, ahead) * STEPS_PER_TICK,
-      whole = Math.floor(steps + 0.001),
-      part = steps - whole,
-      at = reach(whole);
-    if (at === whole && part > 0.001 && reach(whole + 1) === whole + 1)
+          return;
+        return next;
+      },
+    });
+    if (lead.next)
       return {
-        world: view(map, worlds[whole + 1]!),
-        before: view(map, worlds[whole]!),
-        t: part,
+        world: view(map, lead.next),
+        before: view(map, lead.current),
+        t: lead.part,
       };
     return {
-      world: view(map, worlds[at]!),
-      before: at > 0 ? view(map, worlds[at - 1]!) : undefined,
+      world: view(map, lead.current),
+      before: lead.previous ? view(map, lead.previous) : undefined,
       t: 1,
     };
   };
 }
-
 /** Corrections decay with this time constant; a jump larger than `TELEPORT` sub-pixels (a respawn, a DASH, a BLINK) is shown as it is. */
 export const DECAY_MS = 45;
 
@@ -167,22 +154,17 @@ export function createSmoother(
     teleport,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    scope = "",
-    foldedStep = -1,
-    told: ReadonlyMap<number, string> = new Map();
+  const begin = createCorrectionFrames(smoother);
+  let told: ReadonlyMap<number, string> = new Map();
   return {
     apply(lead, key, nextRevision, nowMs, self, folded, orders) {
-      if (key !== scope) {
-        scope = key;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = folded !== foldedStep,
-        toldBefore = told;
-      revision = nextRevision;
-      foldedStep = folded;
+      const { rolled, stepped } = begin({
+        scope: key,
+        revision: nextRevision,
+        tick: folded,
+        nowMs,
+      });
+      const toldBefore = told;
       told = orders;
       const { world, before, t } = lead,
         was = new Map(before?.heroes.map((hero) => [hero.seat, hero]));

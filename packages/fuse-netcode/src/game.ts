@@ -20,6 +20,18 @@ export interface StreamEntries<Entry extends LogEntry = LogEntry> {
   retired?: readonly { generation: number; entries: readonly Entry[] }[];
 }
 
+/** Read the stream a seat follows. Current entries take priority over a matching retired stream. */
+export function entriesForGeneration<Entry extends LogEntry>(
+  stream: StreamEntries<Entry> | undefined,
+  generation: number | undefined,
+): readonly Entry[] {
+  const source =
+    stream?.generation === generation
+      ? stream
+      : stream?.retired?.find((retired) => retired.generation === generation);
+  return source?.entries ?? [];
+}
+
 /** One seat as the room runtime reads it: who sits there, whether the log has them connected, and the stream generation their controls follow. */
 export interface Seat {
   id: string;

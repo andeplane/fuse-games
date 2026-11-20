@@ -14,6 +14,7 @@ import * as T from "../src/engine/tuning.js";
 import {
   SCORING_CHOICES,
   createPointWatch,
+  matchOutcome,
   present,
   type Viewer,
 } from "../src/app/presenter.js";
@@ -21,11 +22,22 @@ import { loadArt, type ImageLoader } from "../src/app/art.js";
 import { createSfx } from "../src/app/audio.js";
 import { createGameAudio } from "fuse-ui/game-audio";
 import { createAudioRig } from "fuse-ui/game-audio-fake";
-import { advanced, cuesBetween } from "../src/render/cues.js";
+import { ACTION, JOIN, World as RollbackWorld } from "fuse-netcode";
+import {
+  advanced,
+  cuesBetween,
+  outcomeCuesBetween,
+} from "../src/render/cues.js";
 import { createJelly } from "../src/render/jelly.js";
-import { view, type BotInput } from "../src/online/game.js";
+import {
+  createFuseVolleyGame,
+  idleBot,
+  PLAY,
+  view,
+  type BotInput,
+} from "../src/online/game.js";
 import { fresh, rally, steps } from "./fixtures/world.js";
-import { fold, run, seated, started } from "./fixtures/room.js";
+import { finish, fold, run, seated, started } from "./fixtures/room.js";
 
 const viewer = (me: string, host = false): Viewer => ({
   me,
@@ -128,6 +140,113 @@ test("cues come from counters moving forward, once each", () => {
     cuesBetween(after, { ...before, step: before.step - 1 }),
     [],
     "a rollback to an earlier step says nothing",
+  );
+});
+
+test("a delayed save rolls back a predicted point before the controller or court can award it", () => {
+  const room = seated({
+    display: true,
+    scoring: "rally",
+    bot: 1,
+    format: "2v2",
+  });
+  fold(room, {
+    a: [
+      [JOIN, "c", "Cora", 2, "robot", 1],
+      [JOIN, "d", "Dani", 3, "cat", 1],
+      [ACTION, "start", "doubles"],
+    ],
+  });
+  assert.ok(room.world);
+  rally(room.world, room.world.blobs[1]!.x + 44, 410, 0, -260);
+  const before = toView(room.world);
+  const start = room.tick;
+  const game = new RollbackWorld(createFuseVolleyGame(idleBot), room, "a", "a");
+  for (const id of ["a", "b", "c", "d"]) game.stream(id, 1);
+  const client = viewer("a", true);
+  game.advance(start + 18);
+  const missed = game.view()[0]!;
+  assert.deepEqual(
+    missed.world!.score,
+    [1, 0],
+    "the speculative fold awards a point",
+  );
+  assert.equal(
+    present(missed, client, game.confirmedFrame() ?? null).status,
+    "Confirming score…",
+  );
+  assert.equal(outcomeCuesBetween(before, missed.world!)[0]?.kind, "point");
+  assert.ok(
+    !cuesBetween(before, missed.world!, false).some(
+      (cue) => cue.kind === "point",
+    ),
+  );
+
+  // A later packet arrived first. The gap means the missing earlier input may still save the rally.
+  game.receive(
+    "b",
+    [[2, start + 20, PLAY, room.matchId, 0]],
+    2,
+    start + 20,
+    start + 18,
+  );
+  const repaired = game.receive(
+    "b",
+    [[1, start + 1, PLAY, room.matchId, RIGHT | JUMP]],
+    2,
+    start + 20,
+    start + 18,
+  );
+  assert.ok(repaired.rollbackTicks > 0);
+  assert.deepEqual(game.view()[0]!.world!.score, [0, 0]);
+  for (const id of ["a", "b", "c", "d"])
+    game.receive(id, [], id === "b" ? 2 : 0, start + 64, start + 40);
+  game.advance(start + 60);
+  const confirmed = game.confirmedFrame();
+  assert.ok(confirmed?.world);
+  assert.deepEqual(confirmed.world.score, [0, 0]);
+  assert.match(present(game.view()[0]!, client, confirmed).status, /^0 – 0/);
+});
+
+test("an ended match shows results only after confirmation", () => {
+  const room = started();
+  const pending = view(room);
+  finish(room, 1);
+  const final = view(room);
+  assert.equal(present(final, viewer("a", true), pending).result, null);
+  assert.equal(
+    present(final, viewer("a", true), final).result?.title,
+    "YOU WIN!",
+  );
+  fold(room, { a: [[ACTION, "rematch", "m2"]] });
+  const rematch = view(room);
+  assert.notEqual(rematch.matchId, final.matchId);
+  assert.equal(matchOutcome(rematch, final, false), null);
+  assert.equal(matchOutcome(rematch, final, true), rematch);
+});
+
+test("King of the Court rates a confirmed rally by team totals even when a side rotates", () => {
+  const before = {
+    ...toView(fresh()),
+    format: "2v2v2",
+    phase: "rally",
+    points: [0, 5, 0],
+    score: [0, 5],
+  } satisfies WorldView;
+  const rotated = {
+    ...before,
+    phase: "serve",
+    step: before.step + 1,
+    points: [1, 5, 0],
+    score: [1, 0],
+    pointCounter: before.pointCounter + 1,
+    lastFault: 1,
+    onCourt: [0, 2],
+  } satisfies WorldView;
+  assert.equal(
+    outcomeCuesBetween(before, rotated).find((cue) => cue.kind === "point")
+      ?.scored,
+    true,
   );
 });
 

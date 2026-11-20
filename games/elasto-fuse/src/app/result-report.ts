@@ -1,8 +1,9 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  playerResultRows,
+  roomResultsBar,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
 } from "fuse-ui";
 import { clockText } from "../render/hud.js";
 import type { Model, ResultRow } from "./presenter.js";
@@ -100,30 +101,25 @@ export function resultReport(
   const tour = result.rounds > 1,
     winner = result.rows.find((row) => row.slot === result.winnerSlot),
     lead = winner?.time ?? null;
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.slot),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: tour
-      ? [
-          String(row.points),
-          `${row.maps} / ${result.rounds}`,
-          row.time === null ? NONE : clockText(row.time),
-          String(row.crashes),
-        ]
-      : [
-          time(row),
-          // How far behind the winner's time.
-          row.time === null || lead === null || row === winner
-            ? NONE
-            : `+${clockText(row.time - lead)}`,
-          String(row.crashes),
-        ],
-  }));
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.slot,
+    values: (row) =>
+      tour
+        ? [
+            String(row.points),
+            `${row.maps} / ${result.rounds}`,
+            row.time === null ? NONE : clockText(row.time),
+            String(row.crashes),
+          ]
+        : [
+            time(row),
+            // How far behind the winner's time.
+            row.time === null || lead === null || row === winner
+              ? NONE
+              : `+${clockText(row.time - lead)}`,
+            String(row.crashes),
+          ],
+  });
   const cards: ResultsHighlight[] = [];
   const card = (
     earned: readonly ResultRow[],
@@ -211,13 +207,5 @@ export function resultBar(result: Result): ResultsBar {
       ],
     };
   }
-  return {
-    ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "REMATCH", primary: true },
-        ]
-      : [],
-  };
+  return roomResultsBar(result);
 }

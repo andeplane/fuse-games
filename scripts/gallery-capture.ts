@@ -88,6 +88,16 @@ const RECIPES: Record<string, Recipe> = {
     );
     await page.keyboard.up("w");
   },
+  "fuse-particles": async (page) => {
+    await openPlayOptions(page, "single");
+    await page.getByRole("button", { name: /^start match$/i }).click();
+    await page.locator('.fuseParticles-room[data-phase="running"]').waitFor();
+    await page.waitForFunction(() => {
+      const clock =
+        document.querySelector(".fp-match .fp-arena time")?.textContent ?? "";
+      return /^0:[2-5][0-9]$/.test(clock);
+    });
+  },
   cyberfuse: async (page) => {
     await openPlayOptions(page, "single");
     const briefing = page.getByRole("dialog");
@@ -150,6 +160,32 @@ const RECIPES: Record<string, Recipe> = {
       });
       if (inAction) break;
     }
+  },
+  "incredible-fuse": async (page) => {
+    await openPlayOptions(page, "single");
+    const choice = page.getByRole("combobox", { name: "Puzzle" });
+    const showcase = await choice
+      .getByRole("option", { name: /Clocking out$/ })
+      .getAttribute("value");
+    if (!showcase) throw new Error("Packing-line puzzle is missing");
+    await choice.selectOption(showcase);
+    await page
+      .getByRole("button", { name: "Start puzzle", exact: true })
+      .click();
+    const board = page.getByRole("group", { name: "Machine workbench" });
+    await page.getByRole("button", { name: "Incline", exact: true }).click();
+    const bounds = await board.boundingBox();
+    if (!bounds) throw new Error("Workbench is missing");
+    await board.click({
+      position: {
+        x: (bounds.width * 110) / 640,
+        y: (bounds.height * 130) / 400,
+      },
+    });
+    await page
+      .getByRole("button", { name: "Run machine", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Rewind", exact: true }).waitFor();
   },
   "fuse-drivers": async (page) => {
     await openPlayOptions(page, "single");

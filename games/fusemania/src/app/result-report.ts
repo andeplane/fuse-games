@@ -1,4 +1,5 @@
 import {
+  playerResultRows,
   el,
   type ResultsBar,
   type ResultsHighlight,
@@ -142,16 +143,10 @@ export function resultReport(
   result: Result,
   parts: ReportParts,
 ): ResultsReport {
-  const songRows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.slot),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [row.grade, row.score, row.maxCombo],
-  }));
+  const songRows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.slot,
+    values: (row) => [row.grade, row.score, row.maxCombo],
+  });
   const songStandings = {
     nameLabel: "PLAYER",
     columns: ["GRADE", "SCORE %", "MAX COMBO"],

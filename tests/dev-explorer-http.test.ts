@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createTelemetryServices } from "../service/telemetry.js";
 import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import {
@@ -47,7 +47,14 @@ test("actual HTTP protects new routes and publishes a current proposal through t
     state: {
       recordingId,
       gameId: "dice",
-      items: [item],
+      // Put the proposal immediately after the route's first page.
+      items: [
+        ...Array.from({ length: 100 }, (_, index) => ({
+          ...item,
+          id: `${recordingId}_${index.toString(16).padStart(16, "0")}`,
+        })),
+        item,
+      ],
       processed: {},
       leaseSecrets: {},
       extractionLease: null,
@@ -56,6 +63,7 @@ test("actual HTTP protects new routes and publishes a current proposal through t
     result: undefined,
   }));
   let posts = 0;
+  let postedDraft: unknown;
   const services = createTelemetryServices({
     gameIds: ["dice"],
     now: () => now,
@@ -79,6 +87,7 @@ test("actual HTTP protects new routes and publishes a current proposal through t
         return Response.json({ login: "developer" });
       if (init?.method === "POST") {
         posts++;
+        postedDraft = JSON.parse(String(init.body));
         return Response.json({
           html_url: "https://github.com/andeplane/fuse-games/issues/123",
         });
@@ -125,6 +134,13 @@ test("actual HTTP protects new routes and publishes a current proposal through t
     403,
   );
   assert.equal((await request("/api/dev/catalog")).status, 200);
+  const unsupported = await request("/api/dev/events");
+  assert.equal(unsupported.status, 405);
+  assert.equal(unsupported.headers.get("Cache-Control"), "no-store");
+  assert.equal(
+    (await request("/api/dev/events", undefined, "fa1.fake")).status,
+    403,
+  );
   assert.equal(
     (
       await request("/api/dev/events", {
@@ -152,6 +168,13 @@ test("actual HTTP protects new routes and publishes a current proposal through t
     body: "Steps to reproduce without private evidence.",
   };
   assert.equal((await request("/api/dev/github/issues", draft)).status, 200);
+  const marker = createHash("sha256")
+    .update(`${actionId}:${draft.revision}`)
+    .digest("hex");
+  assert.deepEqual(postedDraft, {
+    title: draft.title,
+    body: `${draft.body}\n\n<!-- fuse-proposal:${marker} -->`,
+  });
   assert.equal(posts, 1);
   assert.equal(
     (await request("/api/dev/github/issues", { ...draft, revision: 0 })).status,

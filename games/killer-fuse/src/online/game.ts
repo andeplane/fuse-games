@@ -1,4 +1,5 @@
 import {
+  orderedSeats,
   ACTION,
   BOT,
   PRESENCE,
@@ -15,6 +16,8 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  createSeatListDecoder,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   BOT_LEVEL_ORDER,
@@ -302,10 +305,6 @@ export function createRoom(matchId: string, settings: Settings): Room {
   };
 }
 
-const seatOrder = (seats: Iterable<SeatRecord>) =>
-  [...seats].sort(
-    (a, b) => a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-  );
 /** The member seated in each slot, "" where nobody sits; with `connected`, only those here to play. */
 function crewOf(seats: Iterable<SeatRecord>, connected: boolean): string[] {
   const crew = Array.from({ length: CAPACITY }, () => "");
@@ -372,11 +371,8 @@ function sourceOf(
   streams: ReadonlyMap<string, StreamEntries<Entry>>,
 ): readonly Entry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return source?.entries ?? [];
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries;
 }
 
 /**
@@ -391,7 +387,7 @@ function applySeats(
   tick: number,
 ): void {
   if (room.stage === "running") return;
-  for (const seat of seatOrder(room.seats.values())) {
+  for (const seat of orderedSeats(room.seats.values())) {
     if (seat.watcher || !seat.connected) continue;
     const mine = (e: Entry): e is SeatEntry => e[2] === SEAT && e[1] === tick;
     for (const entry of sourceOf(seat, streams)
@@ -730,6 +726,11 @@ function decodeSeat(raw: unknown): SeatRecord | undefined {
   };
 }
 
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
+  decodeSeat,
+});
 function decodeRecord(raw: unknown, round: number): GameRecord | undefined {
   if (!list(raw, 8) || raw.length !== 8) return;
   const [number, mapId, team, kind, steps, tick, crew, present] = raw;
@@ -785,16 +786,8 @@ export function decode(
     !statPairs
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw),
-      taken = (s: SeatRecord) => !s.watcher && s.slot === seat?.slot;
-    if (!seat || seats.has(seat.id)) return;
-    if (!seat.watcher && [...seats.values()].some(taken)) return;
-    seats.set(seat.id, seat);
-  }
-  const watchers = [...seats.values()].filter((seat) => seat.watcher);
-  if (watchers.length > MAX_WATCHERS) return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   // Game by game from the first; the score is counted from them. A decided set plays no further game, so only the
   // latest result may reach the games a set takes.
   const results: GameRecord[] = [],
@@ -920,7 +913,7 @@ export function view(room: Room): View {
     ...structuredClone(rest),
     tick: tick * STEPS_PER_TICK,
     logTick: tick,
-    seats: structuredClone(seatOrder(seats.values())),
+    seats: structuredClone(orderedSeats(seats.values())),
     crew: pilots(room),
     world: world && {
       ...viewOf(world),
@@ -951,7 +944,7 @@ export const killerFuseGame: RollbackGame<
   view,
   hash,
   checkpoint,
-  members: (room) => seatOrder(room.seats.values()),
+  members: (room) => orderedSeats(room.seats.values()),
   seat: (room, id) => room.seats.get(id),
   stage: (room) => room.stage,
   settings: (room) => room.settings,

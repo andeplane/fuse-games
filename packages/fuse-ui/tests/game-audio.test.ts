@@ -30,6 +30,33 @@ test("an effects-only bus exposes no disconnected music volume control", () => {
   control.destroy();
 });
 
+test("the sound control keeps its menu, volume and master switch in sync", () => {
+  const { document, window } = page();
+  const audio = createGameAudio(createAudioRig().deps);
+  const control = createAudioControl(document, audio, { music: false });
+  const more =
+    control.element.querySelector<HTMLButtonElement>(".fui-audio-more")!;
+  const toggle =
+    control.element.querySelector<HTMLButtonElement>(".fui-audio-toggle")!;
+  const panel = control.element.querySelector<HTMLElement>(".fui-audio-panel")!;
+  const slider = panel.querySelector<HTMLInputElement>("input")!;
+  let updates = 0;
+  const stop = control.sound.onChange?.(() => updates++);
+  more.click();
+  assert.equal(panel.hidden, false);
+  assert.equal(more.getAttribute("aria-expanded"), "true");
+  slider.value = "35";
+  slider.dispatchEvent(new window.Event("input"));
+  assert.equal(audio.prefs.effects, 0.35);
+  toggle.click();
+  assert.equal(control.sound.enabled(), false);
+  control.sound.setEnabled(true);
+  assert.equal(toggle.getAttribute("aria-pressed"), "false");
+  assert.ok(updates >= 3);
+  stop?.();
+  control.destroy();
+});
+
 /** Runs a handler the way the browser would: with the element as `this` and an event. */
 function fire(el: MusicElement, which: "onended" | "onerror") {
   el[which]?.call(el as unknown as GlobalEventHandlers, new Event("x"));

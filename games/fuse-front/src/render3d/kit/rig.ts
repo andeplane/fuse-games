@@ -6,8 +6,7 @@
  */
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { shade, type Model, type Paint } from "../models.js";
+import { bakePaintGroups, type Model, type Paint } from "../models.js";
 import { labelAspect, labelUv, type Label } from "./decals.js";
 
 export type Detail = "near" | "far";
@@ -40,17 +39,18 @@ export class Rig {
   /** Places `g` at `p`, turned by `r` (XYZ Euler) in this frame; the far model drops it if it is tiny. */
   add(paint: Paint, g: THREE.BufferGeometry, p: V3 = O, r: V3 = O): this {
     g.applyMatrix4(this.frame.clone().multiply(local(p, r, [1, 1, 1])));
-    g.computeBoundingSphere();
-    // Far away bare metal and gunmetal read as the dark frame: two draw calls fewer.
-    const as =
-      this.far && (paint === "steel" || paint === "gun") ? "dark" : paint;
-    if (this.far && g.boundingSphere!.radius < FAR_MIN) {
-      g.dispose();
-      return this;
+    if (this.far) {
+      g.computeBoundingSphere();
+      if (g.boundingSphere!.radius < FAR_MIN) {
+        g.dispose();
+        return this;
+      }
+      // Far away bare metal and gunmetal share a draw call with the dark frame.
+      if (paint === "steel" || paint === "gun") paint = "dark";
     }
-    const batch = this.parts.get(as);
+    const batch = this.parts.get(paint);
     if (batch) batch.push(g);
-    else this.parts.set(as, [g]);
+    else this.parts.set(paint, [g]);
     return this;
   }
 
@@ -138,13 +138,6 @@ export class Rig {
 
   /** Merges each paint's parts into one geometry with grime baked in (darker toward `floor`, worn bright edges). */
   bake(floor = 0, span = 0.35): Model {
-    return [...this.parts].map(([paint, list]) => {
-      const flat = list.map((g) => shade(g.index ? g.toNonIndexed() : g, floor, span));
-      for (const g of flat) g.clearGroups();
-      const geometry = mergeGeometries(flat)!;
-      for (const g of new Set([...list, ...flat])) g.dispose();
-      geometry.computeBoundingBox();
-      return { paint, geometry };
-    });
-  } // prettier-ignore
+    return bakePaintGroups(this.parts, floor, span);
+  }
 }
