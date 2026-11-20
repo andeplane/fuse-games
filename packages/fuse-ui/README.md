@@ -76,7 +76,7 @@ Fuse Riders loads both files, without `fui-app` (its page has its own base style
 
 ## Menu patterns
 
-The shared top-right Game menu owns Player options (device preferences) and Radio (opt-in playback and track selection).
+The shared top-right Game menu owns Player options (device preferences) and Radio (playback and track selection). Radio starts after the first interaction by default and remembers an explicit pause.
 Put audio levels in Player options and bind the header Sound shortcut to the same master state. Games contribute their
 device controls through `createTopBar`'s `playerOptions` factory and can supply their own radio transport through
 `radioControls`. Keep match rules in Room settings. A contextual editing shortcut reuses the same preference and

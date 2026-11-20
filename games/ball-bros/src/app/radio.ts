@@ -5,6 +5,7 @@ export interface Radio {
   element: HTMLElement;
   enable(value: boolean): void;
   setMuted(muted: boolean): void;
+  unlock(): void;
   destroy(): void;
 }
 /** Game-specific controls over the common music player and full default catalogue. */
@@ -18,6 +19,7 @@ export function createRadio(
       setItem(key: string, value: string): void;
     };
     preview?: boolean;
+    playOnUnlock?: boolean;
   } = {},
 ) {
   const element = document.createElement("div"),
@@ -31,8 +33,13 @@ export function createRadio(
   next.setAttribute("aria-label", "Next radio track");
   title.setAttribute("aria-live", "polite");
   element.append(button, title, next);
+  const pausedKey = "ball-bros-radio-paused";
   const player = createMusicPlayer(ALL_SONGS, {
     base: baseUrl,
+    muted: options.preview,
+    playOnUnlock:
+      options.playOnUnlock && options.store?.getItem(pausedKey) !== "true",
+    retryOnGesture: options.playOnUnlock,
     createMedia: () => media,
   });
   const volumeControl = document.createElement("label");
@@ -62,9 +69,11 @@ export function createRadio(
     options.store?.setItem(key, String(nextLevel));
   };
   let enabled = true;
+  let masterMuted = false;
+  const applyMute = () => player.setMuted(!enabled || masterMuted);
   volume.disabled = button.disabled = next.disabled = Boolean(options.preview);
   const render = () => {
-    button.textContent = player.playing ? "RADIO ON" : "RADIO OFF";
+    button.textContent = enabled && player.playing ? "RADIO ON" : "RADIO OFF";
     title.textContent = enabled
       ? player.error || player.song?.title || ""
       : "Use the radio on the shared TV.";
@@ -75,6 +84,7 @@ export function createRadio(
     if (enabled && !options.preview) {
       if (player.playing) player.pause();
       else player.play();
+      options.store?.setItem(pausedKey, String(!player.playing));
     }
   };
   next.onclick = () => {
@@ -86,13 +96,18 @@ export function createRadio(
   return {
     element,
     volumeControl,
-    setMuted: (value: boolean) =>
-      player.setMuted(value || Boolean(options.preview)),
+    unlock() {
+      if (enabled) player.unlock();
+    },
+    setMuted(value: boolean) {
+      masterMuted = value;
+      applyMute();
+    },
     enable(value: boolean) {
       enabled = value;
       button.disabled = next.disabled = !value || Boolean(options.preview);
       volumeControl.hidden = !value;
-      if (!value) player.pause();
+      applyMute();
       render();
     },
     destroy() {

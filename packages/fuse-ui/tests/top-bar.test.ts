@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createGameMenu, createTopBar, openTopBarRadio } from "fuse-ui";
-import { page } from "./dom-fixture.js";
+import { event, page } from "./dom-fixture.js";
 import { ALL_SONGS } from "fuse-music";
 import type { MusicPlayer } from "../src/radio.js";
 
@@ -84,7 +84,7 @@ test("the Radio shortcut opens the shared header and choosing Report dismisses i
 });
 
 test("the default radio survives header replacement without constructing a second player", () => {
-  const { document } = page();
+  const { document, window } = page();
   let creates = 0,
     plays = 0,
     paused = true;
@@ -117,7 +117,7 @@ test("the default radio survives header replacement without constructing a secon
     first.querySelectorAll(".fui-radio option").length,
     ALL_SONGS.length,
   );
-  first.querySelector<HTMLButtonElement>(".fui-radio button")!.click();
+  document.dispatchEvent(event(window, "keydown"));
   assert.equal(creates, 1);
   assert.equal(plays, 1);
   const second = document.createElement("header");
