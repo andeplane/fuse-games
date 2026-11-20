@@ -233,6 +233,10 @@ test("portal entry: required fields, a #rrggbb accent and a default order", () =
   };
   assert.deepEqual(parsePortalEntry(good), { ...good, order: 100 });
   assert.equal(parsePortalEntry({ ...good, order: 2 })?.order, 2);
+  assert.equal(
+    parsePortalEntry({ ...good, releaseDate: "2024-02-29" })?.releaseDate,
+    "2024-02-29",
+  );
   for (const bad of [
     null,
     "Fuse Freight",
@@ -242,6 +246,10 @@ test("portal entry: required fields, a #rrggbb accent and a default order", () =
     { ...good, accent: "red" },
     { ...good, accent: "#fff" },
     { ...good, order: "1" },
+    { ...good, releaseDate: "2026-02-29" },
+    { ...good, releaseDate: "2026-13-01" },
+    { ...good, releaseDate: "2026-1-01" },
+    { ...good, releaseDate: "2026-09-14T00:00:00Z" },
   ])
     assert.equal(parsePortalEntry(bad), null, JSON.stringify(bad));
 });

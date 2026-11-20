@@ -53,6 +53,10 @@ function pad(value: number): string {
   return value < 10 ? `0${value}` : String(value);
 }
 
+export function formatCalendarDate(date: Date): string {
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
 /**
  * "Last played" as the old client said it: "Never", "Today, 14:02", "Yesterday", "3 days ago", then the date.
  * Rendered in UTC so the text does not depend on the machine's zone (the stored value is a UTC timestamp).
@@ -69,7 +73,7 @@ export function formatLastPlayed(
     return `Today, ${pad(played.getUTCHours())}:${pad(played.getUTCMinutes())}`;
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days} days ago`;
-  return `${played.getUTCDate()} ${MONTHS[played.getUTCMonth()]} ${played.getUTCFullYear()}`;
+  return formatCalendarDate(played);
 }
 
 /** A plausible, stable "disk usage" for a game: nothing is installed, so it is a hash of the id between 180 and 980 MB. */

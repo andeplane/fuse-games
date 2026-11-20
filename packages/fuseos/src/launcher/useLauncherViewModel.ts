@@ -17,7 +17,9 @@ import { LauncherDepsContext } from "./launcherDepsContext";
 import { fakeDiskUsage, LAUNCHER_TITLE } from "./launcherFacts";
 
 export type LauncherTab = "games" | "friends" | "servers" | "news";
-type LauncherSort = "name" | "newest" | "oldest";
+type DateColumn = "lastPlayed" | "releaseDate";
+type LauncherSort =
+  { column: "name" } | { column: DateColumn; direction: "newest" | "oldest" };
 type GameTier = "AAA" | "B";
 
 const AAA_GAME_IDS = new Set([
@@ -51,6 +53,7 @@ export type LauncherGame = {
   /** The game's own page, for the LINKS column. */
   url: string;
   lastPlayed: number | undefined;
+  releaseDate: string | undefined;
 };
 
 export type LauncherDetails = {
@@ -88,7 +91,7 @@ export type LauncherViewModel = {
   now: number;
   sort: LauncherSort;
   sortByName: () => void;
-  toggleLastPlayedSort: () => void;
+  toggleDateSort: (column: DateColumn) => void;
   selected: LauncherGame | undefined;
   details: LauncherDetails | undefined;
   select: (gameId: string) => void;
@@ -119,20 +122,26 @@ export function useLauncherViewModel(): LauncherViewModel {
   const { viewport } = useContext(WindowManagerContext);
   const { launch } = useFuseGameLauncher();
 
-  const [sort, setSort] = useState<LauncherSort>("newest");
+  const [sort, setSort] = useState<LauncherSort>({
+    column: "lastPlayed",
+    direction: "newest",
+  });
   const [lastPlayed, setLastPlayed] = useState(() =>
     launcherDeps.lastPlayed.get(),
   );
   const { games, groups } = useMemo(() => {
     const sorted = [...registry.games]
       .sort((a, b) => {
-        if (sort === "name") return a.name.localeCompare(b.name);
-        const first = lastPlayed[a.id];
-        const second = lastPlayed[b.id];
+        if (sort.column === "name") return a.name.localeCompare(b.name);
+        const first =
+          sort.column === "lastPlayed" ? lastPlayed[a.id] : a.releaseDate;
+        const second =
+          sort.column === "lastPlayed" ? lastPlayed[b.id] : b.releaseDate;
         if (first === second) return 0;
         if (first === undefined) return 1;
         if (second === undefined) return -1;
-        return sort === "oldest" ? first - second : second - first;
+        const ascending = first < second ? -1 : 1;
+        return sort.direction === "oldest" ? ascending : -ascending;
       })
       .map((game) => ({
         id: game.id,
@@ -145,6 +154,7 @@ export function useLauncherViewModel(): LauncherViewModel {
         screenshotUrls: registry.screenshotUrls(game),
         url: registry.embedUrl(game),
         lastPlayed: lastPlayed[game.id],
+        releaseDate: game.releaseDate,
       }));
     const groups: LauncherGroup[] = [
       {
@@ -262,9 +272,15 @@ export function useLauncherViewModel(): LauncherViewModel {
     groups,
     now: desktopDeps.now(),
     sort,
-    sortByName: () => setSort("name"),
-    toggleLastPlayedSort: () =>
-      setSort((current) => (current === "newest" ? "oldest" : "newest")),
+    sortByName: () => setSort({ column: "name" }),
+    toggleDateSort: (column) =>
+      setSort((current) => ({
+        column,
+        direction:
+          current.column === column && current.direction === "newest"
+            ? "oldest"
+            : "newest",
+      })),
     selected,
     details,
     select,
