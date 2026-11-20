@@ -1,11 +1,11 @@
 import {
+  createTopResultHighlight,
   el,
-  type ResultsBar,
   type ResultsHighlight,
   type ResultsReport,
   type ResultsRow,
 } from "fuse-ui";
-import type { ResultModel, ResultRow } from "./presenter.js";
+import type { ResultModel } from "./presenter.js";
 
 /** What the page lends the report: a team's colour and the friend buttons. */
 export interface ReportParts {
@@ -32,20 +32,11 @@ export function resultReport(
     values: [String(row.kills), String(row.deaths), String(row.berries)],
   }));
   const cards: ResultsHighlight[] = [];
-  /** A card for whoever has the most of something, when anybody has any. */
-  const most = (
-    pick: (row: ResultRow) => number,
-    card: (best: number) => Omit<ResultsHighlight, "winners">,
-  ) => {
-    const best = Math.max(0, ...result.rows.map(pick));
-    if (best > 0)
-      cards.push({
-        ...card(best),
-        winners: result.rows
-          .filter((row) => pick(row) === best)
-          .map((row) => ({ name: row.name, color: parts.color(row.team) })),
-      });
-  };
+  const most = createTopResultHighlight(
+    result.rows,
+    (row) => parts.color(row.team),
+    cards,
+  );
   most(
     (row) => row.kills,
     (best) => ({
@@ -99,14 +90,4 @@ export function resultReport(
 }
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
-export function resultBar(result: ResultModel): ResultsBar {
-  return {
-    ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "REMATCH", primary: true },
-        ]
-      : [],
-  };
-}
+export { roomResultsBar as resultBar } from "fuse-ui";

@@ -1,10 +1,11 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  createTopResultHighlight,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
+  type ResultsRow,
 } from "fuse-ui";
-import type { ResultModel, ResultRow } from "./presenter.js";
+import type { ResultModel } from "./presenter.js";
 import { courseLabel } from "./course-label.js";
 
 /** What the page lends the report: a truck's colour and the friend buttons. */
@@ -45,20 +46,11 @@ export function resultReport(
     ],
   }));
   const cards: ResultsHighlight[] = [];
-  /** A card for whoever has the most of something, when anybody has any. */
-  const most = (
-    pick: (row: ResultRow) => number,
-    card: (best: number) => Omit<ResultsHighlight, "winners">,
-  ) => {
-    const best = Math.max(0, ...result.rows.map(pick));
-    if (best > 0)
-      cards.push({
-        ...card(best),
-        winners: result.rows
-          .filter((row) => pick(row) === best)
-          .map((row) => ({ name: row.name, color: parts.color(row.truck) })),
-      });
-  };
+  const most = createTopResultHighlight(
+    result.rows,
+    (row) => parts.color(row.truck),
+    cards,
+  );
   most(
     (row) => row.lapsLed,
     (best) => ({
