@@ -3,16 +3,14 @@ import {
   type GameplayOptions,
 } from "../options/index.js";
 import { CAMPAIGNS, DOGFIGHTS, WEAPONS } from "../campaign/index.js";
+import { validPlayerName as validName } from "fuse-platform/player-name";
+
+export { validName };
+
 export { CAPACITY } from "../capacity.js";
 export const MAX_WATCHERS = 7;
 export const isBotId = (id: string): boolean =>
   /^bot:[1-9][0-9]{0,5}$/.test(id);
-export const validName = (raw: unknown): raw is string =>
-  typeof raw === "string" &&
-  !!raw &&
-  raw.trim() === raw &&
-  [...raw].length <= 18 &&
-  !/[\u0000-\u001f\u007f]|\p{Cs}/u.test(raw);
 export function seatName(raw: string): string | undefined {
   const name = [...raw.trim()].slice(0, 18).join("").trim();
   return validName(name) ? name : undefined;

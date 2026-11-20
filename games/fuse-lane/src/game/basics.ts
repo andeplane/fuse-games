@@ -1,10 +1,15 @@
 /**
- * Fuse Lane's constants and id rules, with no imports: the room service's registration (`../platform.ts`) reads them
+ * Fuse Lane's constants and id rules, with the shared name policy. The room service's registration (`../platform.ts`) reads them
  * without loading the netcode or the rules.
  */
+
+export {
+  validPlayerName as validName,
+  MAX_PLAYER_NAME as MAX_NAME,
+} from "fuse-platform/player-name";
+
 /** Seats per room: 2–5 players, bots included. */
 export const CAPACITY = 5;
-export const MAX_NAME = 18;
 
 /** Log ticks are the fixed 50 ms clock: 20 per second. */
 export const TICKS_PER_SECOND = 20;
@@ -26,20 +31,6 @@ export const MAX_NET_WORTH = 100_000_000;
 export const GOAL_MIN = 10,
   GOAL_MAX = 100,
   GOAL_DEFAULT = 50;
-
-const CONTROL = /[\u0000-\u001f\u007f]/;
-const LONE_SURROGATE = /\p{Cs}/u;
-/** The account name rule every game shares: trimmed, 1–18 code points, no control characters or half surrogate pairs. */
-export function validName(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value === value.trim() &&
-    Array.from(value).length <= MAX_NAME &&
-    !CONTROL.test(value) &&
-    !LONE_SURROGATE.test(value)
-  );
-}
 
 export const BOT_PREFIX = "bot:";
 export const isBotId = (id: string): boolean => /^bot:[0-9]{1,6}$/.test(id);
