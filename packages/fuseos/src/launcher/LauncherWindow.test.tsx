@@ -130,7 +130,7 @@ describe("LauncherWindow", () => {
     expect(
       rows.map((row) => row.querySelector(".fst-row-name")?.textContent),
     ).toEqual(["Fuseball", "Fuse Riders", "Fuse Birds"]);
-    expect(rows[0]).toHaveAccessibleDescription("Never");
+    expect(rows[0]).toHaveAccessibleDescription("Never Release date unknown");
     expect(inside.getByRole("option", { name: "Fuseball" })).toBe(rows[0]);
     expect(rows[0]).toHaveAttribute("aria-selected", "true");
     expect(rows[0]?.querySelector("img")).toHaveAttribute(
@@ -341,9 +341,11 @@ describe("LauncherWindow", () => {
     expect(rows()).toEqual([riders, ball, choppers, birds]);
     expect(byDate).toHaveAttribute("aria-pressed", "true");
     expect(riders).toHaveAttribute("aria-selected", "true");
-    expect(riders).toHaveAccessibleDescription("Today, 08:00");
-    expect(ball).toHaveAccessibleDescription("Yesterday");
-    expect(birds).toHaveAccessibleDescription("Never");
+    expect(riders).toHaveAccessibleDescription(
+      "Today, 08:00 Release date unknown",
+    );
+    expect(ball).toHaveAccessibleDescription("Yesterday Release date unknown");
+    expect(birds).toHaveAccessibleDescription("Never Release date unknown");
 
     expect(byDate).toHaveAccessibleDescription("Newest first");
     await user.click(byDate);
@@ -370,11 +372,57 @@ describe("LauncherWindow", () => {
     );
     expect(rows()).toEqual([riders, ball, birds, choppers]);
     expect(birds).toHaveAttribute("aria-selected", "true");
-    expect(birds).toHaveAccessibleDescription("Today, 12:34");
+    expect(birds).toHaveAccessibleDescription(
+      "Today, 12:34 Release date unknown",
+    );
 
     now = Date.UTC(1998, 5, 26);
     await user.click(ball);
-    expect(birds).toHaveAccessibleDescription("Yesterday");
+    expect(birds).toHaveAccessibleDescription("Yesterday Release date unknown");
+  });
+
+  it("shows calendar release dates and sorts them within tiers, with unknown dates last", async () => {
+    const user = userEvent.setup();
+    const releases: Record<string, string> = {
+      fuseball: "2026-11-14",
+      "fuse-riders": "2026-09-14",
+      "fuse-birds": "2026-10-15",
+    };
+    const { inside } = renderLauncher({
+      games: [
+        ...FIXTURE_GAMES.map((game) => ({
+          ...game,
+          releaseDate: releases[game.id],
+        })),
+        {
+          id: "elasto-fuse",
+          name: "Elasto Fuse",
+          tagline: "Springy bike trials",
+          mark: "EF",
+          accent: "#ffcc00",
+          order: 4,
+          path: "elastofuse/",
+        },
+      ],
+    });
+    const list = within(inside.getByRole("listbox", { name: "My Games" }));
+    const ball = list.getByRole("option", { name: "Fuseball" });
+    const riders = list.getByRole("option", { name: "Fuse Riders" });
+    const elasto = list.getByRole("option", { name: "Elasto Fuse" });
+    const birds = list.getByRole("option", { name: "Fuse Birds" });
+    const sort = inside.getByRole("button", { name: "Sort by release date" });
+    expect(riders.querySelector("time")).toHaveAttribute(
+      "datetime",
+      "2026-09-14",
+    );
+    expect(riders).toHaveAccessibleDescription("Never Released 14 Sep 2026");
+    await user.click(sort);
+    expect(list.getAllByRole("option")).toEqual([ball, riders, elasto, birds]);
+    expect(sort).toHaveAccessibleDescription("Newest first");
+    await user.keyboard("{Enter}");
+    expect(list.getAllByRole("option")).toEqual([riders, ball, elasto, birds]);
+    expect(sort).toHaveAccessibleDescription("Oldest first");
+    expect(ball).toHaveAttribute("aria-selected", "true");
   });
 
   it("opens Fuse Messenger and Network Neighborhood from their tabs, dialling in first, and stays on My Games", async () => {
