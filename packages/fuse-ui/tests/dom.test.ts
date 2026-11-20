@@ -123,6 +123,8 @@ test("DOM components stay self-contained; browser adapters use explicit shared b
         "music.ts": ["fuse-music"],
         "radio.ts": ["fuse-music"],
         "top-bar.ts": ["fuse-music"],
+        // The account-name adapter uses the platform's dependency-free name policy.
+        "account-name.ts": ["fuse-platform/player-name"],
         "friends-client.ts": ["fuse-platform/friends-api"],
         // Messenger is a browser HTTP adapter over the same platform-owned wire contracts.
         "messenger-client.ts": [

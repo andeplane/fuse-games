@@ -18,7 +18,6 @@ import {
   CAPACITY,
   GOAL_MAX,
   GOAL_MIN,
-  MAX_NAME,
   TICKS_PER_SECOND,
   WEEK_SECONDS,
   WEEK_UNITS,
@@ -50,6 +49,9 @@ import {
 import { createPlayer, defaultGoals, type Goals } from "./state.js";
 import { endWeek } from "./week.js";
 import { startingShelf } from "./resale.js";
+
+export { seatPlayerName as seatName } from "fuse-platform/player-name";
+
 export * from "./basics.js";
 export * from "./room.js";
 
@@ -124,16 +126,6 @@ export const DEFAULT_SETTINGS: FuseLaneSettings = {
 /** Bot levels: easy, normal, hard. */
 export const LEVELS = ["Easy", "Normal", "Hard"] as const;
 
-const CONTROL = /[\u0000-\u001f\u007f]/;
-/** What a player typed, as it is seated: trimmed and cut to `MAX_NAME` code points, or refused. */
-export function seatName(raw: string): string | undefined {
-  if (CONTROL.test(raw)) return;
-  const name = Array.from(raw.replace(/\p{Cs}/gu, "").trim())
-    .slice(0, MAX_NAME)
-    .join("")
-    .trim();
-  return validName(name) ? name : undefined;
-}
 export const AVATARS = [
   "robot",
   "cat",

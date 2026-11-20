@@ -1,3 +1,4 @@
+import { seatPlayerName } from "../packages/fuse-platform/src/player-name.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -27,4 +28,11 @@ test("shared username UI agrees with existing engine and backend name rules", ()
     assert.equal(validAccountName(name), validDriverName(name), name);
     assert.equal(suggestAccountName(name), suggestRiderName(name), name);
   }
+});
+
+test("shared seating strips lone surrogates and preserves the code-point limit", () => {
+  const foxes = "🦊".repeat(17);
+  assert.equal(seatPlayerName(" \ud800" + foxes + " y "), foxes);
+  assert.equal(seatPlayerName("🦊".repeat(19)), "🦊".repeat(18));
+  assert.equal(seatPlayerName("x".repeat(19) + "\u007f"), undefined);
 });

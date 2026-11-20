@@ -59,6 +59,12 @@ import {
   parseHistoryReceipts,
   type HistoryReceipt,
 } from "fuse-platform/history-api";
+import {
+  seatPlayerName as seatName,
+  validPlayerName as validName,
+} from "fuse-platform/player-name";
+
+export { seatName, validName };
 
 /**
  * Fuse Front behind the netcode's `RollbackGame`. The room keeps the seats, the match and its world. Seats are slots
@@ -154,24 +160,6 @@ export const BOT_PREFIX = "bot:";
 export const BOT_NAMES = "Rivet Sprocket Tread Bolt Gasket Piston".split(" ");
 
 // ---- names and ids ----
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
-/** Trimmed, 1–18 code points, no control characters or lone surrogates (the rule every Fuse game shares). */
-export const validName = (value: unknown): value is string =>
-  typeof value === "string" &&
-  value.length > 0 &&
-  value.length <= 36 &&
-  value === value.trim() &&
-  Array.from(value).length <= 18 &&
-  !CONTROL_CHARS.test(value) &&
-  !/\p{Cs}/u.test(value);
-export function seatName(raw: string): string | undefined {
-  if (CONTROL_CHARS.test(raw)) return;
-  const name = Array.from(raw.replace(/\p{Cs}/gu, "").trim())
-    .slice(0, 18)
-    .join("")
-    .trim();
-  return validName(name) ? name : undefined;
-}
 export const validMatchId = (value: unknown): value is string =>
   typeof value === "string" && /^[\x21-\x7e]{1,64}$/.test(value);
 /** A member id safe as a record key: never one of `Object.prototype`'s names. */
