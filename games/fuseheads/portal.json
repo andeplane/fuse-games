@@ -1,0 +1,12 @@
+{
+  "name": "Fuseheads",
+  "tagline": "Bonk the platforms. Kick the pests. Save the underworld.",
+  "mark": "FH",
+  "accent": "#84c34a",
+  "screenshot": "gallery/fuseheads.jpg",
+  "screenshots": [
+    "gallery/fuseheads.jpg",
+    "gallery/fuseheads-menu.jpg",
+    "gallery/fuseheads-controls.jpg"
+  ]
+}
