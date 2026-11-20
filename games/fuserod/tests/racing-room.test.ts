@@ -1,0 +1,486 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  ACTION,
+  JOIN,
+  BOT,
+  PRESENCE,
+  SETTINGS,
+  type StreamEntries,
+} from "fuse-netcode";
+import {
+  DEFAULT_SETTINGS,
+  COUNTDOWN_TICKS,
+  MAX_RACE_TICKS,
+  createRoom,
+  decodeRoom,
+  encodeRoom,
+  foldTick,
+  fuserodView,
+  hashRoom,
+  isEntry,
+  parseSettings,
+  type FuserodRoom,
+  type FuserodSettings,
+  type FuserodEntry,
+} from "../src/game/index.js";
+import { fuserodRegistration } from "../src/platform.js";
+const empty = new Map<string, StreamEntries<FuserodEntry>>();
+function setup(
+  bot = true,
+  settings: FuserodSettings = DEFAULT_SETTINGS,
+  matchId = "heat",
+) {
+  const r = createRoom("lobby", settings);
+  const entries: FuserodEntry[] = [[1, 1, JOIN, "a", "Ada", 0, "robot", 1]];
+  if (bot) entries.push([2, 1, BOT, "add", "bot:1", "Jet", 1]);
+  entries.push([3, 1, ACTION, "start", matchId]);
+  foldTick(r, "a", new Map([["a", { generation: 1, entries }]]));
+  return r;
+}
+function run(room: FuserodRoom, ticks: number) {
+  for (let i = 0; i < ticks; i++) foldTick(room, "a", empty);
+}
+function restore(r: FuserodRoom) {
+  const restored = decodeRoom(encodeRoom(r), r.tick);
+  assert.ok(restored);
+  assert.equal(hashRoom(restored), hashRoom(r));
+  return restored;
+}
+test("one room heat runs countdown, ordinary bot controls, two receipts and rematch", () => {
+  const r = setup();
+  assert.equal(r.stage, "running");
+  run(r, r.race!.treeTicks - 1);
+  assert.equal(fuserodView(r).raceTicks, 0);
+  assert.equal(r.race!.racers[1]!.motor.position, 0);
+  while (r.stage === "running" && r.tick <= MAX_RACE_TICKS + COUNTDOWN_TICKS)
+    run(r, 1);
+  assert.equal(r.stage, "over");
+  assert.equal(r.race!.winnerId, "bot:1");
+  assert.deepEqual(
+    r.history.map((h) => [h.result.matchId, h.result.round, h.result.winnerId]),
+    [
+      ["heat", 1, "bot:1"],
+      ["heat", undefined, "bot:1"],
+    ],
+  );
+  assert.deepEqual(r.history[1]!.result.finishers, ["a"]);
+  assert.ok(fuserodRegistration.validField(r.history[0]!.result.players));
+  assert.ok(
+    r.history[0]!.result.players.every((p) =>
+      fuserodRegistration.parseStats(p, 1),
+    ),
+  );
+  const restored = restore(r);
+  const entry: FuserodEntry = [4, r.tick + 1, ACTION, "rematch", "heat2"];
+  foldTick(
+    restored,
+    "a",
+    new Map([["a", { generation: 1, entries: [entry] }]]),
+  );
+  assert.equal(restored.race!.elapsed, 1);
+  assert.equal(restored.matchId, "heat2");
+  assert.equal(restored.race!.racers[0]!.motor.position, 0);
+  assert.equal(restored.history.length, 2);
+});
+test("one seat time trial, held launch and release, checkpoint replay and heat fencing", () => {
+  const r = setup(false);
+  const entries: FuserodEntry[] = [
+    [4, 2, 0, "heat", true, false, 0, 1],
+    [5, 2, 0, "heat", true, false, 0, 0],
+    [6, 2, 0, "stale", false, true, 1, -1],
+    [7, 2, SETTINGS, { ...DEFAULT_SETTINGS, route: "canyon", variant: "duel" }],
+  ];
+  foldTick(r, "a", new Map([["a", { generation: 1, entries }]]));
+  assert.equal(r.race!.racers[0]!.input.shift, 1);
+  run(r, 100);
+  assert.equal(r.race!.settings.route, "strip");
+  assert.ok(r.race!.racers[0]!.motor.position > 0);
+  const resume = restore(r);
+  const release: FuserodEntry = [8, r.tick + 1, 0, "heat", false, true, -1, 0];
+  for (const state of [r, resume]) {
+    foldTick(
+      state,
+      "a",
+      new Map([["a", { generation: 1, entries: [release] }]]),
+    );
+    run(state, 11);
+  }
+  assert.deepEqual(fuserodView(r), fuserodView(resume));
+  assert.equal(hashRoom(r), hashRoom(resume));
+  assert.equal(r.race!.racers[0]!.input.throttle, false);
+  assert.equal(r.race!.racers[0]!.input.brake, true);
+});
+test("generation replacement clears held pedals and ignores a retired driver's later inputs", () => {
+  const r = setup(false);
+  foldTick(
+    r,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[4, 2, 0, "heat", true, false, 1, 1]] }],
+    ]),
+  );
+  foldTick(
+    r,
+    "a",
+    new Map([
+      [
+        "a",
+        {
+          generation: 2,
+          entries: [[1, 3, PRESENCE, "a", true, 2]],
+          retired: [
+            { generation: 1, entries: [[5, 3, 0, "heat", true, false, 1, 0]] },
+          ],
+        },
+      ],
+    ]),
+  );
+  assert.deepEqual(r.race!.racers[0]!.input, {
+    throttle: false,
+    brake: false,
+    steer: 0,
+    shift: 0,
+  });
+});
+test("corrupt motor, sorted grid and elapsed bounds reject recovery without changing the healthy room", () => {
+  const r = setup();
+  run(r, 100);
+  const before = hashRoom(r);
+  for (const bad of [
+    { ...r.race, elapsed: 5000 },
+    { ...r.race, layout: 1 },
+    { ...r.race, racers: [r.race!.racers[0], r.race!.racers[0]] },
+    {
+      ...r.race,
+      racers: [
+        {
+          ...r.race!.racers[0],
+          motor: { ...r.race!.racers[0]!.motor, gear: 99 },
+        },
+      ],
+    },
+  ]) {
+    const data = encodeRoom(r);
+    data[4] = bad;
+    assert.equal(decodeRoom(data, r.tick), undefined);
+    assert.equal(hashRoom(r), before);
+  }
+  assert.equal(isEntry([1, 1, 0, "heat", true, false, 2, 0]), false);
+  assert.equal(isEntry([1, 1, JOIN, "bot:1", "Ada", 0, "robot", 1]), false);
+  assert.equal(parseSettings({ ...DEFAULT_SETTINGS, power: 3 }), undefined);
+});
+test("solo timeout completes with no credited win", () => {
+  const r = setup(false);
+  run(r, MAX_RACE_TICKS + COUNTDOWN_TICKS);
+  assert.equal(r.stage, "over");
+  assert.equal(r.history[1]!.result.winnerId, undefined);
+  assert.equal(r.history[1]!.result.players[0]!.roundWins, 0);
+  restore(r);
+});
+test("all five event kinds use their own distance, field, qualifier deadline and bracket trees", () => {
+  const timed = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  assert.equal(timed.race!.racers.length, 1);
+  assert.equal(fuserodView(timed).finishDistance, 402.336);
+  run(timed, timed.race!.treeTicks + 1600);
+  assert.equal(timed.stage, "over");
+  assert.equal(timed.race!.winnerId, null);
+  restore(timed);
+  const bracket = setup(true, {
+    ...DEFAULT_SETTINGS,
+    variant: "grudge",
+    dialInTicks: 550,
+  });
+  const drivers = fuserodView(bracket).racers;
+  assert.ok(drivers[0]!.countdown < drivers[1]!.countdown);
+  const street = setup();
+  assert.ok(fuserodView(street).finishDistance > 900);
+  for (const route of ["aqueduct", "canyon"] as const) {
+    const road = setup(true, { ...DEFAULT_SETTINGS, variant: "duel", route });
+    assert.ok(fuserodView(road).finishDistance > 1600);
+    assert.equal(restore(road).race!.settings.variant, "duel");
+  }
+});
+test("crossing the center line on a qualifying run loses the round, freezes results and round-trips the checkpoint", () => {
+  const room = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  run(room, room.race!.treeTicks - 1);
+  const green = room.tick + 1;
+  foldTick(
+    room,
+    "a",
+    new Map([
+      [
+        "a",
+        { generation: 1, entries: [[4, green, 0, "heat", true, false, -1, 1]] },
+      ],
+    ]),
+  );
+  while (room.stage === "running") run(room, 1);
+  assert.equal(room.race!.racers[0]!.laneFault, true);
+  assert.equal(room.race!.winnerId, null);
+  restore(room);
+});
+test("a bracket racer who beats the declared time loses the heat even when crossing first", () => {
+  const r = setup(true, {
+    ...DEFAULT_SETTINGS,
+    variant: "grudge",
+    dialInTicks: 750,
+  });
+  run(r, r.race!.treeTicks - 1);
+  while (r.stage === "running") {
+    const driver = r.race!.racers[0]!;
+    const gear = driver.motor.gear;
+    const shift = gear === 0 || (gear < 3 && driver.motor.rpm >= 4250) ? 1 : 0;
+    const tick = r.tick + 1;
+    foldTick(
+      r,
+      "a",
+      new Map([
+        [
+          "a",
+          {
+            generation: 1,
+            entries: [[tick + 3, tick, 0, "heat", true, false, 0, shift]],
+          },
+        ],
+      ]),
+    );
+  }
+  assert.equal(fuserodView(r).racers[0]!.breakout, true);
+  assert.equal(r.race!.winnerId, "bot:1");
+  restore(r);
+});
+test("rivals drive both road events past the visible hazards on championship power", () => {
+  for (const route of ["canyon", "aqueduct"] as const) {
+    const r = setup(
+      true,
+      {
+        ...DEFAULT_SETTINGS,
+        variant: "duel",
+        route,
+        opponent: 2,
+        king: true,
+      },
+      "race-4",
+    );
+    while (r.stage === "running") run(r, 1);
+    assert.equal(r.race!.winnerId, "bot:1");
+    assert.ok(r.race!.racers[1]!.finishTicks > 0);
+    assert.equal(r.race!.police.phase, 0);
+    assert.equal(r.race!.racers[1]!.crashed, false);
+    restore(r);
+  }
+});
+test("high-RPM rivals can lose a heat to a seeded gearbox failure", () => {
+  const r = setup(
+    true,
+    {
+      ...DEFAULT_SETTINGS,
+      variant: "duel",
+      route: "canyon",
+      king: true,
+      opponent: 2,
+    },
+    "heat",
+  );
+  while (r.stage === "running") run(r, 1);
+  assert.equal(r.race!.racers[1]!.motor.broken, true);
+  assert.equal(r.race!.winnerId, "a");
+  restore(r);
+});
+test("sanctioned tree permits neutral revs, braked preselection and an on-green launch", () => {
+  const r = setup(true, { ...DEFAULT_SETTINGS, variant: "timed" });
+  const press = (throttle: boolean, brake: boolean, shift: -1 | 0 | 1) => {
+    const at = r.tick + 1;
+    foldTick(
+      r,
+      "a",
+      new Map([
+        [
+          "a",
+          {
+            generation: 1,
+            entries: [[at + 4, at, 0, "heat", throttle, brake, 0, shift]],
+          },
+        ],
+      ]),
+    );
+  };
+  press(true, false, 0);
+  run(r, 10);
+  assert.equal(r.race!.racers[0]!.falseStart, false);
+  assert.ok(r.race!.racers[0]!.motor.rpm > 1500);
+  press(true, true, 1);
+  run(r, 7);
+  assert.equal(fuserodView(r).racers[0]!.gear, 1);
+  restore(r);
+  run(r, r.race!.treeTicks - r.race!.elapsed);
+  press(true, false, 0);
+  run(r, 20);
+  assert.equal(r.stage, "running");
+  assert.ok(r.race!.racers[0]!.motor.position > 0);
+});
+test("an unbraked launch on a red bracket lane disqualifies before green and settles a recoverable zero-duration heat", () => {
+  const r = setup(true, {
+    ...DEFAULT_SETTINGS,
+    variant: "grudge",
+    dialInTicks: 340,
+  });
+  foldTick(
+    r,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[4, 2, 0, "heat", true, false, 0, 1]] }],
+    ]),
+  );
+  run(r, 6);
+  assert.equal(r.stage, "over");
+  assert.ok(r.race!.racers[0]!.falseStart);
+  assert.equal(r.race!.winnerId, "bot:1");
+  assert.equal(r.history[0]!.result.roundDuration?.ticks, 0);
+  restore(r);
+});
+test("throttle alone launches and shifts an automatic in a standard street head-to-head", () => {
+  const r = setup(false, { ...DEFAULT_SETTINGS, automatic: true });
+  foldTick(
+    r,
+    "a",
+    new Map([
+      ["a", { generation: 1, entries: [[4, 2, 0, "heat", true, false, 0, 0]] }],
+    ]),
+  );
+  while (r.stage === "running") run(r, 1);
+  assert.equal(r.race!.winnerId, "a");
+  assert.equal(r.race!.racers[0]!.motor.gear, 3);
+  restore(r);
+});
+test("every sanctioned racer has an assigned side, including the middle driver of odd grids", () => {
+  for (const variant of ["timed", "grudge"] as const)
+    for (const count of [1, 3, 5]) {
+      const room = createRoom("lobby", { ...DEFAULT_SETTINGS, variant });
+      const names = ["a", "b", "c", "d", "e"].slice(0, count);
+      const starters: FuserodEntry[] = names.map((id, slot) => [
+        slot + 1,
+        1,
+        JOIN,
+        id,
+        id,
+        slot,
+        "robot",
+        1,
+      ]);
+      starters.push([count + 1, 1, ACTION, "start", "heat"]);
+      foldTick(
+        room,
+        "a",
+        new Map([["a", { generation: 1, entries: starters }]]),
+      );
+      const middle = Math.floor(count / 2);
+      const start = fuserodView(room).racers;
+      assert.ok(
+        start.every((r) => r.lateral !== 0),
+        variant + " " + count + " seated on lane",
+      );
+      assert.equal(new Set(start.map((r) => r.lateral)).size, count);
+      run(room, room.race!.treeTicks - 1);
+      const peer = restore(room);
+      const id = names[middle]!;
+      const steer = start[middle]!.lateral > 0 ? -1 : 1;
+      for (const state of [room, peer]) {
+        const tick = state.tick + 1;
+        foldTick(
+          state,
+          "a",
+          new Map([
+            [
+              id,
+              {
+                generation: 1,
+                entries: [[count + 2, tick, 0, "heat", true, false, steer, 1]],
+              },
+            ],
+          ]),
+        );
+        for (let i = 0; i < 400 && !state.race!.racers[middle]!.laneFault; i++)
+          run(state, 1);
+        assert.ok(
+          state.race!.racers[middle]!.laneFault,
+          variant + " crossing on grid of " + count,
+        );
+      }
+      assert.equal(hashRoom(room), hashRoom(peer));
+    }
+});
+test("native canyon layouts produce distinct, replayable cornering and projected grades", () => {
+  const settings: FuserodSettings = {
+    ...DEFAULT_SETTINGS,
+    variant: "duel",
+    route: "canyon",
+    king: true,
+    automatic: true,
+  };
+  const first = setup(false, settings, "run-a"),
+    second = setup(false, settings, "run-b");
+  assert.notEqual(first.race!.layout, second.race!.layout);
+  const peer = restore(first);
+  for (const r of [first, peer, second]) {
+    const tick = r.tick + 1;
+    foldTick(
+      r,
+      "a",
+      new Map([
+        [
+          "a",
+          {
+            generation: 1,
+            entries: [[4, tick, 0, r.matchId, true, false, 0, 0]],
+          },
+        ],
+      ]),
+    );
+  }
+  const bends: number[][] = [[], []];
+  let rise = false;
+  for (let i = 0; i < 800; i++) {
+    for (const [j, r] of [first, second].entries()) {
+      run(r, 1);
+      const driver = fuserodView(r).racers[0]!;
+      bends[j]!.push(driver.curve);
+      rise ||= driver.grade !== 0;
+    }
+    run(peer, 1);
+  }
+  assert.ok(rise);
+  assert.notDeepEqual(bends[0], bends[1]);
+  assert.equal(hashRoom(first), hashRoom(peer));
+});
+test("a car's installed drive calibration and starting wear survive race recovery", () => {
+  const calibration = {
+    model: 0,
+    manifold: 1,
+    carb: 1 as const,
+    exhaust: 1 as const,
+    muffler: 0 as const,
+    differential: 0 as const,
+    timing: 0,
+    wear: 750,
+    removed: 0,
+  };
+  const settings = { ...DEFAULT_SETTINGS, calibration };
+  const race = setup(true, settings);
+  calibration.wear = 1000;
+  assert.equal(race.settings.calibration!.wear, 750);
+  assert.equal(race.race!.racers[0]!.motor.engineWear, 750);
+  assert.equal(race.race!.racers[1]!.motor.engineWear, 0);
+  const peer = restore(race);
+  assert.deepEqual(
+    peer.race!.settings.calibration,
+    race.race!.settings.calibration,
+  );
+  for (const bad of [null, {}, { ...calibration, wear: 10001 }]) {
+    assert.equal(parseSettings({ ...settings, calibration: bad }), undefined);
+    const data = encodeRoom(race);
+    data[4] = { ...race.race, settings: { ...settings, calibration: bad } };
+    assert.equal(decodeRoom(data, race.tick), undefined);
+  }
+});

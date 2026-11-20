@@ -95,6 +95,9 @@ importers:
       fusero:
         specifier: workspace:*
         version: link:games/fusero
+      fuserod:
+        specifier: workspace:*
+        version: link:games/fuserod
       google-auth-library:
         specifier: ^11.0.2
         version: 11.0.2
@@ -674,6 +677,28 @@ importers:
       '@stdlib/math-base-special-sin':
         specifier: 0.3.1
         version: 0.3.1
+      fuse-netcode:
+        specifier: workspace:*
+        version: link:../../packages/fuse-netcode
+      fuse-platform:
+        specifier: workspace:*
+        version: link:../../packages/fuse-platform
+    devDependencies:
+      '@fontsource/press-start-2p':
+        specifier: ^5.3.0
+        version: 5.3.0
+      fuse-network-fe:
+        specifier: workspace:*
+        version: link:../../packages/fuse-network-fe
+      fuse-ui:
+        specifier: workspace:*
+        version: link:../../packages/fuse-ui
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
+
+  games/fuserod:
+    dependencies:
       fuse-netcode:
         specifier: workspace:*
         version: link:../../packages/fuse-netcode

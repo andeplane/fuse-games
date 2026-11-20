@@ -70,6 +70,24 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  fuserod: async (page) => {
+    await openPlayOptions(page, "single");
+    await page.locator('[data-garage-key="kestrel"]').click();
+    await page.locator('[data-garage-key="course"]').selectOption("canyon");
+    await page.locator('[data-garage-key="race"]').click();
+    await page.locator('.rod-main[data-phase="running"]').waitFor();
+    await page.keyboard.press("x");
+    await page.locator(".rod-light").waitFor({ state: "hidden" });
+    await page.waitForTimeout(1200);
+    await page.keyboard.down("w");
+    await page.waitForFunction(
+      () =>
+        parseInt(
+          document.querySelectorAll(".rod-dash b")[1]?.textContent ?? "0",
+        ) >= 18,
+    );
+    await page.keyboard.up("w");
+  },
   "fuse-particles": async (page) => {
     await openPlayOptions(page, "single");
     await page.getByRole("button", { name: /^start match$/i }).click();
