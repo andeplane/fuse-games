@@ -1,10 +1,10 @@
 import {
+  playerResultRows,
   createTopResultHighlight,
   roomResultsBar,
   type ResultsBar,
   type ResultsHighlight,
   type ResultsReport,
-  type ResultsRow,
 } from "fuse-ui";
 import { DRAW, type HeroKind } from "../engine/index.js";
 import { TEAMS, banner, type SlotView } from "./model.js";
@@ -125,21 +125,15 @@ export function resultReport(
   result: MatchResult,
   parts: ReportParts,
 ): ResultsReport {
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.team),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.team,
+    values: (row) => [
       row.hero.toUpperCase(),
       String(row.kills),
       String(row.deaths),
       String(row.assists),
     ],
-  }));
+  });
   const cards: ResultsHighlight[] = [];
   const most = createTopResultHighlight(
     result.rows,
