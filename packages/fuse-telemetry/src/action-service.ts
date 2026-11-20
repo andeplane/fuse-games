@@ -133,6 +133,99 @@ async function readActionPageStates(
   return first ? [first, ...rest] : rest;
 }
 
+type ActionOperation = "claim" | "renew" | "complete" | "release" | "dismiss";
+
+function claim(
+  item: ActionItem,
+  rawName: unknown,
+  uid: string,
+  expiresAt: number,
+): void {
+  if (item.status !== "proposed" || item.retraction)
+    throw new RoomError(
+      409,
+      "Action is not claimable; review status or spoken changes",
+    );
+  if (
+    typeof rawName !== "string" ||
+    !rawName.trim() ||
+    rawName.length > 80 ||
+    /[\u0000-\u001f]/.test(rawName)
+  )
+    throw new RoomError(400, "Agent name required");
+  if (item.correction) {
+    item.title = item.correction.title;
+    item.detail = item.correction.detail;
+  }
+  item.status = "claimed";
+  item.lease = {
+    ownerId: uid,
+    agentName: rawName.trim(),
+    expiresAt,
+    revision: item.revision + 1,
+  };
+}
+
+function dismiss(
+  item: ActionItem,
+  note: unknown,
+  principal: ActionPrincipal,
+  uid: string,
+  at: number,
+): void {
+  if (principal.tokenId)
+    throw new RoomError(403, "Developer sign-in required to dismiss");
+  if (item.status !== "proposed")
+    throw new RoomError(409, "Only proposed actions can be dismissed");
+  if (typeof note !== "string" || note.length > 1000)
+    throw new RoomError(400, "Dismissal note required");
+  item.status = "dismissed";
+  item.resolution = { note, ownerId: uid, at };
+}
+
+function ownedLease(
+  item: ActionItem,
+  operation: ActionOperation,
+  uid: string,
+  proof: unknown,
+  secret: string | undefined,
+): NonNullable<ActionItem["lease"]> {
+  const lease = item.lease;
+  if (
+    item.status !== "claimed" ||
+    lease?.ownerId !== uid ||
+    typeof proof !== "string" ||
+    secret !== proof
+  )
+    throw new RoomError(409, "Claim expired or owned by another agent");
+  if (
+    (operation === "renew" || operation === "complete") &&
+    (item.retraction ||
+      (item.correction && item.correction.revision > lease.revision))
+  )
+    throw new RoomError(
+      409,
+      "Spoken change requires review; release this action",
+    );
+  return lease;
+}
+
+function finishLease(
+  item: ActionItem,
+  operation: ActionOperation,
+  note: unknown,
+  uid: string,
+  at: number,
+): void {
+  if (operation === "complete") {
+    if (typeof note !== "string" || !note.trim() || note.length > 1000)
+      throw new RoomError(400, "Completion note required");
+    item.status = "done";
+    item.resolution = { note, at, ownerId: uid };
+  } else item.status = item.retraction ? "retracted" : "proposed";
+  item.lease = null;
+}
+
 export function createActionService(options: ActionServiceOptions) {
   const db = options.database,
     now = options.now ?? Date.now,
@@ -364,7 +457,7 @@ export function createActionService(options: ActionServiceOptions) {
     },
     async mutate(
       actionId: string,
-      operation: "claim" | "renew" | "complete" | "release" | "dismiss",
+      operation: ActionOperation,
       body: Record<string, unknown>,
       principal: ActionPrincipal,
     ): Promise<ActionItem | ActionClaimResponse> {
@@ -389,71 +482,21 @@ export function createActionService(options: ActionServiceOptions) {
         )
           throw new RoomError(400, "Invalid lease duration");
         if (operation === "claim") {
-          if (item.status !== "proposed" || item.retraction)
-            throw new RoomError(
-              409,
-              "Action is not claimable; review status or spoken changes",
-            );
-          if (
-            typeof body.agentName !== "string" ||
-            !body.agentName.trim() ||
-            body.agentName.length > 80 ||
-            /[\u0000-\u001f]/.test(body.agentName)
-          )
-            throw new RoomError(400, "Agent name required");
-          if (item.correction) {
-            item.title = item.correction.title;
-            item.detail = item.correction.detail;
-          }
-          item.status = "claimed";
-          item.lease = {
-            ownerId: uid,
-            agentName: body.agentName.trim(),
-            expiresAt: at + Number(leaseMs),
-            revision: item.revision + 1,
-          };
+          claim(item, body.agentName, uid, at + Number(leaseMs));
           state.leaseSecrets[actionId] = secret;
         } else if (operation === "dismiss") {
-          if (principal.tokenId)
-            throw new RoomError(403, "Developer sign-in required to dismiss");
-          if (item.status !== "proposed")
-            throw new RoomError(409, "Only proposed actions can be dismissed");
-          if (typeof body.note !== "string" || body.note.length > 1000)
-            throw new RoomError(400, "Dismissal note required");
-          item.status = "dismissed";
-          item.resolution = { note: body.note, ownerId: uid, at };
+          dismiss(item, body.note, principal, uid, at);
         } else {
-          if (
-            item.status !== "claimed" ||
-            item.lease?.ownerId !== uid ||
-            typeof body.token !== "string" ||
-            state.leaseSecrets[actionId] !== body.token
-          )
-            throw new RoomError(409, "Claim expired or owned by another agent");
-          if (
-            (operation === "renew" || operation === "complete") &&
-            (item.retraction ||
-              (item.correction &&
-                item.correction.revision > item.lease.revision))
-          )
-            throw new RoomError(
-              409,
-              "Spoken change requires review; release this action",
-            );
-          if (operation === "renew") {
-            item.lease.expiresAt = at + Number(leaseMs);
-          } else {
-            if (operation === "complete") {
-              if (
-                typeof body.note !== "string" ||
-                !body.note.trim() ||
-                body.note.length > 1000
-              )
-                throw new RoomError(400, "Completion note required");
-              item.status = "done";
-              item.resolution = { note: body.note, at, ownerId: uid };
-            } else item.status = item.retraction ? "retracted" : "proposed";
-            item.lease = null;
+          const lease = ownedLease(
+            item,
+            operation,
+            uid,
+            body.token,
+            state.leaseSecrets[actionId],
+          );
+          if (operation === "renew") lease.expiresAt = at + Number(leaseMs);
+          else {
+            finishLease(item, operation, body.note, uid, at);
             delete state.leaseSecrets[actionId];
           }
         }
