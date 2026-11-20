@@ -6,6 +6,8 @@ import {
   VIEW_W,
 } from "../../engine/view-kit.js";
 import {
+  ellipseDistanceSquared,
+  floorDepth,
   drawWisps,
   forWorldParticles,
   bayer,
@@ -81,9 +83,10 @@ function arc(
   const dx = (x + 0.5 - cx) / rx;
   const dy = (cy - y - 0.5) / ry;
   const f = (Math.atan2(dy, dx) - a0) / (a1 - a0);
+  if (!(f >= 0 && f <= 1)) return NaN;
   const off = (Math.hypot(dx, dy) - 1) * Math.hypot(rx * dx, ry * dy);
   const across = off / (t0 + (t1 - t0) * f);
-  return f >= 0 && f <= 1 && Math.abs(across) <= 1 ? across : NaN;
+  return Math.abs(across) <= 1 ? across : NaN;
 }
 
 function sky(r: Raster) {
@@ -247,7 +250,8 @@ function rib(r: Raster, [x, rx, ry, end, front]: Rib) {
     shape(
       r,
       [x - 12, FLOOR + 2, x + 12, FLOOR + 10],
-      (px, py) => ((px + 0.5 - x) / 11) ** 2 + ((py - FLOOR - 8) / 4) ** 2 < 1,
+      (px, py) =>
+        ellipseDistanceSquared(px + 0.5 - x, py - FLOOR - 8, 11, 4) < 1,
       STONE,
     );
 }
@@ -265,7 +269,7 @@ function spine(r: Raster) {
         const v = FLOOR - py - 0.5;
         const f = (v - 5 * s) / (9 * s);
         return (
-          (u / (8 * s)) ** 2 + (v / (6 * s)) ** 2 < 1 ||
+          ellipseDistanceSquared(u, v, 8 * s, 6 * s) < 1 ||
           (f >= 0 && f < 1 && Math.abs(u + f * 3 * s) < 2.6 * s - f * s) ||
           Math.hypot(u + 3 * s, v - 14 * s) < 2 * s ||
           (Math.abs(v - 3 * s) < 1.4 * s && Math.abs(u) < 11 * s)
@@ -290,11 +294,11 @@ function lesserSkull(r: Raster) {
       const u = x + 0.5 - SKULL_X;
       const v = ground - y - 0.5;
       const head =
-        ((u - 72) / 30) ** 2 + ((v - 18) / 20) ** 2 < 1 ||
+        ellipseDistanceSquared(u - 72, v - 18, 30, 20) < 1 ||
         (u > 1 && u < 74 && v < 13 + u * 0.18 - Math.max(0, 8 - u) * 0.9);
       const holes =
-        ((u - 64) / 7.5) ** 2 + ((v - 23) / 5) ** 2 < 1 ||
-        ((u - 11) / 3) ** 2 + ((v - 13) / 1.6) ** 2 < 1 ||
+        ellipseDistanceSquared(u - 64, v - 23, 7.5, 5) < 1 ||
+        ellipseDistanceSquared(u - 11, v - 13, 3, 1.6) < 1 ||
         (v > 5 && v < 8 && u > 6 && u < 60 - (8 - v) * 4);
       return (v >= 0 && head && !holes) || !isNaN(arc(x, y, horn, sweep));
     },
@@ -353,8 +357,10 @@ function camp(r: Raster) {
   campBanner(r);
 }
 
+const MOUTH_HALF_WIDTH = 27;
+
 /** The mouth's arch above the floor, by distance from the gate's centre line. */
-const mouthTop = (a: number) => 36 - 7 * (a / 27) ** 3;
+const mouthTop = (a: number) => 36 - 7 * (a / MOUTH_HALF_WIDTH) ** 3;
 const EYE_V = 60;
 const TORCH_V = 28;
 /** Upper fangs hang from the mouth; lower fangs rise from the jaw. */
@@ -382,21 +388,33 @@ function fang(a: number, v: number) {
   });
 }
 
+const SKULL_CROWN_RX = 48;
+const SKULL_CROWN_RY = 30;
+const SKULL_SPIKES = [8, 20].map((x) => ({
+  x,
+  height: 68 + SKULL_CROWN_RY * Math.sqrt(1 - (x / SKULL_CROWN_RX) ** 2),
+}));
+
 function skullBone(a: number, v: number) {
   if (v < 40 && a < 39 - v * 0.15) return true;
   if (v >= 30 && v < 64 && a < 52 - Math.abs(v - 48) * 0.45) return true;
-  if (v >= 56 && (a / 48) ** 2 + ((v - 60) / 30) ** 2 < 1) return true;
-  return [8, 20].some((k) => {
-    const tip = 68 + 30 * Math.sqrt(1 - (k / 48) ** 2) - v;
-    return tip > 0 && tip < 12 && Math.abs(a - k) < tip * 0.35;
+  if (
+    v >= 56 &&
+    ellipseDistanceSquared(a, v - 60, SKULL_CROWN_RX, SKULL_CROWN_RY) < 1
+  )
+    return true;
+  return SKULL_SPIKES.some(({ x, height }) => {
+    const tip = height - v;
+    return tip > 0 && tip < 12 && Math.abs(a - x) < tip * 0.35;
   });
 }
 
 function skullOpening(a: number, v: number) {
   const eye = a - 27;
-  if (a < 27 && v < mouthTop(a) && !fang(a, v)) return true;
-  if ((eye / 10) ** 2 + ((v - EYE_V - eye * 0.35) / 6.5) ** 2 < 1) return true;
-  return ((a - 8) / 2.2) ** 2 + ((v - 46) / 3) ** 2 < 1;
+  if (a < MOUTH_HALF_WIDTH && v < mouthTop(a) && !fang(a, v)) return true;
+  if (ellipseDistanceSquared(eye, v - EYE_V - eye * 0.35, 10, 6.5) < 1)
+    return true;
+  return ellipseDistanceSquared(a - 8, v - 46, 2.2, 3) < 1;
 }
 
 /** The great skull, face on in the cliff at the stage end: horned, eyes burning, jaws open on a dark throat. */
@@ -440,9 +458,11 @@ function gate(r: Raster) {
   for (let v = 0; v < 74; v++)
     for (let u = -40; u < 40; u++) {
       const a = Math.abs(u + 0.5);
-      const throat = a < 27 && v < mouthTop(a);
+      const throat = a < MOUTH_HALF_WIDTH && v < mouthTop(a);
       if (!throat && !(v > 50 && a > 14 && a < 40)) continue;
-      const glow = throat ? (1 - a / 27) * (1 - v / 16) : (EYE_V - 4 - v) / 6;
+      const glow = throat
+        ? (1 - a / MOUTH_HALF_WIDTH) * (1 - v / 16)
+        : (EYE_V - 4 - v) / 6;
       r.px(GATE_X + u, FLOOR - 1 - v, bayer(u, v) < glow ? 0x3a1428 : VOID);
     }
   shape(r, [GATE_X - 132, 0, GATE_X + 132, FLOOR], greatSkull, BONE, (x, y) => {
@@ -540,7 +560,7 @@ function flagstones(r: Raster) {
   const seam = seams(r.width);
   for (let x = 0; x < r.width; x++) {
     for (let y = FLOOR; y < VIEW_H; y++) {
-      const depth = (y - FLOOR) / (VIEW_H - FLOOR);
+      const depth = floorDepth(y);
       const grain = (hash(x >> 2, (y >> 1) + 70) - 0.5) * 0.16;
       const edge = seam[y * r.width + x]
         ? -0.18
@@ -583,7 +603,7 @@ function frostHollows(r: Raster) {
     const [rx, ry] = ice ? [11, 2.4] : [18, 3];
     for (let y = -3; y <= 3; y++)
       for (let x = -rx; x <= rx; x++) {
-        if ((x / rx) ** 2 + (y / ry) ** 2 > 1) continue;
+        if (ellipseDistanceSquared(x, y, rx, ry) > 1) continue;
         if (!ice && bayer(cx + x, cy + y) > 0.5) continue;
         r.px(cx + x, cy + y, frostColor(ice, x, y));
       }

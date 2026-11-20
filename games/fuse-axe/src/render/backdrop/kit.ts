@@ -1,4 +1,4 @@
-import { VIEW_W } from "../../engine/view-kit.js";
+import { FLOOR_TOP_PX, VIEW_H, VIEW_W } from "../../engine/view-kit.js";
 
 /** The two calls a stage's animated effects make: enough of a 2D context to paint flat pixels. */
 export interface Brush {
@@ -198,3 +198,15 @@ export function hash(a: number, b: number): number {
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
+
+/** A row's depth below the floor edge, measured as a fraction of the visible road. */
+export const floorDepth = (y: number): number =>
+  (y - FLOOR_TOP_PX) / (VIEW_H - FLOOR_TOP_PX);
+
+/** Squared normalized distance from an ellipse's center. A value of one is on its edge. */
+export const ellipseDistanceSquared = (
+  dx: number,
+  dy: number,
+  rx: number,
+  ry: number,
+): number => (dx / rx) ** 2 + (dy / ry) ** 2;
