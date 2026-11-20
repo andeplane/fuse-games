@@ -1,8 +1,10 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  createTopResultHighlight,
+  roomResultsBar,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
+  type ResultsRow,
 } from "fuse-ui";
 import type { World } from "../engine/index.js";
 import {
@@ -181,20 +183,7 @@ export function resultReport(
     ],
   }));
   const cards: ResultsHighlight[] = [];
-  /** A card for whoever has the most of something, when anybody has any. */
-  const most = (
-    pick: (row: ResultRow) => number,
-    card: (best: number) => Omit<ResultsHighlight, "winners">,
-  ) => {
-    const best = Math.max(0, ...result.rows.map(pick));
-    if (best > 0)
-      cards.push({
-        ...card(best),
-        winners: result.rows
-          .filter((row) => pick(row) === best)
-          .map((row) => ({ name: row.name, color: row.color })),
-      });
-  };
+  const most = createTopResultHighlight(result.rows, (row) => row.color, cards);
   most(
     (row) => row.damage,
     (best) => ({
@@ -254,13 +243,5 @@ export function resultBar(result: MatchResult): ResultsBar {
         { id: "rematch", label: result.again, primary: true },
       ],
     };
-  return {
-    ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "REMATCH", primary: true },
-        ]
-      : [],
-  };
+  return roomResultsBar(result);
 }

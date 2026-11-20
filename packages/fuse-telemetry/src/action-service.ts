@@ -8,7 +8,6 @@ import { RoomError } from "fuse-network-be";
 import {
   ACTION_LIMITS,
   type ActionClaimResponse,
-  type ActionEvidence,
   type ActionItem,
   type ActionsPage,
   type ActionsQuery,
@@ -28,6 +27,13 @@ import {
   type ActionDatabase,
   type ActionState,
 } from "./action-store.js";
+import {
+  selectActionPage,
+  RECORDINGS_PER_ACTION_PAGE,
+  visible,
+  type ActionCursor,
+} from "./action-page.js";
+import { reconcileCandidates } from "./action-reconciliation.js";
 
 export interface ActionPrincipal {
   uid: string;
@@ -57,11 +63,6 @@ export interface ActionServiceOptions {
 const SKIPPED = "0".repeat(64);
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
-const textKey = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
 const integer = (value: unknown, max: number) =>
   Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= max;
 const ownerId = (principal: ActionPrincipal) =>
@@ -76,18 +77,6 @@ const checkScope = (
   )
     throw new RoomError(403, "Action token scope denied");
 };
-function visible(item: ActionItem, now: number): ActionItem {
-  return item.status === "claimed" && item.lease && item.lease.expiresAt <= now
-    ? {
-        ...item,
-        status: item.retraction ? "retracted" : "proposed",
-        title: item.correction?.title ?? item.title,
-        detail: item.correction?.detail ?? item.detail,
-        updatedAt: Math.max(item.updatedAt, item.lease.expiresAt),
-        lease: null,
-      }
-    : structuredClone(item);
-}
 function validateSegment(segment: TranscriptActionSegment) {
   if (
     (segment.gameId !== undefined && !actionIdentifier(segment.gameId)) ||
@@ -104,29 +93,6 @@ function validateSegment(segment: TranscriptActionSegment) {
   )
     throw new Error("Invalid action transcript segment");
 }
-function evidence(
-  candidate: { evidence: { sequence: number; quote: string }[] },
-  segments: TranscriptActionSegment[],
-): ActionEvidence[] {
-  return candidate.evidence.map((proof) => {
-    const segment = segments.find(
-      (segment) => segment.sequence === proof.sequence,
-    )!;
-    return {
-      ...proof,
-      startMs: segment.startMs,
-      endMs: segment.endMs,
-      reportIds: [...(segment.reportIds ?? [])],
-    };
-  });
-}
-
-interface ActionCursor {
-  recording: string;
-  action: string;
-}
-const RECORDINGS_PER_ACTION_PAGE = 20;
-
 function decodeActionCursor(
   encoded: string | undefined,
 ): ActionCursor | undefined {
@@ -165,6 +131,100 @@ async function readActionPageStates(
   const first = cursor ? await db.read(cursor.recording) : undefined;
   const rest = await db.list(cursor?.recording, RECORDINGS_PER_ACTION_PAGE);
   return first ? [first, ...rest] : rest;
+}
+
+type ActionOperation = "claim" | "renew" | "complete" | "release" | "dismiss";
+type LeaseOperation = Exclude<ActionOperation, "claim" | "dismiss">;
+
+function claim(
+  item: ActionItem,
+  rawName: unknown,
+  uid: string,
+  expiresAt: number,
+): void {
+  if (item.status !== "proposed" || item.retraction)
+    throw new RoomError(
+      409,
+      "Action is not claimable; review status or spoken changes",
+    );
+  if (
+    typeof rawName !== "string" ||
+    !rawName.trim() ||
+    rawName.length > 80 ||
+    /[\u0000-\u001f]/.test(rawName)
+  )
+    throw new RoomError(400, "Agent name required");
+  if (item.correction) {
+    item.title = item.correction.title;
+    item.detail = item.correction.detail;
+  }
+  item.status = "claimed";
+  item.lease = {
+    ownerId: uid,
+    agentName: rawName.trim(),
+    expiresAt,
+    revision: item.revision + 1,
+  };
+}
+
+function dismiss(
+  item: ActionItem,
+  note: unknown,
+  principal: ActionPrincipal,
+  uid: string,
+  at: number,
+): void {
+  if (principal.tokenId)
+    throw new RoomError(403, "Developer sign-in required to dismiss");
+  if (item.status !== "proposed")
+    throw new RoomError(409, "Only proposed actions can be dismissed");
+  if (typeof note !== "string" || note.length > 1000)
+    throw new RoomError(400, "Dismissal note required");
+  item.status = "dismissed";
+  item.resolution = { note, ownerId: uid, at };
+}
+
+function ownedLease(
+  item: ActionItem,
+  operation: LeaseOperation,
+  uid: string,
+  proof: unknown,
+  secret: string | undefined,
+): NonNullable<ActionItem["lease"]> {
+  const lease = item.lease;
+  if (
+    item.status !== "claimed" ||
+    lease?.ownerId !== uid ||
+    typeof proof !== "string" ||
+    secret !== proof
+  )
+    throw new RoomError(409, "Claim expired or owned by another agent");
+  if (
+    (operation === "renew" || operation === "complete") &&
+    (item.retraction ||
+      (item.correction && item.correction.revision > lease.revision))
+  )
+    throw new RoomError(
+      409,
+      "Spoken change requires review; release this action",
+    );
+  return lease;
+}
+
+function finishLease(
+  item: ActionItem,
+  operation: Exclude<LeaseOperation, "renew">,
+  note: unknown,
+  uid: string,
+  at: number,
+): void {
+  if (operation === "complete") {
+    if (typeof note !== "string" || !note.trim() || note.length > 1000)
+      throw new RoomError(400, "Completion note required");
+    item.status = "done";
+    item.resolution = { note, at, ownerId: uid };
+  } else item.status = item.retraction ? "retracted" : "proposed";
+  item.lease = null;
 }
 
 export function createActionService(options: ActionServiceOptions) {
@@ -209,10 +269,10 @@ export function createActionService(options: ActionServiceOptions) {
               ?.reportIds ?? input.reportIds,
         }),
       ].sort((a, b) => a.sequence - b.sequence);
-      if (
-        new Set(segments.map((segment) => segment.sequence)).size !==
-        segments.length
-      )
+      const bySequence = new Map(
+        segments.map((segment) => [segment.sequence, segment]),
+      );
+      if (bySequence.size !== segments.length)
         throw new Error("Duplicate action context");
       // A late predecessor also processes its immediate successor, repairing chunk-crossing directives.
       for (const current of segments.filter(
@@ -224,10 +284,8 @@ export function createActionService(options: ActionServiceOptions) {
         // Segments just before this one that failed transcription for good.
         // They carry no directives, so they must not hold up every later one.
         const skipped: number[] = [];
-        if (
-          current.sequence > 0 &&
-          !segments.some((segment) => segment.sequence === current.sequence - 1)
-        ) {
+        const preceding = bySequence.get(current.sequence - 1);
+        if (current.sequence > 0 && !preceding) {
           for (
             let earlier = current.sequence - 1;
             earlier >= 0 &&
@@ -240,12 +298,11 @@ export function createActionService(options: ActionServiceOptions) {
               "Previous transcript is not ready; retry action extraction",
             );
         }
-        const previous = segments.find(
-          (segment) =>
-            segment.sequence === current.sequence - 1 &&
-            segment.endMs === current.startMs &&
-            (segment.gameId ?? input.gameId) === gameId,
-        );
+        const previous =
+          preceding?.endMs === current.startMs &&
+          (preceding.gameId ?? input.gameId) === gameId
+            ? preceding
+            : undefined;
         const prior = previous
           ? [
               {
@@ -305,6 +362,14 @@ export function createActionService(options: ActionServiceOptions) {
         const { state, fingerprint } = acquired;
         try {
           const candidates: ActionCandidate[] = [];
+          const existing = state.items
+            .filter((item) => item.gameId === gameId)
+            .map(({ id, title, status }) => ({
+              id,
+              title,
+              status,
+              detail: "",
+            }));
           for (
             let offset = 0;
             offset < current.text.length;
@@ -317,14 +382,7 @@ export function createActionService(options: ActionServiceOptions) {
             const extraction: ActionExtractionInput = {
               currentSequence: current.sequence,
               segments: [...prior, { ...current, text }],
-              existing: state.items
-                .filter((item) => item.gameId === gameId)
-                .map(({ id, title, status }) => ({
-                  id,
-                  title,
-                  status,
-                  detail: "",
-                })),
+              existing: existing.map((item) => ({ ...item })),
             };
             candidates.push(
               ...validateActionCandidates(
@@ -340,113 +398,12 @@ export function createActionService(options: ActionServiceOptions) {
             if (!stored || stored.extractionLease?.token !== lease)
               throw new Error("Stale action extraction lease");
             const updatedAt = now();
-            for (const candidate of candidates) {
-              const proofs = evidence(candidate, segments);
-              const quoted = textKey(
-                proofs.map((proof) => proof.quote).join(" "),
-              );
-              const actionId = `${input.recordingId}_${hash(`${gameId}:${quoted}`).slice(0, 16)}`;
-              let item = candidate.targetId
-                ? stored.items.find(
-                    (item) =>
-                      item.id === candidate.targetId && item.gameId === gameId,
-                  )
-                : stored.items.find(
-                    (item) =>
-                      item.gameId === gameId &&
-                      (textKey(item.title) === textKey(candidate.title) ||
-                        item.evidence.some(
-                          (proof) => textKey(proof.quote) === quoted,
-                        )),
-                  );
-              // A directive quoted in two pieces never equals one stored
-              // quote, so the id it would be given is the last word on
-              // whether it already exists: ids must stay unique.
-              if (!candidate.targetId)
-                item ??= stored.items.find((item) => item.id === actionId);
-              if (!item && candidate.kind === "propose") {
-                // A full queue drops further proposals rather than failing the
-                // segment, which would stall every later segment behind it.
-                if (stored.items.length >= ACTION_LIMITS.perRecording) continue;
-                item = {
-                  id: actionId,
-                  recordingId: input.recordingId,
-                  gameId,
-                  title: candidate.title,
-                  detail: candidate.detail,
-                  evidence: [],
-                  status: "proposed",
-                  createdAt: updatedAt,
-                  updatedAt,
-                  revision: 0,
-                  lease: null,
-                  resolution: null,
-                  retraction: null,
-                  correction: null,
-                };
-                stored.items.push(item);
-              }
-              if (!item) continue;
-              const latestSequence = Math.max(
-                -1,
-                ...item.evidence.map((proof) => proof.sequence),
-                item.retraction?.sequence ?? -1,
-                ...(item.correction?.evidence.map((proof) => proof.sequence) ??
-                  []),
-              );
-              if (
-                candidate.kind !== "propose" &&
-                current.sequence < latestSequence
-              )
-                continue;
-              if (
-                candidate.kind === "propose" &&
-                item.status === "retracted" &&
-                item.retraction &&
-                current.sequence >= item.retraction.sequence &&
-                proofs.some(
-                  (proof) =>
-                    !item.evidence.some(
-                      (existing) =>
-                        existing.sequence === proof.sequence &&
-                        existing.quote === proof.quote,
-                    ),
-                )
-              ) {
-                // Asked for again after being called off: it is wanted.
-                item.retraction = null;
-                item.status = "proposed";
-              }
-              if (candidate.kind === "retract") {
-                item.retraction = proofs.at(-1)!;
-                if (item.status === "proposed" || item.status === "dismissed")
-                  item.status = "retracted";
-                // Existing claimed/done execution remains explicit; renew/complete require manual reconciliation.
-              } else if (candidate.kind === "correct") {
-                item.correction = {
-                  title: candidate.title,
-                  detail: candidate.detail,
-                  evidence: proofs,
-                  revision: item.revision + 1,
-                };
-                if (item.status === "proposed") {
-                  item.title = candidate.title;
-                  item.detail = candidate.detail;
-                }
-              }
-              for (const proof of proofs)
-                if (
-                  !item.evidence.some(
-                    (existing) =>
-                      existing.sequence === proof.sequence &&
-                      existing.quote === proof.quote,
-                  )
-                )
-                  item.evidence.push(proof);
-              item.evidence = item.evidence.slice(-ACTION_LIMITS.evidence);
-              item.updatedAt = updatedAt;
-              item.revision++;
-            }
+            reconcileCandidates(stored.items, candidates, bySequence, {
+              recordingId: input.recordingId,
+              gameId,
+              sequence: current.sequence,
+              updatedAt,
+            });
             stored.processed[String(current.sequence)] = fingerprint;
             stored.extractionLease = null;
             return { state: stored, result: undefined };
@@ -496,58 +453,13 @@ export function createActionService(options: ActionServiceOptions) {
       if (query.recordingId && cursor && cursor.recording !== query.recordingId)
         throw new RoomError(400, "Action cursor scope mismatch");
       const limit = query.limit ?? 50,
-        actions: ActionItem[] = [],
         at = now();
       const states = await readActionPageStates(db, query.recordingId, cursor);
-      let last: ActionCursor | undefined;
-      for (const state of states) {
-        for (const original of [...state.items].sort((a, b) =>
-          a.id < b.id ? -1 : 1,
-        )) {
-          if (
-            cursor &&
-            state.recordingId === cursor.recording &&
-            original.id <= cursor.action
-          )
-            continue;
-          last = { recording: state.recordingId, action: original.id };
-          const item = visible(original, at);
-          if (
-            state.expiresAt <= at ||
-            (query.gameId && item.gameId !== query.gameId) ||
-            (query.since !== undefined && item.updatedAt < query.since) ||
-            (query.status && item.status !== query.status)
-          )
-            continue;
-          actions.push(item);
-          if (actions.length === limit)
-            return {
-              actions,
-              nextCursor: Buffer.from(JSON.stringify(last)).toString(
-                "base64url",
-              ),
-              scannedRecordings: states.indexOf(state) + 1,
-            };
-        }
-        last = { recording: state.recordingId, action: "~" };
-      }
-      return {
-        actions,
-        ...(states.length >= RECORDINGS_PER_ACTION_PAGE &&
-        !query.recordingId &&
-        last
-          ? {
-              nextCursor: Buffer.from(JSON.stringify(last)).toString(
-                "base64url",
-              ),
-            }
-          : {}),
-        scannedRecordings: states.length,
-      };
+      return selectActionPage(states, query, cursor, at, limit);
     },
     async mutate(
       actionId: string,
-      operation: "claim" | "renew" | "complete" | "release" | "dismiss",
+      operation: ActionOperation,
       body: Record<string, unknown>,
       principal: ActionPrincipal,
     ): Promise<ActionItem | ActionClaimResponse> {
@@ -556,7 +468,9 @@ export function createActionService(options: ActionServiceOptions) {
       const at = now(),
         secret = id();
       return db.transact(match[1]!, (state) => {
-        const original = state?.items.find((item) => item.id === actionId);
+        const index =
+          state?.items.findIndex((item) => item.id === actionId) ?? -1;
+        const original = state?.items[index];
         if (!state || state.expiresAt <= at || !original)
           throw new RoomError(404, "Action not found");
         checkScope(principal, original);
@@ -570,87 +484,27 @@ export function createActionService(options: ActionServiceOptions) {
         )
           throw new RoomError(400, "Invalid lease duration");
         if (operation === "claim") {
-          if (item.status !== "proposed" || item.retraction)
-            throw new RoomError(
-              409,
-              "Action is not claimable; review status or spoken changes",
-            );
-          if (
-            typeof body.agentName !== "string" ||
-            !body.agentName.trim() ||
-            body.agentName.length > 80 ||
-            /[\u0000-\u001f]/.test(body.agentName)
-          )
-            throw new RoomError(400, "Agent name required");
-          if (item.correction) {
-            item.title = item.correction.title;
-            item.detail = item.correction.detail;
-          }
-          item.status = "claimed";
-          item.lease = {
-            ownerId: uid,
-            agentName: body.agentName.trim(),
-            expiresAt: at + Number(leaseMs),
-            revision: item.revision + 1,
-          };
+          claim(item, body.agentName, uid, at + Number(leaseMs));
           state.leaseSecrets[actionId] = secret;
         } else if (operation === "dismiss") {
-          if (principal.tokenId)
-            throw new RoomError(403, "Developer sign-in required to dismiss");
-          if (item.status !== "proposed")
-            throw new RoomError(409, "Only proposed actions can be dismissed");
-          if (typeof body.note !== "string" || body.note.length > 1000)
-            throw new RoomError(400, "Dismissal note required");
-          item.status = "dismissed";
-          item.resolution = { note: body.note, ownerId: uid, at };
+          dismiss(item, body.note, principal, uid, at);
         } else {
-          if (
-            item.status !== "claimed" ||
-            item.lease?.ownerId !== uid ||
-            typeof body.token !== "string" ||
-            state.leaseSecrets[actionId] !== body.token
-          )
-            throw new RoomError(409, "Claim expired or owned by another agent");
-          if (operation === "renew") {
-            if (
-              item.retraction ||
-              (item.correction &&
-                item.correction.revision > item.lease.revision)
-            )
-              throw new RoomError(
-                409,
-                "Spoken change requires review; release this action",
-              );
-            item.lease.expiresAt = at + Number(leaseMs);
-          } else {
-            if (operation === "complete") {
-              if (
-                item.retraction ||
-                (item.correction &&
-                  item.correction.revision > item.lease.revision)
-              )
-                throw new RoomError(
-                  409,
-                  "Spoken change requires review; release this action",
-                );
-              if (
-                typeof body.note !== "string" ||
-                !body.note.trim() ||
-                body.note.length > 1000
-              )
-                throw new RoomError(400, "Completion note required");
-              item.status = "done";
-              item.resolution = { note: body.note, at, ownerId: uid };
-            } else item.status = item.retraction ? "retracted" : "proposed";
-            item.lease = null;
+          const lease = ownedLease(
+            item,
+            operation,
+            uid,
+            body.token,
+            state.leaseSecrets[actionId],
+          );
+          if (operation === "renew") lease.expiresAt = at + Number(leaseMs);
+          else {
+            finishLease(item, operation, body.note, uid, at);
             delete state.leaseSecrets[actionId];
           }
         }
         item.updatedAt = at;
         item.revision++;
-        state.items[
-          state.items.findIndex((existing) => existing.id === actionId)
-        ] = item;
+        state.items[index] = item;
         return {
           state,
           result:

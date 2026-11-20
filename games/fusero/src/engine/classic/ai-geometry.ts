@@ -23,6 +23,21 @@ export interface AiTerrain {
   readonly height: number;
   flag(x: number, y: number): number;
 }
+
+/** CMap::PixelFlagAccess uses exclusive right/bottom coordinates. */
+export function aiAreaFree(
+  terrain: AiTerrain,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  blocked: number,
+): boolean {
+  for (let y = y1; y < y2; y++)
+    for (let x = x1; x < x2; x++)
+      if (terrain.flag(x, y) & blocked) return false;
+  return true;
+}
 export const point = (x: number, y: number): AiPoint => ({ x: f(x), y: f(y) });
 export const plus = (a: AiPoint, b: AiPoint): AiPoint =>
   point(add(a.x, b.x), add(a.y, b.y));

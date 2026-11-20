@@ -123,6 +123,30 @@ export interface ZonesView {
   /** What a gain inside the bonus counts for in these rules. */
   multiplier: number;
 }
+// Map lasers are immutable. Reuse their physical endpoints across snapshots while
+// evaluating the phase and progress at each snapshot's tick.
+const laserTracks = new Map(
+  Object.values(MAPS).flatMap(({ zones }) =>
+    zones.lasers.map((laser) => {
+      const { axis, x, y, length, travel } = laser;
+      const line = (distance: number): LaserView["from"] =>
+        Object.freeze(
+          axis === "h"
+            ? [x, y + distance, x + length, y + distance]
+            : [x + distance, y, x + distance, y + length],
+        );
+      const geometry = { axis, from: line(0), to: line(travel) };
+      return [laser, geometry] as const;
+    }),
+  ),
+);
+
+const laserPhaseLengths = {
+  telegraph: LASER_TELEGRAPH,
+  live: LASER_LIVE,
+  idle: LASER_PERIOD - LASER_TELEGRAPH - LASER_LIVE,
+} satisfies Record<LaserPhase, number>;
+
 export function zoneView(
   t: Tuning,
   tick: number,
@@ -154,28 +178,12 @@ export function zoneView(
     lasers:
       t.lasers === "on"
         ? z.lasers.map((l) => {
-            const { phase, at } = laserPhase(l, tick),
-              h = l.axis === "h";
-            const line = (d: number) =>
-              (h
-                ? [l.x, l.y + d, l.x + l.length, l.y + d]
-                : [l.x + d, l.y, l.x + d, l.y + l.length]) as [
-                number,
-                number,
-                number,
-                number,
-              ];
+            const { phase, at } = laserPhase(l, tick);
             return {
-              axis: l.axis,
-              from: line(0),
-              to: line(l.travel),
+              ...laserTracks.get(l)!,
               phase,
               progress:
-                phase === "telegraph"
-                  ? at / LASER_TELEGRAPH
-                  : phase === "live"
-                    ? (at + 1) / LASER_LIVE
-                    : at / (LASER_PERIOD - LASER_TELEGRAPH - LASER_LIVE),
+                (phase === "live" ? at + 1 : at) / laserPhaseLengths[phase],
             };
           })
         : [],

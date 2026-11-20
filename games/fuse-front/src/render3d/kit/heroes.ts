@@ -6,6 +6,7 @@
  */
 import * as THREE from "three";
 import type { HeroKind, Model } from "../models.js";
+import { mountCannon } from "./cannon.js";
 import { Rig, type Detail, type V3 } from "./rig.js";
 import { addStandingLegs, type LegPlacement } from "./units.js";
 
@@ -59,9 +60,14 @@ function brick(r: Rig): void {
       .add("dark", r.box(0.34, 0.28, 0.34, 0.09), [s * 0.84, 0.64, 0.14]);
   });
   const c = r.sub([0.72, 1.88, -0.05]);
-  c.add("dark", c.box(0.32, 0.18, 0.4, 0.05)).add("team", c.box(0.3, 0.22, 0.5, 0.06), [0, 0.22, 0.05])
-    .add("steel", c.cylinder({ topRadius: 0.075, bottomRadius: 0.085, height: 0.95, segments: 14 }), [0, 0.22, 0.65], X).add("gun", c.cylinder({ radius: 0.11, height: 0.16, segments: 14 }), [0, 0.22, 0.36], X)
-    .add("gun", c.box(0.2, 0.14, 0.22, 0.03), [0, 0.22, 1.12]).add("amber", c.sphere(0.03), [0.1, 0.35, 0.25]);
+  c.add("dark", c.box(0.32, 0.18, 0.4, 0.05)).add("team", c.box(0.3, 0.22, 0.5, 0.06), [0, 0.22, 0.05]);
+  mountCannon(c, [0, 0.22], {
+    segments: 14,
+    barrel: { topRadius: 0.075, bottomRadius: 0.085, height: 0.95, z: 0.65 },
+    sleeve: { radius: 0.11, height: 0.16, z: 0.36 },
+    muzzle: { size: [0.2, 0.14, 0.22], bevel: 0.03, z: 1.12 },
+  });
+  c.add("amber", c.sphere(0.03), [0.1, 0.35, 0.25]);
   r.add("dark", r.box(0.78, 0.6, 0.34, 0.08), [0, 1.3, -0.42])
     .pair((s) => r.add("steel", r.cylinder({ topRadius: 0.07, bottomRadius: 0.08, height: 0.56 }), [s * 0.24, 1.78, -0.5]).add("gun", r.cylinder({ radius: 0.085, height: 0.06 }), [s * 0.24, 2.07, -0.5]));
 }

@@ -1,4 +1,4 @@
-import type { PartKind } from "./machine-parts.js";
+import type { Part, PartKind } from "./machine-parts.js";
 
 /** Native moving classes use the measured DOS density table. Fuse-only pieces borrow the nearest material. */
 const density: Partial<Record<PartKind, number>> = {
@@ -39,3 +39,38 @@ export function atmosphere(kind: PartKind, air: number, gravity: number) {
   const terminal = kind === "ball" ? 12288 : 9728 - pressure;
   return { acceleration, terminal };
 }
+
+/** Motion is expressed in the original 1/512-pixel lattice per simulation tick. */
+export const UNIT = 512;
+export const quant = (n: number) => Math.round(n * UNIT) / UNIT;
+export const clampVelocity = (n: number, maximum: number) =>
+  quant(Math.max(-maximum, Math.min(maximum, n)));
+export interface Material {
+  bounce: number;
+  mass: number;
+}
+const materials: Partial<Record<PartKind, Material>> = {
+  bowling: { bounce: 128, mass: 16 },
+  basketball: { bounce: 192, mass: 4 },
+  baseball: { bounce: 128, mass: 3 },
+  tennis: { bounce: 192, mass: 1 },
+  balloon: { bounce: 24, mass: 1 },
+  heart: { bounce: 24, mass: 1 },
+  ball: { bounce: 128, mass: 4 },
+  crate: { bounce: 0, mass: 8 },
+  pumpkin: { bounce: 36, mass: 6 },
+  mouse: { bounce: 0, mass: 1 },
+  cat: { bounce: 0, mass: 4 },
+  rocket: { bounce: 0, mass: 1 },
+};
+const looseMaterial: Material = { bounce: 32, mass: 3 };
+export const isDynamic = (part: Part) =>
+  part.mobile ?? Object.hasOwn(materials, part.kind);
+export function bodyKind(part: Part): PartKind {
+  return part.kind === "popper" ? "tennis" : part.kind;
+}
+export const bodyMass = (part: Part) =>
+  (materials[bodyKind(part)] ?? looseMaterial).mass;
+
+export const materialOf = (kind: PartKind): Material =>
+  materials[kind] ?? looseMaterial;

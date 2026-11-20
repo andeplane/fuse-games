@@ -7,6 +7,7 @@ import {
   CLASSIC_PROJECTILES,
   weaponById,
   type ClassicProjectile,
+  type ClassicWeapon,
 } from "./catalog.js";
 import { aiNow, type NativeAiFrame } from "./ai-state.js";
 import {
@@ -21,6 +22,7 @@ import { f, add, sub, mul } from "./physics-types.js";
 import { atan2, cos, sin } from "./math.js";
 import { randomInt, randomSigned } from "./random.js";
 import {
+  aiAreaFree,
   len,
   len2,
   minus,
@@ -40,6 +42,27 @@ export const aiRopeAttached = (frame: NativeAiFrame): boolean =>
   frame.worm.rope?.state === "terrain" || frame.worm.rope?.state === "worm";
 const currentWeapon = (frame: NativeAiFrame) =>
   weaponById(frame.worm.slots[frame.worm.weapon]!.weaponId);
+
+type WeaponPreference = readonly [slot: number, rope?: "absent" | "detached"];
+const CLOSE_100LT: readonly WeaponPreference[] = [
+  [0],
+  [4],
+  [3],
+  [2, "detached"],
+];
+const MIDDLE_100LT: readonly WeaponPreference[] = [
+  [4],
+  [2, "absent"],
+  [0],
+  [3, "detached"],
+];
+const FAR_100LT: readonly WeaponPreference[] = [
+  [3, "detached"],
+  [0],
+  [4],
+  [2, "absent"],
+];
+const WEAPON_CHANGE_DELAY_MS = [500, 300, 200, 120];
 
 export function findAiClearingWeapon(frame: NativeAiFrame): number {
   const ignoreSelfHit = !frame.world.settings.selfInjure;
@@ -138,7 +161,7 @@ export function chooseAiWeapon(
   traceFraction: number,
 ): number {
   const { worm, ai, world, controls } = frame;
-  const delay = [500, 300, 200, 120][ai.difficulty]!;
+  const delay = WEAPON_CHANGE_DELAY_MS[ai.difficulty]!;
   if (aiNow(frame) - ai.lastWeaponChangeMs <= delay) return worm.weapon;
   ai.lastWeaponChangeMs = aiNow(frame);
   const ready = (slot: number) => !worm.slots[slot]!.reloading;
@@ -157,42 +180,19 @@ export function chooseAiWeapon(
       const enemy = world.worms.find((entry) => entry.id === ai.targetWormId);
       if (enemy && checkOnGround(enemy, frame.physicsTerrain)) return 1;
     }
-    if (d < 50) {
-      if (direct) {
-        if (ready(0)) return 0;
-        if (ready(4)) return 4;
-        if (ready(3)) return 3;
-        if (ready(2) && !aiRopeAttached(frame)) {
-          controls.move = false;
-          return 2;
-        }
-      } else {
-        controls.jump = true;
-        return -1;
-      }
+    if (d < 50 && !direct) {
+      controls.jump = true;
+      return -1;
     }
-    if (d > 50 && d <= 300 && direct) {
-      if (ready(4)) return 4;
-      if (ready(2) && !worm.rope) {
-        controls.move = false;
-        return 2;
-      }
-      if (ready(0)) return 0;
-      if (ready(3) && !aiRopeAttached(frame)) {
-        controls.move = false;
-        return 3;
-      }
-    }
-    if (d > 300 && direct) {
-      if (ready(3) && !aiRopeAttached(frame)) {
-        controls.move = false;
-        return 3;
-      }
-      if (ready(0)) return 0;
-      if (ready(4)) return 4;
-      if (ready(2) && !worm.rope) {
-        controls.move = false;
-        return 2;
+    if (direct) {
+      const preference =
+        d < 50 ? CLOSE_100LT : d > 300 ? FAR_100LT : d > 50 ? MIDDLE_100LT : [];
+      for (const [slot, rope] of preference) {
+        if (!ready(slot)) continue;
+        if (rope === "absent" && worm.rope) continue;
+        if (rope === "detached" && aiRopeAttached(frame)) continue;
+        if (rope) controls.move = false;
+        return slot;
       }
     }
   }
@@ -226,18 +226,17 @@ export function chooseAiWeapon(
     );
     if (slot >= 0) return slot;
   }
-  // The native <100 and <150 blocks have identical active logic.
-  if (distance < 150 && direct) {
-    const b = beam();
-    if (b >= 0) return b;
-    const p = projectile();
-    if (p >= 0) return p;
-  }
+  let beamSlot: number | undefined;
   if (direct) {
+    // The native <100 and <150 blocks both prefer a beam over a projectile.
+    if (distance < 150) {
+      beamSlot = beam();
+      if (beamSlot >= 0) return beamSlot;
+    }
     const p = projectile();
     if (p >= 0) return p;
-    const b = beam();
-    if (b >= 0) return b;
+    beamSlot ??= beam();
+    if (beamSlot >= 0) return beamSlot;
     const r = randomReady();
     if (r >= 0) return r;
   }
@@ -255,7 +254,7 @@ export function chooseAiWeapon(
     );
     if (slot >= 0) return slot;
   }
-  const b = beam();
+  const b = beamSlot ?? beam();
   if (b >= 0) return b;
   const r = randomReady();
   if (r >= 0) return r;
@@ -366,10 +365,14 @@ function trajectoryCollision(
     py + width >= terrain.height
   )
     return true;
-  for (let y = py - width; y <= py + width; y++)
-    for (let x = px - width; x <= px + width; x++)
-      if (terrain.flag(x, y) & (PX_DIRT | PX_ROCK)) return true;
-  return false;
+  return !aiAreaFree(
+    terrain,
+    px - width,
+    py - width,
+    px + width + 1,
+    py + width + 1,
+    PX_DIRT | PX_ROCK,
+  );
 }
 
 /** Native gravity/speed noise consumes shared RNG although those two perturbed values are unused afterwards. */
@@ -436,12 +439,100 @@ export function canAiShootCurrent(frame: NativeAiFrame): boolean {
   );
 }
 
+type ShotAttempt = "none" | "aiming" | "shoot";
+
+function ballisticGravity(projectile: ClassicProjectile): number {
+  let gravity = projectile.customGravity ? f(projectile.gravity!) : 100;
+  let child: ClassicProjectile | undefined = projectile;
+  const visited = new Set<number>();
+  while (child && !visited.has(child.id)) {
+    visited.add(child.id);
+    if (child.customGravity) gravity = Math.max(gravity, f(child.gravity!));
+    else if (gravity < 100) gravity = 100;
+    if (child.timer?.projectiles) {
+      if (child.timerTime >= 0.5) break;
+    } else if (
+      child.hit.projectiles ||
+      child.playerHit.projectiles ||
+      child.touch.projectiles
+    )
+      break;
+    child = child.spawn
+      ? CLASSIC_PROJECTILES[child.spawn.projectileId]
+      : undefined;
+  }
+  return gravity;
+}
+
+function projectileShot(
+  frame: NativeAiFrame,
+  weapon: Extract<ClassicWeapon, { type: "projectile" }>,
+  {
+    enemy,
+    target,
+    difference,
+    direct,
+  }: {
+    enemy: { vx: number; vy: number };
+    target: AiPoint;
+    difference: AiPoint;
+    direct: boolean;
+  },
+): ShotAttempt {
+  const { worm, ai, world } = frame;
+  const projectile = CLASSIC_PROJECTILES[weapon.projectileId]!;
+  if (projectile.hit.type === 5 || projectile.hit.type === 6) return "none";
+
+  // Native divides by zero for coincident worms and still consumes the spread RNG.
+  const directionLength = len(difference);
+  const direction = point(
+    f(difference.x / directionLength),
+    f(difference.y / directionLength),
+  );
+  const mySpeed = add(mul(direction.x, worm.vx), mul(direction.y, worm.vy));
+  const speed = add(add(f(weapon.speed), mul(weapon.speedVar, 100)), mySpeed);
+  if (speed < 0) return "none";
+  let x = sub(target.x, worm.x),
+    y = sub(worm.y, target.y);
+  const time = mul(
+    speed !== 0 ? f(Math.sqrt(add(mul(x, x), mul(y, y))) / speed) : 0,
+    0.7,
+  );
+  if (!(time < 0)) {
+    x = add(x, mul(time, enemy.vx));
+    y = sub(y, mul(time, enemy.vy));
+  }
+  const gravity = ballisticGravity(projectile);
+  if (!aiAimingAngle(speed, gravity, x, y).good) return "none";
+
+  // Native calculates spread without applying it to the worm angle.
+  if (aiNow(frame) - ai.lastRandomChangeMs >= 500) {
+    const magnitude = randomInt(world, [13, 8, 3, 0][ai.difficulty]!);
+    // MathLib's SIGN evaluates a nonpositive first draw a second time.
+    const sign = randomSigned(world) > 0 ? 1 : randomSigned(world) < 0 ? -1 : 0;
+    ai.randomSpread = (magnitude * sign) | 0;
+    ai.lastRandomChangeMs = aiNow(frame);
+  }
+  if ((gravity <= 10 || speed >= 200) && !direct) return "none";
+  const squared = len2(difference);
+  if (!(squared >= 100)) return "none";
+  if (!setAiAim(frame, target)) return "aiming";
+  if (
+    squared >= 2500 &&
+    gravity >= 10 &&
+    speed <= 200 &&
+    !aiWeaponCanHit(frame, plus(worm, point(x, -y)))
+  )
+    return "none";
+  return "shoot";
+}
+
 /** CWormBot::AI_Shoot for Classic DeathMatch on the canonical native local/listen host. */
 export function shootAi(frame: NativeAiFrame): boolean {
   if (!canAiShootCurrent(frame)) return false;
   const enemy = findAiTarget(frame);
   if (!enemy) return false;
-  const { worm, ai, world, controls } = frame;
+  const { worm, ai, controls } = frame;
   const target = point(enemy.x, enemy.y),
     difference = minus(target, worm),
     distance = len(difference);
@@ -470,117 +561,34 @@ export function shootAi(frame: NativeAiFrame): boolean {
   worm.weapon = selected;
   const weapon = currentWeapon(frame);
   if (!weapon) return false;
-  let aimed = false,
-    wantsShot = false;
+  let attempt: ShotAttempt = "none";
   if (weapon.type === "projectile") {
-    const projectile = CLASSIC_PROJECTILES[weapon.projectileId]!;
-    if (projectile.hit.type !== 5 && projectile.hit.type !== 6) {
-      // CVec::Normalize divides by zero for coincident worms. Native continues
-      // through that NaN path and still consumes the spread RNG before rejecting
-      // the too-close shot; NormalizeVector's zero guard would change the stream.
-      const directionLength = len(difference);
-      const direction = point(
-        f(difference.x / directionLength),
-        f(difference.y / directionLength),
-      );
-      const mySpeed = add(mul(direction.x, worm.vx), mul(direction.y, worm.vy));
-      const speed = add(
-        add(f(weapon.speed), mul(weapon.speedVar, 100)),
-        mySpeed,
-      );
-      if (!(speed < 0)) {
-        let x = sub(target.x, worm.x),
-          y = sub(worm.y, target.y);
-        const time = mul(
-          speed !== 0 ? f(Math.sqrt(add(mul(x, x), mul(y, y))) / speed) : 0,
-          0.7,
-        );
-        if (!(time < 0)) {
-          x = add(x, mul(time, enemy.vx));
-          y = sub(y, mul(time, enemy.vy));
-        }
-        let gravity = projectile.customGravity ? f(projectile.gravity!) : 100;
-        let child: ClassicProjectile | undefined = projectile;
-        const visited = new Set<number>();
-        while (child && !visited.has(child.id)) {
-          visited.add(child.id);
-          if (child.customGravity)
-            gravity = Math.max(gravity, f(child.gravity!));
-          else if (gravity < 100) gravity = 100;
-          if (child.timer?.projectiles) {
-            if (child.timerTime >= 0.5) break;
-          } else if (
-            child.hit.projectiles ||
-            child.playerHit.projectiles ||
-            child.touch.projectiles
-          )
-            break;
-          child = child.spawn
-            ? CLASSIC_PROJECTILES[child.spawn.projectileId]
-            : undefined;
-        }
-        const solution = aiAimingAngle(speed, gravity, x, y);
-        if (solution.good) {
-          // Alpha/spread is calculated in source but never applied to the worm angle.
-          if (aiNow(frame) - ai.lastRandomChangeMs >= 500) {
-            const magnitude = randomInt(world, [13, 8, 3, 0][ai.difficulty]!);
-            // MathLib's SIGN macro evaluates its argument again when the first
-            // draw is nonpositive. A normal Math.sign call consumes too little
-            // randomness and changes subsequent aim/trajectory samples.
-            const sign =
-              randomSigned(world) > 0 ? 1 : randomSigned(world) < 0 ? -1 : 0;
-            ai.randomSpread = (magnitude * sign) | 0;
-            ai.lastRandomChangeMs = aiNow(frame);
-          }
-          aimed = gravity <= 10 || speed >= 200 ? direct : true;
-          if (aimed) {
-            wantsShot = true;
-            const squared = len2(difference);
-            if (squared >= 2500) {
-              aimed = setAiAim(frame, target);
-              if (aimed && gravity >= 10 && speed <= 200)
-                wantsShot = aimed = aiWeaponCanHit(
-                  frame,
-                  plus(worm, point(x, -y)),
-                );
-            } else if (squared >= 100) {
-              aimed = setAiAim(frame, target);
-              wantsShot = true;
-            } else {
-              aimed = false;
-              wantsShot = false;
-            }
-          }
-        }
-      }
-    }
-  } else {
+    attempt = projectileShot(frame, weapon, {
+      enemy,
+      target,
+      difference,
+      direct,
+    });
+  } else if (direct) {
     const dist = Math.trunc(distance);
-    if (direct && weapon.beam.length >= dist)
-      wantsShot = aimed = setAiAim(frame, target) || dist <= 25;
-    else {
-      if (direct) setAiAim(frame, target);
-      wantsShot = aimed = false;
-    }
+    const inRange = weapon.beam.length >= dist;
+    const aimed = setAiAim(frame, target);
+    if (inRange && (aimed || dist <= 25)) attempt = "shoot";
   }
   // game.isClient() is false for the pinned local/listen-host timing profile.
   // Its client-only in-flight suicide avoidance block is consequently inactive.
-  if (!aimed) {
+  if (attempt !== "shoot") {
     ai.badAimMs += frame.deltaMs;
     if (ai.badAimMs > 4000) {
-      let empty = true;
       const x = Math.trunc(worm.x),
         y = Math.trunc(sub(worm.y, 5));
-      for (let dy = y - 3; empty && dy < y + 3; dy++)
-        for (let dx = x - 3; dx < x + 3; dx++)
-          if (frame.terrain.flag(dx, dy) & (PX_DIRT | PX_ROCK)) {
-            empty = false;
-            break;
-          }
-      if (empty) controls.jump = true;
+      if (
+        aiAreaFree(frame.terrain, x - 3, y - 3, x + 3, y + 3, PX_DIRT | PX_ROCK)
+      )
+        controls.jump = true;
       ai.badAimMs = 0;
     }
-    return wantsShot;
+    return attempt === "aiming";
   }
   ai.badAimMs = 0;
   ai.lastShootTarget = target;

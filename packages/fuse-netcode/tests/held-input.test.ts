@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  entriesForGeneration,
   foldHeldInput,
   type SeatRecord,
   type StreamEntries,
@@ -22,6 +23,28 @@ const human: SeatRecord = {
   avatarId: "rider",
   generation: 1,
 };
+
+test("generation lookup keeps the selected stream's entries and order", () => {
+  const stream: StreamEntries<Command> = {
+    generation: 2,
+    entries: [],
+    retired: [
+      {
+        generation: 1,
+        entries: [
+          [5, 9, "match", 2],
+          [4, 9, "match", 1],
+        ],
+      },
+      { generation: 1, entries: [[6, 9, "match", 4]] },
+      { generation: 2, entries: [[7, 9, "match", 8]] },
+    ],
+  };
+  assert.equal(entriesForGeneration(stream, 1), stream.retired![0]!.entries);
+  assert.equal(entriesForGeneration(stream, 2), stream.entries);
+  assert.deepEqual(entriesForGeneration(stream, undefined), []);
+  assert.deepEqual(entriesForGeneration(undefined, 1), []);
+});
 
 test("held input follows the seated generation, filters commands and keeps the last sequence", () => {
   const room = { seats: new Map([[human.id, human]]), held: { [human.id]: 8 } };

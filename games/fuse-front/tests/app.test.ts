@@ -5,6 +5,7 @@ import {
   DRAW,
   NO_WINNER,
   fortSite,
+  type Command,
   type HeroKind,
 } from "../src/engine/index.js";
 import {
@@ -181,6 +182,54 @@ test("on a page that paints slowly the world keeps up with the clock, so a move 
     target.y * map.width + target.x,
     "the hero took the order",
   );
+});
+
+test("the playing device predicts its own orders until the fold sees them and releases steering on hide", () => {
+  const mesh = new Mesh("host", DEFAULT_SETTINGS);
+  const host = mesh.join("host");
+  mesh.run(300);
+  host.command({ type: "join", name: "Ada" });
+  mesh.run(500);
+  assert.ok(host.command({ type: "action", action: "start" }));
+  mesh.run(500 + COUNTDOWN_TICKS * 50);
+  assert.equal(host.self, "host");
+  assert.equal(host.slot(), 0);
+  const orders: [() => boolean, Command][] = [
+    [
+      () => host.cast(0, 8, 9, { of: 0, id: 1 }, true),
+      {
+        seat: 0,
+        type: "cast",
+        slot: 0,
+        x: 8,
+        y: 9,
+        of: 0,
+        id: 1,
+        queued: true,
+      },
+    ],
+    [
+      () => host.attack(0, 1, true),
+      { seat: 0, type: "attack", of: 0, id: 1, queued: true },
+    ],
+    [() => host.attackMove(8, 9), { seat: 0, type: "attackMove", x: 8, y: 9 }],
+    [() => host.buy(0), { seat: 0, type: "buy", item: 0 }],
+    [() => host.sell(0), { seat: 0, type: "sell", slot: 0 }],
+    [
+      () => host.useItem(0, 8, 9),
+      { seat: 0, type: "useItem", slot: 0, x: 8, y: 9 },
+    ],
+    [() => host.steer(1, 0), { seat: 0, type: "steer", dx: 1, dy: 0 }],
+  ];
+  for (const [send, command] of orders) {
+    assert.ok(send(), command.type);
+    assert.deepEqual(host.pending(), [command]);
+    mesh.run(300);
+    assert.deepEqual(host.pending(), []);
+  }
+  mesh.setHidden("host", true);
+  assert.equal(host.steer(1, 0), false);
+  assert.deepEqual(host.pending(), [{ seat: 0, type: "steer", dx: 0, dy: 0 }]);
 });
 
 test("the lobby offers the maps that hold the battle size, lighting the one a start would play", () => {

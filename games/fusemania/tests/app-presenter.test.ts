@@ -19,6 +19,7 @@ import {
   fold,
   game,
   library,
+  readyGuests,
   run,
   runTo,
   seated,
@@ -78,15 +79,19 @@ test("the lobby lists each seat with the chart it will play, and only the host s
       [host.lobby.members[2]!.name, "EASY 3", false, true],
     ],
   );
-  assert.equal(host.lobby.showStart, true);
+  assert.deepEqual(host.lobby.action, {
+    kind: "start",
+    label: "START",
+    enabled: false,
+  });
   assert.equal(host.lobby.canAddBot, true);
   assert.deepEqual(host.lobby.removable, ["bot:1"]);
   assert.equal(host.chart, 0);
   const guest = present(library, game.view(room), viewer("b"));
-  assert.equal(guest.lobby.showStart, false);
+  assert.deepEqual(guest.lobby.action, { kind: "ready", pressed: false });
   assert.equal(guest.lobby.canAddBot, false);
   assert.deepEqual(guest.lobby.removable, []);
-  assert.equal(guest.lobby.note, "Waiting for the host to start");
+  assert.equal(guest.lobby.note, "Choose your chart, then press READY.");
   assert.equal(guest.chart, 1);
   // A device without a seat is asked for a name; the shared screen never is.
   const stranger = present(library, game.view(room), viewer("z"));
@@ -236,16 +241,21 @@ test("a single song offers another go or the song select, with no session anywhe
   assert.equal(model.result!.final, false);
   assert.deepEqual(model.totals, []);
   const lobby = present(library, game.view(seated()), viewer("a")).lobby;
-  assert.equal(lobby.startText, "START");
+  assert.deepEqual(lobby.action, {
+    kind: "start",
+    label: "START",
+    enabled: false,
+  });
   assert.equal(lobby.session, null);
 });
 
 test("a session counts its songs on the start button, the title and the result, and shows the totals", () => {
   const room = seated(THREE);
-  assert.equal(
-    present(library, game.view(room), viewer("a")).lobby.startText,
-    "START SONG 1 OF 3",
+  assert.deepEqual(
+    present(library, game.view(room), viewer("a")).lobby.action,
+    { kind: "start", label: "START SONG 1 OF 3", enabled: false },
   );
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   let model = present(library, game.view(room), viewer("a"));
   assert.equal(model.title, "SONG 1 OF 3 · GRID");
@@ -288,7 +298,11 @@ test("a session counts its songs on the start button, the title and the result, 
   // In the lobby between two songs: the standings so far and the next song's number.
   fold(room, { a: [[ACTION, "lobby", "m2"]] });
   const between = present(library, game.view(room), viewer("a")).lobby;
-  assert.equal(between.startText, "START SONG 2 OF 3");
+  assert.deepEqual(between.action, {
+    kind: "start",
+    label: "START SONG 2 OF 3",
+    enabled: false,
+  });
   assert.equal(between.session!.title, "SESSION · 1 OF 3 PLAYED");
   assert.deepEqual(
     between.session!.rows.map((row) => row.name),
@@ -297,7 +311,11 @@ test("a session counts its songs on the start button, the title and the result, 
   // Another length is another session: the old standings are not the next song's.
   fold(room, { a: [[SETTINGS_ENTRY, { ...THREE, songs: 5 }]] });
   const changed = present(library, game.view(room), viewer("a")).lobby;
-  assert.equal(changed.startText, "START SONG 1 OF 5");
+  assert.deepEqual(changed.action, {
+    kind: "start",
+    label: "START SONG 1 OF 5",
+    enabled: false,
+  });
   assert.equal(changed.session, null);
   assert.equal(
     changed.note,
@@ -305,10 +323,11 @@ test("a session counts its songs on the start button, the title and the result, 
   );
   assert.equal(
     present(library, game.view(room), viewer("b")).lobby.note,
-    "Waiting for the host to start",
+    "Choose your chart, then press READY.",
   );
   fold(room, { a: [[SETTINGS_ENTRY, THREE]] });
 
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m3"]] });
   model = present(library, game.view(room), viewer("a"));
   assert.equal(model.title, "SONG 2 OF 3 · GRID");
@@ -340,6 +359,7 @@ test("a session counts its songs on the start button, the title and the result, 
 test("a random session's next song is one button away, and a rider who left keeps a row", () => {
   const room = seated({ ...THREE, random: true });
   fold(room, { a: [[BOT, "add", "bot:1", "Robo", 2]] });
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   finishSong(room);
   let view = game.view(room);
@@ -362,6 +382,7 @@ test("a random session's next song is one button away, and a rider who left keep
       [3, 1, ""],
     ],
   );
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m3"]] });
   finishSong(room);
   fold(room, { a: [[ACTION, "rematch", "m4"]] });
@@ -373,6 +394,7 @@ test("a random session's next song is one button away, and a rider who left keep
 
 test("a song that waits for its audio says whose download it waits for", () => {
   const room = seated();
+  readyGuests(room);
   fold(room, { a: [[ACTION, "start", "m1"]] });
   // Everyone is still getting it: each device speaks of its own download first.
   const mine = present(library, game.view(room), viewer("a"));

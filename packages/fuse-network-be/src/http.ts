@@ -134,6 +134,284 @@ export interface RoomServer extends Server {
   terminateSockets(): void;
 }
 
+/** Apply the Origin policy and answer preflights before dispatch or body reads. */
+function acceptHttpRequest(
+  options: RoomHttpOptions,
+  req: IncomingMessage,
+  res: ServerResponse,
+): boolean {
+  const origin = req.headers.origin;
+  if (origin && !options.allowOrigin(origin, req)) {
+    res.writeHead(403);
+    res.end("Origin denied");
+    return false;
+  }
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Cache-Control", "no-store");
+  if (req.method === "OPTIONS") {
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      ["GET", "POST", "OPTIONS", ...(options.extension?.methods ?? [])].join(
+        ", ",
+      ),
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      [
+        "Content-Type",
+        "Authorization",
+        ...(options.extension?.headers ?? []),
+      ].join(", "),
+    );
+    // `/ice` carries `Authorization`, so a cross-origin page preflights it on every admission without this.
+    res.setHeader("Access-Control-Max-Age", "600");
+    res.writeHead(204);
+    res.end();
+    return false;
+  }
+  return true;
+}
+
+type RoomJson = (value: unknown, status?: number) => void;
+
+async function createRoomResponse(
+  options: RoomHttpOptions,
+  store: RoomStore,
+  now: () => number,
+  req: IncomingMessage,
+  url: URL,
+  json: RoomJson,
+): Promise<void> {
+  // The game rides in the query, not a body, so creation stays a simple request with no CORS preflight.
+  // Absent means `LEGACY_GAME_ID`: a page from before rooms carried a game. Checked before the creation budget.
+  const gameId = url.searchParams.get("gameId") ?? undefined;
+  if (gameId !== undefined && !store.gameIds.has(gameId)) {
+    json({ error: "Unknown game" }, 400);
+    return;
+  }
+  if (
+    !(await store.database.allowance(
+      digest(options.clientAddress(req)),
+      now(),
+      30,
+    ))
+  ) {
+    json({ error: "Room creation limit; try later" }, 429);
+    return;
+  }
+  const token = randomBytes(32).toString("hex"),
+    code = await store.createAvailable(token, undefined, gameId);
+  json({ code, token }, 201);
+  return;
+}
+
+function roomLookupHandlers(
+  options: RoomHttpOptions,
+  now: () => number,
+  recordLookupMiss: () => void,
+) {
+  const { store } = options;
+  const budget = () =>
+    new AddressBudget(now, ROOM_LOOKUP_BURST, ROOM_LOOKUP_PER_SECOND);
+  const iceLookups = budget();
+  const endLookups = budget();
+  const missing = (json: RoomJson) => {
+    recordLookupMiss();
+    json({ error: "Room expired or not found" }, 404);
+  };
+  const end = async (room: string, token: string, json: RoomJson) => {
+    try {
+      await store.end(room, token);
+    } catch (error) {
+      if (
+        error instanceof RoomError &&
+        (error.status === 403 || error.status === 404)
+      ) {
+        missing(json);
+        return;
+      }
+      throw error;
+    }
+    json({ ok: true });
+  };
+  const ice = async (code: string, token: string, json: RoomJson) => {
+    if (!validToken(token)) {
+      json({ error: "Invalid identity" }, 401);
+      return;
+    }
+    let room;
+    try {
+      room = await store.get(code);
+    } catch (error) {
+      if (error instanceof RoomError && error.status === 404) {
+        missing(json);
+        return;
+      }
+      throw error;
+    }
+    const member = room.members[peerId(token)];
+    if (!member || member.expiresAt <= now()) {
+      missing(json);
+      return;
+    }
+    json({ iceServers: DEFAULT_ICE_SERVERS, relayConfigured: false });
+  };
+  return async (
+    req: IncomingMessage,
+    url: URL,
+    json: RoomJson,
+  ): Promise<boolean> => {
+    const route = url.pathname.match(ROOM_ROUTE);
+    if (!route) return false;
+    const code = route[1]!;
+    const operation = route[2];
+    const budget =
+      operation === "ice"
+        ? iceLookups
+        : operation === "end" && req.method === "POST"
+          ? endLookups
+          : undefined;
+    if (!budget) return false;
+    if (!budget.take(options.clientAddress(req))) {
+      json({ error: "Too many requests; try later" }, 429);
+      return true;
+    }
+    const action = operation === "ice" ? ice : end;
+    await action(code, bearer(req), json);
+    return true;
+  };
+}
+
+type RoomSchedule = NonNullable<RoomHttpOptions["schedule"]>;
+
+/** Own the authentication deadline, buffered frames and room membership for one upgraded socket. */
+function listenForRoomSocket(
+  ws: WebSocket,
+  code: string,
+  address: string,
+  gateway: RoomGateway,
+  schedule: RoomSchedule,
+  resolve: () => void,
+  reject: (error: unknown) => void,
+): void {
+  const untilClosed = new Promise<void>((resolve) => ws.once("close", resolve));
+  let connectionId: string | undefined,
+    closed = false,
+    pending: string[] = [],
+    // "auth": only an `auth` frame is read. "rejected": nothing is read again.
+    phase: "auth" | "admitted" | "rejected" = "auth",
+    cancelDeadline: (() => void) | undefined;
+  const refuse = (error: RoomError) => {
+    phase = "rejected";
+    cancelDeadline?.();
+    reject(error);
+  };
+  // Set once the socket has closed: whether the seat is kept for the page to resume. A socket that
+  // just stops (1006: the platform's hourly cut, a network change, a stopped instance) said no goodbye,
+  // so its page is taken to be coming back; a close frame from the page is the page leaving.
+  let hold = false;
+  const admit = (token: string, gameId?: string, resume?: string) => {
+    phase = "admitted";
+    cancelDeadline?.();
+    void gateway
+      .connect(code, token, ws, gameId, resume, address, untilClosed)
+      .then((id) => {
+        connectionId = id;
+        if (closed) {
+          void gateway.disconnect(id, { socket: ws, hold });
+          resolve();
+          return;
+        }
+        for (const data of pending) void gateway.receive(id, data, ws);
+        pending = [];
+        resolve();
+      })
+      .catch(reject);
+  };
+  cancelDeadline = schedule(() => {
+    if (phase === "auth")
+      refuse(new RoomError(401, "Authentication timed out"));
+  }, AUTH_DEADLINE_MS);
+  ws.on("message", (raw, binary) => {
+    if (phase === "rejected") return;
+    if (phase === "auth") {
+      // Whatever arrives first is the authentication attempt; it is never handed to the gateway.
+      const frame = readAuthFrame(raw.toString(), binary);
+      if (frame === undefined)
+        // Nothing about the frame is echoed or logged.
+        refuse(new RoomError(401, "Authentication required"));
+      else admit(frame.token, frame.gameId, frame.resume);
+      return;
+    }
+    if (binary) {
+      ws.close(1003, "Text frames required");
+      return;
+    }
+    const data = raw.toString();
+    if (connectionId) void gateway.receive(connectionId, data, ws);
+    else if (pending.length < 4) pending.push(data);
+    else ws.close(1008, "Wait for welcome");
+  });
+  ws.on("close", (closeCode) => {
+    closed = true;
+    hold = closeCode === CLOSE_ABNORMAL;
+    pending = [];
+    // Leaving before authenticating frees the slot and is not a failure. Charging it would stop nobody —
+    // a slot can be held to the deadline and then authenticated for free — and it would land on honest
+    // pages: one closed, frozen or dropped within a round trip of the upgrade.
+    if (phase === "auth") {
+      phase = "rejected";
+      cancelDeadline?.();
+      resolve();
+    }
+    if (connectionId)
+      void gateway.disconnect(connectionId, { socket: ws, hold });
+  });
+  ws.on("error", () => {
+    // `ws` reports a frame it will not parse (a protocol violation, or one past `maxPayload`) here, not a
+    // network drop. As a first frame that is a bad authentication attempt like any other.
+    if (phase === "auth") refuse(new RoomError(401, "Authentication required"));
+    ws.close();
+  });
+}
+
+const REFUSAL_CODES: ReadonlyMap<number, number> = new Map([
+  [503, 1013],
+  [404, CLOSE_ROOM_ENDED],
+  [401, CLOSE_UNAUTHENTICATED],
+]);
+
+/** Hold the admission slot until a refused upgraded socket finishes closing. */
+async function closeRefusedRoomSocket(
+  socket: WebSocket,
+  error: unknown,
+  schedule: RoomSchedule,
+): Promise<void> {
+  const closed = new Promise<void>((resolve) => {
+    if (socket.readyState === socket.CLOSED) return resolve();
+    socket.once("close", resolve);
+  });
+  const code =
+    error instanceof RoomFullError
+      ? CLOSE_ROOM_FULL
+      : error instanceof RoomError
+        ? REFUSAL_CODES.get(error.status)
+        : undefined;
+  socket.close(
+    code ?? 4000,
+    error instanceof RoomError ? error.message : "Room service unavailable",
+  );
+  if (socket.readyState !== socket.CLOSED)
+    socket.once(
+      "close",
+      schedule(() => socket.terminate(), REFUSED_CLOSE_GRACE_MS),
+    );
+  await closed;
+}
+
 /** The room service's HTTP and WebSocket surface, shared by the Cloud Run service and the local development service. */
 export function createRoomServer(options: RoomHttpOptions): RoomServer {
   const { store, gateway } = options,
@@ -156,10 +434,6 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
       code: (error as { code?: unknown })?.code,
     });
   const admissions = new AdmissionGate(store.database, now, log);
-  const lookup = () =>
-    new AddressBudget(now, ROOM_LOOKUP_BURST, ROOM_LOOKUP_PER_SECOND);
-  const iceLookups = lookup(),
-    endLookups = lookup();
   // Count only aggregate refusals, without room IDs or addresses. Emit one bounded record per 30 misses;
   // log-based metrics can sum these across instances without a shared database write per request.
   let lookupMisses = 0;
@@ -169,42 +443,12 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
       lookupMisses = 0;
     }
   };
+  const handleRoomLookup = roomLookupHandlers(options, now, recordLookupMiss);
   const handle = async (
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> => {
-    const origin = req.headers.origin;
-    if (origin && !options.allowOrigin(origin, req)) {
-      res.writeHead(403);
-      res.end("Origin denied");
-      return;
-    }
-    if (origin) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Vary", "Origin");
-    }
-    res.setHeader("Cache-Control", "no-store");
-    if (req.method === "OPTIONS") {
-      res.setHeader(
-        "Access-Control-Allow-Methods",
-        ["GET", "POST", "OPTIONS", ...(options.extension?.methods ?? [])].join(
-          ", ",
-        ),
-      );
-      res.setHeader(
-        "Access-Control-Allow-Headers",
-        [
-          "Content-Type",
-          "Authorization",
-          ...(options.extension?.headers ?? []),
-        ].join(", "),
-      );
-      // `/ice` carries `Authorization`, so a cross-origin page preflights it on every admission without this.
-      res.setHeader("Access-Control-Max-Age", "600");
-      res.writeHead(204);
-      res.end();
-      return;
-    }
+    if (!acceptHttpRequest(options, req, res)) return;
     const json = (value: unknown, status = 200) => {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(value));
@@ -231,83 +475,10 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
         return;
       }
       if (url.pathname === "/api/rooms" && req.method === "POST") {
-        // The game rides in the query, not a body, so creation stays a simple request with no CORS preflight.
-        // Absent means `LEGACY_GAME_ID`: a page from before rooms carried a game. Checked before the creation budget.
-        const gameId = url.searchParams.get("gameId") ?? undefined;
-        if (gameId !== undefined && !store.gameIds.has(gameId)) {
-          json({ error: "Unknown game" }, 400);
-          return;
-        }
-        if (
-          !(await store.database.allowance(
-            digest(options.clientAddress(req)),
-            now(),
-            30,
-          ))
-        ) {
-          json({ error: "Room creation limit; try later" }, 429);
-          return;
-        }
-        const token = randomBytes(32).toString("hex"),
-          code = await store.createAvailable(token, undefined, gameId);
-        json({ code, token }, 201);
+        await createRoomResponse(options, store, now, req, url, json);
         return;
       }
-      const route = url.pathname.match(ROOM_ROUTE);
-      const budget =
-        route?.[2] === "ice"
-          ? iceLookups
-          : route?.[2] === "end" && req.method === "POST"
-            ? endLookups
-            : undefined;
-      if (budget && !budget.take(options.clientAddress(req))) {
-        json({ error: "Too many requests; try later" }, 429);
-        return;
-      }
-      if (route?.[2] === "end" && req.method === "POST") {
-        try {
-          await store.end(route[1]!, bearer(req));
-        } catch (error) {
-          if (
-            error instanceof RoomError &&
-            (error.status === 403 || error.status === 404)
-          ) {
-            recordLookupMiss();
-            json({ error: "Room expired or not found" }, 404);
-            return;
-          }
-          throw error;
-        }
-        json({ ok: true });
-        return;
-      }
-      if (route?.[2] === "ice") {
-        // The token is a bearer credential: a query string would put it in every access log on the way here.
-        const token = bearer(req);
-        if (!validToken(token)) {
-          json({ error: "Invalid identity" }, 401);
-          return;
-        }
-        let room;
-        try {
-          room = await store.get(route[1]!);
-        } catch (error) {
-          if (error instanceof RoomError && error.status === 404) {
-            recordLookupMiss();
-            json({ error: "Room expired or not found" }, 404);
-            return;
-          }
-          throw error;
-        }
-        const member = room.members[peerId(token)];
-        if (!member || member.expiresAt <= now()) {
-          recordLookupMiss();
-          json({ error: "Room expired or not found" }, 404);
-          return;
-        }
-        json({ iceServers: DEFAULT_ICE_SERVERS, relayConfigured: false });
-        return;
-      }
+      if (await handleRoomLookup(req, url, json)) return;
       if (await options.extension?.handle(req, res, options.clientAddress(req)))
         return;
       if (
@@ -405,123 +576,20 @@ export function createRoomServer(options: RoomHttpOptions): RoomServer {
           sockets.handleUpgrade(req, socket, head, (ws) => {
             socket.off("close", aborted);
             upgraded = ws;
-            const untilClosed = new Promise<void>((resolve) =>
-              ws.once("close", resolve),
+            listenForRoomSocket(
+              ws,
+              code,
+              address,
+              gateway,
+              schedule,
+              resolve,
+              reject,
             );
-            let connectionId: string | undefined,
-              closed = false,
-              pending: string[] = [],
-              // "auth": only an `auth` frame is read. "rejected": nothing is read again.
-              phase: "auth" | "admitted" | "rejected" = "auth",
-              cancelDeadline: (() => void) | undefined;
-            const refuse = (error: RoomError) => {
-              phase = "rejected";
-              cancelDeadline?.();
-              reject(error);
-            };
-            // Set once the socket has closed: whether the seat is kept for the page to resume. A socket that
-            // just stops (1006: the platform's hourly cut, a network change, a stopped instance) said no goodbye,
-            // so its page is taken to be coming back; a close frame from the page is the page leaving.
-            let hold = false;
-            const admit = (token: string, gameId?: string, resume?: string) => {
-              phase = "admitted";
-              cancelDeadline?.();
-              void gateway
-                .connect(code, token, ws, gameId, resume, address, untilClosed)
-                .then((id) => {
-                  connectionId = id;
-                  if (closed) {
-                    void gateway.disconnect(id, { socket: ws, hold });
-                    resolve();
-                    return;
-                  }
-                  for (const data of pending)
-                    void gateway.receive(id, data, ws);
-                  pending = [];
-                  resolve();
-                })
-                .catch(reject);
-            };
-            if (phase === "auth")
-              cancelDeadline = schedule(() => {
-                if (phase === "auth")
-                  refuse(new RoomError(401, "Authentication timed out"));
-              }, AUTH_DEADLINE_MS);
-            ws.on("message", (raw, binary) => {
-              if (phase === "rejected") return;
-              if (phase === "auth") {
-                // Whatever arrives first is the authentication attempt; it is never handed to the gateway.
-                const frame = readAuthFrame(raw.toString(), binary);
-                if (frame === undefined)
-                  // Nothing about the frame is echoed or logged.
-                  refuse(new RoomError(401, "Authentication required"));
-                else admit(frame.token, frame.gameId, frame.resume);
-                return;
-              }
-              if (binary) {
-                ws.close(1003, "Text frames required");
-                return;
-              }
-              const data = raw.toString();
-              if (connectionId) void gateway.receive(connectionId, data, ws);
-              else if (pending.length < 4) pending.push(data);
-              else ws.close(1008, "Wait for welcome");
-            });
-            ws.on("close", (closeCode) => {
-              closed = true;
-              hold = closeCode === CLOSE_ABNORMAL;
-              pending = [];
-              // Leaving before authenticating frees the slot and is not a failure. Charging it would stop nobody —
-              // a slot can be held to the deadline and then authenticated for free — and it would land on honest
-              // pages: one closed, frozen or dropped within a round trip of the upgrade.
-              if (phase === "auth") {
-                phase = "rejected";
-                cancelDeadline?.();
-                resolve();
-              }
-              if (connectionId)
-                void gateway.disconnect(connectionId, { socket: ws, hold });
-            });
-            ws.on("error", () => {
-              // `ws` reports a frame it will not parse (a protocol violation, or one past `maxPayload`) here, not a
-              // network drop. As a first frame that is a bad authentication attempt like any other.
-              if (phase === "auth")
-                refuse(new RoomError(401, "Authentication required"));
-              ws.close();
-            });
           });
         }).catch(async (error: unknown) => {
           // A refused upgraded socket still occupies a Cloud Run request until the close handshake finishes.
           // Keep its pending slot until then, so repeated refusals cannot bypass the concurrency budget.
-          if (upgraded) {
-            const refused = upgraded;
-            const closed = new Promise<void>((resolve) => {
-              if (refused.readyState === refused.CLOSED) return resolve();
-              refused.once("close", resolve);
-            });
-            refused.close(
-              !(error instanceof RoomError)
-                ? 4000
-                : error instanceof RoomFullError
-                  ? CLOSE_ROOM_FULL
-                  : error.status === 503
-                    ? 1013
-                    : error.status === 404
-                      ? CLOSE_ROOM_ENDED
-                      : error.status === 401
-                        ? CLOSE_UNAUTHENTICATED
-                        : 4000,
-              error instanceof RoomError
-                ? error.message
-                : "Room service unavailable",
-            );
-            if (refused.readyState !== refused.CLOSED)
-              refused.once(
-                "close",
-                schedule(() => refused.terminate(), REFUSED_CLOSE_GRACE_MS),
-              );
-            await closed;
-          }
+          if (upgraded) await closeRefusedRoomSocket(upgraded, error, schedule);
           throw error;
         }),
       )

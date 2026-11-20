@@ -15,6 +15,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import type { CyberfuseStats } from "./stats.js";
 import type { HistoryReceipt } from "fuse-platform/history-api";
@@ -279,11 +280,8 @@ function ownEntries(
   tick: number,
 ) {
   const stream = streams.get(id);
-  const batch =
-    stream?.generation === seat?.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat?.generation);
-  return batch?.entries.filter((e) => e[1] === tick) ?? [];
+  const entries = entriesForGeneration(stream, seat?.generation);
+  return entries.filter((e) => e[1] === tick);
 }
 function foldEquipment(
   room: CyberfuseRoom,

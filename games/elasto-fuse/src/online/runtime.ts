@@ -10,12 +10,14 @@ import {
   RACE_LIMIT,
   RESTART,
   RIDER_AHEAD,
+  RULES,
   STEPS_PER_SECOND,
   STEPS_PER_TICK,
   TURN,
   VOLT_LEFT,
   VOLT_RIGHT,
 } from "../engine/index.js";
+import type { InputChange, LevelRun } from "../level-times.js";
 import {
   PLAY,
   elastoFuseGame,
@@ -76,6 +78,7 @@ export class ElastoFuseRuntime extends RoomRuntime<
   private sent = { key: "", bits: 0 };
   /** The race this device's clock runs for, when its step 0 is, and the last whole step seen and logged. */
   private race = { key: "", goAt: 0, last: 0, logged: -1 };
+  private soloInputs: InputChange[] = [];
   /** What this device logged lately and the room may not have folded yet, oldest first. */
   private logged: { tick: number; key: string; at: number; bits: number }[] =
     [];
@@ -146,6 +149,7 @@ export class ElastoFuseRuntime extends RoomRuntime<
       }
       const at = Math.max(0, Math.floor((now - goAt) / STEP_MS));
       this.race = { key, goAt, last: at, logged: -1 };
+      this.soloInputs = [];
     }
     const race = this.race;
     let at = Math.floor((now - race.goAt) / STEP_MS);
@@ -181,11 +185,39 @@ export class ElastoFuseRuntime extends RoomRuntime<
     this.log(room, key, at, bits);
   }
   private log(room: Room, key: string, at: number, bits: number): void {
+    if (this.solo && key === this.race.key) {
+      const last = this.soloInputs.at(-1);
+      const step = Math.max(at, last?.[0] ?? 0);
+      if (last?.[0] === step) last[1] = bits;
+      else if ((last?.[1] ?? 0) !== bits) this.soloInputs.push([step, bits]);
+    }
     const tick = this.recorder.next();
     this.logged = this.logged.filter((entry) => entry.tick > room.tick);
     this.logged.push({ tick, key, at, bits });
     this.recorder.at(tick, [PLAY, room.matchId, bits, at, room.round]);
     this.sendPackets(this.deps.now());
+  }
+  /** A finished solo run's input evidence, with unexecuted changes at the finish excluded. */
+  soloRun(): LevelRun | undefined {
+    const room = this.roomState();
+    const world = room?.world;
+    const rider = world?.riders[0];
+    if (
+      !this.solo ||
+      room?.stage !== "over" ||
+      !world ||
+      rider?.status !== FINISHED ||
+      this.race.key !== `${room.matchId}:${room.round}`
+    )
+      return;
+    return {
+      rules: RULES,
+      level: world.level,
+      steps: rider.finish,
+      inputs: this.soloInputs
+        .filter(([at]) => at < rider.finish)
+        .map(([at, bits]) => [at, bits]),
+    };
   }
   /**
    * This device's own bike now, on its own clock, for the screen to draw: the room's copy of it replayed on with the
@@ -234,6 +266,7 @@ export class ElastoFuseRuntime extends RoomRuntime<
     this.sent = { key: "", bits: 0 };
     this.stale = 0;
     this.race = { key: "", goAt: 0, last: 0, logged: -1 };
+    this.soloInputs = [];
     this.logged = [];
   }
   protected releaseControls(): void {

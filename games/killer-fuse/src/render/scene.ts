@@ -121,6 +121,13 @@ interface Mote {
   color: string;
 }
 
+interface UnitPaint {
+  unit: UnitView;
+  rank: number;
+  inGate: boolean;
+  stood: { x: number; y: number } | undefined;
+}
+
 export class Scene {
   private readonly glyphs = new Map<string, TextPixel[]>();
   private platforms: { id: number; canvas: HTMLCanvasElement } | null = null;
@@ -201,16 +208,17 @@ export class Scene {
     // in front of it, so the ending reads as the snail home and not as a net.
     const home = view.winner?.kind === "snail" && !view.timeUp;
     if (home) this.goals(ctx, frame);
-    this.units(ctx, frame, (unit) => unit.eaten || unit.riding);
+    const units = this.prepareUnits(frame);
+    this.units(ctx, frame, units.behind);
     this.snail(ctx, frame);
     if (!home) this.goals(ctx, frame);
     this.afterImages(ctx, frame);
     this.fallen(ctx, frame);
-    this.units(ctx, frame, (unit) => !unit.eaten && !unit.riding);
+    this.units(ctx, frame, units.front);
     this.doors(ctx, frame);
     this.berries(ctx, frame);
     this.effects(ctx, frame);
-    this.tags(ctx, frame);
+    this.tags(ctx, frame, units.inViewOrder);
   }
 
   private background(ctx: Ctx, frame: SceneFrame): void {
@@ -473,9 +481,14 @@ export class Scene {
   }
 
   /** Where a unit is drawn: on the saddle when riding, shaking in the mouth when eaten, else where it is. */
-  private place(unit: UnitView, frame: SceneFrame): { x: number; y: number } {
+  private place(
+    unit: UnitView,
+    frame: SceneFrame,
+    gate?: GateView,
+  ): { x: number; y: number } {
     const { snail } = frame.view;
-    const def = this.sprites.def("snail");
+    const def =
+      unit.riding || unit.eaten ? this.sprites.def("snail") : undefined;
     if (unit.riding && def) {
       const saddle = def.saddle[this.snailFrame(frame)] ?? def.anchor;
       return {
@@ -498,39 +511,58 @@ export class Scene {
       };
     }
     // A Worker using a gate stands in its doorway, between the pillars, wherever in the gate it stopped.
-    const gate = frame.view.gates.find((entry) => entry.user === unit.slot);
     if (gate) return { x: gate.x, y: unit.y - 1 };
     return { x: unit.x, y: unit.y - 1 };
   }
 
   private emerging(unit: UnitView, frame: SceneFrame): boolean {
-    return frame.pool.sprites.some(
-      (sprite) =>
-        sprite.slot === unit.slot &&
-        unit.grounded &&
-        Math.abs(unit.x - sprite.x) <=
-          (this.sprites.def(sprite.sheet)?.frameWidth ?? 0) / 2,
+    return (
+      unit.grounded &&
+      frame.pool.sprites.some(
+        (sprite) =>
+          sprite.slot === unit.slot &&
+          Math.abs(unit.x - sprite.x) <=
+            (this.sprites.def(sprite.sheet)?.frameWidth ?? 0) / 2,
+      )
     );
+  }
+
+  /** Share the visibility, placement and gate checks across bodies and their tags for this frame. */
+  private prepareUnits(frame: SceneFrame) {
+    const inViewOrder: UnitPaint[] = [];
+    for (const unit of frame.view.units) {
+      if (!unit.dead && this.emerging(unit, frame)) continue;
+      const gate = unit.dead
+        ? undefined
+        : frame.view.gates.find((entry) => entry.user === unit.slot);
+      inViewOrder.push({
+        unit,
+        rank:
+          (unit.slot === frame.localSlot ? 10 : 0) +
+          (unit.kind === "queen" ? 2 : unit.kind === "warrior" ? 1 : 0),
+        inGate: gate !== undefined,
+        stood: unit.dead ? undefined : this.place(unit, frame, gate),
+      });
+    }
+    const behind: UnitPaint[] = [],
+      front: UnitPaint[] = [];
+    for (const actor of inViewOrder.slice().sort((a, b) => a.rank - b.rank)) {
+      (actor.unit.eaten || actor.unit.riding ? behind : front).push(actor);
+    }
+    return { behind, front, inViewOrder };
   }
 
   private units(
     ctx: Ctx,
     frame: SceneFrame,
-    pick: (unit: UnitView) => boolean,
+    order: readonly UnitPaint[],
   ): void {
     const { view } = frame;
-    const rank = (unit: UnitView): number =>
-      (unit.slot === frame.localSlot ? 10 : 0) +
-      (unit.kind === "queen" ? 2 : unit.kind === "warrior" ? 1 : 0);
-    const order = view.units.filter(pick).sort((a, b) => rank(a) - rank(b));
-    for (const unit of order) {
-      if (unit.dead) {
+    for (const { unit, inGate, stood } of order) {
+      if (!stood) {
         this.waiting(ctx, unit, frame);
         continue;
       }
-      // A new Warrior is the gate's rising figure until that has played, unless it has already flown off.
-      if (this.emerging(unit, frame)) continue;
-      const inGate = view.gates.some((gate) => gate.user === unit.slot);
       const pose = unitPose(this.sprites.art.manifest, unit, {
         rules: view.rules,
         time: frame.time,
@@ -538,7 +570,6 @@ export class Scene {
         sinceFlap: frame.flaps.since(unit.slot, frame.time),
         inGate,
       });
-      const stood = this.place(unit, frame);
       const base = unitSheet(unit);
       const gap = this.below(base, pose.frame);
       const at = { x: stood.x, y: stood.y - dashLift(unit, gap, view.rules) };
@@ -1009,16 +1040,19 @@ export class Scene {
     ctx.globalAlpha = 1;
   }
 
-  private tags(ctx: Ctx, frame: SceneFrame): void {
-    for (const unit of frame.view.units) {
-      if (unit.dead || unit.eaten || this.emerging(unit, frame)) continue;
-      if (frame.view.gates.some((gate) => gate.user === unit.slot)) continue;
-      const at = this.place(unit, frame);
+  private tags(
+    ctx: Ctx,
+    frame: SceneFrame,
+    actors: readonly UnitPaint[],
+  ): void {
+    const botAlpha = botTagAlpha(frame.view.step);
+    const bob = Math.round(Math.sin(frame.now * 7) * 1.2);
+    for (const { unit, inGate, stood: at } of actors) {
+      if (!at || unit.eaten || inGate) continue;
       const head = this.sprites.sizes[unit.kind] + 3;
       const ramp = this.sprites.ramp(unit.team);
       const mine = unit.slot === frame.localSlot;
       const tag = tagOf(frame.names[unit.slot], unit.bot);
-      const botAlpha = botTagAlpha(frame.view.step);
       const half = Math.ceil(textWidth(tag) / 2) + 2;
       for (const offset of wrapOffsets(at.x - half, at.x + half)) {
         const x = Math.round(at.x) + offset;
@@ -1046,7 +1080,6 @@ export class Scene {
         }
         if (!mine) continue;
         // The local player's marker: a gold arrow that bobs.
-        const bob = Math.round(Math.sin(frame.now * 7) * 1.2);
         const top = y - 6 + bob;
         ctx.fillStyle = INK;
         ctx.fillRect(x - 4, top - 1, 9, 3);

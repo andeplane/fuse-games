@@ -131,6 +131,28 @@ describe("FriendsWindow", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens a conversation from Send after selecting an offline contact", async () => {
+    const demo = createDemoPresenceService({
+      schedule: createManualTimers().schedule,
+    });
+    const snapshot = { ...demo.snapshot(), mode: "live" as const };
+    const presence: PresenceService = { ...demo, snapshot: () => snapshot };
+    const { user } = renderFriends({ presence });
+    const messenger = await dialog();
+    const offline = within(messenger).getByRole("button", {
+      name: /LAN_party_Lars/,
+    });
+
+    await user.click(offline);
+    expect(offline).toHaveAttribute("aria-pressed", "true");
+    await user.click(within(messenger).getByRole("button", { name: "Send" }));
+
+    const conversation = await screen.findByRole("dialog", {
+      name: /LAN_party_Lars/,
+    });
+    expect(within(conversation).getByRole("textbox")).toBeEnabled();
+  });
+
   it("offers sign-in when signed out and lists buddies once signed in", async () => {
     const { user, presence } = renderFriends({ signedIn: false });
     const window = await dialog();

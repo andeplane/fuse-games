@@ -51,6 +51,7 @@ export function segmentDistanceSquared(
   );
 }
 
+/** Arena generation can pass zero to keep projections onto arbitrarily short segments. */
 export function pointSegmentDistanceSquared(
   px: number,
   py: number,
@@ -58,16 +59,22 @@ export function pointSegmentDistanceSquared(
   ay: number,
   bx: number,
   by: number,
+  minimumLengthSquared: 0 | typeof EPSILON = EPSILON,
 ): number {
   const dx = bx - ax;
   const dy = by - ay;
   const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared <= EPSILON) return square(px - ax) + square(py - ay);
+  if (lengthSquared <= minimumLengthSquared)
+    return square(px - ax) + square(py - ay);
   const t = Math.max(
     0,
     Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared),
   );
   return square(px - (ax + t * dx)) + square(py - (ay + t * dy));
+}
+
+function oppositeSides(a: number, b: number): boolean {
+  return (a > EPSILON && b < -EPSILON) || (a < -EPSILON && b > EPSILON);
 }
 
 export function segmentsIntersect(
@@ -84,11 +91,7 @@ export function segmentsIntersect(
   const o2 = orientation(ax, ay, bx, by, dx, dy);
   const o3 = orientation(cx, cy, dx, dy, ax, ay);
   const o4 = orientation(cx, cy, dx, dy, bx, by);
-  if (
-    ((o1 > EPSILON && o2 < -EPSILON) || (o1 < -EPSILON && o2 > EPSILON)) &&
-    ((o3 > EPSILON && o4 < -EPSILON) || (o3 < -EPSILON && o4 > EPSILON))
-  )
-    return true;
+  if (oppositeSides(o1, o2) && oppositeSides(o3, o4)) return true;
   return (
     (Math.abs(o1) <= EPSILON && onSegment(ax, ay, bx, by, cx, cy)) ||
     (Math.abs(o2) <= EPSILON && onSegment(ax, ay, bx, by, dx, dy)) ||

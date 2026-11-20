@@ -49,4 +49,4 @@ export { PICKUP_TYPES } from "./pickup-types.js";
 
 // A held Gun sight is drawn between ticks too: the local rider's sight is led with the controls it holds right now,
 // on the same per-tick sweep the simulation applies, and a sight is up exactly while `gunAim` is present.
-export { isAimingGun, sweepGunAim } from "./gun.js";
+export { isAimingGun, rayAxisLimit, sweepGunAim } from "./gun.js";

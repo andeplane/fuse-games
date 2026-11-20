@@ -6,6 +6,113 @@ const MUSIC_VOLUME = 0.35;
 const FADE_MS = 1200;
 const FADE_TICK_MS = 50;
 
+interface ToneRecipe {
+  wave: OscillatorType;
+  from: number;
+  to?: number;
+  duration: number;
+  level: number;
+  delay?: number;
+}
+
+interface BurstRecipe {
+  filter: BiquadFilterType;
+  from: number;
+  to: number;
+  duration: number;
+  level: number;
+  q?: number;
+}
+
+function chime(
+  notes: readonly number[],
+  recipe: Pick<ToneRecipe, "wave" | "duration" | "level"> & {
+    gap: number;
+    tail?: number;
+  },
+): ToneRecipe[] {
+  const { wave, duration, level, gap, tail = duration } = recipe;
+  return notes.map((from, index) => ({
+    wave,
+    from,
+    duration: index === notes.length - 1 ? tail : duration,
+    level,
+    delay: index * gap,
+  }));
+}
+
+const CHIMES = {
+  crate: chime([660, 880, 1320], {
+    wave: "square",
+    duration: 0.12,
+    level: 0.07,
+    gap: 0.07,
+  }),
+  alarm: chime(
+    Array.from({ length: 8 }, (_, index) => (index % 2 ? 660 : 880)),
+    {
+      wave: "square",
+      duration: 0.2,
+      level: 0.07,
+      gap: 0.22,
+    },
+  ),
+  win: chime([523, 659, 784, 1047], {
+    wave: "square",
+    duration: 0.14,
+    level: 0.09,
+    gap: 0.13,
+    tail: 0.8,
+  }),
+  loss: chime([523, 440, 349], {
+    wave: "triangle",
+    duration: 0.14,
+    level: 0.09,
+    gap: 0.13,
+    tail: 0.8,
+  }),
+};
+
+type Layer = ToneRecipe | BurstRecipe;
+const FIXED_CUES: Record<"shield" | "shield-pop" | "ghost", readonly Layer[]> =
+  {
+    shield: [
+      { wave: "triangle", from: 1400, to: 1100, duration: 0.3, level: 0.1 },
+      { wave: "sine", from: 2130, to: 1700, duration: 0.2, level: 0.05 },
+    ],
+    "shield-pop": [
+      { wave: "triangle", from: 1600, to: 180, duration: 0.5, level: 0.14 },
+      { filter: "highpass", from: 3000, to: 1500, duration: 0.3, level: 0.12 },
+    ],
+    // A rising "wooo" as the blimp appears.
+    ghost: [
+      { wave: "triangle", from: 330, to: 660, duration: 0.8, level: 0.1 },
+      {
+        wave: "sine",
+        from: 495,
+        to: 990,
+        duration: 0.7,
+        level: 0.05,
+        delay: 0.08,
+      },
+    ],
+  };
+
+const HEAVY_LAUNCH: ToneRecipe = {
+  wave: "square",
+  from: 110,
+  to: 330,
+  duration: 0.3,
+  level: 0.08,
+};
+const DESTROYED: ToneRecipe = {
+  wave: "sawtooth",
+  from: 440,
+  to: 55,
+  duration: 1.2,
+  level: 0.1,
+};
+
 /**
  * Effects are synthesized on a Web Audio graph (voices → master gain → compressor), created on the first user
  * gesture since browsers keep audio blocked until then. Music streams through media elements that crossfade.
@@ -105,64 +212,72 @@ export class WebAudioBackend implements AudioBackend {
     const s = cue.size;
     switch (cue.kind) {
       case "launch":
-        this.burst("bandpass", 300, 1800, 0.2 + 0.15 * s, 0.12 + 0.18 * s, 1.5);
-        if (s >= 1) this.tone("square", 110, 330, 0.3, 0.08);
+        this.burst({
+          filter: "bandpass",
+          from: 300,
+          to: 1800,
+          duration: 0.2 + 0.15 * s,
+          level: 0.12 + 0.18 * s,
+          q: 1.5,
+        });
+        if (s >= 1) this.tone(HEAVY_LAUNCH);
         break;
       case "split": {
         // ×2, ×3, ×5, ×10 ring a root, third, fifth and octave.
         const p = cue.pitch;
         const semitones = p >= 10 ? 12 : p >= 5 ? 7 : p >= 3 ? 4 : 0;
         const freq = 660 * 2 ** (semitones / 12);
-        this.tone("triangle", freq, 0, 0.4, 0.16);
-        this.tone("sine", freq * 2, 0, 0.25, 0.07);
+        this.tone({ wave: "triangle", from: freq, duration: 0.4, level: 0.16 });
+        this.tone({
+          wave: "sine",
+          from: freq * 2,
+          duration: 0.25,
+          level: 0.07,
+        });
         break;
       }
       case "explosion":
         this.boom(s);
         break;
       case "hit":
-        this.tone("square", 220, 80, 0.15, 0.08 + 0.08 * s);
+        this.tone({
+          wave: "square",
+          from: 220,
+          to: 80,
+          duration: 0.15,
+          level: 0.08 + 0.08 * s,
+        });
         break;
       case "shield":
-        this.tone("triangle", 1400, 1100, 0.3, 0.1);
-        this.tone("sine", 2130, 1700, 0.2, 0.05);
-        break;
       case "shield-pop":
-        this.tone("triangle", 1600, 180, 0.5, 0.14);
-        this.burst("highpass", 3000, 1500, 0.3, 0.12);
+      case "ghost":
+        for (const layer of FIXED_CUES[cue.kind]) {
+          if ("wave" in layer) this.tone(layer);
+          else this.burst(layer);
+        }
         break;
       case "crate":
-        [660, 880, 1320].forEach((f, i) =>
-          this.tone("square", f, 0, 0.12, 0.07, i * 0.07),
-        );
+      case "alarm":
+        for (const recipe of CHIMES[cue.kind]) this.tone(recipe);
         break;
       case "destroyed":
         this.boom(1);
-        this.tone("sawtooth", 440, 55, 1.2, 0.1);
-        break;
-      case "ghost":
-        // A spooky rising "wooo" as the blimp appears.
-        this.tone("triangle", 330, 660, 0.8, 0.1);
-        this.tone("sine", 495, 990, 0.7, 0.05, 0.08);
+        this.tone(DESTROYED);
         break;
       case "drop":
         // The classic falling-bomb whistle.
-        this.tone("sine", 1500, 600, 0.45, 0.06 + 0.04 * s);
-        break;
-      case "alarm":
-        for (let i = 0; i < 8; i++)
-          this.tone("square", i % 2 ? 660 : 880, 0, 0.2, 0.07, i * 0.22);
-        break;
-      case "fanfare": {
-        const win = cue.pitch > 0;
-        const notes = win ? [523, 659, 784, 1047] : [523, 440, 349];
-        notes.forEach((f, i) => {
-          const last = i === notes.length - 1;
-          const wave = win ? "square" : "triangle";
-          this.tone(wave, f, 0, last ? 0.8 : 0.14, 0.09, i * 0.13);
+        this.tone({
+          wave: "sine",
+          from: 1500,
+          to: 600,
+          duration: 0.45,
+          level: 0.06 + 0.04 * s,
         });
         break;
-      }
+      case "fanfare":
+        for (const recipe of CHIMES[cue.pitch > 0 ? "win" : "loss"])
+          this.tone(recipe);
+        break;
     }
   }
 
@@ -188,37 +303,49 @@ export class WebAudioBackend implements AudioBackend {
 
   /** A low thump under a lowpassed noise burst; bigger sounds longer, brighter and louder. */
   private boom(s: number): void {
-    this.burst("lowpass", 1200 + 2400 * s, 90, 0.25 + 0.6 * s, 0.2 + 0.3 * s);
-    this.tone("sine", 130, 38, 0.2 + 0.35 * s, 0.12 + 0.3 * s);
+    this.burst({
+      filter: "lowpass",
+      from: 1200 + 2400 * s,
+      to: 90,
+      duration: 0.25 + 0.6 * s,
+      level: 0.2 + 0.3 * s,
+    });
+    this.tone({
+      wave: "sine",
+      from: 130,
+      to: 38,
+      duration: 0.2 + 0.35 * s,
+      level: 0.12 + 0.3 * s,
+    });
   }
 
-  /** An oscillator gliding from `freq` to `end` (0 = no glide). */
-  private tone(
-    wave: OscillatorType,
-    freq: number,
-    end: number,
-    dur: number,
-    level: number,
+  /** An oscillator with an optional glide. */
+  private tone({
+    wave,
+    from,
+    to,
+    duration,
+    level,
     delay = 0,
-  ): void {
+  }: ToneRecipe): void {
     const context = this.context!;
     const osc = context.createOscillator();
     const t = context.currentTime + delay;
     osc.type = wave;
-    osc.frequency.setValueAtTime(freq, t);
-    if (end) osc.frequency.exponentialRampToValueAtTime(end, t + dur);
-    this.voice(osc, t, dur, level);
+    osc.frequency.setValueAtTime(from, t);
+    if (to) osc.frequency.exponentialRampToValueAtTime(to, t + duration);
+    this.voice(osc, t, duration, level);
   }
 
-  /** White noise through a filter whose cutoff sweeps from `freq` to `end`. */
-  private burst(
-    filter: BiquadFilterType,
-    freq: number,
-    end: number,
-    dur: number,
-    level: number,
+  /** White noise through a filter with a sweeping cutoff. */
+  private burst({
+    filter,
+    from,
+    to,
+    duration,
+    level,
     q = 1,
-  ): void {
+  }: BurstRecipe): void {
     const context = this.context!;
     const source = context.createBufferSource();
     source.buffer = this.noise!;
@@ -226,10 +353,10 @@ export class WebAudioBackend implements AudioBackend {
     const biquad = context.createBiquadFilter();
     biquad.type = filter;
     biquad.Q.value = q;
-    biquad.frequency.setValueAtTime(freq, t);
-    biquad.frequency.exponentialRampToValueAtTime(end, t + dur);
+    biquad.frequency.setValueAtTime(from, t);
+    biquad.frequency.exponentialRampToValueAtTime(to, t + duration);
     source.connect(biquad);
-    this.voice(source, t, dur, level, biquad);
+    this.voice(source, t, duration, level, biquad);
   }
 
   /** Envelopes `source` (through `via`, if any) into the master bus and frees the nodes once it ends. */

@@ -236,6 +236,9 @@ body:has(.fv-lobby:not([hidden])) .fv-live {
   display: grid;
   gap: var(--fui-space-3);
 }
+.fv-room-help {
+  white-space: nowrap;
+}
 .fv-lobby .fui-roster-row {
   align-items: center;
 }

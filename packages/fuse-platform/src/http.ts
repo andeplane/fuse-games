@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   AddressBudget,
   RoomError,
@@ -67,14 +67,162 @@ export function gameRoute(pathname: string): { gameId: string; path: string } {
     ? { gameId: scoped[1]!, path: `/api${scoped[2]!}` }
     : { gameId: LEGACY_GAME_ID, path: pathname };
 }
-const HISTORY_ROUTE =
-  /^\/api\/(?:rooms\/[A-Z0-9]{6}\/(?:results|round-results)|me\/(?:results|round-results)|leaderboard|matches|me|me\/matches)$/;
+const ROOM_RESULT_ROUTE =
+  /^\/api\/rooms\/([A-Z0-9]{6})\/(results|round-results)$/;
 
-/**
- * Match history, accounts and ratings, mounted behind the networking service's Origin and error boundaries. The
- * account (`/api/me`, the username) is every game's; ratings, leaderboards, results and match history are per game.
- * An unknown game is refused with 404 before anything else is read.
- */
+function jsonResponse(res: ServerResponse, noStore = false) {
+  return (value: unknown, status = 200): void => {
+    res.writeHead(status, {
+      "Content-Type": "application/json",
+      ...(noStore ? { "Cache-Control": "no-store" } : {}),
+    });
+    res.end(JSON.stringify(value));
+  };
+}
+
+interface HistoryRequest {
+  req: IncomingMessage;
+  url: URL;
+  address: string;
+  history: ReturnType<HistoryStore["game"]>;
+  identity: IdentityVerifier;
+  json(value: unknown, status?: number): void;
+}
+
+type HistoryHandler = (context: HistoryRequest) => Promise<void>;
+type HistoryMethod = "GET" | "POST" | "PUT";
+
+/** A room token authenticates the seat before a report is read or an identity is verified. */
+async function reportRoomResult(
+  { req, address, history, identity, json }: HistoryRequest,
+  room: string,
+  roundReport: boolean,
+  lookups: AddressBudget,
+): Promise<void> {
+  if (!lookups.take(address))
+    throw new RoomError(429, "Too many results; try later");
+  const reporter = await history.admit(room, bearer(req), address, roundReport);
+  const body = await readJson(req);
+  const header = req.headers["x-fuse-identity"];
+  const uid = typeof header === "string" ? await identity(header) : undefined;
+  const result =
+    body && typeof body === "object" && "result" in body
+      ? history.parseResult(body.result)
+      : undefined;
+  if (!result || roundReport !== (result.round !== undefined))
+    throw new RoomError(400, "Wrong result kind");
+  // A temporarily unverifiable signed-in round reporter must not be settled as a guest.
+  if (header && !uid && result.round !== undefined)
+    throw new RoomError(503, "Identity unavailable; retry round report");
+  json(await history.submit(reporter, body, uid));
+}
+
+function soloResult(roundReport: boolean): HistoryHandler {
+  return async ({ req, address, history, identity, json }) => {
+    const header = req.headers["x-fuse-identity"];
+    if (typeof header !== "string" || !header)
+      throw new RoomError(401, "Sign in first");
+    const uid = await identity(header);
+    if (!uid)
+      throw new RoomError(503, "Identity unavailable; retry solo report");
+    const reporter = await history.admitSolo(uid, address, roundReport);
+    json(
+      await history.submitSolo(reporter, await readJson(req), uid, roundReport),
+    );
+  };
+}
+
+async function publicHistoryIdentity({
+  req,
+  identity,
+}: HistoryRequest): Promise<string | undefined> {
+  const token = bearer(req);
+  return token ? identity(token) : undefined;
+}
+
+function signedInHistory(
+  handler: (context: HistoryRequest, uid: string) => Promise<void>,
+): HistoryHandler {
+  return async (request) => {
+    const { req, identity, json } = request;
+    const uid = await identity(bearer(req));
+    if (!uid) {
+      json({ error: "Sign in first" }, 401);
+      return;
+    }
+    await handler(request, uid);
+  };
+}
+
+const HISTORY_PATHS = new Map<
+  string,
+  Partial<Record<HistoryMethod, HistoryHandler>>
+>([
+  ["/api/me/results", { POST: soloResult(false) }],
+  ["/api/me/round-results", { POST: soloResult(true) }],
+  [
+    "/api/matches",
+    {
+      GET: async (request) => {
+        const { url, address, history, json } = request;
+        const rawCursor = url.searchParams.get("before");
+        const cursor =
+          rawCursor === null ? undefined : parseFeedCursor(rawCursor);
+        if (rawCursor !== null && cursor === undefined) {
+          json({ error: "Invalid cursor" }, 400);
+          return;
+        }
+        json(
+          await history.feed(
+            address,
+            await publicHistoryIdentity(request),
+            cursor,
+          ),
+        );
+      },
+    },
+  ],
+  [
+    "/api/leaderboard",
+    {
+      GET: async (request) => {
+        const { address, history, json } = request;
+        json({
+          players: await history.leaderboard(
+            address,
+            await publicHistoryIdentity(request),
+          ),
+        });
+      },
+    },
+  ],
+  [
+    "/api/me",
+    {
+      GET: signedInHistory(async ({ history, json }, uid) => {
+        json({ profile: (await history.profile(uid)) ?? null });
+      }),
+      PUT: signedInHistory(async ({ req, history, json }, uid) => {
+        json(await history.rename(uid, await readJson(req)));
+      }),
+    },
+  ],
+  [
+    "/api/me/matches",
+    {
+      GET: signedInHistory(async ({ url, history, json }, uid) => {
+        const cursor = pageCursor(url);
+        if (cursor === null) {
+          json({ error: "Invalid cursor" }, 400);
+          return;
+        }
+        json(await history.history(uid, cursor));
+      }),
+    },
+  ],
+]);
+
+/** Account routes share a username. The legacy and scoped history paths use the selected game's store. */
 export function createHistoryHttp(
   store: HistoryStore,
   identity: IdentityVerifier,
@@ -88,140 +236,154 @@ export function createHistoryHttp(
   return {
     methods: ["PUT"],
     headers: ["X-Fuse-Identity"],
-    async handle(req, res, clientAddress) {
+    async handle(req, res, address) {
       const url = new URL(req.url ?? "/", "http://gateway");
-      const routed = gameRoute(url.pathname);
-      if (!HISTORY_ROUTE.test(routed.path)) return false;
-      const history = store.game(routed.gameId),
-        pathname = routed.path;
-      const route = pathname.match(
-        /^\/api\/rooms\/([A-Z0-9]{6})\/(results|round-results)$/,
-      );
-      const json = (value: unknown, status = 200) => {
-        res.writeHead(status, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(value));
+      const { gameId, path } = gameRoute(url.pathname);
+      const route = HISTORY_PATHS.get(path);
+      const roomReport = path.match(ROOM_RESULT_ROUTE);
+      if (!route && !roomReport) return false;
+      // A recognized route with an unknown game is refused before method dispatch.
+      const history = store.game(gameId);
+      const method = req.method;
+      if (method !== "GET" && method !== "POST" && method !== "PUT")
+        return false;
+      const context: HistoryRequest = {
+        req,
+        url,
+        address,
+        history,
+        identity,
+        json: jsonResponse(res),
       };
-      // The room token says which seat is reporting; the optional identity header says whose account that seat is.
-      // An identity that does not verify is a guest's report, never a refusal: signing in must not be able to cost a rider their result.
-      if (route && req.method === "POST") {
-        // Refused credentials must not buy unlimited room reads. Database budgets still apply to proven seats.
-        if (!resultLookups.take(clientAddress))
-          throw new RoomError(429, "Too many results; try later");
-        // The room token is checked first, so a stranger can buy neither a body read nor a signature verification.
-        const reporter = await history.admit(
-            route[1]!,
-            bearer(req),
-            clientAddress,
-            route[2] === "round-results",
-          ),
-          body = await readJson(req);
-        const header = req.headers["x-fuse-identity"],
-          uid = typeof header === "string" ? await identity(header) : undefined;
-        // A temporarily unverifiable signed-in round reporter must not be settled as a guest.
-        const result =
-          body && typeof body === "object" && "result" in body
-            ? history.parseResult(body.result)
-            : undefined;
-        if (
-          !result ||
-          (route[2] === "round-results") !== (result.round !== undefined)
-        )
-          throw new RoomError(400, "Wrong result kind");
-        if (header && !uid && result.round !== undefined)
-          throw new RoomError(503, "Identity unavailable; retry round report");
-        json(await history.submit(reporter, body, uid));
-        return true;
-      }
-      if (
-        (pathname === "/api/me/round-results" ||
-          pathname === "/api/me/results") &&
-        req.method === "POST"
-      ) {
-        const header = req.headers["x-fuse-identity"];
-        if (typeof header !== "string" || !header)
-          throw new RoomError(401, "Sign in first");
-        const uid = await identity(header);
-        if (!uid)
-          throw new RoomError(503, "Identity unavailable; retry solo report");
-        const roundReport = pathname === "/api/me/round-results";
-        const reporter = await history.admitSolo(
-          uid,
-          clientAddress,
-          roundReport,
-        );
-        json(
-          await history.submitSolo(
-            reporter,
-            await readJson(req),
-            uid,
-            roundReport,
-          ),
+      if (roomReport && method === "POST") {
+        await reportRoomResult(
+          context,
+          roomReport[1]!,
+          roomReport[2] === "round-results",
+          resultLookups,
         );
         return true;
       }
-      // Public like the leaderboard: no sign-in, and an optional one only names the caller's own seat.
-      if (pathname === "/api/matches" && req.method === "GET") {
-        const rawCursor = url.searchParams.get("before");
-        const cursor =
-          rawCursor === null ? undefined : parseFeedCursor(rawCursor);
-        if (rawCursor !== null && cursor === undefined) {
-          json({ error: "Invalid cursor" }, 400);
-          return true;
-        }
-        const token = bearer(req),
-          uid = token ? await identity(token) : undefined;
-        json(await history.feed(clientAddress, uid, cursor));
-        return true;
-      }
-      if (pathname === "/api/leaderboard" && req.method === "GET") {
-        const token = bearer(req),
-          uid = token ? await identity(token) : undefined;
-        json({ players: await history.leaderboard(clientAddress, uid) });
-        return true;
-      }
-      if (
-        pathname === "/api/me" &&
-        (req.method === "GET" || req.method === "PUT")
-      ) {
-        const uid = await identity(bearer(req));
-        if (!uid) {
-          json({ error: "Sign in first" }, 401);
-          return true;
-        }
-        json(
-          req.method === "PUT"
-            ? await history.rename(uid, await readJson(req))
-            : { profile: (await history.profile(uid)) ?? null },
-        );
-        return true;
-      }
-      if (pathname === "/api/me/matches" && req.method === "GET") {
-        const uid = await identity(bearer(req));
-        if (!uid) {
-          json({ error: "Sign in first" }, 401);
-          return true;
-        }
-        const cursor = pageCursor(url);
-        if (cursor === null) {
-          json({ error: "Invalid cursor" }, 400);
-          return true;
-        }
-        json(await history.history(uid, cursor));
-        return true;
-      }
-      return false;
+      const handler = route?.[method];
+      if (!handler) return false;
+      await handler(context);
+      return true;
     },
   };
 }
 
-const FRIENDS_ROUTE =
-  /^\/api\/(?:friends(?:\/sync|\/search|\/invites\/[a-f0-9]{32}|\/[a-f0-9]{20}(?:\/messages)?)?|rooms\/[A-Z0-9]{6}\/invites)$/;
+interface FriendRequest {
+  req: IncomingMessage;
+  url: URL;
+  store: FriendsStore;
+  uid: string;
+  id: string;
+  json: ReturnType<typeof jsonResponse>;
+}
 
-/**
- * Friends, presence and invites: account routes, so shared by every game and never under `/api/games/:gameId/`.
- * Every route needs a sign-in except the room invite, which like a result report is proven by the room token
- * first and the sign-in second: nobody outside the room can make it read a body.
- */
+type FriendHandler = (context: FriendRequest) => Promise<void>;
+type FriendRoute = Partial<Record<"GET" | "POST" | "DELETE", FriendHandler>>;
+
+function conversation(write: boolean): FriendHandler {
+  return async ({ req, store, uid, id, json }) => {
+    if (req.headers["x-fuse-account"] !== publicIdOf(uid))
+      throw new RoomError(
+        403,
+        "The signed-in account changed. Reopen this conversation.",
+      );
+    json(
+      await store.conversation(
+        uid,
+        id,
+        write ? await readJson(req) : undefined,
+      ),
+    );
+  };
+}
+
+const FRIEND_PATHS = new Map<string, FriendRoute>([
+  [
+    "/api/friends/sync",
+    {
+      POST: async ({ req, store, uid, json }) => {
+        json(await store.sync(uid, await readJson(req)));
+      },
+    },
+  ],
+  [
+    "/api/friends/search",
+    {
+      GET: async ({ url, store, uid, json }) => {
+        json({ players: await store.search(uid, url.searchParams.get("q")) });
+      },
+    },
+  ],
+  [
+    "/api/friends",
+    {
+      POST: async ({ req, store, uid, json }) => {
+        json(await store.add(uid, await readJson(req)));
+      },
+    },
+  ],
+]);
+const FRIEND_ID_PATHS: ReadonlyArray<readonly [RegExp, FriendRoute]> = [
+  [
+    /^\/api\/friends\/([a-f0-9]{20})\/messages$/,
+    { GET: conversation(false), POST: conversation(true) },
+  ],
+  [
+    /^\/api\/friends\/([a-f0-9]{20})$/,
+    {
+      DELETE: async ({ store, uid, id, json }) => {
+        json(await store.remove(uid, id));
+      },
+    },
+  ],
+  [
+    /^\/api\/friends\/invites\/([a-f0-9]{32})$/,
+    {
+      DELETE: async ({ store, uid, id, json }) => {
+        await store.dismissInvite(uid, id);
+        json({ dismissed: true });
+      },
+    },
+  ],
+];
+const ROOM_INVITE_PATH = /^\/api\/rooms\/([A-Z0-9]{6})\/invites$/;
+
+function friendPath(
+  path: string,
+): { route: FriendRoute; id: string } | undefined {
+  const fixed = FRIEND_PATHS.get(path);
+  if (fixed) return { route: fixed, id: "" };
+  for (const [pattern, route] of FRIEND_ID_PATHS) {
+    const match = path.match(pattern);
+    if (match) return { route, id: match[1]! };
+  }
+}
+
+async function inviteRoomFriend(
+  req: IncomingMessage,
+  room: string,
+  store: FriendsStore,
+  identity: IdentityVerifier,
+  json: ReturnType<typeof jsonResponse>,
+): Promise<void> {
+  const header = req.headers["x-fuse-identity"];
+  const uid =
+    typeof header === "string" && header ? await identity(header) : undefined;
+  if (!uid) throw new RoomError(401, "Sign in first");
+  const expectedAccount = req.headers["x-fuse-account"];
+  if (expectedAccount !== undefined && expectedAccount !== publicIdOf(uid))
+    throw new RoomError(
+      403,
+      "The signed-in account changed. Reopen Messenger and try again.",
+    );
+  json(await store.invite(room, bearer(req), uid, await readJson(req)));
+}
+
+/** Friends and presence are account routes. Room invites use a seat token and a separate identity header. */
 export function createFriendsHttp(
   store: FriendsStore,
   identity: IdentityVerifier,
@@ -240,99 +402,41 @@ export function createFriendsHttp(
   return {
     methods: ["DELETE"],
     headers: ["X-Fuse-Identity", "X-Fuse-Account"],
-    async handle(req, res, clientAddress) {
-      const url = new URL(req.url ?? "/", "http://gateway"),
-        pathname = url.pathname;
-      if (!FRIENDS_ROUTE.test(pathname)) return false;
-      const search = pathname === "/api/friends/search";
-      if (search) {
-        if (req.method !== "GET") return false;
-        // Protect identity verification as well as the database, independently of room invites.
-        if (!nameLookups.take(clientAddress))
-          throw new RoomError(429, "Too many searches; try later");
-      }
-      const json = (value: unknown, status = 200) => {
-        res.writeHead(status, {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-        });
-        res.end(JSON.stringify(value));
-      };
-      const invite = pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/invites$/);
+    async handle(req, res, address) {
+      const url = new URL(req.url ?? "/", "http://gateway");
+      const invite = url.pathname.match(ROOM_INVITE_PATH);
+      const found = friendPath(url.pathname);
+      if (!invite && !found) return false;
+      const json = jsonResponse(res, true);
+      const method = req.method;
       if (invite) {
-        if (req.method !== "POST") return false;
-        // Limit room lookups before verification/body reads; an identity is not proof of room membership.
-        if (!inviteLookups.take(clientAddress))
+        if (method !== "POST") return false;
+        // Limit room lookups before verification and body reads.
+        if (!inviteLookups.take(address))
           throw new RoomError(429, "Too many invites; try later");
-        const header = req.headers["x-fuse-identity"];
-        const uid =
-          typeof header === "string" && header
-            ? await identity(header)
-            : undefined;
-        if (!uid) throw new RoomError(401, "Sign in first");
-        const expectedAccount = req.headers["x-fuse-account"];
-        if (
-          expectedAccount !== undefined &&
-          expectedAccount !== publicIdOf(uid)
-        )
-          throw new RoomError(
-            403,
-            "The signed-in account changed. Reopen Messenger and try again.",
-          );
-        json(
-          await store.invite(invite[1]!, bearer(req), uid, await readJson(req)),
-        );
+        await inviteRoomFriend(req, invite[1]!, store, identity, json);
         return true;
+      }
+      if (url.pathname === "/api/friends/search") {
+        if (method !== "GET") return false;
+        // Protect identity verification and the database independently of room invites.
+        if (!nameLookups.take(address))
+          throw new RoomError(429, "Too many searches; try later");
       }
       const uid = await identity(bearer(req));
       if (!uid) {
         json({ error: "Sign in first" }, 401);
         return true;
       }
-      if (pathname === "/api/friends/sync" && req.method === "POST") {
-        json(await store.sync(uid, await readJson(req)));
-        return true;
-      }
-      if (search) {
-        json({ players: await store.search(uid, url.searchParams.get("q")) });
-        return true;
-      }
-      if (pathname === "/api/friends" && req.method === "POST") {
-        json(await store.add(uid, await readJson(req)));
-        return true;
-      }
-      const conversation = pathname.match(
-        /^\/api\/friends\/([a-f0-9]{20})\/messages$/,
-      );
-      if (conversation && (req.method === "GET" || req.method === "POST")) {
-        if (req.headers["x-fuse-account"] !== publicIdOf(uid))
-          throw new RoomError(
-            403,
-            "The signed-in account changed. Reopen this conversation.",
-          );
-        json(
-          await store.conversation(
-            uid,
-            conversation[1]!,
-            req.method === "POST" ? await readJson(req) : undefined,
-          ),
-        );
-        return true;
-      }
-      const friend = pathname.match(/^\/api\/friends\/([a-f0-9]{20})$/);
-      if (friend && req.method === "DELETE") {
-        json(await store.remove(uid, friend[1]!));
-        return true;
-      }
-      const dismiss = pathname.match(
-        /^\/api\/friends\/invites\/([a-f0-9]{32})$/,
-      );
-      if (dismiss && req.method === "DELETE") {
-        await store.dismissInvite(uid, dismiss[1]!);
-        json({ dismissed: true });
-        return true;
-      }
-      return false;
+      if (
+        !found ||
+        (method !== "GET" && method !== "POST" && method !== "DELETE")
+      )
+        return false;
+      const handler = found.route[method];
+      if (!handler) return false;
+      await handler({ req, url, store, uid, id: found.id, json });
+      return true;
     },
   };
 }

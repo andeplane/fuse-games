@@ -1,4 +1,5 @@
 import {
+  createCorrectionFrames,
   createCorrectionSmoother,
   createLeadClock,
   ticksAhead,
@@ -282,24 +283,19 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    tick = -1,
-    logged = new Map<string, string>(),
-    key = "";
+  const begin = createCorrectionFrames(smoother);
+  let logged = new Map<string, string>();
   return {
     apply(view, nextRevision, room, nowMs, me) {
       const scope = `${room.matchId}:${room.round}:${view.contest.phase}`;
       // A new round or a countdown places everyone afresh: start again.
-      if (scope !== key) {
-        key = scope;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = room.tick !== tick,
-        before = logged;
-      revision = nextRevision;
-      tick = room.tick;
+      const { rolled, stepped } = begin({
+        scope: scope,
+        revision: nextRevision,
+        tick: room.tick,
+        nowMs,
+      });
+      const before = logged;
       // A bot is played forward exactly as the fold plays it: only a person's input can surprise the forward run.
       // Where they aim does not move them.
       logged = new Map(

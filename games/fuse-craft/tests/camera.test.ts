@@ -264,3 +264,114 @@ test("edge scrolling keeps going while the mouse rests at the screen's edge and 
   camera.dispose();
   assert.equal(stopped, 1, "disposal stops following the mouse");
 });
+
+test("pinch, wheel, drag and keyboard focus move the real board without activating cells", () => {
+  const { document, window } = parseHTML(
+    `<div id="viewport"><svg viewBox="0 0 3000 2000"></svg></div>`,
+  );
+  const viewport = document.getElementById("viewport") as HTMLElement;
+  const svg = viewport.querySelector("svg") as unknown as SVGSVGElement;
+  const captured = new Set<number>();
+  Object.defineProperties(viewport, {
+    clientWidth: { value: 600 },
+    clientHeight: { value: 400 },
+    getBoundingClientRect: {
+      value: () => ({ left: 0, top: 0, width: 600, height: 400 }),
+    },
+  });
+  viewport.setPointerCapture = (id) => {
+    captured.add(id);
+  };
+  viewport.releasePointerCapture = (id) => {
+    captured.delete(id);
+  };
+  viewport.hasPointerCapture = (id) => captured.has(id);
+  let focuses = 0;
+  svg.focus = () => {
+    focuses++;
+  };
+  const camera = createCameraFactory({
+    observeResize: () => () => {},
+    requestFrame: () => 1,
+    cancelFrame: () => {},
+  })(svg, viewport);
+  const view = () => svg.getAttribute("viewBox")!.split(" ").map(Number);
+  const fire = (
+    name: string,
+    fields: Partial<PointerEvent & WheelEvent> = {},
+  ) => {
+    const event = Object.assign(
+      new window.Event(name, { bubbles: true, cancelable: true }),
+      { button: 0, buttons: 1, pointerType: "touch", isPrimary: true },
+      fields,
+    );
+    viewport.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  try {
+    const before = view();
+    fire("pointerdown", { pointerId: 1, clientX: 200, clientY: 160 });
+    fire("pointerdown", { pointerId: 2, clientX: 320, clientY: 160 });
+    assert.ok(
+      fire("pointermove", { pointerId: 2, clientX: 380, clientY: 160 }),
+    );
+    assert.ok(view()[2]! < before[2]!, "spreading two touches zooms in");
+    fire("pointerup", { pointerId: 2 });
+    fire("pointerup", { pointerId: 1 });
+    assert.equal(captured.size, 0);
+    assert.ok(
+      fire("click"),
+      "pinching suppresses the otherwise generated click",
+    );
+    assert.equal(fire("click"), false, "a later click reaches the board");
+
+    camera.focusCell(40, 20 * 40 + 20);
+    const focused = view();
+    camera.ensureCellVisible(40, 0);
+    assert.ok(view()[0]! < focused[0]!);
+    const wheel = view();
+    assert.ok(
+      fire("wheel", { clientX: 180, clientY: 170, deltaY: 80, deltaMode: 0 }),
+    );
+    assert.ok(view()[2]! > wheel[2]!, "wheel down zooms out");
+    assert.ok(
+      fire("contextmenu"),
+      "right dragging does not open a browser menu",
+    );
+    camera.focusCell(40, 20 * 40 + 20);
+    const drag = view();
+    fire("pointerdown", {
+      pointerId: 3,
+      pointerType: "mouse",
+      button: 2,
+      buttons: 2,
+      clientX: 300,
+      clientY: 150,
+    });
+    assert.ok(
+      fire("pointermove", {
+        pointerId: 3,
+        pointerType: "mouse",
+        buttons: 2,
+        clientX: 350,
+        clientY: 150,
+      }),
+    );
+    fire("pointerup", {
+      pointerId: 3,
+      pointerType: "mouse",
+      button: 2,
+      buttons: 0,
+    });
+    fire("pointerleave", { pointerId: 3, pointerType: "mouse", buttons: 0 });
+    assert.ok(
+      view()[0]! < drag[0]!,
+      "dragging right reveals the left side of the board",
+    );
+    assert.equal(captured.size, 0);
+    assert.equal(viewport.classList.contains("is-panning"), false);
+    assert.equal(focuses, 2);
+  } finally {
+    camera.dispose();
+  }
+});

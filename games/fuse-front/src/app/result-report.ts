@@ -1,8 +1,10 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  playerResultRows,
+  createTopResultHighlight,
+  roomResultsBar,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
 } from "fuse-ui";
 import { DRAW, type HeroKind } from "../engine/index.js";
 import { TEAMS, banner, type SlotView } from "./model.js";
@@ -123,36 +125,21 @@ export function resultReport(
   result: MatchResult,
   parts: ReportParts,
 ): ResultsReport {
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.team),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.team,
+    values: (row) => [
       row.hero.toUpperCase(),
       String(row.kills),
       String(row.deaths),
       String(row.assists),
     ],
-  }));
+  });
   const cards: ResultsHighlight[] = [];
-  /** A card for whoever has the most of something, when anybody has any. */
-  const most = (
-    pick: (row: ResultRow) => number,
-    card: (best: number) => Omit<ResultsHighlight, "winners">,
-  ) => {
-    const best = Math.max(0, ...result.rows.map(pick));
-    if (best > 0)
-      cards.push({
-        ...card(best),
-        winners: result.rows
-          .filter((row) => pick(row) === best)
-          .map((row) => ({ name: row.name, color: parts.color(row.team) })),
-      });
-  };
+  const most = createTopResultHighlight(
+    result.rows,
+    (row) => parts.color(row.team),
+    cards,
+  );
   most(
     (row) => row.kills,
     (best) => ({
@@ -199,13 +186,5 @@ export function resultReport(
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
 export function resultBar(result: MatchResult): ResultsBar {
-  return {
-    ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "REMATCH", primary: true },
-        ]
-      : [],
-  };
+  return roomResultsBar(result);
 }

@@ -331,6 +331,50 @@ test("overlapping repeated instructions reconcile one task and never expose clai
   );
 });
 
+test("matching takes the first action and sees corrections earlier in the same batch", async () => {
+  const panel = "Fix the panel.";
+  const overlay = "Fix the overlay.";
+  const rename = "Add an overlay switch.";
+  const handle = "Fix the overlay handle.";
+  const f = fixture(async (input) => {
+    const sequence = input.currentSequence;
+    if (sequence === 0) return [candidate(panel, sequence, { title: "Panel" })];
+    if (sequence === 1)
+      return [candidate(overlay, sequence, { title: "Overlay" })];
+    if (sequence === 2)
+      return [candidate(overlay, sequence, { title: "Panel" })];
+    return [
+      candidate(rename, sequence, {
+        kind: "correct",
+        targetId: input.existing.find((item) => item.title === "Overlay")!.id,
+        title: "Overlay switch",
+      }),
+      candidate(handle, sequence, { title: "Overlay switch" }),
+    ];
+  });
+  for (const [sequence, text] of [
+    panel,
+    overlay,
+    overlay,
+    `${rename} ${handle}`,
+  ].entries())
+    await f.process(segment(sequence, text));
+  const { actions } = await f.service.list({}, admin);
+  assert.equal(actions.length, 2);
+  assert.deepEqual(
+    actions
+      .find((item) => item.title === "Panel")
+      ?.evidence.map((proof) => proof.sequence),
+    [0, 2],
+  );
+  assert.deepEqual(
+    actions
+      .find((item) => item.title === "Overlay switch")
+      ?.evidence.map((proof) => proof.quote),
+    [overlay, rename, handle],
+  );
+});
+
 test("out-of-order transcripts wait for a predecessor and recover cross-chunk Norwegian directive once", async () => {
   const f = fixture(async (value) =>
     value.segments.length === 2
@@ -889,7 +933,11 @@ test("a recording-scoped continuation reads that recording once", async () => {
   await f.process(first);
   await f.process(segment(1, "Add a pause button."));
   const principal = { ...admin, recordingId: first.recordingId };
-  const page = await f.service.list({ limit: 1 }, principal);
+  const query = { recordingId: first.recordingId, limit: 1 };
+  const pending = f.service.list(query, admin);
+  query.limit = 100;
+  const page = await pending;
+  assert.equal(page.actions.length, 1);
   assert.ok(page.nextCursor);
   reads.length = 0;
   const next = await f.service.list({ cursor: page.nextCursor }, principal);

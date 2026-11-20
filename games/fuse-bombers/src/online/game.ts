@@ -1,6 +1,7 @@
 import {
+  orderedSeats,
   applyManagementTick,
-  createSeatDecoder,
+  createSeatListDecoder,
   defaultText,
   hashPlain,
   hasLogPosition,
@@ -13,6 +14,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   BOT_DIFFICULTIES,
@@ -193,15 +195,12 @@ export function createRoom(matchId: string, settings: Settings): Room {
   };
 }
 
-const seatOrder = (seats: Iterable<SeatRecord>) =>
-  [...seats].sort(
-    (a, b) => a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-  );
 /** Whether a seat flies a new round: it is here, stepped away, or a bot (an offline rider is skipped). */
 export const entrant = (seat: SeatRecord): boolean =>
   !seat.watcher && (seat.connected || seat.away || seat.bot);
 /** Who flies a new round, in slot order. */
-const entrants = (room: Room) => seatOrder(room.seats.values()).filter(entrant);
+const entrants = (room: Room) =>
+  orderedSeats(room.seats.values()).filter(entrant);
 
 /** A round's seed: FNV-1a over its match id and number. */
 export function roundSeed(matchId: string, round: number): number {
@@ -297,18 +296,13 @@ export function tickInputs(
       ordinal = 0;
     if (seat?.connected && !seat.bot) {
       bits = after[id] ?? 0;
-      const source =
-        stream?.generation === seat.generation
-          ? stream
-          : stream?.retired?.find((old) => old.generation === seat.generation);
+      const entries = entriesForGeneration(stream, seat.generation);
       const mine = (e: Entry): e is PlayEntry | PressEntry =>
         e[2] <= PRESS &&
         e[1] === tick &&
         e[3] === room.matchId &&
         e[4] === room.round;
-      for (const entry of (source?.entries ?? [])
-        .filter(mine)
-        .sort((a, b) => a[0] - b[0]))
+      for (const entry of entries.filter(mine).sort((a, b) => a[0] - b[0]))
         if (entry[2] === PLAY) {
           tapped |= entry[5];
           bits = entry[5];
@@ -532,8 +526,9 @@ export function encode(room: Room): unknown[] {
   ];
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey: names.playerKey,
   validName: names.validName,
   validAvatar: names.isAvatar,
@@ -571,16 +566,8 @@ export function decode(
     !list(rawHeld, ships.length)
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw),
-      taken = (s: SeatRecord) => !s.watcher && s.slot === seat?.slot;
-    if (!seat || seats.has(seat.id)) return;
-    if (!seat.watcher && [...seats.values()].some(taken)) return;
-    seats.set(seat.id, seat);
-  }
-  const watchers = [...seats.values()].filter((seat) => seat.watcher);
-  if (watchers.length > MAX_WATCHERS) return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   // Round by round from the first; the crowns are counted from them. A decided match plays no further round, so only
   // the latest result of a match that is over or between rounds may decide it (the checks below say which).
   const results: RoundRecord[] = [],
@@ -770,7 +757,7 @@ export function view(room: Room): View {
     ...structuredClone(rest),
     tick: tick * STEPS_PER_TICK,
     logTick: tick,
-    seats: structuredClone(seatOrder(seats.values())),
+    seats: structuredClone(orderedSeats(seats.values())),
     world: world && roundCopy(world),
   };
 }
@@ -790,7 +777,7 @@ export const bombersGame: RollbackGame<Room, Entry, View, TickEvent, Settings> =
     view,
     hash,
     checkpoint,
-    members: (room) => seatOrder(room.seats.values()),
+    members: (room) => orderedSeats(room.seats.values()),
     seat: (room, id) => room.seats.get(id),
     stage: (room) => room.stage,
     settings: (room) => room.settings,

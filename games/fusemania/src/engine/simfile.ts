@@ -128,6 +128,9 @@ const number = (raw: string | undefined, fallback = 0): number => {
   return text && Number.isFinite(value) ? value : fallback;
 };
 
+const chartMeter = (raw: string | undefined): number =>
+  Math.max(1, Math.min(99, Math.round(number(raw, 1))));
+
 /** `beat=value,beat=value` pairs, in beat order; pairs that are not two finite numbers are dropped. */
 function pairs(raw: string | undefined): [number, number][] {
   const out: [number, number][] = [];
@@ -168,6 +171,14 @@ function timingOf(
   };
 }
 
+const SM_NOTES: Readonly<Record<string, NoteKind>> = {
+  "1": "tap",
+  L: "tap",
+  "2": "hold",
+  "4": "roll",
+  M: "mine",
+};
+
 /** A chart's note data as notes in time order. */
 function notesOf(data: string, stepsType: string): ChartNote[] {
   // Attack `{…}` and keysound `[…]` annotations sit inside rows in some files. They are short and on one line; the
@@ -203,16 +214,7 @@ function notesOf(data: string, stepsType: string): ChartNote[] {
           unfinished.kind = "tap";
           open.delete(column);
         }
-        const kind: NoteKind | undefined =
-          char === "1" || char === "L"
-            ? "tap"
-            : char === "2"
-              ? "hold"
-              : char === "4"
-                ? "roll"
-                : char === "M"
-                  ? "mine"
-                  : undefined;
+        const kind = SM_NOTES[char];
         if (!kind) continue;
         if (notes.length >= MAX_NOTES) return notes;
         const note: ChartNote = { beat, column, kind };
@@ -225,33 +227,49 @@ function notesOf(data: string, stepsType: string): ChartNote[] {
   return notes;
 }
 
+const DWI_ARROWS: Readonly<Record<string, readonly number[]>> = {
+  "0": [],
+  "5": [],
+  "1": [0, 1],
+  "2": [1],
+  "3": [1, 3],
+  "4": [0],
+  "6": [3],
+  "7": [0, 2],
+  "8": [2],
+  "9": [2, 3],
+  A: [1, 2],
+  B: [0, 3],
+};
+
+const DWI_ROWS_PER_BEAT = 48;
+const DWI_EIGHTH_NOTE = DWI_ROWS_PER_BEAT / 2;
+
+const DWI_SUBDIVISIONS: Readonly<Record<string, number>> = {
+  "(": 12,
+  "[": 8,
+  "{": 3,
+  "`": 1,
+  ")": DWI_EIGHTH_NOTE,
+  "]": DWI_EIGHTH_NOTE,
+  "}": DWI_EIGHTH_NOTE,
+  "'": DWI_EIGHTH_NOTE,
+  ">": DWI_EIGHTH_NOTE,
+};
+
 /**
  * DWI uses keypad arrows, eighth-note slots and optional finer subdivisions. A hold marker (`!`) changes
  * the following arrows to heads; their next occurrence closes them and is consumed as the tail.
  * Timing follows StepMania's NotesLoaderDWI: GAP/FREEZE are milliseconds, change positions are quarter-beats.
  */
 function dwiNotes(raw: string): ChartNote[] {
-  const arrows: Readonly<Record<string, readonly number[]>> = {
-    "0": [],
-    "5": [],
-    "1": [0, 1],
-    "2": [1],
-    "3": [1, 3],
-    "4": [0],
-    "6": [3],
-    "7": [0, 2],
-    "8": [2],
-    "9": [2, 3],
-    A: [1, 2],
-    B: [0, 3],
-  };
   const data = raw.replace(/\s/g, "").toUpperCase();
   const cells = new Map<number, Map<number, boolean>>();
   let row = 0,
-    increment = 24,
+    increment = DWI_EIGHTH_NOTE,
     count = 0;
   const put = (char: string, hold: boolean): boolean => {
-    const columns = arrows[char];
+    const columns = DWI_ARROWS[char];
     if (!columns) return false;
     for (const column of columns) {
       let at = cells.get(row);
@@ -261,41 +279,42 @@ function dwiNotes(raw: string): ChartNote[] {
     }
     return true;
   };
+  const readArrow = (at: number): number => {
+    if (!put(data[at++]!, false)) return -1;
+    if (data[at] !== "!") return at;
+    return put(data[at + 1] ?? "", true) ? at + 2 : -1;
+  };
   for (let at = 0; at < data.length;) {
-    const char = data[at++]!;
-    if (char === "(" || char === "[" || char === "{" || char === "`") {
-      increment = char === "(" ? 12 : char === "[" ? 8 : char === "{" ? 3 : 1;
+    const char = data[at]!;
+    const subdivision = DWI_SUBDIVISIONS[char];
+    if (subdivision !== undefined) {
+      increment = subdivision;
+      at++;
       continue;
     }
-    if (")]}'>".includes(char)) {
-      increment = 24;
-      continue;
-    }
-    // Older DWI files used <...0...> for 192nds; newer files use <...> for simultaneous arrows.
-    const end = char === "<" ? data.indexOf(">", at) : -1;
-    if (char === "<" && end < 0) return [];
-    // Groups cannot nest. Reject before rescanning a shared suffix for each malformed opener.
-    if (char === "<" && data.slice(at, end).includes("<")) return [];
-    if (char === "<" && data.slice(at, end).includes("0")) {
-      increment = 1;
-      continue;
-    }
-    const jump = char === "<";
-    if (!jump) at--;
-    do {
-      const note = data[at++]!;
-      if (!put(note, false)) return [];
-      if (data[at] === "!") {
-        at++;
-        if (!put(data[at++] ?? "", true)) return [];
+    if (char === "<") {
+      // Older files use <...0...> for 192nds; newer files use <...> for simultaneous arrows.
+      const end = data.indexOf(">", ++at);
+      if (end < 0) return [];
+      const group = data.slice(at, end);
+      // Reject nesting before rescanning a shared suffix for every malformed opener.
+      if (group.includes("<")) return [];
+      if (group.includes("0")) {
+        increment = 1;
+        continue;
       }
-    } while (jump && at < end);
-    if (jump) {
+      do {
+        at = readArrow(at);
+        if (at < 0) return [];
+      } while (at < end);
       if (at !== end) return [];
       at++;
+    } else {
+      at = readArrow(at);
+      if (at < 0) return [];
     }
     row += increment;
-    if (row > MAX_BEAT * 48) return [];
+    if (row > MAX_BEAT * DWI_ROWS_PER_BEAT) return [];
   }
   const notes: ChartNote[] = [];
   const open = new Map<number, ChartNote>();
@@ -303,12 +322,16 @@ function dwiNotes(raw: string): ChartNote[] {
     for (const [column, hold] of columns) {
       const head = open.get(column);
       if (head) {
-        head.endBeat = at / 48;
+        head.endBeat = at / DWI_ROWS_PER_BEAT;
         notes.push(head);
         open.delete(column);
       } else if (hold) {
-        open.set(column, { beat: at / 48, column, kind: "hold" });
-      } else notes.push({ beat: at / 48, column, kind: "tap" });
+        open.set(column, {
+          beat: at / DWI_ROWS_PER_BEAT,
+          column,
+          kind: "hold",
+        });
+      } else notes.push({ beat: at / DWI_ROWS_PER_BEAT, column, kind: "tap" });
     }
   return notes.sort((a, b) => a.beat - b.beat || a.column - b.column);
 }
@@ -356,7 +379,7 @@ function dwiFile(all: readonly Message[]): Simfile {
       stepsType: "dance-single",
       description: description.trim(),
       difficulty: difficulty(description),
-      meter: Math.max(1, Math.min(99, Math.round(number(meter, 1)))),
+      meter: chartMeter(meter),
       credit: (tags.get("CREDIT") ?? "").trim(),
       notes,
     });
@@ -411,10 +434,7 @@ export function parseSimfile(text: string): Simfile {
     charts.push({
       stepsType,
       difficulty: (tags.get("DIFFICULTY") ?? "").trim() || "Edit",
-      meter: Math.max(
-        1,
-        Math.min(99, Math.round(number(tags.get("METER"), 1))),
-      ),
+      meter: chartMeter(tags.get("METER")),
       description: (tags.get("DESCRIPTION") ?? "").trim(),
       credit: (tags.get("CREDIT") ?? "").trim(),
       notes: parsed,

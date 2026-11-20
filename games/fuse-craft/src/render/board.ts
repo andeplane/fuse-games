@@ -1,21 +1,36 @@
-import type { World, StructureKind } from "../engine/types.js";
 import {
-  refreshSpriteImages,
-  teamSpritePaint,
-  type BuildingSprites,
-  type SpritePaint,
-} from "./sprite-raster.js";
+  animateBrains,
+  animateLinks,
+  animatePulses,
+  animateRecoil,
+} from "./board-animation.js";
+import {
+  buildingFoot,
+  buildingSize,
+  neuronNeighbours,
+  shadowMarkup,
+  structureArtwork,
+  structureItems,
+  type NeuronMemo,
+} from "./board-structures.js";
+export {
+  neuronArtwork,
+  neuronPortraitUrl,
+  structureArtwork,
+} from "./board-structures.js";
+import { backdropMarkup, terrainMarkup } from "./board-terrain.js";
+import { image, type Sprites } from "./svg-sprite.js";
+import type { World } from "../engine/types.js";
+import { refreshSpriteImages, type BuildingSprites } from "./sprite-raster.js";
 import { STRUCTURES, attackCells, planSupport } from "../engine/catalog.js";
 import { neighbors } from "../engine/map.js";
-import { structureArt, teamSvgFilter, svgArtFilters } from "./art.js";
-import { terrainArt, WALKABLE_GROUND } from "./terrain-art.js";
+import { svgArtFilters } from "./art.js";
 import {
   addTickEffects,
   weaponKey,
   type TickEffectState,
 } from "./tick-effects.js";
-import { damagePlume, damageAnimation } from "./damage-plume.js";
-import { rockRelief, rockReliefMarkup } from "./terrain-relief.js";
+import { damageAnimation } from "./damage-plume.js";
 import {
   networkPath,
   networkPathMarkup,
@@ -31,12 +46,11 @@ import {
   pointAlong,
   neuronAnimation,
   neuronDefs,
-  neuronImageUrl,
   neuronMarkup,
   neuronVisual,
   type NeuronVisual,
 } from "./neuron-art.js";
-import { seededRandom, type Neighbour } from "./neuron-form.js";
+import { seededRandom } from "./neuron-form.js";
 import {
   CREEP_RADIUS,
   creepPatternMarkup,
@@ -45,13 +59,12 @@ import {
 } from "./creep.js";
 import { CreepLayer, type CreepSource } from "./creep-layer.js";
 import { arrangeChildren, KeyedLayer, type KeyedItem } from "./keyed-layer.js";
-import { SPORE_POD, sporeMarkup } from "./spore-art.js";
-import { buildingRoots, buildingRootsMarkup } from "./building-roots.js";
+import { SPORE_POD } from "./spore-art.js";
+import { buildingRoots } from "./building-roots.js";
 import { POWERUP_STYLE, powerupDefs, powerupMarkup } from "./powerup-art.js";
 import {
   bloodTravel,
   heartbeat,
-  vesselMarkup,
   vesselNetwork,
   vesselPoint,
   type Vessel,
@@ -66,7 +79,6 @@ import {
 export { hexCenter, hexPoints } from "./projection.js";
 const ns = "http://www.w3.org/2000/svg";
 const colors = TEAM_PALETTES.map((p) => p.glow);
-type Sprites = Readonly<Record<string, string>>;
 type Moving = {
   kind?: "pulse" | "heavy" | "swift";
   key: string;
@@ -136,216 +148,10 @@ function sporesFor(size: { width: number; height: number }, seed: string) {
     }),
   );
 }
-const LINK_GROW_MS = 900;
 /** A stable identity for a decorative light, so thinning keeps the same ones. */
 const decorKey = (kind: number, index: number) =>
   kind * 0x1000000 + (index & 0xffffff);
 const caches = new WeakMap<SVGSVGElement, BoardCache>();
-const escaped = (text: string) =>
-  text.replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ]!,
-  );
-function image(
-  sprites: Sprites,
-  name: string,
-  x: number,
-  y: number,
-  size: number,
-  paint?: { key: SpritePaint; filter: string },
-): string {
-  const url = sprites[`${name}-v2`] ?? sprites[name];
-  return url
-    ? `<image href="${escaped(url)}" data-sprite="${escaped(name)}"${paint ? ` data-sprite-paint="${paint.key}" data-sprite-filter="${paint.filter}"` : ""} x="${x - size / 2}" y="${y - size / 2}" width="${size}" height="${size}" pointer-events="none"/>`
-    : "";
-}
-function terrainMarkup(world: Readonly<World>, sprites: Sprites): string {
-  const relief = new Map(
-    rockRelief(world.map).map((rock) => [rock.cell, rock]),
-  );
-  return world.map.cells
-    .map((cell, index) => {
-      const { x, y } = hexCenter(world.map.width, index);
-      const art = terrainArt(cell, index);
-      const ground = cell.terrain === "open" ? art : null;
-      let object = "";
-      if (cell.terrain === "deposit")
-        object =
-          image(sprites, art!, x, y, 58) ||
-          `<text x="${x}" y="${y + 6}" text-anchor="middle">${cell.resourceKind === "biomass" ? "◈" : "◇"}</text>`;
-      if (cell.terrain === "blocked") {
-        const rock = relief.get(index);
-        object =
-          image(sprites, art!, x, y - (rock?.height ?? 0), rock ? 48 : 60) ||
-          image(sprites, "blocker-boulder", x, y, 60) ||
-          `<path class="terrain-fallback" d="M${x - 23} ${y + 13}l5 -29 22 -10 22 23 -4 24Z" fill="#68757a" stroke="#29383d" stroke-width="3"/>`;
-        if (rock) object = rockReliefMarkup(rock) + object;
-      }
-      if (cell.terrain === "open" && cell.towerSite)
-        object = `<circle class="tower-site" cx="${x}" cy="${y}" r="19"/><text x="${x}" y="${y + 5}" text-anchor="middle">+</text>`;
-      if (object && cell.terrain !== "open")
-        object += `<ellipse class="terrain-hit" data-cell="${index}" cx="${x}" cy="${y - 3 - (relief.get(index)?.height ?? 0)}" rx="${relief.has(index) ? 24 : 20}" ry="${relief.has(index) ? 32 : 25}"/>`;
-      return `<g class="hex terrain-${cell.terrain}" data-cell="${index}"><polygon points="${hexPoints(world.map.width, index)}"/><clipPath id="tile-${index}"><polygon points="${hexPoints(world.map.width, index)}"/></clipPath><g class="ground-patch" clip-path="url(#tile-${index})">${ground ? image(sprites, ground, x, y, 82) : ""}</g>${object ? `<g class="terrain-object" data-terrain="${cell.terrain}"${cell.terrain === "deposit" ? ` data-resource="${cell.resourceKind}" style="--delay:${(-((index * 0.618) % 1) * 3.6).toFixed(2)}s"` : ""} data-depth="${index}" pointer-events="none"><ellipse cx="${x + 9}" cy="${y + 14}" rx="30" ry="10" fill="url(#contact-shadow)"/>${object}</g>` : ""}<polygon class="hex-hover-outline" points="${hexPoints(world.map.width, index, 1.5)}"/></g>`;
-    })
-    .join("");
-}
-
-/** Decorative ground continues beyond the selectable cells; it has no game state. */
-function backdropMarkup(
-  sprites: Sprites,
-  size: { width: number; height: number },
-  vessels: readonly Vessel[],
-): string {
-  const ground = sprites[WALKABLE_GROUND];
-  const cliff = sprites["terrain-cliff-material-v1"];
-  return `<defs><pattern id="cliff-material" patternUnits="userSpaceOnUse" width="180" height="180"><rect width="180" height="180" fill="#657078"/>${cliff ? `<image data-sprite="terrain-cliff-material-v1" href="${escaped(cliff)}" width="180" height="180"/>` : ""}</pattern><radialGradient id="contact-shadow"><stop offset="0" stop-color="#000" stop-opacity="0.7"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient><pattern id="ground-continuation" patternUnits="userSpaceOnUse" width="${size.width * 2}" height="${size.height * 2}"><rect width="${size.width * 2}" height="${size.height * 2}" fill="#172723"/>${ground ? ["", `translate(${size.width * 2} 0) scale(-1 1)`, `translate(0 ${size.height * 2}) scale(1 -1)`, `translate(${size.width * 2} ${size.height * 2}) scale(-1 -1)`].map((transform) => `<image data-sprite="${WALKABLE_GROUND}" href="${escaped(ground)}" width="${size.width}" height="${size.height}" preserveAspectRatio="none" transform="${transform}" opacity="0.5"/>`).join("") : ""}</pattern></defs><rect class="terrain-backdrop" width="100%" height="100%" fill="url(#ground-continuation)"/>${vesselMarkup(vessels)}`;
-}
-/** Same-owner structures around a cell, as projected offsets for dendrites to reach toward. */
-function neuronNeighbours(
-  world: Readonly<World>,
-  cell: number,
-  owner: string,
-): Neighbour[] {
-  const at = hexCenter(world.map.width, cell);
-  return neighbors(world.map, cell)
-    .filter((n) =>
-      world.structures.some((s) => s.cell === n && s.ownerId === owner),
-    )
-    .map((n) => {
-      const to = hexCenter(world.map.width, n);
-      return { cell: n, dx: to.x - at.x, dy: to.y - at.y };
-    });
-}
-/** The selected neuron as a standalone image for the inspector portrait. */
-export function neuronPortraitUrl(
-  world: Readonly<World>,
-  cell: number,
-): string | undefined {
-  const s = world.structures.find((s) => s.cell === cell);
-  if (s?.kind !== "neuron") return undefined;
-  const { x, y } = hexCenter(world.map.width, cell);
-  const slot = world.players.find((p) => p.id === s.ownerId)?.slot ?? 0;
-  return neuronImageUrl(
-    neuronVisual(x, y, cell, neuronNeighbours(world, cell, s.ownerId)),
-    slot,
-  );
-}
-/** Procedural neuron: unique per cell and team, reaching toward its neighbours. */
-export function neuronArtwork(
-  width: number,
-  cell: number,
-  slot: number,
-  neighbours: readonly Neighbour[] = [],
-): string {
-  const { x, y } = hexCenter(width, cell);
-  return neuronMarkup(neuronVisual(x, y, cell, neighbours), slot);
-}
-const buildingFoot = 25;
-function buildingSize(kind: Exclude<StructureKind, "neuron">): number {
-  return kind === "brain" ? 90 : kind === "relay" ? 96 : 84;
-}
-export function structureArtwork(
-  width: number,
-  cell: number,
-  kind: StructureKind,
-  slot: number,
-  sprites: Sprites = {},
-): string {
-  if (kind === "neuron") return neuronArtwork(width, cell, slot);
-  if (kind === "spore") {
-    const at = hexCenter(width, cell);
-    return sporeMarkup(at.x, at.y, slot);
-  }
-  const { x, y } = hexCenter(width, cell);
-  const size = buildingSize(kind);
-  return `<g class="building-art" filter="${teamSvgFilter(slot)}">${image(sprites, structureArt(kind), x, y + buildingFoot - size / 2, size, { key: teamSpritePaint(slot), filter: teamSvgFilter(slot) }) || `<circle class="structure-core" cx="${x}" cy="${y}" r="16"/>`}</g>`;
-}
-/** Project the sprite silhouette away from a shared upper-left light source. */
-function shadowMarkup(world: Readonly<World>, sprites: Sprites): string {
-  return world.structures
-    .map((s) => {
-      if (s.kind === "neuron" || s.kind === "spore") return "";
-      const { x, y } = hexCenter(world.map.width, s.cell);
-      const foot = y + buildingFoot;
-      const size = buildingSize(s.kind);
-      return `<g class="building-cast-shadow" transform="matrix(1 0 -0.55 -0.3 ${0.55 * foot} ${1.3 * foot})" filter="url(#nd-art-shadow)" opacity="0.28">${image(sprites, structureArt(s.kind), x, foot - size / 2, size, { key: "shadow", filter: "url(#nd-art-shadow)" })}</g>`;
-    })
-    .join("");
-}
-type NeuronMemo = Map<string, { visual: NeuronVisual; markup: string }>;
-function structureItems(
-  world: Readonly<World>,
-  sprites: Sprites,
-  neurons: Map<number, NeuronVisual>,
-  memo: { neurons: NeuronMemo },
-): KeyedItem[] {
-  const stocks = new Map<string, number>();
-  for (const p of world.particles)
-    if (p.mode === "stationed") {
-      const key = `${p.ownerId}:${p.cell}`;
-      stocks.set(key, (stocks.get(key) ?? 0) + 1);
-    }
-  const forms: NeuronMemo = new Map();
-  const items = [...world.structures]
-    .sort((a, b) => a.cell - b.cell)
-    .map((s) => {
-      const { x, y } = hexCenter(world.map.width, s.cell),
-        slot = world.players.find((p) => p.id === s.ownerId)?.slot ?? 0;
-      const hpMax = STRUCTURES[s.kind].hp;
-      const stock = stocks.get(`${s.ownerId}:${s.cell}`) ?? 0;
-      const healthY =
-        s.kind === "neuron"
-          ? y - 35
-          : y + buildingFoot - buildingSize(s.kind) - 7;
-      const health =
-        s.hp < hpMax
-          ? `<rect class="structure-hp-bg" x="${x - 18}" y="${healthY}" width="36" height="3"/><rect class="structure-hp" x="${x - 18}" y="${healthY}" width="${36 * Math.max(0, Math.min(1, s.hp / hpMax))}" height="3"/>`
-          : "";
-      let artwork: string;
-      if (s.kind === "neuron") {
-        // A neuron's form depends only on its cell, team and neighbours.
-        const neighbours = neuronNeighbours(world, s.cell, s.ownerId);
-        const key = `${s.cell}:${slot}:${neighbours.map((n) => n.cell).join(",")}`;
-        let form = memo.neurons.get(key);
-        if (!form) {
-          const visual = neuronVisual(x, y, s.cell, neighbours);
-          form = { visual, markup: neuronMarkup(visual, slot) };
-        }
-        forms.set(key, form);
-        neurons.set(s.cell, form.visual);
-        artwork = form.markup;
-      } else
-        artwork =
-          buildingRootsMarkup(
-            x,
-            y + buildingFoot,
-            slot,
-            s.cell * 7 + 3,
-            s.kind === "brain" ? 1.3 : 1,
-          ) +
-          structureArtwork(world.map.width, s.cell, s.kind, slot, sprites) +
-          damagePlume(x + 6, y - 18, s.hp / hpMax, s.id);
-      // Select the raised body as well as the ground footprint. These are
-      // presentation hit regions only; placement continues to target terrain.
-      const hit =
-        s.kind === "neuron"
-          ? { rx: 17, ry: 17, offset: 0 }
-          : s.kind === "brain" || s.kind === "relay"
-            ? { rx: 24, ry: 41, offset: -19 }
-            : { rx: 24, ry: 33, offset: -14 };
-      const supply =
-        stock && s.connected
-          ? `<ellipse class="supply-footprint" cx="${x}" cy="${y + 20}" rx="${s.kind === "neuron" ? 20 : 29}" ry="9" opacity="${Math.min(0.35, stock / 96)}"/>`
-          : "";
-      const markup = `<g class="structure structure-${s.kind} ${s.connected ? "" : "disconnected"}" data-cell="${s.cell}" style="--team:${colors[slot]}"><ellipse class="contact-shadow" cx="${x + 4}" cy="${y + 19}" rx="${s.kind === "neuron" ? 23 : 34}" ry="16" fill="url(#contact-shadow)"/>${supply}<circle class="owner-ring" cx="${x}" cy="${y}" r="${s.kind === "brain" ? 27 : 10}"/>${artwork || `<circle class="structure-core" cx="${x}" cy="${y}" r="15"/>`}${stock && s.connected ? `<g class="supply-orbit" style="transform-origin:${x}px ${y}px">${Array.from({ length: Math.min(6, Math.ceil(stock / 8)) }, (_, i) => `<circle cx="${x + Math.cos((i * Math.PI) / 3) * 22}" cy="${y + Math.sin((i * Math.PI) / 3) * 22}" r="2" fill="${colors[slot]}"/>`).join("")}</g>` : ""}${health}<ellipse class="structure-hit" cx="${x}" cy="${y + hit.offset}" rx="${hit.rx}" ry="${hit.ry}"/></g>`;
-      return { key: `s${s.id}`, markup };
-    });
-  memo.neurons = forms;
-  return items;
-}
 function linkMarkup(world: Readonly<World>): string {
   const nodes = new Map(world.structures.map((s) => [s.cell, s]));
   const lines: string[] = [];
@@ -1064,59 +870,14 @@ export function renderBoard(
       animateDamage(frameNow, reducedMotion);
     for (const animateSite of constructionAnimations)
       animateSite(frameNow, reducedMotion);
-    for (const [cell, kick] of cache.recoil) {
-      const age = (frameNow - kick.born) / 240;
-      const art = cache.structures.querySelector<SVGGElement>(
-        `.structure[data-cell="${cell}"] .building-art`,
-      );
-      if (age >= 1 || reducedMotion) {
-        art?.removeAttribute("transform");
-        cache.recoil.delete(cell);
-      } else {
-        const amount =
-          Math.sin(Math.min(1, Math.max(0, age)) * Math.PI) * (1 - age);
-        art?.setAttribute(
-          "transform",
-          `translate(${kick.dx * amount} ${kick.dy * amount})`,
-        );
-      }
-    }
+    animateRecoil(cache.structures, cache.recoil, frameNow, reducedMotion);
     // Absolute presentation time preserves phase when authoritative stock/HP
     // changes rebuild the structure markup. No simulation state is advanced.
     for (const orbit of orbits)
       orbit.style.transform = `rotate(${reducedMotion ? 0 : ((frameNow % 5000) * 360) / 5000}deg)`;
     for (const animateNeuron of neurons) animateNeuron(frameNow, reducedMotion);
-    // Brains breathe: a slow swell anchored at the base of the sprite.
-    for (const brain of brains)
-      if (!cache.recoil.has(brain.cell)) {
-        if (reducedMotion) brain.art.removeAttribute("transform");
-        else {
-          const breath = Math.sin(frameNow / 900 + brain.cell) * 0.018;
-          brain.art.setAttribute(
-            "transform",
-            `translate(${brain.x} ${brain.foot}) scale(${(1 - breath * 0.6).toFixed(4)} ${(1 + breath).toFixed(4)}) translate(${-brain.x} ${-brain.foot})`,
-          );
-        }
-      }
-    for (const link of growingLinks) {
-      const g = reducedMotion
-        ? 1
-        : Math.max(0, Math.min(1, (frameNow - link.born) / LINK_GROW_MS));
-      for (const path of link.paths)
-        if (g >= 1) {
-          path.removeAttribute("pathLength");
-          path.style.removeProperty("stroke-dasharray");
-          path.style.removeProperty("stroke-dashoffset");
-        } else {
-          const eased = 1 - Math.pow(1 - g, 2);
-          path.setAttribute("pathLength", "1");
-          path.style.setProperty("stroke-dasharray", `${eased} 2`);
-          path.style.setProperty(
-            "stroke-dashoffset",
-            link.forward ? "0" : String(-(1 - eased)),
-          );
-        }
-    }
+    animateBrains(brains, cache.recoil, frameNow, reducedMotion);
+    animateLinks(growingLinks, frameNow, reducedMotion);
     cache.creep.animate(frameNow, reducedMotion);
     const visualTick =
       world.tick +
@@ -1146,25 +907,7 @@ export function renderBoard(
         reducedMotion ? "" : networkPathMarkup(path, tail, fraction),
       );
     }
-    cache.pulses = cache.pulses.filter((p) => {
-      const t = (frameNow - p.born) / (p.duration ?? 320);
-      if (t >= 1 || reducedMotion) {
-        p.element.remove();
-        p.ground?.remove();
-        p.body?.remove();
-        return false;
-      }
-      if (p.animate) {
-        p.animate(t);
-        return true;
-      }
-      p.element.setAttribute("r", String(p.arrival ? 8 + t * 13 : 10 + t * 21));
-      p.element.setAttribute(
-        "opacity",
-        String((p.arrival ? 0.35 : 1) * (1 - t)),
-      );
-      return true;
-    });
+    cache.pulses = animatePulses(cache.pulses, frameNow, reducedMotion);
     if (light && lightView) drawLight(frameNow, lightView);
     else if (light) cache.light.step(frameNow, reducedMotion);
   };

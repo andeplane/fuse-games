@@ -9,6 +9,7 @@
 import * as THREE from "three";
 import type { BuildingKind } from "../../engine/view.js";
 import type { BuildingModel, Model } from "../models.js";
+import { mountCannon, type CannonSpec } from "./cannon.js";
 import { Rig, type Detail, type V3 } from "./rig.js";
 
 const PI = Math.PI,
@@ -186,6 +187,13 @@ function turret(r: Rig): void {
   sandbags(r, 0, 0, 2.15, -PI * 0.8, PI * 0.8);
 }
 
+const TURRET_BARREL: CannonSpec = {
+  segments: 10,
+  barrel: { topRadius: 0.075, bottomRadius: 0.085, height: 2, z: 1.9 },
+  sleeve: { radius: 0.12, height: 0.35, z: 1.15 },
+  muzzle: { size: [0.2, 0.18, 0.3], bevel: 0.03, z: 2.9 },
+};
+
 /** The turret's head on its ring: team armour, a mantlet with a red sensor, an ammo box and twin barrels on +z. */
 // prettier-ignore
 function turretHead(r: Rig): void {
@@ -194,9 +202,7 @@ function turretHead(r: Rig): void {
     .add("dark", r.box(0.9, 0.5, 0.3, 0.06), [0, 0.38, 0.9]).add("eye", r.sphere(0.09), [0.45, 0.62, 0.9])
     .add("orange", r.box(0.4, 0.4, 0.6, 0.05), [-0.9, 0.35, -0.3]).add("dark", r.box(0.6, 0.3, 0.3, 0.05), [0, 0.6, -0.9])
     .add("steel", r.cylinder({ radius: 0.02, height: 1.4, segments: 4 }), [0.6, 1.3, -0.6]);
-  for (const x of [-0.2, 0.2])
-    r.add("steel", r.cylinder({ topRadius: 0.075, bottomRadius: 0.085, height: 2, segments: 10 }), [x, 0.38, 1.9], X).add("gun", r.cylinder({ radius: 0.12, height: 0.35, segments: 10 }), [x, 0.38, 1.15], X)
-      .add("gun", r.box(0.2, 0.18, 0.3, 0.03), [x, 0.38, 2.9]);
+  for (const x of [-0.2, 0.2]) mountCannon(r, [x, 0.38], TURRET_BARREL);
 }
 
 /** The flag's base, pole and gold finial; the team banner waves from `FLAG_CLOTH` on it. */

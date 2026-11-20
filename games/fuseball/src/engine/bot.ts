@@ -1,7 +1,8 @@
+import { aim, gifts } from "./bot-shot.js";
 import { apart, inShape } from "./collide.js";
 import { drift } from "./gadgets.js";
 import { BTN, DOWN, LEFT, RIGHT } from "./input.js";
-import { SUB, abs, delta, div, isqrt } from "./math.js";
+import { SUB, abs, div, isqrt } from "./math.js";
 import {
   arenaOf,
   barrierBoxesOf,
@@ -79,9 +80,6 @@ const BURIED = div(T.RIDER_R + T.BALL_R, 2);
 const PIN = 30 * SUB;
 /** Running at least this fast, a lift takes the ball along. */
 const CARRY = 4000;
-/** A line to a goal is clear when the ball has this much room either side of it, and ends this far inside the mouth. */
-const BALL_ROOM = T.BALL_R - SUB,
-  MOUTH = 12 * SUB;
 /** A solid this close in front of it on the ground is one to hop. */
 const HOP = 4 * SUB;
 /** A lob's direction, in `UNIT`s: three along and four up. */
@@ -154,187 +152,6 @@ function outcome(
     if (ahead.phase !== "play") return ahead.lastScorer;
   }
   return flight(ahead, map, ahead.ball, FORESIGHT).into;
-}
-
-/** One way from the ball to a goal along an axis, or the other way round the seam. */
-const ways = (
-  to: number,
-  from: number,
-  size: number,
-  wraps: boolean,
-): number[] => {
-  const direct = to - from;
-  return wraps
-    ? [direct, direct > 0 ? direct - size : direct + size]
-    : [direct];
-};
-
-/**
- * Whether the straight line from a point along `(dx, dy)` passes through a box `hw` by `hh` about `(cx, cy)`, the
- * centre given from the line's start: the stretch of the line inside the box, kept as two fractions and compared by
- * cross-multiplying, is not empty.
- */
-function meets(
-  dx: number,
-  dy: number,
-  cx: number,
-  cy: number,
-  hw: number,
-  hh: number,
-): boolean {
-  let inN = 0,
-    inD = 1,
-    outN = 1,
-    outD = 1;
-  const axis = (d: number, low: number, high: number): boolean => {
-    if (d === 0) return low < 0 && high > 0;
-    const den = abs(d),
-      near = d > 0 ? low : -high,
-      far = d > 0 ? high : -low;
-    if (near * inD > inN * den) {
-      inN = near;
-      inD = den;
-    }
-    if (far * outD < outN * den) {
-      outN = far;
-      outD = den;
-    }
-    return true;
-  };
-  return (
-    axis(dx, cx - hw, cx + hw) &&
-    axis(dy, cy - hh, cy + hh) &&
-    inN * outD < outN * inD
-  );
-}
-
-/** The same box seen from `(bx, by)`: the short way round, and one field over each way on an axis that wraps. */
-function meetsAny(
-  map: MapDef,
-  dx: number,
-  dy: number,
-  at: { dx: number; dy: number },
-  hw: number,
-  hh: number,
-): boolean {
-  for (const kx of map.wrapX ? [0, -1, 1] : [0])
-    for (const ky of map.wrapY ? [0, -1, 1] : [0])
-      if (
-        meets(
-          dx,
-          dy,
-          at.dx + kx * map.w * SUB,
-          at.dy + ky * map.h * SUB,
-          hw,
-          hh,
-        )
-      )
-        return true;
-  return false;
-}
-
-/**
- * Whether a ball at `(bx, by)` sent straight along `(dx, dy)` would run into a solid or into the other colour's
- * goal on the way: a wall in front of a goal, a kerb, a pit that is not this rider's. The solid the ball is lying
- * on is not in the way — a ball rolls along a floor.
- */
-function barred(
-  world: World,
-  map: MapDef,
-  slot: Slot,
-  bx: number,
-  by: number,
-  dx: number,
-  dy: number,
-): boolean {
-  for (const box of boxesAt(map, world.clock)) {
-    const at = apart(box.cx, box.cy, bx, by, map);
-    if (
-      abs(dy) <= abs(dx) &&
-      abs(at.dx) <= box.hw &&
-      at.dy > 0 &&
-      at.dy - box.hh <= T.BALL_R + 2 * SUB
-    )
-      continue;
-    if (meetsAny(map, dx, dy, at, box.hw + BALL_ROOM, box.hh + BALL_ROOM))
-      return true;
-  }
-  return gifts(map, slot, bx, by, dx, dy);
-}
-
-/** Whether that line runs through the other colour's goal, or within a ball's width of it. */
-function gifts(
-  map: MapDef,
-  slot: Slot,
-  bx: number,
-  by: number,
-  dx: number,
-  dy: number,
-): boolean {
-  for (const goal of map.goals) {
-    if (goal.team === slot || isCircle(goal)) continue;
-    const hw = div(goal.w * SUB, 2),
-      hh = div(goal.h * SUB, 2),
-      at = apart(goal.x * SUB + hw, goal.y * SUB + hh, bx, by, map);
-    if (meetsAny(map, dx, dy, at, hw + BALL_ROOM, hh + BALL_ROOM)) return true;
-  }
-  return false;
-}
-
-/**
- * From the ball to the goal in `slot`'s colour that is cheapest to reach. A goal in a wall sits on the seam back to
- * back with the other colour's, so it is only approached from inside the field, at its middle or near either end,
- * whichever the ball has a clear line to. A round goal hangs in open space and may be reached round the seam, but
- * never along a line that crosses the other colour's goal first. Upwards costs double: the ball falls by itself.
- * `over` says no line was clear: the ball has to go over whatever is in the way.
- */
-function aim(
-  world: World,
-  map: MapDef,
-  slot: Slot,
-  bx: number,
-  by: number,
-): { x: number; y: number; over: boolean } {
-  let best = { x: 0, y: 0, over: false },
-    cheapest = -1;
-  const weigh = (x: number, y: number, penalty: number, over = false) => {
-    const cost = abs(x) + (y < 0 ? -2 * y : y) + penalty;
-    if (cheapest < 0 || cost < cheapest) {
-      best = { x, y, over };
-      cheapest = cost;
-    }
-  };
-  for (const goal of map.goals) {
-    if (goal.team !== slot) continue;
-    if (!isCircle(goal)) {
-      const cx = div((goal.x * 2 + goal.w) * SUB, 2) - bx,
-        cy = div((goal.y * 2 + goal.h) * SUB, 2) - by,
-        // The mouth runs along the goal's longer side; the ends are aimed at a ball's width in.
-        tall = goal.h >= goal.w,
-        end = div((tall ? goal.h : goal.w) * SUB, 2) - MOUTH;
-      for (const off of end > 0 ? [0, -end, end] : [0]) {
-        const x = tall ? cx : cx + off,
-          y = tall ? cy + off : cy,
-          shut = barred(world, map, slot, bx, by, x, y);
-        weigh(x, y, shut ? map.w * SUB : 0, shut);
-      }
-      continue;
-    }
-    for (const x of ways(goal.x * SUB, bx, map.w * SUB, map.wrapX)) {
-      // The other colour's round goals that this line would carry the ball under or over.
-      const crosses = map.goals.some((other) => {
-        if (other.team === slot || !isCircle(other)) return false;
-        const at = other.x * SUB - bx,
-          reach = (other.r + T.BALL_RADIUS) * SUB;
-        return [at, at - map.w * SUB, at + map.w * SUB].some((ox) =>
-          x > 0 ? ox > -reach && ox < x : ox < reach && ox > x,
-        );
-      });
-      for (const y of ways(goal.y * SUB, by, map.h * SUB, map.wrapY))
-        weigh(x, y, crosses ? map.w * SUB : 0);
-    }
-  }
-  return best;
 }
 
 /**
@@ -587,42 +404,60 @@ function guard(world: World, rider: Rider, map: MapDef): number {
   return fly(world, rider, map, dx, dy);
 }
 
-/** The bits that take a rider towards a spot `(dx, dy)` away: run, hop a kerb, flap up, drop down. */
-function fly(
+/** The keeper stops sliding and never dives. */
+function fly(world: World, rider: Rider, map: MapDef, dx: number, dy: number) {
+  const way = horizontalInput(dx);
+  const press = (rider.prev & BTN) === 0 ? BTN : 0;
+  if (rider.slide > 0) return way;
+  if (rider.grounded)
+    return groundTravel(world, rider, map, { dy, way, press });
+  return airTravel(rider, { dy, way, press });
+}
+
+function horizontalInput(dx: number) {
+  if (dx > DEAD) return RIGHT;
+  return dx < -DEAD ? LEFT : 0;
+}
+
+interface TravelInput {
+  dy: number;
+  way: number;
+  press: number;
+}
+
+function hopsKerb(world: World, rider: Rider, map: MapDef, way: number) {
+  const stick = way & RIGHT ? 1 : way & LEFT ? -1 : 0;
+  if (stick === 0) return false;
+  return boxesAt(map, world.clock).some((box) => {
+    const at = apart(box.cx, box.cy, rider.x, rider.y, map);
+    return (
+      at.dx * stick > 0 &&
+      abs(at.dx) < box.hw + T.RIDER_R + HOP &&
+      abs(at.dy) < box.hh + T.RIDER_R - SUB
+    );
+  });
+}
+
+function groundTravel(
   world: World,
   rider: Rider,
   map: MapDef,
-  dx: number,
-  dy: number,
-): number {
-  const way = dx > DEAD ? RIGHT : dx < -DEAD ? LEFT : 0,
-    press = (rider.prev & BTN) === 0 ? BTN : 0;
-  // Letting go of the button ends a slide.
-  if (rider.slide > 0) return way;
-  if (!rider.grounded) {
-    if (dy < -CLIMB) {
-      const rising =
-        rider.vy < 0 ? div(rider.vy * rider.vy, 2 * T.GRAVITY_RISE) : 0;
-      return way | (rising < -dy ? press : 0);
-    }
-    return dy > SINK ? way | DOWN : way;
-  }
-  if (dy < -CLIMB) return way | press;
-  const stick = way & RIGHT ? 1 : way & LEFT ? -1 : 0,
-    kerb =
-      stick !== 0 &&
-      boxesAt(map, world.clock).some((box) => {
-        const at = apart(box.cx, box.cy, rider.x, rider.y, map);
-        return (
-          at.dx * stick > 0 &&
-          abs(at.dx) < box.hw + T.RIDER_R + HOP &&
-          abs(at.dy) < box.hh + T.RIDER_R - SUB
-        );
-      });
-  if (kerb) return way | press;
+  { dy, way, press }: TravelInput,
+  slide = 0,
+) {
+  if (dy < -CLIMB || hopsKerb(world, rider, map, way)) return way | press;
   // The spot is below this ledge: walk off it.
   if (dy > SINK) return way || (rider.facing > 0 ? RIGHT : LEFT);
-  return way;
+  return way | slide;
+}
+
+function airTravel(rider: Rider, { dy, way, press }: TravelInput) {
+  if (dy < -CLIMB) {
+    const rising =
+      rider.vy < 0 ? div(rider.vy * rider.vy, 2 * T.GRAVITY_RISE) : 0;
+    return way | (rising < -dy ? press : 0);
+  }
+  return dy > SINK ? way | DOWN : way;
 }
 
 /** What it means to do, before it has looked at what that would do to the ball. */
@@ -632,26 +467,64 @@ function plan(world: World, rider: Rider, map: MapDef): number {
   if ((spell * 5 + rider.index * 4 + div(spell, SPELLS)) % SPELLS < REST_OF)
     return 0;
   const ahead = flight(world, map, world.ball, SIGHT, rider);
-  // It is going in by itself: stay out of its way. Unless it is under this rider's feet, where it is going nowhere.
-  const on = apart(world.ball.x, world.ball.y, rider.x, rider.y, map),
-    touching = on.dx * on.dx + on.dy * on.dy < TOUCHING * TOUCHING;
-  if (ahead.into === rider.slot && !touching) return 0;
-  // A ball lifted off a trapdoor is in the air for longer than it usually looks ahead: where there are doors it
-  // looks as far as it does before a touch, so it does not chase a ball that is about to knock its door in.
+  const on = apart(world.ball.x, world.ball.y, rider.x, rider.y, map);
+  const gapSquared = on.dx * on.dx + on.dy * on.dy;
   if (
-    !touching &&
-    ahead.into === -1 &&
-    map.barriers.some((barrier) => barrier.kind === "gate") &&
-    flight(world, map, world.ball, FORESIGHT).into === rider.slot
+    gapSquared >= TOUCHING * TOUCHING &&
+    scoresUnaided(world, rider, map, ahead)
   )
     return 0;
   // Standing in the ball (it is jammed under it in a corner) helps nobody: step off it, away from the wall.
-  if (on.dx * on.dx + on.dy * on.dy < BURIED * BURIED)
+  if (gapSquared < BURIED * BURIED)
     return on.dx > 0 || (on.dx === 0 && rider.x * 2 > map.w * SUB)
       ? LEFT
       : RIGHT;
   const bx = ahead.x,
     by = ahead.y;
+  const shot = shotLine(world, rider, map, bx, by);
+  const target = shotApproach(shot);
+  // A ball lying on the shut trapdoor over its goal is not shot at: it is lifted from the floor beside the door.
+  const door = trapdoor(world, rider, map),
+    fresh = (rider.prev & BTN) === 0;
+  if (
+    door &&
+    rider.grounded &&
+    abs(door.dx) <= 2 * DEAD &&
+    abs(door.dy) < CLEAR
+  )
+    // In place. A lift from a run carries the ball off sideways, so it stands still first.
+    return abs(rider.vx) < STILL && fresh ? BTN : 0;
+  const { dx, dy } = path(
+    world,
+    rider,
+    map,
+    door ?? apart(bx + target.x, by + target.y, rider.x, rider.y, map),
+    { x: bx, y: by },
+  );
+
+  const travel = { dx, dy, fresh, door: Boolean(door), shot };
+  return approachInput(world, rider, map, travel);
+}
+
+/** Leave a ball on course for this side's goal alone. */
+function scoresUnaided(world: World, rider: Rider, map: MapDef, ahead: Flight) {
+  if (ahead.into === rider.slot) return true;
+  // A ball lifted off a trapdoor can take longer to land than the usual forecast.
+  return (
+    ahead.into === -1 &&
+    map.barriers.some((barrier) => barrier.kind === "gate") &&
+    flight(world, map, world.ball, FORESIGHT).into === rider.slot
+  );
+}
+
+/** Direction toward the goal and the rider's position relative to that line. */
+function shotLine(
+  world: World,
+  rider: Rider,
+  map: MapDef,
+  bx: number,
+  by: number,
+) {
   const goal = aim(world, map, rider.slot, bx, by),
     reach = isqrt(goal.x * goal.x + goal.y * goal.y);
   // With nothing clear to aim along, the shot is a lob: up and towards the goal's side, over what is in the way.
@@ -686,6 +559,10 @@ function plan(world: World, rider: Rider, map: MapDef): number {
     along = div(from.dx * ux + from.dy * uy, UNIT),
     across = div(from.dx * uy - from.dy * ux, UNIT);
 
+  return { ux, uy, along, across, reach };
+}
+
+function shotApproach({ ux, uy, along, across }: ReturnType<typeof shotLine>) {
   // The spot to fly to, as an offset from the ball.
   let ox: number, oy: number;
   if (along < 0 && abs(across) < LINED_UP) {
@@ -702,32 +579,30 @@ function plan(world: World, rider: Rider, map: MapDef): number {
       oy -= over * div(ux * ROUND, UNIT);
     }
   }
-  // A ball lying on the shut trapdoor over its goal is not shot at: it is lifted from the floor beside the door.
-  const door = trapdoor(world, rider, map),
-    fresh = (rider.prev & BTN) === 0;
-  if (
-    door &&
-    rider.grounded &&
-    abs(door.dx) <= 2 * DEAD &&
-    abs(door.dy) < CLEAR
-  )
-    // In place. A lift from a run carries the ball off sideways, so it stands still first.
-    return abs(rider.vx) < STILL && fresh ? BTN : 0;
-  const { dx, dy } = path(
-    world,
-    rider,
-    map,
-    door ?? apart(bx + ox, by + oy, rider.x, rider.y, map),
-    { x: bx, y: by },
-  );
+  return { x: ox, y: oy };
+}
 
-  let way = dx > DEAD ? RIGHT : dx < -DEAD ? LEFT : 0;
+interface Approach {
+  dx: number;
+  dy: number;
+  fresh: boolean;
+  door: boolean;
+  shot: ReturnType<typeof shotLine>;
+}
+
+function slowForNudge(
+  world: World,
+  rider: Rider,
+  map: MapDef,
+  travel: Approach,
+) {
+  const { reach, uy } = travel.shot;
   // A goal that is near and not above wants a nudge, not a shot that comes back off the far wall: lined up and
   // closing fast, it lets go of the stick, or pulls it back, until it is down to a walk.
   const gap = apart(world.ball.x, world.ball.y, rider.x, rider.y, map),
     far = isqrt(gap.dx * gap.dx + gap.dy * gap.dy);
   if (
-    !door &&
+    !travel.door &&
     far > 0 &&
     far < NUDGE_FROM &&
     reach < NUDGE_RANGE &&
@@ -738,70 +613,90 @@ function plan(world: World, rider: Rider, map: MapDef): number {
       far,
     );
     if (closing > NUDGE) {
-      way = closing > 2 * NUDGE ? (gap.dx > 0 ? LEFT : RIGHT) : 0;
+      const way = closing > 2 * NUDGE ? (gap.dx > 0 ? LEFT : RIGHT) : 0;
       // Dropping onto it too fast: a flap takes the edge off.
       if (!rider.grounded && gap.dy > 0 && rider.vy > NUDGE)
-        return way | (fresh ? BTN : 0);
+        return { way: way | (travel.fresh ? BTN : 0), lift: true };
+      return { way, lift: false };
     }
   }
+  return undefined;
+}
+
+function approachInput(
+  world: World,
+  rider: Rider,
+  map: MapDef,
+  travel: Approach,
+) {
+  const { dx, dy, fresh } = travel;
+  const nudge = slowForNudge(world, rider, map, travel);
+  const way = nudge?.way ?? horizontalInput(dx);
+  if (nudge?.lift) return way;
   if (rider.slide > 0)
     // Keep sliding while there is floor to cover; letting go ends it with a hop.
     return abs(dx) > SLIDE_UNTIL && abs(dy) < SINK ? DOWN | BTN | way : way;
-  if (rider.grounded) {
-    // Next to the ball a jump is a lift, which is only wanted from behind it.
-    const near = apart(rider.x, rider.y, world.ball.x, world.ball.y, map),
-      lifts = abs(near.dx) < T.LIFT_X && abs(near.dy) < T.LIFT_Y,
-      sitting = abs(world.ball.vx) < SITTING && abs(world.ball.vy) < SITTING;
-    if (lifts && sitting && !door) {
-      // A sitting ball wants a lift when the goal is above, and when the other rider is leaning on its far side:
-      // then the two take turns, so a pair of bots never lifts as one.
-      const pinned = world.riders.some((other) => {
-          if (other.slot === rider.slot || other.zapped) return false;
-          const gap = apart(other.x, other.y, world.ball.x, world.ball.y, map);
-          return abs(gap.dx) + abs(gap.dy) < PIN;
-        }),
-        turn = (div(world.step, 2 * T.STEPS_PER_TICK) + rider.slot) % 2 === 0;
-      if (along < 0) {
-        if (uy < 0 || (pinned && turn)) return way | (fresh ? BTN : 0);
-      } else if (pinned) {
-        // On the wrong side of it with the other rider where it wants to stand: a lift carries the ball along
-        // with whoever lifts it, so it runs for the goal and lifts once it is moving.
-        const goalward = ux > 0 || (ux === 0 && rider.slot === 0) ? 1 : -1;
-        return (
-          (goalward > 0 ? RIGHT : LEFT) |
-          (fresh && rider.vx * goalward > CARRY ? BTN : 0)
-        );
-      }
-    }
-    // A jump next to the ball is a lift: wanted from behind it, and never on the way to a trapdoor.
-    const jump = fresh && (!lifts || (along < 0 && !door)) ? BTN : 0;
-    if (dy < -CLIMB) return way | jump;
-    // Walking into a kerb or the foot of a wall gets nowhere: hop it.
-    const stick = way & RIGHT ? 1 : way & LEFT ? -1 : 0,
-      kerb =
-        stick !== 0 &&
-        boxesAt(map, world.clock).some((box) => {
-          const at = apart(box.cx, box.cy, rider.x, rider.y, map);
-          return (
-            at.dx * stick > 0 &&
-            abs(at.dx) < box.hw + T.RIDER_R + HOP &&
-            abs(at.dy) < box.hh + T.RIDER_R - SUB
-          );
-        });
-    if (kerb) return way | jump;
-    if (dy > SINK)
-      // The target is below this ledge: walk off it, whichever way it was already going.
-      return way || (rider.facing > 0 ? RIGHT : LEFT);
-    if (abs(dx) > SLIDE_FROM && fresh) return way | DOWN | BTN;
-    return way;
-  }
-  if (dy < -CLIMB) {
-    // Flap, unless it is already rising fast enough to get there.
-    const rising =
-      rider.vy < 0 ? div(rider.vy * rider.vy, 2 * T.GRAVITY_RISE) : 0;
-    return way | (fresh && rising < -dy ? BTN : 0);
-  }
+  if (rider.grounded) return groundApproach(world, rider, map, travel, way);
+  const press = fresh ? BTN : 0;
   if (dy > DIVE && fresh && rider.vy < T.QUICK_DROP) return way | DOWN | BTN;
-  if (dy > SINK) return way | DOWN;
-  return way;
+  return airTravel(rider, { dy, way, press });
+}
+
+function groundApproach(
+  world: World,
+  rider: Rider,
+  map: MapDef,
+  travel: Approach,
+  way: number,
+) {
+  const {
+    dx,
+    dy,
+    door,
+    fresh,
+    shot: { along },
+  } = travel;
+  // Next to the ball a jump is a lift, which is only wanted from behind it.
+  const near = apart(rider.x, rider.y, world.ball.x, world.ball.y, map),
+    lifts = abs(near.dx) < T.LIFT_X && abs(near.dy) < T.LIFT_Y,
+    sitting = abs(world.ball.vx) < SITTING && abs(world.ball.vy) < SITTING;
+  if (lifts && sitting && !door) {
+    const lift = contestedLift(world, rider, map, travel, way);
+    if (lift !== undefined) return lift;
+  }
+  // A jump next to the ball is a lift: wanted from behind it, and never on the way to a trapdoor.
+  const press = fresh && (!lifts || (along < 0 && !door)) ? BTN : 0;
+  const slide = abs(dx) > SLIDE_FROM && fresh ? DOWN | BTN : 0;
+  return groundTravel(world, rider, map, { dy, way, press }, slide);
+}
+
+/** A sitting ball can be lifted over an opponent or carried past one. */
+function contestedLift(
+  world: World,
+  rider: Rider,
+  map: MapDef,
+  travel: Approach,
+  way: number,
+) {
+  const {
+    fresh,
+    shot: { ux, uy, along },
+  } = travel;
+  const pinned = world.riders.some((other) => {
+    if (other.slot === rider.slot || other.zapped) return false;
+    const gap = apart(other.x, other.y, world.ball.x, world.ball.y, map);
+    return abs(gap.dx) + abs(gap.dy) < PIN;
+  });
+  if (along < 0) {
+    // Bots take turns lifting a pinned ball.
+    const turn = (div(world.step, 2 * T.STEPS_PER_TICK) + rider.slot) % 2 === 0;
+    return uy < 0 || (pinned && turn) ? way | (fresh ? BTN : 0) : undefined;
+  }
+  if (!pinned) return undefined;
+  // Run toward the goal before lifting the ball on the wrong side.
+  const goalward = ux > 0 || (ux === 0 && rider.slot === 0) ? 1 : -1;
+  return (
+    (goalward > 0 ? RIGHT : LEFT) |
+    (fresh && rider.vx * goalward > CARRY ? BTN : 0)
+  );
 }

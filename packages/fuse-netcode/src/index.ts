@@ -6,6 +6,8 @@ export * from "./text.js";
 export * from "./clock.js";
 export * from "./timing.js";
 export * from "./present.js";
+export { createLeadChain, leadStepsAhead } from "./lead-chain.js";
+export { forwardWorld, type ForwardWorldOptions } from "./forward-world.js";
 export * from "./status-notices.js";
 export * from "./uuid.js";
 export * from "./packet.js";
@@ -13,13 +15,34 @@ export { hashCheckpointJson } from "./hash-checkpoint-json.js";
 export { hashPlain } from "./hash-plain.js";
 export * from "./stream.js";
 export * from "./rollback.js";
-export * from "./snapshot.js";
-export { createSeatDecoder, createSeatListDecoder } from "./seat-snapshot.js";
+export {
+  SNAPSHOT_CHUNK_BYTES,
+  MAX_SNAPSHOT_BYTES,
+  MAX_SNAPSHOT_ENTRIES,
+  SnapshotAssembler,
+  decodeSnapshot,
+  encodeSnapshot,
+  restoreSnapshotStream,
+  type DecodedSnapshot,
+  type SnapshotChunk,
+  type SnapshotStream,
+} from "./snapshot.js";
+export {
+  createSeatDecoder,
+  createSeatListDecoder,
+  orderedSeats,
+  compareSeats,
+} from "./seat-snapshot.js";
 export { createHeldInputDecoder } from "./held-input-snapshot.js";
-export { validCheckpointLifecycle } from "./checkpoint-lifecycle.js";
+export {
+  validCheckpointLifecycle,
+  createCheckpointRoundDecoder,
+} from "./checkpoint-lifecycle.js";
 export {
   CHECKPOINT_HEADER_FIELDS,
   createCheckpointBaseDecoder,
+  checkpointEntries,
+  encodeCheckpointBase,
 } from "./checkpoint-base.js";
 export {
   createRosterDecoder,

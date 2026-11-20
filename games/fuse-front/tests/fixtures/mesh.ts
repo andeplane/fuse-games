@@ -29,6 +29,8 @@ export class Mesh {
   private readonly loops = new Map<string, () => void>();
   private readonly events = new Map<string, TransportEvents>();
   private readonly online = new Set<string>();
+  private readonly hidden = new Set<string>();
+  private readonly visibilityListeners = new Map<string, () => void>();
   private readonly lastReliable = new Map<string, number>();
   fast: (from: string, to: string) => FastFate = () => ({ delayMs: 20 });
   /**
@@ -46,14 +48,17 @@ export class Mesh {
   join(id: string): TestRuntime {
     const dependencies: RuntimeDependencies = {
       now: () => this.now,
-      hidden: () => false,
+      hidden: () => this.hidden.has(id),
       token: () => `token-${this.order++}`,
       generation: () => 1,
       schedule: (callback) => {
         this.loops.set(id, callback);
         return () => this.loops.delete(id);
       },
-      onVisibilityChange: () => () => {},
+      onVisibilityChange: (callback) => {
+        this.visibilityListeners.set(id, callback);
+        return () => this.visibilityListeners.delete(id);
+      },
     };
     const callbacks = {
       state: () => {},
@@ -70,6 +75,11 @@ export class Mesh {
     });
     runtime.start();
     return runtime;
+  }
+  setHidden(id: string, hidden: boolean): void {
+    if (hidden) this.hidden.add(id);
+    else this.hidden.delete(id);
+    this.visibilityListeners.get(id)?.();
   }
   private transport(id: string): RoomTransport {
     return {

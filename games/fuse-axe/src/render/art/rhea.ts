@@ -1,5 +1,11 @@
 import type { HeroFrame } from "./animate.js";
 import {
+  heroGait,
+  sprintArms,
+  walkingHands,
+  trailingSword,
+} from "./hero-gait.js";
+import {
   head,
   headTurn,
   portrait,
@@ -25,7 +31,6 @@ import {
   sprint,
   stride,
   sword,
-  type Side,
 } from "../pixel/kit.js";
 import { rampSwap, type Palette } from "../pixel/palette.js";
 import { Rig, type Point } from "../pixel/rig.js";
@@ -65,31 +70,33 @@ const { far: F, near: N } = idle;
  * Six frames of a light, long stride, the blade carried low: a planted foot sweeps back 6.25 px a frame, her 1.25 px a
  * step for `WALK_STEPS.rhea` steps.
  */
-const walk = [0, 1, 2, 3, 4, 5].map((i) => {
-  const step = adjust(
-    idle,
-    stride(idle, i, 6, { reach: 9.375, lift: 5, dip: 1.5 }),
-  );
-  const swing = Math.cos((i / 6) * 2 * Math.PI);
-  const lean = (p: Point, dx: number): Point => [p[0] + dx, p[1]];
-  const hand = (p: Point, dx: number): Point => [
-    p[0] + dx,
-    p[1] - Math.abs(dx) * 0.35,
-  ];
-  const shoulder = (p: Point) => lean(p, 1);
-  return adjust(step, {
-    head: lean(step.head, 2),
-    chest: lean(step.chest, 1),
-    far: armTo(F, shoulder(step.far.shoulder), hand(step.far.hand, 5 * swing)),
-    near: armTo(
-      N,
-      shoulder(step.near.shoulder),
-      hand(lean(step.near.hand, 1), -2.5 * swing),
+const walk = heroGait(
+  (frame, frames) =>
+    adjust(
+      idle,
+      stride(idle, frame, frames, { reach: 9.375, lift: 5, dip: 1.5 }),
     ),
-    sword: 40 + 5 * swing,
-    hair: 18 + 6 * Math.abs(swing),
-  });
-});
+  (step, swing) => {
+    const [far, near] = walkingHands(
+      step.far.hand,
+      offset(step.near.hand, 1, 0),
+      swing,
+      {
+        far: 5,
+        near: -2.5,
+        lift: 0.35,
+      },
+    );
+    return adjust(step, {
+      head: offset(step.head, 2, 0),
+      chest: offset(step.chest, 1, 0),
+      far: armTo(F, offset(step.far.shoulder, 1, 0), far),
+      near: armTo(N, offset(step.near.shoulder, 1, 0), near),
+      sword: 40 + 5 * swing,
+      hair: 18 + 6 * Math.abs(swing),
+    });
+  },
+);
 
 /** The combo's fencer's lunge: the back leg straight, the front knee over the foot; every swing keeps the feet. */
 const lunge = adjust(idle, {
@@ -113,26 +120,19 @@ const leaning = adjust(idle, {
   far: { shoulder: [37, 49], ...legTo(F, [35.5, 62], [31.5, 77.5]) },
   near: { shoulder: [46.5, 49], ...legTo(N, [40.5, 62], [44.5, 77.5]) },
 });
-const run = [0, 1, 2, 3, 4, 5].map((i) => {
-  const step = adjust(
-    leaning,
-    sprint(leaning, i, 6, { reach: 9, lift: 11, dip: 2 }),
-  );
-  // 1 as the near foot lands ahead, when the far fist is forward and the near one back.
-  const swing = Math.cos((i / 6) * 2 * Math.PI);
-  const pump = (side: Side, ahead: number) =>
-    armTo(
-      side,
-      side.shoulder,
-      offset(side.shoulder, -6 + 12 * ahead, 7 - 5 * ahead),
-    );
-  return adjust(step, {
-    far: pump(step.far, (1 + swing) / 2),
-    near: pump(step.near, (1 - swing) / 2),
-    sword: -170 + 120 * ((1 - swing) / 2) ** 2,
-    hair: 55 + 8 * Math.abs(swing),
-  });
-});
+const run = heroGait(
+  (frame, frames) =>
+    adjust(
+      leaning,
+      sprint(leaning, frame, frames, { reach: 9, lift: 11, dip: 2 }),
+    ),
+  (step, swing) =>
+    adjust(step, {
+      ...sprintArms(step, swing, { reach: 6, lift: 5 }),
+      sword: trailingSword(swing),
+      hair: 55 + 8 * Math.abs(swing),
+    }),
+);
 
 /**
  * Riding a beast, seated astride its saddle: the hips on the seat, the near leg down its flank to the stirrup, the

@@ -41,6 +41,17 @@ WALLS = [
 ]
 
 
+# Use each stored wall variant ID to look up its connection mask.
+WALL_CONNECTIONS = (0, 2, 8, 4, 1, 6, 12, 3, 9, 7, 13, 14, 11, 5, 10, 15)
+NORTH, EAST, SOUTH, WEST = 1, 2, 4, 8
+
+
+def surface_bands(p, bands):
+    """Paint full-width horizontal layers in the supplied order."""
+    for top, bottom, color in bands:
+        p.rect(0, top, 100, bottom, color)
+
+
 def floor(p, style, variant, room=False):
     base, slab, seam = FLOORS[style % len(FLOORS)]
     if room:
@@ -59,34 +70,11 @@ def floor(p, style, variant, room=False):
         )
     p.line([(1, 83), (1, 5), (87, 5), (97, 17)], mix(slab, seam, 0.58), 2)
     p.line([(15, 97), (98, 97), (98, 21)], mix(base, INK, 0.65), 2)
-    if style % 5 == 0:
-        p.line([(4, 72), (21, 72), (30, 81), (60, 81)], mix(slab, seam, 0.45), 2)
-        p.line([(38, 13), (68, 13), (78, 25), (94, 25)], base, 2)
-        for j in range(3):
-            p.line([(71 + j * 6, 82), (74 + j * 6, 76)], seam, 2)
-    elif style % 5 == 1:
-        for x, y in [(8, 16), (84, 70)]:
-            p.rect(x, y, x + 6, y + 5, base)
-            p.line([(x + 1, y), (x + 4, y)], seam, 2)
-        p.line([(5, 66), (27, 66), (34, 58), (34, 7)], base, 2)
-        p.line([(38, 75), (66, 75), (75, 63), (98, 63)], mix(slab, seam, 0.26), 2)
-        p.rect(46, 82, 59, 85, base)
-        for x in (48, 52, 56):
-            p.rect(x, 82, x + 1, 83, seam)
-    elif style % 5 == 2:
-        rng = random.Random(style * 11 + variant)
-        for _ in range(18):
-            x, y = rng.randrange(3, 95), rng.randrange(7, 93)
-            p.line([(x, y), (x + 3, y - 2)], mix(slab, seam, 0.28), 2)
-    elif style % 5 == 3:
-        for x in (12, 22, 32):
-            p.line([(x, 82), (x + 10, 68)], base, 3)
-            p.line([(x + 1, 84), (x + 11, 70)], mix(slab, seam, 0.5), 2)
-        p.rect(62, 18, 84, 22, base)
+    mark = style % 5
+    if mark == 2:
+        rough_finish(p, slab, seam, style, variant)
     else:
-        for x in (21, 50, 79):
-            p.line([(x, 7), (x, 91)], base, 2)
-            p.line([(x + 2, 8), (x + 2, 89)], mix(slab, seam, 0.45), 2)
+        FLOOR_MARKINGS[mark](p, base, slab, seam)
     if variant == 0:
         p.rect(0, 0, 100, 13, mix(base, INK, 0.55))
         p.rect(0, 14, 100, 21, mix(base, INK, 0.27))
@@ -97,37 +85,95 @@ def floor(p, style, variant, room=False):
             p.rect(x, 54, x + 3, 61, base)
 
 
+def service_traces(p, base, slab, seam):
+    p.line([(4, 72), (21, 72), (30, 81), (60, 81)], mix(slab, seam, 0.45), 2)
+    p.line([(38, 13), (68, 13), (78, 25), (94, 25)], base, 2)
+    for j in range(3):
+        p.line([(71 + j * 6, 82), (74 + j * 6, 76)], seam, 2)
+
+
+def conduit_traces(p, base, slab, seam):
+    for x, y in [(8, 16), (84, 70)]:
+        p.rect(x, y, x + 6, y + 5, base)
+        p.line([(x + 1, y), (x + 4, y)], seam, 2)
+    p.line([(5, 66), (27, 66), (34, 58), (34, 7)], base, 2)
+    p.line([(38, 75), (66, 75), (75, 63), (98, 63)], mix(slab, seam, 0.26), 2)
+    p.rect(46, 82, 59, 85, base)
+    for x in (48, 52, 56):
+        p.rect(x, 82, x + 1, 83, seam)
+
+
+def rough_finish(p, slab, seam, style, variant):
+    rng = random.Random(style * 11 + variant)
+    for _ in range(18):
+        x, y = rng.randrange(3, 95), rng.randrange(7, 93)
+        p.line([(x, y), (x + 3, y - 2)], mix(slab, seam, 0.28), 2)
+
+
+def diagonal_stripes(p, base, slab, seam):
+    for x in (12, 22, 32):
+        p.line([(x, 82), (x + 10, 68)], base, 3)
+        p.line([(x + 1, 84), (x + 11, 70)], mix(slab, seam, 0.5), 2)
+    p.rect(62, 18, 84, 22, base)
+
+
+def vertical_seams(p, base, slab, seam):
+    for x in (21, 50, 79):
+        p.line([(x, 7), (x, 91)], base, 2)
+        p.line([(x + 2, 8), (x + 2, 89)], mix(slab, seam, 0.45), 2)
+
+
+FLOOR_MARKINGS = {
+    0: service_traces,
+    1: conduit_traces,
+    3: diagonal_stripes,
+    4: vertical_seams,
+}
+
+
 def wall(p, style, variant):
-    base, lit, accent = WALLS[style]
+    colors = WALLS[style]
     tall = p.h > 48
     cap = 50 if tall else 100
-    p.rect(0, 0, 100, 100, base)
+    p.rect(0, 0, 100, 100, colors[0])
     if tall:
-        p.rect(0, cap, 100, 100, mix(base, INK, 0.36))
-        p.rect(0, 51, 100, 57, INK)
-        p.rect(0, 57, 100, 61, base)
-        p.rect(0, 62, 100, 64, mix(lit, base, 0.5))
-        p.rect(0, 94, 100, 99, INK)
-        if style in (1, 4):
-            for row, y in enumerate((68, 82)):
-                p.line([(0, y), (99, y)], DARK, 2)
-                for x in (24 + row * 22, 72 + row * 16):
-                    p.line([(x, y), (x, y + 11)], DARK, 2)
-        elif style == 6:
-            p.line([(4, 92), (20, 70), (40, 75), (56, 69), (82, 74), (99, 63)], base, 6)
-            p.line([(21, 70), (38, 75), (55, 69)], accent, 2)
-        else:
-            for x in (4, 85):
-                p.rect(x, 62, x + 9, 92, base)
-                p.line([(x + 2, 62), (x + 2, 91)], lit, 3)
-            p.plate(21, 68, 77, 88, mix(base, INK, 0.65), 3)
-            for x in range(28, 70, 9):
-                p.line([(x, 82), (x + 4, 73)], lit, 3)
-            p.rect(25, 90, 48, 91, accent)
-    # Extend the cap trim only on exposed tile sides. Shared IDs use canonical topology.
-    connections = [0, 2, 8, 4, 1, 6, 12, 3, 9, 7, 13, 14, 11, 5, 10, 15][variant]
-    p.rect(0, 0, 100, cap - 2, lit)
-    p.rect(0, cap * 0.18, 100, cap * 0.77, base)
+        wall_front(p, colors, style, cap)
+    wall_cap(p, colors, style, cap, WALL_CONNECTIONS[variant])
+
+
+def wall_front(p, colors, style, cap):
+    base, lit, accent = colors
+    surface_bands(
+        p,
+        (
+            (cap, 100, mix(base, INK, 0.36)),
+            (51, 57, INK),
+            (57, 61, base),
+            (62, 64, mix(lit, base, 0.5)),
+            (94, 99, INK),
+        ),
+    )
+    if style in (1, 4):
+        for row, y in enumerate((68, 82)):
+            p.line([(0, y), (99, y)], DARK, 2)
+            for x in (24 + row * 22, 72 + row * 16):
+                p.line([(x, y), (x, y + 11)], DARK, 2)
+    elif style == 6:
+        p.line([(4, 92), (20, 70), (40, 75), (56, 69), (82, 74), (99, 63)], base, 6)
+        p.line([(21, 70), (38, 75), (55, 69)], accent, 2)
+    else:
+        for x in (4, 85):
+            p.rect(x, 62, x + 9, 92, base)
+            p.line([(x + 2, 62), (x + 2, 91)], lit, 3)
+        p.plate(21, 68, 77, 88, mix(base, INK, 0.65), 3)
+        for x in range(28, 70, 9):
+            p.line([(x, 82), (x + 4, 73)], lit, 3)
+        p.rect(25, 90, 48, 91, accent)
+
+
+def wall_cap(p, colors, style, cap, connections):
+    base, lit, accent = colors
+    surface_bands(p, ((0, cap - 2, lit), (cap * 0.18, cap * 0.77, base)))
     seam = mix(base, lit, 0.52)
     for x in (14, 69):
         p.line(
@@ -140,15 +186,21 @@ def wall(p, style, variant):
             seam,
             2,
         )
-    if not connections & 1:
-        p.rect(0, 0, 100, cap * 0.09, mix(lit, ICE, 0.34))
-    if not connections & 2:
+    # Exposed edges are layered in north, east, west, south order.
+    if not connections & NORTH:
+        surface_bands(p, ((0, cap * 0.09, mix(lit, ICE, 0.34)),))
+    if not connections & EAST:
         p.rect(94, 0, 100, cap - 1, mix(base, INK, 0.55))
-    if not connections & 8:
+    if not connections & WEST:
         p.rect(0, 0, 4, cap - 2, mix(lit, ICE, 0.25))
-    if not connections & 4:
-        p.rect(0, cap * 0.79, 100, cap * 0.90, mix(lit, ICE, 0.31))
-        p.rect(0, cap * 0.92, 100, cap - 1, DARK)
+    if not connections & SOUTH:
+        surface_bands(
+            p,
+            (
+                (cap * 0.79, cap * 0.90, mix(lit, ICE, 0.31)),
+                (cap * 0.92, cap - 1, DARK),
+            ),
+        )
     if style in (0, 2, 5):
         p.line(
             [(29, cap * 0.39), (62, cap * 0.39), (68, cap * 0.52)],
