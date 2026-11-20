@@ -308,35 +308,65 @@ function split(bomb: Bomb, tick: number, room: number): Bomb[] {
     fuse: BOMBLET_FUSE,
   }));
 }
+type FlightStart = Pick<Bomb, "x" | "y" | "vx" | "vy">;
+
+/** Walk a detached bomb and stop at the floor, the fuse or the observer's chosen point. */
+function walkBomb(
+  start: FlightStart,
+  ticks: number,
+  tuning: Tuning,
+  observe: (point: Readonly<Bomb>, step: number, touched: boolean) => boolean,
+): void {
+  const ghost: Bomb = {
+    ...start,
+    id: 0,
+    owner: "",
+    kind: "plain",
+    fuse: ticks,
+  };
+  const course = flight(tuning, tuning.gravity);
+  for (let step = 0; step < ticks && ghost.y <= course.floor; step++) {
+    const touched = fly(ghost, course);
+    if (ghost.y > course.floor || observe(ghost, step, touched)) return;
+  }
+}
+
 /**
- * Where a bomb will be after each of the next `ticks` flights, by the same
- * flight as the fold, without touching it: index i is after i + 1 ticks.
- * Stops early once it would fizzle below the arena. `contact` is the index of
- * the first flight that touches stone, where a cluster bomb splits (11D), or
- * −1. Bots read it (11C).
+ * Where a bomb will be after each of the next `ticks` flights. `contact` is
+ * the index of its first touch against stone, or −1.
  */
 export function bombPath(
-  bomb: Pick<Bomb, "x" | "y" | "vx" | "vy">,
+  bomb: FlightStart,
   ticks: number,
   tuning: Tuning,
 ): { path: { x: number; y: number }[]; contact: number } {
-  const ghost: Bomb = {
-      ...bomb,
-      id: 0,
-      owner: "",
-      kind: "plain",
-      fuse: ticks,
-    },
-    course = flight(tuning, tuning.gravity),
-    path: { x: number; y: number }[] = [];
+  const path: { x: number; y: number }[] = [];
   let contact = -1;
-  for (let t = 0; t < ticks && ghost.y <= course.floor; t++) {
-    const touched = fly(ghost, course);
-    if (ghost.y > course.floor) break;
-    if (touched && contact < 0) contact = path.length;
-    path.push({ x: ghost.x, y: ghost.y });
-  }
+  walkBomb(bomb, ticks, tuning, ({ x, y }, step, touched) => {
+    if (touched && contact < 0) contact = step;
+    path.push({ x, y });
+    return false;
+  });
   return { path, contact };
+}
+
+/** The first impact, cluster split or fuse end. A bomb that falls out has no blast. */
+export function predictedBlast(
+  bomb: FlightStart,
+  tuning: Tuning,
+  cluster: boolean,
+  target?: Pick<World, "x" | "feet">,
+): { x: number; y: number } | undefined {
+  let point: { x: number; y: number } | undefined;
+  walkBomb(bomb, FUSE_TICKS, tuning, ({ x, y }, step, touched) => {
+    const fuseEnded = step === FUSE_TICKS - 1;
+    const split = cluster && touched;
+    const impact = target && touches(target, x, y, BOMB_RADIUS * S);
+    if (!fuseEnded && !split && !impact) return false;
+    point = { x, y };
+    return true;
+  });
+  return point;
 }
 /** Circle against a keeper's body box. */
 export function touches(
