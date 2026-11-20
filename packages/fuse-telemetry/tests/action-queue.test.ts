@@ -933,7 +933,11 @@ test("a recording-scoped continuation reads that recording once", async () => {
   await f.process(first);
   await f.process(segment(1, "Add a pause button."));
   const principal = { ...admin, recordingId: first.recordingId };
-  const page = await f.service.list({ limit: 1 }, principal);
+  const query = { recordingId: first.recordingId, limit: 1 };
+  const pending = f.service.list(query, admin);
+  query.limit = 100;
+  const page = await pending;
+  assert.equal(page.actions.length, 1);
   assert.ok(page.nextCursor);
   reads.length = 0;
   const next = await f.service.list({ cursor: page.nextCursor }, principal);
