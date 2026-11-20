@@ -2,6 +2,8 @@ import { PICKUP_WEIGHTS } from "./pickups.js";
 import { ARENA_MAP_CHOICES, type ArenaMapChoice } from "./arena-map.js";
 import { BOMB_MAX_CHARGE_TICKS, isBombChargeTicks } from "./bomb-launch.js";
 import { PICKUP_TYPES, type PickupType } from "./pickup-types.js";
+const allowedPickupTypes = new Set<string>(PICKUP_TYPES);
+
 export interface RoomSettings {
   version: 1;
   mode: "shared" | "devices";
@@ -82,11 +84,10 @@ export function parseRoomSettings(raw: unknown): RoomSettings | undefined {
     typeof value.weights !== "object"
   )
     return;
-  const allowed = new Set<string>(PICKUP_TYPES);
   const weights: RoomSettings["weights"] = {};
   for (const [type, weight] of Object.entries(value.weights)) {
     if (
-      !allowed.has(type as PickupType) ||
+      !allowedPickupTypes.has(type) ||
       typeof weight !== "number" ||
       !Number.isFinite(weight) ||
       weight < 0 ||
@@ -110,45 +111,39 @@ export function parseRoomSettings(raw: unknown): RoomSettings | undefined {
 export function loadRoomSettings(
   storage: Pick<Storage, "getItem">,
 ): RoomSettings {
+  let saved: unknown;
   try {
-    const saved: unknown = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null");
-    // Migrate browser preferences only; old rules are never accepted on the wire.
-    const migrated =
-      saved &&
-      typeof saved === "object" &&
-      "match" in saved &&
-      saved.match === "wins"
-        ? { ...saved, match: "rounds", length: 5 }
-        : saved;
-    // A pickup retired since the save (Boost, Target Bomb) would fail the whole parse and reset every other preference with it.
-    // One added or enabled since (Star) has no key in the save at all: creating a room stores the whole blob, so without
-    // the defaults underneath it would stay off for ever. A host who turned a pickup off saved an explicit 0, which wins.
-    if (
-      migrated &&
-      typeof migrated === "object" &&
-      "weights" in migrated &&
-      migrated.weights &&
-      typeof migrated.weights === "object"
-    ) {
-      const known = new Set<string>(PICKUP_TYPES);
-      return (
-        parseRoomSettings({
-          ...migrated,
-          weights: {
-            ...defaultRoomSettings().weights,
-            ...Object.fromEntries(
-              Object.entries(migrated.weights).filter(([type]) =>
-                known.has(type),
-              ),
-            ),
-          },
-        }) ?? defaultRoomSettings()
-      );
-    }
-    return parseRoomSettings(migrated) ?? defaultRoomSettings();
+    saved = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null");
   } catch {
     return defaultRoomSettings();
   }
+  if (!saved || typeof saved !== "object") return defaultRoomSettings();
+
+  // Migrate browser preferences only; old rules are never accepted on the wire.
+  const migrated =
+    "match" in saved && saved.match === "wins"
+      ? { ...saved, match: "rounds", length: 5 }
+      : saved;
+  // Keep explicit settings, drop retired pickups and fill new pickup weights.
+  if (
+    "weights" in migrated &&
+    migrated.weights &&
+    typeof migrated.weights === "object"
+  ) {
+    const weights = Object.entries(migrated.weights).filter(([type]) =>
+      allowedPickupTypes.has(type),
+    );
+    return (
+      parseRoomSettings({
+        ...migrated,
+        weights: {
+          ...defaultRoomSettings().weights,
+          ...Object.fromEntries(weights),
+        },
+      }) ?? defaultRoomSettings()
+    );
+  }
+  return parseRoomSettings(migrated) ?? defaultRoomSettings();
 }
 export function roomPickup(
   roll: number,
