@@ -188,6 +188,7 @@ export {
   createLiveResults,
   createResultsScreen,
   createTopResultHighlight,
+  playerResultRows,
   renderResults,
   roomResultsBar,
   type ResultsAction,

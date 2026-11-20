@@ -31,6 +31,38 @@ export interface ResultsRow {
   values: readonly string[];
 }
 
+interface PlayerStanding {
+  id: string;
+  name: string;
+  place: number;
+  you: boolean;
+  bot: boolean;
+}
+
+/** Map a game's standings to the shared roster, with that game's colours and statistics. */
+export function playerResultRows<Row extends PlayerStanding, ColorKey>(
+  rows: readonly Row[],
+  parts: {
+    color: (key: ColorKey) => string;
+    friend?: (id: string) => HTMLElement | undefined;
+  },
+  presentation: {
+    colorKey: (row: Row) => ColorKey;
+    values: (row: Row) => readonly string[];
+  },
+): ResultsRow[] {
+  return rows.map((row) => ({
+    id: row.id,
+    placement: row.place,
+    name: row.name,
+    color: parts.color(presentation.colorKey(row)),
+    you: row.you,
+    ...(row.bot ? { tag: "AI" } : {}),
+    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
+    values: presentation.values(row),
+  }));
+}
+
 /** A card of the highlights panel: an award and who took it. */
 export interface ResultsHighlight {
   /** One glyph, drawn large in the first winner's colour. */

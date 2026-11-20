@@ -1,10 +1,10 @@
 import {
+  playerResultRows,
   createTopResultHighlight,
   roomResultsBar,
   type ResultsBar,
   type ResultsHighlight,
   type ResultsReport,
-  type ResultsRow,
 } from "fuse-ui";
 import type { Model } from "./presenter.js";
 
@@ -28,21 +28,15 @@ export function resultReport(
   result: Result,
   parts: ReportParts,
 ): ResultsReport {
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.slot),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.slot,
+    values: (row) => [
       String(row.crowns),
       String(row.escapes),
       String(row.crashes),
       clock(row.airTime),
     ],
-  }));
+  });
   const cards: ResultsHighlight[] = [];
   const most = createTopResultHighlight(
     result.rows,

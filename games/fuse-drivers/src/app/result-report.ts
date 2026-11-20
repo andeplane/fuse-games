@@ -1,9 +1,9 @@
 import {
+  playerResultRows,
   createTopResultHighlight,
   type ResultsBar,
   type ResultsHighlight,
   type ResultsReport,
-  type ResultsRow,
 } from "fuse-ui";
 import type { ResultModel } from "./presenter.js";
 import { courseLabel } from "./course-label.js";
@@ -30,21 +30,15 @@ export function resultReport(
   result: ResultModel,
   parts: ReportParts,
 ): ResultsReport {
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.truck),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.truck,
+    values: (row) => [
       clock(row.time),
       `${row.laps}/${result.laps}`,
       String(row.lapsLed),
       String(row.nitros),
     ],
-  }));
+  });
   const cards: ResultsHighlight[] = [];
   const most = createTopResultHighlight(
     result.rows,

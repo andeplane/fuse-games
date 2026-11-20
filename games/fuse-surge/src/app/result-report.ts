@@ -1,9 +1,9 @@
 import {
+  playerResultRows,
   roomResultsBar,
   type ResultsBar,
   type ResultsHighlight,
   type ResultsReport,
-  type ResultsRow,
 } from "fuse-ui";
 import type { Model } from "./presenter.js";
 
@@ -21,16 +21,10 @@ export function resultReport(
   result: Result,
   parts: ReportParts,
 ): ResultsReport {
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.slot),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: [String(row.wins), String(row.dodges), String(row.hits)],
-  }));
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.slot,
+    values: (row) => [String(row.wins), String(row.dodges), String(row.hits)],
+  });
   const named = (pick: (row: Result["rows"][number]) => boolean) =>
     result.rows
       .filter(pick)
