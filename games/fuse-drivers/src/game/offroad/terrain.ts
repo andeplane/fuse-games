@@ -3,6 +3,9 @@
 const SIDE = 44;
 const CELL_SIZE = 256;
 const WORLD_SIZE = SIDE * CELL_SIZE;
+const FACET_BYTES = 4;
+const FACETS_PER_CELL = 4;
+const QUAD_BYTES = FACETS_PER_CELL * 2;
 const SLOPE_LIMITS = [
   [18, 37],
   [16, 32],
@@ -31,69 +34,52 @@ export interface OffroadTerrain {
   sample(x: number, y: number): OffroadTerrainSample | null;
 }
 
-export function decodeOffroadTerrain(
-  trackIndex: number,
+function decodeSectorIndices(
   contour: Uint8Array,
   quad: Uint8Array,
-  poly: Uint8Array,
-): OffroadTerrain {
-  const limits = SLOPE_LIMITS[trackIndex];
-  if (!limits) throw new Error("Invalid Off Road course index");
-  if (contour.length !== SIDE * SIDE * 2)
-    throw new Error("Invalid contour length");
-  if (quad.length % 8 || quad.length > 65536)
-    throw new Error("Invalid quad length");
-  if (!poly.length || poly.length % 4 || poly.length > 65536)
-    throw new Error("Invalid poly length");
-
+  polygonBytes: number,
+): Uint16Array {
   const contours = new DataView(
     contour.buffer,
     contour.byteOffset,
     contour.byteLength,
   );
   const quads = new DataView(quad.buffer, quad.byteOffset, quad.byteLength);
-  // Keep a snapshot. Callers may reuse the file buffers after import.
-  const polygons = new DataView(Uint8Array.from(poly).buffer);
-  const sectors = new Uint16Array(SIDE * SIDE * 4);
-  function checkPolygon(offset: number) {
-    if (offset % 4 || offset + 4 > poly.length)
+  const sectors = new Uint16Array(SIDE * SIDE * FACETS_PER_CELL);
+  function facetIndex(offset: number): number {
+    if (offset % FACET_BYTES || offset + FACET_BYTES > polygonBytes)
       throw new Error("Invalid polygon offset");
+    return offset / FACET_BYTES;
   }
-  for (let p = 0; p < quad.length; p += 2)
-    checkPolygon(quads.getUint16(p, true));
+  const quadFacets = new Uint16Array(quad.length / 2);
+  for (let i = 0; i < quadFacets.length; i++)
+    quadFacets[i] = facetIndex(quads.getUint16(i * 2, true));
   for (let cell = 0; cell < SIDE * SIDE; cell++) {
     const pointer = contours.getUint16(cell * 2, true);
+    const first = cell * FACETS_PER_CELL;
     if ((pointer & 1) === 0) {
-      checkPolygon(pointer);
-      sectors.fill(pointer, cell * 4, cell * 4 + 4);
+      sectors.fill(facetIndex(pointer), first, first + FACETS_PER_CELL);
     } else {
       const offset = pointer - 1;
-      if (offset % 8 || offset + 8 > quad.length)
+      if (offset % QUAD_BYTES || offset + QUAD_BYTES > quad.length)
         throw new Error("Invalid quad offset");
-      for (let i = 0; i < 4; i++)
-        sectors[cell * 4 + i] = quads.getUint16(offset + i * 2, true);
+      const quadIndex = offset / 2;
+      for (let i = 0; i < FACETS_PER_CELL; i++)
+        sectors[first + i] = quadFacets[quadIndex + i]!;
     }
   }
 
-  const centers = new Uint8Array(SIDE * SIDE);
-  const slope = (cell: number, sector: number, field: number) =>
-    polygons.getInt8(sectors[cell * 4 + sector]! + field);
-  let rowHeight = 0x8000;
-  for (let row = 0; row < SIDE; row++) {
-    const first = row * SIDE;
-    let height = rowHeight;
-    for (let col = 0; col < SIDE; col++) {
-      const cell = first + col;
-      centers[cell] = height >>> 8;
-      if (col + 1 < SIDE)
-        height += 128 * (slope(cell, 1, 2) + slope(cell + 1, 2, 2));
-    }
-    if (row + 1 < SIDE)
-      rowHeight -= 128 * (slope(first, 0, 3) + slope(first + SIDE, 3, 3));
-  }
-  const [bias, limit] = limits;
+  return sectors;
+}
+
+function decodeFacets(
+  poly: Uint8Array,
+  [bias, limit]: readonly [number, number],
+): OffroadFacet[] {
+  // Keep a snapshot. Callers may reuse the file buffers after import.
+  const polygons = new DataView(Uint8Array.from(poly).buffer);
   const facets: OffroadFacet[] = [];
-  for (let p = 0; p < polygons.byteLength; p += 4) {
+  for (let p = 0; p < polygons.byteLength; p += FACET_BYTES) {
     const kind = polygons.getUint8(p);
     const slopeX = polygons.getInt8(p + 2);
     const slopeY = polygons.getInt8(p + 3);
@@ -108,11 +94,52 @@ export function decodeOffroadTerrain(
         ((bias + slopeY) & 255) >= limit,
     });
   }
-  return terrainFromFacets(
-    centers,
-    sectors.map((offset) => offset / 4),
-    facets,
-  );
+  return facets;
+}
+
+function buildCenterHeights(
+  sectors: Uint16Array,
+  facets: readonly OffroadFacet[],
+): Uint8Array {
+  const centers = new Uint8Array(SIDE * SIDE);
+  const facetAt = (cell: number, sector: number) =>
+    facets[sectors[cell * FACETS_PER_CELL + sector]!]!;
+  let rowHeight = 0x8000;
+  for (let row = 0; row < SIDE; row++) {
+    const first = row * SIDE;
+    let height = rowHeight;
+    for (let col = 0; col < SIDE; col++) {
+      const cell = first + col;
+      centers[cell] = height >>> 8;
+      if (col + 1 < SIDE)
+        height += 128 * (facetAt(cell, 1).slopeX + facetAt(cell + 1, 2).slopeX);
+    }
+    if (row + 1 < SIDE)
+      rowHeight -=
+        128 * (facetAt(first, 0).slopeY + facetAt(first + SIDE, 3).slopeY);
+  }
+  return centers;
+}
+
+export function decodeOffroadTerrain(
+  trackIndex: number,
+  contour: Uint8Array,
+  quad: Uint8Array,
+  poly: Uint8Array,
+): OffroadTerrain {
+  const limits = SLOPE_LIMITS[trackIndex];
+  if (!limits) throw new Error("Invalid Off Road course index");
+  if (contour.length !== SIDE * SIDE * 2)
+    throw new Error("Invalid contour length");
+  if (quad.length % QUAD_BYTES || quad.length > 65536)
+    throw new Error("Invalid quad length");
+  if (!poly.length || poly.length % FACET_BYTES || poly.length > 65536)
+    throw new Error("Invalid poly length");
+
+  const sectors = decodeSectorIndices(contour, quad, poly.length);
+  const facets = decodeFacets(poly, limits);
+  const centers = buildCenterHeights(sectors, facets);
+  return terrainFromFacets(centers, sectors, facets);
 }
 
 /** Compose a contact sampler from precomputed grid heights and four facets per cell. */
@@ -136,7 +163,7 @@ export function terrainFromFacets(
       const fx = x & 255;
       const fy = y & 255;
       const sector = (fx + fy < 256 ? 2 : 0) + (fx >= fy ? 1 : 0);
-      const facet = facets[sectors[cell * 4 + sector]!]!;
+      const facet = facets[sectors[cell * FACETS_PER_CELL + sector]!]!;
       const height =
         ((centers[cell]! << 8) +
           ((fx & 254) - 128) * facet.slopeX +
