@@ -607,49 +607,52 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       ),
     };
   }
+  function showArenaPaintFailure(): void {
+    graphicsFailed = true;
+    cancel();
+    runtime?.stop();
+    runtime = undefined;
+    playing = false;
+    showResult(undefined);
+    overlay.hidden = false;
+    layout.hidden = false;
+    retrying = true;
+    if (panel) panel.element.hidden = true;
+    start.hidden = false;
+    start.textContent = "RETRY ARENA";
+    status.hidden = false;
+    say("Arena rendering stopped. Retry to start a fresh round.");
+  }
+
   function paint(now: number): void {
     const timing = runtime?.frameTiming();
     try {
       if (
         !graphicsFailed &&
         !document.hidden &&
-        timing &&
         !root.classList.contains("controller-mode")
       ) {
-        const drawn = picture(timing, now);
-        if (probe) {
-          const mine = drawn.arena?.bases.find(
-            (base) => base.id === runtime?.self,
-          );
-          Reflect.set(root.ownerDocument.defaultView ?? {}, "__ballBrosProbe", {
-            at: options.now(),
-            angle: mine?.angle,
-            radius: mine?.radius,
-          });
+        const drawn = timing ? picture(timing, now) : latest;
+        if (drawn) {
+          if (timing && probe) {
+            const mine = drawn.arena?.bases.find(
+              (base) => base.id === runtime?.self,
+            );
+            Reflect.set(
+              root.ownerDocument.defaultView ?? {},
+              "__ballBrosProbe",
+              {
+                at: options.now(),
+                angle: mine?.angle,
+                radius: mine?.radius,
+              },
+            );
+          }
+          renderer.paint(drawn, now);
         }
-        renderer.paint(drawn, now);
-      } else if (
-        !graphicsFailed &&
-        !document.hidden &&
-        latest &&
-        !root.classList.contains("controller-mode")
-      )
-        renderer.paint(latest, now);
+      }
     } catch {
-      graphicsFailed = true;
-      cancel();
-      runtime?.stop();
-      runtime = undefined;
-      playing = false;
-      showResult(undefined);
-      overlay.hidden = false;
-      layout.hidden = false;
-      retrying = true;
-      if (panel) panel.element.hidden = true;
-      start.hidden = false;
-      start.textContent = "RETRY ARENA";
-      status.hidden = false;
-      say("Arena rendering stopped. Retry to start a fresh round.");
+      showArenaPaintFailure();
     }
     frame = options.frame(paint);
   }
