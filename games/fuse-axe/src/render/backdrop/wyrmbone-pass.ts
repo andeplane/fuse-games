@@ -357,8 +357,9 @@ function camp(r: Raster) {
   campBanner(r);
 }
 
-/** The mouth's arch above the floor, by distance from the gate's centre line. */
 const MOUTH_HALF_WIDTH = 27;
+
+/** The mouth's arch above the floor, by distance from the gate's centre line. */
 const mouthTop = (a: number) => 36 - 7 * (a / MOUTH_HALF_WIDTH) ** 3;
 const EYE_V = 60;
 const TORCH_V = 28;
