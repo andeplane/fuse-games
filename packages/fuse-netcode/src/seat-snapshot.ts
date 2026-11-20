@@ -128,3 +128,11 @@ export function createSeatListDecoder(
     return seats;
   };
 }
+
+/** Canonical seat order for views and checkpoint encoders. Watchers can share a slot. */
+export const compareSeats = (a: SeatRecord, b: SeatRecord): number =>
+  a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+export function orderedSeats(seats: Iterable<SeatRecord>): SeatRecord[] {
+  return [...seats].sort(compareSeats);
+}

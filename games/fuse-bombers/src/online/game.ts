@@ -1,4 +1,5 @@
 import {
+  orderedSeats,
   applyManagementTick,
   createSeatListDecoder,
   defaultText,
@@ -194,15 +195,12 @@ export function createRoom(matchId: string, settings: Settings): Room {
   };
 }
 
-const seatOrder = (seats: Iterable<SeatRecord>) =>
-  [...seats].sort(
-    (a, b) => a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-  );
 /** Whether a seat flies a new round: it is here, stepped away, or a bot (an offline rider is skipped). */
 export const entrant = (seat: SeatRecord): boolean =>
   !seat.watcher && (seat.connected || seat.away || seat.bot);
 /** Who flies a new round, in slot order. */
-const entrants = (room: Room) => seatOrder(room.seats.values()).filter(entrant);
+const entrants = (room: Room) =>
+  orderedSeats(room.seats.values()).filter(entrant);
 
 /** A round's seed: FNV-1a over its match id and number. */
 export function roundSeed(matchId: string, round: number): number {
@@ -759,7 +757,7 @@ export function view(room: Room): View {
     ...structuredClone(rest),
     tick: tick * STEPS_PER_TICK,
     logTick: tick,
-    seats: structuredClone(seatOrder(seats.values())),
+    seats: structuredClone(orderedSeats(seats.values())),
     world: world && roundCopy(world),
   };
 }
@@ -779,7 +777,7 @@ export const bombersGame: RollbackGame<Room, Entry, View, TickEvent, Settings> =
     view,
     hash,
     checkpoint,
-    members: (room) => seatOrder(room.seats.values()),
+    members: (room) => orderedSeats(room.seats.values()),
     seat: (room, id) => room.seats.get(id),
     stage: (room) => room.stage,
     settings: (room) => room.settings,

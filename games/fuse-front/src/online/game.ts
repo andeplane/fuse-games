@@ -1,4 +1,5 @@
 import {
+  orderedSeats,
   applyManagementTick,
   defaultText,
   hasLogPosition,
@@ -293,8 +294,6 @@ export function createRoom(matchId: string, settings: Settings): Room {
 }
 
 const byId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-const seatOrder = (seats: Iterable<SeatRecord>) =>
-  [...seats].sort((a, b) => a.slot - b.slot || byId(a.id, b.id));
 /** Who sits in `slot`: a rider's or an added bot's seat record, or nobody. */
 const sitter = (room: Room, slot: number) =>
   [...room.seats.values()].find((s) => !s.watcher && s.slot === slot);
@@ -473,7 +472,7 @@ export function encode(room: Room): unknown[] {
     room.stage,
     structuredClone(room.settings),
     structuredClone(room.play),
-    seatOrder(room.seats.values()).map(seatTuple),
+    orderedSeats(room.seats.values()).map(seatTuple),
     room.startAt,
     room.world && encodeWorld(room.world),
     room.decided && structuredClone(room.decided),
@@ -596,7 +595,7 @@ export function view(room: Room): View {
     settings: structuredClone(room.settings),
     play: structuredClone(room.play),
     startAt: room.startAt,
-    seats: structuredClone(seatOrder(room.seats.values())),
+    seats: structuredClone(orderedSeats(room.seats.values())),
     bots: (world?.players ?? [])
       .filter((p) => !ridden(room, p.seat))
       .map((p) => ({ slot: p.seat, difficulty: room.play.bots[p.seat]! })),
@@ -624,7 +623,7 @@ export const frontGame: RollbackGame<Room, Entry, View, FrontEvent, Settings> =
     view,
     hash,
     checkpoint: { leading: 4, encode, decode },
-    members: (room) => seatOrder(room.seats.values()),
+    members: (room) => orderedSeats(room.seats.values()),
     seat: (room, id) => room.seats.get(id),
     stage: (room) => room.stage,
     settings: (room) => room.settings,

@@ -1,4 +1,5 @@
 import {
+  checkpointEntries,
   hashCheckpointJson,
   applyManagementTick,
   createSeatListDecoder,
@@ -363,8 +364,6 @@ export function foldTick(
 
 const plain = (raw: unknown): raw is Record<string, unknown> =>
   !!raw && typeof raw === "object" && !Array.isArray(raw);
-const sortedEntries = <T>(record: Record<string, T>): [string, T][] =>
-  Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 export function encode(room: Room): unknown[] {
   return [
     room.matchId,
@@ -375,11 +374,11 @@ export function encode(room: Room): unknown[] {
       .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
       .map((seat) => ({ ...seat })),
     { ...room.play },
-    sortedEntries(room.held),
-    sortedEntries(room.loadouts).map(([id, weapons]) => [id, [...weapons]]),
+    checkpointEntries(room.held),
+    checkpointEntries(room.loadouts).map(([id, weapons]) => [id, [...weapons]]),
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
-    sortedEntries(room.pendingPressed),
+    checkpointEntries(room.pendingPressed),
   ];
 }
 const decodeHeld = createHeldInputDecoder({
@@ -517,7 +516,10 @@ export function view(room: Room): View {
         watcher: seat.watcher === true,
       })),
     loadouts: Object.fromEntries(
-      sortedEntries(room.loadouts).map(([id, loadout]) => [id, [...loadout]]),
+      checkpointEntries(room.loadouts).map(([id, loadout]) => [
+        id,
+        [...loadout],
+      ]),
     ),
     winner: room.winner,
     world: room.world ? toView(room.world) : null,

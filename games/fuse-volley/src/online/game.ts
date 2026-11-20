@@ -1,4 +1,7 @@
 import {
+  encodeCheckpointBase,
+  orderedSeats,
+  createCheckpointRoundDecoder,
   hashCheckpointJson,
   applyManagementTick,
   foldHeldInput,
@@ -8,7 +11,6 @@ import {
   createHeldInputDecoder,
   createCheckpointBaseDecoder,
   CHECKPOINT_HEADER_FIELDS,
-  validCheckpointLifecycle,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -362,24 +364,17 @@ export function foldTick(
 // ---- checkpoint ----
 const STAGES: readonly RoomStage[] = ["lobby", "running", "over"];
 const FIELDS = 10;
-const seatOrder = (a: SeatRecord, b: SeatRecord) =>
-  a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 export function encode(room: Room): unknown[] {
-  return [
-    room.matchId,
-    room.stage,
-    { ...room.settings },
-    [...room.seats.values()].sort(seatOrder).map((seat) => ({ ...seat })),
-    { ...room.play },
-    Object.entries(room.held).sort(([a], [b]) => (a < b ? -1 : 1)),
-    room.roster.map((entrant) => [entrant.id, entrant.name, entrant.bot]),
+  const checkpoint = encodeCheckpointBase(room);
+  checkpoint.push(
     room.decided
       ? [room.decided.clock, room.decided.winner, [...room.decided.finishers]]
       : null,
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
-  ];
+  );
+  return checkpoint;
 }
 
 const decodeSeats = createSeatListDecoder({
@@ -414,6 +409,12 @@ const decodeBase = createCheckpointBaseDecoder({
   decodeRoster,
 });
 
+const decodeRound = createCheckpointRoundDecoder({
+  decodeDecided,
+  decodeWorld,
+  players: (world) => world.blobs,
+});
+
 /**
  * The room a checkpoint describes, or nothing: every field is checked on its own and against the others, and the
  * room is built only once all of them hold, so a refused checkpoint leaves no half-read state behind.
@@ -428,17 +429,10 @@ export function decode(
   );
   const base = decodeBase(fields, rawSimulationTick, tick);
   if (!base) return;
-  const { roster, held, stage, play, simulationTick } = base;
-  const decided = decodeDecided(rawDecided, roster);
-  const world = rawWorld === null ? null : decodeWorld(rawWorld);
-  if (decided === undefined || world === undefined) return;
-  if (
-    !validCheckpointLifecycle(
-      { stage, roster, held, hasDecision: decided !== null },
-      world && { players: world.blobs, over: world.phase === "over" },
-    )
-  )
-    return;
+  const { roster, play, simulationTick } = base;
+  const roundState = decodeRound(base, rawDecided, rawWorld);
+  if (!roundState) return;
+  const { decided, world } = roundState;
   if (
     world &&
     (roster.length !== seatsFor(play) ||
@@ -469,7 +463,7 @@ export function view(room: Room): View {
     matchId: room.matchId,
     settings: { ...room.settings },
     play: { ...room.play },
-    seats: [...room.seats.values()].sort(seatOrder).map((seat) => ({
+    seats: orderedSeats(room.seats.values()).map((seat) => ({
       id: seat.id,
       name: seat.name,
       avatarId: seat.avatarId,
@@ -513,7 +507,7 @@ export function createFuseVolleyGame(
     checkpoint: { leading: 5, encode, decode },
     // Slot then id: an order that depends only on the room, so a device that recovered it from a checkpoint names
     // members exactly as the devices that folded it.
-    members: (room) => [...room.seats.values()].sort(seatOrder),
+    members: (room) => orderedSeats(room.seats.values()),
     seat: (room, id) => room.seats.get(id),
     stage: (room) => room.stage,
     settings: (room) => room.settings,

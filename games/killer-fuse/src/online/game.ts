@@ -1,4 +1,5 @@
 import {
+  orderedSeats,
   ACTION,
   BOT,
   PRESENCE,
@@ -304,10 +305,6 @@ export function createRoom(matchId: string, settings: Settings): Room {
   };
 }
 
-const seatOrder = (seats: Iterable<SeatRecord>) =>
-  [...seats].sort(
-    (a, b) => a.slot - b.slot || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-  );
 /** The member seated in each slot, "" where nobody sits; with `connected`, only those here to play. */
 function crewOf(seats: Iterable<SeatRecord>, connected: boolean): string[] {
   const crew = Array.from({ length: CAPACITY }, () => "");
@@ -390,7 +387,7 @@ function applySeats(
   tick: number,
 ): void {
   if (room.stage === "running") return;
-  for (const seat of seatOrder(room.seats.values())) {
+  for (const seat of orderedSeats(room.seats.values())) {
     if (seat.watcher || !seat.connected) continue;
     const mine = (e: Entry): e is SeatEntry => e[2] === SEAT && e[1] === tick;
     for (const entry of sourceOf(seat, streams)
@@ -916,7 +913,7 @@ export function view(room: Room): View {
     ...structuredClone(rest),
     tick: tick * STEPS_PER_TICK,
     logTick: tick,
-    seats: structuredClone(seatOrder(seats.values())),
+    seats: structuredClone(orderedSeats(seats.values())),
     crew: pilots(room),
     world: world && {
       ...viewOf(world),
@@ -947,7 +944,7 @@ export const killerFuseGame: RollbackGame<
   view,
   hash,
   checkpoint,
-  members: (room) => seatOrder(room.seats.values()),
+  members: (room) => orderedSeats(room.seats.values()),
   seat: (room, id) => room.seats.get(id),
   stage: (room) => room.stage,
   settings: (room) => room.settings,
