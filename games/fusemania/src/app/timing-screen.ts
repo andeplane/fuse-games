@@ -89,6 +89,8 @@ const LIT_MS = 90,
   BURST_MS = 260;
 /** The column whose arrow the lane shows: up. */
 const ARROW = 2;
+const EMPTY_TAP_STATS = meanOf([]);
+const resultLabels = { ear: "RESULT, BY EAR", eye: "RESULT, BY EYE" };
 
 interface Run {
   kind: "ear" | "eye";
@@ -103,6 +105,7 @@ interface Run {
   /** Counted taps as they were heard, ms from the first counted tick, and what the judge made of them. */
   taps: number[];
   errors: number[];
+  tapStats: ReturnType<typeof meanOf>;
   /** Ticks already tapped: a second tap on one is not another measurement. */
   hit: Set<number>;
   last: { offMs: number; judgment: number; at: number } | undefined;
@@ -146,6 +149,7 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
       pairing: () => deps.pairing !== false,
     });
   const seconds = deps.seconds && deps.seconds > 0 ? deps.seconds : RUN_S;
+  const prompt = `A ${Math.round(seconds)} second test. Tap any arrow key, or the lane, on every tick: then you get one number and one button.`;
 
   // ---- the run ----
   let bpm = clickRateOf(deps.bpm ?? DEFAULT_CLICK_RATE) ?? DEFAULT_CLICK_RATE,
@@ -155,8 +159,8 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
     advice: TimingAdvice | undefined,
     /** What the newest finished run was, for RUN AGAIN, and what was said after an APPLY. */
     lastKind: "ear" | "eye" = "ear",
-    /** The newest finished run's judged errors: what the details go on showing after it. */
-    lastErrors: readonly number[] = [],
+    /** The newest finished run's tap statistics remain visible in the details. */
+    lastTapStats = EMPTY_TAP_STATS,
     note = "",
     /** The lag the newest by-ear run found, with the offsets it was found under. */
     earLag: { ms: number; audioMs: number } | undefined,
@@ -193,6 +197,7 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
         silentFrom: deps.now() + 500,
         taps: [],
         errors: [],
+        tapStats: EMPTY_TAP_STATS,
         hit: new Set(),
         last: undefined,
         deaf: false,
@@ -228,7 +233,7 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
   const abort = (why: string) => {
     stop();
     advice = undefined;
-    lastErrors = [];
+    lastTapStats = EMPTY_TAP_STATS;
     note = why;
     readout();
   };
@@ -269,7 +274,7 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
           ? undefined
           : { ms: advice.lagMs, audioMs: now.audioMs };
     lastKind = done.kind;
-    lastErrors = done.errors;
+    lastTapStats = done.tapStats;
     // Everything the advice was made from, for whoever reads the session afterwards.
     lab.record("result", {
       run: generation,
@@ -373,7 +378,7 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
     setPrefs: deps.setPrefs,
     latencyContext() {
       const detail = audio.clock()?.latencies?.(),
-        errors = meanOf(run?.errors ?? lastErrors);
+        errors = run?.tapStats ?? lastTapStats;
       return {
         baseMs: detail?.base === undefined ? undefined : detail.base * 1000,
         outputMs:
@@ -431,6 +436,7 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
     if (!counted) return;
     run.taps.push(heard - RUN_COUNT_IN * beatS(run.bpm) * 1000);
     run.errors.push(judged.offMs);
+    run.tapStats = meanOf(run.errors);
     lab.judged({
       at: ms,
       judgment: judged.judgment,
@@ -563,72 +569,65 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
     pen.globalAlpha = 1;
   };
 
-  function readout(): void {
-    const clock = audio.clock(),
-      heard = run ? position(deps.now()) : undefined;
-    element.dataset.phase = run ? "run" : advice ? "result" : "idle";
-    running.hidden = !run;
-    result.hidden = !!run;
-    actions.hidden = !!run;
-    setup.hidden = !!run;
-    if (run) {
-      const beat = beatS(run.bpm) * 1000,
-        tick = heard === undefined ? -1 : Math.round(heard / beat),
-        left = Math.max(
-          0,
-          Math.ceil(
-            ((RUN_COUNT_IN + run.ticks - 1) * beat - (heard ?? 0)) / 1000,
-          ),
-        );
-      setText(
-        status,
-        heard === undefined
-          ? clock && !clock.running
-            ? "Press a key or tap the lane to let the sound out."
-            : "Starting…"
-          : run.kind === "ear" && !soundOn()
-            ? "The sound is off: press M to hear the click, or stop and run it by eye."
-            : tick < RUN_COUNT_IN
-              ? `Listen: ${Math.max(1, RUN_COUNT_IN - Math.max(0, tick))}…`
-              : run.kind === "ear"
-                ? `Tap on every tick, by ear. ${left} s left.`
-                : `No sound: tap as each arrow fills the target. ${left} s left.`,
-      );
-      const last = run.last,
-        stats = meanOf(run.errors);
-      setText(lastValue, last ? `${signed(last.offMs)} ms` : "— ms");
-      lastValue.style.color = last ? JUDGMENT_COLORS[last.judgment]! : "";
+  function showRunning(
+    run: Run,
+    heard: number | undefined,
+    clock: ReturnType<GameAudio["clock"]>,
+  ): void {
+    const beat = beatS(run.bpm) * 1000;
+    const duration = (RUN_COUNT_IN + run.ticks - 1) * beat;
+    let message: string;
+    if (heard === undefined) {
+      message =
+        clock?.running === false
+          ? "Press a key or tap the lane to let the sound out."
+          : "Starting…";
+    } else if (run.kind === "ear" && !soundOn()) {
+      message =
+        "The sound is off: press M to hear the click, or stop and run it by eye.";
+    } else {
+      const tick = Math.round(heard / beat);
+      const left = Math.max(0, Math.ceil((duration - heard) / 1000));
+      if (tick < RUN_COUNT_IN)
+        message = `Listen: ${Math.max(1, RUN_COUNT_IN - Math.max(0, tick))}…`;
+      else
+        message =
+          run.kind === "ear"
+            ? `Tap on every tick, by ear. ${left} s left.`
+            : `No sound: tap as each arrow fills the target. ${left} s left.`;
+    }
+    setText(status, message);
+    const { last, tapStats: stats } = run;
+    if (last) {
+      const direction =
+        Math.abs(last.offMs) < 0.5
+          ? "ON IT"
+          : last.offMs > 0
+            ? "LATE"
+            : "EARLY";
+      setText(lastValue, `${signed(last.offMs)} ms`);
+      lastValue.style.color = JUDGMENT_COLORS[last.judgment]!;
       setText(
         lastWord,
-        last
-          ? `${JUDGMENT_WORDS[last.judgment] ?? ""} · ${Math.abs(last.offMs) < 0.5 ? "ON IT" : last.offMs > 0 ? "LATE" : "EARLY"}`
-          : "TAP ON THE TICK",
+        `${JUDGMENT_WORDS[last.judgment] ?? ""} · ${direction}`,
       );
-      progress.value =
-        heard === undefined
-          ? 0
-          : Math.max(
-              0,
-              Math.min(1, heard / ((RUN_COUNT_IN + run.ticks - 1) * beat)),
-            );
-      setText(
-        mean,
-        stats.n
-          ? `average ${signed(stats.mean)} ms ±${stats.sd.toFixed(0)} over ${stats.n} taps`
-          : "no taps yet",
-      );
-      return;
+    } else {
+      setText(lastValue, "— ms");
+      lastValue.style.color = "";
+      setText(lastWord, "TAP ON THE TICK");
     }
+    progress.value =
+      heard === undefined ? 0 : Math.max(0, Math.min(1, heard / duration));
     setText(
-      status,
-      advice
-        ? lastKind === "ear"
-          ? "RESULT, BY EAR"
-          : "RESULT, BY EYE"
-        : note
-          ? "DONE"
-          : `A ${Math.round(seconds)} second test. Tap any arrow key, or the lane, on every tick: then you get one number and one button.`,
+      mean,
+      stats.n
+        ? `average ${signed(stats.mean)} ms ±${stats.sd.toFixed(0)} over ${stats.n} taps`
+        : "no taps yet",
     );
+  }
+
+  function showStopped(clock: ReturnType<GameAudio["clock"]>): void {
+    setText(status, advice ? resultLabels[lastKind] : note ? "DONE" : prompt);
     setText(measured, advice?.measured ?? note);
     setText(todo, advice?.advice ?? "");
     measured.hidden = !advice && !note;
@@ -653,15 +652,26 @@ export function createTimingScreen(deps: TimingScreenDeps): TimingScreen {
     // The button to press next is the bright one: APPLY when there is one, else the run that comes next.
     const next = advice?.apply
       ? apply
-      : !clock ||
-          (again === "ear" && advice?.verdict === "good") ||
-          again === "eye"
+      : !clock || advice?.verdict === "good" || again === "eye"
         ? byEye
         : byEar;
     for (const each of [byEar, byEye])
       each.classList.toggle("fui-button-primary", each === next);
     for (const each of rateButtons)
       each.node.classList.toggle("fm-ts-on", each.rate === bpm);
+  }
+
+  function readout(): void {
+    const clock = audio.clock();
+    const heard = run ? position(deps.now()) : undefined;
+    element.dataset.phase = run ? "run" : advice ? "result" : "idle";
+    const inRun = run !== undefined;
+    running.hidden = !inRun;
+    result.hidden = inRun;
+    actions.hidden = inRun;
+    setup.hidden = inRun;
+    if (run) showRunning(run, heard, clock);
+    else showStopped(clock);
   }
 
   let shown = 0,
