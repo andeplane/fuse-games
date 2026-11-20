@@ -27,6 +27,12 @@ import {
   type ActionDatabase,
   type ActionState,
 } from "./action-store.js";
+import {
+  selectActionPage,
+  RECORDINGS_PER_ACTION_PAGE,
+  visible,
+  type ActionCursor,
+} from "./action-page.js";
 import { reconcileCandidates } from "./action-reconciliation.js";
 
 export interface ActionPrincipal {
@@ -71,18 +77,6 @@ const checkScope = (
   )
     throw new RoomError(403, "Action token scope denied");
 };
-function visible(item: ActionItem, now: number): ActionItem {
-  return item.status === "claimed" && item.lease && item.lease.expiresAt <= now
-    ? {
-        ...item,
-        status: item.retraction ? "retracted" : "proposed",
-        title: item.correction?.title ?? item.title,
-        detail: item.correction?.detail ?? item.detail,
-        updatedAt: Math.max(item.updatedAt, item.lease.expiresAt),
-        lease: null,
-      }
-    : structuredClone(item);
-}
 function validateSegment(segment: TranscriptActionSegment) {
   if (
     (segment.gameId !== undefined && !actionIdentifier(segment.gameId)) ||
@@ -99,13 +93,6 @@ function validateSegment(segment: TranscriptActionSegment) {
   )
     throw new Error("Invalid action transcript segment");
 }
-interface ActionCursor {
-  recording: string;
-  action: string;
-}
-
-const RECORDINGS_PER_ACTION_PAGE = 20;
-
 function decodeActionCursor(
   encoded: string | undefined,
 ): ActionCursor | undefined {
@@ -371,55 +358,9 @@ export function createActionService(options: ActionServiceOptions) {
       const cursor = decodeActionCursor(query.cursor);
       if (query.recordingId && cursor && cursor.recording !== query.recordingId)
         throw new RoomError(400, "Action cursor scope mismatch");
-      const limit = query.limit ?? 50,
-        actions: ActionItem[] = [],
-        at = now();
+      const at = now();
       const states = await readActionPageStates(db, query.recordingId, cursor);
-      let last: ActionCursor | undefined;
-      for (const state of states) {
-        for (const original of [...state.items].sort((a, b) =>
-          a.id < b.id ? -1 : 1,
-        )) {
-          if (
-            cursor &&
-            state.recordingId === cursor.recording &&
-            original.id <= cursor.action
-          )
-            continue;
-          last = { recording: state.recordingId, action: original.id };
-          const item = visible(original, at);
-          if (
-            state.expiresAt <= at ||
-            (query.gameId && item.gameId !== query.gameId) ||
-            (query.since !== undefined && item.updatedAt < query.since) ||
-            (query.status && item.status !== query.status)
-          )
-            continue;
-          actions.push(item);
-          if (actions.length === limit)
-            return {
-              actions,
-              nextCursor: Buffer.from(JSON.stringify(last)).toString(
-                "base64url",
-              ),
-              scannedRecordings: states.indexOf(state) + 1,
-            };
-        }
-        last = { recording: state.recordingId, action: "~" };
-      }
-      return {
-        actions,
-        ...(states.length >= RECORDINGS_PER_ACTION_PAGE &&
-        !query.recordingId &&
-        last
-          ? {
-              nextCursor: Buffer.from(JSON.stringify(last)).toString(
-                "base64url",
-              ),
-            }
-          : {}),
-        scannedRecordings: states.length,
-      };
+      return selectActionPage(states, query, cursor, at);
     },
     async mutate(
       actionId: string,
