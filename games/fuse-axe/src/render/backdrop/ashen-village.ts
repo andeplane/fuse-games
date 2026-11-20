@@ -6,7 +6,14 @@ import {
   VIEW_W,
 } from "../../engine/view-kit.js";
 import { drawFlameColumn, emberLife, type FireFrame } from "./fire.js";
-import { dither, hash, Raster, type StageArt } from "./kit.js";
+import {
+  ellipseDistanceSquared,
+  floorDepth,
+  dither,
+  hash,
+  Raster,
+  type StageArt,
+} from "./kit.js";
 import { paintSky, paintStars } from "./sky.js";
 
 /**
@@ -381,6 +388,8 @@ function prop(r: Raster, x: number, kind: number) {
   }
 }
 
+const PUDDLE_RADIUS_X = 13;
+
 function road(r: Raster) {
   for (let x = 0; x < r.width; x++) {
     let near = Infinity;
@@ -388,7 +397,7 @@ function road(r: Raster) {
       near = Math.min(near, Math.abs(x - light.x) / light.reach);
     for (let y = FLOOR; y < VIEW_H; y++) {
       const lit = Math.max(0, 1 - Math.hypot(near, (y - FLOOR) / 30)) * 0.42;
-      const depth = (y - FLOOR) / (VIEW_H - FLOOR);
+      const depth = floorDepth(y);
       r.px(x, y, dither(ROAD, depth * 0.75 + lit, x, y));
     }
     r.px(x, FLOOR, 0x241626);
@@ -414,8 +423,8 @@ function road(r: Raster) {
     const cx = 34 + k * 300 + Math.floor(hash(k, 64) * 120);
     const cy = 122 + Math.floor(hash(k, 65) * 40);
     for (let y = -2; y <= 2; y++)
-      for (let x = -13; x <= 13; x++) {
-        if ((x / 13) ** 2 + (y / 2.6) ** 2 > 1) continue;
+      for (let x = -PUDDLE_RADIUS_X; x <= PUDDLE_RADIUS_X; x++) {
+        if (ellipseDistanceSquared(x, y, PUDDLE_RADIUS_X, 2.6) > 1) continue;
         const shine = (x + k) & 1 ? 0xf69a46 : 0xd8623c;
         r.px(
           cx + x,

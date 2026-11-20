@@ -1,6 +1,13 @@
 import { FLOOR_TOP_PX, VIEW_H, VIEW_W } from "../../engine/view-kit.js";
 import { drawFlameColumn, emberLife } from "./fire.js";
-import { dither, hash, Raster, type Brush, type StageArt } from "./kit.js";
+import {
+  floorDepth,
+  dither,
+  hash,
+  Raster,
+  type Brush,
+  type StageArt,
+} from "./kit.js";
 import { paintSky, paintStars } from "./sky.js";
 
 /**
@@ -118,7 +125,7 @@ function clearing(r: Raster) {
     for (let x = 0; x < VIEW_W; x++) {
       const d = Math.hypot((x - FIRE.x) / FIRE.reach, (y - FIRE.y) / 34);
       const lit = Math.max(0, 1 - d) ** 1.4;
-      const t = 0.12 + ((y - FLOOR) / (VIEW_H - FLOOR)) * 0.3 + lit * 0.8;
+      const t = 0.12 + floorDepth(y) * 0.3 + lit * 0.8;
       r.px(x, y, dither(GRASS, t, x, y));
     }
   for (let x = 0; x < VIEW_W; x++) r.px(x, FLOOR, INK);

@@ -7,6 +7,7 @@ import {
   stageLengthPx,
 } from "../../engine/view-kit.js";
 import {
+  ellipseDistanceSquared,
   drawWisps,
   forWorldParticles,
   worldRow,
@@ -557,7 +558,7 @@ function openGrave(r: Raster, x: number, y: number) {
     }
   }
   const heap = (px: number, py: number) =>
-    ((px - x - 20.5) / 10) ** 2 + ((py - y - 0.5) / 5) ** 2 <
+    ellipseDistanceSquared(px - x - 20.5, py - y - 0.5, 10, 5) <
       1 - hash(px >> 1, py) * 0.3 && py < y + 4;
   shape(r, [x + 9, y - 5, x + 33, y + 4], heap, MOUND);
   headstone(r, [x - 15, y - 5, 8, 14, 0, -3], GRAVE);
@@ -637,7 +638,7 @@ function lilyPads(r: Raster) {
     const rx = 3.5 + Math.floor(hash(i, 252) * 4);
     for (let y = -2; y <= 2; y++)
       for (let x = -rx; x <= rx; x++)
-        if ((x / rx) ** 2 + (y / 1.8) ** 2 < 1 && !(y === 0 && x > 0))
+        if (ellipseDistanceSquared(x, y, rx, 1.8) < 1 && !(y === 0 && x > 0))
           r.px(cx + x, cy + y, y < 0 ? 0x4a8050 : 0x2a5236);
     if (hash(i, 253) > 0.7) r.rect(cx, cy - 2, 2, 1, 0xe8d8f0);
   }
