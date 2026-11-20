@@ -217,3 +217,65 @@ export function parseHistoryResult<P extends PlayerResult>(
     ),
   };
 }
+
+const MAX_RETAINED_MATCHES = 8;
+const MAX_RETAINED_RECEIPTS = 128;
+const MAX_RECEIPTS_PER_MATCH = 100;
+
+/** Retain bounded, complete match groups under the game's name and member rules. */
+export function createPastMatchHistory(
+  validName: (name: unknown) => boolean,
+  playerKey: (value: unknown) => value is string,
+  isBot: (id: string) => boolean,
+) {
+  /** Checkpoint boundary for bounded previous matches; canonical ordering preserves hashes after restore. */
+  function parsePastMatches(
+    raw: unknown,
+    tick: number,
+  ): HistoryReceipt[][] | undefined {
+    if (!Array.isArray(raw) || raw.length > MAX_RETAINED_MATCHES) return;
+    if (
+      !raw.every(Array.isArray) ||
+      raw.reduce((count, group) => count + group.length, 0) >
+        MAX_RETAINED_RECEIPTS
+    )
+      return;
+    const groups: HistoryReceipt[][] = [];
+    for (const group of raw) {
+      const receipts = parseHistoryReceipts(
+        group,
+        tick,
+        (raw, rounds) => {
+          const p = parseHistoryPlayer(raw, rounds);
+          return p && validName(p.name) ? p : undefined;
+        },
+        playerKey,
+        isBot,
+        MAX_RECEIPTS_PER_MATCH,
+      );
+      if (!receipts?.length) return;
+      if (
+        new Set(receipts.map((r) => r.result.matchId)).size !== 1 ||
+        new Set(receipts.map((r) => r.result.round ?? "match")).size !==
+          receipts.length
+      )
+        return;
+      groups.push(receipts);
+    }
+    return groups;
+  }
+
+  /** Preserve whole recent matches while bounding checkpoint payloads independently of match length. */
+  function retainPastMatches(
+    previous: readonly HistoryReceipt[][],
+    current: HistoryReceipt[],
+    tick: number,
+  ): HistoryReceipt[][] | undefined {
+    const groups = [...previous, current].slice(-MAX_RETAINED_MATCHES);
+    let count = groups.reduce((total, group) => total + group.length, 0);
+    while (count > MAX_RETAINED_RECEIPTS) count -= groups.shift()!.length;
+    return parsePastMatches(groups, tick);
+  }
+
+  return { parsePastMatches, retainPastMatches };
+}
