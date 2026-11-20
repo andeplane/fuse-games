@@ -7,6 +7,7 @@ import {
   type RollbackGame,
   type SeatRecord,
   type Stage,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   createMatch,
@@ -410,14 +411,11 @@ export const neuralGame: RollbackGame<
         if (!seat.connected || seat.watcher || room.settings.mode === "watch")
           continue;
         const stream = streams.get(seat.id);
-        const source =
-          stream?.generation === seat.generation
-            ? stream
-            : stream?.retired?.find((s) => s.generation === seat.generation);
+        const entries = entriesForGeneration(stream, seat.generation);
         let sequence =
           room.world.players.find((p) => p.id === seat.id)?.sequence ?? 0;
         let taken = 0;
-        for (const entry of source?.entries ?? [])
+        for (const entry of entries)
           if (
             entry[1] === tick &&
             entry[2] === 1 &&

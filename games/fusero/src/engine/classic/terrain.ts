@@ -29,6 +29,25 @@ const runMaterial = (code: number): MaterialIndex =>
 const runCode = (length: number, material: MaterialIndex): string =>
   String.fromCharCode(32 + (length - 1) * 3 + material);
 
+/** Accumulate canonical runs, including across edited span boundaries. */
+function terrainRowWriter(row = "") {
+  let previous: MaterialIndex = AIR;
+  let length = 0;
+  return {
+    append(material: MaterialIndex, count: number) {
+      if (!count) return;
+      if (material === previous) {
+        length += count;
+      } else {
+        if (length) row += runCode(length, previous);
+        previous = material;
+        length = count;
+      }
+    },
+    finish: () => row + runCode(length, previous),
+  };
+}
+
 export function encodeTerrainRow(pixels: ArrayLike<number>): string {
   if (
     !Number.isInteger(pixels.length) ||
@@ -36,21 +55,14 @@ export function encodeTerrainRow(pixels: ArrayLike<number>): string {
     pixels.length > MAX_TERRAIN_DIMENSION
   )
     throw new RangeError("Invalid terrain row width");
-  let row = "",
-    previous = -1,
-    length = 0;
+  const writer = terrainRowWriter();
   for (let x = 0; x < pixels.length; x++) {
     const material = pixels[x]!;
     if (material !== ROCK && material !== AIR && material !== DIRT)
       throw new RangeError("Invalid Classic material");
-    if (material === previous) length++;
-    else {
-      if (length) row += runCode(length, previous as MaterialIndex);
-      previous = material;
-      length = 1;
-    }
+    writer.append(material, 1);
   }
-  return row + runCode(length, previous as MaterialIndex);
+  return writer.finish();
 }
 
 export function validTerrainRow(row: unknown, width: number): row is string {
@@ -129,40 +141,61 @@ export const isRock = (terrain: PixelTerrain, x: number, y: number): boolean =>
   materialAt(terrain, x, y) === ROCK;
 export const canHook = solid;
 
-/** Edit only touched spans. Unchanged rows remain identical strings across checkpoints. */
-function editRow(
-  terrain: PixelTerrain,
-  y: number,
-  edits: ReadonlyMap<number, MaterialIndex>,
-): void {
-  if (!edits.size) return;
-  const before = terrain.rows[y]!;
-  let out = "",
-    previous = -1,
-    length = 0;
-  const append = (material: MaterialIndex, count: number) => {
-    if (!count) return;
-    if (material === previous) length += count;
-    else {
-      if (length) out += runCode(length, previous as MaterialIndex);
-      previous = material;
-      length = count;
+interface RowPaint {
+  left: number;
+  right: number;
+  source?: MaterialIndex;
+  replacement: MaterialIndex;
+  weight(x: number): number;
+}
+
+/** Keep the adjacent prefix run open so it can merge with the first edited span. */
+function beginRowEdit(row: string, index: number) {
+  const writer = terrainRowWriter(row.slice(0, Math.max(0, index - 1)));
+  if (index > 0) {
+    const code = row.charCodeAt(index - 1);
+    writer.append(runMaterial(code), runLength(code));
+  }
+  return writer;
+}
+
+/** Walk only to the end of the mask and rewrite the runs between the first and last touched columns. */
+function paintRow(terrain: PixelTerrain, y: number, paint: RowPaint): number {
+  const row = terrain.rows[y]!;
+  let writer: ReturnType<typeof terrainRowWriter> | undefined;
+  let count = 0;
+  let end = 0;
+  let index = 0;
+  for (; end < paint.right && index < row.length; index++) {
+    const code = row.charCodeAt(index);
+    const material = runMaterial(code);
+    let cursor = end;
+    end += runLength(code);
+    if (
+      material !== paint.replacement &&
+      (paint.source === undefined || material === paint.source)
+    ) {
+      const right = Math.min(end, paint.right);
+      for (let x = Math.max(cursor, paint.left); x < right; x++) {
+        const weight = paint.weight(x);
+        if (!weight) continue;
+        writer ??= beginRowEdit(row, index);
+        writer.append(material, x - cursor);
+        writer.append(paint.replacement, 1);
+        cursor = x + 1;
+        count += weight;
+      }
     }
-  };
-  const changed = [...edits].sort(([a], [b]) => a - b);
-  let next = 0;
-  visitTerrainRow(before, (start, count, material) => {
-    const end = start + count;
-    let cursor = start;
-    while (next < changed.length && changed[next]![0] < end) {
-      const [x, replacement] = changed[next++]!;
-      append(material, x - cursor);
-      append(replacement, 1);
-      cursor = x + 1;
-    }
-    append(material, end - cursor);
-  });
-  terrain.rows[y] = out + runCode(length, previous as MaterialIndex);
+    writer?.append(material, end - cursor);
+  }
+  if (!writer) return 0;
+  // Merge with the first unchanged suffix run, then keep the rest verbatim.
+  if (index < row.length) {
+    const code = row.charCodeAt(index++);
+    writer.append(runMaterial(code), runLength(code));
+  }
+  terrain.rows[y] = writer.finish() + row.slice(index);
+  return count;
 }
 
 export function setMaterial(
@@ -182,13 +215,81 @@ export function setMaterial(
     !Number.isFinite(y)
   )
     return false;
-  if (materialAt(terrain, x, y) === material) return false;
-  editRow(terrain, y, new Map([[x, material]]));
-  return true;
+  return (
+    paintRow(terrain, y, {
+      left: x,
+      right: x + 1,
+      replacement: material,
+      weight: () => 1,
+    }) > 0
+  );
 }
 
 function hole(size: number): TerrainMask {
   return HOLE_MASKS[Math.max(0, Math.min(4, Math.trunc(size)))]!;
+}
+
+interface MaskPaint {
+  origin: "clipped" | "original";
+  source: MaterialIndex;
+  replacement: MaterialIndex;
+  weight(mark: string | undefined): number;
+}
+
+const CARVE_DIRT: MaskPaint = {
+  origin: "clipped",
+  source: DIRT,
+  replacement: AIR,
+  weight: (mark) => Number(mark === "#"),
+};
+const PLACE_DIRT: MaskPaint = {
+  origin: "original",
+  source: AIR,
+  replacement: DIRT,
+  // CMap.cpp1199 reads the pre-write flag; empty rim pixels increment twice.
+  weight: (mark) => (mark === "." ? 0 : mark === "b" ? 2 : 1),
+};
+const PLACE_GREEN_DIRT: MaskPaint = {
+  origin: "original",
+  source: AIR,
+  replacement: DIRT,
+  weight: (mark) => Number(mark !== "."),
+};
+
+function paintMask(
+  terrain: PixelTerrain,
+  mask: TerrainMask,
+  origin: { left: number; top: number },
+  paint: MaskPaint,
+): number {
+  const { left, top } = origin;
+  const x0 = Math.max(0, left);
+  const y0 = Math.max(0, top);
+  const x1 = Math.min(terrain.width, left + mask.width);
+  const y1 = Math.min(terrain.height, top + mask.height);
+  if (x0 >= x1) return 0;
+  // Native ClipRefRectWith clips the carve destination but still starts hole_px at 0,0.
+  const maskLeft = paint.origin === "clipped" ? x0 : left;
+  const maskTop = paint.origin === "clipped" ? y0 : top;
+  let count = 0;
+  for (let y = y0; y < y1; y++) {
+    const maskRow = mask.rows[y - maskTop];
+    count += paintRow(terrain, y, {
+      left: x0,
+      right: x1,
+      source: paint.source,
+      replacement: paint.replacement,
+      weight: (x) => paint.weight(maskRow?.[x - maskLeft]),
+    });
+  }
+  return count;
+}
+
+function wrappedStart(start: number, extent: number, halfMask: number): number {
+  // The far-edge test goes last in CMap. It wins when both tests match a small map.
+  if (start >= extent - halfMask) return start - extent;
+  if (start <= halfMask) return start + extent;
+  return start;
 }
 
 /** Source CarveHole uses pink pixels only, and never removes rock. */
@@ -201,46 +302,19 @@ export function carveHole(
 ): number {
   if (!Number.isFinite(size) || !Number.isFinite(cx) || !Number.isFinite(cy))
     return 0;
-  const mask = hole(size),
-    left = Math.trunc(cx) - Math.floor(mask.width / 2),
-    top = Math.trunc(cy) - Math.floor(mask.height / 2);
+  const mask = hole(size);
+  const halfWidth = Math.floor(mask.width / 2);
+  const halfHeight = Math.floor(mask.height / 2);
+  const left = Math.trunc(cx) - halfWidth;
+  const top = Math.trunc(cy) - halfHeight;
   if (wrapAround) {
-    let wrappedX = left,
-      wrappedY = top;
-    if (left <= Math.floor(mask.width / 2)) wrappedX = left + terrain.width;
-    if (left >= terrain.width - Math.floor(mask.width / 2))
-      wrappedX = left - terrain.width;
-    if (top <= Math.floor(mask.height / 2)) wrappedY = top + terrain.height;
-    if (top >= terrain.height - Math.floor(mask.height / 2))
-      wrappedY = top - terrain.height;
-    if (wrappedX !== left || wrappedY !== top)
-      carveHole(
-        terrain,
-        size,
-        wrappedX + Math.floor(mask.width / 2),
-        wrappedY + Math.floor(mask.height / 2),
-      );
+    const x = wrappedStart(left, terrain.width, halfWidth);
+    const y = wrappedStart(top, terrain.height, halfHeight);
+    // Native CarveHole edits the wrapped copy first and counts only the primary copy.
+    if (x !== left || y !== top)
+      carveHole(terrain, size, x + halfWidth, y + halfHeight);
   }
-  const x0 = Math.max(0, left),
-    y0 = Math.max(0, top),
-    x1 = Math.min(terrain.width, left + mask.width),
-    y1 = Math.min(terrain.height, top + mask.height);
-  let count = 0;
-  for (let y = y0; y < y1; y++) {
-    const edits = new Map<number, MaterialIndex>();
-    // Native ClipRefRectWith clips the destination but starts hole_px at 0,0.
-    // Preserve this boundary quirk; PlaceDirt below uses the correctly offset source.
-    for (let x = x0; x < x1; x++)
-      if (
-        mask.rows[y - y0]?.[x - x0] === "#" &&
-        materialAt(terrain, x, y) === DIRT
-      ) {
-        edits.set(x, AIR);
-        count++;
-      }
-    editRow(terrain, y, edits);
-  }
-  return count;
+  return paintMask(terrain, mask, { left, top }, CARVE_DIRT);
 }
 
 /** Source PlaceDirt paints the whole nonblack mask, including its brown rim. */
@@ -252,7 +326,7 @@ export function placeDirt(
 ): number {
   if (!Number.isFinite(size) || !Number.isFinite(cx) || !Number.isFinite(cy))
     return 0;
-  return placeMask(terrain, hole(size), cx, cy, true);
+  return placeMask(terrain, hole(size), cx, cy, PLACE_DIRT);
 }
 
 function placeMask(
@@ -260,32 +334,11 @@ function placeMask(
   mask: TerrainMask,
   cx: number,
   cy: number,
-  countRimTwice: boolean,
+  paint: MaskPaint,
 ): number {
-  const left = Math.trunc(cx) - Math.floor(mask.width / 2),
-    top = Math.trunc(cy) - Math.floor(mask.height / 2);
-  let count = 0;
-  for (let my = 0; my < mask.height; my++) {
-    const y = top + my;
-    if (y < 0 || y >= terrain.height) continue;
-    const edits = new Map<number, MaterialIndex>();
-    for (let mx = 0; mx < mask.width; mx++) {
-      const x = left + mx,
-        value = mask.rows[my]![mx];
-      if (
-        x < 0 ||
-        x >= terrain.width ||
-        value === "." ||
-        materialAt(terrain, x, y) !== AIR
-      )
-        continue;
-      edits.set(x, DIRT);
-      // CMap.cpp1199 reads the pre-write flag; empty rim pixels increment twice.
-      count += countRimTwice && value === "b" ? 2 : 1;
-    }
-    editRow(terrain, y, edits);
-  }
-  return count;
+  const left = Math.trunc(cx) - Math.floor(mask.width / 2);
+  const top = Math.trunc(cy) - Math.floor(mask.height / 2);
+  return paintMask(terrain, mask, { left, top }, paint);
 }
 
 export function placeGreenDirt(
@@ -294,7 +347,7 @@ export function placeGreenDirt(
   cy: number,
 ): number {
   return Number.isFinite(cx) && Number.isFinite(cy)
-    ? placeMask(terrain, GREEN_DIRT_MASK, cx, cy, false)
+    ? placeMask(terrain, GREEN_DIRT_MASK, cx, cy, PLACE_GREEN_DIRT)
     : 0;
 }
 
@@ -316,17 +369,35 @@ export function asPhysicsTerrain(
   };
 }
 
-/** Source helper bounds are half-open: offsets −3…2, not an inclusive 7×7 box. */
+const SPAWN_HALF_WIDTH = 3;
+
+/** The native spawn clearance is a half-open square, offset −3 through +2. */
 export function isGoodSpawnPoint(
   terrain: PixelTerrain,
   x: number,
   y: number,
 ): boolean {
-  x = Math.trunc(x);
-  y = Math.trunc(y);
-  for (let dy = -3; dy < 3; dy++)
-    for (let dx = -3; dx < 3; dx++)
-      if (isRock(terrain, x + dx, y + dy)) return false;
+  const left = Math.trunc(x) - SPAWN_HALF_WIDTH;
+  const right = Math.trunc(x) + SPAWN_HALF_WIDTH;
+  const top = Math.trunc(y) - SPAWN_HALF_WIDTH;
+  const bottom = Math.trunc(y) + SPAWN_HALF_WIDTH;
+  if (!(
+    left >= 0 &&
+    right <= terrain.width &&
+    top >= 0 &&
+    bottom <= terrain.height
+  ))
+    return false;
+  for (let py = top; py < bottom; py++) {
+    const row = terrain.rows[py]!;
+    let end = 0;
+    for (let index = 0; index < row.length && end < right; index++) {
+      const code = row.charCodeAt(index);
+      end += runLength(code);
+      if (end > left && runMaterial(code) === ROCK) return false;
+    }
+    if (end < right) return false;
+  }
   return true;
 }
 
@@ -373,6 +444,8 @@ export function uniformTerrain(
   };
 }
 
+const CAVE_BORDER = 8;
+
 /** Seeded map design is cosmetic content; physical masks/collisions remain the original pixel geometry. */
 export function createTerrain(
   seed: number,
@@ -390,17 +463,16 @@ export function createTerrain(
     return rng / 4294967296;
   };
   const carve = (cx: number, cy: number, rx: number, ry: number) => {
-    for (
-      let y = Math.max(8, Math.floor(cy - ry));
-      y < Math.min(height - 8, cy + ry + 1);
-      y++
-    )
-      for (
-        let x = Math.max(8, Math.floor(cx - rx));
-        x < Math.min(width - 8, cx + rx + 1);
-        x++
-      )
-        if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) rows[y]![x] = AIR;
+    const left = Math.max(CAVE_BORDER, Math.floor(cx - rx));
+    const right = Math.min(width - CAVE_BORDER, cx + rx + 1);
+    const top = Math.max(CAVE_BORDER, Math.floor(cy - ry));
+    const bottom = Math.min(height - CAVE_BORDER, cy + ry + 1);
+    for (let y = top; y < bottom; y++) {
+      const row = rows[y]!;
+      const distanceY = ((y - cy) / ry) ** 2;
+      for (let x = left; x < right; x++)
+        if (((x - cx) / rx) ** 2 + distanceY <= 1) row[x] = AIR;
+    }
   };
   const depths = [0.16, 0.38, 0.61, 0.84];
   for (const depth of depths) {
@@ -421,15 +493,20 @@ export function createTerrain(
       bottom = Math.round(height * depths[3]!);
     for (let y = top; y <= bottom; y += 8) carve(x, y, 30, 28);
     for (let y = top + 18, shelf = 0; y < bottom - 10; y += 18, shelf++) {
-      const side = shelf % 2 ? 1 : -1;
-      for (let dx = 11; dx <= 28; dx++)
-        for (let dy = 0; dy < 3; dy++) rows[y + dy]![x + dx * side] = DIRT;
+      const facesRight = shelf % 2 === 1;
+      const left = Math.max(0, x + (facesRight ? 11 : -28));
+      const right = Math.max(0, Math.min(width, x + (facesRight ? 29 : -10)));
+      for (let dy = 0; dy < 3; dy++) rows[y + dy]!.fill(DIRT, left, right);
     }
   }
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++)
-      if (x < 8 || y < 8 || x >= width - 8 || y >= height - 8)
-        rows[y]![x] = ROCK;
+  for (let y = 0; y < height; y++) {
+    const row = rows[y]!;
+    if (y < CAVE_BORDER || y >= height - CAVE_BORDER) row.fill(ROCK);
+    else {
+      row.fill(ROCK, 0, CAVE_BORDER);
+      row.fill(ROCK, Math.max(0, width - CAVE_BORDER));
+    }
+  }
   return { width, height, rows: rows.map(encodeTerrainRow) };
 }
 

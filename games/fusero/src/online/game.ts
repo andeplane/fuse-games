@@ -1,7 +1,9 @@
 import {
+  checkpointEntries,
   hashCheckpointJson,
   applyManagementTick,
-  createSeatDecoder,
+  createSeatListDecoder,
+  createHeldInputDecoder,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -13,6 +15,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -222,11 +225,8 @@ function ownEntries(
   tick: number,
 ): Entry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries
     .filter((entry) => entry[1] === tick)
     .sort((a, b) => a[0] - b[0]);
 }
@@ -364,8 +364,6 @@ export function foldTick(
 
 const plain = (raw: unknown): raw is Record<string, unknown> =>
   !!raw && typeof raw === "object" && !Array.isArray(raw);
-const sortedEntries = <T>(record: Record<string, T>): [string, T][] =>
-  Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 export function encode(room: Room): unknown[] {
   return [
     room.matchId,
@@ -376,15 +374,22 @@ export function encode(room: Room): unknown[] {
       .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
       .map((seat) => ({ ...seat })),
     { ...room.play },
-    sortedEntries(room.held),
-    sortedEntries(room.loadouts).map(([id, weapons]) => [id, [...weapons]]),
+    checkpointEntries(room.held),
+    checkpointEntries(room.loadouts).map(([id, weapons]) => [id, [...weapons]]),
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
-    sortedEntries(room.pendingPressed),
+    checkpointEntries(room.pendingPressed),
   ];
 }
-const decodeSeat = createSeatDecoder({
+const decodeHeld = createHeldInputDecoder({
   capacity: CAPACITY,
+  playerKey,
+  isInput,
+});
+
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
@@ -415,61 +420,18 @@ export function decode(
     (stage !== "lobby" && stage !== "running" && stage !== "over") ||
     !settings ||
     !play ||
-    !Array.isArray(rawSeats) ||
-    rawSeats.length > CAPACITY + MAX_WATCHERS ||
     !uint32(simulationTick) ||
     simulationTick !== (tick * LOG_TICK_MS) / OUTER_MS ||
-    !Array.isArray(rawHeld) ||
-    rawHeld.length > CAPACITY ||
-    !Array.isArray(rawPendingPressed) ||
-    rawPendingPressed.length > CAPACITY ||
     !Array.isArray(rawLoadouts) ||
     rawLoadouts.length > CAPACITY
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some(
-          (other) => !other.watcher && other.slot === seat.slot,
-        ))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((seat) => seat.watcher).length > MAX_WATCHERS)
-    return;
-  const held: Record<string, number> = {},
-    pendingPressed: Record<string, number> = {},
-    loadouts: Record<string, Loadout> = {};
-  for (const pair of rawHeld) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(held, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    held[pair[0]] = pair[1];
-  }
-  for (const pair of rawPendingPressed) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(pendingPressed, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    pendingPressed[pair[0]] = pair[1];
-  }
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
+  const held = decodeHeld(rawHeld),
+    pendingPressed = decodeHeld(rawPendingPressed);
+  if (!held || !pendingPressed) return;
+  const loadouts: Record<string, Loadout> = {};
   for (const pair of rawLoadouts) {
     if (
       !Array.isArray(pair) ||
@@ -554,7 +516,10 @@ export function view(room: Room): View {
         watcher: seat.watcher === true,
       })),
     loadouts: Object.fromEntries(
-      sortedEntries(room.loadouts).map(([id, loadout]) => [id, [...loadout]]),
+      checkpointEntries(room.loadouts).map(([id, loadout]) => [
+        id,
+        [...loadout],
+      ]),
     ),
     winner: room.winner,
     world: room.world ? toView(room.world) : null,

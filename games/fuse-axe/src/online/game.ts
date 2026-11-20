@@ -1,8 +1,10 @@
 import {
+  checkpointEntries,
   hashCheckpointJson,
   BOT,
   applyManagementTick,
-  createSeatDecoder,
+  createSeatListDecoder,
+  createHeldInputDecoder,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -14,6 +16,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
@@ -474,11 +477,8 @@ function ownEntries(
   tick: number,
 ): Entry[] {
   const stream = streams.get(seat.id);
-  const source =
-    stream?.generation === seat.generation
-      ? stream
-      : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? [])
+  const entries = entriesForGeneration(stream, seat.generation);
+  return entries
     .filter((entry) => entry[1] === tick)
     .sort((a, b) => a[0] - b[0]);
 }
@@ -642,7 +642,7 @@ export function encode(room: Room): unknown[] {
     room.stage,
     { ...room.settings },
     [...room.seats.values()].sort(bySlot).map((seat) => ({ ...seat })),
-    Object.entries(room.held).sort(([a], [b]) => (a < b ? -1 : 1)),
+    checkpointEntries(room.held),
     room.world ? encodeWorld(room.world) : null,
     room.until,
     room.continued,
@@ -672,8 +672,15 @@ function decodeTally(raw: unknown): Tally | undefined {
   };
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeHeld = createHeldInputDecoder({
   capacity: CAPACITY,
+  playerKey,
+  isInput,
+});
+
+const decodeSeats = createSeatListDecoder({
+  capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: (avatar, bot): avatar is string =>
@@ -857,10 +864,6 @@ export function decode(
     round > LAST_STAGE ||
     !STAGES.includes(stage as Stage) ||
     !settings ||
-    !Array.isArray(rawSeats) ||
-    rawSeats.length > CAPACITY + MAX_WATCHERS ||
-    !Array.isArray(rawHeld) ||
-    rawHeld.length > CAPACITY ||
     !uint32(until) ||
     typeof continued !== "boolean" ||
     !OUTCOMES.includes(outcome as Outcome) ||
@@ -874,33 +877,10 @@ export function decode(
     if (!row) return;
     tally.push(row);
   }
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
-  const held: Record<string, number> = {};
-  for (const pair of rawHeld) {
-    if (
-      !Array.isArray(pair) ||
-      pair.length !== 2 ||
-      !playerKey(pair[0]) ||
-      Object.hasOwn(held, pair[0]) ||
-      !isInput(pair[1]) ||
-      pair[1] === 0
-    )
-      return;
-    held[pair[0]] = pair[1];
-  }
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
+  const held = decodeHeld(rawHeld);
+  if (!held) return;
   const world = rawWorld === null ? null : decodeWorld(rawWorld);
   if (world === undefined) return;
   const room: Room = {

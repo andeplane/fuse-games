@@ -39,11 +39,52 @@ export function unpackMessage(bytes: Uint8Array): unknown {
   return decode(bytes, {
     maxStrLength: MAX_MESSAGE_BYTES,
     maxBinLength: 0,
-    maxArrayLength: 4096,
-    maxMapLength: 64,
+    maxArrayLength: MAX_ARRAY_ITEMS,
+    maxMapLength: MAX_MAP_ITEMS,
     maxExtLength: 0,
   });
 }
+// MessagePack scalar tags whose payload immediately follows the tag, with no length prefix.
+const SCALAR_PAYLOAD_BYTES: Readonly<Record<number, number>> = {
+  0xca: 4, // float32
+  0xcb: 8, // float64
+  0xcc: 1, // uint8
+  0xcd: 2, // uint16
+  0xce: 4, // uint32
+  0xcf: 8, // uint64
+  0xd0: 1, // int8
+  0xd1: 2, // int16
+  0xd2: 4, // int32
+  0xd3: 8, // int64
+};
+const STRING_LENGTH_BYTES: Readonly<Partial<Record<number, 1 | 2 | 4>>> = {
+  0xd9: 1,
+  0xda: 2,
+  0xdb: 4,
+};
+const MAX_ARRAY_ITEMS = 4096;
+const MAX_MAP_ITEMS = 64;
+
+/** Arrays contain one value per item. Maps contain a key and value per item. */
+function childCount(
+  tag: number,
+  length: (width: 2 | 4) => number,
+): number | undefined {
+  if (tag >= 0x90 && tag <= 0x9f) return tag & 15;
+  if (tag >= 0x80 && tag <= 0x8f) return (tag & 15) * 2;
+  if (tag === 0xdc || tag === 0xdd) {
+    const items = length(tag === 0xdc ? 2 : 4);
+    if (items > MAX_ARRAY_ITEMS) throw new Error("Collection limit");
+    return items;
+  }
+  if (tag === 0xde || tag === 0xdf) {
+    const items = length(tag === 0xde ? 2 : 4);
+    if (items > MAX_MAP_ITEMS) throw new Error("Collection limit");
+    return items * 2;
+  }
+  return undefined;
+}
+
 function preflight(bytes: Uint8Array): void {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 0,
@@ -67,8 +108,6 @@ function preflight(bytes: Uint8Array): void {
     if (depth > 32 || ++nodes > 200_000)
       throw new Error("Message complexity limit");
     const tag = length(1);
-    let array = -1,
-      map = -1;
     if (
       tag <= 0x7f ||
       tag >= 0xe0 ||
@@ -81,33 +120,18 @@ function preflight(bytes: Uint8Array): void {
       skip(tag & 31);
       return;
     }
-    if (tag >= 0x90 && tag <= 0x9f) array = tag & 15;
-    else if (tag >= 0x80 && tag <= 0x8f) map = tag & 15;
-    else if (tag === 0xdc || tag === 0xdd) array = length(tag === 0xdc ? 2 : 4);
-    else if (tag === 0xde || tag === 0xdf) map = length(tag === 0xde ? 2 : 4);
-    else if ([0xd9, 0xda, 0xdb].includes(tag)) {
-      skip(length(tag === 0xd9 ? 1 : tag === 0xda ? 2 : 4));
-      return;
-    } else {
-      const widths: Record<number, number> = {
-        0xca: 4,
-        0xcb: 8,
-        0xcc: 1,
-        0xcd: 2,
-        0xce: 4,
-        0xcf: 8,
-        0xd0: 1,
-        0xd1: 2,
-        0xd2: 4,
-        0xd3: 8,
-      };
-      const width = widths[tag];
+    const count = childCount(tag, length);
+    if (count === undefined) {
+      const stringLength = STRING_LENGTH_BYTES[tag];
+      if (stringLength) {
+        skip(length(stringLength));
+        return;
+      }
+      const width = SCALAR_PAYLOAD_BYTES[tag];
       if (!width) throw new Error("Unsupported MessagePack type");
       skip(width);
       return;
     }
-    if (array > 4096 || map > 64) throw new Error("Collection limit");
-    const count = array >= 0 ? array : map * 2;
     capacity += count;
     if (capacity > 200_000) throw new Error("Allocation limit");
     for (let index = 0; index < count; index++) visit(depth + 1);

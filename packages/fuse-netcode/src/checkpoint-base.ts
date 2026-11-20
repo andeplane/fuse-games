@@ -1,5 +1,6 @@
 import type { Stage } from "./game.js";
 import type { SeatRecord } from "./management.js";
+import { orderedSeats } from "./seat-snapshot.js";
 import { uint32 } from "./wire.js";
 
 /** Fields through the roster in the shared checkpoint header. Each game owns the rest. */
@@ -77,4 +78,34 @@ export function createCheckpointBaseDecoder<
       roster,
     };
   };
+}
+
+/** Encode string-keyed checkpoint values in code-unit order, independent of insertion order. */
+export function checkpointEntries<T>(
+  values: Readonly<Record<string, T>>,
+): [string, T][] {
+  return Object.entries(values).sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
+interface CheckpointBase {
+  matchId: string;
+  stage: Stage;
+  settings: object;
+  seats: ReadonlyMap<string, SeatRecord>;
+  play: object;
+  held: Readonly<Record<string, number>>;
+  roster: readonly { id: string; name: string; bot: boolean }[];
+}
+
+/** Encode the field order read by createCheckpointBaseDecoder. Games append their own fields. */
+export function encodeCheckpointBase(room: CheckpointBase): unknown[] {
+  return [
+    room.matchId,
+    room.stage,
+    { ...room.settings },
+    orderedSeats(room.seats.values()).map((seat) => ({ ...seat })),
+    { ...room.play },
+    checkpointEntries(room.held),
+    room.roster.map(({ id, name, bot }) => [id, name, bot]),
+  ];
 }

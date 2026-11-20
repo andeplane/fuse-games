@@ -1,5 +1,11 @@
 import type { HeroFrame } from "./animate.js";
 import {
+  heroGait,
+  sprintArms,
+  walkingHands,
+  trailingSword,
+} from "./hero-gait.js";
+import {
   adjust,
   arm,
   armAt,
@@ -17,7 +23,6 @@ import {
   sprint,
   stride,
   sword,
-  type Side,
 } from "../pixel/kit.js";
 import {
   head,
@@ -63,24 +68,19 @@ const idle: BrakkaPose = {
 const { far: F, near: N } = idle;
 
 /** Six frames of a march, the sword held up; arms swing against the legs, their bones as long as idle's. */
-const walk = [0, 1, 2, 3, 4, 5].map((i) => {
-  const step = adjust(idle, stride(idle, i, 6, { reach: 9, lift: 6, dip: 2 }));
-  const swing = Math.cos((i / 6) * 2 * Math.PI);
-  const hand = (p: Point, dx: number): Point => [
-    p[0] + dx,
-    p[1] - Math.abs(dx) * 0.3,
-  ];
-  const [far, near] = [
-    hand(step.far.hand, 4 * swing),
-    hand(step.near.hand, -1.5 * swing),
-  ];
-  return adjust(step, {
-    head: [step.head[0] + 1, step.head[1]],
-    far: { elbow: bend(step.far.shoulder, far, 7.4, 6, -1), hand: far },
-    near: { elbow: bend(step.near.shoulder, near, 7.1, 5.7, -1), hand: near },
-    sword: -62 + 4 * swing,
-  });
-});
+const walk = heroGait(
+  (frame, frames) =>
+    adjust(idle, stride(idle, frame, frames, { reach: 9, lift: 6, dip: 2 })),
+  (step, swing) => {
+    const [far, near] = walkingHands(step.far.hand, step.near.hand, swing);
+    return adjust(step, {
+      head: offset(step.head, 1, 0),
+      far: { elbow: bend(step.far.shoulder, far, 7.4, 6, -1), hand: far },
+      near: { elbow: bend(step.near.shoulder, near, 7.1, 5.7, -1), hand: near },
+      sword: -62 + 4 * swing,
+    });
+  },
+);
 
 /** The combo plants the feet in a lunge, and every swing keeps them there. */
 const lunge = adjust(idle, {
@@ -105,25 +105,18 @@ const leaning = adjust(idle, {
   far: { shoulder: [33, 42.5], ...legTo(F, [33, 56], [28.8, 71.5]) },
   near: { shoulder: [46.5, 42.5], ...legTo(N, [38, 56], [43.2, 71.5]) },
 });
-const run = [0, 1, 2, 3, 4, 5].map((i) => {
-  const step = adjust(
-    leaning,
-    sprint(leaning, i, 6, { reach: 7.5, lift: 10, dip: 2 }),
-  );
-  // 1 as the near foot lands ahead, when the far fist is forward and the near one back.
-  const swing = Math.cos((i / 6) * 2 * Math.PI);
-  const pump = (side: Side, ahead: number) =>
-    armTo(
-      side,
-      side.shoulder,
-      offset(side.shoulder, -7 + 14 * ahead, 7 - 5 * ahead),
-    );
-  return adjust(step, {
-    far: pump(step.far, (1 + swing) / 2),
-    near: pump(step.near, (1 - swing) / 2),
-    sword: -170 + 120 * ((1 - swing) / 2) ** 2,
-  });
-});
+const run = heroGait(
+  (frame, frames) =>
+    adjust(
+      leaning,
+      sprint(leaning, frame, frames, { reach: 7.5, lift: 10, dip: 2 }),
+    ),
+  (step, swing) =>
+    adjust(step, {
+      ...sprintArms(step, swing, { reach: 7, lift: 5 }),
+      sword: trailingSword(swing),
+    }),
+);
 
 /**
  * Riding a beast, seated astride its saddle: the hips on the seat, the near leg down its flank to the stirrup, the

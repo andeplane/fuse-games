@@ -141,125 +141,154 @@ def orb(p, kind):
         p.oval(61, 61, 69, 69, DARK)
 
 
+def draw_document(p, kind):
+    color = {
+        "folder": GOLD,
+        "paper": ICE,
+        "blueprint": "#58a6ca",
+        "circuit": "#40ad92",
+    }[kind]
+    p.poly(
+        [(3, 35), (26, 15), (92, 12), (98, 65), (72, 84), (7, 91)],
+        mix(color, STEEL, 0.3),
+        INK,
+    )
+    p.poly([(8, 34), (22, 24), (84, 18), (90, 60), (71, 75), (12, 82)], color, INK)
+    if kind == "folder":
+        p.poly(
+            [(7, 34), (12, 13), (36, 8), (50, 21), (88, 16), (87, 33)], GOLD, INK
+        )
+    for j in range(3):
+        p.line(
+            [
+                (23, 42 + j * 10),
+                (38 + j * 3, 38 + j * 10),
+                (45 + j * 3, 44 + j * 10),
+                (69, 38 + j * 10),
+            ],
+            mix(color, DARK, 0.64),
+            3,
+        )
+    if kind == "circuit":
+        p.plate(36, 35, 60, 64, DARK, 3)
+        for x in range(38, 61, 8):
+            p.line([(x, 29), (x, 35)], GOLD, 3)
+
+
+def draw_disc(p, kind):
+    if kind == "cd":
+        p.oval(4, 14, 96, 89, ICE, INK)
+        p.oval(41, 43, 57, 58, DARK, INK)
+        p.line([(61, 39), (83, 25)], TEAL, 8)
+        p.line([(29, 62), (15, 72)], PINK, 6)
+    else:
+        p.plate(6, 9, 94, 90, TEAL, 8)
+        p.plate(20, 13, 76, 41, STEEL, 3)
+        p.rect(56, 20, 66, 36, ICE)
+        p.plate(19, 55, 82, 84, ICE, 3)
+        for i in range(int(kind[-1])):
+            p.rect(24 + i * 10, 67, 29 + i * 10, 75, RUST)
+
+
+def draw_bottled_supply(p, kind):
+    if kind == "rocket":
+        p.poly(
+            [
+                (53, 2),
+                (64, 18),
+                (68, 64),
+                (82, 82),
+                (80, 94),
+                (52, 84),
+                (27, 94),
+                (25, 82),
+                (39, 63),
+                (41, 20),
+            ],
+            SLATE,
+            INK,
+        )
+        p.poly([(53, 4), (63, 21), (41, 24)], PINK, INK)
+        p.line([(45, 28), (43, 63)], ICE, 4)
+        p.rect(42, 61, 63, 70, GOLD)
+    else:
+        p.plate(39, 6, 62, 31, LIT, 3)
+        p.poly(
+            [
+                (41, 26),
+                (60, 26),
+                (64, 44),
+                (77, 52),
+                (74, 91),
+                (26, 94),
+                (21, 55),
+                (36, 44),
+            ],
+            TEAL if kind != "molotov" else RUST,
+            INK,
+        )
+        p.line([(32, 57), (32, 78)], MINT, 5)
+        p.plate(34, 55, 67, 72, DARK, 2)
+        if kind == "molotov":
+            p.line([(48, 11), (38, 6), (43, 1)], GOLD, 4)
+
+
+def draw_mine(p, kind):
+    p.oval(4, 31, 96, 89, INK)
+    p.oval(8, 25, 92, 75, SLATE, INK)
+    p.oval(27, 24, 75, 60, DARK, INK)
+    p.oval(38, 26, 62, 47, PINK, INK)
+    for x, y in [(17, 52), (78, 48), (53, 65)]:
+        p.bolt(x, y)
+    if kind == "dynamite":
+        p.line([(51, 35), (40, 7), (60, 4), (66, 20)], ORANGE, 5)
+
+
+def draw_bag(p, _kind):
+    p.line([(32, 37), (31, 16), (44, 9), (60, 12), (64, 31)], SLATE, 8)
+    p.plate(8, 28, 92, 92, "#6b6c50", 10)
+    p.plate(21, 54, 69, 80, "#858269", 4)
+    p.rect(46, 47, 57, 62, GOLD)
+
+
+def draw_radio(p, _kind):
+    p.line([(73, 34), (77, 3)], LIT, 5)
+    p.plate(12, 28, 90, 94, STEEL, 7)
+    p.plate(19, 40, 60, 63, TEAL, 3)
+    for y in (73, 79, 85):
+        p.line([(23, y), (64, y)], DARK, 3)
+    p.oval(72, 54, 83, 66, GOLD)
+
+
+SUPPLY_ARTISTS = {
+    "egg": orb,
+    "holo": orb,
+    "blueprint": draw_document,
+    "folder": draw_document,
+    "paper": draw_document,
+    "circuit": draw_document,
+    "cd": draw_disc,
+    "rod": draw_bottled_supply,
+    "rocket": draw_bottled_supply,
+    "bottle": draw_bottled_supply,
+    "molotov": draw_bottled_supply,
+    "mine": draw_mine,
+    "dynamite": draw_mine,
+    "bag": draw_bag,
+    "radio": draw_radio,
+}
+
+
 def supplies(p, kind):
     if "key" in kind:
         key(p, kind)
         return
-    if kind in ("egg", "holo"):
-        orb(p, kind)
+    if kind.startswith("disk"):
+        draw_disc(p, kind)
         return
-    if kind in ("blueprint", "folder", "paper", "circuit"):
-        color = {
-            "folder": GOLD,
-            "paper": ICE,
-            "blueprint": "#58a6ca",
-            "circuit": "#40ad92",
-        }[kind]
-        p.poly(
-            [(3, 35), (26, 15), (92, 12), (98, 65), (72, 84), (7, 91)],
-            mix(color, STEEL, 0.3),
-            INK,
-        )
-        p.poly([(8, 34), (22, 24), (84, 18), (90, 60), (71, 75), (12, 82)], color, INK)
-        if kind == "folder":
-            p.poly(
-                [(7, 34), (12, 13), (36, 8), (50, 21), (88, 16), (87, 33)], GOLD, INK
-            )
-        for j in range(3):
-            p.line(
-                [
-                    (23, 42 + j * 10),
-                    (38 + j * 3, 38 + j * 10),
-                    (45 + j * 3, 44 + j * 10),
-                    (69, 38 + j * 10),
-                ],
-                mix(color, DARK, 0.64),
-                3,
-            )
-        if kind == "circuit":
-            p.plate(36, 35, 60, 64, DARK, 3)
-            for x in range(38, 61, 8):
-                p.line([(x, 29), (x, 35)], GOLD, 3)
-        return
-    if kind == "cd" or kind.startswith("disk"):
-        if kind == "cd":
-            p.oval(4, 14, 96, 89, ICE, INK)
-            p.oval(41, 43, 57, 58, DARK, INK)
-            p.line([(61, 39), (83, 25)], TEAL, 8)
-            p.line([(29, 62), (15, 72)], PINK, 6)
-        else:
-            p.plate(6, 9, 94, 90, TEAL, 8)
-            p.plate(20, 13, 76, 41, STEEL, 3)
-            p.rect(56, 20, 66, 36, ICE)
-            p.plate(19, 55, 82, 84, ICE, 3)
-            for i in range(int(kind[-1])):
-                p.rect(24 + i * 10, 67, 29 + i * 10, 75, RUST)
-        return
-    if kind in ("rod", "rocket", "bottle", "molotov"):
-        if kind == "rocket":
-            p.poly(
-                [
-                    (53, 2),
-                    (64, 18),
-                    (68, 64),
-                    (82, 82),
-                    (80, 94),
-                    (52, 84),
-                    (27, 94),
-                    (25, 82),
-                    (39, 63),
-                    (41, 20),
-                ],
-                SLATE,
-                INK,
-            )
-            p.poly([(53, 4), (63, 21), (41, 24)], PINK, INK)
-            p.line([(45, 28), (43, 63)], ICE, 4)
-            p.rect(42, 61, 63, 70, GOLD)
-        else:
-            p.plate(39, 6, 62, 31, LIT, 3)
-            p.poly(
-                [
-                    (41, 26),
-                    (60, 26),
-                    (64, 44),
-                    (77, 52),
-                    (74, 91),
-                    (26, 94),
-                    (21, 55),
-                    (36, 44),
-                ],
-                TEAL if kind != "molotov" else RUST,
-                INK,
-            )
-            p.line([(32, 57), (32, 78)], MINT, 5)
-            p.plate(34, 55, 67, 72, DARK, 2)
-            if kind == "molotov":
-                p.line([(48, 11), (38, 6), (43, 1)], GOLD, 4)
-        return
-    if kind in ("mine", "dynamite"):
-        p.oval(4, 31, 96, 89, INK)
-        p.oval(8, 25, 92, 75, SLATE, INK)
-        p.oval(27, 24, 75, 60, DARK, INK)
-        p.oval(38, 26, 62, 47, PINK, INK)
-        for x, y in [(17, 52), (78, 48), (53, 65)]:
-            p.bolt(x, y)
-        if kind == "dynamite":
-            p.line([(51, 35), (40, 7), (60, 4), (66, 20)], ORANGE, 5)
-        return
-    if kind == "bag":
-        p.line([(32, 37), (31, 16), (44, 9), (60, 12), (64, 31)], SLATE, 8)
-        p.plate(8, 28, 92, 92, "#6b6c50", 10)
-        p.plate(21, 54, 69, 80, "#858269", 4)
-        p.rect(46, 47, 57, 62, GOLD)
-        return
-    if kind == "radio":
-        p.line([(73, 34), (77, 3)], LIT, 5)
-        p.plate(12, 28, 90, 94, STEEL, 7)
-        p.plate(19, 40, 60, 63, TEAL, 3)
-        for y in (73, 79, 85):
-            p.line([(23, y), (64, y)], DARK, 3)
-        p.oval(72, 54, 83, 66, GOLD)
+    paint = SUPPLY_ARTISTS.get(kind)
+    if paint is not None:
+        paint(p, kind)
 
 
 def debris(p, kind, idx):

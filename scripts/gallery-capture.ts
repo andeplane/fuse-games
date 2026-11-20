@@ -70,6 +70,16 @@ const FUSEMANIA_AUTOPLAY = `(() => {
 type Recipe = (page: Page) => Promise<void>;
 
 const RECIPES: Record<string, Recipe> = {
+  "fuse-particles": async (page) => {
+    await openPlayOptions(page, "single");
+    await page.getByRole("button", { name: /^start match$/i }).click();
+    await page.locator('.fuseParticles-room[data-phase="running"]').waitFor();
+    await page.waitForFunction(() => {
+      const clock =
+        document.querySelector(".fp-match .fp-arena time")?.textContent ?? "";
+      return /^0:[2-5][0-9]$/.test(clock);
+    });
+  },
   cyberfuse: async (page) => {
     await openPlayOptions(page, "single");
     const briefing = page.getByRole("dialog");

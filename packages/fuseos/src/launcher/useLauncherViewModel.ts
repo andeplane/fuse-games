@@ -18,6 +18,17 @@ import { fakeDiskUsage, LAUNCHER_TITLE } from "./launcherFacts";
 
 export type LauncherTab = "games" | "friends" | "servers" | "news";
 type LauncherSort = "name" | "newest" | "oldest";
+type GameTier = "AAA" | "B";
+
+const AAA_GAME_IDS = new Set([
+  "elasto-fuse",
+  "fuse-volley",
+  "fusemania",
+  "fuse-riders",
+  "killer-fuse",
+  "fuseball",
+  "fuse-drivers",
+]);
 
 export const LAUNCHER_TABS: readonly { id: LauncherTab; label: string }[] = [
   { id: "games", label: "My Games" },
@@ -47,6 +58,11 @@ export type LauncherDetails = {
   diskUsage: string;
 };
 
+type LauncherGroup = {
+  tier: GameTier;
+  games: LauncherGame[];
+};
+
 /** The pages Fusteam draws itself; the other tabs open programs of their own. */
 export type LauncherPage = "games" | "news";
 
@@ -68,7 +84,7 @@ export type LauncherViewModel = {
   /** FRIENDS & CHAT and the Friends link: Fuse Messenger. */
   openFriends: () => void;
   openLeaderboard: () => void;
-  games: LauncherGame[];
+  groups: LauncherGroup[];
   now: number;
   sort: LauncherSort;
   sortByName: () => void;
@@ -107,8 +123,8 @@ export function useLauncherViewModel(): LauncherViewModel {
   const [lastPlayed, setLastPlayed] = useState(() =>
     launcherDeps.lastPlayed.get(),
   );
-  const games = useMemo<LauncherGame[]>(() => {
-    return [...registry.games]
+  const { games, groups } = useMemo(() => {
+    const sorted = [...registry.games]
       .sort((a, b) => {
         if (sort === "name") return a.name.localeCompare(b.name);
         const first = lastPlayed[a.id];
@@ -130,6 +146,17 @@ export function useLauncherViewModel(): LauncherViewModel {
         url: registry.embedUrl(game),
         lastPlayed: lastPlayed[game.id],
       }));
+    const groups: LauncherGroup[] = [
+      {
+        tier: "AAA",
+        games: sorted.filter((game) => AAA_GAME_IDS.has(game.id)),
+      },
+      { tier: "B", games: sorted.filter((game) => !AAA_GAME_IDS.has(game.id)) },
+    ];
+    return {
+      games: groups.flatMap((group) => group.games),
+      groups: groups.filter((group) => group.games.length > 0),
+    };
   }, [registry, sort, lastPlayed]);
 
   const [tab, setTab] = useState<LauncherPage>("games");
@@ -232,7 +259,7 @@ export function useLauncherViewModel(): LauncherViewModel {
     openTab,
     openFriends,
     openLeaderboard,
-    games,
+    groups,
     now: desktopDeps.now(),
     sort,
     sortByName: () => setSort("name"),

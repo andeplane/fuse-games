@@ -16,7 +16,7 @@ import {
   STEPS_PER_SECOND,
   serveSeconds,
 } from "../engine/view-kit.js";
-import { advanced, cuesBetween, type Cue } from "./cues.js";
+import { advanced, cuesBetween, outcomeCuesBetween, type Cue } from "./cues.js";
 import { createJelly, type JellyPose } from "./jelly.js";
 import {
   BALL,
@@ -78,6 +78,7 @@ export interface Scene {
    * Draws `view` at wall time `nowMs`. `local` is this device's blob slot, or −1 for a watcher or a shared screen;
    * `names` label the two sides (and, three teams of two, the waiting team third) and `tags`, when given, each blob by
    * slot (teams show them under the blobs).
+   * `outcome` supplies closed scores and point effects; null while an online match has no closed snapshot yet.
    * Returns what happened since the last frame, for the app's sounds and haptics.
    */
   draw(
@@ -86,27 +87,35 @@ export interface Scene {
     local: number,
     names?: readonly string[],
     tags?: readonly string[],
+    outcome?: WorldView | null,
   ): readonly Cue[];
   destroy(): void;
 }
 
-type CounterKey = "hitCounter" | "netCounter" | "floorCounter" | "pointCounter";
+type CounterKey = "hitCounter" | "netCounter" | "floorCounter";
 type Counters = Record<CounterKey, number>;
 const COUNTED: Partial<Record<Cue["kind"], CounterKey>> = {
   hit: "hitCounter",
   net: "netCounter",
   floor: "floorCounter",
-  point: "pointCounter",
 };
 const counters = (view: WorldView): Counters => ({
   hitCounter: view.hitCounter,
   netCounter: view.netCounter,
   floorCounter: view.floorCounter,
-  pointCounter: view.pointCounter,
 });
 
 /** A team colour: cyan, pink or lime. */
 type Hue = 0 | 1 | 2;
+
+const huesOf = (view: WorldView): readonly [Hue, Hue] =>
+  view.format === "2v2v2"
+    ? [view.onCourt[0] as Hue, view.onCourt[1] as Hue]
+    : [0, 1];
+const courtTeams = (view: WorldView): readonly number[] => [
+  ...view.onCourt,
+  3 - view.onCourt[0] - view.onCourt[1],
+];
 
 const MAX_RATIO = 3,
   TAU = Math.PI * 2;
@@ -160,6 +169,35 @@ export const moodOf = (
       ? "sad"
       : "happy";
 
+interface BurstStyle {
+  count: number;
+  speed: number;
+  up: number;
+  gravity: number;
+  size: number;
+}
+
+interface RingStyle {
+  from: number;
+  to: number;
+  max: number;
+}
+
+const MAX_PARTICLES = 400;
+const BURST_STYLES = {
+  hit: { count: 10, speed: 260, up: 60, gravity: 500, size: 3 },
+  net: { count: 8, speed: 220, up: 40, gravity: 500, size: 2.5 },
+  floor: { count: 6, speed: 180, up: 140, gravity: 900, size: 2.6 },
+  land: { count: 7, speed: 120, up: 70, gravity: 700, size: 2.2 },
+  point: { count: 26, speed: 380, up: 120, gravity: 600, size: 3.5 },
+  win: { count: 22, speed: 420, up: 100, gravity: 400, size: 3.5 },
+} satisfies Record<string, BurstStyle>;
+const RING_STYLES = {
+  hit: { from: BALL_RADIUS, to: BALL_RADIUS + 26, max: 0.28 },
+  net: { from: 10, to: 34, max: 0.22 },
+  point: { from: 20, to: 140, max: 0.6 },
+} satisfies Record<string, RingStyle>;
+
 interface Particle {
   x: number;
   y: number;
@@ -205,8 +243,8 @@ export function createScene(
   let high: Counters | undefined;
   let lastNow = -1;
   let destroyed = false;
-  let particles: Particle[] = [];
-  let rings: Ring[] = [];
+  const particles: Particle[] = [];
+  const rings: Ring[] = [];
   let banner: Banner | undefined;
   let shake = 0;
   let ballSquash = 0;
@@ -223,20 +261,21 @@ export function createScene(
       w = canvas.clientWidth,
       h = canvas.clientHeight;
     box = { w, h, r };
-    canvas.width = Math.max(1, Math.round(w * r));
-    canvas.height = Math.max(1, Math.round(h * r));
+    const width = Math.max(1, Math.round(w * r)),
+      height = Math.max(1, Math.round(h * r));
+    // Even assigning the same dimension clears the canvas and resets its drawing state.
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
   };
 
   const burst = (
     x: number,
     y: number,
-    count: number,
     color: string,
-    speed: number,
-    up = 0,
-    gravity = 900,
-    size = 3,
+    style: BurstStyle,
+    count = style.count,
   ) => {
+    const { speed, up, gravity, size } = style;
     for (let i = 0; i < count; i++) {
       const angle = random() * TAU,
         v = speed * (0.35 + random() * 0.65);
@@ -253,15 +292,18 @@ export function createScene(
         gravity,
       });
     }
-    if (particles.length > 400) particles = particles.slice(-400);
+    const excess = particles.length - MAX_PARTICLES;
+    if (excess > 0) {
+      for (let i = 0; i < MAX_PARTICLES; i++)
+        particles[i] = particles[i + excess]!;
+      particles.length = MAX_PARTICLES;
+    }
   };
   const ring = (
     x: number,
     y: number,
-    from: number,
-    to: number,
     color: string,
-    max = 0.3,
+    { from, to, max }: RingStyle,
   ) => rings.push({ x, y, from, to, life: max, max, color });
 
   const names = (view: WorldView, given?: readonly string[]): string[] => {
@@ -284,45 +326,37 @@ export function createScene(
     labels: readonly string[],
   ) => {
     const kings = view.format === "2v2v2";
+    const hues = huesOf(view);
     for (const cue of cues) {
       switch (cue.kind) {
         case "hit": {
           const strength = Math.min(1, cue.speed / 8);
           jelly.kick(cue.slot, 0.5 + strength * 0.5);
           flashes[cue.side] = 1;
-          ring(
-            cue.x,
-            cue.y,
-            BALL_RADIUS,
-            BALL_RADIUS + 26,
-            SIDE_LIGHT[hues[cue.side]]!,
-            0.28,
-          );
-          burst(cue.x, cue.y, 10, SIDE[hues[cue.side]]!, 260, 60, 500, 3);
+          ring(cue.x, cue.y, SIDE_LIGHT[hues[cue.side]]!, RING_STYLES.hit);
+          burst(cue.x, cue.y, SIDE[hues[cue.side]]!, BURST_STYLES.hit);
           ballSquash = 0.22;
           if (!calm) shake = Math.max(shake, 2 + strength * 3);
           break;
         }
         case "net":
-          burst(cue.x, cue.y, 8, NET, 220, 40, 500, 2.5);
-          ring(cue.x, cue.y, 10, 34, NET, 0.22);
+          burst(cue.x, cue.y, NET, BURST_STYLES.net);
+          ring(cue.x, cue.y, NET, RING_STYLES.net);
           break;
         case "floor":
           ballSquash = Math.min(0.3, cue.speed / 20);
           burst(
             cue.x,
             SAND_Y - 2,
-            6 + Math.round(Math.min(10, cue.speed * 1.5)),
             SAND,
-            180,
-            140,
-            900,
-            2.6,
+            BURST_STYLES.floor,
+            BURST_STYLES.floor.count +
+              Math.round(Math.min(10, cue.speed * 1.5)),
           );
           break;
         case "land":
           jelly.kick(cue.slot, 0.8);
-          burst(cue.x, SAND_Y - 1, 7, hexA(SAND, 0.9), 120, 70, 700, 2.2);
+          burst(cue.x, SAND_Y - 1, hexA(SAND, 0.9), BURST_STYLES.land);
           break;
         case "jump":
           jelly.spring(cue.slot, 1);
@@ -330,8 +364,8 @@ export function createScene(
         case "point": {
           const winner = cue.loser === 0 ? 1 : 0,
             color = SIDE[hues[winner]]!;
-          ring(view.ball.x, view.ball.y, 20, 140, color, 0.6);
-          burst(view.ball.x, view.ball.y, 26, color, 380, 120, 600, 3.5);
+          ring(view.ball.x, view.ball.y, color, RING_STYLES.point);
+          burst(view.ball.x, view.ball.y, color, BURST_STYLES.point);
           if (!calm) shake = Math.max(shake, 5);
           const matchPoint = cue.matchPoint !== -1 && view.winner === -1;
           const name = labels[winner]!.toUpperCase();
@@ -376,12 +410,8 @@ export function createScene(
             burst(
               W / 4 + random() * (W / 2),
               150 + random() * 150,
-              22,
               SIDE[hues[cue.winner]]!,
-              420,
-              100,
-              400,
-              3.5,
+              BURST_STYLES.win,
             );
           break;
         default:
@@ -721,6 +751,7 @@ export function createScene(
     view: WorldView,
     poses: readonly JellyPose[],
     label: string,
+    outcome: WorldView | null,
   ) => {
     if (view.format !== "2v2v2") return;
     const team = (3 - view.onCourt[0] - view.onCourt[1]) as Hue,
@@ -742,7 +773,7 @@ export function createScene(
     c.shadowColor = color;
     c.shadowBlur = 12;
     c.fillStyle = WHITE;
-    c.fillText(String(view.points[team] ?? 0), W / 2, 66);
+    c.fillText(String(outcome?.points[team] ?? "–"), W / 2, 66);
     c.shadowBlur = 0;
     c.font = `8px ${PIXEL_FONT}`;
     c.fillStyle = SIDE_LIGHT[team];
@@ -855,6 +886,7 @@ export function createScene(
     view: WorldView,
     labels: readonly string[],
     now: number,
+    outcome: WorldView | null,
   ) => {
     c.textAlign = "center";
     c.textBaseline = "alphabetic";
@@ -865,7 +897,9 @@ export function createScene(
       c.shadowColor = SIDE[hue];
       c.shadowBlur = 16;
       c.fillStyle = WHITE;
-      c.fillText(String(view.score[side]), x, 78);
+      const score =
+        view.format === "2v2v2" ? outcome?.points[hue] : outcome?.score[side];
+      c.fillText(String(score ?? "–"), x, 78);
       c.shadowBlur = 0;
       c.font = `10px ${PIXEL_FONT}`;
       c.fillStyle = SIDE_LIGHT[hue];
@@ -915,7 +949,11 @@ export function createScene(
     c.fillStyle = hexA(WHITE, 0.7);
     c.fillText(rule, W / 2, COURT_H - 14);
     if (view.phase === "serve") {
-      if (view.matchPoint !== -1) {
+      if (
+        outcome &&
+        outcome.pointCounter === view.pointCounter &&
+        view.matchPoint !== -1
+      ) {
         const pulse = 0.6 + 0.4 * Math.sin(now / 160);
         c.font = `14px ${PIXEL_FONT}`;
         c.fillStyle = hexA(SIDE[hues[view.matchPoint]], pulse);
@@ -957,6 +995,7 @@ export function createScene(
   };
 
   const advanceEffects = (dt: number) => {
+    let liveParticles = 0;
     for (const p of particles) {
       p.life -= dt;
       p.vy += p.gravity * dt;
@@ -967,10 +1006,15 @@ export function createScene(
         p.vy *= -0.3;
         p.vx *= 0.6;
       }
+      if (p.life > 0) particles[liveParticles++] = p;
     }
-    particles = particles.filter((p) => p.life > 0);
-    for (const r of rings) r.life -= dt;
-    rings = rings.filter((r) => r.life > 0);
+    particles.length = liveParticles;
+    let liveRings = 0;
+    for (const r of rings) {
+      r.life -= dt;
+      if (r.life > 0) rings[liveRings++] = r;
+    }
+    rings.length = liveRings;
     shake *= Math.exp(-dt * 14);
     ballSquash *= Math.exp(-dt * 12);
     flashes[0] *= Math.exp(-dt * 8);
@@ -996,9 +1040,10 @@ export function createScene(
     c.globalCompositeOperation = "source-over";
   };
 
+  let previousOutcome: WorldView | undefined;
   return {
     resize,
-    draw(view, nowMs, local, given, tags) {
+    draw(view, nowMs, local, given, tags, outcome = view) {
       if (destroyed || !g) return [];
       if (
         box.w !== canvas.clientWidth ||
@@ -1012,13 +1057,11 @@ export function createScene(
       const labels = names(view, given);
       W = view.court.width;
       netX = view.court.net;
-      hues =
-        view.format === "2v2v2"
-          ? [view.onCourt[0] as Hue, view.onCourt[1] as Hue]
-          : [0, 1];
+      hues = [...huesOf(view)];
       // A new match, or a view from before the last one: start the presentation over.
       if (previous && view.step < previous.step - STEPS_PER_SECOND) {
         previous = undefined;
+        previousOutcome = undefined;
         banner = undefined;
         jelly.reset();
         trail = [];
@@ -1026,7 +1069,7 @@ export function createScene(
       // A predicted hit that a rollback took back and then happened for real sounds once: each counter fires only
       // past the furthest it has been shown this match.
       if (!previous || !high) high = counters(view);
-      const cues = cuesBetween(previous, view).filter((cue) => {
+      const cues = cuesBetween(previous, view, false).filter((cue) => {
         const key = COUNTED[cue.kind];
         if (!key) return true;
         if (!advanced(high![key], view[key])) return false;
@@ -1035,6 +1078,18 @@ export function createScene(
       });
       previous = view;
       react(cues, view, nowMs, labels);
+      if (outcome && outcome !== previousOutcome) {
+        const outcomeCues = outcomeCuesBetween(previousOutcome, outcome);
+        const outcomeLabels =
+          outcome.format === "2v2v2"
+            ? courtTeams(outcome).map(
+                (team) => labels[courtTeams(view).indexOf(team)]!,
+              )
+            : labels;
+        react(outcomeCues, outcome, nowMs, outcomeLabels);
+        cues.push(...outcomeCues);
+      }
+      previousOutcome = outcome ?? undefined;
       advanceEffects(dt);
       if (view.ball.live || view.phase === "serve") {
         const lastPoint = trail.at(-1);
@@ -1097,21 +1152,24 @@ export function createScene(
             poses[slot]!,
             view.ball,
             slot === local,
-            moodOf(view, blob.side),
+            outcome?.pointCounter === view.pointCounter &&
+              (view.phase === "dead" || view.phase === "over")
+              ? moodOf(outcome, blob.side)
+              : "calm",
             nowMs,
           );
-      drawBench(g, view, poses, labels[2] ?? "");
+      drawBench(g, view, poses, labels[2] ?? "", outcome);
       drawBall(g, view.ball, nowMs);
       drawEffects(g);
       drawBallMarker(g, view.ball);
-      drawHud(g, view, labels, nowMs);
+      drawHud(g, view, labels, nowMs, outcome);
       g.restore();
       return cues;
     },
     destroy() {
       destroyed = true;
-      particles = [];
-      rings = [];
+      particles.length = 0;
+      rings.length = 0;
     },
   };
 }

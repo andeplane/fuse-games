@@ -96,6 +96,19 @@ test("checkpoints refuse what no peer could have produced", () => {
   );
 });
 
+test("a stationary particle on an empty cell reports a checkpoint error with omitted owner IDs", () => {
+  const w = createMatch(closeQuarters());
+  w.particles[0]!.cell = openNeighbours(w, w.structures[0]!.cell)[0]!;
+  const packet = JSON.stringify(w, (key, value: unknown) =>
+    key === "ownerId" || (key === "id" && value === "player-1")
+      ? undefined
+      : value,
+  );
+  assert.throws(() => decodeState(packet), {
+    message: "checkpoint: invalid stationary particle",
+  });
+});
+
 test("powerup buffs are bounded by the pickups that could have stacked them", () => {
   let w = createMatch(closeQuarters(), { matchId: "buffs", powerups: true }, [
     { id: "a", slot: 0 },

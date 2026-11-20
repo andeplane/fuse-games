@@ -1,6 +1,22 @@
 import type { Library } from "./library.js";
 import { UP, type Effect } from "./play.js";
+import { BOO, GOOD, GREAT, MARVELOUS, MISS, PERFECT } from "./rules.js";
 import { ranking, rating, type Phase, type World } from "./world.js";
+
+/** Scoring counters shown in completed-song and session reports. */
+export function songStats({ best, counts }: World["players"][number]) {
+  const marvelous = counts[MARVELOUS]!;
+  const perfect = counts[PERFECT]!;
+  const great = counts[GREAT]!;
+  return {
+    combo: best,
+    marvelous,
+    perfect,
+    great,
+    steps: marvelous + perfect + great + counts[GOOD]! + counts[BOO]!,
+    misses: counts[MISS]!,
+  };
+}
 
 /**
  * What the presentation sees of a match. Times are milliseconds of song time. A rider's notes are not listed here:

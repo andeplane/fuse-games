@@ -11,6 +11,15 @@ import {
 } from "../pixel/kit.js";
 import { Rig, type Point, type ShapeOptions } from "../pixel/rig.js";
 import type { Sprite } from "../pixel/sprite.js";
+import {
+  MOUNT_SOLE as SOLE,
+  MOUNT_WALK_STEPS,
+  drawSaddle,
+  drawStirrup,
+  sampleMountFoot,
+  taperedChain,
+  walkTail,
+} from "./mount-rig.js";
 
 /**
  * The ember drake, the beast the lancer captain rides: a small orange-red dragon on four legs, a long neck and a horned
@@ -58,7 +67,6 @@ const SIZE: Point = [100, 66];
 const ANCHOR: Point = [48, 60];
 /** A point `dx` ahead of the feet and `up` above them. */
 const F = (dx: number, up: number): Point => [ANCHOR[0] + dx, ANCHOR[1] - up];
-const SOLE = 0.5;
 const planted = (dx: number): Point => F(dx, SOLE);
 /** The neck's and the tail's girth along their spines. */
 const NECK = [5.2, 4.4, 3.7, 3.3] as const;
@@ -125,8 +133,7 @@ const rest: DrakePose = {
 };
 
 /** Steps each walk frame holds: a planted foot sweeps back `BEAST_WALK.x` (1.25 px) a step, `STRIDE` px a frame. */
-export const DRAKE_WALK_STEPS = 5;
-const STRIDE = 1.25 * DRAKE_WALK_STEPS;
+export const DRAKE_WALK_STEPS = MOUNT_WALK_STEPS;
 
 /**
  * Frame `i` of the four-frame walk, diagonal pairs together (the near forefoot with the far hind one): each foot
@@ -135,19 +142,22 @@ const STRIDE = 1.25 * DRAKE_WALK_STEPS;
  * sways against the step.
  */
 function walk(i: number): DrakePose {
-  const foot = (phase: number, centre: number, leg: typeof hind, top: Point) => {
-    const q = (i / 4 + phase) % 1;
-    if (q < 0.5) return leg(top, planted(centre + STRIDE * (1 - 4 * q)));
-    const lift = 4 * Math.sin((q - 0.5) * 2 * Math.PI);
-    return leg(top, F(centre + STRIDE * (4 * q - 3), SOLE + lift), lift > 0);
-  }; // prettier-ignore
+  const foot = (
+    phase: number,
+    centre: number,
+    leg: typeof hind,
+    top: Point,
+  ) => {
+    const [point, lifted] = sampleMountFoot(F, { frame: i, phase, centre });
+    return leg(top, point, lifted);
+  };
   const passing = i % 2 === 1;
   const sway = passing ? -1 : 1;
   const pose: DrakePose = {
     ...idle,
     neck: idle.neck.map((p, j) => at(p, passing ? j / 2 : 0, 0)),
     head: at(idle.head, passing ? 1.5 : 0, passing ? -0.5 : 0),
-    tail: idle.tail.map((p, j) => at(p, 0, (sway * j) / 3)),
+    tail: walkTail(idle.tail, sway),
     wing: [at(idle.wing[0], 0, sway / 2), idle.wing[1], idle.wing[2]],
     legs: {
       farHind: foot(0, -12, hind, HIPS.far),
@@ -447,14 +457,9 @@ export function paintDrake(pose: DrakePose): Sprite {
   horn(1, -0.8, BACK);
   // The tail, body and neck are one part, tapering into one another, the gold belly plates along their undersides.
   const body = { group: "body" };
-  const chain = (spine: readonly Point[], girth: readonly number[]) =>
-    spine.forEach((p, i) => {
-      const next = spine[i + 1];
-      if (next) rig.capsule(p, next, girth[i]!, girth[i + 1]!, "x", body);
-    });
-  chain(pose.tail, TAIL);
+  taperedChain(rig, pose.tail, TAIL, "x", body);
   rig.capsule(torso(-9, 0.5), torso(6.5, 0), 7.4, 8 + pose.swell, "x", body);
-  chain(neck, NECK);
+  taperedChain(rig, neck, NECK, "x", body);
   rig.capsule(torso(-7, 5.4), torso(6, 5.4 + pose.swell / 2), 2.2, 2.8 + pose.swell / 2, "h", body); // prettier-ignore
   // The throat's plates glow as the fire is drawn into it: embers, then blazing.
   const throat = [0, 0.33, 0.66, 1].map((t) => across(neck, t, girthAt(NECK, t) - 1.7)); // prettier-ignore
@@ -462,28 +467,22 @@ export function paintDrake(pose: DrakePose): Sprite {
   throat.forEach((p, i) => i && rig.capsule(throat[i - 1]!, p, 2.1, 1.7, plates, body)); // prettier-ignore
   wing(rig, roots, pose.wing, {});
   // The saddle: a black blanket trimmed in gold, the leather seat with its cantle behind and brass pommel in front.
-  const outline = (pairs: readonly number[]) =>
-    Array.from({ length: pairs.length / 2 }, (_, i) =>
-      torso(pairs[2 * i]!, pairs[2 * i + 1]!),
-    );
-  rig.poly(outline(BLANKET), "i", { bevel: 1.2 });
-  const trim = { edge: "none" } as const;
-  rig.capsule(torso(-5.5, 3.4), torso(5, 3.4), 0.7, 0.7, "n", trim);
-  rig.capsule(torso(4.2, -4.5), torso(4.5, 6.6), 1.1, 1.1, "l", trim);
-  rig.capsule(torso(-5, -7.4), torso(4, -7.4), 1.9, 1.9, "l");
-  rig.capsule(torso(-5.6, -7.6), torso(-6.8, -10), 1.6, 1.3, "l");
-  rig.capsule(torso(4.6, -8), torso(5.6, -10.2), 1.2, 1.1, "n");
+  drawSaddle(rig, torso, {
+    blanket: BLANKET,
+    cloth: "i",
+    girth: 6.6,
+    goldTrim: true,
+  });
   leg(rig, pose.legs.nearHind, 6, {});
   leg(rig, pose.legs.nearFore, 4.2, {});
   // The stirrup on its leather, hanging where the rider's boot goes.
-  const stirrup = at(pose.saddle, 4, -0.5);
-  rig.capsule(torso(1.5, -6), at(stirrup, 0, -1.5), 0.6, 0.6, "l", trim);
-  rig.capsule(at(stirrup, -1.3, 0), at(stirrup, 1.3, 0), 0.8, 0.8, "n");
+  drawStirrup(rig, torso, pose.saddle);
   // The head: the lower jaw dropping on its hinge as it gapes, the mouth dark (or blazing) behind it, the skull, brow
   // and snout over it, the near horn and a spike at the cheek.
   const jaw = turned(head(-1, 2), pose.nod + 36 * pose.gape);
+  const mouthEdge = { edge: "none" } as const;
   if (pose.gape > 0.1)
-    rig.poly([head(0, 1.4), head(10, 1.6), jaw(9, -0.4), jaw(0.5, -0.6)], pose.fire > 1 ? "f" : "=", trim); // prettier-ignore
+    rig.poly([head(0, 1.4), head(10, 1.6), jaw(9, -0.4), jaw(0.5, -0.6)], pose.fire > 1 ? "f" : "=", mouthEdge); // prettier-ignore
   rig.capsule(jaw(0, 0), jaw(9, 0.3), 2.2, 1.3, "x", { bias: -0.1 });
   const skull = { group: "head" };
   rig.ellipse(pose.head, 5, 4.2, "x", skull);

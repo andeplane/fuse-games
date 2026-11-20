@@ -1,18 +1,9 @@
 import { memberId } from "fuse-netcode";
 import { CAPACITY, MAX_NAME, validName } from "./basics.js";
 
-export { MAX_NAME, validName };
+export { seatPlayerName as seatName } from "fuse-platform/player-name";
 
-const CONTROL = /[\u0000-\u001f\u007f]/;
-/** What a player typed, as it is seated: trimmed and cut to `MAX_NAME` code points, or refused. */
-export function seatName(raw: string): string | undefined {
-  if (CONTROL.test(raw)) return;
-  const name = Array.from(raw.replace(/\p{Cs}/gu, "").trim())
-    .slice(0, MAX_NAME)
-    .join("")
-    .trim();
-  return validName(name) ? name : undefined;
-}
+export { MAX_NAME, validName };
 
 /** A match id as every replica accepts it: 1–64 printable ASCII characters. */
 export const validMatchId = (value: unknown): value is string =>

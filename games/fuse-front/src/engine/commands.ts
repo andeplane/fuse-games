@@ -1,4 +1,4 @@
-import { MAX_ID, isInt } from "./codec.js";
+import { insideMap, isInt, readTarget } from "./input-values.js";
 import { openTile } from "./flow.js";
 import { dropFocus, enemyAt } from "./focus.js";
 import { alive } from "./hero.js";
@@ -14,7 +14,7 @@ import {
 import { buy, sell, useItem } from "./shop.js";
 import { cast, type Chosen } from "./spells.js";
 import { COMMANDS_PER_SEAT, STEER_MAX, teamOf } from "./tuning.js";
-import { MARKS, type Hero, type World } from "./world.js";
+import type { Hero, World } from "./world.js";
 
 /**
  * What a player sends (v3 dropped the factory orders and stances; the army is the waves): a walk for the hero to a
@@ -56,9 +56,6 @@ export type Command =
 
 type MovementCommand = Extract<Command, { type: "move" | "attackMove" }>;
 
-const insideMap = (map: GameMap, x: number, y: number): boolean =>
-  isInt(x, 0, map.width - 1) && isInt(y, 0, map.height - 1);
-
 function move(
   map: GameMap,
   hero: Hero,
@@ -85,17 +82,13 @@ function steer(
   [hero.steerX, hero.steerY] = [dx, dy];
 }
 
-const validTargetKind = (of: unknown): of is number =>
-  isInt(of, 0, MARKS.length - 1);
-const validTargetId = (id: unknown): id is number => isInt(id, 0, MAX_ID);
-
 function attack(
   map: GameMap,
   world: World,
   hero: Hero,
   { of, id, queued }: Extract<Command, { type: "attack" }>,
 ): void {
-  if (!alive(hero) || !validTargetKind(of) || !validTargetId(id)) return;
+  if (!alive(hero) || !readTarget(of, id)) return;
   if (enemyAt(map, world, teamOf(hero.seat), of, id) === undefined) return;
   if (queued) return enqueue(hero, { type: "attack", of, id });
   clearQueue(hero);
@@ -112,8 +105,8 @@ function castOrder(
   let chosen: Chosen | undefined;
   if (of !== undefined || id !== undefined) {
     // A chosen target is valid only when both parts are present.
-    if (!validTargetKind(of) || !validTargetId(id)) return;
-    chosen = { of, id };
+    chosen = readTarget(of, id);
+    if (!chosen) return;
   }
   if (!queued) {
     cast(map, world, hero, slot, x, y, chosen);

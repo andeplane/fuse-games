@@ -4,7 +4,8 @@ import {
   type Library,
   type PlayerView,
 } from "../engine/index.js";
-import type { View } from "../online/game.js";
+import { unreadyGuests, type View } from "../online/game.js";
+import type { LobbyAction } from "./lobby-bar.js";
 import {
   chartLabel,
   grade,
@@ -76,18 +77,16 @@ export interface Model {
       connected: boolean;
       you: boolean;
       bot: boolean;
+      ready: boolean;
       /** The chart the seat will play: "HARD 9". */
       chart: string;
     }[];
     /** The host may seat another AI rival, and take these seats' AI away. */
     canAddBot: boolean;
     removable: string[];
-    showStart: boolean;
-    canStart: boolean;
+    action: LobbyAction;
     editable: boolean;
     note: string;
-    /** What the START button says: "START", or "START SONG 2 OF 5" in a session. */
-    startText: string;
     /** The session the room is in the middle of, between two of its songs. */
     session: SessionModel | null;
   };
@@ -136,9 +135,14 @@ function lobbyMessage(
   viewer: Viewer,
   seats: number,
   inMatch: boolean,
+  waiting: readonly string[],
+  guestReady: boolean | undefined,
 ): string {
   if (!seats) return "Pick a name to take a seat";
-  if (!viewer.host) return "Waiting for the host to start";
+  if (!viewer.host)
+    return guestReady === false
+      ? "Choose your chart, then press READY."
+      : "Waiting for the host to start";
   const session = view.session;
   // Changing the song count ends the current session unless the host changes it back.
   if (
@@ -148,6 +152,7 @@ function lobbyMessage(
     session.length !== view.settings.songs
   )
     return `Another number of songs starts a new session: pick ${session.length} again to go on with this one.`;
+  if (waiting.length) return `Waiting for ${waiting.join(", ")} to get ready.`;
   if (view.settings.display)
     return "Shared screen: open the TV screen, then every player uses a phone";
   if (seats !== 1) return "";
@@ -169,6 +174,19 @@ function presentLobby(
   // The session waits in Song Select if the host has kept the number of songs.
   const between =
     !inMatch && session?.length === view.settings.songs ? session : null;
+  const waiting = viewer.host
+    ? unreadyGuests(seats, view.lobbyReady, viewer.me)
+    : [];
+  const ownSeat = seats.find((seat) => seat.id === viewer.me && seat.connected);
+  const guestReady =
+    !viewer.host && ownSeat && !viewer.display
+      ? view.lobbyReady.includes(ownSeat.id)
+      : undefined;
+  const startText = between
+    ? `START SONG ${between.done + 1} OF ${between.length}`
+    : view.settings.songs > 1
+      ? `START SONG 1 OF ${view.settings.songs}`
+      : "START";
   return {
     members: seats.map((seat) => ({
       id: seat.id,
@@ -177,21 +195,31 @@ function presentLobby(
       connected: seat.connected,
       you: seat.id === viewer.me,
       bot: seat.bot,
+      ready: view.lobbyReady.includes(seat.id),
       chart: chartLabel(library, view.settings.song, seat.chart),
     })),
     canAddBot: viewer.host && seats.length < CAPACITY,
     removable: viewer.host
       ? seats.filter((seat) => seat.bot).map((seat) => seat.id)
       : [],
-    showStart: viewer.host,
-    canStart: seats.length >= 1,
+    action: viewer.host
+      ? {
+          kind: "start",
+          label: startText,
+          enabled: seats.some((seat) => seat.connected) && !waiting.length,
+        }
+      : guestReady !== undefined
+        ? { kind: "ready", pressed: guestReady }
+        : { kind: "none" },
     editable: viewer.host,
-    note: lobbyMessage(view, viewer, seats.length, inMatch),
-    startText: between
-      ? `START SONG ${between.done + 1} OF ${between.length}`
-      : view.settings.songs > 1
-        ? `START SONG 1 OF ${view.settings.songs}`
-        : "START",
+    note: lobbyMessage(
+      view,
+      viewer,
+      seats.length,
+      inMatch,
+      waiting.map((seat) => seat.name),
+      guestReady,
+    ),
     session:
       between && between.done > 0
         ? {

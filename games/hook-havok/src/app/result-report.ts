@@ -1,8 +1,8 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  playerResultRows,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
 } from "fuse-ui";
 import type { KeeperView, WorldView } from "../engine/view.js";
 
@@ -179,16 +179,10 @@ export function resultReport(
   parts: ReportParts,
 ): ResultsReport {
   const shown = columns(result);
-  const rows: ResultsRow[] = result.rows.map((row) => ({
-    id: row.id,
-    placement: row.place,
-    name: row.name,
-    color: parts.color(row.slot),
-    you: row.you,
-    ...(row.bot ? { tag: "AI" } : {}),
-    friend: row.you || row.bot ? undefined : parts.friend?.(row.id),
-    values: shown.map((column) => column.value(row)),
-  }));
+  const rows = playerResultRows(result.rows, parts, {
+    colorKey: (row) => row.slot,
+    values: (row) => shown.map((column) => column.value(row)),
+  });
   const cards: ResultsHighlight[] = [];
   /** A card for whoever has the most of something, when anybody has any. */
   const most = (

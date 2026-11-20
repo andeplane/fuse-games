@@ -30,6 +30,29 @@ export interface DecodedSnapshot<Room, Entry extends LogEntry = LogEntry> {
   streams: SnapshotStream<Entry>[];
 }
 
+/** Replay the bounded chunks that follow a snapshot's base tick. */
+export function replaySnapshotTail<Entry extends LogEntry>(
+  log: StreamLog<Entry>,
+  entries: readonly Entry[],
+  tick: number,
+  window: { localTick: () => number; lastSeq?: number },
+): boolean {
+  for (let offset = 0; offset < entries.length; offset += PACKET_ENTRIES) {
+    const part = entries.slice(offset, offset + PACKET_ENTRIES);
+    if (
+      log.receive(
+        part,
+        window.lastSeq ?? part.at(-1)![0],
+        tick,
+        window.localTick(),
+        tick,
+      ).status !== "accepted"
+    )
+      return false;
+  }
+  return true;
+}
+
 /** Validate replay metadata with the same stream rules used for live packets, before touching a world. */
 export function restoreSnapshotStream<Entry extends LogEntry>(
   rules: import("./game.js").EntryRules<Entry>,
@@ -50,18 +73,12 @@ export function restoreSnapshotStream<Entry extends LogEntry>(
     timing,
   );
   const replayTick = localTick ?? tick + timing.replayLeadTicks;
-  for (
-    let offset = 0;
-    offset < stream.entries.length;
-    offset += PACKET_ENTRIES
-  ) {
-    const part = stream.entries.slice(offset, offset + PACKET_ENTRIES);
-    if (
-      log.receive(part, part.at(-1)![0], tick, replayTick, tick).status !==
-      "accepted"
-    )
-      return;
-  }
+  if (
+    !replaySnapshotTail(log, stream.entries, tick, {
+      localTick: () => replayTick,
+    })
+  )
+    return undefined;
   log.lastSeq = Math.max(log.lastSeq, lastSeq);
   return log;
 }

@@ -1,5 +1,7 @@
 """Original articulated exosuits and faces. Facing zero looks toward the back wall."""
 
+from dataclasses import dataclass
+
 from ink import (
     DARK,
     GOLD,
@@ -48,57 +50,69 @@ FACING = [
 ]
 
 
+
+@dataclass(frozen=True)
+class Face:
+    skin: str
+    hair: str | None = None
+    feature: str = "bare"
+    ponytail: bool = False
+    band: str | None = None
+
+
+# The exposed heads keep their palette and distinguishing features together.
+FACES = {
+    1: Face("#885d52", "#523646", "pilot"),
+    2: Face("#829966", feature="alien"),
+    3: Face("#b68065", "#433c3c", "pilot"),
+    4: Face("#ba7866"),
+    6: Face("#c08973", "#c39c62", "pilot", ponytail=True),
+    7: Face("#678871", feature="alien"),
+    9: Face("#b1967d", "#b4b5aa", "goggles"),
+    10: Face("#a17158", "#543d42", band=RUST),
+    11: Face("#a68168", "#96785d", band=TEAL),
+    12: Face("#886254", "#48374a", band=VIOLET, ponytail=True),
+    16: Face("#a16852", "#523941", "pilot", ponytail=True),
+}
+REAR_FACING_Y = -0.3
+
+
 def exposed_face(p, face, dx, dy):
-    # Pilots, pirates, the two heavy aliens and the mission scientist share
-    # equipment hardpoints, but retain skin, hair and distinct profiles.
-    skins = {
-        1: "#885d52",
-        2: "#829966",
-        3: "#b68065",
-        4: "#ba7866",
-        6: "#c08973",
-        7: "#678871",
-        9: "#b1967d",
-        10: "#a17158",
-        11: "#a68168",
-        12: "#886254",
-        16: "#a16852",
-    }
-    if face not in skins:
+    profile = FACES.get(face)
+    if profile is None:
         return
-    skin = skins[face]
-    hair = {
-        1: "#523646",
-        3: "#433c3c",
-        6: "#c39c62",
-        9: "#b4b5aa",
-        10: "#543d42",
-        11: "#96785d",
-        12: "#48374a",
-        16: "#523941",
-    }.get(face, skin)
+    hair = profile.hair or profile.skin
+    if dy < REAR_FACING_Y:
+        rear_face(p, profile, hair)
+    else:
+        front_face(p, profile, hair, dx)
+
+
+def rear_face(p, profile, hair):
+    p.poly(
+        [
+            (22, 36),
+            (32, 19),
+            (58, 11),
+            (76, 24),
+            (82, 53),
+            (69, 72),
+            (45, 79),
+            (27, 62),
+        ],
+        hair,
+        INK,
+    )
+    p.line([(28, 36), (37, 24), (53, 20)], mix(hair, ICE, 0.32), 4)
+    if profile.ponytail:
+        p.poly([(36, 52), (48, 53), (44, 74), (29, 92), (24, 80)], hair, INK)
+    if profile.band is not None:
+        p.line([(23, 52), (49, 57), (78, 48)], RUST, 8)
+
+
+def front_face(p, profile, hair, dx):
     x = 50 + dx * 10
-    if dy < -0.3:
-        p.poly(
-            [
-                (22, 36),
-                (32, 19),
-                (58, 11),
-                (76, 24),
-                (82, 53),
-                (69, 72),
-                (45, 79),
-                (27, 62),
-            ],
-            hair,
-            INK,
-        )
-        p.line([(28, 36), (37, 24), (53, 20)], mix(hair, ICE, 0.32), 4)
-        if face in (6, 16, 12):
-            p.poly([(36, 52), (48, 53), (44, 74), (29, 92), (24, 80)], hair, INK)
-        if face in (10, 11, 12):
-            p.line([(23, 52), (49, 57), (78, 48)], RUST, 8)
-        return
+    skin = profile.skin
     p.poly(
         [
             (x - 25, 32),
@@ -147,7 +161,7 @@ def exposed_face(p, face, dx, dy):
             skin,
             INK,
         )
-    if face in (2, 7):
+    if profile.feature == "alien":
         for side in (-1, 1):
             p.poly(
                 [
@@ -162,7 +176,7 @@ def exposed_face(p, face, dx, dy):
             p.poly([(x + side * 16, 78), (x + side * 16, 67), (x + side * 9, 77)], ICE)
         p.line([(x - 22, 44), (x - 6, 52)], DARK, 6)
         p.line([(x + 7, 51), (x + 23, 42)], DARK, 6)
-    elif face in (1, 3, 6, 16):
+    elif profile.feature == "pilot":
         p.poly(
             [
                 (x - 29, 52),
@@ -180,11 +194,11 @@ def exposed_face(p, face, dx, dy):
             INK,
         )
         p.line([(x - 23, 30), (x - 12, 20), (x + 3, 17)], mix(hair, GOLD, 0.55), 5)
-        if face in (6, 16):
+        if profile.ponytail:
             near = x - 24 if dx >= 0 else x + 25
             p.line([(near, 43), (near - 2, 65), (near - 8, 78)], hair, 7)
-    elif face in (10, 11, 12):
-        accent = [RUST, TEAL, VIOLET][face - 10]
+    elif profile.band is not None:
+        accent = profile.band
         p.poly(
             [
                 (x - 29, 46),
@@ -202,7 +216,12 @@ def exposed_face(p, face, dx, dy):
         p.plate(x - 1, 47, x + 16, 61, DARK, 2)
     else:
         p.line([(x - 21, 36), (x - 10, 27), (x + 3, 24)], mix(skin, ICE, 0.55), 5)
-    if face == 9:
+    face_eyes(p, profile, dx, x)
+    p.line([(x - 4, 71), (x + 9, 69)], mix(skin, INK, 0.55), 3)
+
+
+def face_eyes(p, profile, dx, x):
+    if profile.feature == "goggles":
         p.line([(x - 24, 49), (x + 24, 47)], DARK, 5)
         for side in (-1, 1):
             ex = x + side * 13
@@ -210,12 +229,11 @@ def exposed_face(p, face, dx, dy):
             p.oval(ex - 6, 45, ex + 5, 55, "#93c8cb")
     else:
         for side in (-1, 1):
-            if (abs(dx) > 0.9 and side * dx < 0) or (face in (10, 11, 12) and side > 0):
+            if (abs(dx) > 0.9 and side * dx < 0) or (profile.band is not None and side > 0):
                 continue
             ex = x + side * 12 + dx * 4
             p.line([(ex - 3, 52), (ex + 4, 51)], DARK, 4)
-            p.line([(ex, 54), (ex + 2, 54)], GOLD if face in (2, 7) else ICE, 2)
-    p.line([(x - 4, 71), (x + 9, 69)], mix(skin, INK, 0.55), 3)
+            p.line([(ex, 54), (ex + 2, 54)], GOLD if profile.feature == "alien" else ICE, 2)
 
 
 def head(p, face, direction, fire):
@@ -259,7 +277,7 @@ def head(p, face, direction, fire):
     )
     p.line([(24, 42), (37, 30), (48, 28)], mix(shell, ICE, 0.55), 3)
     # A raised brow in profile; the back has a vertical power coupler.
-    if dy < -0.3:
+    if dy < REAR_FACING_Y:
         p.plate(26, 43, 76, 80, mix(shell, DARK, 0.4), 6)
         p.rect(35, 53, 68, 57, INK)
         p.line([(38, 53), (49, 53)], accent, 3)
@@ -371,7 +389,7 @@ def body(p, direction, state, armed):
         INK,
     )
     p.poly([(34, 20), (43, 16), (61, 16), (68, 23), (50, 29)], LIT)
-    if dy < -0.3:
+    if dy < REAR_FACING_Y:
         p.plate(35, 21, 66, 52, DARK, 5)
         for x in (39, 48, 57):
             p.line([(x, 29), (x, 42)], SLATE, 4)

@@ -17,7 +17,12 @@ export const utcDate = (value: number): string =>
 
 export interface PrivateMedia {
   blob(path: string): Promise<string>;
-  error(error: unknown, target: HTMLElement, retry: () => void): void;
+  error(
+    error: unknown,
+    target: HTMLElement,
+    retry: () => void,
+    current?: () => boolean,
+  ): void;
   active(): boolean;
   release(url: string): void;
   onDispose(callback: () => void): void;
@@ -221,6 +226,7 @@ export function recordingDetail(
   let playRequest = 0;
   let activeAudio: string | undefined;
   const seek = (offset: number) => {
+    const current = ++playRequest;
     const chunk = detail.segments.find(
       (item) => offset >= item.startMs && offset < item.endMs,
     );
@@ -229,12 +235,14 @@ export function recordingDetail(
         "Audio is unavailable at this timestamp. It may not have uploaded or may have expired.";
       return;
     }
-    const current = ++playRequest;
+    const audioUrl = chunk.audioUrl;
+    const selected = () => media.active() && current === playRequest;
     playerStatus.textContent = `Loading audio at ${timestamp(offset)}…`;
     const load = async () => {
+      if (!selected()) return;
       try {
-        const url = await media.blob(chunk.audioUrl!);
-        if (!media.active() || current !== playRequest) {
+        const url = await media.blob(audioUrl);
+        if (!selected()) {
           media.release(url);
           return;
         }
@@ -243,22 +251,30 @@ export function recordingDetail(
         activeAudio = url;
         audio.src = url;
         audio.onloadedmetadata = () => {
-          if (current !== playRequest) return;
+          if (!selected()) return;
           audio.currentTime = Math.max(0, (offset - chunk.startMs) / 1000);
           void audio.play().catch(() => {
-            playerStatus.textContent = "Audio is ready. Press play to listen.";
+            if (selected())
+              playerStatus.textContent =
+                "Audio is ready. Press play to listen.";
           });
         };
         audio.onerror = () => {
-          playerStatus.textContent =
-            "This audio chunk could not be played. Choose another timestamp or refresh.";
+          if (selected())
+            playerStatus.textContent =
+              "This audio chunk could not be played. Choose another timestamp or refresh.";
         };
         playerStatus.textContent = `Audio chunk ${timestamp(chunk.startMs)}–${timestamp(chunk.endMs)}. Player time is relative to this chunk.`;
       } catch (error) {
-        if (media.active() && current === playRequest)
-          media.error(error, playerStatus, () => {
-            void load();
-          });
+        if (selected())
+          media.error(
+            error,
+            playerStatus,
+            () => {
+              void load();
+            },
+            selected,
+          );
       }
     };
     void load();

@@ -533,6 +533,61 @@ export function guestNick(random: () => number): string {
 
 export const CTCP_VERSION_REPLY = "mIRC-style client for FuseOS (fusegames.ai)";
 
+function ctcpReply(
+  command: string,
+  args: string,
+  now: number,
+): string | undefined {
+  switch (command) {
+    case "VERSION":
+      return formatCtcp(command, CTCP_VERSION_REPLY);
+    case "PING":
+      return formatCtcp(command, args);
+    case "TIME":
+      return formatCtcp(command, new Date(now).toString());
+    case "CLIENTINFO":
+      return formatCtcp(command, "ACTION CLIENTINFO PING TIME VERSION");
+    default:
+      return undefined;
+  }
+}
+
+function onCtcp(
+  state: SessionState,
+  ctcp: NonNullable<ReturnType<typeof parseCtcp>>,
+  {
+    from,
+    time,
+    toChannel,
+    notice,
+  }: { from: string; time: number; toChannel: boolean; notice: boolean },
+  now: number,
+): Reduction {
+  if (notice)
+    return {
+      state: addActiveLine(
+        state,
+        "ctcp",
+        `[${from} ${ctcp.command} reply]: ${ctcp.args}`,
+        time,
+      ),
+      send: [],
+    };
+  const shown = addLine(
+    state,
+    STATUS_ID,
+    "ctcp",
+    `[${from} ${ctcp.command}]${ctcp.args ? ` ${ctcp.args}` : ""}`,
+    time,
+  );
+  // Replies to a channel would make every connected client answer at once.
+  const reply = ctcpReply(ctcp.command, ctcp.args, now);
+  return {
+    state: shown,
+    send: reply && !toChannel && from ? [line("NOTICE", from, reply)] : [],
+  };
+}
+
 function onPrivmsg(
   state: SessionState,
   message: IrcMessage,
@@ -546,40 +601,8 @@ function onPrivmsg(
   const toChannel = isChannelName(target, state.support);
   const serverNotice = !message.prefix?.user && !message.prefix?.host;
 
-  if (ctcp && ctcp.command !== "ACTION") {
-    if (notice)
-      return {
-        state: addActiveLine(
-          state,
-          "ctcp",
-          `[${from} ${ctcp.command} reply]: ${ctcp.args}`,
-          time,
-        ),
-        send: [],
-      };
-    const shown = addLine(
-      state,
-      STATUS_ID,
-      "ctcp",
-      `[${from} ${ctcp.command}]${ctcp.args ? ` ${ctcp.args}` : ""}`,
-      time,
-    );
-    const reply =
-      ctcp.command === "VERSION"
-        ? formatCtcp("VERSION", CTCP_VERSION_REPLY)
-        : ctcp.command === "PING"
-          ? formatCtcp("PING", ctcp.args)
-          : ctcp.command === "TIME"
-            ? formatCtcp("TIME", new Date(now).toString())
-            : ctcp.command === "CLIENTINFO"
-              ? formatCtcp("CLIENTINFO", "ACTION CLIENTINFO PING TIME VERSION")
-              : undefined;
-    // Never answer a channel-wide CTCP (it makes the whole channel flood the sender).
-    return {
-      state: shown,
-      send: reply && !toChannel && from ? [line("NOTICE", from, reply)] : [],
-    };
-  }
+  if (ctcp && ctcp.command !== "ACTION")
+    return onCtcp(state, ctcp, { from, time, toChannel, notice }, now);
 
   if (notice) {
     if (state.phase !== "online" || serverNotice || target === "*")
@@ -732,12 +755,12 @@ function onNick(
   const self = ircEquals(oldNick, state.nick);
   let next: SessionState = self ? { ...state, nick: newNick } : state;
   for (const window of state.windows) {
+    if (window.kind === "list") continue;
     const inChannel =
       window.kind === "channel" &&
       window.members.some((m) => ircEquals(m.nick, oldNick));
     const isQuery = window.kind === "query" && ircEquals(window.name, oldNick);
     if (!self && !inChannel && !isQuery) continue;
-    if (window.kind === "status" && !self) continue;
     if (inChannel)
       next = updateWindow(next, window.id, (w) =>
         setMembers(
@@ -759,7 +782,6 @@ function onNick(
         activeId: next.activeId === window.id ? newId : next.activeId,
       };
     }
-    if (window.kind === "list") continue;
     next = addLine(
       next,
       isQuery ? queryId(newNick) : window.id,
@@ -899,6 +921,230 @@ function onCap(state: SessionState, message: IrcMessage): Reduction {
   return { state, send: [] };
 }
 
+type NumericLine = {
+  target: "active" | "status";
+  kind: LineKind;
+  format(params: readonly string[]): string;
+};
+
+/** Replies that only append a line. State changes and outgoing commands are handled below. */
+const LINE_REPLIES: readonly (NumericLine & { codes: readonly string[] })[] = [
+  {
+    codes: ["375", "372", "376"],
+    target: "status",
+    kind: "motd",
+    format: (params) => params[1] ?? "",
+  },
+  {
+    codes: ["306"],
+    target: "active",
+    kind: "info",
+    format: (params) => `* ${params[1] ?? ""}`,
+  },
+  {
+    codes: ["311"],
+    target: "active",
+    kind: "whois",
+    format: ([, nick = "", user = "", host = "", , realname = ""]) =>
+      `${nick} is ${user}@${host} * ${realname}`,
+  },
+  {
+    codes: ["312"],
+    target: "active",
+    kind: "whois",
+    format: ([, nick = "", server = "", info = ""]) =>
+      `${nick} using ${server} ${info}`,
+  },
+  {
+    codes: ["313", "330", "338", "378", "671"],
+    target: "active",
+    kind: "whois",
+    format: (params) => params.slice(1).join(" "),
+  },
+  {
+    codes: ["317"],
+    target: "active",
+    kind: "whois",
+    format([, nick = "", idle = "0", signon]) {
+      const since =
+        signon && /^\d+$/.test(signon)
+          ? `, signon: ${new Date(Number(signon) * 1000).toUTCString()}`
+          : "";
+      return `${nick} has been idle ${formatDuration(Number(idle))}${since}`;
+    },
+  },
+  {
+    codes: ["318"],
+    target: "active",
+    kind: "whois",
+    format: (params) => `${params[1] ?? ""} End of /WHOIS list.`,
+  },
+  {
+    codes: ["319"],
+    target: "active",
+    kind: "whois",
+    format: (params) => `${params[1] ?? ""} on ${params[2] ?? ""}`,
+  },
+  {
+    codes: [
+      "401",
+      "403",
+      "404",
+      "406",
+      "441",
+      "442",
+      "443",
+      "471",
+      "473",
+      "474",
+      "475",
+      "477",
+      "482",
+    ],
+    target: "active",
+    kind: "error",
+    format: (params) => `* ${params.slice(1).join(" ")}`,
+  },
+  {
+    codes: ["421"],
+    target: "active",
+    kind: "error",
+    format: (params) => `* ${params[1] ?? ""}: Unknown command`,
+  },
+  {
+    codes: ["900", "903"],
+    target: "status",
+    kind: "info",
+    format: (params) => params[params.length - 1] ?? "",
+  },
+];
+const NUMERIC_LINES = new Map<string, NumericLine>(
+  LINE_REPLIES.flatMap((reply) =>
+    reply.codes.map((code) => [code, reply] as const),
+  ),
+);
+
+type NumericState = (
+  state: SessionState,
+  params: readonly string[],
+  time: number,
+) => SessionState;
+
+const NUMERIC_STATE = new Map<string, NumericState>([
+  // LIST starts a refresh, receives rows, and marks it complete.
+  [
+    "321",
+    (state) =>
+      ensureWindow(
+        { ...state, list: { entries: [], demo: false, complete: false } },
+        "list",
+        "Channels List",
+      ),
+  ],
+  [
+    "322",
+    (state, params) => {
+      const [, channel = "", users = "0", topic = ""] = params;
+      if (state.list.entries.length >= MAX_LIST_ENTRIES) return state;
+      const next = ensureWindow(state, "list", "Channels List");
+      return {
+        ...next,
+        list: {
+          ...next.list,
+          demo: false,
+          entries: [
+            ...next.list.entries,
+            { channel, users: Number(users) || 0, topic },
+          ],
+        },
+      };
+    },
+  ],
+  ["323", (state) => ({ ...state, list: { ...state.list, complete: true } })],
+  // Channel metadata and the multi-line NAMES reply.
+  [
+    "324",
+    (state, params) => {
+      const [, channel = "", modes = "", ...rest] = params;
+      const id = channelId(channel);
+      const changes = parseModeChanges(modes, rest, state.support);
+      return updateWindow(state, id, (window) =>
+        applyChannelModes({ ...window, modes: "" }, changes, state.support),
+      );
+    },
+  ],
+  ["329", (state) => state],
+  [
+    "331",
+    (state, params, time) =>
+      addLine(
+        state,
+        channelId(params[1] ?? ""),
+        "topic",
+        "* No topic is set",
+        time,
+      ),
+  ],
+  [
+    "332",
+    (state, params, time) => {
+      const [, channel = "", topic = ""] = params;
+      const id = channelId(channel);
+      const next = updateWindow(state, id, (window) => ({ ...window, topic }));
+      return addLine(next, id, "topic", `* Topic is '${topic}'`, time);
+    },
+  ],
+  [
+    "333",
+    (state, params, time) => {
+      const [, channel = "", setter = "", when] = params;
+      const date =
+        when && /^\d+$/.test(when)
+          ? ` on ${new Date(Number(when) * 1000).toUTCString()}`
+          : "";
+      return addLine(
+        state,
+        channelId(channel),
+        "topic",
+        `* Set by ${setter.split("!")[0] ?? setter}${date}`,
+        time,
+      );
+    },
+  ],
+  [
+    "353",
+    (state, params) => {
+      const channel = params[2] ?? "";
+      const id = channelId(channel);
+      const entries = (params[3] ?? "")
+        .split(" ")
+        .filter((entry) => entry.length > 0)
+        .map((entry) => parseNamesEntry(entry, state.support));
+      return {
+        ...state,
+        pendingNames: {
+          ...state.pendingNames,
+          [id]: [...(state.pendingNames[id] ?? []), ...entries],
+        },
+      };
+    },
+  ],
+  [
+    "366",
+    (state, params) => {
+      const id = channelId(params[1] ?? "");
+      const pending = state.pendingNames[id];
+      const { [id]: _done, ...rest } = state.pendingNames;
+      const next = pending
+        ? updateWindow(state, id, (window) =>
+            setMembers(window, [...pending], state.support),
+          )
+        : state;
+      return { ...next, pendingNames: rest };
+    },
+  ],
+]);
+
 function onNumeric(
   state: SessionState,
   message: IrcMessage,
@@ -912,6 +1158,13 @@ function onNumeric(
     addLine(s, STATUS_ID, kind, value, time);
   const active = (kind: LineKind, value: string, s = state) =>
     addActiveLine(s, kind, value, time);
+  const reply = NUMERIC_LINES.get(message.command);
+  if (reply) {
+    const append = reply.target === "status" ? status : active;
+    return { state: append(reply.kind, reply.format(params)), send: [] };
+  }
+  const fold = NUMERIC_STATE.get(message.command);
+  if (fold) return { state: fold(state, params, time), send: [] };
   switch (message.command) {
     case "001": {
       const nick = params[0] ?? state.nick;
@@ -929,10 +1182,6 @@ function onNumeric(
       const support = parseISupport(state.support, params.slice(1, -1));
       return { state: status("info", text, { ...state, support }), send: [] };
     }
-    case "375":
-    case "372":
-    case "376":
-      return { state: status("motd", params[1] ?? ""), send: [] };
     case "221":
       return {
         state: { ...state, userModes: (params[1] ?? "").replace(/^\+/, "") },
@@ -960,184 +1209,6 @@ function onNumeric(
         }),
         send: [],
       };
-    case "306":
-      return { state: active("info", `* ${params[1] ?? ""}`), send: [] };
-    case "311": {
-      const [, nick = "", user = "", host = "", , realname = ""] = params;
-      return {
-        state: active("whois", `${nick} is ${user}@${host} * ${realname}`),
-        send: [],
-      };
-    }
-    case "312": {
-      const [, nick = "", server = "", info = ""] = params;
-      return {
-        state: active("whois", `${nick} using ${server} ${info}`),
-        send: [],
-      };
-    }
-    case "313":
-    case "330":
-    case "338":
-    case "378":
-    case "671":
-      return { state: active("whois", params.slice(1).join(" ")), send: [] };
-    case "317": {
-      const [, nick = "", idle = "0", signon] = params;
-      const since =
-        signon && /^\d+$/.test(signon)
-          ? `, signon: ${new Date(Number(signon) * 1000).toUTCString()}`
-          : "";
-      return {
-        state: active(
-          "whois",
-          `${nick} has been idle ${formatDuration(Number(idle))}${since}`,
-        ),
-        send: [],
-      };
-    }
-    case "318":
-      return {
-        state: active("whois", `${params[1] ?? ""} End of /WHOIS list.`),
-        send: [],
-      };
-    case "319":
-      return {
-        state: active("whois", `${params[1] ?? ""} on ${params[2] ?? ""}`),
-        send: [],
-      };
-    case "321": {
-      const next = ensureWindow(
-        { ...state, list: { entries: [], demo: false, complete: false } },
-        "list",
-        "Channels List",
-      );
-      return { state: next, send: [] };
-    }
-    case "322": {
-      const [, channel = "", users = "0", topic = ""] = params;
-      if (state.list.entries.length >= MAX_LIST_ENTRIES)
-        return { state, send: [] };
-      const next = ensureWindow(state, "list", "Channels List");
-      return {
-        state: {
-          ...next,
-          list: {
-            ...next.list,
-            demo: false,
-            entries: [
-              ...next.list.entries,
-              { channel, users: Number(users) || 0, topic },
-            ],
-          },
-        },
-        send: [],
-      };
-    }
-    case "323":
-      return {
-        state: { ...state, list: { ...state.list, complete: true } },
-        send: [],
-      };
-    case "324": {
-      const [, channel = "", modes = "", ...rest] = params;
-      const id = channelId(channel);
-      const changes = parseModeChanges(modes, rest, state.support);
-      const next = updateWindow(state, id, (window) =>
-        applyChannelModes({ ...window, modes: "" }, changes, state.support),
-      );
-      return { state: next, send: [] };
-    }
-    case "329":
-      return { state, send: [] };
-    case "331":
-      return {
-        state: addLine(
-          state,
-          channelId(params[1] ?? ""),
-          "topic",
-          "* No topic is set",
-          time,
-        ),
-        send: [],
-      };
-    case "332": {
-      const [, channel = "", topic = ""] = params;
-      const id = channelId(channel);
-      const next = updateWindow(state, id, (window) => ({ ...window, topic }));
-      return {
-        state: addLine(next, id, "topic", `* Topic is '${topic}'`, time),
-        send: [],
-      };
-    }
-    case "333": {
-      const [, channel = "", setter = "", when] = params;
-      const date =
-        when && /^\d+$/.test(when)
-          ? ` on ${new Date(Number(when) * 1000).toUTCString()}`
-          : "";
-      return {
-        state: addLine(
-          state,
-          channelId(channel),
-          "topic",
-          `* Set by ${setter.split("!")[0] ?? setter}${date}`,
-          time,
-        ),
-        send: [],
-      };
-    }
-    case "353": {
-      const channel = params[2] ?? "";
-      const id = channelId(channel);
-      const entries = (params[3] ?? "")
-        .split(" ")
-        .filter((entry) => entry.length > 0)
-        .map((entry) => parseNamesEntry(entry, state.support));
-      return {
-        state: {
-          ...state,
-          pendingNames: {
-            ...state.pendingNames,
-            [id]: [...(state.pendingNames[id] ?? []), ...entries],
-          },
-        },
-        send: [],
-      };
-    }
-    case "366": {
-      const id = channelId(params[1] ?? "");
-      const pending = state.pendingNames[id];
-      const { [id]: _done, ...rest } = state.pendingNames;
-      const next = pending
-        ? updateWindow(state, id, (window) =>
-            setMembers(window, [...pending], state.support),
-          )
-        : state;
-      return { state: { ...next, pendingNames: rest }, send: [] };
-    }
-    case "401":
-    case "403":
-    case "404":
-    case "406":
-    case "441":
-    case "442":
-    case "443":
-    case "471":
-    case "473":
-    case "474":
-    case "475":
-    case "477":
-    case "482":
-      return {
-        state: active("error", `* ${params.slice(1).join(" ")}`),
-        send: [],
-      };
-    case "421":
-      return {
-        state: active("error", `* ${params[1] ?? ""}: Unknown command`),
-        send: [],
-      };
     case "432":
     case "433":
     case "436": {
@@ -1163,12 +1234,6 @@ function onNumeric(
         send: [],
       };
     }
-    case "900":
-    case "903":
-      return {
-        state: status("info", params[params.length - 1] ?? ""),
-        send: [],
-      };
     default: {
       // Errors (4xx/5xx) go where the user is looking; the rest of the welcome burst is Status.
       const code = Number(message.command);

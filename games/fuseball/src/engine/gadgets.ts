@@ -1,21 +1,14 @@
-import {
-  apart,
-  carried,
-  landLedges,
-  resolveSolids,
-  settle,
-  type Body,
-  type Touch,
-} from "./collide.js";
+import { advanceBall } from "./ball-flight.js";
+import { apart, carried, resolveSolids, settle, type Body } from "./collide.js";
 import { SUB, abs, clamp, div, isqrt, toward } from "./math.js";
 import {
   barrierBoxesOf,
   boxesAt,
   gooZonesOf,
-  ledgeBoxesOf,
   streamZonesOf,
   type Box,
   type MapDef,
+  type Pt,
   type Rect,
 } from "./maps.js";
 import * as T from "./tuning.js";
@@ -66,6 +59,89 @@ const within = (ball: Body, zones: readonly Rect[]): boolean =>
       ball.y < zone.y + zone.h,
   );
 
+function meetField(
+  ball: Body,
+  box: Box,
+  map: MapDef,
+  state: BarrierState,
+): number {
+  if (state.timer > 0) state.timer--;
+  if (state.left === 0) return 0;
+  const touch = resolveSolids(ball, T.BALL_R, [box], map, 1, 1);
+  if (!touch.hit) return 0;
+  // Thrown back along the face it struck, never slower than the field's own kick.
+  const { dx, dy } = apart(ball.x, ball.y, box.cx, box.cy, map),
+    ex = dx - clamp(dx, -box.hw, box.hw),
+    ey = dy - clamp(dy, -box.hh, box.hh);
+  if (abs(ex) >= abs(ey)) {
+    const side = ex >= 0 ? 1 : -1;
+    if (ball.vx * side < T.FIELD_KICK) ball.vx = side * T.FIELD_KICK;
+  } else {
+    const side = ey > 0 ? 1 : -1;
+    if (ball.vy * side < T.FIELD_KICK) ball.vy = side * T.FIELD_KICK;
+  }
+  // A strike wears it down, but not twice in one breath: a ball held against it is one strike, not many.
+  if (state.timer === 0) {
+    state.left--;
+    state.timer = T.FIELD_COOL_STEPS;
+  }
+  return 1;
+}
+
+function meetGate(
+  ball: Body,
+  box: Box,
+  map: MapDef,
+  state: BarrierState,
+): number {
+  if (state.timer > 0) {
+    // Open. It does not shut on the ball: the last step waits until the ball is out of the doorway.
+    if (state.timer > 1 || !overlaps(ball, box, map)) state.timer--;
+    return 0;
+  }
+  const touch = resolveSolids(
+    ball,
+    T.BALL_R,
+    [box],
+    map,
+    T.BALL_BOUNCE_NUM,
+    T.BALL_BOUNCE_DEN,
+  );
+  if (!touch.hit) return 0;
+  ball.vx -= div(ball.vx, T.BALL_SCRUB);
+  ball.vy -= div(ball.vy, T.BALL_SCRUB);
+  // A shut door is tacky on top: a ball rolling onto it is held there, where a lift or a stamp can knock it in.
+  if (
+    touch.impact < T.GATE_KNOCK &&
+    abs(apart(ball.x, ball.y, box.cx, box.cy, map).dx) < box.hw
+  )
+    ball.vx -= div(ball.vx, T.GATE_GRIP);
+  if (abs(ball.vx) < T.BALL_SCRUB) ball.vx = 0;
+  if (abs(ball.vy) < T.BALL_SCRUB) ball.vy = 0;
+  // Knocked hard enough, it opens. A ball rolled onto it or lying on it does nothing.
+  if (touch.impact >= T.GATE_KNOCK) state.timer = T.GATE_OPEN_STEPS;
+  return Number(touch.impact >= T.BOUNCE_FX);
+}
+
+/** A ball moving into an end exits the other end with reduced speed. */
+function enterPortal(
+  ball: Body,
+  from: Pt,
+  to: Pt,
+  radius: number,
+  map: MapDef,
+): boolean {
+  const { dx, dy } = apart(ball.x, ball.y, from.x * SUB, from.y * SUB, map),
+    r = radius * SUB;
+  if (dx * dx + dy * dy >= r * r) return false;
+  if (ball.vx * dx + ball.vy * dy >= 0) return false;
+  ball.x = to.x * SUB;
+  ball.y = to.y * SUB;
+  ball.vx = div(ball.vx * T.PORTAL_KEEP_NUM, T.PORTAL_KEEP_DEN);
+  ball.vy = div(ball.vy * T.PORTAL_KEEP_NUM, T.PORTAL_KEEP_DEN);
+  return true;
+}
+
 /**
  * One step of the ball against the gadgets, after the solids have had it: it may be thrown back, bumped or carried
  * through a portal, and the barriers' state moves on. Returns how many of those were worth a sound.
@@ -91,57 +167,10 @@ export function meetGadgets(
     const barrier = map.barriers[i]!,
       state = barriers[i]!,
       box = boxes[i]!;
-    if (barrier.kind === "field") {
-      if (state.timer > 0) state.timer--;
-      if (state.left === 0) continue;
-      const touch = resolveSolids(ball, T.BALL_R, [box], map, 1, 1);
-      if (!touch.hit) continue;
-      // Thrown back along the face it struck, never slower than the field's own kick.
-      const { dx, dy } = apart(ball.x, ball.y, box.cx, box.cy, map),
-        ex = dx - clamp(dx, -box.hw, box.hw),
-        ey = dy - clamp(dy, -box.hh, box.hh);
-      if (abs(ex) >= abs(ey)) {
-        const side = ex >= 0 ? 1 : -1;
-        if (ball.vx * side < T.FIELD_KICK) ball.vx = side * T.FIELD_KICK;
-      } else {
-        const side = ey > 0 ? 1 : -1;
-        if (ball.vy * side < T.FIELD_KICK) ball.vy = side * T.FIELD_KICK;
-      }
-      struck++;
-      // A strike wears it down, but not twice in one breath: a ball held against it is one strike, not many.
-      if (state.timer === 0) {
-        state.left--;
-        state.timer = T.FIELD_COOL_STEPS;
-      }
-      continue;
-    }
-    if (state.timer > 0) {
-      // Open. It does not shut on the ball: the last step waits until the ball is out of the doorway.
-      if (state.timer > 1 || !overlaps(ball, box, map)) state.timer--;
-      continue;
-    }
-    const touch: Touch = resolveSolids(
-      ball,
-      T.BALL_R,
-      [box],
-      map,
-      T.BALL_BOUNCE_NUM,
-      T.BALL_BOUNCE_DEN,
-    );
-    if (!touch.hit) continue;
-    ball.vx -= div(ball.vx, T.BALL_SCRUB);
-    ball.vy -= div(ball.vy, T.BALL_SCRUB);
-    // A shut door is tacky on top: a ball rolling onto it is held there, where a lift or a stamp can knock it in.
-    if (
-      touch.impact < T.GATE_KNOCK &&
-      abs(apart(ball.x, ball.y, box.cx, box.cy, map).dx) < box.hw
-    )
-      ball.vx -= div(ball.vx, T.GATE_GRIP);
-    if (abs(ball.vx) < T.BALL_SCRUB) ball.vx = 0;
-    if (abs(ball.vy) < T.BALL_SCRUB) ball.vy = 0;
-    if (touch.impact >= T.BOUNCE_FX) struck++;
-    // Knocked hard enough, it opens. A ball rolled onto it or lying on it does nothing.
-    if (touch.impact >= T.GATE_KNOCK) state.timer = T.GATE_OPEN_STEPS;
+    struck +=
+      barrier.kind === "field"
+        ? meetField(ball, box, map, state)
+        : meetGate(ball, box, map, state);
   }
 
   for (const bumper of map.bumpers) {
@@ -164,25 +193,10 @@ export function meetGadgets(
     struck++;
   }
 
-  // A ball flying into a portal comes out of the pair's other end; one flying out of an end is left alone, so
-  // what has just come through goes on its way. The trip costs it half its speed: a portal that lifts the ball
-  // gives it height for nothing, and without a price a ball could go round and round for ever. One portal a step.
-  portals: for (const portal of map.portals)
-    for (const [from, to] of [
-      [portal.a, portal.b],
-      [portal.b, portal.a],
-    ] as const) {
-      const { dx, dy } = apart(ball.x, ball.y, from.x * SUB, from.y * SUB, map),
-        r = portal.r * SUB;
-      if (dx * dx + dy * dy >= r * r) continue;
-      if (ball.vx * dx + ball.vy * dy >= 0) continue;
-      ball.x = to.x * SUB;
-      ball.y = to.y * SUB;
-      ball.vx = div(ball.vx * T.PORTAL_KEEP_NUM, T.PORTAL_KEEP_DEN);
-      ball.vy = div(ball.vy * T.PORTAL_KEEP_NUM, T.PORTAL_KEEP_DEN);
-      struck++;
-      break portals;
-    }
+  // At most one portal per step, checking each pair's first end before its second.
+  for (const { a, b, r } of map.portals)
+    if (enterPortal(ball, a, b, r, map) || enterPortal(ball, b, a, r, map))
+      return struck + 1;
   return struck;
 }
 
@@ -203,38 +217,7 @@ export function drift(
   snapAtRest = true,
 ): { x: number; y: number } {
   const by = carried(ball, T.BALL_R, map, step, T.CARRY_SLOP);
-  ball.vy += T.BALL_GRAVITY;
-  ball.vx = clamp(ball.vx, -T.BALL_MAX, T.BALL_MAX);
-  ball.vy = clamp(ball.vy, -T.BALL_MAX, T.BALL_MAX);
-  ball.x += ball.vx;
-  ball.y += ball.vy;
-  const landed: Touch = { hit: false, ground: false, impact: 0 };
-  landLedges(
-    ball,
-    T.BALL_R,
-    ledgeBoxesOf(map),
-    map,
-    T.BALL_BOUNCE_NUM,
-    T.BALL_BOUNCE_DEN,
-    T.LEDGE_SLOP,
-    landed,
-  );
-  const touch = resolveSolids(
-    ball,
-    T.BALL_R,
-    boxesAt(map, step),
-    map,
-    T.BALL_BOUNCE_NUM,
-    T.BALL_BOUNCE_DEN,
-  );
-  if (touch.hit || landed.hit) {
-    ball.vx -= div(ball.vx, T.BALL_SCRUB);
-    ball.vy -= div(ball.vy, T.BALL_SCRUB);
-    if (snapAtRest) {
-      if (abs(ball.vx) < T.BALL_SCRUB) ball.vx = 0;
-      if (abs(ball.vy) < T.BALL_SCRUB) ball.vy = 0;
-    }
-  }
+  advanceBall(ball, map, boxesAt(map, step), snapAtRest);
   meetGadgets(map, barriers, ball);
   settle(ball, T.BALL_R, map);
   return by;

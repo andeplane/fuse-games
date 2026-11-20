@@ -160,3 +160,149 @@ export function createCorrectionSmoother(
     },
   };
 }
+
+export interface CorrectionFrame {
+  scope: string;
+  revision: number;
+  tick: number;
+  nowMs: number;
+}
+
+/** Start a correction frame. A new scope clears positions while the log markers still track the last frame. */
+export function createCorrectionFrames(smoother: CorrectionSmoother) {
+  let scope = "";
+  let revision: number | undefined;
+  let tick = -1;
+  return (frame: CorrectionFrame) => {
+    if (frame.scope !== scope) {
+      scope = frame.scope;
+      smoother.reset();
+    }
+    smoother.begin(frame.nowMs);
+    const rolled = revision !== undefined && frame.revision !== revision;
+    const stepped = frame.tick !== tick;
+    revision = frame.revision;
+    tick = frame.tick;
+    return { rolled, stepped };
+  };
+}
+
+type HeldInputs<Key extends string | number> = Readonly<
+  Partial<Record<Key, number>>
+>;
+
+/** A held input can explain a correction only when the folded tick changes. An absent input is neutral. */
+export function createHeldInputCorrectionFrames<
+  Key extends string | number,
+  Inputs extends HeldInputs<Key> = HeldInputs<Key>,
+>(
+  smoother: CorrectionSmoother,
+  empty: Inputs,
+  snapshot: (held: Inputs) => Inputs = (held) => held,
+) {
+  const begin = createCorrectionFrames(smoother);
+  let logged = empty;
+  return (frame: CorrectionFrame, held: Inputs) => {
+    const { rolled, stepped } = begin(frame);
+    const before = logged;
+    logged = snapshot(held);
+    return {
+      rolled,
+      changed: (key: Key) => stepped && (before[key] ?? 0) !== (held[key] ?? 0),
+    };
+  };
+}
+
+/** Reuse deterministic bot inputs across presentation frames, bounded by each game's working set. */
+export function memoizeLeadInput<Args extends unknown[]>(
+  bot: (...args: Args) => number,
+  keyFor: (revision: number, ...args: Args) => string,
+  capacity: number,
+): (revision: number) => (...args: Args) => number {
+  const cache = new Map<string, number>();
+  return (revision) =>
+    (...args) => {
+      const key = keyFor(revision, ...args);
+      const known = cache.get(key);
+      if (known !== undefined) return known;
+      if (cache.size >= capacity) cache.clear();
+      const bits = bot(...args);
+      cache.set(key, bits);
+      return bits;
+    };
+}
+
+const CUE_COUNTER_RANGE = 0x10000;
+
+/** A 16-bit effect counter's forward movement, with rollback and an unchanged count both yielding zero. */
+export function gainedCueCount(was: number, now: number): number {
+  const moved = (now - was + CUE_COUNTER_RANGE) % CUE_COUNTER_RANGE;
+  return moved < CUE_COUNTER_RANGE / 2 ? moved : 0;
+}
+
+interface PresentationCue extends Point {
+  kind: string;
+  slot: number;
+  at: number;
+}
+
+type CueFrame<Fx> = { seed: number; step: number; fx: readonly Fx[] };
+
+/** Step and pixel tolerances used to identify a predicted effect after a correction. */
+export const TWIN_STEPS = 6,
+  TWIN_PX = 20;
+
+/** Suppress a shifted duplicate of an effect already drawn. Reset the history when the round changes. */
+export function createCueLatch<
+  Fx extends PresentationCue,
+  View extends CueFrame<Fx>,
+>(
+  effectKey: (effect: Fx) => string,
+  replaceFx: (view: View, fx: Fx[]) => View,
+): (view: View) => View {
+  let seed = -1,
+    shown: Fx[] = [],
+    kept = new Set<string>(),
+    dropped = new Set<string>();
+  return (view) => {
+    if (view.seed !== seed) {
+      seed = view.seed;
+      shown = [];
+      kept = new Set();
+      dropped = new Set();
+    }
+    if (!view.fx.length) return view;
+    let same = true;
+    const fresh: Fx[] = [];
+    const fx = view.fx.filter((each) => {
+      const key = effectKey(each);
+      if (kept.has(key)) return true;
+      const twin =
+        dropped.has(key) ||
+        shown.some(
+          (other) =>
+            other.kind === each.kind &&
+            other.slot === each.slot &&
+            Math.abs(other.at - each.at) <= TWIN_STEPS &&
+            Math.hypot(other.x - each.x, other.y - each.y) <= TWIN_PX,
+        );
+      if (twin) {
+        dropped.add(key);
+        same = false;
+        return false;
+      }
+      kept.add(key);
+      fresh.push(each);
+      return true;
+    });
+    // Only an effect from an earlier frame has twins: two sparks that are new together are two sparks.
+    shown.push(...fresh);
+    // Effects live under a second: what was shown long ago can neither return nor have a twin.
+    if (shown.length > 200) {
+      shown = shown.filter((each) => view.step - each.at <= 120);
+      kept = new Set(shown.map(effectKey));
+      dropped = new Set([...dropped].slice(-200));
+    }
+    return same ? view : replaceFx(view, fx);
+  };
+}

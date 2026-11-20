@@ -1,0 +1,130 @@
+.fuseParticles-page {
+  background: #101615;
+}
+.fuseParticles-top {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding-inline: clamp(0.5rem, 2vw, 1.5rem);
+}
+.fuseParticles-brand {
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--fui-font-display, monospace);
+  font-size: clamp(0.63rem, 1.4vw, 0.9rem);
+  font-weight: 750;
+  margin-inline-end: auto;
+}
+.fuseParticles-status {
+  font-size: 0.75rem;
+}
+.fuseParticles-room {
+  max-width: 100%;
+}
+.fp-match {
+  width: min(100% - 1rem, 88rem);
+  margin: calc(76px + env(safe-area-inset-top)) auto 2rem;
+}
+.fuseParticles-page:has(.fp-match:not([hidden])) .fui-top-bar::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: calc(68px + env(safe-area-inset-top));
+  background: #101615;
+  z-index: -1;
+}
+@media (max-height: 540px) and (min-width: 640px) {
+  .fp-match:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
+    align-items: start;
+    gap: 0.5rem;
+  }
+  .fp-match .fp-commands {
+    margin-block-start: 0;
+  }
+}
+.fp-map-tools,
+.fp-command-bar,
+.fp-command-sites,
+.fp-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.fp-map-tools {
+  margin-block-end: 0.6rem;
+}
+.fp-map-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.fp-commands {
+  background: #19221e;
+  border: 1px solid #43524a;
+  margin-block-start: 0.65rem;
+}
+.fp-command-bar {
+  padding: 0.45rem;
+  border-bottom: 1px solid #43524a;
+}
+.fp-command-bar button {
+  flex: 1 1 auto;
+}
+.fp-commands button[aria-pressed="true"] {
+  color: #baf7dc;
+  border-color: #78d6b2;
+  background: #23392e;
+}
+.fp-command-body {
+  padding: 0.55rem;
+}
+.fp-command-sites:not([hidden]) {
+  margin-block-end: 0.5rem;
+}
+.fp-command-note {
+  font-size: 0.82rem;
+  color: #f0c195;
+  margin: 0;
+}
+.fp-command-note:not(:empty) {
+  margin-block-start: 0.5rem;
+}
+.fp-command-actions button[aria-disabled="true"] {
+  color: #abb5aa;
+  border-color: #4c584e;
+}
+@media (max-width: 38rem) {
+  .fuseParticles-top {
+    gap: 0.35rem;
+    padding-inline: 0.3rem;
+  }
+  .fuseParticles-status {
+    display: none;
+  }
+  .fp-command-bar {
+    gap: 0.28rem;
+  }
+  .fp-command-bar button {
+    padding-inline: 0.45rem;
+    font-size: 0.75rem;
+  }
+  .fp-command-actions button {
+    flex: 1 1 8rem;
+  }
+}
+.fp-attract {
+  width: 100%;
+  height: 100%;
+}
+.fp-attract .fp-arena__hud,
+.fp-attract .fp-arena__stats {
+  display: none;
+}
+.fp-attract canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

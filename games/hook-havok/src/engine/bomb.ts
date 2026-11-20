@@ -217,24 +217,47 @@ export function bombSpawn(
 }
 /** Bombs below this line (subunits) fizzle. */
 export const bombFloor = (map: MapId) => (MAPS[map].height + BOMB_DROP) * S;
+type BombAir = Pick<Tuning, "map" | "lifts" | "lowGravity">;
+
+interface BombFlight {
+  air: BombAir;
+  gravity: number;
+  floor: number;
+  blocks: readonly Platform[];
+}
+
+function flight(air: BombAir, gravity: number): BombFlight {
+  return {
+    air,
+    gravity: Math.round((gravity * S) / 3600),
+    floor: bombFloor(air.map),
+    blocks: solids(air.map),
+  };
+}
+
+function flightPull(
+  vy: number,
+  x: number,
+  y: number,
+  course: BombFlight,
+): number {
+  const cap = MAX_BOMB_SPEED * S;
+  return clamp(pull(vy, field(course.air, x, y), course.gravity), -cap, cap);
+}
+
 /**
  * Gravity (or a lift beam, or the low-gravity wing), then up to four
  * contacts: bounce, friction, roll and rest.
  */
-function fly(bomb: Bomb, gravity: number, tuning: Tuning): boolean {
-  const cap = MAX_BOMB_SPEED * S,
-    map = tuning.map;
-  bomb.vy = Math.max(
-    -cap,
-    Math.min(cap, pull(bomb.vy, field(tuning, bomb.x, bomb.y), gravity)),
-  );
+function fly(bomb: Bomb, course: BombFlight): boolean {
+  bomb.vy = flightPull(bomb.vy, bomb.x, bomb.y, course);
   let remaining = 1,
     touched = false;
   for (let i = 0; i < 4 && remaining > 0; i++) {
     const dx = Math.round(bomb.vx * remaining),
       dy = Math.round(bomb.vy * remaining);
     if (!dx && !dy) break;
-    const hit = sweep(bomb.x, bomb.y, dx, dy, false, solids(map));
+    const hit = sweep(bomb.x, bomb.y, dx, dy, false, course.blocks);
     if (!hit) {
       bomb.x += dx;
       bomb.y += dy;
@@ -304,12 +327,12 @@ export function bombPath(
       kind: "plain",
       fuse: ticks,
     },
-    g = Math.round((tuning.gravity * S) / 3600),
+    course = flight(tuning, tuning.gravity),
     path: { x: number; y: number }[] = [];
   let contact = -1;
-  for (let t = 0; t < ticks && ghost.y <= bombFloor(tuning.map); t++) {
-    const touched = fly(ghost, g, tuning);
-    if (ghost.y > bombFloor(tuning.map)) break;
+  for (let t = 0; t < ticks && ghost.y <= course.floor; t++) {
+    const touched = fly(ghost, course);
+    if (ghost.y > course.floor) break;
     if (touched && contact < 0) contact = path.length;
     path.push({ x: ghost.x, y: ghost.y });
   }
@@ -326,6 +349,21 @@ export function touches(
     dy = y - clamp(y, w.feet - BODY, w.feet);
   return dx * dx + dy * dy <= r * r;
 }
+/** Target tests shared by impact contact and blast resolution. */
+function blastCanReach(
+  k: Keeper,
+  bomb: Bomb,
+  radius: number,
+  canPlay: (keeper: Keeper) => boolean,
+): boolean {
+  return (
+    canPlay(k) &&
+    !k.world.respawn &&
+    !k.spawnGuard &&
+    touches(k.world, bomb.x, bomb.y, radius)
+  );
+}
+
 function detonate(
   arena: Arena,
   bomb: Bomb,
@@ -344,13 +382,7 @@ function detonate(
   const r = blastRadius(bomb.kind) * S;
   // Stable slot order; a keeper already down this tick is not knocked out twice.
   for (const k of arena.keepers) {
-    if (
-      !canPlay(k) ||
-      k.world.respawn ||
-      k.spawnGuard ||
-      !touches(k.world, bomb.x, bomb.y, r)
-    )
-      continue;
+    if (!blastCanReach(k, bomb, r, canPlay)) continue;
     // A Shield absorbs the blast, the thrower's own included, and pops. It
     // shelters its keeper from the rest of that tick's blasts (a cluster's
     // bomblets go off together); a later blast knocks them out.
@@ -367,23 +399,7 @@ function detonate(
     }
     if (!sheltered.has(k.id)) knockout(arena, k, bomb.owner, "bomb");
   }
-  const holder = arena.keepers[0]?.world,
-    c = arena.combat;
-  if (holder)
-    for (const ball of [...c.balls]) {
-      // Children from an earlier blast this tick wait for the next one.
-      if (fresh.has(ball.id)) continue;
-      const reach = r + BALL_RADII[ball.tier]! * S,
-        dx = ball.x - bomb.x,
-        dy = ball.y - bomb.y;
-      if (dx * dx + dy * dy > reach * reach) continue;
-      c.hits = saturate(c.hits);
-      c.impact = { tick: arena.tick, x: ball.x, y: ball.y };
-      holder.combat = c;
-      splitBall(holder, ball);
-      for (const child of c.balls)
-        if (child.id >> 1 === ball.id) fresh.add(child.id);
-    }
+  blastOrbs(arena, bomb, r, fresh);
   const chain = r + BOMB_RADIUS * S;
   for (const other of arena.bombs) {
     const dx = other.x - bomb.x,
@@ -392,20 +408,38 @@ function detonate(
       other.fuse = Math.min(other.fuse, CHAIN_TICKS);
   }
 }
-/**
- * Runs after keepers move, hooks hit and orbs step. Live bombs fly and burn
- * first, blasts resolve in bomb id order, then keepers in slot order charge
- * and throw, so a keeper knocked out this tick throws nothing and a new bomb
- * first moves next tick.
- */
-export function stepBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
-  const tuning = arena.tuning;
-  if (tuning.bomb === "off") return;
-  const gravity = Math.round((tuning.gravity * S) / 3600);
+/** Affect only the orbs that were present before this tick's blasts. */
+function blastOrbs(
+  arena: Arena,
+  bomb: Bomb,
+  r: number,
+  fresh: Set<number>,
+): void {
+  const holder = arena.keepers[0]?.world,
+    c = arena.combat;
+  if (!holder) return;
+  for (const ball of [...c.balls]) {
+    // Children from an earlier blast this tick wait for the next one.
+    if (fresh.has(ball.id)) continue;
+    const reach = r + BALL_RADII[ball.tier]! * S,
+      dx = ball.x - bomb.x,
+      dy = ball.y - bomb.y;
+    if (dx * dx + dy * dy > reach * reach) continue;
+    c.hits = saturate(c.hits);
+    c.impact = { tick: arena.tick, x: ball.x, y: ball.y };
+    holder.combat = c;
+    splitBall(holder, ball);
+    for (const child of c.balls)
+      if (child.id >> 1 === ball.id) fresh.add(child.id);
+  }
+}
+
+/** Fly all existing bombs before the id-ordered blast pass. */
+function advanceBombs(arena: Arena, course: BombFlight): boolean {
   const flown: Bomb[] = [],
     born: Bomb[] = [];
   arena.bombs.forEach((bomb, i) => {
-    if (fly(bomb, gravity, tuning) && bomb.kind === "cluster") {
+    if (fly(bomb, course) && bomb.kind === "cluster") {
       // Bomblets start their own fuse this tick; the parent is gone.
       const others = flown.length + born.length + arena.bombs.length - 1 - i;
       born.push(...split(bomb, arena.tick, MAX_BOMBS - others));
@@ -416,28 +450,35 @@ export function stepBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
   });
   // Out of the bottom of the arena: it fizzles. Blasts resolve in id order.
   arena.bombs = [...flown, ...born]
-    .filter((b) => b.y <= bombFloor(tuning.map))
+    .filter((b) => b.y <= course.floor)
     .sort(byId);
-  // Only a rival the blast could reach sets an impact bomb off, so a
-  // spawn-protected keeper is passed by like the thrower.
-  if (tuning.bomb === "impact")
-    for (const bomb of arena.bombs)
-      if (
-        arena.keepers.some(
-          (k) =>
-            k.id !== bomb.owner &&
-            canPlay(k) &&
-            !k.world.respawn &&
-            !k.spawnGuard &&
-            touches(k.world, bomb.x, bomb.y, BOMB_RADIUS * S),
-        )
-      )
-        bomb.fuse = 0;
-  const fresh = new Set<number>(),
-    sheltered = new Set<string>();
-  for (const bomb of arena.bombs.filter((b) => b.fuse <= 0))
-    detonate(arena, bomb, canPlay, fresh, sheltered);
-  arena.bombs = arena.bombs.filter((b) => b.fuse > 0);
+  return born.length > 0;
+}
+
+function markImpactBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
+  for (const bomb of arena.bombs) {
+    const hit = arena.keepers.some(
+      (k) =>
+        k.id !== bomb.owner && blastCanReach(k, bomb, BOMB_RADIUS * S, canPlay),
+    );
+    if (hit) bomb.fuse = 0;
+  }
+}
+
+function resolveBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
+  const due = arena.bombs.filter((bomb) => bomb.fuse <= 0);
+  if (!due.length) return;
+  const fresh = new Set<number>();
+  const sheltered = new Set<string>();
+  for (const bomb of due) detonate(arena, bomb, canPlay, fresh, sheltered);
+  arena.bombs = arena.bombs.filter((bomb) => bomb.fuse > 0);
+}
+
+function chargeAndThrow(
+  arena: Arena,
+  map: MapId,
+  canPlay: (k: Keeper) => boolean,
+): void {
   for (const keeper of arena.keepers) {
     if (!canPlay(keeper)) continue;
     const kit = keeper.bomb,
@@ -467,7 +508,7 @@ export function stepBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
     // Aimed from the chest; it enters flight outside any stone the chest is in.
     const sx = w.x,
       sy = w.feet - Math.round(BODY * 0.6),
-      start = bombSpawn(sx, sy, tuning.map),
+      start = bombSpawn(sx, sy, map),
       v = bombLaunch(
         charge,
         sx,
@@ -491,8 +532,27 @@ export function stepBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
     kit.cooldown = COOLDOWN_TICKS;
     kit.thrown = saturate(kit.thrown);
   }
+}
+
+/**
+ * Runs after keepers move, hooks hit and orbs step. Live bombs fly and burn
+ * first, blasts resolve in bomb id order, then keepers in slot order charge
+ * and throw, so a keeper knocked out this tick throws nothing and a new bomb
+ * first moves next tick.
+ */
+export function stepBombs(arena: Arena, canPlay: (k: Keeper) => boolean): void {
+  const tuning = arena.tuning;
+  if (tuning.bomb === "off") return;
+  let split = false;
+  if (arena.bombs.length) {
+    split = advanceBombs(arena, flight(tuning, tuning.gravity));
+    // Only a rival the blast could reach sets an impact bomb off.
+    if (tuning.bomb === "impact") markImpactBombs(arena, canPlay);
+    resolveBombs(arena, canPlay);
+  }
+  chargeAndThrow(arena, tuning.map, canPlay);
   // Throws this tick can land between bomblets born this tick.
-  if (born.length) arena.bombs.sort(byId);
+  if (split) arena.bombs.sort(byId);
   arena.blasts = arena.blasts.slice(-MAX_EVENTS);
   arena.knockouts = arena.knockouts.slice(-MAX_EVENTS);
   arena.shieldPops = arena.shieldPops.slice(-MAX_EVENTS);
@@ -541,12 +601,11 @@ export function bombArc(
     py = start.y,
     dx = v.vx,
     dy = v.vy;
-  const g = Math.round((gravity * S) / 3600),
-    cap = MAX_BOMB_SPEED * S,
-    points: { x: number; y: number }[] = [];
-  for (let t = 0; t < FUSE_TICKS && py <= bombFloor(map); t++) {
-    dy = Math.max(-cap, Math.min(cap, pull(dy, field(zones, px, py), g)));
-    const hit = sweep(px, py, dx, dy, false, solids(map));
+  const course = flight(zones, gravity);
+  const points: { x: number; y: number }[] = [];
+  for (let t = 0; t < FUSE_TICKS && py <= course.floor; t++) {
+    dy = flightPull(dy, px, py, course);
+    const hit = sweep(px, py, dx, dy, false, course.blocks);
     if (hit) {
       points.push({ x: (px + dx * hit.time) / S, y: (py + dy * hit.time) / S });
       break;

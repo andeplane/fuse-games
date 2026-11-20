@@ -75,6 +75,6 @@ export {
   type Phase,
   type World,
 } from "./world.js";
-export { toView, type PlayerView, type WorldView } from "./view.js";
+export { songStats, toView, type PlayerView, type WorldView } from "./view.js";
 export { ITEM_HINTS, ITEM_NAMES, JUDGMENT_NAMES } from "./view-kit.js";
 export { decodeWorld, encodeWorld } from "./codec.js";

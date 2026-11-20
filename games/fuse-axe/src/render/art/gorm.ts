@@ -1,4 +1,5 @@
 import type { HeroFrame } from "./animate.js";
+import { heroGait, sprintArms, walkingHands } from "./hero-gait.js";
 import {
   beard,
   head,
@@ -77,23 +78,22 @@ const { far: F, near: N } = idle;
  * sub-pixels, and the reach is drawn for the exact figure.
  */
 const REACH = (1.5 * 5 * 205) / 256;
-const walk = [0, 1, 2, 3, 4, 5].map((i) => {
-  const step = adjust(
-    idle,
-    stride(idle, i, 6, { reach: REACH, lift: 4, dip: 1.5 }),
-  );
-  const swing = Math.cos((i / 6) * 2 * Math.PI);
-  const hand = (p: Point, dx: number): Point => [
-    p[0] + dx,
-    p[1] - Math.abs(dx) * 0.3,
-  ];
-  return adjust(step, {
-    head: [step.head[0] + 1, step.head[1]],
-    far: armTo(F, step.far.shoulder, hand(step.far.hand, 4 * swing)),
-    near: armTo(N, step.near.shoulder, hand(step.near.hand, -1.5 * swing)),
-    axe: -96 + 4 * swing,
-  });
-});
+const walk = heroGait(
+  (frame, frames) =>
+    adjust(
+      idle,
+      stride(idle, frame, frames, { reach: REACH, lift: 4, dip: 1.5 }),
+    ),
+  (step, swing) => {
+    const [far, near] = walkingHands(step.far.hand, step.near.hand, swing);
+    return adjust(step, {
+      head: offset(step.head, 1, 0),
+      far: armTo(F, step.far.shoulder, far),
+      near: armTo(N, step.near.shoulder, near),
+      axe: -96 + 4 * swing,
+    });
+  },
+);
 
 /** The combo's squat: the feet planted wide and the hips dropped, as every swing keeps them. */
 const squat = adjust(idle, {
@@ -145,25 +145,18 @@ const leaning = adjust(idle, {
   far: { shoulder: [29.5, 52.5], ...legTo(F, [32, 64], [31, 73.5]) },
   near: { shoulder: [45, 52.5], ...legTo(N, [38, 64], [41, 73.5]) },
 });
-const run = [0, 1, 2, 3, 4, 5].map((i) => {
-  const step = adjust(
-    leaning,
-    sprint(leaning, i, 6, { reach: 4.5, lift: 6, dip: 1 }),
-  );
-  // 1 as the near foot lands ahead, when the far fist is forward and the near one back.
-  const swing = Math.cos((i / 6) * 2 * Math.PI);
-  const pump = (side: Side, ahead: number) =>
-    armTo(
-      side,
-      side.shoulder,
-      offset(side.shoulder, -5 + 10 * ahead, 7 - 4 * ahead),
-    );
-  return adjust(step, {
-    far: pump(step.far, (1 + swing) / 2),
-    near: pump(step.near, 0.875 - swing / 8),
-    axe: -62.5 - 12.5 * swing,
-  });
-});
+const run = heroGait(
+  (frame, frames) =>
+    adjust(
+      leaning,
+      sprint(leaning, frame, frames, { reach: 4.5, lift: 6, dip: 1 }),
+    ),
+  (step, swing) =>
+    adjust(step, {
+      ...sprintArms(step, swing, { reach: 5, lift: 4 }, 0.875 - swing / 8),
+      axe: -62.5 - 12.5 * swing,
+    }),
+);
 
 /**
  * Riding a beast, seated astride its saddle with the axe in both hands: the hips on the seat, the near leg down its

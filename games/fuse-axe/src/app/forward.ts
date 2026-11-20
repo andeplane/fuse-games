@@ -1,4 +1,5 @@
 import {
+  createHeldInputCorrectionFrames,
   createCorrectionSmoother,
   type CorrectionSmoother,
 } from "fuse-netcode";
@@ -159,23 +160,17 @@ export function createSmoother(
     teleport: TELEPORT,
   }),
 ): Smoother {
-  let revision: number | undefined,
-    folded = -1,
-    logged: readonly number[] = [],
-    scope = "";
+  const begin = createHeldInputCorrectionFrames<number, readonly number[]>(
+    smoother,
+    [],
+    (held) => [...held],
+  );
   return {
     apply(view, key, nextRevision, nextFolded, held, nowMs, local) {
-      if (key !== scope) {
-        scope = key;
-        smoother.reset();
-      }
-      smoother.begin(nowMs);
-      const rolled = revision !== undefined && nextRevision !== revision,
-        stepped = nextFolded !== folded,
-        before = logged;
-      revision = nextRevision;
-      folded = nextFolded;
-      logged = [...held];
+      const { rolled, changed } = begin(
+        { scope: key, revision: nextRevision, tick: nextFolded, nowMs },
+        held,
+      );
       const shifts = new Map<string, { x: number; y: number }>();
       // Screen space, as the view promises whole pixels there: the camera's own motion is not a correction.
       const at = <T extends { id: number; x: number; y: number }>(
@@ -200,13 +195,7 @@ export function createSmoother(
       const heroes = view.heroes.map((hero) =>
           hero.seat === local
             ? hero
-            : at(
-                "hero",
-                hero,
-                rolled ||
-                  (stepped &&
-                    (before[hero.seat] ?? 0) !== (held[hero.seat] ?? 0)),
-              ),
+            : at("hero", hero, rolled || changed(hero.seat)),
         ),
         enemies = view.enemies.map((enemy) => at("enemy", enemy, rolled));
       return {
