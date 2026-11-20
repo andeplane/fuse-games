@@ -212,6 +212,12 @@
   min-height: 0;
 }
 
+.fst-list,
+.fst-list-head {
+  scrollbar-color: var(--fst-border-light) var(--fst-bg-dark);
+  scrollbar-gutter: stable;
+}
+
 /* MY GAMES: a sunken dark pane, one 20px row per game. */
 .fst-list {
   flex: 1;
@@ -223,8 +229,6 @@
   box-shadow:
     inset 1px 1px var(--fst-border-dark),
     inset -1px -1px var(--fst-border-light);
-  scrollbar-color: var(--fst-border-light) var(--fst-bg-dark);
-  scrollbar-gutter: stable;
 }
 
 .fst-list:focus-visible {
@@ -297,7 +301,6 @@
   gap: 6px;
   padding: 0 6px;
   overflow-y: hidden;
-  scrollbar-gutter: stable;
   background: var(--fst-bg-dark);
   color: var(--fst-text);
   box-shadow:
