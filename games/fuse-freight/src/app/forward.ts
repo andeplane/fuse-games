@@ -1,5 +1,6 @@
 import {
   createHeldInputCorrectionFrames,
+  createCueLatch as createPresentationCueLatch,
   createCorrectionSmoother,
   type CorrectionSmoother,
   forwardWorld,
@@ -113,63 +114,14 @@ export function memoBot(bot: BotInput): (revision: number) => BotInput {
     64,
   );
 }
-/** An effect within this many steps and pixels of one already shown, of the same kind and seat, is the same effect. */
-export const TWIN_STEPS = 6,
-  TWIN_PX = 20;
+export { TWIN_PX, TWIN_STEPS } from "fuse-netcode";
 
-/**
- * Keeps an effect from going off twice. The scene draws an effect the first time it sees it, keyed by what, who,
- * when and where. A forward run can show one the next run takes back (a rollback, another driver's controls
- * changing), and the room then folds the same event a step or a few pixels away: the same spark, drawn twice.
- * Within a round, an effect that close to one already handed to the scene is therefore left out of the picture.
- */
+/** Hide repeated effects after a rollback repositions them. */
 export function createCueLatch(): (view: WorldView) => WorldView {
-  type Shown = WorldView["fx"][number];
-  let seed = -1,
-    shown: Shown[] = [],
-    kept = new Set<string>(),
-    dropped = new Set<string>();
-  return (view) => {
-    if (view.seed !== seed) {
-      seed = view.seed;
-      shown = [];
-      kept = new Set();
-      dropped = new Set();
-    }
-    if (!view.fx.length) return view;
-    let same = true;
-    const fresh: Shown[] = [];
-    const fx = view.fx.filter((each) => {
-      const key = effectKey(each);
-      if (kept.has(key)) return true;
-      const twin =
-        dropped.has(key) ||
-        shown.some(
-          (other) =>
-            other.kind === each.kind &&
-            other.slot === each.slot &&
-            Math.abs(other.at - each.at) <= TWIN_STEPS &&
-            Math.hypot(other.x - each.x, other.y - each.y) <= TWIN_PX,
-        );
-      if (twin) {
-        dropped.add(key);
-        same = false;
-        return false;
-      }
-      kept.add(key);
-      fresh.push(each);
-      return true;
-    });
-    // Only an effect from an earlier frame has twins: two sparks that are new together are two sparks.
-    shown.push(...fresh);
-    // Effects live a second: what was shown long ago can neither return nor have a twin.
-    if (shown.length > 200) {
-      shown = shown.filter((each) => view.step - each.at <= 120);
-      kept = new Set(shown.map(effectKey));
-      dropped = new Set([...dropped].slice(-200));
-    }
-    return same ? view : { ...view, fx };
-  };
+  return createPresentationCueLatch<WorldView["fx"][number], WorldView>(
+    effectKey,
+    (view, fx) => ({ ...view, fx }),
+  );
 }
 
 /** Corrections decay with this time constant; a jump larger than `TELEPORT` pixels is shown as it is. */

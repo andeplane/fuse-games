@@ -239,3 +239,70 @@ export function gainedCueCount(was: number, now: number): number {
   const moved = (now - was + CUE_COUNTER_RANGE) % CUE_COUNTER_RANGE;
   return moved < CUE_COUNTER_RANGE / 2 ? moved : 0;
 }
+
+interface PresentationCue extends Point {
+  kind: string;
+  slot: number;
+  at: number;
+}
+
+type CueFrame<Fx> = { seed: number; step: number; fx: readonly Fx[] };
+
+/** Step and pixel tolerances used to identify a predicted effect after a correction. */
+export const TWIN_STEPS = 6,
+  TWIN_PX = 20;
+
+/** Suppress a shifted duplicate of an effect already drawn. Reset the history when the round changes. */
+export function createCueLatch<
+  Fx extends PresentationCue,
+  View extends CueFrame<Fx>,
+>(
+  effectKey: (effect: Fx) => string,
+  replaceFx: (view: View, fx: Fx[]) => View,
+): (view: View) => View {
+  let seed = -1,
+    shown: Fx[] = [],
+    kept = new Set<string>(),
+    dropped = new Set<string>();
+  return (view) => {
+    if (view.seed !== seed) {
+      seed = view.seed;
+      shown = [];
+      kept = new Set();
+      dropped = new Set();
+    }
+    if (!view.fx.length) return view;
+    let same = true;
+    const fresh: Fx[] = [];
+    const fx = view.fx.filter((each) => {
+      const key = effectKey(each);
+      if (kept.has(key)) return true;
+      const twin =
+        dropped.has(key) ||
+        shown.some(
+          (other) =>
+            other.kind === each.kind &&
+            other.slot === each.slot &&
+            Math.abs(other.at - each.at) <= TWIN_STEPS &&
+            Math.hypot(other.x - each.x, other.y - each.y) <= TWIN_PX,
+        );
+      if (twin) {
+        dropped.add(key);
+        same = false;
+        return false;
+      }
+      kept.add(key);
+      fresh.push(each);
+      return true;
+    });
+    // Only an effect from an earlier frame has twins: two sparks that are new together are two sparks.
+    shown.push(...fresh);
+    // Effects live under a second: what was shown long ago can neither return nor have a twin.
+    if (shown.length > 200) {
+      shown = shown.filter((each) => view.step - each.at <= 120);
+      kept = new Set(shown.map(effectKey));
+      dropped = new Set([...dropped].slice(-200));
+    }
+    return same ? view : replaceFx(view, fx);
+  };
+}
