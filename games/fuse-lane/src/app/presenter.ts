@@ -1065,6 +1065,7 @@ function hud(
   view: FuseLaneView,
   you: FuseLanePlayerView,
   news: boolean,
+  suggestions: readonly Tip[],
 ): HudModel {
   const me = you.state;
   const used = Math.round(you.hours * 10) / 10;
@@ -1096,9 +1097,7 @@ function hud(
     name: you.name,
     color: colorOf(you.slot),
     notices: news ? [...me.notices] : [],
-    tips: tips(view, you.id)
-      .slice(0, 3)
-      .map((tip) => tip.text),
+    tips: suggestions.slice(0, 3).map((tip) => tip.text),
     where,
     job: job
       ? `${job.title}, ${EMPLOYERS[job.employer]} · $${me.wage.toFixed(2)}/h`
@@ -1312,6 +1311,135 @@ export function boardModel(
   };
 }
 
+function scoreTurn(
+  view: FuseLaneView,
+  player: FuseLanePlayerView,
+): ScoreRow["turn"] {
+  if (!view.turns || view.phase !== "running" || view.part === "briefing")
+    return "";
+  if (player.id === view.current)
+    return view.part === "handoff" ? "Up next" : "Playing";
+  return player.state.done ? "Done" : "Waiting";
+}
+
+function scoreRows(view: FuseLaneView, viewer: Viewer): ScoreRow[] {
+  return view.players.map((player) => ({
+    id: player.id,
+    slot: player.slot,
+    name: player.name,
+    color: colorOf(player.slot),
+    avatar: player.avatarId,
+    goals: goalBars(player),
+    progress: player.progress,
+    cash: player.liquid,
+    hoursLeft: Math.max(0, WEEK_HOURS - Math.round(player.hours)),
+    done: player.state.done,
+    you: player.id === viewer.me,
+    present: player.present,
+    bot: player.bot,
+    turn: scoreTurn(view, player),
+  }));
+}
+
+function briefingFor(
+  view: FuseLaneView,
+  viewer: Viewer,
+  me: PlayerState | undefined,
+  sharedDevice: boolean,
+): BriefingModel | undefined {
+  if (view.phase !== "running" || view.part !== "briefing") return;
+  const active = view.players.filter((player) => player.present);
+  return {
+    week: view.week,
+    headlines: view.headlines,
+    ticker: ticker(view.economy),
+    // Several people on one device: each sees their own news on their own turn, not here.
+    notices: me && !sharedDevice ? me.notices : [],
+    history: view.economy.history,
+    ready: viewer.local
+      ? view.players.every((player) => player.bot || player.state.ready)
+      : (me?.ready ?? false),
+    readyCount: active.filter((player) => player.state.ready).length,
+    total: active.length,
+    seconds: Math.ceil(view.timerTicks / TICKS_PER_SECOND),
+  };
+}
+
+interface ResultTitleInputs {
+  view: FuseLaneView;
+  viewer: Viewer;
+  humans: number;
+  seated: boolean;
+  won: readonly string[];
+  byId: ReadonlyMap<string, FuseLanePlayerView>;
+}
+
+function resultTitle({
+  view,
+  viewer,
+  humans,
+  seated,
+  won,
+  byId,
+}: ResultTitleInputs): string {
+  const name = (id: string | undefined) =>
+    (id === undefined ? undefined : byId.get(id)?.name) ?? "Someone";
+  const winner = won[0];
+  if (winner === undefined)
+    return `${name(view.winners[0]).toUpperCase()} LEADS AFTER ${view.week} WEEKS`;
+  if (viewer.local && (humans > 1 || won.length > 1))
+    return `${won.map(name).join(" & ").toUpperCase()} ${won.length > 1 ? "WIN" : "WINS"}`;
+  const personalWin = viewer.local
+    ? !byId.get(winner)?.bot
+    : winner === viewer.me && seated;
+  return personalWin ? "YOU WIN!" : `${name(winner).toUpperCase()} WINS`;
+}
+
+function resultFor(
+  view: FuseLaneView,
+  viewer: Viewer,
+  humans: number,
+  seated: boolean,
+): ResultModel | undefined {
+  if (view.phase !== "over") return;
+  const byId = new Map<string, FuseLanePlayerView>();
+  for (const player of view.players)
+    if (!byId.has(player.id)) byId.set(player.id, player);
+  const host = viewer.host && !viewer.display;
+  const won = view.winners.filter(
+    (id) => (byId.get(id)?.state.finished ?? 0) > 0,
+  );
+  return {
+    title: resultTitle({ view, viewer, humans, seated, won, byId }),
+    weeks: view.week,
+    rows: view.ranking.flatMap((id, index): ResultRow[] => {
+      const player = byId.get(id);
+      return player
+        ? [
+            {
+              id,
+              slot: player.slot,
+              name: player.name,
+              you: seated && id === viewer.me,
+              bot: player.bot,
+              place: view.winners.includes(id) ? 1 : index + 1,
+              goals: Math.round(player.progress * 100),
+              finished: player.state.finished,
+              netWorth: Math.round(player.netWorth),
+              degrees: degrees(player.state),
+              shifts: player.state.shifts,
+            },
+          ]
+        : [];
+    }),
+    winnerSlot:
+      view.winners.length === 1 ? (byId.get(view.winners[0]!)?.slot ?? -1) : -1,
+    local: viewer.local === true,
+    host,
+    waiting: host ? "" : "Waiting for the host to start a rematch",
+  };
+}
+
 export function present(view: FuseLaneView, viewer: Viewer): ScreenModel {
   const players = view.players;
   const people = players.filter((player) => !player.bot);
@@ -1343,102 +1471,9 @@ export function present(view: FuseLaneView, viewer: Viewer): ScreenModel {
         : "board";
   const me = seated ? you.state : undefined;
   const board = boardModel(view, viewer);
-  const scores: ScoreRow[] = players.map((player) => ({
-    id: player.id,
-    slot: player.slot,
-    name: player.name,
-    color: colorOf(player.slot),
-    avatar: player.avatarId,
-    goals: goalBars(player),
-    progress: player.progress,
-    cash: player.liquid,
-    hoursLeft: Math.max(0, WEEK_HOURS - Math.round(player.hours)),
-    done: player.state.done,
-    you: player.id === viewer.me,
-    present: player.present,
-    bot: player.bot,
-    turn:
-      !view.turns || !playing || view.part === "briefing"
-        ? ""
-        : player.id === view.current
-          ? view.part === "handoff"
-            ? "Up next"
-            : "Playing"
-          : player.state.done
-            ? "Done"
-            : "Waiting",
-  }));
-  let briefing: BriefingModel | undefined;
-  if (playing && view.part === "briefing") {
-    const active = players.filter((player) => player.present);
-    briefing = {
-      week: view.week,
-      headlines: view.headlines,
-      ticker: ticker(view.economy),
-      // Several people on one device: each sees their own news on their own turn, not here.
-      notices: me && !sharedDevice ? me.notices : [],
-      history: view.economy.history,
-      ready: viewer.local
-        ? players.every((player) => player.bot || player.state.ready)
-        : (me?.ready ?? false),
-      readyCount: active.filter((player) => player.state.ready).length,
-      total: active.length,
-      seconds: Math.ceil(view.timerTicks / TICKS_PER_SECOND),
-    };
-  }
-  const name = (id: string | undefined) =>
-    players.find((player) => player.id === id)?.name ?? "Someone";
-  let result: ResultModel | undefined;
-  if (view.phase === "over") {
-    const host = viewer.host && !viewer.display;
-    const won = view.winners.filter(
-      (id) =>
-        (players.find((player) => player.id === id)?.state.finished ?? 0) > 0,
-    );
-    result = {
-      title:
-        won.length === 0
-          ? `${name(view.winners[0]).toUpperCase()} LEADS AFTER ${view.week} WEEKS`
-          : viewer.local
-            ? humans > 1 || won.length > 1
-              ? `${won.map(name).join(" & ").toUpperCase()} ${won.length > 1 ? "WIN" : "WINS"}`
-              : players.find((player) => player.id === won[0])?.bot
-                ? `${name(won[0]).toUpperCase()} WINS`
-                : "YOU WIN!"
-            : won[0] === viewer.me && seated
-              ? "YOU WIN!"
-              : `${name(won[0]).toUpperCase()} WINS`,
-      weeks: view.week,
-      rows: view.ranking.flatMap((id, index): ResultRow[] => {
-        const player = players.find((row) => row.id === id);
-        return player
-          ? [
-              {
-                id,
-                slot: player.slot,
-                name: player.name,
-                you: seated && id === viewer.me,
-                bot: player.bot,
-                place: view.winners.includes(id) ? 1 : index + 1,
-                goals: Math.round(player.progress * 100),
-                finished: player.state.finished,
-                netWorth: Math.round(player.netWorth),
-                degrees: degrees(player.state),
-                shifts: player.state.shifts,
-              },
-            ]
-          : [];
-      }),
-      winnerSlot:
-        view.winners.length === 1
-          ? (players.find((player) => player.id === view.winners[0])?.slot ??
-            -1)
-          : -1,
-      local: viewer.local === true,
-      host,
-      waiting: host ? "" : "Waiting for the host to start a rematch",
-    };
-  }
+  const scores = scoreRows(view, viewer);
+  const briefing = briefingFor(view, viewer, me, sharedDevice);
+  const result = resultFor(view, viewer, humans, seated);
   let handoff: HandoffModel | undefined;
   if (playing && view.part === "handoff" && you && viewer.local) {
     const index = view.order.indexOf(you.id);
@@ -1457,7 +1492,9 @@ export function present(view: FuseLaneView, viewer: Viewer): ScreenModel {
   const canAct = inWeek && me !== undefined && !me.done;
   const panel = seated && canAct ? panelFor(view, you, players) : undefined;
   // The screen hides it while a place's panel is open; closed, it shows again outside that place.
-  const tip = canAct && me.dest < 0 ? tips(view, you!.id)[0] : undefined;
+  const showHud = me !== undefined && view.part !== "handoff";
+  const suggestions = showHud ? tips(view, you!.id) : [];
+  const tip = canAct && me.dest < 0 ? suggestions[0] : undefined;
   return {
     screen:
       view.phase === "lobby"
@@ -1468,9 +1505,7 @@ export function present(view: FuseLaneView, viewer: Viewer): ScreenModel {
     layout,
     seated,
     askName: !seated && !viewer.display && !tvHost && viewer.me !== "",
-    ...(me && view.part !== "handoff"
-      ? { hud: hud(view, you!, sharedDevice) }
-      : {}),
+    ...(showHud ? { hud: hud(view, you!, sharedDevice, suggestions) } : {}),
     ...(handoff ? { handoff } : {}),
     board,
     ...(panel ? { panel } : {}),
