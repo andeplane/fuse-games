@@ -12,6 +12,7 @@ import {
   detailMaps,
   heroKindOf,
   legSwing,
+  mergeOwnedParts,
   paintMaterials,
   panelHeights,
   partModel,
@@ -233,4 +234,23 @@ test("the flag cloth waves but stays tied to the pole", () => {
     if (base[i * 3] === 0) assert.ok(out.getZ(i) === 0);
   }
   assert.ok([...Array(out.count).keys()].some((i) => out.getZ(i) !== 0));
+});
+
+test("model baking releases source and flattened parts if preparation fails", () => {
+  const source = new THREE.BoxGeometry();
+  const later = new THREE.BoxGeometry();
+  const disposed: string[] = [];
+  source.addEventListener("dispose", () => disposed.push("source"));
+  later.addEventListener("dispose", () => disposed.push("later"));
+  const failed = new Error("prepare failed");
+  assert.throws(
+    () =>
+      mergeOwnedParts([source, later], (part) => {
+        assert.notEqual(part, source);
+        part.addEventListener("dispose", () => disposed.push("flattened"));
+        throw failed;
+      }),
+    (error) => error === failed,
+  );
+  assert.deepEqual(disposed, ["source", "later", "flattened"]);
 });
