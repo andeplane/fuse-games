@@ -35,6 +35,7 @@ export const gameMenus: Readonly<Record<string, GameMenu>> = {
   "fuse-freight": sharedRadio,
   "fuse-front": sharedRadio,
   "fuse-lane": sharedRadio,
+  "fuse-particles": sharedRadio,
   "fuse-riders": {
     radio: true,
     controls: [

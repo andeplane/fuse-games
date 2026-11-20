@@ -21,6 +21,7 @@ export const ROOM_SOCKETS: Readonly<Record<string, number>> = {
   dice: sockets(5, 8),
   "incredible-fuse": sockets(5, 8),
   "fuse-lane": sockets(5, 8),
+  "fuse-particles": sockets(4, 8),
   "fuse-drivers": sockets(5, 8),
   "fuse-birds": sockets(5, 8),
   "fuse-front": sockets(6, 6),
