@@ -71,8 +71,8 @@ export function selectActionPage(
   query: ActionsQuery,
   cursor: ActionCursor | undefined,
   at: number,
+  limit: number,
 ): ActionsPage {
-  const limit = query.limit ?? 50;
   const actions: ActionItem[] = [];
   let last: ActionCursor | undefined;
   for (const state of states) {

@@ -134,6 +134,7 @@ async function readActionPageStates(
 }
 
 type ActionOperation = "claim" | "renew" | "complete" | "release" | "dismiss";
+type LeaseOperation = Exclude<ActionOperation, "claim" | "dismiss">;
 
 function claim(
   item: ActionItem,
@@ -185,7 +186,7 @@ function dismiss(
 
 function ownedLease(
   item: ActionItem,
-  operation: ActionOperation,
+  operation: LeaseOperation,
   uid: string,
   proof: unknown,
   secret: string | undefined,
@@ -212,7 +213,7 @@ function ownedLease(
 
 function finishLease(
   item: ActionItem,
-  operation: ActionOperation,
+  operation: Exclude<LeaseOperation, "renew">,
   note: unknown,
   uid: string,
   at: number,
@@ -451,9 +452,10 @@ export function createActionService(options: ActionServiceOptions) {
       const cursor = decodeActionCursor(query.cursor);
       if (query.recordingId && cursor && cursor.recording !== query.recordingId)
         throw new RoomError(400, "Action cursor scope mismatch");
-      const at = now();
+      const limit = query.limit ?? 50,
+        at = now();
       const states = await readActionPageStates(db, query.recordingId, cursor);
-      return selectActionPage(states, query, cursor, at);
+      return selectActionPage(states, query, cursor, at, limit);
     },
     async mutate(
       actionId: string,
