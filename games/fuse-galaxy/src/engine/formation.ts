@@ -36,7 +36,7 @@ export const namedFormation = (
   rules: Rules,
 ): Readonly<Formation> | undefined =>
   Object.keys(rules.combat.formations).includes(name)
-    ? rules.combat.formations[name]
+    ? { ...rules.combat.formations[name]! }
     : undefined;
 
 /** Why ships cannot be drawn up this way, or undefined when they can. */

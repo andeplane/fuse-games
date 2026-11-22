@@ -101,7 +101,7 @@ function planet(
     researchQueue: [],
     production: [],
     ships: { ...ships },
-    formation: rules.combat.formations[rules.combat.defaultFormation]!,
+    formation: { ...rules.combat.formations[rules.combat.defaultFormation]! },
     sheltered: false,
     xp: 0,
     // `updateScores` sets these three.

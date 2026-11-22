@@ -2,7 +2,7 @@
  * Carrying out a command that `commandProblem` has already allowed: these change the tick's private copy of the
  * world and check nothing themselves.
  */
-import { abandon, battleAt } from "./combat.js";
+import { abandon, battleAt, leaveBehind } from "./combat.js";
 import type { Command } from "./commands.js";
 import {
   asteroidCost,
@@ -121,6 +121,12 @@ export function execute(
       for (const shipClass of SHIP_CLASSES) {
         ships[shipClass] = command.ships[shipClass] ?? 0;
         planet.ships[shipClass] -= ships[shipClass];
+      }
+      // Ships taken out of a home fleet that is fighting a battle pay what any retreat does.
+      const battle = planet.sheltered ? undefined : battleAt(world, player);
+      if (battle) {
+        leaveBehind(battle, ships, rules);
+        if (shipTotal(ships) === 0) return;
       }
       const ticks = travelTicks(
         planet,

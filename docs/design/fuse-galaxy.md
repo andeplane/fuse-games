@@ -66,7 +66,7 @@ A battle is fought at a planet between every fleet attacking it and, on the othe
 
 **The counter triangle.** Three fleets of about 80 000 resources each, all in the line formation: a line of 200 corvettes and 40 destroyers beats a swarm of 1000 fighters, 36 cruisers (artillery) beat the line, and the swarm beats the artillery, whichever side attacks. `tests/combat.test.ts` fights all six pairings.
 
-**After the battle.** Attacking fleets that still have pods take asteroids, whether or not the defence still stands: at most a quarter of the planet's asteroids, scaled down in proportion when the planet scores below 60% of the largest attacker, and never fewer than one. The attackers share them by the worth of their fleets as far as their pods carry, the remainder going to the worthiest; each pod is spent on the asteroid it carries, and the planet gives up whichever kind it has most of. The planet's owner salvages 30% of what every ship destroyed there cost. Leaving a battle (recalling a fleet from it, or sheltering the home fleet during it) leaves 15% of each class behind, at least one ship, as wreckage. A home fleet sheltered before the attack lands loses nothing and fights nothing, and the attackers take their asteroids.
+**After the battle.** Attacking fleets that still have pods take asteroids, whether or not the defence still stands: at most a quarter of the planet's asteroids, scaled down in proportion when the planet scores below 60% of the largest attacker, and never fewer than one. The attackers share them by the worth of their fleets as far as their pods carry, the remainder going to the worthiest; each pod is spent on the asteroid it carries, and the planet gives up whichever kind it has most of. The planet's owner salvages 30% of what every ship destroyed there cost. Leaving a battle (recalling a fleet from it, sheltering the home fleet during it, or launching warships out of a home fleet that is fighting) leaves 15% of each class behind, at least one ship, as wreckage; the damage the leaving squadrons carried, always less than one ship of each class, goes with them. Damage is not kept once a battle is over. A home fleet sheltered before the attack lands loses nothing and fights nothing, and the attackers take their asteroids.
 
 ### Fog
 
@@ -95,7 +95,7 @@ pnpm galaxy play --seed 1 --seat 0           # play one seat against the bots
 
 `play` is step-through: commands typed at the prompt are queued, and `next [n]` advances the match. `help` lists the commands (`formation home wall`, `formation 3 fighter=8`, `shelter on` and the rest) and `legal` lists what can be done now. The view shows incoming attacks and the battles the player's team is in.
 
-Bot matches at the default rules, `pnpm galaxy bots --mode <mode> --seed 1 --matches 5` (mixed rosters, bots' thinking included), on an Apple M4 Max with Node 22.20: about 8 000 ticks a second for a 2v2, 6 000 for a 3v3 and 9 500 for a 2v2v2, so a 40-minute match takes about a quarter of a second.
+Bot matches at the default rules, `pnpm galaxy bots --mode <mode> --seed 1 --matches 20` (mixed rosters, seeds 1 to 20, the bots' thinking included, the replay check not), on a shared Apple M4 Max with Node 22.20: about 15 000 ticks a second for a 2v2 and 11 000 for a 3v3 or a 2v2v2, so a 40-minute match takes about a fifth of a second.
 
 ## Later slices
 

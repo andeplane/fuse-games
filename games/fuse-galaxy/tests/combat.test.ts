@@ -977,3 +977,72 @@ test("a recorded match with battles in it plays again from its seed and commands
   // Changing this on purpose means the rules changed: bump `Rules.version` in the same change.
   assert.equal(hash, "2696700669db2c79");
 });
+
+test("ships launched out of a home fleet that is fighting pay the retreat cost; probes and a sheltered fleet do not", () => {
+  // Planet 1's pod holds off unarmed pods, so the battle runs on.
+  let world = homeFleet(start(), 1, { probe: 2, corvette: 20, pod: 1 });
+  world = tick(withFleets(world, raid(1, 0, 1, { pod: 5 })));
+  assert.equal(world.battles.length, 1);
+  const launch = (
+    ships: Partial<ShipCounts>,
+    mission: "defend" | "observe" = "defend",
+    target = 3,
+  ): Command => ({
+    type: "launchFleet",
+    mission,
+    target,
+    ships,
+  });
+  const out = tick(world, from(1, launch({ corvette: 20 })));
+  assert.deepEqual(reasons(out), []);
+  const fleet = out.fleets.find((one) => one.owner === 1)!;
+  assert.deepEqual(fleet.ships, ships({ corvette: 17 }));
+  assert.equal(out.planets[1]!.ships.corvette, 0);
+
+  // One ship of a class is all left behind, and no fleet flies.
+  const lone = tick(world, from(1, launch({ pod: 1 })));
+  assert.deepEqual(reasons(lone), []);
+  assert.equal(lone.fleets.filter((one) => one.owner === 1).length, 0);
+  assert.equal(lone.planets[1]!.ships.pod, 0);
+
+  // Probes take no part, so they leave freely.
+  const probes = tick(world, from(1, launch({ probe: 1 }, "observe", 0)));
+  assert.deepEqual(
+    probes.fleets.find((one) => one.owner === 1)!.ships,
+    ships({ probe: 1 }),
+  );
+
+  // A sheltered home fleet is not in the battle.
+  const sheltered = tick(
+    withPlanet(world, 1, { sheltered: true }),
+    from(1, launch({ corvette: 20 })),
+  );
+  assert.deepEqual(
+    sheltered.fleets.find((one) => one.owner === 1)!.ships,
+    ships({ corvette: 20 }),
+  );
+});
+
+test("a class with no ship left carries no damage into ships of it that come later", () => {
+  const fighters = force(
+    { fighter: 1, corvette: 1 },
+    { fighter: CELL.frontLeft, corvette: CELL.frontLeft },
+  );
+  fighters.damage.fighter = 30;
+  fighters.ships.fighter = 0;
+  fightRound([fighters], [force({ pod: 1 }, {}, 1, 2)], RULES);
+  assert.equal(fighters.damage.fighter, 0);
+});
+
+test("a formation chosen by name is a copy: a world never shares or freezes the rules' own objects", () => {
+  const formations = { ...RULES.combat.formations, line: { ...LINE } };
+  const rules: Rules = { ...RULES, combat: { ...RULES.combat, formations } };
+  const world = tick(
+    start(1, { teams: 2, teamSize: 2, neutrals: 0 }, rules),
+    from(0, { type: "setFormation", fleet: NONE, arrangement: "line" }),
+    rules,
+  );
+  assert.deepEqual(world.planets[0]!.formation, LINE);
+  assert.notEqual(world.planets[0]!.formation, formations.line);
+  assert.ok(!Object.isFrozen(formations.line));
+});

@@ -240,6 +240,10 @@ export function fightRound(
     // Only what was frozen when its turn to fire came: a ship frozen after it fired did fire.
     frozen[squadron.side]! += squadron.held;
   }
+  // A class with no ship left carries no damage, so ships of it built or brought home later start whole.
+  for (const force of [...attackers, ...defenders])
+    for (const shipClass of SHIP_CLASSES)
+      if (force.ships[shipClass] <= 0) force.damage[shipClass] = 0;
   return { lost, frozen, destroyed };
 }
 
@@ -265,12 +269,11 @@ export const battleAt = (
   world.battles.find((battle) => battle.planet === planet);
 
 /**
- * What it costs to leave a battle: a share of every class of the ships is left behind as wreckage, at least one of
- * each. The squadron's damage goes with what is left behind.
+ * What it costs ships to leave a battle: a share of every class that fights is left behind as wreckage, at least one
+ * of each.
  */
-export function abandon(
+export function leaveBehind(
   battle: Battle,
-  fleet: number,
   ships: ShipCounts,
   rules: Rules,
 ): void {
@@ -284,6 +287,19 @@ export function abandon(
     ships[shipClass] -= left[shipClass];
   }
   addTo(battle.wreck, costOf(left, rules));
+}
+
+/**
+ * A whole fleet, or the home fleet (`NONE`), leaving a battle: it leaves its share behind, and the damage its
+ * squadrons carried (always less than one ship of each class, so less than what is left behind) goes with them.
+ */
+export function abandon(
+  battle: Battle,
+  fleet: number,
+  ships: ShipCounts,
+  rules: Rules,
+): void {
+  leaveBehind(battle, ships, rules);
   battle.wounds = battle.wounds.filter((wounds) => wounds.fleet !== fleet);
 }
 

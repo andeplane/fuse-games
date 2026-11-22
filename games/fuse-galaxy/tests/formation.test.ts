@@ -51,7 +51,7 @@ test("the grid is three lines of three columns, the front line first", () => {
     for (const cell of Object.values(formation))
       assert.ok(Number.isInteger(cell) && cell >= 0 && cell < CELLS, name);
   }
-  assert.equal(namedFormation(RULES.combat.defaultFormation, RULES), LINE);
+  assert.deepEqual(namedFormation(RULES.combat.defaultFormation, RULES), LINE);
   assert.equal(formationName({ ...LINE, cruiser: 0 }, RULES), undefined);
   // Only the rules' own names count, never what every object inherits.
   for (const name of ["toString", "constructor", "__proto__", "hasOwnProperty"])
