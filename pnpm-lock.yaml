@@ -514,6 +514,8 @@ importers:
         specifier: 0.186.1
         version: 0.186.1
 
+  games/fuse-galaxy: {}
+
   games/fuse-lane:
     dependencies:
       fuse-netcode:
