@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Fuse Galaxy: a session-length descendant of Planetarion for up to six players in teams, with bot-run neutral planets. Headless so far: the integer rules engine and training environment (src/engine/), an economy bot (src/bots/) and a terminal client (src/cli/, `pnpm galaxy`). No page yet.",
+  "description": "Fuse Galaxy: a session-length descendant of Planetarion for up to six players in teams, with bot-run neutral planets. Headless so far: the integer rules engine with battles and fog of war and the training environment (src/engine/), an economy bot and a raider (src/bots/) and a terminal client (src/cli/, `pnpm galaxy`). No page yet.",
   "exports": {
     ".": "./src/engine/index.ts"
   }
