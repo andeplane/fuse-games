@@ -7,12 +7,16 @@
  * knows that: a tick is just a step.
  */
 import { deepFreeze } from "./freeze.js";
-import type {
-  BranchId,
-  Resources,
-  ShipClass,
-  StructureCounts,
-  StructureId,
+import {
+  SHIP_CLASSES,
+  noShips,
+  type BranchId,
+  type Formation,
+  type Resources,
+  type ShipClass,
+  type ShipCounts,
+  type StructureCounts,
+  type StructureId,
 } from "./world.js";
 
 export interface StructureRule {
@@ -48,9 +52,24 @@ export interface ShipRule {
   readonly hulls: number;
   /** Map distance covered per tick; a fleet flies at its slowest ship's speed. */
   readonly speed: number;
-  /** Combat stats. The combat slice reads them; nothing in this one does. */
-  readonly attack: number;
+  /** Hit points of one ship. */
   readonly armour: number;
+  /** What one shot does. A shot destroys at most one ship, so what it does past the target's armour is wasted. */
+  readonly attack: number;
+  /** Shots each ship fires in a round; none for a class that does not fight back. */
+  readonly shots: number;
+  /** How far the class reaches across the lines of a battle (`formation.ts`): 1 is front line to front line. */
+  readonly range: number;
+  /** When the class fires in a round: lower numbers first, and what they destroy does not fire back. */
+  readonly initiative: number;
+  /** The classes it fires at, the preferred first. It cannot fire at a class left out. */
+  readonly targets: readonly ShipClass[];
+  /** A `freeze` shot destroys nothing: the ships it would have destroyed do not fire this round. */
+  readonly effect: "damage" | "freeze";
+  /** A probe flies the observing missions and no other, and takes no part in a battle. */
+  readonly probe: boolean;
+  /** Asteroids one surviving ship of the class captures at the end of a battle it attacked in, and is spent on. */
+  readonly captures: number;
   /** What each ship adds to its owner's value, at home or in a fleet. */
   readonly value: number;
 }
@@ -78,8 +97,11 @@ export interface Rules {
   readonly map: {
     /** The map is a square of this side; positions are whole numbers in it. */
     readonly size: number;
-    /** Where each team's galaxy is centred, by team id. */
-    readonly teamAnchors: readonly (readonly [number, number])[];
+    /**
+     * Where each team's galaxy is centred, by team id: one layout for each number of teams the rules allow, the
+     * fewest first.
+     */
+    readonly teamAnchors: readonly (readonly (readonly [number, number])[])[];
     /** Where each member sits relative to the anchor, by place in the team. */
     readonly memberOffsets: readonly (readonly [number, number])[];
     /** Neutral planets stay this far from the edge. */
@@ -94,10 +116,13 @@ export interface Rules {
     readonly resources: Resources;
     readonly asteroids: Resources;
     readonly structures: StructureCounts;
+    readonly ships: ShipCounts;
   };
   readonly neutral: {
     readonly resources: Resources;
     readonly asteroids: Resources;
+    /** A neutral planet's home fleet: a modest defence. */
+    readonly ships: ShipCounts;
     /** Each neutral planet gets up to this many extra asteroids of each resource, drawn from the seed. */
     readonly extraAsteroids: number;
     /** A neutral planet earns this share of the income a seat would. */
@@ -158,18 +183,71 @@ export interface Rules {
     readonly travelPercentPerLevel: number;
     /** How long a defending fleet stays before it flies home. */
     readonly defendTicks: number;
+    /** An attack musters for this long instead of `launchTicks`, */
+    readonly attackLaunchTicks: number;
+    /** and its flight takes this many percent of what the same fleet's flight to a friend would. */
+    readonly attackTravelPercent: number;
+  };
+  readonly combat: {
+    /** A battle is over after this many rounds at the latest; one round is fought each tick. */
+    readonly rounds: number;
+    /** A fleet recalled from a battle, or a home fleet sheltered during one, leaves this share of each class behind. */
+    readonly retreatLossPercent: number;
+    /** The planet's owner recovers this share of what every ship destroyed in a battle there cost. */
+    readonly salvagePercent: number;
+    /** The named formations a player can choose. */
+    readonly formations: Readonly<Record<string, Formation>>;
+    /** The formation every planet starts with. */
+    readonly defaultFormation: string;
+  };
+  readonly capture: {
+    /** Attackers take at most this share of a planet's asteroids in one battle, */
+    readonly maxPercent: number;
+    /** in full when the planet's score is at least this share of the largest attacker's, and in proportion below it; */
+    readonly fullRatioPercent: number;
+    /** never less than this many when a pod survives and the planet has them. */
+    readonly minimum: number;
+    /** A seat whose score is below this share of the attacker's cannot be attacked at all: the bash limit. */
+    readonly bashLimitPercent: number;
+  };
+  readonly xp: {
+    /** An attacker earns this share of the value it destroys, */
+    readonly attackPercent: number;
+    /** scaled by the planet's score against its own, within these bounds: more for hitting a bigger target. */
+    readonly minRatioPercent: number;
+    readonly maxRatioPercent: number;
+    /** A defender earns this share of the value it destroys. */
+    readonly defendPercent: number;
+    /** What each captured asteroid earns the attacker who took it. */
+    readonly perAsteroid: number;
   };
   readonly intel: {
     /** An observation's detail is `baseDetail` plus the observer's sensors minus the target's jamming, */
     readonly baseDetail: number;
-    /** never below this (resources and asteroids are always seen) */
+    /** never below this (asteroids are always seen) */
     readonly minDetail: number;
     /** and never above this. */
     readonly maxDetail: number;
-    /** The detail from which structures and research are seen. */
-    readonly structuresDetail: number;
-    /** The detail from which ships at home are seen. */
-    readonly shipsDetail: number;
+    /** The detail from which structures, research and rough ship counts are seen. */
+    readonly roughDetail: number;
+    /** The detail from which exact ship counts, the stock and the formation are seen. */
+    readonly exactDetail: number;
+    /** A rough count is the largest of these steps the true count reaches, ascending from 1. */
+    readonly roughSteps: readonly number[];
+    /** A planet is told it was probed unless the prober's sensors beat its jamming by this much. */
+    readonly noticeMargin: number;
+    /** How long probes stay in orbit before they fly home. */
+    readonly orbitTicks: number;
+    /** Probes a planet shoots down each tick out of an orbit it has noticed. */
+    readonly orbitLossPerTick: number;
+    /** A planet sees an attack on it this many ticks before it lands, */
+    readonly warningTicks: number;
+    /** plus this many for each of its sensors levels, */
+    readonly warningTicksPerSensors: number;
+    /** less this many for each of the attacker's jamming levels, */
+    readonly warningTicksPerJamming: number;
+    /** and never fewer than this many. */
+    readonly minWarningTicks: number;
   };
   readonly team: {
     /** The highest tax a commander may set. */
@@ -183,9 +261,38 @@ export interface Rules {
 
 const NO_INCOME: Resources = { metal: 0, crystal: 0, eonium: 0 };
 
+/** The cells of the battle grid: the line, then the column. */
+const FRONT_LEFT = 0,
+  FRONT_CENTRE = 1,
+  FRONT_RIGHT = 2,
+  MIDDLE_LEFT = 3,
+  MIDDLE_CENTRE = 4,
+  MIDDLE_RIGHT = 5,
+  REAR_CENTRE = 7;
+
+const NO_SHIPS: ShipCounts = noShips();
+
+/** A formation from the cells of the classes that are not in the rear centre. */
+const formation = (cells: Partial<Formation>): Formation => {
+  const whole = noShips();
+  for (const shipClass of SHIP_CLASSES)
+    whole[shipClass] = cells[shipClass] ?? REAR_CENTRE;
+  return whole;
+};
+
+/** A class that fires at nothing. */
+const UNARMED = {
+  attack: 0,
+  shots: 0,
+  range: 0,
+  initiative: 0,
+  targets: [],
+  effect: "damage",
+} as const;
+
 /** The game as it is played by default: a forty-minute match at one tick a second. */
 export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
-  version: 1,
+  version: 2,
   match: { tickLimit: 2400 },
   limits: { commandsPerPlayerPerTick: 16, resourceCap: 1_000_000_000 },
   setup: {
@@ -198,9 +305,15 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
   map: {
     size: 1000,
     teamAnchors: [
-      [180, 500],
-      [820, 500],
-      [500, 150],
+      [
+        [180, 500],
+        [820, 500],
+      ],
+      [
+        [500, 170],
+        [214, 665],
+        [786, 665],
+      ],
     ],
     memberOffsets: [
       [0, -90],
@@ -221,10 +334,12 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
       researchLab: 0,
       shipyard: 0,
     },
+    ships: { ...NO_SHIPS, probe: 2 },
   },
   neutral: {
     resources: { metal: 400, crystal: 400, eonium: 200 },
     asteroids: { metal: 2, crystal: 2, eonium: 1 },
+    ships: { ...NO_SHIPS, fighter: 30, corvette: 8 },
     extraAsteroids: 3,
     incomePercent: 50,
   },
@@ -337,14 +452,51 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
     speedPercent: 15,
     maxSpeedPercent: 60,
   },
+  /*
+   * Three ways to build a fleet, each beaten by another. A swarm of fighters is cheap hulls with one small gun
+   * each: a heavy gun still destroys only one of them a shot. Corvettes and destroyers are the line: many small
+   * guns that clear a swarm, on hulls a fighter needs many hits to break. Cruisers are artillery: one heavy shot
+   * that fires first and from the rear, and takes a line ship with it, on a hull the swarm tears open. Battleships
+   * are the line and the heavy gun in one hull at a price, frigates freeze what they hit instead of destroying it,
+   * and pods take asteroids and fight nothing.
+   *
+   * Armour is several times a small gun's damage, so fleets of the same worth fight most of a battle's rounds and
+   * a fleet facing its counter still lasts a few.
+   */
   ships: {
+    probe: {
+      cost: { metal: 30, crystal: 30, eonium: 0 },
+      buildTicks: 10,
+      hulls: 0,
+      speed: 40,
+      armour: 8,
+      ...UNARMED,
+      probe: true,
+      captures: 0,
+      value: 6,
+    },
     fighter: {
       cost: { metal: 60, crystal: 20, eonium: 0 },
       buildTicks: 20,
       hulls: 0,
       speed: 24,
-      attack: 6,
-      armour: 4,
+      armour: 40,
+      attack: 10,
+      shots: 1,
+      range: 1,
+      initiative: 3,
+      targets: [
+        "cruiser",
+        "frigate",
+        "pod",
+        "battleship",
+        "destroyer",
+        "corvette",
+        "fighter",
+      ],
+      effect: "damage",
+      probe: false,
+      captures: 0,
       value: 8,
     },
     corvette: {
@@ -352,8 +504,15 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
       buildTicks: 30,
       hulls: 1,
       speed: 20,
-      attack: 14,
-      armour: 10,
+      armour: 120,
+      attack: 8,
+      shots: 3,
+      range: 1,
+      initiative: 3,
+      targets: ["fighter", "pod", "corvette", "frigate"],
+      effect: "damage",
+      probe: false,
+      captures: 0,
       value: 19,
     },
     frigate: {
@@ -361,8 +520,15 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
       buildTicks: 45,
       hulls: 2,
       speed: 16,
-      attack: 32,
-      armour: 26,
+      armour: 240,
+      attack: 150,
+      shots: 1,
+      range: 2,
+      initiative: 1,
+      targets: ["battleship", "cruiser", "destroyer", "frigate", "corvette"],
+      effect: "freeze",
+      probe: false,
+      captures: 0,
       value: 45,
     },
     destroyer: {
@@ -370,8 +536,23 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
       buildTicks: 60,
       hulls: 3,
       speed: 13,
-      attack: 70,
-      armour: 60,
+      armour: 1000,
+      attack: 12,
+      shots: 5,
+      range: 1,
+      initiative: 4,
+      targets: [
+        "fighter",
+        "corvette",
+        "pod",
+        "frigate",
+        "destroyer",
+        "cruiser",
+        "battleship",
+      ],
+      effect: "damage",
+      probe: false,
+      captures: 0,
       value: 100,
     },
     cruiser: {
@@ -379,8 +560,23 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
       buildTicks: 80,
       hulls: 4,
       speed: 10,
-      attack: 150,
-      armour: 140,
+      armour: 800,
+      attack: 400,
+      shots: 1,
+      range: 3,
+      initiative: 2,
+      targets: [
+        "battleship",
+        "destroyer",
+        "cruiser",
+        "frigate",
+        "pod",
+        "corvette",
+        "fighter",
+      ],
+      effect: "damage",
+      probe: false,
+      captures: 0,
       value: 220,
     },
     battleship: {
@@ -388,9 +584,35 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
       buildTicks: 110,
       hulls: 5,
       speed: 8,
-      attack: 340,
-      armour: 330,
+      armour: 4400,
+      attack: 200,
+      shots: 3,
+      range: 2,
+      initiative: 5,
+      targets: [
+        "battleship",
+        "cruiser",
+        "destroyer",
+        "frigate",
+        "pod",
+        "corvette",
+        "fighter",
+      ],
+      effect: "damage",
+      probe: false,
+      captures: 0,
       value: 500,
+    },
+    pod: {
+      cost: { metal: 300, crystal: 300, eonium: 100 },
+      buildTicks: 40,
+      hulls: 1,
+      speed: 12,
+      armour: 320,
+      ...UNARMED,
+      probe: false,
+      captures: 1,
+      value: 70,
     },
   },
   fleet: {
@@ -398,13 +620,84 @@ export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
     launchTicks: 10,
     travelPercentPerLevel: 10,
     defendTicks: 120,
+    attackLaunchTicks: 45,
+    attackTravelPercent: 200,
+  },
+  combat: {
+    rounds: 10,
+    retreatLossPercent: 15,
+    salvagePercent: 30,
+    formations: {
+      // Something in every column, the line in front, artillery and pods behind it.
+      line: formation({
+        fighter: FRONT_LEFT,
+        destroyer: FRONT_CENTRE,
+        corvette: FRONT_RIGHT,
+        frigate: MIDDLE_LEFT,
+        battleship: MIDDLE_CENTRE,
+        cruiser: REAR_CENTRE,
+        pod: MIDDLE_RIGHT,
+      }),
+      // Every gun forward: nothing is screened but the pods.
+      wall: formation({
+        fighter: FRONT_LEFT,
+        frigate: FRONT_LEFT,
+        destroyer: FRONT_CENTRE,
+        battleship: FRONT_CENTRE,
+        corvette: FRONT_RIGHT,
+        cruiser: FRONT_RIGHT,
+        pod: MIDDLE_CENTRE,
+      }),
+      // One deep column: the most screening, and both flanks open.
+      column: formation({
+        fighter: FRONT_CENTRE,
+        corvette: FRONT_CENTRE,
+        destroyer: FRONT_CENTRE,
+        frigate: MIDDLE_CENTRE,
+        battleship: MIDDLE_CENTRE,
+        cruiser: REAR_CENTRE,
+        pod: REAR_CENTRE,
+      }),
+      // The light ships wide on both flanks to get round the enemy's line, the heavy ones in the centre.
+      wings: formation({
+        fighter: FRONT_LEFT,
+        corvette: FRONT_RIGHT,
+        destroyer: FRONT_CENTRE,
+        battleship: FRONT_CENTRE,
+        frigate: MIDDLE_CENTRE,
+        cruiser: MIDDLE_CENTRE,
+        pod: REAR_CENTRE,
+      }),
+    },
+    defaultFormation: "line",
+  },
+  capture: {
+    maxPercent: 25,
+    fullRatioPercent: 60,
+    minimum: 1,
+    bashLimitPercent: 25,
+  },
+  xp: {
+    attackPercent: 50,
+    minRatioPercent: 50,
+    maxRatioPercent: 200,
+    defendPercent: 100,
+    perAsteroid: 100,
   },
   intel: {
     baseDetail: 1,
     minDetail: 1,
     maxDetail: 3,
-    structuresDetail: 2,
-    shipsDetail: 3,
+    roughDetail: 2,
+    exactDetail: 3,
+    roughSteps: [1, 3, 10, 30, 100, 300, 1000, 3000, 10000],
+    noticeMargin: 1,
+    orbitTicks: 120,
+    orbitLossPerTick: 1,
+    warningTicks: 60,
+    warningTicksPerSensors: 10,
+    warningTicksPerJamming: 8,
+    minWarningTicks: 30,
   },
   team: { maxTaxPercent: 30 },
   score: { resourceDivisor: 20 },

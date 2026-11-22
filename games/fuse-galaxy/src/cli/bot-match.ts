@@ -36,6 +36,10 @@ export interface BotMatchResult {
   /** Commands the bots sent, and how many of them the engine refused. */
   readonly commands: number;
   readonly rejected: number;
+  /** Battles fought to their end, the rounds they took in all and the asteroids that changed hands in them. */
+  readonly battles: number;
+  readonly rounds: number;
+  readonly captured: number;
   /** Whether playing the match's log back gave the same world. */
   readonly replayMatches: boolean;
 }
@@ -43,7 +47,10 @@ export interface BotMatchResult {
 export function runBotMatch(options: BotMatchOptions): BotMatchResult {
   const { seed, setup, rules, policy, clock } = options;
   const env = createEnv({ rules, neutralPolicy: policy });
-  let rejected = 0;
+  let rejected = 0,
+    battles = 0,
+    rounds = 0,
+    captured = 0;
 
   const started = clock.now();
   let step = env.reset(seed, setup);
@@ -51,8 +58,13 @@ export function runBotMatch(options: BotMatchOptions): BotMatchResult {
     const commands = new Map<number, readonly Command[]>();
     for (const view of step.views) commands.set(view.self, policy(view, rules));
     step = env.step(commands);
-    for (const event of env.world().events)
+    for (const event of env.world().events) {
       if (event.type === "rejected") rejected += 1;
+      if (event.type !== "battleEnded") continue;
+      battles += 1;
+      rounds += event.rounds;
+      captured += event.captured;
+    }
   }
   const milliseconds = clock.now() - started;
 
@@ -69,6 +81,9 @@ export function runBotMatch(options: BotMatchOptions): BotMatchResult {
       0,
     ),
     rejected,
+    battles,
+    rounds,
+    captured,
     replayMatches: hashWorld(replay(log, rules)) === hash,
   };
 }

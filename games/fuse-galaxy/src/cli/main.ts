@@ -2,7 +2,7 @@
  * The terminal client: a bots-only match with a throughput summary, or one seat played by hand. Everything it
  * touches outside the engine (the terminal, the clock) is handed in; `scripts/fuse-galaxy.ts` supplies the real ones.
  */
-import { createEconomyBot } from "../bots/economy-bot.js";
+import { createRoster } from "../bots/roster.js";
 import { DEFAULT_RULES } from "../engine/index.js";
 import { USAGE, parseArgs, type Args } from "./args.js";
 import { runBotMatch, ticksPerSecond, type Clock } from "./bot-match.js";
@@ -18,7 +18,7 @@ type BotArgs = Extract<Args, { mode: "bots" }>;
 
 function runBots(args: BotArgs, { terminal, clock }: Dependencies): number {
   const { setup, rules } = args;
-  const policy = createEconomyBot();
+  const policy = createRoster(args.bots);
   let ticks = 0,
     milliseconds = 0,
     faithful = true;
@@ -29,11 +29,12 @@ function runBots(args: BotArgs, { terminal, clock }: Dependencies): number {
     milliseconds += result.milliseconds;
     faithful &&= result.replayMatches;
     terminal.write(
-      `Fuse Galaxy · seed ${seed} · ${setup.teams} teams of ${setup.teamSize} + ${setup.neutrals} neutral planets · rules v${rules.version}`,
+      `Fuse Galaxy · seed ${seed} · ${setup.teams} teams of ${setup.teamSize} + ${setup.neutrals} neutral planets · ${args.bots} bots · rules v${rules.version}`,
     );
     terminal.write(renderStandings(result.world, rules));
     terminal.write(
       `Commands: ${result.commands} sent, ${result.rejected} refused\n` +
+        `Battles: ${result.battles} fought over ${result.rounds} rounds, ${result.captured} asteroids captured\n` +
         `World hash: ${result.hash} · replay from the log ${result.replayMatches ? "matches" : "DOES NOT MATCH"}\n` +
         `Speed: ${result.ticks} ticks in ${result.milliseconds.toFixed(1)} ms = ${ticksPerSecond(result.ticks, result.milliseconds)} ticks/second`,
     );
@@ -66,7 +67,7 @@ export async function main(
         setup: args.setup,
         rules: args.rules,
         seat: args.seat,
-        policy: createEconomyBot(),
+        policy: createRoster(args.bots),
         terminal: dependencies.terminal,
       });
       return 0;

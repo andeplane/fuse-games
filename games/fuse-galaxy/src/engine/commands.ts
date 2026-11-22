@@ -16,7 +16,9 @@ import {
   structureCopies,
   structureCost,
 } from "./economy.js";
+import { arrangementProblem, type Arrangement } from "./formation.js";
 import { isRecord, isWhole, oneOf } from "./guards.js";
+import { PERCENT } from "./math.js";
 import type { Rules } from "./rules.js";
 import {
   BRANCH_IDS,
@@ -30,6 +32,7 @@ import {
   type Fleet,
   type Mission,
   type Planet,
+  type PlanetKind,
   type ResourceId,
   type Resources,
   type ShipClass,
@@ -56,7 +59,16 @@ export type Command =
       /** How many of each class to send; a class left out sends none. */
       readonly ships: Readonly<Partial<ShipCounts>>;
     }
+  /** Bring a fleet home. Leaving a battle costs ships (`Rules.combat.retreatLossPercent`). */
   | { readonly type: "recallFleet"; readonly fleet: number }
+  /** Draw up a fleet, or the home fleet (`fleet: NONE`), by a named formation or a cell for each class moved. */
+  | {
+      readonly type: "setFormation";
+      readonly fleet: number;
+      readonly arrangement: Arrangement;
+    }
+  /** Shelter the home fleet, so it takes no part in a battle at the planet, or bring it back out. */
+  | { readonly type: "setShelter"; readonly sheltered: boolean }
   | { readonly type: "voteCommander"; readonly candidate: number }
   /** Commander only. */
   | { readonly type: "setTax"; readonly percent: number }
@@ -170,6 +182,21 @@ export function parseCommand(value: unknown): ParsedCommand {
         ? bad("fleet")
         : { ok: true, command: { type, fleet } };
     }
+    case "setFormation": {
+      const fleet = numberOf(value.fleet);
+      if (fleet === undefined) return bad("fleet");
+      const arrangement =
+        typeof value.arrangement === "string"
+          ? value.arrangement
+          : amounts(value.arrangement, SHIP_CLASSES);
+      return arrangement === undefined
+        ? bad("arrangement")
+        : { ok: true, command: { type, fleet, arrangement } };
+    }
+    case "setShelter":
+      return typeof value.sheltered === "boolean"
+        ? { ok: true, command: { type, sheltered: value.sheltered } }
+        : bad("sheltered");
     case "voteCommander": {
       const candidate = numberOf(value.candidate);
       return candidate === undefined
@@ -213,8 +240,13 @@ export interface CommandContext {
   readonly team: DeepReadonly<Team> | undefined;
   /** Every fleet the sender can see; theirs are the ones they own. */
   readonly fleets: readonly DeepReadonly<Fleet>[];
-  /** Every planet by id. */
-  readonly planets: readonly { readonly id: number; readonly team: number }[];
+  /** Every planet by id, as far as everybody knows it. */
+  readonly planets: readonly {
+    readonly id: number;
+    readonly team: number;
+    readonly kind: PlanetKind;
+    readonly score: number;
+  }[];
 }
 
 const whole = isWhole;
@@ -309,8 +341,6 @@ export function commandProblem(
         : NOT_ENOUGH;
     }
     case "launchFleet": {
-      if (command.mission === "attack")
-        return "attack missions are not implemented in this slice";
       const target = whole(command.target)
         ? context.planets[command.target]
         : undefined;
@@ -318,15 +348,30 @@ export function commandProblem(
       if (target.id === planet.id)
         return "a fleet cannot target its own planet";
       const teammate = planet.team !== NONE && target.team === planet.team;
+      const observing =
+        command.mission === "observe" || command.mission === "orbit";
       if (command.mission === "defend" && !teammate)
         return "a fleet can only defend a teammate";
-      if (command.mission === "observe" && teammate)
+      if (observing && teammate)
         return "there is nothing to observe on a teammate's planet";
+      if (command.mission === "attack") {
+        if (teammate) return "a fleet cannot attack a teammate";
+        // The bash limit: a planet may not farm a player much smaller than itself.
+        if (
+          target.kind === "seat" &&
+          target.score * PERCENT < planet.score * rules.capture.bashLimitPercent
+        )
+          return "the target is too small for this planet to attack";
+      }
       for (const shipClass of SHIP_CLASSES) {
         const count = command.ships[shipClass] ?? 0;
         if (!whole(count) || count < 0)
           return "ship counts must be whole numbers of 0 or more";
         if (count > planet.ships[shipClass]) return "not enough ships at home";
+        if (count > 0 && rules.ships[shipClass].probe !== observing)
+          return observing
+            ? "only probes fly an observing mission"
+            : "probes fly observing missions only";
       }
       if (shipTotal(command.ships) < 1)
         return "a fleet needs at least one ship";
@@ -345,6 +390,22 @@ export function commandProblem(
         ? "the fleet is already on its way home"
         : undefined;
     }
+    case "setFormation":
+      if (
+        command.fleet !== NONE &&
+        !context.fleets.some(
+          (candidate) =>
+            candidate.id === command.fleet && candidate.owner === planet.id,
+        )
+      )
+        return "unknown fleet";
+      return arrangementProblem(command.arrangement, rules);
+    case "setShelter":
+      if (command.sheltered === planet.sheltered)
+        return command.sheltered
+          ? "the home fleet is already sheltered"
+          : "the home fleet is not sheltered";
+      return undefined;
     case "voteCommander":
       if (!team) return NO_TEAM;
       return team.members.includes(command.candidate)

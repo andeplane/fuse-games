@@ -34,14 +34,27 @@ export function freezeWorld(world: WorldDraft): World {
     for (const order of planet.production) Object.freeze(order);
     Object.freeze(planet.production);
     Object.freeze(planet.ships);
+    Object.freeze(planet.formation);
+    Object.freeze(planet.parts);
     Object.freeze(planet);
   }
   Object.freeze(world.planets);
   for (const fleet of world.fleets) {
     Object.freeze(fleet.ships);
+    Object.freeze(fleet.formation);
     Object.freeze(fleet);
   }
   Object.freeze(world.fleets);
+  for (const battle of world.battles) {
+    for (const wounds of battle.wounds) {
+      Object.freeze(wounds.damage);
+      Object.freeze(wounds);
+    }
+    Object.freeze(battle.wounds);
+    Object.freeze(battle.wreck);
+    Object.freeze(battle);
+  }
+  Object.freeze(world.battles);
   for (const team of world.teams) {
     Object.freeze(team.members);
     Object.freeze(team.fund);

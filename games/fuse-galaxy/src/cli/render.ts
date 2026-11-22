@@ -5,15 +5,23 @@ import {
   RESOURCE_IDS,
   SHIP_CLASSES,
   STRUCTURE_IDS,
+  formationName,
   income,
+  noShips,
   taxOn,
   teamScore,
   totalOf,
+  type BattleForce,
+  type BattleView,
   type CommandOption,
-  type GameEvent,
   type DeepReadonly,
+  type Formation,
+  type GameEvent,
   type PlayerView,
   type Rules,
+  type ScoreLine,
+  type Scoreboard,
+  type ShipCounts,
   type World,
 } from "../engine/index.js";
 
@@ -59,6 +67,23 @@ export function eventLine(event: DeepReadonly<GameEvent>): string {
       return `fleet ${event.fleet} of ${planetName(event.player)} arrived at ${planetName(event.target)} to ${event.mission}`;
     case "fleetReturned":
       return `fleet ${event.fleet} of ${planetName(event.player)} came home`;
+    case "fleetLost":
+      return `fleet ${event.fleet} of ${planetName(event.player)} has no ship left`;
+    case "probed":
+      return `${planetName(event.player)} was probed by ${planetName(event.by)}`;
+    case "battleRound":
+      return (
+        `battle at ${planetName(event.planet)}, round ${event.round}: ` +
+        `attackers lost ${held(SHIP_CLASSES, event.attackersLost)} (${event.attackersFrozen} frozen) · ` +
+        `defenders lost ${held(SHIP_CLASSES, event.defendersLost)} (${event.defendersFrozen} frozen)`
+      );
+    case "battleEnded":
+      return (
+        `battle at ${planetName(event.planet)} ended after ${event.rounds} ${event.rounds === 1 ? "round" : "rounds"}: ` +
+        `${event.captured} ${event.captured === 1 ? "asteroid" : "asteroids"} captured · salvage ${held(RESOURCE_IDS, event.salvage)}`
+      );
+    case "asteroidsCaptured":
+      return `fleet ${event.fleet} of ${planetName(event.player)} took ${held(RESOURCE_IDS, event.asteroids)} asteroids from ${planetName(event.from)}`;
     case "commanderChanged":
       return `team ${event.team}'s commander is now ${planetName(event.commander)}`;
     case "matchEnded":
@@ -66,6 +91,69 @@ export function eventLine(event: DeepReadonly<GameEvent>): string {
         ? "the match ended in a draw"
         : `the match ended: team ${event.winner} wins`;
   }
+}
+
+/** A formation by the name the rules give it, or the cell of each class it places when a player arranged it. */
+const formationText = (
+  formation: Readonly<Formation>,
+  ships: Readonly<ShipCounts>,
+  rules: Rules,
+): string =>
+  formationName(formation, rules) ??
+  (SHIP_CLASSES.filter((shipClass) => ships[shipClass] > 0)
+    .map((shipClass) => `${shipClass}=${formation[shipClass]}`)
+    .join(" ") ||
+    "custom");
+
+const SCORE_COLUMNS = [
+  "score",
+  "economy",
+  "military",
+  "technology",
+  "asteroids",
+] as const;
+
+const scoreRow = (name: string, line: ScoreLine): string =>
+  name.padEnd(20) +
+  SCORE_COLUMNS.map((column) => String(line[column]).padStart(11)).join("");
+
+/** The public scoreboard: every team with its members under it, then the neutral planets. */
+export function renderScoreboard(board: Scoreboard, self: number): string[] {
+  const lines = [
+    "Scoreboard".padEnd(20) +
+      SCORE_COLUMNS.map((column) => column.padStart(11)).join(""),
+  ];
+  const planetRow = (id: number): string =>
+    scoreRow(
+      `    planet ${id}${id === self ? " (you)" : ""}`,
+      board.players[id]!,
+    );
+  for (const team of board.teams) {
+    lines.push(scoreRow(`  team ${team.team}`, team));
+    for (const member of team.members) lines.push(planetRow(member));
+  }
+  const neutrals = board.players.filter((player) => player.team === NONE);
+  if (neutrals.length > 0) lines.push("  neutral");
+  for (const neutral of neutrals) lines.push(planetRow(neutral.planet));
+  return lines;
+}
+
+const forceLine = (force: BattleForce, rules: Rules): string =>
+  `${planetName(force.owner)} ${force.fleet === NONE ? "home fleet" : `fleet ${force.fleet}`}` +
+  ` [${formationText(force.formation, force.ships, rules)}]: ${held(SHIP_CLASSES, force.ships)}`;
+
+/** A battle the player can see: how far it has come and every fleet on each side. */
+export function renderBattle(battle: BattleView, rules: Rules): string[] {
+  const lines = [
+    `Battle       at ${planetName(battle.planet)}, round ${battle.round} of ${rules.combat.rounds}`,
+  ];
+  for (const [side, forces] of [
+    ["attacking", battle.attackers],
+    ["defending", battle.defenders],
+  ] as const)
+    for (const force of forces)
+      lines.push(`  ${side}  ${forceLine(force, rules)}`);
+  return lines;
 }
 
 /** Everything the player may know, as the terminal shows it. */
@@ -87,6 +175,8 @@ export function renderView(view: PlayerView, rules: Rules): string {
     `Structures   ${held(STRUCTURE_IDS, planet.structures)}`,
     `Research     ${held(BRANCH_IDS, planet.research)}`,
     `Ships home   ${held(SHIP_CLASSES, planet.ships)}`,
+    `Formation    ${formationText(planet.formation, planet.ships, rules)}` +
+      (planet.sheltered ? " · sheltered: out of any battle here" : ""),
   ];
   if (planet.construction.length > 0)
     lines.push(
@@ -131,9 +221,23 @@ export function renderView(view: PlayerView, rules: Rules): string {
   for (const fleet of view.fleets)
     lines.push(
       `Fleet ${fleet.id}      ${planetName(fleet.owner)} to ${fleet.mission} ${planetName(fleet.target)}, ` +
-        `${fleet.phase}, ${ticks(fleet.eta)}: ${held(SHIP_CLASSES, fleet.ships)}`,
+        (fleet.phase === "fighting"
+          ? "fighting"
+          : `${fleet.phase}, ${ticks(fleet.eta)}`) +
+        ` [${formationText(fleet.formation, fleet.ships, rules)}]: ${held(SHIP_CLASSES, fleet.ships)}`,
     );
-  lines.push("Planets      id  kind     team     x     y   score");
+  for (const incoming of view.incoming)
+    lines.push(
+      `INCOMING     fleet ${incoming.fleet} of ${planetName(incoming.owner)} attacks ${planetName(incoming.target)} in ${ticks(incoming.eta)}: ` +
+        (incoming.ships
+          ? `${incoming.formation ? "" : "about "}${held(SHIP_CLASSES, incoming.ships)}`
+          : "ships unknown") +
+        (incoming.formation
+          ? ` [${formationText(incoming.formation, incoming.ships ?? noShips(), rules)}]`
+          : ""),
+    );
+  for (const battle of view.battles) lines.push(...renderBattle(battle, rules));
+  lines.push("Planets      id  kind     team     x     y");
   for (const other of view.planets)
     lines.push(
       [
@@ -143,21 +247,30 @@ export function renderView(view: PlayerView, rules: Rules): string {
         (other.team === NONE ? "-" : String(other.team)).padStart(4),
         String(other.x).padStart(6),
         String(other.y).padStart(6),
-        String(other.score).padStart(8),
         other.id === view.self ? "  (you)" : "",
       ].join(""),
     );
+  lines.push(...renderScoreboard(view.scoreboard, view.self));
   for (const report of view.reports)
     lines.push(
       `Report       ${planetName(report.target)} at tick ${report.tick} by ${planetName(report.by)}: ` +
-        `${counts(RESOURCE_IDS, report.resources)} · asteroids ${counts(RESOURCE_IDS, report.asteroids)}` +
+        `asteroids ${counts(RESOURCE_IDS, report.asteroids)}` +
+        (report.resources
+          ? ` · stock ${counts(RESOURCE_IDS, report.resources)}`
+          : "") +
         (report.structures
           ? ` · structures ${held(STRUCTURE_IDS, report.structures)}`
           : "") +
         (report.research
           ? ` · research ${held(BRANCH_IDS, report.research)}`
           : "") +
-        (report.ships ? ` · ships ${held(SHIP_CLASSES, report.ships)}` : ""),
+        (report.ships
+          ? ` · ships ${report.resources ? "" : "about "}${held(SHIP_CLASSES, report.ships)}`
+          : "") +
+        (report.formation
+          ? ` [${formationText(report.formation, report.ships ?? noShips(), rules)}]`
+          : "") +
+        (report.sheltered ? " · sheltered" : ""),
     );
   for (const event of view.events)
     lines.push(`Event        ${eventLine(event)}`);
@@ -187,6 +300,10 @@ export function optionLine(option: CommandOption): string {
       return `launch ${option.mission} ${option.target} <ships>   (up to ${pairs(SHIP_CLASSES, option.maxShips)})`;
     case "recallFleet":
       return `recall ${option.fleet}`;
+    case "setFormation":
+      return `formation ${option.fleet === NONE ? "home" : option.fleet} <${option.formations.join("|")}>   (or <class>=<cell> ...)`;
+    case "setShelter":
+      return `shelter ${option.sheltered ? "on" : "off"}`;
     case "voteCommander":
       return `vote ${option.candidate}`;
     case "setTax":
@@ -212,6 +329,7 @@ export function renderStandings(world: World, rules: Rules): string {
     const planet = world.planets[id]!;
     return (
       `  planet ${String(id).padStart(2)}  score ${String(planet.score).padStart(7)}` +
+      ` (economy ${planet.parts.economy}, military ${planet.parts.military}, technology ${planet.parts.technology})` +
       `  asteroids ${String(totalOf(planet.asteroids)).padStart(3)}` +
       `  structures ${String(STRUCTURE_IDS.reduce((sum, structure) => sum + planet.structures[structure], 0)).padStart(2)}` +
       `  research ${String(BRANCH_IDS.reduce((sum, branch) => sum + planet.research[branch], 0)).padStart(2)}` +

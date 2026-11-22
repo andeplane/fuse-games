@@ -34,20 +34,42 @@ export const BRANCH_IDS = [
 export type BranchId = (typeof BRANCH_IDS)[number];
 export type ResearchLevels = Record<BranchId, number>;
 
-/** The six ship classes, lightest first. */
+/**
+ * The ship classes: the probe, the six warships lightest first, and the asteroid-capture pod. What each one does is
+ * its `ShipRule`; nothing in the engine knows a class by name.
+ */
 export const SHIP_CLASSES = [
+  "probe",
   "fighter",
   "corvette",
   "frigate",
   "destroyer",
   "cruiser",
   "battleship",
+  "pod",
 ] as const;
 export type ShipClass = (typeof SHIP_CLASSES)[number];
 export type ShipCounts = Record<ShipClass, number>;
 
-export const MISSIONS = ["attack", "defend", "observe"] as const;
+/**
+ * `attack` fights for a planet's asteroids, `defend` stands with a teammate, `observe` flies probes past a planet
+ * for one report and `orbit` leaves them there to report every tick.
+ */
+export const MISSIONS = ["attack", "defend", "observe", "orbit"] as const;
 export type Mission = (typeof MISSIONS)[number];
+
+/**
+ * Where each class of a fleet stands in battle: a cell of the 3×3 grid, `line × 3 + column`, with line 0 the front
+ * and column 0 the left (`formation.ts`). A formation is replaced whole and never changed in place.
+ */
+export type Formation = Record<ShipClass, number>;
+
+/** A score in its three public parts. */
+export interface ScoreParts {
+  economy: number;
+  military: number;
+  technology: number;
+}
 
 export type PlanetKind = "seat" | "neutral";
 
@@ -88,13 +110,25 @@ export interface Planet {
   production: ProductionOrder[];
   /** Ships at home. Ships in a fleet are in the fleet. */
   ships: ShipCounts;
+  /** How the home fleet stands in battle. A fleet takes a copy of it at launch. */
+  formation: Readonly<Formation>;
+  /** A sheltered home fleet takes no part in a battle at its planet, and cannot be hit in one. */
+  sheltered: boolean;
+  /** What the planet has earned by fighting; part of its military score. */
+  xp: number;
   /** What the planet owns is worth now (`score.ts`). */
   value: number;
-  /** What ranks the planet and decides the match. */
+  /** What ranks the planet and decides the match: its value and what it earned by fighting. */
   score: number;
+  /** The score in its public parts. Replaced whole each tick. */
+  parts: Readonly<ScoreParts>;
 }
 
-export type FleetPhase = "outbound" | "stationed" | "returning";
+/**
+ * `outbound` and `returning` fleets are in flight; a `stationed` fleet is at its target defending or in orbit, and
+ * a `fighting` one is attacking it.
+ */
+export type FleetPhase = "outbound" | "stationed" | "fighting" | "returning";
 
 export interface Fleet {
   id: number;
@@ -102,11 +136,32 @@ export interface Fleet {
   mission: Mission;
   target: number;
   ships: ShipCounts;
+  formation: Readonly<Formation>;
   phase: FleetPhase;
-  /** Ticks left in the phase. */
+  /** Ticks left in the phase; a fighting fleet stays until its battle ends. */
   eta: number;
   /** How long the whole trip out takes; a recall flies back as far as the fleet had come. */
   travelTicks: number;
+}
+
+/**
+ * The damage the squadrons of one fleet carry between rounds. A squadron is a class, a count and its pooled hit
+ * points: `count × armour` less the damage here, which is always less than one ship's armour.
+ */
+export interface Wounds {
+  /** The fleet's id, or `NONE` for the planet's home fleet. */
+  fleet: number;
+  damage: ShipCounts;
+}
+
+/** A battle in progress at a planet: every fleet attacking it against its home fleet and the fleets defending it. */
+export interface Battle {
+  planet: number;
+  /** Rounds fought so far; one is fought each tick. */
+  round: number;
+  wounds: Wounds[];
+  /** What the ships destroyed so far cost to build; the planet's owner salvages a share of it. */
+  wreck: Resources;
 }
 
 export interface Team {
@@ -121,18 +176,25 @@ export interface Team {
   defencePriority: number;
 }
 
-/** What one observation saw, and when. The fields past `asteroids` depend on the report's `detail`. */
+/**
+ * What one observation saw, and when. The fields past `asteroids` depend on the report's `detail` (`intel.ts`):
+ * asteroids always, then structures, research and the ships at the planet as rough counts, then the exact counts,
+ * the stock and how the home fleet is drawn up.
+ */
 export interface ScoutReport {
   target: number;
   /** The tick the observation was made on. */
   tick: number;
   by: number;
   detail: number;
-  resources: Resources;
   asteroids: Resources;
   structures: StructureCounts | null;
   research: ResearchLevels | null;
+  /** The home fleet and the fleets stationed with it: rounded down to the rules' steps until the detail is exact. */
   ships: ShipCounts | null;
+  resources: Resources | null;
+  formation: Formation | null;
+  sheltered: boolean | null;
 }
 
 /**
@@ -164,6 +226,39 @@ export type GameEvent =
       mission: Mission;
     }
   | { type: "fleetReturned"; player: number; fleet: number }
+  /** A fleet has no ship left: they were destroyed, or its last pods were spent on the asteroids they took. */
+  | { type: "fleetLost"; player: number; fleet: number }
+  /** `player`'s sensors noticed probes from `by`. */
+  | { type: "probed"; player: number; by: number }
+  | {
+      type: "battleRound";
+      planet: number;
+      round: number;
+      /** Every player with ships in the battle, and the planet's owner. */
+      parties: number[];
+      /** What each side lost this round and how many of its ships were frozen in it. */
+      attackersLost: ShipCounts;
+      defendersLost: ShipCounts;
+      attackersFrozen: number;
+      defendersFrozen: number;
+    }
+  | {
+      type: "battleEnded";
+      planet: number;
+      rounds: number;
+      parties: number[];
+      /** Asteroids taken from the planet, in all. */
+      captured: number;
+      /** What the planet's owner recovered from the wreckage. */
+      salvage: Resources;
+    }
+  | {
+      type: "asteroidsCaptured";
+      player: number;
+      fleet: number;
+      from: number;
+      asteroids: Resources;
+    }
   | { type: "commanderChanged"; team: number; commander: number }
   | { type: "matchEnded"; winner: number };
 
@@ -189,6 +284,8 @@ export interface WorldDraft {
   planets: Planet[];
   fleets: Fleet[];
   nextFleetId: number;
+  /** The battles in progress, in the order they began. */
+  battles: Battle[];
   teams: Team[];
   /** One entry per planet, by id. */
   knowledge: Knowledge[];
@@ -211,12 +308,14 @@ export const noResources = (): Resources => ({
 });
 
 export const noShips = (): ShipCounts => ({
+  probe: 0,
   fighter: 0,
   corvette: 0,
   frigate: 0,
   destroyer: 0,
   cruiser: 0,
   battleship: 0,
+  pod: 0,
 });
 
 /** The team's record, or undefined for `NONE` (a neutral planet has no team). */

@@ -13,10 +13,10 @@ import {
   NONE,
   RESOURCE_IDS,
   noResources,
-  noShips,
   type Planet,
   type PlanetKind,
   type Resources,
+  type ShipCounts,
   type Team,
   type World,
   type WorldDraft,
@@ -33,6 +33,8 @@ export interface MatchSetup {
 
 export const SETUP_2V2: MatchSetup = { teams: 2, teamSize: 2, neutrals: 6 };
 export const SETUP_3V3: MatchSetup = { teams: 2, teamSize: 3, neutrals: 6 };
+/** Three teams of two. */
+export const SETUP_2V2V2: MatchSetup = { teams: 3, teamSize: 2, neutrals: 6 };
 
 const whole = isWhole;
 
@@ -82,6 +84,7 @@ function planet(
   y: number,
   resources: Readonly<Resources>,
   asteroids: Readonly<Resources>,
+  ships: Readonly<ShipCounts>,
   rules: Rules,
 ): Planet {
   return {
@@ -97,9 +100,14 @@ function planet(
     construction: [],
     researchQueue: [],
     production: [],
-    ships: noShips(),
+    ships: { ...ships },
+    formation: rules.combat.formations[rules.combat.defaultFormation]!,
+    sheltered: false,
+    xp: 0,
+    // `updateScores` sets these three.
     value: 0,
     score: 0,
+    parts: { economy: 0, military: 0, technology: 0 },
   };
 }
 
@@ -144,9 +152,11 @@ export function createWorld(
     votes: [],
     defencePriority: NONE,
   }));
+  // The anchors are laid out for the number of teams playing: opposite corners for two, a triangle for three.
+  const anchors = rules.map.teamAnchors[setup.teams - rules.setup.minTeams]!;
   for (let place = 0; place < setup.teamSize; place++)
     for (const team of teams) {
-      const [anchorX, anchorY] = rules.map.teamAnchors[team.id]!;
+      const [anchorX, anchorY] = anchors[team.id]!;
       const [offsetX, offsetY] = rules.map.memberOffsets[place]!;
       team.members.push(planets.length);
       team.votes.push(NONE);
@@ -159,6 +169,7 @@ export function createWorld(
           anchorY + offsetY,
           rules.start.resources,
           rules.start.asteroids,
+          rules.start.ships,
           rules,
         ),
       );
@@ -177,6 +188,7 @@ export function createWorld(
         y,
         rules.neutral.resources,
         asteroids,
+        rules.neutral.ships,
         rules,
       ),
     );
@@ -192,6 +204,7 @@ export function createWorld(
     planets,
     fleets: [],
     nextFleetId: 1,
+    battles: [],
     teams,
     knowledge: planets.map(() => ({ reports: [] })),
     events: [],

@@ -12,7 +12,6 @@ import {
   SHIP_CLASSES,
   legalCommands,
   minimalCommand,
-  shipTotal,
   shipsValue,
   structureCopies,
   totalOf,
@@ -22,7 +21,6 @@ import {
   type PlayerView,
   type Policy,
   type Rules,
-  type ShipCounts,
 } from "../engine/index.js";
 
 export interface BotConfig {
@@ -58,12 +56,12 @@ export const DEFAULT_BOT_CONFIG: BotConfig = {
   rescoutTicks: 300,
 };
 
-type Option<T extends CommandOption["type"]> = Extract<
+export type Option<T extends CommandOption["type"]> = Extract<
   CommandOption,
   { type: T }
 >;
 
-const ofType = <T extends CommandOption["type"]>(
+export const ofType = <T extends CommandOption["type"]>(
   options: readonly CommandOption[],
   type: T,
 ): Option<T>[] =>
@@ -103,12 +101,53 @@ function bestInvestment(
   return best?.command;
 }
 
+/** What the player's ships are worth, at home and in its fleets. */
+export const ownShipsValue = (view: PlayerView, rules: Rules): number =>
+  view.fleets.reduce(
+    (sum, fleet) =>
+      fleet.owner === view.self ? sum + shipsValue(fleet.ships, rules) : sum,
+    shipsValue(view.planet.ships, rules),
+  );
+
+/** The classes the planet can order now that destroy what they hit, lightest first. */
+export const gunships = (
+  options: readonly CommandOption[],
+  rules: Rules,
+): Option<"produceShips">[] =>
+  ofType(options, "produceShips").filter((option) => {
+    const rule = rules.ships[option.shipClass];
+    return rule.shots > 0 && rule.attack > 0 && rule.effect === "damage";
+  });
+
+/** Decides which ships to order now, if any. */
+export type Shipwright = (
+  options: readonly CommandOption[],
+  view: PlayerView,
+  rules: Rules,
+) => Command | undefined;
+
+/** The heaviest gunship the planet can build, while its ships are less than a share of what it is worth. */
+export const standingFleet =
+  (fleetPercent: number, shipBatch: number): Shipwright =>
+  (options, view, rules) => {
+    const yard = gunships(options, rules).at(-1);
+    return yard &&
+      ownShipsValue(view, rules) * 100 < view.planet.value * fleetPercent
+      ? {
+          type: "produceShips",
+          shipClass: yard.shipClass,
+          count: Math.min(yard.maxCount, shipBatch),
+        }
+      : undefined;
+  };
+
 /** The one thing the bot buys this turn, if anything. */
-function purchase(
+export function purchase(
   options: readonly CommandOption[],
   view: PlayerView,
   rules: Rules,
   config: BotConfig,
+  shipwright: Shipwright,
 ): Command | undefined {
   const { planet } = view;
   const asteroids = totalOf(planet.asteroids);
@@ -125,19 +164,7 @@ function purchase(
     return build && minimalCommand(build);
   }
 
-  const fleetValue = view.fleets.reduce(
-    (sum, fleet) =>
-      fleet.owner === view.self ? sum + shipsValue(fleet.ships, rules) : sum,
-    shipsValue(planet.ships, rules),
-  );
-  const yard = ofType(options, "produceShips").at(-1);
-  if (yard && fleetValue * 100 < planet.value * config.fleetPercent)
-    return {
-      type: "produceShips",
-      shipClass: yard.shipClass,
-      count: Math.min(yard.maxCount, config.shipBatch),
-    };
-
+  // Research before ships: a lab that stands idle while the yard takes everything never reaches a better hull.
   if (planet.researchQueue.length === 0) {
     const order = (branch: BranchId): number =>
       config.researchOrder.indexOf(branch);
@@ -146,64 +173,65 @@ function purchase(
     )[0];
     if (research) return minimalCommand(research);
   }
-  return bestInvestment(options, view, rules);
+  return (
+    shipwright(options, view, rules) ?? bestInvestment(options, view, rules)
+  );
 }
 
-/** The lightest ship at home, as a fleet of one. */
-function scout(ships: Readonly<ShipCounts>): Partial<ShipCounts> {
-  const shipClass = SHIP_CLASSES.find((id) => ships[id] > 0);
-  return shipClass ? { [shipClass]: 1 } : {};
+/** Whether the player already has a fleet out to a planet. */
+const sent = (view: PlayerView, target: number): boolean =>
+  view.fleets.some(
+    (fleet) => fleet.owner === view.self && fleet.target === target,
+  );
+
+/** Every warship at home to the teammate the commander has flagged, unless a fleet is on that job already. */
+export function defendFlagged(
+  options: readonly CommandOption[],
+  view: PlayerView,
+): Command | undefined {
+  const flagged = view.team ? view.team.defencePriority : NONE;
+  const defend = ofType(options, "launchFleet").find(
+    (option) => option.mission === "defend" && option.target === flagged,
+  );
+  return defend && !sent(view, flagged)
+    ? {
+        type: "launchFleet",
+        mission: "defend",
+        target: flagged,
+        ships: defend.maxShips,
+      }
+    : undefined;
 }
 
-/** The one fleet the bot sends this turn, if any: help for the flagged teammate first, a scout otherwise. */
-function launch(
+/** One probe past the planet the team has gone longest without a report on, once that report is old enough. */
+export function scout(
   options: readonly CommandOption[],
   view: PlayerView,
   config: BotConfig,
 ): Command | undefined {
-  const fleets = ofType(options, "launchFleet");
-  const sent = (target: number): boolean =>
-    view.fleets.some(
-      (fleet) => fleet.owner === view.self && fleet.target === target,
-    );
-  const home = view.planet.ships;
-  const one = scout(home);
-
-  const flagged = view.team ? view.team.defencePriority : NONE;
-  const defend = fleets.find(
-    (option) => option.mission === "defend" && option.target === flagged,
-  );
-  if (defend && !sent(flagged) && shipTotal(home) > 1) {
-    // Everything but one scout.
-    const ships: Partial<ShipCounts> = {};
-    for (const shipClass of SHIP_CLASSES)
-      ships[shipClass] = home[shipClass] - (one[shipClass] ?? 0);
-    return { type: "launchFleet", mission: "defend", target: flagged, ships };
-  }
-
   const seen = (target: number): number =>
     view.reports.find((report) => report.target === target)?.tick ??
     -config.rescoutTicks;
-  const observe = fleets
+  const observe = ofType(options, "launchFleet")
     .filter(
       (option) =>
         option.mission === "observe" &&
-        !sent(option.target) &&
+        !sent(view, option.target) &&
         view.tick - seen(option.target) >= config.rescoutTicks,
     )
     .sort((a, b) => seen(a.target) - seen(b.target) || a.target - b.target)[0];
-  return (
-    observe && {
-      type: "launchFleet",
-      mission: "observe",
-      target: observe.target,
-      ships: one,
-    }
-  );
+  if (!observe) return undefined;
+  const probe = SHIP_CLASSES.find((id) => observe.maxShips[id] > 0)!;
+  return {
+    type: "launchFleet",
+    mission: "observe",
+    target: observe.target,
+    ships: { [probe]: 1 },
+  };
 }
 
 /** What the bot does for its team: its vote, and the commander's duties when it holds the post. */
-function teamwork(
+export function teamwork(
   options: readonly CommandOption[],
   view: PlayerView,
   rules: Rules,
@@ -227,15 +255,29 @@ function teamwork(
   if (tax && team.taxPercent !== percent)
     commands.push({ type: "setTax", percent });
 
-  // The member who is furthest behind gets the fund and the flag.
+  // The member under attack gets the flag: one with a battle at home first, then the one an attack reaches soonest.
+  const besieged = view.battles.find((battle) =>
+    team.members.includes(battle.planet),
+  )?.planet;
+  const soonest = view.incoming.reduce<number | undefined>(
+    (first, fleet, index) =>
+      first === undefined || fleet.eta < view.incoming[first]!.eta
+        ? index
+        : first,
+    undefined,
+  );
+  const threatened =
+    besieged ?? (soonest === undefined ? NONE : view.incoming[soonest]!.target);
+  const flag = ofType(options, "setDefencePriority").find(
+    (option) => option.planet === threatened,
+  );
+  if (flag && team.defencePriority !== threatened)
+    commands.push(minimalCommand(flag));
+
+  // The member who is furthest behind gets the fund.
   const weakest = [view.planet, ...view.allies].reduce((a, b) =>
     b.score < a.score || (b.score === a.score && b.id < a.id) ? b : a,
   ).id;
-  const flag = ofType(options, "setDefencePriority").find(
-    (option) => option.planet === weakest,
-  );
-  if (flag && team.defencePriority !== weakest)
-    commands.push(minimalCommand(flag));
   const grant = ofType(options, "grant").find(
     (option) => option.to === weakest,
   );
@@ -254,9 +296,16 @@ export function createEconomyBot(
     const options = legalCommands(view, rules);
     if (options.length === 0) return [];
     const commands = teamwork(options, view, rules, config);
-    const bought = purchase(options, view, rules, config);
+    const bought = purchase(
+      options,
+      view,
+      rules,
+      config,
+      standingFleet(config.fleetPercent, config.shipBatch),
+    );
     if (bought) commands.push(bought);
-    const fleet = launch(options, view, config);
+    // One fleet a turn: help for the flagged teammate first, a scout otherwise.
+    const fleet = defendFlagged(options, view) ?? scout(options, view, config);
     if (fleet) commands.push(fleet);
     return commands;
   };

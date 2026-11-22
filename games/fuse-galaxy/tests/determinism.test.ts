@@ -55,7 +55,7 @@ const SCRIPT: readonly (readonly UntrustedSubmission[])[] = [
         type: "launchFleet",
         mission: "observe",
         target: 0,
-        ships: { fighter: 1 },
+        ships: { probe: 1 },
       },
       {
         type: "launchFleet",
@@ -73,7 +73,8 @@ const SCRIPT: readonly (readonly UntrustedSubmission[])[] = [
   ],
   ...Array.from({ length: 20 }, () => []),
   from(1, { type: "recallFleet", fleet: 2 }),
-  ...Array.from({ length: 60 }, () => []),
+  // Long enough for the attack to arrive and be fought out.
+  ...Array.from({ length: 140 }, () => []),
 ];
 
 const play = (seed: number): World =>
@@ -96,9 +97,15 @@ test("the same seed and the same commands give the same world, hash for hash", (
   assert.equal(first.teams[0]!.commander, 0);
   assert.equal(first.teams[0]!.taxPercent, 20);
   assert.equal(first.teams[1]!.commander, 3);
-  assert.equal(first.planets[1]!.ships.fighter, 4);
   assert.equal(first.knowledge[1]!.reports.length, 1);
-  assert.equal(first.nextFleetId, 3);
+  assert.equal(first.nextFleetId, 4);
+  // The defending fleet was recalled and is home; the attack found nobody to fight and is on its way back.
+  assert.equal(first.planets[1]!.ships.fighter, 3);
+  assert.deepEqual(
+    first.fleets.map(({ id, mission, phase }) => [id, mission, phase]),
+    [[3, "attack", "returning"]],
+  );
+  assert.deepEqual(first.battles, []);
 });
 
 test("a different seed gives a different world, and so does one different command", () => {
@@ -123,9 +130,9 @@ test("a recorded match hashes to its pinned value", () => {
       played: hashWorld(play(11)),
     },
     {
-      start: "44e366d5a6d0a234",
-      start3v3: "73f40a1eca7f3dcd",
-      played: "903a0f9d1a363112",
+      start: "513cf8a8557e9d3b",
+      start3v3: "c0576fd94ec3d246",
+      played: "a597eef1f3dc2696",
     },
   );
 });

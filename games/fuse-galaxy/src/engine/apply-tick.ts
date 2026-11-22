@@ -9,17 +9,19 @@
  *    state the commands before it left, and a refused one becomes a `rejected` event with its reason
  * 2. income: base, asteroids and structures, with the team's tax diverted to its fund
  * 3. construction, research and ship production advance
- * 4. fleets move, arrive, observe and come home
- * 5. combat (the combat slice)
- * 6. asteroid capture and salvage (the combat slice)
+ * 4. fleets move, arrive, observe and come home; an attack that lands joins the battle at its target or starts one
+ * 5. one round of every battle (`combat.ts`)
+ * 6. a battle that is over: asteroids captured, wreckage salvaged, the attackers sent home
  * 7. value and score
  * 8. the match ends at the tick limit
  */
+import { fightBattles } from "./combat.js";
 import { commandProblem, parseCommand } from "./commands.js";
-import { income, taxOn } from "./economy.js";
+import { income, shipTotal, taxOn } from "./economy.js";
 import { deepFreeze, freezeWorld } from "./freeze.js";
 import { isRecord, isWhole } from "./guards.js";
-import { clamp, min } from "./math.js";
+import { notices, observe } from "./intel.js";
+import { min } from "./math.js";
 import { execute } from "./orders.js";
 import type { Rules } from "./rules.js";
 import { endMatch, updateScores } from "./score.js";
@@ -27,13 +29,13 @@ import {
   NONE,
   RESOURCE_IDS,
   SHIP_CLASSES,
+  noResources,
   teamOf,
   type DeepReadonly,
   type Fleet,
   type GameEvent,
   type Planet,
   type Resources,
-  type ScoutReport,
   type ShipCounts,
   type World,
   type WorldDraft,
@@ -52,12 +54,14 @@ const copyResources = (from: Readonly<Resources>): Resources => ({
 });
 
 const copyShips = (from: Readonly<ShipCounts>): ShipCounts => ({
+  probe: from.probe,
   fighter: from.fighter,
   corvette: from.corvette,
   frigate: from.frigate,
   destroyer: from.destroyer,
   cruiser: from.cruiser,
   battleship: from.battleship,
+  pod: from.pod,
 });
 
 const clonePlanet = (planet: DeepReadonly<Planet>): Planet => ({
@@ -97,11 +101,18 @@ const clonePlanet = (planet: DeepReadonly<Planet>): Planet => ({
     remaining: order.remaining,
   })),
   ships: copyShips(planet.ships),
+  formation: planet.formation,
+  sheltered: planet.sheltered,
+  xp: planet.xp,
   value: planet.value,
   score: planet.score,
+  parts: planet.parts,
 });
 
-/** A private copy of a world for one tick to change. Scout reports are never changed once made, so they are shared. */
+/**
+ * A private copy of a world for one tick to change. Scout reports, formations and a score's parts are never changed
+ * once made, only replaced, so they are shared.
+ */
 const draftOf = (world: World): WorldDraft => ({
   rulesVersion: world.rulesVersion,
   seed: world.seed,
@@ -116,11 +127,21 @@ const draftOf = (world: World): WorldDraft => ({
     mission: fleet.mission,
     target: fleet.target,
     ships: copyShips(fleet.ships),
+    formation: fleet.formation,
     phase: fleet.phase,
     eta: fleet.eta,
     travelTicks: fleet.travelTicks,
   })),
   nextFleetId: world.nextFleetId,
+  battles: world.battles.map((battle) => ({
+    planet: battle.planet,
+    round: battle.round,
+    wounds: battle.wounds.map((wounds) => ({
+      fleet: wounds.fleet,
+      damage: copyShips(wounds.damage),
+    })),
+    wreck: copyResources(battle.wreck),
+  })),
   teams: world.teams.map((team) => ({
     id: team.id,
     members: [...team.members],
@@ -296,43 +317,92 @@ function advanceQueues(world: WorldDraft): void {
   }
 }
 
-/** What a fleet sees of the planet it has come to observe: more with better sensors, less against jamming. */
-function observe(world: WorldDraft, fleet: Fleet, rules: Rules): void {
-  const observer = world.planets[fleet.owner]!;
+/**
+ * A tick in orbit: the probes report, and a planet that has noticed them shoots some down. Returns whether any are
+ * left.
+ */
+function orbit(world: WorldDraft, fleet: Fleet, rules: Rules): boolean {
   const target = world.planets[fleet.target]!;
-  const detail = clamp(
-    rules.intel.baseDetail +
-      observer.research.sensors -
-      target.research.jamming,
-    rules.intel.minDetail,
-    rules.intel.maxDetail,
-  );
-  const report: ScoutReport = {
-    target: target.id,
-    tick: world.tick,
-    by: observer.id,
-    detail,
-    resources: { ...target.resources },
-    asteroids: { ...target.asteroids },
-    structures:
-      detail >= rules.intel.structuresDetail ? { ...target.structures } : null,
-    research:
-      detail >= rules.intel.structuresDetail ? { ...target.research } : null,
-    ships: detail >= rules.intel.shipsDetail ? { ...target.ships } : null,
-  };
-  world.knowledge[observer.id] = {
-    reports: [
-      ...world.knowledge[observer.id]!.reports.filter(
-        (known) => known.target !== target.id,
-      ),
-      report,
-    ].sort((a, b) => a.target - b.target),
-  };
+  if (notices(target, world.planets[fleet.owner]!, rules)) {
+    let shot = rules.intel.orbitLossPerTick;
+    for (const shipClass of SHIP_CLASSES) {
+      const lost = min(shot, fleet.ships[shipClass]);
+      fleet.ships[shipClass] -= lost;
+      shot -= lost;
+    }
+    if (shipTotal(fleet.ships) === 0) {
+      world.events.push({
+        type: "fleetLost",
+        player: fleet.owner,
+        fleet: fleet.id,
+      });
+      return false;
+    }
+  }
+  observe(world, fleet, rules);
+  return true;
+}
+
+/** What a fleet does on the tick it reaches its target. */
+function arrive(world: WorldDraft, fleet: Fleet, rules: Rules): void {
+  world.events.push({
+    type: "fleetArrived",
+    player: fleet.owner,
+    fleet: fleet.id,
+    target: fleet.target,
+    mission: fleet.mission,
+  });
+  if (fleet.mission === "attack") {
+    // It joins the battle at the planet, or starts one, and stays until that battle is over.
+    fleet.phase = "fighting";
+    fleet.eta = 0;
+    if (!world.battles.some((battle) => battle.planet === fleet.target))
+      world.battles.push({
+        planet: fleet.target,
+        round: 0,
+        wounds: [],
+        wreck: noResources(),
+      });
+    return;
+  }
+  if (fleet.mission === "defend") {
+    fleet.phase = "stationed";
+    fleet.eta = rules.fleet.defendTicks;
+    return;
+  }
+  observe(world, fleet, rules);
+  const target = world.planets[fleet.target]!;
+  if (notices(target, world.planets[fleet.owner]!, rules))
+    world.events.push({ type: "probed", player: target.id, by: fleet.owner });
+  if (fleet.mission === "orbit") {
+    fleet.phase = "stationed";
+    fleet.eta = rules.intel.orbitTicks;
+    return;
+  }
+  // A fly-past turns round as soon as it has looked.
+  fleet.phase = "returning";
+  fleet.eta = fleet.travelTicks;
 }
 
 function moveFleets(world: WorldDraft, rules: Rules): void {
   if (world.fleets.length === 0) return;
+  // The planets fought over this tick: a battle in progress, or an attack that lands now.
+  const embattled = new Set(world.battles.map((battle) => battle.planet));
+  for (const fleet of world.fleets)
+    if (
+      fleet.mission === "attack" &&
+      fleet.phase === "outbound" &&
+      fleet.eta <= 1
+    )
+      embattled.add(fleet.target);
   world.fleets = world.fleets.filter((fleet) => {
+    if (fleet.phase === "fighting") return true;
+    if (fleet.phase === "stationed") {
+      if (fleet.mission === "orbit") {
+        if (!orbit(world, fleet, rules)) return false;
+      } else if (embattled.has(fleet.target)) return true;
+      // A defender's watch does not run down while the planet is fought over.
+    }
     if (--fleet.eta > 0) return true;
     if (fleet.phase === "returning") {
       const home = world.planets[fleet.owner]!;
@@ -346,21 +416,10 @@ function moveFleets(world: WorldDraft, rules: Rules): void {
       return false;
     }
     if (fleet.phase === "outbound") {
-      world.events.push({
-        type: "fleetArrived",
-        player: fleet.owner,
-        fleet: fleet.id,
-        target: fleet.target,
-        mission: fleet.mission,
-      });
-      if (fleet.mission === "defend") {
-        fleet.phase = "stationed";
-        fleet.eta = rules.fleet.defendTicks;
-        return true;
-      }
-      observe(world, fleet, rules);
+      arrive(world, fleet, rules);
+      return true;
     }
-    // An observer turns round as soon as it has looked; a defender flies home when its watch is over.
+    // A defender flies home when its watch is over, and probes when their time in orbit is.
     fleet.phase = "returning";
     fleet.eta = fleet.travelTicks;
     return true;
@@ -393,6 +452,7 @@ export function applyTick(
   earnIncome(draft, rules);
   advanceQueues(draft);
   moveFleets(draft, rules);
+  fightBattles(draft, rules);
   updateScores(draft.planets, draft.fleets, rules);
   endMatch(draft, rules);
   return freezeWorld(draft);

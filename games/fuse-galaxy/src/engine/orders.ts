@@ -2,6 +2,7 @@
  * Carrying out a command that `commandProblem` has already allowed: these change the tick's private copy of the
  * world and check nothing themselves.
  */
+import { abandon, battleAt } from "./combat.js";
 import type { Command } from "./commands.js";
 import {
   asteroidCost,
@@ -10,9 +11,11 @@ import {
   researchCost,
   researchTicks,
   shipCost,
+  shipTotal,
   structureCost,
   travelTicks,
 } from "./economy.js";
+import { arranged } from "./formation.js";
 import { max, min } from "./math.js";
 import type { Rules } from "./rules.js";
 import {
@@ -125,6 +128,7 @@ export function execute(
         ships,
         planet.research.travel,
         rules,
+        command.mission,
       );
       world.fleets.push({
         id: world.nextFleetId,
@@ -132,6 +136,8 @@ export function execute(
         mission: command.mission,
         target: command.target,
         ships,
+        // The fleet flies as the home fleet stands; `setFormation` can draw it up differently on the way.
+        formation: planet.formation,
         phase: "outbound",
         eta: ticks,
         travelTicks: ticks,
@@ -143,12 +149,48 @@ export function execute(
       const fleet = world.fleets.find(
         (candidate) => candidate.id === command.fleet,
       )!;
+      // Leaving a battle costs ships, for an attacker and for a defender stationed at the planet.
+      const battle =
+        fleet.phase === "fighting" ||
+        (fleet.phase === "stationed" && fleet.mission === "defend")
+          ? battleAt(world, fleet.target)
+          : undefined;
+      if (battle) {
+        abandon(battle, fleet.id, fleet.ships, rules);
+        if (shipTotal(fleet.ships) === 0) {
+          world.fleets = world.fleets.filter((other) => other !== fleet);
+          world.events.push({ type: "fleetLost", player, fleet: fleet.id });
+          return;
+        }
+      }
       // A fleet on its way out flies back as far as it had come; one that had arrived flies the whole way.
       fleet.eta =
         fleet.phase === "outbound"
           ? max(1, fleet.travelTicks - fleet.eta)
           : fleet.travelTicks;
       fleet.phase = "returning";
+      return;
+    }
+    case "setFormation": {
+      if (command.fleet === NONE) {
+        planet.formation = arranged(
+          planet.formation,
+          command.arrangement,
+          rules,
+        );
+        return;
+      }
+      const fleet = world.fleets.find(
+        (candidate) => candidate.id === command.fleet,
+      )!;
+      fleet.formation = arranged(fleet.formation, command.arrangement, rules);
+      return;
+    }
+    case "setShelter": {
+      planet.sheltered = command.sheltered;
+      // Pulling the home fleet out of a battle already under way costs what any retreat does.
+      const battle = command.sheltered ? battleAt(world, player) : undefined;
+      if (battle) abandon(battle, NONE, planet.ships, rules);
       return;
     }
     case "voteCommander": {

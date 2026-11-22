@@ -4,19 +4,93 @@ import {
   SETUP_2V2,
   applyTick,
   createWorld,
+  noShips,
+  viewFor as engineViewFor,
   type Command,
   type DeepReadonly,
+  type Fleet,
+  type Formation,
   type GameEvent,
   type MatchSetup,
   type Planet,
+  type PlayerView,
   type Resources,
   type Rules,
+  type ScoutReport,
+  type ShipCounts,
   type Team,
   type UntrustedSubmission,
   type World,
 } from "../src/engine/index.js";
 
 export const RULES = DEFAULT_RULES;
+
+/** The formation every planet starts in. */
+export const LINE: Readonly<Formation> = RULES.combat.formations.line!;
+
+/** Ship counts with these classes and none of the others. */
+export const ships = (counts: Partial<ShipCounts>): ShipCounts => ({
+  ...noShips(),
+  ...counts,
+});
+
+/** A player's view, under the default rules unless told otherwise. */
+export const viewFor = (
+  world: World,
+  player: number,
+  rules: Rules = RULES,
+): PlayerView => engineViewFor(world, player, rules);
+
+/** A fleet written by hand: one probe on its way to observe, unless the patch says otherwise. */
+export const fleetOf = (
+  id: number,
+  owner: number,
+  target: number,
+  patch: Partial<Fleet> = {},
+): Fleet => ({
+  id,
+  owner,
+  mission: "observe",
+  target,
+  ships: ships({ probe: 1 }),
+  formation: LINE,
+  phase: "outbound",
+  eta: 9,
+  travelTicks: 20,
+  ...patch,
+});
+
+/** A scout report written by hand: the least detail, unless the patch says otherwise. */
+export const reportOf = (
+  target: number,
+  at: number,
+  by: number,
+  patch: Partial<ScoutReport> = {},
+): ScoutReport => ({
+  target,
+  tick: at,
+  by,
+  detail: 1,
+  asteroids: { metal: 1, crystal: 1, eonium: 1 },
+  structures: null,
+  research: null,
+  ships: null,
+  resources: null,
+  formation: null,
+  sheltered: null,
+  ...patch,
+});
+
+/** The world with these reports as what each planet named knows. */
+export const knowing = (
+  world: World,
+  reports: Readonly<Record<number, readonly ScoutReport[]>>,
+): World => ({
+  ...world,
+  knowledge: world.knowledge.map((known, id) => ({
+    reports: reports[id] ?? known.reports,
+  })),
+});
 
 /** More of everything than any test spends. */
 export const RICH: Resources = {

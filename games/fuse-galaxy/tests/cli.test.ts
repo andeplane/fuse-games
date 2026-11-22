@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import {
   NONE,
   SETUP_2V2,
+  SETUP_2V2V2,
   SETUP_3V3,
   hashWorld,
   legalCommands,
   noShips,
-  viewFor,
   type CommandOption,
   type GameEvent,
   type Policy,
@@ -34,10 +34,14 @@ import {
 import {
   RICH,
   RULES,
+  fleetOf,
   from,
   idle,
+  knowing,
+  reportOf,
   start,
   tick,
+  viewFor,
   withPlanet,
   withTeam,
 } from "./support.js";
@@ -93,6 +97,7 @@ test("the command line picks a mode, and help when there is none", () => {
     seed: 1,
     setup: SETUP_2V2,
     rules: RULES,
+    bots: "mixed",
   });
   assert.ok(bots.mode === "bots" && bots.rules === RULES);
   assert.deepEqual(parseArgs(["play"], RULES), {
@@ -101,6 +106,7 @@ test("the command line picks a mode, and help when there is none", () => {
     seed: 1,
     setup: SETUP_2V2,
     rules: RULES,
+    bots: "mixed",
   });
 });
 
@@ -128,6 +134,7 @@ test("the command line's options set the seed, the size, the length and the seat
       seed: 7,
       setup: { teams: 2, teamSize: 3, neutrals: 0 },
       rules: { ...RULES, match: { tickLimit: 50 } },
+      bots: "mixed",
     },
   );
   assert.deepEqual(parseArgs(["play", "--mode", "3v3", "--seat", "5"], RULES), {
@@ -136,19 +143,49 @@ test("the command line's options set the seed, the size, the length and the seat
     seed: 1,
     setup: SETUP_3V3,
     rules: RULES,
+    bots: "mixed",
   });
   assert.deepEqual(
     parseArgs(["play", "--mode", "2v2", "--seat", "3", "--seed", "0"], RULES),
-    { mode: "play", seat: 3, seed: 0, setup: SETUP_2V2, rules: RULES },
+    {
+      mode: "play",
+      seat: 3,
+      seed: 0,
+      setup: SETUP_2V2,
+      rules: RULES,
+      bots: "mixed",
+    },
+  );
+  // Three teams of two, and who plays the empty seats.
+  assert.deepEqual(
+    parseArgs(
+      ["play", "--mode", "2v2v2", "--seat", "5", "--bots", "raider"],
+      RULES,
+    ),
+    {
+      mode: "play",
+      seat: 5,
+      seed: 1,
+      setup: SETUP_2V2V2,
+      rules: RULES,
+      bots: "raider",
+    },
   );
   // The last of a repeated option wins.
-  assert.deepEqual(parseArgs(["bots", "--seed", "3", "--seed", "4"], RULES), {
-    mode: "bots",
-    matches: 1,
-    seed: 4,
-    setup: SETUP_2V2,
-    rules: RULES,
-  });
+  assert.deepEqual(
+    parseArgs(
+      ["bots", "--seed", "3", "--seed", "4", "--bots", "economy"],
+      RULES,
+    ),
+    {
+      mode: "bots",
+      matches: 1,
+      seed: 4,
+      setup: SETUP_2V2,
+      rules: RULES,
+      bots: "economy",
+    },
+  );
 });
 
 test("a command line that cannot be read says what is wrong with it", () => {
@@ -160,7 +197,13 @@ test("a command line that cannot be read says what is wrong with it", () => {
     [["bots", "--seed", "abc"], "--seed must be a whole number of 0 or more"],
     [["bots", "--seed", "-1"], "--seed must be a whole number of 0 or more"],
     [["bots", "--ticks", "1.5"], "--ticks must be a whole number of 0 or more"],
-    [["bots", "--mode", "4v4"], "--mode must be 2v2 or 3v3"],
+    [["bots", "--mode", "4v4"], "--mode must be 2v2, 3v3 or 2v2v2"],
+    [["bots", "--mode"], "--mode needs a value"],
+    [
+      ["bots", "--bots", "pacifist"],
+      "--bots must be one of economy, raider, mixed",
+    ],
+    [["play", "--mode", "2v2v2", "--seat", "6"], "--seat must be below 6"],
     [["bots", "--neutrals", "13"], "a match has 0 to 12 neutral planets"],
     [["bots", "--ticks", "0"], "--ticks must be at least 1"],
     [["bots", "--seat", "1"], "--seat is for play"],
@@ -365,31 +408,47 @@ test("the view at the start, as the terminal shows it", () => {
   assert.equal(
     renderView(viewFor(start(), 0), RULES),
     [
-      "Tick 0/2400 · planet 0 · team 0 · score 550",
+      "Tick 0/2400 · planet 0 · team 0 · score 562",
       "Resources    metal 800  crystal 800  eonium 400",
       "Income/tick  metal 14  crystal 14  eonium 10",
       "Asteroids    metal 1  crystal 1  eonium 1",
       "Structures   none",
       "Research     none",
-      "Ships home   none",
+      "Ships home   probe 2",
+      "Formation    line",
       "Team 0       commander none · tax 0% · defence priority none",
       "Fund         metal 0  crystal 0  eonium 0",
-      "Ally 2       score 550 · metal 800  crystal 800  eonium 400 · ships none",
-      "Planets      id  kind     team     x     y   score",
-      "              0 seat       0   180   410     550  (you)",
-      "              1 seat       1   820   410     550",
-      "              2 seat       0   110   560     550",
-      "              3 seat       1   750   560     550",
-      "              4 neutral    -   196   877    1850",
-      "              5 neutral    -   342   720    1550",
-      "              6 neutral    -   742    84    1400",
-      "              7 neutral    -   271   507    1400",
-      "              8 neutral    -   776   772    1250",
-      "              9 neutral    -   708   910    1100",
+      "Ally 2       score 562 · metal 800  crystal 800  eonium 400 · ships probe 2",
+      "Planets      id  kind     team     x     y",
+      "              0 seat       0   180   410  (you)",
+      "              1 seat       1   820   410",
+      "              2 seat       0   110   560",
+      "              3 seat       1   750   560",
+      "              4 neutral    -   196   877",
+      "              5 neutral    -   342   720",
+      "              6 neutral    -   742    84",
+      "              7 neutral    -   271   507",
+      "              8 neutral    -   776   772",
+      "              9 neutral    -   708   910",
+      // Everyone sees everyone's score and how it is made up: what a planet is worth, never what it holds.
+      "Scoreboard                score    economy   military technology  asteroids",
+      "  team 0                   1124       1100         24          0          6",
+      "    planet 0 (you)          562        550         12          0          3",
+      "    planet 2                562        550         12          0          3",
+      "  team 1                   1124       1100         24          0          6",
+      "    planet 1                562        550         12          0          3",
+      "    planet 3                562        550         12          0          3",
+      "  neutral",
+      "    planet 4               2242       1850        392          0         12",
+      "    planet 5               1942       1550        392          0         10",
+      "    planet 6               1792       1400        392          0          9",
+      "    planet 7               1792       1400        392          0          9",
+      "    planet 8               1642       1250        392          0          8",
+      "    planet 9               1492       1100        392          0          7",
     ].join("\n"),
   );
   const neutral = renderView(viewFor(start(), 4), RULES).split("\n");
-  assert.equal(neutral[0], "Tick 0/2400 · planet 4 · score 1850");
+  assert.equal(neutral[0], "Tick 0/2400 · planet 4 · score 2242");
   assert.equal(neutral[2], "Income/tick  metal 15  crystal 11  eonium 11");
   assert.ok(!neutral.some((line) => /^(Team|Fund|Ally)/.test(line)));
 });
@@ -431,60 +490,30 @@ function busy(): World {
     ...world,
     tick: 300,
     fleets: [
-      {
-        id: 4,
-        owner: 0,
-        mission: "observe",
-        target: 1,
-        ships: { ...noShips(), fighter: 1 },
-        phase: "outbound",
-        eta: 1,
-        travelTicks: 37,
-      },
-      {
-        id: 6,
-        owner: 2,
+      fleetOf(4, 0, 1, { eta: 1, travelTicks: 37 }),
+      fleetOf(6, 2, 0, {
         mission: "defend",
-        target: 0,
         ships: { ...noShips(), corvette: 2, cruiser: 1 },
         phase: "stationed",
         eta: 80,
         travelTicks: 19,
-      },
+      }),
     ],
-    knowledge: world.knowledge.map((known, id) =>
-      id === 0
-        ? {
-            reports: [
-              {
-                target: 1,
-                tick: 250,
-                by: 0,
-                detail: 1,
-                resources: { metal: 10, crystal: 20, eonium: 30 },
-                asteroids: { metal: 4, crystal: 5, eonium: 6 },
-                structures: null,
-                research: null,
-                ships: null,
-              },
-              {
-                target: 3,
-                tick: 280,
-                by: 0,
-                detail: 3,
-                resources: { metal: 1, crystal: 2, eonium: 3 },
-                asteroids: { metal: 7, crystal: 8, eonium: 9 },
-                structures: {
-                  ...world.planets[3]!.structures,
-                  shipyard: 1,
-                },
-                research: world.planets[3]!.research,
-                ships: { ...noShips(), destroyer: 2 },
-              },
-            ],
-          }
-        : known,
-    ),
+    knowledge: knowing(world, {
+      0: [
+        reportOf(1, 250, 0, { asteroids: { metal: 4, crystal: 5, eonium: 6 } }),
+        reportOf(3, 280, 0, {
+          detail: 3,
+          resources: { metal: 1, crystal: 2, eonium: 3 },
+          asteroids: { metal: 7, crystal: 8, eonium: 9 },
+          structures: { ...world.planets[3]!.structures, shipyard: 1 },
+          research: world.planets[3]!.research,
+          ships: { ...noShips(), destroyer: 2 },
+          formation: RULES.combat.formations.wall!,
+          sheltered: false,
+        }),
+      ],
+    }).knowledge,
     events: [
       { type: "shipsBuilt", player: 0, shipClass: "fighter", count: 3 },
       { type: "rejected", player: 0, command: "setTax", reason: "why" },
@@ -495,22 +524,24 @@ function busy(): World {
 test("a busy view shows queues, the team, fleets, reports and events", () => {
   const lines = renderView(viewFor(busy(), 0), RULES).split("\n");
   for (const line of [
-    "Tick 300/2400 · planet 0 · team 0 · score 550",
+    "Tick 300/2400 · planet 0 · team 0 · score 562",
     // 14 metal, 4 of it from an asteroid that mining level 1 makes 4.4, whole: 14; a quarter goes in tax.
     "Income/tick  metal 11  crystal 11  eonium 8",
     "Structures   researchLab 1  shipyard 2",
     "Research     hulls 2  mining 1",
     "Ships home   fighter 3  frigate 1",
+    "Formation    line",
     "Building     metalRefinery (1 tick), shipyard (queued)",
     "Researching  sensors 1 (12 ticks), sensors 2 (queued)",
     "Producing    5 fighter (1 tick), 2 frigate (30 ticks)",
     "Team 0       commander planet 2 · tax 25% · defence priority planet 0",
     "Fund         metal 5  crystal 6  eonium 7",
-    "Ally 2       score 550 · metal 800  crystal 800  eonium 400 · ships corvette 4",
-    "Fleet 4      planet 0 to observe planet 1, outbound, 1 tick: fighter 1",
-    "Fleet 6      planet 2 to defend planet 0, stationed, 80 ticks: corvette 2  cruiser 1",
-    "Report       planet 1 at tick 250 by planet 0: metal 10  crystal 20  eonium 30 · asteroids metal 4  crystal 5  eonium 6",
-    "Report       planet 3 at tick 280 by planet 0: metal 1  crystal 2  eonium 3 · asteroids metal 7  crystal 8  eonium 9 · structures shipyard 1 · research none · ships destroyer 2",
+    "Ally 2       score 562 · metal 800  crystal 800  eonium 400 · ships corvette 4",
+    "Fleet 4      planet 0 to observe planet 1, outbound, 1 tick [line]: probe 1",
+    "Fleet 6      planet 2 to defend planet 0, stationed, 80 ticks [line]: corvette 2  cruiser 1",
+    // The least a probe sees is asteroids; the most adds the stock, what is built and researched, and the ships as drawn up.
+    "Report       planet 1 at tick 250 by planet 0: asteroids metal 4  crystal 5  eonium 6",
+    "Report       planet 3 at tick 280 by planet 0: asteroids metal 7  crystal 8  eonium 9 · stock metal 1  crystal 2  eonium 3 · structures shipyard 1 · research none · ships destroyer 2 [wall]",
     "Event        planet 0 produced 3 fighter",
     "Event        refused setTax: why",
   ])
@@ -523,7 +554,7 @@ test("a busy view shows queues, the team, fleets, reports and events", () => {
   ).split("\n");
   assert.deepEqual(ended.slice(-2), [
     "Event        the match ended in a draw",
-    "Result       a draw · team scores 10220 / 10220",
+    "Result       a draw · team scores 10244 / 10244",
   ]);
   const won = tick(
     idle(
@@ -618,19 +649,20 @@ test("the standings name the result, each team and every planet", () => {
     renderStandings(busy(), RULES),
     [
       "Stopped at tick 300, no result",
-      "Team 0  score 1100  commander planet 2  tax 25%  fund metal 5  crystal 6  eonium 7",
-      "  planet  0  score     550  asteroids   3  structures  3  research  3  ships fighter 3  frigate 1",
-      "  planet  2  score     550  asteroids   3  structures  0  research  0  ships corvette 4",
-      "Team 1  score 1100  commander none  tax 0%  fund metal 0  crystal 0  eonium 0",
-      "  planet  1  score     550  asteroids   3  structures  0  research  0  ships none",
-      "  planet  3  score     550  asteroids   3  structures  0  research  0  ships none",
+      // The scores are the start's: nothing has ticked since these planets were given what they hold.
+      "Team 0  score 1124  commander planet 2  tax 25%  fund metal 5  crystal 6  eonium 7",
+      "  planet  0  score     562 (economy 550, military 12, technology 0)  asteroids   3  structures  3  research  3  ships fighter 3  frigate 1",
+      "  planet  2  score     562 (economy 550, military 12, technology 0)  asteroids   3  structures  0  research  0  ships corvette 4",
+      "Team 1  score 1124  commander none  tax 0%  fund metal 0  crystal 0  eonium 0",
+      "  planet  1  score     562 (economy 550, military 12, technology 0)  asteroids   3  structures  0  research  0  ships probe 2",
+      "  planet  3  score     562 (economy 550, military 12, technology 0)  asteroids   3  structures  0  research  0  ships probe 2",
       "Neutral planets",
-      "  planet  4  score    1850  asteroids  12  structures  0  research  0  ships none",
-      "  planet  5  score    1550  asteroids  10  structures  0  research  0  ships none",
-      "  planet  6  score    1400  asteroids   9  structures  0  research  0  ships none",
-      "  planet  7  score    1400  asteroids   9  structures  0  research  0  ships none",
-      "  planet  8  score    1250  asteroids   8  structures  0  research  0  ships none",
-      "  planet  9  score    1100  asteroids   7  structures  0  research  0  ships none",
+      "  planet  4  score    2242 (economy 1850, military 392, technology 0)  asteroids  12  structures  0  research  0  ships fighter 30  corvette 8",
+      "  planet  5  score    1942 (economy 1550, military 392, technology 0)  asteroids  10  structures  0  research  0  ships fighter 30  corvette 8",
+      "  planet  6  score    1792 (economy 1400, military 392, technology 0)  asteroids   9  structures  0  research  0  ships fighter 30  corvette 8",
+      "  planet  7  score    1792 (economy 1400, military 392, technology 0)  asteroids   9  structures  0  research  0  ships fighter 30  corvette 8",
+      "  planet  8  score    1642 (economy 1250, military 392, technology 0)  asteroids   8  structures  0  research  0  ships fighter 30  corvette 8",
+      "  planet  9  score    1492 (economy 1100, military 392, technology 0)  asteroids   7  structures  0  research  0  ships fighter 30  corvette 8",
     ].join("\n"),
   );
   const duel = { teams: 2, teamSize: 1, neutrals: 0 };
@@ -718,7 +750,7 @@ test("the client plays bot matches and reports their speed", async () => {
   assert.equal(one.shown.length, 3);
   assert.equal(
     one.shown[0],
-    "Fuse Galaxy · seed 4 · 2 teams of 2 + 6 neutral planets · rules v1",
+    "Fuse Galaxy · seed 4 · 2 teams of 2 + 6 neutral planets · mixed bots · rules v2",
   );
   assert.match(
     one.shown[1]!,
@@ -726,7 +758,7 @@ test("the client plays bot matches and reports their speed", async () => {
   );
   assert.match(
     one.shown[2]!,
-    /^Commands: \d+ sent, 0 refused\nWorld hash: [0-9a-f]{16} · replay from the log matches\nSpeed: 30 ticks in 10\.0 ms = 3000 ticks\/second$/,
+    /^Commands: \d+ sent, 0 refused\nBattles: 0 fought over 0 rounds, 0 asteroids captured\nWorld hash: [0-9a-f]{16} · replay from the log matches\nSpeed: 30 ticks in 10\.0 ms = 3000 ticks\/second$/,
   );
   assert.deepEqual(one.prompts, []);
 
@@ -753,7 +785,7 @@ test("the client plays bot matches and reports their speed", async () => {
     [0, 3, 6].map((index) => three.shown[index]),
     [4, 5, 6].map(
       (seed) =>
-        `Fuse Galaxy · seed ${seed} · 2 teams of 3 + 6 neutral planets · rules v1`,
+        `Fuse Galaxy · seed ${seed} · 2 teams of 3 + 6 neutral planets · mixed bots · rules v2`,
     ),
   );
   for (const index of [2, 5, 8])
@@ -880,7 +912,7 @@ test("a session queues what the player types for the next tick and says what it 
     renderLegal(legalCommands(viewFor(start(), 0), RULES)),
   );
   const first = after(9).split("\n");
-  assert.equal(first[0], "Tick 1/70 · planet 0 · team 0 · score 649");
+  assert.equal(first[0], "Tick 1/70 · planet 0 · team 0 · score 661");
   assert.equal(first[1], "Resources    metal 243  crystal 439  eonium 310");
   assert.ok(first.includes("Building     shipyard (44 ticks)"));
   assert.ok(first.includes("Event        planet 0 mines a new metal asteroid"));
@@ -890,7 +922,19 @@ test("a session queues what the player types for the next tick and says what it 
   // What happened on the ticks that went by unseen is listed before the view.
   assert.equal(
     after(12),
-    "Tick 45: planet 0 finished a shipyard\nTick 63: planet 2 finished a researchLab",
+    [
+      // The other team's probes over the player's team, and the teammate's own over theirs.
+      "Tick 27: planet 0 was probed by planet 3",
+      "Tick 30: planet 0 was probed by planet 1",
+      "Tick 32: fleet 2 of planet 2 arrived at planet 1 to observe",
+      "Tick 33: planet 2 was probed by planet 3",
+      "Tick 34: fleet 5 of planet 2 arrived at planet 3 to observe",
+      "Tick 38: planet 2 was probed by planet 1",
+      "Tick 45: planet 0 finished a shipyard",
+      "Tick 60: fleet 5 of planet 2 came home",
+      "Tick 61: fleet 2 of planet 2 came home",
+      "Tick 63: planet 2 finished a researchLab",
+    ].join("\n"),
   );
   assert.match(after(13), /^Tick 64\/70 /);
   assert.equal(after(14), "Queued for the next tick: setTax");
@@ -921,7 +965,7 @@ test("the client's play mode takes the seat asked for", async () => {
   );
   assert.match(
     session.shown[1]!,
-    /^Tick 0\/3 · planet 3 · team 1 · score 550\n/,
+    /^Tick 0\/3 · planet 3 · team 1 · score 562\n/,
   );
   assert.ok(session.shown[2]!.includes("  vote 1\n  vote 3\n"));
   assert.match(session.shown[3]!, /^Tick 3\/3 · planet 3 /);

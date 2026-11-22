@@ -12,14 +12,13 @@ import {
   parseSetup,
   replay,
   setupProblem,
-  viewFor,
   type Command,
   type MatchLog,
   type MatchSetup,
   type Policy,
   type Rules,
 } from "../src/engine/index.js";
-import { RULES, from, idle, start, tick } from "./support.js";
+import { RULES, from, idle, ships, start, tick, viewFor } from "./support.js";
 
 const SHORT: Rules = { ...RULES, match: { tickLimit: 12 } };
 
@@ -62,7 +61,7 @@ test("a step plays one tick from the seats' commands and rewards each seat with 
   assert.equal(hashWorld(env.world()), hashWorld(expected));
   assert.deepEqual(
     step.rewards,
-    [0, 1, 2, 3].map((seat) => expected.planets[seat]!.score - 550),
+    [0, 1, 2, 3].map((seat) => expected.planets[seat]!.score - 562),
   );
   // Two asteroids are worth more than they cost; a donation leaves the planet.
   assert.ok(step.rewards[0]! > step.rewards[1]!);
@@ -208,7 +207,7 @@ function recorded(): { log: MatchLog; hash: string } {
             type: "launchFleet",
             mission: "observe",
             target: 1,
-            ships: { fighter: 1 },
+            ships: { probe: 1 },
           },
           {
             type: "launchFleet",
@@ -261,9 +260,9 @@ test("a match played again from its log ends in the same world, hash for hash", 
 
 test("a log is not replayed under other rules, past the tick limit or from a start the rules refuse", () => {
   const { log } = recorded();
-  assert.throws(() => replay(log, { ...RULES, version: 2 }), {
+  assert.throws(() => replay(log, { ...RULES, version: 3 }), {
     name: "RangeError",
-    message: "the log was recorded under rules version 1, not 2",
+    message: "the log was recorded under rules version 2, not 3",
   });
   assert.throws(() => replay(log, SHORT), {
     name: "RangeError",
@@ -401,8 +400,9 @@ test("a 2v2 starts with two teams of two facing each other and six neutral plane
   for (const seat of world.planets.slice(0, 4)) {
     assert.deepEqual(seat.resources, { metal: 800, crystal: 800, eonium: 400 });
     assert.deepEqual(seat.asteroids, { metal: 1, crystal: 1, eonium: 1 });
-    assert.equal(seat.score, 550);
-    assert.equal(seat.value, 550);
+    assert.deepEqual(seat.ships, ships({ probe: 2 }));
+    assert.equal(seat.score, 562);
+    assert.equal(seat.value, 562);
   }
   // Each seat is as far from its opposite number as every other seat is from theirs.
   assert.equal(

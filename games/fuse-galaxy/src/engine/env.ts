@@ -85,7 +85,7 @@ export function createEnv(options: EnvOptions): Env {
     tick: now.world.tick,
     done: now.world.phase === "ended",
     views: Array.from({ length: now.seats }, (_, seat) =>
-      viewFor(now.world, seat),
+      viewFor(now.world, seat, rules),
     ),
     rewards: Array.from(
       { length: now.seats },
@@ -115,7 +115,7 @@ export function createEnv(options: EnvOptions): Env {
         const commands =
           planet.kind === "seat"
             ? commandsByPlayer.get(planet.id)
-            : neutralPolicy?.(viewFor(before, planet.id), rules);
+            : neutralPolicy?.(viewFor(before, planet.id, rules), rules);
         if (commands)
           for (const command of commands)
             submissions.push({ player: planet.id, command });

@@ -1,7 +1,10 @@
 /**
  * Value and score. A planet's value is what it owns now, each thing weighted by the rules: asteroids, structures,
  * research levels, ships (at home and in its fleets) and its stock of resources. Score is what ranks a planet and
- * decides the match. In this slice score is value; the combat slice adds what a planet has earned by fighting.
+ * decides the match: its value and what it has earned by fighting.
+ *
+ * The score is public in three parts, as on a strategy game's scoreboard: economy (asteroids, structures and stock),
+ * military (ships and what fighting earned) and technology (research).
  */
 import { totalOf } from "./economy.js";
 import { div } from "./math.js";
@@ -16,6 +19,7 @@ import {
   type MatchResult,
   type Planet,
   type Resources,
+  type ScoreParts,
   type ShipCounts,
   type Team,
   type WorldDraft,
@@ -31,25 +35,39 @@ export const shipsValue = (ships: Readonly<ShipCounts>, rules: Rules): number =>
 export const stockValue = (stock: Readonly<Resources>, rules: Rules): number =>
   div(totalOf(stock), rules.score.resourceDivisor);
 
-/** A planet's value, given what its fleets' ships are worth. */
+/** A planet's score in its parts, given what its fleets' ships are worth. */
+export function scoreParts(
+  planet: DeepReadonly<Planet>,
+  fleetValue: number,
+  rules: Rules,
+): ScoreParts {
+  let economy =
+    stockValue(planet.resources, rules) +
+    totalOf(planet.asteroids) * rules.asteroid.value;
+  for (const structure of STRUCTURE_IDS)
+    economy += planet.structures[structure] * rules.structures[structure].value;
+  let technology = 0;
+  for (const branch of BRANCH_IDS)
+    technology +=
+      planet.research[branch] * rules.research.branches[branch].value;
+  return {
+    economy,
+    military: fleetValue + shipsValue(planet.ships, rules) + planet.xp,
+    technology,
+  };
+}
+
+/** A planet's value, given what its fleets' ships are worth: its score without what it earned by fighting. */
 export function planetValue(
   planet: DeepReadonly<Planet>,
   fleetValue: number,
   rules: Rules,
 ): number {
-  let value =
-    fleetValue +
-    shipsValue(planet.ships, rules) +
-    stockValue(planet.resources, rules) +
-    totalOf(planet.asteroids) * rules.asteroid.value;
-  for (const structure of STRUCTURE_IDS)
-    value += planet.structures[structure] * rules.structures[structure].value;
-  for (const branch of BRANCH_IDS)
-    value += planet.research[branch] * rules.research.branches[branch].value;
-  return value;
+  const parts = scoreParts(planet, fleetValue, rules);
+  return parts.economy + parts.military + parts.technology - planet.xp;
 }
 
-/** Sets every planet's value and score from what the world holds now. */
+/** Sets every planet's value, score and its parts from what the world holds now. */
 export function updateScores(
   planets: Planet[],
   fleets: readonly DeepReadonly<Fleet>[],
@@ -59,8 +77,10 @@ export function updateScores(
   for (const fleet of fleets)
     fleetValue[fleet.owner]! += shipsValue(fleet.ships, rules);
   for (const planet of planets) {
-    planet.value = planetValue(planet, fleetValue[planet.id]!, rules);
-    planet.score = planet.value;
+    const parts = scoreParts(planet, fleetValue[planet.id]!, rules);
+    planet.parts = parts;
+    planet.score = parts.economy + parts.military + parts.technology;
+    planet.value = planet.score - planet.xp;
   }
 }
 

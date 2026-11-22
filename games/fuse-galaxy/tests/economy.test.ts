@@ -516,9 +516,14 @@ test("ship orders are bounded in number, size and price, and more shipyards are 
 
 test("value counts asteroids, structures, research, ships and stock; score is value", () => {
   const world = start();
-  // 2000 resources at 20 a point, and three asteroids at 150.
-  assert.equal(world.planets[0]!.value, 100 + 450);
-  assert.equal(world.planets[0]!.score, 550);
+  // 2000 resources at 20 a point, three asteroids at 150 and the two probes a seat starts with at 6.
+  assert.equal(world.planets[0]!.value, 100 + 450 + 12);
+  assert.equal(world.planets[0]!.score, 562);
+  assert.deepEqual(world.planets[0]!.parts, {
+    economy: 550,
+    military: 12,
+    technology: 0,
+  });
 
   const planet = {
     ...world.planets[0]!,
@@ -536,7 +541,7 @@ test("value counts asteroids, structures, research, ships and stock; score is va
   };
   assert.equal(
     planetValue(planet, 1000, RULES),
-    1000 + (80 + 500) + 1 + 300 + (40 + 180) + (330 + 70),
+    1000 + (80 + 500) + 1 + 300 + (40 + 180) + (330 + 70) + 12,
   );
 });
 
@@ -548,7 +553,7 @@ test("a planet's value follows what it buys, tick by tick", () => {
   const planet = world.planets[0]!;
   assert.equal(planet.asteroids.metal, 2);
   assert.equal(planet.value, planetValue(planet, 0, RULES));
-  assert.equal(planet.value, 4 * 150 + div(743 + 739 + 410, 20));
+  assert.equal(planet.value, 4 * 150 + div(743 + 739 + 410, 20) + 12);
   assert.equal(planet.score, planet.value);
 });
 
@@ -556,8 +561,8 @@ test("a team's score is its members' scores and what its fund is worth", () => {
   const world = withTeam(start(), 1, {
     fund: { metal: 100, crystal: 100, eonium: 219 },
   });
-  assert.equal(teamScore(world.teams[0]!, world.planets, RULES), 1100);
-  assert.equal(teamScore(world.teams[1]!, world.planets, RULES), 1100 + 20);
+  assert.equal(teamScore(world.teams[0]!, world.planets, RULES), 1124);
+  assert.equal(teamScore(world.teams[1]!, world.planets, RULES), 1124 + 20);
 });
 
 const SHORT: Rules = { ...RULES, match: { tickLimit: 3 } };

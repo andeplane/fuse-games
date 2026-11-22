@@ -4,16 +4,20 @@ import {
   distance,
   travelTicks,
   type Command,
+  type Mission,
   type ShipCounts,
   type World,
 } from "../src/engine/index.js";
 import {
   RULES,
   eventsOf,
+  fleetOf,
   from,
   idle,
   reasons,
   refusal,
+  reportOf,
+  ships as only,
   start,
   tick,
   withPlanet,
@@ -24,7 +28,7 @@ const armed = (world: World, id: number, ships: Partial<ShipCounts>): World =>
   withPlanet(world, id, { ships: { ...world.planets[id]!.ships, ...ships } });
 
 const send = (
-  mission: "defend" | "observe",
+  mission: Mission,
   target: number,
   ships: Partial<ShipCounts>,
 ): Command => ({ type: "launchFleet", mission, target, ships });
@@ -33,7 +37,8 @@ const send = (
 const reportsOf = (world: World, id: number) => world.knowledge[id]!.reports;
 
 // In a 2v2 seat 0 is at (180, 410), its teammate seat 2 at (110, 560) and its opponent seat 1 at (820, 410).
-const TO_ENEMY = 37;
+// Probes fly the 640 to the opponent at 40 a tick; fighters fly the 165 to the teammate at 24.
+const TO_ENEMY = 26;
 const TO_ALLY = 17;
 
 test("distance is the straight line rounded down, and a fleet flies at its slowest ship's speed", () => {
@@ -59,21 +64,16 @@ test("distance is the straight line rounded down, and a fleet flies at its slowe
 
 test("an observing fleet flies out, reports what it sees on arrival and flies home", () => {
   let world = tick(
-    armed(start(), 0, { fighter: 3 }),
-    from(0, send("observe", 1, { fighter: 1 })),
+    armed(start(), 0, { probe: 3 }),
+    from(0, send("observe", 1, { probe: 1 })),
   );
-  assert.equal(world.planets[0]!.ships.fighter, 2);
+  assert.equal(world.planets[0]!.ships.probe, 2);
   assert.deepEqual(world.fleets, [
-    {
-      id: 1,
-      owner: 0,
-      mission: "observe",
-      target: 1,
-      ships: { ...start().planets[0]!.ships, fighter: 1 },
-      phase: "outbound",
+    fleetOf(1, 0, 1, {
+      ships: only({ probe: 1 }),
       eta: TO_ENEMY - 1,
       travelTicks: TO_ENEMY,
-    },
+    }),
   ]);
   assert.equal(world.nextFleetId, 2);
 
@@ -91,54 +91,47 @@ test("an observing fleet flies out, reports what it sees on arrival and flies ho
       mission: "observe",
     },
   ]);
-  assert.deepEqual(world.knowledge[0]!.reports, [
-    {
-      target: 1,
-      tick: TO_ENEMY,
-      by: 0,
-      detail: 1,
-      resources: world.planets[1]!.resources,
-      asteroids: world.planets[1]!.asteroids,
-      structures: null,
-      research: null,
-      ships: null,
-    },
+  // With no sensors research the probe counts asteroids and nothing else, and the planet it looked at is told.
+  const seen = reportOf(1, TO_ENEMY, 0, {
+    asteroids: world.planets[1]!.asteroids,
+  });
+  assert.deepEqual(world.knowledge[0]!.reports, [seen]);
+  assert.deepEqual(eventsOf(world, "probed"), [
+    { type: "probed", player: 1, by: 0 },
   ]);
   assert.equal(world.fleets[0]!.phase, "returning");
   assert.equal(world.fleets[0]!.eta, TO_ENEMY);
 
   world = idle(world, TO_ENEMY - 1);
   assert.equal(world.fleets.length, 1);
-  assert.equal(world.planets[0]!.ships.fighter, 2);
+  assert.equal(world.planets[0]!.ships.probe, 2);
   world = tick(world);
   assert.deepEqual(world.fleets, []);
-  assert.equal(world.planets[0]!.ships.fighter, 3);
+  assert.equal(world.planets[0]!.ships.probe, 3);
   assert.deepEqual(eventsOf(world, "fleetReturned"), [
     { type: "fleetReturned", player: 0, fleet: 1 },
   ]);
-  // The report stays, dated, and does not follow what the planet does afterwards.
-  const [report] = reportsOf(world, 0);
-  assert.equal(report?.tick, TO_ENEMY);
-  assert.notDeepEqual(report?.resources, world.planets[1]!.resources);
+  // The report stays, dated as it was made.
+  assert.deepEqual(reportsOf(world, 0), [seen]);
 });
 
 test("how much a report shows depends on the observer's sensors and the target's jamming", () => {
   const observed = (sensors: number, jamming: number) => {
-    let world = armed(start(), 0, { fighter: 1 });
-    world = withPlanet(world, 0, {
-      research: { ...world.planets[0]!.research, sensors },
+    let world = withPlanet(start(), 0, {
+      research: { ...start().planets[0]!.research, sensors },
     });
     world = withPlanet(armed(world, 1, { frigate: 4 }), 1, {
       research: { ...world.planets[1]!.research, jamming },
       structures: { ...world.planets[1]!.structures, shipyard: 2 },
     });
     world = idle(
-      tick(world, from(0, send("observe", 1, { fighter: 1 }))),
+      tick(world, from(0, send("observe", 1, { probe: 1 }))),
       TO_ENEMY - 1,
     );
     return {
       report: world.knowledge[0]!.reports[0]!,
       target: world.planets[1]!,
+      noticed: eventsOf(world, "probed").length > 0,
     };
   };
 
@@ -148,17 +141,28 @@ test("how much a report shows depends on the observer's sensors and the target's
   assert.equal(plain.report.structures, null);
   assert.equal(plain.report.research, null);
   assert.equal(plain.report.ships, null);
+  assert.equal(plain.report.resources, null);
+  assert.equal(plain.noticed, true);
 
+  // One step up: what is built and researched, and ship counts rounded down to a step of the rules.
   const better = observed(1, 0);
   assert.equal(better.report.detail, 2);
   assert.deepEqual(better.report.structures, better.target.structures);
   assert.deepEqual(better.report.research, better.target.research);
-  assert.equal(better.report.ships, null);
+  assert.deepEqual(better.report.ships, only({ probe: 1, frigate: 3 }));
+  assert.equal(better.report.resources, null);
+  assert.equal(better.report.formation, null);
+  assert.equal(better.report.sheltered, null);
+  // Sensors past the target's jamming are not noticed.
+  assert.equal(better.noticed, false);
 
   const best = observed(2, 0);
   assert.equal(best.report.detail, 3);
   assert.deepEqual(best.report.ships, best.target.ships);
   assert.equal(best.report.ships?.frigate, 4);
+  assert.ok(best.report.resources);
+  assert.deepEqual(best.report.formation, best.target.formation);
+  assert.equal(best.report.sheltered, false);
 
   // Jamming takes detail away again, and neither goes past the ends of the scale.
   assert.equal(observed(5, 3).report.detail, 3);
@@ -170,12 +174,8 @@ test("how much a report shows depends on the observer's sensors and the target's
 
 test("a new report on a planet replaces the old one, and reports are kept by target", () => {
   let world = tick(
-    armed(start(), 0, { fighter: 3 }),
-    from(
-      0,
-      send("observe", 3, { fighter: 1 }),
-      send("observe", 1, { fighter: 1 }),
-    ),
+    armed(start(), 0, { probe: 3 }),
+    from(0, send("observe", 3, { probe: 1 }), send("observe", 1, { probe: 1 })),
   );
   world = idle(world, 60);
   assert.deepEqual(
@@ -184,14 +184,14 @@ test("a new report on a planet replaces the old one, and reports are kept by tar
   );
   const first = world.knowledge[0]!.reports[0]!;
   world = idle(
-    tick(world, from(0, send("observe", 1, { fighter: 1 }))),
+    tick(world, from(0, send("observe", 1, { probe: 1 }))),
     TO_ENEMY,
   );
   assert.deepEqual(
     world.knowledge[0]!.reports.map((report) => report.target),
     [1, 3],
   );
-  // Launched on tick 62, so it arrived on tick 98.
+  // Launched on tick 62, so it arrived on tick 87.
   assert.equal(world.knowledge[0]!.reports[0]!.tick, 61 + TO_ENEMY);
   assert.ok(world.knowledge[0]!.reports[0]!.tick > first.tick);
   // Nobody else learned anything.
@@ -236,7 +236,7 @@ test("ships in a fleet still count towards their owner's value", () => {
   const home = tick(armed(start(), 0, { fighter: 10 }));
   const away = tick(
     armed(start(), 0, { fighter: 10 }),
-    from(0, send("observe", 1, { fighter: 10 })),
+    from(0, send("defend", 2, { fighter: 10 })),
   );
   assert.equal(away.planets[0]!.ships.fighter, 0);
   assert.equal(away.planets[0]!.value, home.planets[0]!.value);
@@ -247,10 +247,7 @@ test("ships in a fleet still count towards their owner's value", () => {
 });
 
 test("a recalled fleet flies back as far as it had come", () => {
-  const launched = tick(
-    armed(start(), 0, { fighter: 2 }),
-    from(0, send("observe", 1, { fighter: 2 })),
-  );
+  const launched = tick(start(), from(0, send("observe", 1, { probe: 2 })));
   // Five ticks out, recalled on the sixth: home five ticks after it turned.
   let world = tick(
     idle(launched, 4),
@@ -263,21 +260,21 @@ test("a recalled fleet flies back as far as it had come", () => {
   assert.equal(world.fleets.length, 1);
   world = tick(world);
   assert.deepEqual(world.fleets, []);
-  assert.equal(world.planets[0]!.ships.fighter, 2);
+  assert.equal(world.planets[0]!.ships.probe, 2);
   // It never arrived, so it saw nothing.
   assert.deepEqual(world.knowledge[0]!.reports, []);
 
   // Launched and recalled in one tick, it is home at once.
   const atOnce = tick(
-    armed(start(), 0, { fighter: 2 }),
-    from(0, send("observe", 1, { fighter: 2 }), {
+    start(),
+    from(0, send("observe", 1, { probe: 2 }), {
       type: "recallFleet",
       fleet: 1,
     }),
   );
   assert.deepEqual(reasons(atOnce), []);
   assert.deepEqual(atOnce.fleets, []);
-  assert.equal(atOnce.planets[0]!.ships.fighter, 2);
+  assert.equal(atOnce.planets[0]!.ships.probe, 2);
   assert.deepEqual(eventsOf(atOnce, "fleetReturned"), [
     { type: "fleetReturned", player: 0, fleet: 1 },
   ]);
@@ -323,55 +320,79 @@ test("a stationed fleet can be recalled early; a returning one, or someone else'
 test("a fleet is refused when its target, mission or ships are wrong", () => {
   const world = armed(start(), 0, { fighter: 3, cruiser: 1 });
   const cases: readonly (readonly [Command, string | undefined])[] = [
-    [send("observe", 1, { fighter: 1 }), undefined],
-    [send("observe", 4, { fighter: 3, cruiser: 1 }), undefined],
+    [send("observe", 1, { probe: 1 }), undefined],
+    [send("observe", 4, { probe: 2 }), undefined],
+    [send("orbit", 1, { probe: 1 }), undefined],
     [send("defend", 2, { cruiser: 1 }), undefined],
-    [send("observe", 10, { fighter: 1 }), "unknown target planet"],
-    [send("observe", -1, { fighter: 1 }), "unknown target planet"],
-    [send("observe", 1.5, { fighter: 1 }), "unknown target planet"],
+    [send("attack", 1, { fighter: 3, cruiser: 1 }), undefined],
+    [send("attack", 4, { fighter: 1 }), undefined],
+    [send("observe", 10, { probe: 1 }), "unknown target planet"],
+    [send("observe", -1, { probe: 1 }), "unknown target planet"],
+    [send("observe", 1.5, { probe: 1 }), "unknown target planet"],
     [
-      send("observe", Number.NaN, { fighter: 1 }),
+      send("observe", Number.NaN, { probe: 1 }),
       "the command's target is missing or malformed",
     ],
-    [
-      send("observe", 0, { fighter: 1 }),
-      "a fleet cannot target its own planet",
-    ],
+    [send("observe", 0, { probe: 1 }), "a fleet cannot target its own planet"],
     [send("defend", 0, { fighter: 1 }), "a fleet cannot target its own planet"],
+    [send("attack", 0, { fighter: 1 }), "a fleet cannot target its own planet"],
     [send("defend", 1, { fighter: 1 }), "a fleet can only defend a teammate"],
     [send("defend", 4, { fighter: 1 }), "a fleet can only defend a teammate"],
     [
-      send("observe", 2, { fighter: 1 }),
+      send("observe", 2, { probe: 1 }),
       "there is nothing to observe on a teammate's planet",
     ],
     [
-      send("observe", 1, { fighter: -1 }),
+      send("orbit", 2, { probe: 1 }),
+      "there is nothing to observe on a teammate's planet",
+    ],
+    [send("attack", 2, { fighter: 1 }), "a fleet cannot attack a teammate"],
+    [
+      send("observe", 1, { probe: -1 }),
       "ship counts must be whole numbers of 0 or more",
     ],
     [
-      send("observe", 1, { fighter: 0.5 }),
+      send("observe", 1, { probe: 0.5 }),
       "ship counts must be whole numbers of 0 or more",
     ],
     [
-      send("observe", 1, { fighter: Number.POSITIVE_INFINITY }),
+      send("observe", 1, { probe: Number.POSITIVE_INFINITY }),
       "the command's ships is missing or malformed",
     ],
-    [send("observe", 1, { fighter: 4 }), "not enough ships at home"],
-    [send("observe", 1, { corvette: 1 }), "not enough ships at home"],
+    [send("observe", 1, { probe: 3 }), "not enough ships at home"],
+    [send("attack", 1, { corvette: 1 }), "not enough ships at home"],
+    // Probes observe and warships do not; warships fight and defend and probes do not.
+    [
+      send("observe", 1, { fighter: 1 }),
+      "only probes fly an observing mission",
+    ],
+    [
+      send("orbit", 1, { probe: 1, cruiser: 1 }),
+      "only probes fly an observing mission",
+    ],
+    [send("defend", 2, { probe: 1 }), "probes fly observing missions only"],
+    [
+      send("attack", 1, { fighter: 1, probe: 1 }),
+      "probes fly observing missions only",
+    ],
     [send("observe", 1, {}), "a fleet needs at least one ship"],
-    [send("observe", 1, { fighter: 0 }), "a fleet needs at least one ship"],
+    [send("attack", 1, { fighter: 0 }), "a fleet needs at least one ship"],
   ];
   for (const [command, reason] of cases)
     assert.equal(refusal(world, 0, command), reason, JSON.stringify(command));
 
-  // A neutral planet has no teammates: it may observe anyone and defend no one.
-  const neutral = armed(start(), 4, { fighter: 1 });
+  // A neutral planet has no teammates: it may observe or attack anyone and defend no one.
+  const neutral = armed(start(), 4, { probe: 1, fighter: 1 });
   assert.equal(
-    refusal(neutral, 4, send("observe", 0, { fighter: 1 })),
+    refusal(neutral, 4, send("observe", 0, { probe: 1 })),
     undefined,
   );
   assert.equal(
-    refusal(neutral, 4, send("observe", 5, { fighter: 1 })),
+    refusal(neutral, 4, send("observe", 5, { probe: 1 })),
+    undefined,
+  );
+  assert.equal(
+    refusal(neutral, 4, send("attack", 5, { fighter: 1 })),
     undefined,
   );
   assert.equal(
@@ -381,9 +402,9 @@ test("a fleet is refused when its target, mission or ships are wrong", () => {
 });
 
 test("a planet has only so many fleets out at once, and fleet numbers are never used twice", () => {
-  const one = send("observe", 1, { fighter: 1 });
+  const one = send("observe", 1, { probe: 1 });
   let world = tick(
-    armed(start(), 0, { fighter: 9 }),
+    armed(start(), 0, { probe: 9 }),
     from(0, one, one, one, one),
   );
   assert.equal(RULES.fleet.maxFleets, 3);
@@ -394,7 +415,7 @@ test("a planet has only so many fleets out at once, and fleet numbers are never 
     world.fleets.map((fleet) => fleet.id),
     [1, 2, 3],
   );
-  assert.equal(world.planets[0]!.ships.fighter, 6);
+  assert.equal(world.planets[0]!.ships.probe, 6);
   // Someone else's fleets do not count against it.
   assert.equal(
     refusal(

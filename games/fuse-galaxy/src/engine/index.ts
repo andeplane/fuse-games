@@ -4,6 +4,13 @@
  */
 export { applyTick } from "./apply-tick.js";
 export {
+  captureCap,
+  fightRound,
+  hasCombatants,
+  type Force,
+  type RoundOutcome,
+} from "./combat.js";
+export {
   commandProblem,
   parseCommand,
   type Command,
@@ -42,7 +49,23 @@ export {
   type Policy,
   type StepResult,
 } from "./env.js";
+export {
+  CELLS,
+  COLUMNS,
+  LINES,
+  columnOf,
+  formationName,
+  lineOf,
+  namedFormation,
+  type Arrangement,
+} from "./formation.js";
 export { hashWorld } from "./hash.js";
+export {
+  detailOf,
+  roughCount,
+  warningTicks,
+  type IncomingFleet,
+} from "./intel.js";
 export {
   commandProblemFor,
   legalCommands,
@@ -56,9 +79,16 @@ export {
   type ShipRule,
   type StructureRule,
 } from "./rules.js";
-export { planetValue, shipsValue, stockValue, teamScore } from "./score.js";
+export {
+  planetValue,
+  scoreParts,
+  shipsValue,
+  stockValue,
+  teamScore,
+} from "./score.js";
 export {
   SETUP_2V2,
+  SETUP_2V2V2,
   SETUP_3V3,
   createWorld,
   parseSetup,
@@ -68,8 +98,14 @@ export {
 export {
   contextOf,
   viewFor,
+  type BattleForce,
+  type BattleView,
+  type PlayerScoreLine,
   type PlayerView,
   type PublicPlanet,
+  type ScoreLine,
+  type Scoreboard,
+  type TeamScoreLine,
 } from "./view.js";
 export {
   BRANCH_IDS,
@@ -81,11 +117,13 @@ export {
   noResources,
   noShips,
   teamOf,
+  type Battle,
   type BranchId,
   type ConstructionJob,
   type DeepReadonly,
   type Fleet,
   type FleetPhase,
+  type Formation,
   type GameEvent,
   type Knowledge,
   type MatchResult,
@@ -97,6 +135,7 @@ export {
   type ResearchLevels,
   type ResourceId,
   type Resources,
+  type ScoreParts,
   type ScoutReport,
   type ShipClass,
   type ShipCounts,
@@ -105,4 +144,5 @@ export {
   type Team,
   type World,
   type WorldDraft,
+  type Wounds,
 } from "./world.js";

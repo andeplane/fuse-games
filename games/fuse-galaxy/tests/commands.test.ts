@@ -5,13 +5,13 @@ import {
   commandProblem,
   contextOf,
   parseCommand,
-  viewFor,
   type Command,
   type Rules,
   type UntrustedSubmission,
 } from "../src/engine/index.js";
 import {
   RULES,
+  viewFor,
   from,
   idle,
   reasons,
@@ -307,20 +307,35 @@ test("a refused command leaves the world as an idle tick would", () => {
   assert.deepEqual({ ...refused, events: [] }, tick(world));
 });
 
-test("attack missions are refused as not in this slice, whatever else is true of them", () => {
+test("an attack is refused on a seat far smaller than the attacker, and never on a neutral planet", () => {
   const armed = withPlanet(start(), 0, {
     ships: { ...start().planets[0]!.ships, fighter: 5 },
   });
-  for (const target of [1, 2, 4, 0, 99])
-    assert.equal(
-      refusal(armed, 0, {
-        type: "launchFleet",
-        mission: "attack",
-        target,
-        ships: { fighter: 5 },
-      }),
-      "attack missions are not implemented in this slice",
-    );
+  const attack = (target: number): Command => ({
+    type: "launchFleet",
+    mission: "attack",
+    target,
+    ships: { fighter: 5 },
+  });
+  assert.equal(RULES.capture.bashLimitPercent, 25);
+  assert.equal(armed.planets[0]!.score, 562);
+  // A quarter of 562 is 140.5: a seat scoring 141 can be attacked and one scoring 140 cannot.
+  assert.equal(
+    refusal(withPlanet(armed, 1, { score: 141 }), 0, attack(1)),
+    undefined,
+  );
+  assert.equal(
+    refusal(withPlanet(armed, 1, { score: 140 }), 0, attack(1)),
+    "the target is too small for this planet to attack",
+  );
+  assert.equal(
+    refusal(withPlanet(armed, 4, { score: 1 }), 0, attack(4)),
+    undefined,
+  );
+  assert.equal(
+    refusal(armed, 0, attack(2)),
+    "a fleet cannot attack a teammate",
+  );
 });
 
 test("the engine's check reads a view as it reads the world", () => {

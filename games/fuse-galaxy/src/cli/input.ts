@@ -16,9 +16,16 @@ export const HELP = `Commands (each waits for the next tick)
   roid <metal|crystal|eonium>              mine one more asteroid
   build <structure>                        metalRefinery crystalRefinery eoniumRefinery researchLab shipyard
   research <branch>                        travel hulls sensors mining jamming
-  ships <class> <count>                    fighter corvette frigate destroyer cruiser battleship
-  launch <defend|observe> <planet> <class>=<count> ...
-  recall <fleet>
+  ships <class> <count>                    probe fighter corvette frigate destroyer cruiser battleship pod
+  launch <attack|defend|observe|orbit> <planet> <class>=<count> ...
+                                           attack an enemy or a neutral planet, defend a teammate;
+                                           probes observe (fly past once) or orbit (stay and report)
+  recall <fleet>                           also retreats a fleet from a battle, at a loss
+  formation <home|fleet> <name>            draw a fleet up as line, wall, column or wings
+  formation <home|fleet> <class>=<cell> ...
+                                           or place classes yourself: cells 0-2 are the front line,
+                                           3-5 the middle, 6-8 the rear, each left to right
+  shelter <on|off>                         keep the home fleet out of battles at your planet
   vote <planet>                            vote for your team's commander
   tax <percent>                            commander only
   grant <planet> <resource>=<amount> ...   commander only, from the team's fund
@@ -70,6 +77,25 @@ function fields(
       };
     case "recall":
       return { type: "recallFleet", fleet: value(first) };
+    case "formation": {
+      const places = words.slice(1);
+      return {
+        type: "setFormation",
+        fleet: first === "home" ? NONE : value(first),
+        // One bare word is a formation's name; anything else has to be `class=cell` pairs.
+        arrangement:
+          places.length === 1 && !places[0]!.includes("=")
+            ? places[0]
+            : places.length > 0
+              ? pairs(places)
+              : undefined,
+      };
+    }
+    case "shelter":
+      return {
+        type: "setShelter",
+        sheltered: first === "on" ? true : first === "off" ? false : first,
+      };
     case "vote":
       return { type: "voteCommander", candidate: value(first) };
     case "tax":

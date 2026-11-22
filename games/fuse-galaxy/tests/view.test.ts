@@ -9,74 +9,31 @@ import {
   legalCommands,
   minimalCommand,
   noShips,
-  viewFor,
   type Command,
   type CommandOption,
   type DeepReadonly,
-  type Fleet,
   type GameEvent,
-  type ScoutReport,
   type World,
 } from "../src/engine/index.js";
-import { createEconomyBot } from "../src/bots/economy-bot.js";
+import { createRoster } from "../src/bots/roster.js";
 import {
   RICH,
   RULES,
+  fleetOf as fleet,
   from,
   idle,
+  knowing,
   reasons,
   refusal,
+  reportOf as report,
   rich,
+  ships,
   start,
   tick,
+  viewFor,
   withPlanet,
   withTeam,
 } from "./support.js";
-
-const fleet = (
-  id: number,
-  owner: number,
-  target: number,
-  patch: Partial<Fleet> = {},
-): Fleet => ({
-  id,
-  owner,
-  mission: "observe",
-  target,
-  ships: { ...noShips(), fighter: 1 },
-  phase: "outbound",
-  eta: 9,
-  travelTicks: 20,
-  ...patch,
-});
-
-const report = (
-  target: number,
-  at: number,
-  by: number,
-  patch: Partial<ScoutReport> = {},
-): ScoutReport => ({
-  target,
-  tick: at,
-  by,
-  detail: 1,
-  resources: { metal: 1, crystal: 2, eonium: 3 },
-  asteroids: { metal: 1, crystal: 1, eonium: 1 },
-  structures: null,
-  research: null,
-  ships: null,
-  ...patch,
-});
-
-const knowing = (
-  world: World,
-  reports: Readonly<Record<number, readonly ScoutReport[]>>,
-): World => ({
-  ...world,
-  knowledge: world.knowledge.map((known, id) => ({
-    reports: reports[id] ?? known.reports,
-  })),
-});
 
 test("a player sees their own planet, their teammates' and their team's record in full", () => {
   const world = tick(start(), from(2, { type: "voteCommander", candidate: 2 }));
@@ -146,7 +103,9 @@ function secretive(): World {
       ships: { ...noShips(), cruiser: 7770004 },
       research: { ...world.planets[id]!.research, jamming: 7770005 },
       structures: { ...world.planets[id]!.structures, shipyard: 7770006 },
-      asteroids: { metal: 7770007, crystal: 1, eonium: 1 },
+      formation: { ...world.planets[id]!.formation, cruiser: 3 },
+      sheltered: true,
+      xp: 7770007,
       construction: [{ structure: "shipyard", remaining: 7770008 }],
       researchQueue: [{ branch: "hulls", level: 1, remaining: 7770016 }],
       production: [{ shipClass: "fighter", count: 7770017, remaining: 3 }],
@@ -183,7 +142,7 @@ test("what another team or a neutral planet holds, plans and knows is not in the
     const view = viewFor(world, player);
     const shown = JSON.stringify(view);
     assert.doesNotMatch(shown, /77700\d\d/);
-    assert.doesNotMatch(shown, /shipyard":7|"cruiser":7/);
+    assert.doesNotMatch(shown, /shipyard":77|"cruiser":77/);
     assert.deepEqual(view.fleets, []);
     assert.deepEqual(view.reports, []);
     assert.deepEqual(view.events, []);
@@ -246,7 +205,7 @@ test("a player hears what concerns them: their own refusals, their team's news, 
   ];
   const world: World = { ...start(), events };
   const heard = (player: number) =>
-    viewFor(world, player).events.map((event) => events.indexOf(event));
+    viewFor(world, player).events.map((event) => world.events.indexOf(event));
   assert.deepEqual(heard(0), [0, 5, 7, 10, 11, 13]);
   assert.deepEqual(heard(2), [1, 3, 5, 7, 10, 11, 13]);
   assert.deepEqual(heard(1), [4, 6, 9, 12, 13]);
@@ -291,8 +250,9 @@ test("a team shares its scout reports: the latest on each planet, in planet orde
 });
 
 test("a report gathered in play reaches the teammate's view and not the planet it describes", () => {
+  // Sensors two levels above the target's jammers: the report shows everything and the target is not told.
   let world = withPlanet(start(), 0, {
-    ships: { ...noShips(), fighter: 1 },
+    research: { ...start().planets[0]!.research, sensors: 2 },
   });
   world = tick(
     world,
@@ -300,7 +260,7 @@ test("a report gathered in play reaches the teammate's view and not the planet i
       type: "launchFleet",
       mission: "observe",
       target: 1,
-      ships: { fighter: 1 },
+      ships: { probe: 1 },
     }),
   );
   assert.equal(viewFor(world, 2).fleets.length, 1);
@@ -392,22 +352,52 @@ test("at the start a seat may mine, build, vote and donate, and is told what eac
       cost: { metal: 500, crystal: 300, eonium: 100 },
       ticks: 45,
     },
+    // Two probes at home: a fly-past or an orbit of every planet that is not a teammate's.
+    ...[1, 3, 4, 5, 6, 7, 8, 9].flatMap((target): CommandOption[] => [
+      {
+        type: "launchFleet",
+        mission: "observe",
+        target,
+        maxShips: ships({ probe: 2 }),
+      },
+      {
+        type: "launchFleet",
+        mission: "orbit",
+        target,
+        maxShips: ships({ probe: 2 }),
+      },
+    ]),
+    {
+      type: "setFormation",
+      fleet: NONE,
+      formations: ["line", "wall", "column", "wings"],
+    },
+    { type: "setShelter", sheltered: true },
     { type: "voteCommander", candidate: 0 },
     { type: "voteCommander", candidate: 2 },
     { type: "donate", max: { metal: 800, crystal: 800, eonium: 400 } },
   ]);
-  // A neutral planet has the same economy and no team.
+  // A neutral planet has the same economy, warships to attack with and no team.
   assert.deepEqual(
     [...new Set(types(legalCommands(viewFor(start(), 4), RULES)))],
-    ["initiateAsteroid", "buildStructure"],
+    [
+      "initiateAsteroid",
+      "buildStructure",
+      "launchFleet",
+      "setFormation",
+      "setShelter",
+    ],
   );
 });
 
 test("a planet with nothing may still vote, and a rich commander with a fleet out may do everything", () => {
   const broke = withPlanet(start(), 0, {
     resources: { metal: 0, crystal: 0, eonium: 0 },
+    ships: noShips(),
   });
   assert.deepEqual(types(legalCommands(viewFor(broke, 0), RULES)), [
+    "setFormation",
+    "setShelter",
     "voteCommander",
     "voteCommander",
   ]);
@@ -433,11 +423,14 @@ test("a planet with nothing may still vote, and a rich commander with a fleet ou
   assert.equal(count("initiateAsteroid"), 3);
   assert.equal(count("buildStructure"), 5);
   assert.equal(count("startResearch"), 5);
-  // Fighter, corvette and frigate: what hulls level 2 allows.
-  assert.equal(count("produceShips"), 3);
-  // Every other planet: one teammate to defend, eight to observe.
+  // Probe, fighter, corvette, frigate and pod: what hulls level 2 allows.
+  assert.equal(count("produceShips"), 5);
+  // Every other planet: one teammate to defend, eight to attack. Nothing to observe with: it has no probe.
   assert.equal(count("launchFleet"), 9);
   assert.equal(count("recallFleet"), 1);
+  // The home fleet's and the one fleet of its own.
+  assert.equal(count("setFormation"), 2);
+  assert.equal(count("setShelter"), 1);
   assert.equal(count("voteCommander"), 2);
   assert.equal(count("setTax"), 1);
   assert.equal(count("grant"), 2);
@@ -456,7 +449,12 @@ test("a planet with nothing may still vote, and a rich commander with a fleet ou
     cost: { metal: 300, crystal: 300, eonium: 200 },
     ticks: 60,
   });
-  assert.deepEqual(find("produceShips"), {
+  const yard = options.filter((option) => option.type === "produceShips");
+  assert.deepEqual(
+    yard.map((option) => option.shipClass),
+    ["probe", "fighter", "corvette", "frigate", "pod"],
+  );
+  assert.deepEqual(yard[1], {
     type: "produceShips",
     shipClass: "fighter",
     maxCount: 1000,
@@ -468,7 +466,7 @@ test("a planet with nothing may still vote, and a rich commander with a fleet ou
     [
       {
         type: "launchFleet",
-        mission: "observe",
+        mission: "attack",
         target: 1,
         maxShips: { ...noShips(), fighter: 3, frigate: 2 },
       },
@@ -481,6 +479,14 @@ test("a planet with nothing may still vote, and a rich commander with a fleet ou
     ],
   );
   assert.deepEqual(find("recallFleet"), { type: "recallFleet", fleet: 6 });
+  assert.deepEqual(
+    options.filter((option) => option.type === "setFormation"),
+    [NONE, 6].map((id) => ({
+      type: "setFormation",
+      fleet: id,
+      formations: ["line", "wall", "column", "wings"],
+    })),
+  );
   assert.deepEqual(find("setTax"), { type: "setTax", maxPercent: 30 });
   assert.deepEqual(find("grant"), {
     type: "grant",
@@ -552,6 +558,18 @@ test("the smallest command of each option is the one the engine is asked about",
     [
       { type: "recallFleet", fleet: 12 },
       { type: "recallFleet", fleet: 12 },
+    ],
+    [
+      { type: "setFormation", fleet: NONE, formations: ["wall", "line"] },
+      { type: "setFormation", fleet: NONE, arrangement: "wall" },
+    ],
+    [
+      { type: "setFormation", fleet: 4, formations: [] },
+      { type: "setFormation", fleet: 4, arrangement: "" },
+    ],
+    [
+      { type: "setShelter", sheltered: false },
+      { type: "setShelter", sheltered: false },
     ],
     [
       { type: "voteCommander", candidate: 2 },
@@ -637,16 +655,21 @@ function simpleCommands(world: World): Command[] {
         "destroyer",
         "cruiser",
         "battleship",
+        "probe",
+        "pod",
       ] as const
     ).map((shipClass): Command => ({
       type: "produceShips",
       shipClass,
       count: 1,
     })),
-    ...world.fleets.map((flying): Command => ({
-      type: "recallFleet",
-      fleet: flying.id,
-    })),
+    ...world.fleets.flatMap((flying): Command[] => [
+      { type: "recallFleet", fleet: flying.id },
+      { type: "setFormation", fleet: flying.id, arrangement: "line" },
+    ]),
+    { type: "setFormation", fleet: NONE, arrangement: "line" },
+    { type: "setShelter", sheltered: true },
+    { type: "setShelter", sheltered: false },
     ...planets.flatMap((planet): Command[] => [
       { type: "voteCommander", candidate: planet },
       { type: "setDefencePriority", planet },
@@ -657,7 +680,7 @@ function simpleCommands(world: World): Command[] {
 
 /** Worlds from a match the bots played, taken every so often, so the checks below meet states nobody wrote by hand. */
 function sampledWorlds(): World[] {
-  const bot = createEconomyBot();
+  const bot = createRoster("mixed");
   const env = createEnv({ rules: RULES, neutralPolicy: bot });
   let step = env.reset(3, SETUP_3V3);
   const worlds: World[] = [];
@@ -712,6 +735,8 @@ test("what the mask offers the engine carries out, at its least and at its most;
     "produceShips",
     "recallFleet",
     "setDefencePriority",
+    "setFormation",
+    "setShelter",
     "setTax",
     "startResearch",
     "voteCommander",
@@ -720,42 +745,25 @@ test("what the mask offers the engine carries out, at its least and at its most;
 
 test("the view's check answers as the engine does for a command with amounts", () => {
   const world = withPlanet(start(), 0, {
-    ships: { ...noShips(), fighter: 2 },
+    ships: ships({ probe: 2, fighter: 2 }),
   });
   const view = viewFor(world, 0);
+  const launch = (
+    mission: "attack" | "defend" | "observe" | "orbit",
+    target: number,
+    sent: Partial<Record<"probe" | "fighter", number>>,
+  ): Command => ({ type: "launchFleet", mission, target, ships: sent });
   const commands: readonly Command[] = [
     { type: "donate", resources: { metal: 801 } },
     { type: "donate", resources: { metal: 800 } },
-    {
-      type: "launchFleet",
-      mission: "observe",
-      target: 1,
-      ships: { fighter: 3 },
-    },
-    {
-      type: "launchFleet",
-      mission: "observe",
-      target: 1,
-      ships: { fighter: 2 },
-    },
-    {
-      type: "launchFleet",
-      mission: "attack",
-      target: 1,
-      ships: { fighter: 1 },
-    },
-    {
-      type: "launchFleet",
-      mission: "defend",
-      target: 1,
-      ships: { fighter: 1 },
-    },
-    {
-      type: "launchFleet",
-      mission: "observe",
-      target: 2,
-      ships: { fighter: 1 },
-    },
+    launch("observe", 1, { probe: 3 }),
+    launch("observe", 1, { probe: 2 }),
+    launch("attack", 1, { fighter: 1 }),
+    launch("defend", 1, { fighter: 1 }),
+    launch("observe", 2, { probe: 1 }),
+    launch("orbit", 1, { fighter: 1 }),
+    launch("attack", 1, { fighter: 1, probe: 1 }),
+    launch("attack", 2, { fighter: 1 }),
   ];
   assert.deepEqual(
     commands.map((command) => commandProblemFor(view, command, RULES)),
@@ -764,9 +772,12 @@ test("the view's check answers as the engine does for a command with amounts", (
       undefined,
       "not enough ships at home",
       undefined,
-      "attack missions are not implemented in this slice",
+      undefined,
       "a fleet can only defend a teammate",
       "there is nothing to observe on a teammate's planet",
+      "only probes fly an observing mission",
+      "probes fly observing missions only",
+      "a fleet cannot attack a teammate",
     ],
   );
   for (const command of commands)

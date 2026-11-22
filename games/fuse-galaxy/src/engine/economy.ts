@@ -10,6 +10,7 @@ import {
   STRUCTURE_IDS,
   type BranchId,
   type DeepReadonly,
+  type Mission,
   type Planet,
   type ResourceId,
   type Resources,
@@ -208,13 +209,18 @@ export function distance(
   return isqrt(dx * dx + dy * dy);
 }
 
-/** How long a fleet of these ships takes to fly between two planets: it flies at its slowest ship's speed. */
+/**
+ * How long a fleet of these ships takes to reach a planet: it flies at its slowest ship's speed, faster with travel
+ * research. An attack musters longer and flies slower than any other mission, so the planet it is aimed at can be
+ * reinforced before it lands.
+ */
 export function travelTicks(
   origin: { readonly x: number; readonly y: number },
   target: { readonly x: number; readonly y: number },
   ships: Readonly<Partial<ShipCounts>>,
   travelLevel: number,
   rules: Rules,
+  mission: Mission = "defend",
 ): number {
   let speed = 0;
   for (const shipClass of SHIP_CLASSES)
@@ -223,12 +229,12 @@ export function travelTicks(
         speed === 0
           ? rules.ships[shipClass].speed
           : min(speed, rules.ships[shipClass].speed);
-  return (
-    rules.fleet.launchTicks +
-    ceilDiv(
-      distance(origin, target) * PERCENT,
-      max(1, speed) *
-        (PERCENT + travelLevel * rules.fleet.travelPercentPerLevel),
-    )
+  const flight = ceilDiv(
+    distance(origin, target) * PERCENT,
+    max(1, speed) * (PERCENT + travelLevel * rules.fleet.travelPercentPerLevel),
   );
+  return mission === "attack"
+    ? rules.fleet.attackLaunchTicks +
+        percentOf(flight, rules.fleet.attackTravelPercent)
+    : rules.fleet.launchTicks + flight;
 }
