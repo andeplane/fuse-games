@@ -37,7 +37,10 @@ export interface PlayOptions {
   readonly terminal: Terminal;
 }
 
-/** Plays until the match ends or the player leaves; returns the world it stopped in. */
+/**
+ * Plays until the match ends or the player leaves; returns the world it stopped in, which is the caller's to keep
+ * from the player while the match is unfinished.
+ */
 export async function playSession(options: PlayOptions): Promise<World> {
   const { seed, setup, rules, seat, policy, terminal } = options;
   const env = createEnv({ rules, neutralPolicy: policy });
@@ -97,6 +100,12 @@ export async function playSession(options: PlayOptions): Promise<World> {
       }
     }
   }
-  terminal.write(renderStandings(env.world(), rules));
+  // The whole world is shown only once the match is over. A player who leaves early has seen their view and gets
+  // nothing more, or leaving would be a way to look through the fog.
+  terminal.write(
+    step.done
+      ? renderStandings(env.world(), rules)
+      : `Stopped at tick ${step.tick}, no result`,
+  );
   return env.world();
 }

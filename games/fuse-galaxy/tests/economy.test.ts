@@ -27,6 +27,7 @@ import {
   RULES,
   eventsOf,
   from,
+  frozen,
   idle,
   reasons,
   refusal,
@@ -487,10 +488,15 @@ test("ship orders are bounded in number, size and price, and more shipyards are 
     refusal(withYard(), 0, order(1001)),
     "an order holds at most 1000 ships",
   );
-  for (const count of [0, -1, 1.5, Number.NaN])
+  for (const count of [0, -0, -1, 1.5])
     assert.equal(
       refusal(withYard(), 0, order(count)),
       "count must be a whole number of at least 1",
+    );
+  for (const count of [Number.NaN, Number.POSITIVE_INFINITY])
+    assert.equal(
+      refusal(withYard(), 0, order(count)),
+      "the command's count is missing or malformed",
     );
   const poor = withPlanet(withYard(), 0, {
     resources: { metal: 179, crystal: 60, eonium: 0 },
@@ -579,6 +585,8 @@ test("the match ends at the tick limit and the team with the higher score wins",
   assert.deepEqual(eventsOf(world, "matchEnded"), [
     { type: "matchEnded", winner: 1 },
   ]);
+  // The result is part of the world, and as frozen as the rest of it.
+  assert.ok(frozen(world));
 });
 
 test("teams level on score draw", () => {
@@ -607,7 +615,8 @@ test("teams level on score draw", () => {
   assert.equal(ahead.result?.winner, 2);
 });
 
-test("an ended match stays as it is and refuses whatever is sent", () => {
+// Each sender is told once, and those sent as nobody together, so what an ended match answers stays small.
+test("an ended match stays as it is and refuses whatever is sent, once to each sender", () => {
   const ended = idle(start(1, undefined, SHORT), 3, SHORT);
   assert.equal(tick(ended, [], SHORT), ended);
   const after = tick(
@@ -616,6 +625,12 @@ test("an ended match stays as it is and refuses whatever is sent", () => {
       ...from(0, { type: "initiateAsteroid", resource: "metal" }),
       { player: 99, command: null },
       { player: 0.5, command: { type: "donate" } },
+      null,
+      ...from(3, { type: "setTax", percent: 5 }),
+      ...Array.from({ length: 500 }, () => ({
+        player: 0,
+        command: { type: "donate", resources: { metal: 1 } },
+      })),
     ],
     SHORT,
   );
@@ -637,9 +652,10 @@ test("an ended match stays as it is and refuses whatever is sent", () => {
     },
     {
       type: "rejected",
-      player: NONE,
-      command: "donate",
+      player: 3,
+      command: "setTax",
       reason: "the match has ended",
     },
   ]);
+  assert.ok(frozen(after));
 });

@@ -9,8 +9,8 @@ import {
 } from "../src/engine/index.js";
 import {
   RULES,
-  deepFreeze,
   from,
+  frozen,
   idle,
   reasons,
   rich,
@@ -164,15 +164,139 @@ test("the order players' commands arrive in does not matter, only each player's 
   ]);
 });
 
-test("a tick never changes the world it was given", () => {
-  let world = deepFreeze(start(5));
-  const before = hashWorld(world);
+test("a world is frozen all the way down, from the first to the last, so a tick cannot change the one it was given", () => {
+  let world = start(5);
   const first = world;
-  for (const submissions of SCRIPT)
-    world = deepFreeze(applyTick(world, submissions, RULES));
+  const before = hashWorld(first);
+  assert.ok(frozen(first));
+  for (const submissions of SCRIPT) {
+    world = applyTick(world, submissions, RULES);
+    assert.ok(frozen(world), `tick ${world.tick}`);
+  }
+  assert.ok(world.fleets.length + world.knowledge[1]!.reports.length > 0);
   assert.equal(hashWorld(first), before);
   assert.equal(hashWorld(world), hashWorld(play(5)));
   assert.equal(first.tick, 0);
+});
+
+test("a world built by hand is played like any other, and what comes back is frozen", () => {
+  const thawed: World = JSON.parse(JSON.stringify(play(5))) as World;
+  assert.ok(!Object.isFrozen(thawed));
+  const next = applyTick(thawed, [], RULES);
+  assert.ok(frozen(next));
+  assert.equal(hashWorld(next), hashWorld(applyTick(play(5), [], RULES)));
+});
+
+/**
+ * A log is replayed after a trip through JSON, which turns NaN and the infinities into null, negative zero into zero
+ * and drops what is undefined. The engine reads a command the way JSON would leave it, so the trip changes nothing.
+ */
+test("commands that JSON cannot carry are read as JSON would leave them, so a saved log replays hash for hash", () => {
+  const odd: readonly (readonly unknown[])[] = [
+    [
+      { player: 0, command: { type: "voteCommander", candidate: -0 } },
+      { player: 2, command: { type: "voteCommander", candidate: 0 } },
+      {
+        player: 1,
+        command: { type: "produceShips", shipClass: "fighter", count: NaN },
+      },
+      {
+        player: 3,
+        command: {
+          type: "donate",
+          resources: { metal: 5, crystal: undefined, eonium: -0 },
+        },
+      },
+    ],
+    [
+      { player: 0, command: { type: "setTax", percent: -0 } },
+      { player: 0, command: { type: "setTax", percent: Infinity } },
+      { player: 0, command: { type: "setDefencePriority", planet: -0 } },
+      {
+        player: 1,
+        command: { type: "donate", resources: { metal: -Infinity } },
+      },
+      {
+        player: 3,
+        command: {
+          type: "launchFleet",
+          mission: "observe",
+          target: NaN,
+          ships: { fighter: undefined },
+        },
+      },
+      { player: 2, command: { type: "recallFleet", fleet: undefined } },
+      { player: -0, command: { type: "initiateAsteroid", resource: "metal" } },
+    ],
+  ];
+  const stored: unknown = JSON.parse(JSON.stringify(odd));
+  assert.ok(Array.isArray(stored));
+  const run = (script: readonly (readonly unknown[])[]): World[] => {
+    const worlds: World[] = [];
+    let world = start(8);
+    for (const submissions of script)
+      worlds.push((world = applyTick(world, submissions, RULES)));
+    return worlds;
+  };
+  const live = run(odd);
+  const replayed = run(stored);
+  assert.deepEqual(live.map(hashWorld), replayed.map(hashWorld));
+  assert.deepEqual(
+    live.map((world) => world.events),
+    replayed.map((world) => world.events),
+  );
+  // What the odd numbers were read as: a zero where one was meant, a refusal where nothing was.
+  const last = live[1]!;
+  assert.equal(last.teams[0]!.commander, 0);
+  assert.equal(last.planets[0]!.asteroids.metal, 2);
+  assert.ok(Object.is(last.teams[0]!.taxPercent, 0));
+  assert.ok(Object.is(last.teams[0]!.defencePriority, 0));
+  assert.ok(last.teams[0]!.votes.every((vote) => Object.is(vote, 0)));
+  assert.equal(live[0]!.teams[1]!.fund.metal, 5);
+  assert.deepEqual(reasons(live[0]!), [
+    "the command's count is missing or malformed",
+  ]);
+  assert.deepEqual(reasons(last), [
+    "the command's percent is missing or malformed",
+    "the command's resources is missing or malformed",
+    "the command's fleet is missing or malformed",
+    "the command's target is missing or malformed",
+  ]);
+  const zeros: number[] = [];
+  const collect = (value: unknown): void => {
+    if (typeof value === "number" && Object.is(value, -0)) zeros.push(value);
+    else if (typeof value === "object" && value !== null)
+      Object.values(value).forEach(collect);
+  };
+  live.forEach(collect);
+  assert.deepEqual(zeros, []);
+});
+
+test("what is not a submission at all is refused as sent by nobody, and the tick still runs", () => {
+  const junk: readonly unknown[] = [
+    null,
+    undefined,
+    7,
+    "donate",
+    [],
+    [{ player: 0, command: { type: "donate", resources: { metal: 1 } } }],
+    {},
+    { command: { type: "donate", resources: { metal: 1 } } },
+    { player: "0", command: { type: "donate", resources: { metal: 1 } } },
+    { player: 0, command: { type: "donate", resources: { metal: 1 } } },
+  ];
+  const after = applyTick(start(), junk, RULES);
+  assert.equal(after.tick, 1);
+  assert.deepEqual(after.events, [
+    {
+      type: "rejected",
+      player: -1,
+      command: "malformed",
+      reason: "unknown player",
+    },
+  ]);
+  // The one real submission among them was carried out.
+  assert.equal(after.teams[0]!.fund.metal, 1);
 });
 
 test("the hash reads what a world holds, not the order it was built in", () => {

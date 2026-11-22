@@ -5,7 +5,7 @@
  * A player sees their own planet and their teammates' planets in full, their team's record and every fleet the
  * team owns; of everyone else only what is public (where the planet is, whose side it is on, its score); and the
  * dated scout reports they and their teammates have gathered. A view shares the world's objects rather than copying
- * them, which is safe because a world is never changed once `applyTick` returns it.
+ * them, which is safe because a world is frozen all the way down: whoever holds a view can read it and nothing more.
  */
 import type { CommandContext } from "./commands.js";
 import {
@@ -84,7 +84,12 @@ export function viewFor(world: World, player: number): PlayerView {
   for (const member of members)
     for (const report of world.knowledge[member]!.reports) {
       const known = reports.get(report.target);
-      if (!known || report.tick > known.tick)
+      // The newest report wins, and of two made on the same tick the one that shows more.
+      if (
+        !known ||
+        report.tick > known.tick ||
+        (report.tick === known.tick && report.detail > known.detail)
+      )
         reports.set(report.target, report);
     }
 

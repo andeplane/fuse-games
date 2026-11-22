@@ -82,7 +82,7 @@ export interface Submission {
   readonly command: Command;
 }
 
-/** A submission as the engine receives it: the command has not been read yet. */
+/** A submission as the engine is meant to receive it: the command has not been read yet. */
 export interface UntrustedSubmission {
   readonly player: number;
   readonly command: unknown;
@@ -94,17 +94,28 @@ export type ParsedCommand =
 
 const MALFORMED = "malformed";
 
-const isNumber = (value: unknown): value is number => typeof value === "number";
+/**
+ * A number as a command may carry one: finite, and with negative zero read as zero. A command log is replayed after a
+ * trip through JSON, which turns NaN and the infinities into null and negative zero into zero, so the engine reads
+ * a command the way JSON would have left it and the replay matches the match.
+ */
+const numberOf = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value + 0 : undefined;
 
-/** A record of amounts by key, with every key known and every amount a number; undefined otherwise. */
+/**
+ * A record of amounts by key, with every key known and every amount a number; undefined otherwise. An amount of
+ * `undefined` is one that was left out, as it is once JSON has dropped it.
+ */
 function amounts<K extends string>(
   value: unknown,
   keys: readonly K[],
 ): Partial<Record<K, number>> | undefined {
   if (!isRecord(value)) return undefined;
   const read: Partial<Record<K, number>> = {};
-  for (const [key, amount] of Object.entries(value)) {
-    if (!oneOf(keys, key) || !isNumber(amount)) return undefined;
+  for (const [key, raw] of Object.entries(value)) {
+    if (raw === undefined) continue;
+    const amount = numberOf(raw);
+    if (!oneOf(keys, key) || amount === undefined) return undefined;
     read[key] = amount;
   }
   return read;
@@ -133,45 +144,57 @@ export function parseCommand(value: unknown): ParsedCommand {
       return oneOf(BRANCH_IDS, value.branch)
         ? { ok: true, command: { type, branch: value.branch } }
         : bad("branch");
-    case "produceShips":
+    case "produceShips": {
       if (!oneOf(SHIP_CLASSES, value.shipClass)) return bad("shipClass");
-      if (!isNumber(value.count)) return bad("count");
+      const count = numberOf(value.count);
+      if (count === undefined) return bad("count");
       return {
         ok: true,
-        command: { type, shipClass: value.shipClass, count: value.count },
+        command: { type, shipClass: value.shipClass, count },
       };
+    }
     case "launchFleet": {
       if (!oneOf(MISSIONS, value.mission)) return bad("mission");
-      if (!isNumber(value.target)) return bad("target");
+      const target = numberOf(value.target);
+      if (target === undefined) return bad("target");
       const ships = amounts(value.ships, SHIP_CLASSES);
       if (!ships) return bad("ships");
       return {
         ok: true,
-        command: { type, mission: value.mission, target: value.target, ships },
+        command: { type, mission: value.mission, target, ships },
       };
     }
-    case "recallFleet":
-      return isNumber(value.fleet)
-        ? { ok: true, command: { type, fleet: value.fleet } }
-        : bad("fleet");
-    case "voteCommander":
-      return isNumber(value.candidate)
-        ? { ok: true, command: { type, candidate: value.candidate } }
-        : bad("candidate");
-    case "setTax":
-      return isNumber(value.percent)
-        ? { ok: true, command: { type, percent: value.percent } }
-        : bad("percent");
+    case "recallFleet": {
+      const fleet = numberOf(value.fleet);
+      return fleet === undefined
+        ? bad("fleet")
+        : { ok: true, command: { type, fleet } };
+    }
+    case "voteCommander": {
+      const candidate = numberOf(value.candidate);
+      return candidate === undefined
+        ? bad("candidate")
+        : { ok: true, command: { type, candidate } };
+    }
+    case "setTax": {
+      const percent = numberOf(value.percent);
+      return percent === undefined
+        ? bad("percent")
+        : { ok: true, command: { type, percent } };
+    }
     case "grant": {
-      if (!isNumber(value.to)) return bad("to");
+      const to = numberOf(value.to);
+      if (to === undefined) return bad("to");
       const resources = amounts(value.resources, RESOURCE_IDS);
       if (!resources) return bad("resources");
-      return { ok: true, command: { type, to: value.to, resources } };
+      return { ok: true, command: { type, to, resources } };
     }
-    case "setDefencePriority":
-      return isNumber(value.planet)
-        ? { ok: true, command: { type, planet: value.planet } }
-        : bad("planet");
+    case "setDefencePriority": {
+      const planet = numberOf(value.planet);
+      return planet === undefined
+        ? bad("planet")
+        : { ok: true, command: { type, planet } };
+    }
     case "donate": {
       const resources = amounts(value.resources, RESOURCE_IDS);
       if (!resources) return bad("resources");

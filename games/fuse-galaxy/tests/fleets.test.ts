@@ -329,7 +329,10 @@ test("a fleet is refused when its target, mission or ships are wrong", () => {
     [send("observe", 10, { fighter: 1 }), "unknown target planet"],
     [send("observe", -1, { fighter: 1 }), "unknown target planet"],
     [send("observe", 1.5, { fighter: 1 }), "unknown target planet"],
-    [send("observe", Number.NaN, { fighter: 1 }), "unknown target planet"],
+    [
+      send("observe", Number.NaN, { fighter: 1 }),
+      "the command's target is missing or malformed",
+    ],
     [
       send("observe", 0, { fighter: 1 }),
       "a fleet cannot target its own planet",
@@ -351,7 +354,7 @@ test("a fleet is refused when its target, mission or ships are wrong", () => {
     ],
     [
       send("observe", 1, { fighter: Number.POSITIVE_INFINITY }),
-      "ship counts must be whole numbers of 0 or more",
+      "the command's ships is missing or malformed",
     ],
     [send("observe", 1, { fighter: 4 }), "not enough ships at home"],
     [send("observe", 1, { corvette: 1 }), "not enough ships at home"],

@@ -141,12 +141,16 @@ test("only the commander sets the tax, within the rules' limit, and it applies f
     refusal(start(), 0, tax(10)),
     "only the team's commander can do that",
   );
-  for (const percent of [31, -1, 2.5, Number.NaN, 100])
+  for (const percent of [31, -1, 2.5, 100])
     assert.equal(
       refusal(led(), 2, tax(percent)),
       "tax must be a whole percentage from 0 to 30",
     );
-  for (const percent of [0, 1, 30])
+  assert.equal(
+    refusal(led(), 2, tax(Number.NaN)),
+    "the command's percent is missing or malformed",
+  );
+  for (const percent of [0, -0, 1, 30])
     assert.equal(refusal(led(), 2, tax(percent)), undefined);
 
   const world = tick(led(), from(2, tax(30)));
@@ -204,10 +208,15 @@ test("a donation or a grant must be whole, more than nothing and no more than th
   );
   assert.equal(donate({}), "there is nothing to transfer");
   assert.equal(donate({ metal: 0, eonium: 0 }), "there is nothing to transfer");
-  for (const amount of [-1, 0.5, Number.NaN, Number.NEGATIVE_INFINITY])
+  for (const amount of [-1, 0.5])
     assert.equal(
       donate({ metal: 5, crystal: amount }),
       "amounts must be whole numbers of 0 or more",
+    );
+  for (const amount of [Number.NaN, Number.NEGATIVE_INFINITY])
+    assert.equal(
+      donate({ metal: 5, crystal: amount }),
+      "the command's resources is missing or malformed",
     );
   assert.equal(donate({ metal: 800, crystal: 800, eonium: 400 }), undefined);
 

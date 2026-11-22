@@ -14,7 +14,7 @@ const wallClock: Clock = { now: () => performance.now() };
 /**
  * The speed the engine is built for is thousands of ticks a second with bots
  * thinking on every one of them, so that self-play is cheap. The floor here is
- * a small fraction of what a laptop measures (see the pull request): it is
+ * a small fraction of what a laptop measures (`pnpm galaxy bots` prints it): it is
  * there to catch a tick that has become quadratic, not to time the machine.
  */
 const FLOOR = 300;

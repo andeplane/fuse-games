@@ -70,10 +70,10 @@ export const from = (
   ...commands: Command[]
 ): UntrustedSubmission[] => commands.map((command) => ({ player, command }));
 
-/** One tick with these submissions. */
+/** One tick with these submissions, which the engine takes as untrusted data. */
 export const tick = (
   world: World,
-  submissions: readonly UntrustedSubmission[] = [],
+  submissions: readonly unknown[] = [],
   rules: Rules = RULES,
 ): World => applyTick(world, submissions, rules);
 
@@ -110,11 +110,8 @@ export const eventsOf = <T extends GameEvent["type"]>(
       event.type === type,
   );
 
-/** Freezes a value all the way down, so anything that tries to change it throws. */
-export function deepFreeze<T>(value: T): T {
-  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value)) deepFreeze(child);
-  }
-  return value;
-}
+/** Whether a value is frozen all the way down, so that nothing given it can change it. */
+export const frozen = (value: unknown): boolean =>
+  typeof value !== "object" ||
+  value === null ||
+  (Object.isFrozen(value) && Object.values(value).every(frozen));

@@ -6,6 +6,7 @@
  * One tick is meant to be one second of live play, so the durations below read as seconds, but nothing in the engine
  * knows that: a tick is just a step.
  */
+import { deepFreeze } from "./freeze.js";
 import type {
   BranchId,
   Resources,
@@ -178,14 +179,6 @@ export interface Rules {
     /** This many resources in stock, of any kind, are worth one point of value. */
     readonly resourceDivisor: number;
   };
-}
-
-function deepFreeze<T>(value: T): T {
-  if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value)) deepFreeze(child);
-  }
-  return value;
 }
 
 const NO_INCOME: Resources = { metal: 0, crystal: 0, eonium: 0 };

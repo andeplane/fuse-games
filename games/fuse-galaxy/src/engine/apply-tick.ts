@@ -15,12 +15,10 @@
  * 7. value and score
  * 8. the match ends at the tick limit
  */
-import {
-  commandProblem,
-  parseCommand,
-  type UntrustedSubmission,
-} from "./commands.js";
+import { commandProblem, parseCommand } from "./commands.js";
 import { income, taxOn } from "./economy.js";
+import { deepFreeze, freezeWorld } from "./freeze.js";
+import { isRecord, isWhole } from "./guards.js";
 import { clamp, min } from "./math.js";
 import { execute } from "./orders.js";
 import type { Rules } from "./rules.js";
@@ -34,37 +32,103 @@ import {
   type Fleet,
   type GameEvent,
   type Planet,
+  type Resources,
   type ScoutReport,
+  type ShipCounts,
   type World,
   type WorldDraft,
 } from "./world.js";
 
+/*
+ * The copies below name every field instead of spreading the object. A world is frozen, and a JavaScript engine
+ * copies a frozen object with a spread several times slower than it copies it field by field; that was most of
+ * what freezing cost. The types keep the lists honest: a field added to `Planet` and left out here does not compile.
+ */
+
+const copyResources = (from: Readonly<Resources>): Resources => ({
+  metal: from.metal,
+  crystal: from.crystal,
+  eonium: from.eonium,
+});
+
+const copyShips = (from: Readonly<ShipCounts>): ShipCounts => ({
+  fighter: from.fighter,
+  corvette: from.corvette,
+  frigate: from.frigate,
+  destroyer: from.destroyer,
+  cruiser: from.cruiser,
+  battleship: from.battleship,
+});
+
 const clonePlanet = (planet: DeepReadonly<Planet>): Planet => ({
-  ...planet,
-  resources: { ...planet.resources },
-  asteroids: { ...planet.asteroids },
-  structures: { ...planet.structures },
-  research: { ...planet.research },
-  construction: planet.construction.map((job) => ({ ...job })),
-  researchQueue: planet.researchQueue.map((job) => ({ ...job })),
-  production: planet.production.map((order) => ({ ...order })),
-  ships: { ...planet.ships },
+  id: planet.id,
+  kind: planet.kind,
+  team: planet.team,
+  x: planet.x,
+  y: planet.y,
+  resources: copyResources(planet.resources),
+  asteroids: copyResources(planet.asteroids),
+  structures: {
+    metalRefinery: planet.structures.metalRefinery,
+    crystalRefinery: planet.structures.crystalRefinery,
+    eoniumRefinery: planet.structures.eoniumRefinery,
+    researchLab: planet.structures.researchLab,
+    shipyard: planet.structures.shipyard,
+  },
+  research: {
+    travel: planet.research.travel,
+    hulls: planet.research.hulls,
+    sensors: planet.research.sensors,
+    mining: planet.research.mining,
+    jamming: planet.research.jamming,
+  },
+  construction: planet.construction.map((job) => ({
+    structure: job.structure,
+    remaining: job.remaining,
+  })),
+  researchQueue: planet.researchQueue.map((job) => ({
+    branch: job.branch,
+    level: job.level,
+    remaining: job.remaining,
+  })),
+  production: planet.production.map((order) => ({
+    shipClass: order.shipClass,
+    count: order.count,
+    remaining: order.remaining,
+  })),
+  ships: copyShips(planet.ships),
+  value: planet.value,
+  score: planet.score,
 });
 
 /** A private copy of a world for one tick to change. Scout reports are never changed once made, so they are shared. */
 const draftOf = (world: World): WorldDraft => ({
-  ...world,
+  rulesVersion: world.rulesVersion,
+  seed: world.seed,
+  tick: world.tick,
+  rng: world.rng,
+  phase: world.phase,
   result: null,
   planets: world.planets.map(clonePlanet),
   fleets: world.fleets.map((fleet) => ({
-    ...fleet,
-    ships: { ...fleet.ships },
+    id: fleet.id,
+    owner: fleet.owner,
+    mission: fleet.mission,
+    target: fleet.target,
+    ships: copyShips(fleet.ships),
+    phase: fleet.phase,
+    eta: fleet.eta,
+    travelTicks: fleet.travelTicks,
   })),
+  nextFleetId: world.nextFleetId,
   teams: world.teams.map((team) => ({
-    ...team,
+    id: team.id,
     members: [...team.members],
-    fund: { ...team.fund },
+    fund: copyResources(team.fund),
+    taxPercent: team.taxPercent,
+    commander: team.commander,
     votes: [...team.votes],
+    defencePriority: team.defencePriority,
   })),
   knowledge: [...world.knowledge],
   events: [],
@@ -82,28 +146,62 @@ const typeOf = (command: unknown): string => {
   return parsed.ok ? parsed.command.type : parsed.type;
 };
 
+/**
+ * Who sent a submission and what they sent. A submission is as untrusted as the command in it: one that is not a
+ * record, or names no planet, is from nobody (`NONE`).
+ */
+function read(
+  submission: unknown,
+  planets: number,
+): { readonly player: number; readonly command: unknown } {
+  if (!isRecord(submission)) return { player: NONE, command: undefined };
+  const { player, command } = submission;
+  return isWhole(player) && player >= 0 && player < planets
+    ? // Adding zero turns a negative zero into the id it names.
+      { player: player + 0, command }
+    : { player: NONE, command };
+}
+
 /** Each player's commands in the order sent, by player id; one event for all those sent as nobody. */
 function sortByPlayer(
   planets: number,
-  submissions: readonly UntrustedSubmission[],
+  submissions: readonly unknown[],
   events: GameEvent[],
 ): unknown[][] {
   const byPlayer: unknown[][] = Array.from({ length: planets }, () => []);
   let strays = 0;
   for (const submission of submissions) {
-    const commands = Number.isSafeInteger(submission.player)
-      ? byPlayer[submission.player]
-      : undefined;
-    if (commands) commands.push(submission.command);
+    const { player, command } = read(submission, planets);
+    const commands = byPlayer[player];
+    if (commands) commands.push(command);
     else if (strays++ === 0)
-      events.push(rejected(NONE, typeOf(submission.command), "unknown player"));
+      events.push(rejected(NONE, typeOf(command), "unknown player"));
   }
   return byPlayer;
 }
 
+/**
+ * What an ended match says to what is still sent to it: one event for each sender's first command and one for all
+ * those sent as nobody, so the list is no longer than the planets are many.
+ */
+function refuseAll(
+  planets: number,
+  submissions: readonly unknown[],
+): GameEvent[] {
+  const events: GameEvent[] = [];
+  const told = new Set<number>();
+  for (const submission of submissions) {
+    const { player, command } = read(submission, planets);
+    if (told.has(player)) continue;
+    told.add(player);
+    events.push(rejected(player, typeOf(command), "the match has ended"));
+  }
+  return events;
+}
+
 function applyCommands(
   world: WorldDraft,
-  submissions: readonly UntrustedSubmission[],
+  submissions: readonly unknown[],
   rules: Rules,
 ): void {
   const byPlayer = sortByPlayer(
@@ -270,29 +368,24 @@ function moveFleets(world: WorldDraft, rules: Rules): void {
 }
 
 /**
- * The world one tick later. A match that has ended stays as it is: the tick does not advance, and whatever is
- * submitted is rejected.
+ * The world one tick later, frozen all the way down. A match that has ended stays as it is: the tick does not
+ * advance, and whatever is submitted is rejected.
+ *
+ * A submission is meant to be an `UntrustedSubmission`, and the type says `unknown` because nothing here relies on
+ * it: whatever is not one is refused as sent by nobody, never thrown on. Submissions are read as plain data, as
+ * `JSON.parse` would give them; an object with a getter that throws is outside what the engine promises.
  */
 export function applyTick(
   world: World,
-  submissions: readonly UntrustedSubmission[],
+  submissions: readonly unknown[],
   rules: Rules,
 ): World {
   if (world.phase === "ended") {
     if (submissions.length === 0) return world;
-    return {
+    return deepFreeze({
       ...world,
-      events: submissions.map((submission) =>
-        rejected(
-          Number.isSafeInteger(submission.player) &&
-            world.planets[submission.player]
-            ? submission.player
-            : NONE,
-          typeOf(submission.command),
-          "the match has ended",
-        ),
-      ),
-    };
+      events: refuseAll(world.planets.length, submissions),
+    });
   }
   const draft = draftOf(world);
   draft.tick += 1;
@@ -302,5 +395,5 @@ export function applyTick(
   moveFleets(draft, rules);
   updateScores(draft.planets, draft.fleets, rules);
   endMatch(draft, rules);
-  return draft;
+  return freezeWorld(draft);
 }

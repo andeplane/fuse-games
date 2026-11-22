@@ -5,6 +5,7 @@ import {
   SETUP_3V3,
   commandProblemFor,
   createEnv,
+  hashWorld,
   legalCommands,
   minimalCommand,
   noShips,
@@ -95,6 +96,24 @@ test("a player sees their own planet, their teammates' and their team's record i
     three.allies.map((ally) => ally.id),
     [0, 4],
   );
+});
+
+// A view shares the world's own objects, so they must be ones that cannot be written to.
+test("a bot cannot change the match through what its view hands it", () => {
+  const world = tick(start(), from(2, { type: "voteCommander", candidate: 2 }));
+  const before = hashWorld(world);
+  const view = viewFor(world, 0);
+  const writes: readonly (() => unknown)[] = [
+    () => Object.assign(view.planet.resources, { metal: 1_000_000 }),
+    () => Object.assign(view.planet, { score: 1_000_000 }),
+    () => Object.assign(view.allies[0]!.ships, { battleship: 99 }),
+    () => Object.assign(view.team!, { commander: 0 }),
+    () => Object.assign(view.team!.fund, { metal: 1_000_000 }),
+    () => Object.assign(view.team!.votes, { 0: 0 }),
+  ];
+  for (const write of writes) assert.throws(write, TypeError);
+  assert.equal(hashWorld(world), before);
+  assert.equal(world.planets[0]!.resources.metal, view.planet.resources.metal);
 });
 
 test("every planet is on the map with its place, its side and its score, and nothing more", () => {
@@ -237,12 +256,20 @@ test("a player hears what concerns them: their own refusals, their team's news, 
 });
 
 test("a team shares its scout reports: the latest on each planet, in planet order", () => {
+  const sharper = { detail: 3, ships: { ...noShips(), corvette: 2 } };
   const world = knowing(start(), {
-    0: [report(3, 10, 0), report(1, 5, 0)],
+    0: [
+      report(3, 10, 0),
+      report(1, 5, 0),
+      report(6, 4, 0),
+      report(7, 4, 0, sharper),
+    ],
     2: [
       report(1, 9, 2, { detail: 3, ships: { ...noShips(), frigate: 4 } }),
       report(5, 2, 2),
       report(3, 10, 2),
+      report(6, 4, 2, sharper),
+      report(7, 4, 2),
     ],
     1: [report(0, 7, 1)],
     4: [report(0, 8, 4)],
@@ -250,9 +277,12 @@ test("a team shares its scout reports: the latest on each planet, in planet orde
   for (const player of [0, 2])
     assert.deepEqual(viewFor(world, player).reports, [
       report(1, 9, 2, { detail: 3, ships: { ...noShips(), frigate: 4 } }),
-      // Both saw planet 3 on the same tick: the lower planet's report is the one kept.
+      // Both saw planet 3 equally well on the same tick: the lower planet's report is the one kept.
       report(3, 10, 0),
       report(5, 2, 2),
+      // Both saw planets 6 and 7 on the same tick: the report that shows more is kept, whoever made it.
+      report(6, 4, 2, sharper),
+      report(7, 4, 0, sharper),
     ]);
   assert.deepEqual(viewFor(world, 1).reports, [report(0, 7, 1)]);
   assert.deepEqual(viewFor(world, 3).reports, [report(0, 7, 1)]);

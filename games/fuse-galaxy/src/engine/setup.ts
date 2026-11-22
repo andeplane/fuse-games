@@ -4,6 +4,7 @@
  * fixed command order alternates between them; the neutral planets follow.
  */
 import { distance } from "./economy.js";
+import { deepFreeze } from "./freeze.js";
 import { isRecord, isWhole } from "./guards.js";
 import { roll, seedState } from "./rng.js";
 import type { Rules } from "./rules.js";
@@ -120,7 +121,7 @@ function neutralSpot(
 }
 
 /**
- * The world a match starts from. Throws a `RangeError` for a seed that is not a whole number or a setup the rules
+ * The world a match starts from, frozen. Throws a `RangeError` for a seed that is not a whole number or a setup the rules
  * do not allow (`setupProblem`): those come from the host, not from a player.
  */
 export function createWorld(
@@ -195,5 +196,5 @@ export function createWorld(
     knowledge: planets.map(() => ({ reports: [] })),
     events: [],
   };
-  return world;
+  return deepFreeze(world);
 }

@@ -73,7 +73,16 @@ function stepping(milliseconds: number): Clock {
 const error = (message: string) => ({ mode: "error", message });
 
 test("the command line picks a mode, and help when there is none", () => {
-  for (const argv of [[], ["help"], ["--help"], ["-h"], ["help", "--seed"]])
+  for (const argv of [
+    [],
+    ["help"],
+    ["--help"],
+    ["-h"],
+    ["help", "--seed"],
+    ["bots", "--help"],
+    ["play", "--seed", "3", "-h"],
+    ["serve", "--help"],
+  ])
     assert.deepEqual(parseArgs(argv, RULES), { mode: "help" });
   assert.deepEqual(parseArgs(["serve"], RULES), error('unknown mode "serve"'));
 
@@ -773,14 +782,42 @@ test("a session ends when the input does, or when the player quits", async () =>
   assert.equal(silent.shown.length, 3);
   assert.equal(silent.shown[0], HELP);
   assert.equal(silent.shown[1], renderView(viewFor(start(), 0), RULES));
-  assert.equal(silent.shown[2], renderStandings(start(), RULES));
+  assert.equal(silent.shown[2], "Stopped at tick 0, no result");
 
   const leaving = scripted(["next 2", "quit", "next 5"]);
   const left = await playSession({ ...options, terminal: leaving.terminal });
   assert.equal(left.tick, 2);
   assert.deepEqual(leaving.prompts, ["tick 0> ", "tick 2> "]);
   assert.deepEqual(leaving.left, ["next 5"]);
-  assert.match(leaving.shown.at(-1)!, /^Stopped at tick 2, no result\n/);
+  assert.equal(leaving.shown.at(-1), "Stopped at tick 2, no result");
+});
+
+test("leaving a match early shows nothing the view hides; the standings come only with the result", async () => {
+  const rules: Rules = { ...RULES, match: { tickLimit: 40 } };
+  const options = {
+    seed: 1,
+    setup: SETUP_2V2,
+    rules,
+    seat: 0,
+    policy: createEconomyBot(),
+  };
+  // What only the whole world knows: the other team's fund and what the other planets hold.
+  const hidden = /fund metal|Neutral planets|planet {2}1 {2}score/;
+
+  const early = scripted(["next 39", "quit"]);
+  const stopped = await playSession({ ...options, terminal: early.terminal });
+  assert.equal(stopped.phase, "running");
+  assert.equal(early.shown.at(-1), "Stopped at tick 39, no result");
+  assert.ok(renderStandings(stopped, rules).match(hidden));
+  // The player's own view names their own team's fund, so the other team's is what must not be there.
+  for (const text of early.shown)
+    assert.ok(!text.includes("Team 1  score"), text);
+
+  const whole = scripted(["next 40"]);
+  const ended = await playSession({ ...options, terminal: whole.terminal });
+  assert.equal(ended.phase, "ended");
+  assert.equal(whole.shown.at(-1), renderStandings(ended, rules));
+  assert.match(whole.shown.at(-1)!, hidden);
 });
 
 test("a session queues what the player types for the next tick and says what it cannot do", async () => {

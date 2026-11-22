@@ -48,7 +48,8 @@ export const wholeNumber = (text: string): number | undefined =>
 
 export function parseArgs(argv: readonly string[], defaults: Rules): Args {
   const [mode = "help", ...rest] = argv;
-  if (mode === "help" || mode === "--help" || mode === "-h")
+  // Asking for help anywhere on the line gets it, as `bots --help` should.
+  if (mode === "help" || argv.includes("--help") || argv.includes("-h"))
     return { mode: "help" };
   if (mode !== "bots" && mode !== "play")
     return error(`unknown mode "${mode}"`);

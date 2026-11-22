@@ -10,7 +10,7 @@ Fuse Galaxy is a session-length descendant of Planetarion: up to six players in 
 | `src/bots/economy-bot.ts`               | A stateless bot that plays through a view and the legal commands, like any other player                                                               |
 | `src/cli/` and `scripts/fuse-galaxy.ts` | The terminal client (`pnpm galaxy`); the script only supplies the real terminal and clock                                                             |
 
-`applyTick(world, submissions, rules)` returns the next world and never changes its arguments. It reads no clock, does no I/O and uses whole numbers only (`math.ts` has the integer division, square root and percentage it needs). Randomness comes from the generator state stored in the world, so it is checkpointed with everything else. `tests/architecture.test.ts` fails on an import that leaves the engine folder and on floating-point or ambient calls inside it.
+`applyTick(world, submissions, rules)` returns the next world and never changes its arguments. Every world the engine hands out is frozen all the way down, so a bot or a client holding a world or a view cannot change the match either; a write throws. It reads no clock, does no I/O and uses whole numbers only (`math.ts` has the integer division, square root and percentage it needs). Randomness comes from the generator state stored in the world, so it is checkpointed with everything else. `tests/architecture.test.ts` fails on an import that leaves the engine folder and on floating-point or ambient calls inside it.
 
 Every balance number lives in one frozen [`Rules`](../../games/fuse-galaxy/src/engine/rules.ts) object with `DEFAULT_RULES` as the default. A variant is another object, never a code change. A change to a number or a rule bumps `Rules.version`, and the pinned hashes in `tests/determinism.test.ts` change with it.
 
@@ -40,7 +40,7 @@ The tick an order is placed on counts as its first tick, so a structure with a b
 
 ## Commands
 
-Commands are a discriminated union: `initiateAsteroid`, `buildStructure`, `startResearch`, `produceShips`, `launchFleet`, `recallFleet`, `voteCommander`, `setTax`, `grant`, `setDefencePriority` and `donate`. They arrive as untrusted data. `parseCommand` checks the shape, `commandProblem` checks it against the world, and a refused command becomes a `rejected` event with its reason. Nothing throws on bad input, and a refused command changes nothing.
+Commands are a discriminated union: `initiateAsteroid`, `buildStructure`, `startResearch`, `produceShips`, `launchFleet`, `recallFleet`, `voteCommander`, `setTax`, `grant`, `setDefencePriority` and `donate`. They arrive as untrusted data. `parseCommand` checks the shape, `commandProblem` checks it against the world, and a refused command becomes a `rejected` event with its reason. Nothing throws on bad input, and a refused command changes nothing. Input here means plain data, as `JSON.parse` gives it: a submission that is not even a record is refused as sent by nobody, while an object whose getter throws is outside what the engine promises. A match that has ended refuses whatever it is sent, once to each sender.
 
 `viewFor(world, player)` is the only thing a player or a bot sees, and `legalCommands(view, rules)` lists what that player can do now with its cost and limits. The list is built by asking the engine's own check about each candidate, so the mask and the engine cannot disagree; `tests/view.test.ts` checks both directions on bot-played matches.
 
@@ -51,13 +51,13 @@ Commands are a discriminated union: `initiateAsteroid`, `buildStructure`, `start
 - **Research.** Five branches (travel, hulls, sensors, mining, jamming), one level in progress and one queued. Hulls opens the heavier ship classes.
 - **Ships.** Six classes (fighter, corvette, frigate, destroyer, cruiser, battleship). Several orders run side by side; an order's time does not depend on its size.
 - **Teams.** Every member votes for a commander; the most votes wins, the sitting commander wins a tie and the lowest id wins a tie without one. The commander sets the tax (up to the rules' maximum), grants from the fund to members and flags one member as the defence priority. Any member may donate to the fund.
-- **Fleets.** A fleet flies at its slowest ship's speed. `defend` stations it at a teammate for a while and brings it home. `observe` flies to any planet, records a report whose detail is the observer's sensors against the target's jamming, and comes home. `attack` is refused as "not implemented in this slice".
+- **Fleets.** A fleet flies at its slowest ship's speed. `defend` stations it at a teammate for a while and brings it home. `observe` flies to any planet that is not on the sender's team, records a report whose detail is the observer's sensors against the target's jamming, and comes home. `attack` is refused as "not implemented in this slice".
 - **Fog.** A view shows the player's own planet and team in full, allies' planets and fleets, every planet's position, owner kind and score, and the newest report on each planet that the player or a teammate has gathered. It does not show another team's resources, queues, ships, fleets, fund or votes.
 - **Neutral planets** are played by a bot through the same views and commands and earn a share of a seat's income.
 
 ## Environment and replays
 
-`createEnv({ rules, neutralPolicy })` gives `reset(seed, setup)` and `step(commandsByPlayer)`, each returning every seat's view, its reward (the change in its own score) and whether the match is done. The environment keeps a log of the seed, the setup, the rules version and every tick's submissions. `replay(log, rules)` rebuilds the final world from it, and `hashWorld` (FNV-1a over canonical JSON) must then equal the hash of the live match. The terminal client checks this after every bot match.
+`createEnv({ rules, neutralPolicy })` gives `reset(seed, setup)` and `step(commandsByPlayer)`, each returning every seat's view, its reward (the change in its own score) and whether the match is done. The environment keeps a log of the seed, the setup, the rules version and every tick's submissions. `replay(log, rules)` rebuilds the final world from it, and `hashWorld` (the world's canonical JSON folded through FNV-1a from two starting values, 16 hex characters) must then equal the hash of the live match. A log is saved as JSON, so the engine reads every command the way JSON would leave it: a number must be finite, negative zero is zero and an amount of `undefined` is one left out. A command therefore means the same before and after it is saved. The terminal client checks this after every bot match.
 
 ## Terminal client
 

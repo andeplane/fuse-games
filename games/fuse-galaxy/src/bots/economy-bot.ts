@@ -215,7 +215,10 @@ function teamwork(
 
   // Everyone backs the first seat on the team, so a team of bots settles on a commander at once.
   const candidate = team.members[0]!;
-  if (team.votes[team.members.indexOf(view.self)] !== candidate)
+  const vote = ofType(options, "voteCommander").find(
+    (option) => option.candidate === candidate,
+  );
+  if (vote && team.votes[team.members.indexOf(view.self)] !== candidate)
     commands.push({ type: "voteCommander", candidate });
   if (team.commander !== view.self) return commands;
 
