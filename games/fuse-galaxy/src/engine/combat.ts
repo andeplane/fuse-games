@@ -14,7 +14,8 @@
  * - A squadron fires `shots` for each ship that is not frozen, at the classes on its target list in that order, at
  *   whatever of each it can reach. A shot does `attack` damage and destroys at most one ship, so a heavy gun wastes
  *   what it does past a small ship's armour.
- * - A freezing shot destroys nothing: for every armour's worth of it, one ship of the target does not fire this round.
+ * - A freezing shot destroys nothing: for every armour's worth of it, one ship of the target does not fire this round,
+ *   unless its turn to fire has come already (then it counts for nothing).
  */
 import { shipTotal, totalOf } from "./economy.js";
 import { CELLS, COLUMNS, columnOf } from "./formation.js";
@@ -77,6 +78,8 @@ interface Squadron {
   flanking: boolean;
   /** How many of its ships fire in the step being resolved. */
   firing: number;
+  /** How many of its ships did not fire this round because they were frozen when their turn came. */
+  held: number;
 }
 
 /** Whether a class takes part in a battle at all. */
@@ -114,6 +117,7 @@ function squadronsOf(
         depth: 0,
         flanking: false,
         firing: 0,
+        held: 0,
       });
     }
   return squadrons;
@@ -185,10 +189,10 @@ export function fightRound(
         squadron.rule.initiative === initiative,
     );
     // Everything with this initiative fires together: who fires is settled before any of it lands.
-    for (const shooter of shooters)
-      shooter.firing =
-        shooter.count -
-        min(shooter.count, div(shooter.stun, shooter.rule.armour));
+    for (const shooter of shooters) {
+      shooter.held = min(shooter.count, div(shooter.stun, shooter.rule.armour));
+      shooter.firing = shooter.count - shooter.held;
+    }
     for (const shooter of shooters) {
       let shots = shooter.firing * shooter.rule.shots;
       for (const targetClass of shooter.rule.targets) {
@@ -233,10 +237,8 @@ export function fightRound(
     force.ships[squadron.shipClass] = squadron.count;
     force.damage[squadron.shipClass] =
       squadron.count * squadron.rule.armour - squadron.hp;
-    frozen[squadron.side]! += min(
-      squadron.count,
-      div(squadron.stun, squadron.rule.armour),
-    );
+    // Only what was frozen when its turn to fire came: a ship frozen after it fired did fire.
+    frozen[squadron.side]! += squadron.held;
   }
   return { lost, frozen, destroyed };
 }

@@ -260,9 +260,9 @@ test("a match played again from its log ends in the same world, hash for hash", 
 
 test("a log is not replayed under other rules, past the tick limit or from a start the rules refuse", () => {
   const { log } = recorded();
-  assert.throws(() => replay(log, { ...RULES, version: 3 }), {
+  assert.throws(() => replay(log, { ...RULES, version: 4 }), {
     name: "RangeError",
-    message: "the log was recorded under rules version 2, not 3",
+    message: "the log was recorded under rules version 3, not 4",
   });
   assert.throws(() => replay(log, SHORT), {
     name: "RangeError",

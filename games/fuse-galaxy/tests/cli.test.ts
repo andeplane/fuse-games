@@ -750,7 +750,7 @@ test("the client plays bot matches and reports their speed", async () => {
   assert.equal(one.shown.length, 3);
   assert.equal(
     one.shown[0],
-    "Fuse Galaxy · seed 4 · 2 teams of 2 + 6 neutral planets · mixed bots · rules v2",
+    "Fuse Galaxy · seed 4 · 2 teams of 2 + 6 neutral planets · mixed bots · rules v3",
   );
   assert.match(
     one.shown[1]!,
@@ -785,7 +785,7 @@ test("the client plays bot matches and reports their speed", async () => {
     [0, 3, 6].map((index) => three.shown[index]),
     [4, 5, 6].map(
       (seed) =>
-        `Fuse Galaxy · seed ${seed} · 2 teams of 3 + 6 neutral planets · mixed bots · rules v2`,
+        `Fuse Galaxy · seed ${seed} · 2 teams of 3 + 6 neutral planets · mixed bots · rules v3`,
     ),
   );
   for (const index of [2, 5, 8])

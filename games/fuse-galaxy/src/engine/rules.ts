@@ -292,7 +292,7 @@ const UNARMED = {
 
 /** The game as it is played by default: a forty-minute match at one tick a second. */
 export const DEFAULT_RULES: Rules = deepFreeze<Rules>({
-  version: 2,
+  version: 3,
   match: { tickLimit: 2400 },
   limits: { commandsPerPlayerPerTick: 16, resourceCap: 1_000_000_000 },
   setup: {

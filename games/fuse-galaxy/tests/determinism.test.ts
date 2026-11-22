@@ -130,9 +130,9 @@ test("a recorded match hashes to its pinned value", () => {
       played: hashWorld(play(11)),
     },
     {
-      start: "513cf8a8557e9d3b",
-      start3v3: "c0576fd94ec3d246",
-      played: "a597eef1f3dc2696",
+      start: "e9e17e89d0849452",
+      start3v3: "7c4266e0eb2b03ef",
+      played: "1fb6c200a89308cf",
     },
   );
 });

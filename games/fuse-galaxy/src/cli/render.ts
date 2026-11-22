@@ -100,7 +100,10 @@ const formationText = (
   rules: Rules,
 ): string =>
   formationName(formation, rules) ??
-  (SHIP_CLASSES.filter((shipClass) => ships[shipClass] > 0)
+  // Probes take no part in a battle, so where they stand is left out.
+  (SHIP_CLASSES.filter(
+    (shipClass) => ships[shipClass] > 0 && !rules.ships[shipClass].probe,
+  )
     .map((shipClass) => `${shipClass}=${formation[shipClass]}`)
     .join(" ") ||
     "custom");

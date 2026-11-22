@@ -189,3 +189,33 @@ export const frozen = (value: unknown): boolean =>
   typeof value !== "object" ||
   value === null ||
   (Object.isFrozen(value) && Object.values(value).every(frozen));
+
+/** An attack fleet one tick from landing. */
+export const raid = (
+  id: number,
+  owner: number,
+  target: number,
+  counts: Partial<ShipCounts>,
+  patch: Partial<Fleet> = {},
+): Fleet =>
+  fleetOf(id, owner, target, {
+    mission: "attack",
+    ships: ships(counts),
+    eta: 1,
+    ...patch,
+  });
+
+/** The world with these fleets added, and the fleet counter past them. */
+export const withFleets = (world: World, ...fleets: Fleet[]): World => ({
+  ...world,
+  fleets: [...world.fleets, ...fleets],
+  nextFleetId: Math.max(world.nextFleetId, ...fleets.map((one) => one.id + 1)),
+});
+
+/** The world with this home fleet on a planet, in the line formation unless told otherwise. */
+export const homeFleet = (
+  world: World,
+  id: number,
+  counts: Partial<ShipCounts>,
+  formation: Readonly<Formation> = LINE,
+): World => withPlanet(world, id, { ships: ships(counts), formation });
