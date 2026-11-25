@@ -1,5 +1,6 @@
 import { docksideRegistration } from "dockside/platform";
 import { cyberfuseRegistration } from "cyberfuse/platform";
+import { fuseheadsRegistration } from "fuseheads/platform";
 import { diceRegistration } from "dice/platform";
 import { fuseParticlesRegistration } from "fuse-particles/platform";
 import { incredibleFuseRegistration } from "incredible-fuse/platform";
@@ -45,6 +46,7 @@ export const GAMES = [
   cyberfuseRegistration,
   diceRegistration,
   docksideRegistration,
+  fuseheadsRegistration,
   fuseParticlesRegistration,
   incredibleFuseRegistration,
   lieroRegistration,

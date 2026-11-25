@@ -47,6 +47,7 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
     "cyberfuse",
     diceGame.id,
     "dockside",
+    "fuseheads",
     "fuse-particles",
     "incredible-fuse",
     "fusero",
@@ -120,6 +121,10 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
   try {
     const dice = await create("dice"),
       riders = await create(GAME_ID);
+    const fuseheads = await create("fuseheads");
+    assert.deepEqual(await open(fuseheads.code, fuseheads.token, "fuseheads"), {
+      welcomed: true,
+    });
     const ballBros = await create("ball-bros");
     const liero = await create("fusero");
     assert.deepEqual(await open(liero.code, liero.token, "fusero"), {
