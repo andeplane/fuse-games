@@ -2271,3 +2271,28 @@ select {
     font-size: 9px;
   }
 }
+
+/*
+ * A phone's live match (fuse-ui play-screen): the battle is the screen. The board runs from the top edge to the
+ * command dock; the resource bar floats over its top, clear of the corner menu button, and the dock keeps its room
+ * at the bottom because the match is played from it.
+ */
+html[data-fui-play] .game-layout .board-scroll {
+  inset: 0 0 var(--dock-height);
+}
+html[data-fui-play] .game-layout .battle-topbar {
+  top: 0;
+  height: calc(var(--topbar-height) + var(--fui-play-top));
+  padding: var(--fui-play-top) calc(max(8px, var(--fui-play-right)) + 44px) 0
+    max(8px, var(--fui-play-left));
+  background: #071020b8;
+}
+html[data-fui-play] .game-layout .command-dock {
+  height: calc(var(--dock-height) + var(--fui-play-bottom));
+  padding-bottom: max(6px, var(--fui-play-bottom));
+  padding-left: max(10px, var(--fui-play-left));
+  padding-right: max(10px, var(--fui-play-right));
+}
+html[data-fui-play] .game-layout .board-scroll {
+  bottom: calc(var(--dock-height) + var(--fui-play-bottom));
+}
