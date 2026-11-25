@@ -188,12 +188,35 @@ test("a pane says the countdown, GO, the run clock, apples, place, a crash, the 
   world.close = world.step + 30 * STEPS_PER_SECOND;
   const view = toView(world);
   assert.equal(paneHud(view, 1)!.banner, "FINISHED 0:10.00");
+  assert.equal(paneHud(view, 0)!.closing, "RACE ENDS IN 30");
+  assert.equal(paneHud(view, 0)!.urgent, false);
   assert.equal(
     paneHud(view, 1)!.closing,
-    "",
-    "the one who is home is not on the clock",
+    "RACE ENDS IN 30",
+    "the one who is home sees how long the others have",
   );
-  assert.equal(paneHud(view, 0)!.closing, "CLOSING 30");
+  // Home, its own clock stops at the flower: it counts down on the furthest clock still riding.
+  const home = {
+    ...view,
+    step: view.step - 5 * STEPS_PER_SECOND,
+    left: view.left + 5 * STEPS_PER_SECOND,
+    riders: view.riders.map((rider, slot) =>
+      slot === 0
+        ? { ...rider, step: view.step + 22 * STEPS_PER_SECOND }
+        : rider,
+    ),
+  };
+  assert.equal(paneHud(home, 1)!.closing, "RACE ENDS IN 8");
+  assert.equal(paneHud(home, 1)!.urgent, true);
+  // Everyone home: nobody is on the clock.
+  const allHome = {
+    ...view,
+    riders: view.riders.map((rider) => ({
+      ...rider,
+      status: "finished" as const,
+    })),
+  };
+  assert.equal(paneHud(allHome, 1)!.closing, "");
   assert.equal(paneHud(view, 1)!.place, "1ST");
   // Alone, there is no place to show; a slot nobody rides has no words.
   assert.equal(paneHud(toView(createWorld(["a"], 0, 0)), 0)!.place, "");

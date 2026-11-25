@@ -24,8 +24,14 @@
   left: 0;
   right: auto;
 }
+/* Mid-match MENU sits at the screen's right edge: its panel opens leftwards, on the screen. */
+.fb-match .fb-bar .fui-game-menu-panel {
+  left: auto;
+  right: 0;
+}
 @media (max-width: 480px) {
-  .fb-bar .fui-game-menu-panel {
+  .fb-bar .fui-game-menu-panel,
+  .fb-match .fb-bar .fui-game-menu-panel {
     left: 0.75rem;
     right: 0.75rem;
   }

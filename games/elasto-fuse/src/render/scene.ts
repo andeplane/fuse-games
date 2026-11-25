@@ -373,7 +373,6 @@ export function createScene(
         text(hud.place, left, y, unit * 0.8, slotColor(slot));
         y += unit * 1.5;
       }
-      if (hud.closing) text(hud.closing, left, y, unit * 0.8, PINK);
       if (hud.banner) {
         const big = hud.tone === "count" || hud.tone === "go";
         const size = Math.min(
@@ -386,6 +385,18 @@ export function createScene(
           pane.y + pane.h * 0.24,
           size,
           TONES[hud.tone],
+          "center",
+        );
+      }
+      if (hud.closing) {
+        // Under the banner, big enough to read at a glance; it blinks in the last ten seconds.
+        const blink = hud.urgent && Math.floor(seconds * 4) % 2 === 1;
+        text(
+          hud.closing,
+          pane.x + pane.w / 2,
+          pane.y + pane.h * 0.24 + unit * (hud.banner ? 2.4 : 0),
+          Math.min(unit * 1.3, (pane.w * 0.9) / hud.closing.length),
+          blink ? WHITE : hud.urgent ? PINK : GOLD,
           "center",
         );
       }

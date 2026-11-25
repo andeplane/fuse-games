@@ -1,4 +1,9 @@
-import { createLiveResults, createResultsScreen, createTopBar } from "fuse-ui";
+import {
+  createGameMenu,
+  createLiveResults,
+  createResultsScreen,
+  createTopBar,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestCapture,
@@ -160,7 +165,7 @@ function battlefield(): { field: Renderer; canvas: HTMLCanvasElement } {
   return { field, canvas };
 }
 
-function header(): HTMLElement {
+function header(extra: HTMLElement[] = []): HTMLElement {
   const top = el("header", "", "ff-top");
   const brand = el("a", "FUSE FRONT", "ff-brand");
   brand.href = link();
@@ -174,6 +179,7 @@ function header(): HTMLElement {
     brand,
     social.element(),
     el("span", "", "ff-top-gap"),
+    ...extra,
   );
   return createTopBar({
     element: top,
@@ -227,22 +233,22 @@ function room(code: string, token: string | undefined, display: boolean): void {
   const lobby = el("section", "", "ff-lobby");
   const play = el("section", "", "ff-play");
   const hint = el("p", "", "ff-hud");
+  const leave = () =>
+    resultsHistory.close(
+      () => ({
+        receipts: runtime.roomState()?.history ?? [],
+        confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+      }),
+      () => {
+        runtime.stop();
+        location.href = link();
+      },
+    );
   // The result: the shared results screen over the page.
   const results = createResultsScreen({
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      resultsHistory.close(
-        () => ({
-          receipts: runtime.roomState()?.history ?? [],
-          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
-        }),
-        () => {
-          runtime.stop();
-          location.href = link();
-        },
-      );
-    },
+    onBack: leave,
     backText: "Leave",
     onAction: (id) =>
       runtime.command({
@@ -332,7 +338,20 @@ function room(code: string, token: string | undefined, display: boolean): void {
       resized();
     },
   });
-  app.replaceChildren(header(), status, lobby, play, results.element);
+  // The shared game menu, as in every game: the host's Back to lobby during a match and everyone's Main menu.
+  const gameMenu = createGameMenu({
+    ...FRONT_GUIDE,
+    onLobby: () => runtime.command({ type: "action", action: "lobby" }),
+    onLeave: leave,
+  });
+  gameMenu.update({ canLobby: false });
+  app.replaceChildren(
+    header([gameMenu.element]),
+    status,
+    lobby,
+    play,
+    results.element,
+  );
   // The name this device knows: the account's, or the one typed in a room before.
   const known = () =>
     social.playerName(store.getItem(keys.name))?.trim() || undefined;
@@ -414,6 +433,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
     if (!display && confirmed)
       resultsHistory.observe(confirmed.history, confirmed.logTick);
     const inLobby = view.stage === "lobby";
+    gameMenu.update({
+      canLobby: (runtime.creator || runtime.solo) && !display && !inLobby,
+      touch: matchMedia("(pointer: coarse)").matches,
+      spectator: display || runtime.slot() < 0,
+      display,
+    });
     // The room's line is at the room's foot; in a match it is the line under the page's header again.
     if (!inLobby && status.parentElement !== app) lobby.before(status);
     if (inLobby && !wasLobby) lobbyKey = "";
@@ -1089,6 +1114,14 @@ function room(code: string, token: string | undefined, display: boolean): void {
     if (
       action.kind === "fight" &&
       (event.shiftKey || target?.closest("button, a"))
+    )
+      return;
+    // Escape with nothing on the board to close is the menu's (the shared top bar opens it, with Back to lobby).
+    if (
+      action.kind === "close" &&
+      !hud.shop.open &&
+      !hud.score.open &&
+      mode.kind === "idle"
     )
       return;
     // Also keeps Space from re-pressing a focused HUD button.

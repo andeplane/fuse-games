@@ -40,7 +40,7 @@ import {
   el,
 } from "fuse-ui";
 import { createAppPortal } from "fuse-ui/portal";
-import { createTopBar } from "fuse-ui";
+import { createGameMenu, createTopBar } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
 import { createResultsHistory } from "fuse-ui/results-history";
 import { createModalInputGate } from "fuse-ui/modal-input";
@@ -90,6 +90,22 @@ import { matchResult, resultBar, resultReport } from "./result-report.js";
 
 const BIRDS_HELP =
   "Drag your bird backwards to aim, then release to fire. Drag elsewhere to pan. Pinch or scroll to zoom. Keyboard: I/K and J/L aim, Enter fires, Escape cancels. Be the last bird standing.";
+/** What the shared game menu's Controls lists: the same gestures and keys as BIRDS_HELP. */
+const BIRDS_GUIDE = {
+  goal: "Be the last bird standing.",
+  controls: [
+    { keys: "Drag your bird back", action: "Aim; release to fire" },
+    { keys: "I / K · J / L", action: "Aim with the keyboard" },
+    { keys: "Enter", action: "Fire" },
+    { keys: "Escape", action: "Cancel the aim" },
+    { keys: "Drag elsewhere · scroll", action: "Pan and zoom the map" },
+  ],
+  touchControls: [
+    { keys: "Drag your bird back", action: "Aim; release to fire" },
+    { keys: "Drag elsewhere", action: "Pan the map" },
+    { keys: "Pinch", action: "Zoom" },
+  ],
+};
 const GAME = "fuse-birds",
   COLORS = ["#6df4ed", "#ff6ec7", "#bded76", "#ffb75e", "#b797ff"];
 const analytics = startGameAnalytics(GAME);
@@ -298,12 +314,19 @@ function room(
     problem.textContent = text;
     problem.hidden = false;
   };
-  const retry = button("RETRY"),
-    leave = button("LEAVE");
+  const retry = button("RETRY");
   retry.hidden = practice || solo;
   retry.onclick = () => location.reload();
-  const resume = button("Resume");
-  resume.dataset.fuiMenuDismiss = "";
+  // The shared game menu, as in every game: Back to game, Controls, the host's Back to lobby during a battle and
+  // everyone's Main menu.
+  let leave = () => {};
+  const gameMenu = createGameMenu({
+    ...BIRDS_GUIDE,
+    onLobby: () => runtime.command({ type: "action", action: "lobby" }),
+    onLeave: () => leave(),
+  });
+  const coarse = () => matchMedia("(pointer: coarse)").matches;
+  gameMenu.update({ canLobby: false, touch: coarse() });
   const group = (label: string, content: HTMLElement) => {
     const toggle = button(label);
     content.dataset.fuiMenuContent = "";
@@ -315,9 +338,6 @@ function room(
     };
     return [toggle, content];
   };
-  const helpContent = el("section");
-  helpContent.append(el("p", BIRDS_HELP));
-  const helpGroup = group("How to play", helpContent);
   const socialGroup = group("Community", social.element());
   page.addEventListener("pointerdown", () => audio.unlock());
   // The room's code is on its invitation: the bar holds the brand, the battle's line and the menu.
@@ -325,10 +345,8 @@ function room(
     portal(),
     brand(),
     message,
-    resume,
-    ...helpGroup,
+    gameMenu.element,
     retry,
-    leave,
     ...socialGroup,
   );
   createTopBar({
@@ -407,7 +425,7 @@ function room(
   // A finished battle: the shared results screen over the page, on the TV and the phones alike.
   const results = createResultsScreen({
     document,
-    onBack: () => leave.click(),
+    onBack: () => leave(),
     backText: "Leave",
     onAction: (id) =>
       runtime.command({
@@ -822,12 +840,12 @@ function room(
       if (!display && !practice && confirmed)
         resultsHistory.observe(confirmed.history, confirmed.logTick);
       ownSeat = frame.seats.find((s) => s.id === me && !s.watcher);
-      resume.textContent = inLobby ? "Back to room" : "Resume";
-      leave.textContent = inLobby
-        ? "Leave room"
-        : practice
-          ? "Leave practice"
-          : "Leave battle";
+      gameMenu.update({
+        canLobby: host && !display && !practice && !solo && !inLobby,
+        touch: coarse(),
+        spectator: display,
+        display,
+      });
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
       playScreen.update(
@@ -1054,7 +1072,7 @@ function room(
     arena.destroy();
     audio.destroy();
   };
-  leave.onclick = () => {
+  leave = () => {
     resultsHistory.close(
       () => ({
         receipts: currentFrame?.history ?? [],
@@ -1082,6 +1100,9 @@ function room(
   window.addEventListener("keydown", (e) => {
     if (modalInput.blocked()) return;
     if (e.key === "Escape") {
+      // Escape drops an aim in progress; with nothing to drop it opens the menu (the shared top bar).
+      if (keyboardAim !== undefined || gestures.mode !== "idle")
+        e.preventDefault();
       cancel();
       return;
     }
