@@ -49,7 +49,11 @@ export function createTopMenuToggle(
   menu.addEventListener("click", onChoice);
   // A sheet that covers the page has to be dismissable without choosing anything.
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && header.dataset.menuOpen === "true") close();
+    if (event.key === "Escape" && header.dataset.menuOpen === "true") {
+      // This Escape is the sheet's, not the shared bar's (which opens its menu on an Escape nobody used).
+      event.preventDefault();
+      close();
+    }
   };
   const onPointer = (event: Event) => {
     const target = event.target as Node | null;
