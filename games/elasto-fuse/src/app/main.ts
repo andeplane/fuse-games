@@ -1,5 +1,10 @@
 import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
-import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
+import {
+  createHowToPlay,
+  createPlayScreen,
+  requestedRoomSlot,
+  stageBox,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -192,7 +197,6 @@ const GUIDE = {
     },
     { keys: "⟲ ⟳", action: "Left thumb: rotate the bike in the air" },
     { keys: "TURN", action: "Face the other way" },
-    { keys: "RESTART", action: "Back to the start" },
   ],
   goal: "Eat every apple, then touch the flower. Keep your head off the ground: the bike is springy and flips easily.",
 } as const;
@@ -603,7 +607,6 @@ function room(solo: boolean): void {
       left = el("div", "", "ef-cluster ef-cluster-left"),
       right = el("div", "", "ef-cluster ef-cluster-right");
     const set = new PadSet(controls);
-    let restart: HTMLElement | undefined;
     for (const each of TOUCH_BUTTONS) {
       const node = el("div", each.label, `ef-pad ef-pad-${each.id}`);
       node.setAttribute("role", "button");
@@ -613,23 +616,26 @@ function room(solo: boolean): void {
           controls.hold(`${className}:${each.id}`, bits),
         ),
       );
-      if (each.id === "restart") restart = node;
-      else if (each.id === "gas" || each.id === "brake") right.append(node);
+      if (each.id === "gas" || each.id === "brake") right.append(node);
       else left.append(node);
     }
     row.append(left, right);
-    return { row, set, restart: restart! };
+    return { row, set };
   };
   const touch = pads("ef-touch"),
     controllerPads = pads("ef-controller-pads");
-  controllerPads.row.prepend(controllerPads.restart);
   letGoAll = () => {
     touch.set.release();
     controllerPads.set.release();
     controls.clear();
   };
-  // A phone's RESTART rides at the top of its picture, clear of both thumbs.
-  stage.append(screen, touch.restart, note, touch.row);
+  stage.append(screen, note, touch.row);
+  // A phone's live race is the whole screen, drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => letGoAll(),
+  });
 
   const controller = el("section", "", "ef-controller"),
     controllerHead = el("header", "", "ef-controller-head"),
@@ -802,14 +808,15 @@ function room(solo: boolean): void {
     covered = undefined;
     const [left, right] = [...touch.row.children];
     if (touch.row.hidden || stage.hidden || !left || !right) return;
-    const pads = touch.row.getBoundingClientRect(),
-      picture = screen.getBoundingClientRect();
+    // In the stage's own frame: an upright phone draws the race turned.
+    const pads = stageBox(touch.row),
+      picture = stageBox(screen);
     const bottom =
       Math.min(picture.bottom, pads.bottom) - Math.max(picture.top, pads.top);
     if (bottom <= 0) return;
     covered = {
-      left: Math.max(0, left.getBoundingClientRect().right - picture.left),
-      right: Math.max(0, picture.right - right.getBoundingClientRect().left),
+      left: Math.max(0, stageBox(left).right - picture.left),
+      right: Math.max(0, picture.right - stageBox(right).left),
       bottom,
     };
   };
@@ -932,8 +939,11 @@ function room(solo: boolean): void {
     // The race.
     setText(note, next.note);
     note.hidden = !next.note;
-    const touchOn = coarse() && next.riding && !display;
-    touch.row.hidden = touch.restart.hidden = !touchOn;
+    // Only while the race runs: the results and the lobby are tapped, not steered (the pads covered the results).
+    const racing = view.stage === "running" && !next.result;
+    playScreen.update(next.screen === "play" && racing);
+    const touchOn = coarse() && next.riding && !display && racing;
+    touch.row.hidden = !touchOn;
     main.dataset.touch = String(touchOn);
     touch.set.show(touchOn && !stage.hidden);
     controllerPads.set.show(!controller.hidden);
@@ -1084,6 +1094,7 @@ function room(solo: boolean): void {
     ended() {
       say("Room ended", "error");
       over = true;
+      playScreen.destroy();
       // The frames stop here, so nothing else would let the engine go.
       sfx.engine(0, false, false);
       controls.clear();
