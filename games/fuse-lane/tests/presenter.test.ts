@@ -363,6 +363,7 @@ test("KeyNest: rent ahead, more time, arrears and a move, each saying why not", 
 
 test("Neobank: deposits and withdrawals in steps up to all you have, and every market", () => {
   const room = started();
+  room.economy.policyRate = 1.55;
   const bank = panelAt(room, NEOBANK, (a) => {
     a.cash = 750;
     a.bank = 100;
@@ -407,9 +408,9 @@ test("Neobank: deposits and withdrawals in steps up to all you have, and every m
     200,
     0,
   ]);
-  assert.match(
+  assert.equal(
     bank.sections[0]!.info!,
-    /^Cash \$750 · Savings \$100 · Savings rate \d+\.\d\d%$/,
+    "Cash $750 · Savings $100 · 0.55% annual interest · $0 per week at this balance",
   );
   const markets = bank.sections[2]!;
   assert.equal(markets.title, "Markets");
@@ -442,7 +443,7 @@ test("Neobank: deposits and withdrawals in steps up to all you have, and every m
 test("homes, the factory gate and Second Life; no panel on the street, on Monday or after the week", () => {
   const room = started();
   const home = panelAt(room, ROOMSHARE);
-  assert.equal(home.sections[0]!.info, "Rest 25/50");
+  assert.equal(home.sections[0]!.info, "Groceries: 0 weeks · Rest 25/50");
   assert.deepEqual(card(home, "relax").entry, [ACT, 1, ROOMSHARE, RELAX, 0, 0]);
   assert.deepEqual(panelAt(room, TOWER).sections, [
     { title: "Not your place", info: "You don't live here. Yet.", cards: [] },
@@ -479,8 +480,8 @@ test("the HUD says where you are and what is running low: food, clothes and rent
   assert.equal(start.where, "Out in Fusetown");
   assert.equal(start.job, "Unemployed");
   assert.deepEqual(start.chips, [
-    { label: "No food", warn: true },
-    { label: "Casual 6w", warn: false },
+    { label: "Groceries: 0 weeks", warn: true },
+    { label: "Wearing: Casual · 6 weeks left", warn: false },
     { label: "Rent 3w", warn: false },
   ]);
   assert.equal(hud((a) => (a.dest = JOBHUB)).where, "Walking to Job Hub");
@@ -496,8 +497,9 @@ test("the HUD says where you are and what is running low: food, clothes and rent
     a.wage = 4.5;
   });
   assert.deepEqual(fed.chips, [
-    { label: "Fed", warn: false },
-    { label: "Smart casual 1w", warn: true },
+    { label: "Groceries: 0 weeks", warn: false },
+    { label: "Meal covered this week", warn: false },
+    { label: "Wearing: Smart casual · 1 week left", warn: true },
     { label: "Rent due", warn: true },
   ]);
   assert.equal(fed.job, "Line Cook, Mono Burger · $4.50/h");
@@ -507,10 +509,18 @@ test("the HUD says where you are and what is running low: food, clothes and rent
     a.rentOwed = 1200;
   });
   assert.deepEqual(stocked.chips, [
-    { label: "Food 3w", warn: false },
-    { label: "No clothes", warn: true },
+    { label: "Groceries: 3 weeks · No fridge, spoils Monday", warn: true },
+    { label: "Meal covered this week", warn: false },
+    { label: "Wearing: no usable clothes", warn: true },
     { label: "Owes $1,200", warn: true },
   ]);
+  assert.deepEqual(
+    hud((a) => {
+      a.groceries = 8;
+      a.durables.fridge = { n: 1, paid: 300, cheap: true };
+    }).chips[0],
+    { label: "Groceries: 8 weeks · 2 weeks will spoil Monday", warn: true },
+  );
   const done = hud((a) => (a.done = true));
   assert.equal(done.where, "Week over. Sleeping it off");
   assert.equal(done.done, true);

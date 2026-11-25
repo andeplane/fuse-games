@@ -451,6 +451,10 @@ summary {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.report-state pre {
+  max-height: 24rem;
+  overflow: auto;
+}
 .screenshot-preview img {
   display: block;
   width: auto;

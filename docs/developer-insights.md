@@ -29,6 +29,13 @@ reports, audio, transcripts and extracted actions are private. Keep them out
 of public issues, PR descriptions, screenshots, logs and fixtures. Link private
 entry IDs and use a minimal redacted reproduction when reporting a bug.
 
+Fuse Lane reports offer an optional game-state snapshot taken when the report
+opens. It contains the week, economy and player gameplay state, with player
+references replaced by report-local indices. It excludes player names, room
+codes, credentials and free-text game notices. Developers can inspect it under
+**Game state** on the private report. It shares the report text's retention
+and counts toward the report byte budget.
+
 ### Capabilities, audit and access review
 
 The code-owned email allowlist remains the outer identity gate. A durable policy
@@ -215,24 +222,24 @@ responses. Exact request/response definitions are in
 `packages/fuse-telemetry/src/contracts.ts`, `debug-contracts.ts` and
 `action-contracts.ts`; routes are implemented in their `*-http.ts` modules.
 
-| Route                                                  | Request and result                                                                                                                    |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/telemetry/events`                           | Anonymous bounded event batch; preserves opt-out, DNT, local-dev guard and scrubbed properties.                                       |
-| `GET /api/dev/me`                                      | Verified developer principal.                                                                                                         |
-| `GET /api/dev/metrics`                                 | Required `period=day\|week\|month`, `from`, `to`; optional `gameId`; UTC period buckets.                                              |
-| `POST /api/telemetry/reports`                          | JSON report with optional screenshot and recording context; returns persisted report acknowledgement.                                 |
-| `POST /api/telemetry/recordings`                       | Admin-owned JSON recording metadata; returns `{recording}`; 503 when recording dependencies are unavailable.                          |
-| `PUT /api/telemetry/recordings/:id/segments/:sequence` | Admin owner, independently playable PCM `audio/wav`, `X-Recording-Start-Ms`, optional `X-Recording-Game-Id`; durable acknowledgement. |
-| `POST /api/telemetry/recordings/:id/finish`            | Admin owner finishes recording; returns `{recording}`.                                                                                |
-| `GET /api/dev/reports`                                 | `limit`, opaque `cursor`, optional `recordingId`; paginated private reports.                                                          |
-| `GET /api/dev/reports/:id`                             | `{report}`.                                                                                                                           |
-| `GET /api/dev/reports/:id/screenshot`                  | Private image bytes, no-store; never a public bucket URL.                                                                             |
-| `POST /api/dev/reports/:id/review`                     | `{handled: boolean}` changes the report's review status.                                                                              |
-| `GET /api/dev/recordings`                              | `limit`, opaque `cursor`; paginated recordings.                                                                                       |
-| `GET /api/dev/recordings/:id`                          | Recording detail, ordered segments, transcription states and related reports.                                                         |
-| `POST /api/dev/recordings/:id/review`                  | `{handled: boolean}` changes a finished recording's review status.                                                                    |
-| `GET /api/dev/recordings/:id/segments/:sequence/audio` | Private WAV bytes, no-store.                                                                                                          |
-| `POST /api/internal/transcription`                     | Dedicated authenticated Pub/Sub push worker; Google OIDC audience and service-account checks, not developer/agent tokens.             |
+| Route                                                  | Request and result                                                                                                                     |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/telemetry/events`                           | Anonymous bounded event batch; preserves opt-out, DNT, local-dev guard and scrubbed properties.                                        |
+| `GET /api/dev/me`                                      | Verified developer principal.                                                                                                          |
+| `GET /api/dev/metrics`                                 | Required `period=day\|week\|month`, `from`, `to`; optional `gameId`; UTC period buckets.                                               |
+| `POST /api/telemetry/reports`                          | JSON report with optional screenshot, recording context and gameplay snapshot (JSON, up to 32 KiB); returns persisted acknowledgement. |
+| `POST /api/telemetry/recordings`                       | Admin-owned JSON recording metadata; returns `{recording}`; 503 when recording dependencies are unavailable.                           |
+| `PUT /api/telemetry/recordings/:id/segments/:sequence` | Admin owner, independently playable PCM `audio/wav`, `X-Recording-Start-Ms`, optional `X-Recording-Game-Id`; durable acknowledgement.  |
+| `POST /api/telemetry/recordings/:id/finish`            | Admin owner finishes recording; returns `{recording}`.                                                                                 |
+| `GET /api/dev/reports`                                 | `limit`, opaque `cursor`, optional `recordingId`; paginated private reports.                                                           |
+| `GET /api/dev/reports/:id`                             | `{report}`.                                                                                                                            |
+| `GET /api/dev/reports/:id/screenshot`                  | Private image bytes, no-store; never a public bucket URL.                                                                              |
+| `POST /api/dev/reports/:id/review`                     | `{handled: boolean}` changes the report's review status.                                                                               |
+| `GET /api/dev/recordings`                              | `limit`, opaque `cursor`; paginated recordings.                                                                                        |
+| `GET /api/dev/recordings/:id`                          | Recording detail, ordered segments, transcription states and related reports.                                                          |
+| `POST /api/dev/recordings/:id/review`                  | `{handled: boolean}` changes a finished recording's review status.                                                                     |
+| `GET /api/dev/recordings/:id/segments/:sequence/audio` | Private WAV bytes, no-store.                                                                                                           |
+| `POST /api/internal/transcription`                     | Dedicated authenticated Pub/Sub push worker; Google OIDC audience and service-account checks, not developer/agent tokens.              |
 
 Chunks use sample-based recording offsets; transcripts have chunk-level time
 precision. Uploaded chunks survive browser closure after durable acknowledgement.

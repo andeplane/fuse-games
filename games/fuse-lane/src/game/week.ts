@@ -16,6 +16,7 @@ import {
   homePlace,
   addHappiness,
   employer,
+  groceryCapacity,
   meetsGoals,
   netWorth,
   notify,
@@ -135,18 +136,16 @@ function upkeep(room: FuseLaneRoom, player: PlayerState): void {
   let spoiled = false;
   const hadMeal = player.meal > 0;
   if (player.groceries > 0) {
-    if (!owns(player, "fridge")) {
+    const cap = groceryCapacity(player);
+    if (cap === 0) {
       player.groceries = 0;
       addHappiness(player, -2);
       notify(player, "No fridge: your groceries spoiled. You ate them anyway.");
       spoiled = !hadMeal;
-    } else {
-      const cap = owns(player, "freezer") ? 12 : 6;
-      if (player.groceries > cap) {
-        player.groceries = cap;
-        addHappiness(player, -1);
-        notify(player, `Your fridge holds ${cap} weeks. The rest went off.`);
-      }
+    } else if (player.groceries > cap) {
+      player.groceries = cap;
+      addHappiness(player, -1);
+      notify(player, `Your fridge holds ${cap} weeks. The rest went off.`);
     }
   }
   const eaten = hadMeal || player.groceries > 0 || spoiled;

@@ -219,6 +219,9 @@ export const defaultGoals = (): Goals => [
 
 export const owns = (player: PlayerState, item: DurableId): boolean =>
   (player.durables[item]?.n ?? 0) > 0;
+/** Weeks of groceries that can be stored overnight. */
+export const groceryCapacity = (player: PlayerState): number =>
+  owns(player, "fridge") ? (owns(player, "freezer") ? 12 : 6) : 0;
 export const hoursLeft = (player: PlayerState): number =>
   (WEEK_UNITS - player.time) / UNITS_PER_HOUR;
 export const degrees = (player: PlayerState): number =>
