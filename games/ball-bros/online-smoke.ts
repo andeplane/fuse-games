@@ -4,6 +4,7 @@ import type { Page } from "playwright";
 import { launchSelected } from "../../scripts/lib/browser.js";
 import { startGameCoverage } from "../../scripts/lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "../../scripts/lib/main-menu.js";
+import { topMenuToggle } from "../../scripts/lib/top-menu.js";
 
 // Real room service + WebRTC, no injected game state or accelerated clocks.
 const origin = process.env.ONLINE_URL ?? "http://localhost:8792/";
@@ -39,10 +40,13 @@ async function join(page: Page, name: string) {
 const hostRoom = (page: Page) =>
   page.getByRole("button", { name: "Host room", exact: true });
 const arena = (page: Page) => page.getByRole("combobox", { name: "ARENA" });
-/** Radio, Reconnect and Leave sit in the header's game menu. */
+/** Reconnect and Main menu sit in the header's game menu. */
 async function fromGameMenu(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open game menu" }).click();
-  await page.getByRole("button", { name, exact: true }).click();
+  await (await topMenuToggle(page)).click();
+  await page
+    .getByRole("dialog", { name: "Game menu", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
 }
 async function addBot(page: Page) {
   await page
@@ -196,13 +200,13 @@ try {
     "PASS individual: create retry, lobby/bots, two real peers, controls, reload recovery, agreed result and rematch.",
   );
   // Creator leaves during a match. The remaining peer continues without a new room.
-  await fromGameMenu(a, "LEAVE");
+  await fromGameMenu(a, "MAIN MENU");
   await a.locator(".fui-main-menu").waitFor();
   await phase(b, "running");
   await b.waitForFunction(
     () => document.querySelector(".clock")?.textContent !== "02:00",
   );
-  await fromGameMenu(b, "LEAVE");
+  await fromGameMenu(b, "MAIN MENU");
   await b.locator(".fui-main-menu").waitFor();
 
   await openPlayOptions(a);

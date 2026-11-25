@@ -1,4 +1,13 @@
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
+
+/** Prefer the floating hamburger when it covers the top bar. Both buttons open the same dialog. */
+export async function topMenuToggle(page: Page): Promise<Locator> {
+  const name = { name: "Open game menu", exact: true };
+  const floating = page.locator(".fui-top-bar-float").getByRole("button", name);
+  return (await floating.isVisible())
+    ? floating
+    : page.getByRole("button", name);
+}
 
 /**
  * Every game's header is the shared top bar (fuse-ui `createTopBar`): the brand, Sound, the account and one ☰ that
@@ -6,11 +15,12 @@ import type { Page } from "playwright";
  * dialog first; if it is already open this does nothing. An action that opens a dialog of its own closes the menu.
  */
 export async function openTopMenu(page: Page): Promise<void> {
-  const toggle = page.locator(".fui-top-bar:visible .fui-top-bar-toggle");
+  const menu = page.locator(".fui-top-bar-menu[open]");
+  if (await menu.isVisible()) return;
+  const toggle = await topMenuToggle(page);
   if (!(await toggle.isVisible())) return;
-  if ((await toggle.getAttribute("aria-expanded")) === "true") return;
   await toggle.click();
-  await page.locator(".fui-top-bar-menu[open]").waitFor();
+  await menu.waitFor();
 }
 
 /** Close the Game menu if it is open, for actions that leave it up (a toggle rather than a dialog). */

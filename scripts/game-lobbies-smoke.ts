@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { readdir, writeFile, mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
 import { checkGameMenu } from "./lib/check-game-menu.js";
+import { topMenuToggle } from "./lib/top-menu.js";
 import type { Page } from "playwright";
 
 async function openCraftMotionPreference(page: Page) {
-  await page
-    .getByRole("button", { name: "Open game menu", exact: true })
-    .click();
+  await (await topMenuToggle(page)).click();
   await page.getByRole("button", { name: /^player options$/i }).click();
   return page.getByRole("checkbox", { name: /reduced motion/i });
 }
@@ -481,9 +480,7 @@ try {
         await room.getByRole("checkbox", { name: /shared tv/i }).check();
         await room.getByRole("button", { name: /^start match$/i }).click();
         await page.locator("#app.controller-mode").waitFor();
-        await page
-          .getByRole("button", { name: "Open game menu", exact: true })
-          .click();
+        await (await topMenuToggle(page)).click();
         const menu = page.getByRole("dialog", { name: /^game menu$/i });
         await menu.getByRole("button", { name: /^player options$/i }).click();
         const options = page.getByRole("dialog", { name: /^player options$/i });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { launchBrowser } from "./lib/browser.js";
 import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
+import { topMenuToggle } from "./lib/top-menu.js";
 import type { Page } from "playwright";
 
 interface Probe {
@@ -237,9 +238,7 @@ async function solo(page: Page) {
     (previous) => window.__cyberfuseProbe!().tick! >= previous + 2,
     stopped,
   );
-  await page
-    .getByRole("button", { name: "Open game menu", exact: true })
-    .click();
+  await (await topMenuToggle(page)).click();
   const menu = page.getByRole("dialog", { name: "Game menu", exact: true });
   await menu.waitFor();
   const stoppedAgain = await pausedClock(page);
@@ -468,13 +467,11 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
     1,
     "one-seat room starts",
   );
+  await (await topMenuToggle(host)).click();
   await host
-    .getByRole("button", { name: "Open game menu", exact: true })
+    .getByRole("dialog", { name: "Game menu", exact: true })
+    .getByRole("button", { name: /^back to lobby$/i })
     .click();
-  await host
-    .getByRole("button", { name: "Game controls", exact: true })
-    .click();
-  await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await phase(host, "lobby");
   await peer.goto(address("room=" + code));
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
