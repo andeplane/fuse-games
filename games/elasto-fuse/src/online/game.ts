@@ -30,7 +30,6 @@ import {
   LEVEL_COUNT,
   RACE_LIMIT,
   RIDER_AHEAD,
-  RULES,
   SOLO_COUNTDOWN,
   STEPS_PER_TICK,
   advanceRider,
@@ -54,6 +53,9 @@ import {
   seatName,
   validMatchId,
 } from "./names.js";
+
+/** Room wire compatibility is versioned separately from level-time physics. */
+export const ROOM_RULES = "elasto-fuse-7";
 
 /**
  * Elasto Fuse behind the netcode's `RollbackGame`. The room keeps the seats, the lobby's settings and one match: a
@@ -120,6 +122,7 @@ export function levelsOf(settings: Settings, matchId: string): number[] {
 }
 
 export const PLAY = 0;
+export const PROGRESSION = 1;
 /**
  * A seat's held control bits for the match and race it names, from step `at` of the rider's own clock on. It also
  * says the rider has run every step before `at` with what it held until then, so a device logs one every tick while
@@ -134,7 +137,13 @@ export type PlayEntry = [
   at: number,
   round: number,
 ];
-export type Entry = ManagementEntry<Settings> | PlayEntry;
+type ProgressionEntry = [
+  seq: number,
+  tick: number,
+  kind: typeof PROGRESSION,
+  level: number,
+];
+export type Entry = ManagementEntry<Settings> | PlayEntry | ProgressionEntry;
 
 export const MAX_WATCHERS = 5;
 /** The longest series. */
@@ -172,6 +181,8 @@ export interface Decided {
 }
 
 export interface Room extends ManagedRoom<Settings> {
+  /** Highest unlocked starting level reported by each rider's current seat generation. */
+  progress: Record<string, [generation: number, level: number]>;
   tick: number;
   simulationTick: number;
   matchStartTick: number;
@@ -204,6 +215,7 @@ export interface SeatView {
 }
 /** What the screen renders. Outcomes are read from here, never from events, so a rollback's correction shows. */
 export interface View {
+  unlockedLevel: number;
   /** The game clock: steps simulated, `STEPS_PER_TICK` per log tick. */
   tick: number;
   logTick: number;
@@ -243,6 +255,8 @@ const payloads = {
 };
 export function isEntry(raw: unknown): raw is Entry {
   if (isManagementEntry(raw, payloads)) return true;
+  if (hasLogPosition(raw) && raw[2] === PROGRESSION)
+    return raw.length === 4 && isLevel(raw[3]);
   return (
     hasLogPosition(raw) &&
     raw.length === 7 &&
@@ -264,6 +278,7 @@ export function createRoom(matchId: string, settings: Settings): Room {
     matchId,
     stage: "lobby",
     seats: new Map(),
+    progress: {},
     settings: { ...settings },
     play: { ...settings },
     held: {},
@@ -281,6 +296,44 @@ export const riders = (room: Room): SeatRecord[] =>
   [...room.seats.values()]
     .filter((seat) => !seat.watcher)
     .sort((a, b) => a.slot - b.slot);
+
+function unlockedLevel(room: Room): number {
+  let unlocked = 0;
+  for (const seat of room.seats.values()) {
+    if (!seat.connected || seat.watcher || seat.bot) continue;
+    const progress = room.progress[seat.id];
+    if (progress && progress[0] === seat.generation)
+      unlocked = Math.max(unlocked, progress[1]);
+  }
+  return unlocked;
+}
+
+function foldProgress(
+  room: Room,
+  streams: ReadonlyMap<string, StreamEntries<Entry>>,
+  tick: number,
+): void {
+  for (const [id, progress] of Object.entries(room.progress)) {
+    const seat = room.seats.get(id);
+    if (seat?.generation !== progress[0] || seat.watcher || seat.bot)
+      delete room.progress[id];
+  }
+  for (const seat of room.seats.values()) {
+    const generation = seat.generation;
+    if (!seat.connected || seat.watcher || seat.bot || generation === undefined)
+      continue;
+    for (const entry of entriesForGeneration(
+      streams.get(seat.id),
+      generation,
+    )) {
+      if (entry[1] !== tick || entry[2] !== PROGRESSION) continue;
+      room.progress[seat.id] = [
+        generation,
+        Math.max(room.progress[seat.id]?.[1] ?? 0, entry[3]),
+      ];
+    }
+  }
+}
 
 function resetMatch(room: Room, matchId: string): void {
   room.matchId = matchId;
@@ -315,6 +368,8 @@ function beginRace(room: Room): void {
 function beginMatch(room: Room): void {
   const seated = riders(room);
   if (seated.length < 1) return;
+  if (!room.seats.has("solo") && room.play.order === "consecutive")
+    room.play.level = Math.min(room.play.level, unlockedLevel(room));
   room.matchStartTick = room.simulationTick;
   room.roster = seated.map((seat, index) => ({
     id: seat.id,
@@ -382,6 +437,18 @@ export function order(standings: readonly Standing[]): number[] {
 }
 
 /** Books a finished race into the standings, then rests before the next one or decides the match. */
+function canAdvance(room: Room, world: World): boolean {
+  const nextLevel = levelsOf(room.play, room.matchId)[room.round + 1];
+  // A clear opens the next track for this tour. A room can also race onward
+  // after a DNF when a connected rider already unlocked the next track.
+  return (
+    nextLevel !== undefined &&
+    (room.play.order === "random" ||
+      nextLevel <= unlockedLevel(room) ||
+      world.riders.some((rider) => rider.status === FINISHED))
+  );
+}
+
 function closeRace(room: Room, world: World, clock: number): void {
   let place = 0;
   for (const slot of ranking(world)) {
@@ -396,12 +463,17 @@ function closeRace(room: Room, world: World, clock: number): void {
       place++;
     } else standing.clock += world.close;
   }
-  if (room.round + 1 < levelsOf(room.play, room.matchId).length) {
+  if (canAdvance(room, world)) {
     room.stage = "between";
     room.pause = INTERMISSION;
     return;
   }
+  endMatch(room, clock);
+}
+
+function endMatch(room: Room, clock: number): void {
   room.stage = "over";
+  room.pause = 0;
   // The match is done with its controls: the next one starts with nothing held.
   room.held = {};
   room.decided = {
@@ -424,6 +496,7 @@ export function foldTick(
 ): never[] {
   const tick = room.tick + 1;
   applyManagementTick(room, tick, creatorId, streams, lifecycle);
+  foldProgress(room, streams, tick);
   const world = room.world;
   if (room.stage === "between" && world) {
     // Controls let go (or taken up) between two races still count: the next race starts on what is held then.
@@ -438,8 +511,10 @@ export function foldTick(
     }
     room.pause -= STEPS_PER_TICK;
     if (room.pause <= 0) {
-      room.round++;
-      beginRace(room);
+      if (canAdvance(room, world)) {
+        room.round++;
+        beginRace(room);
+      } else endMatch(room, room.simulationTick + STEPS_PER_TICK);
     }
   } else if (room.stage === "running" && world) {
     // The race's own clock: the countdown, then the steps since the start. Nobody's bike runs on it.
@@ -480,7 +555,7 @@ export function foldTick(
 
 // ---- checkpoint ----
 const STAGES: readonly RoomStage[] = ["lobby", "running", "between", "over"];
-const FIELDS = 14;
+const FIELDS = 15;
 
 export function encode(room: Room): unknown[] {
   const checkpoint = encodeCheckpointBase(room);
@@ -500,6 +575,9 @@ export function encode(room: Room): unknown[] {
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
     room.matchStartTick,
+    Object.entries(room.progress).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    ),
   );
   return checkpoint;
 }
@@ -588,6 +666,7 @@ export function decode(
     rawWorld,
     rawSimulationTick,
     matchStartTick,
+    rawProgress,
   ] = fields.slice(CHECKPOINT_HEADER_FIELDS);
   const base = decodeBase(fields, rawSimulationTick, tick);
   if (
@@ -599,6 +678,26 @@ export function decode(
   )
     return;
   const { simulationTick, ...match } = base;
+  if (!Array.isArray(rawProgress) || rawProgress.length > CAPACITY) return;
+  const progress: Room["progress"] = {};
+  for (const row of rawProgress) {
+    if (!Array.isArray(row) || row.length !== 2 || !playerKey(row[0])) return;
+    const [id, value] = row;
+    const seat = match.seats.get(id);
+    if (
+      !seat ||
+      seat.bot ||
+      seat.watcher ||
+      Object.hasOwn(progress, id) ||
+      !Array.isArray(value) ||
+      value.length !== 2 ||
+      !uint32(value[0]) ||
+      value[0] !== seat.generation ||
+      !isLevel(value[1])
+    )
+      return;
+    progress[id] = [value[0], value[1]];
+  }
   const { roster, stage, play } = match;
   const levels = levelsOf(play, base.matchId);
   const standings = decodeStandings(rawStandings, roster.length, levels.length);
@@ -611,7 +710,10 @@ export function decode(
     roster.length === 0 ||
     round >= levels.length ||
     world.level !== levels[round] ||
-    (stage === "over" && round !== levels.length - 1) ||
+    (stage === "over" &&
+      round !== levels.length - 1 &&
+      (play.order === "random" ||
+        world.riders.some((rider) => rider.status === FINISHED))) ||
     (stage === "between"
       ? pause === 0 || pause > INTERMISSION || round === levels.length - 1
       : pause !== 0) ||
@@ -626,6 +728,7 @@ export function decode(
     simulationTick,
     matchStartTick,
     ...match,
+    progress,
     round,
     standings,
     pause,
@@ -640,6 +743,7 @@ export function hash(room: Room): string {
 
 export function view(room: Room): View {
   return {
+    unlockedLevel: unlockedLevel(room),
     tick: room.simulationTick,
     logTick: room.tick,
     stage: room.stage,
@@ -658,7 +762,7 @@ export function view(room: Room): View {
     })),
     roster: room.roster.map((entrant) => ({ ...entrant })),
     round: room.round,
-    rounds: levelsOf(room.play, room.matchId).length,
+    rounds: room.stage === "over" ? room.round + 1 : room.play.count,
     standings: room.standings.map((standing) => ({ ...standing })),
     order: order(room.standings),
     pause: room.pause,
@@ -671,7 +775,7 @@ export type ElastoFuseGame = RollbackGame<Room, Entry, View, never, Settings>;
 
 export const elastoFuseGame: ElastoFuseGame = {
   id: GAME_ID,
-  rules: RULES,
+  rules: ROOM_RULES,
   isEntry,
   createRoom,
   createTicker: () => foldTick,
@@ -702,7 +806,6 @@ export const elastoFuseGame: ElastoFuseGame = {
       ...settings,
       display: false,
       count: 1,
-      order: "consecutive",
     }),
     sharedScreen: (settings) => settings.display,
     botId(room, pending) {

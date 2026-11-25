@@ -2,9 +2,11 @@
 
 Elasto Fuse is a side-view motorbike trials game for one to five riders. The bike is a frame on two sprung wheels with a rider on top, and it rides over polygon terrain: **eat every apple, then touch the flower**. If the rider's head touches the ground the run is over and starts again at the start. The original Elasto Mania campaign is first, in its canonical 54-level order starting with Warm Up, followed by 503 external tracks. The name and art are this project's own.
 
-Riders share a track and a clock but never touch: everyone else is a translucent ghost, and each rider has their own apples. The first rider home wins the race, and the others then have 30 seconds to finish. Choose a starting level beside Play Solo. In the multiplayer lobby, the host chooses **3, 5 or 10 levels**, either **In order** from a selected starting level or **Random**. Consecutive matches wrap to Warm Up after the final external track. Random matches draw distinct tracks from the full list, and every rider plays the same sequence. A rematch draws a new random sequence. Points for each place (10, 7, 5, 3, 2) accumulate across the match, with standings between races.
+Riders share a track and a clock but never touch: everyone else is a translucent ghost, and each rider has their own apples. The first rider home wins the race, and the others then have 30 seconds to finish. Finish each track to unlock the next one. Clears in solo or online play are saved in the rider's browser, and existing solo best times count as clears. **Continue** starts the first uncleared track once the rider has cleared Warm Up.
 
-The random sequence is a pure function of the frozen match settings and logged match ID. Both are checkpointed, so rollback and reconnect recover the same order without a mutable random generator outside the authoritative state. The settings contract changed with `elasto-fuse-4`, the play entries and checkpoint with `elasto-fuse-5`, and match start timing with `elasto-fuse-6`; clients must use matching rules when joining a room.
+The host chooses **3, 5 or 10 levels**, either **In order** from a starting level unlocked by any connected rider, or **Random**. An in-order tour can take on the next track after someone finishes the current one. If nobody finishes and the next track is still locked, the tour ends there. Consecutive matches wrap to Warm Up after the final external track. Random matches draw distinct tracks from the full list, and every rider plays the same sequence. A rematch draws a new random sequence. Points for each place (10, 7, 5, 3, 2) accumulate across the match, with standings between races.
+
+The random sequence is a pure function of the frozen match settings and logged match ID. Both are checkpointed, so rollback and reconnect recover the same order. Clients must use matching room rules. The progression protocol versions the room log and checkpoint independently of the physics rules used to verify leaderboard times.
 
 The campaign geometry is extracted from an original `Elma.res` using `pnpm exec tsx scripts/elasto-fuse-campaign.ts /path/to/Elma.res`, then formatted with Prettier. The importer follows the original `QOPEN.CPP` resource table and `TOPOL.CPP` internal level layout, keeps gravity apples, and excludes decorative grass polygons. The external POT06 files are separate tracks, not the built-in campaign. Source resource files are not committed.
 
@@ -17,8 +19,8 @@ pnpm dev          # builds, then serves every game; open the printed URL plus /e
 
 `pnpm exec tsx service/dev.ts --port 8890` serves an existing `dist/` and walks to the next free port if that one is taken. Open `/elasto-fuse/?mute` and pick one of:
 
-- **PLAY SOLO**: a time trial on the map picked below the button (the last one ridden is remembered). The result shows the time and the best for that map, kept in this browser; **NEXT MAP** is the main button after a map ridden home and goes on to the next level (so does Enter), **RETRY** rides it again (so does R), **MENU** goes back.
-- **CREATE ROOM**: a room with a QR invite. Others join by the code or the link; the creator picks **TOUR · ALL 12 MAPS** or one map and starts, alone or with up to four friends. Tick **Shared TV** in the room to play on one screen: **OPEN TV SCREEN** opens `?room=CODE&display=1`, which shows every rider in a pane of their own, and every phone becomes a full-screen controller.
+- **Play → Single player**: pick an unlocked level or **Random**, then **PLAY SOLO**. The result shows the time and the browser's best time for that map. **NEXT MAP** (or Enter) advances after a clear, **RETRY** (or R) starts the race again, and **MENU** goes back. **Play random again** draws another track.
+- **Play → Host room**: start alone or invite up to four friends with the room code, link or QR invite. Tick **Shared TV** to play on one screen. **OPEN TV SCREEN** opens `?room=CODE&display=1`, which shows every rider in a pane of their own, and every phone becomes a full-screen controller.
 
 `?mute` opens the page without sound and stores nothing; use it for previews.
 
@@ -81,6 +83,7 @@ pnpm exec tsx --test games/elasto-fuse/tests/app-screen.test.ts     # forward ru
 pnpm exec tsx --test games/elasto-fuse/tests/app-reports.test.ts    # result reports
 pnpm exec tsx --test games/elasto-fuse/tests/render.test.ts         # cues, HUD, camera, IK, tinting
 pnpm exec tsx scripts/elasto-fuse-keyboard.ts                      # real menu close → focus → arrow-key driving
+pnpm build && pnpm exec tsx scripts/elasto-fuse-progression.ts     # Continue, locked levels, Random and a room guest unlock
 ```
 
 The keyboard smoke starts Vite on a free port, or uses `HOME_URL` when supplied. It checks Back, Escape,
