@@ -257,11 +257,29 @@ try {
         }
       }
       await page.setViewportSize({ width: 1440, height: 1000 });
-      await page.waitForFunction(
-        () =>
-          document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
-            .attractState === "running",
-      );
+      if (game === "fuse-particles") {
+        // This configuration room previews the host's actual map in its
+        // canvas. A settings change must repaint that preview.
+        const preview = room.locator(".fp-arena[data-shape] canvas");
+        const before = await preview.evaluate((canvas) =>
+          canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : "",
+        );
+        assert.ok(before, "the room rendered its map preview");
+        await room
+          .getByRole("combobox", { name: "Map", exact: true })
+          .selectOption("maze");
+        await page.waitForFunction((previous) => {
+          const canvas = document.querySelector<HTMLCanvasElement>(
+            ".fui-room-layout .fp-arena[data-shape] canvas",
+          );
+          return canvas !== null && canvas.toDataURL() !== previous;
+        }, before);
+      } else
+        await page.waitForFunction(
+          () =>
+            document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
+              .attractState === "running",
+        );
       await room
         .locator(".fui-room-count")
         .filter({ hasText: /^0\s*\/\s*\d/ })
