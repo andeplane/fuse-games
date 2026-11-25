@@ -215,7 +215,7 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
 .fp-command-note {
   position: absolute;
   inset: auto 0 100%;
-  margin: 0 auto 6px;
+  margin: 0 auto 30px;
   width: fit-content;
   max-width: calc(100% - 16px);
   padding: 4px 8px;
@@ -292,8 +292,7 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
   width: 100%;
   height: 100%;
 }
-.fp-attract .fp-arena__hud,
-.fp-attract .fp-arena__stats {
+.fp-attract .fp-arena__hud {
   display: none;
 }
 .fp-attract canvas {
