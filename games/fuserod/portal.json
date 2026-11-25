@@ -1,0 +1,12 @@
+{
+  "name": "Fuserod",
+  "tagline": "Build a hot rod and race for the next upgrade.",
+  "mark": "FR",
+  "accent": "#f17a42",
+  "screenshot": "gallery/fuserod.jpg",
+  "screenshots": [
+    "gallery/fuserod.jpg",
+    "gallery/fuserod-menu.jpg",
+    "gallery/fuserod-controls.jpg"
+  ]
+}

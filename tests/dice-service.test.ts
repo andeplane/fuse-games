@@ -60,6 +60,7 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
     "ball-bros",
     "graveyard-shift",
     "fuse-drivers",
+    "fuserod",
     "fuse-birds",
     "fuse-front",
     "fuseball",

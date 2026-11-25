@@ -67,6 +67,7 @@ export const gameMenus: Readonly<Record<string, GameMenu>> = {
       ["slider", /visual offset/i],
     ],
   },
+  fuserod: sharedRadio,
   fusero: {
     radio: true,
     controls: [...sharedRadio.controls, ["combobox", /keyboard preset/i]],
