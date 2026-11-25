@@ -84,6 +84,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       preview,
       options.music || ALL_SONGS,
       safeStorage(() => win.localStorage),
+      true,
     );
     radios.set(doc, radio);
     win.addEventListener("pagehide", (event) => {

@@ -29,6 +29,45 @@ function player() {
     },
   };
 }
+test("default-on radio starts on interaction and remembers an explicit pause", () => {
+  const { document } = page();
+  const values = new Map([["fuse-radio-volume", "25"]]);
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => void values.set(key, value),
+  };
+  const p = player();
+  const radio = createRadio(
+    document,
+    "/",
+    p.media,
+    false,
+    MUSIC_TRACKS,
+    storage,
+    true,
+  );
+  assert.equal(p.plays, 0);
+  radio.player.unlock();
+  assert.equal(p.plays, 1);
+  radio.element.querySelector("button")!.click();
+  radio.player.unlock();
+  assert.equal(p.plays, 1);
+  radio.destroy();
+  const reloaded = createRadio(
+    document,
+    "/",
+    p.media,
+    false,
+    MUSIC_TRACKS,
+    storage,
+    true,
+  );
+  reloaded.player.unlock();
+  assert.equal(p.plays, 1);
+  reloaded.element.querySelector("button")!.click();
+  assert.equal(p.plays, 2);
+  reloaded.destroy();
+});
 test("master mute pauses an opted-in radio and unmute resumes without changing its selection", () => {
   const { document } = page(),
     p = player();
