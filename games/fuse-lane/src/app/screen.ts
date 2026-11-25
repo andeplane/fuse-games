@@ -1370,17 +1370,24 @@ export function createGameScreen(
     keydown(event: KeyboardEvent) {
       if (playtestInputBlocked(game.ownerDocument)) return;
       if (tour) {
-        if (event.key === "Escape") endTour();
-        else if (event.key === "ArrowRight" || event.key === "Enter")
+        if (event.key === "Escape") {
+          event.preventDefault();
+          endTour();
+        } else if (event.key === "ArrowRight" || event.key === "Enter")
           stepTour(1);
         else if (event.key === "ArrowLeft") stepTour(-1);
         return;
       }
       if (event.key === "Escape") {
+        // Escape with nothing here to close opens the menu (the shared top bar).
         if (youOpen) {
+          event.preventDefault();
           youOpen = false;
           if (model) render(model);
-        } else if (model?.panel) hidePanel();
+        } else if (model?.panel) {
+          event.preventDefault();
+          hidePanel();
+        }
       } else if (event.key === "Enter" && model?.readyEntry)
         play(model.readyEntry);
     },

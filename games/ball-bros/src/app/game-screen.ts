@@ -1,4 +1,5 @@
 import {
+  createGameMenu,
   createHowToPlay,
   createLiveResults,
   createPlayScreen,
@@ -157,9 +158,17 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       document.defaultView!.location.href = home.href;
     });
   };
-  const leave = el("button", "LEAVE", "quiet-button");
-  leave.onclick = () => exit();
-  top.append(retry, leave);
+  // The shared game menu: the host's Back to lobby during a match and everyone's Main menu, as in every game.
+  const menu = createGameMenu({
+    ...BALL_GUIDE,
+    document,
+    onLobby: () => runtime?.command({ type: "action", action: "lobby" }),
+    onLeave: () => exit(),
+  });
+  const touch = () =>
+    document.defaultView?.matchMedia?.("(pointer: coarse)").matches ?? false;
+  menu.update({ canLobby: false, touch: touch() });
+  top.append(retry, menu.element);
   const heading = el("section", "", "heading");
   heading.append(
     el("span", "FIVE CORES. ONE SURVIVOR.", "eyebrow"),
@@ -402,6 +411,12 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         "managerId" in v && typeof v.managerId === "string" ? v.managerId : "",
       );
       panel!.render(m);
+      menu.update({
+        canLobby: m.manage && !m.lobby,
+        touch: touch(),
+        spectator: options.online.display,
+        display: options.online.display,
+      });
       panel!.element.hidden = !m.lobby || retrying;
       heading.hidden = m.lobby;
       status.hidden = m.lobby && !retrying;
@@ -686,5 +701,6 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     audio.destroy();
     options.radio?.destroy();
     abort.abort();
+    menu.dispose();
   };
 }

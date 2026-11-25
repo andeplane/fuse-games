@@ -1141,6 +1141,26 @@ export async function startOnline(): Promise<void> {
   // One ☰ instead of two wrapped rows of buttons where the viewport is too short to spare them; top-menu.css decides
   // where that is, and the sheet it opens floats over the page so the lobby keeps its height either way.
   topMenu.append(results, menu, help);
+  // The ways out of a race, as in every game: the shared top bar lifts these to the first rows of its ☰ menu (and
+  // opens it on Escape). Back to lobby is the host's BACK TO LOBBY; Main menu asks first, as EXIT / ROOM does.
+  const lobbyExit = node(
+    "button",
+    "BACK TO LOBBY",
+    "fui-game-menu-exit fui-game-menu-lobby",
+  );
+  const homeExit = node(
+    "button",
+    "MAIN MENU",
+    "fui-game-menu-exit fui-game-menu-leave",
+  );
+  for (const exit of [lobbyExit, homeExit]) {
+    exit.type = "button";
+    exit.dataset.fuiMenuDismiss = "";
+  }
+  lobbyExit.hidden = true;
+  lobbyExit.onclick = () => reset.click();
+  homeExit.onclick = goHome;
+  topMenu.prepend(lobbyExit, homeExit);
   createTopBar({
     music: false,
     element: header,
@@ -1809,6 +1829,11 @@ export async function startOnline(): Promise<void> {
       setIfChanged(primaryPlay, "hidden", view.actions.hidden);
       setIfChanged(reset, "disabled", view.actions.reset.disabled);
       setIfChanged(reset, "hidden", !manages || view.actions.reset.hidden);
+      setIfChanged(
+        lobbyExit,
+        "hidden",
+        !manages || view.actions.reset.hidden || view.actions.reset.disabled,
+      );
       // The invite is the creator's: it carries the room code its device owns.
       setIfChanged(
         share,
