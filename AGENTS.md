@@ -9,7 +9,8 @@ Fuse Riders is a small TypeScript game for 2–5 friends under active developmen
 - Commit and push completed task changes at meaningful milestones and always before reporting the task complete, unless the user explicitly asks otherwise. Include all task-related code, tests, assets and documentation, including newly created files. Do not wait for a reminder or a separate request to commit or push.
 - Before the final report, verify `git status` and that the remote branch contains the completed commits. Explicitly identify anything left uncommitted or unpushed and explain why. Preserve unrelated work and never commit secrets or generated local runtime state just to make the working tree clean. If committing or pushing is blocked, report the exact blocker rather than presenting the work as delivered.
 - Read documentation that helps with the current change. There is no mandatory tour of historical ADRs, reviews or the roadmap.
-- Routine fixes, UI changes and bounded refactors need no ADR or independent approval. For a substantial architecture change, write a short design note identifying the intended behavior and key tradeoffs, then implement. Mid-implementation review is not a gate for each correction; the review that matters happens on the pull request (see **Pull requests**).
+- For routine, low-risk bug fixes, start from the latest `origin/main`, verify the fix locally with focused checks, then commit and push directly to `main` without opening a pull request. Follow the host guidance above for where to run checks. Use the pull request workflow for higher-risk fixes and when the user asks for a PR.
+- Routine fixes, UI changes and bounded refactors need no ADR or independent approval. For a substantial architecture change, write a short design note identifying the intended behavior and key tradeoffs, then implement. Review changes that use the pull request workflow on the PR.
 - Follow the user's intended architecture. Do not preserve an obsolete online design or add compatibility modes unless needed by the task. The separate LAN server was removed in #271.
 - Use existing issues when useful. Creating issues, changing labels, posting progress comments and producing formal handoffs are not prerequisites for work. Update tracking at meaningful milestones, not every iteration.
 - Make reasonable implementation decisions autonomously. Ask only when missing information materially affects scope or an action needs authorization.
@@ -87,7 +88,7 @@ Most of the user's corrections in November 2026 were UI drift: a rule fixed on o
 - Report what was actually tested and any remaining limits. Browser emulation is not physical-phone evidence; application payload bytes are not wire bytes.
 - Coverage applies only to modules named in `.c8rc.json`; do not infer browser or renderer coverage from the unit-test percentage. For performance claims, retain the command, source revision, workload/seed and results so the comparison can be reproduced.
 
-Before production deployment, run the release suite plus browser checks relevant to the release:
+For planned production releases, run the release suite plus relevant browser checks before deploying. Routine bug fixes pushed directly to `main` use the focused checks above and the automatic CD gate.
 
 ```sh
 pnpm typecheck
@@ -98,7 +99,7 @@ pnpm build
 
 ## Pull requests
 
-- Open a pull request whenever the work is finished and you believe it is ready. Pushing a branch is not delivery: finish the change, run its focused tests, then open the pull request describing what changed and what was verified, and run any broader local check while CI and review run in parallel. Do not wait to be asked, and never hold a pull request back for a full local suite.
+- For changes that use the pull request workflow, finish the change, run its focused tests, then open a pull request describing what changed and what was verified. Run broader checks while CI and review run in parallel. Open the PR as soon as the focused checks pass.
 - Know your own pull request's number: read it from your branch (`gh pr view <branch> --json number,headRefName`) or from the create call's result before you edit a description or read checks. Never edit the title, body or branch of a pull request another thread opened; PR #696's description was overwritten that way and its verification notes were lost.
 - Before opening, merge the latest `origin/main`; main moves fast, and green CI from before a rebase is stale. When a check fails, see whether it already fails on main before blaming the change.
 - Before asking for review, check the feature itself: a user can reach it from the menus; empty, loading and failed-fetch states render, with a retry where a fetch can fail; no effect can refetch or re-render in a loop. For UI changes, include a browser screenshot of the real flow, not a staged fixture, and look at your own phone-width screenshots for wrapping, overlap and clipped controls before posting them.
