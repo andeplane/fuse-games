@@ -481,3 +481,27 @@ test("Escape nobody else used opens the bar's menu; Escape a page used as Back d
   await settle();
   assert.equal(opened, 1, "Escape in a match opens the menu with the ways out");
 });
+
+test("a match that hides the bar gets a floating ☰ top right that opens the same menu", () => {
+  const { document, window } = page();
+  const root = document.createElement("header");
+  document.body.append(root);
+  createTopBar({ element: root, gameId: "test-game", music: false });
+  const dialog = root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  let opened = 0;
+  Object.defineProperty(dialog, "showModal", { value: () => opened++ });
+  const float = () => document.querySelector<HTMLElement>(".fui-top-bar-float");
+  window.dispatchEvent(new window.Event("resize"));
+  assert.ok(!float() || float()!.hidden, "the bar's own ☰ is on the screen");
+  root.hidden = true;
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(float()!.hidden, false);
+  float()!.querySelector("button")!.click();
+  assert.equal(opened, 1);
+  assert.equal(dialog.parentElement, float(), "the menu opens where it shows");
+  dialog.dispatchEvent(new window.Event("close"));
+  assert.equal(dialog.parentElement, root, "and goes back to the bar");
+  root.hidden = false;
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(float()!.hidden, true);
+});

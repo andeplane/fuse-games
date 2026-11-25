@@ -256,3 +256,31 @@ body:has(.fui-top-bar) .fui-main-menu:has(> .fui-attract)::after {
   color: var(--fui-danger-text, #ffb8cb);
   border-color: var(--fui-danger-line, #ffb8cb66);
 }
+/* The ☰ a match shows when it hides the bar: top right, over the arena, clear of the notch. */
+.fui-top-bar-float {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  z-index: 60;
+}
+.fui-top-bar-float[hidden] {
+  display: none;
+}
+.fui-top-bar-float .fui-top-bar-toggle {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 10px;
+  color: #e8f5ff;
+  background: #07111dcc;
+  border: 1px solid #57718c;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.fui-top-bar-float dialog.fui-dialog.fui-top-bar-menu {
+  box-sizing: border-box;
+  max-height: calc(100dvh - 24px - max(12px, env(safe-area-inset-bottom)));
+}

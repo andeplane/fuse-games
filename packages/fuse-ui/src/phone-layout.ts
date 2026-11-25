@@ -83,6 +83,8 @@ export function createPhoneLayout(options: PhoneLayoutOptions): PhoneLayout {
     doc,
   );
   toggle.setAttribute("aria-expanded", "false");
+  // An on-screen menu button: the shared top bar shows no floating ☰ of its own beside it.
+  toggle.dataset.fuiMenuButton = "";
   const hints = el("div", "", c("hints"), doc);
   for (const text of options.hints) {
     const hint = el("span", "", "", doc);

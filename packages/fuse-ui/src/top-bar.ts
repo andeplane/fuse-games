@@ -378,6 +378,63 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
         !!target?.closest?.(".fui-game-menu"));
     if (!games) event.stopPropagation();
   });
+  const shown = (node: HTMLElement) =>
+    node.isConnected &&
+    !node.closest("[hidden]") &&
+    node.checkVisibility?.({ visibilityProperty: true }) !== false;
+  /**
+   * The menu button a match keeps on the screen when it hides this bar: a game menu (Bombers' MENU), or with `menus`
+   * any on-screen menu button (`data-fui-menu-button`, the phone layout's ☰ MENU).
+   */
+  const gameTrigger = (menus = false) =>
+    [
+      ...doc.querySelectorAll<HTMLElement>(
+        menus
+          ? ".fui-game-menu-trigger, [data-fui-menu-button]"
+          : ".fui-game-menu-trigger",
+      ),
+    ].find((trigger) => !menu.dialog.contains(trigger) && shown(trigger));
+  // A ☰ is always on the screen, top right. A match that hides this bar for room (a phone held sideways, a full-screen
+  // arena) gets this floating one instead, which opens the same menu: Back to lobby and Main menu are never out of reach.
+  const float = el("div", "", "fui-top-bar-float", doc);
+  const floatToggle = button("", "fui-top-bar-toggle", doc);
+  floatToggle.setAttribute("aria-label", "Open game menu");
+  floatToggle.setAttribute("aria-haspopup", "dialog");
+  floatToggle.innerHTML = toggle.innerHTML;
+  float.append(floatToggle);
+  float.hidden = true;
+  // Keys pressed in the menu while it is lent to the floating ☰ stay in the menu, as they do in the bar.
+  float.addEventListener("keydown", (event) => event.stopPropagation());
+  floatToggle.onclick = () => {
+    float.append(menu.dialog);
+    toggle.click();
+  };
+  const placeFloat = () => {
+    if (menu.dialog.open) return;
+    if (menu.dialog.parentElement !== root) root.append(menu.dialog);
+    const wanted =
+      root.isConnected &&
+      !doc.body?.classList.contains("at-entrance") &&
+      !shown(toggle) &&
+      !gameTrigger(true) &&
+      // A page can hold a second bar (Hook Havok's), whose ☰ or floating ☰ already answers.
+      ![...doc.querySelectorAll<HTMLElement>(".fui-top-bar-toggle")].some(
+        (other) => other !== toggle && other !== floatToggle && shown(other),
+      );
+    if (wanted && float.parentElement !== doc.body) doc.body?.append(float);
+    if (float.hidden === wanted) float.hidden = !wanted;
+  };
+  // Whether the bar is shown is each game's CSS (a phone turned sideways, a match starting): the ☰ in the bar changes
+  // size when it goes (to nothing) or comes back, and that is when the floating one is placed.
+  const view = doc.defaultView;
+  const Resize = view?.ResizeObserver;
+  // A game's own on-screen menu can arrive a moment after the bar goes, so the place is looked at again then.
+  const settle = () => {
+    placeFloat();
+    for (const wait of [250, 1000]) view?.setTimeout(placeFloat, wait);
+  };
+  if (Resize) new Resize(settle).observe(toggle);
+  view?.addEventListener("resize", placeFloat);
   // Escape nobody else used opens this menu, as a pause key does: in a match that is where Back to lobby and
   // Main menu are. Escape that closes a dialog, the game menu or the portal, or that a page uses as Back, is theirs.
   // The page's own listeners may come after this one, so the answer waits for the press to finish.
@@ -396,14 +453,13 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       doc.defaultView?.setTimeout(() => {
         if (event.defaultPrevented || menu.dialog.open) return;
         if (!root.isConnected || doc.querySelector("dialog[open]")) return;
-        const shown = (node: HTMLElement) =>
-          !node.closest("[hidden]") &&
-          node.checkVisibility?.({ visibilityProperty: true }) !== false;
         if (shown(toggle)) return toggle.click();
         // A match that hides the bar keeps the game menu on the screen instead (Bombers' MENU): Escape opens that.
-        [...doc.querySelectorAll<HTMLElement>(".fui-game-menu-trigger")]
-          .find((trigger) => !menu.dialog.contains(trigger) && shown(trigger))
-          ?.click();
+        const trigger = gameTrigger();
+        if (trigger) return trigger.click();
+        placeFloat();
+        if (!float.hidden) floatToggle.click();
+        else gameTrigger(true)?.click();
       }, 0);
     },
     true,
@@ -427,6 +483,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
     true,
   );
   menu.dialog.addEventListener("close", () => {
+    if (menu.dialog.parentElement !== root) root.append(menu.dialog);
     gameMenu();
     renderSound();
     toggle.setAttribute("aria-expanded", "false");
@@ -438,7 +495,7 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
     // dialog, and let a running game choose its keyboard input surface after the fallback.
     const active = doc.activeElement;
     if (!active || active === doc.body || menu.dialog.contains(active))
-      toggle.focus();
+      (float.hidden ? toggle : floatToggle).focus();
     onOpenChange?.(false);
   });
   account.onclick = () => {
