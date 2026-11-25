@@ -106,7 +106,7 @@ test("DOM components stay self-contained; browser adapters use explicit shared b
   assert.ok(files.length > 0);
   for (const name of files) {
     const text = readFileSync(path.join(root, name), "utf8");
-    for (const [, specifier] of text.matchAll(
+    for (const [importSite, specifier] of text.matchAll(
       /(?:\bfrom\s+|\bimport\s*\(?\s*)["']([^"']+)["']/g,
     )) {
       if (
@@ -115,6 +115,11 @@ test("DOM components stay self-contained; browser adapters use explicit shared b
       ) {
         assert.doesNotMatch(text, /\bfrom\s+["']firebase\//);
         assert.match(text, /\bimport\(["']firebase\//);
+        continue;
+      }
+      if (name === "qr-scan.ts" && specifier === "jsqr") {
+        // Only load the fallback decoder when a scan needs it.
+        assert.match(importSite, /^import\s*\(/, "jsqr must be loaded lazily");
         continue;
       }
       const adapters: Record<string, readonly string[]> = {
