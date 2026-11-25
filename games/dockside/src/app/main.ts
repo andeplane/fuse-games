@@ -1,4 +1,4 @@
-import { createTopBar } from "fuse-ui";
+import { createPlayScreen, createTopBar } from "fuse-ui";
 import { createControls, CONTROLS, TOUCH_CONTROLS } from "./controls.js";
 import { createArena, COLORS } from "./arena.js";
 import { createRadar } from "./radar.js";
@@ -284,14 +284,13 @@ function room(solo: boolean): void {
   const controllerMap = el("div", "", "dockside-controller-map");
   const controllerRadar = createRadar(controllerMap, COLORS);
   controllerMap.hidden = true;
-  table.append(
-    hud,
-    stage,
-    controllerMap,
-    roundControls.element,
-    hint,
-    controls.pad,
-  );
+  controls.pad.hidden = true;
+  stage.append(controls.pad);
+  table.append(hud, stage, controllerMap, roundControls.element, hint);
+  const playScreen = createPlayScreen({
+    stage: table,
+    onChange: controls.release,
+  });
   let arena: ReturnType<typeof createArena> | undefined;
   // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({
@@ -408,6 +407,7 @@ function room(solo: boolean): void {
       )
         controls.resetMatch();
       playing = liveMatch && slot >= 0;
+      playScreen.update(playing && !viewer.shared);
       controlsMatch = frame.matchId;
       menu.update({
         canLobby: viewer.host && !display && !inLobby && !pendingResult,
@@ -464,6 +464,11 @@ function room(solo: boolean): void {
           controller = viewer.shared && playing;
         stage.hidden = controller;
         controllerMap.hidden = !controller;
+        const padHost = controller ? table : stage;
+        if (controls.pad.parentElement !== padHost) {
+          controls.release();
+          padHost.append(controls.pad);
+        }
         controls.pad.classList.toggle("controller-only", controller);
         const center = rig ? controls.map.frame(rig, w.tick) : undefined;
         const expandedMap = playing && controls.map.open;
@@ -615,6 +620,7 @@ function room(solo: boolean): void {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      playScreen.destroy();
       controls.dispose();
       arena?.dispose();
       menu.dispose();
