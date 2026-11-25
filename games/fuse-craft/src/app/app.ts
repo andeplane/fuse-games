@@ -29,6 +29,7 @@ import {
 import { updateContent } from "./dom-update.js";
 import {
   createMainMenu,
+  createQrScanButton,
   escapeIsTaken,
   mountAttract,
   createTopBar,
@@ -1193,6 +1194,19 @@ export function mountFuseCraft(
     roomBackground = undefined;
     root.innerHTML = screenMarkup[screen]();
     decorate();
+    const validCode = dependencies.online?.validCode;
+    if (screen === "multiplayer" && validCode) {
+      const scan = createQrScanButton({
+        valid: validCode,
+        onRoom: (found) => {
+          roomCode = found.code;
+          joinRoom();
+        },
+        className: "",
+        document: root.ownerDocument,
+      });
+      if (scan) root.querySelector(".join-row")?.after(scan);
+    }
     if (screen === "menu") {
       const play = root.querySelector<HTMLElement>(".menu-layout")!;
       const marker = root.ownerDocument.createComment("Shared menu");
@@ -1218,6 +1232,7 @@ export function mountFuseCraft(
           roomError = null;
           screen = "multiplayer";
           render();
+          root.querySelector<HTMLInputElement>("#room-code")?.focus();
         },
         onPlay: dependencies.online
           ? async () => {
