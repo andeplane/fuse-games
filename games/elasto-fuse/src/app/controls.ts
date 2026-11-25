@@ -120,9 +120,11 @@ export function bindButton(
   };
 }
 
-/** The touch buttons, in the order the page lays them out: name, label, bits. */
+/**
+ * The touch buttons, in the order the page lays them out: name, label, bits. No RESTART: on a phone it sat in the
+ * middle of the race where a thumb found it by accident (Anders, 2026-11-25); the keys and a gamepad keep theirs.
+ */
 export const TOUCH_BUTTONS = [
-  { id: "restart", label: "RESTART", bits: RESTART, hint: "Restart" },
   { id: "turn", label: "TURN", bits: TURN, hint: "Turn around" },
   { id: "volt-left", label: "⟲", bits: VOLT_LEFT, hint: "Volt left" },
   { id: "volt-right", label: "⟳", bits: VOLT_RIGHT, hint: "Volt right" },
