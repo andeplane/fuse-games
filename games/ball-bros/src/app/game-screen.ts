@@ -97,6 +97,7 @@ export interface ScreenOptions {
   events: EventTarget;
   home(): void;
   retry(): void;
+  roomUnavailable(code: string): void;
 }
 export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const document = root.ownerDocument,
@@ -260,6 +261,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       })
     : undefined;
   if (panel) {
+    panel.element.hidden = true;
     layout.hidden = true;
     scoreboard.hidden = true;
     controlsRow.hidden = true;
@@ -516,8 +518,11 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         return;
       }
       runtime?.stop();
+      let admitted = false;
       runtime = options.runtime({
-        ready: () => {},
+        ready: () => {
+          admitted = true;
+        },
         state: (f, settings) => {
           activeSettings = settings;
           shared = settings.display;
@@ -552,6 +557,11 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         },
         status: (text) => say(roomFailure(text)),
         ended: () => {
+          // The service uses the same close code for an unavailable room and an ended session.
+          if (!admitted && options.online) {
+            options.roomUnavailable(options.online.code);
+            return;
+          }
           playing = false;
           cancel();
           controlsRow.hidden = true;
