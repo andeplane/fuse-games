@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { gameMenus } from "../../tests/fixtures/game-menu-expectations.js";
+import { topMenuToggle } from "./top-menu.js";
 
 /** Exercise the real hamburger in both the front door and the assembled room. */
 export async function checkGameMenu(page: Page, game: string): Promise<void> {
@@ -11,10 +12,7 @@ export async function checkGameMenu(page: Page, game: string): Promise<void> {
     ? await speaker.getAttribute("aria-pressed")
     : null;
   const soundDisabled = soundState !== null && (await speaker.isDisabled());
-  const toggle = page.getByRole("button", {
-    name: "Open game menu",
-    exact: true,
-  });
+  const toggle = await topMenuToggle(page);
   await toggle.click();
   const dialog = page.getByRole("dialog", { name: /^game menu$/i });
   const prefs = dialog.getByRole("button", { name: /^player options$/i });

@@ -1,4 +1,9 @@
-import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
+import {
+  BOTH_ENGINES,
+  launchBrowser,
+  newSmokePage,
+  resizeSmokeViewport,
+} from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { returnToSoloLobby } from "./lib/solo-lobby.js";
@@ -144,12 +149,12 @@ for (const { name, kind } of BOTH_ENGINES) {
     await notice(/^Choose your rivals/);
     await lobbyScreen("landscape lobby");
     await page.screenshot({ path: `artifacts/mobile-phase-lobby-${name}.png` });
-    await page.setViewportSize({ width: 390, height: 844 });
+    await resizeSmokeViewport(page, { width: 390, height: 844 });
     await lobbyScreen("portrait lobby");
     await page.screenshot({
       path: `artifacts/mobile-phase-lobby-portrait-${name}.png`,
     });
-    await page.setViewportSize({ width: 844, height: 390 });
+    await resizeSmokeViewport(page, { width: 844, height: 390 });
     await lobbyScreen("landscape lobby again");
     await page.getByRole("button", { name: "START RACE", exact: true }).click();
     await notice(/^READY/);

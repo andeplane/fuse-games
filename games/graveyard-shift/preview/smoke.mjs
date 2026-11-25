@@ -7,6 +7,7 @@ import {
   openPlayOptions,
   takeHostSeat,
 } from "../../../scripts/lib/main-menu.ts";
+import { closeTopMenu, topMenuToggle } from "../../../scripts/lib/top-menu.ts";
 const base =
   process.env.ONLINE_URL ?? process.argv[2] ?? "http://localhost:8797/";
 const shots =
@@ -63,6 +64,8 @@ try {
   await openPlayOptions(splash, "single");
   await splash.locator("[data-phase=running]").waitFor();
   await splash.keyboard.press("Escape");
+  await splash.locator(".fui-top-bar-menu[open]").waitFor();
+  await closeTopMenu(splash);
   await splash.locator("canvas.arena").click({ position: { x: 200, y: 200 } });
   await splash.keyboard.down("w");
   await splash.keyboard.down("j");
@@ -72,7 +75,7 @@ try {
   await snap(splash, "gameplay");
   assert.equal(await splash.locator(".score").count(), 4);
   // A focused header control keeps its own keys (scripts/top-bar-input-smoke.ts); the arena takes them back.
-  await splash.getByRole("button", { name: "Open game menu" }).focus();
+  await (await topMenuToggle(splash)).focus();
   const heldX = await splash.locator(".personal").getAttribute("data-x");
   await splash.keyboard.down("d");
   await splash.waitForTimeout(300);
