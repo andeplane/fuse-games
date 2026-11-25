@@ -21,33 +21,62 @@
 .fuseParticles-room {
   max-width: 100%;
 }
-.fp-match {
-  width: min(100% - 1rem, 88rem);
-  margin: calc(76px + env(safe-area-inset-top)) auto 2rem;
-}
-.fuseParticles-page:has(.fp-match:not([hidden])) .fui-top-bar::before {
-  content: "";
+/*
+ * The match is the whole screen and never scrolls: the players' row, the map under it, and the commands laid over
+ * the map's lower edge. The top bar steps back to its menu button, in the corner the players' row leaves free.
+ */
+.fp-match:not([hidden]) {
   position: fixed;
-  inset: 0 0 auto;
-  height: calc(68px + env(safe-area-inset-top));
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: #101615;
-  z-index: -1;
+  overflow: hidden;
 }
-@media (max-height: 540px) and (min-width: 640px) {
-  .fp-match:not([hidden]) {
-    display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
-    align-items: start;
-    gap: 0.5rem;
-  }
-  .fp-match .fp-commands {
-    margin-block-start: 0;
-  }
+.fp-match .fp-arena {
+  flex: 1;
+  min-height: 0;
+}
+.fp-match .fp-arena__hud {
+  min-height: 48px;
+  padding-right: 54px;
+}
+html:has(.fuseParticles-room[data-phase="running"]),
+body:has(.fuseParticles-room[data-phase="running"]) {
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.fuseParticles-room[data-phase="running"] {
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+}
+body:has(.fuseParticles-room[data-phase="running"]) .fuseParticles-top {
+  inset: calc(2px + env(safe-area-inset-top))
+    calc(4px + env(safe-area-inset-right)) auto auto;
+  gap: 0;
+}
+body:has(.fuseParticles-room[data-phase="running"])
+  .fuseParticles-top
+  :is(.fui-top-bar-left, .fui-top-bar-account, .fui-top-bar-sound),
+body:has(.fuseParticles-room[data-phase="running"])
+  .fuseParticles-status:not([data-tone="error"]) {
+  display: none !important;
+}
+body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
+  position: fixed;
+  inset: calc(56px + env(safe-area-inset-top)) 8px auto;
+  text-align: center;
 }
 .fp-map-tools,
-.fp-command-bar,
-.fp-command-sites,
-.fp-command-actions {
+.fp-command-sites {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -62,16 +91,59 @@
   gap: 0.5rem;
 }
 .fp-commands {
-  background: #19221e;
+  position: absolute;
+  inset: auto 0 env(safe-area-inset-bottom);
+  z-index: 2;
+  width: min(100%, 64rem);
+  margin-inline: auto;
+  box-sizing: border-box;
+  background: #131b18d9;
   border: 1px solid #43524a;
-  margin-block-start: 0.65rem;
+  border-bottom: 0;
+  backdrop-filter: blur(3px);
+  font:
+    12px / 1.2 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+.fp-commands[hidden],
+.fp-commands [hidden] {
+  display: none !important;
+}
+.fp-commands button {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  font: inherit;
+  transform: none;
 }
 .fp-command-bar {
-  padding: 0.45rem;
-  border-bottom: 1px solid #43524a;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
 }
 .fp-command-bar button {
-  flex: 1 1 auto;
+  height: 36px;
+  padding: 0 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* The player's own purse, on the panel's top edge: beside what it buys, and never in a button's way. */
+.fp-command-gold {
+  position: absolute;
+  inset: auto 0 100% auto;
+  padding: 3px 8px;
+  background: #131b18d9;
+  border: 1px solid #43524a;
+  border-bottom: 0;
+  color: #ffd47b;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .fp-commands button[aria-pressed="true"] {
   color: #baf7dc;
@@ -79,22 +151,133 @@
   background: #23392e;
 }
 .fp-command-body {
-  padding: 0.55rem;
+  display: grid;
+  gap: 4px;
+  padding: 4px 4px 0;
 }
-.fp-command-sites:not([hidden]) {
-  margin-block-end: 0.5rem;
+.fp-command-body > button {
+  justify-self: start;
+  height: 30px;
+  padding: 0 10px;
 }
-.fp-command-note {
-  font-size: 0.82rem;
-  color: #f0c195;
-  margin: 0;
+.fp-command-sites button {
+  width: 36px;
+  height: 30px;
+  padding: 0;
 }
-.fp-command-note:not(:empty) {
-  margin-block-start: 0.5rem;
+/* A fixed grid of fixed cells: a new level or price changes the words in a cell and nothing else. */
+.fp-command-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
 }
-.fp-command-actions button[aria-disabled="true"] {
+.fp-command {
+  display: grid;
+  grid-template: "key label" 1fr "key detail" 1fr / auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0 6px;
+  height: 44px;
+  padding: 2px 6px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.fp-command kbd {
+  grid-area: key;
+  font: inherit;
+  color: #8fa397;
+}
+.fp-command-label,
+.fp-command-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fp-command-label {
+  grid-area: label;
+  align-self: end;
+  font-weight: 700;
+}
+.fp-command-detail {
+  grid-area: detail;
+  align-self: start;
+  color: #ffd47b;
+  font-variant-numeric: tabular-nums;
+}
+.fp-command[aria-disabled="true"] {
   color: #abb5aa;
   border-color: #4c584e;
+}
+.fp-command[aria-disabled="true"] .fp-command-detail {
+  color: #9a8f78;
+}
+/* Said above the commands, over the map: it comes and goes without moving a button. */
+.fp-command-note {
+  position: absolute;
+  inset: auto 0 100%;
+  margin: 0 auto 6px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+  background: #1c1410e6;
+  border: 1px solid #f0c195;
+  color: #f0c195;
+  pointer-events: none;
+}
+.fp-command-note:empty {
+  display: none;
+}
+@media (min-width: 44rem) {
+  .fp-command-actions {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+/* A phone held upright: the number keys are no use and a long name takes two lines. */
+@media (max-width: 44rem) {
+  .fp-commands {
+    font-size: 11px;
+  }
+  .fp-command {
+    grid-template: "label" auto "detail" auto / minmax(0, 1fr);
+    align-content: center;
+    height: 52px;
+    padding-inline: 5px;
+  }
+  .fp-command kbd {
+    display: none;
+  }
+  .fp-command-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.05;
+    max-height: 2.1em;
+  }
+}
+/* A phone on its side has little height: the cells are lower. */
+@media (max-height: 30rem) {
+  .fp-command {
+    height: 36px;
+  }
+  .fp-command-bar button {
+    height: 30px;
+  }
+}
+/*
+ * A square map on a wide screen leaves room beside it: the map moves to the right and the commands take the left
+ * column, covering none of the map.
+ */
+@media (min-aspect-ratio: 4 / 3) {
+  .fp-match:has(.fp-arena[data-shape="square"]) .fp-arena__stage {
+    place-items: start end;
+  }
+  .fp-match:has(.fp-arena[data-shape="square"]) .fp-commands {
+    inset-inline: env(safe-area-inset-left) auto;
+    width: min(34rem, calc(100vw - 100dvh + 44px));
+    margin: 0;
+  }
+  .fp-match:has(.fp-arena[data-shape="square"]) .fp-command-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 38rem) {
   .fuseParticles-top {
@@ -103,16 +286,6 @@
   }
   .fuseParticles-status {
     display: none;
-  }
-  .fp-command-bar {
-    gap: 0.28rem;
-  }
-  .fp-command-bar button {
-    padding-inline: 0.45rem;
-    font-size: 0.75rem;
-  }
-  .fp-command-actions button {
-    flex: 1 1 8rem;
   }
 }
 .fp-attract {
