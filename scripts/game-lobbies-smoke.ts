@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { readdir, writeFile, mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
 import { checkGameMenu } from "./lib/check-game-menu.js";
+import { topMenuToggle } from "./lib/top-menu.js";
 import type { Page } from "playwright";
 
 async function openCraftMotionPreference(page: Page) {
-  await page
-    .getByRole("button", { name: "Open game menu", exact: true })
-    .click();
+  await (await topMenuToggle(page)).click();
   await page.getByRole("button", { name: /^player options$/i }).click();
   return page.getByRole("checkbox", { name: /reduced motion/i });
 }
@@ -122,6 +121,15 @@ try {
       step = "empty room and QR";
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
+      // Fuse Particles prompts for a name when the room opens. Check that the
+      // host can dismiss admission and inspect the empty room before joining.
+      if (game === "fuse-particles") {
+        const admission = room.locator(".fui-slot-admission[open]");
+        await admission
+          .getByRole("button", { name: "Back", exact: true })
+          .click();
+        await admission.waitFor({ state: "hidden" });
+      }
       await checkGameMenu(page, game);
       const configurationRoom = [
         "cyberfuse",
@@ -249,11 +257,29 @@ try {
         }
       }
       await page.setViewportSize({ width: 1440, height: 1000 });
-      await page.waitForFunction(
-        () =>
-          document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
-            .attractState === "running",
-      );
+      if (game === "fuse-particles") {
+        // This configuration room previews the host's actual map in its
+        // canvas. A settings change must repaint that preview.
+        const preview = room.locator(".fp-arena[data-shape] canvas");
+        const before = await preview.evaluate((canvas) =>
+          canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : "",
+        );
+        assert.ok(before, "the room rendered its map preview");
+        await room
+          .getByRole("combobox", { name: "Map", exact: true })
+          .selectOption("maze");
+        await page.waitForFunction((previous) => {
+          const canvas = document.querySelector<HTMLCanvasElement>(
+            ".fui-room-layout .fp-arena[data-shape] canvas",
+          );
+          return canvas !== null && canvas.toDataURL() !== previous;
+        }, before);
+      } else
+        await page.waitForFunction(
+          () =>
+            document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
+              .attractState === "running",
+        );
       await room
         .locator(".fui-room-count")
         .filter({ hasText: /^0\s*\/\s*\d/ })
@@ -481,9 +507,7 @@ try {
         await room.getByRole("checkbox", { name: /shared tv/i }).check();
         await room.getByRole("button", { name: /^start match$/i }).click();
         await page.locator("#app.controller-mode").waitFor();
-        await page
-          .getByRole("button", { name: "Open game menu", exact: true })
-          .click();
+        await (await topMenuToggle(page)).click();
         const menu = page.getByRole("dialog", { name: /^game menu$/i });
         await menu.getByRole("button", { name: /^player options$/i }).click();
         const options = page.getByRole("dialog", { name: /^player options$/i });

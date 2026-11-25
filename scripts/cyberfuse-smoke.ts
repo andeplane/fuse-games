@@ -1,8 +1,9 @@
 /** Run against a local Cyberfuse preview with its room service: ONLINE_URL=http://localhost:<port>/ pnpm exec tsx scripts/cyberfuse-smoke.ts */
 import assert from "node:assert/strict";
-import { launchBrowser } from "./lib/browser.js";
+import { launchBrowser, resizeSmokeViewport } from "./lib/browser.js";
 import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
+import { topMenuToggle } from "./lib/top-menu.js";
 import type { Page } from "playwright";
 
 interface Probe {
@@ -237,9 +238,7 @@ async function solo(page: Page) {
     (previous) => window.__cyberfuseProbe!().tick! >= previous + 2,
     stopped,
   );
-  await page
-    .getByRole("button", { name: "Open game menu", exact: true })
-    .click();
+  await (await topMenuToggle(page)).click();
   const menu = page.getByRole("dialog", { name: "Game menu", exact: true });
   await menu.waitFor();
   const stoppedAgain = await pausedClock(page);
@@ -468,13 +467,11 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
     1,
     "one-seat room starts",
   );
+  await (await topMenuToggle(host)).click();
   await host
-    .getByRole("button", { name: "Open game menu", exact: true })
+    .getByRole("dialog", { name: "Game menu", exact: true })
+    .getByRole("button", { name: /^back to lobby$/i })
     .click();
-  await host
-    .getByRole("button", { name: "Game controls", exact: true })
-    .click();
-  await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await phase(host, "lobby");
   await peer.goto(address("room=" + code));
   await peer.locator(".fui-roster-name", { hasText: "Ada" }).waitFor();
@@ -512,7 +509,7 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   );
   await walkTouch(peer, tv);
   const before = await current(peer);
-  await peer.setViewportSize({ width: 780, height: 360 });
+  await resizeSmokeViewport(peer, { width: 780, height: 360 });
   await frameFits(peer);
   const map = peer.getByRole("button", { name: "Map", exact: true });
   const [mapBounds, topBarBounds] = await Promise.all([
@@ -522,12 +519,13 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   assert.ok(
     mapBounds &&
       topBarBounds &&
-      mapBounds.y >= topBarBounds.y + topBarBounds.height,
-    "the whole landscape Map button sits below the top bar",
+      (mapBounds.y >= topBarBounds.y + topBarBounds.height ||
+        mapBounds.x + mapBounds.width <= topBarBounds.x),
+    "the whole landscape Map button clears the top bar or compact menu",
   );
   await map.tap();
   await peer.getByRole("button", { name: "Close map", exact: true }).tap();
-  await peer.setViewportSize({ width: 360, height: 780 });
+  await resizeSmokeViewport(peer, { width: 360, height: 780 });
   await hashAgreement(peer);
   await peer.reload();
   await phase(peer, "running");

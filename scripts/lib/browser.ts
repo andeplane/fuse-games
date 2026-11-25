@@ -64,3 +64,18 @@ export async function newSmokePage(
   page.setDefaultTimeout(smokeTimeout(timeout));
   return page;
 }
+
+/** Simulate rotation or a new viewport after the game's first-tap fullscreen transition. */
+export async function resizeSmokeViewport(
+  page: Page,
+  viewport: { width: number; height: number },
+): Promise<void> {
+  const current = page.viewportSize();
+  if (current?.width === viewport.width && current.height === viewport.height)
+    return;
+  // Chromium rejects synthetic window resizes while native fullscreen is active.
+  await page.evaluate(async () => {
+    if (document.fullscreenElement) await document.exitFullscreen();
+  });
+  await page.setViewportSize(viewport);
+}

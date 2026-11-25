@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { defaultRoomSettings } from "../games/fuse-riders/src/engine/room-settings.js";
 import { smokeTimeout } from "./smoke-timeout.js";
-import { openTopMenu } from "./lib/top-menu.js";
+import { openTopMenu, topMenuToggle } from "./lib/top-menu.js";
 /**
  * End-of-match recap evidence: a solo match plays to completion, the report opens only after the
  * final-round pause, shows standings and highlights with expandable statistics, closes, and reopens from RESULTS on a desktop
@@ -453,7 +453,7 @@ try {
       // RESULTS is a bar action, so it is in the Game menu. A joined phone stays the landscape thirds controller in
       // matchOver, where the bar itself sits behind the ☰ MENU overlay.
       const reopen = page.getByRole("button", { name: "RESULTS", exact: true });
-      if (phone && !(await page.locator(".fui-top-bar-toggle").isVisible()))
+      if (phone && !(await (await topMenuToggle(page)).isVisible()))
         await page.locator(".mobile-tools-toggle").click();
       await openTopMenu(page);
       await reopen.waitFor({ state: "visible" });
