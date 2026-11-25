@@ -51,8 +51,33 @@ const fitsPhone = async (tab: Page, where: string) => {
     `${where}: page is ${page}px wide on a ${screen}px phone`,
   );
 };
-const joinAs = async (tab: Page, name: string) => {
-  await takeHostSeat(tab, name);
+const openSeat = (tab: Page) =>
+  tab
+    .locator(".fui-room-open-slot")
+    .getByRole("button", { name: "Join", exact: true })
+    .first();
+const joinAs = async (
+  tab: Page,
+  name: string,
+  device: "desktop" | "phone" = "desktop",
+) => {
+  if (device === "phone" && engine === "webkit") {
+    const admission = tab.locator(".fui-slot-admission[open]");
+    if (!(await admission.isVisible())) await openSeat(tab).click();
+    await admission.getByPlaceholder("Your name").fill(name);
+    const submit = admission.getByRole("button", { name: "Join", exact: true });
+    const bounds = await submit.boundingBox();
+    assert.ok(bounds, "the guest's Join button is visible");
+    // WebKit's automation hit test can report the seat behind the modal.
+    // A real touchscreen tap reaches its submit button.
+    await tab.touchscreen.tap(
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
+    );
+    await admission.waitFor({ state: "hidden" });
+  } else {
+    await takeHostSeat(tab, name);
+  }
   await tab
     .locator(".fui-roster-name", { hasText: name })
     .first()
@@ -112,14 +137,10 @@ async function twoPlayers(browser: Browser): Promise<void> {
   await b.getByPlaceholder("Room code").fill(code.toLowerCase());
   await b.getByRole("button", { name: "JOIN ROOM", exact: true }).click();
   await b.waitForURL(new RegExp(`room=${code}`));
-  await b
-    .locator(".fui-room-open-slot")
-    .getByRole("button", { name: "Join", exact: true })
-    .first()
-    .click();
+  await openSeat(b).click();
   await b.getByPlaceholder("Your name").waitFor();
   await fitsPhone(b, "name entry");
-  await joinAs(b, "Bo");
+  await joinAs(b, "Bo", "phone");
   await fitsPhone(b, "lobby");
   await a.locator(".fui-roster-name", { hasText: "Bo" }).waitFor();
   await a.screenshot({ path: `${shots}/dice-lobby-${engine}.png` });
@@ -198,7 +219,7 @@ async function sharedScreen(browser: Browser): Promise<void> {
   );
   const p = await phone.newPage();
   await p.goto(`${page}?room=${code}&mute`);
-  await joinAs(p, "Pat");
+  await joinAs(p, "Pat", "phone");
   await tv.locator(".fui-roster-name", { hasText: "Pat" }).waitFor();
   await h.getByRole("button", { name: "START MATCH" }).click();
   await Promise.all([waitPhase(tv, ["running"]), waitPhase(p, ["running"])]);
