@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createAccountDialog, dayLabel, type AccountAuth } from "fuse-ui";
+import { signInFailure } from "fuse-ui/browser-account";
 import { HOSTILE, page } from "./dom-fixture.js";
 import { Window } from "happy-dom";
 
@@ -60,6 +61,7 @@ function panelFixture(
     activityApiUrl?: string;
     document?: Document;
     auth?: Partial<AccountAuth<{ name: string }>>;
+    schedule?: (callback: () => void, delayMs: number) => () => void;
   } = {},
 ) {
   const document = options.document ?? page().document;
@@ -179,7 +181,10 @@ function panelFixture(
       return portrait;
     },
     pageSize: options.pageSize ?? 2,
-    refreshClock: { now: () => now, schedule: () => () => {} },
+    refreshClock: {
+      now: () => now,
+      schedule: options.schedule ?? (() => () => {}),
+    },
     classes: { button: "landing-account" },
     document,
   });
@@ -245,40 +250,64 @@ test("account dialog: signed out, then stats with its own paged history", async 
   assert.equal(body.querySelector(".fui-account-matches"), null);
 });
 
-test("Google sign-in can be retried before the popup reports that it closed", async () => {
+test("Google sign-in can be retried after a cancellation or an unresponsive popup", async () => {
   const attempts: Array<{
     resolve(): void;
-    reject(reason: Error): void;
+    reject(reason: { code: string }): void;
   }> = [];
+  let retry: (() => void) | undefined;
   const f = panelFixture({
     auth: {
       signIn: () =>
         new Promise<void>((resolve, reject) => {
           attempts.push({ resolve, reject });
         }),
-      failure: () => "",
+      failure: signInFailure,
+    },
+    schedule: (callback) => {
+      retry = callback;
+      return () => {
+        retry = undefined;
+      };
     },
   });
   f.panel.button.click();
   await settle();
   const enter = f.named("SIGN IN WITH GOOGLE")!;
-  const status = f.body.querySelector('[role="alert"]')!;
-
   enter.click();
+  assert.equal(enter.disabled, true);
+  enter.click();
+  assert.equal(attempts.length, 1, "a double-click opens only one popup");
+  retry!();
   assert.equal(enter.disabled, false);
   enter.click();
   assert.equal(attempts.length, 2);
-  attempts[0]!.reject(new Error("Superseded"));
+  f.panel.dialog.close();
+  f.panel.button.click();
+  await settle();
+  const reopened = f.named("SIGN IN WITH GOOGLE")!;
+  const status = f.body.querySelector('[role="alert"]')!;
+  assert.equal(reopened.disabled, true);
+
+  attempts[0]!.reject({ code: "auth/cancelled-popup-request" });
   await settle();
   assert.equal(status.textContent, "");
+  assert.equal(reopened.disabled, true);
 
-  attempts[1]!.reject(new Error("Popup closed"));
+  attempts[1]!.reject({ code: "auth/user-cancelled" });
   await settle();
   assert.equal(status.textContent, "Sign-in canceled. You can try again.");
+  assert.equal(reopened.disabled, false);
+  assert.equal(retry, undefined);
   assert.deepEqual(f.tracked, []);
-  enter.click();
+  reopened.click();
   assert.equal(status.textContent, "");
-  attempts[2]!.resolve();
+  attempts[2]!.reject({ code: "auth/popup-closed-by-user" });
+  await settle();
+  assert.equal(status.textContent, "Sign-in canceled. You can try again.");
+  assert.equal(reopened.disabled, false);
+  reopened.click();
+  attempts[3]!.resolve();
   await settle();
   assert.deepEqual(f.tracked, ["Signed In"]);
 });

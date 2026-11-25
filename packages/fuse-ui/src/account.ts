@@ -372,6 +372,10 @@ export function createAccountDialog<
   let account: Account | undefined,
     generation = 0,
     signInAttempt = 0,
+    signInControls:
+      | { button: HTMLButtonElement; error: HTMLElement; ready: boolean }
+      | undefined,
+    cancelSignInWait: (() => void) | undefined,
     view: AccountView = "stats",
     scope: AccountScope = "everyone",
     opened: Match | undefined,
@@ -614,17 +618,30 @@ export function createAccountDialog<
   function signInPrompt(message: string): HTMLElement[] {
     const error = node("p", "", c("error")),
       enter = plainButton(text.signInWith);
+    const controls = { button: enter, error, ready: false };
+    signInControls = controls;
     error.setAttribute("role", "alert");
     enter.onclick = async () => {
-      // Firebase replaces the previous popup on retry, even if its close has not been reported yet.
+      if (enter.disabled) return;
       const attempt = ++signInAttempt;
       error.textContent = "";
+      enter.disabled = true;
+      const allowRetry = () => {
+        cancelSignInWait?.();
+        cancelSignInWait = undefined;
+        if (signInControls?.ready) signInControls.button.disabled = false;
+      };
+      // Give the SDK time to open and check the popup. It can miss a close, so it cannot hold the button indefinitely.
+      cancelSignInWait = refreshClock.schedule(allowRetry, 15_000);
       try {
         await auth.signIn();
         if (attempt === signInAttempt) options.track("Signed In");
       } catch (failure) {
-        if (attempt === signInAttempt)
-          error.textContent = auth.failure(failure) || text.signInCanceled;
+        if (attempt === signInAttempt && signInControls)
+          signInControls.error.textContent =
+            auth.failure(failure) || text.signInCanceled;
+      } finally {
+        if (attempt === signInAttempt) allowRetry();
       }
     };
     // Held until sign-in is loaded: a tap that had to wait for the download would find its popup blocked, notably in Safari.
@@ -632,7 +649,10 @@ export function createAccountDialog<
     enter.disabled = true;
     auth.ready().then(
       () => {
-        if (mine === generation) enter.disabled = false;
+        if (mine === generation) {
+          controls.ready = true;
+          enter.disabled = cancelSignInWait !== undefined;
+        }
       },
       () => {
         if (mine === generation) error.textContent = text.unreachable;
@@ -871,6 +891,7 @@ export function createAccountDialog<
 
   function render(): void {
     generation++;
+    signInControls = undefined;
     // A redraw replaces the focused control; the same control in the new view takes the focus back.
     const active = doc.activeElement as HTMLElement | null;
     const focused =
@@ -929,6 +950,7 @@ export function createAccountDialog<
   leaderboardButton.onclick = () => open("leaderboard");
   dialog.addEventListener("close", () => {
     generation++;
+    signInControls = undefined;
   });
   return {
     button,
@@ -940,6 +962,10 @@ export function createAccountDialog<
     dispose: () => {
       account = undefined;
       cancelRefresh?.();
+      cancelSignInWait?.();
+      cancelSignInWait = undefined;
+      signInControls = undefined;
+      signInAttempt++;
       generation++;
       landingGeneration++;
       reset();
