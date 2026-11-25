@@ -52,6 +52,7 @@ import {
   createResultsScreen,
   createRoundControls,
   createRoster,
+  createPlayScreen,
   createSharedTvOption,
   el,
 } from "fuse-ui";
@@ -465,6 +466,15 @@ function room(solo: boolean): void {
   const roundControls = createRoundControls(drivingGuide);
   const touchDevice = window.matchMedia("(pointer: coarse)");
   race.append(pad.element, roundControls.element);
+  // A phone's live race is the whole screen, drawn turned when the phone is upright; the pads move under the thumbs.
+  const playScreen = createPlayScreen({
+    stage: race,
+    wide: true,
+    onChange: () => {
+      Object.assign(touch, NEUTRAL_INPUT);
+      drive();
+    },
+  });
 
   const main = el("main", "", "fd-room");
   // Until the first view arrives there is nothing to show but the lobby: a room with no host yet would
@@ -609,6 +619,7 @@ function room(solo: boolean): void {
     // A phone that is only a controller has no room for the arena.
     const driving = model.screen === "race" && !!model.lobby.own && !display;
     pad.element.hidden = !driving || !touchDevice.matches;
+    playScreen.update(driving && !canvas.hidden && !result);
     const guideParent =
       !canvas.hidden && !display && !touchDevice.matches ? arenaBox : race;
     if (roundControls.element.parentElement !== guideParent)
@@ -678,6 +689,7 @@ function room(solo: boolean): void {
     },
     ended() {
       say("Room ended", "error");
+      playScreen.destroy();
     },
   };
 
