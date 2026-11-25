@@ -62,7 +62,8 @@ import {
 } from "fuse-ui";
 import { GAS, RESTART } from "../engine/input.js";
 import { CAPACITY } from "../engine/tuning.js";
-import { LEVELS, centiseconds } from "../engine/index.js";
+import { LEVELS, LEVEL_COUNT, centiseconds } from "../engine/index.js";
+import { createProgression } from "./progression.js";
 import type { WorldView } from "../engine/view.js";
 import { GAME_ID } from "../basics.js";
 import { DEFAULT_SETTINGS, type Settings, type View } from "../online/game.js";
@@ -141,7 +142,9 @@ const social = createGameSocial({
 });
 const store = safeStore(() => localStorage);
 const names = keys(GAME);
-/** The level a room's lobby last chose (the tour is −1). */
+const progression = createProgression(store, names);
+const unlockedLevel = () => progression.next ?? LEVEL_COUNT - 1;
+/** The level a room's lobby last chose. */
 const roomLevelKey = `${GAME}-room-level`;
 const query = new URLSearchParams(location.search);
 const muted = query.has("mute");
@@ -169,9 +172,20 @@ const setText = (node: HTMLElement, value: string) => {
   if (node.textContent !== value) node.textContent = value;
 };
 const coarse = () => matchMedia("(pointer: coarse)").matches;
-/** The level solo rides: the link's, else the one ridden last, else the first. */
-const soloLevel = (): number =>
-  levelFrom(query.get("level") ?? store.getItem(names.level), 0);
+/** An old or shared link may point beyond the progress saved in this browser. */
+const soloLevel = (): number => {
+  const requested = levelFrom(
+    query.get("level") ?? store.getItem(names.level),
+    0,
+  );
+  return requested <= unlockedLevel() ? requested : unlockedLevel();
+};
+const soloUrl = (level: number | "random") =>
+  withFlags(
+    endpoints.appUrl(
+      level === "random" ? "?solo=1&random=1" : `?solo=1&level=${level}`,
+    ),
+  );
 /** The level a new room starts on: the last lobby's choice, else the tour. */
 const roomLevel = (): number => {
   const stored = store.getItem(roomLevelKey);
@@ -254,30 +268,46 @@ function keyHelp(): HTMLElement {
 }
 
 /** A compact native picker with keyboard type-ahead, shared by solo and rooms. */
-function createLevelPicker(room: boolean, onPick: (level: number) => void) {
+function createLevelPicker(
+  room: boolean,
+  onPick: (level: number | "random") => void,
+) {
   const element = el("label", "", "ef-level-picker");
   const select = el("select");
-  element.append(el("span", "Starting level"), select);
-  for (const choice of LEVEL_CHOICES) {
-    const node = el("option");
-    node.value = String(choice.level);
-    const best = bestTime(store, names.best(LEVELS[choice.level]!.id));
-    node.append(`${choice.level + 1} ${choice.title}`);
-    if (best !== undefined && !room) node.append(` · ${clockText(best)}`);
-    select.append(node);
-  }
-  select.onchange = () => onPick(Number(select.value));
+  element.append(el("span", room ? "Starting level" : "Level"), select);
+  const random = el("option", "Random");
+  random.value = "random";
+  select.onchange = () =>
+    onPick(select.value === "random" ? "random" : Number(select.value));
+  let previousUnlock = -1;
   return {
     element,
-    update(selected: number, editable: boolean) {
-      select.value = String(selected);
+    update(selected: number | "random", editable: boolean, unlocked: number) {
+      if (unlocked !== previousUnlock) {
+        previousUnlock = unlocked;
+        const options = LEVEL_CHOICES.slice(0, unlocked + 1).map((choice) => {
+          const option = el("option", `${choice.level + 1} ${choice.title}`);
+          option.value = String(choice.level);
+          if (!room) {
+            const best = bestTime(store, names.best(LEVELS[choice.level]!.id));
+            if (best !== undefined) option.append(` · ${clockText(best)}`);
+          }
+          return option;
+        });
+        if (!room) options.unshift(random);
+        select.replaceChildren(...options);
+      }
+      select.value = String(
+        selected === "random" ? selected : Math.min(selected, unlocked),
+      );
       select.disabled = !editable;
     },
   };
 }
 
 function landing(): void {
-  let level = soloLevel();
+  let level: number | "random" = soloLevel();
+  const next = progression.next;
   const card = createLandingCard({
     background: async (host) =>
       (await import("./attract.js")).createAttract(host),
@@ -286,6 +316,15 @@ function landing(): void {
     tagline:
       "A springy motorbike, the original 54-level campaign and hundreds of extra tracks. Eat every apple, then touch the flower, and keep your head off the ground. Chase your best times alone, or race up to four friends.",
     soloText: "PLAY SOLO",
+    continuePlay:
+      next !== undefined && next > 0
+        ? {
+            label: `Continue · Level ${next + 1}`,
+            run: () => {
+              location.href = soloUrl(next);
+            },
+          }
+        : undefined,
     async onCreate() {
       const room = await createRoom(endpoints.apiUrl, fetch, GAME).catch(
         (error: unknown) => {
@@ -298,8 +337,8 @@ function landing(): void {
       location.href = withFlags(endpoints.appUrl(`?room=${room.code}`));
     },
     onSolo: () => {
-      store.setItem(names.level, String(level));
-      location.href = withFlags(endpoints.appUrl(`?solo=1&level=${level}`));
+      if (level !== "random") store.setItem(names.level, String(level));
+      location.href = soloUrl(level);
     },
     valid: validRoomCode,
     onJoin: (code) => {
@@ -311,12 +350,14 @@ function landing(): void {
   });
   const picker = createLevelPicker(false, (picked) => {
     level = picked;
-    store.setItem(names.level, String(picked));
-    picker.update(picked, true);
+    picker.update(picked, true, unlockedLevel());
   });
-  picker.update(level, true);
+  picker.update(level, true, unlockedLevel());
   const rules = el("section", "", "ef-landing-rules");
-  rules.append(picker.element);
+  rules.append(
+    picker.element,
+    el("p", "Finish each level to unlock the next. Random can pick any track."),
+  );
   card.solo?.before(rules);
   const back = el("a", "All games", "ef-back");
   back.href = import.meta.env.BASE_URL + (muted ? "?mute" : "");
@@ -329,7 +370,8 @@ function leaderboards(): void {
   const board = createLevelLeaderboards({
     initial: soloLevel(),
     levels: LEVEL_CHOICES,
-    playHref: (level) => withFlags(endpoints.appUrl(`?solo=1&level=${level}`)),
+    playHref: (level) =>
+      level <= unlockedLevel() ? soloUrl(level) : undefined,
     async load(level, signal) {
       const response = await fetch(levelTimesUrl(level), { signal });
       if (!response.ok) throw new Error("Leaderboard unavailable");
@@ -487,6 +529,7 @@ function room(solo: boolean): void {
   lobbyMain.append(el("h2", "RIDERS", "fui-lobby-title"), roster.element);
   start.onclick = () => runtime.command({ type: "action", action: "start" });
   const levelPicker = createLevelPicker(true, (level) => {
+    if (level === "random") return;
     store.setItem(roomLevelKey, String(level));
     runtime.command({ type: "settings", settings: { ...settings, level } });
   });
@@ -544,8 +587,10 @@ function room(solo: boolean): void {
   const rematch = () => runtime.command({ type: "action", action: "rematch" }),
     toLobby = () => runtime.command({ type: "action", action: "lobby" });
   const nextMap = () => {
-    const next = model?.result?.solo?.next;
-    if (next === undefined) return;
+    const result = model?.result?.solo;
+    if (!result?.finished || result.random || result.next > unlockedLevel())
+      return;
+    const { next } = result;
     // The next level, then a rematch: both fold on the same tick, in this order.
     runtime.command({
       type: "settings",
@@ -553,15 +598,13 @@ function room(solo: boolean): void {
     });
     runtime.command({ type: "action", action: "rematch" });
     store.setItem(names.level, String(next));
-    history.replaceState(
-      null,
-      "",
-      withFlags(endpoints.appUrl(`?solo=1&level=${next}`)),
-    );
+    history.replaceState(null, "", soloUrl(next));
   };
   /** The result's main button: NEXT MAP after a solo map ridden home, otherwise another go. */
   const mainAction = () =>
-    model?.result?.solo?.finished ? nextMap() : rematch();
+    model?.result?.solo?.finished && !model.result.solo.random
+      ? nextMap()
+      : rematch();
   // The result: the shared results screen over the page. A phone controller keeps its own two buttons.
   const results = createResultsScreen({
     document,
@@ -912,6 +955,7 @@ function room(solo: boolean): void {
     levelPicker.update(
       view.settings.level,
       next.lobby.editable && view.settings.order === "consecutive",
+      view.unlockedLevel,
     );
     levelPicker.element.hidden = view.settings.order === "random";
     countPicker.value = String(view.settings.count);
@@ -979,11 +1023,14 @@ function room(solo: boolean): void {
         resultReport(result, { color: slotColor, friend }),
       bar: (result) => {
         const bar = resultBar(result);
+        if (result.rounds < view.play.count)
+          bar.status =
+            "The next level is locked. Finish this level to unlock it.";
         const saved = shownMatch ? levelRuns.summary(shownMatch) : undefined;
         if (!saved) return bar;
         return {
           ...bar,
-          status: saved.status,
+          status: [bar.status, saved.status].filter(Boolean).join(" "),
           actions: saved.failed
             ? [{ id: "retry-time", label: "Retry saving time" }, ...bar.actions]
             : bar.actions,
@@ -1057,7 +1104,19 @@ function room(solo: boolean): void {
       shownMatch = frame.matchId;
       const finished = runtime.finishedRun();
       const signedIn = social.isSignedIn();
-      if (finished) levelRuns.offer(finished.race, finished.run, signedIn);
+      if (finished) {
+        levelRuns.offer(finished.race, finished.run, signedIn);
+        // A whole local ride is independent of peer timing. Save it before the rider can leave the result.
+        progression.record(finished.run.level);
+      } else {
+        const progressWorld = solo ? world : runtime.confirmedFrame()?.world;
+        const ownRider = progressWorld?.riders.find(
+          (rider) => rider.id === viewer.me,
+        );
+        if (progressWorld && ownRider?.status === "finished")
+          progression.record(progressWorld.level);
+      }
+      runtime.shareProgress(unlockedLevel());
       if (signedIn) levelRuns.signedIn();
       for (const death of deaths(frame, viewer.me))
         analytics.track("Rider Died", { ...death, mode });
@@ -1121,6 +1180,7 @@ function room(solo: boolean): void {
       display: shared,
       level: solo ? soloLevel() : roomLevel(),
       count: solo ? 1 : 3,
+      order: solo && query.get("random") === "1" ? "random" : "consecutive",
     },
     callbacks,
     session.kind === "room"

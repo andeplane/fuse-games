@@ -7,6 +7,7 @@ import {
 import {
   FINISHED,
   INPUT_MASK,
+  isLevel,
   RACE_LIMIT,
   RESTART,
   RIDER_AHEAD,
@@ -20,6 +21,7 @@ import {
 import type { InputChange, LevelRun } from "../level-times.js";
 import {
   PLAY,
+  PROGRESSION,
   elastoFuseGame,
   type Entry,
   type ElastoFuseGame,
@@ -69,6 +71,7 @@ export class ElastoFuseRuntime extends RoomRuntime<
   Settings
 > {
   private bits = 0;
+  private sentProgress = "";
   /**
    * Presses held since before the race started: they were not pressed in it, so they are not logged until let go.
    * A turn or a restart still down from the countdown, or from the result before, does nothing at the start.
@@ -91,6 +94,17 @@ export class ElastoFuseRuntime extends RoomRuntime<
     game: ElastoFuseGame = elastoFuseGame,
   ) {
     super(game, code, settings, callbacks, options);
+  }
+  /** Share browser progress from this rider's own stream, once per seat generation or new unlock. */
+  shareProgress(level: number): void {
+    const seat = this.player();
+    if (this.solo || !seat?.connected || seat.watcher || !isLevel(level))
+      return;
+    const key = `${seat.generation}:${level}`;
+    if (key === this.sentProgress) return;
+    this.sentProgress = key;
+    this.append(PROGRESSION, level);
+    this.sendPackets(this.deps.now());
   }
   /** Holds `bits` (the engine's `GAS`, `BRAKE`, the volts, `TURN`, `RESTART`) from now on; logs them if this device plays in the match. */
   input(bits: number): void {
@@ -274,6 +288,7 @@ export class ElastoFuseRuntime extends RoomRuntime<
   }
   /** The log was reset (a resync): forget what was logged, not what is held, so `flush` logs the keys still down. */
   protected resetControls(): void {
+    this.sentProgress = "";
     this.sent = { key: "", bits: 0 };
     this.stale = 0;
     this.race = { key: "", goAt: 0, last: 0, logged: -1, whole: false };

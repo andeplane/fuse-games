@@ -15,6 +15,32 @@ function dialogs(dialog: HTMLDialogElement, window: { Event: typeof Event }) {
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+test("Continue precedes Play and starts the saved game directly", () => {
+  const { document } = page();
+  let resumed = 0;
+  const landing = createLandingCard({
+    title: "Fuse",
+    continuePlay: {
+      label: "Continue · Level 2",
+      run: () => {
+        resumed++;
+      },
+    },
+    document,
+    onCreate() {},
+    onSolo() {},
+    valid: () => false,
+    onJoin() {},
+  });
+  document.body.append(landing.element);
+  const resume = landing.menu.play.previousElementSibling as HTMLButtonElement;
+  assert.equal(resume.textContent, "Continue · Level 2");
+  resume.click();
+  assert.equal(resumed, 1);
+  landing.menu.play.click();
+  assert.ok(resume.closest("nav")?.hidden);
+});
+
 test("Single player retains a game's additional local mode after opening and closing its details", () => {
   const { document, window } = page();
   let solo = 0,
