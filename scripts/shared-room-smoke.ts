@@ -1,7 +1,11 @@
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { readyRoom } from "./lib/ready-room.js";
 import type { Page } from "playwright";
-import { BOTH_ENGINES, launchBrowser } from "./lib/browser.js";
+import {
+  BOTH_ENGINES,
+  launchBrowser,
+  resizeSmokeViewport,
+} from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
@@ -80,7 +84,7 @@ for (const { name, kind } of BOTH_ENGINES) {
           { width: 844, height: 390 },
           { width: 320, height: 568 },
         ]) {
-          await phone.setViewportSize(viewport);
+          await resizeSmokeViewport(phone, viewport);
           await phone.locator(".phone-lobby").waitFor();
           assert.equal(
             await phone.locator(".mobile-play").count(),
@@ -176,13 +180,24 @@ for (const { name, kind } of BOTH_ENGINES) {
           await phone
             .getByRole("button", { name: "Player options", exact: true })
             .click();
+          const fullscreen = phone.getByRole("button", {
+            name: /^(?:EXIT )?FULLSCREEN$/,
+          });
+          const fullscreenState = await phone.evaluate(() => ({
+            supported: Boolean(document.fullscreenEnabled),
+            active: Boolean(document.fullscreenElement),
+          }));
           assert.equal(
-            await phone
-              .getByRole("button", { name: "FULLSCREEN", exact: true })
-              .isVisible(),
-            await phone.evaluate(() => Boolean(document.fullscreenEnabled)),
+            await fullscreen.isVisible(),
+            fullscreenState.supported,
             "fullscreen button only where fullscreen exists",
           );
+          if (fullscreenState.supported)
+            assert.equal(
+              await fullscreen.textContent(),
+              fullscreenState.active ? "EXIT FULLSCREEN" : "FULLSCREEN",
+              "fullscreen action reflects the current state",
+            );
           await phone
             .getByRole("button", { name: "Back", exact: true })
             .click();
@@ -417,7 +432,7 @@ for (const { name, kind } of BOTH_ENGINES) {
       { width: 390, height: 844 },
       { width: 844, height: 390 },
     ]) {
-      await guest.setViewportSize(viewport);
+      await resizeSmokeViewport(guest, viewport);
       await guest.locator(".phone-lobby").waitFor();
       assert.equal(
         await guest.locator(".mobile-play").count(),

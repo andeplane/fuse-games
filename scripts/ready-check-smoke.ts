@@ -1,7 +1,7 @@
 import { openPlayOptions } from "./lib/main-menu.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { launchSelected } from "./lib/browser.js";
+import { launchSelected, resizeSmokeViewport } from "./lib/browser.js";
 import { readyRoom } from "./lib/ready-room.js";
 
 const browser = await launchSelected("chromium", { headless: true });
@@ -71,7 +71,7 @@ try {
   await tv.screenshot({ path: "artifacts/ready-check-tv.png" });
   await a.screenshot({ path: "artifacts/ready-check-phone.png" });
   for (const page of [a, b])
-    await page.setViewportSize({ width: 844, height: 390 });
+    await resizeSmokeViewport(page, { width: 844, height: 390 });
   await a.getByRole("button", { name: "READY", exact: true }).click();
   for (const page of [a, b])
     await page.locator(".mobile-play.controller-only").waitFor();
@@ -108,7 +108,7 @@ try {
       "rgb(0, 217, 255)",
     );
   }
-  await b.setViewportSize({ width: 1280, height: 800 });
+  await resizeSmokeViewport(b, { width: 1280, height: 800 });
   const largeBox = await b.locator(".controller-rematch").boundingBox();
   assert.ok(
     largeBox &&
@@ -118,8 +118,8 @@ try {
       largeBox.y + largeBox.height <= 800,
     "the rematch screen also fits a non-mobile controller",
   );
-  await b.setViewportSize({ width: 844, height: 390 });
-  await a.setViewportSize({ width: 844, height: 320 });
+  await resizeSmokeViewport(b, { width: 844, height: 390 });
+  await resizeSmokeViewport(a, { width: 844, height: 320 });
   const ready = a.getByRole("button", {
     name: "READY FOR REMATCH",
     exact: true,
@@ -130,7 +130,7 @@ try {
     "ready fits a short phone viewport",
   );
   await a.screenshot({ path: "artifacts/ready-check-results-landscape.png" });
-  await a.setViewportSize({ width: 390, height: 844 });
+  await resizeSmokeViewport(a, { width: 390, height: 844 });
   await a.screenshot({ path: "artifacts/ready-check-results-portrait.png" });
   await ready.click();
   await a.getByRole("button", { name: "NOT READY", exact: true }).click();
@@ -138,7 +138,7 @@ try {
   await a.locator(".mobile-tools-toggle").click();
   assert.equal(await a.locator(".mobile-tools-open").count(), 1);
   await a.locator(".mobile-tools-toggle").click();
-  await a.setViewportSize({ width: 844, height: 390 });
+  await resizeSmokeViewport(a, { width: 844, height: 390 });
   await readyRoom(a);
   for (const page of [a, b])
     await page.waitForFunction((previous) => {
