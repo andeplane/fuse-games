@@ -519,8 +519,9 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   assert.ok(
     mapBounds &&
       topBarBounds &&
-      mapBounds.y >= topBarBounds.y + topBarBounds.height,
-    "the whole landscape Map button sits below the top bar",
+      (mapBounds.y >= topBarBounds.y + topBarBounds.height ||
+        mapBounds.x + mapBounds.width <= topBarBounds.x),
+    "the whole landscape Map button clears the top bar or compact menu",
   );
   await map.tap();
   await peer.getByRole("button", { name: "Close map", exact: true }).tap();

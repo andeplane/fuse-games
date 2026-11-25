@@ -171,7 +171,12 @@ try {
   assert.match(await b.locator(".controller-identity").innerText(), /P2 BOB/);
   await b.reload();
   await phase(b, "running");
-  await b.locator(".controller-identity", { hasText: "P2 BOB" }).waitFor();
+  // Individual-device fullscreen hides this label. The restored identity and
+  // the available driving control together show that Bob owns the live seat.
+  await b
+    .locator(".controller-identity", { hasText: "P2 BOB" })
+    .waitFor({ state: "attached" });
+  await b.getByRole("button", { name: "OUT ↑", exact: true }).waitFor();
   assert.equal(
     await b.getByPlaceholder("Your name").isVisible(),
     false,

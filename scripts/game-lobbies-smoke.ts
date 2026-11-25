@@ -121,6 +121,15 @@ try {
       step = "empty room and QR";
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
+      // Fuse Particles prompts for a name when the room opens. Check that the
+      // host can dismiss admission and inspect the empty room before joining.
+      if (game === "fuse-particles") {
+        const admission = room.locator(".fui-slot-admission[open]");
+        await admission
+          .getByRole("button", { name: "Back", exact: true })
+          .click();
+        await admission.waitFor({ state: "hidden" });
+      }
       await checkGameMenu(page, game);
       const configurationRoom = [
         "cyberfuse",
