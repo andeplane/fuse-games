@@ -1,0 +1,29 @@
+/*
+ * Phones play the games, not read them (touch-guard.ts): on a touch screen no text outside a field can be selected,
+ * no long press opens Copy or Look Up, and a double tap never zooms. A tap leaves no grey flash.
+ */
+@media (pointer: coarse) {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  html,
+  html *,
+  html *::before,
+  html *::after {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  html
+    :is(
+      input,
+      textarea,
+      select,
+      [contenteditable]:not([contenteditable="false"])
+    ) {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}

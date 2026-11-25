@@ -1,0 +1,86 @@
+/*
+ * Full-screen play on a phone (play-screen.ts sets `data-fui-play` on the root while a round is live).
+ * The stage is the screen, the top bar is its menu button, and nothing scrolls.
+ */
+html[data-fui-play],
+html[data-fui-play] body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+html[data-fui-play] .fui-play-stage {
+  /* The screen's safe edges along the stage's own axes, for controls and HUD drawn at its rim. */
+  --fui-play-top: env(safe-area-inset-top, 0px);
+  --fui-play-right: env(safe-area-inset-right, 0px);
+  --fui-play-bottom: env(safe-area-inset-bottom, 0px);
+  --fui-play-left: env(safe-area-inset-left, 0px);
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 30;
+  box-sizing: border-box;
+  width: 100dvw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: hidden;
+  background: #030919;
+  /* Children size themselves from the stage (cqw, cqh), which is the screen whichever way it is drawn. */
+  container: fui-play / size;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+/* An upright phone: the wide stage is drawn a quarter turn clockwise, for a phone held on its side. */
+html[data-fui-play="turned"] .fui-play-stage {
+  --fui-play-top: env(safe-area-inset-right, 0px);
+  --fui-play-right: env(safe-area-inset-bottom, 0px);
+  --fui-play-bottom: env(safe-area-inset-left, 0px);
+  --fui-play-left: env(safe-area-inset-top, 0px);
+  inset: 0 auto auto 0 !important;
+  width: 100dvh !important;
+  height: 100dvw !important;
+  transform-origin: 0 0;
+  transform: translateX(100dvw) rotate(90deg);
+}
+
+/* The top bar during play: only the menu button, small, in the corner. */
+html[data-fui-play] .fui-top-bar.fui-top-bar {
+  inset: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right))
+    auto auto;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  gap: 0;
+  pointer-events: none;
+}
+html[data-fui-play] .fui-top-bar > .fui-top-bar-left,
+html[data-fui-play] .fui-top-bar > .fui-top-bar-context,
+html[data-fui-play] .fui-top-bar-right > :not(.fui-top-bar-toggle, dialog) {
+  display: none !important;
+}
+html[data-fui-play] .fui-top-bar-right {
+  height: auto;
+}
+html[data-fui-play] .fui-top-bar dialog {
+  pointer-events: auto;
+}
+html[data-fui-play] .fui-top-bar .fui-top-bar-toggle {
+  width: 36px;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  padding: 7px;
+  opacity: 0.72;
+  pointer-events: auto;
+}
+html[data-fui-play="turned"] .fui-top-bar.fui-top-bar {
+  inset: auto max(6px, env(safe-area-inset-right))
+    max(6px, env(safe-area-inset-bottom)) auto;
+}
+html[data-fui-play="turned"] .fui-top-bar .fui-top-bar-toggle {
+  transform: rotate(90deg);
+}

@@ -193,8 +193,9 @@ try {
   assert.ok(
     await gameMenu.getByRole("combobox", { name: "Radio song" }).isVisible(),
   );
+  // Escape walks back from Radio to the menu, and the next one closes it: the battle resumes.
   await page.keyboard.press("Escape");
-  await gameMenu.getByRole("button", { name: "Resume" }).click();
+  await page.keyboard.press("Escape");
   await page.waitForFunction(
     () => document.activeElement?.tagName === "CANVAS",
   );

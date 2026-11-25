@@ -12,6 +12,8 @@ export interface PortalEntry {
   accent: string;
   /** Lower sorts first; games without one sort after those with one, by name. */
   order: number;
+  /** First playable release as a calendar date (YYYY-MM-DD). */
+  releaseDate?: string;
   /** Site-relative gameplay capture, shown behind the game's desktop window while it loads. */
   screenshot?: string;
   /** Distinct game captures in Fusteam's carousel, in display order. */
@@ -44,12 +46,33 @@ const text = (value: unknown, max: number): value is string =>
 /** Validates a parsed `portal.json`; null when a field is missing or malformed. */
 export function parsePortalEntry(raw: unknown): PortalEntry | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const { name, tagline, mark, accent, order, screenshot, screenshots } =
-    raw as Record<string, unknown>;
+  const {
+    name,
+    tagline,
+    mark,
+    accent,
+    order,
+    releaseDate,
+    screenshot,
+    screenshots,
+  } = raw as Record<string, unknown>;
   if (!text(name, 40) || !text(tagline, 80) || !text(mark, 3)) return null;
   if (typeof accent !== "string" || !/^#[0-9a-f]{6}$/i.test(accent))
     return null;
   if (order !== undefined && !Number.isFinite(order)) return null;
+  if (releaseDate !== undefined) {
+    if (
+      typeof releaseDate !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)
+    )
+      return null;
+    const date = new Date(releaseDate);
+    if (
+      !Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== releaseDate
+    )
+      return null;
+  }
   if (
     screenshot !== undefined &&
     (typeof screenshot !== "string" ||
@@ -75,6 +98,7 @@ export function parsePortalEntry(raw: unknown): PortalEntry | null {
     mark,
     accent,
     order: typeof order === "number" ? order : DEFAULT_ORDER,
+    ...(releaseDate !== undefined ? { releaseDate } : {}),
     ...(typeof screenshot === "string" ? { screenshot } : {}),
     ...(Array.isArray(screenshots)
       ? { screenshots: screenshots as string[] }

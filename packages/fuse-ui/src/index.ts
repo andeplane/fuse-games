@@ -42,6 +42,16 @@ export {
   type LandingOptions,
 } from "./landing.js";
 export {
+  browserQrScanner,
+  createQrScanButton,
+  roomFromScan,
+  type QrScanButtonOptions,
+  type QrScanHost,
+  type QrScanner,
+  type ScannedRoom,
+  type StopQrScan,
+} from "./qr-scan.js";
+export {
   createInviteCard,
   createLobby,
   createLobbyShell,
@@ -218,3 +228,25 @@ export {
   createControlList,
   type HowToPlayOptions,
 } from "./how-to-play.js";
+export {
+  browserPlayDevice,
+  boxInStage,
+  createPlayScreen,
+  isTurned,
+  stageBox,
+  type StageBox,
+  localPoint,
+  pointInBox,
+  playModeFor,
+  PHONE_SHORT_SIDE,
+  type LocalPoint,
+  type PlayMode,
+  type PlayScreen,
+  type PlayScreenDevice,
+  type PlayScreenOptions,
+} from "./play-screen.js";
+export {
+  browserTouchDevice,
+  installTouchGuard,
+  type TouchGuardDevice,
+} from "./touch-guard.js";

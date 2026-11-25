@@ -95,7 +95,6 @@ try {
   await start.click();
   await playfield(host).waitFor();
   await host.getByRole("button", { name: /^open game menu$/i }).click();
-  await host.getByRole("button", { name: /^game controls$/i }).click();
   await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await start.waitFor();
   const room = new URL(host.url());

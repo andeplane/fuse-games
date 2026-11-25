@@ -35,7 +35,7 @@ function finishSolo() {
     { humanName: "Ada", humanAvatar: "fox", dependencies },
   );
   runtime.start();
-  assert.equal(runtime.soloRun(), undefined);
+  assert.equal(runtime.finishedRun()?.run, undefined);
   const stepMs = 1000 / STEPS_PER_SECOND;
   for (let step = 0; step < inputs.length + 300; step++) {
     now = step * stepMs + 0.1;
@@ -43,7 +43,7 @@ function finishSolo() {
     const at = Math.floor(ride?.step ?? -1);
     if (at >= 0) runtime.input(inputs[at] ?? 0);
     runtime.tickLoop();
-    const run = runtime.soloRun();
+    const run = runtime.finishedRun()?.run;
     if (run) {
       const time = runtime.roomState()?.world?.riders[0]?.run;
       assert.equal(

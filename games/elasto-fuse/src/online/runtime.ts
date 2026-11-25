@@ -77,8 +77,9 @@ export class ElastoFuseRuntime extends RoomRuntime<
   /** The race or rest the held bits were last logged for, and the bits. */
   private sent = { key: "", bits: 0 };
   /** The race this device's clock runs for, when its step 0 is, and the last whole step seen and logged. */
-  private race = { key: "", goAt: 0, last: 0, logged: -1 };
-  private soloInputs: InputChange[] = [];
+  private race = { key: "", goAt: 0, last: 0, logged: -1, whole: false };
+  /** The input changes this device logged for its own bike in that race: the evidence a level time is verified from. */
+  private raceInputs: InputChange[] = [];
   /** What this device logged lately and the room may not have folded yet, oldest first. */
   private logged: { tick: number; key: string; at: number; bits: number }[] =
     [];
@@ -148,8 +149,9 @@ export class ElastoFuseRuntime extends RoomRuntime<
             STEP_MS;
       }
       const at = Math.max(0, Math.floor((now - goAt) / STEP_MS));
-      this.race = { key, goAt, last: at, logged: -1 };
-      this.soloInputs = [];
+      // Only a clock that ran this bike from step 0 saw every input of its run.
+      this.race = { key, goAt, last: at, logged: -1, whole: at === 0 };
+      this.raceInputs = [];
     }
     const race = this.race;
     let at = Math.floor((now - race.goAt) / STEP_MS);
@@ -185,11 +187,11 @@ export class ElastoFuseRuntime extends RoomRuntime<
     this.log(room, key, at, bits);
   }
   private log(room: Room, key: string, at: number, bits: number): void {
-    if (this.solo && key === this.race.key) {
-      const last = this.soloInputs.at(-1);
+    if (key === this.race.key) {
+      const last = this.raceInputs.at(-1);
       const step = Math.max(at, last?.[0] ?? 0);
       if (last?.[0] === step) last[1] = bits;
-      else if ((last?.[1] ?? 0) !== bits) this.soloInputs.push([step, bits]);
+      else if ((last?.[1] ?? 0) !== bits) this.raceInputs.push([step, bits]);
     }
     const tick = this.recorder.next();
     this.logged = this.logged.filter((entry) => entry.tick > room.tick);
@@ -197,26 +199,35 @@ export class ElastoFuseRuntime extends RoomRuntime<
     this.recorder.at(tick, [PLAY, room.matchId, bits, at, room.round]);
     this.sendPackets(this.deps.now());
   }
-  /** A finished solo run's input evidence, with unexecuted changes at the finish excluded. */
-  soloRun(): LevelRun | undefined {
+  /**
+   * This device's own finished run in the race the room is on, solo or in a room, with its input evidence (unexecuted
+   * changes at the finish excluded) and the race it belongs to (`matchId:round`). Riders never touch, so a room's run
+   * replays alone exactly as a solo one. Nothing when this device did not ride the race from its start.
+   */
+  finishedRun(): { race: string; run: LevelRun } | undefined {
     const room = this.roomState();
     const world = room?.world;
-    const rider = world?.riders[0];
+    const rider = world?.riders.find((each) => each.id === this.id);
+    const race = `${room?.matchId}:${room?.round}`;
     if (
-      !this.solo ||
-      room?.stage !== "over" ||
+      !room ||
+      room.stage === "lobby" ||
       !world ||
       rider?.status !== FINISHED ||
-      this.race.key !== `${room.matchId}:${room.round}`
+      this.race.key !== race ||
+      !this.race.whole
     )
       return;
     return {
-      rules: RULES,
-      level: world.level,
-      steps: rider.finish,
-      inputs: this.soloInputs
-        .filter(([at]) => at < rider.finish)
-        .map(([at, bits]) => [at, bits]),
+      race,
+      run: {
+        rules: RULES,
+        level: world.level,
+        steps: rider.finish,
+        inputs: this.raceInputs
+          .filter(([at]) => at < rider.finish)
+          .map(([at, bits]) => [at, bits]),
+      },
     };
   }
   /**
@@ -265,8 +276,8 @@ export class ElastoFuseRuntime extends RoomRuntime<
   protected resetControls(): void {
     this.sent = { key: "", bits: 0 };
     this.stale = 0;
-    this.race = { key: "", goAt: 0, last: 0, logged: -1 };
-    this.soloInputs = [];
+    this.race = { key: "", goAt: 0, last: 0, logged: -1, whole: false };
+    this.raceInputs = [];
     this.logged = [];
   }
   protected releaseControls(): void {
