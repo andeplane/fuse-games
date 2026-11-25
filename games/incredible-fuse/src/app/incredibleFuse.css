@@ -155,3 +155,179 @@
     padding-inline: 0.35rem;
   }
 }
+
+/*
+ * A phone's live puzzle (fuse-ui play-screen): the bench is the screen. The 8:5 board takes the full height on the
+ * left; the title, RUN, the tools and the parts tray share a column on the right that scrolls on its own.
+ */
+/* The page behind the bench stops at the screen's height, so nothing is left to scroll. */
+html[data-fui-play] .machine-page #app {
+  min-height: 0;
+}
+html[data-fui-play] .machine-stage {
+  --if-side: max(9.5rem, calc(100cqw - 160cqh));
+  background: #12222a;
+}
+html[data-fui-play] .machine-stage > .if-bench {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--if-side);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  width: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .if-bench-layout,
+html[data-fui-play] .if-bench-surface {
+  display: contents;
+}
+html[data-fui-play] .if-board-frame {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  width: min(100%, 160cqh);
+  max-width: none;
+  margin: 0;
+}
+html[data-fui-play] .if-bench-board {
+  width: 100%;
+  max-height: none;
+  margin: 0;
+}
+html[data-fui-play] .if-bench-head,
+html[data-fui-play] .if-bench-foot,
+html[data-fui-play] .if-bench-links,
+html[data-fui-play] .if-bench-tray {
+  grid-column: 2;
+  min-width: 0;
+  border: 0;
+  border-left: 1px solid var(--if-line);
+}
+html[data-fui-play] .if-bench-head {
+  grid-row: 1;
+  display: grid;
+  gap: 4px;
+  padding: max(6px, var(--fui-play-top)) max(8px, var(--fui-play-right)) 6px 8px;
+}
+/* The corner menu button sits over the column's top right: the title wraps clear of it. */
+html[data-fui-play] .if-bench-heading {
+  padding-right: 2.4rem;
+}
+html[data-fui-play] .if-bench-index {
+  display: block;
+  margin: 0;
+  font-size: 0.55rem;
+}
+html[data-fui-play] .if-bench-title {
+  font-size: 0.85rem;
+}
+html[data-fui-play] .if-bench-goal {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+html[data-fui-play] .if-bench-actions {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+html[data-fui-play] .if-bench-run {
+  flex: 1;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+}
+html[data-fui-play] .if-bench-foot {
+  grid-row: 2;
+  min-height: 0;
+  padding: 4px 8px;
+  padding-right: max(8px, var(--fui-play-right));
+}
+html[data-fui-play] .if-bench-feedback {
+  display: none;
+}
+html[data-fui-play] .if-bench-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 4px;
+}
+html[data-fui-play] .if-bench-tools .fui-button,
+html[data-fui-play] .if-bench-links .fui-button {
+  min-height: 2rem;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.62rem;
+}
+html[data-fui-play] .if-bench-links {
+  grid-row: 3;
+  padding: 0 8px 4px;
+}
+html[data-fui-play] .if-bench-tray {
+  grid-row: 4;
+  overflow: auto;
+  padding: 6px 8px max(6px, var(--fui-play-bottom));
+  padding-right: max(8px, var(--fui-play-right));
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+html[data-fui-play] .if-bench-tray-title {
+  display: none;
+}
+html[data-fui-play] .if-bench-parts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: none;
+  overflow: visible;
+}
+html[data-fui-play] .if-bench .if-bench-part {
+  min-height: 3.1rem;
+  padding: 3px;
+  font-size: 0.62rem;
+}
+html[data-fui-play] .if-bench-part canvas {
+  height: 1.5rem;
+}
+html[data-fui-play] .if-bench-anchors {
+  max-height: none;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+html[data-fui-play] .if-bench-fixed {
+  display: flex;
+  max-width: 100%;
+}
+/* The room's line and the sandbox's Save float small over the board's top and bottom left corners. */
+html[data-fui-play] .machine-stage > .machine-live {
+  position: absolute;
+  z-index: 2;
+  top: max(4px, var(--fui-play-top));
+  left: max(6px, var(--fui-play-left));
+  max-width: calc(100% - var(--if-side) - 12px);
+  margin: 0;
+  padding: 2px 8px;
+  background: #0b161dcc;
+  border-radius: 999px;
+}
+html[data-fui-play] .machine-stage > .fui-button {
+  position: absolute;
+  z-index: 2;
+  bottom: max(6px, var(--fui-play-bottom));
+  left: max(6px, var(--fui-play-left));
+  min-height: 2rem;
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+html[data-fui-play] .machine-stage > .fui-round-controls {
+  position: absolute;
+  z-index: 2;
+  left: max(6px, var(--fui-play-left));
+  bottom: max(6px, var(--fui-play-bottom));
+  max-width: calc(100% - var(--if-side) - 12px);
+}
