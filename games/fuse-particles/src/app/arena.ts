@@ -5,6 +5,7 @@ import {
   TICKS_PER_SECOND,
   type BattleState,
 } from "../game/simulation.js";
+import { mapPoint, turnFor, type Turn } from "./map-turn.js";
 import "./arena.css";
 
 export const TEAM_COLORS = [
@@ -23,9 +24,9 @@ interface TeamReadout {
   name: HTMLElement;
   health: HTMLElement;
   fill: HTMLElement;
-  stats: HTMLElement;
   army: HTMLElement;
-  economy: HTMLElement;
+  gold: HTMLElement;
+  kills: HTMLElement;
 }
 
 function canvasSurface(width: number, height: number, alpha = true) {
@@ -305,6 +306,17 @@ function div(className: string): HTMLDivElement {
   return node;
 }
 
+function stat(label: string, short: string) {
+  const item = document.createElement("span");
+  item.className = "fp-arena__stat";
+  const value = document.createElement("b");
+  const unit = document.createElement("span");
+  unit.textContent = label;
+  unit.dataset.short = short;
+  item.append(value, " ", unit);
+  return { item, value };
+}
+
 function readout(color: string, owner: number): TeamReadout {
   const row = div("fp-arena__team");
   row.style.setProperty("--fp-team-color", color);
@@ -319,57 +331,100 @@ function readout(color: string, owner: number): TeamReadout {
   bar.setAttribute("aria-hidden", "true");
   const fill = document.createElement("span");
   bar.append(fill);
-  const stats = document.createElement("div");
-  const army = document.createElement("span");
-  const economy = document.createElement("span");
-  stats.append(army, economy);
-  row.append(mark, name, health, bar);
-  return { row, name, health, fill, stats, army, economy };
+  // Who a number belongs to is never a guess: every count sits in its player's own block, in that player's colour.
+  const stats = div("fp-arena__numbers");
+  const army = stat("particles", "P");
+  const gold = stat("gold", "G");
+  const kills = stat("kills", "K");
+  stats.append(army.item, gold.item, kills.item);
+  row.append(mark, name, health, bar, stats);
+  return {
+    row,
+    name,
+    health,
+    fill,
+    army: army.value,
+    gold: gold.value,
+    kills: kills.value,
+  };
 }
 
 function setText(element: HTMLElement, value: string): void {
   if (element.textContent !== value) element.textContent = value;
 }
 
-export function createArena() {
+export interface ArenaOptions {
+  /** The match view: the map takes all the room its container has, turning on a tall screen. */
+  fill?: boolean;
+}
+
+export function createArena(options: ArenaOptions = {}) {
   const element = div("fp-arena");
+  if (options.fill) element.classList.add("fp-arena--fill");
   const hud = div("fp-arena__hud");
   const clock = document.createElement("time");
-  const stats = div("fp-arena__stats");
-  hud.hidden = stats.hidden = true;
+  hud.hidden = true;
+  const stage = div("fp-arena__stage");
   const { canvas, context } = canvasSurface(2, 1, false);
   canvas.className = "fp-arena__field";
   canvas.setAttribute("aria-label", "Particle battlefield");
-  hud.append(clock);
   const teams = TEAM_COLORS.map((color, owner) => readout(color, owner));
-  for (const { row, stats: summary } of teams) {
-    hud.append(row);
-    stats.append(summary);
-  }
-  element.append(hud, canvas, stats);
+  for (const { row } of teams) hud.append(row);
+  hud.append(clock);
+  stage.append(canvas);
+  element.append(hud, stage);
 
   const motes = TEAM_COLORS.map(paintMote);
   let terrain: HTMLCanvasElement | undefined;
   let terrainKey = "";
   let hudSecond = -1;
+  let turn: Turn = "none";
+  let shown: { cols: number; rows: number } | undefined;
 
-  function render(battle: BattleState, names: readonly string[]): void {
+  function render(
+    battle: BattleState,
+    names: readonly string[],
+    own = -1,
+  ): void {
     const width = battle.cols * TILE;
     const height = battle.rows * TILE;
-    const ratio = `${battle.cols} / ${battle.rows}`;
+    shown = battle;
+    turn = options.fill
+      ? turnFor(
+          battle.cols,
+          battle.rows,
+          stage.clientWidth,
+          stage.clientHeight,
+          own,
+        )
+      : "none";
+    const turned = turn !== "none";
+    const ratio = turned
+      ? `${battle.rows} / ${battle.cols}`
+      : `${battle.cols} / ${battle.rows}`;
     const shape = battle.cols === battle.rows ? "square" : "wide";
-    if (canvas.style.aspectRatio !== ratio) canvas.style.aspectRatio = ratio;
+    if (canvas.style.aspectRatio !== ratio) {
+      canvas.style.aspectRatio = ratio;
+      element.style.setProperty(
+        "--fp-ratio",
+        String(turned ? battle.rows / battle.cols : battle.cols / battle.rows),
+      );
+    }
     if (element.dataset.shape !== shape) element.dataset.shape = shape;
+    if (element.dataset.turn !== turn) element.dataset.turn = turn;
     const dpr = Math.min(2, globalThis.devicePixelRatio ?? 1);
+    // Across the screen the canvas shows the map's width, or its height when the map is on its side.
+    const across = turned ? height : width;
+    const along = turned ? width : height;
     const pixels = Math.max(
       2,
-      Math.round((canvas.clientWidth || width / 4) * dpr),
+      Math.round((canvas.clientWidth || across / 4) * dpr),
     );
-    const pixelHeight = Math.max(1, Math.round((pixels * height) / width));
-    const terrainPixels = Math.min(width, pixels);
+    const pixelHeight = Math.max(1, Math.round((pixels * along) / across));
+    const terrainPixels = Math.min(width, turned ? pixelHeight : pixels);
     const corePositions = battle.cores.map(({ x, y }) => `${x},${y}`);
     const sitePositions = battle.sites.map(({ x, y }) => `${x},${y}`);
-    const key = `${ratio}:${terrainPixels}:${corePositions.join(";")}:${sitePositions.join(";")}:${battle.walls.map(Number).join("")}`;
+    const key = `${battle.cols}/${battle.rows}:${terrainPixels}:${corePositions.join(";")}:${sitePositions.join(";")}:${battle.walls.map(Number).join("")}`;
     if (!terrain || terrainKey !== key) {
       terrain = paintTerrain(battle, terrainPixels);
       terrainKey = key;
@@ -378,11 +433,16 @@ export function createArena() {
       canvas.width = pixels;
       canvas.height = pixelHeight;
     }
-    context.setTransform(pixels / width, 0, 0, pixelHeight / height, 0, 0);
+    const scale = pixels / across;
+    if (turn === "left")
+      context.setTransform(0, -scale, scale, 0, 0, pixelHeight);
+    else if (turn === "right")
+      context.setTransform(0, scale, -scale, 0, pixels, 0);
+    else context.setTransform(scale, 0, 0, pixelHeight / height, 0, 0);
     context.drawImage(terrain, 0, 0, width, height);
 
     const teamCount = names.length === 0 ? 0 : battle.cores.length;
-    hud.hidden = stats.hidden = teamCount === 0;
+    hud.hidden = teamCount === 0;
     element.dataset.teams = String(teamCount);
     const counts = Array<number>(teamCount).fill(0);
     if (teamCount) {
@@ -419,18 +479,32 @@ export function createArena() {
     }
     teams.forEach((team, index) => {
       const core = battle.cores[index];
-      team.row.hidden = team.stats.hidden = !core;
+      team.row.hidden = !core;
       if (!core) return;
+      team.row.classList.toggle("fp-arena__team--own", index === own);
+      team.row.classList.toggle("fp-arena__team--out", core.hp <= 0);
       setText(team.name, names[index] ?? `Team ${index + 1}`);
       setText(team.health, `${Math.max(0, Math.ceil(core.hp))} HP`);
       team.fill.style.width = `${Math.max(0, Math.min(1, core.hp / CORE_HP)) * 100}%`;
-      setText(team.army, `${counts[index] ?? 0} particles`);
-      setText(
-        team.economy,
-        `${Math.floor(core.gold)} gold · ${core.kills} kills`,
-      );
+      setText(team.army, String(counts[index] ?? 0));
+      setText(team.gold, String(Math.floor(core.gold)));
+      setText(team.kills, String(core.kills));
     });
   }
 
-  return { element, canvas, render };
+  /** Where on the map a pointer is, in cells, whichever way the map is turned. */
+  function locate(clientX: number, clientY: number) {
+    if (!shown) return undefined;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return undefined;
+    return mapPoint(
+      (clientX - rect.x) / rect.width,
+      (clientY - rect.y) / rect.height,
+      shown.cols,
+      shown.rows,
+      turn,
+    );
+  }
+
+  return { element, canvas, render, locate };
 }

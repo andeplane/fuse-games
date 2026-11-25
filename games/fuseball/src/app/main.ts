@@ -1,4 +1,9 @@
-import { createHowToPlay, createTopBar } from "fuse-ui";
+import {
+  createHowToPlay,
+  createPlayScreen,
+  createTopBar,
+  localPoint,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -633,7 +638,15 @@ function surface(node: HTMLElement, knob?: HTMLElement): PadSurface {
       for (const type of types)
         node.addEventListener(type, (event) => {
           if (kind === "down" && playtestInputBlocked(document)) return;
-          listener(event as PointerEvent);
+          const pointer = event as PointerEvent,
+            at = localPoint(node, pointer.clientX, pointer.clientY);
+          // Along the pad's own axes: the stage is drawn turned on an upright phone.
+          listener({
+            pointerId: pointer.pointerId,
+            clientX: at.x,
+            clientY: at.y,
+            preventDefault: () => pointer.preventDefault(),
+          });
         });
     },
     capture: (pointerId) => node.setPointerCapture(pointerId),
@@ -645,7 +658,10 @@ function surface(node: HTMLElement, knob?: HTMLElement): PadSurface {
         for (const type of types) window.removeEventListener(type, listener);
       };
     },
-    box: () => node.getBoundingClientRect(),
+    box() {
+      const { width, height } = localPoint(node, 0, 0);
+      return { left: 0, top: 0, width, height };
+    },
     show({ held, x, y }) {
       node.classList.toggle("held", held);
       if (knob)
@@ -883,6 +899,12 @@ function room(solo: boolean): void {
   const { row: touch, set: touchPads } = pads("fb-touch"),
     controllerPads = pads("fb-controller-pads");
   stage.append(sidesRow, screen, note, touch);
+  // A phone's live round is the whole screen; the 16:9 arena is drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => controls.clear(),
+  });
 
   const controller = el("section", "", "fb-controller"),
     controllerHead = el("header", "", "fb-controller-head"),
@@ -1062,6 +1084,7 @@ function room(solo: boolean): void {
     main.dataset.riding = String(next.riding);
     lobby.hidden = next.screen !== "lobby";
     stage.hidden = next.screen !== "play";
+    playScreen.update(next.screen === "play" && view.stage === "running");
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
     // Lobby.
@@ -1252,6 +1275,7 @@ function room(solo: boolean): void {
       say("Room ended", "error");
       over = true;
       controls.clear();
+      playScreen.destroy();
       for (const part of [connecting, nameEntry.form, lobby, stage, controller])
         part.hidden = true;
       closed.hidden = false;

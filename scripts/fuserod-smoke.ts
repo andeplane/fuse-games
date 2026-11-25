@@ -121,10 +121,7 @@ try {
   await ready(host);
   await drive(host);
   await host.getByRole("button", { name: "Open game menu" }).click();
-  await host.getByRole("button", { name: /^game controls$/i }).click();
-  await host
-    .getByRole("button", { name: /back to lobby|return to lobby/i })
-    .click();
+  await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await start.waitFor();
   const guest = await page(360, 800, true);
   await guest.goto(host.url());

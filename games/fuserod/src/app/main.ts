@@ -264,7 +264,7 @@ function play() {
     goal,
     controls,
     touchControls,
-    onLeave: leave,
+    onLeave: () => location.assign(url()),
     onLobby: () =>
       online ? runtime.command({ type: "action", action: "lobby" }) : leave(),
     onOpenChange: (open) => {

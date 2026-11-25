@@ -3,17 +3,21 @@ import assert from "node:assert/strict";
 import type { RuntimeDependencies } from "fuse-netcode";
 import {
   BRAKE,
+  FINISHED,
   GAS,
   RESTART,
   STEPS_PER_TICK,
   TURN,
   VOLT_LEFT,
   VOLT_RIGHT,
+  LEVELS,
   advanceRider,
   createWorld,
   toView,
 } from "../src/engine/index.js";
 import { project } from "../src/app/forward.js";
+import { rideBits } from "../src/app/rides.js";
+import { verifiedTime } from "../src/level-times.js";
 import { DEFAULT_SETTINGS, hash, type Settings } from "../src/online/game.js";
 import {
   ElastoFuseRuntime,
@@ -328,4 +332,28 @@ test("a lobby seat is a choice: a guest joins the seat it asks for, host and gue
   assert.ok(host.command({ type: "action", action: "start" }));
   mesh.run(300);
   assert.notEqual(guest.roomState()!.stage, "lobby", "the moved seats play");
+});
+
+test("a run ridden home in a room is the same evidence as a solo one: its time verifies alone, once per race", () => {
+  const id = "00000lk";
+  const level = LEVELS.findIndex((each) => each.id === id);
+  const { mesh, host, guest } = race({ ...DEFAULT_SETTINGS, level, count: 1 });
+  lossy(mesh, 7);
+  const bits = rideBits(id);
+  let found: ReturnType<typeof guest.finishedRun>;
+  mesh.run(bits.length * 15 + 8_000, () => {
+    const ride = guest.localRide();
+    if (ride) guest.input(bits[Math.floor(ride.step)] ?? 0);
+    found ??= guest.finishedRun();
+  });
+  assert.ok(found, "the guest's finish gave a run");
+  const rider = guest
+    .roomState()!
+    .world!.riders.find((each) => each.id === "guest")!;
+  assert.equal(rider.status, FINISHED);
+  assert.equal(found.run.level, level);
+  assert.equal(verifiedTime(found.run), rider.run, "it replays to the time");
+  const match = guest.roomState()!.matchId;
+  assert.ok(found.race.startsWith(`${match}:`));
+  assert.equal(host.finishedRun(), undefined, "the host never got home");
 });

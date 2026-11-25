@@ -183,6 +183,8 @@ function room(solo: boolean) {
   let lastFrame: Parameters<FuseParticlesCallbacks["state"]>[0] | undefined;
   let resultKey = "",
     mapKey = "";
+  // A newcomer without a name is asked for one on arrival, once: the first open seat's own Join, pressed for them.
+  let invited = solo || display;
   const sent = new Set<string>();
   const leave = () => {
     runtime.stop();
@@ -284,7 +286,6 @@ function room(solo: boolean) {
     ...(invite ? { invite: invite.element } : {}),
     primaryAction: start,
     heading: solo ? "Solo match" : "Room",
-    layout: "configuration",
     compact: solo,
     configuration: [mapTools, mapPreview.element, lobbyNote],
     actionsInHeader: true,
@@ -300,11 +301,8 @@ function room(solo: boolean) {
     ...(solo ? {} : { extras: [sharedTv.element] }),
   });
   const battleSection = el("section", "", "fp-match");
-  const arena = createArena();
-  const commands = createCommands(
-    (action) => runtime.play(action),
-    arena.canvas,
-  );
+  const arena = createArena({ fill: true });
+  const commands = createCommands((action) => runtime.play(action), arena);
   battleSection.append(arena.element, commands.element);
   const results = createResultsScreen({
     document,
@@ -403,6 +401,16 @@ function room(solo: boolean) {
           }
           if (remove) remove.hidden = !removable;
         }
+        if (ownSeat) invited = true;
+        else if (!invited && !nameEntry.form.hidden) {
+          const join = lobby.querySelector<HTMLButtonElement>(
+            ".fui-room-open-slot:not(.fui-slot-occupied) .fui-slot-join:not([hidden]):not(:disabled)",
+          );
+          if (join && !document.querySelector("dialog[open]")) {
+            invited = true;
+            join.click();
+          }
+        }
         addBot.hidden = !isHost || display || frame.players.length >= CAPACITY;
         start.hidden = !isHost || display;
         start.disabled =
@@ -431,6 +439,7 @@ function room(solo: boolean) {
         arena.render(
           frame.battle,
           frame.fighters.map((seat) => seat.name),
+          display ? -1 : fighter,
         );
         commands.update(frame.battle, display ? -1 : fighter, frame.matchId);
       }

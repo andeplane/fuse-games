@@ -1,4 +1,9 @@
-import { createTopBar, createHowToPlay, type HowToPlayOptions } from "fuse-ui";
+import {
+  createGameMenu,
+  createTopBar,
+  createHowToPlay,
+  type HowToPlayOptions,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -328,13 +333,19 @@ function room() {
       live.show(text, "info");
     }
   };
-  // Leaving and reconnecting are the bar's menu's: the room has Back, a shift has only the bar.
-  const exit = button("LEAVE"),
+  // Leaving and reconnecting are the bar's menu's: the room has Back, a shift has only the bar. The shared game
+  // menu gives the host Back to lobby during a shift and everyone Main menu, as in every game.
+  const gameMenu = createGameMenu({
+      ...HOW_TO_PLAY,
+      onLobby: () => runtime?.command({ type: "action", action: "lobby" }),
+      onLeave: leave,
+    }),
     retry = button("RECONNECT", "retry"),
     menu = el("div", "", "gs-menu");
-  exit.onclick = leave;
+  const coarse = () => matchMedia("(pointer: coarse)").matches;
+  gameMenu.update({ canLobby: false, touch: coarse() });
   retry.onclick = () => location.reload();
-  menu.append(exit, retry);
+  menu.append(gameMenu.element, retry);
   app.append(header([live.element, menu], leave));
   const main = el("main", "", "room"),
     lobby = el("section", "", "lobby"),
@@ -621,6 +632,12 @@ function room() {
           shared,
           host && !display && !solo && frame.stage === "lobby",
         );
+        gameMenu.update({
+          canLobby: host && !display && !solo && frame.stage !== "lobby",
+          touch: coarse() || (shared && !!mine),
+          spectator: display,
+          display,
+        });
         ready.hidden = display || !mine;
         ready.textContent = frame.ready[self] ? "WAITING FOR CREW…" : "READY";
         // A newcomer without a seat still needs the name form, which the screen would cover.
