@@ -116,6 +116,24 @@ export function reportArticle(
     heading,
     node("p", "private-copy", report.text || "Screenshot report"),
   );
+  const gameState = report.gameState;
+  if (gameState) {
+    const state = node("details", "report-state");
+    const data = node("pre", "private-copy");
+    state.append(node("summary", "", "Game state"), data);
+    state.addEventListener(
+      "toggle",
+      () => {
+        try {
+          data.textContent = JSON.stringify(JSON.parse(gameState), null, 2);
+        } catch {
+          data.textContent = gameState;
+        }
+      },
+      { once: true },
+    );
+    article.append(state);
+  }
   const controls = node("div", "inline-controls");
   if (report.offsetMs !== undefined && seek)
     controls.append(

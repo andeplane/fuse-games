@@ -320,11 +320,12 @@ export function applyTrade(
 ): void {
   economy.impact[asset] = fill(economy, asset, qty, buy).impact;
 }
-/** Savings interest this week on `balance`: (policy rate − 1%) a year. */
+/** Annual savings rate, as a percentage. */
+export const savingsRate = (economy: Economy): number =>
+  Math.max(0, economy.policyRate - C.savings.below);
+/** Savings interest credited this week, in whole dollars. */
 export const interest = (economy: Economy, balance: number): number =>
-  Math.floor(
-    (balance * Math.max(0, economy.policyRate - C.savings.below)) / 100 / 52,
-  );
+  Math.floor((balance * savingsRate(economy)) / 100 / 52);
 
 // ---- the weekly step -----------------------------------------------------------------------------------------
 

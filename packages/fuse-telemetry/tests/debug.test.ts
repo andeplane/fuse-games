@@ -215,6 +215,35 @@ test("standalone reports are retry-safe, owned recording references and screensh
   );
   assert.equal((await service.listReports()).reports.length, 1);
 });
+test("report game state is validated, retained and included in the retry fingerprint", async () => {
+  const { service } = setup();
+  const gameState = JSON.stringify({ version: 1, week: 18 });
+  const submission = { ...report, gameState };
+  for (const invalid of [
+    "broken JSON",
+    "[]",
+    "null",
+    JSON.stringify({ note: "ø".repeat(20_000) }),
+  ]) {
+    await assert.rejects(() =>
+      service.submitReport("opaque-ip", undefined, {
+        ...report,
+        gameState: invalid,
+      }),
+    );
+  }
+  const first = await service.submitReport("opaque-ip", undefined, submission);
+  assert.deepEqual(
+    await service.submitReport("opaque-ip", undefined, submission),
+    first,
+  );
+  assert.equal((await service.report(report.id)).gameState, gameState);
+  await assert.rejects(
+    () => service.submitReport("opaque-ip", undefined, report),
+    /conflict/,
+  );
+});
+
 test("report enum fields reject coercible arrays and objects before any write", async () => {
   const { service, database, objects } = setup();
   const jpeg = Buffer.from([255, 216, 0, 0, 0, 0, 0, 255, 217]).toString(

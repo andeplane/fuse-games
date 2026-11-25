@@ -9,6 +9,7 @@ import {
   type RecordingDetail,
 } from "./debug-contracts.js";
 import {
+  isReportGameState,
   recordingKey,
   reportKey,
   segmentKey,
@@ -96,6 +97,7 @@ export function reportView(r: ReportRecord, now: number): ReportView {
     receivedAt,
     recordingId,
     offsetMs,
+    gameState,
   } = r;
   return {
     id,
@@ -104,6 +106,7 @@ export function reportView(r: ReportRecord, now: number): ReportView {
     text,
     createdAt,
     receivedAt,
+    ...(gameState === undefined ? {} : { gameState }),
     ...(recordingId ? { recordingId, offsetMs } : {}),
     ...(r.screenshotKey && r.ready && r.mediaExpiresAt > now
       ? { screenshotUrl: `/api/dev/reports/${id}/screenshot` }
@@ -445,6 +448,8 @@ export class DebugService {
           integer(input.offsetMs) &&
           input.offsetMs <= L.recordingMs),
     );
+    const gameState = input.gameState;
+    debugAssert(gameState === undefined || isReportGameState(gameState));
     let screenshot: Uint8Array | undefined,
       mime: "image/png" | "image/jpeg" | undefined;
     if (input.screenshot !== undefined) {
@@ -479,6 +484,7 @@ export class DebugService {
       gameId: input.gameId,
       category: input.category as ReportSubmission["category"],
       text: input.text,
+      ...(gameState === undefined ? {} : { gameState }),
       createdAt: input.createdAt,
       ...(typeof input.recordingId === "string"
         ? { recordingId: input.recordingId, offsetMs: input.offsetMs as number }

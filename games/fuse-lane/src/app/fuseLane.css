@@ -507,6 +507,13 @@ body.fl-page .fl-clock:enabled:hover {
   font-size: 0.8rem;
   font-weight: 700;
 }
+.fl-status-label {
+  color: var(--fl-forest);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
 .fl-timer-text.low {
   color: var(--fl-coral);
 }
@@ -633,6 +640,12 @@ body.fl-page .fl-end-week {
 .fl-controls {
   display: flex;
   gap: 0.4rem;
+}
+.fl-controls .fl-match-menu.fui-top-bar {
+  position: static;
+  height: auto;
+  min-height: 0;
+  gap: 0;
 }
 .fl-game .fui-game-menu-panel,
 .fl-game .fui-round-controls {
@@ -886,6 +899,21 @@ body.fl-page .fl-close {
   margin: -0.15rem 0 0.5rem;
   color: var(--fl-ink-soft);
   font-size: 0.85rem;
+}
+.fl-belongings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fl-belongings li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 750;
 }
 .fl-cards {
   display: grid;
@@ -1556,7 +1584,7 @@ body.fl-page .fl-game.compact .fl-end-week {
   grid-template-columns: auto 5.5rem minmax(0, 1fr) 3rem;
 }
 
-/* Shared-screen room: a phone controller has no board, the TV has no HUD. */
+/* Shared-screen room: the phone uses place buttons and the TV keeps the menu. */
 .fl-game[data-layout="controller"] .fl-stage,
 .fl-game[data-layout="controller"] .fl-corners {
   display: none;
@@ -1574,10 +1602,6 @@ body.fl-page .fl-game.compact .fl-end-week {
 .fl-game[data-layout="controller"] .fl-strip[hidden] {
   display: none;
 }
-body.fl-display .fl-hud {
-  display: none;
-}
-
 /* ---- Menu ---- */
 .fl-menu {
   display: grid;
