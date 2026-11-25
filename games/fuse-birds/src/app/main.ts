@@ -29,6 +29,7 @@ import {
   createInviteCard,
   createNameEntry,
   createMainMenu,
+  createQrScanButton,
   createLiveResults,
   createResultsScreen,
   createRoomLayout,
@@ -159,6 +160,14 @@ function landing(): void {
   const joinForm = el("form", "", "birds-join");
   join.type = "submit";
   joinForm.append(code, join);
+  const scan = createQrScanButton({
+    valid: validRoomCode,
+    onRoom: (found) => {
+      code.value = found.code;
+      joinForm.requestSubmit();
+    },
+  });
+  if (scan) joinForm.append(scan);
   const message = notice(""),
     back = el("a", "All games", "birds-back");
   back.href = import.meta.env.BASE_URL;

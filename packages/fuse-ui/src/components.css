@@ -95,6 +95,53 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--fui-space-2);
 }
+/* SCAN QR CODE takes a line of its own under the field and JOIN, in a grid row and a wrapping one alike. */
+.fui-join-code-scan {
+  grid-column: 1 / -1;
+  flex: 1 1 100%;
+}
+/* SCAN QR CODE: the camera in a dialog of its own, over whatever page or dialog the button sits in. */
+dialog.fui-qr-scan {
+  width: min(26rem, calc(100vw - 1.5rem));
+  max-width: none;
+  max-height: calc(100dvh - 1.5rem);
+  padding: 0;
+  color: var(--fui-text);
+  background: var(--fui-panel);
+  border: 0.0625rem solid #53def7;
+  border-radius: var(--fui-radius-panel);
+  overflow: hidden;
+  box-shadow: 0 1.5rem 6.25rem #000c;
+}
+dialog.fui-qr-scan[open] {
+  display: flex;
+  flex-direction: column;
+}
+.fui-qr-scan .fui-dialog-body {
+  display: grid;
+  gap: var(--fui-space-3);
+  justify-items: center;
+}
+.fui-qr-scan-video {
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 55dvh;
+  object-fit: cover;
+  background: #000;
+  border: 0.0625rem solid #334965;
+  border-radius: var(--fui-radius-panel);
+}
+.fui-qr-scan-status {
+  margin: 0;
+  font:
+    1rem/1.5 system-ui,
+    sans-serif;
+  text-align: center;
+  color: var(--fui-text);
+}
+.fui-qr-scan-status[data-tone="error"] {
+  color: var(--fui-pink-soft);
+}
 .fui-landing-error {
   min-height: 1.25rem;
   margin: 0;
@@ -1827,6 +1874,8 @@
 .fui-room-layout.fui-room-layout .fui-room-configure,
 .fui-room-layout.fui-room-layout .fui-room-primary-action button,
 .fui-menu-dialog.fui-menu-dialog .fui-join-code button,
+.landing-join .fui-join-code-scan,
+.fui-qr-scan.fui-qr-scan .fui-qr-scan-retry,
 .fui-top-bar-menu.fui-top-bar-menu .fui-top-bar-actions :is(button, a),
 .fui-game-menu.fui-game-menu .fui-game-menu-action {
   box-sizing: border-box;

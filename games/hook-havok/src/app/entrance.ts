@@ -8,7 +8,8 @@ import {
   createTopBar,
   type TopBarSound,
 } from "fuse-ui";
-import { createMainMenu } from "fuse-ui";
+import { createMainMenu, createQrScanButton } from "fuse-ui";
+import { validRoomCode } from "fuse-network-fe";
 
 interface EntranceOptions {
   sound: TopBarSound;
@@ -104,6 +105,14 @@ export function createEntrance(o: EntranceOptions) {
     dialog.prepend(head.element);
   }
   o.join.type = "button";
+  const scan = createQrScanButton({
+    valid: validRoomCode,
+    onRoom: (found) => {
+      o.code.value = found.code;
+      o.join.click();
+    },
+  });
+  if (scan) root.querySelector("#menu-join-form")!.append(scan);
   root.querySelector<HTMLFormElement>("#menu-join-form")!.onsubmit = (e) => {
     e.preventDefault();
     o.join.click();

@@ -42,6 +42,16 @@ export {
   type LandingOptions,
 } from "./landing.js";
 export {
+  browserQrScanner,
+  createQrScanButton,
+  roomFromScan,
+  type QrScanButtonOptions,
+  type QrScanHost,
+  type QrScanner,
+  type ScannedRoom,
+  type StopQrScan,
+} from "./qr-scan.js";
+export {
   createInviteCard,
   createLobby,
   createLobbyShell,
