@@ -331,13 +331,16 @@ export const AUDIT_RECIPES: Record<string, Recipe> = {
   "fuse-lane": async (page) => {
     await single(page);
     await press(page, "START");
-    await page.locator('.fl-room[data-phase="running"]').waitFor();
+    // The room's own box is empty (the town is fixed over the screen): attached, not visible.
+    await page
+      .locator('.fl-room[data-phase="running"]')
+      .waitFor({ state: "attached" });
     await press(page, "SKIP").catch(() => undefined);
   },
   "fuse-craft": async (page) => {
     await single(page);
     await press(page, "New game");
-    await press(page, /^START/);
+    await press(page, /^Start/i);
     await page.waitForTimeout(6000);
   },
   "hook-havok": async (page) => {
