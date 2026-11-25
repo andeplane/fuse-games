@@ -59,6 +59,7 @@ function panelFixture(
     pageSize?: number;
     activityApiUrl?: string;
     document?: Document;
+    auth?: Partial<AccountAuth<{ name: string }>>;
   } = {},
 ) {
   const document = options.document ?? page().document;
@@ -104,7 +105,7 @@ function panelFixture(
     Match,
     string
   >({
-    auth,
+    auth: { ...auth, ...options.auth },
     fetch: async (input, init) => {
       const url = String(input);
       requests.push(`${init?.method ?? "GET"} ${url}`);
@@ -242,6 +243,44 @@ test("account dialog: signed out, then stats with its own paged history", async 
   assert.equal(f.tab("STATS")!.getAttribute("aria-current"), "page");
   assert.equal(body.dataset.view, "stats");
   assert.equal(body.querySelector(".fui-account-matches"), null);
+});
+
+test("Google sign-in can be retried before the popup reports that it closed", async () => {
+  const attempts: Array<{
+    resolve(): void;
+    reject(reason: Error): void;
+  }> = [];
+  const f = panelFixture({
+    auth: {
+      signIn: () =>
+        new Promise<void>((resolve, reject) => {
+          attempts.push({ resolve, reject });
+        }),
+      failure: () => "",
+    },
+  });
+  f.panel.button.click();
+  await settle();
+  const enter = f.named("SIGN IN WITH GOOGLE")!;
+  const status = f.body.querySelector('[role="alert"]')!;
+
+  enter.click();
+  assert.equal(enter.disabled, false);
+  enter.click();
+  assert.equal(attempts.length, 2);
+  attempts[0]!.reject(new Error("Superseded"));
+  await settle();
+  assert.equal(status.textContent, "");
+
+  attempts[1]!.reject(new Error("Popup closed"));
+  await settle();
+  assert.equal(status.textContent, "Sign-in canceled. You can try again.");
+  assert.deepEqual(f.tracked, []);
+  enter.click();
+  assert.equal(status.textContent, "");
+  attempts[2]!.resolve();
+  await settle();
+  assert.deepEqual(f.tracked, ["Signed In"]);
 });
 
 test("an empty filtered feed page can continue from the server cursor", async () => {

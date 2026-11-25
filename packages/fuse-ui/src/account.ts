@@ -20,7 +20,7 @@ export interface AccountAuth<Account extends { name: string }> {
   signOut(): Promise<void>;
   /** Remember the username on this browser. */
   remember(username: string): void;
-  /** Why a sign-in failed, for the player. */
+  /** Why a sign-in failed, for the player. Returns an empty string when canceled. */
   failure(error: unknown): string;
 }
 
@@ -82,6 +82,7 @@ export interface AccountText {
   label: string;
   signIn: string;
   signInWith: string;
+  signInCanceled: string;
   signedOutNote: string;
   /** The MATCHES tab's note for a signed-out viewer who asked for their own games. */
   signedOutMatches: string;
@@ -133,6 +134,7 @@ const DEFAULT_TEXT: AccountText = {
   label: "Account",
   signIn: "SIGN IN",
   signInWith: "SIGN IN WITH GOOGLE",
+  signInCanceled: "Sign-in canceled. You can try again.",
   signedOutNote:
     "Sign in to keep a history of every match you finish and your career totals, on any device. Playing never needs an account. Your name, avatar and Elo appear on the public leaderboard after a rated round; your email is never shown.",
   signedOutMatches:
@@ -369,6 +371,7 @@ export function createAccountDialog<
 
   let account: Account | undefined,
     generation = 0,
+    signInAttempt = 0,
     view: AccountView = "stats",
     scope: AccountScope = "everyone",
     opened: Match | undefined,
@@ -613,15 +616,15 @@ export function createAccountDialog<
       enter = plainButton(text.signInWith);
     error.setAttribute("role", "alert");
     enter.onclick = async () => {
-      enter.disabled = true;
+      // Firebase replaces the previous popup on retry, even if its close has not been reported yet.
+      const attempt = ++signInAttempt;
       error.textContent = "";
       try {
         await auth.signIn();
-        options.track("Signed In");
+        if (attempt === signInAttempt) options.track("Signed In");
       } catch (failure) {
-        error.textContent = auth.failure(failure);
-      } finally {
-        enter.disabled = false;
+        if (attempt === signInAttempt)
+          error.textContent = auth.failure(failure) || text.signInCanceled;
       }
     };
     // Held until sign-in is loaded: a tap that had to wait for the download would find its popup blocked, notably in Safari.
