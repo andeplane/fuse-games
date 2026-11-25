@@ -663,19 +663,23 @@ function room(): void {
     goal: TOWN_GOAL,
     onLeave: leave,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onOpenChange(open) {
-      if (!open && main.dataset.phase === "running") {
-        screen.game.tabIndex = -1;
-        screen.game.focus({ preventScroll: true });
-      }
-    },
+  });
+  const menuBar = matchMenu(gameMenu.element, (open) => {
+    if (
+      !open &&
+      main.dataset.phase === "running" &&
+      !playtestInputBlocked(document)
+    ) {
+      screen.game.tabIndex = -1;
+      screen.game.focus({ preventScroll: true });
+    }
   });
   const screen = createGameScreen(
     art,
     viewer,
     () => runtime,
     {
-      controls: [matchMenu(gameMenu.element)],
+      controls: [menuBar],
       again: () => runtime.command({ type: "action", action: "rematch" }),
       back: () => runtime.command({ type: "action", action: "lobby" }),
       leave,

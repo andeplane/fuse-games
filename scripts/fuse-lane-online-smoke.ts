@@ -61,6 +61,15 @@ async function running(target: Page, layout: string): Promise<void> {
     )
     .waitFor();
 }
+
+async function openMatchMenu(target: Page): Promise<void> {
+  await target
+    .getByRole("button", { name: "Open game menu", exact: true })
+    .click();
+  await target
+    .getByRole("button", { name: "Report · Ctrl+X", exact: true })
+    .waitFor();
+}
 try {
   const host = await page();
   const guest = await page(true);
@@ -72,11 +81,18 @@ try {
   // The match fills the screen: the app's bar is away, and the room's line stays quiet while all is well.
   await host.locator(".fl-top").waitFor({ state: "hidden" });
   assert.equal(await host.locator(".fl-status").isVisible(), false);
-  await guest.getByRole("button", { name: "MENU", exact: true }).click();
+  await guest.getByRole("button", { name: "My status", exact: true }).click();
+  await guest.getByText("Wearing: Casual · 6 weeks left").waitFor();
+  await guest.locator(".fl-you .fl-close").click();
+  await openMatchMenu(guest);
+  await guest
+    .getByRole("button", { name: "Game controls", exact: true })
+    .click();
   await guest.getByRole("button", { name: "CONTROLS", exact: true }).click();
   await guest.locator(".fui-game-menu-controls .fui-controls-list").waitFor();
   await guest.keyboard.press("Escape");
   await guest.locator(".fui-game-menu-panel").waitFor({ state: "hidden" });
+  await guest.locator(".fl-game:focus").waitFor();
   await host
     .getByRole("button", { name: "CALL IT A WEEK", exact: true })
     .click();
@@ -107,7 +123,15 @@ try {
   await running(tv, "tv");
   await running(first, "controller");
   await running(second, "controller");
-  await tv.getByRole("button", { name: "MENU", exact: true }).click();
+  const display = await page();
+  await display.goto(
+    `${service.url}fuse-lane/?room=${sharedCode}&display=1&mute`,
+  );
+  await running(display, "tv");
+  await openMatchMenu(display);
+  await display.context().close();
+  await openMatchMenu(tv);
+  await tv.getByRole("button", { name: "Game controls", exact: true }).click();
   await tv.getByRole("button", { name: "CONTROLS", exact: true }).click();
   await tv
     .getByText(
