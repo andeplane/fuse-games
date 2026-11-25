@@ -520,3 +520,92 @@ canvas:focus-visible {
     transition: none !important;
   }
 }
+/*
+ * A phone's live battle (fuse-ui play-screen): the sky is the whole screen, the scoreboard and the turn float over
+ * its top beside the menu button, the weapons and PASS over its foot and the camera buttons above them.
+ */
+html[data-fui-play] .birds-board {
+  display: block;
+  padding: 0;
+}
+html[data-fui-play] .birds-board > .birds-canvas {
+  position: absolute;
+  inset: 0;
+}
+html[data-fui-play] .birds-board > .birds-scorebar {
+  position: absolute;
+  top: max(4px, var(--fui-play-top));
+  left: max(4px, var(--fui-play-left));
+  right: calc(48px + var(--fui-play-right));
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+html[data-fui-play] .birds-board .birds-player {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 130px;
+  padding: 4px 6px;
+  font-size: 6px;
+  background: #071329b3;
+}
+html[data-fui-play] .birds-board .birds-player b {
+  font-size: 10px;
+}
+html[data-fui-play] .birds-board > .birds-turn {
+  position: absolute;
+  top: calc(max(4px, var(--fui-play-top)) + 30px);
+  left: 0;
+  right: 0;
+  padding: 2px 8px;
+  background: transparent;
+  font-size: 7px;
+  text-shadow: 0 1px 2px #030b1d;
+  pointer-events: none;
+}
+html[data-fui-play] .birds-board > .birds-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 0;
+  gap: 8px;
+  padding: 6px max(8px, var(--fui-play-right)) max(6px, var(--fui-play-bottom))
+    max(8px, var(--fui-play-left));
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+html[data-fui-play] .birds-board > .birds-controls > * {
+  pointer-events: auto;
+}
+html[data-fui-play] .birds-board .birds-weapons {
+  gap: 6px;
+}
+html[data-fui-play] .birds-board .birds-weapon {
+  grid-template-rows: 18px 16px;
+  min-width: 112px;
+  padding: 4px 8px;
+  background: #060e20bf;
+}
+html[data-fui-play] .birds-board .birds-turn-actions button {
+  min-height: 40px;
+}
+html[data-fui-play] .birds-board .birds-hint {
+  display: none;
+}
+html[data-fui-play] .birds-board > .birds-camera {
+  right: max(8px, var(--fui-play-right));
+  bottom: calc(max(6px, var(--fui-play-bottom)) + 56px);
+  gap: 4px;
+}
+html[data-fui-play] .birds-board > .birds-camera button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 8px;
+  background: #07172bb3;
+}

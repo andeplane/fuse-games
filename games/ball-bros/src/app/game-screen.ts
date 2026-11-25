@@ -2,6 +2,7 @@ import {
   createGameMenu,
   createHowToPlay,
   createLiveResults,
+  createPlayScreen,
   createResultsScreen,
   elementsFor,
   type RoomFriends,
@@ -332,6 +333,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       .querySelectorAll(".pressed")
       .forEach((b) => b.classList.remove("pressed"));
   };
+  // A phone's live round is the whole screen: the square arena with the scores and the pads floating around it.
+  const playScreen = createPlayScreen({ stage: layout, onChange: cancel });
   root.tabIndex = -1;
   options.attachHeader?.(top, (open) => {
     if (open) cancel();
@@ -387,6 +390,16 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   function update(v: BallView | RoomView): void {
     latest = v;
     root.dataset.phase = "stage" in v ? v.stage : (v.arena?.phase ?? "loading");
+    // Live: a round under way on this device's own arena (not a shared screen's TV or its phone controllers).
+    const phase = v.arena?.phase,
+      live =
+        !options.online?.display &&
+        !(options.online && shared) &&
+        (!("stage" in v) || v.stage === "running") &&
+        (phase === "countdown" || phase === "playing");
+    playScreen.update(live);
+    // Alone, the pads show only while the round runs; a room's follow its seat.
+    if (!options.online) controlsRow.hidden = !live;
     if ("stage" in v && options.online) {
       const m = roomModel(
         v,
@@ -542,12 +555,14 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
           playing = false;
           cancel();
           controlsRow.hidden = true;
+          playScreen.update(false);
           say("Room ended. Leave to create another room.");
         },
         kicked: () => {
           playing = false;
           cancel();
           controlsRow.hidden = true;
+          playScreen.update(false);
           say("You were removed from the room.");
         },
       });
@@ -555,6 +570,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     } catch (error) {
       graphicsFailed = true;
       playing = false;
+      playScreen.update(false);
       // The retry is on the overlay, under the results screen.
       showResult(undefined);
       overlay.hidden = false;
@@ -628,6 +644,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     runtime?.stop();
     runtime = undefined;
     playing = false;
+    playScreen.update(false);
     showResult(undefined);
     overlay.hidden = false;
     layout.hidden = false;
@@ -678,6 +695,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     stopPlaytestInput();
     cancel();
     runtime?.stop();
+    playScreen.destroy();
     options.cancelFrame(frame);
     renderer.destroy();
     audio.destroy();

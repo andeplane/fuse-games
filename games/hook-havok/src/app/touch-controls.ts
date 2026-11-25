@@ -1,3 +1,4 @@
+import { localPoint } from "fuse-ui";
 import { TouchInput, type AimMode, type TouchState } from "./touch-input.js";
 
 export interface TouchControls {
@@ -42,9 +43,10 @@ export function createTouchControls(
   };
   for (const { pad, element, knob } of pads) {
     const update = (event: PointerEvent) => {
-      const box = element.getBoundingClientRect();
-      const x = (event.clientX - box.left - box.width / 2) / (box.width / 2);
-      const y = (event.clientY - box.top - box.height / 2) / (box.height / 2);
+      // Along the pad's own axes: a phone's play screen draws the arena turned when the phone is upright.
+      const box = localPoint(element, event.clientX, event.clientY);
+      const x = (box.x - box.width / 2) / (box.width / 2);
+      const y = (box.y - box.height / 2) / (box.height / 2);
       if (!model.update(pad, event.pointerId, x, y)) return;
       if (pad === "move")
         knob.style.transform = `translate(${Math.max(-1, Math.min(1, x)) * 32}px, ${Math.max(-1, Math.min(1, y)) * 32}px)`;

@@ -573,3 +573,153 @@ h1 {
   border-color: #b1ef3c;
   font-weight: 800;
 }
+
+/* A phone's live round (fuse-ui play-screen): the square arena fills the screen's short side; the scores, the clock
+   and the pads float in the room it leaves, above and below it upright, beside it on its side. */
+html[data-fui-play] .layout {
+  display: grid;
+  place-items: center;
+  gap: 0;
+  padding: 0;
+}
+html[data-fui-play] .arena-wrap {
+  width: min(100cqw, 100cqh);
+  max-width: none;
+  margin: 0;
+}
+html[data-fui-play] .canvas-host canvas {
+  border-radius: 0;
+}
+html[data-fui-play] .sidebar {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  pointer-events: none;
+}
+html[data-fui-play] .sidebar > :not(.clock, .quiet-button) {
+  display: none;
+}
+html[data-fui-play] .clock {
+  font-size: 24px;
+  line-height: 1;
+}
+html[data-fui-play] .sidebar .quiet-button {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 10px;
+  pointer-events: auto;
+}
+html[data-fui-play] .scoreboard,
+html[data-fui-play] .touch-controls,
+html[data-fui-play] .power-status {
+  position: fixed;
+  z-index: 31;
+  box-sizing: border-box;
+  margin: 0;
+}
+html[data-fui-play] .controller-identity,
+html[data-fui-play] .card-label {
+  display: none;
+}
+html[data-fui-play] .scorecard {
+  min-height: 0;
+  padding: 4px 6px;
+  gap: 0;
+}
+html[data-fui-play] .scorecard .player-name {
+  overflow: hidden;
+  font-size: 8px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-fui-play] .scorecard strong {
+  font-size: 14px;
+}
+html[data-fui-play] .touch-controls {
+  gap: 6px;
+  max-width: none;
+  pointer-events: none;
+}
+html[data-fui-play] .touch-controls .pad {
+  min-height: 52px;
+  padding: 0 4px;
+  opacity: 0.85;
+  pointer-events: auto;
+}
+html[data-fui-play] .power-status {
+  left: 50%;
+  translate: -50% 0;
+  max-width: 90vw;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #0a1425cc;
+  font-size: 11px;
+  text-align: center;
+  pointer-events: none;
+}
+/* Upright: the scores and the clock above the arena, under the menu button; the pads in a row below it. */
+@media (orientation: portrait) {
+  html[data-fui-play] .scoreboard {
+    inset: max(48px, calc(env(safe-area-inset-top) + 42px)) 8px auto 8px;
+    gap: 4px;
+  }
+  html[data-fui-play] .sidebar {
+    top: max(100px, calc(env(safe-area-inset-top) + 94px));
+    left: 12px;
+    right: 12px;
+    justify-content: space-between;
+  }
+  html[data-fui-play] .touch-controls {
+    inset: auto 8px max(10px, env(safe-area-inset-bottom)) 8px;
+  }
+  html[data-fui-play] .touch-controls .pad {
+    min-height: 64px;
+  }
+  html[data-fui-play] .power-status {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 76px);
+  }
+}
+/* On its side: the scores down the left margin, the clock in the right; steering at the foot of each, LAUNCH above
+   the right thumb. */
+@media (orientation: landscape) {
+  html[data-fui-play] .scoreboard {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    width: min(8rem, calc((100vw - 100dvh) / 2 - 16px));
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  html[data-fui-play] .sidebar {
+    top: 52px;
+    right: max(12px, env(safe-area-inset-right));
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  html[data-fui-play] .touch-controls {
+    inset: auto max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    grid-template-columns: repeat(2, 5rem) 1fr repeat(2, 5rem);
+  }
+  html[data-fui-play] .touch-controls .pad.left {
+    grid-area: 2 / 1;
+  }
+  html[data-fui-play] .touch-controls .pad.inward {
+    grid-area: 2 / 2;
+  }
+  html[data-fui-play] .touch-controls .pad.launch {
+    grid-area: 1 / 4 / 2 / 6;
+  }
+  html[data-fui-play] .touch-controls .pad.outward {
+    grid-area: 2 / 4;
+  }
+  html[data-fui-play] .touch-controls .pad.right {
+    grid-area: 2 / 5;
+  }
+  html[data-fui-play] .power-status {
+    top: max(8px, env(safe-area-inset-top));
+  }
+}

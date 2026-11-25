@@ -941,7 +941,7 @@ function room(solo: boolean): void {
     note.hidden = !next.note;
     // Only while the race runs: the results and the lobby are tapped, not steered (the pads covered the results).
     const racing = view.stage === "running" && !next.result;
-    playScreen.update(next.screen === "play" && racing);
+    playScreen.update(next.screen === "play" && racing && !display);
     const touchOn = coarse() && next.riding && !display && racing;
     touch.row.hidden = !touchOn;
     main.dataset.touch = String(touchOn);

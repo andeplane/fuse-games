@@ -15,6 +15,7 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
+  createPlayScreen,
   createRoomLayout,
   createResultsScreen,
   createPendingSettings,
@@ -170,7 +171,11 @@ const keyboardHint = () => {
 };
 const arenaDisplay = (wideScreen: boolean) => ({
   wideScreen,
-  viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  // A phone's live match is drawn a quarter turn on an upright screen (fuse-ui play-screen): the cave sees it on its side.
+  viewport: () =>
+    document.documentElement.dataset.fuiPlay === "turned"
+      ? { width: window.innerHeight, height: window.innerWidth }
+      : { width: window.innerWidth, height: window.innerHeight },
   touchControls: () =>
     matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0,
 });
@@ -689,6 +694,12 @@ function room(solo: boolean) {
   connection.append(el("strong", code, "liero-code"), status.element);
   play.append(hud, score, arenaWrap, weaponBar, hints, pad);
   play.hidden = true;
+  // A phone's live match is the whole screen, drawn turned when the phone is upright; the pads move under the thumbs.
+  const playScreen = createPlayScreen({
+    stage: play,
+    wide: true,
+    onChange: () => controls.release(),
+  });
   main.append(connection, nameEntry.form, lobby, play, liveLoadout.dialog);
   const results = createResultsScreen({
     onAction: (action) =>
@@ -781,6 +792,7 @@ function room(solo: boolean) {
       else pendingSettings.answered(frame.settings);
       main.dataset.phase = frame.stage;
       main.dataset.round = String(frame.round);
+      playScreen.update(frame.stage === "running" && !display && !!own);
       lobby.hidden = !inLobby;
       play.hidden = inLobby;
       if (
@@ -1067,6 +1079,7 @@ function room(solo: boolean) {
     },
     ended() {
       controls.release();
+      playScreen.destroy();
       status.show("Room ended. Return to the menu to reconnect.", "error");
     },
   };

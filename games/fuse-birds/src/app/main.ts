@@ -31,6 +31,8 @@ import {
   createMainMenu,
   createQrScanButton,
   createLiveResults,
+  createPlayScreen,
+  localPoint,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -476,6 +478,13 @@ function room(
   footer.append(weapons, turnActions, hint, outcome);
   board.append(scorebar, turn, sky, overlay, cameraBar, footer);
   board.hidden = true;
+  // A phone's live battle is the whole screen. The islands are a wide picture the camera opens on whole, so an upright
+  // phone draws the battle turned rather than as a strip across its middle.
+  const playScreen = createPlayScreen({
+    stage: board,
+    wide: true,
+    onChange: () => cancel(),
+  });
   page.append(header, problem, lobby, board, results.element);
   app.replaceChildren(page);
   // Shared TV is the room's choice, made in the room: the host turns it on here and opens the screen beside it.
@@ -658,9 +667,10 @@ function room(
     cancel();
     gestures.camera = { x: 768, y: 384, zoom: 1 };
   };
+  // Along the canvas's own axes: an upright phone draws the battle turned (fuse-ui play-screen).
   const point = (e: PointerEvent) => {
-    const box = canvas.getBoundingClientRect();
-    return { id: e.pointerId, x: e.clientX - box.left, y: e.clientY - box.top };
+    const { x, y } = localPoint(canvas, e.clientX, e.clientY);
+    return { id: e.pointerId, x, y };
   };
   canvas.onpointerdown = (e) => {
     if (!view || display) return;
@@ -706,11 +716,11 @@ function room(
       following = false;
       e.preventDefault();
       cancel();
-      const box = canvas.getBoundingClientRect();
+      const { x, y } = localPoint(canvas, e.clientX, e.clientY);
       gestures.camera = zoomAt(
         gestures.camera,
         gestures.camera.zoom * Math.exp(-e.deltaY * 0.002),
-        { x: e.clientX - box.left, y: e.clientY - box.top },
+        { x, y },
         view,
         viewport(),
       );
@@ -756,6 +766,7 @@ function room(
       cancel();
     },
     ended() {
+      playScreen.destroy();
       fail(
         "Room connection ended. Retry to reconnect, or leave to start another room.",
         true,
@@ -837,6 +848,12 @@ function room(
       });
       lobby.hidden = !inLobby;
       board.hidden = inLobby;
+      playScreen.update(
+        !inLobby &&
+          !display &&
+          frame.stage !== "over" &&
+          view?.phase !== "over",
+      );
       nameEntry.form.hidden = display || seated || !inLobby;
       page.dataset.screen = inLobby ? "lobby" : "battle";
       roster.update(

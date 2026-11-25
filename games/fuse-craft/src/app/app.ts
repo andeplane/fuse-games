@@ -33,6 +33,8 @@ import {
   escapeIsTaken,
   mountAttract,
   createTopBar,
+  createPlayScreen,
+  type PlayScreen,
 } from "fuse-ui";
 import { planNeuronPlacement } from "./neuron-placement.js";
 import {
@@ -948,6 +950,7 @@ export function mountFuseCraft(
       <div class="command-dock">${minimapMarkup(world)}<section class="inspector" aria-label="${INSPECTOR_LABEL[panel]}">${portrait}<div class="selection-details">${contextDetail}</div></section><nav class="command-card" data-panel="${panel}" aria-label="${COMMAND_LABEL[panel]}">${commands}</nav></div>`;
   }
 
+  let playScreen: PlayScreen | undefined, playStage: HTMLElement | undefined;
   function renderGame() {
     const world = gameWorld();
     if (!world) return;
@@ -971,6 +974,15 @@ export function mountFuseCraft(
     const svg = root.querySelector<SVGSVGElement>("#nd-board");
     const sidebar = root.querySelector<HTMLElement>("#game-sidebar");
     if (!svg || !sidebar) return;
+    // A phone's live match is the whole screen: the board fills it under the resource bar, above the command dock.
+    const layout = root.querySelector<HTMLElement>(".game-layout");
+    if (layout && layout !== playStage) {
+      playScreen?.destroy();
+      playStage = layout;
+      // Nothing is held down in a match (taps, drags and pinches end on their own), so a turn needs no release.
+      playScreen = createPlayScreen({ stage: layout });
+    }
+    playScreen?.update(!world.finished);
     if (world.finished) {
       matchResults.show(root.querySelector(".game-layout"), world, {
         self,
@@ -1174,6 +1186,8 @@ export function mountFuseCraft(
   }
 
   function unmountBattlefield() {
+    playScreen?.destroy();
+    playScreen = playStage = undefined;
     battlefield.unmount();
     matchResults.clear();
   }
@@ -2136,6 +2150,7 @@ export function mountFuseCraft(
     dispose() {
       if (disposed) return;
       disposed = true;
+      playScreen?.destroy();
       stopPlaytestInput();
       roomBackground?.stop();
       cancelLoads();

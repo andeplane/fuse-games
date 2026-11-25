@@ -23,6 +23,7 @@ import {
   createLandingCard,
   createNameEntry,
   createNotice,
+  createPlayScreen,
   createResultsScreen,
   createRoomLayout,
   createRoster,
@@ -303,6 +304,12 @@ function workshop() {
     onCommand: (command) => runtime.play(command),
   });
   stage.append(bench.element);
+  // A phone's live puzzle is the whole screen: the 8:5 bench is drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => bench.cancel(),
+  });
   const save = button("Save machine", "fui-button");
   save.hidden = true;
   save.onclick = () => {
@@ -450,6 +457,7 @@ function workshop() {
       main.dataset.phase = frame.phase;
       if (lobby.hidden === waiting) lobby.hidden = !waiting;
       stage.hidden = waiting;
+      playScreen.update(playing && !display);
       save.hidden = !playing || frame.machine.puzzle !== FREE_WORKSHOP;
       const needsSeat =
         Boolean(me) &&
@@ -588,6 +596,7 @@ function workshop() {
     },
     event() {},
     ended() {
+      playScreen.destroy();
       live.show("Room ended", "error");
       status.show("Room ended", "error");
     },
@@ -622,6 +631,7 @@ function workshop() {
     destroy: () => {
       window.clearTimeout(celebrationTimer);
       menu.dispose();
+      playScreen.destroy();
       bench.dispose();
       layout.dispose();
     },
