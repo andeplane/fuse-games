@@ -25,6 +25,7 @@ import { css, playerColor } from "../render/palette.js";
 import { createAudio } from "./audio/index.js";
 import { Flow } from "./flow.js";
 import { createBrowserInput } from "./input/index.js";
+import { createBombersPlayScreen } from "./play-stage.js";
 import {
   GAME,
   social,
@@ -147,13 +148,21 @@ async function boot(): Promise<void> {
   });
   roundControls.element.classList.add("fb-round-controls");
   document.body.append(roundControls.element);
+  const input = createBrowserInput(window, { forceTouch: params.has("touch") });
+  // A phone's live match is the whole screen: the arena, its overlay and the pads, turned when the phone is upright.
+  const playScreen = createBombersPlayScreen({
+    stage: document.getElementById("app") ?? document.body,
+    riders: [root, input.touchLayer, roundControls.element],
+    onChange: () => input.hub.cancel(),
+  });
   flow = new Flow({
     playMetrics: reportPlay,
-    input: createBrowserInput(window, { forceTouch: params.has("touch") }),
+    input,
     root,
     seed: Number(params.get("seed")) || Math.floor(Math.random() * 2 ** 31),
     speed: Number(params.get("speed")) || 1,
     uiState: (state) => {
+      playScreen.update(state.live);
       menu.update({
         canLobby: !state.lobby,
         spectator: state.spectator,
