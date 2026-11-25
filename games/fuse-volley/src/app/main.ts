@@ -1,5 +1,10 @@
 import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
-import { createHowToPlay, createTopBar } from "fuse-ui";
+import {
+  createHowToPlay,
+  createPlayScreen,
+  createTopBar,
+  localPoint,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -442,11 +447,22 @@ function surface(node: HTMLElement): PadSurface {
       for (const type of types)
         node.addEventListener(type, (event) => {
           if (kind === "down" && playtestInputBlocked(document)) return;
-          listener(event as PointerEvent);
+          const pointer = event as PointerEvent,
+            at = localPoint(node, pointer.clientX, pointer.clientY);
+          // Along the pad's own axes: the court is drawn turned on an upright phone.
+          listener({
+            pointerId: pointer.pointerId,
+            clientX: at.x,
+            clientY: at.y,
+            preventDefault: () => pointer.preventDefault(),
+          });
         });
     },
     capture: (pointerId) => node.setPointerCapture(pointerId),
-    box: () => node.getBoundingClientRect(),
+    box() {
+      const { width, height } = localPoint(node, 0, 0);
+      return { left: 0, top: 0, width, height };
+    },
     show({ held, way }) {
       node.classList.toggle("held", held);
       node.dataset.way = way < 0 ? "left" : way > 0 ? "right" : "";
@@ -694,6 +710,12 @@ function room(solo: boolean): void {
     controls.clear();
   };
   stage.append(sidesRow, screen, note, touch);
+  // A phone's live rally is the whole screen; the wide court is drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => letGoAll(),
+  });
 
   const controller = el("section", "", "fv-controller"),
     controllerHead = el("header", "", "fv-controller-head"),
@@ -1016,7 +1038,10 @@ function room(solo: boolean): void {
     setText(scoringName, "");
     setText(note, next.note);
     note.hidden = !next.note;
-    touch.hidden = !(coarse() && next.riding && !display);
+    // Only while the rally runs: the results and the lobby are tapped, not steered.
+    const playing = view.stage === "running" && !next.result;
+    playScreen.update(next.screen === "play" && playing);
+    touch.hidden = !(coarse() && next.riding && !display && playing);
     main.dataset.touch = String(!touch.hidden);
     touchPads.show(!touch.hidden && !stage.hidden);
     controllerPads.set.show(!controller.hidden);
@@ -1128,6 +1153,7 @@ function room(solo: boolean): void {
       say("Room ended", "error");
       over = true;
       controls.clear();
+      playScreen.destroy();
       for (const part of [connecting, nameEntry.form, lobby, stage, controller])
         part.hidden = true;
       closed.hidden = false;

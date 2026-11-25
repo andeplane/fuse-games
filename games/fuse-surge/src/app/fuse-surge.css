@@ -443,76 +443,40 @@ body.fs-display .fs-screen {
   width: min(100%, calc((100dvh - 7rem) * 16 / 9));
 }
 
-/* A phone on its side: the deck fills the screen and the pads float over its corners. */
+/* A phone's live round (fuse-ui play-screen): the deck fills the screen and the pads float over its corners. */
+html[data-fui-play] .fs-stage {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+html[data-fui-play] .fs-stage > .fs-note {
+  display: none;
+}
+html[data-fui-play] .fs-stage > .fs-screen {
+  width: min(100cqw, 100cqh * 16 / 9);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .fs-stage > .fs-touch {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: var(--fui-z-overlay);
+  box-sizing: border-box;
+  align-items: flex-end;
+  min-height: 0;
+  padding: var(--fui-space-2) max(var(--fui-space-3), var(--fui-play-right))
+    max(var(--fui-space-2), var(--fui-play-bottom))
+    max(var(--fui-space-3), var(--fui-play-left));
+  pointer-events: none;
+}
+html[data-fui-play] .fs-touch .fs-duck,
+html[data-fui-play] .fs-touch .fs-jump {
+  width: min(34cqh, 8.5rem);
+  opacity: 0.72;
+  pointer-events: auto;
+}
 @media (orientation: landscape) and (max-height: 32rem) {
-  #app {
-    padding: 0;
-  }
-  .fs-room[data-screen="play"] {
-    padding: 0;
-  }
-  /* The header folds away, all but the menu, which floats in the top corner so a player can always leave. */
-  body:has(.fs-room[data-screen="play"]) .fs-top {
-    position: fixed;
-    top: max(var(--fui-space-2), env(safe-area-inset-top));
-    right: max(var(--fui-space-2), env(safe-area-inset-right));
-    z-index: calc(var(--fui-z-overlay) + 1);
-    padding: 0;
-  }
-  /* On a phone on its side the deck takes the whole screen: the bar keeps only its right end, where the menu is. */
-  body:has(.fs-room[data-screen="play"])
-    .fs-top
-    > :is(.fui-top-bar-left, .fui-top-bar-context) {
-    display: none;
-  }
-  .fs-room[data-screen="play"] .fs-stage {
-    padding-top: 0;
-  }
-  /* Only the menu button stays, in the top right corner. */
-  body:has(.fs-room[data-screen="play"]) .fs-top {
-    justify-content: flex-end;
-  }
-  body:has(.fs-room[data-screen="play"])
-    .fs-top
-    .fui-top-bar-right
-    > :not(.fui-top-bar-toggle) {
-    display: none;
-  }
-  body:has(.fs-room[data-screen="play"]) .fs-top .fui-game-menu {
-    opacity: 0.8;
-  }
-  .fs-room[data-screen="play"] .fs-note {
-    display: none;
-  }
-  .fs-screen {
-    width: min(100%, calc(100dvh * 16 / 9));
-    /* A landscape phone keeps the full-height frame; the deck sits centred in it. */
-    aspect-ratio: 16 / 9;
-    border: 0;
-    border-radius: 0;
-  }
-  .fs-touch {
-    position: fixed;
-    inset: auto 0 0 0;
-    z-index: var(--fui-z-overlay);
-    min-height: 0;
-    padding: var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-right)) var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-left));
-    pointer-events: none;
-  }
-  .fs-touch .fs-duck,
-  .fs-touch .fs-jump {
-    opacity: 0.72;
-    pointer-events: auto;
-  }
-  .fs-touch {
-    align-items: flex-end;
-  }
-  .fs-touch .fs-duck,
-  .fs-touch .fs-jump {
-    width: min(34dvh, 8.5rem);
-  }
   .fs-controller-head {
     padding: var(--fui-space-2) var(--fui-space-3);
   }
