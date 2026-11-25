@@ -502,29 +502,6 @@ body.ef-display .ef-lobby {
   color: #ffc4e3;
   border-color: var(--fui-pink);
 }
-.ef-pad-restart {
-  position: absolute;
-  top: calc(-1 * var(--fui-space-2));
-  left: 50%;
-  z-index: 2;
-  transform: translate(-50%, -100%);
-  padding: var(--fui-space-2) var(--fui-space-3);
-  color: var(--fui-text-muted);
-  border-color: #4a3fa8;
-  font-size: 0.5rem;
-  opacity: 0.85;
-}
-.ef-pad-restart.held {
-  transform: translate(-50%, -100%) scale(0.96);
-}
-/* Under a phone's own race the RESTART rides at the top of the picture. */
-.ef-stage > .ef-pad-restart {
-  top: var(--fui-space-2);
-  transform: translateX(-50%);
-}
-.ef-stage > .ef-pad-restart.held {
-  transform: translateX(-50%) scale(0.96);
-}
 
 /* The phone controller for a shared screen */
 .ef-controller {
@@ -573,16 +550,6 @@ body.ef-display .ef-lobby {
   display: grid;
   grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
   min-height: 12rem;
-}
-.ef-controller-pads .ef-pad-restart {
-  position: static;
-  grid-column: 1 / -1;
-  transform: none;
-  padding: var(--fui-space-3);
-  font-size: 0.625rem;
-}
-.ef-controller-pads .ef-pad-restart.held {
-  transform: scale(0.98);
 }
 .ef-controller-pads .ef-cluster {
   width: auto;
@@ -664,9 +631,6 @@ html[data-fui-play] .ef-touch .ef-pad-gas {
 }
 html[data-fui-play] .ef-touch .ef-cluster {
   width: min(30%, 15rem);
-}
-html[data-fui-play] .ef-stage > .ef-pad-restart {
-  top: max(var(--fui-space-2), var(--fui-play-top));
 }
 /* What went wrong stays readable over the stage (upright on the screen, not in the turned frame). */
 html[data-fui-play] .ef-room > .ef-alert {

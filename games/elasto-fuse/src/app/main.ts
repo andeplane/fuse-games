@@ -196,7 +196,6 @@ const GUIDE = {
     },
     { keys: "⟲ ⟳", action: "Left thumb: rotate the bike in the air" },
     { keys: "TURN", action: "Face the other way" },
-    { keys: "RESTART", action: "Back to the start" },
   ],
   goal: "Eat every apple, then touch the flower. Keep your head off the ground: the bike is springy and flips easily.",
 } as const;
@@ -616,7 +615,6 @@ function room(solo: boolean): void {
       left = el("div", "", "ef-cluster ef-cluster-left"),
       right = el("div", "", "ef-cluster ef-cluster-right");
     const set = new PadSet(controls);
-    let restart: HTMLElement | undefined;
     for (const each of TOUCH_BUTTONS) {
       const node = el("div", each.label, `ef-pad ef-pad-${each.id}`);
       node.setAttribute("role", "button");
@@ -626,23 +624,20 @@ function room(solo: boolean): void {
           controls.hold(`${className}:${each.id}`, bits),
         ),
       );
-      if (each.id === "restart") restart = node;
-      else if (each.id === "gas" || each.id === "brake") right.append(node);
+      if (each.id === "gas" || each.id === "brake") right.append(node);
       else left.append(node);
     }
     row.append(left, right);
-    return { row, set, restart: restart! };
+    return { row, set };
   };
   const touch = pads("ef-touch"),
     controllerPads = pads("ef-controller-pads");
-  controllerPads.row.prepend(controllerPads.restart);
   letGoAll = () => {
     touch.set.release();
     controllerPads.set.release();
     controls.clear();
   };
-  // A phone's RESTART rides at the top of its picture, clear of both thumbs.
-  stage.append(screen, touch.restart, note, touch.row);
+  stage.append(screen, note, touch.row);
   // A phone's live race is the whole screen, drawn turned when the phone is upright.
   const playScreen = createPlayScreen({
     stage,
@@ -956,7 +951,7 @@ function room(solo: boolean): void {
     const racing = view.stage === "running" && !next.result;
     playScreen.update(next.screen === "play" && racing);
     const touchOn = coarse() && next.riding && !display && racing;
-    touch.row.hidden = touch.restart.hidden = !touchOn;
+    touch.row.hidden = !touchOn;
     main.dataset.touch = String(touchOn);
     touch.set.show(touchOn && !stage.hidden);
     controllerPads.set.show(!controller.hidden);

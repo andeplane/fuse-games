@@ -201,12 +201,12 @@ test("buttons that go off screen let go, and so does a menu opening", () => {
   assert.equal(controls.bits, 0);
 });
 
-test("the touch layout offers every control once", () => {
+test("the touch layout offers every riding control once, and no restart", () => {
   assert.deepEqual(
     TOUCH_BUTTONS.map((each) => each.bits).sort((a, b) => a - b),
-    [GAS, BRAKE, VOLT_LEFT, VOLT_RIGHT, TURN, RESTART],
+    [GAS, BRAKE, VOLT_LEFT, VOLT_RIGHT, TURN].sort((a, b) => a - b),
   );
-  assert.equal(new Set(TOUCH_BUTTONS.map((each) => each.id)).size, 6);
+  assert.equal(new Set(TOUCH_BUTTONS.map((each) => each.id)).size, 5);
 });
 
 function pad(
