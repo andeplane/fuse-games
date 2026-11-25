@@ -83,6 +83,7 @@ export interface LandingOptions {
   onCreate(): Promise<void> | void;
   /** Play alone against bots. Omit to leave SOLO out. */
   onSolo?: () => void;
+  continuePlay?: import("./main-menu.js").MainMenuOptions["continuePlay"];
   /** Join-by-code rules and destination. */
   valid(code: string): boolean;
   onJoin(code: string): void;
@@ -182,6 +183,7 @@ export function createLandingCard(options: LandingOptions): LandingCard {
     howToPlay: options.howToPlay,
     play: element,
     onPlay: runCreate,
+    continuePlay: options.continuePlay,
     onSinglePlayer: options.onSolo,
     singlePlayerContent: () =>
       solo && singlePlayerOptions.children.length > (options.soloInBar ? 0 : 1)

@@ -30,6 +30,7 @@ export interface MainMenuOptions {
   settings?: readonly Node[];
   /** Host room invokes the game's existing room-creation command. */
   onPlay?: () => Promise<void> | void;
+  continuePlay?: { label: string; run(): void };
   onSinglePlayer?: () => Promise<void> | void;
   singlePlayerContent?: readonly Node[] | (() => readonly Node[]);
   /**
@@ -63,7 +64,8 @@ export function createMainMenu(options: MainMenuOptions) {
   );
   const navigation = el("nav", "", "fui-main-menu-nav", doc);
   navigation.setAttribute("aria-label", `${options.title} main menu`);
-  const play = button("Play", "fui-menu-primary", doc);
+  const resume = options.continuePlay;
+  const play = button("Play", resume ? "" : "fui-menu-primary", doc);
   const how = button("How to play", "", doc);
   const about = button("About", "", doc);
   const scope = options.settingsScope ?? "room";
@@ -286,6 +288,11 @@ export function createMainMenu(options: MainMenuOptions) {
     settingsButton.hidden = !settings.childNodes.length;
   };
   if (options.settings?.length) addSettings(...options.settings);
+  if (resume) {
+    const continueButton = button(resume.label, "fui-menu-primary", doc);
+    continueButton.onclick = () => resume.run();
+    navigation.append(continueButton);
+  }
   navigation.append(play, how, about, settingsButton);
   /** A screen of the game's own on the front door, after Play: `label` is its button, `open` goes there. */
   const addEntry = (label: string, open: () => void) => {

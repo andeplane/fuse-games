@@ -60,7 +60,13 @@ import {
   NOT_OPEN,
   type Store,
 } from "../src/app/session.js";
-import { PLAY, DEFAULT_SETTINGS, view, type Room } from "../src/online/game.js";
+import {
+  PLAY,
+  PROGRESSION,
+  DEFAULT_SETTINGS,
+  view,
+  type Room,
+} from "../src/online/game.js";
 import { fold, play, run, seated, started } from "./fixtures/room.js";
 
 const SINGLE = { ...DEFAULT_SETTINGS, count: 1 as const };
@@ -454,6 +460,7 @@ test("a tour's result ranks by points and says how many maps each rider finished
 function soloRoom(level = 0): Room {
   const room = seated({ ...SINGLE, level });
   fold(room, { a: [[PRESENCE, "b", false, 1]] });
+  fold(room, { a: [[PROGRESSION, level]] });
   fold(room, { a: [[ACTION, "start", "s1"]] });
   assert.equal(room.roster.length, 1);
   return room;
@@ -499,6 +506,7 @@ test("a solo ride ends on its time, the best for the level, and where NEXT MAP g
 test("NEXT MAP is a settings change and a rematch on one tick", () => {
   const room = soloRoom(0);
   finishRace(room, [500]);
+  fold(room, { a: [[PROGRESSION, 1]] });
   fold(room, {
     a: [
       [SETTINGS, { ...SINGLE, level: 1 }],

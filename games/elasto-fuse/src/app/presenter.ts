@@ -111,7 +111,12 @@ export interface Model {
     host: boolean;
     waiting: string;
     /** A solo ride: the level it rode and the one NEXT MAP goes to. */
-    solo: { level: number; next: number; finished: boolean } | null;
+    solo: {
+      level: number;
+      next: number;
+      finished: boolean;
+      random?: true;
+    } | null;
   } | null;
 }
 
@@ -281,6 +286,7 @@ export function present(
         host: true,
         waiting: "",
         solo: {
+          ...(view.play.order === "random" ? ({ random: true } as const) : {}),
           level: world.level,
           next: (world.level + 1) % LEVELS.length,
           finished,
