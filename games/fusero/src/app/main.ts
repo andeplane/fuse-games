@@ -79,7 +79,7 @@ import {
   COLORS,
   NATIVE_DRAW_SCALE,
 } from "./arena.js";
-import { HeldControls, keyboardBindings } from "./controls.js";
+import { HeldControls, keyboardBindings, keyboardPreset } from "./controls.js";
 import { CLASSIC_LEVELS } from "../engine/classic/level.js";
 import { createFuseroAudio, createWebAudioSurface } from "./audio.js";
 
@@ -138,9 +138,10 @@ document.addEventListener("visibilitychange", () =>
 window.addEventListener("pagehide", () => audio.dispose(), { once: true });
 const url = (query = "") =>
   endpoints.appUrl(query + (muted ? `${query ? "&" : "?"}mute` : ""));
-// The original web build uses PC defaults; native Mac defaults remain selectable locally.
-let keyboardPlatform: "pc" | "mac" =
-  store.getItem(`${GAME}-keyboard`) === "mac" ? "mac" : "pc";
+let keyboardPlatform = keyboardPreset(
+  store.getItem(`${GAME}-keyboard`),
+  navigator.platform,
+);
 let KEY_BITS = keyboardBindings(keyboardPlatform);
 const controlLabels = () => ({
   fireKey: keyboardPlatform === "mac" ? "Left Option" : "Left Ctrl",

@@ -4,6 +4,7 @@ import {
   HeldControls,
   KEY_BITS,
   keyboardBindings,
+  keyboardPreset,
 } from "../src/app/controls.js";
 import {
   LEFT,
@@ -111,6 +112,15 @@ test("PC keyboard uses the native primary player's actual defaults, without conf
     KeyZ: STRAFE,
     ShiftLeft: SELECT_MOD,
   });
+});
+
+test("the default avoids the macOS Control shortcut and honors saved presets", () => {
+  const mac = keyboardPreset(null, "MacIntel");
+  assert.equal(mac, "mac");
+  assert.equal(keyboardBindings(mac).ControlLeft, undefined);
+  assert.equal(keyboardPreset(null, "Win32"), "pc");
+  assert.equal(keyboardPreset("pc", "MacIntel"), "pc");
+  assert.equal(keyboardPreset("mac", "Win32"), "mac");
 });
 
 test("Apple keyboard uses the upstream Apple overrides, including Space for weapon selection", () => {

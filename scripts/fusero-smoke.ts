@@ -370,6 +370,9 @@ try {
   );
   await openPlayOptions(host, "single");
   await host.locator('.liero-room[data-phase="lobby"]').waitFor();
+  await host.waitForFunction(`window.fusero?.keyboard().platform === (
+    /^(Mac|iPhone|iPad|iPod)/.test(navigator.platform) ? "mac" : "pc"
+  )`);
   const firstWeapon = host.getByRole("combobox", {
     name: "Weapon slot 1",
     exact: true,
@@ -767,6 +770,7 @@ try {
   await ropeAndJump(host, 0);
   // Original PC fire + rope is Ctrl+X, which must reach the game rather than
   // the platform's report shortcut while this player owns the controls.
+  if (keys.mac) await keyboardPreset(host, "pc");
   await host.keyboard.down("ControlLeft");
   await host.keyboard.down("KeyX");
   await peer.waitForFunction(
