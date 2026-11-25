@@ -1,5 +1,6 @@
 import { button, el } from "./dom.js";
 import { createDialog } from "./dialog.js";
+import { escapeIsTaken } from "./back.js";
 import { menuKeys } from "./menu-keys.js";
 import { ALL_SONGS, type Song, type MusicMedia } from "fuse-music";
 import { createRadio } from "./radio.js";
@@ -351,6 +352,12 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
       ".fui-game-menu-trigger",
     ))
       trigger.textContent = "Game controls";
+    // The ways out of a match (Back to lobby, Main menu) are the menu's first rows, not a level down under Game
+    // controls where nobody finds them. The game menu still shows or hides them, and still runs them.
+    const exits = [
+      ...menu.body.querySelectorAll<HTMLElement>(".fui-game-menu-exit"),
+    ];
+    if (exits.length) menu.body.prepend(...exits);
   };
   right.append(sound, account, toggle);
   refresh(options);
@@ -371,6 +378,36 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
         !!target?.closest?.(".fui-game-menu"));
     if (!games) event.stopPropagation();
   });
+  // Escape nobody else used opens this menu, as a pause key does: in a match that is where Back to lobby and
+  // Main menu are. Escape that closes a dialog, the game menu or the portal, or that a page uses as Back, is theirs.
+  // The page's own listeners may come after this one, so the answer waits for the press to finish.
+  doc.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape" || event.repeat) return;
+      if (escapeIsTaken(event, doc)) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest?.(
+          "input, textarea, select, [contenteditable], .fui-game-menu",
+        )
+      )
+        return;
+      doc.defaultView?.setTimeout(() => {
+        if (event.defaultPrevented || menu.dialog.open) return;
+        if (!root.isConnected || doc.querySelector("dialog[open]")) return;
+        const shown = (node: HTMLElement) =>
+          !node.closest("[hidden]") &&
+          node.checkVisibility?.({ visibilityProperty: true }) !== false;
+        if (shown(toggle)) return toggle.click();
+        // A match that hides the bar keeps the game menu on the screen instead (Bombers' MENU): Escape opens that.
+        [...doc.querySelectorAll<HTMLElement>(".fui-game-menu-trigger")]
+          .find((trigger) => !menu.dialog.contains(trigger) && shown(trigger))
+          ?.click();
+      }, 0);
+    },
+    true,
+  );
   toggle.onclick = () => {
     renderSound();
     onOpenChange?.(true);

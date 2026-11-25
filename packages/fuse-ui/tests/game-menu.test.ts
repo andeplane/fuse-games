@@ -28,7 +28,7 @@ test("game menu: shared navigation respects capabilities and closes before actio
   const [resume, controls, lobby, leave] = actions;
   assert.deepEqual(
     actions.map((action) => action.textContent),
-    ["BACK TO GAME", "CONTROLS", "BACK TO LOBBY", "LEAVE GAME"],
+    ["BACK TO GAME", "CONTROLS", "BACK TO LOBBY", "MAIN MENU"],
   );
   assert.equal(trigger.getAttribute("aria-controls"), panel.id);
   assert.equal(trigger.getAttribute("aria-expanded"), "false");

@@ -249,3 +249,10 @@ body:has(.fui-top-bar) .fui-main-menu:has(> .fui-attract)::after {
     right: 12px;
   }
 }
+/* Main menu, lifted from the game menu, keeps its quieter warning colour in the bar's menu. */
+.fui-top-bar-menu.fui-top-bar-menu
+  .fui-top-bar-actions
+  button.fui-game-menu-leave {
+  color: var(--fui-danger-text, #ffb8cb);
+  border-color: var(--fui-danger-line, #ffb8cb66);
+}
