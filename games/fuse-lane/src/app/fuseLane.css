@@ -15,6 +15,22 @@ body.fl-page .fui-top-bar {
 body.fl-page .fui-top-bar-brand {
   color: #9ee7c4;
 }
+body.fl-page :is(.fui-top-bar-menu, .fui-playtest-report) {
+  --fui-dialog-bar-fill: var(--fl-paper-2);
+}
+body.fl-page :is(.fui-playtest-report, .fui-playtest-recording) {
+  --fui-navy: var(--fl-paper);
+}
+body.fl-page .fui-playtest-preview {
+  max-height: min(28dvh, 17rem);
+}
+body.fl-page .fui-playtest-state input {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+  accent-color: var(--fl-forest);
+}
 body.fl-page {
   --fl-ink: #1d2733;
   --fl-ink-soft: #5b6674;
