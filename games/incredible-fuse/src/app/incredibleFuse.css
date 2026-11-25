@@ -5,7 +5,8 @@
 }
 .machine-page #app {
   display: grid;
-  min-height: 100dvh;
+  /* The shared app body keeps its padding (it wins over .machine-page's): one screen tall in all, not a scroll more. */
+  min-height: calc(100dvh - 2 * var(--fui-space-3));
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
 }
