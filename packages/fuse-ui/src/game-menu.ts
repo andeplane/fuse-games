@@ -102,10 +102,15 @@ export function createGameMenu(options: GameMenuOptions): GameMenu {
     doc,
   );
   const controls = button("CONTROLS", "fui-game-menu-action", doc);
-  const lobby = button("BACK TO LOBBY", "fui-game-menu-action", doc);
+  // The ways out of a match. The shared top bar lifts these to the first rows of its menu, where they are found.
+  const lobby = button(
+    "BACK TO LOBBY",
+    "fui-game-menu-action fui-game-menu-exit fui-game-menu-lobby",
+    doc,
+  );
   const leave = button(
-    "LEAVE GAME",
-    "fui-game-menu-action fui-game-menu-leave",
+    "MAIN MENU",
+    "fui-game-menu-action fui-game-menu-exit fui-game-menu-leave",
     doc,
   );
   // A host that shows this menu inside its own modal (the shared top bar) dismisses that modal first on these, so

@@ -637,6 +637,11 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   assert.deepEqual(s.commands.at(-1), { type: "action", action: "lobby" });
   s.update(frame("running", "rematch"));
   assert.equal(results.hidden, true);
+  // Mid-match the host takes the room back to its lobby from the shared game menu, as in every game.
+  const lobbyAction = button(s.root, "BACK TO LOBBY");
+  assert.equal(lobbyAction.hidden, false);
+  lobbyAction.click();
+  assert.deepEqual(s.commands.at(-1), { type: "action", action: "lobby" });
   s.update(result);
   button(s.root, "Leave").click();
   assert.equal(s.counters().homes, 1);
@@ -644,7 +649,7 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   s.status("Link failed: retry");
   assert.match(s.root.querySelector(".status")!.textContent!, /Link failed/);
   button(s.root, "RECONNECT").click();
-  button(s.root, "LEAVE").click();
+  button(s.root, "MAIN MENU").click();
   assert.equal(s.counters().retries, 1);
   assert.equal(s.counters().homes, 2);
   s.ended();
