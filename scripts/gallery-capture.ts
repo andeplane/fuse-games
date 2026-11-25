@@ -34,7 +34,7 @@ const wanted = process.argv.slice(2);
 const unknown = wanted.filter((id) => !(id in RECIPES));
 if (unknown.length > 0)
   throw new Error(
-    `No capture recipe for ${unknown.join(", ")}; scripts/gallery-capture.ts has ${Object.keys(RECIPES).join(", ")}`,
+    `No capture recipe for ${unknown.join(", ")}; scripts/lib/play-recipes.ts has ${Object.keys(RECIPES).join(", ")}`,
   );
 const ids = wanted.length > 0 ? wanted : Object.keys(RECIPES);
 

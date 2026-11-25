@@ -1,0 +1,200 @@
+.dockside-page {
+  margin: 0;
+  background: #12242e;
+  color: #e1eceb;
+}
+.dockside-top {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  background: #13242c;
+}
+.dockside-brand {
+  display: flex;
+  flex-direction: column;
+  color: #88e2dd;
+  text-decoration: none;
+  font-family: var(--fui-font-title, monospace);
+  font-weight: bold;
+}
+.dockside-brand small {
+  font: 9px monospace;
+  letter-spacing: 0.12em;
+}
+.dockside-back {
+  margin-left: auto;
+  color: inherit;
+}
+.dockside-room:focus {
+  outline: 0;
+}
+.dockside-table {
+  height: calc(100dvh - 66px);
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.dockside-table[hidden],
+.dockside-stage[hidden],
+.dockside-controls[hidden] {
+  display: none;
+}
+.dockside-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  font: 600 clamp(11px, 1.5vw, 18px) system-ui;
+  background: #1a3039;
+}
+.dockside-hud strong {
+  letter-spacing: 0.08em;
+}
+.dockside-stage {
+  flex: 1;
+  min-height: 100px;
+  position: relative;
+  overflow: hidden;
+}
+.dockside-stage canvas[aria-label="Canal Lock arena"],
+canvas[aria-label="Canal Lock arena"] {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.dockside-map-label {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  color: #eee3bf;
+  text-shadow: 0 1px 3px black;
+  font: 700 10px monospace;
+  letter-spacing: 0.14em;
+}
+.dockside-you {
+  font-size: 11px;
+  background: #162e37;
+  color: #fff;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+.dockside-you::after {
+  content: "▾";
+  position: absolute;
+  top: 80%;
+  left: 40%;
+}
+.dockside-hint {
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  text-align: center;
+  font: 13px system-ui;
+  color: #e1e7d6;
+  background: #182d36;
+}
+.dockside-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  touch-action: none;
+}
+.dockside-controls div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: end;
+  gap: 0.2rem;
+}
+.dockside-controls button {
+  min-height: 42px;
+  min-width: 36px;
+  padding: 0 0.6rem;
+  touch-action: none;
+}
+.dockside-stage .dockside-radar {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  width: clamp(86px, 15vw, 188px);
+  height: auto;
+  border: 1px solid #abc6c7;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px #10212b99;
+}
+.dockside-stage .dockside-radar.expanded {
+  width: min(72%, 560px);
+  max-height: 85%;
+  top: 50%;
+  left: 50%;
+  bottom: auto;
+  right: auto;
+  transform: translate(-50%, -50%);
+}
+.dockside-lock {
+  color: #ffdd77;
+  border: 1px solid;
+  padding: 2px 4px;
+  background: #292c2e;
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  .dockside-controls div {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .dockside-controls button {
+    min-height: 32px;
+  }
+  .dockside-hint {
+    padding-block: 2px;
+  }
+}
+.dockside-table .fui-round-controls {
+  position: absolute;
+  bottom: 3rem;
+  right: 0.5rem;
+  pointer-events: none;
+}
+@media (max-width: 450px) {
+  .dockside-controls button {
+    padding: 0 0.35rem;
+  }
+  .dockside-hud {
+    padding: 0.55rem 0.35rem;
+  }
+}
+.dockside-controller-map {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+.dockside-controller-map[hidden],
+.controller-only .dockside-camera-control {
+  display: none;
+}
+.dockside-controller-map canvas {
+  max-width: 70%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+.dockside-controller-map canvas.expanded {
+  width: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.dockside-room[data-phase="running"] {
+  padding-top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+}
+.dockside-room[data-phase="running"] .dockside-table {
+  height: calc(100dvh - max(12px, env(safe-area-inset-top)) - 80px);
+}
+.dockside-top .dockside-status {
+  display: none;
+}
+.dockside-top .dockside-status[data-tone="error"] {
+  display: block;
+}
