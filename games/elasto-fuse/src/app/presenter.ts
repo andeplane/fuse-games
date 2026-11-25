@@ -418,7 +418,14 @@ export function createDeathWatch(): (view: View, me: string) => DeathReport[] {
     const rider = world.riders.find((each) => each.id === me);
     if (!rider) return [];
     const key = `${view.matchId}:${view.round}`;
-    const before = told.get(key) ?? 0;
+    const before = told.get(key);
+    // A page that first sees a race already under way (a reload, a world recovered from a peer) did not see its earlier
+    // deaths: the page that did reported them.
+    if (before === undefined) {
+      told.set(key, rider.deaths);
+      if (told.size > 64) told.delete(told.keys().next().value ?? key);
+      return [];
+    }
     if (rider.deaths <= before) return [];
     told.delete(key);
     told.set(key, rider.deaths);

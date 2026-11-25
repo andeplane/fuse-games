@@ -64,7 +64,11 @@ test("a run finished signed out waits for the sign-in, and a failed send can be 
   uploads.signedIn();
   await settle();
   assert.equal(board.posted.length, 0, "the token was not there yet");
-  assert.equal(uploads.summary("m1")?.status, "Sign in to save your time");
+  assert.deepEqual(
+    uploads.summary("m1"),
+    { status: "Could not save leaderboard time", failed: true },
+    "signed in without a token: a retry is offered",
+  );
   uploads.signedIn();
   await settle();
   assert.equal(

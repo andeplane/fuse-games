@@ -42,11 +42,8 @@ export function createLevelRunUploads(
     changed();
     try {
       const token = await ports.token();
-      if (!token) {
-        upload.status = SIGN_IN;
-        upload.failed = true;
-        return;
-      }
+      // Signed in, yet no token now (a refresh in flight): a retry can send it.
+      if (!token) throw new Error("No account token");
       upload.status = (await ports.post(upload.run, token))
         ? "Leaderboard time saved"
         : "Verified outside the top 100";

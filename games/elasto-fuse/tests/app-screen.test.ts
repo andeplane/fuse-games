@@ -548,6 +548,13 @@ test("each death of this device's own rider is reported once, solo or in a room,
   while (room.world!.phase === "countdown") fold(room);
   assert.deepEqual(watch(view(room), "a"), []);
   const rider = room.world!.riders[0]!;
+  rider.deaths = 4;
+  assert.deepEqual(
+    createDeathWatch()(view(room), "a"),
+    [],
+    "a page that comes back mid-race does not report deaths it never saw",
+  );
+  rider.deaths = 0;
   rider.deaths = 1;
   rider.status = DEAD;
   rider.step = 300;
