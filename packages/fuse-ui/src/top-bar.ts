@@ -5,6 +5,7 @@ import { ALL_SONGS, type Song, type MusicMedia } from "fuse-music";
 import { createRadio } from "./radio.js";
 import { browserPlaytestFor } from "./playtest.js";
 import { safeStorage } from "./safe-storage.js";
+import { installTouchGuard } from "./touch-guard.js";
 
 export interface TopBarOptions {
   element: HTMLElement;
@@ -62,6 +63,8 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   }
   if (previous) installed.delete(root);
   const doc = root.ownerDocument;
+  // Every game has a top bar, so every game gets the phone guard: no selection, callouts or double-tap zoom.
+  installTouchGuard(doc);
   const customRadio = options.music === false;
   let radio = customRadio ? undefined : radios.get(doc);
   if (

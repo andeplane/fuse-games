@@ -1,5 +1,10 @@
 import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
-import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
+import {
+  createHowToPlay,
+  createPlayScreen,
+  requestedRoomSlot,
+  stageBox,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -638,6 +643,12 @@ function room(solo: boolean): void {
   };
   // A phone's RESTART rides at the top of its picture, clear of both thumbs.
   stage.append(screen, touch.restart, note, touch.row);
+  // A phone's live race is the whole screen, drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => letGoAll(),
+  });
 
   const controller = el("section", "", "ef-controller"),
     controllerHead = el("header", "", "ef-controller-head"),
@@ -810,14 +821,15 @@ function room(solo: boolean): void {
     covered = undefined;
     const [left, right] = [...touch.row.children];
     if (touch.row.hidden || stage.hidden || !left || !right) return;
-    const pads = touch.row.getBoundingClientRect(),
-      picture = screen.getBoundingClientRect();
+    // In the stage's own frame: an upright phone draws the race turned.
+    const pads = stageBox(touch.row),
+      picture = stageBox(screen);
     const bottom =
       Math.min(picture.bottom, pads.bottom) - Math.max(picture.top, pads.top);
     if (bottom <= 0) return;
     covered = {
-      left: Math.max(0, left.getBoundingClientRect().right - picture.left),
-      right: Math.max(0, picture.right - right.getBoundingClientRect().left),
+      left: Math.max(0, stageBox(left).right - picture.left),
+      right: Math.max(0, picture.right - stageBox(right).left),
       bottom,
     };
   };
@@ -940,7 +952,10 @@ function room(solo: boolean): void {
     // The race.
     setText(note, next.note);
     note.hidden = !next.note;
-    const touchOn = coarse() && next.riding && !display;
+    // Only while the race runs: the results and the lobby are tapped, not steered (the pads covered the results).
+    const racing = view.stage === "running" && !next.result;
+    playScreen.update(next.screen === "play" && racing);
+    const touchOn = coarse() && next.riding && !display && racing;
     touch.row.hidden = touch.restart.hidden = !touchOn;
     main.dataset.touch = String(touchOn);
     touch.set.show(touchOn && !stage.hidden);
@@ -1091,6 +1106,7 @@ function room(solo: boolean): void {
     ended() {
       say("Room ended", "error");
       over = true;
+      playScreen.destroy();
       // The frames stop here, so nothing else would let the engine go.
       sfx.engine(0, false, false);
       controls.clear();

@@ -532,47 +532,44 @@ body.fb-display .fb-sides {
   width: min(100%, calc((100dvh - 7rem) * 16 / 9));
 }
 
-/* A phone on its side: the arena fills the screen and the pads float over its corners. */
+/* A phone's live round (fuse-ui play-screen): the arena fills the screen and the pads float over its corners. */
+html[data-fui-play] .fb-stage {
+  display: grid;
+  place-items: center;
+}
+html[data-fui-play] .fb-stage > .fb-sides,
+html[data-fui-play] .fb-stage > .fb-note {
+  display: none;
+}
+html[data-fui-play] .fb-stage > .fb-screen {
+  width: min(100cqw, 100cqh * 16 / 9);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .fb-stage > .fb-touch {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: var(--fui-z-overlay);
+  box-sizing: border-box;
+  min-height: 0;
+  padding: var(--fui-space-2) max(var(--fui-space-3), var(--fui-play-right))
+    max(var(--fui-space-2), var(--fui-play-bottom))
+    max(var(--fui-space-3), var(--fui-play-left));
+  pointer-events: none;
+}
+html[data-fui-play] .fb-touch .fb-stick,
+html[data-fui-play] .fb-touch .fb-jump {
+  opacity: 0.72;
+  pointer-events: auto;
+}
+html[data-fui-play] .fb-touch .fb-stick {
+  width: min(34cqh, 8.5rem);
+}
+html[data-fui-play] .fb-touch .fb-jump {
+  width: min(28cqh, 7rem);
+}
 @media (orientation: landscape) and (max-height: 32rem) {
-  #app {
-    padding: 0;
-  }
-  .fb-room[data-screen="play"] {
-    padding: 0;
-  }
-  body:has(.fb-room[data-screen="play"]) .fb-top {
-    display: none;
-  }
-  .fb-room[data-screen="play"] .fb-sides,
-  .fb-room[data-screen="play"] .fb-note {
-    display: none;
-  }
-  .fb-screen {
-    width: min(100%, calc(100dvh * 16 / 9));
-    border: 0;
-    border-radius: 0;
-  }
-  .fb-touch {
-    position: fixed;
-    inset: auto 0 0 0;
-    z-index: var(--fui-z-overlay);
-    min-height: 0;
-    padding: var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-right)) var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-left));
-    pointer-events: none;
-  }
-  .fb-touch .fb-stick,
-  .fb-touch .fb-jump {
-    opacity: 0.72;
-    pointer-events: auto;
-  }
-  .fb-touch .fb-stick {
-    width: min(34dvh, 8.5rem);
-  }
-  .fb-touch .fb-jump {
-    width: min(28dvh, 7rem);
-  }
   .fb-controller-head {
     padding: var(--fui-space-2) var(--fui-space-3);
   }
