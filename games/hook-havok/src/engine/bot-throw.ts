@@ -9,7 +9,7 @@ import {
 } from "./bot-goal.js";
 import { gap } from "./bot-safety.js";
 import { noise } from "./bot-mind.js";
-import { bombLaunch, bombPath, bombSpawn, touches } from "./bomb.js";
+import { bombLaunch, bombSpawn, predictedBlast } from "./bomb.js";
 import {
   BLAST_RADIUS,
   BOMB_RADIUS,
@@ -24,15 +24,6 @@ import {
 /** Charges a throw plan tries (ticks; a bot's hold rises three a log tick). */
 const PLAN_CHARGES = [9, 18, 27, CHARGE_TICKS];
 
-/** Where a throw's blast comes from: the fuse's end, or a cluster bomb's split point. */
-function blastPoint(
-  flight: ReturnType<typeof bombPath>,
-  cluster: boolean,
-): { x: number; y: number } | undefined {
-  const { path, contact } = flight;
-  if (cluster && contact >= 0) return path[contact];
-  return path.length === FUSE_TICKS ? path[FUSE_TICKS - 1] : undefined;
-}
 /** The bomb a release now would throw is a cluster bomb. */
 const throwsCluster = (k: Keeper) =>
   k.power.kind === "cluster" && k.power.charges > 0;
@@ -121,20 +112,12 @@ function throwAt(
     const aimX = Math.round((sx + dir.x * 400 * S) / S),
       aimY = Math.round((sy + dir.y * 400 * S) / S),
       v = bombLaunch(charge, sx, sy, w.vx, w.vy, aimX, aimY, w.facing),
-      flight = bombPath(
+      end = predictedBlast(
         { ...bombSpawn(sx, sy, t.map), vx: v.vx, vy: v.vy },
-        FUSE_TICKS,
         t,
+        cluster,
+        t.bomb === "impact" ? rw : undefined,
       );
-    let end = blastPoint(flight, cluster);
-    if (t.bomb === "impact") {
-      const hit = flight.path.findIndex((p) =>
-        touches(rw, p.x, p.y, BOMB_RADIUS * S),
-      );
-      // A cluster bomb that splits first never reaches the rival whole.
-      if (hit >= 0 && !(cluster && flight.contact >= 0 && flight.contact < hit))
-        end = flight.path[hit];
-    }
     if (!end) break;
     const miss = gap({ x: tx, feet: rw.feet }, end.x, end.y);
     if (!best || miss < best.miss)
@@ -270,12 +253,9 @@ function release(
       const aimX = Math.round(sx / S + side * 200),
         aimY = Math.round(sy / S - 346),
         v = bombLaunch(charge, sx, sy, w.vx, w.vy, aimX, aimY, w.facing),
-        end = blastPoint(
-          bombPath(
-            { ...bombSpawn(sx, sy, t.map), vx: v.vx, vy: v.vy },
-            FUSE_TICKS,
-            t,
-          ),
+        end = predictedBlast(
+          { ...bombSpawn(sx, sy, t.map), vx: v.vx, vy: v.vy },
+          t,
           throwsCluster(k),
         ),
         // A bomb that falls out of the arena harms nobody.
