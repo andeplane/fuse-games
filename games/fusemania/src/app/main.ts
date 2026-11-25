@@ -56,6 +56,7 @@ import {
   createRoster,
   createResultsScreen,
   createRoundControls,
+  createPlayScreen,
   createSubPage,
   createTopBar,
   menuKeys,
@@ -1344,6 +1345,8 @@ function enterRoom(
     runtime.letGo(stamp(0));
   };
   stage.append(screen, note, touch.row);
+  // A phone's live song is the whole screen, the lanes reflowing to whichever way it is held.
+  const playScreen = createPlayScreen({ stage, onChange: () => letGoAll() });
 
   const controller = el("section", "", "fm-controller"),
     controllerHead = el("header", "", "fm-controller-head"),
@@ -1969,7 +1972,11 @@ function enterRoom(
     // The song.
     setText(note, next.note);
     note.hidden = !next.note;
-    const touchOn = coarse() && next.playing && !display;
+    // Only while the song runs: the results are tapped, not played.
+    const live =
+      next.screen === "play" && next.playing && !display && !next.result;
+    playScreen.update(live);
+    const touchOn = coarse() && live;
     touch.row.hidden = !touchOn;
     const battle = view.play.mode === BATTLE_MODE;
     touch.item.hidden = controllerPads.item.hidden = !battle;
@@ -2157,6 +2164,7 @@ function enterRoom(
       lobbyBar.menu.close();
       say("Room ended", "error");
       over = true;
+      playScreen.destroy();
       songClock.stop();
       preview.stop();
       for (const part of [connecting, nameEntry.form, lobby, stage, controller])
