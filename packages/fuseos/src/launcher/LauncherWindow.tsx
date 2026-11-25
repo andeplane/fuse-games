@@ -10,7 +10,11 @@ import {
 import { AppIcon } from "../ui/icons";
 import { WindowManagerContext } from "../windows/windowManagerContext";
 
-import { centeredLauncherRect, formatLastPlayed } from "./launcherFacts";
+import {
+  centeredLauncherRect,
+  formatCalendarDate,
+  formatLastPlayed,
+} from "./launcherFacts";
 import type { LauncherGame, LauncherViewModel } from "./useLauncherViewModel";
 import { LAUNCHER_TABS, useLauncherViewModel } from "./useLauncherViewModel";
 
@@ -120,6 +124,11 @@ function Screenshot({ game }: { game: LauncherGame }) {
   );
 }
 
+const DATE_COLUMNS = [
+  { key: "lastPlayed", label: "Last played", className: "fst-last-played" },
+  { key: "releaseDate", label: "Release date", className: "fst-release-date" },
+] as const;
+
 function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
   const list = useRef<HTMLDivElement>(null);
   // The window that boots focused answers the arrow keys at once, like the old client's list.
@@ -163,30 +172,34 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
           <button
             type="button"
             aria-label="Sort by game name"
-            aria-pressed={vm.sort === "name"}
+            aria-pressed={vm.sort.column === "name"}
             onClick={vm.sortByName}
           >
             Game
           </button>
-          <button
-            type="button"
-            className="fst-last-played"
-            aria-label="Sort by last played"
-            aria-pressed={vm.sort !== "name"}
-            aria-description={
-              vm.sort === "name"
-                ? undefined
-                : vm.sort === "oldest"
-                  ? "Oldest first"
-                  : "Newest first"
-            }
-            data-sort-direction={
-              vm.sort === "newest" ? "descending" : undefined
-            }
-            onClick={vm.toggleLastPlayedSort}
-          >
-            Last played
-          </button>
+          {DATE_COLUMNS.map(({ key, label, className }) => {
+            const direction =
+              vm.sort.column === key ? vm.sort.direction : undefined;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={className}
+                aria-label={`Sort by ${label.toLowerCase()}`}
+                aria-pressed={direction !== undefined}
+                aria-description={
+                  direction &&
+                  (direction === "oldest" ? "Oldest first" : "Newest first")
+                }
+                data-sort-direction={
+                  direction === "newest" ? "descending" : undefined
+                }
+                onClick={() => vm.toggleDateSort(key)}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
         <div
           ref={list}
@@ -212,7 +225,7 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
                     id={`fst-game-${game.id}`}
                     role="option"
                     aria-labelledby={`fst-game-name-${game.id}`}
-                    aria-describedby={`fst-game-played-${game.id}`}
+                    aria-describedby={`fst-game-played-${game.id} fst-game-released-${game.id}`}
                     aria-selected={isSelected}
                     className={`fst-row ${isSelected ? "selected" : ""}`}
                     onClick={() => vm.select(game.id)}
@@ -230,6 +243,24 @@ function GamesPage({ vm, active }: { vm: LauncherViewModel; active: boolean }) {
                       className="fst-row-date fst-last-played"
                     >
                       {formatLastPlayed(game.lastPlayed, vm.now)}
+                    </span>
+                    <span
+                      id={`fst-game-released-${game.id}`}
+                      className="fst-row-date fst-release-date"
+                    >
+                      {game.releaseDate ? (
+                        <time dateTime={game.releaseDate}>
+                          <span className="fst-visually-hidden">Released </span>
+                          {formatCalendarDate(new Date(game.releaseDate))}
+                        </time>
+                      ) : (
+                        <>
+                          <span aria-hidden>—</span>
+                          <span className="fst-visually-hidden">
+                            Release date unknown
+                          </span>
+                        </>
+                      )}
                     </span>
                   </div>
                 );

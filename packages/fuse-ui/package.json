@@ -50,10 +50,11 @@
   },
   "dependencies": {
     "firebase": "^12.19.0",
+    "fuse-music": "workspace:*",
     "fuse-network-fe": "workspace:*",
     "fuse-platform": "workspace:*",
     "fuse-telemetry": "workspace:*",
     "html-to-image": "^1.11.13",
-    "fuse-music": "workspace:*"
+    "jsqr": "1.4.0"
   }
 }
