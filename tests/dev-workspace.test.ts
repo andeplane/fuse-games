@@ -95,6 +95,68 @@ function click(root: HTMLElement, text: string) {
   control.click();
 }
 
+test("the Reports view saves review changes and follows the persisted state after refresh", async () => {
+  const f = fixture();
+  let handled = false;
+  let fail = true;
+  const report = {
+    id: "report-under-review",
+    gameId: "fuse-riders",
+    text: "The control sticks.",
+    category: "bug",
+    createdAt: 1,
+    receivedAt: 1,
+  };
+  const unmount = mountWorkspace(f.root, {
+    ...f,
+    now: () => new Date("2026-11-14T12:00:00Z"),
+    gamesUrl: "/",
+    transport: {
+      origin: "https://service.example",
+      token: async () => "developer",
+      request: async (input, init) => {
+        switch (new URL(String(input)).pathname) {
+          case "/api/dev/me":
+            return Response.json({ capabilities: ["read", "token"] });
+          case "/api/dev/catalog":
+            return Response.json({ gameIds: ["fuse-riders"] });
+          case "/api/dev/events":
+            return Response.json(explorer);
+          case "/api/dev/reports":
+            return Response.json({ reports: [{ ...report, handled }] });
+          case "/api/dev/reports/report-under-review/review":
+            assert.equal(init?.method, "POST");
+            if (fail) return new Response(null, { status: 500 });
+            handled = JSON.parse(String(init?.body)).handled === true;
+            return Response.json({ handled });
+          default:
+            throw new Error("Unexpected request");
+        }
+      },
+    },
+  });
+  const status = () =>
+    f.root.querySelector(".report [role=status]")?.textContent;
+  f.login();
+  await settled(() => f.root.querySelectorAll("figure").length === 2);
+  click(f.root, "Reports");
+  await settled(() => status() === "Open");
+  click(f.root, "Mark handled");
+  await settled(() =>
+    Boolean(f.root.querySelector(".report [role=alert]")?.textContent),
+  );
+  assert.equal(status(), "Open");
+  fail = false;
+  click(f.root, "Mark handled");
+  await settled(() => status() === "Handled");
+  click(f.root, "Refresh");
+  await settled(() => status() === "Handled");
+  click(f.root, "Reopen");
+  await settled(() => status() === "Open");
+  assert.equal(handled, false);
+  unmount();
+});
+
 test("comparison sorts exact period counts instead of summing users across days", () => {
   const rows = [
     row("a", "2026-11-13", 100),
