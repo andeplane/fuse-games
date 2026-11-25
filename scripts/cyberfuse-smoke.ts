@@ -1,6 +1,6 @@
 /** Run against a local Cyberfuse preview with its room service: ONLINE_URL=http://localhost:<port>/ pnpm exec tsx scripts/cyberfuse-smoke.ts */
 import assert from "node:assert/strict";
-import { launchBrowser } from "./lib/browser.js";
+import { launchBrowser, resizeSmokeViewport } from "./lib/browser.js";
 import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
 import { topMenuToggle } from "./lib/top-menu.js";
@@ -509,7 +509,7 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   );
   await walkTouch(peer, tv);
   const before = await current(peer);
-  await peer.setViewportSize({ width: 780, height: 360 });
+  await resizeSmokeViewport(peer, { width: 780, height: 360 });
   await frameFits(peer);
   const map = peer.getByRole("button", { name: "Map", exact: true });
   const [mapBounds, topBarBounds] = await Promise.all([
@@ -525,7 +525,7 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   );
   await map.tap();
   await peer.getByRole("button", { name: "Close map", exact: true }).tap();
-  await peer.setViewportSize({ width: 360, height: 780 });
+  await resizeSmokeViewport(peer, { width: 360, height: 780 });
   await hashAgreement(peer);
   await peer.reload();
   await phase(peer, "running");
