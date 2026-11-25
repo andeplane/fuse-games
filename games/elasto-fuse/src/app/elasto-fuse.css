@@ -520,29 +520,6 @@ body.ef-display .ef-lobby {
   color: #ffc4e3;
   border-color: var(--fui-pink);
 }
-.ef-pad-restart {
-  position: absolute;
-  top: calc(-1 * var(--fui-space-2));
-  left: 50%;
-  z-index: 2;
-  transform: translate(-50%, -100%);
-  padding: var(--fui-space-2) var(--fui-space-3);
-  color: var(--fui-text-muted);
-  border-color: #4a3fa8;
-  font-size: 0.5rem;
-  opacity: 0.85;
-}
-.ef-pad-restart.held {
-  transform: translate(-50%, -100%) scale(0.96);
-}
-/* Under a phone's own race the RESTART rides at the top of the picture. */
-.ef-stage > .ef-pad-restart {
-  top: var(--fui-space-2);
-  transform: translateX(-50%);
-}
-.ef-stage > .ef-pad-restart.held {
-  transform: translateX(-50%) scale(0.96);
-}
 
 /* The phone controller for a shared screen */
 .ef-controller {
@@ -592,16 +569,6 @@ body.ef-display .ef-lobby {
   grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
   min-height: 12rem;
 }
-.ef-controller-pads .ef-pad-restart {
-  position: static;
-  grid-column: 1 / -1;
-  transform: none;
-  padding: var(--fui-space-3);
-  font-size: 0.625rem;
-}
-.ef-controller-pads .ef-pad-restart.held {
-  transform: scale(0.98);
-}
 .ef-controller-pads .ef-cluster {
   width: auto;
 }
@@ -645,58 +612,49 @@ body:has(.ef-room:is([data-screen="play"], [data-screen="controller"])) #app {
   overflow: hidden;
 }
 
-/* A phone on its side: the race fills the screen and the buttons float over its corners. */
+/* A phone's live race (fuse-ui play-screen): the race fills the screen and the buttons float over its corners. */
+html[data-fui-play] .ef-stage {
+  display: block;
+}
+html[data-fui-play] .ef-stage > .ef-note {
+  display: none;
+}
+html[data-fui-play] .ef-stage > .ef-screen {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .ef-stage > .ef-touch {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: var(--fui-z-overlay);
+  box-sizing: border-box;
+  height: min(10rem, 42cqh);
+  padding: var(--fui-space-2) max(var(--fui-space-3), var(--fui-play-right))
+    max(var(--fui-space-2), var(--fui-play-bottom))
+    max(var(--fui-space-3), var(--fui-play-left));
+  pointer-events: none;
+}
+html[data-fui-play] .ef-touch .ef-pad {
+  background: #08163a66;
+  box-shadow: none;
+  pointer-events: auto;
+}
+html[data-fui-play] .ef-touch .ef-pad-gas {
+  background: #ffe46b59;
+  color: #fff8d6;
+}
+html[data-fui-play] .ef-touch .ef-cluster {
+  width: min(30%, 15rem);
+}
+/* What went wrong stays readable over the stage (upright on the screen, not in the turned frame). */
+html[data-fui-play] .ef-room > .ef-alert {
+  z-index: 31;
+}
 @media (orientation: landscape) and (max-height: 32rem) {
-  body:has(.ef-room[data-screen="play"]) #app {
-    padding: 0;
-  }
-  .ef-room[data-screen="play"] {
-    padding: 0;
-    gap: 0;
-  }
-  /* The header folds away, all but the menu, which floats in the top corner so a rider can always leave. */
-  body:has(.ef-room[data-screen="play"]) .ef-top {
-    position: fixed;
-    top: max(var(--fui-space-2), env(safe-area-inset-top));
-    right: max(var(--fui-space-2), env(safe-area-inset-right));
-    z-index: calc(var(--fui-z-overlay) + 1);
-    padding: 0;
-  }
-  body:has(.ef-room[data-screen="play"]) .ef-top > :not(.fui-game-menu) {
-    display: none;
-  }
-  body:has(.ef-room[data-screen="play"]) .ef-top .fui-game-menu {
-    opacity: 0.8;
-  }
-  .ef-room[data-screen="play"] .ef-note {
-    display: none;
-  }
-  .ef-screen {
-    border: 0;
-    border-radius: 0;
-  }
-  .ef-touch {
-    position: fixed;
-    inset: auto 0 0 0;
-    z-index: var(--fui-z-overlay);
-    height: min(10rem, 42dvh);
-    padding: var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-right)) var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-left));
-    pointer-events: none;
-  }
-  .ef-touch .ef-pad {
-    background: #08163a66;
-    box-shadow: none;
-    pointer-events: auto;
-  }
-  .ef-touch .ef-pad-gas {
-    background: #ffe46b59;
-    color: #fff8d6;
-  }
-  .ef-touch .ef-cluster {
-    width: min(30%, 15rem);
-  }
   .ef-controller-head {
     padding: var(--fui-space-2) var(--fui-space-3);
   }

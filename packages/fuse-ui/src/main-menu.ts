@@ -257,7 +257,13 @@ export function createMainMenu(options: MainMenuOptions) {
   joinRoom.onclick = () => {
     returnFocus = joinRoom;
     if (options.onJoinRoom) options.onJoinRoom();
-    else open("Join room", options.joinContent ?? [options.play]);
+    else {
+      open("Join room", options.joinContent ?? [options.play]);
+      // The room code is what this page is for: typing starts at once, with Back still one Tab or Escape away.
+      dialog.body
+        .querySelector<HTMLElement>("input:not([disabled]):not([type=hidden])")
+        ?.focus();
+    }
   };
   how.onclick = () => {
     returnFocus = how;

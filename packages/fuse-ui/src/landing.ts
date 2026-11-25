@@ -2,13 +2,15 @@ import { el, partClass, type PartClasses } from "./dom.js";
 import type { SettingsScope } from "./settings-actions.js";
 import { createMainMenu } from "./main-menu.js";
 import type { AttractFactory } from "./attract.js";
+import { createQrScanButton, type QrScanner } from "./qr-scan.js";
 
-export type JoinByCodePart = "root" | "input" | "button" | "rejoin";
+export type JoinByCodePart = "root" | "input" | "button" | "scan" | "rejoin";
 
 const JOIN_BY_CODE_CLASSES: Record<JoinByCodePart, string> = {
   root: "fui-join-code",
   input: "fui-join-code-input",
   button: "fui-join-code-button",
+  scan: "fui-join-code-scan",
   rejoin: "fui-join-code-rejoin",
 };
 
@@ -25,6 +27,16 @@ export interface JoinByCodeOptions {
   maxLength?: number;
   /** The last room this browser was in, one tap away (REJOIN AB42XY) after JOIN. Omit when there is none. */
   rejoin?: { code: string; onRejoin(code: string): void; title?: string };
+  /**
+   * The camera behind SCAN QR CODE. Default: this browser's; the button is left out where there is no camera to
+   * ask for. Pass `undefined` to leave it out.
+   */
+  scanner?: QrScanner | undefined;
+  /**
+   * A scanned invitation to another game on this site: go there. Default: load the link. A room of this game
+   * joins through `onJoin`, as a typed code does.
+   */
+  onOtherGame?: (link: URL) => void;
   classes?: PartClasses<JoinByCodePart>;
   document?: Document;
 }
@@ -33,10 +45,15 @@ export interface JoinByCode {
   row: HTMLElement;
   input: HTMLInputElement;
   button: HTMLButtonElement;
+  /** SCAN QR CODE, after JOIN; absent where the device has no camera to ask for. */
+  scan: HTMLButtonElement | undefined;
   rejoin: HTMLButtonElement | undefined;
 }
 
-/** A room-code field and JOIN. Enter in the field presses JOIN. The code is trimmed and upper-cased before checks. */
+/**
+ * A room-code field, JOIN and SCAN QR CODE. Enter in the field presses JOIN. The code is trimmed and upper-cased
+ * before checks; a scanned room invitation joins as its code typed would.
+ */
 export function createJoinByCode(options: JoinByCodeOptions): JoinByCode {
   const doc = options.document ?? document;
   const c = (part: JoinByCodePart) =>
@@ -60,6 +77,18 @@ export function createJoinByCode(options: JoinByCodeOptions): JoinByCode {
     if (event.key === "Enter") button.click();
   };
   row.append(input, button);
+  const scan = createQrScanButton({
+    valid: options.valid,
+    onRoom: (room) => {
+      input.value = room.code;
+      options.onJoin(room.code);
+    },
+    ...(options.onOtherGame ? { onOtherGame: options.onOtherGame } : {}),
+    ...("scanner" in options ? { scanner: options.scanner } : {}),
+    className: c("scan"),
+    document: doc,
+  });
+  if (scan) row.append(scan);
   let rejoin: HTMLButtonElement | undefined;
   if (options.rejoin) {
     const last = options.rejoin;
@@ -68,7 +97,7 @@ export function createJoinByCode(options: JoinByCodeOptions): JoinByCode {
     rejoin.onclick = () => last.onRejoin(last.code);
     row.append(rejoin);
   }
-  return { row, input, button, rejoin };
+  return { row, input, button, scan, rejoin };
 }
 
 export interface LandingOptions {

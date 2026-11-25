@@ -1,0 +1,16 @@
+{
+  "name": "Fuse games",
+  "short_name": "Fuse",
+  "description": "Neon party games for friends: play on your phone, together or on a shared TV.",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#04091a",
+  "theme_color": "#04091a",
+  "icons": [
+    {
+      "src": "/fuseos/game-icons/fuse-riders.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    }
+  ]
+}
