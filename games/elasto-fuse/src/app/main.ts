@@ -83,6 +83,7 @@ import { createGhosts, project } from "./forward.js";
 import { gamepadBits } from "./gamepad.js";
 import {
   LEVEL_CHOICES,
+  createDeathWatch,
   createFinishWatch,
   levelFrom,
   present,
@@ -107,7 +108,7 @@ import {
   createLevelLeaderboards,
   parseLevelTimes,
 } from "./level-leaderboards.js";
-import type { LevelRun } from "../level-times.js";
+import { createLevelRunUploads } from "./level-run-uploads.js";
 
 /**
  * The Elasto Fuse page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -565,7 +566,7 @@ function room(solo: boolean): void {
     backText: "Leave",
     onAction(id) {
       if (id === "retry-time") {
-        if (rankedRun?.failed) void publishTime(rankedRun);
+        if (shownMatch) levelRuns.retry(shownMatch);
       } else if (id === "menu") leave();
       else if (id === "next") nextMap();
       else if (id === "lobby") toLobby();
@@ -573,36 +574,27 @@ function room(solo: boolean): void {
     },
   });
   const liveResults = createLiveResults(results);
-  let rankedRun:
-    | { match: string; run: LevelRun; status: string; failed: boolean }
-    | undefined;
-  const publishTime = async (attempt: NonNullable<typeof rankedRun>) => {
-    attempt.status = "Verifying time…";
-    attempt.failed = false;
-    try {
-      const token = await signedInToken();
-      if (!token) throw new Error("Sign in to submit time");
-      const response = await fetch(levelTimesUrl(attempt.run.level), {
+  // Every run this device rides home, solo or in a room, goes to its level's board.
+  const levelRuns = createLevelRunUploads({
+    token: signedInToken,
+    async post(run, token) {
+      const response = await fetch(levelTimesUrl(run.level), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(attempt.run),
+        body: JSON.stringify(run),
       });
       if (!response.ok) throw new Error("Could not save time");
       const result: unknown = await response.json();
       if (!result || typeof result !== "object" || !("ranked" in result))
         throw new Error("Missing leaderboard result");
-      attempt.status =
-        result.ranked === true
-          ? "Leaderboard time saved"
-          : "Verified outside the top 100";
-    } catch {
-      attempt.status = "Could not save leaderboard time";
-      attempt.failed = true;
-    }
-  };
+      return result.ranked === true;
+    },
+  });
+  /** The match the screen shows, whose runs the result reports. */
+  let shownMatch = "";
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -977,11 +969,12 @@ function room(solo: boolean): void {
         resultReport(result, { color: slotColor, friend }),
       bar: (result) => {
         const bar = resultBar(result);
-        if (!result.solo || !rankedRun) return bar;
+        const saved = shownMatch ? levelRuns.summary(shownMatch) : undefined;
+        if (!saved) return bar;
         return {
           ...bar,
-          status: rankedRun.status,
-          actions: rankedRun.failed
+          status: saved.status,
+          actions: saved.failed
             ? [{ id: "retry-time", label: "Retry saving time" }, ...bar.actions]
             : bar.actions,
         };
@@ -1004,6 +997,7 @@ function room(solo: boolean): void {
     confirmedTick: () => runtime.confirmedTick(),
   });
   const finishes = createFinishWatch();
+  const deaths = createDeathWatch();
   const bests = createBestTimes(store);
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
@@ -1050,14 +1044,13 @@ function room(solo: boolean): void {
           rider?.status === "finished" ? centiseconds(rider.run) : undefined,
         );
       }
-      if (rankedRun?.match !== frame.matchId) rankedRun = undefined;
-      if (!rankedRun && solo && social.isSignedIn()) {
-        const run = runtime.soloRun();
-        if (run) {
-          rankedRun = { match: frame.matchId, run, status: "", failed: false };
-          void publishTime(rankedRun);
-        }
-      }
+      shownMatch = frame.matchId;
+      const finished = runtime.finishedRun();
+      const signedIn = social.isSignedIn();
+      if (finished) levelRuns.offer(finished.race, finished.run, signedIn);
+      if (signedIn) levelRuns.signedIn();
+      for (const death of deaths(frame, viewer.me))
+        analytics.track("Rider Died", { ...death, mode });
       const next = present(frame, viewer, bestBefore);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
