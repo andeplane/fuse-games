@@ -337,3 +337,33 @@ kbd {
   top: max(8px, env(safe-area-inset-top));
   bottom: auto;
 }
+
+/* A phone's live round (fuse-ui play-screen): `#app` is the stage, and the overlay, the pads and the round's controls
+   ride on it (play-stage.ts). Phaser fits its canvas to the box it measures on the screen, which an upright phone's
+   turned stage gives it the wrong way round: the canvas takes the stage's own 16:9 here instead. */
+html[data-fui-play] #app canvas {
+  position: absolute;
+  inset: 0;
+  width: min(100cqw, 100cqh * 16 / 9) !important;
+  height: auto !important;
+  margin: auto !important;
+}
+html[data-fui-play] #app > #screen {
+  position: absolute;
+  width: min(100cqw, 100cqh * 16 / 9);
+}
+html[data-fui-play] #app > [data-input="touch-pads"] {
+  position: absolute !important;
+  inset: var(--fui-play-top) var(--fui-play-right) var(--fui-play-bottom)
+    var(--fui-play-left) !important;
+}
+html[data-fui-play] #app > .fb-round-controls {
+  position: absolute;
+  top: max(8px, var(--fui-play-top));
+  width: min(42rem, 80cqw);
+  max-height: 45cqh;
+}
+/* Moved onto the stage, `#screen` no longer hides the sound toggle by the sibling rules above. */
+html[data-fui-play] .audio-toggle {
+  display: none;
+}

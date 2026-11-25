@@ -166,7 +166,12 @@
 }
 @media (min-height: 551px) and (min-width: 760px) {
   .if-bench {
-    width: min(100%, calc(160dvh - 164px));
+    width: min(100%, calc(160dvh - 212px));
+  }
+  /* The tray is as tall as the board and scrolls its own list, so a long list of fixed parts never scrolls the page. */
+  .if-bench-tray {
+    contain: size;
+    overflow: auto;
   }
 }
 @media (min-height: 551px) {

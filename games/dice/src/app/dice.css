@@ -351,3 +351,87 @@ body.dice-display .dice-die {
   font: 0.75rem/1.5 var(--fui-font-pixel);
   white-space: nowrap;
 }
+
+/*
+ * A phone's live match (fuse-ui play-screen): the table is the screen, under the corner menu button. Upright it is
+ * one column with ROLL and HOLD at the thumbs; on its side the scores stand left and the die and buttons right.
+ */
+html[data-fui-play] .dice-table .dice-die {
+  --die: min(13rem, 50cqw, 26cqh);
+}
+html[data-fui-play] .dice-table {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--fui-space-2);
+  padding: max(var(--fui-space-3), var(--fui-play-top))
+    max(var(--fui-space-3), var(--fui-play-right))
+    max(var(--fui-space-3), var(--fui-play-bottom))
+    max(var(--fui-space-3), var(--fui-play-left));
+  background: radial-gradient(ellipse at 50% 35%, #0d2347, var(--fui-ink));
+}
+/* The round line and headline keep clear of the menu button in the top right. */
+html[data-fui-play] .dice-round,
+html[data-fui-play] .dice-headline {
+  padding-inline: 2.75rem;
+}
+html[data-fui-play] .dice-board {
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+html[data-fui-play] .dice-centre {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+}
+html[data-fui-play] .dice-pad {
+  position: static;
+  min-height: min(7rem, 15cqh);
+}
+/* The stage is the screen as held (it is never drawn turned), so the screen's own orientation is the stage's. */
+@media (orientation: landscape) {
+  html[data-fui-play] .dice-table .dice-die {
+    --die: min(9rem, 34cqh);
+  }
+  html[data-fui-play] .dice-table {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
+    column-gap: var(--fui-space-4);
+    row-gap: var(--fui-space-1);
+  }
+  html[data-fui-play] .dice-table > * {
+    grid-column: 1;
+  }
+  html[data-fui-play] .dice-board {
+    grid-row: 4;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    align-content: start;
+    overflow: auto;
+  }
+  html[data-fui-play] .dice-player {
+    padding: var(--fui-space-1) var(--fui-space-2);
+  }
+  html[data-fui-play] .dice-player-score {
+    font-size: 1.1rem;
+  }
+  html[data-fui-play] .dice-table > .dice-centre {
+    grid-column: 2;
+    grid-row: 1 / 5;
+  }
+  html[data-fui-play] .dice-table > .dice-timer {
+    grid-column: 2;
+    grid-row: 5;
+  }
+  html[data-fui-play] .dice-table > .dice-timer-text {
+    grid-column: 2;
+    grid-row: 6;
+  }
+  html[data-fui-play] .dice-table > .dice-pad {
+    grid-column: 1 / -1;
+    grid-row: 7;
+    min-height: min(4.5rem, 20cqh);
+  }
+  html[data-fui-play] .dice-headline {
+    font-size: 1rem;
+  }
+}

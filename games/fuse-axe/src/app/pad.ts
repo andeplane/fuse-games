@@ -72,6 +72,12 @@ export interface PadSurface {
   setPointerCapture(pointerId: number): void;
 }
 
+/** A screen point in the pad's own box, along the pad's own axes, with the box's size. */
+export type PadLocate = (
+  clientX: number,
+  clientY: number,
+) => { x: number; y: number; width: number; height: number };
+
 /**
  * One thumb on the d-pad. The first pointer down steers until it lifts or the browser cancels it; a second finger on
  * the pad is ignored, so it cannot take the first one's direction away. Each move picks the direction from the thumb's
@@ -81,10 +87,23 @@ export interface PadSurface {
 export class DPad {
   private pointer: number | undefined;
   private held = 0;
+  /**
+   * `locate` places a screen point in the pad's own box: by default the box on the screen; the page passes fuse-ui's
+   * `localPoint` for a pad on a stage that can be drawn turned.
+   */
   constructor(
     private readonly surface: PadSurface,
     private readonly hold: (bits: number) => void,
     private readonly deadZone = PAD_DEAD_ZONE,
+    private readonly locate: PadLocate = (clientX, clientY) => {
+      const box = surface.getBoundingClientRect();
+      return {
+        x: clientX - box.left,
+        y: clientY - box.top,
+        width: box.width,
+        height: box.height,
+      };
+    },
   ) {
     surface.addEventListener("pointerdown", (event) => {
       event.preventDefault();
@@ -126,13 +145,13 @@ export class DPad {
     this.set(0);
   }
   private steer(event: PadPointer): void {
-    const box = this.surface.getBoundingClientRect(),
-      radius = Math.min(box.width, box.height) / 2;
+    const at = this.locate(event.clientX, event.clientY),
+      radius = Math.min(at.width, at.height) / 2;
     if (radius <= 0) return;
     this.set(
       directionBits(
-        (event.clientX - box.left - box.width / 2) / radius,
-        (event.clientY - box.top - box.height / 2) / radius,
+        (at.x - at.width / 2) / radius,
+        (at.y - at.height / 2) / radius,
         this.deadZone,
       ),
     );

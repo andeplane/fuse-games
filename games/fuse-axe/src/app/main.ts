@@ -1,5 +1,5 @@
 import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
-import { createTopBar } from "fuse-ui";
+import { createPlayScreen, createTopBar, localPoint } from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -480,11 +480,17 @@ function room(solo: boolean): void {
   );
   for (const side of ["up", "down", "left", "right"])
     dpadPad.append(el("i", "", `fa-dpad-${side}`));
-  const dpad = new DPad(dpadPad, (bits) => {
-    if ((menu.isOpen() || modalOpen()) && bits !== 0) return;
-    controls.hold("dpad", bits);
-    dpadPad.dataset.dir = directionName(bits);
-  });
+  const dpad = new DPad(
+    dpadPad,
+    (bits) => {
+      if ((menu.isOpen() || modalOpen()) && bits !== 0) return;
+      controls.hold("dpad", bits);
+      dpadPad.dataset.dir = directionName(bits);
+    },
+    undefined,
+    // An upright phone draws the stage turned: the thumb is placed along the pad's own axes.
+    (x, y) => localPoint(dpadPad, x, y),
+  );
   // A lift that lands off the pad (a thumb that slid off, a pad that moved) still ends its press.
   for (const type of ["pointerup", "pointercancel"] as const)
     window.addEventListener(type, (event) => dpad.lift(event.pointerId));
@@ -612,6 +618,16 @@ function room(solo: boolean): void {
     letGoPads();
     gamepads.letGo();
   };
+  // A phone's live run is the whole screen; the 16:9 picture is drawn turned when the phone is upright.
+  // The round's controls card rides on the stage while it is the screen, so it turns with it.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: (mode) => {
+      letGo();
+      (mode === "off" ? app : stage).append(roundControls.element);
+    },
+  });
   // A phone in play shows the pads' hints as each stage begins. The game's own menu stays where the shared bar put
   // it, in the bar's menu, on a phone as on a desktop: moved out, it lay over the bar's buttons and the room's Back.
   const phone = createPhoneLayout({
@@ -655,8 +671,17 @@ function room(solo: boolean): void {
       );
     canvas.width = VIEW_W * scale;
     canvas.height = VIEW_H * scale;
-    canvas.style.width = `${canvas.width / ratio}px`;
-    canvas.style.height = `${canvas.height / ratio}px`;
+    // A phone's full-screen play stretches the whole-number picture the last bit to the screen's edge: on a phone's
+    // dense pixels the uneven steps do not show, the black frame round a picture a quarter smaller did.
+    const stretch =
+      playScreen.mode() === "off"
+        ? 1 / ratio
+        : Math.min(
+            screen.clientWidth / canvas.width,
+            screen.clientHeight / canvas.height,
+          );
+    canvas.style.width = `${canvas.width * stretch}px`;
+    canvas.style.height = `${canvas.height * stretch}px`;
   };
   new ResizeObserver(fit).observe(screen);
   // ---- the newest folded world played forward to the clock, once per animation frame ----
@@ -838,7 +863,17 @@ function room(solo: boolean): void {
     placePads(next.screen === "controller");
     const cardHome = next.screen === "controller" ? controllerCenter : screen;
     if (card.parentElement !== cardHome) cardHome.append(card);
-    touch.hidden = !next.pads || next.screen !== "play";
+    // The picture fills a phone from the run's first stage to its end; the lobby and the results are tapped.
+    playScreen.update(
+      next.screen === "play" &&
+        !display &&
+        !next.result &&
+        (view.stage === "running" || view.stage === "between"),
+    );
+    touch.hidden =
+      !next.pads ||
+      next.screen !== "play" ||
+      !(view.stage === "running" || !!view.world?.camp);
     showCard(next.card);
     // What holds the game: the stage flow's card, or the run's end.
     main.dataset.card = next.card?.kind ?? next.result?.kind ?? "";
@@ -980,6 +1015,7 @@ function room(solo: boolean): void {
     ended() {
       say("Room ended", "error");
       over = true;
+      playScreen.destroy();
       audio.stop();
       controls.close();
       menu.close();

@@ -1159,3 +1159,45 @@ body.fui-app {
     height: 44px;
   }
 }
+/*
+ * A phone's live match (fuse-ui play-screen): the board is the whole screen (`fit` in `main.ts` sizes it to the
+ * stage), the score bar floats over its top beside the menu button and the folded panel over its foot.
+ */
+html[data-fui-play] .ff-play {
+  display: block;
+}
+html[data-fui-play] .ff-play > .ff-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+html[data-fui-play] .ff-play .ff-board {
+  margin: 0;
+  border: 0;
+}
+html[data-fui-play] .ff-play > .ff-bar {
+  position: absolute;
+  z-index: 2;
+  top: max(4px, var(--fui-play-top));
+  left: max(4px, var(--fui-play-left));
+  right: calc(48px + var(--fui-play-right));
+  gap: 2px 8px;
+  padding: 2px 8px;
+  background: rgba(24, 27, 32, 0.72);
+  font-size: 0.7rem;
+  pointer-events: none;
+}
+html[data-fui-play] .ff-play > .ff-bar :is(button, a) {
+  pointer-events: auto;
+}
+html[data-fui-play] .ff-play > .ff-panel {
+  padding-bottom: max(6px, var(--fui-play-bottom));
+  padding-left: max(8px, var(--fui-play-left));
+  padding-right: max(8px, var(--fui-play-right));
+  border-radius: 0;
+  border-width: 1px 0 0;
+}
+html[data-fui-play] .ff-play > .ff-hud {
+  display: none;
+}

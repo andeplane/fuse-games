@@ -30,6 +30,7 @@ export interface RecordingSummary {
   durationMs: number;
   bytes: number;
   expiresAt: number;
+  handled?: boolean;
 }
 export interface SegmentAcknowledgement {
   sequence: number;
@@ -50,6 +51,7 @@ export interface SegmentView {
 export interface ReportView extends Omit<ReportSubmission, "screenshot"> {
   receivedAt: number;
   screenshotUrl?: string;
+  handled?: boolean;
 }
 export interface ReportsPage {
   reports: ReportView[];

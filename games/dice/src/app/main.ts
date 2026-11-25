@@ -38,6 +38,7 @@ import {
   createRoster,
   createSharedTvOption,
   createRoundControls,
+  createPlayScreen,
   el,
 } from "fuse-ui";
 import {
@@ -355,6 +356,9 @@ function room(solo: boolean): void {
     pad.element,
   );
   const cards = new Map<string, Record<string, HTMLElement>>();
+  // A phone's live match is the whole screen: the table reflows to whichever way the phone is held.
+  table.dataset.playfield = "";
+  const playScreen = createPlayScreen({ stage: table });
 
   // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({
@@ -411,6 +415,12 @@ function room(solo: boolean): void {
     main.dataset.screen = model.screen;
     lobby.hidden = model.screen !== "lobby";
     table.hidden = model.screen !== "table";
+    playScreen.update(
+      model.screen === "table" &&
+        model.controls.visible &&
+        !model.result &&
+        !display,
+    );
     nameEntry.form.hidden = !model.askName;
     // Lobby.
     roster.update(
@@ -586,6 +596,7 @@ function room(solo: boolean): void {
       viewer.host = host;
     },
     ended() {
+      playScreen.destroy();
       say("Room ended", "error", true);
       // A service that does not host this game closes the socket the same way: its game routes say which it was.
       void fetch(endpoints.apiUrl(`/api/games/${GAME}/leaderboard`))

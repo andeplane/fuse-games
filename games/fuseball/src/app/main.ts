@@ -1084,7 +1084,9 @@ function room(solo: boolean): void {
     main.dataset.riding = String(next.riding);
     lobby.hidden = next.screen !== "lobby";
     stage.hidden = next.screen !== "play";
-    playScreen.update(next.screen === "play" && view.stage === "running");
+    playScreen.update(
+      next.screen === "play" && view.stage === "running" && !display,
+    );
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
     // Lobby.

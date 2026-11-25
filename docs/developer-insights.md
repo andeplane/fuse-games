@@ -212,6 +212,11 @@ recording remains disabled regardless of this grant.
 
 ## Private HTTP API
 
+Reports and finished Playtest sessions have an Open or Handled review status.
+Developers with both read and token capabilities can mark an item handled or
+reopen it. Review status is shared and audited. A session and its reports can
+be reviewed individually.
+
 Developer reads use `Authorization: Bearer <Google ID token>` and no-store
 responses. Exact request/response definitions are in
 `packages/fuse-telemetry/src/contracts.ts`, `debug-contracts.ts` and
@@ -229,8 +234,10 @@ responses. Exact request/response definitions are in
 | `GET /api/dev/reports`                                 | `limit`, opaque `cursor`, optional `recordingId`; paginated private reports.                                                           |
 | `GET /api/dev/reports/:id`                             | `{report}`.                                                                                                                            |
 | `GET /api/dev/reports/:id/screenshot`                  | Private image bytes, no-store; never a public bucket URL.                                                                              |
+| `POST /api/dev/reports/:id/review`                     | `{handled: boolean}` changes the report's review status.                                                                               |
 | `GET /api/dev/recordings`                              | `limit`, opaque `cursor`; paginated recordings.                                                                                        |
 | `GET /api/dev/recordings/:id`                          | Recording detail, ordered segments, transcription states and related reports.                                                          |
+| `POST /api/dev/recordings/:id/review`                  | `{handled: boolean}` changes a finished recording's review status.                                                                     |
 | `GET /api/dev/recordings/:id/segments/:sequence/audio` | Private WAV bytes, no-store.                                                                                                           |
 | `POST /api/internal/transcription`                     | Dedicated authenticated Pub/Sub push worker; Google OIDC audience and service-account checks, not developer/agent tokens.              |
 

@@ -321,3 +321,205 @@
     justify-content: flex-end;
   }
 }
+
+/*
+ * A phone's live round (fuse-ui play-screen): the belfry is the screen. The scoreboard is a slim band over its sky
+ * and the pads float over its lower corners. The selectors are long so they win over the touch layouts above.
+ */
+html[data-fui-play] body.playground .play-surface.fui-play-stage {
+  display: block;
+  margin: 0;
+  background: radial-gradient(ellipse at 50% 40%, #1b1d30, #05060a 70%);
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage #scene {
+  flex: none;
+  width: min(100cqw, calc(100cqh * 16 / 9));
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  .stage-caption {
+  display: none;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage #match-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-height: 0;
+  margin: 0;
+  padding: max(4px, var(--fui-play-top))
+    calc(max(6px, var(--fui-play-right)) + 44px) 14px
+    max(6px, var(--fui-play-left));
+  background: linear-gradient(#05060acc, #05060a66 65%, #05060a00);
+  pointer-events: none;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  button {
+  pointer-events: auto;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  .match-heading {
+  display: contents;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage #match-map {
+  display: none;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage #match-mode {
+  font-size: 13px;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .match-clock {
+  order: 4;
+  min-width: 0;
+  padding: 2px 8px;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  .match-clock
+  small {
+  display: none;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  .match-clock
+  strong {
+  font-size: 16px;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #spectator-state {
+  order: 3;
+  margin: 0;
+  font-size: 10px;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  #roster {
+  order: 2;
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 7.5rem));
+  gap: 3px;
+  margin: 0;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  .keeper-card {
+  display: block;
+  min-height: 0;
+  padding: 2px 4px 2px 6px;
+  background: #0b0e18b0;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  .keeper-portrait,
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  .keeper-badge {
+  display: none;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  .keeper-name {
+  display: block;
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  #match-hud
+  .keeper-card
+  small {
+  display: block;
+  font-size: 8px;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage #round-status {
+  order: 5;
+  flex: 1 1 100%;
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage #touch-deck {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  padding: 0;
+  pointer-events: none;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  .thumb-control {
+  position: absolute;
+  bottom: max(10px, var(--fui-play-bottom));
+  margin: 0;
+}
+html[data-fui-play]
+  body.playground
+  .play-surface.fui-play-stage
+  .thumb-control
+  > span {
+  display: none;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .move-control {
+  left: max(14px, var(--fui-play-left));
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .aim-control {
+  right: max(14px, var(--fui-play-right));
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .bomb-control {
+  right: calc(max(14px, var(--fui-play-right)) + min(120px, 32cqh) + 14px);
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .thumb-pad {
+  width: min(120px, 32cqh);
+  height: min(120px, 32cqh);
+  background: radial-gradient(circle, #32334a99, #191e3066);
+  pointer-events: auto;
+}
+html[data-fui-play] body.playground .play-surface.fui-play-stage .bomb-button {
+  width: min(60px, 17cqh);
+  height: min(60px, 17cqh);
+  pointer-events: auto;
+}

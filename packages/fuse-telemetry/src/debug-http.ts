@@ -6,7 +6,7 @@ import {
   type DeveloperVerifier,
 } from "./developer-access.js";
 import { DEBUG_LIMITS } from "./debug-contracts.js";
-import { DebugService, debugAssert } from "./debug-service.js";
+import { DebugService, debugAssert, debugUuid } from "./debug-service.js";
 import { readDebugBody } from "./worker.js";
 import {
   auditDeveloper,
@@ -191,6 +191,45 @@ export function createDebugHttpExtension(
         return true;
       }
       if (!path.startsWith("/api/dev/")) return false;
+      const review = /^\/api\/dev\/(reports|recordings)\/([^/]+)\/review$/.exec(
+        path,
+      );
+      if (review) {
+        debugAssert(method === "POST", 405);
+        const principal = await requireDeveloper(req, verifier);
+        debugAssert(debugUuid(review[2]));
+        debugAssert(
+          options.security,
+          403,
+          "Playtest review access is unavailable",
+        );
+        const input = await json(req, 128);
+        debugAssert(
+          input &&
+            typeof input === "object" &&
+            "handled" in input &&
+            typeof input.handled === "boolean" &&
+            Object.keys(input).length === 1,
+        );
+        const at = (options.now ?? Date.now)();
+        await authorizeDeveloper(options.security, principal, "token", at);
+        await auditDeveloper(
+          options.security,
+          principal,
+          input.handled ? "playtest.handled" : "playtest.reopened",
+          path,
+          at,
+        );
+        send(
+          res,
+          await service.setHandled(
+            review[1] === "reports" ? "report" : "recording",
+            review[2],
+            input.handled,
+          ),
+        );
+        return true;
+      }
       if (
         !["/api/dev/reports", "/api/dev/recordings"].includes(path) &&
         !/^\/api\/dev\/(reports|recordings)\/[^/]+(?:\/screenshot|\/segments\/\d+\/audio)?$/.test(

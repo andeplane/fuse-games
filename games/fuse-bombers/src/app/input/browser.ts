@@ -3,6 +3,7 @@ import {
   playtestInputBlocked,
   registerPlaytestInput,
 } from "fuse-ui/playtest-input";
+import { localPoint } from "fuse-ui";
 import { attachGamepads, type GamepadLike } from "./gamepad.js";
 import { InputHub } from "./hub.js";
 import { attachKeyboard } from "./keyboard.js";
@@ -32,6 +33,8 @@ export interface BrowserInput {
     pads: readonly (TouchPadStyle | undefined)[],
     layout?: PadLayout,
   ): void;
+  /** The overlay the pads are drawn on (touch devices only): the page puts it on the play screen's stage. */
+  readonly touchLayer?: HTMLElement;
 }
 
 /** The D-pad's arrows: their cell in its 3 × 3 grid and the bit each lights up for. */
@@ -173,6 +176,8 @@ export function createBrowserInput(
     },
     win,
     blocked,
+    // On a stage drawn turned (an upright phone's full-screen play), a finger is placed along the layer's own axes.
+    (x, y) => localPoint(layer, x, y),
   );
   hub.addSource({ cancel: () => touch.cancel?.() });
   const draw = (): void => {
@@ -187,8 +192,14 @@ export function createBrowserInput(
     });
   };
   win.addEventListener("resize", draw);
+  // The layer also changes size without the window doing so: moved onto a play screen's stage, or that stage turned.
+  const { ResizeObserver: Observer } = win as Window &
+    Partial<Pick<typeof globalThis, "ResizeObserver">>;
+  const resized = Observer ? new Observer(draw) : undefined;
+  resized?.observe(layer);
   hub.addSource({
     dispose: () => {
+      resized?.disconnect();
       win.removeEventListener("resize", draw);
       touch.dispose?.();
       layer.remove();
@@ -198,6 +209,7 @@ export function createBrowserInput(
   return {
     hub,
     touchEnabled,
+    touchLayer: layer,
     setTouchPads: (next, layout) => {
       styles = [...next];
       touch.setSides(
