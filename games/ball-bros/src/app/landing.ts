@@ -21,6 +21,7 @@ export function landing(
     create(): Promise<{ code: string; token: string }>;
     navigate(query: string): void;
     active?(): boolean;
+    unavailableRoom?: string;
   },
 ) {
   const el = elementsFor(root.ownerDocument);
@@ -80,5 +81,12 @@ export function landing(
     back,
   );
   root.replaceChildren(top, card.element);
+  if (options.unavailableRoom) {
+    card.join.input.value = options.unavailableRoom;
+    card.error.textContent =
+      "Room not found. Check the code with your host and try again.";
+    card.menu.showPlayMenu();
+    card.menu.joinRoom.click();
+  }
   return card;
 }

@@ -81,12 +81,45 @@ try {
   const code = new URL(a.url()).searchParams.get("room")!;
   await a.locator(".fui-room-count", { hasText: "0 / 5" }).waitFor();
   await join(a, "Alice");
+  let guestCreates = 0;
+  b.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/rooms"
+    )
+      guestCreates++;
+  });
   await b.goto(url);
   await openPlayOptions(b, "join");
-  await b.getByPlaceholder("Room code").fill(code);
-  await b.getByRole("button", { name: "JOIN ROOM", exact: true }).click();
+  const roomCode = b.getByPlaceholder("Room code");
+  const missing = code === "000000" ? "000001" : "000000";
+  await roomCode.fill(missing);
+  await roomCode.press("Enter");
+  await b.getByRole("alert").filter({ hasText: "Room not found" }).waitFor();
+  assert.equal(await roomCode.inputValue(), missing);
+  assert.equal(
+    await roomCode.evaluate((input) => input.matches(":focus")),
+    true,
+  );
+  assert.equal(await b.locator(".fui-invite").count(), 0);
+  await roomCode.fill(code.toLowerCase());
+  await b
+    .getByRole("dialog", { name: "Join room" })
+    .getByRole("button", { name: "JOIN ROOM", exact: true })
+    .click();
+  await b
+    .locator(".fui-room-open-slot")
+    .getByRole("button", { name: "Join", exact: true })
+    .first()
+    .waitFor();
+  assert.equal(await b.locator(".fui-room-code").innerText(), code);
+  assert.equal(
+    await b.getByRole("button", { name: "Add AI", exact: true }).count(),
+    0,
+  );
   await join(b, "Bob");
   await a.locator(".fui-roster-name", { hasText: "Bob" }).waitFor();
+  assert.equal(guestCreates, 0, "joining by code never creates a room");
   for (const page of [a, b])
     await page
       .getByRole("button", { name: "Room settings", exact: true })
