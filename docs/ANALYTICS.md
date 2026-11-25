@@ -37,7 +37,8 @@ also refreshes it. A game session is a distinct session/game pair. Sessions and
 users are counted distinctly for each UTC day, ISO week and calendar month; weekly
 and monthly uniques must never be computed by adding daily uniques.
 
-The envelope contains `v:1`, random event `id`, stable `gameId`, anonymous
+The envelope contains `v:1`, random event `id`, stable `gameId` (the game route id,
+including `dice` for Pig; see `games/*/index.html` for the current inventory), anonymous
 `userId`, `sessionId`, `name`, `occurredAt`, and primitive `properties`.
 Names keep the shared `fuse.` prefix. A game name belongs in `gameId`, not the
 event namespace. The service validates the envelope and adds receipt/expiry metadata.
@@ -151,6 +152,10 @@ ledger capacity can forget their oldest marks; these metrics are not billing rec
 | Fusetown          | Whole race to four goals; weeks remain turns                                     |
 | Hook Havok        | Contest; open-ended free arena has no invented end                               |
 
+Fuse Front's player count includes every army slot, and its bot count includes vacant
+or disconnected slots currently driven by the AI, even though those slots have no bot
+seat record. Landing-page attract battles do not report play events.
+
 Fuseball's existing `playRound` helper is only a match-start guard (first countdown
 versus the rest of the match); round participation uses an explicit constant key.
 
@@ -159,7 +164,9 @@ versus the rest of the match); round participation uses an explicit constant key
 Existing game-specific events use the same namespace and privacy boundary:
 Riders' funnel/settings/graphics events and confirmed human-owned `Kill`/`Miss`,
 Killer Fuse's decided `Game Ended`, Fuseball's `Goal Scored`, Volley's
-`Point Scored`, Elasto's `Race Finished` and Fuse Surge's `Round Decided` (how a round
+`Point Scored`, Elasto's `Race Finished` and `Rider Died` (one per crash or restart of
+the device's own rider, solo and in rooms: `level`, `cause`, `death`, `centiseconds`,
+`riders`, `tour`, `mode`) and Fuse Surge's `Round Decided` (how a round
 ended: `reason`, `won`, `riders`, `seconds` with 0 for an endless round, `hits`). No per-tick stream is added.
 Riders weapon credit follows the authoritative decided shot log, not speculative
 rendered explosions; the shooter reports its own shots and bots have no user identity.

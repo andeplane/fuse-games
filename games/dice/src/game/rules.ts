@@ -13,16 +13,19 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   CAPACITY,
-  MAX_NAME,
   MAX_POINTS,
   MAX_ROUNDS,
   TARGET,
   WINS_NEEDED,
   validName,
 } from "./basics.js";
+
+export { seatPlayerName as seatName } from "fuse-platform/player-name";
+
 export * from "./basics.js";
 
 /**
@@ -152,16 +155,6 @@ export type DiceEvent =
   | { type: "round"; id: string; round: number }
   | { type: "match"; id: string };
 
-const CONTROL = /[\u0000-\u001f\u007f]/;
-/** What a player typed, as it is seated: trimmed and cut to `MAX_NAME` code points, or refused. */
-export function seatName(raw: string): string | undefined {
-  if (CONTROL.test(raw)) return;
-  const name = Array.from(raw.replace(/\p{Cs}/gu, "").trim())
-    .slice(0, MAX_NAME)
-    .join("")
-    .trim();
-  return validName(name) ? name : undefined;
-}
 export const AVATARS = [
   "robot",
   "cat",
@@ -503,11 +496,8 @@ function playEntries(
   tick: number,
 ): PlayEntry[] {
   const stream = streams.get(seat.id),
-    source =
-      stream?.generation === seat.generation
-        ? stream
-        : stream?.retired?.find((old) => old.generation === seat.generation);
-  return (source?.entries ?? []).filter(
+    entries = entriesForGeneration(stream, seat.generation);
+  return entries.filter(
     (entry): entry is PlayEntry =>
       entry[1] === tick && (entry[2] === ROLL || entry[2] === HOLD),
   );

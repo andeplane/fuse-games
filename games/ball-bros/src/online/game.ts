@@ -11,6 +11,7 @@ import {
   type SeatRecord,
   type Stage,
   type StreamEntries,
+  entriesForGeneration,
 } from "fuse-netcode";
 import {
   createArena,
@@ -176,11 +177,8 @@ export function foldTick(
         continue;
       }
       const stream = streams.get(base.id);
-      const source =
-        stream?.generation === seat.generation
-          ? stream
-          : stream?.retired?.find((s) => s.generation === seat.generation);
-      for (const entry of source?.entries ?? []) {
+      const entries = entriesForGeneration(stream, seat.generation);
+      for (const entry of entries) {
         if (entry[1] === tick && entry[2] === 0 && entry[3] === room.matchId)
           control(arena, base.id, {
             steer: entry[4],

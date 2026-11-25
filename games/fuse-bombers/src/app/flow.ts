@@ -46,6 +46,8 @@ export interface FlowOptions {
   uiState?(state: {
     lobby: boolean;
     countdown: boolean;
+    /** A match is on, from a round's countdown to its tally; not the lobby and not the winner. */
+    live: boolean;
     round: number;
     controls: readonly ControlHint[];
     spectator: boolean;
@@ -211,6 +213,10 @@ export class Flow implements RoundSource {
     this.options.uiState?.({
       lobby: screen.kind === "lobby",
       countdown: screen.kind === "countdown" && screen.left > 0 && !this.paused,
+      live:
+        screen.kind === "countdown" ||
+        screen.kind === "playing" ||
+        screen.kind === "results",
       round: runner.view.config.seed,
       controls: localControls(
         screen.kind === "lobby" ? this.lobby.seats() : seats,

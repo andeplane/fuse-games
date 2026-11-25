@@ -1,4 +1,4 @@
-import { createTopBar } from "fuse-ui";
+import { createGameMenu, createTopBar } from "fuse-ui";
 import {
   bindAudioInput,
   browserAudioDependencies,
@@ -52,6 +52,7 @@ import {
   createResultsScreen,
   createRoundControls,
   createRoster,
+  createPlayScreen,
   createSharedTvOption,
   el,
 } from "fuse-ui";
@@ -463,8 +464,27 @@ function room(solo: boolean): void {
     ] as const,
   });
   const roundControls = createRoundControls(drivingGuide);
+  // The shared game menu, as in every game: the host's Back to lobby during a race and everyone's Main menu.
+  const gameMenu = createGameMenu({
+    ...drivingGuide,
+    onLobby: () => runtime.command({ type: "action", action: "lobby" }),
+    onLeave: () => {
+      runtime.stop();
+      location.href = gameLink();
+    },
+  });
+  gameMenu.update({ canLobby: false });
   const touchDevice = window.matchMedia("(pointer: coarse)");
   race.append(pad.element, roundControls.element);
+  // A phone's live race is the whole screen, drawn turned when the phone is upright; the pads move under the thumbs.
+  const playScreen = createPlayScreen({
+    stage: race,
+    wide: true,
+    onChange: () => {
+      Object.assign(touch, NEUTRAL_INPUT);
+      drive();
+    },
+  });
 
   const main = el("main", "", "fd-room");
   // Until the first view arrives there is nothing to show but the lobby: a room with no host yet would
@@ -481,7 +501,7 @@ function room(solo: boolean): void {
   );
   // The room's code is on its invitation, and in the lobby its state is at the lobby's foot: the bar holds the
   // state only while a race is on.
-  app.replaceChildren(header([live.element]), main);
+  app.replaceChildren(header([live.element, gameMenu.element]), main);
   /** This device's own seat in the lobby, as the last frame had it. */
   let ownSeat: { name: string; slot: number } | undefined;
   createRoomLayout({
@@ -609,10 +629,23 @@ function room(solo: boolean): void {
     // A phone that is only a controller has no room for the arena.
     const driving = model.screen === "race" && !!model.lobby.own && !display;
     pad.element.hidden = !driving || !touchDevice.matches;
+    playScreen.update(driving && !canvas.hidden && !result);
     const guideParent =
       !canvas.hidden && !display && !touchDevice.matches ? arenaBox : race;
     if (roundControls.element.parentElement !== guideParent)
       guideParent.append(roundControls.element);
+    gameMenu.update({
+      canLobby: viewer.host && !display && model.screen !== "lobby",
+      controls: latest?.race?.battle
+        ? battleGuide.controls
+        : drivingGuide.controls,
+      touchControls: latest?.race?.battle
+        ? battleGuide.touchControls
+        : drivingGuide.touchControls,
+      touch: touchDevice.matches,
+      spectator: !model.lobby.own,
+      display,
+    });
     roundControls.update({
       round: latest?.matchId ?? "",
       visible: model.screen === "race" && latest?.race?.phase === "countdown",
@@ -678,6 +711,7 @@ function room(solo: boolean): void {
     },
     ended() {
       say("Room ended", "error");
+      playScreen.destroy();
     },
   };
 

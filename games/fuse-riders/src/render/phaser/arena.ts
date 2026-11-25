@@ -7,7 +7,7 @@ import {
 import { assetUrl } from "../asset-url.js";
 import Phaser from "phaser";
 import { registerPhaserPlaytestCapture } from "fuse-ui/playtest-renderer";
-import type { WorldView } from "../../engine/view.js";
+import type { RiderView, WorldView } from "../../engine/view.js";
 import type { RiderPoses } from "../time/reconcile.js";
 import { themes, type ThemeDefinition } from "../themes.js";
 import { AVATAR_ATLAS } from "../avatar-atlas.js";
@@ -40,6 +40,7 @@ import {
 import {
   PICKUP_TYPES,
   isAimingGun,
+  rayAxisLimit,
   trackPose,
   wrapCoordinate,
   wrapImages,
@@ -48,7 +49,7 @@ import { observeArenaDisplay } from "./viewport.js";
 import { blastFrame } from "../blast-animation.js";
 import { reloadRemaining, RELOAD_RING_RADIUS } from "../reload-ring.js";
 import { GunImpacts, gunImpactFrame } from "./gun-impacts.js";
-import { gunFrame, gunRoots, gunPortalPulses } from "./gun-animation.js";
+import { sampleGunPresentation } from "./gun-animation.js";
 import { TrailDebris } from "../trail-debris.js";
 import { BeveledTrails } from "./beveled-trails.js";
 import {
@@ -147,10 +148,23 @@ function guardDefaultTextures(game: Phaser.Game, failed: () => void): boolean {
   return true;
 }
 
+function cross(g: Phaser.GameObjects.Graphics, x: number, y: number): void {
+  g.fillRect(x - 2, y - 8, 4, 16).fillRect(x - 8, y - 2, 16, 4);
+}
+
+interface PortalAppearance {
+  forming: boolean;
+  warmup: number;
+  remaining: number;
+  shotGlow: number;
+  tints: readonly [number, number];
+}
+
 /** What every draw step of one frame reads: the view, the clock, the two dynamic layers and the board's shape. */
 interface Frame {
   riderPoses?: RiderPoses;
   s: WorldView;
+  gun: ReturnType<typeof sampleGunPresentation>;
   now: number;
   theme: ThemeDefinition;
   matchId: string;
@@ -856,6 +870,7 @@ class ArenaScene extends Phaser.Scene {
     const frame: Frame = {
       riderPoses,
       s,
+      gun: sampleGunPresentation(s),
       now,
       theme,
       matchId,
@@ -1186,8 +1201,8 @@ class ArenaScene extends Phaser.Scene {
     }
   }
   private drawPortals(frame: Frame): void {
-    const { s, now, g } = frame;
-    const portalPulses = gunPortalPulses(s, s.presentationTick ?? s.tick);
+    const { s, gun, g } = frame;
+    const time = gun.tick;
     const livePortals = s.portalPairs.filter(
       (pair) => pair.expiresAtTick > s.tick,
     );
@@ -1196,7 +1211,6 @@ class ArenaScene extends Phaser.Scene {
       const activatesAt = pair.expiresAtTick - s.rules.portalLifetimeTicks;
       // The phase follows the authoritative tick; interpolation only eases its appearance.
       const forming = s.tick < activatesAt;
-      const time = s.presentationTick ?? s.tick;
       const warmup = Math.max(
         0,
         Math.min(1, 1 - (activatesAt - time) / s.rules.portalWarmupTicks),
@@ -1206,18 +1220,11 @@ class ArenaScene extends Phaser.Scene {
         Math.min(1, (pair.expiresAtTick - time) / s.rules.portalLifetimeTicks),
       );
       const tints = portalTints[pairIndex]!.map(color) as [number, number];
-      const shotPulses = portalPulses.filter(
-        (pulse) => pulse.pairId === pair.id,
-      );
-      const shotGlow = Math.max(
-        0,
-        ...shotPulses.map((pulse) => pulse.strength),
-      );
-      for (const pulse of shotPulses)
+      const shot = gun.portals.get(pair.id);
+      const shotGlow = shot?.glow ?? 0;
+      for (const pulse of shot?.pulses ?? [])
         for (const point of [pulse.entry, pulse.exit])
-          g.fillStyle(0xffffff, pulse.strength)
-            .fillRect(point.x - 2, point.y - 8, 4, 16)
-            .fillRect(point.x - 8, point.y - 2, 16, 4);
+          cross(g.fillStyle(0xffffff, pulse.strength), point.x, point.y);
 
       // The faint tether keeps the two ends of one pair readable when several pairs are open.
       g.lineStyle(2, tints[0], forming ? 0.07 : 0.18).lineBetween(
@@ -1226,94 +1233,85 @@ class ArenaScene extends Phaser.Scene {
         pair.gates[1].x,
         pair.gates[1].y,
       );
-      for (const [index, gate] of pair.gates.entries()) {
-        const tint = tints[index]!;
-        const bar = uprightOffset(
-          gate.x,
-          gate.y,
-          0,
-          this.rotated ? -22 : -gate.halfLength - 18,
-          this.rotated,
-        );
-        if (forming) {
-          // Broken, translucent silhouettes cannot be mistaken for the solid active gates.
-          for (let y = -gate.halfLength; y < gate.halfLength; y += 24)
-            g.lineStyle(5, tint, 0.15 + 0.4 * warmup).lineBetween(
-              gate.x,
-              gate.y + y,
-              gate.x,
-              gate.y + Math.min(gate.halfLength, y + 12),
-            );
-          this.label("FORMING", bar.x, bar.y, "#a7b5c8", 8);
-          continue;
-        }
-        const start = uprightOffset(bar.x, bar.y, -24, 0, this.rotated);
-        const end = uprightOffset(bar.x, bar.y, 24, 0, this.rotated);
-        const fill = uprightOffset(
-          bar.x,
-          bar.y,
-          -24 + 48 * remaining,
-          0,
-          this.rotated,
-        );
-        g.lineStyle(8, 0x08101d, 1)
-          .lineBetween(start.x, start.y, end.x, end.y)
-          .lineStyle(4, tint, 1)
-          .lineBetween(start.x, start.y, fill.x, fill.y);
-        g.lineStyle(22, tint, 0.12)
-          .lineBetween(
-            gate.x,
-            gate.y - gate.halfLength,
-            gate.x,
-            gate.y + gate.halfLength,
-          )
-          .lineStyle(8, tint, 0.9)
-          .lineBetween(
-            gate.x,
-            gate.y - gate.halfLength,
-            gate.x,
-            gate.y + gate.halfLength,
-          );
-        if (shotGlow > 0)
-          g.lineStyle(30, tint, 0.3 * shotGlow)
-            .lineBetween(
-              gate.x,
-              gate.y - gate.halfLength,
-              gate.x,
-              gate.y + gate.halfLength,
-            )
-            .lineStyle(3, 0xffffff, 0.9 * shotGlow)
-            .lineBetween(
-              gate.x,
-              gate.y - gate.halfLength,
-              gate.x,
-              gate.y + gate.halfLength,
-            );
-        for (let y = -gate.halfLength; y < gate.halfLength; y += 20) {
-          const offset = (now / 35) % 20;
-          g.fillStyle(0xffffff, 0.75).fillRect(
-            gate.x - 1,
-            gate.y + y + offset,
-            2,
-            8,
-          );
-        }
-        for (let y = -gate.halfLength + 20; y < gate.halfLength; y += 40) {
-          g.lineStyle(2, tints[1 - index]!)
-            .lineBetween(gate.x - 8, gate.y + y - 5, gate.x - 14, gate.y + y)
-            .lineBetween(gate.x - 14, gate.y + y, gate.x - 8, gate.y + y + 5)
-            .lineBetween(gate.x + 8, gate.y + y - 5, gate.x + 14, gate.y + y)
-            .lineBetween(gate.x + 14, gate.y + y, gate.x + 8, gate.y + y + 5);
-        }
-      }
+      const appearance = { forming, warmup, remaining, shotGlow, tints };
+      for (const [index, gate] of pair.gates.entries())
+        this.drawPortalGate(frame, gate, index, appearance);
     }
   }
+
+  private drawPortalGate(
+    { g, now }: Pick<Frame, "g" | "now">,
+    gate: WorldView["portalPairs"][number]["gates"][number],
+    index: number,
+    { forming, warmup, remaining, shotGlow, tints }: PortalAppearance,
+  ): void {
+    const tint = tints[index]!;
+    const bar = uprightOffset(
+      gate.x,
+      gate.y,
+      0,
+      this.rotated ? -22 : -gate.halfLength - 18,
+      this.rotated,
+    );
+    if (forming) {
+      // Broken, translucent silhouettes cannot be mistaken for the solid active gates.
+      for (let y = -gate.halfLength; y < gate.halfLength; y += 24)
+        g.lineStyle(5, tint, 0.15 + 0.4 * warmup).lineBetween(
+          gate.x,
+          gate.y + y,
+          gate.x,
+          gate.y + Math.min(gate.halfLength, y + 12),
+        );
+      this.label("FORMING", bar.x, bar.y, "#a7b5c8", 8);
+      return;
+    }
+    const start = uprightOffset(bar.x, bar.y, -24, 0, this.rotated);
+    const end = uprightOffset(bar.x, bar.y, 24, 0, this.rotated);
+    const fill = uprightOffset(
+      bar.x,
+      bar.y,
+      -24 + 48 * remaining,
+      0,
+      this.rotated,
+    );
+    g.lineStyle(8, 0x08101d, 1)
+      .lineBetween(start.x, start.y, end.x, end.y)
+      .lineStyle(4, tint, 1)
+      .lineBetween(start.x, start.y, fill.x, fill.y);
+    const top = gate.y - gate.halfLength;
+    const bottom = gate.y + gate.halfLength;
+    const stroke = (width: number, tint: number, alpha: number) =>
+      g.lineStyle(width, tint, alpha).lineBetween(gate.x, top, gate.x, bottom);
+    stroke(22, tint, 0.12);
+    stroke(8, tint, 0.9);
+    if (shotGlow > 0) {
+      stroke(30, tint, 0.3 * shotGlow);
+      stroke(3, 0xffffff, 0.9 * shotGlow);
+    }
+    for (let y = -gate.halfLength; y < gate.halfLength; y += 20) {
+      const offset = (now / 35) % 20;
+      g.fillStyle(0xffffff, 0.75).fillRect(
+        gate.x - 1,
+        gate.y + y + offset,
+        2,
+        8,
+      );
+    }
+    for (let y = -gate.halfLength + 20; y < gate.halfLength; y += 40) {
+      g.lineStyle(2, tints[1 - index]!)
+        .lineBetween(gate.x - 8, gate.y + y - 5, gate.x - 14, gate.y + y)
+        .lineBetween(gate.x - 14, gate.y + y, gate.x - 8, gate.y + y + 5)
+        .lineBetween(gate.x + 8, gate.y + y - 5, gate.x + 14, gate.y + y)
+        .lineBetween(gate.x + 14, gate.y + y, gate.x + 8, gate.y + y + 5);
+    }
+  }
+
   /** Only original rays flash at the muzzle and kick the rider back; drawn under the tracers themselves. */
   private drawGunMuzzles(frame: Frame): void {
-    const { s, g, f } = frame;
+    const { s, gun, g, f } = frame;
     // Portal/wrap legs never create a second rider.
-    for (const bomb of gunRoots(s.bombs)) {
-      const pose = gunFrame(bomb, s.presentationTick ?? s.tick);
+    for (const bomb of gun.roots) {
+      const pose = gun.poses.get(bomb)!;
       const owner = s.players.find((p) => p.id === bomb.ownerId);
       const tint = color(owner?.color ?? "#ffffff");
       const { dx, dy, flash, recoil } = pose;
@@ -1332,9 +1330,7 @@ class ArenaScene extends Phaser.Scene {
           x + dy * 9,
           y - dx * 9,
         );
-        g.fillStyle(0xffffff, flash)
-          .fillRect(x - 2, y - 8, 4, 16)
-          .fillRect(x - 8, y - 2, 16, 4);
+        cross(g.fillStyle(0xffffff, flash), x, y);
       }
       if (owner?.alive && recoil > 0)
         f.lineStyle(2, tint, 0.65 * (1 - recoil / 10)).strokeCircle(
@@ -1346,10 +1342,10 @@ class ArenaScene extends Phaser.Scene {
   }
   /** Gun tracers, shells, and lobbed bombs with their landing ring and fuse arc. */
   private drawBombs(frame: Frame): void {
-    const { s, now, theme, g, w, h, open, ghosts } = frame;
+    const { s, gun, now, theme, g, w, h, open, ghosts } = frame;
     for (const bomb of s.bombs) {
       if (bomb.shell?.gun) {
-        const { alpha, glow } = gunFrame(bomb, s.presentationTick ?? s.tick);
+        const { alpha, glow } = gun.poses.get(bomb)!;
         const tint = color(
           s.players.find((p) => p.id === bomb.ownerId)?.color ?? "#ffffff",
         );
@@ -1538,272 +1534,273 @@ class ArenaScene extends Phaser.Scene {
   }
   /** Riders last, over everything else on the board: locator, portrait, heading, labels, reload ring, status rings, charge markers. */
   private drawRiders(frame: Frame): void {
-    const { s, now, theme, selfId, replay, g, f, w, h, b, open, ghosts } =
-      frame;
+    const { s, selfId, replay, ghosts } = frame;
     // A replayed moment is not the round opening for the viewer, so it never points them out.
     const locate = replay ? 0 : selfLocatorStrength(s);
     // Near an open edge a rider is drawn on both sides of it, so it arrives as it leaves rather than popping across.
     for (const rider of s.players.map((rider) => {
       const pose = frame.riderPoses?.get(rider.id);
       return pose ? { ...rider, ...pose } : rider;
-    }))
-      for (const ghost of rider.alive ? ghosts(rider.x, rider.y, 40) : []) {
+    })) {
+      if (!rider.alive) continue;
+      for (const ghost of ghosts(rider.x, rider.y, 40)) {
         const p =
           ghost.dx || ghost.dy
             ? { ...rider, x: rider.x + ghost.dx, y: rider.y + ghost.dy }
             : rider;
         const tint = color(p.color);
         const self = p.id === selfId;
-        // On a rider's own screen the countdown points them out: a faint glow, a ring closing in and an arrow.
-        if (self && locate > 0 && p === rider) {
-          g.fillStyle(tint, 0.1 * locate).fillCircle(p.x, p.y, 52);
-          const ring = selfLocatorRing(now);
-          f.lineStyle(2, tint, ring.alpha * 0.7 * locate).strokeCircle(
-            p.x,
-            p.y,
-            ring.radius,
-          );
-          const side = selfLocatorSide(p.y, b),
-            tip = p.y + side * (46 + Math.abs(Math.sin(now / 320)) * 6),
-            neck = tip + side * 22,
-            tail = neck + side * 18;
-          f.fillStyle(tint, 0.9 * locate)
-            .lineStyle(2, 0xffffff, 0.8 * locate)
-            .beginPath()
-            .moveTo(p.x, tip)
-            .lineTo(p.x + 20, neck)
-            .lineTo(p.x + 7, neck)
-            .lineTo(p.x + 7, tail)
-            .lineTo(p.x - 7, tail)
-            .lineTo(p.x - 7, neck)
-            .lineTo(p.x - 20, neck)
-            .closePath()
-            .fillPath()
-            .strokePath();
-          this.label("YOU", p.x, tail + side * 16, "#ffffff", 18, 8).setAlpha(
-            locate,
-          );
-        }
-        // The portrait stays upright at the trail head; only its direction marker turns.
-        g.fillStyle(0x080c22).fillCircle(p.x, p.y, 15);
-        f.lineStyle(1, tint).strokeCircle(p.x, p.y, 15);
-        this.sprite(
-          this.textures.exists("avatars") ? "avatars" : `${theme.id}:rider`,
-          p.x,
-          p.y,
-          32,
-          0,
-          this.textures.exists("avatars") ? p.avatarId : undefined,
-        );
-        const a = p.angle,
-          dx = Math.cos(a),
-          dy = Math.sin(a);
-        f.fillStyle(tint).fillTriangle(
-          p.x + dx * 23,
-          p.y + dy * 23,
-          p.x + dx * 16 + dy * 5,
-          p.y + dy * 16 - dx * 5,
-          p.x + dx * 16 - dy * 5,
-          p.y + dy * 16 + dx * 5,
-        );
-        if (p.gunArmed && (s.phase === "playing" || s.phase === "countdown")) {
-          // A compact luminous barrel/chevron, aligned with the next shot.
-          f.lineStyle(6, tint, 0.25).lineBetween(
-            p.x + dx * 20,
-            p.y + dy * 20,
-            p.x + dx * 33,
-            p.y + dy * 33,
-          );
-          f.lineStyle(2, 0xffffff, 0.95)
-            .lineBetween(
-              p.x + dx * 23 + dy * 5,
-              p.y + dy * 23 - dx * 5,
-              p.x + dx * 30,
-              p.y + dy * 30,
-            )
-            .lineBetween(
-              p.x + dx * 30,
-              p.y + dy * 30,
-              p.x + dx * 23 - dy * 5,
-              p.y + dy * 23 + dx * 5,
-            );
-        }
-        const labelY = p.y - (self ? 30 : 27);
-        if (self)
-          f.lineStyle(2, tint, 0.55 + Math.sin(now / 180) * 0.25).strokeCircle(
-            p.x,
-            p.y,
-            22 + Math.sin(now / 180) * 2,
-          );
-        const name = this.label(
-          self ? "YOU" : p.name,
-          p.x,
-          labelY,
-          self ? "#ffffff" : p.color,
-          self ? 12 : 10,
-        );
-        const power = this.label(
-          powerCountText(p.powerPickups, p.extraBombs, p.grip, p.rangeLevel),
-          p.x,
-          labelY,
-          POWER_COLOR,
-        );
-        const gap = 8,
-          left =
-            p.x -
-            (name.width +
-              gap +
-              POWER_ICON_SIZE +
-              POWER_ICON_GAP +
-              power.width) /
-              2;
-        const namePoint = uprightOffset(
-          p.x,
-          p.y,
-          left + name.width / 2 - p.x,
-          labelY - p.y,
-          this.rotated,
-        );
-        name.setPosition(namePoint.x, namePoint.y);
-        const iconOffset = left + name.width + gap + POWER_ICON_SIZE / 2 - p.x;
-        const iconPoint = uprightOffset(
-          p.x,
-          p.y,
-          iconOffset,
-          labelY - p.y,
-          this.rotated,
-        );
-        const iconX = iconPoint.x,
-          iconY = iconPoint.y,
-          radius = POWER_ICON_SIZE / 2;
-        f.fillStyle(color(POWER_COLOR))
-          .lineStyle(2, 0x020715)
-          .beginPath()
-          .moveTo(iconX, iconY - radius)
-          .lineTo(iconX + radius, iconY)
-          .lineTo(iconX, iconY + radius)
-          .lineTo(iconX - radius, iconY)
-          .closePath()
-          .fillPath()
-          .strokePath();
-        const powerPoint = uprightOffset(
-          p.x,
-          p.y,
-          iconOffset + radius + POWER_ICON_GAP + power.width / 2,
-          labelY - p.y,
-          this.rotated,
-        );
-        power.setPosition(powerPoint.x, powerPoint.y);
-        const reload = reloadRemaining(p, s);
-        if (reload > 0) {
-          const start = -Math.PI / 2 + (1 - reload) * Math.PI * 2;
-          f.lineStyle(2, 0x080c22, 0.95).strokeCircle(
-            p.x,
-            p.y,
-            RELOAD_RING_RADIUS,
-          );
-          f.lineStyle(2, tint, 0.2).strokeCircle(p.x, p.y, RELOAD_RING_RADIUS);
-          f.lineStyle(2, tint)
-            .beginPath()
-            .arc(p.x, p.y, RELOAD_RING_RADIUS, start, Math.PI * 1.5, false)
-            .strokePath();
-        }
-        if (p.shielded || p.shieldGraceUntilTick > s.tick) {
-          f.lineStyle(2, 0x8affff, 0.8).strokeCircle(p.x, p.y, 29);
-          const a = now / 350;
-          f.fillStyle(0xcaffff).fillRect(
-            p.x + Math.cos(a) * 29 - 4,
-            p.y + Math.sin(a) * 29 - 4,
-            8,
-            8,
-          );
-        }
-        if (p.portalGraceUntilTick > s.tick || p.invulnerableUntilTick > s.tick)
-          f.lineStyle(3, 0xffdbff, 0.6).strokeCircle(
-            p.x,
-            p.y,
-            35 + Math.sin(now / 80) * 2,
-          );
-        if (p.drunkUntilTick > s.tick) {
-          f.lineStyle(2, 0xd799ff, 0.9).strokeEllipse(p.x, p.y - 12, 70, 35);
-          for (let i = 0; i < 4; i++) {
-            const a = now / 240 + (i * Math.PI) / 2;
-            const sx = p.x + Math.cos(a) * 36,
-              sy = p.y - 12 + Math.sin(a) * 20;
-            f.fillStyle(i % 2 ? 0xffe790 : 0xffaa32)
-              .fillRect(sx - 2, sy - 8, 4, 16)
-              .fillRect(sx - 8, sy - 2, 16, 4);
-          }
-          const text = uprightOffset(p.x, p.y, 0, 37, this.rotated);
-          this.label("DIZZY", text.x, text.y, "#fff078", 9);
-        }
-        if (
-          p.bombChargeStartedTick !== undefined &&
-          !p.shellArmed &&
-          !p.gunArmed
-        ) {
-          const distance = bombPreviewDistance(
-            (p.presentationTick ?? s.tick) - p.bombChargeStartedTick,
-            s.bombChargeTicks,
-            s.aimBounce,
-            p.rangeLevel,
-          );
-          for (const offset of p.nextVolleyAngles) {
-            const a = p.angle + offset;
-            const x = open
-                ? p.x + Math.cos(a) * distance
-                : clamp(p.x + Math.cos(a) * distance, b + 20, w - b - 20),
-              y = open
-                ? p.y + Math.sin(a) * distance
-                : clamp(p.y + Math.sin(a) * distance, b + 20, h - b - 20);
-            drawBombAim(f, p, { x, y }, tint);
-          }
-        }
-        if (isAimingGun(p)) {
-          // The held sight, one line per barrel: to the wall, or over open edges round the board for the one board's
-          // width a bullet flies. What stops the bullet short of that is for the shooter to read.
-          for (const offset of p.nextVolleyAngles) {
-            const a = p.angle + (p.gunAim ?? 0) + offset;
-            const cx = Math.cos(a),
-              cy = Math.sin(a),
-              edge = open ? 0 : b;
-            let x = p.x,
-              y = p.y,
-              range = open ? w : Infinity;
-            for (let leg = 0; leg < 6 && range > 0; leg++) {
-              const t = Math.max(
-                0,
-                Math.min(
-                  range,
-                  cx > 0
-                    ? (w - edge - x) / cx
-                    : cx < 0
-                      ? (edge - x) / cx
-                      : range,
-                  cy > 0
-                    ? (h - edge - y) / cy
-                    : cy < 0
-                      ? (edge - y) / cy
-                      : range,
-                ),
-              );
-              if (!Number.isFinite(t)) break;
-              const x2 = x + cx * t,
-                y2 = y + cy * t;
-              f.lineStyle(4, tint, 0.18)
-                .lineBetween(x, y, x2, y2)
-                .lineStyle(1.5, 0xffffff, 0.75)
-                .lineBetween(x, y, x2, y2);
-              if (!open) break;
-              range -= t;
-              // Carry on from the opposite edge.
-              x = x2 >= w - 1e-6 ? 0 : x2 <= 1e-6 ? w : x2;
-              y = y2 >= h - 1e-6 ? 0 : y2 <= 1e-6 ? h : y2;
-            }
-          }
-        }
+        if (self && locate > 0 && p === rider)
+          this.drawSelfLocator(frame, p, tint, locate);
+        this.drawPortrait(frame, p, tint);
+        this.drawRiderLabels(frame, p, tint, self);
+        this.drawRiderStatus(frame, p, tint);
+        this.drawRiderBombAim(frame, p, tint);
+        this.drawRiderGunSight(frame, p, tint);
       }
+    }
   }
+
+  private drawSelfLocator(
+    frame: Frame,
+    p: RiderView,
+    tint: number,
+    locate: number,
+  ): void {
+    const { g, f, now, b } = frame;
+    // On a rider's own screen the countdown points them out: a faint glow, a ring closing in and an arrow.
+    g.fillStyle(tint, 0.1 * locate).fillCircle(p.x, p.y, 52);
+    const ring = selfLocatorRing(now);
+    f.lineStyle(2, tint, ring.alpha * 0.7 * locate).strokeCircle(
+      p.x,
+      p.y,
+      ring.radius,
+    );
+    const side = selfLocatorSide(p.y, b),
+      tip = p.y + side * (46 + Math.abs(Math.sin(now / 320)) * 6),
+      neck = tip + side * 22,
+      tail = neck + side * 18;
+    f.fillStyle(tint, 0.9 * locate)
+      .lineStyle(2, 0xffffff, 0.8 * locate)
+      .beginPath()
+      .moveTo(p.x, tip)
+      .lineTo(p.x + 20, neck)
+      .lineTo(p.x + 7, neck)
+      .lineTo(p.x + 7, tail)
+      .lineTo(p.x - 7, tail)
+      .lineTo(p.x - 7, neck)
+      .lineTo(p.x - 20, neck)
+      .closePath()
+      .fillPath()
+      .strokePath();
+    this.label("YOU", p.x, tail + side * 16, "#ffffff", 18, 8).setAlpha(locate);
+  }
+
+  private drawPortrait(frame: Frame, p: RiderView, tint: number): void {
+    const { s, theme, g, f } = frame;
+    // The portrait stays upright at the trail head; only its direction marker turns.
+    g.fillStyle(0x080c22).fillCircle(p.x, p.y, 15);
+    f.lineStyle(1, tint).strokeCircle(p.x, p.y, 15);
+    this.sprite(
+      this.textures.exists("avatars") ? "avatars" : `${theme.id}:rider`,
+      p.x,
+      p.y,
+      32,
+      0,
+      this.textures.exists("avatars") ? p.avatarId : undefined,
+    );
+    const a = p.angle,
+      dx = Math.cos(a),
+      dy = Math.sin(a);
+    f.fillStyle(tint).fillTriangle(
+      p.x + dx * 23,
+      p.y + dy * 23,
+      p.x + dx * 16 + dy * 5,
+      p.y + dy * 16 - dx * 5,
+      p.x + dx * 16 - dy * 5,
+      p.y + dy * 16 + dx * 5,
+    );
+    if (p.gunArmed && (s.phase === "playing" || s.phase === "countdown")) {
+      // A compact luminous barrel/chevron, aligned with the next shot.
+      f.lineStyle(6, tint, 0.25).lineBetween(
+        p.x + dx * 20,
+        p.y + dy * 20,
+        p.x + dx * 33,
+        p.y + dy * 33,
+      );
+      f.lineStyle(2, 0xffffff, 0.95)
+        .lineBetween(
+          p.x + dx * 23 + dy * 5,
+          p.y + dy * 23 - dx * 5,
+          p.x + dx * 30,
+          p.y + dy * 30,
+        )
+        .lineBetween(
+          p.x + dx * 30,
+          p.y + dy * 30,
+          p.x + dx * 23 - dy * 5,
+          p.y + dy * 23 + dx * 5,
+        );
+    }
+  }
+
+  private drawRiderLabels(
+    frame: Frame,
+    p: RiderView,
+    tint: number,
+    self: boolean,
+  ): void {
+    const { f, now } = frame;
+    const labelY = p.y - (self ? 30 : 27);
+    if (self)
+      f.lineStyle(2, tint, 0.55 + Math.sin(now / 180) * 0.25).strokeCircle(
+        p.x,
+        p.y,
+        22 + Math.sin(now / 180) * 2,
+      );
+    const name = this.label(
+      self ? "YOU" : p.name,
+      p.x,
+      labelY,
+      self ? "#ffffff" : p.color,
+      self ? 12 : 10,
+    );
+    const power = this.label(
+      powerCountText(p.powerPickups, p.extraBombs, p.grip, p.rangeLevel),
+      p.x,
+      labelY,
+      POWER_COLOR,
+    );
+    const gap = 8,
+      left =
+        p.x -
+        (name.width + gap + POWER_ICON_SIZE + POWER_ICON_GAP + power.width) / 2;
+    const at = (offset: number) =>
+      uprightOffset(p.x, p.y, offset, labelY - p.y, this.rotated);
+    const namePoint = at(left + name.width / 2 - p.x);
+    name.setPosition(namePoint.x, namePoint.y);
+    const iconOffset = left + name.width + gap + POWER_ICON_SIZE / 2 - p.x;
+    const iconPoint = at(iconOffset);
+    const iconX = iconPoint.x,
+      iconY = iconPoint.y,
+      radius = POWER_ICON_SIZE / 2;
+    f.fillStyle(color(POWER_COLOR))
+      .lineStyle(2, 0x020715)
+      .beginPath()
+      .moveTo(iconX, iconY - radius)
+      .lineTo(iconX + radius, iconY)
+      .lineTo(iconX, iconY + radius)
+      .lineTo(iconX - radius, iconY)
+      .closePath()
+      .fillPath()
+      .strokePath();
+    const powerPoint = at(
+      iconOffset + radius + POWER_ICON_GAP + power.width / 2,
+    );
+    power.setPosition(powerPoint.x, powerPoint.y);
+  }
+
+  private drawRiderStatus(frame: Frame, p: RiderView, tint: number): void {
+    const { s, now, f } = frame;
+    const reload = reloadRemaining(p, s);
+    if (reload > 0) {
+      const start = -Math.PI / 2 + (1 - reload) * Math.PI * 2;
+      f.lineStyle(2, 0x080c22, 0.95).strokeCircle(p.x, p.y, RELOAD_RING_RADIUS);
+      f.lineStyle(2, tint, 0.2).strokeCircle(p.x, p.y, RELOAD_RING_RADIUS);
+      f.lineStyle(2, tint)
+        .beginPath()
+        .arc(p.x, p.y, RELOAD_RING_RADIUS, start, Math.PI * 1.5, false)
+        .strokePath();
+    }
+    if (p.shielded || p.shieldGraceUntilTick > s.tick) {
+      f.lineStyle(2, 0x8affff, 0.8).strokeCircle(p.x, p.y, 29);
+      const a = now / 350;
+      f.fillStyle(0xcaffff).fillRect(
+        p.x + Math.cos(a) * 29 - 4,
+        p.y + Math.sin(a) * 29 - 4,
+        8,
+        8,
+      );
+    }
+    if (p.portalGraceUntilTick > s.tick || p.invulnerableUntilTick > s.tick)
+      f.lineStyle(3, 0xffdbff, 0.6).strokeCircle(
+        p.x,
+        p.y,
+        35 + Math.sin(now / 80) * 2,
+      );
+    if (p.drunkUntilTick > s.tick) {
+      f.lineStyle(2, 0xd799ff, 0.9).strokeEllipse(p.x, p.y - 12, 70, 35);
+      for (let i = 0; i < 4; i++) {
+        const a = now / 240 + (i * Math.PI) / 2;
+        const sx = p.x + Math.cos(a) * 36,
+          sy = p.y - 12 + Math.sin(a) * 20;
+        cross(f.fillStyle(i % 2 ? 0xffe790 : 0xffaa32), sx, sy);
+      }
+      const text = uprightOffset(p.x, p.y, 0, 37, this.rotated);
+      this.label("DIZZY", text.x, text.y, "#fff078", 9);
+    }
+  }
+
+  private drawRiderBombAim(frame: Frame, p: RiderView, tint: number): void {
+    const { s, f, w, h, b, open } = frame;
+    if (p.bombChargeStartedTick === undefined || p.shellArmed || p.gunArmed)
+      return;
+    const distance = bombPreviewDistance(
+      (p.presentationTick ?? s.tick) - p.bombChargeStartedTick,
+      s.bombChargeTicks,
+      s.aimBounce,
+      p.rangeLevel,
+    );
+    for (const offset of p.nextVolleyAngles) {
+      const a = p.angle + offset;
+      const x = open
+          ? p.x + Math.cos(a) * distance
+          : clamp(p.x + Math.cos(a) * distance, b + 20, w - b - 20),
+        y = open
+          ? p.y + Math.sin(a) * distance
+          : clamp(p.y + Math.sin(a) * distance, b + 20, h - b - 20);
+      drawBombAim(f, p, { x, y }, tint);
+    }
+  }
+
+  private drawRiderGunSight(frame: Frame, p: RiderView, tint: number): void {
+    const { f, w, h, b, open } = frame;
+    if (!isAimingGun(p)) return;
+    // The held sight, one line per barrel: to the wall, or over open edges round the board for the one board's
+    // width a bullet flies. What stops the bullet short of that is for the shooter to read.
+    for (const offset of p.nextVolleyAngles) {
+      const a = p.angle + (p.gunAim ?? 0) + offset;
+      const cx = Math.cos(a),
+        cy = Math.sin(a),
+        edge = open ? 0 : b;
+      let x = p.x,
+        y = p.y,
+        range = open ? w : Infinity;
+      for (let leg = 0; leg < 6 && range > 0; leg++) {
+        const t = Math.max(
+          0,
+          Math.min(
+            range,
+            rayAxisLimit(x, cx, w, edge),
+            rayAxisLimit(y, cy, h, edge),
+          ),
+        );
+        if (!Number.isFinite(t)) break;
+        const x2 = x + cx * t,
+          y2 = y + cy * t;
+        f.lineStyle(4, tint, 0.18)
+          .lineBetween(x, y, x2, y2)
+          .lineStyle(1.5, 0xffffff, 0.75)
+          .lineBetween(x, y, x2, y2);
+        if (!open) break;
+        range -= t;
+        // Carry on from the opposite edge.
+        x = x2 >= w - 1e-6 ? 0 : x2 <= 1e-6 ? w : x2;
+        y = y2 >= h - 1e-6 ? 0 : y2 <= 1e-6 ? h : y2;
+      }
+    }
+  }
+
   private drawInk(frame: Frame): void {
     const { s, w, h } = frame;
     const inked = s.players.some((p) => p.alive && p.inkUntilTick > s.tick);

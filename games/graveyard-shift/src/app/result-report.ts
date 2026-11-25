@@ -1,8 +1,9 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  createTopResultHighlight,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
+  type ResultsRow,
 } from "fuse-ui";
 import { DURATION, carried } from "../engine/world.js";
 import type { View } from "../online/game.js";
@@ -114,20 +115,11 @@ export function resultReport(
     values: [String(row.banked), String(row.ghosts), String(row.unbanked)],
   }));
   const cards: ResultsHighlight[] = [];
-  /** A card for whoever has the most of something, when anybody has any. */
-  const most = (
-    pick: (row: ResultRow) => number,
-    card: (best: number) => Omit<ResultsHighlight, "winners">,
-  ) => {
-    const best = Math.max(0, ...result.rows.map(pick));
-    if (best > 0)
-      cards.push({
-        ...card(best),
-        winners: result.rows
-          .filter((row) => pick(row) === best)
-          .map((row) => ({ name: row.name, color: parts.color(row.slot) })),
-      });
-  };
+  const most = createTopResultHighlight(
+    result.rows,
+    (row) => parts.color(row.slot),
+    cards,
+  );
   most(
     (row) => row.banked,
     (best) => ({

@@ -95,6 +95,68 @@ function click(root: HTMLElement, text: string) {
   control.click();
 }
 
+test("the Reports view saves review changes and follows the persisted state after refresh", async () => {
+  const f = fixture();
+  let handled = false;
+  let fail = true;
+  const report = {
+    id: "report-under-review",
+    gameId: "fuse-riders",
+    text: "The control sticks.",
+    category: "bug",
+    createdAt: 1,
+    receivedAt: 1,
+  };
+  const unmount = mountWorkspace(f.root, {
+    ...f,
+    now: () => new Date("2026-11-14T12:00:00Z"),
+    gamesUrl: "/",
+    transport: {
+      origin: "https://service.example",
+      token: async () => "developer",
+      request: async (input, init) => {
+        switch (new URL(String(input)).pathname) {
+          case "/api/dev/me":
+            return Response.json({ capabilities: ["read", "token"] });
+          case "/api/dev/catalog":
+            return Response.json({ gameIds: ["fuse-riders"] });
+          case "/api/dev/events":
+            return Response.json(explorer);
+          case "/api/dev/reports":
+            return Response.json({ reports: [{ ...report, handled }] });
+          case "/api/dev/reports/report-under-review/review":
+            assert.equal(init?.method, "POST");
+            if (fail) return new Response(null, { status: 500 });
+            handled = JSON.parse(String(init?.body)).handled === true;
+            return Response.json({ handled });
+          default:
+            throw new Error("Unexpected request");
+        }
+      },
+    },
+  });
+  const status = () =>
+    f.root.querySelector(".report [role=status]")?.textContent;
+  f.login();
+  await settled(() => f.root.querySelectorAll("figure").length === 2);
+  click(f.root, "Reports");
+  await settled(() => status() === "Open");
+  click(f.root, "Mark handled");
+  await settled(() =>
+    Boolean(f.root.querySelector(".report [role=alert]")?.textContent),
+  );
+  assert.equal(status(), "Open");
+  fail = false;
+  click(f.root, "Mark handled");
+  await settled(() => status() === "Handled");
+  click(f.root, "Refresh");
+  await settled(() => status() === "Handled");
+  click(f.root, "Reopen");
+  await settled(() => status() === "Open");
+  assert.equal(handled, false);
+  unmount();
+});
+
 test("comparison sorts exact period counts instead of summing users across days", () => {
   const rows = [
     row("a", "2026-11-13", 100),
@@ -434,6 +496,151 @@ test("timeline orders chunks and reports while treating private transcript as pl
   assert.ok(entries[1]?.textContent?.includes("Report at five"));
   assert.ok(entries[2]?.textContent?.includes("<img src=x onerror=alert(1)>"));
   assert.equal(rendered.querySelectorAll("img").length, 0);
+});
+
+function audioSelectionFixture(): RecordingDetail {
+  return {
+    recording: {
+      id: "session",
+      gameId: "fuse-riders",
+      startedAt: 1,
+      lastUploadAt: 1,
+      status: "finished",
+      durationMs: 20000,
+      bytes: 100,
+      expiresAt: 999,
+    },
+    segments: [
+      {
+        sequence: 0,
+        startMs: 0,
+        endMs: 10000,
+        status: "complete",
+        audioUrl: "/api/dev/test-audio/first",
+      },
+    ],
+    reports: [
+      {
+        id: "without-audio",
+        gameId: "fuse-riders",
+        category: "bug",
+        text: "Report outside the available audio",
+        createdAt: 1,
+        receivedAt: 1,
+        recordingId: "session",
+        offsetMs: 15000,
+      },
+    ],
+    transcript: "",
+  };
+}
+
+test("a report without audio supersedes an earlier pending audio selection", async () => {
+  const f = fixture();
+  let loadAudio!: (url: string) => void;
+  const audioBlob = new Promise<string>((resolve) => {
+    loadAudio = resolve;
+  });
+  const fetched: string[] = [];
+  const released: string[] = [];
+  const media: PrivateMedia = {
+    blob(path) {
+      fetched.push(path);
+      return audioBlob;
+    },
+    active: () => true,
+    error: () => assert.fail("The media request succeeded"),
+    release(url) {
+      released.push(url);
+    },
+    onDispose: () => undefined,
+  };
+  const rendered = recordingDetail(
+    createDom(f.document),
+    audioSelectionFixture(),
+    media,
+    () => undefined,
+    0,
+  );
+  assert.deepEqual(fetched, ["/api/dev/test-audio/first"]);
+  const report = rendered.querySelector<HTMLButtonElement>(
+    "#report-without-audio button",
+  )!;
+  assert.equal(report.textContent, "Play at 0:15");
+  report.click();
+  assert.match(
+    rendered.querySelector("[role=status]")?.textContent ?? "",
+    /Audio is unavailable/,
+  );
+  loadAudio("blob:stale");
+  await audioBlob;
+  assert.deepEqual(released, ["blob:stale"]);
+  assert.equal(rendered.querySelector("audio")?.getAttribute("src"), null);
+  assert.match(
+    rendered.querySelector("[role=status]")?.textContent ?? "",
+    /Audio is unavailable/,
+  );
+});
+
+test("late confirmation failure keeps the newer report audio selection", async () => {
+  const f = fixture();
+  const detail = audioSelectionFixture();
+  let rejectConfirmation!: (reason: Error) => void;
+  const confirmation = new Promise<void>((_, reject) => {
+    rejectConfirmation = reject;
+  });
+  let confirming = false;
+  f.account.reauthenticate = () => {
+    confirming = true;
+    return confirmation;
+  };
+  const unmount = mountWorkspace(f.root, {
+    ...f,
+    now: () => new Date("2026-11-14T12:00:00Z"),
+    gamesUrl: "/",
+    transport: {
+      origin: "https://service.example",
+      token: async () => "test-token",
+      request: async (input) => {
+        const path = new URL(String(input)).pathname;
+        if (path === "/api/dev/me")
+          return Response.json({ uid: "dev", email: "allowed@example.com" });
+        if (path === "/api/dev/catalog")
+          return Response.json({ gameIds: ["fuse-riders"] });
+        if (path === "/api/dev/recordings")
+          return Response.json({ recordings: [detail.recording] });
+        if (path === "/api/dev/recordings/session")
+          return Response.json(detail);
+        if (path === "/api/dev/test-audio/first")
+          return Response.json({}, { status: 401 });
+        return Response.json(explorer);
+      },
+    },
+  });
+  try {
+    f.login();
+    await settled(() => f.root.querySelector(".workspace-nav") !== null);
+    click(f.root, "Playtest sessions");
+    await settled(() => f.root.querySelector(".session-title") !== null);
+    click(f.root, "fuse-riders");
+    await settled(() => f.root.querySelector(".timestamp") !== null);
+    click(f.root, "0:00–0:10");
+    await settled(
+      () => f.root.querySelector(".player-area [role=alert]") !== null,
+    );
+    click(f.root, "Confirm Google sign-in");
+    assert.equal(confirming, true);
+    click(f.root, "Play at 0:15");
+    rejectConfirmation(new Error("confirm denied"));
+    await confirmation.catch(() => undefined);
+    await Promise.resolve();
+    assert.match(
+      f.root.querySelector(".player-area [role=status]")?.textContent ?? "",
+      /Audio is unavailable/,
+    );
+  } finally {
+    unmount();
+  }
 });
 
 test("scoped agent credentials reveal once, retain only revocation metadata, and revoke privately", async () => {

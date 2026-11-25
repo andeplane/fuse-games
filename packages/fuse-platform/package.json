@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./rating": "./src/rating.ts",
+    "./player-name": "./src/player-name.ts",
     "./friends-api": "./src/friends-api.ts",
     "./messages-api": "./src/messages-api.ts",
     "./activity-api": "./src/activity-api.ts",

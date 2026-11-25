@@ -34,6 +34,7 @@ import {
   traceLine,
   traceWorm,
   fastTrace,
+  aiAreaFree,
   PX_DIRT,
   PX_EMPTY,
   PX_ROCK,
@@ -41,20 +42,6 @@ import {
   type AiTerrain,
 } from "./ai-geometry.js";
 
-/** CMap::PixelFlagAccess uses exclusive right/bottom coordinates. */
-export function aiAreaFree(
-  terrain: AiTerrain,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  blocked: number,
-): boolean {
-  for (let y = y1; y < y2; y++)
-    for (let x = x1; x < x2; x++)
-      if (terrain.flag(x, y) & blocked) return false;
-  return true;
-}
 export function aiIsInAir(terrain: AiTerrain, pos: AiPoint, area = 1): boolean {
   if (
     pos.x < 0 ||

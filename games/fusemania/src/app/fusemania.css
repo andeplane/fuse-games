@@ -1114,3 +1114,24 @@ body:has(.fm-room:is([data-screen="play"], [data-screen="controller"])) #app {
     font-size: 0.5rem;
   }
 }
+
+/* A phone's live song (fuse-ui play-screen): the lanes are the screen and the pads float over their foot. */
+html[data-fui-play] .fm-stage {
+  display: block;
+}
+html[data-fui-play] .fm-stage > .fm-note {
+  display: none;
+}
+html[data-fui-play] .fm-stage > .fm-screen {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .fm-stage > .fm-touch {
+  bottom: max(0.5rem, var(--fui-play-bottom));
+  height: min(12rem, 32cqh);
+  min-height: min(152px, 40cqh);
+}

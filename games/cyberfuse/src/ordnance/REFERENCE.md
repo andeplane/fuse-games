@@ -1,6 +1,6 @@
 # C-Dogs ordnance reference
 
-Cyberfuse adapts Ronny Wester's original C-Dogs DOS v1.06 firing and mobile-object rules. The implementation lives in `index.ts`. The numeric weapon IDs are the DOS `GUN_*` values 0–15. Game code copyright © 1995–2001 Ronny Wester. The TypeScript adaptation was made on 18 November 2026. This port is distributed under GPL version 2 or later, with the license text in [COPYING](./COPYING). The upstream source port preserves the license notice. [Upstream notice](https://github.com/cxong/cdogs-sdl/blob/b20d7d7c7e69590fb35f2867721fb3520b3eb010/src/cdogs/objs.c)
+Cyberfuse adapts Ronny Wester's original C-Dogs DOS v1.06 firing and mobile-object rules. Launch and burst profiles live in `profiles.ts`, the update loop in `index.ts`, and serialized shot checks in `shot-checkpoint.ts`. The numeric weapon IDs are the DOS `GUN_*` values 0–15. Game code copyright © 1995–2001 Ronny Wester. The TypeScript adaptation was made on 18 November 2026. This port is distributed under GPL version 2 or later, with the license text in [COPYING](./COPYING). The upstream source port preserves the license notice. [Upstream notice](https://github.com/cxong/cdogs-sdl/blob/b20d7d7c7e69590fb35f2867721fb3520b3eb010/src/cdogs/objs.c)
 
 The reference source archive SHA-256 is `a3abe423206205739092953ccd1191746ab8a21130079cd0c40bbe9f48a309ee`. The source identifies itself as v1.06 in `DEFS.H`. The driver checks the hashes of its four original C translation units before compiling. [Source archive](https://www.dosgamesarchive.com/file/c-dogs/cdogssrc)
 

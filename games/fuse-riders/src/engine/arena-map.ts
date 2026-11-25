@@ -10,6 +10,7 @@
  */
 
 import type { ObstacleMotion } from "./scenery-motion.js";
+import { pointSegmentDistanceSquared } from "./geometry.js";
 
 export const ARENA_MAPS = [
   "classic",
@@ -502,7 +503,7 @@ export function segmentObstacleDistanceSquared(
 ): number {
   if (obstacle.kind === "rock") {
     const distance = Math.sqrt(
-      pointSegmentDistanceSquared(obstacle.x, obstacle.y, x1, y1, x2, y2),
+      pointSegmentDistanceSquared(obstacle.x, obstacle.y, x1, y1, x2, y2, 0),
     );
     const gap = Math.max(0, distance - obstacle.halfWidth);
     return gap * gap;
@@ -522,7 +523,10 @@ export function segmentObstacleDistanceSquared(
     [maxX, maxY],
     [minX, maxY],
   ] as const) {
-    best = Math.min(best, pointSegmentDistanceSquared(cx, cy, x1, y1, x2, y2));
+    best = Math.min(
+      best,
+      pointSegmentDistanceSquared(cx, cy, x1, y1, x2, y2, 0),
+    );
   }
   return best;
 }
@@ -560,27 +564,4 @@ function segmentCrossesObstacle(
     }
   }
   return true;
-}
-
-function pointSegmentDistanceSquared(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-): number {
-  const dx = bx - ax,
-    dy = by - ay;
-  const lengthSquared = dx * dx + dy * dy;
-  const along =
-    lengthSquared > 0
-      ? Math.max(
-          0,
-          Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared),
-        )
-      : 0;
-  const offsetX = px - (ax + along * dx),
-    offsetY = py - (ay + along * dy);
-  return offsetX * offsetX + offsetY * offsetY;
 }

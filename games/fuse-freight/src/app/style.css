@@ -937,32 +937,40 @@ body:has(.ff-lobby:not([hidden])) .ff-live {
     0 0.15rem 0 #0a0812,
     0 0 1.4rem rgba(255, 190, 70, 0.55);
 }
-/* A phone held sideways: the pads sit over the depot's bottom corners. */
+/* A phone's live match (fuse-ui play-screen): the depot fills the screen and the pads float over its bottom corners. */
+html[data-fui-play] .ff-stage {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  gap: 0;
+}
+html[data-fui-play] .ff-stage::before {
+  content: none;
+}
+html[data-fui-play] .ff-stage > .ff-screen {
+  width: min(100cqw, 100cqh * 16 / 9);
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .ff-stage > .ff-touch {
+  position: absolute;
+  inset: auto max(0.5rem, var(--fui-play-right))
+    max(0.5rem, var(--fui-play-bottom)) max(0.5rem, var(--fui-play-left));
+  z-index: var(--fui-z-overlay);
+  width: auto;
+  pointer-events: none;
+}
+html[data-fui-play] .fui-app .ff-touch .ff-pad {
+  pointer-events: auto;
+  opacity: 0.6;
+  width: min(7rem, 22cqw);
+  min-height: min(4.5rem, 24cqh);
+  background: rgba(21, 18, 36, 0.55);
+}
+/* A phone held sideways. */
 @media (orientation: landscape) and (max-height: 32rem) {
   .ff-top {
     padding: 0.25rem 0.6rem;
-  }
-  .ff-stage {
-    padding: 0.25rem;
-    position: relative;
-  }
-  .ff-screen {
-    width: min(100%, calc((100dvh - 2.8rem) * 16 / 9));
-  }
-  .ff-touch {
-    position: absolute;
-    left: max(0.5rem, env(safe-area-inset-left));
-    right: max(0.5rem, env(safe-area-inset-right));
-    bottom: max(0.5rem, env(safe-area-inset-bottom));
-    width: auto;
-    pointer-events: none;
-  }
-  .fui-app .ff-pad {
-    pointer-events: auto;
-    opacity: 0.6;
-    width: 7rem;
-    min-height: 4.5rem;
-    background: rgba(21, 18, 36, 0.55);
   }
   /* A small screen: bigger numbers, no names, and the pads already say which way is which. */
   .ff-card-name {

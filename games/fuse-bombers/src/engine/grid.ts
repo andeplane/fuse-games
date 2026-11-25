@@ -65,6 +65,10 @@ const HEADER = 5;
 const AIR = 0;
 const ROCK = 1;
 const HARD = 2;
+const CELL_STATES = HARD + 1;
+const WORD_SHIFT = 5;
+const WORD_BITS = 1 << WORD_SHIFT;
+const WORD_MASK = WORD_BITS - 1;
 /** The solid and hard word of 32 cells all in one state, by state. */
 const SOLID_WORD = [0, 0xffffffff, 0xffffffff];
 const HARD_WORD = [0, 0, 0xffffffff];
@@ -87,24 +91,24 @@ export function createGrid(width: number, height: number, cell = 4): Grid {
   if (!validSize(width, height, cell))
     throw new RangeError(`bad grid size ${width}×${height} / ${cell}`);
   const [cols, rows] = [width / cell, height / cell];
-  const words = (cols * rows + 31) >>> 5;
+  const words = (cols * rows + WORD_MASK) >>> WORD_SHIFT;
   const [solid, hard] = [new Uint32Array(words), new Uint32Array(words)];
   return { width, height, cell, cols, rows, solid, hard, version: 0 };
 }
 
 function bit(bits: ArrayLike<number>, i: number): boolean {
-  return (((bits[i >>> 5] ?? 0) >>> (i & 31)) & 1) === 1;
+  return (((bits[i >>> WORD_SHIFT] ?? 0) >>> (i & WORD_MASK)) & 1) === 1;
 }
 
-/** The bits of word `w` that lie in [start, end), for a word with `w * 32 < end`. */
+/** The bits of word `w` that lie in [start, end), when the word starts before the end of the span. */
 function spanMask(w: number, start: number, end: number): number {
-  const lo = Math.max(start - w * 32, 0);
-  const hi = Math.min(end - w * 32, 32);
-  return (hi === 32 ? -1 : (1 << hi) - 1) & ~((1 << lo) - 1);
+  const lo = Math.max(start - w * WORD_BITS, 0);
+  const hi = Math.min(end - w * WORD_BITS, WORD_BITS);
+  return (hi === WORD_BITS ? -1 : (1 << hi) - 1) & ~((1 << lo) - 1);
 }
 
 function writeSpan(bits: Uint32Array, start: number, end: number, on: boolean) {
-  for (let w = start >>> 5; w * 32 < end; w++) {
+  for (let w = start >>> WORD_SHIFT; w * WORD_BITS < end; w++) {
     const mask = spanMask(w, start, end);
     bits[w] = on ? (bits[w] ?? 0) | mask : (bits[w] ?? 0) & ~mask;
   }
@@ -246,13 +250,13 @@ export function carveCircle(
   discSpans(grid, cx, cy, r, (row, c0, c1) => {
     const base = row * cols;
     let [lo, hi] = [-1, -1];
-    for (let w = (base + c0) >>> 5; w * 32 < base + c1; w++) {
+    for (let w = (base + c0) >>> WORD_SHIFT; w * WORD_BITS < base + c1; w++) {
       const mask = spanMask(w, base + c0, base + c1);
       const gone = (solid[w] ?? 0) & ~(hard[w] ?? 0) & mask;
       if (gone === 0) continue;
       solid[w] = (solid[w] ?? 0) & ~gone;
-      if (lo < 0) lo = w * 32 + 31 - Math.clz32(gone & -gone);
-      hi = w * 32 + 31 - Math.clz32(gone);
+      if (lo < 0) lo = w * WORD_BITS + WORD_MASK - Math.clz32(gone & -gone);
+      hi = w * WORD_BITS + WORD_MASK - Math.clz32(gone);
     }
     if (lo < 0) return;
     if (row0 < 0) row0 = row;
@@ -263,6 +267,35 @@ export function carveCircle(
   if (row0 < 0) return null;
   grid.version = (grid.version + 1) >>> 0;
   return { col0, row0, col1: col1 + 1, row1: row1 + 1 };
+}
+
+/** Narrow the segment's time interval with a single grid axis. */
+function clipAxis(
+  origin: number,
+  delta: number,
+  extent: number,
+  clip: { near: number; far: number },
+): boolean {
+  if (delta === 0) return !(origin < 0 || origin >= extent);
+  const start = -origin / delta;
+  const end = (extent - origin) / delta;
+  clip.near = Math.max(clip.near, Math.min(start, end));
+  clip.far = Math.min(clip.far, Math.max(start, end));
+  return !(clip.near > clip.far);
+}
+
+/** The far edge belongs to the last cell only when the segment actually enters the grid. */
+function entryCell(
+  index: number,
+  count: number,
+  delta: number,
+  touchesOnly: boolean,
+): number | undefined {
+  if (index >= count) {
+    if (!(delta < 0) || touchesOnly) return undefined;
+    index = count - 1;
+  }
+  return Math.max(index, 0);
 }
 
 /**
@@ -287,50 +320,48 @@ export function segmentHit(
   const dx = x1 - x0;
   const dy = y1 - y0;
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
-  // Clip to the world box [0, width] × [0, height]; outside it is open air.
-  if (dx === 0 && (x0 < 0 || x0 >= grid.width)) return null;
-  if (dy === 0 && (y0 < 0 || y0 >= grid.height)) return null;
-  const ax = dx === 0 ? -Infinity : -x0 / dx;
-  const bx = dx === 0 ? Infinity : (grid.width - x0) / dx;
-  const ay = dy === 0 ? -Infinity : -y0 / dy;
-  const by = dy === 0 ? Infinity : (grid.height - y0) / dy;
-  const tIn = Math.max(0, Math.min(ax, bx), Math.min(ay, by));
-  const tOut = Math.min(1, Math.max(ax, bx), Math.max(ay, by));
-  if (tIn > tOut) return null;
+  const clip = { near: 0, far: 1 };
+  if (
+    !clipAxis(x0, dx, grid.width, clip) ||
+    !clipAxis(y0, dy, grid.height, clip)
+  )
+    return null;
+  const { near: tIn, far: tOut } = clip;
 
-  let col = Math.floor((x0 + dx * tIn) / cell);
-  let row = Math.floor((y0 + dy * tIn) / cell);
-  // Entering on a far edge is entering the last cell when heading in. Heading out, or only touching the edge, there is
-  // nothing of the segment inside the world.
-  if (col >= cols) {
-    if (!(dx < 0) || tIn === tOut) return null;
-    col = cols - 1;
-  }
-  if (row >= rows) {
-    if (!(dy < 0) || tIn === tOut) return null;
-    row = rows - 1;
-  }
-  col = Math.max(col, 0);
-  row = Math.max(row, 0);
+  const touchesOnly = tIn === tOut;
+  let col = entryCell(
+    Math.floor((x0 + dx * tIn) / cell),
+    cols,
+    dx,
+    touchesOnly,
+  );
+  let row = entryCell(
+    Math.floor((y0 + dy * tIn) / cell),
+    rows,
+    dy,
+    touchesOnly,
+  );
+  if (col === undefined || row === undefined) return null;
   const stepX = Math.sign(dx);
   const stepY = Math.sign(dy);
+  const edgeOffsetX = (stepX + 1) / 2,
+    edgeOffsetY = (stepY + 1) / 2;
   let t = tIn;
   for (;;) {
     if (bit(grid.solid, row * cols + col))
       return { x: x0 + dx * t, y: y0 + dy * t, t, col, row };
     // Where the segment crosses the next vertical and horizontal cell edges, from the start each time so rounding
     // never accumulates.
-    const tx =
-      stepX === 0 ? Infinity : ((col + (stepX + 1) / 2) * cell - x0) / dx;
-    const ty =
-      stepY === 0 ? Infinity : ((row + (stepY + 1) / 2) * cell - y0) / dy;
-    if (Math.min(tx, ty) > tOut) return null;
+    const tx = stepX === 0 ? Infinity : ((col + edgeOffsetX) * cell - x0) / dx;
+    const ty = stepY === 0 ? Infinity : ((row + edgeOffsetY) * cell - y0) / dy;
+    const nextEdge = Math.min(tx, ty);
+    if (nextEdge > tOut) return null;
     // On a tie the segment passes exactly through a cell corner, and the cell that owns the corner (as `solidAt` sees
     // it) is the one to the lower right. Stepping the column first reaches it in every direction but left and down,
     // where it lies in the next row, so step that first or the walk would skip rock the segment is in.
     if (tx < ty || (tx === ty && !(stepX < 0 && stepY > 0))) col += stepX;
     else row += stepY;
-    t = Math.max(t, Math.min(tx, ty));
+    t = Math.max(t, nextEdge);
     if (col < 0 || col >= cols || row < 0 || row >= rows) return null;
   }
 }
@@ -354,7 +385,7 @@ export function circleOverlapsSolid(
     const c1 = Math.min(cols, Math.ceil((x + half) / cell));
     if (!(c0 < c1)) continue;
     const [start, end] = [row * cols + c0, row * cols + c1];
-    for (let w = start >>> 5; w * 32 < end; w++)
+    for (let w = start >>> WORD_SHIFT; w * WORD_BITS < end; w++)
       if (((solid[w] ?? 0) & spanMask(w, start, end)) !== 0) return true;
   }
   return false;
@@ -408,25 +439,25 @@ export function encodeGrid(grid: ReadGrid): number[] {
   let state = cellState(grid, 0);
   let run = 0;
   for (let i = 0; i < total;) {
-    const w = i >>> 5;
+    const w = i >>> WORD_SHIFT;
     if (
-      (i & 31) === 0 &&
-      i + 32 <= total &&
+      (i & WORD_MASK) === 0 &&
+      i + WORD_BITS <= total &&
       grid.solid[w] === SOLID_WORD[state] &&
       grid.hard[w] === HARD_WORD[state]
     ) {
-      run += 32; // 32 cells in the run's state at once
-      i += 32;
+      run += WORD_BITS; // 32 cells in the run's state at once
+      i += WORD_BITS;
       continue;
     }
     const next = cellState(grid, i++);
     if (next === state) run++;
     else {
-      out.push(run * 3 + state);
+      out.push(run * CELL_STATES + state);
       [state, run] = [next, 1];
     }
   }
-  out.push(run * 3 + state);
+  out.push(run * CELL_STATES + state);
   return out;
 }
 
@@ -464,9 +495,9 @@ export function decodeGrid(
   let previous = -1;
   for (let i = HEADER; i < values.length; i++) {
     const v = values[i];
-    if (!isInt(v) || v < 3) return undefined;
-    const state = v % 3;
-    const length = (v - state) / 3;
+    if (!isInt(v) || v < CELL_STATES) return undefined;
+    const state = v % CELL_STATES;
+    const length = (v - state) / CELL_STATES;
     if (state === previous || length > total - at) return undefined;
     writeSpan(grid.solid, at, at + length, state !== AIR);
     writeSpan(grid.hard, at, at + length, state === HARD);

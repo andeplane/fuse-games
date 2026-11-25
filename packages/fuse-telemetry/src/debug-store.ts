@@ -104,6 +104,12 @@ export function storedDebugRecord(value: unknown): DebugRecord | undefined {
   if (!["recording", "report", "segment", "limit"].includes(record.kind))
     throw new Error("Invalid debug metadata kind");
   if (
+    (record.kind === "recording" || record.kind === "report") &&
+    record.handled !== undefined &&
+    typeof record.handled !== "boolean"
+  )
+    throw new Error("Invalid playtest review status");
+  if (
     record.kind === "recording" &&
     (!uuid(record.id) ||
       !text(record.owner, 128) ||

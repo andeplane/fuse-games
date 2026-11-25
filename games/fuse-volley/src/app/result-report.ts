@@ -1,8 +1,9 @@
-import type {
-  ResultsBar,
-  ResultsHighlight,
-  ResultsReport,
-  ResultsRow,
+import {
+  roomResultsBar,
+  type ResultsBar,
+  type ResultsHighlight,
+  type ResultsReport,
+  type ResultsRow,
 } from "fuse-ui";
 import type { Model } from "./presenter.js";
 
@@ -87,13 +88,5 @@ export function resultReport(
 
 /** The bar under the report: the host's next steps, and what everybody else waits for. */
 export function resultBar(result: Result): ResultsBar {
-  return {
-    ...(result.waiting ? { status: result.waiting } : {}),
-    actions: result.host
-      ? [
-          { id: "lobby", label: "Back to lobby" },
-          { id: "rematch", label: "REMATCH", primary: true },
-        ]
-      : [],
-  };
+  return roomResultsBar(result);
 }

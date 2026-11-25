@@ -235,6 +235,11 @@ const cases: [string, string, (fields: Fields, room: Room) => void][] = [
   ],
   ["a member seated twice", "play", (f) => (at(f, SEATS, 1).id = "a")],
   ["a slot held twice", "play", (f) => (at(f, SEATS, 1).slot = 0)],
+  [
+    "a seat array with an extra property",
+    "play",
+    (f) => Object.assign(f[SEATS] as unknown[], { extra: true }),
+  ],
   // prettier-ignore
   ["too many watchers", "play", (f) => { for (let i = 0; i < 6; i++) (f[SEATS] as unknown[]).push({ ...at(f, SEATS, 3), id: `w${i}` }); }],
   // results

@@ -205,6 +205,46 @@ const C = {
   hijack: [4.4, 1.2, 6.5], dash: [1.6, 4.2, 6.5], flare: [9, 1.8, 1], ember: [6, 2.4, 0.5],
 } as const satisfies Record<string, Rgb>;
 const TEAM_GLOW: readonly Rgb[] = [[3.2, 1, 0.5], [0.6, 1.3, 3.6]]; // prettier-ignore
+const FULL_TURN = 6.28;
+
+interface Aura {
+  rgb: Rgb;
+  rings: readonly { radius: number; delay?: number }[];
+  scaleRings?: boolean;
+  rise: number;
+  flash?: { height: number; power: number; life: number };
+}
+
+/** Ground rings and rising motes that mark buffs and rank changes. */
+const AURAS: Record<
+  "rally" | "fortify" | "blitz" | "ironHide" | "levelUp",
+  Aura
+> = {
+  rally: {
+    rgb: C.heal,
+    scaleRings: true,
+    rise: 16,
+    rings: [{ radius: 1 }, { radius: 0.7, delay: 220 }],
+  },
+  fortify: {
+    rgb: C.shield,
+    scaleRings: true,
+    rise: 20,
+    rings: [{ radius: 1 }, { radius: 0.6, delay: 200 }],
+    flash: { height: 1.5, power: 4, life: 500 },
+  },
+  blitz: {
+    rgb: C.dash,
+    rise: 14,
+    rings: [{ radius: 2.5 }, { radius: 1.6, delay: 150 }],
+  },
+  ironHide: { rgb: C.shield, rise: 10, rings: [{ radius: 1.2 }] },
+  levelUp: {
+    rgb: C.gold,
+    rise: 22,
+    rings: [{ radius: 1.2 }, { radius: 0.8, delay: 160 }],
+  },
+};
 
 /** The ground's height under a point, in tiles. */
 export type GroundAt = (x: number, z: number) => number;
@@ -249,7 +289,7 @@ export function emit(cue: Cue, now: number, ground: GroundAt, pool: Particles, s
     pool.spawn({ x, y: ground(x, z) + 0.08, z, born, life, size: 0.3, grow: radius, rgb, alpha: 1, mode: Mode.Ring });
   const rise = (rgb: Rgb, n: number, x = cue.x, z = cue.z) => {
     for (let i = 0; i < n; i++) {
-      const a = r(0, 6.28), d = r(0.1, 0.6);
+      const a = r(0, FULL_TURN), d = r(0.1, 0.6);
       pool.spawn({ x: x + Math.cos(a) * d, y: ground(x, z) + r(0, 0.4), z: z + Math.sin(a) * d, vy: r(1, 2.4),
         born: now + r(0, 300), life: r(500, 900), size: 0.09, grow: 0.02, rgb, alpha: 1, mode: Mode.Glow });
     }
@@ -320,17 +360,23 @@ export function emit(cue: Cue, now: number, ground: GroundAt, pool: Particles, s
     case "shockwave":
       ring(C.gold, cue.size);
       for (let i = 0; i < 18; i++) {
-        const a = (i / 18) * 6.28;
+        const a = (i / 18) * FULL_TURN;
         pool.spawn({ x: cue.x, y: y0 + 0.15, z: cue.z, vx: Math.cos(a) * 6, vy: 0.4, vz: Math.sin(a) * 6, born: now,
           life: 520, size: 0.2, grow: 0.8, rgb: C.dust, alpha: 0.7, mode: Mode.Smoke });
       }
       flashes.push({ x: cue.x, y: y0 + 1, z: cue.z, power: 6, life: 300 });
       return flashes;
-    case "rally":
-      ring(C.heal, cue.size);
-      ring(C.heal, cue.size * 0.7, now + 220);
-      rise(C.heal, 16);
+    case "rally": case "fortify": case "blitz": case "ironHide": case "levelUp": {
+      const aura = AURAS[cue.kind], scale = aura.scaleRings ? cue.size : 1;
+      for (const { radius, delay } of aura.rings)
+        ring(aura.rgb, scale * radius, delay === undefined ? now : now + delay);
+      rise(aura.rgb, aura.rise);
+      if (aura.flash) {
+        const { height, power, life } = aura.flash;
+        flashes.push({ x: cue.x, y: y0 + height, z: cue.z, power, life });
+      }
       return flashes;
+    }
     case "snipe": {
       // A hot line that hangs a moment, smoke along it, and a spray of sparks where it hits.
       const by = line(C.snipe, 0.03, 300, 0.95);
@@ -379,12 +425,6 @@ export function emit(cue: Cue, now: number, ground: GroundAt, pool: Particles, s
       sparks(cue.x, y0 + 0.1, cue.z, C.spark, 8, 2, now + 260);
       flashes.push({ x: cue.x, y: y0 + 1, z: cue.z, power: 4, life: 300 });
       return flashes;
-    case "fortify":
-      ring(C.shield, cue.size);
-      ring(C.shield, cue.size * 0.6, now + 200);
-      rise(C.shield, 20);
-      flashes.push({ x: cue.x, y: y0 + 1.5, z: cue.z, power: 4, life: 500 });
-      return flashes;
     case "overclock": {
       // The factory runs hot: an orange ring at its walls, embers and a burst of black smoke from the chimney.
       ring(C.ember, 1.6, now, 900);
@@ -410,15 +450,6 @@ export function emit(cue: Cue, now: number, ground: GroundAt, pool: Particles, s
       ring(C.flare, 1, now + 500);
       flashes.push({ x: cue.x, y: y0 + 2.4, z: cue.z, power: 7, life: 3000 });
       return flashes;
-    case "blitz":
-      ring(C.dash, 2.5);
-      ring(C.dash, 1.6, now + 150);
-      rise(C.dash, 14);
-      return flashes;
-    case "ironHide":
-      ring(C.shield, 1.2);
-      rise(C.shield, 10);
-      return flashes;
     case "drop":
       beam(C.drop, 0.5, 520);
       ring(C.drop, cue.size, now + 300);
@@ -427,11 +458,6 @@ export function emit(cue: Cue, now: number, ground: GroundAt, pool: Particles, s
     case "respawn":
       beam(C.beam, 0.3, 600);
       ring(C.beam, 1.4);
-      return flashes;
-    case "levelUp":
-      ring(C.gold, 1.2);
-      ring(C.gold, 0.8, now + 160);
-      rise(C.gold, 22);
       return flashes;
   }
 }

@@ -1,6 +1,8 @@
 import {
+  createGameMenu,
   createHowToPlay,
   createLiveResults,
+  createPlayScreen,
   createResultsScreen,
   elementsFor,
   type RoomFriends,
@@ -95,6 +97,7 @@ export interface ScreenOptions {
   events: EventTarget;
   home(): void;
   retry(): void;
+  roomUnavailable(code: string): void;
 }
 export function mountGame(root: HTMLElement, options: ScreenOptions) {
   const document = root.ownerDocument,
@@ -156,9 +159,17 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       document.defaultView!.location.href = home.href;
     });
   };
-  const leave = el("button", "LEAVE", "quiet-button");
-  leave.onclick = () => exit();
-  top.append(retry, leave);
+  // The shared game menu: the host's Back to lobby during a match and everyone's Main menu, as in every game.
+  const menu = createGameMenu({
+    ...BALL_GUIDE,
+    document,
+    onLobby: () => runtime?.command({ type: "action", action: "lobby" }),
+    onLeave: () => exit(),
+  });
+  const touch = () =>
+    document.defaultView?.matchMedia?.("(pointer: coarse)").matches ?? false;
+  menu.update({ canLobby: false, touch: touch() });
+  top.append(retry, menu.element);
   const heading = el("section", "", "heading");
   heading.append(
     el("span", "FIVE CORES. ONE SURVIVOR.", "eyebrow"),
@@ -250,6 +261,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       })
     : undefined;
   if (panel) {
+    panel.element.hidden = true;
     layout.hidden = true;
     scoreboard.hidden = true;
     controlsRow.hidden = true;
@@ -323,6 +335,8 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       .querySelectorAll(".pressed")
       .forEach((b) => b.classList.remove("pressed"));
   };
+  // A phone's live round is the whole screen: the square arena with the scores and the pads floating around it.
+  const playScreen = createPlayScreen({ stage: layout, onChange: cancel });
   root.tabIndex = -1;
   options.attachHeader?.(top, (open) => {
     if (open) cancel();
@@ -378,6 +392,16 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
   function update(v: BallView | RoomView): void {
     latest = v;
     root.dataset.phase = "stage" in v ? v.stage : (v.arena?.phase ?? "loading");
+    // Live: a round under way on this device's own arena (not a shared screen's TV or its phone controllers).
+    const phase = v.arena?.phase,
+      live =
+        !options.online?.display &&
+        !(options.online && shared) &&
+        (!("stage" in v) || v.stage === "running") &&
+        (phase === "countdown" || phase === "playing");
+    playScreen.update(live);
+    // Alone, the pads show only while the round runs; a room's follow its seat.
+    if (!options.online) controlsRow.hidden = !live;
     if ("stage" in v && options.online) {
       const m = roomModel(
         v,
@@ -389,6 +413,12 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         "managerId" in v && typeof v.managerId === "string" ? v.managerId : "",
       );
       panel!.render(m);
+      menu.update({
+        canLobby: m.manage && !m.lobby,
+        touch: touch(),
+        spectator: options.online.display,
+        display: options.online.display,
+      });
       panel!.element.hidden = !m.lobby || retrying;
       heading.hidden = m.lobby;
       status.hidden = m.lobby && !retrying;
@@ -488,8 +518,11 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         return;
       }
       runtime?.stop();
+      let admitted = false;
       runtime = options.runtime({
-        ready: () => {},
+        ready: () => {
+          admitted = true;
+        },
         state: (f, settings) => {
           activeSettings = settings;
           shared = settings.display;
@@ -524,15 +557,22 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
         },
         status: (text) => say(roomFailure(text)),
         ended: () => {
+          // The service uses the same close code for an unavailable room and an ended session.
+          if (!admitted && options.online) {
+            options.roomUnavailable(options.online.code);
+            return;
+          }
           playing = false;
           cancel();
           controlsRow.hidden = true;
+          playScreen.update(false);
           say("Room ended. Leave to create another room.");
         },
         kicked: () => {
           playing = false;
           cancel();
           controlsRow.hidden = true;
+          playScreen.update(false);
           say("You were removed from the room.");
         },
       });
@@ -540,6 +580,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     } catch (error) {
       graphicsFailed = true;
       playing = false;
+      playScreen.update(false);
       // The retry is on the overlay, under the results screen.
       showResult(undefined);
       overlay.hidden = false;
@@ -607,49 +648,53 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       ),
     };
   }
+  function showArenaPaintFailure(): void {
+    graphicsFailed = true;
+    cancel();
+    runtime?.stop();
+    runtime = undefined;
+    playing = false;
+    playScreen.update(false);
+    showResult(undefined);
+    overlay.hidden = false;
+    layout.hidden = false;
+    retrying = true;
+    if (panel) panel.element.hidden = true;
+    start.hidden = false;
+    start.textContent = "RETRY ARENA";
+    status.hidden = false;
+    say("Arena rendering stopped. Retry to start a fresh round.");
+  }
+
   function paint(now: number): void {
     const timing = runtime?.frameTiming();
     try {
       if (
         !graphicsFailed &&
         !document.hidden &&
-        timing &&
         !root.classList.contains("controller-mode")
       ) {
-        const drawn = picture(timing, now);
-        if (probe) {
-          const mine = drawn.arena?.bases.find(
-            (base) => base.id === runtime?.self,
-          );
-          Reflect.set(root.ownerDocument.defaultView ?? {}, "__ballBrosProbe", {
-            at: options.now(),
-            angle: mine?.angle,
-            radius: mine?.radius,
-          });
+        const drawn = timing ? picture(timing, now) : latest;
+        if (drawn) {
+          if (timing && probe) {
+            const mine = drawn.arena?.bases.find(
+              (base) => base.id === runtime?.self,
+            );
+            Reflect.set(
+              root.ownerDocument.defaultView ?? {},
+              "__ballBrosProbe",
+              {
+                at: options.now(),
+                angle: mine?.angle,
+                radius: mine?.radius,
+              },
+            );
+          }
+          renderer.paint(drawn, now);
         }
-        renderer.paint(drawn, now);
-      } else if (
-        !graphicsFailed &&
-        !document.hidden &&
-        latest &&
-        !root.classList.contains("controller-mode")
-      )
-        renderer.paint(latest, now);
+      }
     } catch {
-      graphicsFailed = true;
-      cancel();
-      runtime?.stop();
-      runtime = undefined;
-      playing = false;
-      showResult(undefined);
-      overlay.hidden = false;
-      layout.hidden = false;
-      retrying = true;
-      if (panel) panel.element.hidden = true;
-      start.hidden = false;
-      start.textContent = "RETRY ARENA";
-      status.hidden = false;
-      say("Arena rendering stopped. Retry to start a fresh round.");
+      showArenaPaintFailure();
     }
     frame = options.frame(paint);
   }
@@ -660,10 +705,12 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
     stopPlaytestInput();
     cancel();
     runtime?.stop();
+    playScreen.destroy();
     options.cancelFrame(frame);
     renderer.destroy();
     audio.destroy();
     options.radio?.destroy();
     abort.abort();
+    menu.dispose();
   };
 }

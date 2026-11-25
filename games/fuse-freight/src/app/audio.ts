@@ -120,6 +120,308 @@ const TEMPO: Record<Exclude<Mood, "off">, number> = {
   final: 146,
 };
 
+type Layer =
+  | {
+      kind: "tone";
+      frequency: number;
+      duration: number;
+      type: OscillatorType;
+      volume: number;
+      slide?: number;
+      offset?: number;
+    }
+  | {
+      kind: "noise";
+      frequency: number;
+      duration: number;
+      type: BiquadFilterType;
+      volume: number;
+      q?: number;
+      offset?: number;
+    };
+
+const CHUG_ACCENTS = [1, 0.3, 0.55, 0.3];
+const BAR_STEPS = 16;
+const THEME_STEPS = BAR_STEPS * ROOTS.length;
+const SONG_STEPS = 2 * THEME_STEPS;
+
+function compileBeat(
+  mood: Exclude<Mood, "off">,
+  index: number,
+): readonly Layer[] {
+  const bar = Math.floor(index / BAR_STEPS) % ROOTS.length;
+  const sixteenth = index % BAR_STEPS;
+  const busy = mood !== "menu";
+  const accent = CHUG_ACCENTS[sixteenth % CHUG_ACCENTS.length]!;
+  // Steam accents mark the rail joints.
+  const layers: Layer[] = [
+    {
+      kind: "noise",
+      duration: 0.05,
+      volume: (busy ? 0.18 : 0.1) * accent,
+      type: "bandpass",
+      frequency: 2200,
+      q: 1.2,
+    },
+  ];
+  if (sixteenth % 8 === 0)
+    layers.push({
+      kind: "tone",
+      frequency: 120,
+      duration: 0.22,
+      type: "sine",
+      volume: busy ? 0.5 : 0.3,
+      slide: 0.35,
+    });
+  if (busy && sixteenth % 8 === 4)
+    layers.push({
+      kind: "noise",
+      duration: 0.12,
+      volume: 0.16,
+      type: "highpass",
+      frequency: 2400,
+    });
+  if (mood === "final" && sixteenth % 2 === 1)
+    layers.push({
+      kind: "noise",
+      duration: 0.03,
+      volume: 0.08,
+      type: "highpass",
+      frequency: 7000,
+    });
+  if (sixteenth % 2 === 0) {
+    const root = ROOTS[bar]!;
+    const bass = sixteenth % 4 === 0 ? root : root + 7;
+    layers.push({
+      kind: "tone",
+      frequency: midi(bass - 12),
+      duration: 0.2,
+      type: "triangle",
+      volume: 0.34,
+    });
+    // The answer comes in every other repeat in a round.
+    const tune = busy && index >= THEME_STEPS ? ANSWER : TUNE;
+    const note = tune[bar]![sixteenth / 2];
+    if (note !== null && note !== undefined)
+      layers.push({
+        kind: "tone",
+        frequency: midi(note),
+        duration: 0.16,
+        type: busy ? "square" : "triangle",
+        volume: busy ? 0.07 : 0.1,
+      });
+  }
+  if (mood === "final" && sixteenth === 0)
+    layers.push(
+      {
+        kind: "tone",
+        frequency: 880,
+        duration: 0.18,
+        type: "sine",
+        volume: 0.08,
+      },
+      {
+        kind: "tone",
+        frequency: 1109,
+        duration: 0.18,
+        type: "sine",
+        volume: 0.06,
+      },
+    );
+  return layers;
+}
+
+const SOUNDTRACK = {
+  menu: Array.from({ length: THEME_STEPS }, (_, index) =>
+    compileBeat("menu", index),
+  ),
+  round: Array.from({ length: SONG_STEPS }, (_, index) =>
+    compileBeat("round", index),
+  ),
+  final: Array.from({ length: SONG_STEPS }, (_, index) =>
+    compileBeat("final", index),
+  ),
+};
+
+const EFFECTS: Record<
+  Exclude<Cue, "go" | "whistle" | "win">,
+  readonly Layer[]
+> = {
+  collect: [
+    {
+      kind: "tone",
+      frequency: 784,
+      duration: 0.08,
+      type: "triangle",
+      volume: 0.28,
+    },
+    {
+      kind: "tone",
+      frequency: 1175,
+      duration: 0.12,
+      type: "triangle",
+      volume: 0.24,
+      offset: 0.06,
+    },
+  ],
+  // The coupling snaps with a metal clank and a spark of hiss.
+  cut: [
+    {
+      kind: "tone",
+      frequency: 330,
+      duration: 0.18,
+      type: "square",
+      volume: 0.16,
+      slide: 0.45,
+    },
+    {
+      kind: "tone",
+      frequency: 1560,
+      duration: 0.09,
+      type: "square",
+      volume: 0.08,
+      slide: 0.7,
+    },
+    {
+      kind: "noise",
+      duration: 0.22,
+      volume: 0.35,
+      type: "bandpass",
+      frequency: 2600,
+      q: 2,
+    },
+  ],
+  deliver: [
+    ...[72, 76, 79, 84].map((note, i) => ({
+      kind: "tone" as const,
+      frequency: midi(note),
+      duration: 0.3,
+      type: "square" as const,
+      volume: 0.1,
+      offset: i * 0.07,
+    })),
+    {
+      kind: "tone",
+      frequency: midi(96),
+      duration: 0.5,
+      type: "sine",
+      volume: 0.14,
+      offset: 0.3,
+    },
+    {
+      kind: "noise",
+      duration: 0.12,
+      volume: 0.12,
+      type: "highpass",
+      frequency: 6000,
+      offset: 0.28,
+    },
+  ],
+  bump: [
+    {
+      kind: "tone",
+      frequency: 150,
+      duration: 0.16,
+      type: "sine",
+      volume: 0.4,
+      slide: 0.5,
+    },
+    {
+      kind: "noise",
+      duration: 0.1,
+      volume: 0.2,
+      type: "lowpass",
+      frequency: 900,
+    },
+    {
+      kind: "tone",
+      frequency: 620,
+      duration: 0.06,
+      type: "square",
+      volume: 0.05,
+    },
+  ],
+  wall: [
+    {
+      kind: "tone",
+      frequency: 110,
+      duration: 0.12,
+      type: "sine",
+      volume: 0.28,
+      slide: 0.6,
+    },
+    {
+      kind: "noise",
+      duration: 0.08,
+      volume: 0.12,
+      type: "lowpass",
+      frequency: 700,
+    },
+  ],
+  spawn: [
+    {
+      kind: "tone",
+      frequency: 523,
+      duration: 0.05,
+      type: "triangle",
+      volume: 0.06,
+    },
+  ],
+  scrap: [
+    {
+      kind: "noise",
+      duration: 0.3,
+      volume: 0.2,
+      type: "bandpass",
+      frequency: 1200,
+      q: 3,
+    },
+  ],
+  full: [
+    {
+      kind: "tone",
+      frequency: 392,
+      duration: 0.1,
+      type: "square",
+      volume: 0.08,
+    },
+    {
+      kind: "tone",
+      frequency: 392,
+      duration: 0.1,
+      type: "square",
+      volume: 0.08,
+      offset: 0.1,
+    },
+  ],
+  count: [
+    {
+      kind: "tone",
+      frequency: 660,
+      duration: 0.12,
+      type: "square",
+      volume: 0.1,
+    },
+  ],
+  final: [
+    {
+      kind: "tone",
+      frequency: 1318,
+      duration: 0.5,
+      type: "sine",
+      volume: 0.18,
+    },
+    {
+      kind: "tone",
+      frequency: 1318,
+      duration: 0.5,
+      type: "sine",
+      volume: 0.14,
+      offset: 0.25,
+    },
+  ],
+};
+
 export interface GameAudio {
   /** A gesture happened: open or wake the audio, and start the music if it is due. */
   resume(): void;
@@ -235,57 +537,40 @@ export function createAudio(
     source.stop(at + duration + 0.02);
   };
 
+  const playLayers = (
+    bus: GainNode | undefined,
+    at: number,
+    layers: readonly Layer[],
+  ) => {
+    for (const layer of layers) {
+      const start = layer.offset === undefined ? at : at + layer.offset;
+      if (layer.kind === "tone")
+        tone(
+          bus,
+          start,
+          layer.frequency,
+          layer.duration,
+          layer.type,
+          layer.volume,
+          layer.slide,
+        );
+      else
+        noise(
+          bus,
+          start,
+          layer.duration,
+          layer.volume,
+          layer.type,
+          layer.frequency,
+          layer.q,
+        );
+    }
+  };
   /** One sixteenth of the soundtrack at `at`. */
   const beat = (at: number, index: number) => {
     if (mood === "off") return;
-    const bar = Math.floor(index / 16) % 4,
-      sixteenth = index % 16,
-      loop = Math.floor(index / 64),
-      busy = mood === "round" || mood === "final";
-    const root = ROOTS[bar]!;
-    // The chug: steam through a band-pass, accented like wheels on rail joints.
-    const accent = [1, 0.3, 0.55, 0.3][sixteenth % 4]!;
-    noise(
-      musicBus,
-      at,
-      0.05,
-      (busy ? 0.18 : 0.1) * accent,
-      "bandpass",
-      2200,
-      1.2,
-    );
-    if (sixteenth % 8 === 0) {
-      // Kick.
-      tone(musicBus, at, 120, 0.22, "sine", busy ? 0.5 : 0.3, 0.35);
-    }
-    if (busy && sixteenth % 8 === 4)
-      noise(musicBus, at, 0.12, 0.16, "highpass", 2400);
-    if (mood === "final" && sixteenth % 2 === 1)
-      noise(musicBus, at, 0.03, 0.08, "highpass", 7000);
-    // Oom-pah bass on the eighths.
-    if (sixteenth % 2 === 0) {
-      const note = sixteenth % 4 === 0 ? root : root + 7;
-      tone(musicBus, at, midi(note - 12), 0.2, "triangle", 0.34);
-    }
-    // The tune on the eighths: soft on the menus, the answer every other time round in a round.
-    if (sixteenth % 2 === 0) {
-      const tune = busy && loop % 2 === 1 ? ANSWER : TUNE;
-      const note = tune[bar]![sixteenth / 2];
-      if (note !== null && note !== undefined)
-        tone(
-          musicBus,
-          at,
-          midi(note),
-          0.16,
-          busy ? "square" : "triangle",
-          busy ? 0.07 : 0.1,
-        );
-    }
-    // The last stretch: a whistle's toot at the top of every bar.
-    if (mood === "final" && sixteenth === 0) {
-      tone(musicBus, at, 880, 0.18, "sine", 0.08);
-      tone(musicBus, at, 1109, 0.18, "sine", 0.06);
-    }
+    const track = SOUNDTRACK[mood];
+    playLayers(musicBus, at, track[index % track.length]!);
   };
   const schedule = () => {
     const audio = live();
@@ -360,54 +645,11 @@ export function createAudio(
       const at = audio.currentTime,
         fx = effectsBus;
       switch (cue) {
-        case "collect":
-          tone(fx, at, 784, 0.08, "triangle", 0.28);
-          tone(fx, at + 0.06, 1175, 0.12, "triangle", 0.24);
-          break;
-        case "cut":
-          // A coupling snapping: a metal clank and a spark of hiss.
-          tone(fx, at, 330, 0.18, "square", 0.16, 0.45);
-          tone(fx, at, 1560, 0.09, "square", 0.08, 0.7);
-          noise(fx, at, 0.22, 0.35, "bandpass", 2600, 2);
-          break;
-        case "deliver":
-          [72, 76, 79, 84].forEach((note, i) =>
-            tone(fx, at + i * 0.07, midi(note), 0.3, "square", 0.1),
-          );
-          tone(fx, at + 0.3, midi(96), 0.5, "sine", 0.14);
-          noise(fx, at + 0.28, 0.12, 0.12, "highpass", 6000);
-          break;
-        case "bump":
-          tone(fx, at, 150, 0.16, "sine", 0.4, 0.5);
-          noise(fx, at, 0.1, 0.2, "lowpass", 900);
-          tone(fx, at, 620, 0.06, "square", 0.05);
-          break;
-        case "wall":
-          tone(fx, at, 110, 0.12, "sine", 0.28, 0.6);
-          noise(fx, at, 0.08, 0.12, "lowpass", 700);
-          break;
-        case "spawn":
-          tone(fx, at, 523, 0.05, "triangle", 0.06);
-          break;
-        case "scrap":
-          noise(fx, at, 0.3, 0.2, "bandpass", 1200, 3);
-          break;
-        case "full":
-          tone(fx, at, 392, 0.1, "square", 0.08);
-          tone(fx, at + 0.1, 392, 0.1, "square", 0.08);
-          break;
-        case "count":
-          tone(fx, at, 660, 0.12, "square", 0.1);
-          break;
         case "go":
           whistle(at, 0.6);
           break;
         case "whistle":
           whistle(at, 1.1);
-          break;
-        case "final":
-          tone(fx, at, 1318, 0.5, "sine", 0.18);
-          tone(fx, at + 0.25, 1318, 0.5, "sine", 0.14);
           break;
         case "win":
           [72, 76, 79, 84, 79, 84].forEach((note, i) =>
@@ -425,6 +667,8 @@ export function createAudio(
             ),
           );
           break;
+        default:
+          if (Object.hasOwn(EFFECTS, cue)) playLayers(fx, at, EFFECTS[cue]);
       }
     },
   };

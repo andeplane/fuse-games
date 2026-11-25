@@ -24,7 +24,7 @@ Run `pnpm dev`, then open the printed URL plus `/fusero/?mute`. The intended flo
 
 The shared configuration layout keeps the player list on the left and the five weapon choices on the right, including solo rooms. Phones stack players before choices. Solo omits QR/invitation content; online rooms retain their invitation. Back, Room settings and Start stay in the shared room header.
 
-The default **Original PC** keyboard preset uses the original primary-player bindings from the pinned `Options.cpp`, matching the official WebAssembly build even when played on a Mac. **Original Mac** is available under **MENU → GAME CONTROLS → Keyboard preset**. The choice is a local keyboard preference, not a room or gameplay setting.
+Fusero defaults to **Original Mac** on Apple platforms and **Original PC** elsewhere. Both presets use the original primary-player bindings from the pinned `Options.cpp`. Select either under **MENU → GAME CONTROLS → Keyboard preset**. Fusero remembers your choice in that browser.
 
 | Action                                    | PC                                                             | Mac                 |
 | ----------------------------------------- | -------------------------------------------------------------- | ------------------- |

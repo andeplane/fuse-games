@@ -39,14 +39,17 @@ export const openTile = (map: GameMap, tx: number, ty: number): boolean =>
   ty < map.height &&
   map.sectorOf[ty * map.width + tx]! >= 0;
 
-/** Whether one step from (x, y) in direction `dir` lands on open ground without cutting a corner. */
-function canStep(map: GameMap, x: number, y: number, dir: number): boolean {
-  const [dx, dy] = DIRS[dir]!;
-  if (!openTile(map, x + dx, y + dy)) return false;
+/** Whether entering (x, y) from (x - dx, y - dy) lands on open ground without cutting a corner. */
+export function canEnterTile(
+  isOpen: (x: number, y: number) => boolean,
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+): boolean {
   return (
-    dx === 0 ||
-    dy === 0 ||
-    (openTile(map, x + dx, y) && openTile(map, x, y + dy))
+    isOpen(x, y) &&
+    (dx === 0 || dy === 0 || (isOpen(x, y - dy) && isOpen(x - dx, y)))
   );
 }
 
@@ -56,12 +59,15 @@ function stepsOf(map: GameMap): Uint8Array {
   let masks = stepMasks.get(map);
   if (masks !== undefined) return masks;
   masks = new Uint8Array(map.width * map.height);
+  const isOpen = (x: number, y: number) => openTile(map, x, y);
   for (let y = 0; y < map.height; y++)
     for (let x = 0; x < map.width; x++) {
-      if (!openTile(map, x, y)) continue;
+      if (!isOpen(x, y)) continue;
       let mask = 0;
-      for (let dir = 0; dir < DIRS.length; dir++)
-        if (canStep(map, x, y, dir)) mask |= 1 << dir;
+      for (let dir = 0; dir < DIRS.length; dir++) {
+        const [dx, dy] = DIRS[dir]!;
+        if (canEnterTile(isOpen, x + dx, y + dy, dx, dy)) mask |= 1 << dir;
+      }
       masks[y * map.width + x] = mask;
     }
   stepMasks.set(map, masks);

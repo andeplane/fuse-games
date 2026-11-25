@@ -6,6 +6,8 @@ export * from "./text.js";
 export * from "./clock.js";
 export * from "./timing.js";
 export * from "./present.js";
+export { createLeadChain, leadStepsAhead } from "./lead-chain.js";
+export { forwardWorld, type ForwardWorldOptions } from "./forward-world.js";
 export * from "./status-notices.js";
 export * from "./uuid.js";
 export * from "./packet.js";
@@ -25,12 +27,22 @@ export {
   type SnapshotChunk,
   type SnapshotStream,
 } from "./snapshot.js";
-export { createSeatDecoder, createSeatListDecoder } from "./seat-snapshot.js";
+export {
+  createSeatDecoder,
+  createSeatListDecoder,
+  orderedSeats,
+  compareSeats,
+} from "./seat-snapshot.js";
 export { createHeldInputDecoder } from "./held-input-snapshot.js";
-export { validCheckpointLifecycle } from "./checkpoint-lifecycle.js";
+export {
+  validCheckpointLifecycle,
+  createCheckpointRoundDecoder,
+} from "./checkpoint-lifecycle.js";
 export {
   CHECKPOINT_HEADER_FIELDS,
   createCheckpointBaseDecoder,
+  checkpointEntries,
+  encodeCheckpointBase,
 } from "./checkpoint-base.js";
 export {
   createRosterDecoder,

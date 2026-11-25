@@ -207,7 +207,8 @@ export function signInFailure(error: unknown): string {
   const code = (error as { code?: unknown })?.code;
   if (
     code === "auth/popup-closed-by-user" ||
-    code === "auth/cancelled-popup-request"
+    code === "auth/cancelled-popup-request" ||
+    code === "auth/user-cancelled"
   )
     return "";
   if (code === "auth/popup-blocked")

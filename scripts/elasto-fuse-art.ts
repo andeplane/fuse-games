@@ -432,13 +432,16 @@ const ASSETS: Asset[] = [
 const stem = (file: string): string => file.replace(/\.\w+$/, "");
 const mime = (file: string): string =>
   file.endsWith(".webp") ? "image/webp" : "image/png";
-/** Sources run in stages, so that a reference image exists before the source that uses it. */
-const stageOf = (source: Source): number =>
+const ART_STAGES = ["base", "limbs", "hero"] as const;
+type ArtStage = (typeof ART_STAGES)[number];
+
+/** A source's references are fitted by earlier stages. */
+const stageOf = (source: Source): ArtStage =>
   !source.refs
-    ? 0
+    ? "base"
     : source.refs.some((ref) => ref.startsWith(CACHE_REF))
-      ? 2
-      : 1;
+      ? "hero"
+      : "limbs";
 
 interface Options {
   only: Set<string> | null;
@@ -575,7 +578,7 @@ async function fit(page: Page, asset: Asset, image: Buffer): Promise<Buffer> {
       canvas.height = height;
       const ctx = canvas.getContext("2d")!;
       ctx.imageSmoothingQuality = "high";
-      if (fit.kind === "box") {
+      const fitSprite = (box: readonly [number, number, number, number]) => {
         const source = document.createElement("canvas");
         source.width = img.width;
         source.height = img.height;
@@ -588,22 +591,23 @@ async function fit(page: Page, asset: Asset, image: Buffer): Promise<Buffer> {
         let y0 = img.height;
         let x1 = -1;
         let y1 = -1;
-        for (let y = 0; y < img.height; y += 1)
-          for (let x = 0; x < img.width; x += 1) {
-            const i = (y * img.width + x) * 4 + 3;
-            if ((data[i] ?? 0) <= 24) {
-              data[i] = 0;
-              continue;
-            }
-            if (x < x0) x0 = x;
-            if (x > x1) x1 = x;
-            if (y < y0) y0 = y;
-            if (y > y1) y1 = y;
+        for (let pixel = 0; pixel < img.width * img.height; pixel++) {
+          const alpha = pixel * 4 + 3;
+          if ((data[alpha] ?? 0) <= 24) {
+            data[alpha] = 0;
+            continue;
           }
+          const x = pixel % img.width;
+          const y = Math.floor(pixel / img.width);
+          x0 = Math.min(x0, x);
+          x1 = Math.max(x1, x);
+          y0 = Math.min(y0, y);
+          y1 = Math.max(y1, y);
+        }
         sx.putImageData(pixels, 0, 0);
         const bw = x1 - x0 + 1;
         const bh = y1 - y0 + 1;
-        const [left, top, right, bottom] = fit.box;
+        const [left, top, right, bottom] = box;
         const s = Math.min((right - left) / bw, (bottom - top) / bh);
         const w = bw * s;
         const h = bh * s;
@@ -618,7 +622,8 @@ async function fit(page: Page, asset: Asset, image: Buffer): Promise<Buffer> {
           w,
           h,
         );
-      } else {
+      };
+      const coverCanvas = () => {
         const s = Math.max(width / img.width, height / img.height);
         const sw = width / s;
         const sh = height / s;
@@ -633,36 +638,45 @@ async function fit(page: Page, asset: Asset, image: Buffer): Promise<Buffer> {
           width,
           height,
         );
+      };
+      // Cross-fade with a half-tile shift. The interior keeps the original, and the wrapped edge takes the copy.
+      const blend = (axis: "x" | "y") => {
+        const horizontal = axis === "x";
+        const pixels = ctx.getImageData(0, 0, width, height);
+        const from = pixels.data.slice();
+        const to = pixels.data;
+        const size = horizontal ? width : height;
+        const half = size / 2;
+        // The fade and wrapped offset depend only on the coordinate along the blending axis.
+        const weights = new Float64Array(size);
+        const shifts = new Float64Array(size);
+        const stride = horizontal ? 1 : width;
+        for (let p = 0; p < size; p++) {
+          const t = Math.min(
+            1,
+            Math.max(0, (1 - Math.abs(p - half) / half - 0.08) / 0.3),
+          );
+          weights[p] = t * t * (3 - 2 * t);
+          shifts[p] = (((p + half) % size) - p) * stride * 4;
+        }
+        for (let i = 0; i < to.length; i += 4) {
+          const pixel = i / 4;
+          const p = horizontal ? pixel % width : Math.floor(pixel / width);
+          const weight = weights[p]!;
+          const j = i + shifts[p]!;
+          for (let c = 0; c < 3; c += 1)
+            to[i + c] =
+              (from[i + c] ?? 0) * weight + (from[j + c] ?? 0) * (1 - weight);
+        }
+        ctx.putImageData(pixels, 0, 0);
+      };
+
+      if (fit.kind === "box") fitSprite(fit.box);
+      else {
+        coverCanvas();
         if (fit.kind === "tile") {
-          // Along each axis, cross-fade the image with a copy of itself shifted by half its size. The copy's seam is
-          // in the middle, where the original has full weight, and the original's seam is at the edge, where the copy
-          // has; the result wraps without a seam. Doing x and then y keeps both.
-          const blend = (horizontal: boolean) => {
-            const pixels = ctx.getImageData(0, 0, width, height);
-            const from = pixels.data.slice();
-            const to = pixels.data;
-            const size = horizontal ? width : height;
-            const half = size / 2;
-            for (let y = 0; y < height; y += 1)
-              for (let x = 0; x < width; x += 1) {
-                const p = horizontal ? x : y;
-                const t = Math.min(
-                  1,
-                  Math.max(0, (1 - Math.abs(p - half) / half - 0.08) / 0.3),
-                );
-                const weight = t * t * (3 - 2 * t);
-                const q = (p + half) % size;
-                const i = (y * width + x) * 4;
-                const j = (horizontal ? y * width + q : q * width + x) * 4;
-                for (let c = 0; c < 3; c += 1)
-                  to[i + c] =
-                    (from[i + c] ?? 0) * weight +
-                    (from[j + c] ?? 0) * (1 - weight);
-              }
-            ctx.putImageData(pixels, 0, 0);
-          };
-          blend(true);
-          if (fit.axes === "xy") blend(false);
+          blend("x");
+          if (fit.axes === "xy") blend("y");
         }
       }
       // Opaque art ships as WebP (about a tenth of the PNG's size, which matters on phones); sprites keep PNG alpha.
@@ -1008,6 +1022,58 @@ function writeDoc(): Promise<void> {
   );
 }
 
+async function generateStageSources(
+  sources: readonly Source[],
+  options: Options,
+): Promise<void> {
+  await Promise.all(
+    sources.map(async (source) => {
+      const images = await generate(
+        source,
+        options.n,
+        options.quality,
+        options.raw,
+      );
+      images.forEach((image, i) =>
+        writeFileSync(join(options.raw, `${source.id}-${i}.png`), image),
+      );
+      console.log(`generated ${source.id} ×${images.length}`);
+    }),
+  );
+}
+
+async function fitCachedAsset(
+  page: Page,
+  asset: Asset,
+  options: Options,
+): Promise<void> {
+  const count = options.picks.size > 0 ? 1 : options.n;
+  let done = 0;
+  for (let i = 0; i < count; i += 1) {
+    const path = join(
+      options.raw,
+      `${asset.source}-${options.picks.get(asset.source) ?? i}.png`,
+    );
+    if (!existsSync(path)) continue;
+    const fitted = await fit(page, asset, readFileSync(path));
+    if (count > 1)
+      writeFileSync(
+        join(
+          options.raw,
+          `${stem(asset.file)}-fit-${i}${asset.file.slice(asset.file.lastIndexOf("."))}`,
+        ),
+        fitted,
+      );
+    if (i === 0) writeFileSync(join(OUT, asset.file), fitted);
+    done += 1;
+  }
+  console.log(
+    done > 0
+      ? `fitted ${asset.file}`
+      : `skipped ${asset.file}: no raw image in the cache`,
+  );
+}
+
 async function main(): Promise<void> {
   const options = parse(process.argv.slice(2));
   mkdirSync(OUT, { recursive: true });
@@ -1036,14 +1102,13 @@ async function main(): Promise<void> {
       writeFileSync(join(options.raw, "contact-sheet.png"), contact);
       writeFileSync(join(options.raw, "assembled.png"), assembled);
     };
-    for (const stage of [0, 1, 2]) {
+    const wantedSources = new Set(wanted.map(({ source }) => source));
+    for (const stage of ART_STAGES) {
       const sources = SOURCES.filter(
-        (source) =>
-          stageOf(source) === stage &&
-          wanted.some((asset) => asset.source === source.id),
+        (source) => stageOf(source) === stage && wantedSources.has(source.id),
       );
       if (sources.length === 0) continue;
-      if (stage === 2) {
+      if (stage === "hero") {
         const missing = ASSETS.filter(
           (asset) => asset.transparent && !existsSync(join(OUT, asset.file)),
         ).map((asset) => asset.file);
@@ -1053,50 +1118,11 @@ async function main(): Promise<void> {
           );
         await writeSheet();
       }
-      if (!options.reprocess) {
-        await Promise.all(
-          sources.map(async (source) => {
-            const images = await generate(
-              source,
-              options.n,
-              options.quality,
-              options.raw,
-            );
-            images.forEach((image, i) =>
-              writeFileSync(join(options.raw, `${source.id}-${i}.png`), image),
-            );
-            console.log(`generated ${source.id} ×${images.length}`);
-          }),
-        );
-      }
-      for (const asset of wanted) {
-        if (!sources.some((source) => source.id === asset.source)) continue;
-        const count = options.picks.size > 0 ? 1 : options.n;
-        let done = 0;
-        for (let i = 0; i < count; i += 1) {
-          const path = join(
-            options.raw,
-            `${asset.source}-${options.picks.get(asset.source) ?? i}.png`,
-          );
-          if (!existsSync(path)) continue;
-          const fitted = await fit(page, asset, readFileSync(path));
-          if (count > 1)
-            writeFileSync(
-              join(
-                options.raw,
-                `${stem(asset.file)}-fit-${i}${asset.file.slice(asset.file.lastIndexOf("."))}`,
-              ),
-              fitted,
-            );
-          if (i === 0) writeFileSync(join(OUT, asset.file), fitted);
-          done += 1;
-        }
-        console.log(
-          done > 0
-            ? `fitted ${asset.file}`
-            : `skipped ${asset.file}: no raw image in the cache`,
-        );
-      }
+      if (!options.reprocess) await generateStageSources(sources, options);
+      const sourceIds = new Set(sources.map(({ id }) => id));
+      for (const asset of wanted)
+        if (sourceIds.has(asset.source))
+          await fitCachedAsset(page, asset, options);
     }
     await writeSheet();
   } finally {

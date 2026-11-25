@@ -84,6 +84,7 @@ export function recordingSummary(r: RecordingRecord): RecordingSummary {
     durationMs,
     bytes,
     expiresAt,
+    ...(r.handled !== undefined ? { handled: r.handled } : {}),
   };
 }
 export function reportView(r: ReportRecord, now: number): ReportView {
@@ -105,6 +106,7 @@ export function reportView(r: ReportRecord, now: number): ReportView {
     createdAt,
     receivedAt,
     ...(recordingId ? { recordingId, offsetMs } : {}),
+    ...(r.handled !== undefined ? { handled: r.handled } : {}),
     ...(r.screenshotKey && r.ready && r.mediaExpiresAt > now
       ? { screenshotUrl: `/api/dev/reports/${id}/screenshot` }
       : {}),
@@ -600,6 +602,29 @@ export class DebugService {
       });
     }
     return { id: record.id, receivedAt: record.receivedAt };
+  }
+  async setHandled(kind: "report" | "recording", id: string, handled: boolean) {
+    debugAssert(debugUuid(id));
+    const key = kind === "report" ? reportKey(id) : recordingKey(id);
+    return this.database.transact([key], (records) => {
+      const record = ofKind(live(records.get(key), this.now()), kind);
+      debugAssert(
+        record && (record.kind !== "report" || record.ready),
+        404,
+        "Playtest item not found",
+      );
+      debugAssert(
+        record.kind !== "recording" || record.status === "finished",
+        409,
+        "Finish this recording before reviewing it",
+      );
+      return {
+        ...(Boolean(record.handled) !== handled
+          ? { writes: new Map([[key, { ...record, handled }]]) }
+          : {}),
+        result: { handled },
+      };
+    });
   }
   async listReports(limit = 25, cursor?: string, recordingId?: string) {
     debugAssert(

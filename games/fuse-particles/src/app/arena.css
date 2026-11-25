@@ -1,0 +1,189 @@
+.fp-arena {
+  --fp-paper: #e5e4cf;
+  --fp-line: #54645a;
+  --fp-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  color: var(--fp-paper);
+  container-type: inline-size;
+}
+
+.fp-arena:not(.fp-arena--fill)[data-shape="square"] {
+  width: min(100%, 68dvh);
+}
+
+.fp-arena [hidden] {
+  display: none;
+}
+
+.fp-arena__field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--fp-line);
+  background: #101b19;
+}
+
+/* The match: the players' row on top and the map in everything under it, as large as its shape allows. */
+.fp-arena--fill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.fp-arena--fill .fp-arena__stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: start center;
+  container-type: size;
+}
+
+.fp-arena--fill .fp-arena__field {
+  width: min(100cqw, calc(100cqh * var(--fp-ratio, 2)));
+  border-width: 1px 0;
+}
+
+/* Every player is one block: name, core health and that player's own particles, gold and kills, in their colour. */
+.fp-arena__hud {
+  display: grid;
+  grid-template-columns: repeat(var(--fp-team-count), minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: 4px 8px;
+  box-sizing: border-box;
+  padding: 3px 8px;
+  background: #19211e;
+  font: 12px / 1.25 var(--fp-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-arena__hud time {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.fp-arena__team {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fp-team-color);
+}
+
+.fp-arena__team--own {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.fp-arena__team--out {
+  opacity: 0.5;
+}
+
+.fp-arena__team strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-arena__hp {
+  white-space: nowrap;
+}
+
+.fp-arena__mark {
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+}
+
+.fp-arena__team[data-team="0"] .fp-arena__mark {
+  border-radius: 50%;
+}
+
+.fp-arena__team[data-team="2"] .fp-arena__mark {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.fp-arena__team[data-team="3"] .fp-arena__mark {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.fp-arena__health {
+  grid-column: 1 / -1;
+  height: 3px;
+  background: #35413b;
+}
+
+.fp-arena__health span {
+  display: block;
+  height: 100%;
+  background: currentColor;
+}
+
+.fp-arena__numbers {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0 0.9em;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--fp-paper);
+}
+
+.fp-arena__stat b {
+  color: var(--fp-team-color);
+}
+
+/* Where a block is narrow the units shrink to a letter: P particles, G gold, K kills. */
+@container (max-width: 560px) {
+  .fp-arena__hud {
+    gap: 3px 4px;
+    padding: 3px 4px;
+    font-size: 11px;
+  }
+
+  .fp-arena__hud time {
+    font-size: 13px;
+  }
+
+  .fp-arena__team {
+    column-gap: 4px;
+    padding: 2px 4px;
+  }
+
+  .fp-arena__numbers {
+    gap: 0 0.6em;
+  }
+
+  .fp-arena__stat span {
+    font-size: 0;
+  }
+
+  .fp-arena__stat span::after {
+    content: attr(data-short);
+    font-size: 10px;
+  }
+
+  .fp-arena:is([data-teams="3"], [data-teams="4"]) .fp-arena__hud {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .fp-arena:is([data-teams="3"], [data-teams="4"]) .fp-arena__hud time {
+    grid-area: 1 / 3 / span 2 / auto;
+  }
+}
+
+@container (min-width: 561px) and (max-width: 980px) {
+  .fp-arena:is([data-teams="3"], [data-teams="4"]) .fp-arena__stat span {
+    font-size: 0;
+  }
+
+  .fp-arena:is([data-teams="3"], [data-teams="4"]) .fp-arena__stat span::after {
+    content: attr(data-short);
+    font-size: 11px;
+  }
+}

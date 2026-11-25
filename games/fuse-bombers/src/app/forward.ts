@@ -1,6 +1,8 @@
 import {
   createCorrectionSmoother,
   type CorrectionSmoother,
+  createLeadChain,
+  leadStepsAhead,
 } from "fuse-netcode";
 import { step, type RoundState, type RoundView } from "../engine/index.js";
 import { blendRound } from "./online-source.js";
@@ -85,12 +87,7 @@ function stage(
 }
 
 /** How many engine steps `ahead` log ticks (fractional) come to, over ticks that run `counts` steps each. */
-export const stepsAhead = (ahead: number, counts: readonly number[]): number =>
-  counts.reduce(
-    (sum, count, index) =>
-      sum + Math.max(0, Math.min(1, ahead - index)) * count,
-    0,
-  );
+export const stepsAhead = leadStepsAhead;
 
 /**
  * The forward run, remembered between frames: the round is copied (terrain and all) and a step is run once per
@@ -104,44 +101,36 @@ export function createForward(): (
   key: string,
   ahead: number,
 ) => RoundView {
-  let known = "",
-    tip: RoundState | undefined,
-    stages: RoundView[] = [],
-    over = false;
+  const sample = createLeadChain<RoundView>();
+  let tip: RoundState | undefined;
   return (source, base, key, ahead) => {
     const plan = source.ticks.flat();
     const signature = `${key}|${plan.map((bits) => bits.join(".")).join("|")}`;
-    if (signature !== known) {
-      known = signature;
-      over = false;
-      tip = undefined;
-      stages = [base];
-    }
-    /** The stage `count` steps on, or undefined past the plan or past a step that would decide the round. */
-    const reach = (count: number): RoundView | undefined => {
-      while (stages.length <= count && !over && stages.length <= plan.length) {
+    const lead = sample({
+      key: signature,
+      limit: plan.length,
+      start() {
+        tip = undefined;
+        return base;
+      },
+      steps: () =>
+        stepsAhead(
+          Math.max(0, ahead),
+          source.ticks.map((tick) => tick.length),
+        ),
+      advance(previous, initial, index) {
         tip ??= structuredClone(source.world);
         const decided = tip.result !== null;
-        step(tip, plan[stages.length - 1]!);
-        // The end of the round is the room's to show: the run stops on the step before it.
-        if (tip.result && !decided) over = true;
-        else stages.push(stage(stages[0]!, stages[stages.length - 1]!, tip));
-      }
-      return stages[count];
-    };
-    const steps = stepsAhead(
-        Math.max(0, ahead),
-        source.ticks.map((tick) => tick.length),
-      ),
-      whole = Math.floor(steps + 1e-9),
-      part = steps - whole,
-      from = reach(whole);
-    if (!from) return stages[stages.length - 1]!;
-    const to = part > 0.001 ? reach(whole + 1) : undefined;
-    return to ? blendRound(from, to, part) : from;
+        step(tip, plan[index]!);
+        if (tip.result && !decided) return;
+        return stage(initial, previous, tip);
+      },
+    });
+    return lead.next
+      ? blendRound(lead.current, lead.next, lead.part)
+      : lead.current;
   };
 }
-
 /** Corrections decay with this time constant; a jump larger than `TELEPORT` pixels is shown as it is. */
 export const DECAY_MS = 45,
   TELEPORT = 240;

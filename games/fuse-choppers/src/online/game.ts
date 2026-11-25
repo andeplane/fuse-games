@@ -1,8 +1,9 @@
 import {
+  checkpointEntries,
   hashCheckpointJson,
   applyManagementTick,
   foldHeldInput,
-  createSeatDecoder,
+  createSeatListDecoder,
   defaultText,
   hasLogPosition,
   isManagementEntry,
@@ -395,8 +396,6 @@ export function foldTick(
 const STAGES: readonly Stage[] = ["lobby", "running", "between", "over"];
 const plain = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
-const sortedEntries = (record: Record<string, number>) =>
-  Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1));
 
 export function encode(room: Room): unknown[] {
   return [
@@ -408,7 +407,7 @@ export function encode(room: Room): unknown[] {
       .sort((a, b) => a.slot - b.slot || (a.id < b.id ? -1 : 1))
       .map((seat) => ({ ...seat })),
     { ...room.play },
-    sortedEntries(room.wins),
+    checkpointEntries(room.wins),
     room.results.map((result) => ({
       round: result.round,
       tick: result.tick,
@@ -418,15 +417,16 @@ export function encode(room: Room): unknown[] {
     })),
     room.winner,
     room.resumeAt,
-    sortedEntries(room.held),
+    checkpointEntries(room.held),
     room.world ? encodeWorld(room.world) : null,
     room.simulationTick,
     structuredClone(room.pastMatches),
   ];
 }
 
-const decodeSeat = createSeatDecoder({
+const decodeSeats = createSeatListDecoder({
   capacity: CAPACITY,
+  maxWatchers: MAX_WATCHERS,
   playerKey,
   validName,
   validAvatar: isAvatar,
@@ -503,28 +503,14 @@ export function decode(
     !STAGES.includes(stage as Stage) ||
     !settings ||
     !play ||
-    !Array.isArray(rawSeats) ||
-    rawSeats.length > CAPACITY + MAX_WATCHERS ||
     typeof winner !== "string" ||
     !uint32(resumeAt) ||
     !Array.isArray(rawResults) ||
     rawResults.length > maxRounds(play)
   )
     return;
-  const seats = new Map<string, SeatRecord>();
-  for (const raw of rawSeats) {
-    const seat = decodeSeat(raw);
-    if (
-      !seat ||
-      seats.has(seat.id) ||
-      (!seat.watcher &&
-        [...seats.values()].some((s) => !s.watcher && s.slot === seat.slot))
-    )
-      return;
-    seats.set(seat.id, seat);
-  }
-  if ([...seats.values()].filter((s) => s.watcher).length > MAX_WATCHERS)
-    return;
+  const seats = decodeSeats(rawSeats);
+  if (!seats) return;
   const wins = counts(rawWins, maxRounds(play)),
     held = counts(rawHeld, CAPACITY);
   if (!wins || !held || Object.values(held).some((bits) => !isInput(bits)))

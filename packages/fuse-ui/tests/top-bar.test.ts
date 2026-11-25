@@ -415,3 +415,93 @@ test("a game's own menu in the header dialog closes that dialog when it resumes,
   assert.deepEqual(log, ["menu open", "menu closed"]);
   assert.equal(gameMenu.isOpen(), false);
 });
+
+test("the bar's menu leads with Back to lobby and Main menu from the game menu, as the game allows them", () => {
+  const { document } = page();
+  const root = document.createElement("header"),
+    log: string[] = [];
+  const gameMenu = createGameMenu({
+    document,
+    controls: [],
+    onLobby: () => log.push("lobby"),
+    onLeave: () => log.push("main menu"),
+  });
+  root.append(gameMenu.element);
+  document.body.append(root);
+  createTopBar({ element: root, gameId: "test-game", music: false });
+  const dialog = root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  Object.defineProperty(dialog, "open", { get: () => true });
+  Object.defineProperty(dialog, "close", { value: () => log.push("closed") });
+  const body = dialog.querySelector<HTMLElement>(".fui-top-bar-actions")!;
+  const rows = () =>
+    [...body.children]
+      .filter((row) => !(row as HTMLElement).hidden)
+      .map((row) => row.textContent?.trim().split("\n")[0]);
+  assert.deepEqual(rows().slice(0, 1), ["MAIN MENU"], "a guest can leave");
+  gameMenu.update({ canLobby: true });
+  assert.deepEqual(rows().slice(0, 2), ["BACK TO LOBBY", "MAIN MENU"]);
+  const lobby = body.querySelector<HTMLButtonElement>(".fui-game-menu-lobby")!;
+  assert.equal(
+    lobby.parentElement,
+    body,
+    "one click away, not under Game controls",
+  );
+  lobby.click();
+  body.querySelector<HTMLButtonElement>(".fui-game-menu-leave")!.click();
+  // linkedom runs capture listeners in bubble order: a browser closes the dialog first.
+  assert.deepEqual([...log].sort(), ["closed", "closed", "lobby", "main menu"]);
+  gameMenu.update({ canLobby: false, canLeave: false });
+  assert.equal(body.querySelector(".fui-game-menu-exit:not([hidden])"), null);
+});
+
+test("Escape nobody else used opens the bar's menu; Escape a page used as Back does not", async () => {
+  const { document, window } = page();
+  const root = document.createElement("header");
+  document.body.append(root);
+  createTopBar({ element: root, gameId: "test-game", music: false });
+  const dialog = root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  let opened = 0;
+  Object.defineProperty(dialog, "showModal", { value: () => opened++ });
+  const escape = (handled: boolean) => {
+    const event = Object.assign(
+      new window.Event("keydown", { bubbles: true, cancelable: true }),
+      { key: "Escape" },
+    );
+    if (handled)
+      document.addEventListener("keydown", (e) => e.preventDefault(), {
+        once: true,
+      });
+    document.body.dispatchEvent(event);
+  };
+  const settle = () => new Promise((done) => setTimeout(done, 5));
+  escape(true);
+  await settle();
+  assert.equal(opened, 0, "a page's Back took this Escape");
+  escape(false);
+  await settle();
+  assert.equal(opened, 1, "Escape in a match opens the menu with the ways out");
+});
+
+test("a match that hides the bar gets a floating ☰ top right that opens the same menu", () => {
+  const { document, window } = page();
+  const root = document.createElement("header");
+  document.body.append(root);
+  createTopBar({ element: root, gameId: "test-game", music: false });
+  const dialog = root.querySelector<HTMLDialogElement>(".fui-top-bar-menu")!;
+  let opened = 0;
+  Object.defineProperty(dialog, "showModal", { value: () => opened++ });
+  const float = () => document.querySelector<HTMLElement>(".fui-top-bar-float");
+  window.dispatchEvent(new window.Event("resize"));
+  assert.ok(!float() || float()!.hidden, "the bar's own ☰ is on the screen");
+  root.hidden = true;
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(float()!.hidden, false);
+  float()!.querySelector("button")!.click();
+  assert.equal(opened, 1);
+  assert.equal(dialog.parentElement, float(), "the menu opens where it shows");
+  dialog.dispatchEvent(new window.Event("close"));
+  assert.equal(dialog.parentElement, root, "and goes back to the bar");
+  root.hidden = false;
+  window.dispatchEvent(new window.Event("resize"));
+  assert.equal(float()!.hidden, true);
+});

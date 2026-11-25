@@ -35,3 +35,9 @@ export const PICKUP_LABELS = {
   turbo: "TURBO",
   scramble: "SCRAMBLE",
 } as const;
+
+/** `#rrggbb` with an alpha, as an rgba() string. */
+export function hexA(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}

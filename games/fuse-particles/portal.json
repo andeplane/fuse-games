@@ -1,0 +1,13 @@
+{
+  "name": "Fuseparticles",
+  "tagline": "Build a swarm. Break the rival cores.",
+  "mark": "FP",
+  "accent": "#68e8c5",
+  "releaseDate": "2026-11-20",
+  "screenshot": "gallery/fuse-particles.jpg",
+  "screenshots": [
+    "gallery/fuse-particles.jpg",
+    "gallery/fuse-particles-menu.jpg",
+    "gallery/fuse-particles-controls.jpg"
+  ]
+}

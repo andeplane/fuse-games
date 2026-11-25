@@ -266,11 +266,13 @@ function screen(
   shared = false,
   fail = "",
   closeHistory?: ScreenOptions["closeHistory"],
+  awaitAdmission = false,
 ) {
   const { root, document, window } = dom();
   const inputs: [Steering, Steering, boolean][] = [],
     commands: RoomCommand<Settings>[] = [];
   const metrics: PlayFrame[] = [];
+  const unavailableRooms: string[] = [];
   let callbacks!: Callbacks<RoomView, Impact, Settings>,
     paint!: (now: number) => void;
   let current = frame(),
@@ -292,6 +294,7 @@ function screen(
     canManage: true,
     start() {
       starts++;
+      if (awaitAdmission) return;
       callbacks.ready(client.self, true);
       callbacks.state(current, { display: shared, mapId: "classic" });
     },
@@ -377,6 +380,7 @@ function screen(
     retry() {
       retries++;
     },
+    roomUnavailable: (code) => unavailableRooms.push(code),
   };
   const destroy = mountGame(root, options);
   createTopBar({
@@ -396,6 +400,7 @@ function screen(
     inputs,
     commands,
     metrics,
+    unavailableRooms,
     events,
     store,
     destroy,
@@ -448,6 +453,16 @@ function screen(
     }),
   };
 }
+
+test("an unavailable room never shows its invitation or seat controls", async () => {
+  const s = screen(true, false, false, "", undefined, true);
+  await flush();
+  assert.equal(s.counters().starts, 1);
+  assert.equal(s.root.querySelector<HTMLElement>(".room-panel")!.hidden, true);
+  s.ended();
+  assert.deepEqual(s.unavailableRooms, ["AB42AA"]);
+  s.destroy();
+});
 
 test("Leave holds the actual runtime until history closes and reads fresh corrected receipts", async () => {
   let drain:
@@ -637,6 +652,11 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   assert.deepEqual(s.commands.at(-1), { type: "action", action: "lobby" });
   s.update(frame("running", "rematch"));
   assert.equal(results.hidden, true);
+  // Mid-match the host takes the room back to its lobby from the shared game menu, as in every game.
+  const lobbyAction = button(s.root, "BACK TO LOBBY");
+  assert.equal(lobbyAction.hidden, false);
+  lobbyAction.click();
+  assert.deepEqual(s.commands.at(-1), { type: "action", action: "lobby" });
   s.update(result);
   button(s.root, "Leave").click();
   assert.equal(s.counters().homes, 1);
@@ -644,7 +664,7 @@ test("room screen follows lobby, own identity, controls, corrected results, rema
   s.status("Link failed: retry");
   assert.match(s.root.querySelector(".status")!.textContent!, /Link failed/);
   button(s.root, "RECONNECT").click();
-  button(s.root, "LEAVE").click();
+  button(s.root, "MAIN MENU").click();
   assert.equal(s.counters().retries, 1);
   assert.equal(s.counters().homes, 2);
   s.ended();

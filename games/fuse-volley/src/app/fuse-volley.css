@@ -494,69 +494,54 @@ body.fv-display .fv-sides {
   width: min(100%, calc((100dvh - 7rem) * var(--fv-aspect, 4 / 3)));
 }
 
-/* A phone on its side: the court fills the screen and the pads float over its corners. */
+/* A phone's live rally (fuse-ui play-screen): the court fills the screen and the pads float over its corners. */
+html[data-fui-play] .fv-stage {
+  display: grid;
+  place-items: center;
+}
+html[data-fui-play] .fv-stage > .fv-sides,
+html[data-fui-play] .fv-stage > .fv-note {
+  display: none;
+}
+html[data-fui-play] .fv-stage > .fv-screen {
+  width: min(100cqw, 100cqh * var(--fv-aspect, 4 / 3));
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .fv-stage > .fv-touch {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: var(--fui-z-overlay);
+  box-sizing: border-box;
+  align-items: flex-end;
+  min-height: 0;
+  padding: var(--fui-space-2) max(var(--fui-space-3), var(--fui-play-right))
+    max(var(--fui-space-2), var(--fui-play-bottom))
+    max(var(--fui-space-3), var(--fui-play-left));
+  pointer-events: none;
+}
+html[data-fui-play] .fv-touch .fv-rocker,
+html[data-fui-play] .fv-touch .fv-jump {
+  opacity: 0.72;
+  pointer-events: auto;
+}
+/* A 4:3 court leaves a margin each side: the pads sit in it, over the court only where it is too narrow. */
+html[data-fui-play] .fv-touch .fv-rocker {
+  width: max(
+    7.5rem,
+    calc((100cqw - 100cqh * var(--fv-aspect, 4 / 3)) / 2 - 1.25rem)
+  );
+  min-height: min(40cqh, 9rem);
+  padding: 0 var(--fui-space-3);
+}
+html[data-fui-play] .fv-touch .fv-jump {
+  width: min(
+    32cqh,
+    max(6.5rem, calc((100cqw - 100cqh * var(--fv-aspect, 4 / 3)) / 2 - 1.75rem))
+  );
+}
 @media (orientation: landscape) and (max-height: 32rem) {
-  #app {
-    padding: 0;
-  }
-  .fv-room[data-screen="play"] {
-    padding: 0;
-  }
-  /* The header folds away, all but the menu, which floats in the top corner so a player can always leave. */
-  body:has(.fv-room[data-screen="play"]) .fv-top {
-    position: fixed;
-    top: max(var(--fui-space-2), env(safe-area-inset-top));
-    right: max(var(--fui-space-2), env(safe-area-inset-right));
-    z-index: calc(var(--fui-z-overlay) + 1);
-    padding: 0;
-  }
-  body:has(.fv-room[data-screen="play"]) .fv-top > :not(.fui-game-menu) {
-    display: none;
-  }
-  body:has(.fv-room[data-screen="play"]) .fv-top .fui-game-menu {
-    opacity: 0.8;
-  }
-  .fv-room[data-screen="play"] .fv-sides,
-  .fv-room[data-screen="play"] .fv-note {
-    display: none;
-  }
-  .fv-screen {
-    width: min(100%, calc(100dvh * 4 / 3));
-    /* A landscape phone keeps the full-height frame; the wide court sits centred in it. */
-    aspect-ratio: 4 / 3;
-    border: 0;
-    border-radius: 0;
-  }
-  .fv-touch {
-    position: fixed;
-    inset: auto 0 0 0;
-    z-index: var(--fui-z-overlay);
-    min-height: 0;
-    padding: var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-right)) var(--fui-space-2)
-      max(var(--fui-space-3), env(safe-area-inset-left));
-    pointer-events: none;
-  }
-  .fv-touch .fv-rocker,
-  .fv-touch .fv-jump {
-    opacity: 0.72;
-    pointer-events: auto;
-  }
-  .fv-touch {
-    align-items: flex-end;
-  }
-  /* The 4:3 court leaves a margin each side: the pads sit in it, over the court only where it is too narrow. */
-  .fv-touch .fv-rocker {
-    width: max(7.5rem, calc((100vw - 100dvh * 4 / 3) / 2 - 1.25rem));
-    min-height: min(40dvh, 9rem);
-    padding: 0 var(--fui-space-3);
-  }
-  .fv-touch .fv-jump {
-    width: min(
-      32dvh,
-      max(6.5rem, calc((100vw - 100dvh * 4 / 3) / 2 - 1.75rem))
-    );
-  }
   .fv-controller-head {
     padding: var(--fui-space-2) var(--fui-space-3);
   }

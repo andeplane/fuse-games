@@ -218,7 +218,7 @@ test("early exits are retained per song and old single-song result semantics rem
   fold(room, { a: [[LEAVE, "b"]] });
   finish(room);
   assert.equal(
-    room.session!.records.find((record) => record.id === "b")!.earlyExits,
+    room.session!.totals.find((total) => total.id === "b")!.earlyExits,
     1,
   );
   const single = started();

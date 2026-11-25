@@ -163,38 +163,60 @@ function showBaked(
 }
 const hex = (color: number) => color.toString(16).padStart(6, "0");
 
-/** An envelope outline (or its arc from angle `from` to `to`): an ellipse whose stern half narrows a little. */
-function envelope(
-  cx: number,
-  cy: number,
-  rx: number,
-  ry: number,
+function sternTaper(cos: number): number {
+  return cos < 0 ? 1 - 0.2 * cos * cos : 1;
+}
+
+interface EnvelopeProfile {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  from?: number;
+  to?: number;
+  segments?: number;
+}
+
+/** An envelope outline (or part of it): an ellipse whose stern half narrows a little. */
+function envelope({
+  cx,
+  cy,
+  rx,
+  ry,
   from = 0,
   to = 2 * Math.PI,
-  n = 44,
-): Point[] {
-  return Array.from({ length: n + 1 }, (_, i) => {
-    const a = from + ((to - from) * i) / n;
+  segments = 44,
+}: EnvelopeProfile): Point[] {
+  return Array.from({ length: segments + 1 }, (_, i) => {
+    const a = from + ((to - from) * i) / segments;
     const c = Math.cos(a);
-    const taper = c < 0 ? 1 - 0.2 * c * c : 1;
-    return { x: cx + rx * c, y: cy + ry * Math.sin(a) * taper };
+    return { x: cx + rx * c, y: cy + ry * Math.sin(a) * sternTaper(c) };
   });
 }
 
+const ellipseAngles = Array.from({ length: 16 }, (_, i) => {
+  const angle = (i * Math.PI) / 8;
+  return { cos: Math.cos(angle), sin: Math.sin(angle) };
+});
+
 /** An ellipse turned by `turn` radians, as a polygon. */
 function ellipse(cx: number, cy: number, rx: number, ry: number, turn = 0) {
-  const [c, s] = [Math.cos(turn), Math.sin(turn)];
-  return Array.from({ length: 16 }, (_, i) => {
-    const [u, v] = [
-      rx * Math.cos((i * Math.PI) / 8),
-      ry * Math.sin((i * Math.PI) / 8),
-    ];
+  const c = Math.cos(turn),
+    s = Math.sin(turn);
+  return ellipseAngles.map(({ cos, sin }) => {
+    const u = rx * cos,
+      v = ry * sin;
     return { x: cx + u * c - v * s, y: cy + u * s + v * c };
   });
 }
 
 /** Fills `points`, then outlines them twice: dark ink under a thin neon line in a light tint of `color`. */
-function neonShape(g: Graphics, points: Point[], body: number, color: number) {
+function neonShape(
+  g: Graphics,
+  points: readonly Point[],
+  body: number,
+  color: number,
+) {
   g.fillStyle(body);
   fill(g, points);
   g.lineStyle(3.6, INK);
@@ -220,39 +242,60 @@ const BLADE = 9;
 /** Half the envelope's height at `x` (base units). */
 function halfHeight(x: number): number {
   const c = Math.max(-1, Math.min(1, x / ENV.rx));
-  return ENV.ry * Math.sqrt(1 - c * c) * (c < 0 ? 1 - 0.2 * c * c : 1);
+  return ENV.ry * Math.sqrt(1 - c * c) * sternTaper(c);
 }
+
+const envelopeOutline = envelope(ENV);
+const envelopeBelly = envelope({
+  ...ENV,
+  from: 0.3,
+  to: Math.PI - 0.3,
+  segments: 24,
+});
+const bellySeam = envelope({
+  ...ENV,
+  cy: ENV.cy + 2,
+  rx: ENV.rx * 0.94,
+  ry: ENV.ry * 0.4,
+  from: 0.2,
+  to: Math.PI - 0.2,
+  segments: 18,
+});
+const envelopeGlint = envelope({
+  cx: ENV.cx + 1,
+  cy: ENV.cy - 1,
+  rx: ENV.rx * 0.76,
+  ry: ENV.ry * 0.66,
+  from: -2.55,
+  to: -1.1,
+  segments: 14,
+});
+const flashOutline = envelope({ ...ENV, rx: ENV.rx + 1.5, ry: ENV.ry + 1.5 });
+const envelopeSeams = [-10, 8].map((x) => {
+  const height = halfHeight(x) * 0.96;
+  return Array.from({ length: 11 }, (_, i) => {
+    const t = -1 + i / 5;
+    return { x: x + 3 * (1 - t * t), y: ENV.cy + t * height };
+  });
+});
 
 /** The envelope: glow, tail, the turret's pylon up to `mount` (base units above the centre) when that is above the
  * envelope, body with a shaded belly, seams, neon outline, highlight and, once damaged, patches. */
 function drawEnvelope(g: Graphics, color: number, damage: number, mount = 0) {
-  const { cx, cy, rx, ry } = ENV;
-  const outline = envelope(cx, cy, rx, ry);
+  const { cy, ry } = ENV;
   g.lineStyle(10, lighten(color, 0.35), 0.2);
-  stroke(g, outline);
+  stroke(g, envelopeOutline);
   for (const fin of TAIL) neonShape(g, fin, darken(color, 0.3), color);
   const pylon = pts(-6, -20, 6, -20, 3, 3 - mount, -3, 3 - mount);
   if (mount > ry - cy - 3) neonShape(g, pylon, METAL, color);
   g.fillStyle(color);
-  fill(g, outline);
+  fill(g, envelopeOutline);
   g.fillStyle(darken(color, 0.22));
-  fill(g, envelope(cx, cy, rx, ry, 0.3, Math.PI - 0.3, 24));
+  fill(g, envelopeBelly);
   // Two ring frames bulging toward the bow, and a gore seam along the belly line.
   g.lineStyle(1.4, darken(color, 0.35), 0.55);
-  for (const x0 of [-10, 8]) {
-    const h = halfHeight(x0) * 0.96;
-    const seam = Array.from({ length: 11 }, (_, i) => -1 + i / 5);
-    stroke(
-      g,
-      seam.map((t) => ({ x: x0 + 3 * (1 - t * t), y: cy + t * h })),
-      true,
-    );
-  }
-  stroke(
-    g,
-    envelope(cx, cy + 2, rx * 0.94, ry * 0.4, 0.2, Math.PI - 0.2, 18),
-    true,
-  );
+  for (const seam of envelopeSeams) stroke(g, seam, true);
+  stroke(g, bellySeam, true);
   if (damage >= 1) patch(g, 6, -18, 0.3, color);
   if (damage >= 2) {
     patch(g, -11, -5, -0.25, color);
@@ -260,15 +303,11 @@ function drawEnvelope(g: Graphics, color: number, damage: number, mount = 0) {
     stroke(g, pts(12, -8, 14.5, -12, 16.5, -7, 19, -11), true);
   }
   g.lineStyle(4, INK);
-  stroke(g, outline);
+  stroke(g, envelopeOutline);
   g.lineStyle(1.8, lighten(color, 0.62), 0.95);
-  stroke(g, outline);
+  stroke(g, envelopeOutline);
   g.lineStyle(3.6, 0xffffff, 0.5);
-  stroke(
-    g,
-    envelope(cx + 1, cy - 1, rx * 0.76, ry * 0.66, -2.55, -1.1, 14),
-    true,
-  );
+  stroke(g, envelopeGlint, true);
   g.fillStyle(0xffffff, 0.8).fillCircle(15, -20, 1.8);
 }
 
@@ -347,7 +386,7 @@ function drawGun(g: Graphics, color: number): void {
 /** A flat white silhouette of the ship for the hit flash. */
 function drawFlash(g: Graphics): void {
   g.fillStyle(0xffffff);
-  fill(g, envelope(ENV.cx, ENV.cy, ENV.rx + 1.5, ENV.ry + 1.5));
+  fill(g, flashOutline);
   for (const shape of [HULL, ...TAIL]) fill(g, shape);
 }
 
@@ -588,9 +627,10 @@ export class GunshipArt {
       const done = Math.max(0, Math.min(1, state.reload));
       g.lineStyle(4.4, INK, 0.7).strokeCircle(0, y, 9.5);
       const start = -Math.PI / 2;
-      if (done > 0) g.lineStyle(2.4, 0xffffff, 0.95).beginPath();
-      if (done > 0)
+      if (done > 0) {
+        g.lineStyle(2.4, 0xffffff, 0.95).beginPath();
         g.arc(0, y, 9.5, start, start + done * 2 * Math.PI).strokePath();
+      }
     }
     // The flash outlives a shield the hit just broke, so the bubble is drawn for as long as either is up.
     const f = pose.shieldFlash;
@@ -630,23 +670,40 @@ const GHOST_TAIL = [
 ];
 const GHOST_GONDOLA = pts(-5, 10, 6, 10, 4, 14, -3, 14);
 
+const ghostOutline = envelope(GHOST_ENV);
+const ghostBelly = envelope({
+  ...GHOST_ENV,
+  rx: GHOST_ENV.rx - 2,
+  ry: GHOST_ENV.ry - 2,
+  from: 0.35,
+  to: Math.PI - 0.35,
+  segments: 16,
+});
+const ghostGlint = envelope({
+  ...GHOST_ENV,
+  cy: GHOST_ENV.cy - 1,
+  rx: GHOST_ENV.rx * 0.7,
+  ry: GHOST_ENV.ry * 0.6,
+  from: -2.6,
+  to: -1.2,
+  segments: 12,
+});
+
 /** The ghost blimp: envelope with a friendly face, tail fins and a little gondola. */
 function drawGhostBody(g: Graphics, color: number): void {
-  const { cx, cy, rx, ry } = GHOST_ENV;
-  const outline = envelope(cx, cy, rx, ry);
   g.lineStyle(8, lighten(color, 0.5), 0.3);
-  stroke(g, outline);
+  stroke(g, ghostOutline);
   for (const fin of GHOST_TAIL) neonShape(g, fin, darken(color, 0.2), color);
   g.lineStyle(1.6, RIGGING)
     .lineBetween(-3, 7.5, -4, 10)
     .lineBetween(3, 7.5, 4, 10);
   neonShape(g, GHOST_GONDOLA, METAL, color);
   g.fillStyle(WINDOW).fillRect(-2.5, 11.2, 2, 1.8).fillRect(1.2, 11.2, 2, 1.8);
-  neonShape(g, outline, color, color);
+  neonShape(g, ghostOutline, color, color);
   g.fillStyle(darken(color, 0.2));
-  fill(g, envelope(cx, cy, rx - 2, ry - 2, 0.35, Math.PI - 0.35, 16));
+  fill(g, ghostBelly);
   g.lineStyle(3, 0xffffff, 0.55);
-  stroke(g, envelope(cx, cy - 1, rx * 0.7, ry * 0.6, -2.6, -1.2, 12), true);
+  stroke(g, ghostGlint, true);
   g.fillStyle(0xfbfbf2)
     .fillEllipse(7.5, -3.5, 6, 8)
     .fillEllipse(13.2, -3.5, 4.8, 7);

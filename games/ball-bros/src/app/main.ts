@@ -79,7 +79,7 @@ const navigate = (query = "") => {
 };
 let destroy = () => {};
 let generation = 0;
-function render() {
+function render(unavailableRoom?: string) {
   const mounted = ++generation;
   destroy();
   activeAudio = undefined;
@@ -125,7 +125,12 @@ function render() {
       create: () => createRoom(endpoints.apiUrl, fetch, "ball-bros"),
       navigate,
       active: () => generation === mounted,
+      unavailableRoom,
     });
+    destroy = () => {
+      screen.menu.dispose();
+      radio.destroy();
+    };
     const top = root.querySelector<HTMLElement>("header");
     if (top) attachHeader(top);
     if (mode.kind === "invalid")
@@ -199,6 +204,11 @@ function render() {
       events: window,
       home: () => navigate(),
       retry: render,
+      roomUnavailable(code) {
+        if (generation !== mounted) return;
+        window.history.replaceState(null, "", link());
+        render(code);
+      },
       base: import.meta.env.BASE_URL,
       search: location.search,
       observePlay,
@@ -215,7 +225,7 @@ function render() {
     activeRadio?.setMuted(!soundEnabled);
   }
 }
-window.addEventListener("popstate", render);
+window.addEventListener("popstate", () => render());
 for (const type of ["pointerdown", "pointerup", "touchend", "keydown", "click"])
   document.addEventListener(type, () => activeRadio?.unlock(), {
     passive: true,

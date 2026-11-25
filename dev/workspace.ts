@@ -32,6 +32,7 @@ import {
   recordingDetail,
   recordingList,
   reportArticle,
+  type PlaytestReview,
   type PrivateMedia,
 } from "./sessions.js";
 import {
@@ -100,6 +101,7 @@ export function mountWorkspace(
   let disposed = false;
   let loginReady = false;
   let accountName = "";
+  let canReviewPlaytests = false;
   let selectedRecording: string | undefined;
   let selectedReport: string | undefined;
   let selectedOffset: number | undefined;
@@ -413,7 +415,12 @@ export function mountWorkspace(
     return controller.signal;
   };
   const isCurrent = (signal: AbortSignal) => !disposed && !signal.aborted;
-  function failure(error: unknown, target: HTMLElement, retry: () => void) {
+  function failure(
+    error: unknown,
+    target: HTMLElement,
+    retry: () => void,
+    current: () => boolean = () => true,
+  ) {
     const message =
       error instanceof WorkspaceError
         ? error.message
@@ -431,9 +438,10 @@ export function mountWorkspace(
           void deps.account.reauthenticate!()
             .then(retry)
             .catch((reason: unknown) => {
+              if (!current()) return;
               const message =
                 deps.account.failure(reason) || "Sign-in cancelled.";
-              failure(new WorkspaceError(401, message), target, retry);
+              failure(new WorkspaceError(401, message), target, retry, current);
             });
         }),
       );
@@ -718,6 +726,20 @@ export function mountWorkspace(
       );
     content.append(controls);
   }
+  function playtestReview(signal: AbortSignal): PlaytestReview | undefined {
+    if (!canReviewPlaytests) return;
+    return (kind, id, handled) =>
+      api.json<{ handled: boolean }>(
+        `/api/dev/${kind}/${encodeURIComponent(id)}/review`,
+        signal,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ handled }),
+        },
+      );
+  }
+
   function showRecording(
     data: RecordingDetail,
     signal: AbortSignal,
@@ -725,7 +747,14 @@ export function mountWorkspace(
   ) {
     for (const audio of content.querySelectorAll("audio")) audio.pause();
     content.replaceChildren(
-      recordingDetail(dom, data, media, openRecording, selectedOffset),
+      recordingDetail(
+        dom,
+        data,
+        media,
+        openRecording,
+        selectedOffset,
+        playtestReview(signal),
+      ),
     );
     selectedOffset = undefined;
     if (data.reportsNextCursor) {
@@ -1029,7 +1058,16 @@ export function mountWorkspace(
         ),
       );
     for (const report of data.reports)
-      content.append(reportArticle(dom, report, media, openRecording));
+      content.append(
+        reportArticle(
+          dom,
+          report,
+          media,
+          openRecording,
+          undefined,
+          playtestReview(signal),
+        ),
+      );
     pagination(data.nextCursor);
   }
 
@@ -1087,7 +1125,10 @@ export function mountWorkspace(
       node("p", "loading-state", "Verifying developer access…"),
     );
     try {
-      await api.json<{ uid: string; email: string }>("/api/dev/me", signal);
+      const me = await api.json<{ capabilities?: string[] }>(
+        "/api/dev/me",
+        signal,
+      );
       const catalog = await api.json<{ gameIds: string[] }>(
         "/api/dev/catalog",
         signal,
@@ -1095,6 +1136,7 @@ export function mountWorkspace(
       if (Array.isArray(catalog.gameIds)) gameIds = catalog.gameIds;
       if (!isCurrent(signal)) return;
       accountName = name;
+      canReviewPlaytests = me.capabilities?.includes("token") ?? false;
       shell();
       await load();
     } catch (error) {

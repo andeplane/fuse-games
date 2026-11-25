@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Batch, writeMatrix } from "../src/render3d/instances.js";
+import { createStrategicMarkerCache } from "../src/render3d/field-markers.js";
 import { uploadLive } from "../src/render3d/effects3d.js";
 import * as rig from "../src/render3d/rig.js";
 import { LOD_BAND, LOD_FAR } from "../src/render3d/kit/units.js";
@@ -24,6 +25,19 @@ const MAP = {
   height: 3,
   terrain: ["..^^..", "..~~..", "..==.."],
 };
+
+test("strategic markers reuse geometry until their map or height field changes", () => {
+  const world = { ...MAP, lanes: [], camps: [{ x: 2, y: 1 }] };
+  const field = heightField(world);
+  const markers = createStrategicMarkerCache();
+  const original = markers(world, field);
+  assert.notEqual(original.camps[0]?.y, DECK_Y);
+  assert.equal(markers({ ...world }, field), original);
+  const bridged = { ...world, terrain: ["..^^..", "..==..", "..==.."] };
+  assert.equal(markers(bridged, field).camps[0]?.y, DECK_Y);
+  assert.equal(markers({ ...bridged, camps: [] }, field).camps.length, 0);
+  assert.notEqual(markers(world, heightField(world)), original);
+});
 
 test("the height field has a vertex grid of width·res + 1 by height·res + 1", () => {
   const field = heightField(MAP);

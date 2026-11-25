@@ -5,14 +5,14 @@
  */
 import { aiNow, emptyAiControls, type NativeAiFrame } from "./ai-state.js";
 import { AI_R2D, findAiTarget, reloadAiWeapons } from "./ai-targeting.js";
-import { createAiPath, aiAreaFree, moveAiToTarget } from "./ai-navigation.js";
+import { createAiPath, moveAiToTarget } from "./ai-navigation.js";
 import { aiRopeAttached, shootAi } from "./ai-combat.js";
 import { weaponById } from "./catalog.js";
 import { atan2 } from "./math.js";
 import { checkOnGround, ropeForce } from "./physics.js";
 import { f, mul, sub } from "./physics-types.js";
 import { randomSigned } from "./random.js";
-import { len2, minus, point, PX_ROCK } from "./ai-geometry.js";
+import { aiAreaFree, len2, minus, point, PX_ROCK } from "./ai-geometry.js";
 
 function findNewAiTarget(frame: NativeAiFrame): boolean {
   const target = findAiTarget(frame);

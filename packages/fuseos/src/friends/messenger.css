@@ -235,7 +235,7 @@
 .msn-root .msn-buddy:hover {
   text-decoration: underline;
 }
-.msn-root .msn-buddy-selected {
+.msn-root button.msn-buddy-selected {
   background: #316ac5;
   color: #fff;
 }

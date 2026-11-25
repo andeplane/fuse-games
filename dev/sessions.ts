@@ -17,10 +17,68 @@ export const utcDate = (value: number): string =>
 
 export interface PrivateMedia {
   blob(path: string): Promise<string>;
-  error(error: unknown, target: HTMLElement, retry: () => void): void;
+  error(
+    error: unknown,
+    target: HTMLElement,
+    retry: () => void,
+    current?: () => boolean,
+  ): void;
   active(): boolean;
   release(url: string): void;
   onDispose(callback: () => void): void;
+}
+
+export type PlaytestReview = (
+  kind: "reports" | "recordings",
+  id: string,
+  handled: boolean,
+) => Promise<{ handled: boolean }>;
+
+function reviewControl(
+  dom: Dom,
+  kind: "reports" | "recordings",
+  item: { id: string; handled?: boolean },
+  save?: PlaytestReview,
+): HTMLElement {
+  const { node, button } = dom;
+  const row = node("div", "inline-controls");
+  const status = node("span", "status");
+  if (save) status.setAttribute("role", "status");
+  const error = node("span", "error");
+  error.setAttribute("role", "alert");
+  const control = button(
+    "",
+    () => {
+      if (!save || control.disabled) return;
+      control.disabled = true;
+      error.textContent = "";
+      void save(kind, item.id, !item.handled)
+        .then(({ handled }) => {
+          item.handled = handled;
+          render();
+        })
+        .catch((reason: unknown) => {
+          if (!row.isConnected) return;
+          error.textContent =
+            reason instanceof Error
+              ? reason.message
+              : "Could not save review status. Try again.";
+        })
+        .finally(() => {
+          control.disabled = false;
+        });
+    },
+    "quiet",
+  );
+  function render() {
+    status.textContent = item.handled ? "Handled" : "Open";
+    status.classList.toggle("status-done", Boolean(item.handled));
+    control.textContent = item.handled ? "Reopen" : "Mark handled";
+  }
+  render();
+  row.append(status);
+  if (save) row.append(control, error);
+  return row;
 }
 
 export function createPrivateMedia(
@@ -84,7 +142,9 @@ export function recordingList(
     row.append(
       heading,
       node("p", "muted", utcDate(recording.startedAt)),
-      node("span", `status status-${recording.status}`, recording.status),
+      recording.status === "finished"
+        ? reviewControl(dom, "recordings", recording)
+        : node("span", "status status-recording", "Recording"),
       node("span", "number", `${timestamp(recording.durationMs)} saved audio`),
     );
     list.append(row);
@@ -98,6 +158,7 @@ export function reportArticle(
   media: PrivateMedia,
   open: (id: string) => void,
   seek?: (offset: number) => void,
+  review?: PlaytestReview,
 ): HTMLElement {
   const { node, button } = dom;
   const article = node("article", "report");
@@ -112,6 +173,7 @@ export function reportArticle(
     node("p", "private-copy", report.text || "Screenshot report"),
   );
   const controls = node("div", "inline-controls");
+  article.append(reviewControl(dom, "reports", report, review));
   if (report.offsetMs !== undefined && seek)
     controls.append(
       button(
@@ -183,12 +245,15 @@ export function recordingDetail(
   media: PrivateMedia,
   open: (id: string) => void,
   initialOffset?: number,
+  review?: PlaytestReview,
 ): HTMLElement {
   const { node, button } = dom;
   const section = node("section", "recording-detail");
   const recording = detail.recording;
+  section.append(node("h2", "", recording.gameId));
+  if (recording.status === "finished")
+    section.append(reviewControl(dom, "recordings", recording, review));
   section.append(
-    node("h2", "", recording.gameId),
     node(
       "p",
       "muted",
@@ -221,6 +286,7 @@ export function recordingDetail(
   let playRequest = 0;
   let activeAudio: string | undefined;
   const seek = (offset: number) => {
+    const current = ++playRequest;
     const chunk = detail.segments.find(
       (item) => offset >= item.startMs && offset < item.endMs,
     );
@@ -229,12 +295,14 @@ export function recordingDetail(
         "Audio is unavailable at this timestamp. It may not have uploaded or may have expired.";
       return;
     }
-    const current = ++playRequest;
+    const audioUrl = chunk.audioUrl;
+    const selected = () => media.active() && current === playRequest;
     playerStatus.textContent = `Loading audio at ${timestamp(offset)}…`;
     const load = async () => {
+      if (!selected()) return;
       try {
-        const url = await media.blob(chunk.audioUrl!);
-        if (!media.active() || current !== playRequest) {
+        const url = await media.blob(audioUrl);
+        if (!selected()) {
           media.release(url);
           return;
         }
@@ -243,22 +311,30 @@ export function recordingDetail(
         activeAudio = url;
         audio.src = url;
         audio.onloadedmetadata = () => {
-          if (current !== playRequest) return;
+          if (!selected()) return;
           audio.currentTime = Math.max(0, (offset - chunk.startMs) / 1000);
           void audio.play().catch(() => {
-            playerStatus.textContent = "Audio is ready. Press play to listen.";
+            if (selected())
+              playerStatus.textContent =
+                "Audio is ready. Press play to listen.";
           });
         };
         audio.onerror = () => {
-          playerStatus.textContent =
-            "This audio chunk could not be played. Choose another timestamp or refresh.";
+          if (selected())
+            playerStatus.textContent =
+              "This audio chunk could not be played. Choose another timestamp or refresh.";
         };
         playerStatus.textContent = `Audio chunk ${timestamp(chunk.startMs)}–${timestamp(chunk.endMs)}. Player time is relative to this chunk.`;
       } catch (error) {
-        if (media.active() && current === playRequest)
-          media.error(error, playerStatus, () => {
-            void load();
-          });
+        if (selected())
+          media.error(
+            error,
+            playerStatus,
+            () => {
+              void load();
+            },
+            selected,
+          );
       }
     };
     void load();
@@ -309,7 +385,8 @@ export function recordingDetail(
                 : "Transcript will appear after processing."),
         ),
       );
-    } else li.append(reportArticle(dom, entry.report, media, open, seek));
+    } else
+      li.append(reportArticle(dom, entry.report, media, open, seek, review));
     timeline.append(li);
   }
   section.append(node("h2", "", "Transcript & reports"));

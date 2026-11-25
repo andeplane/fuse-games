@@ -9,6 +9,8 @@ Fusteam is FuseOS's game launcher: a window in the olive "green skin" of the 200
 - **Details** for the selected game: a carousel of three real captures (gameplay, menu and controls), name, tagline, **PLAY**, **PLAY IN NEW TAB**, "Status: Ready to play", a fake "Disk usage" (a stable hash of the id, `fakeDiskUsage`) and "Last played" (local to the browser, `lastPlayedStore.ts`). Click the main image to advance, pick a thumbnail, or use Previous/Next. Switching games resets to the first image. `portal.json` supplies `screenshots` (up to five unique gallery paths); `screenshot` remains the window loading backdrop. See `public/gallery/README.md` for capture commands. The LINKS column opens the selected game's **Leaderboard** in the Hall of Fame and **Friends** in MSN Messenger; there is no duplicate new-tab text link.
 - **Bottom bar**: the embossed FUSTEAM wordmark where the old client had its publisher logo, **ADD A GAME...** (a Windows 98 message box explaining that games arrive through pull requests) and **FRIENDS & CHAT**.
 
+**Release date** sorts within each tier, newest first on the first click. Games without a date show an em dash and sort below dated games in either direction. Set `releaseDate` in the game's `portal.json` as `YYYY-MM-DD` once its first playable PR has landed. The catalog uses the Oslo date of that merge as a release estimate. Fuse Riders uses the date of its [public beta](../online/PUBLIC-BETA-2026-09-14.md), and Fuse Craft uses its [first playable merge under the Neural Defence URL](https://github.com/andeplane/fuse-games/pull/417).
+
 PLAY goes through the desktop's own launch path, `useFuseGameLauncher` (`fusegames/useFuseGameLauncher.ts`), like a desktop icon or the Start menu: the game opens in a window on the desktop, or is focused if its window is already open. When the launch preference (`settings/fuseosPrefsStore.ts`, the Games applet) is "tab", or it is unset on a touch or narrow device (`effectiveGameLaunch` over `LaunchDeviceContext`), the game opens in a browser tab instead through `DesktopDeps.openExternal`. The launch is reported to analytics there, so the launcher adds nothing of its own beyond the last-played record.
 
 ## Opening
@@ -19,7 +21,7 @@ The launcher is a single-instance window: `sameInstance` in `state/appState.ts` 
 
 `withLauncherOnBoot` (`launcherBoot.ts`) wraps the desktop's `StateStore` in `main.tsx`: every `load()` restores Winamp, Fusteam and Messenger through the reducer's single-instance `open`. A stored launcher keeps its maximized state; a new one opens maximized on a small display. `LocalStorageDialUpSession` adds the first-run connection dialog until its handshake completes. `?open=` windows are reduced above this stack, so a deep link still lands on top.
 
-The window is 900x600 (`LAUNCHER_WINDOW_SIZE`) and places itself centred on the desktop the first time it mounts (`centeredLauncherRect`); once moved, it stays where it was put for the session. Below 640px of window width (a phone, or a narrow window) the list stacks above the details (`@container` rules in `launcher.css`).
+The window is 900x600 (`LAUNCHER_WINDOW_SIZE`) and places itself centred on the desktop the first time it mounts (`centeredLauncherRect`); once moved, it stays where it was put for the session. At 720px of window width or less, the list stacks above the details (`@container` rules in `launcher.css`).
 
 ## Skin
 

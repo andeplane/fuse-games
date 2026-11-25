@@ -55,6 +55,10 @@ export interface Compiled {
   readonly cells: readonly (readonly number[])[];
   /** Indices into `level.objects` of the apples, in order: bit `n` of a rider's set is `apples[n]`. */
   readonly apples: readonly number[];
+  readonly appleBits: readonly bigint[];
+  readonly allApples: bigint;
+  readonly killers: readonly LevelObject[];
+  readonly flowers: readonly LevelObject[];
 }
 
 const finite = (value: number): boolean =>
@@ -135,8 +139,12 @@ export function compile(level: Level): Compiled {
       }
   }
   const apples: number[] = [];
+  const killers: LevelObject[] = [];
+  const flowers: LevelObject[] = [];
   level.objects.forEach((object, index) => {
     if (object.kind === "apple") apples.push(index);
+    else if (object.kind === "killer") killers.push(object);
+    else if (object.kind === "flower") flowers.push(object);
   });
   const result: Compiled = {
     level,
@@ -147,6 +155,10 @@ export function compile(level: Level): Compiled {
     rows,
     cells: Array.from(buckets, (bucket) => bucket ?? EMPTY),
     apples,
+    appleBits: apples.map((_, bit) => 1n << BigInt(bit)),
+    allApples: (1n << BigInt(apples.length)) - 1n,
+    killers,
+    flowers,
   };
   compiled.set(level, result);
   return result;

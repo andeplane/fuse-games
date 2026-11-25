@@ -1,4 +1,9 @@
-import { createLiveResults, createResultsScreen, createTopBar } from "fuse-ui";
+import {
+  createGameMenu,
+  createLiveResults,
+  createResultsScreen,
+  createTopBar,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestCapture,
@@ -26,6 +31,7 @@ import {
   createInviteCard,
   createLandingCard,
   createLobbyShell,
+  createPlayScreen,
   createRoomLayout,
   createRoster,
   el,
@@ -159,7 +165,7 @@ function battlefield(): { field: Renderer; canvas: HTMLCanvasElement } {
   return { field, canvas };
 }
 
-function header(): HTMLElement {
+function header(extra: HTMLElement[] = []): HTMLElement {
   const top = el("header", "", "ff-top");
   const brand = el("a", "FUSE FRONT", "ff-brand");
   brand.href = link();
@@ -173,6 +179,7 @@ function header(): HTMLElement {
     brand,
     social.element(),
     el("span", "", "ff-top-gap"),
+    ...extra,
   );
   return createTopBar({
     element: top,
@@ -226,22 +233,22 @@ function room(code: string, token: string | undefined, display: boolean): void {
   const lobby = el("section", "", "ff-lobby");
   const play = el("section", "", "ff-play");
   const hint = el("p", "", "ff-hud");
+  const leave = () =>
+    resultsHistory.close(
+      () => ({
+        receipts: runtime.roomState()?.history ?? [],
+        confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
+      }),
+      () => {
+        runtime.stop();
+        location.href = link();
+      },
+    );
   // The result: the shared results screen over the page.
   const results = createResultsScreen({
     document,
     // The screen covers the page's header: whoever is not the host still has a way out of the room.
-    onBack: () => {
-      resultsHistory.close(
-        () => ({
-          receipts: runtime.roomState()?.history ?? [],
-          confirmedTick: runtime.confirmedFrame()?.logTick ?? -1,
-        }),
-        () => {
-          runtime.stop();
-          location.href = link();
-        },
-      );
-    },
+    onBack: leave,
     backText: "Leave",
     onAction: (id) =>
       runtime.command({
@@ -322,7 +329,29 @@ function room(code: string, token: string | undefined, display: boolean): void {
   stage.append(canvas, hud.overlay, hud.shop.element);
   play.append(hud.top, stage, hud.bottom, hint);
   play.hidden = true;
-  app.replaceChildren(header(), status, lobby, play, results.element);
+  // A phone's live match is the whole screen; the camera fills any shape, so it is never drawn turned.
+  const playScreen = createPlayScreen({
+    stage: play,
+    onChange: () => {
+      drag = undefined;
+      touches.clear();
+      resized();
+    },
+  });
+  // The shared game menu, as in every game: the host's Back to lobby during a match and everyone's Main menu.
+  const gameMenu = createGameMenu({
+    ...FRONT_GUIDE,
+    onLobby: () => runtime.command({ type: "action", action: "lobby" }),
+    onLeave: leave,
+  });
+  gameMenu.update({ canLobby: false });
+  app.replaceChildren(
+    header([gameMenu.element]),
+    status,
+    lobby,
+    play,
+    results.element,
+  );
   // The name this device knows: the account's, or the one typed in a room before.
   const known = () =>
     social.playerName(store.getItem(keys.name))?.trim() || undefined;
@@ -360,8 +389,10 @@ function room(code: string, token: string | undefined, display: boolean): void {
         if (fed.notice) hud.notice(fed.notice.text, fed.notice.good);
       },
       status: (text) => (status.textContent = roomFailure(text)),
-      ended: () =>
-        (status.textContent = "Room ended. Go back to create another room."),
+      ended: () => {
+        playScreen.destroy();
+        status.textContent = "Room ended. Go back to create another room.";
+      },
       kicked: () => (status.textContent = "You were removed from the room."),
     },
     online
@@ -402,6 +433,12 @@ function room(code: string, token: string | undefined, display: boolean): void {
     if (!display && confirmed)
       resultsHistory.observe(confirmed.history, confirmed.logTick);
     const inLobby = view.stage === "lobby";
+    gameMenu.update({
+      canLobby: (runtime.creator || runtime.solo) && !display && !inLobby,
+      touch: matchMedia("(pointer: coarse)").matches,
+      spectator: display || runtime.slot() < 0,
+      display,
+    });
     // The room's line is at the room's foot; in a match it is the line under the page's header again.
     if (!inLobby && status.parentElement !== app) lobby.before(status);
     if (inLobby && !wasLobby) lobbyKey = "";
@@ -410,6 +447,7 @@ function room(code: string, token: string | undefined, display: boolean): void {
     play.hidden = inLobby;
     // A phone drops the page header in a match, so the board gets the height (`style.css`).
     app.classList.toggle("ff-in-match", !inLobby);
+    playScreen.update(!inLobby && view.stage !== "over" && !display);
     if (!inLobby && wasLobby) hud.unfold(false);
     wasLobby = inLobby;
     // The music: the lobby's theme, the match's moods, then its outro (a watcher hears the winner's, a draw a defeat).
@@ -804,6 +842,14 @@ function room(code: string, token: string | undefined, display: boolean): void {
     smoother = createSmoother(3 * TILE),
     leadClock = createLeadClock();
   const fit = (world: WorldView) => {
+    // A phone's live match: the board is the whole screen (fuse-ui play-screen), the HUD floats over it.
+    if (playScreen.mode() !== "off")
+      return field.resize(
+        play.clientWidth,
+        play.clientHeight,
+        devicePixelRatio || 1,
+        world,
+      );
     const width = play.getBoundingClientRect().width - 6;
     const top = canvas.getBoundingClientRect().top + scrollY;
     // A phone lays the panel over the board (`style.css`), so the board takes the screen below the top bar.
@@ -817,6 +863,16 @@ function room(code: string, token: string | undefined, display: boolean): void {
       innerHeight - top - below - (overlaid ? 16 : 30),
     );
     field.resize(width, height, devicePixelRatio || 1, world);
+    // Whatever still hangs below the window (a wrapped key line, the page's own padding) comes off the board, so
+    // the page does not scroll during a match.
+    const over = (document.scrollingElement?.scrollHeight ?? 0) - innerHeight;
+    if (over > 0 && height > 160)
+      field.resize(
+        width,
+        Math.max(160, height - over),
+        devicePixelRatio || 1,
+        world,
+      );
   };
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
@@ -906,6 +962,13 @@ function room(code: string, token: string | undefined, display: boolean): void {
   raf = requestAnimationFrame(frame);
   const resized = () => shown && fit(shown);
   window.addEventListener("resize", resized);
+  // The panel and the key line under the board change height as the match fills them in: the board refits.
+  const reflow =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => resized())
+      : undefined;
+  reflow?.observe(hud.bottom);
+  reflow?.observe(hint);
   // Two fingers pinch the zoom; the wheel zooms too (the pixel battlefield keeps its scale).
   const touches = new Map<number, { x: number; y: number }>();
   // The wheel and a pinch zoom toward the pointer (`zoomAnchor`); the keys zoom about the centre.
@@ -1053,6 +1116,14 @@ function room(code: string, token: string | undefined, display: boolean): void {
       (event.shiftKey || target?.closest("button, a"))
     )
       return;
+    // Escape with nothing on the board to close is the menu's (the shared top bar opens it, with Back to lobby).
+    if (
+      action.kind === "close" &&
+      !hud.shop.open &&
+      !hud.score.open &&
+      mode.kind === "idle"
+    )
+      return;
     // Also keeps Space from re-pressing a focused HUD button.
     event.preventDefault();
     switch (action.kind) {
@@ -1112,7 +1183,9 @@ function room(code: string, token: string | undefined, display: boolean): void {
     stopPlaytestCapture();
     stopPlaytestInput();
     cancelAnimationFrame(raf);
+    playScreen.destroy();
     window.removeEventListener("resize", resized);
+    reflow?.disconnect();
     window.removeEventListener("keydown", keyDown);
     window.removeEventListener("keyup", keyUp);
     window.removeEventListener("blur", hideScore);

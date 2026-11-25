@@ -498,59 +498,84 @@ body:has(.lobby:not([hidden])) .gs-live {
     margin: 5px;
   }
 }
-/* Landscape play keeps both thumbs and the arena visible together. */
-@media (max-height: 550px) and (pointer: coarse) {
-  #app:has(> [data-layout="arena"]) {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-  }
-  [data-layout="arena"].room {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-  }
-  [data-layout="arena"] .play {
-    display: grid;
-    grid-template-columns: 150px minmax(0, 1fr) 145px;
-    grid-template-rows: 58px minmax(0, 1fr);
-    gap: 6px;
-    height: 100%;
-  }
-  [data-layout="arena"] .hud {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-  [data-layout="arena"] .arena {
-    grid-column: 2;
-    grid-row: 2;
-    width: 100%;
-    height: 100%;
-    max-height: 100%;
-  }
-  [data-layout="arena"] .pad {
-    display: contents;
-  }
-  [data-layout="arena"] .directions {
-    grid-column: 1;
-    grid-row: 2;
-    align-self: center;
-    grid-template: repeat(2, 55px) / repeat(3, 46px);
-    gap: 4px;
-  }
-  [data-layout="arena"] .abilities {
-    grid-column: 3;
-    grid-row: 2;
-    align-self: center;
-    flex-direction: column;
-    gap: 8px;
-  }
-  [data-layout="arena"] .abilities button {
-    min-height: 67px;
-    font-size: 12px;
-  }
-  [data-layout="arena"] .hint,
-  [data-layout="arena"] .personal {
-    display: none;
-  }
+/* A phone's live shift (fuse-ui play-screen): the cemetery fills the screen, the scores and the clock float small
+   over its top and the pads over its bottom corners. */
+html[data-fui-play] .play {
+  display: grid;
+  place-items: center;
+}
+html[data-fui-play] .play > .arena {
+  width: min(100cqw, 100cqh * 1000 / 620);
+  height: auto;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+html[data-fui-play] .play > .hint,
+html[data-fui-play] .play > .personal {
+  display: none;
+}
+html[data-fui-play] .play > .hud {
+  position: absolute;
+  top: max(4px, var(--fui-play-top));
+  left: max(6px, var(--fui-play-left));
+  right: calc(max(6px, var(--fui-play-right)) + 44px);
+  z-index: 1;
+  gap: 8px;
+  margin: 0;
+  pointer-events: none;
+}
+html[data-fui-play] .play .scores {
+  gap: 4px;
+}
+html[data-fui-play] .play .score {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 6px;
+  background: #1b2c34b3;
+}
+html[data-fui-play] .play .score span {
+  font-size: 9px;
+}
+html[data-fui-play] .play .score strong {
+  font-size: 13px;
+}
+html[data-fui-play] .play .score small {
+  display: none;
+}
+html[data-fui-play] .play .clock {
+  font-size: 13px;
+}
+html[data-fui-play] .play > .pad {
+  position: absolute;
+  inset: auto max(8px, var(--fui-play-right)) max(8px, var(--fui-play-bottom))
+    max(8px, var(--fui-play-left));
+  z-index: 1;
+  max-width: none;
+  margin: 0;
+  align-items: flex-end;
+  pointer-events: none;
+}
+html[data-fui-play] .play > .pad > * {
+  pointer-events: auto;
+}
+html[data-fui-play] .play .directions {
+  grid-template: repeat(2, min(52px, 13cqh)) / repeat(3, min(52px, 13cqh));
+  gap: 4px;
+}
+html[data-fui-play] .play .abilities {
+  flex: 0 1 auto;
+  gap: 8px;
+}
+html[data-fui-play] .play .abilities button {
+  min-width: 0;
+  width: min(88px, 22cqw);
+  min-height: min(64px, 17cqh);
+  padding: 6px;
+  font-size: 11px;
+}
+html[data-fui-play] .play .pad button {
+  opacity: 0.72;
 }

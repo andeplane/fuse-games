@@ -1,5 +1,10 @@
 import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
-import { createHowToPlay, requestedRoomSlot } from "fuse-ui";
+import {
+  createHowToPlay,
+  createPlayScreen,
+  requestedRoomSlot,
+  stageBox,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -83,6 +88,7 @@ import { createGhosts, project } from "./forward.js";
 import { gamepadBits } from "./gamepad.js";
 import {
   LEVEL_CHOICES,
+  createDeathWatch,
   createFinishWatch,
   levelFrom,
   present,
@@ -107,7 +113,7 @@ import {
   createLevelLeaderboards,
   parseLevelTimes,
 } from "./level-leaderboards.js";
-import type { LevelRun } from "../level-times.js";
+import { createLevelRunUploads } from "./level-run-uploads.js";
 
 /**
  * The Elasto Fuse page's glue: it reads the query, builds the screens from fuse-ui components, wires the runtime to
@@ -191,7 +197,6 @@ const GUIDE = {
     },
     { keys: "⟲ ⟳", action: "Left thumb: rotate the bike in the air" },
     { keys: "TURN", action: "Face the other way" },
-    { keys: "RESTART", action: "Back to the start" },
   ],
   goal: "Eat every apple, then touch the flower. Keep your head off the ground: the bike is springy and flips easily.",
 } as const;
@@ -565,7 +570,7 @@ function room(solo: boolean): void {
     backText: "Leave",
     onAction(id) {
       if (id === "retry-time") {
-        if (rankedRun?.failed) void publishTime(rankedRun);
+        if (shownMatch) levelRuns.retry(shownMatch);
       } else if (id === "menu") leave();
       else if (id === "next") nextMap();
       else if (id === "lobby") toLobby();
@@ -573,36 +578,27 @@ function room(solo: boolean): void {
     },
   });
   const liveResults = createLiveResults(results);
-  let rankedRun:
-    | { match: string; run: LevelRun; status: string; failed: boolean }
-    | undefined;
-  const publishTime = async (attempt: NonNullable<typeof rankedRun>) => {
-    attempt.status = "Verifying time…";
-    attempt.failed = false;
-    try {
-      const token = await signedInToken();
-      if (!token) throw new Error("Sign in to submit time");
-      const response = await fetch(levelTimesUrl(attempt.run.level), {
+  // Every run this device rides home, solo or in a room, goes to its level's board.
+  const levelRuns = createLevelRunUploads({
+    token: signedInToken,
+    async post(run, token) {
+      const response = await fetch(levelTimesUrl(run.level), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(attempt.run),
+        body: JSON.stringify(run),
       });
       if (!response.ok) throw new Error("Could not save time");
       const result: unknown = await response.json();
       if (!result || typeof result !== "object" || !("ranked" in result))
         throw new Error("Missing leaderboard result");
-      attempt.status =
-        result.ranked === true
-          ? "Leaderboard time saved"
-          : "Verified outside the top 100";
-    } catch {
-      attempt.status = "Could not save leaderboard time";
-      attempt.failed = true;
-    }
-  };
+      return result.ranked === true;
+    },
+  });
+  /** The match the screen shows, whose runs the result reports. */
+  let shownMatch = "";
   screen.append(canvas, card, roundControls.element);
 
   // The touch buttons, twice: under a phone's own race, and filling the phone for a shared screen.
@@ -611,7 +607,6 @@ function room(solo: boolean): void {
       left = el("div", "", "ef-cluster ef-cluster-left"),
       right = el("div", "", "ef-cluster ef-cluster-right");
     const set = new PadSet(controls);
-    let restart: HTMLElement | undefined;
     for (const each of TOUCH_BUTTONS) {
       const node = el("div", each.label, `ef-pad ef-pad-${each.id}`);
       node.setAttribute("role", "button");
@@ -621,23 +616,26 @@ function room(solo: boolean): void {
           controls.hold(`${className}:${each.id}`, bits),
         ),
       );
-      if (each.id === "restart") restart = node;
-      else if (each.id === "gas" || each.id === "brake") right.append(node);
+      if (each.id === "gas" || each.id === "brake") right.append(node);
       else left.append(node);
     }
     row.append(left, right);
-    return { row, set, restart: restart! };
+    return { row, set };
   };
   const touch = pads("ef-touch"),
     controllerPads = pads("ef-controller-pads");
-  controllerPads.row.prepend(controllerPads.restart);
   letGoAll = () => {
     touch.set.release();
     controllerPads.set.release();
     controls.clear();
   };
-  // A phone's RESTART rides at the top of its picture, clear of both thumbs.
-  stage.append(screen, touch.restart, note, touch.row);
+  stage.append(screen, note, touch.row);
+  // A phone's live race is the whole screen, drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => letGoAll(),
+  });
 
   const controller = el("section", "", "ef-controller"),
     controllerHead = el("header", "", "ef-controller-head"),
@@ -810,14 +808,15 @@ function room(solo: boolean): void {
     covered = undefined;
     const [left, right] = [...touch.row.children];
     if (touch.row.hidden || stage.hidden || !left || !right) return;
-    const pads = touch.row.getBoundingClientRect(),
-      picture = screen.getBoundingClientRect();
+    // In the stage's own frame: an upright phone draws the race turned.
+    const pads = stageBox(touch.row),
+      picture = stageBox(screen);
     const bottom =
       Math.min(picture.bottom, pads.bottom) - Math.max(picture.top, pads.top);
     if (bottom <= 0) return;
     covered = {
-      left: Math.max(0, left.getBoundingClientRect().right - picture.left),
-      right: Math.max(0, picture.right - right.getBoundingClientRect().left),
+      left: Math.max(0, stageBox(left).right - picture.left),
+      right: Math.max(0, picture.right - stageBox(right).left),
       bottom,
     };
   };
@@ -940,8 +939,11 @@ function room(solo: boolean): void {
     // The race.
     setText(note, next.note);
     note.hidden = !next.note;
-    const touchOn = coarse() && next.riding && !display;
-    touch.row.hidden = touch.restart.hidden = !touchOn;
+    // Only while the race runs: the results and the lobby are tapped, not steered (the pads covered the results).
+    const racing = view.stage === "running" && !next.result;
+    playScreen.update(next.screen === "play" && racing && !display);
+    const touchOn = coarse() && next.riding && !display && racing;
+    touch.row.hidden = !touchOn;
     main.dataset.touch = String(touchOn);
     touch.set.show(touchOn && !stage.hidden);
     controllerPads.set.show(!controller.hidden);
@@ -977,11 +979,12 @@ function room(solo: boolean): void {
         resultReport(result, { color: slotColor, friend }),
       bar: (result) => {
         const bar = resultBar(result);
-        if (!result.solo || !rankedRun) return bar;
+        const saved = shownMatch ? levelRuns.summary(shownMatch) : undefined;
+        if (!saved) return bar;
         return {
           ...bar,
-          status: rankedRun.status,
-          actions: rankedRun.failed
+          status: saved.status,
+          actions: saved.failed
             ? [{ id: "retry-time", label: "Retry saving time" }, ...bar.actions]
             : bar.actions,
         };
@@ -1004,6 +1007,7 @@ function room(solo: boolean): void {
     confirmedTick: () => runtime.confirmedTick(),
   });
   const finishes = createFinishWatch();
+  const deaths = createDeathWatch();
   const bests = createBestTimes(store);
   const remembered = seatName(
     social.playerName(store.getItem(names.name)) ?? "",
@@ -1050,14 +1054,13 @@ function room(solo: boolean): void {
           rider?.status === "finished" ? centiseconds(rider.run) : undefined,
         );
       }
-      if (rankedRun?.match !== frame.matchId) rankedRun = undefined;
-      if (!rankedRun && solo && social.isSignedIn()) {
-        const run = runtime.soloRun();
-        if (run) {
-          rankedRun = { match: frame.matchId, run, status: "", failed: false };
-          void publishTime(rankedRun);
-        }
-      }
+      shownMatch = frame.matchId;
+      const finished = runtime.finishedRun();
+      const signedIn = social.isSignedIn();
+      if (finished) levelRuns.offer(finished.race, finished.run, signedIn);
+      if (signedIn) levelRuns.signedIn();
+      for (const death of deaths(frame, viewer.me))
+        analytics.track("Rider Died", { ...death, mode });
       const next = present(frame, viewer, bestBefore);
       // The host is seated like anyone else who has a name: opening a room is taking its first seat.
       if (next.askName && remembered && !joinSent) {
@@ -1091,6 +1094,7 @@ function room(solo: boolean): void {
     ended() {
       say("Room ended", "error");
       over = true;
+      playScreen.destroy();
       // The frames stop here, so nothing else would let the engine go.
       sfx.engine(0, false, false);
       controls.clear();
