@@ -37,7 +37,8 @@ also refreshes it. A game session is a distinct session/game pair. Sessions and
 users are counted distinctly for each UTC day, ISO week and calendar month; weekly
 and monthly uniques must never be computed by adding daily uniques.
 
-The envelope contains `v:1`, random event `id`, stable `gameId`, anonymous
+The envelope contains `v:1`, random event `id`, stable `gameId` (the game route id,
+including `dice` for Pig; see `games/*/index.html` for the current inventory), anonymous
 `userId`, `sessionId`, `name`, `occurredAt`, and primitive `properties`.
 Names keep the shared `fuse.` prefix. A game name belongs in `gameId`, not the
 event namespace. The service validates the envelope and adds receipt/expiry metadata.
@@ -150,6 +151,10 @@ ledger capacity can forget their oldest marks; these metrics are not billing rec
 | Fusemania         | One song after lead-in; playlists contain several song matches                   |
 | Fusetown          | Whole race to four goals; weeks remain turns                                     |
 | Hook Havok        | Contest; open-ended free arena has no invented end                               |
+
+Fuse Front's player count includes every army slot, and its bot count includes vacant
+or disconnected slots currently driven by the AI, even though those slots have no bot
+seat record. Landing-page attract battles do not report play events.
 
 Fuseball's existing `playRound` helper is only a match-start guard (first countdown
 versus the rest of the match); round participation uses an explicit constant key.
