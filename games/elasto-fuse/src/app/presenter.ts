@@ -391,3 +391,53 @@ export function createFinishWatch(): (
     ];
   };
 }
+
+/** One death of this device's own rider as the metrics report it: nothing here names a player or a room. */
+export interface DeathReport {
+  /** The level's id. */
+  level: string;
+  /** A crash (head or body on the ground) or the rider's own restart. */
+  cause: "crash" | "restart";
+  /** This death's count in the race, from 1. */
+  death: number;
+  /** How far into the race (the rider's own clock) it was seen. */
+  centiseconds: number;
+  riders: number;
+  tour: boolean;
+}
+
+/**
+ * Finds this device's own deaths, once each, solo and in a room: the rider's death count only grows within a race, so
+ * each new count is one death, reported by the device that rode it.
+ */
+export function createDeathWatch(): (view: View, me: string) => DeathReport[] {
+  const told = new Map<string, number>();
+  return (view, me) => {
+    const world = view.world;
+    if (!world || !view.matchId) return [];
+    const rider = world.riders.find((each) => each.id === me);
+    if (!rider) return [];
+    const key = `${view.matchId}:${view.round}`;
+    const before = told.get(key) ?? 0;
+    if (rider.deaths <= before) return [];
+    told.delete(key);
+    told.set(key, rider.deaths);
+    // One device rides a bounded number of races; the map never needs more than the latest few.
+    if (told.size > 64) told.delete(told.keys().next().value ?? key);
+    const reports: DeathReport[] = [];
+    for (let death = before + 1; death <= rider.deaths; death++)
+      reports.push({
+        level: LEVELS[world.level]?.id ?? "",
+        // Only the latest death's cause can still be seen; one a frame is the rule.
+        cause:
+          death === rider.deaths && rider.status === "dead"
+            ? "crash"
+            : "restart",
+        death,
+        centiseconds: centiseconds(rider.step),
+        riders: world.riders.length,
+        tour: view.rounds > 1,
+      });
+    return reports;
+  };
+}

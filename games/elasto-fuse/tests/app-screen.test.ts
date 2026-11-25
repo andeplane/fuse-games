@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { ACTION, LEAVE, PRESENCE, SETTINGS } from "fuse-netcode";
 import {
   CLOSE_LAG,
+  DEAD,
   FINISHED,
   GAS,
   LEVELS,
+  RIDING,
   STEPS_PER_SECOND,
   STEPS_PER_TICK,
   TURN,
@@ -27,6 +29,7 @@ import {
 } from "../src/app/forward.js";
 import {
   LEVEL_CHOICES,
+  createDeathWatch,
   createFinishWatch,
   levelFrom,
   present,
@@ -537,6 +540,44 @@ test("each finished run is reported once, by the device that rode it, when its r
   assert.deepEqual(watch(frame, "a"), [], "once");
   assert.deepEqual(watch(frame, "tv"), [], "a device with no rider");
   assert.deepEqual(createFinishWatch()(view(seated()), "a"), []);
+});
+
+test("each death of this device's own rider is reported once, solo or in a room, with what ended the run", () => {
+  const watch = createDeathWatch();
+  const room = started();
+  while (room.world!.phase === "countdown") fold(room);
+  assert.deepEqual(watch(view(room), "a"), []);
+  const rider = room.world!.riders[0]!;
+  rider.deaths = 1;
+  rider.status = DEAD;
+  rider.step = 300;
+  const crash = watch(view(room), "a");
+  assert.deepEqual(crash, [
+    {
+      level: LEVELS[0]!.id,
+      cause: "crash",
+      death: 1,
+      centiseconds: centiseconds(300),
+      riders: 2,
+      tour: true,
+    },
+  ]);
+  assert.deepEqual(watch(view(room), "a"), [], "once");
+  rider.status = RIDING;
+  rider.deaths = 3;
+  assert.deepEqual(
+    watch(view(room), "a").map((each) => [each.death, each.cause]),
+    [
+      [2, "restart"],
+      [3, "restart"],
+    ],
+  );
+  assert.deepEqual(
+    watch(view(room), "b"),
+    [],
+    "another rider's deaths are theirs to report",
+  );
+  assert.deepEqual(watch(view(room), "tv"), [], "a device with no rider");
 });
 
 // ---- session, best times, art, sound ----
