@@ -307,9 +307,14 @@ export function createGameScreen(
     bankValue = el("small", "", "fl-bank"),
     endWeek = button("CALL IT A WEEK", "fl-end-week"),
     controls = el("div", "", "fl-controls");
-  youButton.setAttribute("aria-label", "You: hours left and your week");
+  youButton.setAttribute("aria-label", "My status");
   dial.append(hoursText, el("small", "h"));
-  clockWords.append(weekLabel, timerText, eventText);
+  clockWords.append(
+    weekLabel,
+    timerText,
+    eventText,
+    el("small", "My status", "fl-status-label"),
+  );
   youButton.append(dial, clockWords, badge);
   cash.append(cashValue, bankValue);
   const hudGoals = createGoalRings(art);
@@ -420,6 +425,9 @@ export function createGameScreen(
     youGoals.element,
     youNews,
   );
+  you.id = "fl-player-status";
+  youButton.setAttribute("aria-controls", you.id);
+  youButton.setAttribute("aria-expanded", "false");
   you.append(youHead, youBody);
   you.hidden = true;
   let youOpen = false,
@@ -823,9 +831,24 @@ export function createGameScreen(
         block.append(el("h3", section.title));
         if (section.info)
           block.append(el("p", section.info, "fl-section-info"));
-        const grid = el("div", "", "fl-cards");
-        grid.append(...inRows(section.cards).map(renderCard));
-        block.append(grid);
+        if (section.items?.length) {
+          const list = el("ul", "", "fl-belongings");
+          for (const item of section.items) {
+            const row = el("li");
+            row.append(art.element(item.icon, 32), el("span", item.name));
+            list.append(row);
+          }
+          block.append(list);
+        } else if (section.items) {
+          block.append(
+            el("p", "No appliances or gadgets yet.", "fl-section-info"),
+          );
+        }
+        if (section.cards.length) {
+          const grid = el("div", "", "fl-cards");
+          grid.append(...inRows(section.cards).map(renderCard));
+          block.append(grid);
+        }
         return block;
       }),
     );
@@ -867,6 +890,7 @@ export function createGameScreen(
     if (!h) {
       youOpen = false;
       you.hidden = true;
+      youButton.setAttribute("aria-expanded", "false");
       return;
     }
     // This week's private news opens the panel once.
@@ -877,6 +901,7 @@ export function createGameScreen(
       youOpen = true;
     }
     you.hidden = !youOpen || modal;
+    youButton.setAttribute("aria-expanded", String(!you.hidden));
     if (you.hidden) return;
     text(youName, h.name);
     text(youWhere, h.where);

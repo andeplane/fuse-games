@@ -1,5 +1,7 @@
 import { createTopBar } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
+import { browserPlaytestFor } from "fuse-ui/playtest";
+import { playtestInputBlocked } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import "fuse-ui/social.css";
 import {
@@ -59,6 +61,7 @@ import { createRoomLobby } from "./room-lobby.js";
 import { createPendingSettings } from "fuse-ui";
 import { createReceiptReporter } from "fuse-ui/receipt-reporting";
 import { dueReports, localReports, sendReport } from "./reports.js";
+import { playtestState } from "./playtest-state.js";
 import { FuseLaneRuntime, type FuseLaneCallbacks } from "./runtime.js";
 import { markToured, owesTour, tourSteps } from "./tour.js";
 import {
@@ -110,6 +113,7 @@ const screenOptions = {
   debugRoads: new URLSearchParams(location.search).has("debug-roads"),
 };
 const names = keys(GAME);
+let snapshotForReport: (() => string | undefined) | undefined;
 const secret = () => uuid().replaceAll("-", "") + uuid().replaceAll("-", "");
 const art = createArt(BASE, () => new Image() as unknown as ArtImage);
 const app = document.querySelector<HTMLElement>("#app")!;
@@ -144,6 +148,25 @@ function header(extra: HTMLElement[] = [], allGames = false): HTMLElement {
     bar.append(button);
   }
   return createTopBar({ element: bar, gameId: GAME });
+}
+
+let matchBar: HTMLElement | undefined;
+function matchMenu(
+  element: HTMLElement,
+  onOpenChange?: (open: boolean) => void,
+): HTMLElement {
+  const bar = (matchBar ??= el("div", "", "fl-match-menu"));
+  for (const previous of bar.querySelectorAll(
+    ".fui-game-menu, .fui-game-menu-exit",
+  ))
+    previous.remove();
+  bar.append(element);
+  return createTopBar({
+    element: bar,
+    gameId: GAME,
+    music: false,
+    onOpenChange: (open) => onOpenChange?.(open),
+  });
 }
 
 /** A still picture of the city for the menu: the board with nobody on it, redrawn while its pictures load. */
@@ -270,6 +293,7 @@ function local(match: LocalMatch, resumed = false): void {
   };
   const pause = button("", "fl-icon-button fl-pause");
   let pausedBeforeMenu = false;
+  let matchMenuOpen = false;
   const gameMenu = createGameMenu({
     controls: [
       ...TOWN_CONTROLS,
@@ -280,18 +304,24 @@ function local(match: LocalMatch, resumed = false): void {
     ],
     goal: `${TOWN_GOAL} Leaving saves your game on this device.`,
     onLeave: () => toMenu(),
-    onOpenChange(open) {
-      pause.disabled = open;
-      if (open) {
-        pausedBeforeMenu = runtime.paused;
-        runtime.setPaused(true);
-      } else runtime.setPaused(pausedBeforeMenu);
-      showPaused();
-      if (!open && !runtime.paused && match.room.stage === "running") {
-        screen.game.tabIndex = -1;
-        screen.game.focus({ preventScroll: true });
-      }
-    },
+  });
+  const menuBar = matchMenu(gameMenu.element, (open) => {
+    matchMenuOpen = open;
+    pause.disabled = open;
+    if (open) {
+      pausedBeforeMenu = runtime.paused;
+      runtime.setPaused(true);
+    } else runtime.setPaused(pausedBeforeMenu);
+    showPaused();
+    if (
+      !open &&
+      !runtime.paused &&
+      match.room.stage === "running" &&
+      !playtestInputBlocked(document)
+    ) {
+      screen.game.tabIndex = -1;
+      screen.game.focus({ preventScroll: true });
+    }
   });
   gameMenu.update({ canLobby: false });
   const checks = loadChecklist(store, match.room.matchId);
@@ -300,7 +330,7 @@ function local(match: LocalMatch, resumed = false): void {
     viewer,
     () => runtime,
     {
-      controls: [pause, gameMenu.element],
+      controls: [pause, menuBar],
       checklist: {
         fold: (open) => {
           checks.open = open;
@@ -359,6 +389,8 @@ function local(match: LocalMatch, resumed = false): void {
     true,
   );
   app.replaceChildren(main);
+  snapshotForReport = () =>
+    playtestState(match.room, match.room.order[match.room.turn] ?? "p1");
   window.scrollTo(0, 0);
 
   // The first game on this device opens with the tour, once someone's week is on screen, with the clock stopped.
@@ -369,7 +401,7 @@ function local(match: LocalMatch, resumed = false): void {
   };
   const showPaused = () => {
     const touring = screen.touring();
-    paused.hidden = !runtime.paused || touring || gameMenu.isOpen();
+    paused.hidden = !runtime.paused || touring || matchMenuOpen;
     screen.game.classList.toggle("paused", runtime.paused && !touring);
   };
   const sent = new Set<string>();
@@ -451,7 +483,7 @@ function local(match: LocalMatch, resumed = false): void {
     if (document.hidden && match.room.stage === "running") setPaused(true);
   };
   const onKey = (event: KeyboardEvent) => {
-    if (event.repeat) return;
+    if (event.repeat || playtestInputBlocked(document)) return;
     if (gameMenu.isOpen()) return;
     if (screen.touring()) {
       // The tour's own keys (arrows, Escape); Enter on its focused button already presses it.
@@ -479,6 +511,7 @@ function local(match: LocalMatch, resumed = false): void {
   document.addEventListener("keydown", onKey);
   window.addEventListener("pagehide", onHide);
   const cleanup = () => {
+    snapshotForReport = undefined;
     stopReports();
     gameMenu.dispose();
     screen.destroy();
@@ -630,19 +663,23 @@ function room(): void {
     goal: TOWN_GOAL,
     onLeave: leave,
     onLobby: () => runtime.command({ type: "action", action: "lobby" }),
-    onOpenChange(open) {
-      if (!open && main.dataset.phase === "running") {
-        screen.game.tabIndex = -1;
-        screen.game.focus({ preventScroll: true });
-      }
-    },
+  });
+  const menuBar = matchMenu(gameMenu.element, (open) => {
+    if (
+      !open &&
+      main.dataset.phase === "running" &&
+      !playtestInputBlocked(document)
+    ) {
+      screen.game.tabIndex = -1;
+      screen.game.focus({ preventScroll: true });
+    }
   });
   const screen = createGameScreen(
     art,
     viewer,
     () => runtime,
     {
-      controls: [gameMenu.element],
+      controls: [menuBar],
       again: () => runtime.command({ type: "action", action: "rematch" }),
       back: () => runtime.command({ type: "action", action: "lobby" }),
       leave,
@@ -665,6 +702,10 @@ function room(): void {
   );
   lobby.attachJoin(nameEntry.form);
   app.replaceChildren(top, main);
+  snapshotForReport = () => {
+    const state = runtime.roomState();
+    return state ? playtestState(state, runtime.self) : undefined;
+  };
 
   const reportReceipts = createReceiptReporter({
     due: dueReports,
@@ -791,7 +832,7 @@ function room(): void {
     reload: () => location.reload(),
   });
   document.addEventListener("keydown", (event) => {
-    if (gameMenu.isOpen()) return;
+    if (gameMenu.isOpen() || playtestInputBlocked(document)) return;
     if (
       event.target instanceof HTMLInputElement ||
       event.target instanceof HTMLButtonElement ||
@@ -804,6 +845,7 @@ function room(): void {
 }
 
 const query = new URLSearchParams(location.search);
+browserPlaytestFor(document, GAME, () => snapshotForReport?.());
 if (query.has("room")) room();
 else if (query.get("solo") === "1") {
   // A quick game with the remembered setup (or one player against one AI): the menu's START without the menu.
