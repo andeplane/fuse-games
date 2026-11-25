@@ -380,3 +380,27 @@ body.cyberfuse-page {
     max-width: calc(100% - 10rem);
   }
 }
+/* A running mission is a fixed full-window arena: the page under it never scrolls, on a desktop either. */
+html:has(.cyberfuse-room[data-phase="running"]),
+body:has(.cyberfuse-room[data-phase="running"]) {
+  overflow: hidden;
+}
+/* The page behind the arena holds nothing to show, so it takes no height of its own beside the app's padding. */
+.cyberfuse-page:has(.cyberfuse-room[data-phase="running"]) #app {
+  min-height: 0;
+}
+/* A phone's live mission (fuse-ui play-screen): the bar is its menu button, so the HUD rises to the top edge. */
+html[data-fui-play] .cf-arena > .cf-hud {
+  top: max(0.4rem, var(--fui-play-top));
+  left: max(0.4rem, var(--fui-play-left));
+  right: calc(3rem + var(--fui-play-right));
+}
+html[data-fui-play] .cf-arena > .cf-pad {
+  bottom: max(0.5rem, var(--fui-play-bottom));
+  left: max(0.75rem, var(--fui-play-left));
+  right: max(0.75rem, var(--fui-play-right));
+}
+html[data-fui-play] .cf-arena > .cf-map-panel {
+  inset: max(3.25rem, var(--fui-play-top)) max(0.4rem, var(--fui-play-right))
+    max(0.5rem, var(--fui-play-bottom)) max(0.4rem, var(--fui-play-left));
+}
