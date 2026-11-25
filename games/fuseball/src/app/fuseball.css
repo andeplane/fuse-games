@@ -533,6 +533,10 @@ body.fb-display .fb-sides {
 }
 
 /* A phone's live round (fuse-ui play-screen): the arena fills the screen and the pads float over its corners. */
+/* What went wrong stays readable over the stage. */
+html[data-fui-play] .fb-alert {
+  z-index: 31;
+}
 html[data-fui-play] .fb-stage {
   display: grid;
   place-items: center;

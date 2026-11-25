@@ -29,12 +29,22 @@ function build(device: Partial<TouchGuardDevice> = {}) {
   return { document, label, field, fire, asked: () => asked };
 }
 
-test("on a touch screen nothing but a field starts a selection, a callout or a double-tap zoom", () => {
-  const { label, field, fire } = build();
-  for (const type of ["selectstart", "contextmenu", "dblclick"]) {
+test("on a touch screen nothing but a field starts a selection or a callout; a link keeps its long press", () => {
+  const { document, label, field, fire } = build();
+  for (const type of ["selectstart", "contextmenu"]) {
     assert.equal(fire(label, type), true, `${type} on a button`);
     assert.equal(fire(field, type), false, `${type} in a field`);
   }
+  const link = document.createElement("a");
+  link.href = "https://example.test/invite";
+  link.append(document.createElement("span"));
+  document.body.append(link);
+  assert.equal(fire(link.firstElementChild!, "contextmenu"), false);
+  assert.equal(
+    fire(label, "dblclick"),
+    false,
+    "a page's own double tap still works",
+  );
 });
 
 test("a mouse keeps its selection and its menus", () => {
@@ -43,12 +53,13 @@ test("a mouse keeps its selection and its menus", () => {
   assert.equal(fire(label, "contextmenu"), false);
 });
 
-test("the first tap on a phone asks for full screen once", () => {
+test("the first tap on a phone asks for full screen, once while it is pending", () => {
   const { label, fire, asked, document } = build();
   assert.ok(document.documentElement.classList.contains("fui-touch-guard"));
   fire(label, "touchend");
+  assert.equal(asked(), 0, "a touch that ended a scroll is no gesture");
   fire(label, "click");
-  fire(label, "touchend");
+  fire(label, "click");
   assert.equal(asked(), 1);
 });
 
@@ -65,10 +76,16 @@ test("a framed page, a desktop or a page already full screen is not asked", () =
   }
 });
 
-test("a refused full screen is not an error", async () => {
+test("a refused full screen is not an error, and the next tap asks again", async () => {
+  let asked = 0;
   const { label, fire } = build({
-    enterFullscreen: () => Promise.reject(new Error("refused")),
+    enterFullscreen: () => {
+      asked++;
+      return Promise.reject(new Error("refused"));
+    },
   });
   fire(label, "click");
   await new Promise((resolve) => setImmediate(resolve));
+  fire(label, "click");
+  assert.equal(asked, 2);
 });

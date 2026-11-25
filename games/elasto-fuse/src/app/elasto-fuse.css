@@ -668,7 +668,7 @@ html[data-fui-play] .ef-touch .ef-cluster {
 html[data-fui-play] .ef-stage > .ef-pad-restart {
   top: max(var(--fui-space-2), var(--fui-play-top));
 }
-/* The race's own alert floats over the top of the track, in the stage's frame. */
+/* What went wrong stays readable over the stage (upright on the screen, not in the turned frame). */
 html[data-fui-play] .ef-room > .ef-alert {
   z-index: 31;
 }

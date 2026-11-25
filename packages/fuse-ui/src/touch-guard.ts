@@ -58,42 +58,56 @@ export function installTouchGuard(
   if (!device || installedOn.has(doc)) return;
   installedOn.add(doc);
   doc.documentElement.classList.add("fui-touch-guard");
-  const editable = (target: EventTarget | null) => {
+  const closest = (target: EventTarget | null, selector: string) => {
     const node = target as Node | null;
     const element =
       node?.nodeType === 1 ? (node as Element) : node?.parentElement;
-    return !!element?.closest?.(EDITABLE);
+    return !!element?.closest?.(selector);
   };
-  // Selection and callouts: CSS does most of it, these catch what Safari still starts (a double tap on a label).
-  for (const type of ["selectstart", "contextmenu"])
-    doc.addEventListener(
-      type,
-      (event) => {
-        if (device.touch() && !editable(event.target)) event.preventDefault();
-      },
-      { capture: true },
-    );
+  const editable = (target: EventTarget | null) => closest(target, EDITABLE);
+  // Selection and callouts: CSS does most of it, these catch what Safari still starts (a double tap on a label). A
+  // link keeps its long press (copy or share an invite); a double tap never zooms because of `touch-action` in the CSS.
   doc.addEventListener(
-    "dblclick",
+    "selectstart",
     (event) => {
       if (device.touch() && !editable(event.target)) event.preventDefault();
     },
-    { capture: true, passive: false },
+    { capture: true },
   );
-  // Full screen on the first tap: a tap that ends is what a browser counts as the player's own gesture.
-  let asked = false;
-  const ask = () => {
-    if (asked) return;
-    if (
-      !device.touch() ||
-      !device.phone() ||
-      device.embedded() ||
-      device.fullscreen()
-    )
-      return;
-    asked = true;
-    device.enterFullscreen().catch(() => undefined);
-  };
-  doc.addEventListener("touchend", ask, { capture: true, passive: true });
-  doc.addEventListener("click", ask, { capture: true, passive: true });
+  doc.addEventListener(
+    "contextmenu",
+    (event) => {
+      if (
+        device.touch() &&
+        !editable(event.target) &&
+        !closest(event.target, "a[href]")
+      )
+        event.preventDefault();
+    },
+    { capture: true },
+  );
+  // Full screen on the first tap: a click is what every browser counts as the player's own gesture (a touch that
+  // ended a scroll is not). A refusal asks again on the next one.
+  let asking = false;
+  doc.addEventListener(
+    "click",
+    () => {
+      if (
+        asking ||
+        !device.touch() ||
+        !device.phone() ||
+        device.embedded() ||
+        device.fullscreen()
+      )
+        return;
+      asking = true;
+      device.enterFullscreen().then(
+        () => undefined,
+        () => {
+          asking = false;
+        },
+      );
+    },
+    { capture: true, passive: true },
+  );
 }
