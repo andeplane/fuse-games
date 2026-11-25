@@ -17,7 +17,7 @@ import "fuse-ui/portal.css";
 import "fuse-ui/results.css";
 import "./killer-fuse.css";
 import QRCode from "qrcode";
-import { createTopBar } from "fuse-ui";
+import { createPlayScreen, createTopBar, localPoint } from "fuse-ui";
 import {
   PeerTransport,
   createEndpoints,
@@ -905,19 +905,23 @@ function room(solo: boolean): void {
   // Touch: the pad follows the thumb from where it came down; the button is the whole right side.
   let stickPointer = -1,
     origin = { x: 0, y: 0 };
-  const stickRadius = () => stick.clientWidth / 2;
+  const stickRadius = () => stick.clientWidth / 2,
+    // Along the pad's own axes: the arena is drawn turned on an upright phone.
+    stickPoint = (event: PointerEvent) =>
+      localPoint(stick, event.clientX, event.clientY);
   stick.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     stickPointer = event.pointerId;
     stick.setPointerCapture(event.pointerId);
-    origin = { x: event.clientX, y: event.clientY };
+    origin = stickPoint(event);
     touch.move(0, 0, stickRadius());
   });
   stick.addEventListener("pointermove", (event) => {
     if (event.pointerId !== stickPointer) return;
-    const radius = stickRadius(),
-      dx = event.clientX - origin.x,
-      dy = event.clientY - origin.y,
+    const at = stickPoint(event),
+      radius = stickRadius(),
+      dx = at.x - origin.x,
+      dy = at.y - origin.y,
       clamp = (value: number) => Math.max(-radius, Math.min(radius, value));
     knob.style.transform = `translate(${clamp(dx)}px, ${clamp(dy)}px)`;
     touch.move(dx, dy, radius);
@@ -943,6 +947,19 @@ function room(solo: boolean): void {
   for (const type of ["pointerup", "pointercancel", "pointerleave"] as const)
     strike.addEventListener(type, () => touch.strike(false));
   touchRow.addEventListener("contextmenu", (event) => event.preventDefault());
+  // A phone's live game is the whole screen; the 16:9 arena is drawn turned when the phone is upright. The pads have
+  // just moved under the thumbs, so whatever they held lets go.
+  const playScreen = createPlayScreen({
+    stage: arena,
+    wide: true,
+    onChange: () => {
+      stickPointer = -1;
+      knob.style.transform = "";
+      touch.rest();
+      touch.hold(false);
+      touch.strike(false);
+    },
+  });
 
   let model: PageModel | undefined;
   /** The countdown digit last beeped, so a card redrawn every frame still beeps once a second. */
@@ -1091,6 +1108,12 @@ function room(solo: boolean): void {
       next.arena.localSlot >= 0 &&
       !next.result &&
       (coarse || next.layout === "controller")
+    );
+    playScreen.update(
+      next.screen === "arena" &&
+        next.layout === "arena" &&
+        !display &&
+        !next.result,
     );
     // Result.
     // A lesson ends on its own bar under the arena (the time, the next lesson): the screen would cover it.
@@ -1328,6 +1351,7 @@ function room(solo: boolean): void {
     },
     ended() {
       say("Room ended", "error");
+      playScreen.destroy();
       // A service that does not host this game closes the socket the same way: its game routes say which it was.
       void fetch(endpoints.apiUrl(`/api/games/${GAME}/leaderboard`))
         .then(async (response) => {
@@ -1425,6 +1449,7 @@ function room(solo: boolean): void {
     },
   });
   signal.addEventListener("abort", stopPlaytestInput, { once: true });
+  signal.addEventListener("abort", () => playScreen.destroy(), { once: true });
   releaseWhenAway(
     window,
     document,
