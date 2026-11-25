@@ -3,17 +3,20 @@ import assert from "node:assert/strict";
 import { launchSelected } from "./lib/browser.js";
 import { startRoomService } from "./lib/server.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
+import { openTopMenu } from "./lib/top-menu.js";
 import type { Page } from "playwright";
 
 const server = process.env.FUSEHEADS_URL ? undefined : await startRoomService();
 const root = new URL("fuseheads/", process.env.FUSEHEADS_URL ?? server!.url);
 const browser = await launchSelected("chromium");
 const problems: string[] = [];
-const pageFor = async (touch = false) => {
+const portrait = { width: 360, height: 800 };
+const landscape = { width: 844, height: 390 };
+const pageFor = async (touchViewport?: typeof portrait) => {
   const context = await browser.newContext(
-    touch
+    touchViewport
       ? {
-          viewport: { width: 360, height: 800 },
+          viewport: touchViewport,
           hasTouch: true,
           isMobile: true,
         }
@@ -41,6 +44,14 @@ async function checkTouchOverlay(page: Page) {
 const enter = async (page: Page) => {
   await page.goto(new URL("?mute", root).href);
 };
+async function startSolo(page: Page) {
+  await openPlayOptions(page, "single");
+  const pack = page.getByRole("combobox", { name: "Level pack" });
+  await pack.press("ArrowDown");
+  assert.equal(await pack.inputValue(), "bonus");
+  await page.getByRole("button", { name: "START GAME", exact: true }).click();
+  await playfield(page).waitFor();
+}
 async function downArrowConsumed(page: Page) {
   await page.evaluate(() => {
     window.addEventListener(
@@ -59,32 +70,31 @@ async function downArrowConsumed(page: Page) {
   return page.locator("body").getAttribute("data-down-arrow-consumed");
 }
 try {
-  const solo = await pageFor(true);
+  const solo = await pageFor(portrait);
   await enter(solo);
   await solo.getByRole("button", { name: /^how to play$/i }).click();
   assert.match(await solo.locator("dialog[open]").innerText(), /stun|bump/i);
   await solo.keyboard.press("Escape");
-  await openPlayOptions(solo, "single");
-  const pack = solo.getByRole("combobox", { name: "Level pack" });
-  await pack.press("ArrowDown");
-  assert.equal(await pack.inputValue(), "bonus");
-  await solo.getByRole("button", { name: "START GAME", exact: true }).click();
-  await playfield(solo).waitFor();
+  await startSolo(solo);
   assert.equal(await downArrowConsumed(solo), "true");
   await checkTouchOverlay(solo);
   await solo.getByRole("button", { name: "Jump", exact: true }).tap();
   const canvasBox = await playfield(solo).boundingBox();
   const barBox = await solo.locator(".fui-top-bar").boundingBox();
   assert.ok(barBox && canvasBox && canvasBox.y >= barBox.y + barBox.height);
-  assert.ok((await solo.locator("body").boundingBox())!.width <= 360);
-  await solo.setViewportSize({ width: 844, height: 390 });
-  await checkTouchOverlay(solo);
-  await solo.getByRole("button", { name: "Right", exact: true }).tap();
-  await solo
-    .getByRole("button", { name: "Open game menu", exact: true })
-    .click();
-  await solo.keyboard.press("Escape");
+  assert.ok(
+    (await solo.locator("body").boundingBox())!.width <= portrait.width,
+  );
   await solo.context().close();
+  // Start at the target viewport because Chromium cannot resize a fullscreen window.
+  const wideSolo = await pageFor(landscape);
+  await enter(wideSolo);
+  await startSolo(wideSolo);
+  await checkTouchOverlay(wideSolo);
+  await wideSolo.getByRole("button", { name: "Right", exact: true }).tap();
+  await openTopMenu(wideSolo);
+  await wideSolo.keyboard.press("Escape");
+  await wideSolo.context().close();
   const host = await pageFor();
   await enter(host);
   await openPlayOptions(host);
@@ -94,11 +104,11 @@ try {
   await start.waitFor();
   await start.click();
   await playfield(host).waitFor();
-  await host.getByRole("button", { name: /^open game menu$/i }).click();
+  await openTopMenu(host);
   await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await start.waitFor();
   const room = new URL(host.url());
-  const guest = await pageFor(true);
+  const guest = await pageFor(portrait);
   await guest.goto(room.href);
   await takeHostSeat(guest, "Thog");
   await host.getByText("Thog", { exact: true }).first().waitFor();
