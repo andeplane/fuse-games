@@ -52,6 +52,12 @@ try {
     );
     await host.goto(home.href);
     const continueButton = name(host, "Continue · Level 2");
+    await host.setViewportSize({ width: 844, height: 390 });
+    const playBounds = await name(host, "Play").boundingBox();
+    assert.ok(
+      playBounds && playBounds.y + playBounds.height <= 390,
+      "Play fits below Continue in phone landscape",
+    );
     assert.equal(
       await continueButton.evaluate(
         (button) => button.nextElementSibling?.textContent,
