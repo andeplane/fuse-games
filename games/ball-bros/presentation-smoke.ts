@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { launchSelected } from "../../scripts/lib/browser.js";
 import { startGameCoverage } from "../../scripts/lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "../../scripts/lib/main-menu.js";
+import { openTopMenu } from "../../scripts/lib/top-menu.js";
 
 const origin = process.env.ONLINE_URL ?? "http://localhost:8792/";
 const browser = await launchSelected("chrome");
@@ -12,8 +13,6 @@ try {
   const errors: string[] = [];
   const finishCoverage = await startGameCoverage(page, { gameId: "ball-bros" });
   page.on("pageerror", (e) => errors.push(e.message));
-  // Radio, Reconnect and Leave sit in the header's game menu.
-  const gameMenu = page.getByRole("button", { name: "Open game menu" });
   await page.goto(new URL("ball-bros/?mute", origin).href);
   await openPlayOptions(page);
   await page
@@ -28,7 +27,7 @@ try {
   await openPlayOptions(page, "single");
   await page.getByText("GET READY · 2", { exact: true }).waitFor();
   assert.equal(await page.locator(".scorecard").count(), 5);
-  await gameMenu.click();
+  await openTopMenu(page);
   await page.getByRole("button", { name: "Radio", exact: true }).click();
   await page
     .getByRole("dialog", { name: "Radio", exact: true })
@@ -41,8 +40,8 @@ try {
     fullPage: true,
   });
   assert.deepEqual(errors, []);
-  await gameMenu.click();
-  await page.getByRole("button", { name: "LEAVE", exact: true }).click();
+  await openTopMenu(page);
+  await page.getByRole("button", { name: /^main menu$/i }).click();
   await page.unroute("**/avatars/neon-heads.png");
   await openPlayOptions(page);
   await page.getByRole("button", { name: "Host room", exact: true }).click();
@@ -59,8 +58,8 @@ try {
     path: "artifacts/ball-bros-phase3-lobby.png",
     fullPage: true,
   });
-  await gameMenu.click();
-  await page.getByRole("button", { name: "LEAVE", exact: true }).click();
+  await openTopMenu(page);
+  await page.getByRole("button", { name: /^main menu$/i }).click();
   await page.locator(".fui-main-menu").waitFor();
   console.log(
     "PASS: avatar picker, optional portrait failure, radio remains off and live room lobby; muted screenshots saved.",

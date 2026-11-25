@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readdir, writeFile, mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
 import { checkGameMenu } from "./lib/check-game-menu.js";
@@ -27,12 +28,21 @@ async function openVolleyHelp(page: Page) {
 /** Real menu → room → admission paths. No injected game state or browser API replacements. */
 const base = process.env.ONLINE_URL ?? "http://127.0.0.1:8787/";
 const evidence = process.env.SMOKE_SHOTS ?? "artifacts/game-lobbies";
+const gamesDir = new URL("../games/", import.meta.url);
+// Match Vite's game pages and leave headless engines out of the browser run.
+const games = (await readdir(gamesDir, { withFileTypes: true }))
+  .filter(
+    (entry) =>
+      entry.isDirectory() &&
+      existsSync(new URL(`${entry.name}/index.html`, gamesDir)),
+  )
+  .map((entry) => entry.name)
+  .sort();
 await mkdir(evidence, { recursive: true });
 const browser = await launchSelected("chrome", {
   headless: true,
   args: ["--mute-audio"],
 });
-const games = (await readdir("games")).filter((id) => !id.startsWith("."));
 const results: { game: string; error?: string; ai?: string }[] = [];
 try {
   for (const game of games) {
