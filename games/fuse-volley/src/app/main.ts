@@ -1040,7 +1040,7 @@ function room(solo: boolean): void {
     note.hidden = !next.note;
     // Only while the rally runs: the results and the lobby are tapped, not steered.
     const playing = view.stage === "running" && !next.result;
-    playScreen.update(next.screen === "play" && playing);
+    playScreen.update(next.screen === "play" && playing && !display);
     touch.hidden = !(coarse() && next.riding && !display && playing);
     main.dataset.touch = String(!touch.hidden);
     touchPads.show(!touch.hidden && !stage.hidden);
