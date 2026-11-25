@@ -2,7 +2,7 @@ import { createDialog } from "./dialog.js";
 import * as account from "./browser-account.js";
 import { createEndpoints } from "fuse-network-fe";
 import { PORTAL_GAMES } from "./portal.js";
-import type { ReportSubmission } from "fuse-telemetry/contracts";
+import { DEBUG_LIMITS, type ReportSubmission } from "fuse-telemetry/contracts";
 import { capturePlaytestPage } from "./playtest-capture.js";
 import { installPlaytestGameFocus } from "./playtest-focus.js";
 import {
@@ -33,6 +33,7 @@ export interface BrowserPlaytestOptions {
   apiOrigin?: string;
   /** FuseOS owns the microphone, while each game's frame owns its report UI. */
   recordingOnly?: boolean;
+  captureGameState?: () => string | undefined;
   /** Browser capabilities supplied by the composition root or typed test adapters. */
   account?: PlaytestAccount;
   outbox?: PlaytestOutbox;
@@ -499,6 +500,12 @@ export function installBrowserPlaytest(
   text.maxLength = 8000;
   text.rows = 5;
   textLabel.append(text);
+  const stateOption = node("label");
+  stateOption.className = "fui-playtest-state";
+  const includeState = node("input");
+  includeState.type = "checkbox";
+  stateOption.append(includeState, node("span", "Include game state"));
+  stateOption.hidden = true;
   const timeline = node("p"),
     result = node("p");
   result.setAttribute("role", "status");
@@ -511,6 +518,7 @@ export function installBrowserPlaytest(
     screenshotActions,
     categoryLabel,
     textLabel,
+    stateOption,
     timeline,
     result,
     send,
@@ -524,6 +532,7 @@ export function installBrowserPlaytest(
     reportCreatedAt = 0,
     reportContext: RecordingContext | undefined;
   let reportPayload: ReportSubmission | undefined;
+  let gameState: string | undefined;
   function updateSend() {
     send.disabled = sending || !screenshotData || opening;
   }
@@ -564,6 +573,20 @@ export function installBrowserPlaytest(
     reportCreatedAt = Date.now();
     reportPayload = undefined;
     reportContext = context();
+    gameState = undefined;
+    try {
+      const state = options.captureGameState?.();
+      if (
+        state &&
+        new TextEncoder().encode(state).length <= DEBUG_LIMITS.gameStateBytes
+      )
+        gameState = state;
+    } catch {
+      // A game's snapshot is optional. Its failure must leave reporting available.
+    }
+    stateOption.hidden = !gameState;
+    includeState.checked = Boolean(gameState);
+    includeState.disabled = false;
     text.value = "";
     category.value = "bug";
     result.textContent = "";
@@ -606,6 +629,7 @@ export function installBrowserPlaytest(
           ? category.value
           : "bug",
       text: text.value.trim(),
+      ...(gameState && includeState.checked ? { gameState } : {}),
       createdAt: reportCreatedAt,
       screenshot: {
         mime: "image/jpeg",
@@ -614,6 +638,7 @@ export function installBrowserPlaytest(
       ...reportContext,
     };
     text.disabled = true;
+    includeState.disabled = true;
     category.disabled = true;
     retryCapture.disabled = true;
     void request(
@@ -1259,6 +1284,7 @@ export function installBrowserPlaytest(
 export function browserPlaytestFor(
   document: Document,
   gameId: string,
+  captureGameState?: BrowserPlaytestOptions["captureGameState"],
 ): BrowserPlaytest | undefined {
   const win = document.defaultView;
   if (
@@ -1268,7 +1294,12 @@ export function browserPlaytestFor(
   )
     return undefined;
   try {
-    return installBrowserPlaytest({ document, window: win, gameId });
+    return installBrowserPlaytest({
+      document,
+      window: win,
+      gameId,
+      ...(captureGameState ? { captureGameState } : {}),
+    });
   } catch {
     // Reporting is tooling: a sandboxed frame or a bad API origin must cost
     // the Report button, never the game's header.

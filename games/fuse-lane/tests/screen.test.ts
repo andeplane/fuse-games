@@ -9,6 +9,7 @@ import {
   MONO,
   PLACES,
   READY,
+  ROOMSHARE,
   WALK,
   doorOf,
   type FuseLaneView,
@@ -519,6 +520,43 @@ test("place buttons walk there; inside a place its panel opens, cards log their 
   assert.equal(panel.hidden, false);
   h.screen.hidePanel();
   assert.equal(panel.hidden, true);
+});
+
+test("home and My status show current possessions, grocery stock and outfit", () => {
+  for (const viewer of [LOCAL, ONLINE, { ...ONLINE, shared: true }]) {
+    const h = harness({ viewer, bots: 0, width: 360, height: 800 });
+    walkInto(h, ROOMSHARE);
+    const panel = placePanel(h);
+    assert.match(panel.textContent ?? "", /No appliances or gadgets yet/);
+    const player = h.me();
+    player.groceries = 4;
+    player.meal = 1;
+    player.clothes = [3, 0, 2];
+    player.durables.fridge = { n: 1, paid: 300, cheap: true };
+    player.durables.tv = { n: 0, paid: 525, cheap: false };
+    h.render();
+    assert.match(
+      panel.textContent ?? "",
+      /Groceries: 4 weeks · Meal covered this week/,
+    );
+    assert.deepEqual(
+      dom.$$(".fl-belongings li", panel).map((item) => item.textContent),
+      ["Smart fridge"],
+    );
+    const status = h.$<HTMLButtonElement>('button[aria-label="My status"]');
+    status.click();
+    assert.equal(status.getAttribute("aria-expanded"), "true");
+    assert.match(
+      h.$(".fl-you").textContent ?? "",
+      /Wearing: Business · 2 weeks left/,
+    );
+    player.clothes[2] = 0;
+    h.render();
+    assert.match(
+      h.$(".fl-you").textContent ?? "",
+      /Wearing: Casual · 3 weeks left/,
+    );
+  }
 });
 
 test("the you panel: the clock opens it with money, job, chips, tips and goals; ×, the clock or Escape close it; news opens it once", () => {
