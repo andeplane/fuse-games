@@ -83,7 +83,7 @@ pnpm exec tsx --test games/elasto-fuse/tests/app-screen.test.ts     # forward ru
 pnpm exec tsx --test games/elasto-fuse/tests/app-reports.test.ts    # result reports
 pnpm exec tsx --test games/elasto-fuse/tests/render.test.ts         # cues, HUD, camera, IK, tinting
 pnpm exec tsx scripts/elasto-fuse-keyboard.ts                      # real menu close → focus → arrow-key driving
-pnpm build && pnpm exec tsx scripts/elasto-fuse-progression.ts     # Continue, locked levels, Random and a room guest unlock
+pnpm build && pnpm exec tsx games/elasto-fuse/progression-smoke.ts # Continue, locked levels, Random and a room guest unlock
 ```
 
 The keyboard smoke starts Vite on a free port, or uses `HOME_URL` when supplied. It checks Back, Escape,
