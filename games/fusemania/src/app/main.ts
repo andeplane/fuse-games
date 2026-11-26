@@ -1347,6 +1347,36 @@ function enterRoom(
   stage.append(screen, note, touch.row);
   // A phone's live song is the whole screen, the lanes reflowing to whichever way it is held.
   const playScreen = createPlayScreen({ stage, onChange: () => letGoAll() });
+  const menuButton = top.querySelector(".fui-top-bar-toggle");
+  const touchLandscape = matchMedia("(orientation: landscape)");
+  let sideInset = 0;
+  let topInset = 0;
+  const leftPad = touch.row.querySelector(".fm-pad-0");
+  const rightPad = touch.row.querySelector(".fm-pad-3");
+  const titleInsets = { left: 0, right: 0 };
+  function measurePlayHud() {
+    sideInset = topInset = titleInsets.left = titleInsets.right = 0;
+    if (playScreen.mode() === "off") return;
+    const field = canvas.getBoundingClientRect();
+    const menuBox = menuButton?.getBoundingClientRect();
+    const pauseBox = pauseButton.hidden
+      ? undefined
+      : pauseButton.getBoundingClientRect();
+    if (menuBox) titleInsets.right = Math.max(0, field.right - menuBox.left);
+    if (pauseBox) titleInsets.left = Math.max(0, pauseBox.right - field.left);
+    if (!touchLandscape.matches)
+      topInset = Math.max(
+        0,
+        Math.max(menuBox?.bottom ?? 0, pauseBox?.bottom ?? 0) - field.top,
+      );
+    if (touchLandscape.matches && !touch.row.hidden && leftPad && rightPad)
+      sideInset =
+        8 +
+        Math.max(
+          leftPad.getBoundingClientRect().right - field.left,
+          field.right - rightPad.getBoundingClientRect().left,
+        );
+  }
 
   const controller = el("section", "", "fm-controller"),
     controllerHead = el("header", "", "fm-controller-head"),
@@ -1788,6 +1818,9 @@ function enterRoom(
       totals: model.totals,
       totalSongs: model.totalSongs,
       itemKey: coarse() ? "ITEM" : keyLabel(prefs.keys.item[0] ?? ""),
+      sideInset,
+      topInset,
+      titleInsets,
     });
     const done = performance.now();
     probe.frameEnd(done);
@@ -1981,6 +2014,7 @@ function enterRoom(
     const battle = view.play.mode === BATTLE_MODE;
     touch.item.hidden = controllerPads.item.hidden = !battle;
     main.dataset.touch = String(touchOn);
+    measurePlayHud();
     scene.resize();
     // The phone controller.
     if (next.localSlot !== -1) {
@@ -2231,6 +2265,7 @@ function enterRoom(
     reload: () => location.reload(),
   });
   window.addEventListener("resize", () => {
+    measurePlayHud();
     scene.resize();
     drawGraph();
   });

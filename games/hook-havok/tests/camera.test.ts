@@ -54,3 +54,16 @@ test("canvas points map through the current frame, and frames ease", () => {
   assert.equal(half.x, 960);
   assert.equal(half.zoom, (whole.zoom + 1) / 2);
 });
+
+test("a wider phone view reveals scenery without stretching or clipping the arena", () => {
+  const phone = { width: 1980, height: 900 };
+  const view = wholeArena(BELFRY, phone);
+  assert.equal(view.zoom, 1);
+  assert.deepEqual(canvasToWorld(view, 0.5, 0.5, phone), { x: 800, y: 450 });
+  assert.deepEqual(canvasToWorld(view, 0, 0, phone), { x: -190, y: 0 });
+  assert.deepEqual(canvasToWorld(view, 1, 1, phone), { x: 1790, y: 900 });
+  assert.deepEqual(
+    followKeepers(BELFRY, [{ x: 10, y: 30 }], undefined, phone),
+    view,
+  );
+});

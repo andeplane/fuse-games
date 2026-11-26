@@ -76,6 +76,12 @@ export interface DrawOptions {
   itemKey: string;
   /** CSS pixels at the bottom of the canvas covered by touch buttons (0 when none): the field stays above it. */
   inset?: number;
+  /** CSS pixels occupied by the left and right touch controls in a wide phone layout. */
+  sideInset?: number;
+  /** CSS pixels occupied by the top buttons above a portrait leaderboard. */
+  topInset?: number;
+  /** CSS pixels on the title bar occupied by the phone's Pause and menu buttons. */
+  titleInsets?: { left: number; right: number };
 }
 const NO_TOTALS: readonly number[] = [];
 export interface Scene {
@@ -106,7 +112,9 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
     layout: Layout | undefined,
     laidRiders = -1,
     laidLocal = -2,
-    laidInset = -1;
+    laidInset = -1,
+    laidSide = -1,
+    laidTop = -1;
 
   const frame: Frame | undefined = g
     ? {
@@ -158,18 +166,37 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
   }
 
   /** The layout for this many riders, and the sprites its fields are drawn with: remade only when something changed. */
-  function laid(riders: number, local: number, inset: number): Layout {
+  function laid(
+    riders: number,
+    local: number,
+    inset: number,
+    side: number,
+    top: number,
+  ): Layout {
     if (
       layout &&
       laidRiders === riders &&
       laidLocal === local &&
-      laidInset === inset
+      laidInset === inset &&
+      laidSide === side &&
+      laidTop === top
     )
       return layout;
-    layout = layoutFor(canvas.width, canvas.height, riders, local, inset, unit);
+    layout = layoutFor(
+      canvas.width,
+      canvas.height,
+      riders,
+      local,
+      inset,
+      unit,
+      side,
+      top,
+    );
     laidRiders = riders;
     laidLocal = local;
     laidInset = inset;
+    laidSide = side;
+    laidTop = top;
     for (const size of [...sets.keys()])
       if (!layout.fields.some((field) => field.col === size)) sets.delete(size);
     for (const field of layout.fields)
@@ -189,7 +216,13 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
       if (!g || !frame || canvas.width <= 0 || canvas.height <= 0) return;
       const riders = view.players.length;
       const local = shot.local >= 0 && shot.local < riders ? shot.local : -1;
-      const plan = laid(riders, local, Math.max(0, shot.inset ?? 0));
+      const plan = laid(
+        riders,
+        local,
+        Math.max(0, shot.inset ?? 0),
+        shot.sideInset ?? 0,
+        shot.topInset ?? 0,
+      );
       const width = plan.width,
         height = plan.height;
 
@@ -272,27 +305,30 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
         size = Math.round(8 * unit),
         bar = plan.barHeight;
       const named = local >= 0 ? (shot.chartNames[local] ?? "") : "";
+      const titleLeft = pad + (shot.titleInsets?.left ?? 0) * unit;
+      const titleRight = width - pad - (shot.titleInsets?.right ?? 0) * unit;
+      const titleWidth = Math.max(1, titleRight - titleLeft);
       g.globalAlpha = 1;
       label(
         g,
         fitText(title, shot.title, 64),
-        pad,
+        titleLeft,
         bar * 0.42,
         size,
         TEXT,
         "left",
-        width * (named ? 0.62 : 1) - pad * 2,
+        titleWidth * (named ? 0.62 : 1),
       );
       if (named)
         label(
           g,
           fitText(chart, named, 24),
-          width - pad,
+          titleRight,
           bar * 0.42,
           size,
           MUTED,
           "right",
-          width * 0.34,
+          titleWidth * 0.34,
         );
       const thick = Math.max(2, Math.round(3 * unit));
       const progress =

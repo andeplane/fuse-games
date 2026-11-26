@@ -1004,6 +1004,7 @@ function room(solo: boolean): void {
   // ---- drawing: the newest folded world played forward to the clock, once per animation frame ----
   const scene = createScene(canvas, {
     reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    fullStage: () => playScreen.mode() !== "off",
   });
   let model: Model | undefined;
   const smoother = createSmoother(),

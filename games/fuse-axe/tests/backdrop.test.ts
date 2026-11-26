@@ -185,6 +185,38 @@ test("every layer is exactly long enough to reach the stage end", () => {
     assert.equal(b.sx + VIEW_W, b.surface.width);
 });
 
+test("wide views reuse cached scenery and keep each layer aligned at both ends of the stage", () => {
+  const gutter = 40;
+  for (const { surfaces, backdrop } of [stage1(), made(createCampBackdrop)]) {
+    const count = surfaces.length;
+    for (const camX of [0, 12, 333, CAMERA_END_PX - 12, CAMERA_END_PX]) {
+      const regular = new RecordingPen();
+      backdrop.draw(regular, camX, 31);
+      backdrop.drawFront(regular, camX);
+      const wide = new RecordingPen();
+      backdrop.draw(wide, camX, 31, gutter);
+      backdrop.drawFront(wide, camX, gutter);
+      for (const base of regular.blits) {
+        const row = wide.blits.filter(
+          ({ surface }) => surface === base.surface,
+        );
+        const center = row.find(({ dx, dw }) => dx <= 0 && dx + dw >= VIEW_W);
+        assert.ok(center);
+        assert.equal(center.sx - center.dx, base.sx);
+        assert.equal(center.sw, center.dw, "the original scale is preserved");
+        let x = -gutter;
+        for (const part of row.sort((a, b) => a.dx - b.dx)) {
+          assert.equal(part.dx, x, "the extension has no seams");
+          assert.ok(part.sx >= 0 && part.sx + part.sw <= base.surface.width);
+          x += part.dw;
+        }
+        assert.equal(x, VIEW_W + gutter);
+      }
+    }
+    assert.equal(surfaces.length, count, "resizing baked no new layers");
+  }
+});
+
 test("the camera is held to the stage", () => {
   const same = (a: number, b: number) =>
     assert.deepEqual(frame(a, 3), frame(b, 3), `${a} vs ${b}`);

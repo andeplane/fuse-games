@@ -1,4 +1,5 @@
 import { createTopBar } from "fuse-ui";
+import { setPhoneGamePlaying } from "fuse-ui/embedded";
 import { playtestInputBlocked } from "fuse-ui/playtest-input";
 import { requestedRoomSlot } from "fuse-ui";
 import { createGameSocial } from "fuse-ui/social";
@@ -187,6 +188,7 @@ function room(solo: boolean) {
   let invited = solo || display;
   const sent = new Set<string>();
   const leave = () => {
+    setPhoneGamePlaying(document, false);
     runtime.stop();
     location.href = endpoints.appUrl();
   };
@@ -304,6 +306,7 @@ function room(solo: boolean) {
   const arena = createArena({ fill: true });
   const commands = createCommands((action) => runtime.play(action), arena);
   battleSection.append(arena.element, commands.element);
+  arena.setCommandPanel(commands.element);
   const results = createResultsScreen({
     document,
     onBack: leave,
@@ -328,6 +331,7 @@ function room(solo: boolean) {
       live.show(shown, shown === text ? "info" : "error");
     },
     ended() {
+      setPhoneGamePlaying(document, false);
       status.show("Room ended", "error");
       live.show("Room ended", "error");
     },
@@ -365,6 +369,10 @@ function room(solo: boolean) {
         }),
       );
       main.dataset.phase = frame.phase;
+      setPhoneGamePlaying(
+        document,
+        frame.phase === "running" && Boolean(frame.battle) && !display,
+      );
       lobby.hidden = !inLobby;
       battleSection.hidden = inLobby || frame.phase === "over";
       live.element.hidden = inLobby;
@@ -551,7 +559,10 @@ function room(solo: boolean) {
   );
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
-    destroy: () => menu.dispose(),
+    destroy: () => {
+      setPhoneGamePlaying(document, false);
+      menu.dispose();
+    },
     reload: () => location.reload(),
   });
   document.addEventListener("keydown", (event) => {

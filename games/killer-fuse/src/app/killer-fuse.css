@@ -989,7 +989,8 @@ html[data-fui-play] .kf-arena {
   gap: 0;
 }
 html[data-fui-play] .kf-arena > .kf-stage {
-  width: min(100cqw, 100cqh * 16 / 9);
+  width: 100cqw;
+  height: 100cqh;
   border-radius: 0;
 }
 html[data-fui-play] .kf-arena > .kf-seat-line {

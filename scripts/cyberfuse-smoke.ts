@@ -523,8 +523,41 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
         mapBounds.x + mapBounds.width <= topBarBounds.x),
     "the whole landscape Map button clears the top bar or compact menu",
   );
+  const closeMap = peer.getByRole("button", { name: "Close map", exact: true });
   await map.tap();
-  await peer.getByRole("button", { name: "Close map", exact: true }).tap();
+  await closeMap.waitFor();
+  assert.equal(await map.getAttribute("aria-expanded"), "true");
+  await map.tap();
+  assert.equal(
+    await closeMap.isVisible(),
+    true,
+    "Map remains open when tapped again",
+  );
+  await closeMap.tap();
+  await closeMap.waitFor({ state: "hidden" });
+  assert.equal(await map.getAttribute("aria-expanded"), "false");
+  const client = await peer.context().newCDPSession(peer);
+  try {
+    const point = {
+      x: mapBounds.x + mapBounds.width / 2,
+      y: mapBounds.y + mapBounds.height / 2,
+    };
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [point],
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchCancel",
+      touchPoints: [],
+    });
+  } finally {
+    await client.detach();
+  }
+  assert.equal(
+    await closeMap.isVisible(),
+    false,
+    "a canceled Map touch does not open it",
+  );
   await resizeSmokeViewport(peer, { width: 360, height: 780 });
   await hashAgreement(peer);
   const shooter = await current(host);

@@ -219,6 +219,19 @@ mountFuseCraft(root, {
     requestFrame: (callback) => requestAnimationFrame(callback),
     cancelFrame: (handle) => cancelAnimationFrame(handle),
     screen: createPointerSurface(window),
+    overlays(viewport) {
+      if (!document.documentElement.hasAttribute("data-fui-play"))
+        return { top: 12, bottom: 12 };
+      const layout = viewport.closest(".game-layout");
+      return {
+        top:
+          (layout?.querySelector<HTMLElement>(".battle-topbar")?.offsetHeight ??
+            0) + 12,
+        bottom:
+          (layout?.querySelector<HTMLElement>(".command-dock")?.offsetHeight ??
+            0) + 12,
+      };
+    },
   }),
   ...(fullscreen ? { fullscreen } : {}),
   // Light is soft, so one canvas pixel per CSS pixel is enough; on dense

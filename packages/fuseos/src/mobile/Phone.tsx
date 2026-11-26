@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PortalGame } from "fuse-ui/portal";
+import { PHONE_GAME_HOME, PHONE_GAME_PLAYING } from "fuse-ui/embedded";
 import { fuseSoundtrack } from "../winamp/fuseTracks";
 import type { WebampPlayer } from "../winamp/webampPlayer";
 import type { PhoneNavigation, WelcomePreference } from "./phoneNavigation";
@@ -394,6 +395,7 @@ export function Phone({
           <iframe
             key={activeGame.id}
             className="phone-game"
+            data-fui-phone-game=""
             hidden={!selected}
             title={activeGame.name}
             src={`${base}${activeGame.path}${muted ? "?mute" : ""}`}
@@ -401,7 +403,21 @@ export function Phone({
             onLoad={(event) => {
               // Games share our origin. Keep their portal's top-level links inside
               // the phone so opening the catalogue never tears down the player.
-              const page = event.currentTarget.contentDocument;
+              const frame = event.currentTarget;
+              const page = frame.contentDocument;
+              // A navigation within this iframe can replace a running match with a fresh landing page.
+              frame.toggleAttribute(
+                PHONE_GAME_PLAYING,
+                !!page?.documentElement?.hasAttribute(PHONE_GAME_PLAYING),
+              );
+              page?.addEventListener(PHONE_GAME_HOME, () => {
+                if (
+                  frame.isConnected &&
+                  !frame.hidden &&
+                  frame.contentDocument === page
+                )
+                  navigate("home");
+              });
               const root = new URL(base, event.currentTarget.ownerDocument.URL);
               page?.addEventListener("click", (click) => {
                 const anchor = (click.target as Element | null)?.closest?.("a");

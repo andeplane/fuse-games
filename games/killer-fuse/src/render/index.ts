@@ -7,6 +7,7 @@
  * drawing; a retained scene graph would have to be reconciled with the view every frame, and the horizontal wrap
  * (everything near an edge shows on both sides) is one more draw call here but a second set of objects there.
  */
+import { fitPlayViewport } from "fuse-ui";
 import type { RoundView } from "../engine/view.js";
 import {
   bodyShape,
@@ -81,6 +82,7 @@ class Arena implements ArenaView {
   );
   private overlay: HTMLCanvasElement | null = null;
   private fit: Fit = fitView(VIEW_WIDTH, VIEW_HEIGHT, 1);
+  private phoneFit: ReturnType<typeof fitPlayViewport> | null = null;
   private readonly observer: ResizeObserver | null;
   private sprites: Sprites | null = null;
   private scene: Scene | null = null;
@@ -151,22 +153,29 @@ class Arena implements ArenaView {
   }
 
   resize(): void {
-    const fit = fitView(
-      this.wrapper.clientWidth,
-      this.wrapper.clientHeight,
-      window.devicePixelRatio,
-    );
+    const hostWidth = this.wrapper.clientWidth,
+      hostHeight = this.wrapper.clientHeight;
+    const fit = fitView(hostWidth, hostHeight, window.devicePixelRatio);
     this.fit = fit;
-    if (this.canvas.width !== fit.width || this.canvas.height !== fit.height) {
-      this.canvas.width = fit.width;
-      this.canvas.height = fit.height;
+    const phone =
+        hostWidth > 0 && hostHeight > 0 && this.host.closest(".fui-play-stage"),
+      ratio = Math.min(3, window.devicePixelRatio || 1);
+    const width = phone ? Math.round(hostWidth * ratio) : fit.width,
+      height = phone ? Math.round(hostHeight * ratio) : fit.height;
+    this.phoneFit = phone
+      ? fitPlayViewport(width, height, VIEW_WIDTH, VIEW_HEIGHT)
+      : null;
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
       this.overlay = null;
     }
-    this.canvas.style.width = `${fit.cssWidth}px`;
-    this.canvas.style.height = `${fit.cssHeight}px`;
-    this.canvas.style.left = `${fit.left}px`;
-    this.canvas.style.top = `${fit.top}px`;
-    this.canvas.style.imageRendering = fit.smooth ? "auto" : "pixelated";
+    this.canvas.style.width = `${phone ? hostWidth : fit.cssWidth}px`;
+    this.canvas.style.height = `${phone ? hostHeight : fit.cssHeight}px`;
+    this.canvas.style.left = `${phone ? 0 : fit.left}px`;
+    this.canvas.style.top = `${phone ? 0 : fit.top}px`;
+    this.canvas.style.imageRendering =
+      phone || fit.smooth ? "auto" : "pixelated";
   }
 
   update(options: Partial<Options>): void {
@@ -473,18 +482,28 @@ class Arena implements ArenaView {
     look(source, camera);
     scene.dimForGlow(source, sceneFrame);
     source.setTransform(1, 0, 0, 1, 0, 0);
-    this.present();
+    this.present(scene, sceneFrame);
   }
 
   /** The low-resolution picture onto the screen at a whole scale, then light: a glow, a vignette, faint scanlines. */
-  private present(): void {
+  private present(scene: Scene, frame: SceneFrame): void {
     const { ctx } = this;
-    const { width, height } = this.fit;
+    const { width, height } = this.canvas;
+    const phone = this.phoneFit,
+      x = phone?.x ?? 0,
+      y = phone?.y ?? 0,
+      boardWidth = phone ? VIEW_WIDTH * phone.scale : width,
+      boardHeight = phone ? VIEW_HEIGHT * phone.scale : height;
     const low = this.low.canvas;
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(low, 0, 0, width, height);
+    if (phone) {
+      ctx.setTransform(phone.scale, 0, 0, phone.scale, x, y);
+      scene.drawBackground(ctx, frame, x / phone.scale, y / phone.scale);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    ctx.drawImage(low, x, y, boardWidth, boardHeight);
 
     // Glow: the picture halved, multiplied by itself so only bright colour survives, then shrunk again. Drawn
     // back enlarged and added, it puts a soft halo around team colours without touching the pixels under it.
@@ -503,9 +522,9 @@ class Arena implements ArenaView {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.globalAlpha = 0.42;
-    ctx.drawImage(far.canvas, 0, 0, width, height);
+    ctx.drawImage(far.canvas, x, y, boardWidth, boardHeight);
     ctx.globalAlpha = 0.18;
-    ctx.drawImage(near.canvas, 0, 0, width, height);
+    ctx.drawImage(near.canvas, x, y, boardWidth, boardHeight);
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
     ctx.drawImage(this.overlayFor(width, height), 0, 0);

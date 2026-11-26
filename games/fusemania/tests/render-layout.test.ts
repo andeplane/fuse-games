@@ -131,6 +131,32 @@ test("every field and every leaderboard box is inside the canvas and above the t
         }
 });
 
+test("landscape phone controls leave room for wider solo lanes and separate multiplayer boards", () => {
+  const width = 844;
+  const height = 390;
+  const inset = 72;
+  const desktop = layoutFor(width, height, 1, 0);
+  const phone = layoutFor(width, height, 1, 0, 0, 1, inset);
+  assert.ok(phone.fields[0]!.col > desktop.fields[0]!.col);
+  assert.equal(phone.fields[0]!.laneBottom, desktop.fields[0]!.laneBottom);
+
+  const party = layoutFor(width, height, 5, 2, 0, 1, inset);
+  assert.equal(party.fields.length, 5);
+  assert.equal(party.panel?.count, 5);
+  for (const box of [...party.fields.map(fieldBox), ...boxes(party)]) {
+    assert.ok(box.x >= inset);
+    assert.ok(box.x + box.width <= width - inset);
+  }
+});
+
+test("portrait leaderboard and lanes begin below the top buttons", () => {
+  const topInset = 52;
+  const layout = layoutFor(360, 800, 5, 2, 0, 1, 0, topInset);
+  assert.ok(layout.panel?.strip);
+  for (const box of [...boxes(layout), ...layout.fields.map(fieldBox)])
+    assert.ok(box.y >= topInset);
+});
+
 test("the leaderboard is a column on the right where there is room, and a strip along the top of a portrait phone", () => {
   const at = (name: string, riders: number, local: number) => {
     const screen = SCREENS.find((s) => s.name === name)!;

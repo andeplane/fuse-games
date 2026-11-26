@@ -197,7 +197,7 @@ export class Scene {
 
   draw(ctx: Ctx, frame: SceneFrame): void {
     const { view } = frame;
-    this.background(ctx, frame);
+    this.drawBackground(ctx, frame);
     ctx.drawImage(this.platformLayer(view.map), 0, 0);
     view.hives.forEach((holes, team) => this.hive(ctx, team, holes, frame));
     this.eggs(ctx, frame);
@@ -221,10 +221,15 @@ export class Scene {
     this.tags(ctx, frame, units.inViewOrder);
   }
 
-  private background(ctx: Ctx, frame: SceneFrame): void {
+  drawBackground(ctx: Ctx, frame: SceneFrame, gutterX = 0, gutterY = 0): void {
     const { sprites } = this;
     ctx.fillStyle = INK;
-    ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+    ctx.fillRect(
+      -gutterX,
+      -gutterY,
+      VIEW_WIDTH + 2 * gutterX,
+      VIEW_HEIGHT + 2 * gutterY,
+    );
     const layer = (id: string, sway: number): void => {
       const def = sprites.def(id);
       const image = sprites.art.images.get(id);
@@ -233,8 +238,9 @@ export class Scene {
       const depth = 1 - def.parallax;
       const x = Math.round(-frame.shakeX * depth * 0.7 + sway),
         y = Math.round(-frame.shakeY * depth * 0.7);
-      for (const offset of [-VIEW_WIDTH, 0, VIEW_WIDTH])
-        ctx.drawImage(image, x + offset, y);
+      const copies = Math.max(1, Math.ceil(gutterX / VIEW_WIDTH));
+      for (let i = -copies; i <= copies; i++)
+        ctx.drawImage(image, x + i * VIEW_WIDTH, y);
     };
     layer("bg-far", 0);
     for (const mote of this.motes) {

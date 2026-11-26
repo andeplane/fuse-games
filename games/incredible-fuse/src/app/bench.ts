@@ -1,4 +1,4 @@
-import { localPoint } from "fuse-ui";
+import { localPoint, stageBox } from "fuse-ui";
 import { BodyPlayback } from "./body-playback.js";
 import {
   PARTS,
@@ -20,7 +20,13 @@ import {
   type LinkKind,
 } from "../game/machine-links.js";
 import { partIcon } from "./bench-art.js";
-import { paintMachine, WIDTH, HEIGHT, type BoardPoint } from "./bench-board.js";
+import {
+  paintMachine,
+  WIDTH,
+  HEIGHT,
+  type BoardPoint,
+  type WorkbenchView,
+} from "./bench-board.js";
 import "./bench.css";
 export { paintMachine };
 
@@ -187,6 +193,23 @@ export function createBench(options: {
     if (playback.pending(options.now()))
       frame = options.frames.requestAnimationFrame(animate);
   }
+  function workbenchView(): WorkbenchView | undefined {
+    if (!canvas.ownerDocument.documentElement.hasAttribute("data-fui-play"))
+      return;
+    const whole = stageBox(canvas);
+    const frame = stageBox(boardFrame);
+    const width = whole.right - whole.left;
+    const height = whole.bottom - whole.top;
+    const board = {
+      x: frame.left - whole.left,
+      y: frame.top - whole.top,
+      width: frame.right - frame.left,
+      height: frame.bottom - frame.top,
+    };
+    if (!width || !height || !board.width || !board.height) return;
+    return { width, height, board };
+  }
+
   function redraw() {
     if (!machine) return;
     let ghost: { kind: PartKind; flip: boolean } | undefined;
@@ -196,12 +219,33 @@ export function createBench(options: {
       else if (part && !part.fixed && !link && (!drag || drag.moved))
         ghost = { kind: part.kind, flip: part.flip };
     }
-    paintMachine(canvas, playback.sample(machine, options.now()), {
-      selected: building() ? selected : undefined,
-      cursor: building() && cursorVisible ? cursor : undefined,
-      ghost,
-      link,
-    });
+    const view = workbenchView();
+    if (view && machine.mode === "solved") {
+      const { board } = view;
+      const position = (name: string, value: number) =>
+        boardFrame.style.setProperty("--if-" + name, value + "px");
+      position("board-left", board.x);
+      position("board-top", board.y);
+      position("board-width", board.width);
+      position("board-height", board.height);
+      const x =
+        Number.parseFloat(boardFrame.style.getPropertyValue("--catch-x")) / 100;
+      const y =
+        Number.parseFloat(boardFrame.style.getPropertyValue("--catch-y")) / 100;
+      position("catch-left", board.x + x * board.width);
+      position("catch-top", board.y + y * board.height);
+    }
+    paintMachine(
+      canvas,
+      playback.sample(machine, options.now()),
+      {
+        selected: building() ? selected : undefined,
+        cursor: building() && cursorVisible ? cursor : undefined,
+        ghost,
+        link,
+      },
+      view,
+    );
   }
   function resetSelection() {
     keyboardMove = false;
@@ -404,17 +448,28 @@ export function createBench(options: {
     } else selected = undefined;
     refresh();
   }
-  function boardPoint(e: PointerEvent): BoardPoint {
-    // Along the board's own axes: a phone's play screen draws the bench turned when the phone is upright.
+  function boardPoint(e: PointerEvent): { point: BoardPoint; inside: boolean } {
     const r = localPoint(canvas, e.clientX, e.clientY);
+    const board = workbenchView()?.board ?? {
+      x: 0,
+      y: 0,
+      width: r.width,
+      height: r.height,
+    };
+    const x = ((r.x - board.x) * WIDTH) / board.width;
+    const y = ((r.y - board.y) * HEIGHT) / board.height;
     return {
-      x: Math.max(0, Math.min(WIDTH, Math.round((r.x * WIDTH) / r.width))),
-      y: Math.max(0, Math.min(HEIGHT, Math.round((r.y * HEIGHT) / r.height))),
+      point: {
+        x: Math.max(0, Math.min(WIDTH, Math.round(x))),
+        y: Math.max(0, Math.min(HEIGHT, Math.round(y))),
+      },
+      inside: x >= 0 && x <= WIDTH && y >= 0 && y <= HEIGHT,
     };
   }
   canvas.addEventListener("pointerdown", (e) => {
     if (!e.isPrimary || e.button !== 0 || !building()) return;
-    const p = boardPoint(e);
+    const { point: p, inside } = boardPoint(e);
+    if (!inside) return;
     cursor = p;
     keyboardMove = false;
     cursorVisible = false;
@@ -436,14 +491,16 @@ export function createBench(options: {
   });
   canvas.addEventListener("pointermove", (e) => {
     if (!e.isPrimary || !building()) return;
-    const p = boardPoint(e);
+    const { point: p, inside } = boardPoint(e);
     cursor = p;
     if (drag && e.pointerId === drag.pointer) {
       cursor = { x: p.x + drag.offset.x, y: p.y + drag.offset.y };
       if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 3)
         drag.moved = true;
       cursorVisible = drag.moved;
-    } else cursorVisible = e.pointerType === "mouse" && Boolean(tool || link);
+    } else
+      cursorVisible =
+        inside && e.pointerType === "mouse" && Boolean(tool || link);
     redraw();
   });
   canvas.addEventListener("pointerup", (e) => {
@@ -453,9 +510,7 @@ export function createBench(options: {
       !canvas.hasPointerCapture(e.pointerId)
     )
       return;
-    const p = boardPoint(e),
-      r = localPoint(canvas, e.clientX, e.clientY),
-      inside = r.x >= 0 && r.x <= r.width && r.y >= 0 && r.y <= r.height;
+    const { point: p, inside } = boardPoint(e);
     const held = drag;
     drag = undefined;
     canvas.releasePointerCapture(e.pointerId);
@@ -568,6 +623,7 @@ export function createBench(options: {
       ? undefined
       : new ResizeObserver(() => redraw());
   resize?.observe(canvas);
+  resize?.observe(boardFrame);
   return {
     element: root,
     update(next: Machine, canEdit: boolean) {

@@ -21,6 +21,7 @@
   min-height: 0;
   border: 0;
   object-fit: contain;
+  background-image: var(--arena-apron, none);
   flex: none;
 }
 .mobile-play .online-header,
@@ -86,6 +87,16 @@
   z-index: var(--fui-z-menu);
   background: #071428dd;
   font-size: 0.75rem;
+}
+.online-app > .fui-phone-home {
+  display: none;
+}
+.mobile-play.mobile-tools-open > .fui-phone-home {
+  display: block;
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top));
+  left: max(0.5rem, env(safe-area-inset-left));
+  z-index: var(--fui-z-menu);
 }
 .mobile-play > .mobile-control-hints {
   display: grid;

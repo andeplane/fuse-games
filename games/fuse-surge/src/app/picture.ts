@@ -9,6 +9,7 @@ export function createPicture(
   host: HTMLElement,
   options: {
     look: LookId;
+    fullStage?: () => boolean;
     reducedMotion?: boolean;
     /** Without the board a 3D look shows no scores (the menu's demo). */
     board?: boolean;

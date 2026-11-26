@@ -107,7 +107,8 @@ export function createArena(
         height = Math.max(1, Math.round(canvas.clientHeight * ratio));
       if (game.scale.width !== width || game.scale.height !== height)
         game.scale.resize(width, height);
-      if (!scene.paint(frame, now, ratio)) return false;
+      if (!scene.paint(frame, now, ratio, !!canvas.closest(".fui-play-stage")))
+        return false;
       game.step(now, Math.max(0, Math.min(50, now - previousTime)));
       previousTime = now;
       return true;
@@ -287,7 +288,12 @@ class BirdsScene extends Phaser.Scene {
     c.strokeRect(7, 9, 50, 46);
     tex.refresh();
   }
-  paint(frame: ArenaFrame, now: number, pixelRatio = 1): boolean {
+  paint(
+    frame: ArenaFrame,
+    now: number,
+    pixelRatio = 1,
+    fullscreen = false,
+  ): boolean {
     const { world: view } = frame,
       viewport = { width: this.scale.width, height: this.scale.height };
     const cssViewport = {
@@ -295,9 +301,30 @@ class BirdsScene extends Phaser.Scene {
       height: viewport.height / pixelRatio,
     };
     const camera = constrainCamera(frame.camera, view, viewport, frame.shared);
-    this.cameras.main
-      .setZoom(fitScale(view, viewport) * camera.zoom)
-      .centerOn(camera.x, camera.y);
+    const zoom = fitScale(view, viewport) * camera.zoom;
+    this.cameras.main.setZoom(zoom).centerOn(camera.x, camera.y);
+    // Keep the overview's complete battlefield and extend its sky and sea
+    // through the extra view around the map on a full-screen phone.
+    const left = fullscreen
+      ? Math.min(0, camera.x - viewport.width / (2 * zoom))
+      : 0;
+    const right = fullscreen
+      ? Math.max(view.width, camera.x + viewport.width / (2 * zoom))
+      : view.width;
+    const top = fullscreen ? camera.y - viewport.height / (2 * zoom) : 0;
+    const bottom = fullscreen
+      ? Math.max(view.height, camera.y + viewport.height / (2 * zoom))
+      : view.height;
+    const skyScale = fullscreen
+      ? Math.max(
+          1,
+          (768 - left) / 768,
+          (right - 768) / 768,
+          (384 - top) / 432,
+          (bottom - 384) / 432,
+        )
+      : 1;
+    this.sky.setDisplaySize(1536 * skyScale, 864 * skyScale);
     const worldId = `${view.id}:${view.round}`;
     if (this.worldId !== worldId) {
       this.invalidate();
@@ -351,23 +378,24 @@ class BirdsScene extends Phaser.Scene {
       waterTime = this.reducedMotion ? 0 : now;
     g.clear();
     g.fillStyle(0x071e39, 0.93).fillRect(
-      0,
+      left,
       view.water,
-      view.width,
-      view.height - view.water,
+      right - left,
+      bottom - view.water,
     );
     const glowDepth = Math.min(120, view.height - view.water);
     for (let depth = 0; depth < glowDepth; depth += 4)
       g.fillStyle(0x096ce3, 0.34 * (1 - depth / glowDepth) ** 2).fillRect(
-        0,
+        left,
         view.water + depth,
-        view.width,
+        right - left,
         Math.min(4, glowDepth - depth),
       );
     g.lineStyle(1.2, 0x48e4f5, 0.8).beginPath();
-    for (let x = 0; x <= view.width; x += 4) {
+    const waveStart = Math.floor(left / 4) * 4;
+    for (let x = waveStart; x <= Math.ceil(right / 4) * 4; x += 4) {
       const y = view.water + Math.sin(x / 32 + waterTime / 1000) * 0.7;
-      if (!x) g.moveTo(x, y);
+      if (x === waveStart) g.moveTo(x, y);
       else g.lineTo(x, y);
     }
     g.strokePath();

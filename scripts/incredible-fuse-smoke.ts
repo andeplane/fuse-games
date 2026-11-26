@@ -1,34 +1,21 @@
 /** Run against the local Fuse service. Host, guest and TV use separate browser profiles. */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import type { Locator, Page } from "playwright";
+import type { Page } from "playwright";
 import {
   FREE_WORKSHOP,
-  HEIGHT,
   PART_KINDS,
-  WIDTH,
 } from "../games/incredible-fuse/src/game/machine-parts.js";
 import { launchSelected } from "./lib/browser.js";
 import { startGameCoverage } from "./lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
+import { workbenchScreenPoint } from "./lib/play-recipes.js";
 import { startRoomService } from "./lib/server.js";
 import { smokeTimeout } from "./smoke-timeout.js";
 
-async function tapBoard(board: Locator, x: number, y: number) {
-  const position = await board.evaluate(
-    (element, { xFraction, yFraction }) => {
-      const { width, height } = element.getBoundingClientRect();
-      const turned =
-        element.ownerDocument.documentElement.dataset.fuiPlay === "turned" &&
-        element.closest(".fui-play-stage");
-      // On the turned stage, workbench x runs down and y runs left.
-      return turned
-        ? { x: width * (1 - yFraction), y: height * xFraction }
-        : { x: width * xFraction, y: height * yFraction };
-    },
-    { xFraction: x / WIDTH, yFraction: y / HEIGHT },
-  );
-  await board.tap({ position });
+async function tapBoard(page: Page, x: number, y: number) {
+  const point = await workbenchScreenPoint(page, x, y);
+  await page.touchscreen.tap(point.x, point.y);
 }
 
 async function savedWorkshop(page: Page, url: URL) {
@@ -150,19 +137,19 @@ try {
   const feedback = guest.locator(".if-bench-feedback");
   assert.match(await feedback.innerText(), /Flip to reverse the slope/);
   const board = guest.locator(".if-bench-board");
-  await tapBoard(board, 2, 60);
+  await tapBoard(guest, 2, 60);
   assert.match(await feedback.innerText(), /whole part inside/);
   assert.equal(await incline.getAttribute("aria-pressed"), "true");
   for (let i = 0; i < 20; i++) await board.press("ArrowRight");
   await board.press("Enter");
   assert.match(await feedback.innerText(), /Another part is centered here/);
   assert.equal(await incline.getAttribute("aria-pressed"), "true");
-  await tapBoard(board, 160, 140);
+  await tapBoard(guest, 160, 140);
   await host
     .locator(".if-bench-tools button:enabled")
     .filter({ hasText: "Undo" })
     .waitFor();
-  await tapBoard(board, 160, 140);
+  await tapBoard(guest, 160, 140);
   for (let i = 0; i < 10; i++) await board.press("ArrowUp");
   await board.press("Enter");
   assert.match(await feedback.innerText(), /Another part is centered here/);

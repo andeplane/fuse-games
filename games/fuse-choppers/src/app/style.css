@@ -874,10 +874,17 @@ html[data-fui-play] .fc-stage {
   gap: 0;
 }
 html[data-fui-play] .fc-stage > .fc-screen {
-  width: min(100cqw, 100cqh * 16 / 9);
+  width: 100cqw;
+  height: 100cqh;
   border: 0;
   border-radius: 0;
   box-shadow: none;
+}
+html[data-fui-play] .fc-time {
+  right: max(3rem, calc(var(--fui-play-right) + 2.5rem));
+}
+html[data-fui-play] .fc-legend {
+  display: none;
 }
 html[data-fui-play] .fc-stage > .fc-touch {
   inset: auto 0 0 0;

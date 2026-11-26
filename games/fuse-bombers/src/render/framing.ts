@@ -84,6 +84,24 @@ export function shipMarkers(
   });
 }
 
+/** Uses the rendered viewport for visibility, then places arrows in the centered HUD's coordinate system. */
+export function viewportShipMarkers(
+  ships: readonly ShipPoint[],
+  pose: CameraPose,
+  screen: Size,
+  hud: Size,
+  band: number,
+): ShipMarker[] {
+  const x = (hud.width - screen.width) / 2;
+  const y = (hud.height - screen.height) / 2;
+  return shipMarkers(
+    ships,
+    pose,
+    { width: screen.width, height: screen.height - 2 * band },
+    band + y,
+  ).map((marker) => ({ ...marker, x: marker.x + x }));
+}
+
 /** The sky's parallax: how far (screen px) it slides across the whole world, and how much it grows zoomed in. */
 export const SKY = { parallax: 40, grow: 0.12, margin: 24 } as const;
 

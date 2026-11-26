@@ -16,6 +16,8 @@ import { createTrackArt } from "./track-art.js";
 import type { StadiumTheme } from "./theme.js";
 import { fuseTruckTexture, truckFrame } from "./fuse-truck.js";
 import { paintBattleArt, paintTrackPickups } from "./battle-art.js";
+import { coursePalette } from "./course-palette.js";
+import { deckMaterial } from "./fuse-materials.js";
 
 const TRUCK_SCALE = 44 / (TRUCK_CELL * 0.92);
 export const TILT = 0.72;
@@ -67,6 +69,7 @@ export class RaceScene extends Phaser.Scene {
   static readonly KEY = "fd-race";
   private art?: ReturnType<typeof createTrackArt>;
   private artTrack?: string;
+  private apronTrack?: string;
   private trucks: TruckSprite[] = [];
   private dust?: Phaser.GameObjects.Particles.ParticleEmitter;
   private reference?: ReferenceArt;
@@ -211,6 +214,24 @@ export class RaceScene extends Phaser.Scene {
     const { race, track, poses, newTick } = frame;
     if (this.artTrack !== track.name || this.theme !== theme)
       this.buildTrack(track, theme);
+    const surface = this.game.canvas;
+    if (this.apronTrack !== track.name && surface.closest(".fui-play-stage")) {
+      this.apronTrack = track.name;
+      const tile = surface.ownerDocument.createElement("canvas");
+      tile.width = 64;
+      tile.height = 40;
+      const ctx = tile.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = deckMaterial(ctx, coursePalette(track.name));
+        ctx.fillRect(0, 0, tile.width, tile.height);
+        ctx.fillStyle = "rgba(8, 12, 26, 0.47)";
+        ctx.fillRect(0, 0, tile.width, tile.height);
+        surface.style.setProperty(
+          "--fd-stadium-apron",
+          `url("${tile.toDataURL()}")`,
+        );
+      }
+    }
     const privateClassic = theme === "classic" && !!this.reference;
     const count = privateClassic ? 0 : race.trucks.length;
     if (this.trucks.length !== count || this.theme !== theme)

@@ -16,6 +16,7 @@ import {
   taskbar,
 } from "./lib/fuseos-desktop.js";
 import { smokeTimeout } from "./smoke-timeout.js";
+import { checkPhoneShellPlay } from "./lib/phone-shell-play.js";
 
 /**
  * FuseOS in a browser, against the built site (`HOME_URL`, the room service serving dist/): the desktop boots,
@@ -145,6 +146,8 @@ try {
   assert.deepEqual(errors, [], "page errors");
   console.log(`Screenshots: ${shots.taken.join(", ")}`);
   await context.close();
+  await checkPhoneShellPlay(browser, base);
+  console.log("PASS phone game uses the whole viewport and survives Home");
 } finally {
   await browser.close();
 }

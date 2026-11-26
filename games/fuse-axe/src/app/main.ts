@@ -1,5 +1,10 @@
 import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
-import { createPlayScreen, createTopBar, localPoint } from "fuse-ui";
+import {
+  createPlayScreen,
+  createTopBar,
+  fitPlayViewport,
+  localPoint,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -662,6 +667,15 @@ function room(solo: boolean): void {
   const native = pixels.getContext("2d")!,
     g = canvas.getContext("2d")!,
     scene = createScene(canvasSurface);
+  let gutterX = 0,
+    gutterY = 0;
+  const clip = () => {
+    native.save();
+    native.beginPath();
+    native.rect(0, 0, VIEW_W, VIEW_H);
+    native.clip();
+  };
+  const restore = () => native.restore();
   const fit = () => {
     // The screen's own area (a border is not drawable), in device pixels.
     const ratio = window.devicePixelRatio || 1,
@@ -671,17 +685,20 @@ function room(solo: boolean): void {
       );
     canvas.width = VIEW_W * scale;
     canvas.height = VIEW_H * scale;
-    // A phone's full-screen play stretches the whole-number picture the last bit to the screen's edge: on a phone's
-    // dense pixels the uneven steps do not show, the black frame round a picture a quarter smaller did.
-    const stretch =
-      playScreen.mode() === "off"
-        ? 1 / ratio
-        : Math.min(
-            screen.clientWidth / canvas.width,
-            screen.clientHeight / canvas.height,
-          );
-    canvas.style.width = `${canvas.width * stretch}px`;
-    canvas.style.height = `${canvas.height * stretch}px`;
+    const mobile = playScreen.mode() !== "off";
+    const width = screen.clientWidth,
+      height = screen.clientHeight;
+    if (mobile && width && height) {
+      const phone = fitPlayViewport(width, height, VIEW_W, VIEW_H);
+      gutterX = Math.ceil(phone.x / phone.scale);
+      gutterY = Math.ceil(phone.y / phone.scale);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+    } else gutterX = gutterY = 0;
+    pixels.width = VIEW_W + 2 * gutterX;
+    pixels.height = VIEW_H + 2 * gutterY;
+    canvas.style.width = `${canvas.width / ratio}px`;
+    canvas.style.height = `${canvas.height / ratio}px`;
   };
   new ResizeObserver(fit).observe(screen);
   // ---- the newest folded world played forward to the clock, once per animation frame ----
@@ -748,10 +765,30 @@ function room(solo: boolean): void {
           y: mine?.y,
         });
       }
-      scene.draw(native, world, Math.floor((now * 60) / 1000), model?.hud);
+      native.setTransform(1, 0, 0, 1, gutterX, gutterY);
+      native.imageSmoothingEnabled = false;
+      scene.draw(
+        native,
+        world,
+        Math.floor((now * 60) / 1000),
+        model?.hud,
+        gutterX || gutterY ? { gutterX, gutterY, clip, restore } : undefined,
+      );
       // Resizing the canvas resets its context, smoothing included.
       g.imageSmoothingEnabled = false;
-      g.drawImage(pixels, 0, 0, canvas.width, canvas.height);
+      const { scale, x, y } = fitPlayViewport(
+        canvas.width,
+        canvas.height,
+        VIEW_W,
+        VIEW_H,
+      );
+      g.drawImage(
+        pixels,
+        x - gutterX * scale,
+        y - gutterY * scale,
+        pixels.width * scale,
+        pixels.height * scale,
+      );
     }
     requestAnimationFrame(paint);
   };

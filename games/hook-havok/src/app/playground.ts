@@ -500,6 +500,7 @@ const playScreen = createPlayScreen({
   wide: true,
   onChange(mode) {
     clear();
+    scene?.resizeViewport();
     const hud = document.getElementById("match-hud");
     if (!hud) return;
     if (mode === "off") playSurface.before(hud);
@@ -721,6 +722,7 @@ async function graphics() {
     const { createShowcase } = await import("../render/scene.js");
     if (token !== attempt || disposed) return;
     scene = createShowcase(host, {
+      phoneViewport: true,
       paused: false,
       idleOnly: false,
       atmosphere: atmosphere.checked,

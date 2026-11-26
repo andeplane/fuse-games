@@ -574,8 +574,7 @@ h1 {
   font-weight: 800;
 }
 
-/* A phone's live round (fuse-ui play-screen): the square arena fills the screen's short side; the scores, the clock
-   and the pads float in the room it leaves, above and below it upright, beside it on its side. */
+/* The camera keeps the octagon in view and draws the surrounding station under the HUD and thumb controls. */
 html[data-fui-play] .layout {
   display: grid;
   place-items: center;
@@ -583,7 +582,11 @@ html[data-fui-play] .layout {
   padding: 0;
 }
 html[data-fui-play] .arena-wrap {
-  width: min(100cqw, 100cqh);
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
   max-width: none;
   margin: 0;
 }
@@ -607,7 +610,7 @@ html[data-fui-play] .clock {
   line-height: 1;
 }
 html[data-fui-play] .sidebar .quiet-button {
-  min-height: 32px;
+  min-height: 44px;
   padding: 4px 10px;
   font-size: 10px;
   pointer-events: auto;
@@ -640,15 +643,45 @@ html[data-fui-play] .scorecard strong {
   font-size: 14px;
 }
 html[data-fui-play] .touch-controls {
-  gap: 6px;
+  --pad-size: clamp(44px, 12vmin, 56px);
+  inset: auto max(12px, env(safe-area-inset-right))
+    max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  grid-template-columns: repeat(3, var(--pad-size)) 1fr auto;
+  grid-template-rows: repeat(3, var(--pad-size));
+  gap: 2px;
   max-width: none;
   pointer-events: none;
 }
 html[data-fui-play] .touch-controls .pad {
-  min-height: 52px;
-  padding: 0 4px;
+  min-height: 44px;
+  padding: 0 1px;
+  border-radius: 12px;
+  font:
+    700 10px/1 system-ui,
+    sans-serif;
+  letter-spacing: 0;
+  white-space: nowrap;
   opacity: 0.85;
   pointer-events: auto;
+}
+html[data-fui-play] .touch-controls .pad.outward {
+  grid-area: 1 / 2;
+}
+html[data-fui-play] .touch-controls .pad.left {
+  grid-area: 2 / 1;
+}
+html[data-fui-play] .touch-controls .pad.right {
+  grid-area: 2 / 3;
+}
+html[data-fui-play] .touch-controls .pad.inward {
+  grid-area: 3 / 2;
+}
+html[data-fui-play] .touch-controls .pad.launch {
+  grid-area: 2 / 5 / 4 / 6;
+  align-self: end;
+  width: calc(1.5 * var(--pad-size));
+  height: calc(1.5 * var(--pad-size));
+  border-radius: 50%;
 }
 html[data-fui-play] .power-status {
   left: 50%;
@@ -661,7 +694,7 @@ html[data-fui-play] .power-status {
   text-align: center;
   pointer-events: none;
 }
-/* Upright: the scores and the clock above the arena, under the menu button; the pads in a row below it. */
+/* Upright, align the score strip and clock above the octagon. */
 @media (orientation: portrait) {
   html[data-fui-play] .scoreboard {
     inset: max(48px, calc(env(safe-area-inset-top) + 42px)) 8px auto 8px;
@@ -673,18 +706,15 @@ html[data-fui-play] .power-status {
     right: 12px;
     justify-content: space-between;
   }
-  html[data-fui-play] .touch-controls {
-    inset: auto 8px max(10px, env(safe-area-inset-bottom)) 8px;
-  }
-  html[data-fui-play] .touch-controls .pad {
-    min-height: 64px;
-  }
   html[data-fui-play] .power-status {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 76px);
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 84px);
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    max-width: calc(100% - 195px);
+    translate: none;
   }
 }
-/* On its side: the scores down the left margin, the clock in the right; steering at the foot of each, LAUNCH above
-   the right thumb. */
+/* On its side, put the scores on the left and the clock on the right. */
 @media (orientation: landscape) {
   html[data-fui-play] .scoreboard {
     top: max(8px, env(safe-area-inset-top));
@@ -698,26 +728,6 @@ html[data-fui-play] .power-status {
     right: max(12px, env(safe-area-inset-right));
     flex-direction: column;
     align-items: flex-end;
-  }
-  html[data-fui-play] .touch-controls {
-    inset: auto max(8px, env(safe-area-inset-right))
-      max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
-    grid-template-columns: repeat(2, 5rem) 1fr repeat(2, 5rem);
-  }
-  html[data-fui-play] .touch-controls .pad.left {
-    grid-area: 2 / 1;
-  }
-  html[data-fui-play] .touch-controls .pad.inward {
-    grid-area: 2 / 2;
-  }
-  html[data-fui-play] .touch-controls .pad.launch {
-    grid-area: 1 / 4 / 2 / 6;
-  }
-  html[data-fui-play] .touch-controls .pad.outward {
-    grid-area: 2 / 4;
-  }
-  html[data-fui-play] .touch-controls .pad.right {
-    grid-area: 2 / 5;
   }
   html[data-fui-play] .power-status {
     top: max(8px, env(safe-area-inset-top));

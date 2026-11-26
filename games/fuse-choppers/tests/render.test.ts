@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createScene, hexA } from "../src/render/scene.js";
+import { createScene, hexA, VIEW_H, VIEW_W } from "../src/render/scene.js";
 import type { MakeSurface, Paint } from "../src/render/sprites.js";
 import { toView, type WorldView } from "../src/engine/index.js";
 import {
@@ -22,6 +22,7 @@ function recorder() {
     return new Proxy(state, {
       get(target, prop) {
         if (prop in target) return target[prop];
+        if (prop === "getTransform") return () => ({});
         if (prop === "createLinearGradient" || prop === "createRadialGradient")
           return () => gradient;
         return (...args: unknown[]) => void calls.push([prop, ...args]);
@@ -63,6 +64,36 @@ function recorder() {
       }).length,
   };
 }
+
+test("a wide phone paints extra cave before clipping objects to the shared flight field", () => {
+  const r = recorder();
+  const scene = createScene(r.screen, r.make);
+  scene.draw({
+    world: crowded(),
+    me: "",
+    labels: new Map(),
+    now: 0,
+    gutterX: 108,
+  });
+  const outside = r.calls.findIndex(
+    ([method, x, y, width, height]) =>
+      method === "fillRect" &&
+      x === -108 &&
+      y === 0 &&
+      width === VIEW_W + 216 &&
+      height === VIEW_H,
+  );
+  const board = r.calls.findIndex(
+    ([method, x, y, width, height]) =>
+      method === "rect" &&
+      x === 0 &&
+      y === 0 &&
+      width === VIEW_W &&
+      height === VIEW_H,
+  );
+  assert.ok(outside >= 0 && board > outside);
+  assert.deepEqual(r.calls[board + 1], ["clip"]);
+});
 
 /** A world with something of everything in view. */
 function crowded(): WorldView {

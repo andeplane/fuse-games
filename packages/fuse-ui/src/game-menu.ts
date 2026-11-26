@@ -1,6 +1,7 @@
 import { createBackButton, createPageHeader } from "./back.js";
 import { menuKeys } from "./menu-keys.js";
 import { button, el } from "./dom.js";
+import { createPhoneGameHome } from "./embedded.js";
 import { createControlList, type ControlHint } from "./how-to-play.js";
 export type { ControlHint } from "./how-to-play.js";
 
@@ -172,6 +173,11 @@ export function createGameMenu(options: GameMenuOptions): GameMenu {
     trigger.focus();
     options.onOpenChange?.(false);
   };
+  const home = createPhoneGameHome(doc, close);
+  if (home) {
+    home.classList.add("fui-game-menu-action");
+    navigation.append(home);
+  }
   const showNavigation = () => {
     help.hidden = true;
     navigation.hidden = false;

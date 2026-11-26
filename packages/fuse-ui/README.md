@@ -98,6 +98,14 @@ Rooms with authored inline per-round choices use `layout: "configuration"`: seat
 
 ## Components
 
+### Phone gameplay
+
+Use `createPlayScreen` on the round's stage and update it when the player's view enters or leaves play. Size the renderer and its camera to the stage in both orientations. For games with a fixed board, `fitPlayViewport` gives its uniform scale and centered offset. Keep the whole board visible and draw the surrounding game scene to the viewport edges. Apply the same camera transform when mapping touches back to the board.
+
+Overlay the HUD and controls on the scene. Keep thumb controls at least 44 CSS pixels on each axis, clear of the menu and safe-area insets. Use `viewport-fit=cover` on the game page to support devices with a cutout. Check the real rendered scene, open menu and touch controls at 360 px portrait, phone landscape and desktop.
+
+### Component reference
+
 Each component is a function that returns its elements. Options take callbacks, and none of them use `innerHTML`. Every component accepts `document` (the tests pass a `linkedom` one). Most also accept `classes`, which renames the class of any part; `""` leaves a part without a class.
 
 | Function              | Builds                                                                                                                              |

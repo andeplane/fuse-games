@@ -48,51 +48,52 @@ function paintMountedPart(
   drawPart(c, drawing);
 }
 
-function background(c: Context) {
-  const g = c.createLinearGradient(0, 0, WIDTH, HEIGHT);
+function background(c: Context, width = WIDTH, height = HEIGHT, ruler = true) {
+  const g = c.createLinearGradient(0, 0, width, height);
   g.addColorStop(0, "#213b46");
   g.addColorStop(0.55, "#182e39");
   g.addColorStop(1, "#132635");
   c.fillStyle = g;
-  c.fillRect(0, 0, WIDTH, HEIGHT);
+  c.fillRect(0, 0, width, height);
   c.lineWidth = 0.75;
-  for (let x = 0; x <= WIDTH; x += 16) {
+  for (let x = 0; x <= width; x += 16) {
     c.strokeStyle = x % 64 === 0 ? "#93c7c51c" : "#93c7c509";
     c.beginPath();
     c.moveTo(x + 0.5, 0);
-    c.lineTo(x + 0.5, HEIGHT);
+    c.lineTo(x + 0.5, height);
     c.stroke();
   }
-  for (let y = 0; y <= HEIGHT; y += 16) {
+  for (let y = 0; y <= height; y += 16) {
     c.strokeStyle = y % 64 === 0 ? "#93c7c51c" : "#93c7c509";
     c.beginPath();
     c.moveTo(0, y + 0.5);
-    c.lineTo(WIDTH, y + 0.5);
+    c.lineTo(width, y + 0.5);
     c.stroke();
   }
-  for (let y = 16; y < HEIGHT; y += 32)
-    for (let x = 16; x < WIDTH; x += 32) {
+  for (let y = 16; y < height; y += 32)
+    for (let x = 16; x < width; x += 32) {
       c.fillStyle = "#0a1d279c";
       c.fillRect(x - 1, y - 1, 2, 2);
       c.fillStyle = "#96c6c523";
       c.fillRect(x - 1, y + 1, 2, 1);
     }
+  if (!ruler) return;
   c.strokeStyle = "#89c3c64a";
   c.lineWidth = 1;
   c.beginPath();
-  for (let x = 8; x < WIDTH; x += 8) {
+  for (let x = 8; x < width; x += 8) {
     const len = x % 32 === 0 ? 5 : 2;
     c.moveTo(x, 0);
     c.lineTo(x, len);
-    c.moveTo(x, HEIGHT);
-    c.lineTo(x, HEIGHT - len);
+    c.moveTo(x, height);
+    c.lineTo(x, height - len);
   }
-  for (let y = 8; y < HEIGHT; y += 8) {
+  for (let y = 8; y < height; y += 8) {
     const len = y % 32 === 0 ? 5 : 2;
     c.moveTo(0, y);
     c.lineTo(len, y);
-    c.moveTo(WIDTH, y);
-    c.lineTo(WIDTH - len, y);
+    c.moveTo(width, y);
+    c.lineTo(width - len, y);
   }
   c.stroke();
 }
@@ -185,46 +186,87 @@ export function spritePose(machine: Machine, part: Part, body?: Body) {
   return { blowing, active, face, motion: active || body ? machine.tick : 0 };
 }
 
-const backdrops = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+export interface WorkbenchView {
+  width: number;
+  height: number;
+  board: { x: number; y: number; width: number; height: number };
+}
+
+const backdrops = new WeakMap<
+  HTMLCanvasElement,
+  { image: HTMLCanvasElement; key: string }
+>();
 
 /** Repaint a complete authoritative view, including when time goes backwards on a rewind or rollback. */
 export function paintMachine(
   canvas: HTMLCanvasElement,
   machine: Machine,
   overlay: BoardOverlay = {},
+  view?: WorkbenchView,
 ) {
   const c = canvas.getContext("2d");
   if (!c) return;
+  const displayWidth = view?.width ?? (canvas.clientWidth || WIDTH);
+  const displayHeight = view?.height ?? (displayWidth * HEIGHT) / WIDTH;
   const desiredWidth = Math.min(
     1920,
     Math.max(
       640,
       Math.round(
-        (canvas.clientWidth || WIDTH) *
+        displayWidth *
           (canvas.ownerDocument.defaultView?.devicePixelRatio || 1),
       ),
     ),
   );
-  const desiredHeight = Math.round((desiredWidth * HEIGHT) / WIDTH);
+  const desiredHeight = Math.round(
+    (desiredWidth * displayHeight) / displayWidth,
+  );
+  const displayScaleX = desiredWidth / displayWidth;
+  const displayScaleY = desiredHeight / displayHeight;
+  const board = view?.board ?? {
+    x: 0,
+    y: 0,
+    width: displayWidth,
+    height: displayHeight,
+  };
+  const key = [
+    desiredWidth,
+    desiredHeight,
+    board.x,
+    board.y,
+    board.width,
+    board.height,
+  ].join("/");
   if (canvas.width !== desiredWidth || canvas.height !== desiredHeight) {
     canvas.width = desiredWidth;
     canvas.height = desiredHeight;
   }
-  let bg = backdrops.get(canvas);
-  if (!bg || bg.width !== desiredWidth || bg.height !== desiredHeight) {
-    bg = canvas.ownerDocument.createElement("canvas");
-    bg.width = desiredWidth;
-    bg.height = desiredHeight;
-    const back = bg.getContext("2d");
+  let backdrop = backdrops.get(canvas);
+  if (backdrop?.key !== key) {
+    const image = canvas.ownerDocument.createElement("canvas");
+    image.width = desiredWidth;
+    image.height = desiredHeight;
+    const back = image.getContext("2d");
     if (back) {
-      back.scale(desiredWidth / WIDTH, desiredHeight / HEIGHT);
+      back.scale(displayScaleX, displayScaleY);
+      if (view) background(back, displayWidth, displayHeight, false);
+      back.translate(board.x, board.y);
+      back.scale(board.width / WIDTH, board.height / HEIGHT);
       background(back);
     }
-    backdrops.set(canvas, bg);
+    backdrop = { image, key };
+    backdrops.set(canvas, backdrop);
   }
-  c.drawImage(bg, 0, 0);
+  c.drawImage(backdrop.image, 0, 0);
   c.save();
-  c.scale(desiredWidth / WIDTH, desiredHeight / HEIGHT);
+  c.scale(displayScaleX, displayScaleY);
+  c.translate(board.x, board.y);
+  c.scale(board.width / WIDTH, board.height / HEIGHT);
+  if (view) {
+    c.beginPath();
+    c.rect(0, 0, WIDTH, HEIGHT);
+    c.clip();
+  }
   const parts = new Map(machine.parts.map((part) => [part.id, part]));
   const bodies = new Map(machine.bodies.map((body) => [body.id, body]));
   for (const [index, link] of machine.links.entries()) {

@@ -144,6 +144,7 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 .fp-commands button[aria-pressed="true"] {
   color: #baf7dc;
@@ -299,4 +300,118 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* On phones, reserve the command panel's real height before fitting the map.
+ * Both cores and every build site stay visible and tappable. */
+@media (pointer: coarse) {
+  .fp-match .fp-arena__stage {
+    position: absolute;
+    inset: 0;
+  }
+
+  .fp-match .fp-arena--fill .fp-arena__field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .fp-match .fp-arena__hud {
+    position: relative;
+    z-index: 1;
+    background: #19211edb;
+  }
+
+  .fp-match .fp-commands,
+  .fp-match:has(.fp-arena[data-shape="square"]) .fp-commands {
+    inset: auto env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    width: auto;
+    max-width: none;
+    margin: 0;
+    backdrop-filter: none;
+  }
+
+  .fp-commands .fp-command-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .fp-commands .fp-command {
+    grid-template: "label" auto "detail" auto / minmax(0, 1fr);
+    align-content: center;
+    height: auto;
+    min-height: 44px;
+    row-gap: 2px;
+    padding: 4px 5px;
+    font-size: clamp(10px, 2.8vw, 12px);
+  }
+
+  .fp-commands .fp-command kbd {
+    display: none;
+  }
+
+  .fp-commands .fp-command-label {
+    white-space: normal;
+    overflow-wrap: normal;
+    line-height: 1.1;
+    max-height: none;
+  }
+
+  .fp-commands .fp-command-bar button {
+    min-height: 44px;
+    height: auto;
+    padding: 3px 1px;
+    font-size: clamp(10px, 2.8vw, 11px);
+    letter-spacing: 0;
+    white-space: normal;
+  }
+}
+
+@media (pointer: coarse) and (orientation: landscape) and (min-width: 680px) {
+  .fp-match .fp-commands,
+  .fp-match:has(.fp-arena[data-shape="square"]) .fp-commands {
+    display: flex;
+    flex-direction: column;
+    inset: calc(48px + env(safe-area-inset-top)) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) auto;
+    width: clamp(170px, 21vw, 204px);
+  }
+
+  .fp-commands .fp-command-body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .fp-match .fp-commands .fp-command-actions,
+  .fp-match:has(.fp-arena[data-shape="square"]) .fp-command-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fp-commands .fp-command {
+    padding: 3px 4px;
+    row-gap: 1px;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .fp-commands .fp-command-label {
+    line-height: 1;
+  }
+
+  .fp-command-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: auto;
+  }
+
+  .fp-commands .fp-command-bar button {
+    padding-inline: 1px;
+    font-size: 10px;
+  }
+
+  .fp-command-gold {
+    inset: auto 54px 100% auto;
+  }
 }

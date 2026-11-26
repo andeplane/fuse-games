@@ -2273,12 +2273,11 @@ select {
 }
 
 /*
- * A phone's live match (fuse-ui play-screen): the battle is the screen. The board runs from the top edge to the
- * command dock; the resource bar floats over its top, clear of the corner menu button, and the dock keeps its room
- * at the bottom because the match is played from it.
+ * The battle camera reaches every edge. The resource bar and command dock
+ * float over the board, with camera insets keeping focused cells clear.
  */
 html[data-fui-play] .game-layout .board-scroll {
-  inset: 0 0 var(--dock-height);
+  inset: 0;
 }
 html[data-fui-play] .game-layout .battle-topbar {
   top: 0;
@@ -2292,7 +2291,27 @@ html[data-fui-play] .game-layout .command-dock {
   padding-bottom: max(6px, var(--fui-play-bottom));
   padding-left: max(10px, var(--fui-play-left));
   padding-right: max(10px, var(--fui-play-right));
+  background: #08121de8;
 }
-html[data-fui-play] .game-layout .board-scroll {
-  bottom: calc(var(--dock-height) + var(--fui-play-bottom));
+
+/* In broad phone landscape, all six commands fit beside the inspector in one
+ * row. Give the released height to the pannable battle camera. */
+@media (orientation: landscape) and (min-width: 680px) and (max-height: 560px) {
+  html[data-fui-play] .game-layout {
+    --dock-height: 68px;
+  }
+
+  html[data-fui-play] .command-dock {
+    gap: 8px;
+  }
+
+  html[data-fui-play] .command-card {
+    grid-template-columns: repeat(6, var(--command-size));
+    grid-template-rows: var(--command-size);
+    padding-left: 8px;
+  }
+
+  html[data-fui-play] .selection-portrait {
+    display: none;
+  }
 }

@@ -41,15 +41,66 @@ const playfield = (page: Page) =>
   page.locator('.fuseheads-arena[data-ready="true"]');
 async function checkTouchOverlay(page: Page) {
   const arena = await playfield(page).boundingBox();
+  const stage = page.locator(".fuseheads-play.fui-play-stage");
+  const bounds = await stage.boundingBox();
+  const viewport = page.viewportSize();
   assert.ok(arena);
+  assert.ok(bounds && viewport);
+  assert.deepEqual(bounds, { x: 0, y: 0, ...viewport });
+  const turned = viewport.height > viewport.width;
+  assert.deepEqual(arena, bounds);
+  const backing = await playfield(page).evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const { width, height } = canvas;
+    const boardLeft = (width - (height * 4) / 3) / 2;
+    const pixels = canvas.getContext("2d")!.getImageData(0, 0, width, 1).data;
+    // The top scenery continues at each side at the board's proportions, with a dark tint.
+    const samples = Array.from({ length: 12 }, (_, i) =>
+      Math.round(boardLeft - 4 - i * 3),
+    );
+    const matches = samples.filter((x) => {
+      const reflected = Math.floor(2 * boardLeft - x - 1);
+      return [5, 9, 17].every((tint, c) => {
+        const from = pixels[reflected * 4 + c]!;
+        const to = pixels[x * 4 + c]!;
+        return Math.abs(to - (from * 0.52 + tint * 0.48)) <= 4;
+      });
+    }).length;
+    return { width, height, matches };
+  });
+  assert.deepEqual(
+    [backing.width, backing.height],
+    turned
+      ? [viewport.height, viewport.width]
+      : [viewport.width, viewport.height],
+  );
+  assert.ok(backing.matches >= 9, "the side scenery mirrors the board edge");
+  assert.equal(
+    await page.locator("html").getAttribute("data-fui-play"),
+    turned ? "turned" : "phone",
+  );
+  const shortSide = Math.min(viewport.width, viewport.height);
+  const longSide = Math.max(viewport.width, viewport.height);
+  const boardWidth = (shortSide * 4) / 3;
+  const hudLeft = (longSide - boardWidth) / 2;
+  const hudTop = shortSide * (416 / 480);
   for (const name of ["Left", "Right", "Jump"]) {
     const control = await page
       .getByRole("button", { name, exact: true })
       .boundingBox();
     assert.ok(control && control.width >= 44 && control.height >= 44);
-    assert.ok(control.x >= arena.x && control.y >= arena.y);
-    assert.ok(control.x + control.width <= arena.x + arena.width);
-    assert.ok(control.y + control.height <= arena.y + arena.height);
+    assert.ok(control.x >= 0 && control.y >= 0);
+    assert.ok(control.x + control.width <= viewport.width);
+    assert.ok(control.y + control.height <= viewport.height);
+    const left = turned ? control.y : control.x;
+    const right = left + (turned ? control.height : control.width);
+    const bottom = turned
+      ? viewport.width - control.x
+      : control.y + control.height;
+    assert.ok(
+      right <= hudLeft || left >= hudLeft + boardWidth || bottom <= hudTop,
+      name + " leaves the score and lives visible",
+    );
   }
 }
 const enter = async (page: Page) => {
@@ -90,9 +141,13 @@ try {
   assert.equal(await downArrowConsumed(solo), "true");
   await checkTouchOverlay(solo);
   await solo.getByRole("button", { name: "Jump", exact: true }).tap();
-  const canvasBox = await playfield(solo).boundingBox();
-  const barBox = await solo.locator(".fui-top-bar").boundingBox();
-  assert.ok(barBox && canvasBox && canvasBox.y >= barBox.y + barBox.height);
+  await openTopMenu(solo);
+  await solo
+    .locator(".fui-top-bar-menu[open]")
+    .getByRole("button", { name: "Back", exact: true })
+    .tap({ trial: true });
+  await solo.keyboard.press("Escape");
+  await solo.locator(".fui-top-bar-menu").waitFor({ state: "hidden" });
   assert.ok(
     (await solo.locator("body").boundingBox())!.width <= portrait.width,
   );
@@ -115,6 +170,7 @@ try {
   await start.waitFor();
   await start.click();
   await playfield(host).waitFor();
+  assert.equal(await host.locator("html").getAttribute("data-fui-play"), null);
   await openTopMenu(host);
   await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await start.waitFor();
@@ -138,6 +194,7 @@ try {
     .locator('.fuseheads-room[data-controller="true"] .fuseheads-pad')
     .waitFor();
   assert.equal(await tv.locator(".fuseheads-pad").isVisible(), false);
+  assert.equal(await guest.locator("html").getAttribute("data-fui-play"), null);
   assert.deepEqual(problems, []);
   await Promise.all([...coverage.values()].map((finish) => finish()));
   console.log(

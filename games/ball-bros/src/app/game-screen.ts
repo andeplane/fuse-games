@@ -461,6 +461,7 @@ export function mountGame(root: HTMLElement, options: ScreenOptions) {
       v,
       options.online ? (runtime?.self ?? "") : undefined,
       !!runtime?.canManage && !options.online?.display,
+      touch(),
     );
     showResult(model?.result);
     if (!model) return;

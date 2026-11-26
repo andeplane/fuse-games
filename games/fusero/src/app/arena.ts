@@ -96,7 +96,12 @@ export function createArena(canvas: HTMLCanvasElement, display: ArenaDisplay) {
   };
   return {
     camera: () => ({ ...camera }),
-    draw(world: WorldView, names: ReadonlyMap<string, string>, self: string) {
+    draw(
+      world: WorldView,
+      names: ReadonlyMap<string, string>,
+      self: string,
+      minimapTop = 0,
+    ) {
       const { width, height, rows } = world.terrain;
       if (terrain.width !== width || terrain.height !== height) {
         terrain.width = width;
@@ -320,14 +325,20 @@ export function createArena(canvas: HTMLCanvasElement, display: ArenaDisplay) {
         const mapWidth = Math.min(60, camera.width * 0.2),
           mapHeight = (mapWidth * height) / width,
           own = world.worms.find((w) => w.id === self);
+        const viewport = display.viewport();
+        const scaleToScreen = Math.min(
+          viewport.width / camera.width,
+          viewport.height / camera.height,
+        );
+        const y =
+          minimapTop > 0 ? Math.ceil(minimapTop / scaleToScreen) + 3 : 5;
         const right = camera.width - mapWidth - 5,
           x =
             own &&
             own.x - camera.x > right - 8 &&
-            own.y - camera.y < mapHeight + 20
+            Math.abs(own.y - camera.y - y - mapHeight / 2) < mapHeight / 2 + 15
               ? 5
               : right,
-          y = 5,
           scale = mapWidth / width;
         ctx.fillStyle = "#050812";
         ctx.fillRect(x - 3, y - 3, mapWidth + 6, mapHeight + 6);

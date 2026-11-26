@@ -1,4 +1,14 @@
 import type { WorldView } from "../engine/view.js";
+export const CEMETERY_WIDTH = 1000;
+export const CEMETERY_HEIGHT = 620;
+
+export function cemeteryFrame(width: number, height: number) {
+  const scale = Math.min(width / CEMETERY_WIDTH, height / CEMETERY_HEIGHT);
+  const x = (width - CEMETERY_WIDTH * scale) / 2;
+  const y = (height - CEMETERY_HEIGHT * scale) / 2;
+  return { scale, x, y, marginX: x / scale, marginY: y / scale };
+}
+
 export const COLORS = ["#64e4ef", "#ff927c", "#edc75b", "#b39aff", "#a2e482"];
 export type Paint = Pick<
   CanvasRenderingContext2D,
@@ -31,16 +41,25 @@ export type Paint = Pick<
   | "globalAlpha"
 >;
 /** Cosmetic drawing only. Every position, resistance and tank is supplied by the simulation. */
-export function draw(ctx: Paint, w: WorldView, me: string): void {
+export function draw(
+  ctx: Paint,
+  w: WorldView,
+  me: string,
+  { marginX = 0, marginY = 0 } = {},
+): void {
   const c = ctx;
   const { graves: GRAVES, shrines: SHRINES, walls: WALLS } = w.arena;
-  c.clearRect(0, 0, 1000, 620);
+  const left = -marginX;
+  const top = -marginY;
+  const width = CEMETERY_WIDTH + 2 * marginX;
+  const height = CEMETERY_HEIGHT + 2 * marginY;
+  c.clearRect(left, top, width, height);
   const sky = c.createLinearGradient(0, 0, 0, 620);
   sky.addColorStop(0, "#111729");
   sky.addColorStop(0.5, "#213a40");
   sky.addColorStop(1, "#121f2b");
   c.fillStyle = sky;
-  c.fillRect(0, 0, 1000, 620);
+  c.fillRect(left, top, width, height);
   const ellipse = (
     x: number,
     y: number,
@@ -106,6 +125,33 @@ export function draw(ctx: Paint, w: WorldView, me: string): void {
     c.fill();
   }
   rect(10, 91, 980, 3, "#0e1722");
+  // Continue the cemetery paths and unoccupied plots outside the arena.
+  if (marginX > 0 || marginY > 0) {
+    for (let y = Math.floor(top / 54) * 54; y < top + height; y += 54) {
+      for (let x = Math.floor(left / 64) * 64; x < left + width; x += 64) {
+        if (
+          x + 64 > 0 &&
+          x < CEMETERY_WIDTH &&
+          y + 54 > 0 &&
+          y < CEMETERY_HEIGHT
+        )
+          continue;
+        rect(x + 3, y + 3, 56, 46, "#26393e");
+        rect(x + 8, y + 8, 48, 2, "#31484c");
+        if ((x / 64 + y / 54) % 3 !== 0) continue;
+        ellipse(x + 29, y + 35, 22, 7, "#111b26");
+        c.fillStyle = "#425359";
+        c.beginPath();
+        c.roundRect(x + 23, y + 12, 13, 23, [7, 7, 1, 1]);
+        c.fill();
+      }
+    }
+    c.strokeStyle = "#61706b";
+    c.lineWidth = 3;
+    c.beginPath();
+    c.roundRect(1, 2, CEMETERY_WIDTH - 2, CEMETERY_HEIGHT - 4, 8);
+    c.stroke();
+  }
   // Stone floor, broad central paths, grass and candles.
   for (let y = 112; y < 600; y += 30)
     for (let x = 25; x < 980; x += 48) {

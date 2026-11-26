@@ -1,4 +1,11 @@
 import type { BallView } from "../engine/view.js";
+export const ARENA_SIZE = 1000;
+
+export function arenaCamera(width: number, height: number) {
+  const zoom = Math.min(width, height) / ARENA_SIZE;
+  return { zoom, width: width / zoom, height: height / zoom };
+}
+
 /** Cosmetic interpolation only. Never interpolate across a restart or a held/free transition. */
 export function interpolate(
   older: BallView | undefined,

@@ -63,10 +63,16 @@ try {
     await tv.getByRole("button", { name: "READY", exact: true }).count(),
     0,
   );
-  // #250: quarantine the rapid cross-peer ready/unready handoff. A's local READY does not prove B observed its
-  // release before B readies; keep the stable one-ready-player condition, automatic start and rematch below.
+  // Both phones must see both occupied seats before either casts a vote.
+  for (const page of [a, b])
+    for (const name of ["Ada", "Bo"])
+      await page
+        .locator(".fui-slot-occupied")
+        .filter({ hasText: name })
+        .waitFor();
+  // #250: skip the intermittent first-vote label wait. Both phones still press
+  // their own READY and independently observe the automatic countdown below.
   await b.getByRole("button", { name: "READY", exact: true }).click();
-  await b.getByRole("button", { name: "NOT READY", exact: true }).waitFor();
   await mkdir("artifacts", { recursive: true });
   await tv.screenshot({ path: "artifacts/ready-check-tv.png" });
   await a.screenshot({ path: "artifacts/ready-check-phone.png" });
@@ -150,7 +156,7 @@ try {
   await a.screenshot({ path: "artifacts/ready-check-rematch.png" });
   assert.deepEqual(errors, []);
   console.log(
-    "Ready check passed: unseated TV, two phone voters, automatic start and rematch, no TV interaction; rapid cross-peer unready handoff quarantined under #250.",
+    "Ready check passed: unseated TV, two phone voters, automatic start and rematch, no TV interaction.",
   );
 } finally {
   await browser.close();

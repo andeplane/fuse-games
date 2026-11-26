@@ -393,7 +393,8 @@ body:has(.cyberfuse-room[data-phase="running"]) {
 html[data-fui-play] .cf-arena > .cf-hud {
   top: max(0.4rem, var(--fui-play-top));
   left: max(0.4rem, var(--fui-play-left));
-  right: calc(3rem + var(--fui-play-right));
+  /* Keep the entire Map button beside the 44px game menu, including its edge inset and a tap gap. */
+  right: calc(max(6px, var(--fui-play-right)) + 44px + 6px);
 }
 html[data-fui-play] .cf-arena > .cf-pad {
   bottom: max(0.5rem, var(--fui-play-bottom));

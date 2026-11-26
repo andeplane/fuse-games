@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import type { BallView, Impact } from "../engine/view.js";
-import { COLORS, effectAge } from "./present.js";
+import { ARENA_SIZE, COLORS, arenaCamera, effectAge } from "./present.js";
 import { AVATAR_ATLAS } from "fuse-ui/assets";
 
 interface Spark {
@@ -23,6 +23,8 @@ export function createRenderer(
   baseUrl = "/",
 ): ArenaRenderer {
   let graphics: Phaser.GameObjects.Graphics;
+  let surroundings: Phaser.GameObjects.Graphics;
+  let camera: Phaser.Cameras.Scene2D.Camera;
   const portraits: Phaser.GameObjects.Image[] = [],
     labels: Phaser.GameObjects.Text[] = [];
   let booted = false,
@@ -45,7 +47,9 @@ export function createRenderer(
     create(): void {
       if (destroyed) return;
       clearTimeout(deadline);
+      surroundings = this.add.graphics();
       graphics = this.add.graphics();
+      camera = this.cameras.main;
       // Portraits are optional: neither a slow CDN nor a missing sheet delays play.
       this.load.once("complete", () => {
         if (destroyed || !this.textures.exists("heads")) return;
@@ -87,8 +91,8 @@ export function createRenderer(
   const game = new Phaser.Game({
     type: Phaser.CANVAS,
     parent,
-    width: 1000,
-    height: 1000,
+    width: ARENA_SIZE,
+    height: ARENA_SIZE,
     backgroundColor: "#080e20",
     banner: false,
     audio: { noAudio: true },
@@ -98,6 +102,47 @@ export function createRenderer(
     fps: { target: 60, smoothStep: false },
   });
   let last = 0;
+  let expanded = false;
+  const resize = () => {
+    const full = parent.closest(".fui-play-stage") !== null;
+    const width = full ? parent.clientWidth : ARENA_SIZE;
+    const height = full ? parent.clientHeight : ARENA_SIZE;
+    if (!width || !height) return;
+    if (
+      full === expanded &&
+      width === game.scale.width &&
+      height === game.scale.height
+    )
+      return;
+    expanded = full;
+    game.scale.resize(width, height);
+    const bounds = arenaCamera(width, height);
+    camera.setZoom(bounds.zoom).centerOn(500, 500);
+    surroundings.clear();
+    if (!full) return;
+
+    // The arena sits on a large station floor. Its panel seams and lighting
+    // continue past the viewport edges; only the octagon participates in play.
+    const left = Math.floor((500 - bounds.width / 2) / 120) * 120;
+    const top = Math.floor((500 - bounds.height / 2) / 120) * 120;
+    for (let y = top; y < 500 + bounds.height / 2; y += 120) {
+      for (let x = left; x < 500 + bounds.width / 2; x += 120) {
+        const lit = (x / 120 + y / 120) % 4 === 0;
+        surroundings.fillStyle(lit ? 0x102239 : 0x0e1b2f);
+        surroundings.fillRect(x + 2, y + 2, 116, 116);
+        surroundings.lineStyle(2, 0x20394d, 0.6);
+        surroundings.strokeRect(x + 7, y + 7, 106, 106);
+        surroundings.fillStyle(lit ? 0x4b9eaa : 0x294155, 0.75);
+        surroundings.fillRect(x + 17, y + 17, 20, 3);
+        surroundings.fillRect(x + 17, y + 25, 12, 3);
+      }
+    }
+    surroundings.lineStyle(6, 0x345c71, 0.8);
+    surroundings.strokeCircle(500, 500, 575);
+    surroundings.lineStyle(2, 0x5ab6c5, 0.5);
+    surroundings.strokeCircle(500, 500, 604);
+  };
+
   return {
     ready,
     impact(e, now) {
@@ -113,6 +158,7 @@ export function createRenderer(
     },
     paint(v, now) {
       if (!booted || destroyed || !v.arena) return;
+      resize();
       if (scope !== v.matchId || v.tick < lastTick || v.tick - lastTick > 5) {
         trails.clear();
         sparks = [];

@@ -1,6 +1,22 @@
 import type { Page } from "playwright";
 import { openPlayOptions, takeHostSeat } from "./main-menu.js";
 
+/** Convert an authored workbench point to a physical browser point. */
+export function workbenchScreenPoint(page: Page, x: number, y: number) {
+  return page.locator(".if-board-frame").evaluate(
+    (frame, { u, v }) => {
+      const rect = frame.getBoundingClientRect();
+      const turned =
+        frame.ownerDocument.documentElement.dataset.fuiPlay === "turned";
+      return {
+        x: rect.left + rect.width * (turned ? 1 - v : u),
+        y: rect.top + rect.height * (turned ? u : v),
+      };
+    },
+    { u: x / 640, v: y / 400 },
+  );
+}
+
 /**
  * Gives the arena the keyboard by clicking it. On a phone the spot may lie under a control, and nothing there needs
  * the keyboard, so a click that cannot land is skipped.
@@ -152,16 +168,13 @@ export const RECIPES: Record<string, Recipe> = {
     await page
       .getByRole("button", { name: "Start puzzle", exact: true })
       .click();
-    const board = page.getByRole("group", { name: "Machine workbench" });
     await page.getByRole("button", { name: "Incline", exact: true }).click();
-    const bounds = await board.boundingBox();
-    if (!bounds) throw new Error("Workbench is missing");
-    await board.click({
-      position: {
-        x: (bounds.width * 110) / 640,
-        y: (bounds.height * 130) / 400,
-      },
-    });
+    const point = await workbenchScreenPoint(page, 110, 130);
+    await page.mouse.click(point.x, point.y);
+    await page
+      .getByRole("button", { name: "Undo", exact: true })
+      .and(page.locator(":enabled"))
+      .waitFor();
     await page
       .getByRole("button", { name: "Run machine", exact: true })
       .click();
@@ -199,12 +212,19 @@ export const RECIPES: Record<string, Recipe> = {
   },
   "ball-bros": async (page) => {
     await openPlayOptions(page, "single");
+    const touch = await page.evaluate(
+      () => matchMedia("(pointer: coarse)").matches,
+    );
     await page
-      .getByText("SPACE TO LAUNCH", { exact: true })
+      .getByText(touch ? "TAP LAUNCH" : "SPACE TO LAUNCH", { exact: true })
       .waitFor({ timeout: 30_000 });
-    // Space on a focused button presses it; the arena has to hold focus first.
-    await focusArena(page, "canvas", { x: 20, y: 20 });
-    await page.keyboard.press("Space");
+    if (touch) {
+      await page.getByRole("button", { name: "LAUNCH", exact: true }).tap();
+    } else {
+      // Space on a focused button presses it; the arena has to hold focus first.
+      await focusArena(page, "canvas", { x: 20, y: 20 });
+      await page.keyboard.press("Space");
+    }
     await hold(page, ["KeyD", "KeyW", "KeyA", "KeyS", "KeyD"], 1800);
   },
   "fuse-birds": async (page) => {
@@ -319,16 +339,44 @@ export const RECIPES: Record<string, Recipe> = {
 
 const single = async (page: Page) => openPlayOptions(page, "single");
 const press = (page: Page, name: string | RegExp) =>
-  page.getByRole("button", { name, exact: true }).first().click();
+  page
+    .getByRole("button", { name, exact: true })
+    .filter({ visible: true })
+    .first()
+    .click();
 
 /**
  * Games the phone audit reaches but the gallery does not capture from here: their cards were made another way, and
  * Pig has no card at all.
  */
 export const AUDIT_RECIPES: Record<string, Recipe> = {
+  dockside: single,
+  fuseheads: async (page) => {
+    await single(page);
+    await press(page, "START GAME");
+  },
+  "fuse-particles": async (page) => {
+    await single(page);
+    await press(page, /^start match$/i);
+  },
+  "fuse-front": async (page) => {
+    // The same solo URL is selected by the landing menu. The menu can navigate
+    // from a held pointer before Playwright finishes its click in this game.
+    const url = new URL(page.url());
+    url.searchParams.set("solo", "1");
+    await page.goto(url.href);
+  },
+  "elasto-fuse": async (page) => {
+    await single(page);
+    await press(page, "PLAY SOLO");
+    await page.locator('.ef-room[data-phase="racing"]').waitFor();
+  },
+  "graveyard-shift": single,
   "fuse-riders": async (page) => {
     await single(page);
-    await page.locator('.mobile-control-hints[data-phase="playing"]').waitFor();
+    await page
+      .locator('.mobile-control-hints[data-phase="playing"]')
+      .waitFor({ state: "attached" });
   },
   "fuse-axe": async (page) => {
     await single(page);
@@ -356,7 +404,17 @@ export const AUDIT_RECIPES: Record<string, Recipe> = {
     await page
       .locator('.fl-room[data-phase="running"]')
       .waitFor({ state: "attached" });
-    await press(page, "SKIP").catch(() => undefined);
+    const skip = page
+      .getByRole("button", { name: /^skip(?: intro)?$/i })
+      .filter({ visible: true })
+      .first();
+    if (
+      await skip.waitFor({ timeout: 4000 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      await skip.click();
   },
   "fuse-craft": async (page) => {
     await single(page);
@@ -366,11 +424,15 @@ export const AUDIT_RECIPES: Record<string, Recipe> = {
   },
   "hook-havok": async (page) => {
     await single(page);
-    await press(page, "JOIN");
-    await page.waitForTimeout(1000);
-    await press(page, "ADD AI");
-    await press(page, "START");
-    await page.waitForTimeout(8000);
+    await takeHostSeat(page, "Phone audit");
+    await press(page, /^add ai$/i);
+    await press(page, /^start$/i);
+    await page.getByRole("heading", { name: "Room", exact: true }).waitFor({
+      state: "hidden",
+    });
+    if (await page.evaluate(() => navigator.maxTouchPoints > 0))
+      await page.locator('#touch-deck[data-enabled="true"]').waitFor();
+    await page.locator("#match-hud #roster").waitFor();
   },
   dice: async (page) => {
     await single(page);

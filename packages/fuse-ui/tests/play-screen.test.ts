@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   boxInStage,
   createPlayScreen,
+  fitPlayViewport,
   isTurned,
   pointInBox,
   playModeFor,
@@ -10,6 +11,24 @@ import {
   type PlayScreenDevice,
 } from "fuse-ui";
 import { page } from "./dom-fixture.js";
+
+test("the board keeps one scale and stays centered in wide and tall stages", () => {
+  assert.deepEqual(fitPlayViewport(844, 390, 640, 360), {
+    scale: 390 / 360,
+    x: (844 - 640 * (390 / 360)) / 2,
+    y: 0,
+  });
+  assert.deepEqual(fitPlayViewport(480, 360, 640, 360), {
+    scale: 0.75,
+    x: 0,
+    y: 45,
+  });
+  assert.deepEqual(fitPlayViewport(1280, 720, 640, 360), {
+    scale: 2,
+    x: 0,
+    y: 0,
+  });
+});
 
 function build(wide: boolean, touch = true) {
   const { document } = page();

@@ -12,6 +12,7 @@ import type { WorldView, ZonesView } from "../engine/view.js";
  */
 export interface Neon {
   update(view: WorldView, ms: number, animate: boolean): void;
+  frameBackdrop(x: number, y: number, width: number, height: number): void;
   destroy(): void;
 }
 export const NEON = {
@@ -234,7 +235,7 @@ const BILLBOARDS: readonly {
   },
 ];
 export function createNeon(scene: Phaser.Scene, res: number): Neon {
-  const backdrop = scene.add.image(0, 0, "__DEFAULT").setOrigin(0).setDepth(0);
+  const backdrop = scene.add.image(0, 0, "__DEFAULT").setDepth(0);
   const panels = scene.add.graphics().setDepth(2),
     panelGlow = scene.add
       .graphics()
@@ -306,7 +307,10 @@ export function createNeon(scene: Phaser.Scene, res: number): Neon {
     const { width, height } = view.size,
       key = `neon-backdrop-${map}`;
     paintBackdrop(scene, key, width, height, Math.min(res, 3200 / width));
-    backdrop.setTexture(key).setDisplaySize(width, height);
+    backdrop
+      .setTexture(key)
+      .setPosition(width / 2, height / 2)
+      .setDisplaySize(width, height);
     panels.clear();
     panelGlow.clear();
     paintPanels(panels, panelGlow, view);
@@ -535,6 +539,9 @@ export function createNeon(scene: Phaser.Scene, res: number): Neon {
         b.g.setAlpha(alpha);
         b.label.setAlpha(alpha);
       });
+    },
+    frameBackdrop(x, y, width, height) {
+      backdrop.setPosition(x, y).setDisplaySize(width, height);
     },
     destroy() {
       for (const o of [

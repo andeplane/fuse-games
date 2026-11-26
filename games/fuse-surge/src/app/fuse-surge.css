@@ -453,7 +453,8 @@ html[data-fui-play] .fs-stage > .fs-note {
   display: none;
 }
 html[data-fui-play] .fs-stage > .fs-screen {
-  width: min(100cqw, 100cqh * 16 / 9);
+  width: 100cqw;
+  height: 100cqh;
   border: 0;
   border-radius: 0;
   box-shadow: none;

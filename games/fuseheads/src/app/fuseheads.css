@@ -132,3 +132,55 @@ body:has(.fuseheads-room[data-local="true"])
   .fuseheads-status:not([data-tone="error"]) {
   display: none;
 }
+
+/* The canvas fills the phone and the renderer fits the fixed arcade board inside it. */
+html[data-fui-play] .fuseheads-play {
+  display: block;
+  padding: 0;
+  background: #171520;
+}
+html[data-fui-play] .fuseheads-viewport {
+  position: absolute;
+  inset: 0;
+  width: auto;
+}
+html[data-fui-play] .fuseheads-arena {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  aspect-ratio: auto;
+}
+html[data-fui-play] .fuseheads-round {
+  position: absolute;
+  top: max(0.5rem, var(--fui-play-top));
+  left: max(3rem, var(--fui-play-left));
+  right: calc(3rem + var(--fui-play-right));
+  margin: 0;
+  line-height: 1.5;
+  text-shadow: 0 1px 4px #000;
+  pointer-events: none;
+}
+html[data-fui-play] .fuseheads-room[data-controller="false"] .fuseheads-pad {
+  inset: auto max(0.5rem, var(--fui-play-right))
+    max(1rem, var(--fui-play-bottom)) max(0.5rem, var(--fui-play-left));
+  z-index: 1;
+}
+html[data-fui-play]
+  .fuseheads-room[data-controller="false"]
+  .fuseheads-pad:not([hidden]) {
+  display: flex;
+}
+html[data-fui-play]
+  .fui-app
+  .fuseheads-room[data-controller="false"]
+  .fuseheads-pad
+  button {
+  width: clamp(60px, 16cqh, 68px);
+  padding: 0;
+  font-size: 0.625rem;
+}
+@container fui-play (max-aspect-ratio: 21/10) {
+  html[data-fui-play] .fuseheads-room[data-controller="false"] .fuseheads-pad {
+    bottom: max(4rem, var(--fui-play-bottom));
+  }
+}

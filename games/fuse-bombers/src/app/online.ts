@@ -384,6 +384,7 @@ export function showRoom(
   nameEntry.form.hidden = lobby.hidden = true;
   // A phone's live round is the whole screen: the arena, its overlay and the pads, turned when the phone is upright.
   const playScreen = createBombersPlayScreen({
+    resize: (width, height) => game.scale.setGameSize(width, height),
     stage: document.getElementById("app") ?? document.body,
     riders: [overlay, input.touchLayer, roundControls.element],
     onChange: () => input.hub.cancel(),

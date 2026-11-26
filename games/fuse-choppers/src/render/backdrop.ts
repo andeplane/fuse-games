@@ -46,9 +46,11 @@ export function createBackdrop(make: MakeSurface) {
     width: number,
     cache: Map<number, Surface>,
     paint: (g: Paint, k: number) => void,
+    gutter: number,
   ) => {
-    const first = Math.floor(offset / width);
-    for (let k = first; k <= first + Math.ceil(VIEW_W / width); k++)
+    const first = Math.floor((offset - gutter) / width),
+      last = Math.ceil((offset + VIEW_W + gutter) / width);
+    for (let k = first; k <= last; k++)
       g.drawImage(
         tile(cache, k, width, paint),
         Math.round(k * width - offset),
@@ -56,16 +58,22 @@ export function createBackdrop(make: MakeSurface) {
       );
   };
 
-  function draw(g: Paint, camX: number, time: number): void {
+  function draw(
+    g: Paint,
+    camX: number,
+    time: number,
+    gutterX = 0,
+    gutterY = 0,
+  ): void {
     const sky = g.createLinearGradient(0, 0, 0, VIEW_H);
     sky.addColorStop(0, "#060a22");
     sky.addColorStop(0.45, "#0f1a4d");
     sky.addColorStop(1, "#080d2a");
     g.fillStyle = sky;
-    g.fillRect(0, 0, VIEW_W, VIEW_H);
-    layer(g, camX * FAR_RATE, FAR_TILE, far, paintFar);
+    g.fillRect(-gutterX, -gutterY, VIEW_W + 2 * gutterX, VIEW_H + 2 * gutterY);
+    layer(g, camX * FAR_RATE, FAR_TILE, far, paintFar, gutterX);
     waterfalls(g, camX, time);
-    layer(g, camX * MID_RATE, MID_TILE, mid, paintMid);
+    layer(g, camX * MID_RATE, MID_TILE, mid, paintMid, gutterX);
   }
   return { draw };
 }
@@ -298,20 +306,33 @@ export function crystals(
 }
 
 /** The cave's rock for `seed`, from the camera's left edge to its right. */
-export function drawCave(g: Paint, seed: number, camX: number): void {
+export function drawCave(
+  g: Paint,
+  seed: number,
+  camX: number,
+  gutterX = 0,
+  gutterY = 0,
+): void {
   const { top, bottom } = terrain(seed),
-    c0 = Math.max(0, Math.floor(camX / COL) - 1),
-    c1 = Math.min(COLUMNS - 1, c0 + Math.ceil(VIEW_W / COL) + 3),
+    c0 = Math.max(0, Math.floor((camX - gutterX) / COL) - 1),
+    c1 = Math.min(
+      COLUMNS - 1,
+      c0 + Math.ceil((VIEW_W + 2 * gutterX) / COL) + 3,
+    ),
     at = (c: number) => c * COL - camX;
   for (const [edge, sign] of [
     [top, -1],
     [bottom, 1],
   ] as const) {
-    const outside = sign < 0 ? -30 : VIEW_H + 30;
+    const outside = sign < 0 ? -30 - gutterY : VIEW_H + 30 + gutterY;
+    const left = gutterX ? Math.min(at(c0), -gutterX) : at(c0),
+      right = gutterX ? Math.max(at(c1), VIEW_W + gutterX) : at(c1);
     g.beginPath();
-    g.moveTo(at(c0), outside);
+    g.moveTo(left, outside);
+    g.lineTo(left, edge[c0]!);
     for (let c = c0; c <= c1; c++) g.lineTo(at(c), edge[c]!);
-    g.lineTo(at(c1), outside);
+    g.lineTo(right, edge[c1]!);
+    g.lineTo(right, outside);
     g.closePath();
     const rock = g.createLinearGradient(
       0,

@@ -25,6 +25,8 @@ import {
  * one does not draw it twice.
  */
 export interface SceneInput {
+  gutterX?: number;
+  gutterY?: number;
   world: WorldView;
   /** This device's train id, if it drives one. */
   me: string;
@@ -75,6 +77,8 @@ const PIXEL_FONT = "'Press Start 2P', monospace";
 
 export function createScene(g: Paint, make: MakeSurface) {
   let backdrop: Surface | undefined;
+  let backdropX = -1,
+    backdropY = -1;
   const sprites = createSprites(make);
   let particles: Particle[] = [];
   const seen = new Set<string>();
@@ -555,8 +559,20 @@ export function createScene(g: Paint, make: MakeSurface) {
         );
         shake *= 0.86;
       } else shake = 0;
-      backdrop ??= createBackdrop(make);
-      g.drawImage(backdrop, 0, 0, VIEW_W, VIEW_H);
+      const gutterX = Math.ceil(input.gutterX ?? 0) + (input.gutterX ? 4 : 0),
+        gutterY = Math.ceil(input.gutterY ?? 0) + (input.gutterY ? 4 : 0);
+      if (!backdrop || gutterX !== backdropX || gutterY !== backdropY) {
+        backdrop = createBackdrop(make, gutterX, gutterY);
+        backdropX = gutterX;
+        backdropY = gutterY;
+      }
+      g.drawImage(
+        backdrop,
+        -gutterX,
+        -gutterY,
+        VIEW_W + 2 * gutterX,
+        VIEW_H + 2 * gutterY,
+      );
       const busy = DOCKS_PX.map((dock) =>
         world.trains.some(
           (t) =>

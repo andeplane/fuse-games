@@ -1,8 +1,7 @@
 /**
  * Presentation camera (12A). Cosmetic only: the simulation never reads it.
- * The canvas is always 1600 × 900 units of view (times the render scale), so
- * a larger map is shown whole at a smaller zoom. "Follow keepers" frames the
- * living keepers instead, between that whole-arena zoom and 1.
+ * A larger map is shown whole at a smaller zoom. "Follow keepers" frames
+ * the living keepers instead, between that whole-arena zoom and 1.
  */
 export interface CameraFrame {
   /** Centre, world units. */
@@ -13,16 +12,20 @@ export interface CameraFrame {
 }
 export const VIEW_WIDTH = 1600,
   VIEW_HEIGHT = 900;
-type Size = { width: number; height: number };
+export type ViewSize = { width: number; height: number };
+const DEFAULT_VIEW: ViewSize = { width: VIEW_WIDTH, height: VIEW_HEIGHT };
 const clamp = (v: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, v));
 /** The zoom that shows the whole arena. */
-export const fitZoom = (size: Size) =>
-  Math.min(VIEW_WIDTH / size.width, VIEW_HEIGHT / size.height);
-export const wholeArena = (size: Size): CameraFrame => ({
+export const fitZoom = (size: ViewSize, viewport = DEFAULT_VIEW) =>
+  Math.min(viewport.width / size.width, viewport.height / size.height);
+export const wholeArena = (
+  size: ViewSize,
+  viewport = DEFAULT_VIEW,
+): CameraFrame => ({
   x: size.width / 2,
   y: size.height / 2,
-  zoom: fitZoom(size),
+  zoom: fitZoom(size, viewport),
 });
 /**
  * Frame the points (keeper centres) with a margin: zoom in until they fill
@@ -30,12 +33,13 @@ export const wholeArena = (size: Size): CameraFrame => ({
  * view inside the arena.
  */
 export function followKeepers(
-  size: Size,
+  size: ViewSize,
   points: readonly { x: number; y: number }[],
   margin = { x: 260, y: 200 },
+  viewport = DEFAULT_VIEW,
 ): CameraFrame {
-  const fit = fitZoom(size);
-  if (!points.length) return wholeArena(size);
+  const fit = fitZoom(size, viewport);
+  if (!points.length) return wholeArena(size, viewport);
   let left = Infinity,
     right = -Infinity,
     top = Infinity,
@@ -48,14 +52,14 @@ export function followKeepers(
   }
   const zoom = clamp(
     Math.min(
-      VIEW_WIDTH / (right - left + 2 * margin.x),
-      VIEW_HEIGHT / (bottom - top + 2 * margin.y),
+      viewport.width / (right - left + 2 * margin.x),
+      viewport.height / (bottom - top + 2 * margin.y),
     ),
     fit,
     Math.max(fit, 1),
   );
-  const halfWidth = VIEW_WIDTH / zoom / 2,
-    halfHeight = VIEW_HEIGHT / zoom / 2;
+  const halfWidth = Math.min(size.width, viewport.width / zoom) / 2,
+    halfHeight = Math.min(size.height, viewport.height / zoom) / 2;
   return {
     x: clamp((left + right) / 2, halfWidth, size.width - halfWidth),
     y: clamp((top + bottom) / 2, halfHeight, size.height - halfHeight),
@@ -79,9 +83,10 @@ export function canvasToWorld(
   frame: CameraFrame,
   u: number,
   v: number,
+  viewport = DEFAULT_VIEW,
 ): { x: number; y: number } {
   return {
-    x: frame.x + ((u - 0.5) * VIEW_WIDTH) / frame.zoom,
-    y: frame.y + ((v - 0.5) * VIEW_HEIGHT) / frame.zoom,
+    x: frame.x + ((u - 0.5) * viewport.width) / frame.zoom,
+    y: frame.y + ((v - 0.5) * viewport.height) / frame.zoom,
   };
 }

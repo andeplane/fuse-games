@@ -36,6 +36,8 @@ import {
   easeFrame,
   followKeepers,
   wholeArena,
+  VIEW_WIDTH,
+  VIEW_HEIGHT,
   type CameraFrame,
 } from "./camera.js";
 import {
@@ -58,11 +60,13 @@ export interface ShowcaseHandle {
   seek(time: number): void;
   /** Local display option: frame the living keepers instead of the whole arena. */
   setFollow(value: boolean): void;
+  resizeViewport(): void;
   /** A canvas point, as fractions (0–1) of its box, in world units under the current camera. */
   toWorld(u: number, v: number): { x: number; y: number };
 }
 interface Options {
   externallyStepped?: boolean;
+  phoneViewport?: boolean;
   keyboardAim?(): { x: number; y: number } | undefined;
   /** Where the local keeper's bomb would be aimed on release (arc preview only). */
   bombAim?(): { x: number; y: number } | undefined;
@@ -109,10 +113,25 @@ export function createShowcase(
     follow = false,
     view: CameraFrame = wholeArena({ width: 1600, height: 900 }),
     viewAt = -1;
+  let viewport = { width: VIEW_WIDTH, height: VIEW_HEIGHT };
+  let renderedZoom = view.zoom;
   let elapsed = 800,
     destroyed = false,
     awake = true,
     built = false;
+  function resizeViewport(game: Phaser.Game): void {
+    if (destroyed || !game.isBooted) return;
+    const playing =
+      options.phoneViewport &&
+      host.ownerDocument.documentElement.hasAttribute("data-fui-play");
+    const width =
+      playing && host.clientHeight
+        ? Math.round((VIEW_HEIGHT * host.clientWidth) / host.clientHeight)
+        : VIEW_WIDTH;
+    if (!width || width === viewport.width) return;
+    viewport = { width, height: VIEW_HEIGHT };
+    game.scale.setGameSize(width * res, VIEW_HEIGHT * res);
+  }
   const feedback = new Feedback();
   const res = renderScale();
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -188,6 +207,7 @@ export function createShowcase(
         this.build();
         if (options.externallyStepped) this.game.loop.stop();
         built = true;
+        resizeViewport(this.game);
         if (!awake) this.game.loop.sleep();
         options.ready();
       } catch (error) {
@@ -485,7 +505,9 @@ export function createShowcase(
     ): void {
       const size = world?.size ?? { width: 1600, height: 900 },
         target =
-          follow && world ? followKeepers(size, points) : wholeArena(size),
+          follow && world
+            ? followKeepers(size, points, undefined, viewport)
+            : wholeArena(size, viewport),
         dt = viewAt < 0 ? 1000 : Math.max(0, elapsed - viewAt),
         jump =
           Math.abs(target.zoom - view.zoom) > 0.5 ||
@@ -495,9 +517,44 @@ export function createShowcase(
       view = jump ? target : easeFrame(view, target, 1 - Math.exp(-dt / 250));
       host.dataset.cameraMap = world?.map ?? "";
       const camera = this.cameras.main;
-      camera
-        .setZoom(res * view.zoom * (1 + (this.juice?.punch(elapsed) ?? 0)))
-        .centerOn(view.x, view.y);
+      renderedZoom = view.zoom * (1 + (this.juice?.punch(elapsed) ?? 0));
+      const resized = viewport.width !== VIEW_WIDTH;
+      // Extend the belfry artwork past the map edges on very wide displays.
+      const backdropScale = resized
+        ? Math.max(
+            1,
+            viewport.width / VIEW_WIDTH / renderedZoom,
+            viewport.height / VIEW_HEIGHT / renderedZoom,
+          )
+        : 1;
+      const backdropX = resized ? view.x : VIEW_WIDTH / 2;
+      const backdropY = resized ? view.y : VIEW_HEIGHT / 2;
+      this.background
+        ?.setPosition(backdropX, backdropY)
+        .setDisplaySize(
+          VIEW_WIDTH * backdropScale,
+          VIEW_HEIGHT * backdropScale,
+        );
+      this.tint
+        ?.setPosition(backdropX, backdropY)
+        .setDisplaySize(
+          VIEW_WIDTH * backdropScale,
+          VIEW_HEIGHT * backdropScale,
+        );
+      const neonScale = resized
+        ? Math.max(
+            1,
+            viewport.width / size.width / renderedZoom,
+            viewport.height / size.height / renderedZoom,
+          )
+        : 1;
+      this.neon?.frameBackdrop(
+        resized ? view.x : size.width / 2,
+        resized ? view.y : size.height / 2,
+        size.width * neonScale,
+        size.height * neonScale,
+      );
+      camera.setZoom(res * renderedZoom).centerOn(view.x, view.y);
       host.dataset.camera = JSON.stringify({
         x: Math.round(view.x),
         y: Math.round(view.y),
@@ -1166,6 +1223,8 @@ export function createShowcase(
     render: { antialias: true, pixelArt: false, roundPixels: false },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   });
+  const resize = new ResizeObserver(() => resizeViewport(game));
+  if (options.phoneViewport) resize.observe(host);
   const lost = (event: Event) => {
     event.preventDefault();
     options.failed("The graphics context was lost.");
@@ -1210,13 +1269,17 @@ export function createShowcase(
     setFollow(value) {
       follow = value;
     },
+    resizeViewport() {
+      resizeViewport(game);
+    },
     toWorld(u, v) {
-      return canvasToWorld(view, u, v);
+      return canvasToWorld({ ...view, zoom: renderedZoom }, u, v, viewport);
     },
     destroy() {
       if (destroyed) return;
       destroyed = true;
       stopCapture();
+      resize.disconnect();
       game.canvas.removeEventListener("webglcontextlost", lost);
       scene.teardown();
       game.destroy(true);

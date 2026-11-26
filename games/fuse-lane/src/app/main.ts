@@ -1,4 +1,5 @@
 import { createTopBar } from "fuse-ui";
+import { setPhoneGamePlaying } from "fuse-ui/embedded";
 import { createGameSocial } from "fuse-ui/social";
 import { browserPlaytestFor } from "fuse-ui/playtest";
 import { playtestInputBlocked } from "fuse-ui/playtest-input";
@@ -444,6 +445,7 @@ function local(match: LocalMatch, resumed = false): void {
         model.checklist = checklistModel(checks, who, me);
       }
       main.dataset.phase = view.phase;
+      setPhoneGamePlaying(document, view.phase === "running");
       main.dataset.week = String(view.week);
       main.dataset.part = view.part;
       main.dataset.current = view.current;
@@ -511,6 +513,7 @@ function local(match: LocalMatch, resumed = false): void {
   document.addEventListener("keydown", onKey);
   window.addEventListener("pagehide", onHide);
   const cleanup = () => {
+    setPhoneGamePlaying(document, false);
     snapshotForReport = undefined;
     stopReports();
     gameMenu.dispose();
@@ -757,6 +760,10 @@ function room(): void {
         display: model.layout === "tv",
       });
       main.dataset.phase = frame.phase;
+      setPhoneGamePlaying(
+        document,
+        frame.phase === "running" && model.layout === "board",
+      );
       main.dataset.week = String(frame.week);
       main.dataset.part = frame.part;
       main.dataset.layout = model.layout;
@@ -789,6 +796,7 @@ function room(): void {
       viewer.host = host;
     },
     ended() {
+      setPhoneGamePlaying(document, false);
       connecting.hidden = true;
       // A room that ended is not one to go back to.
       if (store.getItem(names.last) === code) store.removeItem(names.last);
@@ -826,6 +834,7 @@ function room(): void {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      setPhoneGamePlaying(document, false);
       gameMenu.dispose();
       screen.destroy();
     },

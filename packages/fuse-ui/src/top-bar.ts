@@ -7,6 +7,7 @@ import { createRadio } from "./radio.js";
 import { browserPlaytestFor } from "./playtest.js";
 import { safeStorage } from "./safe-storage.js";
 import { installTouchGuard } from "./touch-guard.js";
+import { createPhoneGameHome } from "./embedded.js";
 
 export interface TopBarOptions {
   element: HTMLElement;
@@ -149,6 +150,8 @@ export function createTopBar(options: TopBarOptions): HTMLElement {
   }
   channel.hidden = preferences.hidden = true;
   menu.body.append(radioEntry, optionsEntry);
+  const home = createPhoneGameHome(doc);
+  if (home) menu.body.prepend(home);
   menu.dialog.append(channel, preferences);
   let activeEntry: HTMLButtonElement | undefined;
   let transport = options.radioControls ?? radio?.element;

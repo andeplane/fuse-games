@@ -1,3 +1,5 @@
+import { setPhoneGamePlaying } from "./embedded.js";
+
 /**
  * A phone's full-screen play: while a round is live the game's stage is the whole screen, the top bar shrinks to its
  * menu button and the page cannot scroll. A stage that is wider than tall and cannot reflow is drawn turned a quarter
@@ -10,6 +12,21 @@
 
 /** `phone`: the stage fills the screen as held. `turned`: it fills it drawn a quarter turn clockwise. */
 export type PlayMode = "off" | "phone" | "turned";
+
+/** Uniformly fit the whole board and center it in the stage's unturned coordinates. */
+export function fitPlayViewport(
+  width: number,
+  height: number,
+  worldWidth: number,
+  worldHeight: number,
+): { scale: number; x: number; y: number } {
+  const scale = Math.min(width / worldWidth, height / worldHeight);
+  return {
+    scale,
+    x: (width - worldWidth * scale) / 2,
+    y: (height - worldHeight * scale) / 2,
+  };
+}
 
 /** What the layout needs to know about the device; the page adapts a window, a test supplies a fake. */
 export interface PlayScreenDevice {
@@ -108,6 +125,7 @@ export function createPlayScreen(options: PlayScreenOptions): PlayScreen {
       : "off";
     if (next === mode) return;
     mode = next;
+    setPhoneGamePlaying(doc, mode !== "off");
     if (mode === "off") {
       delete root.dataset.fuiPlay;
       stage.classList.remove(STAGE_CLASS);

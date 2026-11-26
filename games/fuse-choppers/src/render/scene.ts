@@ -33,6 +33,8 @@ import {
  * Effects are spawned once per effect id, so a rollback that replays one does not draw it twice.
  */
 export interface SceneInput {
+  gutterX?: number;
+  gutterY?: number;
   world: WorldView;
   /** This device's chopper id, if it flies one. */
   me: string;
@@ -84,10 +86,33 @@ export function createScene(
     effects.spawn(world, input.me);
     effects.tick(dt);
     const camX = world.camX;
+    const gutterX = input.gutterX ?? 0,
+      gutterY = input.gutterY ?? 0;
+    // The extension stays covered even when the scene's visual shake displaces it.
+    if (gutterX || gutterY) {
+      g.fillStyle = "#070a20";
+      g.fillRect(
+        -gutterX,
+        -gutterY,
+        VIEW_W + 2 * gutterX,
+        VIEW_H + 2 * gutterY,
+      );
+    }
     g.save();
+    const board = gutterX || gutterY ? g.getTransform() : undefined;
     effects.applyShake(g, input.reducedMotion);
-    backdrop.draw(g, camX, time);
-    drawCave(g, world.seed, camX);
+    backdrop.draw(g, camX, time, gutterX, gutterY);
+    drawCave(g, world.seed, camX, gutterX, gutterY);
+    // An expanded phone view reveals scenery, while hazards and aircraft use the same camera field on all devices.
+    if (board) {
+      g.save();
+      const shaken = g.getTransform();
+      g.setTransform(board);
+      g.beginPath();
+      g.rect(0, 0, VIEW_W, VIEW_H);
+      g.clip();
+      g.setTransform(shaken);
+    }
     drawExit(g, camX, time);
     drawPlatforms(g, world, time);
     drawSaws(g, world, time);
@@ -103,6 +128,7 @@ export function createScene(
     effects.draw(g, camX);
     emberClock += dt;
     drawCrush(g, world, time, emberClock > 0.03);
+    if (board) g.restore();
     if (emberClock > 0.03) emberClock = 0;
     g.restore();
     danger(g, world, input.me, time);

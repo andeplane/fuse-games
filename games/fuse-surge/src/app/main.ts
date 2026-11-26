@@ -734,6 +734,7 @@ function room(solo: boolean): void {
   // ---- drawing: the newest folded world played forward to the clock, once per animation frame ----
   const scene = createPicture(canvas, {
     look,
+    fullStage: () => playScreen.mode() !== "off",
     reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
     // A device that cannot draw 3D right now shows the 2D look and the menus say so, but the look it chose stays
     // saved: a chunk that failed to load once must not turn 3D off for good.

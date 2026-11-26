@@ -204,6 +204,7 @@ export function createPhaserArena(
   let lost = false;
   let lastNow = 0;
   let renderMs = 0;
+  let apronKey = "";
   canvas.style.width = "100%";
   canvas.style.height = "100%";
   const display = observeArenaDisplay(canvas, options.rotateToFit);
@@ -328,6 +329,39 @@ export function createPhaserArena(
       if (!booted || destroyed || lost || document.hidden) return;
       const start = performance.now();
       resize(snapshot.width, snapshot.height, snapshot.map === "cross");
+      if (canvas.closest(".mobile-play")) {
+        const key = `${snapshot.map}:${theme.id}`;
+        if (key !== apronKey) {
+          apronKey = key;
+          const ground = mapGround(snapshot.map, theme);
+          const tile = canvas.ownerDocument.createElement("canvas");
+          tile.width = tile.height = 192;
+          const ctx = tile.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = ground.floorEdge;
+            ctx.fillRect(0, 0, tile.width, tile.height);
+            paintMapGround(ctx, snapshot.map, tile.width, tile.height);
+            ctx.strokeStyle = ground.grid;
+            const step =
+              tile.width /
+              Math.max(1, Math.round(tile.width / ground.gridSize));
+            ctx.beginPath();
+            for (let line = 0; line < tile.width; line += step) {
+              ctx.moveTo(line + 0.5, 0);
+              ctx.lineTo(line + 0.5, tile.height);
+              ctx.moveTo(0, line + 0.5);
+              ctx.lineTo(tile.width, line + 0.5);
+            }
+            ctx.stroke();
+            ctx.fillStyle = "rgba(3, 9, 25, 0.38)";
+            ctx.fillRect(0, 0, tile.width, tile.height);
+            canvas.style.setProperty(
+              "--arena-apron",
+              `url("${tile.toDataURL()}")`,
+            );
+          }
+        }
+      }
       scene.paint(snapshot, now, theme, matchId, selfId, replay, riderPoses);
       game.step(
         now,

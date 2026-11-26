@@ -380,6 +380,11 @@ export function createArena(options: ArenaOptions = {}) {
   let hudSecond = -1;
   let turn: Turn = "none";
   let shown: { cols: number; rows: number } | undefined;
+  let commandPanel: HTMLElement | undefined;
+  let battlefield = { x: 0, y: 0, width: 1, height: 1 };
+  const phone = options.fill
+    ? canvas.ownerDocument.defaultView?.matchMedia("(pointer: coarse)")
+    : undefined;
 
   function render(
     battle: BattleState,
@@ -416,12 +421,47 @@ export function createArena(options: ArenaOptions = {}) {
     // Across the screen the canvas shows the map's width, or its height when the map is on its side.
     const across = turned ? height : width;
     const along = turned ? width : height;
-    const pixels = Math.max(
-      2,
-      Math.round((canvas.clientWidth || across / 4) * dpr),
+    const expanded = Boolean(
+      phone?.matches && stage.clientWidth && stage.clientHeight,
     );
-    const pixelHeight = Math.max(1, Math.round((pixels * along) / across));
-    const terrainPixels = Math.min(width, turned ? pixelHeight : pixels);
+    let fieldWidth = canvas.clientWidth || across / 4;
+    let fieldHeight = (fieldWidth * along) / across;
+    let offsetX = 0;
+    let offsetY = 0;
+    const canvasWidth = expanded ? stage.clientWidth : fieldWidth;
+    const canvasHeight = expanded ? stage.clientHeight : fieldHeight;
+    if (expanded) {
+      const reserved =
+        commandPanel && !commandPanel.hidden ? commandPanel : undefined;
+      const stageRect = stage.getBoundingClientRect();
+      const panel = reserved?.getBoundingClientRect();
+      const sidePanel = panel && panel.width < stageRect.width / 2;
+      const safeWidth = sidePanel ? panel.left - stageRect.left : canvasWidth;
+      const hudHeight = hud.offsetHeight;
+      const safeHeight =
+        (panel && !sidePanel ? panel.top - stageRect.top : canvasHeight) -
+        hudHeight;
+      fieldWidth = Math.max(
+        1,
+        Math.min(safeWidth, (safeHeight * across) / along),
+      );
+      fieldHeight = (fieldWidth * along) / across;
+      offsetX = (safeWidth - fieldWidth) / 2;
+      offsetY = hudHeight + (safeHeight - fieldHeight) / 2;
+    }
+    battlefield = {
+      x: offsetX / canvasWidth,
+      y: offsetY / canvasHeight,
+      width: fieldWidth / canvasWidth,
+      height: fieldHeight / canvasHeight,
+    };
+    const pixels = Math.max(2, Math.round(canvasWidth * dpr));
+    const pixelHeight = Math.max(1, Math.round(canvasHeight * dpr));
+    const scale = (fieldWidth * dpr) / across;
+    const terrainPixels = Math.max(
+      1,
+      Math.min(width, Math.round(width * scale)),
+    );
     const corePositions = battle.cores.map(({ x, y }) => `${x},${y}`);
     const sitePositions = battle.sites.map(({ x, y }) => `${x},${y}`);
     const key = `${battle.cols}/${battle.rows}:${terrainPixels}:${corePositions.join(";")}:${sitePositions.join(";")}:${battle.walls.map(Number).join("")}`;
@@ -433,13 +473,34 @@ export function createArena(options: ArenaOptions = {}) {
       canvas.width = pixels;
       canvas.height = pixelHeight;
     }
-    const scale = pixels / across;
+    if (expanded) {
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      // The field's unclaimed terrain continues under the controls, while
+      // its marked boundary keeps off-map taps distinct from build sites.
+      context.fillStyle = "#192520";
+      context.fillRect(0, 0, pixels, pixelHeight);
+      const step = Math.max(6, Math.round(TILE * scale));
+      const startX = Math.round(offsetX * dpr) % step;
+      const startY = Math.round(offsetY * dpr) % step;
+      context.fillStyle = "#23322a";
+      for (let x = startX; x < pixels; x += step)
+        context.fillRect(x, 0, 1, pixelHeight);
+      for (let y = startY; y < pixelHeight; y += step)
+        context.fillRect(0, y, pixels, 1);
+    }
+    const dx = offsetX * dpr;
+    const dy = offsetY * dpr;
     if (turn === "left")
-      context.setTransform(0, -scale, scale, 0, 0, pixelHeight);
+      context.setTransform(0, -scale, scale, 0, dx, dy + fieldHeight * dpr);
     else if (turn === "right")
-      context.setTransform(0, scale, -scale, 0, pixels, 0);
-    else context.setTransform(scale, 0, 0, pixelHeight / height, 0, 0);
+      context.setTransform(0, scale, -scale, 0, dx + fieldWidth * dpr, dy);
+    else context.setTransform(scale, 0, 0, scale, dx, dy);
     context.drawImage(terrain, 0, 0, width, height);
+    if (expanded) {
+      context.lineWidth = 1 / scale;
+      context.strokeStyle = "#72927d";
+      context.strokeRect(0, 0, width, height);
+    }
 
     const teamCount = names.length === 0 ? 0 : battle.cores.length;
     hud.hidden = teamCount === 0;
@@ -497,14 +558,21 @@ export function createArena(options: ArenaOptions = {}) {
     if (!shown) return undefined;
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return undefined;
-    return mapPoint(
-      (clientX - rect.x) / rect.width,
-      (clientY - rect.y) / rect.height,
-      shown.cols,
-      shown.rows,
-      turn,
-    );
+    const u =
+      ((clientX - rect.x) / rect.width - battlefield.x) / battlefield.width;
+    const v =
+      ((clientY - rect.y) / rect.height - battlefield.y) / battlefield.height;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return undefined;
+    return mapPoint(u, v, shown.cols, shown.rows, turn);
   }
 
-  return { element, canvas, render, locate };
+  return {
+    element,
+    canvas,
+    render,
+    locate,
+    setCommandPanel(panel: HTMLElement) {
+      commandPanel = panel;
+    },
+  };
 }

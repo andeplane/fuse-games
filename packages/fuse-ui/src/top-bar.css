@@ -185,6 +185,14 @@ body.at-entrance .shell > .fui-top-bar {
 .fui-top-bar [hidden] {
   display: none !important;
 }
+html:not([data-fui-phone-playing]) .fui-phone-home,
+.fui-top-bar-menu .fui-game-menu-navigation .fui-phone-home {
+  display: none !important;
+}
+html[data-fui-phone-playing] button.fui-phone-home {
+  min-height: 44px !important;
+  min-width: 44px !important;
+}
 .fui-top-bar-menu .fui-game-menu-panel {
   position: static;
   width: 100%;

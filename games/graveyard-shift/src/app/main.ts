@@ -64,7 +64,13 @@ import { GraveyardRuntime } from "../online/runtime.js";
 import type { View } from "../online/game.js";
 import { readShiftHistory } from "./history.js";
 import { seatName } from "../online/names.js";
-import { draw, COLORS } from "../render/scene.js";
+import {
+  CEMETERY_HEIGHT,
+  CEMETERY_WIDTH,
+  COLORS,
+  cemeteryFrame,
+  draw,
+} from "../render/scene.js";
 import {
   keys,
   safeStore,
@@ -218,8 +224,8 @@ function handbook() {
 }
 function canvas() {
   const c = el("canvas", "", "arena");
-  c.width = 1000;
-  c.height = 620;
+  c.width = CEMETERY_WIDTH;
+  c.height = CEMETERY_HEIGHT;
   c.setAttribute(
     "aria-label",
     "Moonlit cemetery arena with hunters, ghosts and two containment shrines",
@@ -864,7 +870,19 @@ function room() {
           y: mine?.y,
         });
       }
-      draw(c.getContext("2d")!, world, self);
+      const full = playScreen.mode() !== "off";
+      const width = full ? c.clientWidth : CEMETERY_WIDTH;
+      const height = full ? c.clientHeight : CEMETERY_HEIGHT;
+      if (width > 0 && height > 0) {
+        if (c.width !== width) c.width = width;
+        if (c.height !== height) c.height = height;
+        const ctx = c.getContext("2d")!;
+        if (full) {
+          const frame = cemeteryFrame(width, height);
+          ctx.setTransform(frame.scale, 0, 0, frame.scale, frame.x, frame.y);
+          draw(ctx, world, self, frame);
+        } else draw(ctx, world, self);
+      }
     }
     audio.frame();
     requestAnimationFrame(render);

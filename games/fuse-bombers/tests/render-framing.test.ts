@@ -17,6 +17,7 @@ import {
   shipMarkers,
   SKY,
   skyRect,
+  viewportShipMarkers,
   type ShipPoint,
 } from "../src/render/framing.js";
 
@@ -79,6 +80,25 @@ test("an arrow is full size just off the edge and shrinks with distance to a flo
     assert.equal(m.y, 450);
     assert.equal(m.angle, 0);
   }
+});
+
+test("a wide viewport sees past the HUD's old edge and places the arrow at the real edge", () => {
+  const pose: CameraPose = { centerX: 800, centerY: 450, zoom: 1 };
+  const view = { width: 2000, height: 900 };
+  const markers = viewportShipMarkers(
+    [ship(0, 1700, 450), ship(1, 2001, 450), ship(2, 800, 10)],
+    pose,
+    view,
+    SCREEN,
+    52,
+  );
+  assert.deepEqual(
+    markers.map(({ id, x, y }) => [id, x, y]),
+    [
+      [1, 1770, 450],
+      [2, 800, 82],
+    ],
+  );
 });
 
 test("the sky covers the screen and a shake's margin at every zoom and anywhere in the world", () => {
