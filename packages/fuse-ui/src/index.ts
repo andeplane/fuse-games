@@ -232,6 +232,7 @@ export {
   browserPlayDevice,
   boxInStage,
   createPlayScreen,
+  fitPlayViewport,
   isTurned,
   stageBox,
   type StageBox,

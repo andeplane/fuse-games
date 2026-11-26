@@ -11,6 +11,21 @@
 /** `phone`: the stage fills the screen as held. `turned`: it fills it drawn a quarter turn clockwise. */
 export type PlayMode = "off" | "phone" | "turned";
 
+/** Uniformly fit the whole board and center it in the stage's unturned coordinates. */
+export function fitPlayViewport(
+  width: number,
+  height: number,
+  worldWidth: number,
+  worldHeight: number,
+): { scale: number; x: number; y: number } {
+  const scale = Math.min(width / worldWidth, height / worldHeight);
+  return {
+    scale,
+    x: (width - worldWidth * scale) / 2,
+    y: (height - worldHeight * scale) / 2,
+  };
+}
+
 /** What the layout needs to know about the device; the page adapts a window, a test supplies a fake. */
 export interface PlayScreenDevice {
   /** The primary pointer is a finger. */
