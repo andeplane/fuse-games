@@ -656,6 +656,11 @@ html[data-fui-play] .touch-controls .pad {
   min-height: 44px;
   padding: 0 1px;
   border-radius: 12px;
+  font:
+    700 10px/1 system-ui,
+    sans-serif;
+  letter-spacing: 0;
+  white-space: nowrap;
   opacity: 0.85;
   pointer-events: auto;
 }

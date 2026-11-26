@@ -185,6 +185,11 @@ try {
   await phone.getByRole("button", { name: "RIGHT ↷" }).tap();
   await phone.getByRole("button", { name: "OUT ↑" }).tap();
   await phone.getByRole("button", { name: "IN ↓" }).tap();
+  await phone.getByText("TAP LAUNCH", { exact: true }).waitFor();
+  await phone.getByRole("button", { name: "LAUNCH", exact: true }).tap();
+  await phone
+    .getByText("TAP LAUNCH", { exact: true })
+    .waitFor({ state: "hidden" });
   assert.equal(await phone.locator(".pad").count(), 5);
   assert.ok(
     await phone.evaluate(() => document.documentElement.scrollWidth <= 390),

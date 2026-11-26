@@ -19,9 +19,15 @@ export interface ResultRow {
 export type Model = NonNullable<ReturnType<typeof present>>;
 
 /** The HUD is derived from the latest view, including corrected rollback outcomes. */
-export function present(v: BallView, playerId?: string, host = false) {
+export function present(
+  v: BallView,
+  playerId?: string,
+  host = false,
+  touch = false,
+) {
   const s = v.arena;
   if (!s) return undefined;
+  const launchHint = touch ? "TAP LAUNCH" : "SPACE TO LAUNCH";
   const solo = playerId === undefined;
   const you = s.bases.find((b) => (solo ? !b.bot : b.id === playerId));
   const effects = (b: (typeof s.bases)[number]) => {
@@ -72,7 +78,7 @@ export function present(v: BallView, playerId?: string, host = false) {
           : you && !you.alive
             ? "CORE LOST · WATCH THE FINISH"
             : you && s.balls.some((b) => b.held === you.id)
-              ? "SPACE TO LAUNCH"
+              ? launchHint
               : s.tick >= v.rules.frenzy - v.rules.frenzyWarning &&
                   s.tick < v.rules.frenzy
                 ? `FUSE FRENZY IN ${Math.ceil((v.rules.frenzy - s.tick) / 20)}`
