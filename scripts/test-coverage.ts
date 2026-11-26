@@ -168,8 +168,8 @@ const reportExit =
     ? await timed("report", () =>
         run([
           "exec",
-          "c8",
-          "report",
+          "tsx",
+          "scripts/report-coverage.mjs",
           "--temp-directory",
           "coverage/tmp",
           "--exclude-after-remap",

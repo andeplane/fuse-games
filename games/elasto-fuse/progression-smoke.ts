@@ -1,18 +1,28 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
-import { LEVELS } from "../games/elasto-fuse/src/engine/index.js";
-import { keys } from "../games/elasto-fuse/src/app/session.js";
-import { launchSelected } from "./lib/browser.js";
-import { startRoomService } from "./lib/server.js";
+import { launchSelected } from "../../scripts/lib/browser.js";
+import { startGameCoverage } from "../../scripts/lib/game-browser-coverage.js";
+import { startRoomService } from "../../scripts/lib/server.js";
+import { LEVELS } from "./src/engine/index.js";
+import { keys } from "./src/app/session.js";
 
 const names = keys("elasto-fuse");
-const service = await startRoomService();
+const serverUrl = process.env.ONLINE_URL;
+const service = serverUrl ? undefined : await startRoomService();
 try {
-  const browser = await launchSelected("chromium", { headless: true });
+  const browser = await launchSelected(
+    process.env.FUSE_GAME_COVERAGE_DIR ? "chrome" : "chromium",
+    { headless: true },
+  );
   try {
     const host = await browser.newPage();
     const guest = await browser.newPage();
-    const home = new URL("elastofuse/?mute", service.url);
+    const coverage = await Promise.all(
+      [host, guest].map((page) =>
+        startGameCoverage(page, { gameId: "elasto-fuse" }),
+      ),
+    );
+    const home = new URL("elastofuse/?mute", serverUrl ?? service!.url);
     const name = (page: Page, text: string) =>
       page.getByRole("button", { name: text, exact: true });
     const selectLevels = (page: Page, label: string) =>
@@ -102,6 +112,7 @@ try {
         page.locator('.ef-room[data-level="3"]').waitFor(),
       ),
     );
+    await Promise.all(coverage.map((finish) => finish()));
     console.log(
       "Elasto Fuse: fresh, Random, Continue, locked links, and room guest unlocks passed",
     );
@@ -109,5 +120,5 @@ try {
     await browser.close();
   }
 } finally {
-  await service.stop();
+  await service?.stop();
 }

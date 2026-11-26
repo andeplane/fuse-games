@@ -3,17 +3,19 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "playwright";
-import { launchSelected } from "./lib/browser.js";
-import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
-import { startRoomService } from "./lib/server.js";
-import { openTopMenu, closeTopMenu } from "./lib/top-menu.js";
+import { launchSelected } from "../../scripts/lib/browser.js";
+import { startGameCoverage } from "../../scripts/lib/game-browser-coverage.js";
+import { openPlayOptions, takeHostSeat } from "../../scripts/lib/main-menu.js";
+import { startRoomService } from "../../scripts/lib/server.js";
+import { openTopMenu, closeTopMenu } from "../../scripts/lib/top-menu.js";
 
-const service = await startRoomService();
-const browser = await launchSelected("chromium", {
-  headless: true,
-  args: ["--mute-audio"],
-});
-const home = new URL("dockside/?mute", service.url);
+const serverUrl = process.env.ONLINE_URL;
+const service = serverUrl ? undefined : await startRoomService();
+const browser = await launchSelected(
+  process.env.FUSE_GAME_COVERAGE_DIR ? "chrome" : "chromium",
+  { headless: true, args: ["--mute-audio"] },
+);
+const home = new URL("dockside/?mute", serverUrl ?? service!.url);
 const arena = 'canvas[aria-label="Canal Lock arena"]';
 const pad = ".dockside-controls";
 const shots = process.env.DOCKSIDE_SMOKE_SHOTS;
@@ -21,6 +23,7 @@ const portrait = { width: 360, height: 800 };
 const landscape = { width: 844, height: 390 };
 const desktop = { width: 1440, height: 900 };
 const pageErrors: string[] = [];
+const coverage = new Map<Page, () => Promise<void>>();
 
 async function device(
   viewport: { width: number; height: number },
@@ -32,7 +35,14 @@ async function device(
     isMobile: phone,
   });
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  coverage.set(page, await startGameCoverage(page, { gameId: "dockside" }));
   return page;
+}
+
+async function closePage(page: Page) {
+  await coverage.get(page)?.();
+  coverage.delete(page);
+  await page.context().close();
 }
 
 async function screenshot(page: Page, name: string) {
@@ -150,7 +160,7 @@ try {
   );
   await screenshot(desktopPilot, "desktop");
   await transform(desktopPilot, false);
-  await desktopPilot.context().close();
+  await closePage(desktopPilot);
 
   for (const [name, viewport] of [
     ["portrait", portrait],
@@ -167,7 +177,7 @@ try {
     );
     await closeTopMenu(pilot);
     await transform(pilot, true);
-    await pilot.context().close();
+    await closePage(pilot);
   }
 
   const { host, guest } = await room(false);
@@ -175,7 +185,7 @@ try {
     arenaLayout(host, "WEST · YOU"),
     arenaLayout(guest, "EAST · YOU"),
   ]);
-  await Promise.all([host.context().close(), guest.context().close()]);
+  await Promise.all([closePage(host), closePage(guest)]);
 
   const shared = await room(true);
   for (const [index, controller] of [shared.host, shared.guest].entries()) {
@@ -221,6 +231,7 @@ try {
     .waitFor();
   assert.equal(await shared.tv.locator(pad).isVisible(), false);
   assert.deepEqual(pageErrors, []);
+  await Promise.all([...coverage.values()].map((finish) => finish()));
   console.log(
     "PASS Dockside phone controls: solo portrait and landscape, individual room host and guest, Shared TV and desktop",
   );
@@ -229,5 +240,5 @@ try {
   throw error;
 } finally {
   await browser.close();
-  await service.stop();
+  await service?.stop();
 }

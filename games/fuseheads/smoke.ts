@@ -1,15 +1,20 @@
 /** Verify the real room transport. Set FUSEHEADS_URL to run against a development server. */
 import assert from "node:assert/strict";
-import { launchSelected } from "./lib/browser.js";
-import { startRoomService } from "./lib/server.js";
-import { openPlayOptions, takeHostSeat } from "./lib/main-menu.js";
-import { openTopMenu } from "./lib/top-menu.js";
+import { launchSelected } from "../../scripts/lib/browser.js";
+import { startGameCoverage } from "../../scripts/lib/game-browser-coverage.js";
+import { startRoomService } from "../../scripts/lib/server.js";
+import { openPlayOptions, takeHostSeat } from "../../scripts/lib/main-menu.js";
+import { openTopMenu } from "../../scripts/lib/top-menu.js";
 import type { Page } from "playwright";
 
-const server = process.env.FUSEHEADS_URL ? undefined : await startRoomService();
-const root = new URL("fuseheads/", process.env.FUSEHEADS_URL ?? server!.url);
-const browser = await launchSelected("chromium");
+const serverUrl = process.env.FUSEHEADS_URL ?? process.env.ONLINE_URL;
+const server = serverUrl ? undefined : await startRoomService();
+const root = new URL("fuseheads/", serverUrl ?? server!.url);
+const browser = await launchSelected(
+  process.env.FUSE_GAME_COVERAGE_DIR ? "chrome" : "chromium",
+);
 const problems: string[] = [];
+const coverage = new Map<Page, () => Promise<void>>();
 const portrait = { width: 360, height: 800 };
 const landscape = { width: 844, height: 390 };
 const pageFor = async (touchViewport?: typeof portrait) => {
@@ -24,8 +29,14 @@ const pageFor = async (touchViewport?: typeof portrait) => {
   );
   const page = await context.newPage();
   page.on("pageerror", (err) => problems.push(err.message));
+  coverage.set(page, await startGameCoverage(page, { gameId: "fuseheads" }));
   return page;
 };
+async function closePage(page: Page) {
+  await coverage.get(page)?.();
+  coverage.delete(page);
+  await page.context().close();
+}
 const playfield = (page: Page) =>
   page.locator('.fuseheads-arena[data-ready="true"]');
 async function checkTouchOverlay(page: Page) {
@@ -85,7 +96,7 @@ try {
   assert.ok(
     (await solo.locator("body").boundingBox())!.width <= portrait.width,
   );
-  await solo.context().close();
+  await closePage(solo);
   // Start at the target viewport because Chromium cannot resize a fullscreen window.
   const wideSolo = await pageFor(landscape);
   await enter(wideSolo);
@@ -94,7 +105,7 @@ try {
   await wideSolo.getByRole("button", { name: "Right", exact: true }).tap();
   await openTopMenu(wideSolo);
   await wideSolo.keyboard.press("Escape");
-  await wideSolo.context().close();
+  await closePage(wideSolo);
   const host = await pageFor();
   await enter(host);
   await openPlayOptions(host);
@@ -128,6 +139,7 @@ try {
     .waitFor();
   assert.equal(await tv.locator(".fuseheads-pad").isVisible(), false);
   assert.deepEqual(problems, []);
+  await Promise.all([...coverage.values()].map((finish) => finish()));
   console.log(
     "Passed solo bonus, touch, Help/Back, landscape, one-seat room, host, guest, shared TV and guest reload.",
   );

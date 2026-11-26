@@ -12,4 +12,4 @@ Open `/dockside/?mute`, choose solo practice or create a two-seat room. W/S driv
 
 F also claims a neutral turret within reach. Touching any turret still captures it. With the map open, movement controls pan the map, F centers it on your rig, and M returns to driving. The match continues while you read the map.
 
-On a phone, pilot controls overlay the full-screen arena. Shared TV phones show the dedicated controller and radar. To verify these layouts and both room paths against a built app, run `pnpm exec tsx scripts/dockside-phone-smoke.ts`.
+On a phone, pilot controls overlay the full-screen arena. Shared TV phones show the dedicated controller and radar. To verify these layouts and both room paths against a built app, run `pnpm exec tsx games/dockside/phone-smoke.ts`.

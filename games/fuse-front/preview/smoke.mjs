@@ -1,21 +1,26 @@
 /**
  * Browser smoke for Fuse Front against a running service (`pnpm build`, then `service/dev.ts`):
  *
- *   node games/fuse-front/preview/smoke.mjs http://localhost:PORT/ [screenshot-dir]
+ *   pnpm exec tsx games/fuse-front/preview/smoke.mjs http://localhost:PORT/ [screenshot-dir]
  *
- * The landing page shows the portal first in the header; CREATE ROOM opens a lobby with the size picker, two team
+ * The landing page shows the portal first in the header; Play opens hosting with the size picker, two team
  * columns and START; the host cycles the bot's difficulty, starts a 1v1 against it, right-clicks open ground east of
- * its hero (the hero walks there), sends it across the map and sets HOLD, and the battlefield keeps changing as the
+ * its hero (the hero walks there), orders an attack-move, and the battlefield keeps changing as the
  * armies move. Then a solo match against a bot: the HUD shows a locked ultimate, a right-click walks the hero, Q casts
- * (and cools down) and FOLLOW lights up. `HUD_SHOT=path` saves a screenshot of the HUD.
- * Run by hand; not in CI. Every page opens muted.
+ * (and cools down) and the shop can be opened. `HUD_SHOT=path` saves a screenshot of the HUD.
+ * The release coverage harness supplies ONLINE_URL. Every page opens muted.
  */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { startGameCoverage } from "../../../scripts/lib/game-browser-coverage.js";
+import {
+  openPlayOptions,
+  takeHostSeat,
+} from "../../../scripts/lib/main-menu.js";
 
-const base = process.argv[2];
+const base = process.argv[2] ?? process.env.ONLINE_URL;
 if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+\/$/.test(base ?? ""))
   throw new Error("Pass the local service URL, e.g. http://localhost:8787/");
 const shots = process.argv[3];
@@ -28,6 +33,9 @@ const errors = [];
 try {
   const page = await browser.newPage({
     viewport: { width: 1100, height: 800 },
+  });
+  const collectCoverage = await startGameCoverage(page, {
+    gameId: "fuse-front",
   });
   page.on("pageerror", (error) => errors.push(error.message));
   const snap = (name) =>
@@ -54,17 +62,24 @@ try {
     );
   };
   await page.goto(`${base}fuse-front/?mute`);
-  const first = await page.locator("header.ff-top > *").first();
+  const first = page.locator("header.ff-top .fui-top-bar-left > *").first();
   assert.match((await first.getAttribute("class")) ?? "", /portal/);
-  await page.getByRole("button", { name: "CREATE ROOM" }).click();
-  await page.locator(".ff-t1 .ff-cycle").waitFor({ timeout: 15_000 });
-  assert.equal(await page.locator(".ff-sizes:not(.ff-maps) button").count(), 3);
-  await page.locator(".ff-t1 .ff-cycle").click();
-  await page.locator(".ff-t1", { hasText: /hard/i }).waitFor();
+  await openPlayOptions(page);
+  await page.getByRole("button", { name: "Host room", exact: true }).click();
+  await takeHostSeat(page, "Red");
+  assert.equal(await page.locator(".fui-room-modes button").count(), 3);
+  await page
+    .locator('.fui-room-open-slot[data-slot="1"]')
+    .getByRole("button", { name: "Add AI", exact: true })
+    .click();
+  await page.getByRole("button", { name: /^Change .+ level/i }).click();
+  await page
+    .getByRole("button", { name: /^Change .+ level \(hard\)$/i })
+    .waitFor();
   await snap("lobby");
   await page.getByRole("button", { name: "START" }).click();
   await page
-    .locator(".ff-hud", { hasText: "stance" })
+    .locator(".ff-hud", { hasText: "right-click: move" })
     .waitFor({ timeout: 15_000 });
   const board = page.locator("canvas.ff-board");
   const box = (await board.boundingBox()) ?? assert.fail("no board");
@@ -74,10 +89,11 @@ try {
   );
   assert.equal(scale, Math.round(scale), "a whole-number scale");
   await rightClickMoves(board);
-  // Open ground east of the red fort, toward the centre.
+  await page.keyboard.press("a");
+  await page.locator(".ff-amove.ff-lit").waitFor();
+  // Attack-move east of the red fort, toward the centre.
   await page.mouse.click(box.x + box.width * 0.38, box.y + box.height * 0.3);
-  await page.keyboard.press("2");
-  await page.locator(".ff-switch.ff-lit", { hasText: "HOLD" }).waitFor();
+  await page.locator(".ff-amove.ff-lit").waitFor({ state: "hidden" });
   // A screenshot, not `toDataURL`: the 3D board's WebGL canvas reads back blank once its frame is presented.
   const picture = async () => (await board.screenshot()).toString("base64");
   const before = await picture();
@@ -86,7 +102,7 @@ try {
   assert.notEqual(await picture(), before, "the armies move");
   await snap("match");
 
-  // Solo against a bot: the HUD casts, switches stance and changes a factory's order.
+  // Solo against a bot: the HUD opens the shop and casts.
   await page.goto(`${base}fuse-front/?solo=1&mute`);
   const q = page.locator(".ff-spell").first();
   await q.and(page.locator(":enabled")).waitFor({ timeout: 15_000 });
@@ -94,6 +110,10 @@ try {
     await page.locator(".ff-spell.ff-gold .ff-tag").innerText(),
     /LV ?6/,
   );
+  const shop = page.getByRole("button", { name: "B shop", exact: true });
+  await page.keyboard.press("b");
+  await shop.and(page.locator(".ff-lit")).waitFor();
+  await page.keyboard.press("b");
   // Once the countdown is over, send Brick toward the middle and let the first batches meet before casting.
   await page.locator(".ff-hud", { hasText: "RED" }).waitFor();
   await rightClickMoves(board);
@@ -106,14 +126,11 @@ try {
     .first()
     .waitFor();
   assert.ok(await q.isDisabled(), "Q cools down after a cast");
-  await page.getByRole("button", { name: "3 FOLLOW" }).click();
-  await page.locator(".ff-switch.ff-lit", { hasText: "FOLLOW" }).waitFor();
-  // The room plays only the lane maps since v3 M2c, where a hero starts with no factory of its own, so the factory
-  // orders panel (covered by `tests/hud.test.ts`) has no button to open here.
   await page.waitForTimeout(1_500);
   if (process.env.HUD_SHOT)
     await page.screenshot({ path: process.env.HUD_SHOT });
   assert.deepEqual(errors, []);
+  await collectCoverage();
   console.log("fuse-front smoke: ok");
 } finally {
   await browser.close();

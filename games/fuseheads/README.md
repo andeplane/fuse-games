@@ -21,4 +21,4 @@ The new TypeScript engine advances at 30 steps per second. The room adapter runs
 
 The original campaign contains 144 playable rounds and a separate finale scene. The bonus pack contains 54 rounds. A played level is one analytics round.
 
-Run `pnpm exec tsx --test games/fuseheads/tests/*.test.ts` for the engine and room checks. Run `pnpm build` and `pnpm exec tsx scripts/fuseheads-smoke.ts` for the headless browser flow. Reference evidence and its limits are in [the reference notes](../../docs/design/fuseheads-reference.md) and [the level decoder notes](src/levels/README.md).
+Run `pnpm exec tsx --test games/fuseheads/tests/*.test.ts` for the engine and room checks. Run `pnpm build` and `pnpm exec tsx games/fuseheads/smoke.ts` for the headless browser flow. Reference evidence and its limits are in [the reference notes](../../docs/design/fuseheads-reference.md) and [the level decoder notes](src/levels/README.md).
