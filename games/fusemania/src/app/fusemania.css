@@ -446,6 +446,10 @@ body:has(.fui-top-bar) .fm-room:has(> .fui-room-layout:not([hidden])) {
   background: #eefaff22;
   box-shadow: none;
 }
+.fm-touch .fm-pad-item {
+  color: var(--fui-yellow);
+  background: #251d2c;
+}
 .fm-pad {
   display: flex;
   align-items: center;
