@@ -376,7 +376,7 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
     flex-direction: column;
     inset: calc(48px + env(safe-area-inset-top)) env(safe-area-inset-right)
       env(safe-area-inset-bottom) auto;
-    width: clamp(148px, 21vw, 204px);
+    width: clamp(170px, 21vw, 204px);
   }
 
   .fp-commands .fp-command-body {
@@ -390,9 +390,25 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .fp-commands .fp-command {
+    padding: 3px 4px;
+    row-gap: 1px;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .fp-commands .fp-command-label {
+    line-height: 1;
+  }
+
   .fp-command-bar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     margin-top: auto;
+  }
+
+  .fp-commands .fp-command-bar button {
+    padding-inline: 1px;
+    font-size: 10px;
   }
 
   .fp-command-gold {
