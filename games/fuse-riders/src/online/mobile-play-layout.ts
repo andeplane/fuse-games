@@ -1,5 +1,5 @@
 import { createPhoneLayout } from "fuse-ui";
-import { setPhoneGamePlaying } from "fuse-ui/embedded";
+import { createPhoneGameHome, setPhoneGamePlaying } from "fuse-ui/embedded";
 import type { MobileScreen } from "./room-screen.js";
 /** Fuse Riders' phone layout on fuse-ui's: the ☰ MENU tools overlay over the three control zones, their hints, and
  *  what a change of screen does to held input. Whether the phone is the controller, upright or on its lobby screen is
@@ -20,6 +20,10 @@ export function installMobilePlayLayout(
       open: "mobile-tools-open",
     },
   });
+  const home = createPhoneGameHome(app.ownerDocument, () =>
+    layout.toggle.click(),
+  );
+  if (home) layout.toggle.after(home);
   return {
     update(
       next: MobileScreen,

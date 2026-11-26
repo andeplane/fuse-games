@@ -88,6 +88,16 @@
   background: #071428dd;
   font-size: 0.75rem;
 }
+.online-app > .fui-phone-home {
+  display: none;
+}
+.mobile-play.mobile-tools-open > .fui-phone-home {
+  display: block;
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top));
+  left: max(0.5rem, env(safe-area-inset-left));
+  z-index: var(--fui-z-menu);
+}
 .mobile-play > .mobile-control-hints {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

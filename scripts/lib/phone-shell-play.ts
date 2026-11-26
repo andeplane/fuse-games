@@ -37,10 +37,10 @@ export async function checkPhoneShellPlay(browser: Browser, base: string) {
     page.on("framenavigated", (frame) => {
       if (frame.parentFrame()) gameNavigations++;
     });
-    const menu = game.getByRole("button", {
-      name: "Open game menu",
-      exact: true,
-    });
+    const menu = game
+      .getByRole("button", { name: "Open game menu", exact: true })
+      .filter({ visible: true })
+      .first();
     await menu.tap();
     const gameHome = game.getByRole("button", {
       name: "FuseOS Home",
