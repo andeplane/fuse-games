@@ -111,9 +111,8 @@ const SURFACES: Record<string, PlaySurface> = {
     controls: "#touch-deck [data-pad]",
   },
   "incredible-fuse": {
-    field:
-      "canvas.if-bench-extension, body:not(:has(.if-bench-extension)) canvas.if-bench-board",
-    board: "canvas.if-bench-board",
+    field: "canvas.if-bench-board",
+    board: ".if-board-frame",
     controls: ".if-bench-tools button",
   },
   "killer-fuse": {
