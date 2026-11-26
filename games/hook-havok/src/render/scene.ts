@@ -60,6 +60,7 @@ export interface ShowcaseHandle {
   seek(time: number): void;
   /** Local display option: frame the living keepers instead of the whole arena. */
   setFollow(value: boolean): void;
+  resizeViewport(): void;
   /** A canvas point, as fractions (0–1) of its box, in world units under the current camera. */
   toWorld(u: number, v: number): { x: number; y: number };
 }
@@ -118,6 +119,19 @@ export function createShowcase(
     destroyed = false,
     awake = true,
     built = false;
+  function resizeViewport(game: Phaser.Game): void {
+    if (destroyed || !game.isBooted) return;
+    const playing =
+      options.phoneViewport &&
+      host.ownerDocument.documentElement.hasAttribute("data-fui-play");
+    const width =
+      playing && host.clientHeight
+        ? Math.round((VIEW_HEIGHT * host.clientWidth) / host.clientHeight)
+        : VIEW_WIDTH;
+    if (!width || width === viewport.width) return;
+    viewport = { width, height: VIEW_HEIGHT };
+    game.scale.setGameSize(width * res, VIEW_HEIGHT * res);
+  }
   const feedback = new Feedback();
   const res = renderScale();
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -193,6 +207,7 @@ export function createShowcase(
         this.build();
         if (options.externallyStepped) this.game.loop.stop();
         built = true;
+        resizeViewport(this.game);
         if (!awake) this.game.loop.sleep();
         options.ready();
       } catch (error) {
@@ -1208,19 +1223,7 @@ export function createShowcase(
     render: { antialias: true, pixelArt: false, roundPixels: false },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   });
-  const resize = new ResizeObserver(() => {
-    if (destroyed || !game.isBooted) return;
-    const playing =
-      options.phoneViewport &&
-      host.ownerDocument.documentElement.hasAttribute("data-fui-play");
-    const width =
-      playing && host.clientHeight
-        ? Math.round((VIEW_HEIGHT * host.clientWidth) / host.clientHeight)
-        : VIEW_WIDTH;
-    if (!width || width === viewport.width) return;
-    viewport = { width, height: VIEW_HEIGHT };
-    game.scale.setGameSize(width * res, VIEW_HEIGHT * res);
-  });
+  const resize = new ResizeObserver(() => resizeViewport(game));
   if (options.phoneViewport) resize.observe(host);
   const lost = (event: Event) => {
     event.preventDefault();
@@ -1265,6 +1268,9 @@ export function createShowcase(
     },
     setFollow(value) {
       follow = value;
+    },
+    resizeViewport() {
+      resizeViewport(game);
     },
     toWorld(u, v) {
       return canvasToWorld({ ...view, zoom: renderedZoom }, u, v, viewport);

@@ -500,6 +500,7 @@ const playScreen = createPlayScreen({
   wide: true,
   onChange(mode) {
     clear();
+    scene?.resizeViewport();
     const hud = document.getElementById("match-hud");
     if (!hud) return;
     if (mode === "off") playSurface.before(hud);
