@@ -69,11 +69,8 @@ html[data-fui-play] .fui-top-bar dialog {
   pointer-events: auto;
 }
 html[data-fui-play] .fui-top-bar .fui-top-bar-toggle {
-  width: 36px;
-  height: 36px !important;
-  min-height: 36px !important;
-  max-height: 36px !important;
-  padding: 7px;
+  /* Keep the 44px top-bar hit target; give the arena visual priority with a smaller glyph. */
+  padding: 11px;
   opacity: 0.72;
   pointer-events: auto;
 }
