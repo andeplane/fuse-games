@@ -310,7 +310,9 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
     inset: 0;
   }
 
-  .fp-match .fp-arena__field {
+  .fp-match .fp-arena--fill .fp-arena__field {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     border: 0;
@@ -360,9 +362,10 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
   .fp-commands .fp-command-bar button {
     min-height: 44px;
     height: auto;
-    padding-block: 3px;
+    padding: 3px 1px;
+    font-size: clamp(10px, 2.8vw, 11px);
+    letter-spacing: 0;
     white-space: normal;
-    overflow-wrap: anywhere;
   }
 }
 
@@ -388,7 +391,7 @@ body:has(.fuseParticles-room[data-phase="running"]) .fui-top-bar-context {
   }
 
   .fp-command-bar {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin-top: auto;
   }
 
