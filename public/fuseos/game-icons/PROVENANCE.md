@@ -1,5 +1,7 @@
 # FuseOS game icons
 
+Fuserod uses its own orange hot rod from `games/fuserod/src/art/front.ts`, rendered on a transparent canvas at both desktop icon sizes.
+
 Dockside uses an original geometric walker in the west team's teal, drawn as polygons for its desktop and taskbar icons.
 
 Cyberfuse uses the three-quarter helmet and shoulders of its cyan operative,

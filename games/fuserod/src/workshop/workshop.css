@@ -1,0 +1,101 @@
+.fr-workbench {
+  display: grid;
+  gap: 0.75rem;
+  padding-block: 1rem;
+  border-top: 1px solid #77594a;
+}
+.fr-workbench h3,
+.fr-workbench h4,
+.fr-workbench p {
+  margin: 0;
+}
+.fr-workbench-preview canvas {
+  width: 100%;
+  max-height: 16rem;
+  aspect-ratio: 12/5;
+  display: block;
+}
+.fr-workbench-preview:empty {
+  display: none;
+}
+.fr-workbench-diagram {
+  position: relative;
+}
+.fr-workbench .fr-workbench-bolt {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  width: 2.7rem;
+  min-height: 2.7rem;
+  padding: 0;
+  border: 2px solid #ffeeaa;
+  background: #28222ad9;
+  box-shadow: 0 0 0.45rem #fb9f49;
+}
+.fr-workbench-bolt::before {
+  content: "";
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: auto;
+  transform: rotate(var(--turn));
+  background: linear-gradient(90deg, #e8c38d 43%, #694d33 43% 57%, #f9e8bb 57%);
+  clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
+}
+.fr-workbench .fr-workbench-bolt:disabled {
+  opacity: 0.6;
+}
+.fr-workbench-fields,
+.fr-workbench-shelf {
+  display: grid;
+  min-width: 0;
+  gap: 0.65rem;
+}
+.fr-workbench-shelf {
+  padding-block: 0.7rem;
+  border-block: 1px solid #584344;
+}
+.fr-workbench label {
+  display: grid;
+  gap: 0.2rem;
+}
+.fr-workbench select,
+.fr-workbench button {
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.3rem;
+  background: #292530;
+  color: #fff0df;
+  border: 1px solid #816a64;
+  font: inherit;
+}
+.fr-workbench select {
+  width: 100%;
+}
+.fr-workbench button:disabled {
+  opacity: 0.44;
+}
+.fr-workbench-actions,
+.fr-workbench-fastener {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.fr-workbench-fastener span {
+  flex: 1 1 9rem;
+}
+@media (min-width: 760px) {
+  .fr-workbench {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    align-items: start;
+  }
+  .fr-workbench h3 {
+    grid-column: 1/-1;
+  }
+  .fr-workbench-preview canvas {
+    max-height: none;
+  }
+}

@@ -42,6 +42,7 @@
     "fuseheads": "workspace:*",
     "incredible-fuse": "workspace:*",
     "fuse-drivers": "workspace:*",
+    "fuserod": "workspace:*",
     "fuse-birds-game": "workspace:*",
     "hook-havok": "workspace:*",
     "fuse-axe": "workspace:*",

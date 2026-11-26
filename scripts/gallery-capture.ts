@@ -2,7 +2,7 @@
  * Captures the gallery card image of a game from real play: `public/gallery/<id>.jpg`, the file a game's
  * `portal.json` names as its `screenshot`.
  *
- *   pnpm build && pnpm gallery:capture            # every game with a recipe below
+ *   pnpm build && pnpm gallery:capture            # every game with a recipe
  *   pnpm gallery:capture fuseball ball-bros       # only these
  *   GALLERY_URL=http://localhost:8787/ pnpm gallery:capture fuseball   # against a service already running
  *
