@@ -74,13 +74,3 @@ the version (`src/about/version.ts`, kept equal to
 clippyjs, WebLLM, CodeMirror, 1j01's 3D Pipes, the shareware publishers,
 skifree.js, micropolisJS, the Vector Playing Cards and the games' soundtracks.
 The licence texts of the bundled games are under [licenses](licenses/) and listed in [retro-games.md](retro-games.md).
-
-## Branding
-
-The desktop is FuseOS and nothing else: the names of the desktop it descends
-from and of that desktop's surroundings may not appear anywhere under
-`packages/fuseos`, `public/fuseos` or `docs/fuseos`.
-`tests/fuseos-branding.test.ts` (part of `pnpm test`) lists the words and greps
-every text file in those trees for them; it also checks that the About version
-matches the package version and that the credits name what the desktop stands
-on.
