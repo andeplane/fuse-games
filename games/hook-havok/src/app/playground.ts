@@ -721,6 +721,7 @@ async function graphics() {
     const { createShowcase } = await import("../render/scene.js");
     if (token !== attempt || disposed) return;
     scene = createShowcase(host, {
+      phoneViewport: true,
       paused: false,
       idleOnly: false,
       atmosphere: atmosphere.checked,

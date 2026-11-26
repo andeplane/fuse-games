@@ -200,6 +200,10 @@ export function createCameraModel(
       view.y += dy / scale;
       clamp();
     },
+    setInsets(next: Insets) {
+      insets = next;
+      clamp();
+    },
     resize(next: Size) {
       if (
         next.width <= 0 ||
@@ -238,6 +242,7 @@ export interface CameraDependencies {
   cancelFrame(handle: number): void;
   /** Without it, edge scrolling follows the mouse over the board only. */
   screen?: PointerSurface;
+  overlays?(viewport: HTMLElement): Pick<Insets, "top" | "bottom">;
 }
 
 export function createCameraFactory(
@@ -254,15 +259,17 @@ export function createCameraFactory(
       height: Math.max(1, viewport.clientHeight),
     });
     const size = measure();
+    const insets = () => ({
+      top: 12,
+      right: 12,
+      bottom: 12,
+      left: 12,
+      ...dependencies.overlays?.(viewport),
+    });
     const model = createCameraModel(
       { width: numbers[2]!, height: numbers[3]! },
       size,
-      {
-        top: 12,
-        right: 12,
-        bottom: 12,
-        left: 12,
-      },
+      insets(),
     );
     let disposed = false;
     let gesture: {
@@ -529,7 +536,10 @@ export function createCameraFactory(
     viewport.addEventListener("auxclick", click, true);
     viewport.addEventListener("contextmenu", contextMenu);
     viewport.addEventListener("wheel", wheel, { passive: false });
-    const stopResize = dependencies.observeResize(viewport, refresh);
+    const stopResize = dependencies.observeResize(viewport, () => {
+      model.setInsets(insets());
+      refresh();
+    });
     refresh();
     return {
       refresh,

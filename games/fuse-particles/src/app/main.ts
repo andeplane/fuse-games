@@ -304,6 +304,7 @@ function room(solo: boolean) {
   const arena = createArena({ fill: true });
   const commands = createCommands((action) => runtime.play(action), arena);
   battleSection.append(arena.element, commands.element);
+  arena.setCommandPanel(commands.element);
   const results = createResultsScreen({
     document,
     onBack: leave,

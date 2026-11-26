@@ -347,7 +347,9 @@ html[data-fui-play] body.playground .play-surface.fui-play-stage .stage {
 }
 html[data-fui-play] body.playground .play-surface.fui-play-stage #scene {
   flex: none;
-  width: min(100cqw, calc(100cqh * 16 / 9));
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
 }
 html[data-fui-play]
   body.playground

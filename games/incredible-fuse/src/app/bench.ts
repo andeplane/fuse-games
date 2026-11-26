@@ -20,7 +20,13 @@ import {
   type LinkKind,
 } from "../game/machine-links.js";
 import { partIcon } from "./bench-art.js";
-import { paintMachine, WIDTH, HEIGHT, type BoardPoint } from "./bench-board.js";
+import {
+  paintMachine,
+  paintWorkbenchExtension,
+  WIDTH,
+  HEIGHT,
+  type BoardPoint,
+} from "./bench-board.js";
 import "./bench.css";
 export { paintMachine };
 
@@ -63,6 +69,8 @@ export function createBench(options: {
 }) {
   const root = element("section", "if-bench");
   root.setAttribute("aria-label", "Workshop");
+  const extension = element("canvas", "if-bench-extension");
+  extension.setAttribute("aria-hidden", "true");
   const head = element("header", "if-bench-head");
   const heading = element("div", "if-bench-heading"),
     label = element("span", "if-bench-index"),
@@ -120,7 +128,7 @@ export function createBench(options: {
   const anchors = element("div", "if-bench-anchors");
   tray.append(trayTitle, pieces, anchors);
   layout.append(surface, tray);
-  root.append(head, layout);
+  root.append(extension, head, layout);
 
   let machine: Machine | undefined,
     lastMode: Machine["mode"] | undefined,
@@ -189,6 +197,7 @@ export function createBench(options: {
   }
   function redraw() {
     if (!machine) return;
+    paintWorkbenchExtension(extension);
     let ghost: { kind: PartKind; flip: boolean } | undefined;
     const part = activePart();
     if (building() && cursorVisible) {
@@ -568,6 +577,7 @@ export function createBench(options: {
       ? undefined
       : new ResizeObserver(() => redraw());
   resize?.observe(canvas);
+  resize?.observe(extension);
   return {
     element: root,
     update(next: Machine, canEdit: boolean) {

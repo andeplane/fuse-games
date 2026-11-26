@@ -48,53 +48,66 @@ function paintMountedPart(
   drawPart(c, drawing);
 }
 
-function background(c: Context) {
-  const g = c.createLinearGradient(0, 0, WIDTH, HEIGHT);
+function background(c: Context, width = WIDTH, height = HEIGHT, ruler = true) {
+  const g = c.createLinearGradient(0, 0, width, height);
   g.addColorStop(0, "#213b46");
   g.addColorStop(0.55, "#182e39");
   g.addColorStop(1, "#132635");
   c.fillStyle = g;
-  c.fillRect(0, 0, WIDTH, HEIGHT);
+  c.fillRect(0, 0, width, height);
   c.lineWidth = 0.75;
-  for (let x = 0; x <= WIDTH; x += 16) {
+  for (let x = 0; x <= width; x += 16) {
     c.strokeStyle = x % 64 === 0 ? "#93c7c51c" : "#93c7c509";
     c.beginPath();
     c.moveTo(x + 0.5, 0);
-    c.lineTo(x + 0.5, HEIGHT);
+    c.lineTo(x + 0.5, height);
     c.stroke();
   }
-  for (let y = 0; y <= HEIGHT; y += 16) {
+  for (let y = 0; y <= height; y += 16) {
     c.strokeStyle = y % 64 === 0 ? "#93c7c51c" : "#93c7c509";
     c.beginPath();
     c.moveTo(0, y + 0.5);
-    c.lineTo(WIDTH, y + 0.5);
+    c.lineTo(width, y + 0.5);
     c.stroke();
   }
-  for (let y = 16; y < HEIGHT; y += 32)
-    for (let x = 16; x < WIDTH; x += 32) {
+  for (let y = 16; y < height; y += 32)
+    for (let x = 16; x < width; x += 32) {
       c.fillStyle = "#0a1d279c";
       c.fillRect(x - 1, y - 1, 2, 2);
       c.fillStyle = "#96c6c523";
       c.fillRect(x - 1, y + 1, 2, 1);
     }
+  if (!ruler) return;
   c.strokeStyle = "#89c3c64a";
   c.lineWidth = 1;
   c.beginPath();
-  for (let x = 8; x < WIDTH; x += 8) {
+  for (let x = 8; x < width; x += 8) {
     const len = x % 32 === 0 ? 5 : 2;
     c.moveTo(x, 0);
     c.lineTo(x, len);
-    c.moveTo(x, HEIGHT);
-    c.lineTo(x, HEIGHT - len);
+    c.moveTo(x, height);
+    c.lineTo(x, height - len);
   }
-  for (let y = 8; y < HEIGHT; y += 8) {
+  for (let y = 8; y < height; y += 8) {
     const len = y % 32 === 0 ? 5 : 2;
     c.moveTo(0, y);
     c.lineTo(len, y);
-    c.moveTo(WIDTH, y);
-    c.lineTo(WIDTH - len, y);
+    c.moveTo(width, y);
+    c.lineTo(width - len, y);
   }
   c.stroke();
+}
+
+/** Paint the workshop grid across the phone beneath the playable bench and tools. */
+export function paintWorkbenchExtension(canvas: HTMLCanvasElement) {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height || (canvas.width === width && canvas.height === height))
+    return;
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (context) background(context, width, height, false);
 }
 
 function corners(
