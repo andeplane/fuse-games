@@ -63,6 +63,8 @@ export interface SceneCanvas {
   getContext(kind: "2d"): CanvasRenderingContext2D | null;
 }
 export interface SceneOptions {
+  /** Continue the beach scenery around the court on the full-screen phone stage. */
+  fullCourt?: () => boolean;
   /** Device pixels per CSS pixel; the window's unless given. */
   pixelRatio?: () => number;
   /** Where the effects' scatter comes from; `Math.random` unless given. */
@@ -421,8 +423,14 @@ export function createScene(
   };
 
   // ---- drawing ----
-  const drawCourt = (c: CanvasRenderingContext2D, now: number) => {
-    const court = art().court;
+  const drawCourt = (
+    c: CanvasRenderingContext2D,
+    now: number,
+    marginX = 0,
+    marginY = 0,
+    continuous = false,
+  ) => {
+    const court = continuous ? undefined : art().court;
     if (court) {
       drawArtCourt(c, court);
       return;
@@ -432,23 +440,44 @@ export function createScene(
     sky.addColorStop(0.55, NIGHT);
     sky.addColorStop(1, DUSK);
     c.fillStyle = sky;
-    c.fillRect(0, 0, W, SAND_Y);
+    c.fillRect(-marginX, -marginY, W + 2 * marginX, SAND_Y + marginY);
+    if (continuous) {
+      c.fillStyle = "#e2d9f7";
+      for (let x = Math.floor(-marginX / 37) * 37; x < W + marginX; x += 37) {
+        const phase = Math.abs(x * 13) % 107;
+        for (let y = -marginY + phase; y < 285; y += 109) {
+          c.globalAlpha = 0.22 + (phase % 13) / 50;
+          c.fillRect(x + (phase % 15), y, 2, 2);
+        }
+      }
+      c.globalAlpha = 1;
+    }
     // A sun on the horizon and a calm sea.
     c.fillStyle = hexA(BALL, 0.85);
     c.beginPath();
     c.arc(190, 350, 46, Math.PI, 0);
     c.fill();
     c.fillStyle = hexA("#1a2a70", 0.9);
-    c.fillRect(0, 350, W, SAND_Y - 350);
+    c.fillRect(-marginX, 350, W + 2 * marginX, SAND_Y - 350);
     for (let i = 0; i < 6; i++) {
       c.fillStyle = hexA(SIDE[i % 2]!, 0.08 + 0.04 * Math.sin(now / 900 + i));
-      c.fillRect(0, 360 + i * 22, W, 2);
+      c.fillRect(-marginX, 360 + i * 22, W + 2 * marginX, 2);
     }
     const sand = c.createLinearGradient(0, SAND_Y, 0, COURT_H);
     sand.addColorStop(0, SAND);
     sand.addColorStop(1, SAND_DEEP);
     c.fillStyle = sand;
-    c.fillRect(0, SAND_Y, W, COURT_H - SAND_Y);
+    c.fillRect(-marginX, SAND_Y, W + 2 * marginX, COURT_H - SAND_Y + marginY);
+    if (continuous) {
+      c.fillStyle = hexA(SAND, 0.32);
+      for (let y = SAND_Y + 18; y < COURT_H + marginY; y += 29) {
+        for (let x = -marginX + ((y * 31) % 48); x < W + marginX; x += 48)
+          c.fillRect(x, y, 8, 2);
+      }
+      c.strokeStyle = hexA(SIDE[0], 0.65);
+      c.lineWidth = 3;
+      c.strokeRect(0, SAND_Y, W, COURT_H - SAND_Y - 2);
+    }
     c.fillStyle = hexA(SIDE[0], 0.8);
     c.fillRect(0, SAND_Y - 1, W, 2);
   };
@@ -1107,7 +1136,8 @@ export function createScene(
       g.fillStyle = INK;
       g.fillRect(0, 0, canvas.width, canvas.height);
       const fit = letterbox(canvas.width, canvas.height, W);
-      const jolt = shake > 0.2 ? shake : 0;
+      const full = options.fullCourt?.() ?? false;
+      const jolt = !full && shake > 0.2 ? shake : 0;
       g.setTransform(
         fit.scale,
         0,
@@ -1116,11 +1146,13 @@ export function createScene(
         fit.x + (random() - 0.5) * jolt * fit.scale,
         fit.y + (random() - 0.5) * jolt * fit.scale,
       );
+      if (full && fit.scale > 0)
+        drawCourt(g, nowMs, fit.x / fit.scale, fit.y / fit.scale, true);
       g.save();
       g.beginPath();
       g.rect(0, 0, W, COURT_H);
       g.clip();
-      drawCourt(g, nowMs);
+      if (!full) drawCourt(g, nowMs);
       const onCourt = view.blobs.filter((blob) => !blob.benched);
       for (const blob of onCourt)
         drawShadow(g, blob.x, SAND_Y - blob.y, BODY_RADIUS);

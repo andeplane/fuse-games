@@ -711,10 +711,14 @@ function room(solo: boolean): void {
   };
   stage.append(sidesRow, screen, note, touch);
   // A phone's live rally is the whole screen; the wide court is drawn turned when the phone is upright.
+  let fullCourt = false;
   const playScreen = createPlayScreen({
     stage,
     wide: true,
-    onChange: () => letGoAll(),
+    onChange: (mode) => {
+      fullCourt = mode !== "off";
+      letGoAll();
+    },
   });
 
   const controller = el("section", "", "fv-controller"),
@@ -811,6 +815,7 @@ function room(solo: boolean): void {
 
   // ---- drawing: the newest folded world played forward to the clock, once per animation frame ----
   const scene = createScene(canvas, {
+    fullCourt: () => fullCourt,
     reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
     art: loadArt(import.meta.env.BASE_URL, browserImages),
   });

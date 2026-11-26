@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { draw, type Paint } from "../src/render/scene.js";
+import {
+  CEMETERY_HEIGHT,
+  CEMETERY_WIDTH,
+  cemeteryFrame,
+  draw,
+  type Paint,
+} from "../src/render/scene.js";
 import { toView } from "../src/engine/view.js";
 import { createWorld } from "../src/engine/world.js";
 import { readPrefs, NightAudio } from "../src/app/audio.js";
@@ -194,4 +200,23 @@ test("platform registers rooms without accepting unimplemented career reports", 
   assert.deepEqual(graveyardRegistration.emptyTotals(), {});
   assert.equal(graveyardRegistration.parseTotals({ unexpected: 1 }), undefined);
   assert.deepEqual(graveyardRegistration.parseTotals({}), {});
+});
+
+test("uniform cemetery framing extends outside the playable area to each phone edge", () => {
+  for (const [width, height] of [
+    [844, 390],
+    [800, 360],
+    [390, 844],
+  ] as const) {
+    const frame = cemeteryFrame(width, height);
+    assert.ok(frame.marginX >= 0 && frame.marginY >= 0);
+    assert.ok(
+      Math.abs((CEMETERY_WIDTH + 2 * frame.marginX) * frame.scale - width) <
+        1e-9,
+    );
+    assert.ok(
+      Math.abs((CEMETERY_HEIGHT + 2 * frame.marginY) * frame.scale - height) <
+        1e-9,
+    );
+  }
 });

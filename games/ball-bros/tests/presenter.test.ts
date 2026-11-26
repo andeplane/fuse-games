@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ARENA_SIZE, arenaCamera } from "../src/render/present.js";
 import { present } from "../src/app/presenter.js";
 import { createArena } from "../src/engine/state.js";
 import { view } from "../src/engine/view.js";
@@ -101,4 +102,17 @@ test("HUD shows countdown, launch, damage, spectating and corrected results from
   arena.phase = "playing";
   assert.equal(hud().result, undefined);
   assert.equal(hud().cards[0]!.armor, "48 / 48");
+});
+
+test("phone camera extends the station without stretching or cropping the square arena", () => {
+  for (const [width, height] of [
+    [360, 800],
+    [844, 390],
+    [1000, 1000],
+  ] as const) {
+    const frame = arenaCamera(width, height);
+    assert.equal(Math.min(frame.width, frame.height), ARENA_SIZE);
+    assert.ok(Math.abs(frame.width * frame.zoom - width) < 1e-9);
+    assert.ok(Math.abs(frame.height * frame.zoom - height) < 1e-9);
+  }
 });

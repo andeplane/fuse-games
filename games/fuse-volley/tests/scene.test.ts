@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createScene, type SceneCanvas } from "../src/render/scene.js";
+import { COURT_H } from "../src/engine/view-kit.js";
+import {
+  createScene,
+  letterbox,
+  type SceneCanvas,
+} from "../src/render/scene.js";
 
 test("only a changed pixel dimension resets the court canvas", () => {
   let clientWidth = 600;
@@ -56,4 +61,20 @@ test("only a changed pixel dimension resets the court canvas", () => {
     ["width", 900],
     ["height", 675],
   ]);
+});
+
+test("all phone variants preserve the entire court with a uniform world scale", () => {
+  for (const courtWidth of [800, 1400, 2000]) {
+    for (const [width, height] of [
+      [800, 360],
+      [844, 390],
+      [360, 800],
+    ] as const) {
+      const fit = letterbox(width, height, courtWidth);
+      assert.ok(fit.x >= -1e-9 && fit.y >= -1e-9);
+      assert.ok(Math.abs(fit.scale * courtWidth + 2 * fit.x - width) < 1e-9);
+      assert.ok(Math.abs(fit.scale * COURT_H + 2 * fit.y - height) < 1e-9);
+      assert.ok(Math.min(fit.x, fit.y) < 1e-9);
+    }
+  }
 });
