@@ -325,8 +325,8 @@ export function drawCave(
     [bottom, 1],
   ] as const) {
     const outside = sign < 0 ? -30 - gutterY : VIEW_H + 30 + gutterY;
-    const left = Math.min(at(c0), -gutterX),
-      right = Math.max(at(c1), VIEW_W + gutterX);
+    const left = gutterX ? Math.min(at(c0), -gutterX) : at(c0),
+      right = gutterX ? Math.max(at(c1), VIEW_W + gutterX) : at(c1);
     g.beginPath();
     g.moveTo(left, outside);
     g.lineTo(left, edge[c0]!);

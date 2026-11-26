@@ -340,7 +340,7 @@ kbd {
 
 /* A phone's live round (fuse-ui play-screen): `#app` is the stage, and the overlay, the pads and the round's controls
    ride on it (play-stage.ts). Phaser fits its canvas to the box it measures on the screen, which an upright phone's
-   turned stage gives it the wrong way round: the canvas takes the stage's own 16:9 here instead. */
+   turned stage gives it the wrong way round: the canvas uses the stage's unturned layout dimensions. */
 html[data-fui-play] #app canvas {
   position: absolute;
   inset: 0;

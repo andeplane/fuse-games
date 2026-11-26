@@ -1,3 +1,4 @@
+import { fitPlayViewport } from "fuse-ui";
 import type { BubbleView, RiderView, WorldView } from "../engine/view.js";
 import {
   BALL_RADIUS,
@@ -97,12 +98,8 @@ export function letterbox(
   width: number,
   height: number,
 ): { scale: number; x: number; y: number } {
-  const scale = Math.max(0, Math.min(width / VIEW_W, height / VIEW_H));
-  return {
-    scale,
-    x: (width - VIEW_W * scale) / 2,
-    y: (height - VIEW_H * scale) / 2,
-  };
+  if (width < 0 || height < 0) return { scale: 0, x: width / 2, y: height / 2 };
+  return fitPlayViewport(width, height, VIEW_W, VIEW_H);
 }
 
 /** What the camera shows: the arena point at the middle of the screen, and screen pixels per arena pixel. */
