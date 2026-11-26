@@ -35,7 +35,7 @@ export function parseLevelTimes(body: unknown): LevelTime[] {
 export function createLevelLeaderboards(options: {
   initial: number;
   levels: readonly { level: number; title: string }[];
-  playHref(level: number): string;
+  playHref(level: number): string | undefined;
   load(level: number, signal: AbortSignal): Promise<LevelTime[]>;
 }) {
   const element = el("section", "", "ef-level-board");
@@ -74,7 +74,10 @@ export function createLevelLeaderboards(options: {
     const controller = new AbortController();
     pending = controller;
     const level = Number(select.value);
-    play.href = options.playHref(level);
+    const playHref = options.playHref(level);
+    play.hidden = !playHref;
+    if (playHref) play.href = playHref;
+    else play.removeAttribute("href");
     status.textContent = "Loading times…";
     retry.hidden = table.hidden = true;
     rows.replaceChildren();
