@@ -880,6 +880,12 @@ html[data-fui-play] .fc-stage > .fc-screen {
   border-radius: 0;
   box-shadow: none;
 }
+html[data-fui-play] .fc-time {
+  right: max(3rem, calc(var(--fui-play-right) + 2.5rem));
+}
+html[data-fui-play] .fc-legend {
+  display: none;
+}
 html[data-fui-play] .fc-stage > .fc-touch {
   inset: auto 0 0 0;
   z-index: var(--fui-z-overlay);

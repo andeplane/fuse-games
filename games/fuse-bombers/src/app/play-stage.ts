@@ -1,4 +1,10 @@
-import { createPlayScreen, type PlayMode, type PlayScreen } from "fuse-ui";
+import {
+  createPlayScreen,
+  fitPlayViewport,
+  type PlayMode,
+  type PlayScreen,
+} from "fuse-ui";
+import { VIEW_HEIGHT, VIEW_WIDTH } from "../render/round-scene.js";
 
 export interface BombersPlayScreenOptions {
   /** `#app`, where Phaser draws the arena: it already covers the window, and becomes the stage during play. */
@@ -8,6 +14,7 @@ export interface BombersPlayScreenOptions {
    * the stage while that is the screen, so it turns with the arena, and goes back where it was after.
    */
   riders: readonly (HTMLElement | undefined)[];
+  resize(width: number, height: number): void;
   /** A new mode: let go of held input, since the pads have just moved under the thumbs. */
   onChange(mode: PlayMode): void;
 }
@@ -20,10 +27,29 @@ export function createBombersPlayScreen(
   options: BombersPlayScreenOptions,
 ): PlayScreen {
   const homes = new Map<HTMLElement, Comment>();
-  return createPlayScreen({
+  let width = VIEW_WIDTH,
+    height = VIEW_HEIGHT;
+  const fit = (mode: PlayMode) => {
+    const { clientWidth, clientHeight } = options.stage;
+    if (!clientWidth || !clientHeight) return;
+    const scale = fitPlayViewport(
+      clientWidth,
+      clientHeight,
+      VIEW_WIDTH,
+      VIEW_HEIGHT,
+    ).scale;
+    const w = mode === "off" ? VIEW_WIDTH : Math.round(clientWidth / scale),
+      h = mode === "off" ? VIEW_HEIGHT : Math.round(clientHeight / scale);
+    if (w === width && h === height) return;
+    width = w;
+    height = h;
+    options.resize(w, h);
+  };
+  const screen = createPlayScreen({
     stage: options.stage,
     wide: true,
     onChange: (mode) => {
+      fit(mode);
       for (const rider of options.riders) {
         if (!rider) continue;
         if (mode === "off") {
@@ -39,4 +65,13 @@ export function createBombersPlayScreen(
       options.onChange(mode);
     },
   });
+  const observer = new ResizeObserver(() => fit(screen.mode()));
+  observer.observe(options.stage);
+  return {
+    ...screen,
+    destroy() {
+      observer.disconnect();
+      screen.destroy();
+    },
+  };
 }

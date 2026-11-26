@@ -61,6 +61,8 @@ export interface SceneCanvas {
   getContext(kind: "2d"): CanvasRenderingContext2D | null;
 }
 export interface SceneOptions {
+  /** Fill the play stage with chamber scenery outside the framed deck. */
+  fullStage?: () => boolean;
   /** Device pixels per CSS pixel; the window's unless given. */
   pixelRatio?: () => number;
   /** Where the effects' scatter comes from; `Math.random` unless given. */
@@ -238,15 +240,26 @@ export function createScene(
   };
 
   // ---- the backdrop: the chamber, the pit and the deck ----
-  const backdrop = (c: CanvasRenderingContext2D, now: number) => {
+  const backdrop = (
+    c: CanvasRenderingContext2D,
+    now: number,
+    gutterX: number,
+    gutterY: number,
+  ) => {
     const sky = c.createLinearGradient(0, 0, 0, H);
     sky.addColorStop(0, INK);
     sky.addColorStop(0.55, NIGHT);
     sky.addColorStop(1, "#12082e");
     c.fillStyle = sky;
-    c.fillRect(-40, -40, W + 80, H + 80);
+    c.fillRect(
+      -40 - gutterX,
+      -40 - gutterY,
+      W + 80 + 2 * gutterX,
+      H + 80 + 2 * gutterY,
+    );
     // Far pillars of the chamber, with a strip light each.
-    for (let i = 0; i < 7; i++) {
+    const columns = Math.ceil(gutterX / 150);
+    for (let i = -columns; i < 7 + columns; i++) {
       const x = 60 + i * 150;
       c.fillStyle = hexA("#0f2257", 0.55);
       c.fillRect(x, 40, 34, BACK_Y - 40);
@@ -262,11 +275,12 @@ export function createScene(
     glow.addColorStop(0.5, hexA(PIT_DEEP, 0.55));
     glow.addColorStop(1, hexA(PIT_DEEP, 0));
     c.fillStyle = glow;
-    c.fillRect(-40, 0, W + 80, H + 40);
+    c.fillRect(-40 - gutterX, 0, W + 80 + 2 * gutterX, H + 40 + gutterY);
     // Plasma in the pit: chunky bands that slide and pulse.
-    for (let row = 0; row < 9; row++) {
+    const strips = Math.ceil(gutterX / 30);
+    for (let row = 0; row < 9 + Math.ceil(gutterY / 12); row++) {
       const y = FRONT_Y + FACE + 10 + row * 12;
-      for (let col = 0; col < 34; col++) {
+      for (let col = -strips; col < 34 + strips; col++) {
         const wave =
           Math.sin(col * 0.6 + now / (420 + row * 35) + row * 1.7) +
           Math.sin(col * 0.23 - now / 900 + row);
@@ -687,6 +701,9 @@ export function createScene(
     flow += view.speed * (dtMs / 1000) * STEPS_PER_SECOND;
 
     const scale = Math.min(canvas.width / W, canvas.height / H);
+    const fullStage = scale > 0 && options.fullStage?.(),
+      gutterX = fullStage ? (canvas.width / scale - W) / 2 : 0,
+      gutterY = fullStage ? (canvas.height / scale - H) / 2 : 0;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = INK;
     g.fillRect(0, 0, canvas.width, canvas.height);
@@ -703,9 +720,14 @@ export function createScene(
     );
     g.save();
     g.beginPath();
-    g.rect(0, 0, W, H);
+    g.rect(
+      -gutterX - (fullStage ? jx : 0),
+      -gutterY - (fullStage ? jy : 0),
+      W + 2 * gutterX,
+      H + 2 * gutterY,
+    );
     g.clip();
-    backdrop(g, nowMs);
+    backdrop(g, nowMs, gutterX, gutterY);
     deck(g, view, nowMs);
     // Lanes back to front: each lane's slice of every surge, then its rider, so nearer things cover farther ones.
     const lanes = view.riders.length;

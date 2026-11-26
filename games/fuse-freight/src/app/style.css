@@ -953,6 +953,9 @@ html[data-fui-play] .ff-stage > .ff-screen {
   border-radius: 0;
   box-shadow: none;
 }
+html[data-fui-play] .ff-cards-right {
+  right: max(3rem, calc(var(--fui-play-right) + 2.5rem));
+}
 html[data-fui-play] .ff-stage > .ff-touch {
   position: absolute;
   inset: auto max(0.5rem, var(--fui-play-right))

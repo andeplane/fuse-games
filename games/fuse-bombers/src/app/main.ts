@@ -151,6 +151,7 @@ async function boot(): Promise<void> {
   const input = createBrowserInput(window, { forceTouch: params.has("touch") });
   // A phone's live match is the whole screen: the arena, its overlay and the pads, turned when the phone is upright.
   const playScreen = createBombersPlayScreen({
+    resize: (width, height) => game.scale.setGameSize(width, height),
     stage: document.getElementById("app") ?? document.body,
     riders: [root, input.touchLayer, roundControls.element],
     onChange: () => input.hub.cancel(),

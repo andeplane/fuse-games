@@ -344,8 +344,8 @@ kbd {
 html[data-fui-play] #app canvas {
   position: absolute;
   inset: 0;
-  width: min(100cqw, 100cqh * 16 / 9) !important;
-  height: auto !important;
+  width: 100cqw !important;
+  height: 100cqh !important;
   margin: auto !important;
 }
 html[data-fui-play] #app > #screen {

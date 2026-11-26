@@ -219,8 +219,8 @@ export class RoundScene extends Phaser.Scene {
       const cam = this.cameras.main;
       const [cx, cy] = [cam.width / 2, cam.height / 2];
       return {
-        x: (x - cam.scrollX - cx) * cam.zoom + cx,
-        y: (y - cam.scrollY - cy) * cam.zoom + cy,
+        x: (x - cam.scrollX - cx) * cam.zoom + W / 2,
+        y: (y - cam.scrollY - cy) * cam.zoom + H / 2,
       };
     },
     size: (length) => length * this.cameras.main.zoom,
@@ -319,12 +319,24 @@ export class RoundScene extends Phaser.Scene {
   /** The sky fills the screen behind the world, with a little parallax (`skyRect`). */
   private placeSky(): void {
     const { min, max } = zoomLimits(this.camera.settings);
-    const screen = { width: W, height: H };
+    const { width, height } = this.cameras.main;
+    const screen = { width, height };
     const r = skyRect(this.camera.pose, screen, WORLD, min, max);
     this.backdrop.setPosition(r.x, r.y).setDisplaySize(r.width, r.height);
   }
 
   update(time: number, delta: number): void {
+    const { width, height } = this.scale.gameSize;
+    const main = this.cameras.main;
+    if (main.width !== width || main.height !== height)
+      main.setSize(width, height);
+    if (this.ui.width !== width || this.ui.height !== height)
+      this.ui.setSize(width, height);
+    if (
+      this.ui.scrollX !== (W - width) / 2 ||
+      this.ui.scrollY !== (H - height) / 2
+    )
+      this.ui.setScroll((W - width) / 2, (H - height) / 2);
     // Raw frame time: Phaser's smoothed delta is clamped to 1/60 s while the window is unfocused.
     const events = this.source.advance(this.game.loop.rawDelta);
     const view = this.source.view;

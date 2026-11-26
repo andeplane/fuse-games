@@ -91,7 +91,12 @@ export function createScene(
     // The extension stays covered even when the scene's visual shake displaces it.
     if (gutterX || gutterY) {
       g.fillStyle = "#070a20";
-      g.fillRect(-gutterX, -gutterY, VIEW_W + 2 * gutterX, VIEW_H + 2 * gutterY);
+      g.fillRect(
+        -gutterX,
+        -gutterY,
+        VIEW_W + 2 * gutterX,
+        VIEW_H + 2 * gutterY,
+      );
     }
     g.save();
     effects.applyShake(g, input.reducedMotion);

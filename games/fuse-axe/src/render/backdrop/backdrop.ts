@@ -1,4 +1,4 @@
-import { cameraEndPx, VIEW_W } from "../../engine/view-kit.js";
+import { cameraEndPx, VIEW_H, VIEW_W } from "../../engine/view-kit.js";
 import { pixelSurface, type MakeSurface } from "../surface.js";
 import { ASHEN_VILLAGE } from "./ashen-village.js";
 import { CAMP_ART } from "./camp.js";
@@ -37,9 +37,15 @@ export interface Backdrop<S> {
    * Everything behind the heroes: call first each frame, with image smoothing off so the whole-pixel blits stay sharp.
    * `frame` counts 60 Hz steps and only moves the fires; the pen's `fillStyle` is left as it was found.
    */
-  draw(pen: Pen<S>, camX: number, frame: number): void;
+  draw(
+    pen: Pen<S>,
+    camX: number,
+    frame: number,
+    gutterX?: number,
+    gutterY?: number,
+  ): void;
   /** The foreground in front of the heroes: call after them. */
-  drawFront(pen: Pen<S>, camX: number): void;
+  drawFront(pen: Pen<S>, camX: number, gutterX?: number): void;
   /**
    * What of it stands on the floor among the figures (camp's fire, `Prop`): draw it after those further up the floor
    * than its row `y` and before the rest. Like `draw`, it leaves the pen's `fillStyle` as it was found.
@@ -63,6 +69,7 @@ export const hasBackdrop = (stage: number): stage is StageNumber =>
 
 interface Baked<S> {
   surface: S;
+  width: number;
   rate: readonly [number, number];
   top: number;
   height: number;
@@ -79,23 +86,50 @@ function bake<S>(make: MakeSurface<S>, layer: LayerArt, end: number): Baked<S> {
   layer.paint(raster);
   return {
     surface: pixelSurface(make, raster.width, raster.height, raster.rgba),
+    width: raster.width,
     rate: layer.rate,
     top: layer.top,
     height: layer.height,
   };
 }
 
-function blit<S>(pen: Pen<S>, layer: Baked<S>, camX: number) {
+function blit<S>(pen: Pen<S>, layer: Baked<S>, camX: number, gutter = 0) {
   const sx = Math.floor((camX * layer.rate[0]) / layer.rate[1]);
+  const left = Math.min(gutter, sx),
+    right = Math.min(gutter, layer.width - sx - VIEW_W);
+  if (left < gutter)
+    pen.drawImage(
+      layer.surface,
+      0,
+      0,
+      1,
+      layer.height,
+      -gutter,
+      layer.top,
+      gutter - left,
+      layer.height,
+    );
+  if (right < gutter)
+    pen.drawImage(
+      layer.surface,
+      layer.width - 1,
+      0,
+      1,
+      layer.height,
+      VIEW_W + right,
+      layer.top,
+      gutter - right,
+      layer.height,
+    );
   pen.drawImage(
     layer.surface,
-    sx,
+    sx - left,
     0,
-    VIEW_W,
+    VIEW_W + left + right,
     layer.height,
-    0,
+    -left,
     layer.top,
-    VIEW_W,
+    VIEW_W + left + right,
     layer.height,
   );
 }
@@ -132,15 +166,21 @@ function fromArt<S>(
   const front = bake(make, art.front, end);
   const prop = art.prop;
   return {
-    draw(pen, camX, frame) {
+    draw(pen, camX, frame, gutterX = 0, gutterY = 0) {
       const cam = camera(camX, end);
-      for (const layer of back) blit(pen, layer, cam);
       const style = pen.fillStyle;
+      if (gutterY) {
+        pen.fillStyle = "#0b0b1b";
+        pen.fillRect(-gutterX, -gutterY, VIEW_W + 2 * gutterX, gutterY);
+        pen.fillStyle = "#1e151d";
+        pen.fillRect(-gutterX, VIEW_H, VIEW_W + 2 * gutterX, gutterY);
+      }
+      for (const layer of back) blit(pen, layer, cam, gutterX);
       art.animate(pen, cam, clock(frame));
       pen.fillStyle = style;
     },
-    drawFront(pen, camX) {
-      blit(pen, front, camera(camX, end));
+    drawFront(pen, camX, gutterX) {
+      blit(pen, front, camera(camX, end), gutterX);
     },
     ...(prop && {
       prop: {

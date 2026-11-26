@@ -83,7 +83,14 @@ import type { MakeSurface } from "./surface.js";
  * flat rectangles of its crack, shards and dust.
  */
 export interface Scene<Image> {
-  draw(pen: Pen<Image>, view: WorldView, frame: number, seats?: HudSeats): void;
+  draw(
+    pen: Pen<Image>,
+    view: WorldView,
+    frame: number,
+    seats?: HudSeats,
+    gutterX?: number,
+    gutterY?: number,
+  ): void;
 }
 
 /**
@@ -391,14 +398,20 @@ export function createScene<Image>(make: MakeSurface<Image>): Scene<Image> {
   };
 
   return {
-    draw(pen, view, frame, seats) {
+    draw(pen, view, frame, seats, gutterX = 0, gutterY = 0) {
       const camX = view.camX;
       // A spell's blow shakes the field, never the HUD: the strip it leaves bare at an edge is ink.
       const [dx, dy] = shakeOf(view);
       const field = dx || dy ? shifted(pen, dx, dy) : pen;
-      if (field !== pen) {
+      if (field !== pen || gutterX || gutterY) {
         pen.fillStyle = UNLIT.k!;
-        fill(pen, 0, 0, VIEW_W, VIEW_H);
+        fill(
+          pen,
+          -gutterX,
+          -gutterY,
+          VIEW_W + 2 * gutterX,
+          VIEW_H + 2 * gutterY,
+        );
       }
       // Camp has its own night clearing, one screen that never scrolls, whatever stage it follows; a stage has its own
       // backdrop at its camera.
@@ -409,7 +422,7 @@ export function createScene<Image>(make: MakeSurface<Image>): Scene<Image> {
         backdrop = backdropOf(back.art);
         backX = back.camX;
       }
-      backdrop.draw(field, backX, frame);
+      backdrop.draw(field, backX, frame, gutterX, gutterY);
       const at = (f: HeroView | EnemyView | ItemView | MountView) => ({
         id: f.id,
         y: Math.floor(f.y),
@@ -562,7 +575,7 @@ export function createScene<Image>(make: MakeSurface<Image>): Scene<Image> {
       }
       drawShards(field, view.enemies, camX);
       for (const fx of view.fx) drawSpark(field, fx, camX);
-      backdrop.drawFront(field, backX);
+      backdrop.drawFront(field, backX, gutterX);
       spells.draw(field, view, frame);
       if (view.go && Math.floor(frame / GO_FLASH) % 2 === 0) {
         const sign = baker.bake(GO_SIGN);

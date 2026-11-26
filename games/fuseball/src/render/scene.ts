@@ -59,6 +59,8 @@ export interface SceneCanvas {
   getContext(kind: "2d"): Paint | null;
 }
 export interface SceneOptions {
+  /** A phone's canvas occupies the stage; the arena stays at its uniform contained scale. */
+  fullStage?: () => boolean;
   /** Device pixels per CSS pixel; the window's unless given. */
   pixelRatio?: () => number;
   /** Where the effects' scatter comes from; `Math.random` unless given. */
@@ -591,9 +593,37 @@ export function createScene(
       g.fillRect(0, 0, canvas.width, canvas.height);
       g.save();
       g.setTransform(fit.scale, 0, 0, fit.scale, fit.x, fit.y);
+      const fullStage = fit.scale > 0 && options.fullStage?.(),
+        gutterX = fullStage ? fit.x / fit.scale : 0,
+        gutterY = fullStage ? fit.y / fit.scale : 0;
       g.beginPath();
-      g.rect(0, 0, VIEW_W, VIEW_H);
+      g.rect(-gutterX, -gutterY, VIEW_W + 2 * gutterX, VIEW_H + 2 * gutterY);
       g.clip();
+      if (fullStage) {
+        const surround = g.createLinearGradient(0, 0, 0, VIEW_H);
+        surround.addColorStop(0, isWire(map) ? WIRE_BACK : NIGHT);
+        surround.addColorStop(1, INK);
+        g.fillStyle = surround;
+        g.fillRect(
+          -gutterX,
+          -gutterY,
+          VIEW_W + 2 * gutterX,
+          VIEW_H + 2 * gutterY,
+        );
+        g.fillStyle = hexA(GRID, 0.22);
+        for (
+          let x = -Math.floor(gutterX / 40) * 40;
+          x < VIEW_W + gutterX;
+          x += 40
+        )
+          g.fillRect(x, -gutterY, 1, VIEW_H + 2 * gutterY);
+        for (
+          let y = -Math.floor(gutterY / 40) * 40;
+          y < VIEW_H + gutterY;
+          y += 40
+        )
+          g.fillRect(-gutterX, y, VIEW_W + 2 * gutterX, 1);
+      }
       g.save();
       g.translate(shake.x, shake.y);
       // The camera: the arena point it looks at goes to the middle of the screen.
