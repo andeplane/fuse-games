@@ -59,6 +59,7 @@ export const RACE_HEIGHT = 26,
 
 /** A field's lanes are at least this many columns long, header included. */
 const MIN_COLUMNS_HIGH = 6.5;
+const WIDE_PHONE_MIN_COLUMNS_HIGH = 5.5;
 /** How far from the lanes' near edge the targets sit, in columns. */
 export const TARGET_INSET = 0.95;
 /**
@@ -76,6 +77,7 @@ function columnFor(
   areaHeight: number,
   count: number,
   unit: number,
+  minColumnsHigh: number,
 ): number {
   const gap = count === 1 ? 0.3 : 0.6;
   return Math.max(
@@ -83,7 +85,7 @@ function columnFor(
     Math.floor(
       Math.min(
         width / (count * COLUMNS + (count + 1) * gap),
-        areaHeight / MIN_COLUMNS_HIGH,
+        areaHeight / minColumnsHigh,
         columnCap(areaHeight, unit),
       ),
     ),
@@ -112,9 +114,10 @@ function split(
   areaHeight: number,
   rivals: number,
   unit: number,
+  minColumnsHigh: number,
   out: { own: number; rival: number },
 ): void {
-  const alone = columnFor(width, areaHeight, 1, unit);
+  const alone = columnFor(width, areaHeight, 1, unit, minColumnsHigh);
   // What the rivals take, in their own columns: a field and a gap each, and a gap at the outside.
   const theirs = rivals * (COLUMNS + RIVAL_GAP) + RIVAL_GAP;
   const ratio = Math.max(
@@ -149,6 +152,7 @@ export function layoutFor(
   local: number,
   inset = 0,
   unit = 1,
+  sideInset = 0,
 ): Layout {
   const count = Math.max(0, Math.min(5, Math.trunc(riders)));
   const own = local >= 0 && local < count;
@@ -156,7 +160,11 @@ export function layoutFor(
   const barHeight = Math.round(24 * unit);
   const bottom = Math.max(0, height - Math.max(0, inset) * unit - pad);
   let top = barHeight + Math.round(pad / 2);
-  let right = width;
+  const side = Math.round(Math.max(0, sideInset) * unit);
+  const available = Math.max(1, width - 2 * side);
+  const minColumnsHigh =
+    side > 0 ? WIDE_PHONE_MIN_COLUMNS_HIGH : MIN_COLUMNS_HIGH;
+  let right = available;
   const layout: Layout = { width, height, unit, barHeight, fields: [] };
   if (count === 0) return layout;
   const rivals = own ? count - 1 : 0;
@@ -168,17 +176,24 @@ export function layoutFor(
     area: number,
     out: { own: number; rival: number },
   ): void => {
-    if (rivals > 0) split(across, area, rivals, unit, out);
-    else out.own = out.rival = columnFor(across, area, count, unit);
+    if (rivals > 0) split(across, area, rivals, unit, minColumnsHigh, out);
+    else
+      out.own = out.rival = columnFor(
+        across,
+        area,
+        count,
+        unit,
+        minColumnsHigh,
+      );
   };
 
   if (count > 1) {
     const area = bottom - top;
     const panelWidth = Math.round(
-      Math.max(150 * unit, Math.min(300 * unit, width * 0.22)),
+      Math.max(150 * unit, Math.min(300 * unit, available * 0.22)),
     );
-    columns(width, area, whole);
-    columns(width - panelWidth - 2 * pad, area, beside);
+    columns(available, area, whole);
+    columns(available - panelWidth - 2 * pad, area, beside);
     const gap = Math.round(6 * unit);
     // The board goes beside the fields unless that costs them too much of their size. A rider's device gives a
     // little more, since the board is its only ranking, but not at its rivals' fields' expense.
@@ -190,7 +205,7 @@ export function layoutFor(
     ) {
       layout.panel = {
         strip: false,
-        x: width - panelWidth - pad,
+        x: available - panelWidth - pad,
         y: top,
         boxWidth: panelWidth,
         boxHeight: Math.max(
@@ -210,7 +225,7 @@ export function layoutFor(
         y: top,
         boxWidth: Math.max(
           1,
-          Math.floor((width - 2 * pad - (count - 1) * stripGap) / count),
+          Math.floor((available - 2 * pad - (count - 1) * stripGap) / count),
         ),
         boxHeight: Math.round(40 * unit),
         gap: stripGap,
@@ -250,17 +265,20 @@ export function layoutFor(
     const gutter = (shown === 1 || i === mine) && i === 0 && x >= col * 2.6;
     layout.fields.push({
       slot,
-      x,
+      x: side + x,
       col,
       top,
       headerHeight,
       laneTop: top + headerHeight,
       laneBottom: Math.max(top + headerHeight, bottom),
-      hudX: gutter ? x - Math.round(col * 0.35) : x + Math.round(col * 0.2),
+      hudX:
+        side +
+        (gutter ? x - Math.round(col * 0.35) : x + Math.round(col * 0.2)),
       hudAlign: gutter ? -1 : 1,
     });
     x += col * COLUMNS + gap;
   }
+  if (layout.panel) layout.panel.x += side;
   return layout;
 }
 

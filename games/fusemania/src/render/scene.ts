@@ -76,6 +76,8 @@ export interface DrawOptions {
   itemKey: string;
   /** CSS pixels at the bottom of the canvas covered by touch buttons (0 when none): the field stays above it. */
   inset?: number;
+  /** CSS pixels occupied by the left and right touch controls in a wide phone layout. */
+  sideInset?: number;
   /** CSS pixels on the title bar occupied by the phone's Pause and menu buttons. */
   titleInsets?: { left: number; right: number };
 }
@@ -108,7 +110,8 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
     layout: Layout | undefined,
     laidRiders = -1,
     laidLocal = -2,
-    laidInset = -1;
+    laidInset = -1,
+    laidSide = -1;
 
   const frame: Frame | undefined = g
     ? {
@@ -160,18 +163,33 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
   }
 
   /** The layout for this many riders, and the sprites its fields are drawn with: remade only when something changed. */
-  function laid(riders: number, local: number, inset: number): Layout {
+  function laid(
+    riders: number,
+    local: number,
+    inset: number,
+    side: number,
+  ): Layout {
     if (
       layout &&
       laidRiders === riders &&
       laidLocal === local &&
-      laidInset === inset
+      laidInset === inset &&
+      laidSide === side
     )
       return layout;
-    layout = layoutFor(canvas.width, canvas.height, riders, local, inset, unit);
+    layout = layoutFor(
+      canvas.width,
+      canvas.height,
+      riders,
+      local,
+      inset,
+      unit,
+      side,
+    );
     laidRiders = riders;
     laidLocal = local;
     laidInset = inset;
+    laidSide = side;
     for (const size of [...sets.keys()])
       if (!layout.fields.some((field) => field.col === size)) sets.delete(size);
     for (const field of layout.fields)
@@ -191,7 +209,12 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
       if (!g || !frame || canvas.width <= 0 || canvas.height <= 0) return;
       const riders = view.players.length;
       const local = shot.local >= 0 && shot.local < riders ? shot.local : -1;
-      const plan = laid(riders, local, Math.max(0, shot.inset ?? 0));
+      const plan = laid(
+        riders,
+        local,
+        Math.max(0, shot.inset ?? 0),
+        shot.sideInset ?? 0,
+      );
       const width = plan.width,
         height = plan.height;
 

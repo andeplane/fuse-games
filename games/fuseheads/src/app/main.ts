@@ -13,7 +13,6 @@ import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/results.css";
-import "fuse-ui/play-screen.css";
 import "./fuseheads.css";
 import QRCode from "qrcode";
 import {

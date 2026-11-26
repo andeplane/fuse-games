@@ -1349,10 +1349,12 @@ function enterRoom(
   const playScreen = createPlayScreen({ stage, onChange: () => letGoAll() });
   const menuButton = top.querySelector(".fui-top-bar-toggle");
   const touchLandscape = matchMedia("(orientation: landscape)");
-  let touchInset = 0;
+  let sideInset = 0;
+  const leftPad = touch.row.querySelector(".fm-pad-0");
+  const rightPad = touch.row.querySelector(".fm-pad-3");
   const titleInsets = { left: 0, right: 0 };
   function measurePlayHud() {
-    touchInset = titleInsets.left = titleInsets.right = 0;
+    sideInset = titleInsets.left = titleInsets.right = 0;
     if (playScreen.mode() === "off") return;
     const field = canvas.getBoundingClientRect();
     if (menuButton)
@@ -1365,11 +1367,13 @@ function enterRoom(
         0,
         pauseButton.getBoundingClientRect().right - field.left,
       );
-    if (touchLandscape.matches && !touch.row.hidden)
-      touchInset = Math.max(
-        0,
-        field.bottom - touch.row.getBoundingClientRect().top,
-      );
+    if (touchLandscape.matches && !touch.row.hidden && leftPad && rightPad)
+      sideInset =
+        8 +
+        Math.max(
+          leftPad.getBoundingClientRect().right - field.left,
+          field.right - rightPad.getBoundingClientRect().left,
+        );
   }
 
   const controller = el("section", "", "fm-controller"),
@@ -1812,7 +1816,7 @@ function enterRoom(
       totals: model.totals,
       totalSongs: model.totalSongs,
       itemKey: coarse() ? "ITEM" : keyLabel(prefs.keys.item[0] ?? ""),
-      inset: touchInset,
+      sideInset,
       titleInsets,
     });
     const done = performance.now();

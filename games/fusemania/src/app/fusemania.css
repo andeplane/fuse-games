@@ -1137,13 +1137,18 @@ html[data-fui-play] .fm-stage > .fm-touch {
 }
 @media (orientation: landscape) {
   html[data-fui-play] .fm-stage > .fm-touch {
-    grid-template: "left down up right" / repeat(4, minmax(0, 1fr));
-    width: min(28rem, calc(100% - 1rem));
-    height: clamp(44px, 15cqh, 64px);
+    --fm-thumb-size: clamp(44px, 14cqh, 64px);
+    right: max(0.5rem, var(--fui-play-right));
+    left: max(0.5rem, var(--fui-play-left));
+    grid-template:
+      ". . item" var(--fm-thumb-size)
+      "left . up" var(--fm-thumb-size)
+      "down . right" var(--fm-thumb-size)
+      / var(--fm-thumb-size) 1fr var(--fm-thumb-size);
+    width: auto;
+    height: auto;
     min-height: 0;
-  }
-  html[data-fui-play] .fm-touch:has(.fm-pad-item:not([hidden])) {
-    grid-template: "left down up right item" / repeat(5, minmax(0, 1fr));
+    transform: none;
   }
   html[data-fui-play] .fm-touch .fm-pad-0 {
     grid-area: left;
@@ -1159,5 +1164,6 @@ html[data-fui-play] .fm-stage > .fm-touch {
   }
   html[data-fui-play] .fm-touch .fm-pad-item {
     grid-area: item;
+    min-height: 0;
   }
 }
