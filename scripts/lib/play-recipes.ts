@@ -212,12 +212,19 @@ export const RECIPES: Record<string, Recipe> = {
   },
   "ball-bros": async (page) => {
     await openPlayOptions(page, "single");
+    const touch = await page.evaluate(
+      () => matchMedia("(pointer: coarse)").matches,
+    );
     await page
-      .getByText("SPACE TO LAUNCH", { exact: true })
+      .getByText(touch ? "TAP LAUNCH" : "SPACE TO LAUNCH", { exact: true })
       .waitFor({ timeout: 30_000 });
-    // Space on a focused button presses it; the arena has to hold focus first.
-    await focusArena(page, "canvas", { x: 20, y: 20 });
-    await page.keyboard.press("Space");
+    if (touch) {
+      await page.getByRole("button", { name: "LAUNCH", exact: true }).tap();
+    } else {
+      // Space on a focused button presses it; the arena has to hold focus first.
+      await focusArena(page, "canvas", { x: 20, y: 20 });
+      await page.keyboard.press("Space");
+    }
     await hold(page, ["KeyD", "KeyW", "KeyA", "KeyS", "KeyD"], 1800);
   },
   "fuse-birds": async (page) => {
