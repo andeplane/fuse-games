@@ -32,7 +32,7 @@ import {
   framingPoints,
   hudScale,
   minScreenScale,
-  shipMarkers,
+  viewportShipMarkers,
   skyRect,
   type ShipMarker,
 } from "./framing.js";
@@ -379,7 +379,21 @@ export class RoundScene extends Phaser.Scene {
       (sprite, { g }) => this.drawGhost(view, g, sprite, time, dt),
     );
     this.drawRockets(view);
-    for (const m of shipMarkers(ships, this.camera.pose, REGION, HUD_BAND))
+    const markerPose =
+      width === W && height === H
+        ? this.camera.pose
+        : {
+            centerX: main.scrollX + width / 2,
+            centerY: main.scrollY + height / 2,
+            zoom: main.zoom,
+          };
+    for (const m of viewportShipMarkers(
+      ships,
+      markerPose,
+      { width, height },
+      { width: W, height: H },
+      HUD_BAND,
+    ))
       this.drawMarker(view, m);
     this.drawFuse(view, time);
     this.drawBanner(view);

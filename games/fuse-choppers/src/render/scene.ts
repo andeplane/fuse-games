@@ -99,9 +99,20 @@ export function createScene(
       );
     }
     g.save();
+    const board = gutterX || gutterY ? g.getTransform() : undefined;
     effects.applyShake(g, input.reducedMotion);
     backdrop.draw(g, camX, time, gutterX, gutterY);
     drawCave(g, world.seed, camX, gutterX, gutterY);
+    // An expanded phone view reveals scenery, while hazards and aircraft use the same camera field on all devices.
+    if (board) {
+      g.save();
+      const shaken = g.getTransform();
+      g.setTransform(board);
+      g.beginPath();
+      g.rect(0, 0, VIEW_W, VIEW_H);
+      g.clip();
+      g.setTransform(shaken);
+    }
     drawExit(g, camX, time);
     drawPlatforms(g, world, time);
     drawSaws(g, world, time);
@@ -116,7 +127,8 @@ export function createScene(
     drawRocks(g, world, time);
     effects.draw(g, camX);
     emberClock += dt;
-    drawCrush(g, world, time, emberClock > 0.03, gutterX);
+    drawCrush(g, world, time, emberClock > 0.03);
+    if (board) g.restore();
     if (emberClock > 0.03) emberClock = 0;
     g.restore();
     danger(g, world, input.me, time);
@@ -421,10 +433,9 @@ export function createScene(
     world: WorldView,
     time: number,
     emit: boolean,
-    gutterX: number,
   ): void {
     const edge = world.crushX - world.camX;
-    if (edge < -60 - gutterX) return;
+    if (edge < -60) return;
     const jag = (y: number) =>
       Math.sin(y * 0.045 + time * 3.1) * 7 +
       Math.sin(y * 0.13 - time * 5.3) * 4 +
@@ -437,9 +448,9 @@ export function createScene(
     g.fillRect(edge, 0, 110, VIEW_H);
     // The wall.
     g.beginPath();
-    g.moveTo(-20 - gutterX, -20);
+    g.moveTo(-20, -20);
     for (let y = -20; y <= VIEW_H + 20; y += 18) g.lineTo(edge + jag(y), y);
-    g.lineTo(-20 - gutterX, VIEW_H + 20);
+    g.lineTo(-20, VIEW_H + 20);
     g.closePath();
     const body = g.createLinearGradient(edge - 320, 0, edge, 0);
     body.addColorStop(0, "#14020b");

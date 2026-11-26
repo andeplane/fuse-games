@@ -669,6 +669,13 @@ function room(solo: boolean): void {
     scene = createScene(canvasSurface);
   let gutterX = 0,
     gutterY = 0;
+  const clip = () => {
+    native.save();
+    native.beginPath();
+    native.rect(0, 0, VIEW_W, VIEW_H);
+    native.clip();
+  };
+  const restore = () => native.restore();
   const fit = () => {
     // The screen's own area (a border is not drawable), in device pixels.
     const ratio = window.devicePixelRatio || 1,
@@ -765,8 +772,7 @@ function room(solo: boolean): void {
         world,
         Math.floor((now * 60) / 1000),
         model?.hud,
-        gutterX,
-        gutterY,
+        gutterX || gutterY ? { gutterX, gutterY, clip, restore } : undefined,
       );
       // Resizing the canvas resets its context, smoothing included.
       g.imageSmoothingEnabled = false;

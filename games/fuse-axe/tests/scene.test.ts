@@ -229,6 +229,33 @@ const world = (more: Partial<WorldView>): WorldView => ({
   ...more,
 });
 
+test("an expanded phone paints scenery outside the clip that holds the fighters", () => {
+  const pen = new RecordingPen();
+  const clips: [number, number][] = [];
+  shared.scene.draw(
+    pen,
+    world({ camX: 80, heroes: [hero(1, 0, 170, 140)] }),
+    0,
+    undefined,
+    {
+      gutterX: 40,
+      gutterY: 0,
+      clip() {
+        clips.push([pen.blits.length, -1]);
+      },
+      restore() {
+        clips.at(-1)![1] = pen.blits.length;
+      },
+    },
+  );
+  const art = fillsOf(BRAKKA.sprite("idle0"));
+  const fighter = pen.blits.findIndex((blit) =>
+    isDeepStrictEqual(blit.image.fills, art),
+  );
+  assert.ok(fighter >= clips[0]![0] && fighter < clips[0]![1]);
+  assert.ok(pen.blits.slice(0, clips[0]![0]).some((blit) => blit.dx < 0));
+});
+
 /**
  * One frame on the shared scene, its blits sorted into the layers they belong to. The HUD (`hud.test.ts`) draws over
  * everything, after the grass in front, the last layer: what follows it but the GO sign is the HUD's.
