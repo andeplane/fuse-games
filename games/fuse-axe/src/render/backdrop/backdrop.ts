@@ -95,7 +95,8 @@ function bake<S>(make: MakeSurface<S>, layer: LayerArt, end: number): Baked<S> {
 
 function blit<S>(pen: Pen<S>, layer: Baked<S>, camX: number, gutter = 0) {
   const sx = Math.floor((camX * layer.rate[0]) / layer.rate[1]);
-  const left = Math.min(gutter, sx),
+  const start = Math.max(0, sx - gutter),
+    left = sx - start,
     right = Math.min(gutter, layer.width - sx - VIEW_W);
   if (left < gutter)
     pen.drawImage(
@@ -123,11 +124,11 @@ function blit<S>(pen: Pen<S>, layer: Baked<S>, camX: number, gutter = 0) {
     );
   pen.drawImage(
     layer.surface,
-    sx - left,
+    start,
     0,
     VIEW_W + left + right,
     layer.height,
-    -left,
+    start - sx,
     layer.top,
     VIEW_W + left + right,
     layer.height,
