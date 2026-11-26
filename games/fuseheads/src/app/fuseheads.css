@@ -135,17 +135,18 @@ body:has(.fuseheads-room[data-local="true"])
 
 /* The canvas fills the phone and the renderer fits the fixed arcade board inside it. */
 html[data-fui-play] .fuseheads-play {
-  display: grid;
-  place-items: center;
+  display: block;
   padding: 0;
   background: #171520;
 }
 html[data-fui-play] .fuseheads-viewport {
-  position: static;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  width: auto;
 }
 html[data-fui-play] .fuseheads-arena {
+  position: absolute;
+  inset: 0;
   height: 100%;
   aspect-ratio: auto;
 }
