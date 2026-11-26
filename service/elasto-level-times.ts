@@ -14,12 +14,16 @@ import {
   type TelemetryDatabase,
 } from "fuse-telemetry/metrics-database";
 import {
+  LEVEL_COUNT,
   RACE_LIMIT,
   RULES,
   isLevel,
 } from "../games/elasto-fuse/src/engine/index.js";
 import {
+  LEVEL_BOARD_PAGE_SIZE,
+  LEVEL_BOARD_PLACES,
   verifiedTime,
+  type LevelBoardPage,
   type LevelTime,
 } from "../games/elasto-fuse/src/level-times.js";
 
@@ -27,6 +31,7 @@ const PATH = "/api/games/elasto-fuse/level-times";
 const MAX_PLAYERS = 100;
 const MAX_BODY = 400_000;
 const HOUR = 3_600_000;
+const OVERVIEW_TTL_MS = 300_000;
 interface RankedTime extends LevelTime {
   uid: string;
   endedAt: number;
@@ -89,6 +94,42 @@ function entries(raw: unknown): RankedTime[] {
   return players;
 }
 
+const levelKey = (level: number) => `telemetry-level-times/${RULES}-${level}`;
+const publicTime = ({ name, steps }: RankedTime): LevelTime => ({
+  name,
+  steps,
+});
+
+async function loadOverview(
+  database: TelemetryDatabase,
+): Promise<Required<LevelBoardPage>> {
+  const documents = await database.readMany(
+    Array.from({ length: LEVEL_COUNT }, (_, level) => levelKey(level)),
+  );
+  const leaders = new Map<
+    string,
+    { name: string; records: number; endedAt: number }
+  >();
+  const levels = documents.map((document) => {
+    const top = entries(document).slice(0, LEVEL_BOARD_PLACES);
+    const winner = top[0];
+    if (winner) {
+      const prior = leaders.get(winner.uid);
+      const latest = prior && prior.endedAt > winner.endedAt ? prior : winner;
+      leaders.set(winner.uid, {
+        name: latest.name,
+        endedAt: latest.endedAt,
+        records: (prior?.records ?? 0) + 1,
+      });
+    }
+    return top.map(publicTime);
+  });
+  const standings = [...leaders.values()]
+    .map(({ name, records }) => ({ name, records }))
+    .sort((a, b) => b.records - a.records || a.name.localeCompare(b.name));
+  return { levels, standings };
+}
+
 export function elastoLevelTimesHttp(
   database: TelemetryDatabase,
   accounts: Pick<HistoryDatabase, "accounts">,
@@ -100,6 +141,22 @@ export function elastoLevelTimesHttp(
   const quota = rateLimitKey
     ? new SharedTelemetryQuota(database, rateLimitKey, now)
     : undefined;
+  let overview:
+    { expiresAt: number; data: Required<LevelBoardPage> } | undefined;
+  let refresh: Promise<Required<LevelBoardPage>> | undefined;
+  function readOverview() {
+    if (overview && overview.expiresAt > now())
+      return Promise.resolve(overview.data);
+    refresh ??= loadOverview(database)
+      .then((data) => {
+        overview = { data, expiresAt: now() + OVERVIEW_TTL_MS };
+        return data;
+      })
+      .finally(() => {
+        refresh = undefined;
+      });
+    return refresh;
+  }
   return {
     async handle(req, res, address) {
       const url = new URL(req.url ?? "/", "http://times");
@@ -121,65 +178,80 @@ export function elastoLevelTimesHttp(
           },
         ]);
         const rawLevel = url.searchParams.get("level") ?? "";
-        const level = /^\d{1,4}$/.test(rawLevel) ? Number(rawLevel) : undefined;
-        if (!isLevel(level)) throw new RoomError(400, "Unknown level");
-        const key = `telemetry-level-times/${RULES}-${level}`;
+        const rawFrom = url.searchParams.get("from");
         let value: unknown;
-        if (read) {
-          const players = entries((await database.readMany([key]))[0]).map(
-            ({ name, steps }): LevelTime => ({ name, steps }),
-          );
-          value = { players };
+        if (read && rawFrom !== null) {
+          const from = /^\d{1,4}$/.test(rawFrom) ? Number(rawFrom) : undefined;
+          if (rawLevel || !isLevel(from))
+            throw new RoomError(400, "Unknown leaderboard offset");
+          const data = await readOverview();
+          value = {
+            levels: data.levels.slice(from, from + LEVEL_BOARD_PAGE_SIZE),
+            ...(from === 0 ? { standings: data.standings } : {}),
+          } satisfies LevelBoardPage;
         } else {
-          const token = /^Bearer (.+)$/.exec(
-            req.headers.authorization ?? "",
-          )?.[1];
-          const uid = token ? await identity(token) : undefined;
-          if (!uid) throw new RoomError(401, "Sign in to save a time");
-          await quota.consume([
-            {
-              dimension: "level-times-account",
-              identity: uid,
-              cost: 1,
-              limit: 60,
-              windowMs: HOUR,
-            },
-            {
-              dimension: "level-times-post-global",
-              identity: "all",
-              cost: 1,
-              limit: 600,
-              windowMs: HOUR,
-            },
-          ]);
-          const run = record(await runBody(req));
-          if (run?.level !== level)
-            throw new RoomError(400, "Run belongs to another level");
-          const time = verifiedTime(run);
-          if (time === undefined)
-            throw new RoomError(400, "Run did not verify");
-          const account = (await accounts.accounts([uid])).get(uid);
-          const name = account?.username ?? account?.name;
-          if (!name) throw new RoomError(409, "Choose an account name first");
-          const entry = { uid, name, steps: time, endedAt: now() };
-          const ranked = await database.transact(async (tx) => {
-            const players = entries((await tx.getMany([key]))[0]);
-            const previous = players.find((row) => row.uid === uid);
-            if (previous && previous.steps <= time) return true;
-            const next = players.filter((row) => row.uid !== uid);
-            next.push(entry);
-            next.sort(
-              (a, b) =>
-                a.steps - b.steps ||
-                a.endedAt - b.endedAt ||
-                a.uid.localeCompare(b.uid),
-            );
-            const top = next.slice(0, MAX_PLAYERS);
-            if (!top.includes(entry)) return false;
-            tx.set(key, { players: top });
-            return true;
-          });
-          value = { steps: time, ranked };
+          const level = /^\d{1,4}$/.test(rawLevel)
+            ? Number(rawLevel)
+            : undefined;
+          if (!isLevel(level)) throw new RoomError(400, "Unknown level");
+          const key = levelKey(level);
+          if (read) {
+            value = {
+              players: entries((await database.readMany([key]))[0]).map(
+                publicTime,
+              ),
+            };
+          } else {
+            const token = /^Bearer (.+)$/.exec(
+              req.headers.authorization ?? "",
+            )?.[1];
+            const uid = token ? await identity(token) : undefined;
+            if (!uid) throw new RoomError(401, "Sign in to save a time");
+            await quota.consume([
+              {
+                dimension: "level-times-account",
+                identity: uid,
+                cost: 1,
+                limit: 60,
+                windowMs: HOUR,
+              },
+              {
+                dimension: "level-times-post-global",
+                identity: "all",
+                cost: 1,
+                limit: 600,
+                windowMs: HOUR,
+              },
+            ]);
+            const run = record(await runBody(req));
+            if (run?.level !== level)
+              throw new RoomError(400, "Run belongs to another level");
+            const time = verifiedTime(run);
+            if (time === undefined)
+              throw new RoomError(400, "Run did not verify");
+            const account = (await accounts.accounts([uid])).get(uid);
+            const name = account?.username ?? account?.name;
+            if (!name) throw new RoomError(409, "Choose an account name first");
+            const entry = { uid, name, steps: time, endedAt: now() };
+            const ranked = await database.transact(async (tx) => {
+              const players = entries((await tx.getMany([key]))[0]);
+              const previous = players.find((row) => row.uid === uid);
+              if (previous && previous.steps <= time) return true;
+              const next = players.filter((row) => row.uid !== uid);
+              next.push(entry);
+              next.sort(
+                (a, b) =>
+                  a.steps - b.steps ||
+                  a.endedAt - b.endedAt ||
+                  a.uid.localeCompare(b.uid),
+              );
+              const top = next.slice(0, MAX_PLAYERS);
+              if (!top.includes(entry)) return false;
+              tx.set(key, { players: top });
+              return true;
+            });
+            value = { steps: time, ranked };
+          }
         }
         res.writeHead(200, {
           "Content-Type": "application/json",

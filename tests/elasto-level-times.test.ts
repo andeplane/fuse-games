@@ -6,6 +6,7 @@ import { MemoryTelemetryDatabase } from "fuse-telemetry/metrics-memory";
 import { createDevRoomService } from "fuse-network-be";
 import {
   LEVELS,
+  RULES,
   STEPS_PER_SECOND,
 } from "../games/elasto-fuse/src/engine/index.js";
 import { rideBits } from "../games/elasto-fuse/src/app/rides.js";
@@ -61,11 +62,12 @@ function finishSolo() {
 
 test("a signed-in solo finish ranks by replay time, and malformed or unsigned submissions leave the board alone", async () => {
   const { run, time } = finishSolo();
+  const database = new MemoryTelemetryDatabase();
   const service = createDevRoomService({
     gameIds: ["elasto-fuse"],
     httpExtension: () =>
       elastoLevelTimesHttp(
-        new MemoryTelemetryDatabase(),
+        database,
         {
           accounts: async (uids) =>
             new Map(
@@ -119,6 +121,41 @@ test("a signed-in solo finish ranks by replay time, and malformed or unsigned su
     assert.deepEqual(await (await fetch(url)).json(), {
       players: [{ name: "Ada", steps: time }],
     });
+    const lastLevel = LEVELS.length - 1;
+    await database.transact(async (tx) => {
+      tx.set(`telemetry-level-times/${RULES}-${lastLevel}`, {
+        players: [
+          { uid: "private-id", name: "Ada Rocket", steps: 1, endedAt: 501 },
+          { uid: "other", name: "Other", steps: 2, endedAt: 500 },
+          { uid: "third", name: "Third", steps: 3, endedAt: 500 },
+          { uid: "fourth", name: "Fourth", steps: 4, endedAt: 500 },
+        ],
+      });
+      tx.set(`telemetry-level-times/${RULES}-0`, {
+        players: [{ uid: "other", name: "Other", steps: 1, endedAt: 500 }],
+      });
+    });
+    const overview = new URL(url);
+    overview.search = "?from=0";
+    const first = await (await fetch(overview)).json();
+    assert.equal(first.levels.length, 50);
+    assert.deepEqual(first.levels[0], [{ name: "Other", steps: 1 }]);
+    assert.deepEqual(first.standings, [
+      { name: "Ada Rocket", records: 2 },
+      { name: "Other", records: 1 },
+    ]);
+    overview.search = `?from=${lastLevel}`;
+    assert.deepEqual(await (await fetch(overview)).json(), {
+      levels: [
+        [
+          { name: "Ada Rocket", steps: 1 },
+          { name: "Other", steps: 2 },
+          { name: "Third", steps: 3 },
+        ],
+      ],
+    });
+    overview.search = `?from=${LEVELS.length}`;
+    assert.equal((await fetch(overview)).status, 400);
   } finally {
     await service.close();
   }

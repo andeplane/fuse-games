@@ -112,7 +112,7 @@ import {
 import { clockText } from "../render/hud.js";
 import {
   createLevelLeaderboards,
-  parseLevelTimes,
+  parseLevelBoardPage,
 } from "./level-leaderboards.js";
 import { createLevelRunUploads } from "./level-run-uploads.js";
 
@@ -368,14 +368,20 @@ function landing(): void {
 
 function leaderboards(): void {
   const board = createLevelLeaderboards({
-    initial: soloLevel(),
     levels: LEVEL_CHOICES,
     playHref: (level) =>
       level <= unlockedLevel() ? soloUrl(level) : undefined,
-    async load(level, signal) {
-      const response = await fetch(levelTimesUrl(level), { signal });
+    async load(from, signal) {
+      const response = await fetch(
+        endpoints.apiUrl(`/api/games/${GAME}/level-times?from=${from}`),
+        { signal },
+      );
       if (!response.ok) throw new Error("Leaderboard unavailable");
-      return parseLevelTimes(await response.json());
+      return parseLevelBoardPage(
+        await response.json(),
+        from,
+        LEVEL_CHOICES.length,
+      );
     },
   });
   const page = createSubPage({

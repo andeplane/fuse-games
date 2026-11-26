@@ -20,6 +20,7 @@ pnpm dev          # builds, then serves every game; open the printed URL plus /e
 `pnpm exec tsx service/dev.ts --port 8890` serves an existing `dist/` and walks to the next free port if that one is taken. Open `/elasto-fuse/?mute` and pick one of:
 
 - **Play → Single player**: pick an unlocked level or **Random**, then **PLAY SOLO**. The result shows the time and the browser's best time for that map. **NEXT MAP** (or Enter) advances after a clear, **RETRY** (or R) starts the race again, and **MENU** goes back. **Play random again** draws another track.
+- **Leaderboards** ranks riders by the number of levels on which they hold first place. A table below the standings shows the three fastest verified solo times for each level, with more rows available on the same page. The standings and level summaries can take up to five minutes to reflect a new record.
 - **Play → Host room**: start alone or invite up to four friends with the room code, link or QR invite. Tick **Shared TV** to play on one screen. **OPEN TV SCREEN** opens `?room=CODE&display=1`, which shows every rider in a pane of their own, and every phone becomes a full-screen controller.
 
 `?mute` opens the page without sound and stores nothing; use it for previews.

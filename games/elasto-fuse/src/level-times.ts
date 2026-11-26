@@ -23,6 +23,19 @@ export interface LevelTime {
   steps: number;
 }
 
+export const LEVEL_BOARD_PAGE_SIZE = 50;
+export const LEVEL_BOARD_PLACES = 3;
+
+export interface LevelRecordStanding {
+  name: string;
+  records: number;
+}
+
+export interface LevelBoardPage {
+  levels: LevelTime[][];
+  standings?: LevelRecordStanding[];
+}
+
 /** Replay a bounded solo trace and derive its finishing time. The client never submits a rank or time. */
 export function verifiedTime(raw: unknown): number | undefined {
   if (!raw || typeof raw !== "object") return;

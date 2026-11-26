@@ -62,21 +62,8 @@ body.elasto-fuse-page {
   font: 0.625rem var(--fui-font-pixel);
 }
 .ef-level-board {
-  width: min(100%, 42rem);
+  width: min(100%, 56rem);
   margin: var(--fui-space-6) auto;
-}
-.ef-level-board-fields {
-  display: flex;
-  align-items: end;
-  flex-wrap: wrap;
-  gap: var(--fui-space-3);
-}
-.ef-level-board-fields label {
-  flex: 1 1 16rem;
-  min-width: 0;
-}
-.ef-level-board-fields select {
-  width: 100%;
 }
 .ef-level-board table {
   width: 100%;
@@ -93,14 +80,28 @@ body.elasto-fuse-page {
   padding: var(--fui-space-2);
   border-bottom: var(--fui-border);
   text-align: left;
+  vertical-align: top;
   overflow-wrap: anywhere;
 }
-.ef-level-board :is(th, td):first-child {
-  width: 4.5rem;
+.ef-level-board th[scope="col"]:first-child {
+  width: 3.5rem;
 }
-.ef-level-board :is(th, td):last-child {
-  width: 7rem;
+.ef-level-board table:not(.ef-level-times) :is(th, td):last-child {
+  width: 6rem;
   text-align: right;
+}
+.ef-level-board .ef-level-times th:first-child {
+  width: 34%;
+}
+.ef-level-times .fui-button {
+  display: flex;
+  width: fit-content;
+  margin-top: var(--fui-space-2);
+}
+.ef-record-time {
+  display: block;
+  color: var(--fui-text-muted);
+  white-space: nowrap;
 }
 /* What went wrong, said above the room wherever the rider is. */
 .ef-alert {
