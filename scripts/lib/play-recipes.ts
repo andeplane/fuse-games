@@ -319,16 +319,44 @@ export const RECIPES: Record<string, Recipe> = {
 
 const single = async (page: Page) => openPlayOptions(page, "single");
 const press = (page: Page, name: string | RegExp) =>
-  page.getByRole("button", { name, exact: true }).first().click();
+  page
+    .getByRole("button", { name, exact: true })
+    .filter({ visible: true })
+    .first()
+    .click();
 
 /**
  * Games the phone audit reaches but the gallery does not capture from here: their cards were made another way, and
  * Pig has no card at all.
  */
 export const AUDIT_RECIPES: Record<string, Recipe> = {
+  dockside: single,
+  fuseheads: async (page) => {
+    await single(page);
+    await press(page, "START GAME");
+  },
+  "fuse-particles": async (page) => {
+    await single(page);
+    await press(page, /^start match$/i);
+  },
+  "fuse-front": async (page) => {
+    // The same solo URL is selected by the landing menu. The menu can navigate
+    // from a held pointer before Playwright finishes its click in this game.
+    const url = new URL(page.url());
+    url.searchParams.set("solo", "1");
+    await page.goto(url.href);
+  },
+  "elasto-fuse": async (page) => {
+    await single(page);
+    await press(page, "PLAY SOLO");
+    await page.locator('.ef-room[data-phase="racing"]').waitFor();
+  },
+  "graveyard-shift": single,
   "fuse-riders": async (page) => {
     await single(page);
-    await page.locator('.mobile-control-hints[data-phase="playing"]').waitFor();
+    await page
+      .locator('.mobile-control-hints[data-phase="playing"]')
+      .waitFor({ state: "attached" });
   },
   "fuse-axe": async (page) => {
     await single(page);
@@ -356,7 +384,17 @@ export const AUDIT_RECIPES: Record<string, Recipe> = {
     await page
       .locator('.fl-room[data-phase="running"]')
       .waitFor({ state: "attached" });
-    await press(page, "SKIP").catch(() => undefined);
+    const skip = page
+      .getByRole("button", { name: /^skip(?: intro)?$/i })
+      .filter({ visible: true })
+      .first();
+    if (
+      await skip.waitFor({ timeout: 4000 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      await skip.click();
   },
   "fuse-craft": async (page) => {
     await single(page);
@@ -366,11 +404,15 @@ export const AUDIT_RECIPES: Record<string, Recipe> = {
   },
   "hook-havok": async (page) => {
     await single(page);
-    await press(page, "JOIN");
-    await page.waitForTimeout(1000);
-    await press(page, "ADD AI");
-    await press(page, "START");
-    await page.waitForTimeout(8000);
+    await takeHostSeat(page, "Phone audit");
+    await press(page, /^add ai$/i);
+    await press(page, /^start$/i);
+    await page.getByRole("heading", { name: "Room", exact: true }).waitFor({
+      state: "hidden",
+    });
+    if (await page.evaluate(() => navigator.maxTouchPoints > 0))
+      await page.locator('#touch-deck[data-enabled="true"]').waitFor();
+    await page.locator("#match-hud #roster").waitFor();
   },
   dice: async (page) => {
     await single(page);
