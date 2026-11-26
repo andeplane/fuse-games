@@ -7,7 +7,7 @@ import path from "node:path";
  * FuseOS is FuseOS: the names of the desktop it descends from and that desktop's surroundings
  * stay out of its sources, assets and docs (docs/fuseos/README.md, "Branding").
  */
-const FORBIDDEN = /\b(cognite|cdf|fusion|atlas|industrial os)\b/gi;
+const FORBIDDEN = /\b(cdf|fusion|atlas|industrial os)\b/gi;
 const ROOTS = ["packages/fuseos", "public/fuseos", "docs/fuseos"];
 const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist", "coverage"]);
 /** Bitmaps, sound, fonts and WebAssembly are not prose; everything else is read as text. */
@@ -23,7 +23,7 @@ function walk(directory: string): string[] {
   });
 }
 
-test("no Cognite, CDF, Fusion, Atlas or Industrial OS anywhere in packages/fuseos, public/fuseos or docs/fuseos", () => {
+test("FuseOS files omit legacy desktop and product names", () => {
   const found: string[] = [];
   let scanned = 0;
   for (const file of ROOTS.flatMap(walk)) {

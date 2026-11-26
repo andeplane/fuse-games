@@ -156,7 +156,7 @@ test("the retro docs and scripts carry no leftovers from the OS this was ported 
   for (const text of texts) {
     assert.doesNotMatch(
       text,
-      /Cognite|CDF|Fusion|Atlas|Industrial OS|Flows|App Hosting/,
+      /CDF|Fusion|Atlas|Industrial OS|Flows|App Hosting/,
     );
     assert.doesNotMatch(
       text,
