@@ -123,35 +123,47 @@ try {
                   const board = boardSelector
                     ? document.querySelector(boardSelector)
                     : null;
-                  const targets = controls
-                    ? [...document.querySelectorAll(controls)].filter(
-                        (target) =>
-                          target.checkVisibility({
-                            opacityProperty: true,
-                            visibilityProperty: true,
-                          }),
-                      )
-                    : [];
+                  const groups =
+                    typeof controls === "string" ? [controls] : controls;
+                  const targets = [
+                    ...document.querySelectorAll(groups.join(", ")),
+                  ].filter((target) =>
+                    target.checkVisibility({
+                      opacityProperty: true,
+                      visibilityProperty: true,
+                    }),
+                  );
                   // Use the browser's actual clipping rules. A fixed-position
                   // stage can legally escape an ancestor's overflow clip.
                   const entries = await new Promise<
-                    IntersectionObserverEntry[]
-                  >((resolve) => {
-                    const observed: IntersectionObserverEntry[] = [];
+                    Map<Element, IntersectionObserverEntry>
+                  >((resolve, reject) => {
+                    const observed = new Map<
+                      Element,
+                      IntersectionObserverEntry
+                    >();
                     const elements = new Set([node, ...targets]);
                     if (board) elements.add(board);
                     const observer = new IntersectionObserver((entries) => {
-                      observed.push(...entries);
-                      if (observed.length < elements.size) return;
+                      for (const entry of entries)
+                        observed.set(entry.target, entry);
+                      if (observed.size < elements.size) return;
+                      clearTimeout(timeout);
                       observer.disconnect();
                       resolve(observed);
                     });
+                    const timeout = setTimeout(() => {
+                      observer.disconnect();
+                      reject(
+                        new Error(
+                          `Timed out observing playfield geometry (received ${observed.size} of ${elements.size} targets)`,
+                        ),
+                      );
+                    }, 3000);
                     for (const element of elements) observer.observe(element);
                   });
                   const viewport = { width: innerWidth, height: innerHeight };
-                  const fieldEntry = entries.find(
-                    (entry) => entry.target === node,
-                  );
+                  const fieldEntry = entries.get(node);
                   if (!fieldEntry)
                     throw new Error("Missing playfield geometry");
                   const bounds = fieldEntry.boundingClientRect;
@@ -190,9 +202,7 @@ try {
                   const expectedViewport =
                     viewport.width === expected.width &&
                     viewport.height === expected.height;
-                  const boardEntry = entries.find(
-                    (entry) => entry.target === board,
-                  );
+                  const boardEntry = board ? entries.get(board) : undefined;
                   const boardRect = boardEntry?.boundingClientRect;
                   const boardBounds = boardRect && {
                     x: boardRect.x,
@@ -213,8 +223,8 @@ try {
                       boardEntry.intersectionRect.height >=
                         boardEntry.boundingClientRect.height - tolerance);
                   const clippedControls: string[] = [];
-                  let controlsObserved = 0;
-                  for (const entry of entries) {
+                  const observedControls: Element[] = [];
+                  for (const entry of entries.values()) {
                     const {
                       target: control,
                       boundingClientRect: rect,
@@ -222,7 +232,7 @@ try {
                     } = entry;
                     if (control === node || control === board) continue;
                     if (rect.width === 0 || rect.height === 0) continue;
-                    controlsObserved++;
+                    observedControls.push(control);
                     const clipped =
                       rect.left < -tolerance ||
                       rect.top < -tolerance ||
@@ -246,7 +256,13 @@ try {
                     ),
                     fit: +Math.min(1, area / ideal).toFixed(3),
                     scrolls,
-                    controlsObserved,
+                    controlsObserved: observedControls.length,
+                    missingControls: groups.filter(
+                      (group) =>
+                        !observedControls.some((target) =>
+                          target.matches(group),
+                        ),
+                    ),
                     clippedControls,
                     fieldFits,
                     expectedViewport,
@@ -263,6 +279,7 @@ try {
                 fieldFits,
                 boardFits,
                 expectedViewport,
+                missingControls,
                 ...observations
               } = measure;
               Object.assign(result, observations);
@@ -279,6 +296,10 @@ try {
                 result.failures.push("Interactive board is missing or clipped");
               if (result.scrolls)
                 result.failures.push("Gameplay document scrolls");
+              if (phone && missingControls.length > 0)
+                result.failures.push(
+                  `Missing visible primary controls: ${missingControls.join("; ")}`,
+                );
               if (measure.clippedControls.length > 0)
                 result.failures.push(
                   `Clipped controls: ${measure.clippedControls.join(", ")}`,

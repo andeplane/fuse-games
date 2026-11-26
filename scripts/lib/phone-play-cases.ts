@@ -4,8 +4,8 @@ import { AUDIT_RECIPES, RECIPES, type Recipe } from "./play-recipes.js";
 interface PlaySurface {
   /** The rendered field after entering play. Decorative and offscreen canvases are excluded. */
   field: string;
-  /** On-screen primary input targets. Games operated directly on the field may omit this. */
-  controls?: string;
+  /** Each selector group must match a visible primary control during phone play. */
+  controls: string | readonly string[];
   /** Complete interactive board, when it is laid over an extended playfield. */
   board?: string;
 }
@@ -83,12 +83,12 @@ const SURFACES: Record<string, PlaySurface> = {
   },
   "fuse-volley": {
     field: '.fv-room[data-stage="running"] canvas.fv-canvas',
-    controls: ".fv-touch button, .fv-touch [role=button]",
+    controls: [".fv-touch .fv-rocker", ".fv-touch .fv-jump"],
   },
   fuseball: {
     field:
       '.fb-room[data-stage="running"]:not([data-phase="countdown"]) canvas.fb-canvas',
-    controls: ".fb-touch button, .fb-touch [role=button]",
+    controls: [".fb-touch .fb-stick", ".fb-touch [role=button]"],
   },
   fuseheads: {
     field: '.fuseheads-room[data-phase="running"] canvas.fuseheads-arena',
@@ -113,7 +113,7 @@ const SURFACES: Record<string, PlaySurface> = {
   "incredible-fuse": {
     field: "canvas.if-bench-board",
     board: ".if-board-frame",
-    controls: ".if-bench-tools button",
+    controls: [".if-bench-run", ".if-bench-tools button"],
   },
   "killer-fuse": {
     field: 'main.kf-room[data-stage="running"] canvas',
