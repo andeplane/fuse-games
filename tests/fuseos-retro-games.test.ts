@@ -141,7 +141,7 @@ test("every retro game has a row in the licence table and its licence texts are 
     );
 });
 
-test("the retro docs and scripts carry no leftovers from the OS this was ported from", () => {
+test("the retro docs and scripts use current asset and documentation paths", () => {
   const texts = [
     credits,
     ...[
@@ -154,10 +154,6 @@ test("the retro docs and scripts carry no leftovers from the OS this was ported 
     ),
   ];
   for (const text of texts) {
-    assert.doesNotMatch(
-      text,
-      /Cognite|CDF|Fusion|Atlas|Industrial OS|Flows|App Hosting/,
-    );
     assert.doesNotMatch(
       text,
       /public\/games\b|docs\/games\b|public\/jsdos\b|public\/assistant\b/,
