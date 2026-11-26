@@ -56,6 +56,8 @@ export function createArena(canvas: HTMLCanvasElement): {
   const images = new Map<string, HTMLImageElement>();
   let current: World | undefined;
   let fullScreen = false;
+  let scenerySource: HTMLImageElement | undefined;
+  let scenery: CanvasPattern | null = null;
 
   function load(url: string) {
     const cached = images.get(url);
@@ -74,6 +76,39 @@ export function createArena(canvas: HTMLCanvasElement): {
 
   const atlas = load(atlasUrl);
   const panels = load(new URL("./panels.png", import.meta.url).href);
+
+  function mirroredScenery(background: HTMLImageElement) {
+    if (scenerySource === background) return scenery;
+    scenerySource = background;
+    const tile = canvas.ownerDocument.createElement("canvas");
+    tile.width = BOARD_WIDTH * 2;
+    tile.height = PLAY_HEIGHT * 2;
+    const paint = tile.getContext("2d")!;
+    for (const x of [1, -1])
+      for (const y of [1, -1]) {
+        paint.setTransform(
+          x,
+          0,
+          0,
+          y,
+          x === 1 ? 0 : tile.width,
+          y === 1 ? 0 : tile.height,
+        );
+        paint.drawImage(
+          background,
+          0,
+          0,
+          BOARD_WIDTH,
+          PLAY_HEIGHT,
+          0,
+          0,
+          BOARD_WIDTH,
+          PLAY_HEIGHT,
+        );
+      }
+    scenery = ctx.createPattern(tile, "repeat");
+    return scenery;
+  }
 
   function sprite(id: number, x: number, y: number, feet = false) {
     const rect = spriteFrame(id);
@@ -171,33 +206,18 @@ export function createArena(canvas: HTMLCanvasElement): {
       : BOARD_HEIGHT;
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    if (expand) {
-      // Use the level's scenery around the intact board, without duplicating its baked-in HUD.
-      ctx.drawImage(
-        background,
-        0,
-        0,
-        BOARD_WIDTH,
-        PLAY_HEIGHT,
-        0,
-        0,
-        width,
-        height,
-      );
-      ctx.fillStyle = "rgb(5 9 17 / 48%)";
-      ctx.fillRect(0, 0, width, height);
-    }
     const scale = Math.min(width / BOARD_WIDTH, height / BOARD_HEIGHT);
-    ctx.setTransform(
-      scale,
-      0,
-      0,
-      scale,
-      (width - BOARD_WIDTH * scale) / 2,
-      (height - BOARD_HEIGHT * scale) / 2,
-    );
+    const x = (width - BOARD_WIDTH * scale) / 2;
+    const y = (height - BOARD_HEIGHT * scale) / 2;
+    ctx.setTransform(scale, 0, 0, scale, x, y);
+    if (expand) {
+      // Continue the artwork at the same scale across each edge. Only the central board has a HUD and actors.
+      ctx.fillStyle = mirroredScenery(background) ?? "#171520";
+      ctx.fillRect(-x / scale, -y / scale, width / scale, height / scale);
+      ctx.fillStyle = "rgb(5 9 17 / 48%)";
+      ctx.fillRect(-x / scale, -y / scale, width / scale, height / scale);
+    }
     ctx.drawImage(background, 0, 0);
     ctx.save();
     ctx.beginPath();

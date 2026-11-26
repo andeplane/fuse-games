@@ -49,6 +49,32 @@ async function checkTouchOverlay(page: Page) {
   assert.deepEqual(bounds, { x: 0, y: 0, ...viewport });
   const turned = viewport.height > viewport.width;
   assert.deepEqual(arena, bounds);
+  const backing = await playfield(page).evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const { width, height } = canvas;
+    const boardLeft = (width - (height * 4) / 3) / 2;
+    const pixels = canvas.getContext("2d")!.getImageData(0, 0, width, 1).data;
+    // The top scenery continues at each side at the board's proportions, with a dark tint.
+    const samples = Array.from({ length: 12 }, (_, i) =>
+      Math.round(boardLeft - 4 - i * 3),
+    );
+    const matches = samples.filter((x) => {
+      const reflected = Math.floor(2 * boardLeft - x - 1);
+      return [5, 9, 17].every((tint, c) => {
+        const from = pixels[reflected * 4 + c]!;
+        const to = pixels[x * 4 + c]!;
+        return Math.abs(to - (from * 0.52 + tint * 0.48)) <= 4;
+      });
+    }).length;
+    return { width, height, matches };
+  });
+  assert.deepEqual(
+    [backing.width, backing.height],
+    turned
+      ? [viewport.height, viewport.width]
+      : [viewport.width, viewport.height],
+  );
+  assert.ok(backing.matches >= 9, "the side scenery mirrors the board edge");
   assert.equal(
     await page.locator("html").getAttribute("data-fui-play"),
     turned ? "turned" : "phone",
@@ -102,7 +128,12 @@ try {
   await checkTouchOverlay(solo);
   await solo.getByRole("button", { name: "Jump", exact: true }).tap();
   await openTopMenu(solo);
+  await solo
+    .locator(".fui-top-bar-menu[open]")
+    .getByRole("button", { name: "Back", exact: true })
+    .tap({ trial: true });
   await solo.keyboard.press("Escape");
+  await solo.locator(".fui-top-bar-menu").waitFor({ state: "hidden" });
   assert.ok(
     (await solo.locator("body").boundingBox())!.width <= portrait.width,
   );
