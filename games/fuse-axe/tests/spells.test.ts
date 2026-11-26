@@ -248,9 +248,13 @@ test("a blow shakes the field a moment and Gorm's rumbles before it; the HUD nev
   // The scene draws the field shifted, its heroes with it, the HUD's strip where it always is, and ink at the edge.
   const scene = createScene(fakeMake().make);
   const sprite = HEROES.brakka.figure.sprite("cast");
-  const frameOf = (view: V.WorldView) => {
+  const frameOf = (view: V.WorldView, gutterX = 0, gutterY = 0) => {
     const pen = new RecordingPen();
-    scene.draw(pen, view, 0);
+    const viewport =
+      gutterX || gutterY
+        ? { gutterX, gutterY, clip() {}, restore() {} }
+        : undefined;
+    scene.draw(pen, view, 0, undefined, viewport);
     const body = pen.calls.find((c) => c.image?.w === sprite.w && c.image.h === sprite.h)!; // prettier-ignore
     return { body, first: pen.calls[0]!, strip: pen.calls.filter((c) => c.style === HUD_COLORS.strip) }; // prettier-ignore
   };
@@ -262,6 +266,18 @@ test("a blow shakes the field a moment and Gorm's rumbles before it; the HUD nev
     [[0, 0, VIEW_W, HUD_H - 2]],
   );
   assert.deepEqual(moved.first.at, [0, 0, VIEW_W, VIEW_H]);
+  for (const [x, y, bounds] of [
+    [48, 0, [-48, 0, VIEW_W + 96, VIEW_H]],
+    [0, 20, [0, -20, VIEW_W, VIEW_H + 40]],
+  ] as const) {
+    const wide = frameOf(shaken, x, y);
+    assert.deepEqual(wide.body.at, moved.body.at);
+    assert.deepEqual(
+      wide.strip.map((c) => c.at),
+      moved.strip.map((c) => c.at),
+    );
+    assert.deepEqual(wide.first.at, bounds);
+  }
 });
 
 test("a charging or casting hero glows in its spell's colour behind its sprite, bigger as the charge builds", () => {

@@ -411,8 +411,8 @@ export function createScene<Image>(make: MakeSurface<Image>): Scene<Image> {
       if (field !== pen || gutterX || gutterY) {
         pen.fillStyle = UNLIT.k!;
         pen.fillRect(
-          -gutterX,
-          -gutterY,
+          0 - gutterX,
+          0 - gutterY,
           VIEW_W + 2 * gutterX,
           VIEW_H + 2 * gutterY,
         );
