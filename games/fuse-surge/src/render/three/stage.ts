@@ -3,6 +3,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { registerPlaytestCapture } from "fuse-ui/playtest-input";
 import type { WorldView } from "../../engine/view.js";
 import { STEPS_PER_SECOND } from "../../engine/view-kit.js";
 import { createCueWatch, type Cue } from "../cues.js";
@@ -490,6 +491,19 @@ export function createStage3d(
     shutDown();
     throw error;
   }
+  const stopPlaytestCapture = registerPlaytestCapture(doc, async () => {
+    if (
+      destroyed ||
+      !canvas.isConnected ||
+      renderer.getContext().isContextLost()
+    )
+      return new Map();
+    // Copy the framebuffer in the same turn as the redraw. Capture leaves the
+    // match, presentation clock, particles and camera untouched.
+    if (composer) composer.render(0);
+    else renderer.render(scene, camera);
+    return new Map([[canvas, canvas.toDataURL("image/png")]]);
+  });
   return {
     resize,
     draw,
@@ -501,6 +515,7 @@ export function createStage3d(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      stopPlaytestCapture();
       shutDown();
     },
   };
