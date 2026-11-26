@@ -149,6 +149,14 @@ test("landscape phone controls leave room for wider solo lanes and separate mult
   }
 });
 
+test("portrait leaderboard and lanes begin below the top buttons", () => {
+  const topInset = 52;
+  const layout = layoutFor(360, 800, 5, 2, 0, 1, 0, topInset);
+  assert.ok(layout.panel?.strip);
+  for (const box of [...boxes(layout), ...layout.fields.map(fieldBox)])
+    assert.ok(box.y >= topInset);
+});
+
 test("the leaderboard is a column on the right where there is room, and a strip along the top of a portrait phone", () => {
   const at = (name: string, riders: number, local: number) => {
     const screen = SCREENS.find((s) => s.name === name)!;

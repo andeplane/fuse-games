@@ -78,6 +78,8 @@ export interface DrawOptions {
   inset?: number;
   /** CSS pixels occupied by the left and right touch controls in a wide phone layout. */
   sideInset?: number;
+  /** CSS pixels occupied by the top buttons above a portrait leaderboard. */
+  topInset?: number;
   /** CSS pixels on the title bar occupied by the phone's Pause and menu buttons. */
   titleInsets?: { left: number; right: number };
 }
@@ -111,7 +113,8 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
     laidRiders = -1,
     laidLocal = -2,
     laidInset = -1,
-    laidSide = -1;
+    laidSide = -1,
+    laidTop = -1;
 
   const frame: Frame | undefined = g
     ? {
@@ -168,13 +171,15 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
     local: number,
     inset: number,
     side: number,
+    top: number,
   ): Layout {
     if (
       layout &&
       laidRiders === riders &&
       laidLocal === local &&
       laidInset === inset &&
-      laidSide === side
+      laidSide === side &&
+      laidTop === top
     )
       return layout;
     layout = layoutFor(
@@ -185,11 +190,13 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
       inset,
       unit,
       side,
+      top,
     );
     laidRiders = riders;
     laidLocal = local;
     laidInset = inset;
     laidSide = side;
+    laidTop = top;
     for (const size of [...sets.keys()])
       if (!layout.fields.some((field) => field.col === size)) sets.delete(size);
     for (const field of layout.fields)
@@ -214,6 +221,7 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
         local,
         Math.max(0, shot.inset ?? 0),
         shot.sideInset ?? 0,
+        shot.topInset ?? 0,
       );
       const width = plan.width,
         height = plan.height;

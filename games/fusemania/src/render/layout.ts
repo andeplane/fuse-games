@@ -153,13 +153,15 @@ export function layoutFor(
   inset = 0,
   unit = 1,
   sideInset = 0,
+  topInset = 0,
 ): Layout {
   const count = Math.max(0, Math.min(5, Math.trunc(riders)));
   const own = local >= 0 && local < count;
   const pad = Math.round(8 * unit);
   const barHeight = Math.round(24 * unit);
   const bottom = Math.max(0, height - Math.max(0, inset) * unit - pad);
-  let top = barHeight + Math.round(pad / 2);
+  let top =
+    Math.max(barHeight, Math.round(topInset * unit)) + Math.round(pad / 2);
   const side = Math.round(Math.max(0, sideInset) * unit);
   const available = Math.max(1, width - 2 * side);
   const minColumnsHigh =

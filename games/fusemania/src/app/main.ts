@@ -1350,22 +1350,24 @@ function enterRoom(
   const menuButton = top.querySelector(".fui-top-bar-toggle");
   const touchLandscape = matchMedia("(orientation: landscape)");
   let sideInset = 0;
+  let topInset = 0;
   const leftPad = touch.row.querySelector(".fm-pad-0");
   const rightPad = touch.row.querySelector(".fm-pad-3");
   const titleInsets = { left: 0, right: 0 };
   function measurePlayHud() {
-    sideInset = titleInsets.left = titleInsets.right = 0;
+    sideInset = topInset = titleInsets.left = titleInsets.right = 0;
     if (playScreen.mode() === "off") return;
     const field = canvas.getBoundingClientRect();
-    if (menuButton)
-      titleInsets.right = Math.max(
+    const menuBox = menuButton?.getBoundingClientRect();
+    const pauseBox = pauseButton.hidden
+      ? undefined
+      : pauseButton.getBoundingClientRect();
+    if (menuBox) titleInsets.right = Math.max(0, field.right - menuBox.left);
+    if (pauseBox) titleInsets.left = Math.max(0, pauseBox.right - field.left);
+    if (!touchLandscape.matches)
+      topInset = Math.max(
         0,
-        field.right - menuButton.getBoundingClientRect().left,
-      );
-    if (!pauseButton.hidden)
-      titleInsets.left = Math.max(
-        0,
-        pauseButton.getBoundingClientRect().right - field.left,
+        Math.max(menuBox?.bottom ?? 0, pauseBox?.bottom ?? 0) - field.top,
       );
     if (touchLandscape.matches && !touch.row.hidden && leftPad && rightPad)
       sideInset =
@@ -1817,6 +1819,7 @@ function enterRoom(
       totalSongs: model.totalSongs,
       itemKey: coarse() ? "ITEM" : keyLabel(prefs.keys.item[0] ?? ""),
       sideInset,
+      topInset,
       titleInsets,
     });
     const done = performance.now();
