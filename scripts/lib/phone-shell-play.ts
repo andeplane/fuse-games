@@ -71,6 +71,14 @@ export async function checkPhoneShellPlay(browser: Browser, base: string) {
       restored && restored.width < viewport.width,
       "the lobby restores the phone Home strip",
     );
+    // A replacement document can lack a game or a top bar to signal the old match ended.
+    await game.getByRole("button", { name: /^start$/i }).tap();
+    await home.waitFor({ state: "hidden" });
+    const frame = await (await iframe.elementHandle())?.contentFrame();
+    assert.ok(frame);
+    await frame.goto("about:blank");
+    await home.waitFor();
+    assert.equal(await iframe.getAttribute("data-fui-phone-playing"), null);
   } finally {
     await context.close();
   }
