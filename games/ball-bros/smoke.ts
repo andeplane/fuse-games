@@ -194,6 +194,7 @@ try {
   for (const viewport of [
     { width: 360, height: 800 },
     { width: 800, height: 360 },
+    { width: 568, height: 320 },
     { width: 390, height: 844 },
   ]) {
     await phone.setViewportSize(viewport);
@@ -231,6 +232,14 @@ try {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     );
+    if (viewport.width > viewport.height) {
+      const scoreboard = await phone.locator(".scoreboard").boundingBox();
+      const up = await phone.locator(".pad.outward").boundingBox();
+      assert.ok(
+        scoreboard && up && scoreboard.y + scoreboard.height <= up.y,
+        "landscape scores stay above the direction pad",
+      );
+    }
   }
   await phone.screenshot({
     path: "artifacts/ball-bros-phone.png",

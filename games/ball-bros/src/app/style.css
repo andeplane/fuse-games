@@ -727,6 +727,18 @@ html[data-fui-play] .power-status {
     grid-template-columns: 1fr;
     gap: 3px;
   }
+  html[data-fui-play] .scorecard {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding-block: 2px;
+  }
+  html[data-fui-play] .scorecard strong {
+    flex: none;
+    line-height: 1;
+    white-space: nowrap;
+  }
   html[data-fui-play] .sidebar {
     top: 52px;
     right: max(12px, env(safe-area-inset-right));
