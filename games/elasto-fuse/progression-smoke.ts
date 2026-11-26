@@ -10,7 +10,10 @@ const names = keys("elasto-fuse");
 const serverUrl = process.env.ONLINE_URL;
 const service = serverUrl ? undefined : await startRoomService();
 try {
-  const browser = await launchSelected("chromium", { headless: true });
+  const browser = await launchSelected(
+    process.env.FUSE_GAME_COVERAGE_DIR ? "chrome" : "chromium",
+    { headless: true },
+  );
   try {
     const host = await browser.newPage();
     const guest = await browser.newPage();
