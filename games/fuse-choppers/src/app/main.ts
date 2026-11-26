@@ -84,7 +84,7 @@ import {
   forwardInputs,
   memoBot,
 } from "./forward.js";
-import { createScene, effectKey, VIEW_W } from "../render/scene.js";
+import { createScene, effectKey, VIEW_H, VIEW_W } from "../render/scene.js";
 import { PICKUP_COLORS, seatColor } from "../render/palette.js";
 import { resultBar, resultReport } from "./result-report.js";
 import { createSfx } from "./audio.js";
