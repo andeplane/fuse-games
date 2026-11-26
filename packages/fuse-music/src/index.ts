@@ -22,6 +22,7 @@ export type MusicMedia = Pick<
 export interface MusicOptions {
   base?: string;
   muted?: boolean;
+  playOnUnlock?: boolean;
   createMedia?: () => MusicMedia;
   /** A richer host may own its queue and OS media controls. */
   onEnded?: () => void;
@@ -39,8 +40,9 @@ export function MusicPlayer(
   let index = 0,
     volume = 0.18,
     muted = Boolean(options.muted),
-    playing = false;
-  let disposed = false,
+    playing = Boolean(options.playOnUnlock && !options.muted && songs.length);
+  let unlocked = !options.playOnUnlock,
+    disposed = false,
     attempt = 0,
     error = "",
     pendingSeek: number | undefined;
@@ -66,7 +68,15 @@ export function MusicPlayer(
     media?.pause();
   };
   const start = () => {
-    if (disposed || muted || !playing || volume <= 0 || !songs.length) return;
+    if (
+      !unlocked ||
+      disposed ||
+      muted ||
+      !playing ||
+      volume <= 0 ||
+      !songs.length
+    )
+      return;
     if (!media) {
       media = (options.createMedia ?? (() => new Audio()))();
       media.onended = () => {
@@ -176,6 +186,7 @@ export function MusicPlayer(
       if (disposed || options.muted || !songs.length) return;
       const next = songs.findIndex((song) => song.id === id);
       if (next < 0) return;
+      unlocked = true;
       if (position !== undefined)
         position = Number.isFinite(position) ? Math.max(0, position) : 0;
       if (next !== index) {
@@ -232,6 +243,7 @@ export function MusicPlayer(
       self.play(songs[(index - 1 + songs.length) % songs.length]!.id, 0);
     },
     unlock() {
+      unlocked = true;
       start();
     },
     setMuted(value: boolean) {

@@ -87,7 +87,7 @@ function render(unavailableRoom?: string) {
     document,
     import.meta.env.BASE_URL,
     new window.Audio(),
-    { store, preview: muted },
+    { store, preview: muted, playOnUnlock: true },
   );
   activeRadio = radio;
   radio.setMuted(!soundEnabled);
@@ -226,6 +226,10 @@ function render(unavailableRoom?: string) {
   }
 }
 window.addEventListener("popstate", () => render());
+for (const type of ["pointerdown", "pointerup", "touchend", "keydown", "click"])
+  document.addEventListener(type, () => activeRadio?.unlock(), {
+    passive: true,
+  });
 installLifecycle(window, {
   dispose: () => {
     generation++;
