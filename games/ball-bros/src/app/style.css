@@ -642,22 +642,24 @@ html[data-fui-play] .scorecard .player-name {
 html[data-fui-play] .scorecard strong {
   font-size: 14px;
 }
+html[data-fui-play] {
+  --bb-pad-size: clamp(54px, 15vmin, 68px);
+}
 html[data-fui-play] .touch-controls {
-  --pad-size: clamp(44px, 12vmin, 56px);
   inset: auto max(12px, env(safe-area-inset-right))
     max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-  grid-template-columns: repeat(3, var(--pad-size)) 1fr auto;
-  grid-template-rows: repeat(3, var(--pad-size));
-  gap: 2px;
+  grid-template-columns: repeat(3, var(--bb-pad-size)) 1fr auto;
+  grid-template-rows: repeat(3, var(--bb-pad-size));
+  gap: 4px;
   max-width: none;
   pointer-events: none;
 }
 html[data-fui-play] .touch-controls .pad {
-  min-height: 44px;
+  min-height: var(--bb-pad-size);
   padding: 0 1px;
   border-radius: 12px;
   font:
-    700 10px/1 system-ui,
+    700 12px/1 system-ui,
     sans-serif;
   letter-spacing: 0;
   white-space: nowrap;
@@ -679,8 +681,8 @@ html[data-fui-play] .touch-controls .pad.inward {
 html[data-fui-play] .touch-controls .pad.launch {
   grid-area: 2 / 5 / 4 / 6;
   align-self: end;
-  width: calc(1.5 * var(--pad-size));
-  height: calc(1.5 * var(--pad-size));
+  width: calc(1.5 * var(--bb-pad-size));
+  height: calc(1.5 * var(--bb-pad-size));
   border-radius: 50%;
 }
 html[data-fui-play] .power-status {
@@ -707,10 +709,12 @@ html[data-fui-play] .power-status {
     justify-content: space-between;
   }
   html[data-fui-play] .power-status {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 84px);
+    bottom: calc(
+      max(10px, env(safe-area-inset-bottom)) + 1.5 * var(--bb-pad-size) + 8px
+    );
     left: auto;
     right: max(12px, env(safe-area-inset-right));
-    max-width: calc(100% - 195px);
+    max-width: calc(100% - 3 * var(--bb-pad-size) - 36px);
     translate: none;
   }
 }

@@ -191,9 +191,47 @@ try {
     .getByText("TAP LAUNCH", { exact: true })
     .waitFor({ state: "hidden" });
   assert.equal(await phone.locator(".pad").count(), 5);
-  assert.ok(
-    await phone.evaluate(() => document.documentElement.scrollWidth <= 390),
-  );
+  for (const viewport of [
+    { width: 360, height: 800 },
+    { width: 800, height: 360 },
+    { width: 390, height: 844 },
+  ]) {
+    await phone.setViewportSize(viewport);
+    const pads = await phone
+      .locator(".touch-controls .pad")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => {
+          const { left, top, right, bottom, width, height } =
+            button.getBoundingClientRect();
+          return {
+            label: button.textContent,
+            width,
+            height,
+            reachable:
+              left >= 0 &&
+              top >= 0 &&
+              right <= innerWidth &&
+              bottom <= innerHeight &&
+              document.elementFromPoint(
+                (left + right) / 2,
+                (top + bottom) / 2,
+              ) === button,
+          };
+        }),
+      );
+    for (const { label, width, height, reachable } of pads) {
+      const minimum = label === "LAUNCH" ? 81 : 54;
+      assert.ok(
+        reachable && width >= minimum && height >= minimum,
+        `${label} fits ${viewport.width}×${viewport.height} with a ${minimum}px touch target`,
+      );
+    }
+    assert.ok(
+      await phone.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
+  }
   await phone.screenshot({
     path: "artifacts/ball-bros-phone.png",
     fullPage: true,
