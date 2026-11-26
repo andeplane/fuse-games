@@ -13,7 +13,9 @@ import { Desktop } from "./Desktop";
 
 describe(Desktop.name, () => {
   it("boots to a desktop in Windows 98's order: My Computer, Network Neighborhood, the DOS Games folder, Fusteam, one icon per Fuse game, then the programs and Control Panel, with a taskbar and the clock", () => {
-    renderWithProviders(<Desktop />);
+    renderWithProviders(<Desktop />, {
+      desktopDeps: { now: () => new Date(1998, 5, 25, 14, 34).getTime() },
+    });
     const icons = within(screen.getByRole("list", { name: "Desktop icons" }));
     expect(
       icons
@@ -34,9 +36,8 @@ describe(Desktop.name, () => {
       "DC++",
       "Control Panel",
     ]);
-    expect(screen.getByRole("toolbar", { name: "Taskbar" })).toHaveTextContent(
-      /2:34 PM/,
-    );
+    const taskbar = within(screen.getByRole("toolbar", { name: "Taskbar" }));
+    expect(taskbar.getByRole("time")).toHaveTextContent(/^2:34 PM$/);
     expect(
       screen.getByRole("complementary", { name: "Office Assistant" }),
     ).toBeInTheDocument();
