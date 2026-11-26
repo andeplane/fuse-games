@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ACTION, JOIN, PRESENCE, SETTINGS } from "fuse-netcode";
+import { ACTION, JOIN, LEAVE, PRESENCE, SETTINGS } from "fuse-netcode";
 import { matchResult, roundResult } from "../src/online/result.js";
 import {
   DEFAULT_SETTINGS,
   INTERMISSION,
   PLAY,
+  PROGRESSION,
+  ROOM_RULES,
   createRoom,
   decode,
   elastoFuseGame,
@@ -36,6 +38,51 @@ import { parseElastoFuseStats, validElastoFuseField } from "../src/platform.js";
 import { fold, play, rideHome, run, seated, started } from "./fixtures/room.js";
 
 const single = { ...DEFAULT_SETTINGS, count: 1 as const };
+
+test("the connected rider furthest along unlocks starting levels for the room", () => {
+  const room = seated({ ...DEFAULT_SETTINGS, level: 8 });
+  assert.equal(view(room).unlockedLevel, 0);
+  fold(room, { a: [[PROGRESSION, 2]], b: [[PROGRESSION, 8]] });
+  assert.equal(view(room).unlockedLevel, 8);
+  const checkpoint = encode(room);
+  const copy = decode(checkpoint, room.tick)!;
+  assert.equal(view(copy).unlockedLevel, 8);
+  assert.equal(hash(copy), hash(room));
+
+  fold(copy, { a: [[ACTION, "start", "advanced"]] });
+  assert.equal(copy.world?.level, 8);
+  fold(room, { a: [[LEAVE, "b"]] });
+  assert.equal(view(room).unlockedLevel, 2);
+  fold(room, { a: [[ACTION, "start", "remaining"]] });
+  assert.equal(room.world?.level, 2);
+  assert.ok(!isEntry([1, 1, PROGRESSION, LEVEL_COUNT]));
+  assert.ok(!isEntry([1, 1, PROGRESSION, 2, "b"]));
+  assert.equal(
+    decode([...checkpoint.slice(0, -1), [["b", [99, 8]]]], room.tick),
+    undefined,
+  );
+});
+
+test("an in-order tour ends before the next locked track when nobody finishes", () => {
+  const room = started();
+  run(room, (COUNTDOWN + RACE_LIMIT + CLOSE_LAG) / STEPS_PER_TICK);
+  assert.equal(room.stage, "over");
+  assert.equal(view(room).rounds, 1);
+  assert.equal(room.world?.level, 0);
+  assert.equal(hash(decode(encode(room), room.tick)!), hash(room));
+});
+
+test("the next race is cancelled if its only unlocking rider leaves before the start", () => {
+  const room = started();
+  fold(room, { b: [[PROGRESSION, 1]] });
+  run(room, (COUNTDOWN + RACE_LIMIT + CLOSE_LAG) / STEPS_PER_TICK);
+  assert.equal(room.stage, "between");
+  fold(room, { a: [[LEAVE, "b"]] });
+  run(room, INTERMISSION / STEPS_PER_TICK);
+  assert.equal(room.stage, "over");
+  assert.equal(room.world?.level, 0);
+  assert.equal(hash(decode(encode(room), room.tick)!), hash(room));
+});
 
 test("series lengths, wraparound and seeded random order agree across checkpoints", () => {
   for (const count of [3, 5, 10] as const) {
@@ -371,7 +418,8 @@ test("a corrupt checkpoint is refused whole", () => {
 
 test("the game names itself, its rules and five seats, and solo is one rider with no bots", () => {
   assert.equal(elastoFuseGame.id, "elasto-fuse");
-  assert.match(elastoFuseGame.rules, /^elasto-fuse-\d+$/);
+  assert.equal(elastoFuseGame.rules, ROOM_RULES);
+  assert.match(ROOM_RULES, /^elasto-fuse-\d+$/);
   assert.equal(elastoFuseGame.seating.capacity, 5);
   assert.equal(elastoFuseGame.seating.minPlayers, 1);
   assert.deepEqual(elastoFuseGame.seating.solo, { name: "You", bots: 0 });

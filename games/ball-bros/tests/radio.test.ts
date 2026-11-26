@@ -128,6 +128,27 @@ test("radio is opt-in, advances shared tracks, suppresses controllers and dispos
   assert.equal(toggle!.onclick, null);
 });
 
+test("shared TV eligibility preserves default playback and explicit pause", () => {
+  const { document } = parseHTML("<html><body></body></html>");
+  const player = new Player();
+  const radio = createRadio(document, "/", player, { playOnUnlock: true });
+  radio.enable(false);
+  radio.unlock();
+  assert.equal(player.plays, 0);
+  radio.enable(true);
+  radio.unlock();
+  assert.equal(player.plays, 1);
+  radio.enable(false);
+  radio.enable(true);
+  assert.equal(player.plays, 2);
+  radio.element.querySelector("button")!.click();
+  radio.enable(false);
+  radio.enable(true);
+  radio.unlock();
+  assert.equal(player.plays, 2);
+  radio.destroy();
+});
+
 test("stale play rejection does not stop a newer track or a disabled radio", async () => {
   const { document } = parseHTML("<html><body></body></html>");
   const player = new Player(),

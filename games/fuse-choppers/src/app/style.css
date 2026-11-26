@@ -27,8 +27,9 @@ body {
   font-family: var(--fui-font-body, system-ui, sans-serif);
 }
 
+/* The screen less the page's own padding (fuse-ui's `.fui-app` body), so a desktop's match never scrolls. */
 #app {
-  min-height: 100dvh;
+  min-height: calc(100dvh - 2 * var(--fui-space-3));
   display: flex;
   flex-direction: column;
 }
@@ -862,14 +863,31 @@ body.fc-display .fc-screen {
   }
 }
 
-@media (orientation: landscape) and (max-height: 520px) {
-  .fc-screen {
-    width: min(100%, calc(100dvh * 16 / 9));
-    border-radius: 0;
-  }
-  .fc-room {
-    padding: 0;
-  }
+/* A phone's live match (fuse-ui play-screen): the cave fills the screen and the pads float over its corners. The page
+   behind it keeps no screen-tall minimum, which with the bar's room above it ran past the screen's foot. */
+html[data-fui-play] #app {
+  min-height: 0;
+}
+html[data-fui-play] .fc-stage {
+  display: grid;
+  place-items: center;
+  gap: 0;
+}
+html[data-fui-play] .fc-stage > .fc-screen {
+  width: min(100cqw, 100cqh * 16 / 9);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .fc-stage > .fc-touch {
+  inset: auto 0 0 0;
+  z-index: var(--fui-z-overlay);
+  padding: var(--fui-space-2) max(var(--fui-space-3), var(--fui-play-right))
+    max(var(--fui-space-2), var(--fui-play-bottom))
+    max(var(--fui-space-3), var(--fui-play-left));
+}
+html[data-fui-play] .fui-app .fc-touch .fc-pad {
+  background: rgba(8, 16, 48, 0.4);
 }
 
 @media (max-width: 560px) {

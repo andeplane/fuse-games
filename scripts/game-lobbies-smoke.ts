@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readdir, writeFile, mkdir } from "node:fs/promises";
 import { launchSelected } from "./lib/browser.js";
 import { checkGameMenu } from "./lib/check-game-menu.js";
+import { topMenuToggle } from "./lib/top-menu.js";
 import type { Page } from "playwright";
 
 async function openCraftMotionPreference(page: Page) {
-  await page
-    .getByRole("button", { name: "Open game menu", exact: true })
-    .click();
+  await (await topMenuToggle(page)).click();
   await page.getByRole("button", { name: /^player options$/i }).click();
   return page.getByRole("checkbox", { name: /reduced motion/i });
 }
@@ -28,12 +28,21 @@ async function openVolleyHelp(page: Page) {
 /** Real menu → room → admission paths. No injected game state or browser API replacements. */
 const base = process.env.ONLINE_URL ?? "http://127.0.0.1:8787/";
 const evidence = process.env.SMOKE_SHOTS ?? "artifacts/game-lobbies";
+const gamesDir = new URL("../games/", import.meta.url);
+// Match Vite's game pages and leave headless engines out of the browser run.
+const games = (await readdir(gamesDir, { withFileTypes: true }))
+  .filter(
+    (entry) =>
+      entry.isDirectory() &&
+      existsSync(new URL(`${entry.name}/index.html`, gamesDir)),
+  )
+  .map((entry) => entry.name)
+  .sort();
 await mkdir(evidence, { recursive: true });
 const browser = await launchSelected("chrome", {
   headless: true,
   args: ["--mute-audio"],
 });
-const games = (await readdir("games")).filter((id) => !id.startsWith("."));
 const results: { game: string; error?: string; ai?: string }[] = [];
 try {
   for (const game of games) {
@@ -122,6 +131,15 @@ try {
       step = "empty room and QR";
       const room = page.locator(".fui-room-layout");
       await room.waitFor();
+      // Fuse Particles prompts for a name when the room opens. Check that the
+      // host can dismiss admission and inspect the empty room before joining.
+      if (game === "fuse-particles") {
+        const admission = room.locator(".fui-slot-admission[open]");
+        await admission
+          .getByRole("button", { name: "Back", exact: true })
+          .click();
+        await admission.waitFor({ state: "hidden" });
+      }
       await checkGameMenu(page, game);
       const configurationRoom = [
         "cyberfuse",
@@ -249,11 +267,29 @@ try {
         }
       }
       await page.setViewportSize({ width: 1440, height: 1000 });
-      await page.waitForFunction(
-        () =>
-          document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
-            .attractState === "running",
-      );
+      if (game === "fuse-particles") {
+        // This configuration room previews the host's actual map in its
+        // canvas. A settings change must repaint that preview.
+        const preview = room.locator(".fp-arena[data-shape] canvas");
+        const before = await preview.evaluate((canvas) =>
+          canvas instanceof HTMLCanvasElement ? canvas.toDataURL() : "",
+        );
+        assert.ok(before, "the room rendered its map preview");
+        await room
+          .getByRole("combobox", { name: "Map", exact: true })
+          .selectOption("maze");
+        await page.waitForFunction((previous) => {
+          const canvas = document.querySelector<HTMLCanvasElement>(
+            ".fui-room-layout .fp-arena[data-shape] canvas",
+          );
+          return canvas !== null && canvas.toDataURL() !== previous;
+        }, before);
+      } else
+        await page.waitForFunction(
+          () =>
+            document.querySelector<HTMLElement>(".fui-room-layout")?.dataset
+              .attractState === "running",
+        );
       await room
         .locator(".fui-room-count")
         .filter({ hasText: /^0\s*\/\s*\d/ })
@@ -481,9 +517,7 @@ try {
         await room.getByRole("checkbox", { name: /shared tv/i }).check();
         await room.getByRole("button", { name: /^start match$/i }).click();
         await page.locator("#app.controller-mode").waitFor();
-        await page
-          .getByRole("button", { name: "Open game menu", exact: true })
-          .click();
+        await (await topMenuToggle(page)).click();
         const menu = page.getByRole("dialog", { name: /^game menu$/i });
         await menu.getByRole("button", { name: /^player options$/i }).click();
         const options = page.getByRole("dialog", { name: /^player options$/i });

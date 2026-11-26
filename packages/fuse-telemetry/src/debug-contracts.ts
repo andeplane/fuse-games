@@ -6,6 +6,8 @@ export interface ReportSubmission {
   category: ReportCategory;
   text: string;
   createdAt: number;
+  /** Optional JSON snapshot of gameplay, with player identities removed by the game. */
+  gameState?: string;
   screenshot?: { mime: "image/png" | "image/jpeg"; base64: string };
   recordingId?: string;
   offsetMs?: number;
@@ -28,6 +30,7 @@ export interface RecordingSummary {
   durationMs: number;
   bytes: number;
   expiresAt: number;
+  handled?: boolean;
 }
 export interface SegmentAcknowledgement {
   sequence: number;
@@ -48,6 +51,7 @@ export interface SegmentView {
 export interface ReportView extends Omit<ReportSubmission, "screenshot"> {
   receivedAt: number;
   screenshotUrl?: string;
+  handled?: boolean;
 }
 export interface ReportsPage {
   reports: ReportView[];
@@ -65,6 +69,7 @@ export interface RecordingDetail {
   reportsNextCursor?: string;
 }
 export const DEBUG_LIMITS = {
+  gameStateBytes: 32 * 1024,
   segmentBytes: 2 * 1024 * 1024,
   screenshotBytes: 2 * 1024 * 1024,
   segmentMs: 10_000,

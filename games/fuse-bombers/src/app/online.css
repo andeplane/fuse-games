@@ -195,3 +195,24 @@ body.fb-controller > [data-input="touch-pads"] {
     grid-template-columns: auto 1fr auto 1fr;
   }
 }
+/* A phone's live round (fuse-ui play-screen): the page lies over the stage with its bar reduced to MENU in the corner,
+   which holds Leave too; MENU turns with the arena on an upright phone. */
+html[data-fui-play] .fb-online {
+  z-index: 35;
+}
+html[data-fui-play] .fb-match .fb-bar > button {
+  display: none;
+}
+html[data-fui-play] .fb-bar .fui-game-menu {
+  pointer-events: auto;
+}
+html[data-fui-play] .fb-bar .fui-game-menu-trigger {
+  min-height: 36px;
+  padding: 6px 10px;
+  opacity: 0.8;
+}
+/* Set on its side rather than rotated: a rotated wide button would hang off the screen's edge. */
+html[data-fui-play="turned"] .fb-bar .fui-game-menu-trigger {
+  writing-mode: vertical-rl;
+  padding: 10px 6px;
+}

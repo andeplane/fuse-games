@@ -37,6 +37,7 @@ import { createBrowserInput, type DeviceId } from "./input/index.js";
 import { controllerPadLayout } from "./input/touch.js";
 import { createForward, createSmoother } from "./forward.js";
 import { OnlineSource } from "./online-source.js";
+import { createBombersPlayScreen } from "./play-stage.js";
 import {
   buzz,
   present,
@@ -381,11 +382,18 @@ export function showRoom(
   document.body.append(overlay);
   audio.mountToggle(); // After `#screen`, so screens.css hides it mid-round.
   nameEntry.form.hidden = lobby.hidden = true;
+  // A phone's live round is the whole screen: the arena, its overlay and the pads, turned when the phone is upright.
+  const playScreen = createBombersPlayScreen({
+    stage: document.getElementById("app") ?? document.body,
+    riders: [overlay, input.touchLayer, roundControls.element],
+    onChange: () => input.hub.cancel(),
+  });
 
   /** A dead end: the card says why, with BACK to the landing. The first one stands. */
   const deadEnd = (title: string, text: string) => {
     if (dead) return;
     dead = true;
+    playScreen.destroy();
     menu.close();
     menu.update({ canLobby: false, touch, spectator: true });
     roundControls.update({ round: shown, visible: false });
@@ -476,6 +484,15 @@ export function showRoom(
     card.hidden = true;
     root.dataset.screen = overlay.dataset.screen = next.screen;
     root.classList.toggle("fb-match", next.screen !== "lobby" && !controller);
+    // From the countdown to the last round's tally; the lobby and the results are tapped.
+    playScreen.update(
+      !display &&
+        !controller &&
+        !next.result &&
+        (next.screen === "countdown" ||
+          next.screen === "playing" ||
+          next.screen === "between"),
+    );
     nameEntry.form.hidden = !next.askName;
     lobby.hidden = next.screen !== "lobby";
     overlay.hidden = next.screen === "lobby" || !!controller;

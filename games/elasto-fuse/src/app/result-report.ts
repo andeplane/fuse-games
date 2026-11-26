@@ -193,17 +193,23 @@ export function resultReport(
 export function resultBar(result: Result): ResultsBar {
   if (result.solo) {
     // A map ridden home goes on to the next: NEXT MAP leads then, and RETRY otherwise.
-    const onward = result.solo.finished;
-    const retry = { id: "rematch", label: onward ? "Retry" : "RETRY" },
-      next = { id: "next", label: onward ? "NEXT MAP" : "Next map" };
+    const onward = result.solo.finished && !result.solo.random;
+    const retry = {
+      id: "rematch",
+      label: result.solo.random
+        ? "Play random again"
+        : onward
+          ? "Retry"
+          : "RETRY",
+      ...(!onward ? { primary: true } : {}),
+    };
     return {
       // Alone, MENU in the bar is the way out.
       back: false,
       actions: [
         { id: "menu", label: "Menu" },
-        ...(onward
-          ? [retry, { ...next, primary: true }]
-          : [next, { ...retry, primary: true }]),
+        retry,
+        ...(onward ? [{ id: "next", label: "NEXT MAP", primary: true }] : []),
       ],
     };
   }

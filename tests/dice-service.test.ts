@@ -46,6 +46,8 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
     GAME_ID,
     "cyberfuse",
     diceGame.id,
+    "dockside",
+    "fuseheads",
     "fuse-particles",
     "incredible-fuse",
     "fusero",
@@ -120,6 +122,10 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
   try {
     const dice = await create("dice"),
       riders = await create(GAME_ID);
+    const fuseheads = await create("fuseheads");
+    assert.deepEqual(await open(fuseheads.code, fuseheads.token, "fuseheads"), {
+      welcomed: true,
+    });
     const ballBros = await create("ball-bros");
     const liero = await create("fusero");
     assert.deepEqual(await open(liero.code, liero.token, "fusero"), {
@@ -149,6 +155,10 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
     assert.deepEqual(await open(bombers.code, bombers.token, "fuse-bombers"), {
       welcomed: true,
     });
+    const dockside = await create("dockside");
+    assert.deepEqual(await open(dockside.code, dockside.token, "dockside"), {
+      welcomed: true,
+    });
     const front = await create("fuse-front");
     assert.deepEqual(await open(front.code, front.token, "fuse-front"), {
       welcomed: true,
@@ -164,6 +174,7 @@ test("the service hosts dice rooms beside Fuse Riders, and a room refuses the ot
       code: CLOSE_ROOM_ENDED,
       reason: "Room is for another game",
     };
+    assert.deepEqual(await open(dockside.code, token(), "dice"), refused);
     assert.deepEqual(await open(dice.code, token(), GAME_ID), refused);
     assert.deepEqual(await open(hook.code, token(), GAME_ID), refused);
     assert.deepEqual(await open(dice.code, token()), refused);

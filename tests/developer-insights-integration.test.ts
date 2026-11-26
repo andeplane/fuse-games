@@ -30,6 +30,7 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
   const debugDatabase = new MemoryDebugDatabase();
   const security = new MemoryDeveloperSecurityStore(() => now - 2000);
   await security.setPolicy("admin", ["read", "record", "token"]);
+  await security.setPolicy("reader", ["read"]);
   const services = createTelemetryServices({
     gameIds: ["dice"],
     now: () => now,
@@ -37,7 +38,9 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
     developer: async (token) =>
       token === "test-admin"
         ? { uid: "admin", email: "andersullnass@gmail.com", authTime: now }
-        : undefined,
+        : token === "test-reader"
+          ? { uid: "reader", email: "andershaf@gmail.com", authTime: now }
+          : undefined,
     identity: async (token) => (token === "test-player" ? "player" : undefined),
     metricsDatabase: new MemoryTelemetryDatabase(),
     debugDatabase,
@@ -266,6 +269,45 @@ test("actual HTTP joins anonymous metrics/reports, admin audio, durable extracti
   ).json();
   assert.match(detail.transcript, /Fix the stuck menu/);
   assert.equal(detail.reports[0].id, reportId);
+  const reviewPath = `/api/dev/reports/${playerReportId}/review`;
+  assert.equal((await request(reviewPath, { handled: true })).status, 401);
+  assert.equal(
+    (await request(reviewPath, { handled: true }, "test-reader")).status,
+    403,
+  );
+  assert.equal(
+    (await request(reviewPath, { handled: "true" }, "test-admin")).status,
+    400,
+  );
+  assert.equal(
+    (await request(reviewPath, { handled: true }, "test-admin")).status,
+    200,
+  );
+  assert.equal((await services.debug.report(playerReportId)).handled, true);
+  assert.equal(
+    (await request(reviewPath, { handled: false }, "test-admin")).status,
+    200,
+  );
+  assert.equal((await services.debug.report(playerReportId)).handled, false);
+
+  const recordingReview = `/api/dev/recordings/${recordingId}/review`;
+  assert.equal(
+    (await request(recordingReview, { handled: true }, "test-admin")).status,
+    409,
+  );
+  await services.debug.finish("admin", recordingId);
+  assert.equal(
+    (await request(recordingReview, { handled: true }, "test-admin")).status,
+    200,
+  );
+  assert.equal(
+    (await services.debug.detail(recordingId)).recording.handled,
+    true,
+  );
+  assert.equal(
+    (await services.debug.listRecordings()).recordings[0]?.handled,
+    true,
+  );
   const credential = await (
     await request("/api/dev/agent-tokens", { recordingId }, "test-admin")
   ).json();

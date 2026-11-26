@@ -4,6 +4,7 @@ import type { Page } from "playwright";
 import { launchSelected } from "../../scripts/lib/browser.js";
 import { startGameCoverage } from "../../scripts/lib/game-browser-coverage.js";
 import { openPlayOptions, takeHostSeat } from "../../scripts/lib/main-menu.js";
+import { topMenuToggle } from "../../scripts/lib/top-menu.js";
 
 // Real room service + WebRTC, no injected game state or accelerated clocks.
 const origin = process.env.ONLINE_URL ?? "http://localhost:8792/";
@@ -39,10 +40,13 @@ async function join(page: Page, name: string) {
 const hostRoom = (page: Page) =>
   page.getByRole("button", { name: "Host room", exact: true });
 const arena = (page: Page) => page.getByRole("combobox", { name: "ARENA" });
-/** Radio, Reconnect and Leave sit in the header's game menu. */
+/** Reconnect and Main menu sit in the header's game menu. */
 async function fromGameMenu(page: Page, name: string) {
-  await page.getByRole("button", { name: "Open game menu" }).click();
-  await page.getByRole("button", { name, exact: true }).click();
+  await (await topMenuToggle(page)).click();
+  await page
+    .getByRole("dialog", { name: "Game menu", exact: true })
+    .getByRole("button", { name, exact: true })
+    .click();
 }
 async function addBot(page: Page) {
   await page
@@ -81,12 +85,45 @@ try {
   const code = new URL(a.url()).searchParams.get("room")!;
   await a.locator(".fui-room-count", { hasText: "0 / 5" }).waitFor();
   await join(a, "Alice");
+  let guestCreates = 0;
+  b.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/rooms"
+    )
+      guestCreates++;
+  });
   await b.goto(url);
   await openPlayOptions(b, "join");
-  await b.getByPlaceholder("Room code").fill(code);
-  await b.getByRole("button", { name: "JOIN ROOM", exact: true }).click();
+  const roomCode = b.getByPlaceholder("Room code");
+  const missing = code === "000000" ? "000001" : "000000";
+  await roomCode.fill(missing);
+  await roomCode.press("Enter");
+  await b.getByRole("alert").filter({ hasText: "Room not found" }).waitFor();
+  assert.equal(await roomCode.inputValue(), missing);
+  assert.equal(
+    await roomCode.evaluate((input) => input.matches(":focus")),
+    true,
+  );
+  assert.equal(await b.locator(".fui-invite").count(), 0);
+  await roomCode.fill(code.toLowerCase());
+  await b
+    .getByRole("dialog", { name: "Join room" })
+    .getByRole("button", { name: "JOIN ROOM", exact: true })
+    .click();
+  await b
+    .locator(".fui-room-open-slot")
+    .getByRole("button", { name: "Join", exact: true })
+    .first()
+    .waitFor();
+  assert.equal(await b.locator(".fui-room-code").innerText(), code);
+  assert.equal(
+    await b.getByRole("button", { name: "Add AI", exact: true }).count(),
+    0,
+  );
   await join(b, "Bob");
   await a.locator(".fui-roster-name", { hasText: "Bob" }).waitFor();
+  assert.equal(guestCreates, 0, "joining by code never creates a room");
   for (const page of [a, b])
     await page
       .getByRole("button", { name: "Room settings", exact: true })
@@ -134,7 +171,12 @@ try {
   assert.match(await b.locator(".controller-identity").innerText(), /P2 BOB/);
   await b.reload();
   await phase(b, "running");
-  await b.locator(".controller-identity", { hasText: "P2 BOB" }).waitFor();
+  // Individual-device fullscreen hides this label. The restored identity and
+  // the available driving control together show that Bob owns the live seat.
+  await b
+    .locator(".controller-identity", { hasText: "P2 BOB" })
+    .waitFor({ state: "attached" });
+  await b.getByRole("button", { name: "OUT ↑", exact: true }).waitFor();
   assert.equal(
     await b.getByPlaceholder("Your name").isVisible(),
     false,
@@ -163,13 +205,13 @@ try {
     "PASS individual: create retry, lobby/bots, two real peers, controls, reload recovery, agreed result and rematch.",
   );
   // Creator leaves during a match. The remaining peer continues without a new room.
-  await fromGameMenu(a, "LEAVE");
+  await fromGameMenu(a, "MAIN MENU");
   await a.locator(".fui-main-menu").waitFor();
   await phase(b, "running");
   await b.waitForFunction(
     () => document.querySelector(".clock")?.textContent !== "02:00",
   );
-  await fromGameMenu(b, "LEAVE");
+  await fromGameMenu(b, "MAIN MENU");
   await b.locator(".fui-main-menu").waitFor();
 
   await openPlayOptions(a);

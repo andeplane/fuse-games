@@ -17,6 +17,10 @@
   display: grid;
   gap: 0.5rem;
 }
+.fui-playtest-report .fui-playtest-state:not([hidden]) {
+  display: flex;
+  align-items: center;
+}
 .fui-playtest-report textarea,
 .fui-playtest-report select {
   box-sizing: border-box;

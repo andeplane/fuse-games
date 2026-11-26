@@ -2,6 +2,7 @@ import { GamepadInput, browserGamepads } from "fuse-ui/gamepad";
 import {
   createHowToPlay,
   createLiveResults,
+  createPlayScreen,
   createResultsScreen,
   createTopBar,
   requestedRoomSlot,
@@ -657,6 +658,12 @@ function room(solo: boolean): void {
     controls.clear();
   };
   stage.append(screen, note, touch);
+  // A phone's live round is the whole screen; the 16:9 deck is drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => letGoAll(),
+  });
 
   const controller = el("section", "", "fs-controller"),
     controllerHead = el("header", "", "fs-controller-head"),
@@ -863,7 +870,10 @@ function room(solo: boolean): void {
     // The deck.
     setText(note, next.note);
     note.hidden = !next.note;
-    touch.hidden = !(coarse() && next.riding && !display);
+    // Only while the round runs: the results and the lobby are tapped, not played.
+    const playing = view.stage === "running" && !next.result;
+    playScreen.update(next.screen === "play" && playing && !display);
+    touch.hidden = !(coarse() && next.riding && !display && playing);
     main.dataset.touch = String(!touch.hidden);
     touchPads.show(!touch.hidden && !stage.hidden);
     controllerPads.set.show(!controller.hidden);
@@ -974,6 +984,7 @@ function room(solo: boolean): void {
       status.show("Room ended", "error");
       over = true;
       controls.clear();
+      playScreen.destroy();
       for (const part of [connecting, nameEntry.form, lobby, stage, controller])
         part.hidden = true;
       closed.hidden = false;

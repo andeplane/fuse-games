@@ -178,10 +178,32 @@ body:has(.ef-lobby:not([hidden])) .ef-live {
 .elasto-fuse-page .fui-landing-title {
   color: var(--fui-yellow);
 }
+.elasto-fuse-page .fui-main-menu {
+  padding-bottom: 4rem;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .elasto-fuse-page .fui-main-menu {
+    padding-top: var(--fui-space-2);
+  }
+  .elasto-fuse-page .fui-main-menu-home {
+    margin-top: var(--fui-space-2);
+  }
+  .elasto-fuse-page .fui-main-menu .fui-main-menu-title {
+    margin-bottom: var(--fui-space-3);
+  }
+  .elasto-fuse-page .fui-main-menu .fui-main-menu-description {
+    margin-bottom: var(--fui-space-3);
+    line-height: 1.45;
+  }
+}
 .ef-landing-rules {
   display: grid;
   gap: var(--fui-space-2);
   margin-top: var(--fui-space-4);
+}
+.ef-landing-rules p {
+  margin: 0;
+  color: var(--fui-text-muted);
 }
 /* The level picker: on the landing page and in the lobby */
 .fui-room-modes > .ef-series-options {

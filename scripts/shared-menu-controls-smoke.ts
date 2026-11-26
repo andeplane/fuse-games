@@ -510,6 +510,7 @@ async function checkTownOnlineResume(): Promise<void> {
       await page
         .getByRole("button", { name: "BACK TO GAME", exact: true })
         .click();
+    await page.locator(".fl-game:focus").waitFor();
     assert.equal(
       await page
         .locator(".fl-game")

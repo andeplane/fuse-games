@@ -15,7 +15,12 @@ import "./style.css";
 import "./presentation.css";
 import { createAppPortal } from "fuse-ui/portal";
 import { createTopBar } from "fuse-ui";
-import { createGameMenu, createRoundControls } from "fuse-ui";
+import {
+  createGameMenu,
+  createPlayScreen,
+  createRoundControls,
+  localPoint,
+} from "fuse-ui";
 import { createRadio } from "fuse-ui/radio";
 import { EffectsAudio, browserToneSink } from "./audio.js";
 import {
@@ -487,6 +492,20 @@ touch = createTouchControls(
   },
   clear,
 );
+// A phone's live round is the whole screen: the 16:9 belfry is drawn turned when the phone is upright, with the pads
+// over its lower corners and the scoreboard over its sky.
+const playSurface = document.querySelector<HTMLElement>(".play-surface")!;
+const playScreen = createPlayScreen({
+  stage: playSurface,
+  wide: true,
+  onChange(mode) {
+    clear();
+    const hud = document.getElementById("match-hud");
+    if (!hud) return;
+    if (mode === "off") playSurface.before(hud);
+    else playSurface.prepend(hud);
+  },
+});
 const modalInput = createModalInputGate({
   isOpen: () =>
     playtestInputBlocked(document) || !!document.querySelector("dialog[open]"),
@@ -604,6 +623,7 @@ function stopRoom() {
   roundControls.update({ round: "ended", visible: false });
   connecting = false;
   document.body.classList.remove("arena-focused");
+  playScreen.update(false);
   effects.pause();
   radio.pause();
   scene?.resetFeedback();
@@ -909,6 +929,14 @@ const enterRoom = async () => {
               !!local?.connected &&
               !modalInput.blocked() &&
               !menu.isOpen(),
+          );
+          // The whole screen while this keeper is in a running round at the arena (not its room, not its result).
+          playScreen.update(
+            !display &&
+              frame.stage === "running" &&
+              !!local?.connected &&
+              !local.watcher &&
+              matchShell.arenaVisible(),
           );
           paintBombButton(frame);
           if (frame.stage === "lobby") entrance.play();
@@ -1346,11 +1374,13 @@ host.addEventListener("keyup", (e) => {
   send();
 });
 function aim(e: PointerEvent) {
-  const box = host.querySelector("canvas")?.getBoundingClientRect();
-  if (!box) return;
+  const canvas = host.querySelector("canvas");
+  if (!canvas) return;
+  // Along the arena's own axes: a phone's play screen draws it turned when the phone is upright.
+  const box = localPoint(canvas, e.clientX, e.clientY);
   // Through the camera: a larger arena is fitted, or followed (12A).
-  const u = (e.clientX - box.left) / box.width,
-    v = (e.clientY - box.top) / box.height,
+  const u = box.x / box.width,
+    v = box.y / box.height,
     point = scene?.toWorld(u, v) ?? {
       x: u * latest.size.width,
       y: v * latest.size.height,

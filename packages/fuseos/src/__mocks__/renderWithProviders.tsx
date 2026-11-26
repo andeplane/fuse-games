@@ -123,6 +123,8 @@ import { WinampRegistryContext } from "../winamp/winampRegistryContext";
 import { PlainWindowFrame } from "../windows/PlainWindowFrame";
 import type { WindowsDeps } from "../windows/windowsDepsContext";
 import { WindowsDepsContext } from "../windows/windowsDepsContext";
+import { Y2kDepsContext } from "../y2k/y2kDeps";
+import { createTestY2kDeps } from "../y2k/y2kFakes";
 
 import type { TestAssistantDeps } from "./assistantDeps";
 import type { TestDiskDeps, TestDiskOptions } from "./disk";
@@ -623,6 +625,7 @@ export function createWrapper(options: ProviderOptions = {}) {
     provider(AppStateDepsContext, immediateAppStateDeps),
     provider(WindowsDepsContext, testWindowsDeps),
     provider(DesktopDepsContext, desktopDeps),
+    provider(Y2kDepsContext, createTestY2kDeps()),
     provider(MediaDepsContext, mediaDeps),
     provider(GamesDepsContext, gamesDeps),
     provider(WallpaperStoreContext, wallpaperStore),

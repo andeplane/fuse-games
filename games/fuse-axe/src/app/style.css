@@ -46,8 +46,9 @@ body {
   font-family: var(--fui-font-body, system-ui, sans-serif);
 }
 
+/* The screen less the page's own padding (fuse-ui's `.fui-app` body), so a desktop's run never scrolls. */
 #app {
-  min-height: 100dvh;
+  min-height: calc(100dvh - 2 * var(--fui-space-3));
   display: flex;
   flex-direction: column;
 }
@@ -688,6 +689,48 @@ body.fa-display .fa-room {
   }
 }
 
+/* ---- a phone's live run (fuse-ui play-screen): the picture is the screen, the pads float over its corners ---- */
+html[data-fui-play] .fa-stage {
+  gap: 0;
+}
+html[data-fui-play] .fa-stage > .fa-note {
+  display: none;
+}
+html[data-fui-play] .fa-stage > .fa-screen {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-fui-play] .fa-touch {
+  z-index: 1;
+  padding: 8px max(8px, var(--fui-play-right)) max(8px, var(--fui-play-bottom))
+    max(8px, var(--fui-play-left));
+}
+html[data-fui-play] .fa-touch .fa-dpad {
+  --pad: min(150px, 40cqh);
+}
+html[data-fui-play] .fa-touch .fa-buttons {
+  --button: min(64px, 17cqh);
+}
+html[data-fui-play] .fa-stage > .fui-round-controls {
+  position: absolute;
+  top: max(8px, var(--fui-play-top));
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, 70cqw);
+  z-index: 2;
+  font-size: 12px;
+}
+/* The hints fade in over the picture as it is held; drawn turned, the round's controls card says the same. */
+html[data-fui-play="phone"] body.fa-phone .fui-control-hints {
+  z-index: 31;
+}
+html[data-fui-play="turned"] body.fa-phone .fui-control-hints {
+  display: none;
+}
+
 /* ---- a phone in play: the header folds behind MENU, the hints fade in each stage ---- */
 .fui-tools-toggle,
 .fui-control-hints {
@@ -696,6 +739,10 @@ body.fa-display .fa-room {
 
 body.fa-phone {
   padding: 0;
+}
+
+body.fa-phone #app {
+  min-height: 100dvh;
 }
 
 body.fa-phone .fa-note {
@@ -756,7 +803,12 @@ body.fa-phone main[data-screen="controller"] ~ .fui-control-hints {
 }
 
 /* The round's controls card says the same in the same place: the hints stay out from under it. */
-body.fa-phone #app:has(> .fui-round-controls:not([hidden])) .fui-control-hints {
+body.fa-phone
+  #app:has(
+    > .fui-round-controls:not([hidden]),
+    .fa-stage > .fui-round-controls:not([hidden])
+  )
+  .fui-control-hints {
   visibility: hidden;
 }
 

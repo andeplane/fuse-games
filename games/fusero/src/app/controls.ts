@@ -51,6 +51,14 @@ const MAC_KEYS: Readonly<Record<string, number>> = Object.freeze({
 });
 
 /** Platform selection belongs to the browser composition root; tests pass the same explicit choice. */
+export function keyboardPreset(
+  saved: string | null,
+  platform: string,
+): "pc" | "mac" {
+  if (saved === "pc" || saved === "mac") return saved;
+  return /^(Mac|iPhone|iPad|iPod)/.test(platform) ? "mac" : "pc";
+}
+
 export function keyboardBindings(
   platform: "pc" | "mac",
 ): Readonly<Record<string, number>> {

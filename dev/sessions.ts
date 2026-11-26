@@ -28,6 +28,59 @@ export interface PrivateMedia {
   onDispose(callback: () => void): void;
 }
 
+export type PlaytestReview = (
+  kind: "reports" | "recordings",
+  id: string,
+  handled: boolean,
+) => Promise<{ handled: boolean }>;
+
+function reviewControl(
+  dom: Dom,
+  kind: "reports" | "recordings",
+  item: { id: string; handled?: boolean },
+  save?: PlaytestReview,
+): HTMLElement {
+  const { node, button } = dom;
+  const row = node("div", "inline-controls");
+  const status = node("span", "status");
+  if (save) status.setAttribute("role", "status");
+  const error = node("span", "error");
+  error.setAttribute("role", "alert");
+  const control = button(
+    "",
+    () => {
+      if (!save || control.disabled) return;
+      control.disabled = true;
+      error.textContent = "";
+      void save(kind, item.id, !item.handled)
+        .then(({ handled }) => {
+          item.handled = handled;
+          render();
+        })
+        .catch((reason: unknown) => {
+          if (!row.isConnected) return;
+          error.textContent =
+            reason instanceof Error
+              ? reason.message
+              : "Could not save review status. Try again.";
+        })
+        .finally(() => {
+          control.disabled = false;
+        });
+    },
+    "quiet",
+  );
+  function render() {
+    status.textContent = item.handled ? "Handled" : "Open";
+    status.classList.toggle("status-done", Boolean(item.handled));
+    control.textContent = item.handled ? "Reopen" : "Mark handled";
+  }
+  render();
+  row.append(status);
+  if (save) row.append(control, error);
+  return row;
+}
+
 export function createPrivateMedia(
   api: ReturnType<typeof createWorkspaceApi>,
   signal: AbortSignal,
@@ -89,7 +142,9 @@ export function recordingList(
     row.append(
       heading,
       node("p", "muted", utcDate(recording.startedAt)),
-      node("span", `status status-${recording.status}`, recording.status),
+      recording.status === "finished"
+        ? reviewControl(dom, "recordings", recording)
+        : node("span", "status status-recording", "Recording"),
       node("span", "number", `${timestamp(recording.durationMs)} saved audio`),
     );
     list.append(row);
@@ -103,6 +158,7 @@ export function reportArticle(
   media: PrivateMedia,
   open: (id: string) => void,
   seek?: (offset: number) => void,
+  review?: PlaytestReview,
 ): HTMLElement {
   const { node, button } = dom;
   const article = node("article", "report");
@@ -116,7 +172,26 @@ export function reportArticle(
     heading,
     node("p", "private-copy", report.text || "Screenshot report"),
   );
+  const gameState = report.gameState;
+  if (gameState) {
+    const state = node("details", "report-state");
+    const data = node("pre", "private-copy");
+    state.append(node("summary", "", "Game state"), data);
+    state.addEventListener(
+      "toggle",
+      () => {
+        try {
+          data.textContent = JSON.stringify(JSON.parse(gameState), null, 2);
+        } catch {
+          data.textContent = gameState;
+        }
+      },
+      { once: true },
+    );
+    article.append(state);
+  }
   const controls = node("div", "inline-controls");
+  article.append(reviewControl(dom, "reports", report, review));
   if (report.offsetMs !== undefined && seek)
     controls.append(
       button(
@@ -188,12 +263,15 @@ export function recordingDetail(
   media: PrivateMedia,
   open: (id: string) => void,
   initialOffset?: number,
+  review?: PlaytestReview,
 ): HTMLElement {
   const { node, button } = dom;
   const section = node("section", "recording-detail");
   const recording = detail.recording;
+  section.append(node("h2", "", recording.gameId));
+  if (recording.status === "finished")
+    section.append(reviewControl(dom, "recordings", recording, review));
   section.append(
-    node("h2", "", recording.gameId),
     node(
       "p",
       "muted",
@@ -325,7 +403,8 @@ export function recordingDetail(
                 : "Transcript will appear after processing."),
         ),
       );
-    } else li.append(reportArticle(dom, entry.report, media, open, seek));
+    } else
+      li.append(reportArticle(dom, entry.report, media, open, seek, review));
     timeline.append(li);
   }
   section.append(node("h2", "", "Transcript & reports"));

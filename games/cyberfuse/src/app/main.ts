@@ -27,6 +27,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createPlayScreen,
   createResultsScreen,
   createRoster,
   createSharedTvOption,
@@ -317,6 +318,11 @@ function room() {
     cancel: controls.clear,
   });
   arena.append(canvas, hud.element, hud.panel, controls.element);
+  // A phone's live mission is the whole screen with nothing to scroll; the camera fills any shape, never turned.
+  const playScreen = createPlayScreen({
+    stage: arena,
+    onChange: () => controls.clear(),
+  });
   const start = button("Start mission", "fui-button-primary"),
     addBot = button("+ Add bot"),
     note = el("p", "", "fui-lobby-note");
@@ -563,6 +569,7 @@ function room() {
       main.dataset.screen = phase === "running" ? "game" : phase;
       lobby.hidden = phase !== "lobby";
       arena.hidden = phase !== "running";
+      playScreen.update(phase === "running" && !display);
       between.hidden = phase !== "between";
       namesForm.form.hidden = phase !== "lobby" || !!ownSeat || display;
       menu.update({
@@ -719,6 +726,7 @@ function room() {
     },
     ended() {
       say("Room ended", "error");
+      playScreen.destroy();
     },
   };
   const runtime = new CyberfuseRuntime(

@@ -2,6 +2,7 @@ import {
   createGameMenu,
   createTopBar,
   createHowToPlay,
+  createPlayScreen,
   type HowToPlayOptions,
 } from "fuse-ui";
 import {
@@ -431,6 +432,12 @@ function room() {
     bits = 0;
     runtime?.cancel();
   };
+  // A phone's live shift is the whole screen; the wide cemetery is drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage: play,
+    wide: true,
+    onChange: clear,
+  });
   const modalInput = createModalInputGate({
     isOpen: () =>
       playtestInputBlocked(document) ||
@@ -625,6 +632,10 @@ function room() {
         lobby.hidden = frame.stage !== "lobby";
         play.hidden = frame.stage === "lobby";
         pad.hidden = display || !mine || frame.stage !== "running";
+        // Only the shift itself: the lobby and the results are tapped, and a shared screen's phone is its own pad.
+        playScreen.update(
+          !display && !(shared && mine) && frame.stage === "running",
+        );
         c.hidden = shared && !display && !!mine;
         personal.hidden = display;
         add.hidden = !host || frame.seats.filter((s) => !s.watcher).length >= 5;
@@ -762,6 +773,7 @@ function room() {
         host = isHost;
       },
       ended() {
+        playScreen.destroy();
         say(
           "Room ended. Return to the menu to create a new shift.",
           "error",

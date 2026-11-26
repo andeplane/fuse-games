@@ -179,6 +179,15 @@ export interface PointerTarget {
 }
 
 /**
+ * A screen point in the target's own box, along the target's own axes, with the box's size. By default the box on the
+ * screen; the page passes fuse-ui's `localPoint` for pads on a stage that can be drawn turned.
+ */
+export type TouchLocate = (
+  clientX: number,
+  clientY: number,
+) => { x: number; y: number; width: number; height: number };
+
+/**
  * Where the page reports losing focus, and every finger lifting wherever it lifts: `window` in the browser, a fake in
  * tests.
  */
@@ -225,17 +234,26 @@ export function attachTouch(
   hold: (device: DeviceId, bits: number) => void,
   page: PageTarget,
   blocked: () => boolean = () => false,
+  locate: TouchLocate = (clientX, clientY) => {
+    const rect = target.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  },
 ): TouchSource {
   let sides: readonly number[] = [],
     place: PadLayout = touchPadLayout;
   const fingers = new Map<number, { side: number; bits: number }>();
   const pads = (): TouchPad[] => {
-    const rect = target.getBoundingClientRect();
-    return place(rect.width, rect.height, sides);
+    const { width, height } = locate(0, 0);
+    return place(width, height, sides);
   };
   const point = (event: PointerLike): [number, number] => {
-    const rect = target.getBoundingClientRect();
-    return [event.clientX - rect.left, event.clientY - rect.top];
+    const at = locate(event.clientX, event.clientY);
+    return [at.x, at.y];
   };
   const report = (side: number): void => {
     let bits = 0;

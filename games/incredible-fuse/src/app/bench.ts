@@ -1,3 +1,4 @@
+import { localPoint } from "fuse-ui";
 import { BodyPlayback } from "./body-playback.js";
 import {
   PARTS,
@@ -404,16 +405,11 @@ export function createBench(options: {
     refresh();
   }
   function boardPoint(e: PointerEvent): BoardPoint {
-    const r = canvas.getBoundingClientRect();
+    // Along the board's own axes: a phone's play screen draws the bench turned when the phone is upright.
+    const r = localPoint(canvas, e.clientX, e.clientY);
     return {
-      x: Math.max(
-        0,
-        Math.min(WIDTH, Math.round(((e.clientX - r.left) * WIDTH) / r.width)),
-      ),
-      y: Math.max(
-        0,
-        Math.min(HEIGHT, Math.round(((e.clientY - r.top) * HEIGHT) / r.height)),
-      ),
+      x: Math.max(0, Math.min(WIDTH, Math.round((r.x * WIDTH) / r.width))),
+      y: Math.max(0, Math.min(HEIGHT, Math.round((r.y * HEIGHT) / r.height))),
     };
   }
   canvas.addEventListener("pointerdown", (e) => {
@@ -458,12 +454,8 @@ export function createBench(options: {
     )
       return;
     const p = boardPoint(e),
-      r = canvas.getBoundingClientRect(),
-      inside =
-        e.clientX >= r.left &&
-        e.clientX <= r.right &&
-        e.clientY >= r.top &&
-        e.clientY <= r.bottom;
+      r = localPoint(canvas, e.clientX, e.clientY),
+      inside = r.x >= 0 && r.x <= r.width && r.y >= 0 && r.y <= r.height;
     const held = drag;
     drag = undefined;
     canvas.releasePointerCapture(e.pointerId);
@@ -630,6 +622,12 @@ export function createBench(options: {
         cursorVisible = false;
       }
       refresh();
+    },
+    /** Drops a drag in progress: the board has just moved under the finger. */
+    cancel() {
+      drag = undefined;
+      cursorVisible = false;
+      redraw();
     },
     dispose() {
       if (frame !== undefined) options.frames.cancelAnimationFrame(frame);

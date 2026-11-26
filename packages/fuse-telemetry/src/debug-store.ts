@@ -1,8 +1,25 @@
-import type {
-  RecordingSummary,
-  ReportView,
-  SegmentView,
+import {
+  DEBUG_LIMITS,
+  type RecordingSummary,
+  type ReportView,
+  type SegmentView,
 } from "./debug-contracts.js";
+
+export function isReportGameState(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    Buffer.byteLength(value) > DEBUG_LIMITS.gameStateBytes
+  )
+    return false;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return (
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    );
+  } catch {
+    return false;
+  }
+}
 
 export interface RecordingRecord extends RecordingSummary {
   kind: "recording";
@@ -104,6 +121,12 @@ export function storedDebugRecord(value: unknown): DebugRecord | undefined {
   if (!["recording", "report", "segment", "limit"].includes(record.kind))
     throw new Error("Invalid debug metadata kind");
   if (
+    (record.kind === "recording" || record.kind === "report") &&
+    record.handled !== undefined &&
+    typeof record.handled !== "boolean"
+  )
+    throw new Error("Invalid playtest review status");
+  if (
     record.kind === "recording" &&
     (!uuid(record.id) ||
       !text(record.owner, 128) ||
@@ -155,6 +178,8 @@ export function storedDebugRecord(value: unknown): DebugRecord | undefined {
     (!uuid(record.id) ||
       !text(record.gameId, 80) ||
       !text(record.text, 8000) ||
+      (record.gameState !== undefined &&
+        !isReportGameState(record.gameState)) ||
       !hash(record.fingerprint) ||
       !integer(record.createdAt) ||
       !integer(record.receivedAt) ||

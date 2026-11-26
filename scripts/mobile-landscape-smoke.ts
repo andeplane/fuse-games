@@ -1,5 +1,10 @@
 import type { Page } from "playwright";
-import { BOTH_ENGINES, launchBrowser, newSmokePage } from "./lib/browser.js";
+import {
+  BOTH_ENGINES,
+  launchBrowser,
+  newSmokePage,
+  resizeSmokeViewport,
+} from "./lib/browser.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { smokeTimeout } from "./smoke-timeout.js";
@@ -102,7 +107,7 @@ for (const { name, kind } of BOTH_ENGINES) {
       .locator(".mobile-tools-open")
       .waitFor({ state: "detached" })
       .catch(() => assert.fail("starting a race closes the tools overlay"));
-    await page.setViewportSize({ width: 844, height: 390 });
+    await resizeSmokeViewport(page, { width: 844, height: 390 });
     await page.waitForFunction(
       () =>
         document.querySelector<HTMLCanvasElement>(".online-arena")?.dataset
@@ -365,7 +370,7 @@ for (const { name, kind } of BOTH_ENGINES) {
       path: `artifacts/mobile-landscape-faded-${name}.png`,
     });
     await press(page, left.x + left.width / 2, left.y + left.height / 2);
-    await page.setViewportSize({ width: 390, height: 844 });
+    await resizeSmokeViewport(page, { width: 390, height: 844 });
     await page.locator(".mobile-play.mobile-portrait").waitFor();
     await page.waitForFunction(
       () =>
@@ -411,7 +416,7 @@ for (const { name, kind } of BOTH_ENGINES) {
     await page.keyboard.press("Escape");
     if (await page.locator(".mobile-tools-open").count())
       await page.locator(".mobile-tools-toggle").click();
-    await page.setViewportSize({ width: 844, height: 390 });
+    await resizeSmokeViewport(page, { width: 844, height: 390 });
     const swapped = await page
       .locator(".online-controls > button")
       .evaluateAll((buttons) =>
@@ -425,7 +430,7 @@ for (const { name, kind } of BOTH_ENGINES) {
       "left",
     );
     await page.screenshot({ path: `artifacts/mobile-pads-left-${name}.png` });
-    await page.setViewportSize({ width: 390, height: 844 });
+    await resizeSmokeViewport(page, { width: 390, height: 844 });
     // Identity controls live beside READY in the lobby, not in the header.
     const avatarButton = page.getByRole("button", {
       name: "AVATAR",

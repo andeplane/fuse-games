@@ -65,17 +65,22 @@ import {
   pawnValue,
   redeemPrice,
   gigWage,
+  groceryCapacity,
   hireOdds,
   hiring,
   homePlace,
+  interest,
   lessonsNeeded,
   marketWage,
   missing,
+  owns,
   quote,
   rentPrice,
   sellValue,
+  savingsRate,
   shelfPrice,
   walkSteps,
+  wearing,
   doorOf,
   STREETS,
   type Economy,
@@ -135,6 +140,7 @@ export interface Section {
   cards: Card[];
   /** A line above the cards. */
   info?: string;
+  items?: { name: string; icon: string }[];
 }
 export interface PanelModel {
   place: number;
@@ -768,7 +774,7 @@ function bankAccounts(
   );
   return {
     title: "Accounts",
-    info: `Cash ${money(me.cash)} · Savings ${money(me.bank)} · Savings rate ${Math.max(0, view.economy.policyRate - 1).toFixed(2)}%`,
+    info: `Cash ${money(me.cash)} · Savings ${money(me.bank)} · ${savingsRate(view.economy).toFixed(2)}% annual interest · ${money(interest(view.economy, me.bank))} per week at this balance`,
     cards: cash,
   };
 }
@@ -955,6 +961,24 @@ function secondLife(
   ];
 }
 
+const weeks = (count: number): string =>
+  `${count} ${count === 1 ? "week" : "weeks"}`;
+function groceryStock(me: PlayerState): HudModel["chips"][number] {
+  const cap = groceryCapacity(me);
+  const excess = me.groceries - cap;
+  const warning =
+    excess <= 0
+      ? ""
+      : cap === 0
+        ? " · No fridge, spoils Monday"
+        : ` · ${weeks(excess)} will spoil Monday`;
+  return {
+    label: `Groceries: ${weeks(me.groceries)}${warning}`,
+    warn: Boolean(warning) || (me.groceries === 0 && me.meal === 0),
+  };
+}
+const mealCovered = "Meal covered this week";
+
 export function panelFor(
   view: FuseLaneView,
   you: FuseLanePlayerView,
@@ -972,7 +996,11 @@ export function panelFor(
           ? [
               {
                 title: "Home",
-                info: `Rest ${me.relax}/50`,
+                info: [
+                  groceryStock(me).label,
+                  ...(me.meal > 0 ? [mealCovered] : []),
+                  `Rest ${me.relax}/50`,
+                ].join(" · "),
                 cards: [
                   card({
                     key: "relax",
@@ -983,6 +1011,15 @@ export function panelFor(
                     entry: actEntry(view, place, RELAX),
                   }),
                 ],
+              },
+              {
+                title: "Your belongings",
+                items: DURABLES.flatMap((id, index) =>
+                  owns(me, id)
+                    ? [{ name: DURABLE_NAMES[id], icon: durableIcon(index) }]
+                    : [],
+                ),
+                cards: [],
               },
             ]
           : [
@@ -1077,8 +1114,7 @@ function hud(
       : me.inside >= 0
         ? `At ${PLACES[me.inside]!.name}`
         : "Out in Fusetown";
-  const fedNext = me.groceries > 0 || me.meal > 0;
-  const best = [2, 1, 0].find((level) => me.clothes[level]! > 0);
+  const best = wearing(me);
   return {
     week: view.week,
     hoursUsed: used,
@@ -1103,20 +1139,14 @@ function hud(
       ? `${job.title}, ${EMPLOYERS[job.employer]} · $${me.wage.toFixed(2)}/h`
       : "Unemployed",
     chips: [
-      {
-        label: fedNext
-          ? me.groceries > 0
-            ? `Food ${me.groceries}w`
-            : "Fed"
-          : "No food",
-        warn: !fedNext,
-      },
+      groceryStock(me),
+      ...(me.meal > 0 ? [{ label: mealCovered, warn: false }] : []),
       {
         label:
-          best === undefined
-            ? "No clothes"
-            : `${CLOTHING_NAMES[best]} ${me.clothes[best]}w`,
-        warn: best === undefined || me.clothes[best]! <= 1,
+          best < 0
+            ? "Wearing: no usable clothes"
+            : `Wearing: ${CLOTHING_NAMES[best]} · ${weeks(me.clothes[best]!)} left`,
+        warn: best < 0 || me.clothes[best]! <= 1,
       },
       {
         label:

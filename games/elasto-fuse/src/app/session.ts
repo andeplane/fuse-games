@@ -16,6 +16,7 @@ export const keys = (gameId: string) => ({
   ...roomKeys(gameId),
   /** The level solo last rode, and a level's best solo time in hundredths of a second. */
   level: `${gameId}-level`,
+  clear: (levelId: string) => `${gameId}-clear-${levelId}`,
   best: (levelId: string) => `${gameId}-best-${levelId}`,
 });
 

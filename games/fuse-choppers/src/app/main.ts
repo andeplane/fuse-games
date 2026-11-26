@@ -1,4 +1,9 @@
-import { createHowToPlay, createTopBar, openTopBarRadio } from "fuse-ui";
+import {
+  createHowToPlay,
+  createPlayScreen,
+  createTopBar,
+  openTopBarRadio,
+} from "fuse-ui";
 import {
   playtestInputBlocked,
   registerPlaytestInput,
@@ -706,6 +711,12 @@ function room(solo: boolean): void {
   const touchPads = pads([touchLeft, touchRight], false);
   touch.append(touchLeft, touchRight);
   stage.append(screen, touch);
+  // A phone's live match is the whole screen; the 16:9 cave is drawn turned when the phone is upright.
+  const playScreen = createPlayScreen({
+    stage,
+    wide: true,
+    onChange: () => controls.clear(),
+  });
 
   const controller = el("section", "", "fc-controller"),
     controllerHead = el("header", "", "fc-controller-head"),
@@ -807,10 +818,10 @@ function room(solo: boolean): void {
   let avatars = new Map<string, string>();
   let scale = 1;
   const fit = () => {
-    const box = screen.getBoundingClientRect(),
-      ratio = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.max(1, Math.round(box.width * ratio));
-    canvas.height = Math.max(1, Math.round(box.height * ratio));
+    // The canvas's own layout size: a phone's play screen can draw it turned, which a screen box would have swapped.
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.round(canvas.clientWidth * ratio));
+    canvas.height = Math.max(1, Math.round(canvas.clientHeight * ratio));
     scale = canvas.width / VIEW_W;
   };
   new ResizeObserver(fit).observe(screen);
@@ -952,6 +963,13 @@ function room(solo: boolean): void {
     main.dataset.stage = view.stage;
     lobby.hidden = next.screen !== "lobby";
     stage.hidden = next.screen !== "play";
+    // The match fills a phone from its first countdown to its last round; the results and the lobby are tapped.
+    playScreen.update(
+      next.screen === "play" &&
+        !display &&
+        !next.result &&
+        (view.stage === "running" || view.stage === "between"),
+    );
     controller.hidden = next.screen !== "controller";
     nameEntry.form.hidden = !next.askName;
     // Lobby.
@@ -1164,6 +1182,7 @@ function room(solo: boolean): void {
       say("Room ended", "error");
       over = true;
       controls.clear();
+      playScreen.destroy();
       for (const part of [connecting, nameEntry.form, lobby, stage, controller])
         part.hidden = true;
       closed.hidden = false;
