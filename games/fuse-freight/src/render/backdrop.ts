@@ -32,11 +32,19 @@ export function noise(x: number, y: number): number {
 const WALL = 12;
 const TILE = 32;
 
-export function createBackdrop(make: MakeSurface): Surface {
-  const surface = make(VIEW_W * SPRITE_SCALE, VIEW_H * SPRITE_SCALE);
+export function createBackdrop(
+  make: MakeSurface,
+  gutterX = 0,
+  gutterY = 0,
+): Surface {
+  const surface = make(
+    (VIEW_W + 2 * gutterX) * SPRITE_SCALE,
+    (VIEW_H + 2 * gutterY) * SPRITE_SCALE,
+  );
   const g = surface.getContext("2d") as Paint;
   g.scale(SPRITE_SCALE, SPRITE_SCALE);
-  paintQuay(g);
+  g.translate(gutterX, gutterY);
+  paintQuay(g, gutterX, gutterY);
   paintFloor(g, FLOOR_PX);
   DOCKS_PX.forEach((dock, index) => paintDock(g, dock, index));
   paintWall(g, FLOOR_PX);
@@ -44,12 +52,18 @@ export function createBackdrop(make: MakeSurface): Surface {
   return surface;
 }
 
-function paintQuay(g: Paint): void {
+function paintQuay(g: Paint, gutterX: number, gutterY: number): void {
+  const width = VIEW_W + 2 * gutterX,
+    height = VIEW_H + 2 * gutterY;
   g.fillStyle = DEPOT.night;
-  g.fillRect(0, 0, VIEW_W, VIEW_H);
+  g.fillRect(-gutterX, -gutterY, width, height);
   // Planks round the depot, darker toward the edges of the screen.
-  for (let y = 0; y < VIEW_H; y += 9)
-    for (let x = (y / 9) % 2 ? -20 : 0; x < VIEW_W; x += 40) {
+  for (let y = -Math.ceil(gutterY / 9) * 9; y < VIEW_H + gutterY; y += 9)
+    for (
+      let x = -Math.ceil(gutterX / 40) * 40 - ((y / 9) % 2 ? 20 : 0);
+      x < VIEW_W + gutterX;
+      x += 40
+    ) {
       const shade = 0.05 + noise(x, y) * 0.07;
       g.fillStyle = `rgba(140,110,90,${shade})`;
       g.fillRect(x + 1, y + 1, 38, 7);
@@ -65,13 +79,13 @@ function paintQuay(g: Paint): void {
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   vignette.addColorStop(1, "rgba(0,0,12,0.75)");
   g.fillStyle = vignette;
-  g.fillRect(0, 0, VIEW_W, VIEW_H);
+  g.fillRect(-gutterX, -gutterY, width, height);
   // Water along the bottom edge, with lamp light on it.
   const water = g.createLinearGradient(0, VIEW_H - 22, 0, VIEW_H);
   water.addColorStop(0, "#0b1a3a");
   water.addColorStop(1, "#050b1d");
   g.fillStyle = water;
-  g.fillRect(0, VIEW_H - 20, VIEW_W, 20);
+  g.fillRect(-gutterX, VIEW_H - 20, width, 20 + gutterY);
   for (let i = 0; i < 60; i++) {
     const x = noise(i, 3) * VIEW_W,
       y = VIEW_H - 18 + noise(i, 7) * 16;

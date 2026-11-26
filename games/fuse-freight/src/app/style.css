@@ -948,7 +948,8 @@ html[data-fui-play] .ff-stage::before {
   content: none;
 }
 html[data-fui-play] .ff-stage > .ff-screen {
-  width: min(100cqw, 100cqh * 16 / 9);
+  width: 100cqw;
+  height: 100cqh;
   border-radius: 0;
   box-shadow: none;
 }

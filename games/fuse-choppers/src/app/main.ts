@@ -2,6 +2,7 @@ import {
   createHowToPlay,
   createPlayScreen,
   createTopBar,
+  fitPlayViewport,
   openTopBarRadio,
 } from "fuse-ui";
 import {
@@ -817,12 +818,22 @@ function room(solo: boolean): void {
   atlas.src = avatarUrl;
   let avatars = new Map<string, string>();
   let scale = 1;
+  let gutterX = 0,
+    gutterY = 0;
   const fit = () => {
     // The canvas's own layout size: a phone's play screen can draw it turned, which a screen box would have swapped.
     const ratio = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.max(1, Math.round(canvas.clientWidth * ratio));
     canvas.height = Math.max(1, Math.round(canvas.clientHeight * ratio));
-    scale = canvas.width / VIEW_W;
+    if (playScreen.mode() === "off") {
+      scale = canvas.width / VIEW_W;
+      gutterX = gutterY = 0;
+    } else {
+      const fit = fitPlayViewport(canvas.width, canvas.height, VIEW_W, VIEW_H);
+      scale = fit.scale;
+      gutterX = fit.x / scale;
+      gutterY = fit.y / scale;
+    }
   };
   new ResizeObserver(fit).observe(screen);
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -884,8 +895,10 @@ function room(solo: boolean): void {
           state: mine?.state,
         });
       }
-      g.setTransform(scale, 0, 0, scale, 0, 0);
+      g.setTransform(scale, 0, 0, scale, gutterX * scale, gutterY * scale);
       scene.draw({
+        gutterX,
+        gutterY,
         world,
         me: viewer.me,
         labels: model?.labels ?? new Map(),

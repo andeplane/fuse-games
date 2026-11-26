@@ -33,6 +33,8 @@ import {
  * Effects are spawned once per effect id, so a rollback that replays one does not draw it twice.
  */
 export interface SceneInput {
+  gutterX?: number;
+  gutterY?: number;
   world: WorldView;
   /** This device's chopper id, if it flies one. */
   me: string;
@@ -84,10 +86,17 @@ export function createScene(
     effects.spawn(world, input.me);
     effects.tick(dt);
     const camX = world.camX;
+    const gutterX = input.gutterX ?? 0,
+      gutterY = input.gutterY ?? 0;
+    // The extension stays covered even when the scene's visual shake displaces it.
+    if (gutterX || gutterY) {
+      g.fillStyle = "#070a20";
+      g.fillRect(-gutterX, -gutterY, VIEW_W + 2 * gutterX, VIEW_H + 2 * gutterY);
+    }
     g.save();
     effects.applyShake(g, input.reducedMotion);
-    backdrop.draw(g, camX, time);
-    drawCave(g, world.seed, camX);
+    backdrop.draw(g, camX, time, gutterX, gutterY);
+    drawCave(g, world.seed, camX, gutterX, gutterY);
     drawExit(g, camX, time);
     drawPlatforms(g, world, time);
     drawSaws(g, world, time);
@@ -102,7 +111,7 @@ export function createScene(
     drawRocks(g, world, time);
     effects.draw(g, camX);
     emberClock += dt;
-    drawCrush(g, world, time, emberClock > 0.03);
+    drawCrush(g, world, time, emberClock > 0.03, gutterX);
     if (emberClock > 0.03) emberClock = 0;
     g.restore();
     danger(g, world, input.me, time);
@@ -407,9 +416,10 @@ export function createScene(
     world: WorldView,
     time: number,
     emit: boolean,
+    gutterX: number,
   ): void {
     const edge = world.crushX - world.camX;
-    if (edge < -60) return;
+    if (edge < -60 - gutterX) return;
     const jag = (y: number) =>
       Math.sin(y * 0.045 + time * 3.1) * 7 +
       Math.sin(y * 0.13 - time * 5.3) * 4 +
@@ -422,9 +432,9 @@ export function createScene(
     g.fillRect(edge, 0, 110, VIEW_H);
     // The wall.
     g.beginPath();
-    g.moveTo(-20, -20);
+    g.moveTo(-20 - gutterX, -20);
     for (let y = -20; y <= VIEW_H + 20; y += 18) g.lineTo(edge + jag(y), y);
-    g.lineTo(-20, VIEW_H + 20);
+    g.lineTo(-20 - gutterX, VIEW_H + 20);
     g.closePath();
     const body = g.createLinearGradient(edge - 320, 0, edge, 0);
     body.addColorStop(0, "#14020b");
