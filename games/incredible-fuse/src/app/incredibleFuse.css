@@ -185,6 +185,8 @@ html[data-fui-play] .if-bench-surface {
   display: contents;
 }
 html[data-fui-play] .if-board-frame {
+  position: static;
+  aspect-ratio: 8 / 5;
   grid-column: 1;
   grid-row: 1 / -1;
   align-self: center;
@@ -194,7 +196,11 @@ html[data-fui-play] .if-board-frame {
   margin: 0;
 }
 html[data-fui-play] .if-bench-board {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
   max-height: none;
   margin: 0;
 }
@@ -355,17 +361,19 @@ html[data-fui-play] .if-bench-tray {
   min-height: 0;
 }
 
-.if-bench-extension {
-  display: none;
+html[data-fui-play]
+  .if-bench[data-mode="solved"]
+  .if-board-frame.if-single-target::after {
+  left: var(--if-catch-left);
+  top: var(--if-catch-top);
 }
 
-html[data-fui-play] .if-bench-extension {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+html[data-fui-play]
+  .if-bench[data-mode="solved"]
+  .if-board-frame:not(.if-single-target)::after {
+  inset: var(--if-board-top) auto auto var(--if-board-left);
+  width: var(--if-board-width);
+  height: var(--if-board-height);
 }
 
 html[data-fui-play] .if-bench-head,
@@ -373,5 +381,6 @@ html[data-fui-play] .if-bench-foot,
 html[data-fui-play] .if-bench-links,
 html[data-fui-play] .if-bench-tray {
   position: relative;
+  z-index: 1;
   background: #14232de8;
 }

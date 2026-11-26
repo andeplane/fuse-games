@@ -526,6 +526,19 @@ export function createShowcase(
           VIEW_WIDTH * backdropScale,
           VIEW_HEIGHT * backdropScale,
         );
+      const neonScale = resized
+        ? Math.max(
+            1,
+            viewport.width / size.width / renderedZoom,
+            viewport.height / size.height / renderedZoom,
+          )
+        : 1;
+      this.neon?.frameBackdrop(
+        resized ? view.x : size.width / 2,
+        resized ? view.y : size.height / 2,
+        size.width * neonScale,
+        size.height * neonScale,
+      );
       camera.setZoom(res * renderedZoom).centerOn(view.x, view.y);
       host.dataset.camera = JSON.stringify({
         x: Math.round(view.x),

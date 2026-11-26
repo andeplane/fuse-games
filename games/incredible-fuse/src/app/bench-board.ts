@@ -98,18 +98,6 @@ function background(c: Context, width = WIDTH, height = HEIGHT, ruler = true) {
   c.stroke();
 }
 
-/** Paint the workshop grid across the phone beneath the playable bench and tools. */
-export function paintWorkbenchExtension(canvas: HTMLCanvasElement) {
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-  if (!width || !height || (canvas.width === width && canvas.height === height))
-    return;
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (context) background(context, width, height, false);
-}
-
 function corners(
   c: Context,
   x: number,
@@ -198,46 +186,87 @@ export function spritePose(machine: Machine, part: Part, body?: Body) {
   return { blowing, active, face, motion: active || body ? machine.tick : 0 };
 }
 
-const backdrops = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+export interface WorkbenchView {
+  width: number;
+  height: number;
+  board: { x: number; y: number; width: number; height: number };
+}
+
+const backdrops = new WeakMap<
+  HTMLCanvasElement,
+  { image: HTMLCanvasElement; key: string }
+>();
 
 /** Repaint a complete authoritative view, including when time goes backwards on a rewind or rollback. */
 export function paintMachine(
   canvas: HTMLCanvasElement,
   machine: Machine,
   overlay: BoardOverlay = {},
+  view?: WorkbenchView,
 ) {
   const c = canvas.getContext("2d");
   if (!c) return;
+  const displayWidth = view?.width ?? (canvas.clientWidth || WIDTH);
+  const displayHeight = view?.height ?? (displayWidth * HEIGHT) / WIDTH;
   const desiredWidth = Math.min(
     1920,
     Math.max(
       640,
       Math.round(
-        (canvas.clientWidth || WIDTH) *
+        displayWidth *
           (canvas.ownerDocument.defaultView?.devicePixelRatio || 1),
       ),
     ),
   );
-  const desiredHeight = Math.round((desiredWidth * HEIGHT) / WIDTH);
+  const desiredHeight = Math.round(
+    (desiredWidth * displayHeight) / displayWidth,
+  );
+  const displayScaleX = desiredWidth / displayWidth;
+  const displayScaleY = desiredHeight / displayHeight;
+  const board = view?.board ?? {
+    x: 0,
+    y: 0,
+    width: displayWidth,
+    height: displayHeight,
+  };
+  const key = [
+    desiredWidth,
+    desiredHeight,
+    board.x,
+    board.y,
+    board.width,
+    board.height,
+  ].join("/");
   if (canvas.width !== desiredWidth || canvas.height !== desiredHeight) {
     canvas.width = desiredWidth;
     canvas.height = desiredHeight;
   }
-  let bg = backdrops.get(canvas);
-  if (!bg || bg.width !== desiredWidth || bg.height !== desiredHeight) {
-    bg = canvas.ownerDocument.createElement("canvas");
-    bg.width = desiredWidth;
-    bg.height = desiredHeight;
-    const back = bg.getContext("2d");
+  let backdrop = backdrops.get(canvas);
+  if (backdrop?.key !== key) {
+    const image = canvas.ownerDocument.createElement("canvas");
+    image.width = desiredWidth;
+    image.height = desiredHeight;
+    const back = image.getContext("2d");
     if (back) {
-      back.scale(desiredWidth / WIDTH, desiredHeight / HEIGHT);
+      back.scale(displayScaleX, displayScaleY);
+      if (view) background(back, displayWidth, displayHeight, false);
+      back.translate(board.x, board.y);
+      back.scale(board.width / WIDTH, board.height / HEIGHT);
       background(back);
     }
-    backdrops.set(canvas, bg);
+    backdrop = { image, key };
+    backdrops.set(canvas, backdrop);
   }
-  c.drawImage(bg, 0, 0);
+  c.drawImage(backdrop.image, 0, 0);
   c.save();
-  c.scale(desiredWidth / WIDTH, desiredHeight / HEIGHT);
+  c.scale(displayScaleX, displayScaleY);
+  c.translate(board.x, board.y);
+  c.scale(board.width / WIDTH, board.height / HEIGHT);
+  if (view) {
+    c.beginPath();
+    c.rect(0, 0, WIDTH, HEIGHT);
+    c.clip();
+  }
   const parts = new Map(machine.parts.map((part) => [part.id, part]));
   const bodies = new Map(machine.bodies.map((body) => [body.id, body]));
   for (const [index, link] of machine.links.entries()) {

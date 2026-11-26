@@ -1,6 +1,22 @@
 import type { Page } from "playwright";
 import { openPlayOptions, takeHostSeat } from "./main-menu.js";
 
+/** Convert an authored workbench point to a physical browser point. */
+export function workbenchScreenPoint(page: Page, x: number, y: number) {
+  return page.locator(".if-board-frame").evaluate(
+    (frame, { u, v }) => {
+      const rect = frame.getBoundingClientRect();
+      const turned =
+        frame.ownerDocument.documentElement.dataset.fuiPlay === "turned";
+      return {
+        x: rect.left + rect.width * (turned ? 1 - v : u),
+        y: rect.top + rect.height * (turned ? u : v),
+      };
+    },
+    { u: x / 640, v: y / 400 },
+  );
+}
+
 /**
  * Gives the arena the keyboard by clicking it. On a phone the spot may lie under a control, and nothing there needs
  * the keyboard, so a click that cannot land is skipped.
@@ -152,16 +168,13 @@ export const RECIPES: Record<string, Recipe> = {
     await page
       .getByRole("button", { name: "Start puzzle", exact: true })
       .click();
-    const board = page.getByRole("group", { name: "Machine workbench" });
     await page.getByRole("button", { name: "Incline", exact: true }).click();
-    const bounds = await board.boundingBox();
-    if (!bounds) throw new Error("Workbench is missing");
-    await board.click({
-      position: {
-        x: (bounds.width * 110) / 640,
-        y: (bounds.height * 130) / 400,
-      },
-    });
+    const point = await workbenchScreenPoint(page, 110, 130);
+    await page.mouse.click(point.x, point.y);
+    await page
+      .getByRole("button", { name: "Undo", exact: true })
+      .and(page.locator(":enabled"))
+      .waitFor();
     await page
       .getByRole("button", { name: "Run machine", exact: true })
       .click();
