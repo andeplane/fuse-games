@@ -46,6 +46,7 @@ export function cameraPanels<T extends Point>(
   party: readonly T[],
   width: number,
   height: number,
+  phone = false,
 ): Panel<T>[] {
   const groups = party.map((operator) => [operator]);
   for (;;) {
@@ -70,6 +71,16 @@ export function cameraPanels<T extends Point>(
   }
   if (!groups.length) groups.push([]);
   const baseZoom = localScale(width, height);
+  // The original framing spends much of a phone screen on space outside the
+  // operative's line of sight. Keep at least eight columns and twelve rows in
+  // view while bringing the live mission closer to the player's thumbs.
+  const phoneZoom =
+    phone && party.length === 1
+      ? Math.max(
+          baseZoom,
+          Math.min(width / (8 * TILE_W), height / (12 * TILE_H)),
+        )
+      : baseZoom;
   const gutter = Math.min(
     width / 8,
     height / 8,
@@ -89,7 +100,10 @@ export function cameraPanels<T extends Point>(
         y: row * (cellHeight + gutter),
         width: cellWidth,
         height: cellHeight,
-        localZoom: Math.min(baseZoom, cellHeight / 200),
+        localZoom:
+          rows === 1 && cols === 1
+            ? phoneZoom
+            : Math.min(baseZoom, cellHeight / 200),
       });
     }
   }

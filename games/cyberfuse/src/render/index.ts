@@ -175,7 +175,10 @@ function paintWorld(
 }
 
 /** The renderer reads the most recent simulation view. Resize and atlas completion may redraw that view. */
-export function createScene(canvas: HTMLCanvasElement) {
+export function createScene(
+  canvas: HTMLCanvasElement,
+  usePhoneCamera: () => boolean = () => false,
+) {
   const ctx = canvas.getContext("2d", { alpha: false })!;
   const doc = canvas.ownerDocument;
   const window = doc.defaultView!;
@@ -249,6 +252,7 @@ export function createScene(canvas: HTMLCanvasElement) {
         followedActors(view, local),
         width,
         height,
+        !!local && usePhoneCamera(),
       )) {
         ctx.save();
         ctx.translate(panel.x, panel.y);

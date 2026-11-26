@@ -610,6 +610,8 @@ html[data-fui-play] .fd-arena {
   margin: 0 !important;
   border: 0;
   object-fit: contain;
+  background-image: var(--fd-stadium-apron, none);
+  background-size: 128px 80px;
 }
 /* The arena draws its own scoreboard (lap, place, nitro) across its top; the line under it would only cover it. */
 html[data-fui-play] .fd-race > .fd-hud {

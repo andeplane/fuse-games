@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cameraPanels, frameCamera } from "../src/render/camera.js";
+import {
+  cameraPanels,
+  frameCamera,
+  TILE_H,
+  TILE_W,
+} from "../src/render/camera.js";
 
 const map = { width: 64, height: 64 };
 const first = { x: 400, y: 300 };
@@ -8,6 +13,26 @@ const two = (dx: number, dy: number) => [
   first,
   { x: first.x + dx, y: first.y + dy },
 ];
+
+test("a phone closes in on its lone operative while keeping nearby paths visible", () => {
+  for (const [width, height] of [
+    [360, 800],
+    [844, 390],
+  ] as const) {
+    const [phone] = cameraPanels([first], width, height, true);
+    const [desktop] = cameraPanels([first], width, height);
+    const camera = frameCamera(map, [first], width, height, phone!.localZoom);
+    assert.ok(camera.zoom > desktop!.localZoom);
+    assert.ok(camera.width >= 8 * TILE_W);
+    assert.ok(camera.height >= 12 * TILE_H);
+    assert.equal(camera.left + camera.width / 2, first.x);
+    assert.equal(camera.top + camera.height / 2, first.y - 5);
+    assert.deepEqual(
+      cameraPanels(two(380, 205), width, height, true),
+      cameraPanels(two(380, 205), width, height),
+    );
+  }
+});
 
 test("DOS split is strict at 300 horizontal or 180 vertical world pixels", () => {
   assert.equal(cameraPanels(two(299, 179), 1280, 720).length, 1);

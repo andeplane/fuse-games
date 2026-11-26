@@ -282,7 +282,7 @@ function room() {
       mapOpen = open;
       pauseInspection();
     }),
-    scene = createScene(canvas),
+    scene = createScene(canvas, () => !couch && playScreen.mode() !== "off"),
     sounds = createMissionSounds(audio);
   let phase = "",
     canPlay = false;

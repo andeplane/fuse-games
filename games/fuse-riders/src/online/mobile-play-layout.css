@@ -21,6 +21,7 @@
   min-height: 0;
   border: 0;
   object-fit: contain;
+  background-image: var(--arena-apron, none);
   flex: none;
 }
 .mobile-play .online-header,
