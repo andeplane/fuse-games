@@ -699,8 +699,25 @@ function room(solo: boolean) {
   const playScreen = createPlayScreen({
     stage: play,
     wide: true,
-    onChange: () => controls.release(),
+    onChange: () => {
+      controls.release();
+      measureMinimapTop();
+    },
   });
+  const menuButton = top.querySelector(".fui-top-bar-toggle");
+  let minimapTop = 0;
+  const measureMinimapTop = () => {
+    if (playScreen.mode() === "off" || !menuButton) {
+      minimapTop = 0;
+      return;
+    }
+    const box = menuButton.getBoundingClientRect();
+    minimapTop =
+      (playScreen.mode() === "turned"
+        ? window.innerWidth - box.left
+        : box.bottom) + 6;
+  };
+  window.addEventListener("resize", measureMinimapTop);
   main.append(connection, nameEntry.form, lobby, play, liveLoadout.dialog);
   const results = createResultsScreen({
     onAction: (action) =>
@@ -1193,6 +1210,7 @@ function room(solo: boolean) {
         ),
         new Map(newer.seats.map((seat) => [seat.id, seat.name])),
         me,
+        minimapTop,
       );
     }
     frames++;
@@ -1225,6 +1243,7 @@ function room(solo: boolean) {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      window.removeEventListener("resize", measureMinimapTop);
       cancelAnimationFrame(raf);
       controls.release();
       menu.dispose();

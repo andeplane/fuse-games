@@ -1347,6 +1347,30 @@ function enterRoom(
   stage.append(screen, note, touch.row);
   // A phone's live song is the whole screen, the lanes reflowing to whichever way it is held.
   const playScreen = createPlayScreen({ stage, onChange: () => letGoAll() });
+  const menuButton = top.querySelector(".fui-top-bar-toggle");
+  const touchLandscape = matchMedia("(orientation: landscape)");
+  let touchInset = 0;
+  const titleInsets = { left: 0, right: 0 };
+  function measurePlayHud() {
+    touchInset = titleInsets.left = titleInsets.right = 0;
+    if (playScreen.mode() === "off") return;
+    const field = canvas.getBoundingClientRect();
+    if (menuButton)
+      titleInsets.right = Math.max(
+        0,
+        field.right - menuButton.getBoundingClientRect().left,
+      );
+    if (!pauseButton.hidden)
+      titleInsets.left = Math.max(
+        0,
+        pauseButton.getBoundingClientRect().right - field.left,
+      );
+    if (touchLandscape.matches && !touch.row.hidden)
+      touchInset = Math.max(
+        0,
+        field.bottom - touch.row.getBoundingClientRect().top,
+      );
+  }
 
   const controller = el("section", "", "fm-controller"),
     controllerHead = el("header", "", "fm-controller-head"),
@@ -1788,6 +1812,8 @@ function enterRoom(
       totals: model.totals,
       totalSongs: model.totalSongs,
       itemKey: coarse() ? "ITEM" : keyLabel(prefs.keys.item[0] ?? ""),
+      inset: touchInset,
+      titleInsets,
     });
     const done = performance.now();
     probe.frameEnd(done);
@@ -1981,6 +2007,7 @@ function enterRoom(
     const battle = view.play.mode === BATTLE_MODE;
     touch.item.hidden = controllerPads.item.hidden = !battle;
     main.dataset.touch = String(touchOn);
+    measurePlayHud();
     scene.resize();
     // The phone controller.
     if (next.localSlot !== -1) {
@@ -2231,6 +2258,7 @@ function enterRoom(
     reload: () => location.reload(),
   });
   window.addEventListener("resize", () => {
+    measurePlayHud();
     scene.resize();
     drawGraph();
   });

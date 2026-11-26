@@ -41,15 +41,26 @@ const playfield = (page: Page) =>
   page.locator('.fuseheads-arena[data-ready="true"]');
 async function checkTouchOverlay(page: Page) {
   const arena = await playfield(page).boundingBox();
+  const stage = page.locator(".fuseheads-play.fui-play-stage");
+  const bounds = await stage.boundingBox();
+  const viewport = page.viewportSize();
   assert.ok(arena);
+  assert.ok(bounds && viewport);
+  assert.deepEqual(bounds, { x: 0, y: 0, ...viewport });
+  const turned = viewport.height > viewport.width;
+  assert.deepEqual(arena, bounds);
+  assert.equal(
+    await page.locator("html").getAttribute("data-fui-play"),
+    turned ? "turned" : "phone",
+  );
   for (const name of ["Left", "Right", "Jump"]) {
     const control = await page
       .getByRole("button", { name, exact: true })
       .boundingBox();
     assert.ok(control && control.width >= 44 && control.height >= 44);
-    assert.ok(control.x >= arena.x && control.y >= arena.y);
-    assert.ok(control.x + control.width <= arena.x + arena.width);
-    assert.ok(control.y + control.height <= arena.y + arena.height);
+    assert.ok(control.x >= 0 && control.y >= 0);
+    assert.ok(control.x + control.width <= viewport.width);
+    assert.ok(control.y + control.height <= viewport.height);
   }
 }
 const enter = async (page: Page) => {
@@ -90,9 +101,8 @@ try {
   assert.equal(await downArrowConsumed(solo), "true");
   await checkTouchOverlay(solo);
   await solo.getByRole("button", { name: "Jump", exact: true }).tap();
-  const canvasBox = await playfield(solo).boundingBox();
-  const barBox = await solo.locator(".fui-top-bar").boundingBox();
-  assert.ok(barBox && canvasBox && canvasBox.y >= barBox.y + barBox.height);
+  await openTopMenu(solo);
+  await solo.keyboard.press("Escape");
   assert.ok(
     (await solo.locator("body").boundingBox())!.width <= portrait.width,
   );
@@ -115,6 +125,7 @@ try {
   await start.waitFor();
   await start.click();
   await playfield(host).waitFor();
+  assert.equal(await host.locator("html").getAttribute("data-fui-play"), null);
   await openTopMenu(host);
   await host.getByRole("button", { name: /^back to lobby$/i }).click();
   await start.waitFor();
@@ -138,6 +149,7 @@ try {
     .locator('.fuseheads-room[data-controller="true"] .fuseheads-pad')
     .waitFor();
   assert.equal(await tv.locator(".fuseheads-pad").isVisible(), false);
+  assert.equal(await guest.locator("html").getAttribute("data-fui-play"), null);
   assert.deepEqual(problems, []);
   await Promise.all([...coverage.values()].map((finish) => finish()));
   console.log(

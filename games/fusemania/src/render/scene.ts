@@ -76,6 +76,8 @@ export interface DrawOptions {
   itemKey: string;
   /** CSS pixels at the bottom of the canvas covered by touch buttons (0 when none): the field stays above it. */
   inset?: number;
+  /** CSS pixels on the title bar occupied by the phone's Pause and menu buttons. */
+  titleInsets?: { left: number; right: number };
 }
 const NO_TOTALS: readonly number[] = [];
 export interface Scene {
@@ -272,27 +274,30 @@ export function createScene(canvas: SceneCanvas, options: SceneOptions): Scene {
         size = Math.round(8 * unit),
         bar = plan.barHeight;
       const named = local >= 0 ? (shot.chartNames[local] ?? "") : "";
+      const titleLeft = pad + (shot.titleInsets?.left ?? 0) * unit;
+      const titleRight = width - pad - (shot.titleInsets?.right ?? 0) * unit;
+      const titleWidth = Math.max(1, titleRight - titleLeft);
       g.globalAlpha = 1;
       label(
         g,
         fitText(title, shot.title, 64),
-        pad,
+        titleLeft,
         bar * 0.42,
         size,
         TEXT,
         "left",
-        width * (named ? 0.62 : 1) - pad * 2,
+        titleWidth * (named ? 0.62 : 1),
       );
       if (named)
         label(
           g,
           fitText(chart, named, 24),
-          width - pad,
+          titleRight,
           bar * 0.42,
           size,
           MUTED,
           "right",
-          width * 0.34,
+          titleWidth * 0.34,
         );
       const thick = Math.max(2, Math.round(3 * unit));
       const progress =

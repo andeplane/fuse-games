@@ -13,6 +13,7 @@ import "fuse-ui/tokens.css";
 import "fuse-ui/components.css";
 import "fuse-ui/portal.css";
 import "fuse-ui/results.css";
+import "fuse-ui/play-screen.css";
 import "./fuseheads.css";
 import QRCode from "qrcode";
 import {
@@ -33,6 +34,7 @@ import {
   createRoomLayout,
   createNameEntry,
   createNotice,
+  createPlayScreen,
   createResultsScreen,
   createRoster,
   createSharedTvOption,
@@ -328,6 +330,11 @@ function room(solo: boolean): void {
   const viewport = el("div", "", "fuseheads-viewport");
   viewport.append(canvas, pad.element);
   table.append(viewport, roundLine);
+  const playScreen = createPlayScreen({
+    stage: table,
+    wide: true,
+    onChange: () => inputs.clear(),
+  });
 
   // The result of a match: the shared results screen over the page, on the TV and a phone controller too.
   const results = createResultsScreen({
@@ -450,6 +457,7 @@ function room(solo: boolean): void {
       main.dataset.round = String(frame.round);
       main.dataset.controller = String(controller);
       table.hidden = lobbyOpen || frame.phase === "over";
+      playScreen.update(!over && !table.hidden && !display && !controller);
       lobby.hidden = !lobbyOpen;
       nameEntry.form.hidden = !askName;
       if (lobbyOpen) {
@@ -486,7 +494,7 @@ function room(solo: boolean): void {
       if (frame.world && !table.hidden) {
         const level = getLevel(frame.round, frame.world.pack);
         const label = level.name + " · " + level.stage;
-        if (!controller) arena.draw(frame.world);
+        if (!controller) arena.draw(frame.world, playScreen.mode() !== "off");
         canvas.hidden = controller;
         const actor = frame.world.players.find((p) => p.slot === seat?.slot);
         roundLine.textContent =
@@ -582,6 +590,7 @@ function room(solo: boolean): void {
     },
     ended() {
       say("Room ended", "error", true);
+      playScreen.update(false);
       // A service that does not host this game closes the socket the same way: its game routes say which it was.
       void fetch(endpoints.apiUrl(`/api/games/${GAME}/leaderboard`))
         .then(async (response) => {
@@ -642,6 +651,7 @@ function room(solo: boolean): void {
   installRoomLifecycle(window, {
     stop: () => runtime.stop(),
     destroy: () => {
+      playScreen.destroy();
       stopFinale?.();
       menu.dispose();
     },

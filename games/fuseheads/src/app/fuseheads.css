@@ -132,3 +132,35 @@ body:has(.fuseheads-room[data-local="true"])
   .fuseheads-status:not([data-tone="error"]) {
   display: none;
 }
+
+/* The canvas fills the phone and the renderer fits the fixed arcade board inside it. */
+html[data-fui-play] .fuseheads-play {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: #171520;
+}
+html[data-fui-play] .fuseheads-viewport {
+  position: static;
+  width: 100%;
+  height: 100%;
+}
+html[data-fui-play] .fuseheads-arena {
+  height: 100%;
+  aspect-ratio: auto;
+}
+html[data-fui-play] .fuseheads-round {
+  position: absolute;
+  top: max(0.5rem, var(--fui-play-top));
+  left: max(3rem, var(--fui-play-left));
+  right: calc(3rem + var(--fui-play-right));
+  margin: 0;
+  line-height: 1.5;
+  text-shadow: 0 1px 4px #000;
+  pointer-events: none;
+}
+html[data-fui-play] .fuseheads-room[data-controller="false"] .fuseheads-pad {
+  inset: auto max(0.5rem, var(--fui-play-right))
+    max(1rem, var(--fui-play-bottom)) max(0.5rem, var(--fui-play-left));
+  z-index: 1;
+}

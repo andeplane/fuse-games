@@ -39,19 +39,23 @@ const specialTiles: Readonly<Record<number, number>> = {
   25: 2815,
   26: 2816,
 };
+const BOARD_WIDTH = 640;
+const BOARD_HEIGHT = 480;
+const PLAY_HEIGHT = FLOOR_ROW * TILE_HEIGHT;
 
 /** The one presentation clock is the current authoritative/predicted world tick. */
 export function createArena(canvas: HTMLCanvasElement): {
-  draw(world: World): void;
+  draw(world: World, fullScreen?: boolean): void;
 } {
-  canvas.width = 640;
-  canvas.height = 480;
+  canvas.width = BOARD_WIDTH;
+  canvas.height = BOARD_HEIGHT;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Fuseheads requires a 2D canvas");
   const ctx = context;
   ctx.imageSmoothingEnabled = false;
   const images = new Map<string, HTMLImageElement>();
   let current: World | undefined;
+  let fullScreen = false;
 
   function load(url: string) {
     const cached = images.get(url);
@@ -59,7 +63,7 @@ export function createArena(canvas: HTMLCanvasElement): {
     const image = canvas.ownerDocument.createElement("img");
     images.set(url, image);
     image.onload = () => {
-      if (current) draw(current);
+      if (current) draw(current, fullScreen);
     };
     image.onerror = () => {
       canvas.dataset.ready = "error";
@@ -142,8 +146,9 @@ export function createArena(canvas: HTMLCanvasElement): {
     }
   }
 
-  function draw(world: World) {
+  function draw(world: World, expand = false) {
     current = world;
+    fullScreen = expand;
     const level = getLevel(world.levelIndex + 1, world.pack);
     const background = load(backgroundUrl(level.backgroundId - 900));
     if (
@@ -154,10 +159,49 @@ export function createArena(canvas: HTMLCanvasElement): {
       if (canvas.dataset.ready !== "error") canvas.dataset.ready = "false";
       return;
     }
+    const ratio = Math.min(
+      2,
+      canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1,
+    );
+    const width = expand
+      ? Math.max(1, Math.round(canvas.clientWidth * ratio))
+      : BOARD_WIDTH;
+    const height = expand
+      ? Math.max(1, Math.round(canvas.clientHeight * ratio))
+      : BOARD_HEIGHT;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    if (expand) {
+      // Use the level's scenery around the intact board, without duplicating its baked-in HUD.
+      ctx.drawImage(
+        background,
+        0,
+        0,
+        BOARD_WIDTH,
+        PLAY_HEIGHT,
+        0,
+        0,
+        width,
+        height,
+      );
+      ctx.fillStyle = "rgb(5 9 17 / 48%)";
+      ctx.fillRect(0, 0, width, height);
+    }
+    const scale = Math.min(width / BOARD_WIDTH, height / BOARD_HEIGHT);
+    ctx.setTransform(
+      scale,
+      0,
+      0,
+      scale,
+      (width - BOARD_WIDTH * scale) / 2,
+      (height - BOARD_HEIGHT * scale) / 2,
+    );
     ctx.drawImage(background, 0, 0);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, canvas.width, FLOOR_ROW * TILE_HEIGHT);
+    ctx.rect(0, 0, BOARD_WIDTH, PLAY_HEIGHT);
     ctx.clip();
     for (let cell = 0; cell < FLOOR_ROW * COLUMNS; cell++) {
       const column = cell % COLUMNS,

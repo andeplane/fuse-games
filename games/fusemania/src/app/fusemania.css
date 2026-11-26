@@ -1135,3 +1135,29 @@ html[data-fui-play] .fm-stage > .fm-touch {
   height: min(12rem, 32cqh);
   min-height: min(152px, 40cqh);
 }
+@media (orientation: landscape) {
+  html[data-fui-play] .fm-stage > .fm-touch {
+    grid-template: "left down up right" / repeat(4, minmax(0, 1fr));
+    width: min(28rem, calc(100% - 1rem));
+    height: clamp(44px, 15cqh, 64px);
+    min-height: 0;
+  }
+  html[data-fui-play] .fm-touch:has(.fm-pad-item:not([hidden])) {
+    grid-template: "left down up right item" / repeat(5, minmax(0, 1fr));
+  }
+  html[data-fui-play] .fm-touch .fm-pad-0 {
+    grid-area: left;
+  }
+  html[data-fui-play] .fm-touch .fm-pad-1 {
+    grid-area: down;
+  }
+  html[data-fui-play] .fm-touch .fm-pad-2 {
+    grid-area: up;
+  }
+  html[data-fui-play] .fm-touch .fm-pad-3 {
+    grid-area: right;
+  }
+  html[data-fui-play] .fm-touch .fm-pad-item {
+    grid-area: item;
+  }
+}
