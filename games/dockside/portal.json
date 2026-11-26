@@ -1,0 +1,12 @@
+{
+  "name": "Dockside",
+  "tagline": "Escort your convoy through Canal Lock.",
+  "mark": "DS",
+  "accent": "#49dae5",
+  "screenshot": "gallery/dockside.jpg",
+  "screenshots": [
+    "gallery/dockside.jpg",
+    "gallery/dockside-menu.jpg",
+    "gallery/dockside-controls.jpg"
+  ]
+}

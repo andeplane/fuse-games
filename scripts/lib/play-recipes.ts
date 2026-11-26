@@ -133,6 +133,14 @@ export const RECIPES: Record<string, Recipe> = {
       if (inAction) break;
     }
   },
+  fuseheads: async (page) => {
+    await openPlayOptions(page, "single");
+    await page.getByRole("button", { name: "START GAME", exact: true }).click();
+    await page.locator('.fuseheads-arena[data-ready="true"]').waitFor();
+    await hold(page, ["ArrowRight"], 650);
+    await page.keyboard.press("Space", { delay: 120 });
+    await page.waitForTimeout(800);
+  },
   "incredible-fuse": async (page) => {
     await openPlayOptions(page, "single");
     const choice = page.getByRole("combobox", { name: "Puzzle" });
@@ -245,6 +253,19 @@ export const RECIPES: Record<string, Recipe> = {
     await hold(page, ["ArrowRight"], 250);
     await page.keyboard.press("ArrowUp", { delay: 200 });
     await page.waitForTimeout(700);
+  },
+  dockside: async (page) => {
+    await openPlayOptions(page, "single");
+    await page
+      .locator(
+        '.dockside-room[data-phase="running"] canvas[aria-label="Canal Lock arena"]',
+      )
+      .waitFor();
+    await hold(page, ["KeyQ"], 580);
+    await page.getByText("North pad · Launch ready").waitFor();
+    await page.keyboard.press("KeyF", { delay: 80 });
+    await hold(page, ["KeyQ"], 1640);
+    await hold(page, ["KeyW"], 3000);
   },
   "fuse-surge": async (page) => {
     await openPlayOptions(page, "single");

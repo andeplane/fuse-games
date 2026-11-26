@@ -230,9 +230,17 @@ test("a solo ride's bar leads out by itself: MENU, RETRY and NEXT MAP, the main 
       back: false,
       actions: [
         { id: "menu", label: "Menu" },
-        { id: "next", label: "Next map" },
         { id: "rematch", label: "RETRY", primary: true },
       ],
     },
+  );
+  assert.deepEqual(
+    resultBar(
+      solo({ solo: { level: 100, next: 101, finished: true, random: true } }),
+    ).actions,
+    [
+      { id: "menu", label: "Menu" },
+      { id: "rematch", label: "Play random again", primary: true },
+    ],
   );
 });

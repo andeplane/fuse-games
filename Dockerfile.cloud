@@ -25,6 +25,8 @@ COPY packages/fuse-music/package.json ./packages/fuse-music/
 # Games are workspaces too: pnpm needs every manifest the lockfile lists, including browser-only experiments.
 COPY games/cyberfuse/package.json ./games/cyberfuse/
 COPY games/dice/package.json ./games/dice/
+COPY games/dockside/package.json ./games/dockside/
+COPY games/fuseheads/package.json ./games/fuseheads/
 COPY games/fuse-particles/package.json ./games/fuse-particles/
 COPY games/incredible-fuse/package.json ./games/incredible-fuse/
 COPY games/fusero/package.json ./games/fusero/

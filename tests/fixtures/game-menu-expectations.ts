@@ -16,6 +16,7 @@ export const gameMenus: Readonly<Record<string, GameMenu>> = {
   "ball-bros": sharedRadio,
   cyberfuse: radioAndEffects,
   dice: sharedRadio,
+  dockside: sharedRadio,
   "incredible-fuse": sharedRadio,
   "elasto-fuse": radioAndEffects,
   "fuse-axe": sharedRadio,
@@ -54,6 +55,7 @@ export const gameMenus: Readonly<Record<string, GameMenu>> = {
   },
   "fuse-volley": radioAndEffects,
   fuseball: radioAndEffects,
+  fuseheads: sharedRadio,
   fusemania: {
     radio: false,
     controls: [

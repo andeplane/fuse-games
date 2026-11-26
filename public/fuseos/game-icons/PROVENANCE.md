@@ -1,5 +1,7 @@
 # FuseOS game icons
 
+Dockside uses an original geometric walker in the west team's teal, drawn as polygons for its desktop and taskbar icons.
+
 Cyberfuse uses the three-quarter helmet and shoulders of its cyan operative,
 painted for the game's sprite sheet in `games/cyberfuse/src/art/`. The taskbar icon
 crops to the helmet so its luminous visor and crest survive at 16 px. Both

@@ -76,6 +76,10 @@ function race(settings: Settings = DEFAULT_SETTINGS): {
   guest.command({ type: "join", name: "Guest" });
   mesh.run(3_000);
   assert.equal(host.roomState()!.seats.size, 2);
+  if (settings.level > 0) {
+    guest.shareProgress(settings.level);
+    mesh.run(1_000);
+  }
   assert.ok(host.command({ type: "action", action: "start" }));
   return { mesh, host, guest };
 }
@@ -109,6 +113,24 @@ test("solo is one rider on the chosen level, never a shared screen", () => {
   assert.equal(runtime.heldNow, GAS | TURN);
   runtime.stop();
   assert.equal(heldBits(64 | BRAKE), BRAKE);
+});
+
+test("a guest's unlocks reach the host over the gameplay log", () => {
+  const mesh = new Mesh("host", { ...DEFAULT_SETTINGS, level: 8 });
+  const host = mesh.join("host");
+  const guest = mesh.join("guest");
+  mesh.run(300);
+  host.command({ type: "join", name: "Host" });
+  guest.command({ type: "join", name: "Guest" });
+  mesh.run(3_000);
+  lossy(mesh, 4);
+  guest.shareProgress(8);
+  mesh.run(3_000);
+  assert.equal(mesh.frames.get("host")?.at(-1)?.unlockedLevel, 8);
+  assert.ok(host.command({ type: "action", action: "start" }));
+  mesh.run(2_000);
+  assert.equal(host.roomState()?.world?.level, 8);
+  assert.equal(guest.roomState()?.world?.level, 8);
 });
 
 test("two devices race over a mesh that drops, duplicates and reorders, and agree on every bike", () => {

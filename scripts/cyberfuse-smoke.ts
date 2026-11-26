@@ -527,8 +527,20 @@ async function online(host: Page, peer: Page, tv: Page, extra: Page[]) {
   await peer.getByRole("button", { name: "Close map", exact: true }).tap();
   await resizeSmokeViewport(peer, { width: 360, height: 780 });
   await hashAgreement(peer);
-  await peer.reload();
-  await phase(peer, "running");
+  const shooter = await current(host);
+  await host.keyboard.down("Space");
+  try {
+    await host.waitForFunction(
+      (old) =>
+        (window.__cyberfuseProbe!().actors.find((a) => a.seat === old.seat)
+          ?.lastShot ?? -1) > old.lastShot,
+      shooter,
+    );
+    await peer.reload();
+    await phase(peer, "running");
+  } finally {
+    await host.keyboard.up("Space");
+  }
   assert.equal(
     (await current(peer)).seat,
     before.seat,
