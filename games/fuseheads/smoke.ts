@@ -79,6 +79,11 @@ async function checkTouchOverlay(page: Page) {
     await page.locator("html").getAttribute("data-fui-play"),
     turned ? "turned" : "phone",
   );
+  const shortSide = Math.min(viewport.width, viewport.height);
+  const longSide = Math.max(viewport.width, viewport.height);
+  const boardWidth = (shortSide * 4) / 3;
+  const hudLeft = (longSide - boardWidth) / 2;
+  const hudTop = shortSide * (416 / 480);
   for (const name of ["Left", "Right", "Jump"]) {
     const control = await page
       .getByRole("button", { name, exact: true })
@@ -87,6 +92,15 @@ async function checkTouchOverlay(page: Page) {
     assert.ok(control.x >= 0 && control.y >= 0);
     assert.ok(control.x + control.width <= viewport.width);
     assert.ok(control.y + control.height <= viewport.height);
+    const left = turned ? control.y : control.x;
+    const right = left + (turned ? control.height : control.width);
+    const bottom = turned
+      ? viewport.width - control.x
+      : control.y + control.height;
+    assert.ok(
+      right <= hudLeft || left >= hudLeft + boardWidth || bottom <= hudTop,
+      name + " leaves the score and lives visible",
+    );
   }
 }
 const enter = async (page: Page) => {
