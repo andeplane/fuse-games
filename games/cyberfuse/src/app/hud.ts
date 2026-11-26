@@ -90,6 +90,54 @@ function drawMap(canvas: HTMLCanvasElement, world: MissionState) {
     }
 }
 
+/** Accept a clean touch release even when the browser omits its synthesized click. */
+function bindMapButton(button: HTMLButtonElement, activate: () => void): void {
+  let start: Touch | undefined;
+  const withinTap = (touch: Touch | undefined) =>
+    start &&
+    touch &&
+    touch.identifier === start.identifier &&
+    Math.hypot(touch.clientX - start.clientX, touch.clientY - start.clientY) <=
+      12;
+  button.onclick = activate;
+  button.addEventListener(
+    "touchstart",
+    (event) => {
+      start = event.touches.length === 1 ? event.changedTouches[0] : undefined;
+    },
+    { passive: true },
+  );
+  button.addEventListener("touchcancel", () => {
+    start = undefined;
+  });
+  button.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!withinTap(event.touches[0]) || event.touches.length !== 1)
+        start = undefined;
+    },
+    { passive: true },
+  );
+  button.addEventListener(
+    "touchend",
+    (event) => {
+      const last = event.changedTouches[0];
+      const tap = withinTap(last) && !event.touches.length;
+      start = undefined;
+      if (!tap || !last) return;
+      const target = button.ownerDocument.elementFromPoint(
+        last.clientX,
+        last.clientY,
+      );
+      if (!button.contains(target)) return;
+      // Avoid a second activation through the compatibility click where possible.
+      if (event.cancelable) event.preventDefault();
+      activate();
+    },
+    { passive: false },
+  );
+}
+
 export function createHud(inspect: (open: boolean) => void) {
   const element = el("div", "", "cf-hud"),
     mission = el("strong"),
@@ -114,12 +162,12 @@ export function createHud(inspect: (open: boolean) => void) {
   bar.append(el("h2", "Mission map"), close);
   panel.append(bar, map, list);
   let latest: MissionState | undefined;
-  const toggle = () => {
-    if (!latest || latest.mode === "dogfight") return;
-    panel.hidden = !panel.hidden;
-    inspect(!panel.hidden);
-    mapButton.setAttribute("aria-expanded", String(!panel.hidden));
-    if (!panel.hidden) {
+  const setOpen = (open: boolean) => {
+    if (!latest || latest.mode === "dogfight" || open === !panel.hidden) return;
+    panel.hidden = !open;
+    inspect(open);
+    mapButton.setAttribute("aria-expanded", String(open));
+    if (open) {
       drawMap(map, latest);
       list.replaceChildren(
         ...latest.objectives
@@ -130,11 +178,12 @@ export function createHud(inspect: (open: boolean) => void) {
       );
     }
   };
-  close.onclick = mapButton.onclick = toggle;
+  bindMapButton(mapButton, () => setOpen(true));
+  bindMapButton(close, () => setOpen(false));
   return {
     element,
     panel,
-    toggle,
+    toggle: () => setOpen(panel.hidden),
     update(world: MissionState, me: string) {
       latest = world;
       const dog = world.mode === "dogfight";
