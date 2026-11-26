@@ -185,6 +185,9 @@ body.at-entrance .shell > .fui-top-bar {
 .fui-top-bar [hidden] {
   display: none !important;
 }
+html:not([data-fui-phone-playing]) .fui-top-bar-menu .fui-phone-home {
+  display: none;
+}
 .fui-top-bar-menu .fui-game-menu-panel {
   position: static;
   width: 100%;

@@ -1,3 +1,5 @@
+import { setPhoneGamePlaying } from "./embedded.js";
+
 /**
  * A phone's full-screen play: while a round is live the game's stage is the whole screen, the top bar shrinks to its
  * menu button and the page cannot scroll. A stage that is wider than tall and cannot reflow is drawn turned a quarter
@@ -123,6 +125,7 @@ export function createPlayScreen(options: PlayScreenOptions): PlayScreen {
       : "off";
     if (next === mode) return;
     mode = next;
+    setPhoneGamePlaying(doc, mode !== "off");
     if (mode === "off") {
       delete root.dataset.fuiPlay;
       stage.classList.remove(STAGE_CLASS);

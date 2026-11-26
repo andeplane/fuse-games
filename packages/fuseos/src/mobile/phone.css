@@ -258,6 +258,14 @@ html[data-phone-home-edge="top"] .phone-shell {
 .phone-game[hidden] {
   display: none;
 }
+/* In live play, FuseOS Home lives inside the game's menu so touch targets never compete with the controls. */
+.phone-shell:has(.phone-game[data-fui-phone-playing]:not([hidden])) {
+  padding: 0;
+}
+.phone-shell:has(.phone-game[data-fui-phone-playing]:not([hidden]))
+  > .phone-navigation {
+  display: none;
+}
 .phone-navigation {
   flex: none;
   height: 64px;

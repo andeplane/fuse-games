@@ -1,4 +1,5 @@
 import { createPhoneLayout } from "fuse-ui";
+import { setPhoneGamePlaying } from "fuse-ui/embedded";
 import type { MobileScreen } from "./room-screen.js";
 /** Fuse Riders' phone layout on fuse-ui's: the ☰ MENU tools overlay over the three control zones, their hints, and
  *  what a change of screen does to held input. Whether the phone is the controller, upright or on its lobby screen is
@@ -27,6 +28,12 @@ export function installMobilePlayLayout(
       resized = false,
       controllerOnly = false,
     ) {
+      setPhoneGamePlaying(
+        app.ownerDocument,
+        next.active &&
+          !controllerOnly &&
+          (phase === "countdown" || phase === "playing"),
+      );
       // Hints follow the round phase, not a timer restarted on entry to play.
       if (layout.hints.dataset.phase !== phase)
         layout.hints.dataset.phase = phase;
